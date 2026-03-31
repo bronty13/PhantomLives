@@ -4,7 +4,7 @@
 #  HOMEBREW AUTO-UPDATE INSTALLER
 #
 #  File:     install.sh
-#  Version:  1.0.0
+#  Version:  2.0.0
 #  Author:   Generated with Claude Code
 #  License:  MIT
 #  Requires: macOS, Homebrew, bash 3.2+
@@ -15,17 +15,19 @@
 #      1. Verifies prerequisites (macOS, Homebrew)
 #      2. Creates configuration directory (~/.config/brew-autoupdate/)
 #      3. Copies the update script, viewer script, and config file
-#      4. Generates a user-specific launchd plist from the template
-#      5. Sets file permissions (scripts executable, config readable)
-#      6. Symlinks the viewer as 'brew-logs' in Homebrew's bin directory
-#      7. Creates log directories under ~/Library/Logs/
-#      8. Loads the launchd daemon for automatic scheduling
-#      9. Optionally runs a verification test
+#      4. Copies this installer (for 'brew-logs schedule reload')
+#      5. Generates a launchd plist from the schedule in config.conf
+#      6. Sets file permissions (scripts executable, config readable)
+#      7. Symlinks the viewer as 'brew-logs' in Homebrew's bin directory
+#      8. Creates log directories under ~/Library/Logs/
+#      9. Loads the launchd daemon for automatic scheduling
+#     10. Optionally runs a verification test
 #
 #  Usage:
 #    bash install.sh              # Standard install
 #    bash install.sh --uninstall  # Remove everything
 #    bash install.sh --reinstall  # Uninstall then install fresh
+#    bash install.sh --reload-schedule  # Regenerate plist from config
 #    bash install.sh --help       # Show help
 #
 #  Idempotency:
@@ -36,6 +38,7 @@
 #  What gets installed where:
 #    ~/.config/brew-autoupdate/brew-autoupdate.sh        Main update script
 #    ~/.config/brew-autoupdate/brew-autoupdate-viewer.sh Log viewer script
+#    ~/.config/brew-autoupdate/install.sh                This installer (for schedule reload)
 #    ~/.config/brew-autoupdate/config.conf               Configuration file
 #    ~/Library/LaunchAgents/com.user.brew-autoupdate.plist  Daemon schedule
 #    ~/Library/Logs/brew-autoupdate/detail/               Detail log dir
@@ -44,10 +47,12 @@
 #
 # ============================================================================
 
-# ----------------------------------------------------------------------------
-# Shell Options
-# ----------------------------------------------------------------------------
 set -euo pipefail
+
+# ============================================================================
+# VERSION
+# ============================================================================
+BAU_VERSION="2.0.0"
 
 # ============================================================================
 # TERMINAL FORMATTING
@@ -57,17 +62,12 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
+DIM='\033[2m'
 NC='\033[0m'
 
 # ============================================================================
 # INSTALLATION PATHS
 # ============================================================================
-# SOURCE_DIR: Where this installer and the source files are located.
-#   Resolved from the installer script's own location.
-# INSTALL_DIR: Where scripts and config are installed.
-#   ~/.config/ is the XDG standard for user configuration on Unix systems.
-# PLIST_LABEL: Unique identifier for the launchd daemon job.
-# ----------------------------------------------------------------------------
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="${HOME}/.config/brew-autoupdate"
 LAUNCH_AGENTS_DIR="${HOME}/Library/LaunchAgents"
@@ -78,29 +78,123 @@ PLIST_FILE="${LAUNCH_AGENTS_DIR}/${PLIST_LABEL}.plist"
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
-
-# Print a formatted status message with a colored prefix
 info()    { echo -e "${CYAN}[INFO]${NC}    $*"; }
 success() { echo -e "${GREEN}[OK]${NC}      $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC}    $*"; }
 error()   { echo -e "${RED}[ERROR]${NC}   $*"; }
 
-# Print a section header with visual separation
 section() {
     echo
     echo -e "${BOLD}── $* ──${NC}"
 }
 
+# read_config_value - extract a value from a config file
+#   $1 = config file path
+#   $2 = key name
+#   $3 = default value
+read_config_value() {
+    local cfg="$1" key="$2" default="${3:-}"
+    if [[ -f "${cfg}" ]]; then
+        local val
+        val=$(grep "^${key}=" "${cfg}" 2>/dev/null | head -1 | cut -d'=' -f2- | sed 's/#.*//' | xargs 2>/dev/null)
+        echo "${val:-${default}}"
+    else
+        echo "${default}"
+    fi
+}
+
+# ============================================================================
+# PLIST GENERATION
+# ============================================================================
+# Generates the launchd plist XML based on the schedule from config.conf.
+# Called during install AND by --reload-schedule.
+#
+# Arguments:
+#   $1 = SCHEDULE_HOURS  (comma-separated, e.g. "0,6,12,18")
+#   $2 = SCHEDULE_MINUTE (integer, e.g. "0")
+#   $3 = install dir     (path to brew-autoupdate.sh)
+#   $4 = home dir        (used for log paths and HOME env var)
+# ----------------------------------------------------------------------------
+generate_plist() {
+    local schedule_hours="${1:-0,6,12,18}"
+    local schedule_minute="${2:-0}"
+    local install_dir="${3:-${INSTALL_DIR}}"
+    local home_dir="${4:-${HOME}}"
+
+    cat <<PLIST_HEADER
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Unique identifier for this launchd job. -->
+    <key>Label</key>
+    <string>com.user.brew-autoupdate</string>
+
+    <!-- The command to execute at each scheduled time. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>${install_dir}/brew-autoupdate.sh</string>
+    </array>
+
+    <!-- Run schedule: each <dict> defines one run time (Hour + Minute). -->
+    <!-- Edit SCHEDULE_HOURS in config.conf, then run: brew-logs schedule reload -->
+    <key>StartCalendarInterval</key>
+    <array>
+PLIST_HEADER
+
+    # Generate one <dict> entry per scheduled hour
+    IFS=',' read -ra hours <<< "${schedule_hours}"
+    for h in "${hours[@]}"; do
+        h=$(echo "${h}" | xargs)    # trim whitespace
+        [[ -z "${h}" ]] && continue
+        printf '        <dict>\n'
+        printf '            <key>Hour</key>\n'
+        printf '            <integer>%d</integer>\n' "${h}"
+        printf '            <key>Minute</key>\n'
+        printf '            <integer>%d</integer>\n' "${schedule_minute}"
+        printf '        </dict>\n'
+    done
+
+    cat <<PLIST_FOOTER
+    </array>
+
+    <!-- launchd-level stdout/stderr (catches pre-script errors) -->
+    <key>StandardOutPath</key>
+    <string>${home_dir}/Library/Logs/brew-autoupdate/launchd-stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>${home_dir}/Library/Logs/brew-autoupdate/launchd-stderr.log</string>
+
+    <!-- Resource priority: background, low I/O, nice=10 -->
+    <key>LowPriorityIO</key>
+    <true/>
+
+    <key>Nice</key>
+    <integer>10</integer>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <!-- Minimal environment for launchd (no shell profile is loaded) -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>${home_dir}</string>
+    </dict>
+</dict>
+</plist>
+PLIST_FOOTER
+}
+
 # ============================================================================
 # PREREQUISITE CHECKS
 # ============================================================================
-# Verifies that we're running on macOS with Homebrew installed.
-# These are hard requirements - the script cannot function without them.
-# ----------------------------------------------------------------------------
 check_prerequisites() {
     section "Checking prerequisites"
 
-    # Verify macOS (Darwin kernel)
     if [[ "$(uname -s)" != "Darwin" ]]; then
         error "This tool is designed for macOS only."
         error "Detected OS: $(uname -s)"
@@ -108,7 +202,6 @@ check_prerequisites() {
     fi
     success "macOS detected ($(sw_vers -productVersion))"
 
-    # Verify Homebrew is installed and accessible
     if command -v brew &>/dev/null; then
         BREW_PREFIX="$(brew --prefix)"
         success "Homebrew found at ${BREW_PREFIX}"
@@ -124,8 +217,10 @@ check_prerequisites() {
         exit 1
     fi
 
-    # Verify source files exist alongside this installer
-    local required_files=("brew-autoupdate.sh" "brew-autoupdate-viewer.sh" "config.conf" "com.user.brew-autoupdate.plist")
+    # Verify required source files exist alongside this installer.
+    # Note: com.user.brew-autoupdate.plist is no longer required —
+    # the plist is generated dynamically from config.conf.
+    local required_files=("brew-autoupdate.sh" "brew-autoupdate-viewer.sh" "config.conf")
     for f in "${required_files[@]}"; do
         if [[ ! -f "${SOURCE_DIR}/${f}" ]]; then
             error "Missing required file: ${f}"
@@ -142,11 +237,6 @@ check_prerequisites() {
 do_install() {
     section "Installing Homebrew Auto-Update"
 
-    # --- Create directories ---
-    # ~/.config/brew-autoupdate/  - scripts and configuration
-    # ~/Library/LaunchAgents/     - macOS daemon definitions (usually exists)
-    # ~/Library/Logs/brew-autoupdate/{detail,summary}/  - log storage
-    # ------------------------------------------------------------------------
     info "Creating directories..."
     mkdir -p "${INSTALL_DIR}"
     mkdir -p "${LAUNCH_AGENTS_DIR}"
@@ -154,18 +244,13 @@ do_install() {
     mkdir -p "${LOG_DIR}/summary"
     success "Directories created"
 
-    # --- Copy scripts ---
-    # Always overwrite scripts on install/upgrade to get latest fixes.
-    # ------------------------------------------------------------------------
     info "Installing scripts..."
-    cp "${SOURCE_DIR}/brew-autoupdate.sh" "${INSTALL_DIR}/brew-autoupdate.sh"
+    cp "${SOURCE_DIR}/brew-autoupdate.sh"        "${INSTALL_DIR}/brew-autoupdate.sh"
     cp "${SOURCE_DIR}/brew-autoupdate-viewer.sh" "${INSTALL_DIR}/brew-autoupdate-viewer.sh"
+    # Copy the installer itself so 'brew-logs schedule reload' can call it
+    cp "${SOURCE_DIR}/install.sh"                "${INSTALL_DIR}/install.sh"
     success "Scripts installed to ${INSTALL_DIR}/"
 
-    # --- Copy config (preserve existing) ---
-    # If the user already has a config, don't overwrite their customizations.
-    # Instead, copy the new default as config.conf.new for reference.
-    # ------------------------------------------------------------------------
     if [[ -f "${INSTALL_DIR}/config.conf" ]]; then
         warn "Existing config.conf found - preserving your customizations"
         cp "${SOURCE_DIR}/config.conf" "${INSTALL_DIR}/config.conf.new"
@@ -175,39 +260,29 @@ do_install() {
         success "Default config.conf installed"
     fi
 
-    # --- Set file permissions ---
-    # Scripts need execute permission. Config is read-only for the owner.
-    # ------------------------------------------------------------------------
     info "Setting permissions..."
     chmod 755 "${INSTALL_DIR}/brew-autoupdate.sh"
     chmod 755 "${INSTALL_DIR}/brew-autoupdate-viewer.sh"
+    chmod 755 "${INSTALL_DIR}/install.sh"
     chmod 644 "${INSTALL_DIR}/config.conf"
     success "Permissions set"
 
-    # --- Generate launchd plist ---
-    # The plist template contains placeholders for user-specific paths.
-    # We replace them with the actual HOME directory and install location
-    # so the plist works for any user, not just the original author.
-    # ------------------------------------------------------------------------
+    # -----------------------------------------------------------------
+    # Generate the launchd plist from schedule in config.conf
+    # This replaces the old template-substitution approach and
+    # supports fully customizable schedules.
+    # -----------------------------------------------------------------
+    info "Reading schedule from config.conf..."
+    local sched_hours sched_minute
+    sched_hours=$(read_config_value "${INSTALL_DIR}/config.conf" SCHEDULE_HOURS "0,6,12,18")
+    sched_minute=$(read_config_value "${INSTALL_DIR}/config.conf" SCHEDULE_MINUTE "0")
+    info "Schedule: hours=[${sched_hours}]  minute=${sched_minute}"
+
     info "Generating launchd plist..."
-    sed \
-        -e "s|HOME_PLACEHOLDER|${HOME}|g" \
-        -e "s|INSTALL_DIR_PLACEHOLDER|${HOME}|g" \
-        "${SOURCE_DIR}/com.user.brew-autoupdate.plist" > "${PLIST_FILE}"
-    # Remove the XML comment block at the top (launchd doesn't like comments before the XML declaration)
-    # Actually, we need to ensure the XML declaration is first. The template has comments before it.
-    # Extract from <?xml onwards
-    local temp_plist
-    temp_plist="$(mktemp)"
-    sed -n '/<?xml/,$p' "${PLIST_FILE}" > "${temp_plist}"
-    mv "${temp_plist}" "${PLIST_FILE}"
+    generate_plist "${sched_hours}" "${sched_minute}" "${INSTALL_DIR}" "${HOME}" > "${PLIST_FILE}"
     chmod 644 "${PLIST_FILE}"
     success "Plist installed to ${PLIST_FILE}"
 
-    # --- Validate plist syntax ---
-    # plutil is macOS's built-in plist validation tool. Catches XML errors
-    # before we try to load the daemon (which would fail silently).
-    # ------------------------------------------------------------------------
     info "Validating plist..."
     if plutil -lint "${PLIST_FILE}" &>/dev/null; then
         success "Plist validation passed"
@@ -217,26 +292,15 @@ do_install() {
         exit 1
     fi
 
-    # --- Create brew-logs symlink ---
-    # Symlinks the viewer script into Homebrew's bin directory so it's
-    # accessible as just 'brew-logs' from any terminal.
-    # Uses -sf (force) to update existing symlinks cleanly.
-    # ------------------------------------------------------------------------
     info "Creating 'brew-logs' command..."
     ln -sf "${INSTALL_DIR}/brew-autoupdate-viewer.sh" "${BREW_PREFIX}/bin/brew-logs"
     success "'brew-logs' command available in PATH"
 
-    # --- Load the launchd daemon ---
-    # Unload first (ignoring errors if not loaded) then load with -w flag.
-    # The -w flag marks the job as "not disabled", ensuring it persists
-    # across reboots and isn't affected by launchctl disable commands.
-    # ------------------------------------------------------------------------
     section "Starting daemon"
     info "Loading launchd daemon..."
     launchctl unload "${PLIST_FILE}" 2>/dev/null || true
     launchctl load -w "${PLIST_FILE}"
 
-    # Verify the daemon loaded successfully
     if launchctl list "${PLIST_LABEL}" &>/dev/null; then
         success "Daemon loaded and scheduled"
     else
@@ -246,40 +310,98 @@ do_install() {
 }
 
 # ============================================================================
+# RELOAD SCHEDULE ONLY
+# ============================================================================
+# Called by 'brew-logs schedule reload'. Regenerates and reloads the plist
+# from the current config.conf without touching any other installed files.
+# ----------------------------------------------------------------------------
+do_reload_schedule() {
+    section "Reloading schedule"
+
+    # When called from INSTALL_DIR (via brew-logs), SOURCE_DIR == INSTALL_DIR
+    local config_path="${INSTALL_DIR}/config.conf"
+    if [[ ! -f "${config_path}" ]]; then
+        error "config.conf not found at ${config_path}"
+        exit 1
+    fi
+
+    local sched_hours sched_minute
+    sched_hours=$(read_config_value "${config_path}" SCHEDULE_HOURS "0,6,12,18")
+    sched_minute=$(read_config_value "${config_path}" SCHEDULE_MINUTE "0")
+
+    info "SCHEDULE_HOURS=${sched_hours}  SCHEDULE_MINUTE=${sched_minute}"
+
+    info "Unloading current daemon..."
+    launchctl unload "${PLIST_FILE}" 2>/dev/null || true
+    success "Daemon unloaded"
+
+    info "Regenerating plist..."
+    generate_plist "${sched_hours}" "${sched_minute}" "${INSTALL_DIR}" "${HOME}" > "${PLIST_FILE}"
+    chmod 644 "${PLIST_FILE}"
+
+    info "Validating plist..."
+    if plutil -lint "${PLIST_FILE}" &>/dev/null; then
+        success "Plist validation passed"
+    else
+        error "Plist validation FAILED:"
+        plutil -lint "${PLIST_FILE}"
+        exit 1
+    fi
+
+    info "Loading daemon with new schedule..."
+    launchctl load -w "${PLIST_FILE}"
+
+    if launchctl list "${PLIST_LABEL}" &>/dev/null; then
+        # Format schedule for display
+        local sched_display=""
+        IFS=',' read -ra hrs <<< "${sched_hours}"
+        local mm; printf -v mm '%02d' "${sched_minute}"
+        for h in "${hrs[@]}"; do
+            h=$(echo "${h}" | xargs)
+            [[ -n "${h}" ]] && sched_display+="$(printf '%d:%s' "${h}" "${mm}")  "
+        done
+        success "Daemon reloaded with new schedule"
+        success "Runs at: ${sched_display}"
+    else
+        error "Daemon failed to load. Check: launchctl list ${PLIST_LABEL}"
+        exit 1
+    fi
+}
+
+# ============================================================================
 # UNINSTALLATION
 # ============================================================================
-# Removes all installed components. Log files are preserved by default
-# (they may contain useful historical data). Use rm -rf on the log
-# directory manually if you want to remove them too.
-# ----------------------------------------------------------------------------
 do_uninstall() {
     section "Uninstalling Homebrew Auto-Update"
 
-    # Stop and unload the daemon first (before removing its plist)
+    echo
+    read -r -p "Remove brew-autoupdate and all its files? [y/N] " confirm
+    echo
+    if [[ ! "${confirm}" =~ ^[Yy]$ ]]; then
+        info "Uninstall cancelled."
+        exit 0
+    fi
+
     info "Unloading daemon..."
     launchctl unload "${PLIST_FILE}" 2>/dev/null || true
     success "Daemon unloaded"
 
-    # Remove the launchd plist
     if [[ -f "${PLIST_FILE}" ]]; then
         rm -f "${PLIST_FILE}"
         success "Removed ${PLIST_FILE}"
     fi
 
-    # Remove the brew-logs symlink
     local brew_logs_link="${BREW_PREFIX:-/opt/homebrew}/bin/brew-logs"
     if [[ -L "${brew_logs_link}" ]]; then
         rm -f "${brew_logs_link}"
         success "Removed brew-logs symlink"
     fi
 
-    # Remove scripts and config directory
     if [[ -d "${INSTALL_DIR}" ]]; then
         rm -rf "${INSTALL_DIR}"
         success "Removed ${INSTALL_DIR}/"
     fi
 
-    # Preserve logs but inform the user
     warn "Log files preserved at: ${LOG_DIR}/"
     warn "To remove logs too: rm -rf \"${LOG_DIR}\""
 
@@ -290,9 +412,6 @@ do_uninstall() {
 # ============================================================================
 # POST-INSTALL VERIFICATION
 # ============================================================================
-# Optionally runs a test update cycle to verify everything works end-to-end.
-# Shows real-time output so the user can see brew commands executing.
-# ----------------------------------------------------------------------------
 do_verify() {
     section "Verification"
     echo
@@ -312,17 +431,29 @@ do_verify() {
 # ============================================================================
 # POST-INSTALL SUMMARY
 # ============================================================================
-# Displays a summary of what was installed and how to use it.
-# Shown after successful installation.
-# ----------------------------------------------------------------------------
 show_summary() {
+    local sched_hours sched_minute
+    sched_hours=$(read_config_value "${INSTALL_DIR}/config.conf" SCHEDULE_HOURS "0,6,12,18")
+    sched_minute=$(read_config_value "${INSTALL_DIR}/config.conf" SCHEDULE_MINUTE "0")
+
+    # Build human-readable schedule
+    local sched_display=""
+    local mm; printf -v mm '%02d' "${sched_minute}"
+    IFS=',' read -ra hrs <<< "${sched_hours}"
+    for h in "${hrs[@]}"; do
+        h=$(echo "${h}" | xargs)
+        [[ -n "${h}" ]] && sched_display+="$(printf '%d:%s' "${h}" "${mm}")  "
+    done
+
     section "Installation complete"
     echo
-    echo -e "${BOLD}Schedule:${NC} Runs at 12 AM, 6 AM, 12 PM, 6 PM daily"
+    echo -e "${BOLD}Schedule:${NC} ${sched_display}"
+    echo -e "  ${DIM}(edit SCHEDULE_HOURS in config.conf, then run: brew-logs schedule reload)${NC}"
     echo
     echo -e "${BOLD}Installed files:${NC}"
     echo "  ${INSTALL_DIR}/brew-autoupdate.sh"
     echo "  ${INSTALL_DIR}/brew-autoupdate-viewer.sh"
+    echo "  ${INSTALL_DIR}/install.sh"
     echo "  ${INSTALL_DIR}/config.conf"
     echo "  ${PLIST_FILE}"
     echo
@@ -331,17 +462,20 @@ show_summary() {
     echo "  Summary: ${LOG_DIR}/summary/  (365-day retention)"
     echo
     echo -e "${BOLD}Quick commands:${NC}"
+    echo "  brew-logs dashboard    Graphical status & statistics console"
     echo "  brew-logs              View latest detail log"
     echo "  brew-logs summary      View latest summary"
     echo "  brew-logs errors       Check for recent errors"
     echo "  brew-logs status       Check daemon status"
     echo "  brew-logs run          Trigger manual update"
+    echo "  brew-logs schedule     Show current schedule"
     echo "  brew-logs config       View current settings"
     echo "  brew-logs help         Full command reference"
     echo
     echo -e "${BOLD}Configuration:${NC}"
     echo "  Edit: ${INSTALL_DIR}/config.conf"
     echo "  Changes take effect on next run (no restart needed)"
+    echo "  Schedule changes need: brew-logs schedule reload"
     echo
     echo -e "${BOLD}Daemon management:${NC}"
     echo "  Stop:    launchctl unload ${PLIST_FILE}"
@@ -354,15 +488,16 @@ show_summary() {
 # USAGE / HELP
 # ============================================================================
 show_help() {
-    echo -e "${BOLD}Homebrew Auto-Update Installer${NC}"
+    echo -e "${BOLD}Homebrew Auto-Update Installer${NC}  v${BAU_VERSION}"
     echo
     echo "Usage: bash install.sh [option]"
     echo
     echo "Options:"
-    echo "  (none)        Install or upgrade"
-    echo "  --uninstall   Remove all components (preserves logs)"
-    echo "  --reinstall   Full uninstall + fresh install"
-    echo "  --help        Show this help"
+    echo "  (none)             Install or upgrade"
+    echo "  --uninstall        Remove all components (preserves logs)"
+    echo "  --reinstall        Full uninstall + fresh install"
+    echo "  --reload-schedule  Regenerate plist from config.conf schedule"
+    echo "  --help             Show this help"
     echo
     echo "For more information, see README.md"
 }
@@ -370,9 +505,7 @@ show_help() {
 # ============================================================================
 # ENTRY POINT
 # ============================================================================
-# Routes to the appropriate action based on command-line argument.
-# Default (no argument) is a standard install.
-# ----------------------------------------------------------------------------
+echo -e "${BOLD}Homebrew Auto-Update${NC}  v${BAU_VERSION}"
 case "${1:-}" in
     --help|-h)
         show_help
@@ -388,6 +521,15 @@ case "${1:-}" in
         do_install
         show_summary
         do_verify
+        ;;
+    --reload-schedule)
+        # Called by 'brew-logs schedule reload'
+        # Minimal prerequisites: just needs macOS + the plist label target
+        if [[ "$(uname -s)" != "Darwin" ]]; then
+            error "macOS only."
+            exit 1
+        fi
+        do_reload_schedule
         ;;
     "")
         check_prerequisites
