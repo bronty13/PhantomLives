@@ -95,7 +95,7 @@ read_cfg() {
     local key="$1" default="${2:-}"
     if [[ -f "${CONFIG_FILE}" ]]; then
         local val
-        val=$(grep "^${key}=" "${CONFIG_FILE}" 2>/dev/null | head -1 | cut -d'=' -f2- | sed 's/#.*//' | xargs 2>/dev/null)
+        val=$(grep "^${key}=" "${CONFIG_FILE}" 2>/dev/null | head -1 | cut -d'=' -f2- | sed 's/#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//')
         echo "${val:-${default}}"
     else
         echo "${default}"

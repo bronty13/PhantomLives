@@ -125,9 +125,9 @@ SCHEDULE_MINUTE=0                 # Minute within hour (used by installer only)
 # ----------------------------------------------------------------------------
 if [[ -f "${CONFIG_FILE}" ]]; then
     while IFS='=' read -r key value; do
-        key="$(echo "${key}" | xargs)"
+        key="$(printf '%s' "${key}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
         [[ -z "${key}" || "${key}" == \#* ]] && continue
-        value="$(echo "${value}" | sed 's/#.*//' | xargs)"
+        value="$(printf '%s' "${value}" | sed 's/#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//')"
         case "${key}" in
             DETAIL_LOG_RETENTION_DAYS|SUMMARY_LOG_RETENTION_DAYS|\
             NOTIFY_ON_EVERY_RUN|NOTIFY_ON_ERROR|\
