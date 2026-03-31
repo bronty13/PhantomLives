@@ -861,6 +861,249 @@ PLIST_EOF2
 }
 
 # ============================================================================
+# CONFIGURATION MANAGEMENT
+# ============================================================================
+# All known config keys, their types, and factory defaults live here.
+# These are the single source of truth used by get/set/reset/show.
+# ----------------------------------------------------------------------------
+
+# Returns the data type for a config key: bool | int | time | string | unknown
+_config_key_type() {
+    case "${1}" in
+        NOTIFY_ON_EVERY_RUN|NOTIFY_ON_ERROR|AUTO_UPGRADE|AUTO_CLEANUP|\
+        AUTO_REMOVE|UPGRADE_CASKS|UPGRADE_CASKS_GREEDY|QUIET_HOURS_ENABLED)
+            echo "bool" ;;
+        DETAIL_LOG_RETENTION_DAYS|SUMMARY_LOG_RETENTION_DAYS|\
+        CLEANUP_OLDER_THAN_DAYS|SCHEDULE_MINUTE)
+            echo "int" ;;
+        QUIET_HOURS_START|QUIET_HOURS_END)
+            echo "time" ;;
+        SCHEDULE_HOURS|DENY_LIST|ALLOW_LIST|PRE_UPDATE_HOOK|POST_UPDATE_HOOK|\
+        BREW_PATH|BREW_ENV)
+            echo "string" ;;
+        *)
+            echo "unknown" ;;
+    esac
+}
+
+# Returns the factory default value for a config key
+_config_default() {
+    case "${1}" in
+        DETAIL_LOG_RETENTION_DAYS)  echo "90" ;;
+        SUMMARY_LOG_RETENTION_DAYS) echo "365" ;;
+        NOTIFY_ON_EVERY_RUN)        echo "true" ;;
+        NOTIFY_ON_ERROR)            echo "true" ;;
+        AUTO_UPGRADE)               echo "true" ;;
+        AUTO_CLEANUP)               echo "true" ;;
+        CLEANUP_OLDER_THAN_DAYS)    echo "0" ;;
+        AUTO_REMOVE)                echo "true" ;;
+        UPGRADE_CASKS)              echo "true" ;;
+        UPGRADE_CASKS_GREEDY)       echo "false" ;;
+        DENY_LIST)                  echo "" ;;
+        ALLOW_LIST)                 echo "" ;;
+        PRE_UPDATE_HOOK)            echo "" ;;
+        POST_UPDATE_HOOK)           echo "" ;;
+        QUIET_HOURS_ENABLED)        echo "false" ;;
+        QUIET_HOURS_START)          echo "09:00" ;;
+        QUIET_HOURS_END)            echo "18:00" ;;
+        SCHEDULE_HOURS)             echo "0,6,12,18" ;;
+        SCHEDULE_MINUTE)            echo "0" ;;
+        BREW_PATH)                  echo "" ;;
+        BREW_ENV)                   echo "" ;;
+        *)                          echo "" ;;
+    esac
+}
+
+# Ordered list of all known keys used by 'config show'
+_CONFIG_KEYS="DETAIL_LOG_RETENTION_DAYS SUMMARY_LOG_RETENTION_DAYS
+NOTIFY_ON_EVERY_RUN NOTIFY_ON_ERROR
+AUTO_UPGRADE AUTO_CLEANUP CLEANUP_OLDER_THAN_DAYS AUTO_REMOVE
+UPGRADE_CASKS UPGRADE_CASKS_GREEDY
+DENY_LIST ALLOW_LIST
+PRE_UPDATE_HOOK POST_UPDATE_HOOK
+QUIET_HOURS_ENABLED QUIET_HOURS_START QUIET_HOURS_END
+SCHEDULE_HOURS SCHEDULE_MINUTE
+BREW_PATH BREW_ENV"
+
+# Validate a proposed value for a key; print error and return 1 on failure
+_config_validate() {
+    local key="${1}" value="${2}"
+    local type
+    type=$(_config_key_type "${key}")
+    case "${type}" in
+        unknown)
+            echo -e "${RED}Unknown key: ${key}${NC}" >&2
+            echo -e "${DIM}Run 'brew-logs config' to see all valid keys.${NC}" >&2
+            return 1 ;;
+        bool)
+            if [[ "${value}" != "true" && "${value}" != "false" ]]; then
+                echo -e "${RED}${key} requires true or false (got: '${value}')${NC}" >&2
+                return 1
+            fi ;;
+        int)
+            if ! [[ "${value}" =~ ^[0-9]+$ ]]; then
+                echo -e "${RED}${key} requires a non-negative integer (got: '${value}')${NC}" >&2
+                return 1
+            fi ;;
+        time)
+            if ! [[ "${value}" =~ ^[0-2][0-9]:[0-5][0-9]$ ]]; then
+                echo -e "${RED}${key} requires HH:MM format, e.g. 09:00 (got: '${value}')${NC}" >&2
+                return 1
+            fi ;;
+        string) : ;;    # any value accepted
+    esac
+    return 0
+}
+
+# Write KEY=VALUE into CONFIG_FILE in-place. Replaces an existing KEY= line;
+# appends the key at the end if it is not yet present in the file.
+# Uses a temp file + mv for an atomic update with no partial-write risk.
+_config_write() {
+    local key="${1}" new_value="${2}"
+    local tmp found=0
+    tmp=$(mktemp) || { echo -e "${RED}Cannot create temp file${NC}" >&2; return 1; }
+
+    while IFS= read -r line; do
+        # Match lines that start with KEY= (not commented-out copies)
+        if printf '%s' "${line}" | grep -q "^${key}="; then
+            printf '%s\n' "${key}=${new_value}" >> "${tmp}"
+            found=1
+        else
+            printf '%s\n' "${line}" >> "${tmp}"
+        fi
+    done < "${CONFIG_FILE}"
+
+    # Key absent from file entirely — add it at the end
+    if [[ ${found} -eq 0 ]]; then
+        printf '%s\n' "${key}=${new_value}" >> "${tmp}"
+    fi
+
+    mv "${tmp}" "${CONFIG_FILE}"
+}
+
+# ── config show ───────────────────────────────────────────────────────────────
+# Displays every known key with its current value, type, and a '*' marker
+# when the value differs from the factory default.
+_config_show() {
+    echo -e "${BOLD}Configuration${NC}  ${DIM}${CONFIG_FILE}${NC}"
+    echo -e "────────────────────────────────────────────────────────────────"
+
+    if [[ ! -f "${CONFIG_FILE}" ]]; then
+        echo -e "${RED}Config file not found: ${CONFIG_FILE}${NC}"
+        return
+    fi
+
+    local key type value default changed=0
+    for key in ${_CONFIG_KEYS}; do
+        type=$(_config_key_type "${key}")
+        default=$(_config_default "${key}")
+        value=$(read_cfg "${key}" "${default}")
+
+        local marker=""
+        if [[ "${value}" != "${default}" ]]; then
+            marker=" ${YELLOW}*${NC}"
+            changed=1
+        fi
+
+        # Truncate long values (hook commands, paths) to keep the table tidy
+        local display_value="${value:-<empty>}"
+        if [[ ${#display_value} -gt 30 ]]; then
+            display_value="${display_value:0:27}..."
+        fi
+
+        printf "  ${BOLD}%-30s${NC} ${CYAN}%-30s${NC} ${DIM}[%s]${NC}%b\n" \
+            "${key}" "${display_value}" "${type}" "${marker}"
+    done
+
+    echo
+    if [[ ${changed} -eq 1 ]]; then
+        echo -e "  ${DIM}${YELLOW}*${NC}${DIM} = differs from factory default${NC}"
+    fi
+    echo -e "  ${DIM}To change:  brew-logs config set KEY VALUE${NC}"
+    echo -e "  ${DIM}To reset:   brew-logs config reset KEY${NC}"
+}
+
+# ── config get ────────────────────────────────────────────────────────────────
+_config_get() {
+    local key="${1:-}"
+    if [[ -z "${key}" ]]; then
+        echo -e "${RED}Usage: brew-logs config get KEY${NC}" >&2; return 1
+    fi
+
+    local type
+    type=$(_config_key_type "${key}")
+    if [[ "${type}" == "unknown" ]]; then
+        echo -e "${RED}Unknown key: ${key}${NC}" >&2
+        echo -e "${DIM}Run 'brew-logs config' to see all valid keys.${NC}" >&2
+        return 1
+    fi
+
+    local default value
+    default=$(_config_default "${key}")
+    value=$(read_cfg "${key}" "${default}")
+
+    printf '%s=%s\n' "${key}" "${value:-}"
+    echo -e "${DIM}type: ${type}  |  default: ${default:-<empty>}${NC}"
+}
+
+# ── config set ────────────────────────────────────────────────────────────────
+_config_set() {
+    local key="${1:-}" new_value="${2:-}"
+    if [[ -z "${key}" ]]; then
+        echo -e "${RED}Usage: brew-logs config set KEY VALUE${NC}" >&2; return 1
+    fi
+
+    _config_validate "${key}" "${new_value}" || return 1
+
+    if [[ ! -f "${CONFIG_FILE}" ]]; then
+        echo -e "${RED}Config file not found: ${CONFIG_FILE}${NC}" >&2; return 1
+    fi
+
+    local old_value default
+    default=$(_config_default "${key}")
+    old_value=$(read_cfg "${key}" "${default}")
+
+    _config_write "${key}" "${new_value}"
+
+    echo -e "  ${BOLD}${key}${NC}: ${DIM}${old_value:-<empty>}${NC} → ${GREEN}${new_value:-<empty>}${NC}"
+    if [[ "${key}" == "SCHEDULE_HOURS" || "${key}" == "SCHEDULE_MINUTE" ]]; then
+        echo -e "  ${YELLOW}Schedule change — run 'brew-logs schedule reload' to apply.${NC}"
+    else
+        echo -e "  ${DIM}Saved. Takes effect on next run (no restart needed).${NC}"
+    fi
+}
+
+# ── config reset ──────────────────────────────────────────────────────────────
+_config_reset() {
+    local key="${1:-}"
+    if [[ -z "${key}" ]]; then
+        echo -e "${RED}Usage: brew-logs config reset KEY${NC}" >&2; return 1
+    fi
+
+    if [[ "$(_config_key_type "${key}")" == "unknown" ]]; then
+        echo -e "${RED}Unknown key: ${key}${NC}" >&2; return 1
+    fi
+
+    _config_set "${key}" "$(_config_default "${key}")"
+}
+
+# ── cmd_config — subcommand dispatcher ────────────────────────────────────────
+cmd_config() {
+    local subcmd="${1:-show}"
+    shift 2>/dev/null || true
+    case "${subcmd}" in
+        show|"")  _config_show ;;
+        get)      _config_get "$@" ;;
+        set)      _config_set "$@" ;;
+        reset)    _config_reset "$@" ;;
+        *)
+            echo -e "${RED}Unknown config subcommand: ${subcmd}${NC}" >&2
+            echo "Usage: brew-logs config [show | get KEY | set KEY VALUE | reset KEY]"
+            return 1 ;;
+    esac
+}
+
+# ============================================================================
 # COMMAND PARSING
 # ============================================================================
 cmd="${1:-detail}"
@@ -1033,16 +1276,10 @@ case "${cmd}" in
         ;;
 
     # ========================================================================
-    # CONFIGURATION DISPLAY
+    # CONFIGURATION VIEW / EDIT
     # ========================================================================
     config|c)
-        echo -e "${BOLD}Current configuration:${NC}"
-        echo -e "─────────────────────────────────"
-        if [[ -f "${CONFIG_FILE}" ]]; then
-            grep -v '^\s*#' "${CONFIG_FILE}" | grep -v '^\s*$'
-        else
-            echo -e "${RED}Config file not found: ${CONFIG_FILE}${NC}"
-        fi
+        cmd_config "$@"
         ;;
 
     # ========================================================================
@@ -1077,7 +1314,10 @@ case "${cmd}" in
         echo "  tail                           Live tail the latest detail log"
         echo "  status                         Show daemon status and log stats"
         echo "  list [detail|summary]          List all log files"
-        echo "  config                         Show current configuration"
+        echo "  config                         Show all configuration values"
+        echo "  config get KEY                 Show current value for KEY"
+        echo "  config set KEY VALUE           Set KEY to VALUE in config.conf"
+        echo "  config reset KEY               Reset KEY to its factory default"
         echo "  schedule [show|reload]         Show or reload the run schedule"
         echo "  run                            Trigger a manual update now"
         echo "  help                           Show this help"
@@ -1089,6 +1329,10 @@ case "${cmd}" in
         echo "  brew-logs dashboard            Full graphical dashboard"
         echo "  brew-logs detail last 3        Last 3 verbose run logs"
         echo "  brew-logs summary today        Today's summary"
+        echo "  brew-logs config               Show all settings"
+        echo "  brew-logs config set AUTO_UPGRADE false"
+        echo "  brew-logs config get DENY_LIST"
+        echo "  brew-logs config reset UPGRADE_CASKS_GREEDY"
         echo "  brew-logs schedule reload      Apply schedule from config.conf"
         echo "  brew-logs run                  Run update now (foreground)"
         ;;

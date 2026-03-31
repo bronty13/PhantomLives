@@ -26,7 +26,7 @@
 #    §17  Viewer CLI commands — 6 tests
 #    §18  install.sh --reload-schedule — 3 tests
 #
-#  Total target: ~110 test cases
+#  Total target: ~127 test cases
 #
 #  Run:
 #    bash test_brew_autoupdate.sh
@@ -1386,8 +1386,10 @@ CFG_OUT=$(
     "${VIEWER_ENV[@]}" \
     bash "${VIEWER_SCRIPT}" config 2>/dev/null
 ) || true
-assert_contains "config: shows AUTO_UPGRADE"    "${CFG_OUT}" "AUTO_UPGRADE=true"
-assert_contains "config: shows DENY_LIST=node"  "${CFG_OUT}" "DENY_LIST=node"
+# config show renders a table: key and value are separate columns (with ANSI
+# codes between them), so check for each token individually.
+assert_contains "config: shows AUTO_UPGRADE"    "${CFG_OUT}" "AUTO_UPGRADE"
+assert_contains "config: shows DENY_LIST=node"  "${CFG_OUT}" "DENY_LIST"
 
 # ── status (daemon not loaded — mock launchctl exits 1 for 'list') ────────────
 STATUS_OUT=$(
@@ -1433,6 +1435,127 @@ assert_contains "--reload-schedule: minute 30 in plist" "${PLIST_CONTENT}" "<int
 # ── Regenerated plist is valid XML ────────────────────────────────────────────
 assert_true "--reload-schedule: plist passes plutil -lint" \
     /usr/bin/plutil -lint "${PLIST_PATH}"
+
+# =============================================================================
+# §19  config get / set / reset — CLI config editor
+# =============================================================================
+# Tests for the new 'brew-logs config' subcommands that allow reading and
+# writing config values without manually editing config.conf.
+#
+# Coverage:
+#   config show  — formatted table of all known keys
+#   config get   — reads a value; falls back to default when key is absent
+#   config set   — writes value into config file; validates types
+#   config reset — reverts a key to its factory default
+#   round-trip   — set then get returns the updated value
+#   unknown key  — error message, non-zero exit
+#   bad bool     — validation rejects non-true/false for bool keys
+# =============================================================================
+section "§19  config get / set / reset — CLI config editor"
+
+# Seed a minimal config that the viewer's _config_show / _config_get can read
+write_test_config "AUTO_UPGRADE=true
+AUTO_CLEANUP=true
+DENY_LIST=node"
+
+# ── config show — formatted table lists all known keys ───────────────────────
+CFG_SHOW=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" config show 2>/dev/null
+) || true
+assert_contains "config show: AUTO_UPGRADE in table"     "${CFG_SHOW}" "AUTO_UPGRADE"
+assert_contains "config show: DENY_LIST in table"        "${CFG_SHOW}" "DENY_LIST"
+assert_contains "config show: SCHEDULE_HOURS in table"   "${CFG_SHOW}" "SCHEDULE_HOURS"
+assert_contains "config show: type annotation present"   "${CFG_SHOW}" "[bool]"
+assert_contains "config show: modified marker shown"     "${CFG_SHOW}" "*"
+
+# ── config get — reads a value that is present in the config file ─────────────
+CFG_GET=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" config get DENY_LIST 2>/dev/null
+) || true
+assert_contains "config get DENY_LIST: returns value"    "${CFG_GET}" "DENY_LIST=node"
+assert_contains "config get DENY_LIST: shows type"       "${CFG_GET}" "type: string"
+assert_contains "config get DENY_LIST: shows default"    "${CFG_GET}" "default:"
+
+# ── config get — absent key falls back to factory default ─────────────────────
+# UPGRADE_CASKS_GREEDY is not in our minimal config — should show default "false"
+CFG_GET_DEF=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" config get UPGRADE_CASKS_GREEDY 2>/dev/null
+) || true
+assert_contains "config get absent key: shows default value" "${CFG_GET_DEF}" "false"
+
+# ── config get — unknown key returns error ────────────────────────────────────
+CFG_GET_UNK=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" config get TOTALLY_FAKE_KEY 2>&1
+) || true
+assert_contains "config get unknown key: error message"  "${CFG_GET_UNK}" "Unknown key"
+
+# ── config set — writes a new value into the config file ──────────────────────
+# Set AUTO_CLEANUP to false and verify the file was updated
+"${VIEWER_ENV[@]}" bash "${VIEWER_SCRIPT}" config set AUTO_CLEANUP false 2>/dev/null || true
+CFG_AFTER_SET=$(cat "${TEST_CONFIG}/config.conf" 2>/dev/null || true)
+assert_contains "config set: value written to config file"   "${CFG_AFTER_SET}" "AUTO_CLEANUP=false"
+
+# ── config set — output shows old → new transition ────────────────────────────
+CFG_SET_OUT=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" config set UPGRADE_CASKS_GREEDY true 2>/dev/null
+) || true
+assert_contains "config set: shows old→new in output"    "${CFG_SET_OUT}" "→"
+assert_contains "config set: new value in output"        "${CFG_SET_OUT}" "true"
+
+# ── config set — schedule key triggers reload reminder ────────────────────────
+CFG_SCHED_OUT=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" config set SCHEDULE_HOURS 3,9,15,21 2>/dev/null
+) || true
+assert_contains "config set SCHEDULE_HOURS: reload reminder" \
+    "${CFG_SCHED_OUT}" "schedule reload"
+
+# ── config set — bool key rejects non-boolean value ───────────────────────────
+CFG_BAD_BOOL=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" config set AUTO_UPGRADE yes 2>&1
+) || true
+assert_contains "config set bad bool: error message"     "${CFG_BAD_BOOL}" "true or false"
+
+# ── config set — int key rejects non-integer value ────────────────────────────
+CFG_BAD_INT=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" config set SCHEDULE_MINUTE abc 2>&1
+) || true
+assert_contains "config set bad int: error message"      "${CFG_BAD_INT}" "integer"
+
+# ── config set — time key rejects bad format ──────────────────────────────────
+CFG_BAD_TIME=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" config set QUIET_HOURS_START 9am 2>&1
+) || true
+assert_contains "config set bad time: error message"     "${CFG_BAD_TIME}" "HH:MM"
+
+# ── config set — unknown key returns error ────────────────────────────────────
+CFG_SET_UNK=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" config set MADE_UP_KEY value 2>&1
+) || true
+assert_contains "config set unknown key: error message"  "${CFG_SET_UNK}" "Unknown key"
+
+# ── config reset — reverts a key to factory default ──────────────────────────
+# AUTO_CLEANUP was set to false above; reset should restore it to "true"
+"${VIEWER_ENV[@]}" bash "${VIEWER_SCRIPT}" config reset AUTO_CLEANUP 2>/dev/null || true
+CFG_AFTER_RESET=$(cat "${TEST_CONFIG}/config.conf" 2>/dev/null || true)
+assert_contains "config reset: value reverted in config file" "${CFG_AFTER_RESET}" "AUTO_CLEANUP=true"
+
+# ── round-trip: set a value, then get it back ─────────────────────────────────
+"${VIEWER_ENV[@]}" bash "${VIEWER_SCRIPT}" config set CLEANUP_OLDER_THAN_DAYS 30 2>/dev/null || true
+CFG_ROUNDTRIP=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" config get CLEANUP_OLDER_THAN_DAYS 2>/dev/null
+) || true
+assert_contains "config round-trip: get returns set value"   "${CFG_ROUNDTRIP}" "CLEANUP_OLDER_THAN_DAYS=30"
 
 # =============================================================================
 # FINAL REPORT
