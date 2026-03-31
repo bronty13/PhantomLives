@@ -26,7 +26,7 @@
 #    §17  Viewer CLI commands — 6 tests
 #    §18  install.sh --reload-schedule — 3 tests
 #
-#  Total target: ~87 test cases
+#  Total target: ~110 test cases
 #
 #  Run:
 #    bash test_brew_autoupdate.sh
@@ -738,6 +738,42 @@ run_main_script
 DETAIL_LOG=$(find_latest_detail)
 assert_file_contains "inline comment stripped from AUTO_UPGRADE" \
     "${DETAIL_LOG}" "AUTO_UPGRADE=true"
+
+# ── Apostrophe in comment lines does NOT crash the config parser ──────────────
+# Regression test for: xargs interprets shell quotes, so comment lines like
+#   # your system's update history.
+#   # Run 'brew upgrade' to install newer versions...
+# caused "xargs: unterminated quote" on every run. Fixed by replacing xargs
+# whitespace-trim with sed in the config parser.
+# We verify two things:
+#   1. The run completes without error (no early exit from xargs failure).
+#   2. A real config value appearing AFTER the offending comment is still
+#      parsed correctly (xargs would have silently dropped it on failure).
+
+reset_logs
+# Config block that mimics the real config.conf comment style: lines with
+# apostrophes, a 'quoted' word, and a value that must survive intact.
+write_test_config "
+# Run 'brew upgrade' to install newer versions (your system's packages).
+AUTO_UPGRADE=true
+# Don't forget: brew cleanup removes old downloads.
+AUTO_CLEANUP=true
+DENY_LIST=node
+"
+run_main_script
+DETAIL_LOG=$(find_latest_detail)
+
+# The run must reach the final log line — xargs crash would prevent this.
+if [[ -n "${DETAIL_LOG}" ]]; then
+    assert_file_contains "apostrophe in comment: run completes" \
+        "${DETAIL_LOG}" "Brew Auto-Update finished"
+else
+    print_fail "apostrophe in comment: run completes" "no detail log created"
+fi
+
+# DENY_LIST=node must be parsed correctly despite the apostrophe comments above.
+assert_file_contains "apostrophe in comment: value after bad comment parsed" \
+    "${DETAIL_LOG}" "DENY_LIST='node'"
 
 # =============================================================================
 # §7  Upgrade args — greedy cask bug fix
