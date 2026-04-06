@@ -147,6 +147,12 @@ fi
 # ============================================================================
 # HOMEBREW BINARY RESOLUTION
 # ============================================================================
+# Ensure common Homebrew paths are in PATH for non-interactive contexts
+# (launchd, cron, bash subprocess). The plist sets PATH too, but this
+# serves as a safety net when the script is run directly.
+# ----------------------------------------------------------------------------
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:${PATH}"
+
 if [[ -n "${BREW_PATH}" ]]; then
     BREW="${BREW_PATH}"
 elif [[ -x /opt/homebrew/bin/brew ]]; then

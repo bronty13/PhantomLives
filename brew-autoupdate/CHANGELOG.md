@@ -22,6 +22,7 @@ All notable changes to Homebrew Auto-Update are documented in this file.
 ### Improvements
 
 - **Validate empty `SCHEDULE_HOURS`** -- `generate_plist()` in `install.sh` and `_inline_plist_reload()` in the viewer now fall back to the default schedule (`0,6,12,18`) if `SCHEDULE_HOURS` is empty, preventing generation of invalid plist XML.
+- **Robust brew detection** -- `brew-autoupdate.sh` now prepends standard Homebrew paths (`/opt/homebrew/bin`, `/usr/local/bin`) to `PATH` before resolving the brew binary, ensuring it is found in non-interactive contexts (launchd, `bash` subprocesses, verification runs). The installer also passes `BREW_PREFIX` to the verification subprocess and auto-sets `BREW_PATH` in config when brew is found at a non-standard location.
 
 ### Tests
 

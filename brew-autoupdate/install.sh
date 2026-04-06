@@ -266,6 +266,19 @@ do_install() {
         success "Default config.conf installed"
     fi
 
+    # If brew was found at a non-standard location (not /opt/homebrew or
+    # /usr/local), write BREW_PATH into config so brew-autoupdate.sh can
+    # find it in non-interactive contexts (launchd, bash subprocesses).
+    local brew_bin="${BREW_PREFIX}/bin/brew"
+    if [[ "${BREW_PREFIX}" != "/opt/homebrew" && "${BREW_PREFIX}" != "/usr/local" ]]; then
+        info "Non-standard brew location — setting BREW_PATH=${brew_bin}"
+        if grep -q "^BREW_PATH=" "${INSTALL_DIR}/config.conf" 2>/dev/null; then
+            sed -i '' "s|^BREW_PATH=.*|BREW_PATH=${brew_bin}|" "${INSTALL_DIR}/config.conf"
+        else
+            echo "BREW_PATH=${brew_bin}" >> "${INSTALL_DIR}/config.conf"
+        fi
+    fi
+
     info "Setting permissions..."
     chmod 755 "${INSTALL_DIR}/brew-autoupdate.sh"
     chmod 755 "${INSTALL_DIR}/brew-autoupdate-viewer.sh"
@@ -426,7 +439,10 @@ do_verify() {
     if [[ ! $REPLY =~ ^[Nn]$ ]]; then
         info "Running test update (this may take a minute)..."
         echo
-        bash "${INSTALL_DIR}/brew-autoupdate.sh"
+        # Pass current PATH so the subprocess can find brew even in a
+        # non-login shell (bash invocations don't source shell profiles).
+        PATH="${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PATH}" \
+            bash "${INSTALL_DIR}/brew-autoupdate.sh"
         echo
         success "Test complete. Check results with: brew-logs detail"
     else
