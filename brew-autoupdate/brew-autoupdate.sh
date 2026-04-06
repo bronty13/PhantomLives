@@ -4,7 +4,7 @@
 #  HOMEBREW AUTO-UPDATE DAEMON SCRIPT
 #
 #  File:        brew-autoupdate.sh
-#  Version:     2.1.1
+#  Version:     2.1.2
 #  Author:      Generated with Claude Code
 #  License:     MIT
 #  Requires:    macOS, Homebrew, bash 3.2+
@@ -64,7 +64,7 @@ set -euo pipefail
 # ============================================================================
 # VERSION
 # ============================================================================
-BAU_VERSION="2.1.1"
+BAU_VERSION="2.1.2"
 
 # ============================================================================
 # PATH AND DIRECTORY SETUP

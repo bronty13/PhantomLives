@@ -1,6 +1,6 @@
 # Homebrew Auto-Update
 
-Current release: 2.1.1
+Current release: 2.1.2
 
 Automated Homebrew package maintenance for macOS with two-tier logging, macOS notifications, and a built-in log viewer.
 

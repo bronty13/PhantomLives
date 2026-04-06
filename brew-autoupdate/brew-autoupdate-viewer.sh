@@ -4,7 +4,7 @@
 #  HOMEBREW AUTO-UPDATE LOG VIEWER
 #
 #  File:        brew-autoupdate-viewer.sh
-#  Version:     2.1.1
+#  Version:     2.1.2
 #  Author:      Generated with Claude Code
 #  License:     MIT
 #  Requires:    macOS, bash 3.2+
@@ -40,7 +40,7 @@
 # ============================================================================
 # VERSION
 # ============================================================================
-BAU_VERSION="2.1.1"
+BAU_VERSION="2.1.2"
 
 # ============================================================================
 # DIRECTORY AND FILE PATH CONSTANTS
@@ -162,6 +162,16 @@ _dash_thin() {
 _dash_row() {
     local plain="${1:-}"
     local colored="${2:-${plain}}"
+
+    # Prevent wrapped lines from corrupting the right border when content
+    # exceeds the dashboard's inner width.
+    if [[ ${#plain} -gt ${_IW} ]]; then
+        plain="${plain:0:${_IW}}"
+        # Colored strings may contain ANSI escapes that are hard to truncate
+        # safely; when clipping is needed, fall back to plain text.
+        colored="${plain}"
+    fi
+
     local vlen=${#plain}
     local pad=$(( _IW - vlen ))
     [[ ${pad} -lt 0 ]] && pad=0

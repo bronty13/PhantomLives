@@ -2,6 +2,16 @@
 
 All notable changes to Homebrew Auto-Update are documented in this file.
 
+## [2.1.2] - 2026-04-06
+
+### Bug Fixes
+
+- **Fix dashboard right-border breakage on narrow terminals** -- Updated dashboard row rendering to clip overlong lines to panel width, preventing wrapped content from splitting the right border.
+
+### Documentation
+
+- Updated version references in scripts and docs for the 2.1.2 release.
+
 ## [2.1.1] - 2026-04-06
 
 ### Bug Fixes
