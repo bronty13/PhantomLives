@@ -147,25 +147,42 @@ fi
 # ============================================================================
 # HOMEBREW BINARY RESOLUTION
 # ============================================================================
-# Ensure common Homebrew paths are in PATH for non-interactive contexts
-# (launchd, cron, bash subprocess). The plist sets PATH too, but this
-# serves as a safety net when the script is run directly.
+# Searches for the brew binary in this order:
+#   1. BREW_PATH from config.conf (explicit override)
+#   2. /opt/homebrew/bin/brew      (Apple Silicon default)
+#   3. /usr/local/bin/brew         (Intel default)
+#   4. /home/linuxbrew/.linuxbrew/bin/brew (Linux default)
+#   5. PATH lookup via command -v  (user's environment)
+#
+# Also prepends all known Homebrew paths to PATH so that brew's own
+# dependencies and formulae binaries are available throughout the run.
+# This is critical in non-interactive contexts (launchd, cron, bare
+# bash subprocesses) where the user's shell profile is not sourced.
 # ----------------------------------------------------------------------------
-export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:${PATH}"
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/home/linuxbrew/.linuxbrew/bin:${PATH}"
 
-if [[ -n "${BREW_PATH}" ]]; then
-    BREW="${BREW_PATH}"
-elif [[ -x /opt/homebrew/bin/brew ]]; then
-    BREW=/opt/homebrew/bin/brew
-elif [[ -x /usr/local/bin/brew ]]; then
-    BREW=/usr/local/bin/brew
-else
-    BREW="$(which brew 2>/dev/null || true)"
+BREW=""
+_brew_candidates=(
+    "${BREW_PATH}"
+    /opt/homebrew/bin/brew
+    /usr/local/bin/brew
+    /home/linuxbrew/.linuxbrew/bin/brew
+)
+for _candidate in "${_brew_candidates[@]}"; do
+    if [[ -n "${_candidate}" && -x "${_candidate}" ]]; then
+        BREW="${_candidate}"
+        break
+    fi
+done
+
+# Final fallback: PATH lookup (works when user's shell has brew in PATH)
+if [[ -z "${BREW}" ]]; then
+    BREW="$(command -v brew 2>/dev/null || true)"
 fi
 
 if [[ -z "${BREW}" || ! -x "${BREW}" ]]; then
     osascript -e 'display notification "Homebrew not found! Auto-update cannot run." with title "Brew Auto-Update" subtitle "ERROR"' 2>/dev/null || true
-    echo "FATAL: brew not found" >&2
+    echo "FATAL: brew not found — checked BREW_PATH, /opt/homebrew, /usr/local, /home/linuxbrew, and PATH" >&2
     exit 1
 fi
 

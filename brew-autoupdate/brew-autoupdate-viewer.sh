@@ -1300,7 +1300,8 @@ case "${cmd}" in
     # ========================================================================
     run|r)
         echo -e "${CYAN}Triggering manual brew auto-update...${NC}"
-        bash "${SCRIPT_FILE}"
+        PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:${PATH}" \
+            bash "${SCRIPT_FILE}"
         echo -e "${GREEN}Done. Check logs with: brew-logs detail${NC}"
         ;;
 
