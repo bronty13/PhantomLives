@@ -805,7 +805,7 @@ _inline_plist_reload() {
 PLIST_EOF
         IFS=',' read -ra hour_arr <<< "${hours}"
         for h in "${hour_arr[@]}"; do
-            h=$(echo "${h}" | xargs)
+            h=$(echo "${h}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             [[ -z "${h}" ]] && continue
             printf '        <dict>\n'
             printf '            <key>Hour</key>\n'
@@ -1249,8 +1249,8 @@ case "${cmd}" in
         echo
 
         echo -e "${BOLD}Log statistics:${NC}"
-        detail_count=$(ls "${DETAIL_DIR}"/*.log 2>/dev/null | wc -l | xargs)
-        summary_count=$(ls "${SUMMARY_DIR}"/*.log 2>/dev/null | wc -l | xargs)
+        detail_count=$(ls "${DETAIL_DIR}"/*.log 2>/dev/null | wc -l | tr -d ' ')
+        summary_count=$(ls "${SUMMARY_DIR}"/*.log 2>/dev/null | wc -l | tr -d ' ')
         echo "  Detail logs:  ${detail_count} files"
         echo "  Summary logs: ${summary_count} files"
 

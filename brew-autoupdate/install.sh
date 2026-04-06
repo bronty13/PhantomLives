@@ -152,7 +152,7 @@ PLIST_HEADER
     # Generate one <dict> entry per scheduled hour
     IFS=',' read -ra hours <<< "${schedule_hours}"
     for h in "${hours[@]}"; do
-        h=$(echo "${h}" | xargs)    # trim whitespace
+        h=$(echo "${h}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')    # trim whitespace
         [[ -z "${h}" ]] && continue
         printf '        <dict>\n'
         printf '            <key>Hour</key>\n'
@@ -363,7 +363,7 @@ do_reload_schedule() {
         IFS=',' read -ra hrs <<< "${sched_hours}"
         local mm; printf -v mm '%02d' "${sched_minute}"
         for h in "${hrs[@]}"; do
-            h=$(echo "${h}" | xargs)
+            h=$(echo "${h}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             [[ -n "${h}" ]] && sched_display+="$(printf '%d:%s' "${h}" "${mm}")  "
         done
         success "Daemon reloaded with new schedule"
@@ -447,7 +447,7 @@ show_summary() {
     local mm; printf -v mm '%02d' "${sched_minute}"
     IFS=',' read -ra hrs <<< "${sched_hours}"
     for h in "${hrs[@]}"; do
-        h=$(echo "${h}" | xargs)
+        h=$(echo "${h}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
         [[ -n "${h}" ]] && sched_display+="$(printf '%d:%s' "${h}" "${mm}")  "
     done
 
