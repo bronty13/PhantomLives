@@ -10,8 +10,13 @@ Runs as a background launchd daemon, updating your Homebrew packages 4 times dai
 - **4x daily execution** — Configurable launchd schedule (default: 12 AM, 6 AM, 12 PM, 6 PM)
 - **Two-tier logging** — Verbose detail logs (90 days) + concise summary logs (1 year)
 - **macOS notifications** — Alerts on errors; optional alerts on every run for verification
+- **Terminal dashboard** — `brew-logs dashboard` for a full graphical status overview with run history, stats, and package charts
 - **Log viewer CLI** — `brew-logs` command for quick access to logs, status, and manual runs
+- **CLI config editor** — `brew-logs config get/set/reset` to manage settings without editing files
 - **Configurable** — Single config file controls all behavior; changes take effect on next run
+- **Quiet hours** — Optional time window to suppress updates (e.g., during work hours)
+- **Package filtering** — Deny list to pin packages, or allow list to whitelist specific packages
+- **Pre/post hooks** — Run custom shell commands before or after each update cycle
 - **Low impact** — Runs at low I/O and CPU priority; won't interfere with your work
 - **Concurrent-safe** — PID-based locking prevents overlapping runs
 - **Self-maintaining** — Automatic log rotation keeps disk usage bounded
@@ -41,6 +46,8 @@ The installer will:
 | `com.user.brew-autoupdate.plist` | launchd daemon definition — schedule and environment |
 | `install.sh` | Installer/uninstaller |
 | `README.md` | This documentation |
+| `USER_MANUAL.md` | Comprehensive user guide |
+| `CHANGELOG.md` | Version history and release notes |
 
 ## What Happens Each Run
 
@@ -89,6 +96,9 @@ The `brew-logs` command provides quick access to all logging and status function
 ### Commands
 
 ```bash
+# Dashboard
+brew-logs dashboard                # Full graphical status & stats dashboard
+
 # View logs
 brew-logs                          # Show latest detail log (default)
 brew-logs detail                   # Same as above
@@ -104,10 +114,19 @@ brew-logs tail                     # Live-follow the latest detail log (Ctrl+C t
 
 # Status and management
 brew-logs status                   # Daemon status, log counts, disk usage
-brew-logs config                   # Display current configuration values
 brew-logs list                     # List all log files with sizes and dates
 brew-logs list detail              # List only detail log files
 brew-logs list summary             # List only summary log files
+
+# Configuration
+brew-logs config                   # Show all configuration values with types
+brew-logs config get KEY           # Show current value for a specific key
+brew-logs config set KEY VALUE     # Set a configuration value
+brew-logs config reset KEY         # Reset a key to its factory default
+
+# Schedule
+brew-logs schedule                 # Show current schedule and next run time
+brew-logs schedule reload          # Apply schedule changes from config.conf
 
 # Manual trigger
 brew-logs run                      # Run an update cycle immediately
@@ -119,6 +138,7 @@ For quick terminal use, all commands have short aliases:
 
 | Full | Alias |
 |------|-------|
+| `dashboard` | `dash` |
 | `detail` | `d` |
 | `summary` | `s` |
 | `errors` | `e` |
@@ -126,12 +146,15 @@ For quick terminal use, all commands have short aliases:
 | `status` | `st` |
 | `list` | `ls` |
 | `config` | `c` |
+| `schedule` | `sched` |
 | `run` | `r` |
 | `help` | `h` |
 
 ## Configuration
 
 All settings are in `~/.config/brew-autoupdate/config.conf`. Changes take effect on the next run — no daemon restart needed.
+
+Format: `KEY=value`. Inline comments are supported when preceded by a space (`KEY=value #comment`). A `#` within a value with no leading space is preserved (e.g., URLs with fragments).
 
 ### Settings Reference
 
@@ -165,6 +188,35 @@ All settings are in `~/.config/brew-autoupdate/config.conf`. Changes take effect
 | `UPGRADE_CASKS` | `true` | Include GUI application (cask) upgrades |
 | `UPGRADE_CASKS_GREEDY` | `false` | Also upgrade self-updating casks (Chrome, etc.) |
 
+#### Package Filtering
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `DENY_LIST` | *(empty)* | Space-separated packages to never auto-upgrade |
+| `ALLOW_LIST` | *(empty)* | If set, only these packages are upgraded (whitelist mode) |
+
+#### Hooks
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `PRE_UPDATE_HOOK` | *(empty)* | Shell command to run before each update cycle |
+| `POST_UPDATE_HOOK` | *(empty)* | Shell command to run after each update cycle |
+
+#### Quiet Hours
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `QUIET_HOURS_ENABLED` | `false` | Skip scheduled updates during the quiet window |
+| `QUIET_HOURS_START` | `09:00` | Start of quiet window (24-hour HH:MM format) |
+| `QUIET_HOURS_END` | `18:00` | End of quiet window (supports overnight ranges) |
+
+#### Schedule
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `SCHEDULE_HOURS` | `0,6,12,18` | Comma-separated hours (0-23) to run updates |
+| `SCHEDULE_MINUTE` | `0` | Minute within each scheduled hour (0-59) |
+
 #### Advanced
 
 | Setting | Default | Description |
@@ -172,45 +224,38 @@ All settings are in `~/.config/brew-autoupdate/config.conf`. Changes take effect
 | `BREW_PATH` | *(empty)* | Override path to brew binary (auto-detected if empty) |
 | `BREW_ENV` | *(empty)* | Extra env vars, e.g., `HOMEBREW_NO_ANALYTICS=1` |
 
+### Editing Configuration via CLI
+
+You can manage all settings from the terminal without editing files directly:
+
+```bash
+brew-logs config                              # Show all settings with types and defaults
+brew-logs config get DENY_LIST                # Get a single value
+brew-logs config set AUTO_UPGRADE false       # Set a value (validated by type)
+brew-logs config set DENY_LIST "node python"  # Space-separated package list
+brew-logs config reset UPGRADE_CASKS_GREEDY   # Reset to factory default
+```
+
+Values are validated by type (bool, int, time, string) before being written. A `*` marker in the config display indicates values that differ from their factory default.
+
 ## Schedule
 
-The daemon runs at **12:00 AM, 6:00 AM, 12:00 PM, and 6:00 PM** daily.
+The daemon runs at **12:00 AM, 6:00 AM, 12:00 PM, and 6:00 PM** daily by default.
 
 ### Changing the Schedule
 
-Edit the `StartCalendarInterval` array in `~/Library/LaunchAgents/com.user.brew-autoupdate.plist`. Each `<dict>` block defines one run time using `Hour` (0-23) and `Minute` (0-59).
-
-Example — change to 3 times daily at 7 AM, 1 PM, 9 PM:
-
-```xml
-<key>StartCalendarInterval</key>
-<array>
-    <dict>
-        <key>Hour</key>
-        <integer>7</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-    </dict>
-    <dict>
-        <key>Hour</key>
-        <integer>13</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-    </dict>
-    <dict>
-        <key>Hour</key>
-        <integer>21</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-    </dict>
-</array>
-```
-
-After editing, reload the daemon:
+Edit the schedule settings in `config.conf`, then reload:
 
 ```bash
-launchctl unload ~/Library/LaunchAgents/com.user.brew-autoupdate.plist
-launchctl load -w ~/Library/LaunchAgents/com.user.brew-autoupdate.plist
+brew-logs config set SCHEDULE_HOURS "7,13,21"   # 3x daily at 7 AM, 1 PM, 9 PM
+brew-logs config set SCHEDULE_MINUTE 30          # Run at :30 instead of :00
+brew-logs schedule reload                        # Regenerate the plist and reload daemon
+```
+
+You can also view the current schedule and next run time:
+
+```bash
+brew-logs schedule                               # Show schedule and next run time
 ```
 
 ### Sleep/Wake Behavior

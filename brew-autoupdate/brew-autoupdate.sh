@@ -4,7 +4,7 @@
 #  HOMEBREW AUTO-UPDATE DAEMON SCRIPT
 #
 #  File:        brew-autoupdate.sh
-#  Version:     2.0.0
+#  Version:     2.1.0
 #  Author:      Generated with Claude Code
 #  License:     MIT
 #  Requires:    macOS, Homebrew, bash 3.2+
@@ -64,7 +64,7 @@ set -euo pipefail
 # ============================================================================
 # VERSION
 # ============================================================================
-BAU_VERSION="2.0.0"
+BAU_VERSION="2.1.0"
 
 # ============================================================================
 # PATH AND DIRECTORY SETUP
@@ -119,15 +119,15 @@ SCHEDULE_MINUTE=0                 # Minute within hour (used by installer only)
 # Safely parses config.conf using a whitelist approach:
 #   - Only recognized KEY names are accepted (case statement whitelist)
 #   - Comments (# ...) and blank lines are skipped
-#   - Inline comments after values are stripped
+#   - Inline comments after values are stripped (only when preceded by space)
 #   - Whitespace is trimmed from keys and values
-#   - Uses 'declare' to set variables (safer than eval)
+#   - Uses printf -v for safe assignment (no command substitution executed)
 # ----------------------------------------------------------------------------
 if [[ -f "${CONFIG_FILE}" ]]; then
     while IFS='=' read -r key value; do
         key="$(printf '%s' "${key}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
         [[ -z "${key}" || "${key}" == \#* ]] && continue
-        value="$(printf '%s' "${value}" | sed 's/#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//')"
+        value="$(printf '%s' "${value}" | sed 's/[[:space:]]#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//')"
         case "${key}" in
             DETAIL_LOG_RETENTION_DAYS|SUMMARY_LOG_RETENTION_DAYS|\
             NOTIFY_ON_EVERY_RUN|NOTIFY_ON_ERROR|\
@@ -138,7 +138,7 @@ if [[ -f "${CONFIG_FILE}" ]]; then
             PRE_UPDATE_HOOK|POST_UPDATE_HOOK|\
             QUIET_HOURS_ENABLED|QUIET_HOURS_START|QUIET_HOURS_END|\
             SCHEDULE_HOURS|SCHEDULE_MINUTE)
-                declare "${key}=${value}"
+                printf -v "${key}" '%s' "${value}"
                 ;;
         esac
     done < "${CONFIG_FILE}"
@@ -194,9 +194,9 @@ exec > >(tee -a "${DETAIL_LOG}") 2>&1
 # NOTIFICATION FUNCTION
 # ============================================================================
 notify() {
-    local title="$1"
-    local subtitle="$2"
-    local message="$3"
+    local title="${1//\"/\\\"}"
+    local subtitle="${2//\"/\\\"}"
+    local message="${3//\"/\\\"}"
     osascript -e "display notification \"${message}\" with title \"${title}\" subtitle \"${subtitle}\"" 2>/dev/null || true
 }
 
@@ -264,12 +264,12 @@ rotate_logs() {
 
     while IFS= read -r -d '' old_log; do
         rm -f "${old_log}"
-        ((detail_deleted++))
+        detail_deleted=$(( detail_deleted + 1 ))
     done < <(find "${DETAIL_LOG_DIR}" -name "*.log" -type f -mtime +"${DETAIL_LOG_RETENTION_DAYS}" -print0 2>/dev/null)
 
     while IFS= read -r -d '' old_log; do
         rm -f "${old_log}"
-        ((summary_deleted++))
+        summary_deleted=$(( summary_deleted + 1 ))
     done < <(find "${SUMMARY_LOG_DIR}" -name "*.log" -type f -mtime +"${SUMMARY_LOG_RETENTION_DAYS}" -print0 2>/dev/null)
 
     log_detail "Rotated: ${detail_deleted} detail logs (>${DETAIL_LOG_RETENTION_DAYS}d), ${summary_deleted} summary logs (>${SUMMARY_LOG_RETENTION_DAYS}d)"
@@ -489,7 +489,7 @@ main() {
     if [[ "${AUTO_CLEANUP}" == "true" ]]; then
         log_both "--- brew cleanup ---"
         local cleanup_args=("--verbose")
-        if [[ "${CLEANUP_OLDER_THAN_DAYS}" -gt 0 ]]; then
+        if [[ "${CLEANUP_OLDER_THAN_DAYS}" =~ ^[0-9]+$ ]] && [[ "${CLEANUP_OLDER_THAN_DAYS}" -gt 0 ]]; then
             cleanup_args+=("--prune=${CLEANUP_OLDER_THAN_DAYS}")
         fi
 

@@ -4,7 +4,7 @@
 #  HOMEBREW AUTO-UPDATE LOG VIEWER
 #
 #  File:        brew-autoupdate-viewer.sh
-#  Version:     2.0.0
+#  Version:     2.1.0
 #  Author:      Generated with Claude Code
 #  License:     MIT
 #  Requires:    macOS, bash 3.2+
@@ -40,7 +40,7 @@
 # ============================================================================
 # VERSION
 # ============================================================================
-BAU_VERSION="2.0.0"
+BAU_VERSION="2.1.0"
 
 # ============================================================================
 # DIRECTORY AND FILE PATH CONSTANTS
@@ -95,7 +95,7 @@ read_cfg() {
     local key="$1" default="${2:-}"
     if [[ -f "${CONFIG_FILE}" ]]; then
         local val
-        val=$(grep "^${key}=" "${CONFIG_FILE}" 2>/dev/null | head -1 | cut -d'=' -f2- | sed 's/#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//')
+        val=$(grep "^${key}=" "${CONFIG_FILE}" 2>/dev/null | head -1 | cut -d'=' -f2- | sed 's/[[:space:]]#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//')
         echo "${val:-${default}}"
     else
         echo "${default}"
@@ -273,7 +273,7 @@ EOF
                     }
                     print ts "|" dur "|" stat "|" upg
                 }
-            ' | tail -8 | tac 2>/dev/null || tail -8)
+            ' | tail -8 | awk '{a[NR]=$0} END {for(i=NR;i>=1;i--) print a[i]}')
     else
         # Fallback: pair "starting" + "finished in Xs" + "Status:" lines
         runs_raw=$(cat "${SUMMARY_DIR}"/*.log 2>/dev/null \
@@ -296,7 +296,7 @@ EOF
                     print ts "|" dur "|" stat "|" upg
                     ts=""; dur="?"; stat="?"; upg=0
                 }
-            ' | tail -8 | tac 2>/dev/null || tail -8)
+            ' | tail -8 | awk '{a[NR]=$0} END {for(i=NR;i>=1;i--) print a[i]}')
     fi
 
     # ------------------------------------------------------------------
@@ -773,6 +773,12 @@ _inline_plist_reload() {
     local hours="${1:-0,6,12,18}"
     local minute="${2:-0}"
 
+    # Validate schedule_hours is not empty
+    if [[ -z "${hours}" ]]; then
+        echo -e "${RED}[ERROR]${NC}   SCHEDULE_HOURS is empty; falling back to default 0,6,12,18"
+        hours="0,6,12,18"
+    fi
+
     # Unload daemon
     echo -e "${CYAN}[INFO]${NC}    Unloading daemon..."
     launchctl unload "${PLIST_FILE}" 2>/dev/null || true
@@ -946,8 +952,8 @@ _config_validate() {
                 return 1
             fi ;;
         time)
-            if ! [[ "${value}" =~ ^[0-2][0-9]:[0-5][0-9]$ ]]; then
-                echo -e "${RED}${key} requires HH:MM format, e.g. 09:00 (got: '${value}')${NC}" >&2
+            if ! [[ "${value}" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
+                echo -e "${RED}${key} requires HH:MM format (00:00–23:59), e.g. 09:00 (got: '${value}')${NC}" >&2
                 return 1
             fi ;;
         string) : ;;    # any value accepted
@@ -965,7 +971,7 @@ _config_write() {
 
     while IFS= read -r line; do
         # Match lines that start with KEY= (not commented-out copies)
-        if printf '%s' "${line}" | grep -q "^${key}="; then
+        if [[ "${line}" == "${key}="* ]]; then
             printf '%s\n' "${key}=${new_value}" >> "${tmp}"
             found=1
         else

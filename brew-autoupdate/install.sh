@@ -4,7 +4,7 @@
 #  HOMEBREW AUTO-UPDATE INSTALLER
 #
 #  File:     install.sh
-#  Version:  2.0.0
+#  Version:  2.1.0
 #  Author:   Generated with Claude Code
 #  License:  MIT
 #  Requires: macOS, Homebrew, bash 3.2+
@@ -52,7 +52,7 @@ set -euo pipefail
 # ============================================================================
 # VERSION
 # ============================================================================
-BAU_VERSION="2.0.0"
+BAU_VERSION="2.1.0"
 
 # ============================================================================
 # TERMINAL FORMATTING
@@ -96,7 +96,7 @@ read_config_value() {
     local cfg="$1" key="$2" default="${3:-}"
     if [[ -f "${cfg}" ]]; then
         local val
-        val=$(grep "^${key}=" "${cfg}" 2>/dev/null | head -1 | cut -d'=' -f2- | sed 's/#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//')
+        val=$(grep "^${key}=" "${cfg}" 2>/dev/null | head -1 | cut -d'=' -f2- | sed 's/[[:space:]]#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//')
         echo "${val:-${default}}"
     else
         echo "${default}"
@@ -120,6 +120,12 @@ generate_plist() {
     local schedule_minute="${2:-0}"
     local install_dir="${3:-${INSTALL_DIR}}"
     local home_dir="${4:-${HOME}}"
+
+    # Validate schedule_hours is not empty
+    if [[ -z "${schedule_hours}" ]]; then
+        echo "ERROR: SCHEDULE_HOURS is empty; falling back to default 0,6,12,18" >&2
+        schedule_hours="0,6,12,18"
+    fi
 
     cat <<PLIST_HEADER
 <?xml version="1.0" encoding="UTF-8"?>

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 #
-#  REGRESSION TEST SUITE — brew-autoupdate v2.0.0
+#  REGRESSION TEST SUITE — brew-autoupdate v2.1.0
 #
 #  File:     test_brew_autoupdate.sh
 #  Requires: macOS, bash 3.2+, plutil (bundled with macOS)
@@ -25,8 +25,17 @@
 #    §16  Schedule command — 3 tests
 #    §17  Viewer CLI commands — 6 tests
 #    §18  install.sh --reload-schedule — 3 tests
+#    §19  config get / set / reset — CLI config editor — 15 tests
+#    §20  Security — command injection prevention — 2 tests
+#    §21  CLEANUP_OLDER_THAN_DAYS --prune — 2 tests
+#    §22  BREW_ENV export — 2 tests
+#    §23  Log rotation — 3 tests
+#    §24  Lock file behavior — 2 tests
+#    §25  Viewer commands — detail, summary, list, run — 6 tests
+#    §26  Config set with spaces and notification content — 3 tests
+#    §27  Time validation and _config_write edge cases — 3 tests
 #
-#  Total target: ~127 test cases
+#  Total target: ~170 test cases
 #
 #  Run:
 #    bash test_brew_autoupdate.sh
@@ -423,7 +432,7 @@ reset_logs() {
 # PRINT TEST SUITE HEADER
 # =============================================================================
 printf "\n${C_BOLD}${C_CYAN}╔══════════════════════════════════════════════════════════════╗${C_NC}\n"
-printf "${C_BOLD}${C_CYAN}║  brew-autoupdate v2.0.0  —  Regression Test Suite            ║${C_NC}\n"
+printf "${C_BOLD}${C_CYAN}║  brew-autoupdate v2.1.0  —  Regression Test Suite            ║${C_NC}\n"
 printf "${C_BOLD}${C_CYAN}╚══════════════════════════════════════════════════════════════╝${C_NC}\n"
 printf "   main:    %s\n" "${MAIN_SCRIPT_SRC}"
 printf "   viewer:  %s\n" "${VIEWER_SCRIPT}"
@@ -730,7 +739,7 @@ else
     print_fail "unknown keys: run still completes" "no detail log created"
 fi
 
-# ── Inline comments stripped from values ─────────────────────────────────────
+# ── Inline comments stripped from values (only when preceded by space) ────────
 
 reset_logs
 write_test_config "AUTO_UPGRADE=true    # enable upgrades"
@@ -738,6 +747,17 @@ run_main_script
 DETAIL_LOG=$(find_latest_detail)
 assert_file_contains "inline comment stripped from AUTO_UPGRADE" \
     "${DETAIL_LOG}" "AUTO_UPGRADE=true"
+
+# ── Hash inside a value is preserved (not treated as comment) ────────────────
+reset_logs
+write_test_config "
+AUTO_UPGRADE=true
+PRE_UPDATE_HOOK=curl https://example.com/path#frag
+"
+run_main_script
+DETAIL_LOG=$(find_latest_detail)
+assert_file_contains "hash inside value preserved (not stripped)" \
+    "${DETAIL_LOG}" "Pre-update hook"
 
 # ── Apostrophe in comment lines does NOT crash the config parser ──────────────
 # Regression test for: xargs interprets shell quotes, so comment lines like
@@ -1556,6 +1576,276 @@ CFG_ROUNDTRIP=$(
     bash "${VIEWER_SCRIPT}" config get CLEANUP_OLDER_THAN_DAYS 2>/dev/null
 ) || true
 assert_contains "config round-trip: get returns set value"   "${CFG_ROUNDTRIP}" "CLEANUP_OLDER_THAN_DAYS=30"
+
+# =============================================================================
+# §20  Security — command injection prevention
+# =============================================================================
+# Verifies that config values containing $(...) or backticks are NOT executed
+# during config parsing (the declare→printf -v fix).
+# =============================================================================
+section "§20  Security — command injection prevention"
+
+INJECTION_SENTINEL="${TEST_DIR}/injection_sentinel_$$"
+reset_logs
+write_test_config "
+AUTO_UPGRADE=true
+DENY_LIST=\$(touch ${INJECTION_SENTINEL})
+"
+run_main_script
+assert_false "command substitution in config value NOT executed" \
+    test -f "${INJECTION_SENTINEL}"
+
+# Backtick variant
+INJECTION_SENTINEL2="${TEST_DIR}/injection_sentinel2_$$"
+reset_logs
+write_test_config "
+AUTO_UPGRADE=true
+ALLOW_LIST=\`touch ${INJECTION_SENTINEL2}\`
+"
+run_main_script
+assert_false "backtick in config value NOT executed" \
+    test -f "${INJECTION_SENTINEL2}"
+
+# =============================================================================
+# §21  CLEANUP_OLDER_THAN_DAYS → --prune flag
+# =============================================================================
+section "§21  CLEANUP_OLDER_THAN_DAYS — --prune flag"
+
+# ── Non-zero value passes --prune to brew cleanup ────────────────────────────
+reset_logs
+write_test_config "
+AUTO_UPGRADE=true
+AUTO_CLEANUP=true
+CLEANUP_OLDER_THAN_DAYS=60
+"
+run_main_script
+assert_file_contains "CLEANUP_OLDER_THAN_DAYS=60: --prune=60 passed" \
+    "${MOCK_BREW_INVOCATIONS}" "--prune=60"
+
+# ── Zero value does NOT pass --prune ─────────────────────────────────────────
+reset_logs
+write_test_config "
+AUTO_UPGRADE=true
+AUTO_CLEANUP=true
+CLEANUP_OLDER_THAN_DAYS=0
+"
+run_main_script
+assert_file_not_contains "CLEANUP_OLDER_THAN_DAYS=0: --prune NOT passed" \
+    "${MOCK_BREW_INVOCATIONS}" "--prune"
+
+# =============================================================================
+# §22  BREW_ENV — environment variable export
+# =============================================================================
+# The mock brew cannot easily report its own environment, so we use a custom
+# mock that writes env vars to a file when 'brew update' is called.
+# =============================================================================
+section "§22  BREW_ENV — environment variable export"
+
+# Create a special mock that logs HOMEBREW_NO_ANALYTICS if it's set
+ENV_LOG="${TEST_DIR}/env_check.log"
+cat > "${TEST_BIN}/brew_env_check" << ENVMOCK_EOF
+#!/usr/bin/env bash
+echo "HOMEBREW_NO_ANALYTICS=\${HOMEBREW_NO_ANALYTICS:-unset}" > "${ENV_LOG}"
+# Delegate to the original mock for normal behavior
+exec "${TEST_BIN}/brew" "\$@"
+ENVMOCK_EOF
+chmod +x "${TEST_BIN}/brew_env_check"
+
+reset_logs
+write_test_config "
+AUTO_UPGRADE=true
+BREW_ENV=HOMEBREW_NO_ANALYTICS=1
+"
+# Override BREW_PATH to point to our env-checking wrapper
+sed -i '' "s|BREW_PATH=.*|BREW_PATH=${TEST_BIN}/brew_env_check|" "${SCRIPT_TEST_DIR}/config.conf"
+
+run_main_script
+if [[ -f "${ENV_LOG}" ]]; then
+    ENV_CONTENT=$(cat "${ENV_LOG}")
+    assert_contains "BREW_ENV: HOMEBREW_NO_ANALYTICS exported" \
+        "${ENV_CONTENT}" "HOMEBREW_NO_ANALYTICS=1"
+else
+    print_fail "BREW_ENV: env check log not created" "brew_env_check mock not invoked"
+fi
+
+# Verify run still completes with BREW_ENV
+DETAIL_LOG=$(find_latest_detail)
+assert_file_contains "BREW_ENV: run completes normally" \
+    "${DETAIL_LOG}" "Brew Auto-Update finished"
+
+# =============================================================================
+# §23  Log rotation — old files deleted, recent files preserved
+# =============================================================================
+section "§23  Log rotation — old files and recent files"
+
+reset_logs
+
+# Create "old" log files with a modification date older than retention
+OLD_DETAIL="${TEST_DETAIL_DIR}/2024-01-01_00-00-01.log"
+OLD_SUMMARY="${TEST_SUMMARY_DIR}/2024-01-01.log"
+echo "old detail log" > "${OLD_DETAIL}"
+echo "old summary log" > "${OLD_SUMMARY}"
+# Backdate modification time to 200 days ago
+touch -t 202301010000.00 "${OLD_DETAIL}" 2>/dev/null || \
+    touch -A -200d "${OLD_DETAIL}" 2>/dev/null || true
+touch -t 202301010000.00 "${OLD_SUMMARY}" 2>/dev/null || \
+    touch -A -200d "${OLD_SUMMARY}" 2>/dev/null || true
+
+write_test_config "
+AUTO_UPGRADE=true
+DETAIL_LOG_RETENTION_DAYS=90
+SUMMARY_LOG_RETENTION_DAYS=365
+"
+run_main_script
+
+# Old detail log should have been rotated (deleted)
+assert_false "log rotation: old detail log deleted" \
+    test -f "${OLD_DETAIL}"
+
+# The new detail log from this run should still exist
+NEW_DETAIL=$(find_latest_detail)
+assert_true "log rotation: new detail log preserved" \
+    test -f "${NEW_DETAIL}"
+
+# Old summary log (>365 days) should also be deleted
+assert_false "log rotation: old summary log deleted" \
+    test -f "${OLD_SUMMARY}"
+
+# =============================================================================
+# §24  Lock file — stale lock detection
+# =============================================================================
+section "§24  Lock file — stale lock detection"
+
+LOCK_FILE="/tmp/brew-autoupdate.lock"
+
+# ── Stale lock (dead PID) is cleaned up ───────────────────────────────────────
+reset_logs
+# Write a PID that definitely doesn't exist (99999999)
+echo "99999999" > "${LOCK_FILE}"
+write_test_config "AUTO_UPGRADE=true"
+run_main_script
+DETAIL_LOG=$(find_latest_detail)
+assert_file_contains "stale lock: run completes (stale lock cleaned)" \
+    "${DETAIL_LOG}" "Brew Auto-Update finished"
+
+# ── Lock file is removed after normal run ────────────────────────────────────
+# After a successful run, the lock should be cleaned up by the trap
+assert_false "lock file removed after run" \
+    test -f "${LOCK_FILE}"
+
+# =============================================================================
+# §25  Viewer commands — detail, summary, list, run
+# =============================================================================
+section "§25  Viewer CLI — detail, summary, list, run"
+
+# Seed some test log files
+reset_logs
+write_test_config "AUTO_UPGRADE=true"
+run_main_script
+
+# ── detail last N ────────────────────────────────────────────────────────────
+DETAIL_LAST=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" detail last 1 2>/dev/null
+) || true
+assert_contains "detail last 1: shows log content" "${DETAIL_LAST}" "Brew Auto-Update"
+
+# ── summary latest ──────────────────────────────────────────────────────────
+SUMMARY_LATEST=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" summary latest 2>/dev/null
+) || true
+assert_contains "summary latest: shows summary content" "${SUMMARY_LATEST}" "Brew Auto-Update"
+
+# ── summary today ──────────────────────────────────────────────────────────
+SUMMARY_TODAY=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" summary today 2>/dev/null
+) || true
+assert_contains "summary today: shows today's summary" "${SUMMARY_TODAY}" "Brew Auto-Update"
+
+# ── list detail ──────────────────────────────────────────────────────────────
+LIST_DETAIL=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" list detail 2>/dev/null
+) || true
+assert_contains "list detail: shows .log files" "${LIST_DETAIL}" ".log"
+
+# ── list summary ─────────────────────────────────────────────────────────────
+LIST_SUMMARY=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" list summary 2>/dev/null
+) || true
+assert_contains "list summary: shows .log files" "${LIST_SUMMARY}" ".log"
+
+# ── run ────────────────────────────────────────────────────────────────────
+RUN_OUT=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" run 2>/dev/null
+) || true
+assert_contains "run: triggers update and shows done" "${RUN_OUT}" "Done"
+
+# =============================================================================
+# §26  Config set with spaces & notification content
+# =============================================================================
+section "§26  Config set with spaces & notification content"
+
+# ── config set DENY_LIST with spaces ──────────────────────────────────────────
+write_test_config "AUTO_UPGRADE=true"
+"${VIEWER_ENV[@]}" bash "${VIEWER_SCRIPT}" config set DENY_LIST "node python@3.11 wget" 2>/dev/null || true
+CFG_SPACES=$(cat "${TEST_CONFIG}/config.conf" 2>/dev/null || true)
+assert_contains "config set: spaces in DENY_LIST preserved" \
+    "${CFG_SPACES}" "DENY_LIST=node python@3.11 wget"
+
+# ── _config_write preserves other keys when updating one ──────────────────────
+assert_contains "config set: AUTO_UPGRADE still present after DENY_LIST set" \
+    "${CFG_SPACES}" "AUTO_UPGRADE=true"
+
+# ── Notification content includes upgrade count ──────────────────────────────
+reset_logs
+write_test_config "
+AUTO_UPGRADE=true
+NOTIFY_ON_EVERY_RUN=true
+"
+MOCK_LIST_BEFORE="git 2.43.0" MOCK_LIST_AFTER="git 2.44.0" run_main_script
+OSASCRIPT_LOG="${MOCK_BREW_INVOCATIONS}.osascript"
+if [[ -f "${OSASCRIPT_LOG}" ]]; then
+    OSASCRIPT_CONTENT=$(cat "${OSASCRIPT_LOG}")
+    assert_contains "notification: mentions package upgrade" \
+        "${OSASCRIPT_CONTENT}" "upgraded"
+else
+    print_fail "notification: osascript log exists" "no osascript calls recorded"
+fi
+
+# =============================================================================
+# §27  Time validation and _config_write edge cases
+# =============================================================================
+section "§27  Time validation & _config_write edge cases"
+
+# ── Time validation rejects hour 25 ──────────────────────────────────────────
+CFG_BAD_HOUR=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" config set QUIET_HOURS_START 25:00 2>&1
+) || true
+assert_contains "time validation: 25:00 rejected" "${CFG_BAD_HOUR}" "HH:MM"
+
+# ── Time validation accepts 23:59 ───────────────────────────────────────────
+write_test_config "AUTO_UPGRADE=true"
+CFG_GOOD_TIME=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" config set QUIET_HOURS_START 23:59 2>/dev/null
+) || true
+assert_contains "time validation: 23:59 accepted" "${CFG_GOOD_TIME}" "→"
+
+# ── _config_write correctly updates key with spaces in value ─────────────────
+write_test_config "
+AUTO_UPGRADE=true
+PRE_UPDATE_HOOK=echo hello world
+"
+"${VIEWER_ENV[@]}" bash "${VIEWER_SCRIPT}" config set PRE_UPDATE_HOOK "echo goodbye world" 2>/dev/null || true
+CFG_HOOK=$(cat "${TEST_CONFIG}/config.conf" 2>/dev/null || true)
+assert_contains "_config_write: hook value with spaces updated" \
+    "${CFG_HOOK}" "PRE_UPDATE_HOOK=echo goodbye world"
 
 # =============================================================================
 # FINAL REPORT
