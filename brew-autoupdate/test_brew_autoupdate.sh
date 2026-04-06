@@ -1673,6 +1673,30 @@ DETAIL_LOG=$(find_latest_detail)
 assert_file_contains "BREW_ENV: run completes normally" \
     "${DETAIL_LOG}" "Brew Auto-Update finished"
 
+# ── BREW_ENV with literal quotes does NOT crash export ────────────────────────
+# Regression: printf -v preserves literal "" from defaults, causing
+# export '""' → "not a valid identifier". Must be silently skipped.
+reset_logs
+write_test_config '
+AUTO_UPGRADE=true
+BREW_ENV=""
+'
+run_main_script
+DETAIL_LOG=$(find_latest_detail)
+assert_file_contains "BREW_ENV with literal quotes: run completes" \
+    "${DETAIL_LOG}" "Brew Auto-Update finished"
+
+# ── Empty BREW_ENV does not crash ─────────────────────────────────────────────
+reset_logs
+write_test_config "
+AUTO_UPGRADE=true
+BREW_ENV=
+"
+run_main_script
+DETAIL_LOG=$(find_latest_detail)
+assert_file_contains "empty BREW_ENV: run completes" \
+    "${DETAIL_LOG}" "Brew Auto-Update finished"
+
 # =============================================================================
 # §23  Log rotation — old files deleted, recent files preserved
 # =============================================================================

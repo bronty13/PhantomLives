@@ -18,6 +18,7 @@ All notable changes to Homebrew Auto-Update are documented in this file.
 - **Fix `_config_write` grep regex injection** -- Replaced `grep -q "^${key}="` with a bash pattern match (`[[ "${line}" == "${key}="* ]]`) to avoid treating config key names as regex patterns.
 - **Fix non-integer `CLEANUP_OLDER_THAN_DAYS` crash** -- Added integer validation before the `-gt` comparison so non-numeric values no longer cause a bash error under `set -e`.
 - **Remove all `xargs` usage** -- Replaced all `xargs` whitespace-trimming calls with `sed` or `tr` across `install.sh` and `brew-autoupdate-viewer.sh`. Eliminates "xargs: unterminated quote" errors caused by apostrophes in piped data (e.g., brew output containing `your system's`).
+- **Fix `export '""'` crash in BREW_ENV parsing** -- The `declare` to `printf -v` migration caused literal `""` from defaults to be preserved as a two-character string instead of empty. This made `export '""'` fail with "not a valid identifier". Fixed by removing shell quotes from all hardcoded defaults (using bare `VAR=` instead of `VAR=""`), stripping stray quotes from `BREW_PATH`, and validating `KEY=VALUE` format before exporting `BREW_ENV` pairs.
 
 ### Improvements
 

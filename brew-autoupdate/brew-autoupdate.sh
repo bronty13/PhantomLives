@@ -101,16 +101,16 @@ CLEANUP_OLDER_THAN_DAYS=0         # brew cleanup --prune=N (0=default)
 AUTO_REMOVE=true                  # Whether to run 'brew autoremove'
 UPGRADE_CASKS=true                # Include cask (GUI app) upgrades
 UPGRADE_CASKS_GREEDY=false        # Upgrade casks that auto-update themselves
-BREW_PATH=""                      # Override path to brew binary
-BREW_ENV=""                       # Extra env vars for brew commands
-DENY_LIST=""                      # Space-separated packages to never upgrade
-ALLOW_LIST=""                     # If non-empty, only upgrade these packages
-PRE_UPDATE_HOOK=""                # Shell command to run before update cycle
-POST_UPDATE_HOOK=""               # Shell command to run after update cycle
+BREW_PATH=                        # Override path to brew binary
+BREW_ENV=                         # Extra env vars for brew commands
+DENY_LIST=                        # Space-separated packages to never upgrade
+ALLOW_LIST=                       # If non-empty, only upgrade these packages
+PRE_UPDATE_HOOK=                  # Shell command to run before update cycle
+POST_UPDATE_HOOK=                 # Shell command to run after update cycle
 QUIET_HOURS_ENABLED=false         # Skip scheduled runs during quiet hours
-QUIET_HOURS_START="09:00"         # Start of quiet period (HH:MM, 24-hour)
-QUIET_HOURS_END="18:00"           # End of quiet period (HH:MM, 24-hour)
-SCHEDULE_HOURS="0,6,12,18"        # Hours to run (used by installer only)
+QUIET_HOURS_START=09:00           # Start of quiet period (HH:MM, 24-hour)
+QUIET_HOURS_END=18:00             # End of quiet period (HH:MM, 24-hour)
+SCHEDULE_HOURS=0,6,12,18          # Hours to run (used by installer only)
 SCHEDULE_MINUTE=0                 # Minute within hour (used by installer only)
 
 # ============================================================================
@@ -161,6 +161,10 @@ fi
 # ----------------------------------------------------------------------------
 export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/home/linuxbrew/.linuxbrew/bin:${PATH}"
 
+# Strip stray quotes from BREW_PATH (e.g., old configs with BREW_PATH="")
+BREW_PATH="${BREW_PATH//\"/}"
+BREW_PATH="${BREW_PATH//\'/}"
+
 BREW=""
 _brew_candidates=(
     "${BREW_PATH}"
@@ -190,7 +194,12 @@ eval "$(${BREW} shellenv 2>/dev/null)" || true
 
 if [[ -n "${BREW_ENV}" ]]; then
     for pair in ${BREW_ENV}; do
-        export "${pair}"
+        # Skip empty values or bare quotes from misconfigured defaults
+        [[ -z "${pair}" || "${pair}" == '""' || "${pair}" == "''" ]] && continue
+        # Validate KEY=VALUE format before exporting
+        if [[ "${pair}" == *=* ]]; then
+            export "${pair}"
+        fi
     done
 fi
 
