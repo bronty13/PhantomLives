@@ -17,6 +17,7 @@ All notable changes to Homebrew Auto-Update are documented in this file.
 - **Fix time validation accepting invalid hours 24-29** -- Tightened the `_config_validate` time regex from `^[0-2][0-9]:[0-5][0-9]$` to `^([01][0-9]|2[0-3]):[0-5][0-9]$` so that times like `29:59` are correctly rejected.
 - **Fix `_config_write` grep regex injection** -- Replaced `grep -q "^${key}="` with a bash pattern match (`[[ "${line}" == "${key}="* ]]`) to avoid treating config key names as regex patterns.
 - **Fix non-integer `CLEANUP_OLDER_THAN_DAYS` crash** -- Added integer validation before the `-gt` comparison so non-numeric values no longer cause a bash error under `set -e`.
+- **Remove all `xargs` usage** -- Replaced all `xargs` whitespace-trimming calls with `sed` or `tr` across `install.sh` and `brew-autoupdate-viewer.sh`. Eliminates "xargs: unterminated quote" errors caused by apostrophes in piped data (e.g., brew output containing `your system's`).
 
 ### Improvements
 
