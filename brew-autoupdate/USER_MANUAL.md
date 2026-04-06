@@ -696,11 +696,11 @@ The daemon runs as a user agent in your GUI session (not system-wide), so it onl
 
 ### Concurrency Safety
 
-A PID-based lock file at `/tmp/brew-autoupdate.lock` prevents overlapping runs. On each start:
+A lock file at `/tmp/brew-autoupdate.lock` is acquired atomically to prevent overlapping runs. On each start:
 
-1. If the lock file exists, the script checks whether the PID is still alive
-2. If alive, the run is skipped (`SKIP: Another instance running`)
-3. If the PID is dead, the stale lock is removed and the run proceeds
+1. The script attempts an atomic lock-file create (no check-then-write race)
+2. If the lock already exists and PID is alive, the run is skipped (`SKIP: Another instance ... is already running`)
+3. If the PID is dead, the stale lock is removed and lock acquisition is retried
 4. The lock is cleaned up automatically via a `trap` handler on exit
 
 ### Summary Log Structured Data
