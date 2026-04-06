@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 #
-#  REGRESSION TEST SUITE — brew-autoupdate v2.1.0
+#  REGRESSION TEST SUITE — brew-autoupdate v2.1.1
 #
 #  File:     test_brew_autoupdate.sh
 #  Requires: macOS, bash 3.2+, plutil (bundled with macOS)
@@ -16,7 +16,7 @@
 #    §7   Upgrade args / greedy bug fix — 4 integration tests
 #    §8   Package filtering (deny/allow lists) — 6 integration tests
 #    §9   Pre/Post hooks — 5 integration tests
-#    §10  Quiet hours integration — 3 tests
+#    §10  Quiet hours integration — 4 tests
 #    §11  [STATS]/[PKG] structured logging — 6 tests
 #    §12  _next_run_time() — 5 unit tests
 #    §13  _fmt_schedule_hours() — 4 unit tests
@@ -30,12 +30,12 @@
 #    §21  CLEANUP_OLDER_THAN_DAYS --prune — 2 tests
 #    §22  BREW_ENV export — 2 tests
 #    §23  Log rotation — 3 tests
-#    §24  Lock file behavior — 2 tests
-#    §25  Viewer commands — detail, summary, list, run — 6 tests
+#    §24  Lock file behavior — 3 tests
+#    §25  Viewer commands — detail, summary, list, run — 8 tests
 #    §26  Config set with spaces and notification content — 3 tests
 #    §27  Time validation and _config_write edge cases — 3 tests
 #
-#  Total target: ~170 test cases
+#  Total target: ~173 test cases
 #
 #  Run:
 #    bash test_brew_autoupdate.sh
@@ -432,7 +432,7 @@ reset_logs() {
 # PRINT TEST SUITE HEADER
 # =============================================================================
 printf "\n${C_BOLD}${C_CYAN}╔══════════════════════════════════════════════════════════════╗${C_NC}\n"
-printf "${C_BOLD}${C_CYAN}║  brew-autoupdate v2.1.0  —  Regression Test Suite            ║${C_NC}\n"
+printf "${C_BOLD}${C_CYAN}║  brew-autoupdate v2.1.1  —  Regression Test Suite            ║${C_NC}\n"
 printf "${C_BOLD}${C_CYAN}╚══════════════════════════════════════════════════════════════╝${C_NC}\n"
 printf "   main:    %s\n" "${MAIN_SCRIPT_SRC}"
 printf "   viewer:  %s\n" "${VIEWER_SCRIPT}"
@@ -1037,6 +1037,24 @@ DETAIL_LOG=$(find_latest_detail)
 # At any time other than 00:00 exactly, this run should proceed
 assert_file_contains "outside tiny window: run completes" \
     "${DETAIL_LOG}" "Brew Auto-Update finished"
+
+# ── Manual run bypasses quiet hours ─────────────────────────────────────────
+reset_logs
+write_test_config "
+AUTO_UPGRADE=true
+QUIET_HOURS_ENABLED=true
+QUIET_HOURS_START=00:00
+QUIET_HOURS_END=23:59
+"
+HOME="${TEST_HOME}" \
+PATH="${TEST_BIN}:${PATH}" \
+MOCK_BREW_INVOCATIONS="${MOCK_BREW_INVOCATIONS}" \
+bash "${MAIN_SCRIPT}" --manual-run 2>/dev/null || true
+DETAIL_LOG=$(find_latest_detail)
+assert_file_not_contains "manual run: quiet-hours skip is bypassed" \
+    "${DETAIL_LOG}" "SKIP: Quiet hours active"
+assert_file_contains "manual run: update executes during quiet hours" \
+    "${MOCK_BREW_INVOCATIONS}" "update --verbose"
 
 # =============================================================================
 # §11  [STATS] and [PKG] structured log lines
@@ -1757,6 +1775,22 @@ assert_file_contains "stale lock: run completes (stale lock cleaned)" \
 assert_false "lock file removed after run" \
     test -f "${LOCK_FILE}"
 
+# ── Active lock causes skip without calling brew ────────────────────────────
+reset_logs
+tail -f /dev/null >/dev/null 2>&1 &
+LOCK_HOLDER_PID=$!
+echo "${LOCK_HOLDER_PID}" > "${LOCK_FILE}"
+write_test_config "AUTO_UPGRADE=true"
+run_main_script
+DETAIL_LOG=$(find_latest_detail)
+assert_file_contains "active lock: run is skipped" \
+    "${DETAIL_LOG}" "SKIP: Another instance"
+assert_file_not_contains "active lock: brew update not called" \
+    "${MOCK_BREW_INVOCATIONS}" "update --verbose"
+kill "${LOCK_HOLDER_PID}" 2>/dev/null || true
+wait "${LOCK_HOLDER_PID}" 2>/dev/null || true
+rm -f "${LOCK_FILE}"
+
 # =============================================================================
 # §25  Viewer commands — detail, summary, list, run
 # =============================================================================
@@ -1803,11 +1837,29 @@ LIST_SUMMARY=$(
 assert_contains "list summary: shows .log files" "${LIST_SUMMARY}" ".log"
 
 # ── run ────────────────────────────────────────────────────────────────────
+# Simulate an installed layout for brew-logs run (it expects SCRIPT_FILE under HOME).
+cp "${MAIN_SCRIPT}" "${TEST_CONFIG}/brew-autoupdate.sh"
+chmod +x "${TEST_CONFIG}/brew-autoupdate.sh"
+
 RUN_OUT=$(
     "${VIEWER_ENV[@]}" \
     bash "${VIEWER_SCRIPT}" run 2>/dev/null
 ) || true
 assert_contains "run: triggers update and shows done" "${RUN_OUT}" "Done"
+
+# ── run failure path returns non-zero and shows error text ─────────────────
+MISSING_HOME="${TEST_DIR}/missing_home"
+mkdir -p "${MISSING_HOME}"
+RUN_FAIL_OUT=$(
+    env \
+    HOME="${MISSING_HOME}" \
+    PATH="${TEST_BIN}:${PATH}" \
+    MOCK_BREW_INVOCATIONS="${MOCK_BREW_INVOCATIONS}" \
+    bash "${VIEWER_SCRIPT}" run 2>&1
+)
+RUN_FAIL_CODE=$?
+assert_eq "run failure: viewer exits non-zero" "${RUN_FAIL_CODE}" "1"
+assert_contains "run failure: shows failure message" "${RUN_FAIL_OUT}" "Run failed"
 
 # =============================================================================
 # §26  Config set with spaces & notification content

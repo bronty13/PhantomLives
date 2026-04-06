@@ -1,6 +1,6 @@
 # Homebrew Auto-Update User Manual
 
-**Version 2.1.0**
+**Version 2.1.1**
 
 A complete guide to installing, configuring, and managing the Homebrew Auto-Update system for macOS.
 

@@ -1,5 +1,7 @@
 # Homebrew Auto-Update
 
+Current release: 2.1.1
+
 Automated Homebrew package maintenance for macOS with two-tier logging, macOS notifications, and a built-in log viewer.
 
 Runs as a background launchd daemon, updating your Homebrew packages 4 times daily with zero manual intervention.
@@ -14,11 +16,11 @@ Runs as a background launchd daemon, updating your Homebrew packages 4 times dai
 - **Log viewer CLI** — `brew-logs` command for quick access to logs, status, and manual runs
 - **CLI config editor** — `brew-logs config get/set/reset` to manage settings without editing files
 - **Configurable** — Single config file controls all behavior; changes take effect on next run
-- **Quiet hours** — Optional time window to suppress updates (e.g., during work hours)
+- **Quiet hours** — Optional time window to suppress scheduled updates (manual runs always execute)
 - **Package filtering** — Deny list to pin packages, or allow list to whitelist specific packages
 - **Pre/post hooks** — Run custom shell commands before or after each update cycle
 - **Low impact** — Runs at low I/O and CPU priority; won't interfere with your work
-- **Concurrent-safe** — PID-based locking prevents overlapping runs
+- **Concurrent-safe** — Atomic lock-file acquisition prevents overlapping runs
 - **Self-maintaining** — Automatic log rotation keeps disk usage bounded
 
 ## Quick Start

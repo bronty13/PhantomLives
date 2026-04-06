@@ -4,7 +4,7 @@
 #  HOMEBREW AUTO-UPDATE DAEMON SCRIPT
 #
 #  File:        brew-autoupdate.sh
-#  Version:     2.1.0
+#  Version:     2.1.1
 #  Author:      Generated with Claude Code
 #  License:     MIT
 #  Requires:    macOS, Homebrew, bash 3.2+
@@ -64,7 +64,7 @@ set -euo pipefail
 # ============================================================================
 # VERSION
 # ============================================================================
-BAU_VERSION="2.1.0"
+BAU_VERSION="2.1.1"
 
 # ============================================================================
 # PATH AND DIRECTORY SETUP
@@ -270,19 +270,30 @@ is_quiet_hours() {
 # LOCK FILE MANAGEMENT
 # ============================================================================
 acquire_lock() {
-    if [[ -f "${LOCK_FILE}" ]]; then
-        local lock_pid
-        lock_pid="$(cat "${LOCK_FILE}" 2>/dev/null || echo "")"
-        if [[ -n "${lock_pid}" ]] && kill -0 "${lock_pid}" 2>/dev/null; then
-            log_both "SKIP: Another instance (PID ${lock_pid}) is already running."
-            exit 0
-        else
-            log_detail "Stale lock file found (PID ${lock_pid} not running). Removing."
-            rm -f "${LOCK_FILE}"
-        fi
+    local lock_pid
+
+    # Atomic lock create via noclobber avoids check-then-write races.
+    if ( set -o noclobber; printf '%s\n' "$$" > "${LOCK_FILE}" ) 2>/dev/null; then
+        trap 'rm -f "${LOCK_FILE}"' EXIT
+        return
     fi
-    echo $$ > "${LOCK_FILE}"
-    trap 'rm -f "${LOCK_FILE}"' EXIT
+
+    lock_pid="$(cat "${LOCK_FILE}" 2>/dev/null || echo "")"
+    if [[ -n "${lock_pid}" ]] && kill -0 "${lock_pid}" 2>/dev/null; then
+        log_both "SKIP: Another instance (PID ${lock_pid}) is already running."
+        exit 0
+    fi
+
+    log_detail "Stale lock file found (PID ${lock_pid} not running). Removing."
+    rm -f "${LOCK_FILE}"
+
+    if ( set -o noclobber; printf '%s\n' "$$" > "${LOCK_FILE}" ) 2>/dev/null; then
+        trap 'rm -f "${LOCK_FILE}"' EXIT
+    else
+        lock_pid="$(cat "${LOCK_FILE}" 2>/dev/null || echo "unknown")"
+        log_both "SKIP: Another instance (PID ${lock_pid}) acquired the lock first."
+        exit 0
+    fi
 }
 
 # ============================================================================
@@ -314,6 +325,11 @@ rotate_logs() {
 # MAIN UPDATE PROCESS
 # ============================================================================
 main() {
+    local manual_run=false
+    if [[ "${1:-}" == "--manual-run" ]]; then
+        manual_run=true
+    fi
+
     local errors=()
     local run_start run_end duration
     local total_upgrades=0
@@ -325,9 +341,9 @@ main() {
     # -------------------------------------------------------------------------
     # QUIET HOURS CHECK
     # If a scheduled run fires during configured quiet hours, skip it silently.
-    # Manual runs (invoked directly) are not guarded by this flag.
+    # Manual runs (--manual-run) bypass quiet hours.
     # -------------------------------------------------------------------------
-    if [[ "${QUIET_HOURS_ENABLED}" == "true" ]]; then
+    if [[ "${QUIET_HOURS_ENABLED}" == "true" && "${manual_run}" != "true" ]]; then
         local current_time
         current_time="$(date '+%H:%M')"
         if is_quiet_hours "${current_time}" "${QUIET_HOURS_START}" "${QUIET_HOURS_END}"; then
@@ -380,7 +396,12 @@ main() {
     log_detail "--- Checking outdated packages ---"
     local outdated_output
     outdated_output="$(${BREW} outdated --verbose 2>&1)" || true
-    log_detail "Outdated packages:\n${outdated_output}"
+    if [[ -n "${outdated_output}" ]]; then
+        log_detail "Outdated packages:"
+        log_detail "${outdated_output}"
+    else
+        log_detail "Outdated packages: (none)"
+    fi
 
     if [[ -z "${outdated_output}" ]]; then
         log_both "No outdated packages found."

@@ -4,7 +4,7 @@
 #  HOMEBREW AUTO-UPDATE INSTALLER
 #
 #  File:     install.sh
-#  Version:  2.1.0
+#  Version:  2.1.1
 #  Author:   Generated with Claude Code
 #  License:  MIT
 #  Requires: macOS, Homebrew, bash 3.2+
@@ -52,7 +52,7 @@ set -euo pipefail
 # ============================================================================
 # VERSION
 # ============================================================================
-BAU_VERSION="2.1.0"
+BAU_VERSION="2.1.1"
 
 # ============================================================================
 # TERMINAL FORMATTING

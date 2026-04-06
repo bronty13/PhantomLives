@@ -4,7 +4,7 @@
 #  HOMEBREW AUTO-UPDATE LOG VIEWER
 #
 #  File:        brew-autoupdate-viewer.sh
-#  Version:     2.1.0
+#  Version:     2.1.1
 #  Author:      Generated with Claude Code
 #  License:     MIT
 #  Requires:    macOS, bash 3.2+
@@ -40,7 +40,7 @@
 # ============================================================================
 # VERSION
 # ============================================================================
-BAU_VERSION="2.1.0"
+BAU_VERSION="2.1.1"
 
 # ============================================================================
 # DIRECTORY AND FILE PATH CONSTANTS
@@ -1300,9 +1300,13 @@ case "${cmd}" in
     # ========================================================================
     run|r)
         echo -e "${CYAN}Triggering manual brew auto-update...${NC}"
-        PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:${PATH}" \
-            bash "${SCRIPT_FILE}"
-        echo -e "${GREEN}Done. Check logs with: brew-logs detail${NC}"
+        if PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:${PATH}" \
+            bash "${SCRIPT_FILE}" --manual-run; then
+            echo -e "${GREEN}Done. Check logs with: brew-logs detail${NC}"
+        else
+            echo -e "${RED}Run failed. Check logs with: brew-logs detail${NC}"
+            exit 1
+        fi
         ;;
 
     # ========================================================================

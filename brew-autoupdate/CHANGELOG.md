@@ -2,6 +2,21 @@
 
 All notable changes to Homebrew Auto-Update are documented in this file.
 
+## [2.1.1] - 2026-04-06
+
+### Bug Fixes
+
+- **Fix lock acquisition race condition** -- Reworked lock creation in `brew-autoupdate.sh` to use atomic `noclobber` writes, preventing overlapping runs when two processes start simultaneously.
+- **Fix quiet-hours behavior for manual runs** -- Added `--manual-run` support in `brew-autoupdate.sh` and updated `brew-logs run` to use it so user-triggered runs are no longer skipped by quiet hours.
+- **Fix misleading success output in `brew-logs run`** -- The viewer now checks exit status and returns non-zero with an explicit failure message when the update script fails.
+- **Fix literal `\n` in outdated-package detail logging** -- Replaced escaped newline logging with explicit line logging for consistent readability.
+
+### Tests
+
+- Added quiet-hours integration test proving `--manual-run` bypasses quiet-hour skips.
+- Added lock behavior test for active lock PID skip path (no brew commands executed).
+- Added viewer run failure-path test to verify non-zero exit and user-facing failure message.
+
 ## [2.1.0] - 2026-04-06
 
 ### Security
