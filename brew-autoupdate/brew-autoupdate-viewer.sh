@@ -4,7 +4,7 @@
 #  HOMEBREW AUTO-UPDATE LOG VIEWER
 #
 #  File:        brew-autoupdate-viewer.sh
-#  Version:     2.1.2
+#  Version:     2.2.0
 #  Author:      Generated with Claude Code
 #  License:     MIT
 #  Requires:    macOS, bash 3.2+
@@ -40,7 +40,7 @@
 # ============================================================================
 # VERSION
 # ============================================================================
-BAU_VERSION="2.1.2"
+BAU_VERSION="2.2.0"
 
 # ============================================================================
 # DIRECTORY AND FILE PATH CONSTANTS
@@ -154,25 +154,48 @@ _dash_thin() {
     printf ' ║\n'
 }
 
+# _dash_visible_width <string>
+#   Returns the display width of a string by measuring how many columns it
+#   occupies. Uses printf to a virtual terminal position via ANSI cursor
+#   queries when available, otherwise falls back to character counting that
+#   accounts for common wide Unicode characters (box-drawing, check marks,
+#   bullets, em-dash). This prevents the right border from shifting when
+#   content contains multi-byte characters whose display width ≠ byte count.
+_dash_visible_width() {
+    local str="$1"
+    # Strip ANSI escape sequences for measurement
+    local stripped
+    stripped=$(printf '%s' "${str}" | sed $'s/\033\[[0-9;]*m//g')
+    # Use printf %s | wc -m for character count (locale-aware)
+    local chars
+    chars=$(printf '%s' "${stripped}" | LC_ALL=en_US.UTF-8 wc -m | tr -d ' ')
+    echo "${chars}"
+}
+
 # _dash_row <plain-text> [<colored-text>]
 #   Renders one content row with left/right borders.
 #   If a second argument is provided, it is used for display (may contain
 #   ANSI codes); the first argument (plain) is used only for length calculation.
 #   If only one argument is given, it is used for both.
+#   Content is always padded or clipped to exactly _IW visible columns.
 _dash_row() {
     local plain="${1:-}"
     local colored="${2:-${plain}}"
 
+    # Measure visible width accounting for Unicode characters
+    local vlen
+    vlen=$(_dash_visible_width "${plain}")
+
     # Prevent wrapped lines from corrupting the right border when content
     # exceeds the dashboard's inner width.
-    if [[ ${#plain} -gt ${_IW} ]]; then
+    if [[ ${vlen} -gt ${_IW} ]]; then
         plain="${plain:0:${_IW}}"
         # Colored strings may contain ANSI escapes that are hard to truncate
         # safely; when clipping is needed, fall back to plain text.
         colored="${plain}"
+        vlen=$(_dash_visible_width "${plain}")
     fi
 
-    local vlen=${#plain}
     local pad=$(( _IW - vlen ))
     [[ ${pad} -lt 0 ]] && pad=0
     printf "║ %b%*s ║\n" "${colored}" "${pad}" ""
@@ -551,11 +574,13 @@ cmd_dashboard() {
 
     _dash_top
 
-    # Header
+    # Header — clamp gap to ≥1 so narrow terminals still render correctly
     local title="  BREW AUTO-UPDATE DASHBOARD  v${BAU_VERSION}"
     local ts_label="Updated: ${now_str}"
-    local header_plain="${title}$(printf '%*s' $(( _IW - ${#title} - ${#ts_label} )) '')${ts_label}"
-    local header_colored="${BOLD}${CYAN}${title}${NC}$(printf '%*s' $(( _IW - ${#title} - ${#ts_label} )) '')${DIM}${ts_label}${NC}"
+    local hdr_gap=$(( _IW - ${#title} - ${#ts_label} ))
+    [[ ${hdr_gap} -lt 1 ]] && hdr_gap=1
+    local header_plain="${title}$(printf '%*s' "${hdr_gap}" '')${ts_label}"
+    local header_colored="${BOLD}${CYAN}${title}${NC}$(printf '%*s' "${hdr_gap}" '')${DIM}${ts_label}${NC}"
     _dash_row "${header_plain}" "${header_colored}"
 
     _dash_div
@@ -883,9 +908,11 @@ PLIST_EOF2
 # These are the single source of truth used by get/set/reset/show.
 # ----------------------------------------------------------------------------
 
-# Returns the data type for a config key: bool | int | time | string | unknown
+# Returns the data type for a config key: bool | int | time | loglevel | string | unknown
 _config_key_type() {
     case "${1}" in
+        LOG_LEVEL)
+            echo "loglevel" ;;
         NOTIFY_ON_EVERY_RUN|NOTIFY_ON_ERROR|AUTO_UPGRADE|AUTO_CLEANUP|\
         AUTO_REMOVE|UPGRADE_CASKS|UPGRADE_CASKS_GREEDY|QUIET_HOURS_ENABLED)
             echo "bool" ;;
@@ -905,6 +932,7 @@ _config_key_type() {
 # Returns the factory default value for a config key
 _config_default() {
     case "${1}" in
+        LOG_LEVEL)                  echo "INFO" ;;
         DETAIL_LOG_RETENTION_DAYS)  echo "90" ;;
         SUMMARY_LOG_RETENTION_DAYS) echo "365" ;;
         NOTIFY_ON_EVERY_RUN)        echo "true" ;;
@@ -931,7 +959,8 @@ _config_default() {
 }
 
 # Ordered list of all known keys used by 'config show'
-_CONFIG_KEYS="DETAIL_LOG_RETENTION_DAYS SUMMARY_LOG_RETENTION_DAYS
+_CONFIG_KEYS="LOG_LEVEL
+DETAIL_LOG_RETENTION_DAYS SUMMARY_LOG_RETENTION_DAYS
 NOTIFY_ON_EVERY_RUN NOTIFY_ON_ERROR
 AUTO_UPGRADE AUTO_CLEANUP CLEANUP_OLDER_THAN_DAYS AUTO_REMOVE
 UPGRADE_CASKS UPGRADE_CASKS_GREEDY
@@ -964,6 +993,13 @@ _config_validate() {
         time)
             if ! [[ "${value}" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
                 echo -e "${RED}${key} requires HH:MM format (00:00–23:59), e.g. 09:00 (got: '${value}')${NC}" >&2
+                return 1
+            fi ;;
+        loglevel)
+            local _upper
+            _upper=$(printf '%s' "${value}" | tr '[:lower:]' '[:upper:]')
+            if [[ "${_upper}" != "DEBUG" && "${_upper}" != "INFO" && "${_upper}" != "WARN" && "${_upper}" != "ERROR" && "${_upper}" != "CRITICAL" ]]; then
+                echo -e "${RED}${key} requires DEBUG|INFO|WARN|ERROR|CRITICAL (got: '${value}')${NC}" >&2
                 return 1
             fi ;;
         string) : ;;    # any value accepted
@@ -1103,6 +1139,89 @@ _config_reset() {
     _config_set "${key}" "$(_config_default "${key}")"
 }
 
+# ── config export ─────────────────────────────────────────────────────────────
+# Exports the current configuration to a file with system metadata header.
+# Default output: ~/brew-autoupdate-config-export.conf
+_config_export() {
+    local out_file="${1:-${HOME}/brew-autoupdate-config-export.conf}"
+
+    if [[ ! -f "${CONFIG_FILE}" ]]; then
+        echo -e "${RED}Config file not found: ${CONFIG_FILE}${NC}" >&2; return 1
+    fi
+
+    {
+        echo "# ============================================================================"
+        echo "# BREW AUTO-UPDATE — CONFIGURATION EXPORT"
+        echo "# ============================================================================"
+        echo "# Exported: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo "# Hostname: $(hostname 2>/dev/null || echo 'unknown')"
+        echo "# macOS:    $(sw_vers -productVersion 2>/dev/null || echo 'unknown')"
+        echo "# Arch:     $(uname -m 2>/dev/null || echo 'unknown')"
+        echo "# Version:  ${BAU_VERSION}"
+        echo "# ============================================================================"
+        echo ""
+        local key default value
+        for key in ${_CONFIG_KEYS}; do
+            default=$(_config_default "${key}")
+            value=$(read_cfg "${key}" "${default}")
+            echo "${key}=${value}"
+        done
+    } > "${out_file}"
+
+    echo -e "${GREEN}Configuration exported to:${NC} ${out_file}"
+    echo -e "${DIM}$(wc -l < "${out_file}" | tr -d ' ') lines written  |  $(wc -c < "${out_file}" | tr -d ' ') bytes${NC}"
+    echo -e "${DIM}Import on another system with: brew-logs config import ${out_file}${NC}"
+}
+
+# ── config import ─────────────────────────────────────────────────────────────
+# Imports configuration from an export file, validating each key before writing.
+_config_import() {
+    local in_file="${1:-}"
+    if [[ -z "${in_file}" ]]; then
+        echo -e "${RED}Usage: brew-logs config import FILE${NC}" >&2; return 1
+    fi
+    if [[ ! -f "${in_file}" ]]; then
+        echo -e "${RED}Import file not found: ${in_file}${NC}" >&2; return 1
+    fi
+    if [[ ! -f "${CONFIG_FILE}" ]]; then
+        echo -e "${RED}Config file not found: ${CONFIG_FILE}${NC}" >&2; return 1
+    fi
+
+    local imported=0 skipped=0 errors=0
+
+    while IFS='=' read -r key value; do
+        # Trim whitespace
+        key="$(printf '%s' "${key}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+        # Skip comments and blank lines
+        [[ -z "${key}" || "${key}" == \#* ]] && continue
+        # Strip inline comments from value
+        value="$(printf '%s' "${value}" | sed 's/[[:space:]]#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//')"
+
+        local type
+        type=$(_config_key_type "${key}")
+        if [[ "${type}" == "unknown" ]]; then
+            echo -e "  ${YELLOW}SKIP${NC} ${key} (unknown key)"
+            (( skipped++ )) || true
+            continue
+        fi
+
+        if _config_validate "${key}" "${value}" 2>/dev/null; then
+            _config_write "${key}" "${value}"
+            echo -e "  ${GREEN}SET${NC}  ${key}=${value}"
+            (( imported++ )) || true
+        else
+            echo -e "  ${RED}ERR${NC}  ${key}=${value} (validation failed)"
+            (( errors++ )) || true
+        fi
+    done < "${in_file}"
+
+    echo
+    echo -e "${BOLD}Import complete:${NC} ${GREEN}${imported} applied${NC}, ${YELLOW}${skipped} skipped${NC}, ${RED}${errors} errors${NC}"
+    if [[ ${imported} -gt 0 ]]; then
+        echo -e "${DIM}Changes take effect on next run. Schedule changes need: brew-logs schedule reload${NC}"
+    fi
+}
+
 # ── cmd_config — subcommand dispatcher ────────────────────────────────────────
 cmd_config() {
     local subcmd="${1:-show}"
@@ -1112,9 +1231,11 @@ cmd_config() {
         get)      _config_get "$@" ;;
         set)      _config_set "$@" ;;
         reset)    _config_reset "$@" ;;
+        export)   _config_export "$@" ;;
+        import)   _config_import "$@" ;;
         *)
             echo -e "${RED}Unknown config subcommand: ${subcmd}${NC}" >&2
-            echo "Usage: brew-logs config [show | get KEY | set KEY VALUE | reset KEY]"
+            echo "Usage: brew-logs config [show | get KEY | set KEY VALUE | reset KEY | export [FILE] | import FILE]"
             return 1 ;;
     esac
 }
@@ -1339,6 +1460,8 @@ case "${cmd}" in
         echo "  config get KEY                 Show current value for KEY"
         echo "  config set KEY VALUE           Set KEY to VALUE in config.conf"
         echo "  config reset KEY               Reset KEY to its factory default"
+        echo "  config export [FILE]           Export config to file (for backup/transfer)"
+        echo "  config import FILE             Import config from an export file"
         echo "  schedule [show|reload]         Show or reload the run schedule"
         echo "  run                            Trigger a manual update now"
         echo "  help                           Show this help"
@@ -1352,8 +1475,11 @@ case "${cmd}" in
         echo "  brew-logs summary today        Today's summary"
         echo "  brew-logs config               Show all settings"
         echo "  brew-logs config set AUTO_UPGRADE false"
+        echo "  brew-logs config set LOG_LEVEL DEBUG"
         echo "  brew-logs config get DENY_LIST"
         echo "  brew-logs config reset UPGRADE_CASKS_GREEDY"
+        echo "  brew-logs config export ~/my-brew-config.conf"
+        echo "  brew-logs config import ~/my-brew-config.conf"
         echo "  brew-logs schedule reload      Apply schedule from config.conf"
         echo "  brew-logs run                  Run update now (foreground)"
         ;;

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 #
-#  REGRESSION TEST SUITE — brew-autoupdate v2.1.1
+#  REGRESSION TEST SUITE — brew-autoupdate v2.2.0
 #
 #  File:     test_brew_autoupdate.sh
 #  Requires: macOS, bash 3.2+, plutil (bundled with macOS)
@@ -34,8 +34,12 @@
 #    §25  Viewer commands — detail, summary, list, run — 8 tests
 #    §26  Config set with spaces and notification content — 3 tests
 #    §27  Time validation and _config_write edge cases — 3 tests
+#    §28  LOG_LEVEL severity filtering — 5 tests
+#    §29  Config export / import — 8 tests
+#    §30  LOG_LEVEL config validation — 3 tests
+#    §31  Dashboard width — right border alignment — 2 tests
 #
-#  Total target: ~173 test cases
+#  Total target: ~191 test cases
 #
 #  Run:
 #    bash test_brew_autoupdate.sh
@@ -393,7 +397,9 @@ write_test_config() {
     local content
     # Always inject BREW_PATH as the first setting so mock brew is found
     # before the hardcoded /opt/homebrew and /usr/local path checks.
+    # Always set LOG_LEVEL=DEBUG so tests can inspect all log output.
     content="BREW_PATH=${TEST_BIN}/brew
+LOG_LEVEL=DEBUG
 ${1}"
     printf '%s\n' "${content}" > "${SCRIPT_TEST_DIR}/config.conf"
     printf '%s\n' "${content}" > "${TEST_CONFIG}/config.conf"
@@ -432,7 +438,7 @@ reset_logs() {
 # PRINT TEST SUITE HEADER
 # =============================================================================
 printf "\n${C_BOLD}${C_CYAN}╔══════════════════════════════════════════════════════════════╗${C_NC}\n"
-printf "${C_BOLD}${C_CYAN}║  brew-autoupdate v2.1.1  —  Regression Test Suite            ║${C_NC}\n"
+printf "${C_BOLD}${C_CYAN}║  brew-autoupdate v2.2.0  —  Regression Test Suite            ║${C_NC}\n"
 printf "${C_BOLD}${C_CYAN}╚══════════════════════════════════════════════════════════════╝${C_NC}\n"
 printf "   main:    %s\n" "${MAIN_SCRIPT_SRC}"
 printf "   viewer:  %s\n" "${VIEWER_SCRIPT}"
@@ -960,7 +966,7 @@ DETAIL_LOG=$(find_latest_detail)
 assert_file_contains "failing pre-hook: run still completes" \
     "${DETAIL_LOG}" "Brew Auto-Update finished"
 assert_file_contains "failing pre-hook: warning logged" \
-    "${DETAIL_LOG}" "WARNING: Pre-update hook exited with non-zero"
+    "${DETAIL_LOG}" "Pre-update hook exited with non-zero"
 
 # ── No hooks configured → no hook log lines ───────────────────────────────────
 reset_logs
@@ -1922,6 +1928,165 @@ PRE_UPDATE_HOOK=echo hello world
 CFG_HOOK=$(cat "${TEST_CONFIG}/config.conf" 2>/dev/null || true)
 assert_contains "_config_write: hook value with spaces updated" \
     "${CFG_HOOK}" "PRE_UPDATE_HOOK=echo goodbye world"
+
+# =============================================================================
+# §28  LOG_LEVEL severity filtering
+# =============================================================================
+section "§28  LOG_LEVEL severity filtering"
+
+# ── LOG_LEVEL=INFO includes INFO messages ─────────────────────────────────────
+reset_logs
+write_test_config "
+AUTO_UPGRADE=true
+LOG_LEVEL=INFO
+"
+run_main_script
+DETAIL=$(cat "$(find_latest_detail)" 2>/dev/null || true)
+assert_contains "LOG_LEVEL=INFO: INFO messages present" \
+    "${DETAIL}" "[INFO]"
+
+# ── LOG_LEVEL=INFO excludes DEBUG messages ────────────────────────────────────
+# Config dumps are tagged DEBUG and should not appear at INFO level
+assert_not_contains "LOG_LEVEL=INFO: DEBUG messages excluded" \
+    "${DETAIL}" "[DEBUG]"
+
+# ── LOG_LEVEL=DEBUG includes DEBUG messages ───────────────────────────────────
+reset_logs
+write_test_config "
+AUTO_UPGRADE=true
+LOG_LEVEL=DEBUG
+"
+run_main_script
+DETAIL_DBG=$(cat "$(find_latest_detail)" 2>/dev/null || true)
+assert_contains "LOG_LEVEL=DEBUG: DEBUG messages present" \
+    "${DETAIL_DBG}" "[DEBUG]"
+
+# ── LOG_LEVEL=ERROR excludes INFO messages ────────────────────────────────────
+reset_logs
+write_test_config "
+AUTO_UPGRADE=true
+LOG_LEVEL=ERROR
+"
+run_main_script
+DETAIL_ERR=$(cat "$(find_latest_detail)" 2>/dev/null || true)
+assert_not_contains "LOG_LEVEL=ERROR: INFO messages excluded" \
+    "${DETAIL_ERR}" "[INFO]"
+
+# ── STATS lines always present regardless of LOG_LEVEL ────────────────────────
+SUMMARY_ERR=$(cat "$(find_latest_summary)" 2>/dev/null || true)
+assert_contains "LOG_LEVEL=ERROR: [STATS] still written" \
+    "${SUMMARY_ERR}" "[STATS]"
+
+# =============================================================================
+# §29  Config export / import
+# =============================================================================
+section "§29  Config export / import"
+
+write_test_config "
+AUTO_UPGRADE=false
+LOG_LEVEL=DEBUG
+DENY_LIST=node python
+SCHEDULE_HOURS=0,12
+"
+
+EXPORT_FILE="${TEST_DIR}/exported.conf"
+
+# ── config export creates file ────────────────────────────────────────────────
+EXPORT_OUT=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" config export "${EXPORT_FILE}" 2>&1
+) || true
+assert_true "config export: file created" test -f "${EXPORT_FILE}"
+assert_contains "config export: success message" "${EXPORT_OUT}" "exported"
+
+# ── Exported file contains config values ──────────────────────────────────────
+EXPORT_CONTENT=$(cat "${EXPORT_FILE}" 2>/dev/null || true)
+assert_contains "config export: contains AUTO_UPGRADE" "${EXPORT_CONTENT}" "AUTO_UPGRADE=false"
+assert_contains "config export: contains LOG_LEVEL" "${EXPORT_CONTENT}" "LOG_LEVEL=DEBUG"
+assert_contains "config export: contains DENY_LIST" "${EXPORT_CONTENT}" "DENY_LIST=node python"
+
+# ── Exported file contains system metadata ────────────────────────────────────
+assert_contains "config export: metadata header" "${EXPORT_CONTENT}" "Exported:"
+assert_contains "config export: hostname header" "${EXPORT_CONTENT}" "Hostname:"
+
+# ── config import applies values ──────────────────────────────────────────────
+# Reset config to defaults, then import the exported file
+write_test_config "
+AUTO_UPGRADE=true
+LOG_LEVEL=INFO
+DENY_LIST=
+SCHEDULE_HOURS=0,6,12,18
+"
+IMPORT_OUT=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" config import "${EXPORT_FILE}" 2>&1
+) || true
+assert_contains "config import: success message" "${IMPORT_OUT}" "applied"
+
+# ── Imported values are now in config file ────────────────────────────────────
+IMPORTED_CFG=$(cat "${TEST_CONFIG}/config.conf" 2>/dev/null || true)
+assert_contains "config import: AUTO_UPGRADE=false applied" "${IMPORTED_CFG}" "AUTO_UPGRADE=false"
+assert_contains "config import: LOG_LEVEL=DEBUG applied" "${IMPORTED_CFG}" "LOG_LEVEL=DEBUG"
+
+# ── config import rejects unknown keys ────────────────────────────────────────
+echo "FAKE_KEY=fake_value" >> "${EXPORT_FILE}"
+IMPORT_BAD=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" config import "${EXPORT_FILE}" 2>&1
+) || true
+assert_contains "config import: unknown key skipped" "${IMPORT_BAD}" "SKIP"
+
+# =============================================================================
+# §30  LOG_LEVEL config validation
+# =============================================================================
+section "§30  LOG_LEVEL config validation"
+
+# ── Valid log level accepted ──────────────────────────────────────────────────
+write_test_config "AUTO_UPGRADE=true"
+CFG_LL_OK=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" config set LOG_LEVEL WARN 2>&1
+) || true
+assert_contains "LOG_LEVEL validation: WARN accepted" "${CFG_LL_OK}" "→"
+
+# ── Invalid log level rejected ────────────────────────────────────────────────
+CFG_LL_BAD=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" config set LOG_LEVEL TRACE 2>&1
+) || true
+assert_contains "LOG_LEVEL validation: TRACE rejected" "${CFG_LL_BAD}" "DEBUG|INFO|WARN|ERROR|CRITICAL"
+
+# ── LOG_LEVEL appears in config show ──────────────────────────────────────────
+write_test_config "LOG_LEVEL=DEBUG"
+CFG_SHOW=$(
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" config show 2>&1
+) || true
+assert_contains "config show: LOG_LEVEL listed" "${CFG_SHOW}" "LOG_LEVEL"
+
+# =============================================================================
+# §31  Dashboard width — right border alignment
+# =============================================================================
+section "§31  Dashboard width — right border alignment"
+
+write_test_config "SCHEDULE_HOURS=0,6,12,18
+SCHEDULE_MINUTE=0
+LOG_LEVEL=INFO"
+
+# Generate a dashboard and check that every line with ║ ends with ║
+DASH_WIDTH=$(
+    COLUMNS=80 \
+    "${VIEWER_ENV[@]}" \
+    bash "${VIEWER_SCRIPT}" dashboard 2>&1
+) || true
+
+# Count lines that start with ║ but don't end with ║ (border mismatch)
+BROKEN_BORDERS=$(echo "${DASH_WIDTH}" | grep '^║' | grep -v '║$' | wc -l | tr -d ' ')
+assert_eq "dashboard: all content rows have right border" "${BROKEN_BORDERS}" "0"
+
+# Count lines that start with ╔/╠/╚ (borders) — should have matching right border
+BROKEN_TOP=$(echo "${DASH_WIDTH}" | grep -E '^[╔╠╚]' | grep -v -E '[╗╣╝]$' | wc -l | tr -d ' ')
+assert_eq "dashboard: all border rows have matching right border" "${BROKEN_TOP}" "0"
 
 # =============================================================================
 # FINAL REPORT

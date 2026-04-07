@@ -1,6 +1,6 @@
 # Homebrew Auto-Update
 
-Current release: 2.1.2
+Current release: 2.2.0
 
 Automated Homebrew package maintenance for macOS with two-tier logging, macOS notifications, and a built-in log viewer.
 
@@ -12,9 +12,11 @@ Runs as a background launchd daemon, updating your Homebrew packages 4 times dai
 - **4x daily execution** — Configurable launchd schedule (default: 12 AM, 6 AM, 12 PM, 6 PM)
 - **Two-tier logging** — Verbose detail logs (90 days) + concise summary logs (1 year)
 - **macOS notifications** — Alerts on errors; optional alerts on every run for verification
-- **Terminal dashboard** — `brew-logs dashboard` for a full graphical status overview with run history, stats, and package charts
+- **Terminal dashboard** — `brew-logs dashboard` for a full graphical status overview with run history, stats, and package charts; auto-adapts to terminal width with robust Unicode alignment
 - **Log viewer CLI** — `brew-logs` command for quick access to logs, status, and manual runs
 - **CLI config editor** — `brew-logs config get/set/reset` to manage settings without editing files
+- **Config export/import** — `brew-logs config export/import` for backup, transfer, or multi-system deployment
+- **Log severity** — Configurable `LOG_LEVEL` (DEBUG/INFO/WARN/ERROR/CRITICAL) controls log verbosity
 - **Configurable** — Single config file controls all behavior; changes take effect on next run
 - **Quiet hours** — Optional time window to suppress scheduled updates (manual runs always execute)
 - **Package filtering** — Deny list to pin packages, or allow list to whitelist specific packages
@@ -124,8 +126,8 @@ brew-logs list summary             # List only summary log files
 brew-logs config                   # Show all configuration values with types
 brew-logs config get KEY           # Show current value for a specific key
 brew-logs config set KEY VALUE     # Set a configuration value
-brew-logs config reset KEY         # Reset a key to its factory default
-
+brew-logs config reset KEY         # Reset a key to its factory defaultbrew-logs config export            Export config to file (for backup/transfer)
+brew-logs config import FILE       Import config from an export file
 # Schedule
 brew-logs schedule                 # Show current schedule and next run time
 brew-logs schedule reload          # Apply schedule changes from config.conf
@@ -159,6 +161,14 @@ All settings are in `~/.config/brew-autoupdate/config.conf`. Changes take effect
 Format: `KEY=value`. Inline comments are supported when preceded by a space (`KEY=value #comment`). A `#` within a value with no leading space is preserved (e.g., URLs with fragments).
 
 ### Settings Reference
+
+#### Log Level
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `LOG_LEVEL` | `INFO` | Minimum log severity: `DEBUG`, `INFO`, `WARN`, `ERROR`, `CRITICAL` |
+
+Set to `DEBUG` for maximum verbosity when troubleshooting, `WARN` or `ERROR` to reduce log noise. Structured `[STATS]` and `[PKG]` lines are always written regardless of level.
 
 #### Log Retention
 
@@ -234,8 +244,11 @@ You can manage all settings from the terminal without editing files directly:
 brew-logs config                              # Show all settings with types and defaults
 brew-logs config get DENY_LIST                # Get a single value
 brew-logs config set AUTO_UPGRADE false       # Set a value (validated by type)
+brew-logs config set LOG_LEVEL DEBUG          # Set log verbosity
 brew-logs config set DENY_LIST "node python"  # Space-separated package list
 brew-logs config reset UPGRADE_CASKS_GREEDY   # Reset to factory default
+brew-logs config export ~/brew-config.conf    # Export for backup or transfer
+brew-logs config import ~/brew-config.conf    # Import from another system
 ```
 
 Values are validated by type (bool, int, time, string) before being written. A `*` marker in the config display indicates values that differ from their factory default.

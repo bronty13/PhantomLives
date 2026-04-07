@@ -2,6 +2,39 @@
 
 All notable changes to Homebrew Auto-Update are documented in this file.
 
+## [2.2.0] - 2026-04-07
+
+### Features
+
+- **Log severity system** -- All log messages now include a severity tag (`[DEBUG]`, `[INFO]`, `[WARN]`, `[ERROR]`, `[CRITICAL]`). A new `LOG_LEVEL` config key controls the minimum severity written to logs. Set to `DEBUG` for maximum verbosity when troubleshooting, or `ERROR` to minimize log noise. Structured `[STATS]` and `[PKG]` lines are always written regardless of level to preserve dashboard data.
+- **Config export/import** -- New `brew-logs config export [FILE]` and `brew-logs config import FILE` commands enable configuration backup, transfer between systems, and multi-machine deployment. Exports include a system metadata header (hostname, macOS version, architecture, tool version). Imports validate each key before writing and report applied/skipped/errored counts.
+
+### Bug Fixes
+
+- **Fix dashboard right-border misalignment** -- Replaced `${#plain}` character counting with `wc -m` based visible-width measurement that correctly handles multi-byte Unicode characters (box-drawing glyphs, check marks, bullets). Dashboard content rows are now measured and padded to exactly `_IW` visible columns.
+- **Fix dashboard header crash on narrow terminals** -- The header row gap between title and timestamp is now clamped to a minimum of 1, preventing negative-width `printf` errors when terminal width is close to the minimum 72 columns.
+
+### Improvements
+
+- **New config type: `loglevel`** -- The config validation system now recognizes `LOG_LEVEL` as a dedicated `loglevel` type, accepting only `DEBUG|INFO|WARN|ERROR|CRITICAL` (case-insensitive). Invalid values are rejected with a clear error message.
+- **`LOG_LEVEL` in config show/get/set** -- `LOG_LEVEL` appears in `brew-logs config` output, supports `get`/`set`/`reset`, and is included in config exports.
+
+### Tests
+
+- Added §28: LOG_LEVEL severity filtering (5 tests) -- verifies INFO/DEBUG/ERROR level filtering and that STATS lines bypass filtering.
+- Added §29: Config export/import (8 tests) -- verifies export file creation, content, metadata header, import application, and unknown-key skipping.
+- Added §30: LOG_LEVEL config validation (3 tests) -- verifies valid/invalid levels and config show listing.
+- Added §31: Dashboard width border alignment (2 tests) -- verifies all content and border rows have correct right-side borders.
+- Updated test for pre-update hook warning message to match new severity-tagged format.
+- Total test target: ~191 cases (up from ~173).
+
+### Documentation
+
+- Updated README with LOG_LEVEL, config export/import features, and new settings reference.
+- Updated User Manual with new Log Level and Config Export/Import sections, updated TOC, config types table, command reference, and alphabetical command index.
+- Updated config.conf with LOG_LEVEL section and inline documentation.
+- Updated version references across all scripts and docs to 2.2.0.
+
 ## [2.1.2] - 2026-04-06
 
 ### Bug Fixes

@@ -1,6 +1,6 @@
 # Homebrew Auto-Update User Manual
 
-**Version 2.1.2**
+**Version 2.2.0**
 
 A complete guide to installing, configuring, and managing the Homebrew Auto-Update system for macOS.
 
@@ -20,13 +20,15 @@ A complete guide to installing, configuring, and managing the Homebrew Auto-Upda
 10. [Quiet Hours](#quiet-hours)
 11. [Hooks](#hooks)
 12. [Notifications](#notifications)
-13. [Daemon Management](#daemon-management)
-14. [Uninstalling](#uninstalling)
-15. [Troubleshooting](#troubleshooting)
-16. [Architecture Reference](#architecture-reference)
-17. [Command Reference](#command-reference)
-18. [Configuration Reference](#configuration-reference)
-19. [Appendix: Alphabetical Command Index](#appendix-alphabetical-command-index)
+13. [Log Level](#log-level)
+14. [Config Export / Import](#config-export--import)
+15. [Daemon Management](#daemon-management)
+16. [Uninstalling](#uninstalling)
+17. [Troubleshooting](#troubleshooting)
+18. [Architecture Reference](#architecture-reference)
+19. [Command Reference](#command-reference)
+20. [Configuration Reference](#configuration-reference)
+21. [Appendix: Alphabetical Command Index](#appendix-alphabetical-command-index)
 
 ---
 
@@ -278,6 +280,7 @@ Values are validated by type before being written:
 | `bool` | Must be `true` or `false` | `AUTO_UPGRADE`, `NOTIFY_ON_ERROR` |
 | `int` | Must be a non-negative integer | `DETAIL_LOG_RETENTION_DAYS`, `SCHEDULE_MINUTE` |
 | `time` | Must be `HH:MM` format (24-hour) | `QUIET_HOURS_START`, `QUIET_HOURS_END` |
+| `loglevel` | Must be `DEBUG`, `INFO`, `WARN`, `ERROR`, or `CRITICAL` | `LOG_LEVEL` |
 | `string` | Any value accepted | `DENY_LIST`, `BREW_PATH`, `PRE_UPDATE_HOOK` |
 
 Examples:
@@ -508,6 +511,92 @@ brew-logs config set NOTIFY_ON_ERROR true
 
 ---
 
+## Log Level
+
+Control the verbosity of log output with the `LOG_LEVEL` setting. This determines the minimum severity of messages written to both detail and summary logs.
+
+### Severity Levels
+
+| Level | Numeric | What Gets Logged |
+|-------|---------|------------------|
+| `DEBUG` | 0 | Everything: config dumps, brew command output, filtering decisions, rotation details |
+| `INFO` | 1 | Normal operation: start/stop, completions, what changed, outdated packages |
+| `WARN` | 2 | Warnings: non-fatal errors, hook failures, upgrade issues, stale locks |
+| `ERROR` | 3 | Errors: step failures that affect the update cycle |
+| `CRITICAL` | 4 | Critical errors only (e.g., Homebrew not found) |
+
+### Setting the Log Level
+
+```bash
+# Default: INFO (recommended for normal use)
+brew-logs config set LOG_LEVEL INFO
+
+# Maximum verbosity for troubleshooting
+brew-logs config set LOG_LEVEL DEBUG
+
+# Quiet: only warnings and errors
+brew-logs config set LOG_LEVEL WARN
+
+# Minimal: only errors
+brew-logs config set LOG_LEVEL ERROR
+```
+
+### Important Notes
+
+- **Structured data is always written.** The `[STATS]` and `[PKG]` lines used by the dashboard are always appended to summary logs regardless of `LOG_LEVEL`. This ensures dashboard statistics are always available even at `ERROR` or `CRITICAL` level.
+- **Recommended workflow:** Use `INFO` for normal operation, switch to `DEBUG` temporarily when troubleshooting issues.
+- Log entries include the severity tag in the format: `[2026-04-07 12:00:01] [INFO] message`
+
+---
+
+## Config Export / Import
+
+Transfer your configuration between systems or create backups using export and import.
+
+### Exporting Configuration
+
+```bash
+# Export to default location (~/brew-autoupdate-config-export.conf)
+brew-logs config export
+
+# Export to a specific file
+brew-logs config export ~/Desktop/my-brew-config.conf
+```
+
+The export file includes:
+- A metadata header with the export timestamp, hostname, macOS version, architecture, and tool version
+- All current configuration key/value pairs
+
+### Importing Configuration
+
+```bash
+# Import from a file
+brew-logs config import ~/Desktop/my-brew-config.conf
+
+# Import from an export created on another machine
+brew-logs config import /Volumes/USB/brew-config.conf
+```
+
+During import:
+- Each key is validated before being written
+- Unknown keys are skipped with a warning
+- Invalid values are reported as errors
+- A summary shows how many settings were applied, skipped, and errored
+- Schedule changes still require `brew-logs schedule reload` after import
+
+### Multi-System Workflow
+
+```bash
+# On your primary Mac:
+brew-logs config export ~/Dropbox/brew-autoupdate.conf
+
+# On a new Mac (after installing brew-autoupdate):
+brew-logs config import ~/Dropbox/brew-autoupdate.conf
+brew-logs schedule reload   # if schedule was customized
+```
+
+---
+
 ## Daemon Management
 
 The auto-update system runs as a per-user `launchd` agent. It starts automatically when you log in and persists across reboots.
@@ -729,6 +818,8 @@ All commands are invoked as `brew-logs <command>`. Running `brew-logs` with no a
 | `config get KEY` | | Show the current value and type for a key |
 | `config set KEY VALUE` | | Set a configuration value (validated) |
 | `config reset KEY` | | Reset a key to its factory default |
+| `config export [FILE]` | | Export config to file for backup or transfer |
+| `config import FILE` | | Import config from an export file |
 | `schedule [show]` | `sched` | Show current schedule and next run time |
 | `schedule reload` | | Regenerate plist and reload daemon with new schedule |
 | `run` | `r` | Trigger a manual update cycle (foreground) |
@@ -739,6 +830,12 @@ All commands are invoked as `brew-logs <command>`. Running `brew-logs` with no a
 ## Configuration Reference
 
 Complete list of all settings, their types, default values, and descriptions.
+
+### Log Level
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `LOG_LEVEL` | loglevel | `INFO` | Minimum log severity: `DEBUG`, `INFO`, `WARN`, `ERROR`, `CRITICAL` |
 
 ### Log Retention
 
@@ -811,7 +908,9 @@ A flat, alphabetical list of every `brew-logs` command and subcommand for quick 
 |---------|-------|-------------|
 | `brew-logs` | | Show the latest detail log (same as `brew-logs detail`) |
 | `brew-logs config` | `brew-logs c` | Show all configuration values with types and defaults |
+| `brew-logs config export [FILE]` | | Export all configuration to a file (default: `~/brew-autoupdate-config-export.conf`) |
 | `brew-logs config get KEY` | | Show the current value, type, and default for a single key |
+| `brew-logs config import FILE` | | Import configuration from an export file (validates each key) |
 | `brew-logs config reset KEY` | | Reset a key to its factory default value |
 | `brew-logs config set KEY VALUE` | | Set a configuration value (validated by type before writing) |
 | `brew-logs dashboard` | `brew-logs dash` | Full-terminal graphical dashboard with status, stats, and charts |

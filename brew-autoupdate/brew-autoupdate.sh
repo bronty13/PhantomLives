@@ -4,7 +4,7 @@
 #  HOMEBREW AUTO-UPDATE DAEMON SCRIPT
 #
 #  File:        brew-autoupdate.sh
-#  Version:     2.1.2
+#  Version:     2.2.0
 #  Author:      Generated with Claude Code
 #  License:     MIT
 #  Requires:    macOS, Homebrew, bash 3.2+
@@ -64,7 +64,7 @@ set -euo pipefail
 # ============================================================================
 # VERSION
 # ============================================================================
-BAU_VERSION="2.1.2"
+BAU_VERSION="2.2.0"
 
 # ============================================================================
 # PATH AND DIRECTORY SETUP
@@ -91,6 +91,7 @@ SUMMARY_LOG="${SUMMARY_LOG_DIR}/${DATE_STAMP}.log"
 # ============================================================================
 # DEFAULT CONFIGURATION VALUES
 # ============================================================================
+LOG_LEVEL=INFO                    # Minimum severity to log: DEBUG|INFO|WARN|ERROR|CRITICAL
 DETAIL_LOG_RETENTION_DAYS=90      # Days to keep verbose detail logs
 SUMMARY_LOG_RETENTION_DAYS=365    # Days to keep summary update logs
 NOTIFY_ON_EVERY_RUN=true          # macOS notification after each run
@@ -129,6 +130,7 @@ if [[ -f "${CONFIG_FILE}" ]]; then
         [[ -z "${key}" || "${key}" == \#* ]] && continue
         value="$(printf '%s' "${value}" | sed 's/[[:space:]]#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//')"
         case "${key}" in
+            LOG_LEVEL|\
             DETAIL_LOG_RETENTION_DAYS|SUMMARY_LOG_RETENTION_DAYS|\
             NOTIFY_ON_EVERY_RUN|NOTIFY_ON_ERROR|\
             AUTO_UPGRADE|AUTO_CLEANUP|CLEANUP_OLDER_THAN_DAYS|\
@@ -204,20 +206,94 @@ if [[ -n "${BREW_ENV}" ]]; then
 fi
 
 # ============================================================================
+# LOG SEVERITY SYSTEM
+# ============================================================================
+# Severity levels (numeric for comparison):
+#   DEBUG=0  INFO=1  WARN=2  ERROR=3  CRITICAL=4
+#
+# The LOG_LEVEL config key sets the minimum severity that gets written.
+# Messages below the threshold are silently discarded. This applies to
+# both detail and summary logs.
+# ----------------------------------------------------------------------------
+_severity_to_num() {
+    local level
+    level=$(printf '%s' "${1}" | tr '[:lower:]' '[:upper:]')
+    case "${level}" in
+        DEBUG)    echo 0 ;;
+        INFO)     echo 1 ;;
+        WARN)     echo 2 ;;
+        ERROR)    echo 3 ;;
+        CRITICAL) echo 4 ;;
+        *)        echo 1 ;;   # unknown → INFO
+    esac
+}
+
+# _should_log <severity>
+#   Returns 0 (true) if the message severity meets the configured threshold.
+_should_log() {
+    local msg_level configured_level
+    msg_level=$(_severity_to_num "${1}")
+    configured_level=$(_severity_to_num "${LOG_LEVEL}")
+    [[ ${msg_level} -ge ${configured_level} ]]
+}
+
+# ============================================================================
 # LOGGING FUNCTIONS
 # ============================================================================
+# All logging functions accept an optional severity tag as the first argument.
+# If the first argument matches a known severity (DEBUG|INFO|WARN|ERROR|CRITICAL),
+# it is used as the tag; otherwise it defaults to INFO.
+#
+# Usage:
+#   log_detail "message"              → [timestamp] [INFO] message
+#   log_detail DEBUG "verbose info"   → [timestamp] [DEBUG] verbose info
+#   log_detail ERROR "something bad"  → [timestamp] [ERROR] something bad
+# ----------------------------------------------------------------------------
+
+_parse_severity() {
+    local upper
+    upper=$(printf '%s' "${1}" | tr '[:lower:]' '[:upper:]')
+    case "${upper}" in
+        DEBUG|INFO|WARN|ERROR|CRITICAL) echo "${upper}" ;;
+        *) echo "" ;;
+    esac
+}
 
 log_detail() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "${DETAIL_LOG}"
+    local severity msg
+    severity=$(_parse_severity "${1:-}")
+    if [[ -n "${severity}" ]]; then
+        shift; msg="$*"
+    else
+        severity="INFO"; msg="$*"
+    fi
+    _should_log "${severity}" || return 0
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [${severity}] ${msg}" | tee -a "${DETAIL_LOG}"
 }
 
 log_summary() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "${SUMMARY_LOG}"
+    local severity msg
+    severity=$(_parse_severity "${1:-}")
+    if [[ -n "${severity}" ]]; then
+        shift; msg="$*"
+    else
+        severity="INFO"; msg="$*"
+    fi
+    _should_log "${severity}" || return 0
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [${severity}] ${msg}" >> "${SUMMARY_LOG}"
 }
 
 log_both() {
-    log_detail "$*"
-    log_summary "$*"
+    local severity msg
+    severity=$(_parse_severity "${1:-}")
+    if [[ -n "${severity}" ]]; then
+        shift; msg="$*"
+    else
+        severity="INFO"; msg="$*"
+    fi
+    _should_log "${severity}" || return 0
+    log_detail "${severity}" "${msg}"
+    log_summary "${severity}" "${msg}"
 }
 
 exec > >(tee -a "${DETAIL_LOG}") 2>&1
@@ -280,18 +356,18 @@ acquire_lock() {
 
     lock_pid="$(cat "${LOCK_FILE}" 2>/dev/null || echo "")"
     if [[ -n "${lock_pid}" ]] && kill -0 "${lock_pid}" 2>/dev/null; then
-        log_both "SKIP: Another instance (PID ${lock_pid}) is already running."
+        log_both WARN "SKIP: Another instance (PID ${lock_pid}) is already running."
         exit 0
     fi
 
-    log_detail "Stale lock file found (PID ${lock_pid} not running). Removing."
+    log_detail WARN "Stale lock file found (PID ${lock_pid} not running). Removing."
     rm -f "${LOCK_FILE}"
 
     if ( set -o noclobber; printf '%s\n' "$$" > "${LOCK_FILE}" ) 2>/dev/null; then
         trap 'rm -f "${LOCK_FILE}"' EXIT
     else
         lock_pid="$(cat "${LOCK_FILE}" 2>/dev/null || echo "unknown")"
-        log_both "SKIP: Another instance (PID ${lock_pid}) acquired the lock first."
+        log_both WARN "SKIP: Another instance (PID ${lock_pid}) acquired the lock first."
         exit 0
     fi
 }
@@ -300,7 +376,7 @@ acquire_lock() {
 # LOG ROTATION
 # ============================================================================
 rotate_logs() {
-    log_detail "--- Log rotation ---"
+    log_detail DEBUG "--- Log rotation ---"
 
     local detail_deleted=0
     local summary_deleted=0
@@ -315,9 +391,9 @@ rotate_logs() {
         summary_deleted=$(( summary_deleted + 1 ))
     done < <(find "${SUMMARY_LOG_DIR}" -name "*.log" -type f -mtime +"${SUMMARY_LOG_RETENTION_DAYS}" -print0 2>/dev/null)
 
-    log_detail "Rotated: ${detail_deleted} detail logs (>${DETAIL_LOG_RETENTION_DAYS}d), ${summary_deleted} summary logs (>${SUMMARY_LOG_RETENTION_DAYS}d)"
+    log_detail DEBUG "Rotated: ${detail_deleted} detail logs (>${DETAIL_LOG_RETENTION_DAYS}d), ${summary_deleted} summary logs (>${SUMMARY_LOG_RETENTION_DAYS}d)"
     if [[ ${detail_deleted} -gt 0 || ${summary_deleted} -gt 0 ]]; then
-        log_summary "Log rotation: removed ${detail_deleted} detail, ${summary_deleted} summary logs"
+        log_summary DEBUG "Log rotation: removed ${detail_deleted} detail, ${summary_deleted} summary logs"
     fi
 }
 
@@ -347,7 +423,7 @@ main() {
         local current_time
         current_time="$(date '+%H:%M')"
         if is_quiet_hours "${current_time}" "${QUIET_HOURS_START}" "${QUIET_HOURS_END}"; then
-            log_both "SKIP: Quiet hours active (${current_time} within ${QUIET_HOURS_START}-${QUIET_HOURS_END})"
+            log_both INFO "SKIP: Quiet hours active (${current_time} within ${QUIET_HOURS_START}-${QUIET_HOURS_END})"
             exit 0
         fi
     fi
@@ -355,13 +431,13 @@ main() {
     log_both "========================================="
     log_both "Brew Auto-Update v${BAU_VERSION} starting"
     log_both "========================================="
-    log_detail "Config: AUTO_UPGRADE=${AUTO_UPGRADE}, AUTO_CLEANUP=${AUTO_CLEANUP}, AUTO_REMOVE=${AUTO_REMOVE}"
-    log_detail "Config: UPGRADE_CASKS=${UPGRADE_CASKS}, UPGRADE_CASKS_GREEDY=${UPGRADE_CASKS_GREEDY}"
-    log_detail "Config: DENY_LIST='${DENY_LIST}', ALLOW_LIST='${ALLOW_LIST}'"
-    log_detail "Config: QUIET_HOURS_ENABLED=${QUIET_HOURS_ENABLED} (${QUIET_HOURS_START}-${QUIET_HOURS_END})"
-    log_detail "Config: DETAIL_RETENTION=${DETAIL_LOG_RETENTION_DAYS}d, SUMMARY_RETENTION=${SUMMARY_LOG_RETENTION_DAYS}d"
-    log_detail "Brew: ${BREW} ($(${BREW} --version 2>/dev/null | head -1))"
-    log_detail "macOS: $(sw_vers -productVersion 2>/dev/null || echo 'unknown')"
+    log_detail DEBUG "Config: LOG_LEVEL=${LOG_LEVEL}, AUTO_UPGRADE=${AUTO_UPGRADE}, AUTO_CLEANUP=${AUTO_CLEANUP}, AUTO_REMOVE=${AUTO_REMOVE}"
+    log_detail DEBUG "Config: UPGRADE_CASKS=${UPGRADE_CASKS}, UPGRADE_CASKS_GREEDY=${UPGRADE_CASKS_GREEDY}"
+    log_detail DEBUG "Config: DENY_LIST='${DENY_LIST}', ALLOW_LIST='${ALLOW_LIST}'"
+    log_detail DEBUG "Config: QUIET_HOURS_ENABLED=${QUIET_HOURS_ENABLED} (${QUIET_HOURS_START}-${QUIET_HOURS_END})"
+    log_detail DEBUG "Config: DETAIL_RETENTION=${DETAIL_LOG_RETENTION_DAYS}d, SUMMARY_RETENTION=${SUMMARY_LOG_RETENTION_DAYS}d"
+    log_detail DEBUG "Brew: ${BREW} ($(${BREW} --version 2>/dev/null | head -1))"
+    log_detail DEBUG "macOS: $(sw_vers -productVersion 2>/dev/null || echo 'unknown')"
 
     acquire_lock
 
@@ -371,11 +447,11 @@ main() {
     # -------------------------------------------------------------------------
     if [[ -n "${PRE_UPDATE_HOOK}" ]]; then
         log_both "--- Pre-update hook ---"
-        log_detail "Running: ${PRE_UPDATE_HOOK}"
+        log_detail DEBUG "Running: ${PRE_UPDATE_HOOK}"
         if bash -c "${PRE_UPDATE_HOOK}" >> "${DETAIL_LOG}" 2>&1; then
-            log_both "Pre-update hook completed successfully"
+            log_both INFO "Pre-update hook completed successfully"
         else
-            log_both "WARNING: Pre-update hook exited with non-zero status (continuing)"
+            log_both WARN "Pre-update hook exited with non-zero status (continuing)"
         fi
     fi
 
@@ -385,28 +461,28 @@ main() {
     log_both "--- brew update ---"
     if ! ${BREW} update --verbose 2>&1; then
         errors+=("brew update failed")
-        log_both "ERROR: brew update failed"
+        log_both ERROR "brew update failed"
     else
-        log_both "brew update completed successfully"
+        log_both INFO "brew update completed successfully"
     fi
 
     # -----------------------------------------------------------------
     # STEP 2: Check for outdated packages
     # -----------------------------------------------------------------
-    log_detail "--- Checking outdated packages ---"
+    log_detail DEBUG "--- Checking outdated packages ---"
     local outdated_output
     outdated_output="$(${BREW} outdated --verbose 2>&1)" || true
     if [[ -n "${outdated_output}" ]]; then
-        log_detail "Outdated packages:"
-        log_detail "${outdated_output}"
+        log_detail DEBUG "Outdated packages:"
+        log_detail DEBUG "${outdated_output}"
     else
-        log_detail "Outdated packages: (none)"
+        log_detail DEBUG "Outdated packages: (none)"
     fi
 
     if [[ -z "${outdated_output}" ]]; then
-        log_both "No outdated packages found."
+        log_both INFO "No outdated packages found."
     else
-        log_summary "Outdated: ${outdated_output}"
+        log_summary INFO "Outdated: ${outdated_output}"
     fi
 
     # -----------------------------------------------------------------
@@ -457,7 +533,7 @@ main() {
                     for denied in ${DENY_LIST}; do
                         if [[ "${pkg}" == "${denied}" ]]; then
                             include=false
-                            log_detail "DENY_LIST: skipping ${pkg}"
+                            log_detail DEBUG "DENY_LIST: skipping ${pkg}"
                             break
                         fi
                     done
@@ -473,7 +549,7 @@ main() {
                         fi
                     done
                     if [[ "${include}" == "false" ]]; then
-                        log_detail "ALLOW_LIST: skipping ${pkg}"
+                        log_detail DEBUG "ALLOW_LIST: skipping ${pkg}"
                     fi
                 fi
 
@@ -481,9 +557,9 @@ main() {
             done
 
             if [[ ${#filtered_packages[@]} -gt 0 ]]; then
-                log_both "Filtered upgrade targets (${#filtered_packages[@]}): ${filtered_packages[*]}"
+                log_both INFO "Filtered upgrade targets (${#filtered_packages[@]}): ${filtered_packages[*]}"
             else
-                log_both "No packages to upgrade after allow/deny filtering."
+                log_both INFO "No packages to upgrade after allow/deny filtering."
             fi
         fi
 
@@ -498,17 +574,17 @@ main() {
             upgrade_exit=0
         elif [[ "${use_pkg_filter}" == "true" ]]; then
             upgrade_output="$(${BREW} upgrade "${upgrade_args[@]}" "${filtered_packages[@]}" 2>&1)" || upgrade_exit=$?
-            log_detail "${upgrade_output}"
+            log_detail DEBUG "${upgrade_output}"
         else
             upgrade_output="$(${BREW} upgrade "${upgrade_args[@]}" 2>&1)" || upgrade_exit=$?
-            log_detail "${upgrade_output}"
+            log_detail DEBUG "${upgrade_output}"
         fi
 
         if [[ ${upgrade_exit} -eq 0 ]]; then
-            log_both "brew upgrade completed successfully"
+            log_both INFO "brew upgrade completed successfully"
         else
             errors+=("brew upgrade had errors")
-            log_both "WARNING: brew upgrade completed with errors"
+            log_both WARN "brew upgrade completed with errors"
         fi
 
         # Diff before/after package lists to record exactly what changed
@@ -517,8 +593,8 @@ main() {
 
         changes="$(diff <(echo "${pre_list}") <(echo "${post_list}") 2>/dev/null | grep '^[<>]' || true)"
         if [[ -n "${changes}" ]]; then
-            log_both "Package changes:"
-            log_both "${changes}"
+            log_both INFO "Package changes:"
+            log_both INFO "${changes}"
 
             # Collect upgraded package names (lines starting with ">")
             while IFS= read -r line; do
@@ -533,7 +609,7 @@ main() {
             done <<< "${changes}"
         fi
     else
-        log_both "Auto-upgrade disabled, skipping."
+        log_both INFO "Auto-upgrade disabled, skipping."
     fi
 
     # -----------------------------------------------------------------
@@ -548,12 +624,12 @@ main() {
 
         local cleanup_output
         if cleanup_output="$(${BREW} cleanup "${cleanup_args[@]}" 2>&1)"; then
-            log_detail "${cleanup_output}"
-            log_both "brew cleanup completed"
+            log_detail DEBUG "${cleanup_output}"
+            log_both INFO "brew cleanup completed"
         else
-            log_detail "${cleanup_output}"
+            log_detail DEBUG "${cleanup_output}"
             errors+=("brew cleanup had errors")
-            log_both "WARNING: brew cleanup had errors"
+            log_both WARN "brew cleanup had errors"
         fi
     fi
 
@@ -564,26 +640,26 @@ main() {
         log_both "--- brew autoremove ---"
         local autoremove_output
         if autoremove_output="$(${BREW} autoremove --verbose 2>&1)"; then
-            log_detail "${autoremove_output}"
-            log_both "brew autoremove completed"
+            log_detail DEBUG "${autoremove_output}"
+            log_both INFO "brew autoremove completed"
         else
-            log_detail "${autoremove_output}"
+            log_detail DEBUG "${autoremove_output}"
             errors+=("brew autoremove had errors")
-            log_both "WARNING: brew autoremove had errors"
+            log_both WARN "brew autoremove had errors"
         fi
     fi
 
     # -----------------------------------------------------------------
     # STEP 6: brew doctor (diagnostic, non-fatal)
     # -----------------------------------------------------------------
-    log_detail "--- brew doctor ---"
+    log_detail DEBUG "--- brew doctor ---"
     local doctor_output
     if doctor_output="$(${BREW} doctor 2>&1)"; then
-        log_detail "${doctor_output}"
-        log_detail "brew doctor: all clear"
+        log_detail DEBUG "${doctor_output}"
+        log_detail INFO "brew doctor: all clear"
     else
-        log_detail "${doctor_output}"
-        log_detail "brew doctor reported warnings (non-fatal)"
+        log_detail DEBUG "${doctor_output}"
+        log_detail WARN "brew doctor reported warnings (non-fatal)"
     fi
 
     # -----------------------------------------------------------------
@@ -597,11 +673,11 @@ main() {
     # -----------------------------------------------------------------
     if [[ -n "${POST_UPDATE_HOOK}" ]]; then
         log_both "--- Post-update hook ---"
-        log_detail "Running: ${POST_UPDATE_HOOK}"
+        log_detail DEBUG "Running: ${POST_UPDATE_HOOK}"
         if bash -c "${POST_UPDATE_HOOK}" >> "${DETAIL_LOG}" 2>&1; then
-            log_both "Post-update hook completed successfully"
+            log_both INFO "Post-update hook completed successfully"
         else
-            log_both "WARNING: Post-update hook exited with non-zero status"
+            log_both WARN "Post-update hook exited with non-zero status"
         fi
     fi
 
@@ -617,9 +693,9 @@ main() {
     log_both "========================================="
     log_both "Brew Auto-Update finished in ${duration}s"
     if [[ ${#errors[@]} -gt 0 ]]; then
-        log_both "ERRORS (${#errors[@]}): ${errors[*]}"
+        log_both ERROR "ERRORS (${#errors[@]}): ${errors[*]}"
     else
-        log_both "Status: SUCCESS (no errors)"
+        log_both INFO "Status: SUCCESS (no errors)"
     fi
     log_both "========================================="
 
@@ -629,10 +705,12 @@ main() {
     # consumed by the 'brew-logs dashboard' command. The [STATS] line
     # provides per-run metrics; [PKG] lines record individual upgrades
     # for package-frequency statistics.
+    # Written directly to bypass severity filtering — structural data
+    # that must always be recorded regardless of LOG_LEVEL.
     # -----------------------------------------------------------------
-    log_summary "[STATS] duration=${duration} status=${status_word} upgrades=${total_upgrades}"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [STATS] duration=${duration} status=${status_word} upgrades=${total_upgrades}" >> "${SUMMARY_LOG}"
     for pkg in ${upgraded_packages[@]+"${upgraded_packages[@]}"}; do
-        log_summary "[PKG] ${pkg}"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] [PKG] ${pkg}" >> "${SUMMARY_LOG}"
     done
 
     # --- macOS Notification Center alerts ---
