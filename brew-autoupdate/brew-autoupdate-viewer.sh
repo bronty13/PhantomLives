@@ -145,9 +145,11 @@ _dash_bot() {
     printf '╚%*s╝\n' $(( _W - 2 )) "" | tr ' ' '═'
 }
 _dash_thin() {
-    # Thin horizontal rule inside a section (does NOT span borders)
-    # Uses same printf+tr pattern for perfect width alignment.
-    printf '║ %*s ║\n' $(( _IW )) "" | tr ' ' '─'
+    # Thin horizontal rule inside a section (does NOT span borders).
+    # Build a string of exactly _IW '─' characters, then frame with borders.
+    local dashes
+    dashes=$(printf '%*s' $(( _IW )) "" | tr ' ' '─')
+    printf '║ %s ║\n' "${dashes}"
 }
 
 # _dash_visible_width <string>
