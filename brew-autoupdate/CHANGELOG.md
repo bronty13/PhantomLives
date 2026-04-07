@@ -2,6 +2,24 @@
 
 All notable changes to Homebrew Auto-Update are documented in this file.
 
+## [2.3.0] - 2026-04-07
+
+### Refactor
+
+- **Complete dashboard rendering engine rewrite** -- Replaced the entire dashboard rendering system with a new architecture designed to make border misalignment impossible. Every visible row now passes through a single emitter function (`_d_emit`) that computes width exclusively from plain text. ANSI escape codes are never included in width calculations.
+
+### Architecture (Dashboard Engine)
+
+- **Golden Rule enforcement** -- `printf %-Ns` is never applied to strings containing ANSI escape codes. The "pad then color" pattern is used everywhere: each field is padded as plain text first, then wrapped in ANSI color codes. This eliminates the root cause of all previous border alignment bugs.
+- **Atomic border lines** -- All horizontal borders (`_d_top`, `_d_mid`, `_d_bot`, `_d_rule`) use `printf '%*s' | tr` to generate fill characters in a single atomic operation, with borders framed separately so `tr` never touches padding spaces.
+- **Unicode-safe width measurement** -- `_d_width()` uses `wc -m` under a forced UTF-8 locale for correct character counting of Unicode symbols (✓, ✗, ●, █, etc.).
+- **Consolidated API** -- Old fragmented functions (`_dash_row`, `_dash_kv`, `_dash_pkg_bar`, `_dash_visible_width`, etc.) replaced with a clean set: `_d_emit`, `_d_heading`, `_d_kv`, `_d_text`, `_d_bar`, `_d_blank`, `_d_rule`.
+
+### Tests
+
+- All 183 tests passing including §31 dashboard border alignment checks.
+- Dashboard verified with zero broken content rows and zero broken border rows.
+
 ## [2.2.0] - 2026-04-07
 
 ### Features

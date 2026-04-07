@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 #
-#  REGRESSION TEST SUITE — brew-autoupdate v2.2.0
+#  REGRESSION TEST SUITE — brew-autoupdate v2.3.0
 #
 #  File:     test_brew_autoupdate.sh
 #  Requires: macOS, bash 3.2+, plutil (bundled with macOS)
@@ -438,7 +438,7 @@ reset_logs() {
 # PRINT TEST SUITE HEADER
 # =============================================================================
 printf "\n${C_BOLD}${C_CYAN}╔══════════════════════════════════════════════════════════════╗${C_NC}\n"
-printf "${C_BOLD}${C_CYAN}║  brew-autoupdate v2.2.0  —  Regression Test Suite            ║${C_NC}\n"
+printf "${C_BOLD}${C_CYAN}║  brew-autoupdate v2.3.0  —  Regression Test Suite            ║${C_NC}\n"
 printf "${C_BOLD}${C_CYAN}╚══════════════════════════════════════════════════════════════╝${C_NC}\n"
 printf "   main:    %s\n" "${MAIN_SCRIPT_SRC}"
 printf "   viewer:  %s\n" "${VIEWER_SCRIPT}"

@@ -40,7 +40,7 @@
 # ============================================================================
 # VERSION
 # ============================================================================
-BAU_VERSION="2.2.0"
+BAU_VERSION="2.3.0"
 
 # ============================================================================
 # DIRECTORY AND FILE PATH CONSTANTS
@@ -117,102 +117,165 @@ read_cfg() {
 #   Config     - current key settings at a glance
 # ============================================================================
 
-# ---------------------------------------------------------------------------
-# Dashboard width globals (set by _dash_init)
-# ---------------------------------------------------------------------------
-_W=80       # terminal width in columns
-_IW=76      # inner width  = _W - 4  (accounts for "║ " + " ║")
+# ============================================================================
+# DASHBOARD RENDERING ENGINE
+# ============================================================================
+#
+# Architecture
+# ------------
+# Every visible dashboard row passes through exactly ONE function: _d_emit().
+# _d_emit receives a PLAIN text string (used exclusively for width math)
+# and an optional DISPLAY string (may contain ANSI escape codes for color).
+# Padding is always computed from the plain string and appended AFTER the
+# display string, making it impossible for ANSI codes to affect alignment.
+#
+# Golden Rules (enforced by this architecture)
+# ---------------------------------------------
+#  1. NEVER use  printf %-Ns  on a string containing ANSI escape codes.
+#     Bash counts escape bytes in the width, producing wrong padding.
+#  2. NEVER use  tr ' ' 'X'  on a complete bordered line.
+#     It replaces the padding spaces inside "║ " and " ║" too.
+#  3. ALL width math uses the plain string's visible character count.
+#  4. ALL trailing padding is plain spaces appended after the display text.
+#
+# Safe pattern for colored columns
+# ----------------------------------
+#   Option A  "pad then color":
+#     printf -v padded '%-8s' "✓ OK"       # → "✓ OK    "
+#     colored="${GREEN}${padded}${NC}"       # color wraps the padded string
+#
+#   Option B  "color then manual pad":
+#     colored="${GREEN}✓ OK${NC}"
+#     pad=$(( 8 - ${#plain_text} ))
+#     colored+="$(printf '%*s' ${pad} '')"  # explicit space padding
+#
+# ============================================================================
 
-_dash_init() {
-    _W=$(tput cols 2>/dev/null || echo 80)
-    [[ ${_W} -lt 72 ]] && _W=72
-    _IW=$(( _W - 4 ))
+_D_W=80        # total box width in terminal columns
+_D_IW=76       # inner content width = _D_W − 4  (for "║ " left + " ║" right)
+
+# _d_init — detect terminal width; enforce minimum; compute inner width.
+_d_init() {
+    _D_W=$(tput cols 2>/dev/null || echo 80)
+    (( _D_W < 72 )) && _D_W=72
+    _D_IW=$(( _D_W - 4 ))
+}
+
+# _d_width <string>
+#   Returns the visible character count of a plain-text string.
+#   Input MUST NOT contain ANSI escape codes.
+#   Uses wc -m under a UTF-8 locale for correct Unicode character counting.
+_d_width() {
+    printf '%s' "$1" | LC_ALL=en_US.UTF-8 wc -m | tr -d ' '
 }
 
 # ---------------------------------------------------------------------------
-# Border-line drawing functions
+# Horizontal border lines  (no content — just structural box edges)
 # ---------------------------------------------------------------------------
-# These functions use printf width specifiers + tr for guaranteed perfect
-# alignment. The width calculation via printf is atomic and precise, ensuring
-# the box lines are always exactly the right width—no off-by-one errors.
-_dash_top() {
-    printf '╔%*s╗\n' $(( _W - 2 )) "" | tr ' ' '═'
+# Built with  printf '%*s' | tr ' ' FILL  which is atomic and exact:
+# the fill is generated as N spaces then converted, so width is guaranteed.
+_d_hline() {   # $1=left-corner  $2=fill-char  $3=right-corner
+    local fill
+    fill=$(printf '%*s' $(( _D_W - 2 )) '' | tr ' ' "$2")
+    printf '%s%s%s\n' "$1" "${fill}" "$3"
 }
-_dash_div() {
-    printf '╠%*s╣\n' $(( _W - 2 )) "" | tr ' ' '═'
-}
-_dash_bot() {
-    printf '╚%*s╝\n' $(( _W - 2 )) "" | tr ' ' '═'
-}
-_dash_thin() {
-    # Thin horizontal rule inside a section (does NOT span borders).
-    # Build a string of exactly _IW '─' characters, then frame with borders.
+_d_top()  { _d_hline '╔' '═' '╗'; }
+_d_mid()  { _d_hline '╠' '═' '╣'; }
+_d_bot()  { _d_hline '╚' '═' '╝'; }
+
+# _d_rule — thin horizontal separator inside a section.
+#   Produces:  ║ ────...──── ║   (dashes span _D_IW columns)
+#   Dashes are generated separately, then framed — so tr never touches borders.
+_d_rule() {
     local dashes
-    dashes=$(printf '%*s' $(( _IW )) "" | tr ' ' '─')
+    dashes=$(printf '%*s' "${_D_IW}" '' | tr ' ' '─')
     printf '║ %s ║\n' "${dashes}"
 }
 
-# _dash_visible_width <string>
-#   Returns the display width of a string by measuring how many columns it
-#   occupies. Uses printf to a virtual terminal position via ANSI cursor
-#   queries when available, otherwise falls back to character counting that
-#   accounts for common wide Unicode characters (box-drawing, check marks,
-#   bullets, em-dash). This prevents the right border from shifting when
-#   content contains multi-byte characters whose display width ≠ byte count.
-_dash_visible_width() {
-    local str="$1"
-    # Strip ANSI escape sequences for measurement
-    local stripped
-    stripped=$(printf '%s' "${str}" | sed $'s/\033\[[0-9;]*m//g')
-    # Use printf %s | wc -m for character count (locale-aware)
-    local chars
-    chars=$(printf '%s' "${stripped}" | LC_ALL=en_US.UTF-8 wc -m | tr -d ' ')
-    echo "${chars}"
-}
-
-# _dash_row <plain-text> [<colored-text>]
-#   Renders one content row with left/right borders.
-#   If a second argument is provided, it is used for display (may contain
-#   ANSI codes); the first argument (plain) is used only for length calculation.
-#   If only one argument is given, it is used for both.
-#   Content is always padded or clipped to exactly _IW visible columns.
-_dash_row() {
-    local plain="${1:-}"
-    local colored="${2:-${plain}}"
-
-    # Measure visible width accounting for Unicode characters
-    local vlen
-    vlen=$(_dash_visible_width "${plain}")
-
-    # Prevent wrapped lines from corrupting the right border when content
-    # exceeds the dashboard's inner width.
-    if [[ ${vlen} -gt ${_IW} ]]; then
-        plain="${plain:0:${_IW}}"
-        # Colored strings may contain ANSI escapes that are hard to truncate
-        # safely; when clipping is needed, fall back to plain text.
-        colored="${plain}"
-        vlen=$(_dash_visible_width "${plain}")
+# ---------------------------------------------------------------------------
+# THE CORE EMITTER
+# ---------------------------------------------------------------------------
+# _d_emit <plain> [<display>]
+#   Renders one content row:  ║ <display><padding> ║
+#
+#   <plain>   — visible text only, no ANSI codes. Used for width math.
+#   <display> — text to actually print. May contain ANSI codes for color.
+#               Defaults to <plain> if omitted.
+#
+#   Padding spaces are appended AFTER <display> to fill exactly _D_IW columns.
+#   If content is wider than _D_IW, it is truncated (using plain, since
+#   truncating inside ANSI sequences would corrupt escape codes).
+_d_emit() {
+    local plain="${1:-}" display="${2:-$1}"
+    local w
+    w=$(_d_width "${plain}")
+    if (( w > _D_IW )); then
+        plain="${plain:0:${_D_IW}}"
+        display="${plain}"
+        w=${_D_IW}
     fi
-
-    local pad=$(( _IW - vlen ))
-    [[ ${pad} -lt 0 ]] && pad=0
-    printf "║ %b%*s ║\n" "${colored}" "${pad}" ""
+    printf '║ %b%*s ║\n' "${display}" $(( _D_IW - w )) ''
 }
 
-_dash_blank() {
-    printf "║ %*s ║\n" "${_IW}" ""
+# _d_blank — empty content row.
+_d_blank() {
+    printf '║ %*s ║\n' "${_D_IW}" ''
 }
 
-# _dash_kv <key> <plain-value> [<colored-value>]
-#   Renders a labelled key-value row: "  KEY    value"
-_dash_kv() {
-    local key="$1" plain_val="$2" colored_val="${3:-$2}"
-    local label_w=20
-    local content_plain
-    printf -v content_plain "  %-${label_w}s%s" "${key}" "${plain_val}"
-    local content_colored
-    printf -v content_colored "  ${BOLD}%-${label_w}s${NC}%b" "${key}" "${colored_val}"
-    _dash_row "${content_plain}" "${content_colored}"
+# ---------------------------------------------------------------------------
+# HIGH-LEVEL CONTENT HELPERS
+# ---------------------------------------------------------------------------
+# Each builds a plain string and a colored string, then calls _d_emit.
+# Width is always driven by the plain string. Safe by construction.
+
+# _d_heading <title>
+#   Section header row, e.g. "  DAEMON STATUS" in bold.
+_d_heading() {
+    _d_emit "  $1" "  ${BOLD}$1${NC}"
+}
+
+# _d_kv <key> <val_plain> [<val_colored>]
+#   Key-value row: "    Key               Value"
+#   Key is rendered in bold; value may be colored.
+_d_kv() {
+    local key="$1" vp="$2" vc="${3:-$2}"
+    local kpad
+    printf -v kpad '%-18s' "${key}"
+    _d_emit "    ${kpad}${vp}" "    ${BOLD}${kpad}${NC}${vc}"
+}
+
+# _d_text <plain> [<colored>]
+#   Free-form text row with 2-space indent.
+_d_text() {
+    _d_emit "  $1" "  ${2:-$1}"
+}
+
+# _d_bar <name> <count> <max_count> <bar_width>
+#   Bar-chart row for package frequency display.
+#   Uses "pad then color" pattern: each field is padded as plain text first,
+#   then wrapped in ANSI color codes.
+_d_bar() {
+    local name="$1" count="$2" max_count="$3" bar_max="$4"
+    (( max_count == 0 )) && max_count=1
+
+    local bar_len=$(( count * bar_max / max_count ))
+    (( bar_len < 1 )) && bar_len=1
+
+    # Build bar string
+    local bar=""
+    local i; for ((i=0; i<bar_len; i++)); do bar+="█"; done
+
+    # Pad each field as PLAIN text first (safe for printf %-Ns)
+    local name_p bar_p
+    printf -v name_p '%-18s' "${name}"
+    printf -v bar_p '%-*s' "${bar_max}" "${bar}"
+
+    # Plain row
+    local pp="  ${name_p} ${bar_p} ${count}×"
+    # Colored row — wrap already-padded plain fields in color codes
+    local cp="  ${CYAN}${name_p}${NC} ${YELLOW}${bar_p}${NC} ${DIM}${count}×${NC}"
+
+    _d_emit "${pp}" "${cp}"
 }
 
 # ---------------------------------------------------------------------------
@@ -423,37 +486,6 @@ _next_run_time() {
 }
 
 # ---------------------------------------------------------------------------
-# Render a bar chart row for a package
-#   $1 = package name (plain string for length)
-#   $2 = count
-#   $3 = max count (for proportional scaling)
-#   $4 = bar max width
-# ---------------------------------------------------------------------------
-_dash_pkg_bar() {
-    local name="$1" count="$2" max_count="$3" bar_max="$4"
-    [[ ${max_count} -eq 0 ]] && max_count=1
-
-    local bar_len=$(( count * bar_max / max_count ))
-    [[ ${bar_len} -lt 1 ]] && bar_len=1
-
-    local bar=""
-    local i; for ((i=0; i<bar_len; i++)); do bar+="█"; done
-
-    # Build plain and colored versions for _dash_row
-    local name_col=18
-    local plain_line count_col
-    printf -v count_col '%*d' "$(( bar_max + 2 ))" "${count}"
-    printf -v plain_line "  %-${name_col}s %-${bar_max}s %s×" \
-        "${name}" "${bar}" "${count}"
-
-    local colored_line
-    printf -v colored_line "  ${CYAN}%-${name_col}s${NC} ${GREEN}%-${bar_max}s${NC} ${DIM}%s×${NC}" \
-        "${name}" "${bar}" "${count}"
-
-    _dash_row "${plain_line}" "${colored_line}"
-}
-
-# ---------------------------------------------------------------------------
 # Format a schedule hours string for display:  "0,6,12,18" -> "0:00  6:00  12:00  18:00"
 # ---------------------------------------------------------------------------
 _fmt_schedule_hours() {
@@ -467,7 +499,7 @@ _fmt_schedule_hours() {
 # THE DASHBOARD COMMAND
 # ---------------------------------------------------------------------------
 cmd_dashboard() {
-    _dash_init
+    _d_init
 
     # --- Load config values ---
     local sched_hours sched_minute quiet_enabled quiet_start quiet_end
@@ -560,9 +592,9 @@ cmd_dashboard() {
     if [[ -n "${STAT_PKG_COUNTS}" ]]; then
         top_pkg_max=$(echo "${STAT_PKG_COUNTS}" | head -1 | awk '{print $1}')
     fi
-    local bar_max=$(( _IW - 24 ))   # name col(18) + spaces(4) + count(2)
-    [[ ${bar_max} -gt 30 ]] && bar_max=30
-    [[ ${bar_max} -lt 10 ]] && bar_max=10
+    local bar_max=$(( _D_IW - 24 ))
+    (( bar_max > 30 )) && bar_max=30
+    (( bar_max < 10 )) && bar_max=10
 
     # ===========================================================================
     # RENDER
@@ -570,43 +602,36 @@ cmd_dashboard() {
     local now_str
     now_str=$(date '+%Y-%m-%d  %H:%M:%S')
 
-    _dash_top
+    _d_top
 
-    # Header — clamp gap to ≥1 so narrow terminals still render correctly
-    local title="  BREW AUTO-UPDATE DASHBOARD  v${BAU_VERSION}"
+    # Header — title + version + timestamp
+    local title="BREW AUTO-UPDATE DASHBOARD"
+    local ver="v${BAU_VERSION}"
     local ts_label="Updated: ${now_str}"
-    local hdr_gap=$(( _IW - ${#title} - ${#ts_label} ))
-    [[ ${hdr_gap} -lt 1 ]] && hdr_gap=1
-    local header_plain="${title}$(printf '%*s' "${hdr_gap}" '')${ts_label}"
-    local header_colored="${BOLD}${CYAN}${title}${NC}$(printf '%*s' "${hdr_gap}" '')${DIM}${ts_label}${NC}"
-    _dash_row "${header_plain}" "${header_colored}"
+    local hdr_gap=$(( _D_IW - 2 - ${#title} - 2 - ${#ver} - 2 - ${#ts_label} ))
+    (( hdr_gap < 1 )) && hdr_gap=1
+    local hdr_plain="  ${title}  ${ver}$(printf '%*s' ${hdr_gap} '')${ts_label}"
+    local hdr_color="  ${BOLD}${CYAN}${title}${NC}  ${DIM}${ver}${NC}$(printf '%*s' ${hdr_gap} '')${DIM}${ts_label}${NC}"
+    _d_emit "${hdr_plain}" "${hdr_color}"
 
-    _dash_div
+    _d_mid
 
-    # ── STATUS ──────────────────────────────────────────────────────────────
-    local sect_plain="  DAEMON STATUS"
-    local sect_colored="  ${BOLD}DAEMON STATUS${NC}"
-    _dash_row "${sect_plain}" "${sect_colored}"
-    _dash_thin
+    # ── Daemon Status ─────────────────────────────────────────────────────────
+    _d_heading "DAEMON STATUS"
+    _d_rule
 
-    local status_plain="  Status          ${daemon_status}"
-    local status_colored="  ${BOLD}Status          ${NC}${daemon_color}"
-    _dash_row "${status_plain}" "${status_colored}"
+    _d_kv "Status" "${daemon_status}" "${daemon_color}"
+    _d_kv "Last run" "${last_run_ts}   ${last_run_stat}" \
+                     "${last_run_ts}   ${last_run_stat_color}"
+    _d_kv "Duration" "${last_run_dur}"
 
-    _dash_kv "  Last run" "${last_run_ts}   ${last_run_stat}" \
-                          "${last_run_ts}   ${last_run_stat_color}"
+    _d_blank
 
-    _dash_kv "  Duration" "${last_run_dur}"
+    _d_heading "SCHEDULE"
+    _d_rule
 
-    _dash_blank
-
-    local sect2_plain="  SCHEDULE"
-    local sect2_colored="  ${BOLD}SCHEDULE${NC}"
-    _dash_row "${sect2_plain}" "${sect2_colored}"
-    _dash_thin
-
-    _dash_kv "  Runs at" "${sched_fmt}"
-    _dash_kv "  Next run" "${next_run}"
+    _d_kv "Runs at" "${sched_fmt}"
+    _d_kv "Next run" "${next_run}"
 
     local qh_label qh_color
     if [[ "${quiet_enabled}" == "true" ]]; then
@@ -616,128 +641,119 @@ cmd_dashboard() {
         qh_label="disabled"
         qh_color="${DIM}disabled${NC}"
     fi
-    _dash_kv "  Quiet hours" "${qh_label}" "${qh_color}"
+    _d_kv "Quiet hours" "${qh_label}" "${qh_color}"
 
-    _dash_div
+    _d_mid
 
-    # ── RECENT RUNS ─────────────────────────────────────────────────────────
-    local sect3_plain="  RECENT RUNS"
-    local sect3_colored="  ${BOLD}RECENT RUNS${NC}"
-    _dash_row "${sect3_plain}" "${sect3_colored}"
-    _dash_thin
+    # ── Recent Runs ───────────────────────────────────────────────────────────
+    _d_heading "RECENT RUNS"
+    _d_rule
 
     if [[ -z "${STAT_RUNS_RAW}" ]]; then
-        _dash_kv "" "(no run history found)"
+        _d_text "(no run history found)" "${DIM}(no run history found)${NC}"
     else
         # Column widths
-        local ts_w=19 dur_w=6 stat_w=8
+        local ts_w=20 dur_w=6 stat_w=8
 
-        # Header row
-        local hdr_plain
-        printf -v hdr_plain "  %-${ts_w}s %-${dur_w}s %-${stat_w}s %s" \
-            "Date / Time" "Dur" "Status" "Packages"
-        local hdr_colored
-        printf -v hdr_colored "  ${DIM}%-${ts_w}s %-${dur_w}s %-${stat_w}s %s${NC}" \
-            "Date / Time" "Dur" "Status" "Packages"
-        _dash_row "${hdr_plain}" "${hdr_colored}"
+        # Table header — all plain text, safe for printf %-Ns
+        local thdr_ts thdr_dur thdr_stat
+        printf -v thdr_ts    '%-*s' ${ts_w}   "Date / Time"
+        printf -v thdr_dur   '%-*s' ${dur_w}  "Dur"
+        printf -v thdr_stat  '%-*s' ${stat_w} "Status"
+        local thdr_plain="  ${thdr_ts}${thdr_dur}${thdr_stat}Packages"
+        local thdr_color="  ${DIM}${thdr_ts}${thdr_dur}${thdr_stat}Packages${NC}"
+        _d_emit "${thdr_plain}" "${thdr_color}"
 
-        # Data rows
+        # Data rows — use "pad then color" pattern:
+        #   1. Pad each field as plain text (safe for printf %-Ns)
+        #   2. Wrap the already-padded text in ANSI color codes
+        # This guarantees ANSI codes never affect width calculations.
         while IFS='|' read -r r_ts r_dur r_stat r_upg; do
             [[ -z "${r_ts}" ]] && continue
             local r_dur_fmt="${r_dur}s"
-            local r_stat_plain r_stat_color r_upg_plain
+
+            local r_stat_plain r_stat_cc
             if [[ "${r_stat}" == "SUCCESS" ]]; then
                 r_stat_plain="✓ OK"
-                r_stat_color="${GREEN}✓ OK${NC}"
+                r_stat_cc="${GREEN}"
             else
                 r_stat_plain="✗ ERR"
-                r_stat_color="${RED}✗ ERR${NC}"
+                r_stat_cc="${RED}"
             fi
+
+            local r_upg_plain
             if [[ "${r_upg}" -gt 0 ]] 2>/dev/null; then
                 r_upg_plain="${r_upg} updated"
             else
                 r_upg_plain="none"
             fi
 
-            local row_plain
-            printf -v row_plain "  %-${ts_w}s %-${dur_w}s %-${stat_w}s %s" \
-                "${r_ts}" "${r_dur_fmt}" "${r_stat_plain}" "${r_upg_plain}"
-            local row_colored
-            # Do NOT use printf %-Ns on a colored string: ANSI escape bytes
-            # cause printf to skip padding (escape count > width), making
-            # the row short and shifting the right border inward.
-            # Compute stat-column padding manually from the plain width.
-            local stat_color_pad=$(( stat_w - ${#r_stat_plain} ))
-            [[ ${stat_color_pad} -lt 0 ]] && stat_color_pad=0
-            printf -v row_colored "  %-${ts_w}s ${DIM}%-${dur_w}s${NC} %b%*s %s" \
-                "${r_ts}" "${r_dur_fmt}" "${r_stat_color}" "${stat_color_pad}" "" "${r_upg_plain}"
-            _dash_row "${row_plain}" "${row_colored}"
+            # Pad each field as PLAIN text (no ANSI — safe)
+            local f_ts f_dur f_stat
+            printf -v f_ts   '%-*s' ${ts_w}   "${r_ts}"
+            printf -v f_dur  '%-*s' ${dur_w}  "${r_dur_fmt}"
+            printf -v f_stat '%-*s' ${stat_w} "${r_stat_plain}"
+
+            # Plain row: all padded plain fields
+            local row_plain="  ${f_ts}${f_dur}${f_stat}${r_upg_plain}"
+            # Colored row: wrap already-padded fields in ANSI (safe)
+            local row_color="  ${f_ts}${DIM}${f_dur}${NC}${r_stat_cc}${f_stat}${NC}${r_upg_plain}"
+
+            _d_emit "${row_plain}" "${row_color}"
         done <<< "${STAT_RUNS_RAW}"
     fi
 
-    _dash_div
+    _d_mid
 
-    # ── STATISTICS ──────────────────────────────────────────────────────────
-    local stat_hdr_plain="  CUMULATIVE STATISTICS  (${STAT_TOTAL_RUNS} total runs)"
-    local stat_hdr_colored="  ${BOLD}CUMULATIVE STATISTICS${NC}  ${DIM}(${STAT_TOTAL_RUNS} total runs)${NC}"
-    _dash_row "${stat_hdr_plain}" "${stat_hdr_colored}"
-    _dash_thin
+    # ── Cumulative Statistics ───────────────────────────────────────────────────
+    _d_heading "CUMULATIVE STATISTICS  (${STAT_TOTAL_RUNS} total runs)"
+    _d_rule
 
-    local s1_plain="  Success: ${STAT_SUCCESS} (${success_pct})    Errors: ${STAT_ERRORS}    Avg duration: ${avg_dur}s"
-    local s1_colored="  ${GREEN}Success: ${STAT_SUCCESS}${NC} ${DIM}(${success_pct})${NC}    ${RED}Errors: ${STAT_ERRORS}${NC}    ${DIM}Avg duration: ${avg_dur}s${NC}"
-    _dash_row "${s1_plain}" "${s1_colored}"
+    local s1_p="  Success: ${STAT_SUCCESS} (${success_pct})    Errors: ${STAT_ERRORS}    Avg duration: ${avg_dur}s"
+    local s1_c="  ${GREEN}Success: ${STAT_SUCCESS}${NC} ${DIM}(${success_pct})${NC}    ${RED}Errors: ${STAT_ERRORS}${NC}    ${DIM}Avg duration: ${avg_dur}s${NC}"
+    _d_emit "${s1_p}" "${s1_c}"
 
-    local s2_plain="  Total upgrades: ${STAT_TOTAL_UPGRADES}    Unique packages: ${STAT_UNIQUE_PKGS}"
-    local s2_colored="  ${CYAN}Total upgrades: ${STAT_TOTAL_UPGRADES}${NC}    ${DIM}Unique packages: ${STAT_UNIQUE_PKGS}${NC}"
-    _dash_row "${s2_plain}" "${s2_colored}"
+    local s2_p="  Total upgrades: ${STAT_TOTAL_UPGRADES}    Unique packages: ${STAT_UNIQUE_PKGS}"
+    local s2_c="  ${CYAN}Total upgrades: ${STAT_TOTAL_UPGRADES}${NC}    ${DIM}Unique packages: ${STAT_UNIQUE_PKGS}${NC}"
+    _d_emit "${s2_p}" "${s2_c}"
 
-    _dash_div
+    _d_mid
 
-    # ── TOP PACKAGES ────────────────────────────────────────────────────────
-    local top_plain="  TOP PACKAGES BY UPDATE FREQUENCY"
-    local top_colored="  ${BOLD}TOP PACKAGES BY UPDATE FREQUENCY${NC}"
-    _dash_row "${top_plain}" "${top_colored}"
-    _dash_thin
+    # ── Top Packages ───────────────────────────────────────────────────────────
+    _d_heading "TOP PACKAGES BY UPDATE FREQUENCY"
+    _d_rule
 
     if [[ -z "${STAT_PKG_COUNTS}" ]]; then
-        _dash_kv "" "(no package data yet)"
+        _d_text "(no package data yet)" "${DIM}(no package data yet)${NC}"
     else
         while IFS= read -r pkg_line; do
             [[ -z "${pkg_line}" ]] && continue
             local p_count p_name
             p_count=$(echo "${pkg_line}" | awk '{print $1}')
             p_name=$(echo "${pkg_line}"  | awk '{print $2}')
-            _dash_pkg_bar "${p_name}" "${p_count}" "${top_pkg_max}" "${bar_max}"
+            _d_bar "${p_name}" "${p_count}" "${top_pkg_max}" "${bar_max}"
         done <<< "${STAT_PKG_COUNTS}"
     fi
 
-    _dash_div
+    _d_mid
 
-    # ── CONFIGURATION ───────────────────────────────────────────────────────
-    local cfg_plain="  CONFIGURATION"
-    local cfg_colored="  ${BOLD}CONFIGURATION${NC}"
-    _dash_row "${cfg_plain}" "${cfg_colored}"
-    _dash_thin
+    # ── Configuration ──────────────────────────────────────────────────────────
+    _d_heading "CONFIGURATION"
+    _d_rule
 
-    # Boolean indicators
-    _bool_indicator() {
-        local val="$1"
-        if [[ "${val}" == "true" ]]; then echo "✓"; else echo "✗"; fi
-    }
-    _bool_color() {
-        local val="$1"
-        if [[ "${val}" == "true" ]]; then echo "${GREEN}✓${NC}"; else echo "${RED}✗${NC}"; fi
-    }
+    # Boolean flag indicators
+    _bool_ch() { if [[ "$1" == "true" ]]; then printf '✓'; else printf '✗'; fi; }
+    _bool_co() { if [[ "$1" == "true" ]]; then printf '%b' "${GREEN}✓${NC}"; else printf '%b' "${RED}✗${NC}"; fi; }
 
-    local flags_plain="  upgrade:$(_bool_indicator "${auto_upgrade}")  cleanup:$(_bool_indicator "${auto_cleanup}")  autoremove:$(_bool_indicator "${auto_remove}")  casks:$(_bool_indicator "${upgrade_casks}")  greedy:$(_bool_indicator "${greedy}")"
-    local flags_colored="  upgrade:$(_bool_color "${auto_upgrade}")  cleanup:$(_bool_color "${auto_cleanup}")  autoremove:$(_bool_color "${auto_remove}")  casks:$(_bool_color "${upgrade_casks}")  greedy:$(_bool_color "${greedy}")"
-    _dash_row "${flags_plain}" "${flags_colored}"
+    local flags_p="  upgrade:$(_bool_ch "${auto_upgrade}")  cleanup:$(_bool_ch "${auto_cleanup}")  autoremove:$(_bool_ch "${auto_remove}")  casks:$(_bool_ch "${upgrade_casks}")  greedy:$(_bool_ch "${greedy}")"
+    local flags_c="  upgrade:$(_bool_co "${auto_upgrade}")  cleanup:$(_bool_co "${auto_cleanup}")  autoremove:$(_bool_co "${auto_remove}")  casks:$(_bool_co "${upgrade_casks}")  greedy:$(_bool_co "${greedy}")"
+    _d_emit "${flags_p}" "${flags_c}"
 
     local deny_disp="${deny_list:-(none)}"
     local allow_disp="${allow_list:-(none)}"
-    local lists_plain="  deny list: ${deny_disp}   allow list: ${allow_disp}"
-    local lists_colored="  ${DIM}deny list:${NC} ${YELLOW}${deny_disp}${NC}   ${DIM}allow list:${NC} ${YELLOW}${allow_disp}${NC}"
-    _dash_row "${lists_plain}" "${lists_colored}"
+    local lists_p="  deny list: ${deny_disp}   allow list: ${allow_disp}"
+    local lists_c="  ${DIM}deny list:${NC} ${YELLOW}${deny_disp}${NC}   ${DIM}allow list:${NC} ${YELLOW}${allow_disp}${NC}"
+    _d_emit "${lists_p}" "${lists_c}"
 
     local notify_label
     if [[ "${notify_every}" == "true" && "${notify_err}" == "true" ]]; then
@@ -747,14 +763,14 @@ cmd_dashboard() {
     else
         notify_label="disabled"
     fi
-    _dash_kv "  Notifications" "${notify_label}"
+    _d_kv "Notifications" "${notify_label}"
 
-    _dash_blank
-    local tip_plain="  brew-logs help  for all commands   |   brew-logs schedule reload  to apply schedule changes"
-    local tip_colored="  ${DIM}brew-logs help  for all commands   |   brew-logs schedule reload  to apply schedule changes${NC}"
-    _dash_row "${tip_plain}" "${tip_colored}"
+    _d_blank
 
-    _dash_bot
+    local tip="brew-logs help  for all commands   |   brew-logs schedule reload  to apply"
+    _d_emit "  ${tip}" "  ${DIM}${tip}${NC}"
+
+    _d_bot
 }
 
 # ---------------------------------------------------------------------------
