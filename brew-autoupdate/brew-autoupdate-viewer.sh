@@ -132,26 +132,22 @@ _dash_init() {
 # ---------------------------------------------------------------------------
 # Border-line drawing functions
 # ---------------------------------------------------------------------------
+# These functions use printf width specifiers + tr for guaranteed perfect
+# alignment. The width calculation via printf is atomic and precise, ensuring
+# the box lines are always exactly the right width—no off-by-one errors.
 _dash_top() {
-    printf '╔'
-    local i; for ((i=0; i<_W-2; i++)); do printf '═'; done
-    printf '╗\n'
+    printf '╔%*s╗\n' $(( _W - 2 )) "" | tr ' ' '═'
 }
 _dash_div() {
-    printf '╠'
-    local i; for ((i=0; i<_W-2; i++)); do printf '═'; done
-    printf '╣\n'
+    printf '╠%*s╣\n' $(( _W - 2 )) "" | tr ' ' '═'
 }
 _dash_bot() {
-    printf '╚'
-    local i; for ((i=0; i<_W-2; i++)); do printf '═'; done
-    printf '╝\n'
+    printf '╚%*s╝\n' $(( _W - 2 )) "" | tr ' ' '═'
 }
 _dash_thin() {
     # Thin horizontal rule inside a section (does NOT span borders)
-    local i; printf '║ '
-    for ((i=0; i<_IW; i++)); do printf '─'; done
-    printf ' ║\n'
+    # Uses same printf+tr pattern for perfect width alignment.
+    printf '║ %*s ║\n' $(( _IW )) "" | tr ' ' '─'
 }
 
 # _dash_visible_width <string>
