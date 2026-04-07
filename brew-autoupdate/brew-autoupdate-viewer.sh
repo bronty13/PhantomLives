@@ -663,8 +663,14 @@ cmd_dashboard() {
             printf -v row_plain "  %-${ts_w}s %-${dur_w}s %-${stat_w}s %s" \
                 "${r_ts}" "${r_dur_fmt}" "${r_stat_plain}" "${r_upg_plain}"
             local row_colored
-            printf -v row_colored "  %-${ts_w}s ${DIM}%-${dur_w}s${NC} %-${stat_w}b %s" \
-                "${r_ts}" "${r_dur_fmt}" "${r_stat_color}" "${r_upg_plain}"
+            # Do NOT use printf %-Ns on a colored string: ANSI escape bytes
+            # cause printf to skip padding (escape count > width), making
+            # the row short and shifting the right border inward.
+            # Compute stat-column padding manually from the plain width.
+            local stat_color_pad=$(( stat_w - ${#r_stat_plain} ))
+            [[ ${stat_color_pad} -lt 0 ]] && stat_color_pad=0
+            printf -v row_colored "  %-${ts_w}s ${DIM}%-${dur_w}s${NC} %b%*s %s" \
+                "${r_ts}" "${r_dur_fmt}" "${r_stat_color}" "${stat_color_pad}" "" "${r_upg_plain}"
             _dash_row "${row_plain}" "${row_colored}"
         done <<< "${STAT_RUNS_RAW}"
     fi
