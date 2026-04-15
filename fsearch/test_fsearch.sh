@@ -723,9 +723,11 @@ fi
 # ============================================================================
 section "S21: Error handling"
 
-# No pattern specified
+# No pattern specified — shows mini usage
 out="$(run_fsearch -p "$TEST_ROOT" 2>&1 || true)"
-assert_contains "error when no pattern" "$out" "specify at least"
+assert_contains "no-args shows version" "$out" "v2.1.0"
+assert_contains "no-args shows usage hint" "$out" "Search by filename"
+assert_contains "no-args shows examples" "$out" "Quick examples"
 
 # Unreadable file (skip if running as root)
 if [[ "$(id -u)" -ne 0 ]]; then

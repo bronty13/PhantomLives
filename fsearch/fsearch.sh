@@ -960,7 +960,26 @@ parse_args() {
         CUSTOM_PATHS+=("$extra")
     done
 
-    [[ -z "$NAME_PATTERN" && -z "$GREP_PATTERN" ]] && die "specify at least -n <pattern> or -g <pattern> (see --help)"
+    if [[ -z "$NAME_PATTERN" && -z "$GREP_PATTERN" ]]; then
+        printf '%sfsearch%s v%s — File search utility\n' "$C_BOLD" "$C_RESET" "$FSEARCH_VERSION"
+        printf '\n'
+        printf '%sUsage:%s\n' "$C_BOLD" "$C_RESET"
+        printf '  %s -n <pattern> [OPTIONS] [PATHS...]   Search by filename\n' "$SCRIPT_NAME"
+        printf '  %s -g <pattern> [OPTIONS] [PATHS...]   Search by content\n' "$SCRIPT_NAME"
+        printf '  %s -n <pat> -g <pat> [OPTIONS]         Search both\n' "$SCRIPT_NAME"
+        printf '\n'
+        printf '%sQuick examples:%s\n' "$C_BOLD" "$C_RESET"
+        printf "  %s -n '\\.sh$' -g 'TODO'          Find .sh files containing TODO\n" "$SCRIPT_NAME"
+        printf '  %s -g '\''password'\'' -i -0            List files with '\''password'\''\n' "$SCRIPT_NAME"
+        printf '  %s -p ~/projects -g '\''api_key'\''     Search a specific path\n' "$SCRIPT_NAME"
+        printf '\n'
+        printf '%sOther commands:%s\n' "$C_BOLD" "$C_RESET"
+        printf '  %s config                         Show/manage settings\n' "$SCRIPT_NAME"
+        printf '  %s --stats                        View search statistics\n' "$SCRIPT_NAME"
+        printf '  %s -h                             Full help\n' "$SCRIPT_NAME"
+        printf '\n'
+        exit 1
+    fi
 
     # Resolve search paths
     if [[ ${#CUSTOM_PATHS[@]} -gt 0 ]]; then
