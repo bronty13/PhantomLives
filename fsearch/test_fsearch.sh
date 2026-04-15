@@ -520,9 +520,33 @@ out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$')"
 assert_not_contains "default hides size in output" "$out" "size:"
 
 # ============================================================================
-# S17  CONFIG SUBCOMMANDS
+# S17  PROGRESS DISPLAY
 # ============================================================================
-section "S17: Config subcommands"
+section "S17: Progress display"
+
+# Progress is auto by default — when stderr is not a tty (as in test capture),
+# it should not appear in stdout output
+out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$' -0)"
+assert_not_contains "progress not in stdout" "$out" "Scanning"
+
+# --no-progress suppresses progress (verify no crash)
+out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$' --no-progress -0)"
+assert_contains "--no-progress still finds files" "$out" "file1.txt"
+
+# Config validation for SHOW_PROGRESS
+out="$(run_fsearch config set SHOW_PROGRESS "maybe" 2>&1 || true)"
+assert_contains "SHOW_PROGRESS validates values" "$out" "auto, true, or false"
+
+out="$(run_fsearch config set SHOW_PROGRESS "auto")"
+assert_contains "SHOW_PROGRESS accepts auto" "$out" "auto"
+
+out="$(run_fsearch config get SHOW_PROGRESS)"
+assert_contains "SHOW_PROGRESS default is auto" "$out" "SHOW_PROGRESS=auto"
+
+# ============================================================================
+# S18  CONFIG SUBCOMMANDS
+# ============================================================================
+section "S18: Config subcommands"
 
 # config show
 out="$(run_fsearch config)"
@@ -593,7 +617,7 @@ run_fsearch config reset LOG_RETENTION_DAYS >/dev/null
 # ============================================================================
 # S18  CONFIG PERSISTENCE
 # ============================================================================
-section "S18: Config persistence"
+section "S19: Config persistence"
 
 # Config file is created on first set
 rm -rf "${TEST_CONFIG_HOME}/fsearch"
@@ -628,7 +652,7 @@ run_fsearch config reset DEFAULT_PATHS >/dev/null
 # ============================================================================
 # S19  STATISTICS
 # ============================================================================
-section "S19: Statistics"
+section "S20: Statistics"
 
 # Reset stats for clean testing
 run_fsearch --stats-reset >/dev/null
@@ -667,7 +691,7 @@ assert_exit_code "stats-reset exits 0" "0" "$rc"
 # ============================================================================
 # S20  SEARCH LOGGING
 # ============================================================================
-section "S20: Search logging"
+section "S21: Search logging"
 
 # Reset for clean testing
 rm -rf "${TEST_CONFIG_HOME}/fsearch/logs"
@@ -721,7 +745,7 @@ fi
 # ============================================================================
 # S21  ERROR HANDLING
 # ============================================================================
-section "S21: Error handling"
+section "S22: Error handling"
 
 # No pattern specified — shows mini usage
 out="$(run_fsearch -p "$TEST_ROOT" 2>&1 || true)"
@@ -753,7 +777,7 @@ assert_contains "invalid -d rejected" "$out" "positive integer"
 # ============================================================================
 # S22  EDGE CASES
 # ============================================================================
-section "S22: Edge cases"
+section "S23: Edge cases"
 
 # Spaces in file paths
 out="$(run_fsearch -p "$TEST_ROOT" -g 'spaces in path' -0)"

@@ -75,6 +75,7 @@ COLOR
 OUTPUT_FORMAT
 SHOW_FILE_SIZE
 SHOW_SUMMARY
+SHOW_PROGRESS
 LOG_RETENTION_DAYS"
 
 # Returns the data type for a config key
@@ -86,7 +87,7 @@ _config_key_type() {
             echo "int" ;;
         CASE_INSENSITIVE|EXCLUDE_DIRS_ENABLED|COLOR|SHOW_FILE_SIZE|SHOW_SUMMARY)
             echo "bool" ;;
-        MAX_FILE_SIZE|OUTPUT_FORMAT)
+        MAX_FILE_SIZE|OUTPUT_FORMAT|SHOW_PROGRESS)
             echo "string" ;;
         *)
             echo "unknown" ;;
@@ -107,6 +108,7 @@ _config_default() {
         OUTPUT_FORMAT)        echo "pretty" ;;
         SHOW_FILE_SIZE)       echo "false" ;;
         SHOW_SUMMARY)         echo "true" ;;
+        SHOW_PROGRESS)        echo "auto" ;;
         LOG_RETENTION_DAYS)   echo "7" ;;
         *)                    echo "" ;;
     esac
@@ -160,6 +162,13 @@ _config_validate() {
                     printf 'MAX_FILE_SIZE requires a size like 10M, 500K, or 1G (got: '\''%s'\'')\n' "$value" >&2
                     return 1
                 fi
+            fi
+            if [[ "$key" == "SHOW_PROGRESS" ]]; then
+                case "$value" in
+                    auto|true|false) : ;;
+                    *) printf 'SHOW_PROGRESS requires auto, true, or false (got: '\''%s'\'')\n' "$value" >&2
+                       return 1 ;;
+                esac
             fi ;;
     esac
     return 0
@@ -755,6 +764,7 @@ ${C_BOLD}Output options:${C_RESET}
   --format <fmt>    Output format: pretty (default), plain, json
   --size            Show file size in output
   --no-color        Disable coloured output
+  --no-progress     Suppress the progress spinner
 
 ${C_BOLD}Statistics & logging:${C_RESET}
   --stats           Show cumulative search statistics
@@ -813,6 +823,7 @@ OPT_OLDER=""
 OPT_FORMAT=""
 OPT_NO_COLOR=false
 OPT_SHOW_SIZE=false
+OPT_NO_PROGRESS=false
 
 preprocess_args() {
     PROCESSED_ARGS=()
@@ -852,8 +863,9 @@ preprocess_args() {
                 OPT_OLDER="$2"; shift ;;
             --older=*)
                 OPT_OLDER="${1#*=}" ;;
-            --no-color) OPT_NO_COLOR=true ;;
-            --size)     OPT_SHOW_SIZE=true ;;
+            --no-color)    OPT_NO_COLOR=true ;;
+            --no-progress) OPT_NO_PROGRESS=true ;;
+            --size)        OPT_SHOW_SIZE=true ;;
             --)
                 shift
                 PROCESSED_ARGS+=("--" "$@")
@@ -898,6 +910,16 @@ parse_args() {
     [[ "$OPT_NO_COLOR" == "true" ]] && cfg_color="false"
     [[ -n "$OPT_FORMAT" ]] && OUTPUT_FORMAT="$OPT_FORMAT"
     [[ "$OPT_SHOW_SIZE" == "true" ]] && SHOW_FILE_SIZE="true"
+
+    # Resolve progress display: auto = on when stderr is a terminal
+    local cfg_progress
+    cfg_progress="$(_config_read SHOW_PROGRESS)"
+    [[ "$OPT_NO_PROGRESS" == "true" ]] && cfg_progress="false"
+    case "$cfg_progress" in
+        auto) [[ -t 2 ]] && SHOW_PROGRESS=true || SHOW_PROGRESS=false ;;
+        true) SHOW_PROGRESS=true ;;
+        *)    SHOW_PROGRESS=false ;;
+    esac
 
     # Validate output format
     case "$OUTPUT_FORMAT" in
@@ -1227,6 +1249,53 @@ emit_result_plain() {
     fi
 }
 
+# ─── Progress display ──────────────────────────────────────────────────────
+# Writes a spinner + status line to stderr, overwriting itself each update.
+# Only active when SHOW_PROGRESS=true.  Clears itself before any result output.
+
+_PROGRESS_SPINNER=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+_PROGRESS_IDX=0
+_PROGRESS_ACTIVE=false
+_PROGRESS_LAST_LEN=0
+
+_progress_update() {
+    [[ "$SHOW_PROGRESS" == true ]] || return 0
+    local scanned="$1" matched="$2"
+
+    local spin="${_PROGRESS_SPINNER[$_PROGRESS_IDX]}"
+    _PROGRESS_IDX=$(( (_PROGRESS_IDX + 1) % ${#_PROGRESS_SPINNER[@]} ))
+
+    local line
+    line="$(printf ' %s  Scanning... %d file(s) checked, %d matched' "$spin" "$scanned" "$matched")"
+    local len=${#line}
+
+    # Pad with spaces to overwrite previous longer line
+    local pad=""
+    if [[ $_PROGRESS_LAST_LEN -gt $len ]]; then
+        local i
+        for (( i=0; i < _PROGRESS_LAST_LEN - len; i++ )); do
+            pad="${pad} "
+        done
+    fi
+
+    printf '\r%s%s' "$line" "$pad" >&2
+    _PROGRESS_LAST_LEN=$len
+    _PROGRESS_ACTIVE=true
+}
+
+_progress_clear() {
+    if [[ "$_PROGRESS_ACTIVE" == true ]]; then
+        # Clear the progress line
+        local spaces=""
+        local i
+        for (( i=0; i < _PROGRESS_LAST_LEN; i++ )); do
+            spaces="${spaces} "
+        done
+        printf '\r%s\r' "$spaces" >&2
+        _PROGRESS_ACTIVE=false
+    fi
+}
+
 # ─── Core search logic ─────────────────────────────────────────────────────
 
 FILE_COUNT=0
@@ -1353,6 +1422,11 @@ run_search() {
     while IFS= read -r -d '' file; do
         (( FILES_SCANNED++ )) || true
 
+        # Update progress every 10 files to avoid perf overhead
+        if [[ $(( FILES_SCANNED % 10 )) -eq 0 ]]; then
+            _progress_update "$FILES_SCANNED" "$FILE_COUNT"
+        fi
+
         local name_hit=false
         local content_hit=false
         local grep_output=""
@@ -1373,6 +1447,9 @@ run_search() {
         if [[ "$name_hit" == true || "$content_hit" == true ]]; then
             (( FILE_COUNT++ )) || true
 
+            # Clear progress line before printing results
+            _progress_clear
+
             local reason=""
             if   [[ "$name_hit" == true && "$content_hit" == true ]]; then reason="filename + content"
             elif [[ "$name_hit" == true ]];                             then reason="filename"
@@ -1392,6 +1469,9 @@ run_search() {
         fi
 
     done < <("${FIND_CMD[@]}" 2>/dev/null)
+
+    # Final progress clear
+    _progress_clear
 }
 
 # ─── Search banner ──────────────────────────────────────────────────────────
@@ -1475,6 +1555,7 @@ main() {
     start_time="$(date '+%s')"
 
     print_search_banner
+    _progress_update 0 0
     run_search
     print_summary
 
