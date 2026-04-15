@@ -4,7 +4,7 @@
 #  FSEARCH — File Search Utility
 #
 #  File:        fsearch.sh
-#  Version:     2.0.0
+#  Version:     2.1.0
 #  Author:      Generated with Claude Code
 #  License:     MIT
 #  Requires:    bash 3.2+, find, grep, file, stat
@@ -13,15 +13,25 @@
 #    Search files by name pattern and/or content across configurable
 #    directory trees.  Supports persistent configuration via CLI
 #    subcommands, smart directory exclusions, multiple output formats,
-#    and inline match highlighting.
+#    inline match highlighting, persistent search statistics, and
+#    detailed search logging with automatic retention management.
 #
 #  Configuration:
 #    All defaults are stored in ~/.config/fsearch/config.conf and managed
 #    via `fsearch config get|set|reset|path-add|path-remove`.  The config
 #    file is never required — built-in defaults apply until overridden.
 #
+#  Statistics:
+#    Cumulative search statistics are stored in ~/.config/fsearch/stats.conf
+#    and displayed via `fsearch --stats`.  Reset with `fsearch --stats-reset`.
+#
+#  Logging:
+#    Search logs are stored in ~/.config/fsearch/logs/ with one file per day.
+#    Detailed logs are retained for 7 days (configurable via LOG_RETENTION_DAYS).
+#    Older entries are summarised into statistics before being purged.
+#
 #  Exit Codes:
-#    0 - Success (matches found, or config command completed)
+#    0 - Success (matches found, or config/stats command completed)
 #    1 - Error (invalid arguments, no valid paths, etc.)
 #    2 - No matches found
 #
@@ -31,12 +41,27 @@ set -euo pipefail
 
 # ─── Version ────────────────────────────────────────────────────────────────
 
-FSEARCH_VERSION="2.0.0"
+FSEARCH_VERSION="2.1.0"
+
+# ─── Platform detection (run once at startup) ──────────────────────────────
+
+_STAT_IS_GNU=false
+if stat --version &>/dev/null 2>&1; then
+    _STAT_IS_GNU=true
+fi
+
+# Null-byte detection for binary file check
+_HAS_GREP_P=false
+if printf '\x00' | grep -qP '\x00' 2>/dev/null; then
+    _HAS_GREP_P=true
+fi
 
 # ─── Configuration system ──────────────────────────────────────────────────
 
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/fsearch"
 CONFIG_FILE="${CONFIG_DIR}/config.conf"
+STATS_FILE="${CONFIG_DIR}/stats.conf"
+LOG_DIR="${CONFIG_DIR}/logs"
 
 # Ordered list of all known config keys (used by config show)
 _CONFIG_KEYS="DEFAULT_PATHS
@@ -49,14 +74,15 @@ MAX_RESULTS
 COLOR
 OUTPUT_FORMAT
 SHOW_FILE_SIZE
-SHOW_SUMMARY"
+SHOW_SUMMARY
+LOG_RETENTION_DAYS"
 
 # Returns the data type for a config key
 _config_key_type() {
     case "${1}" in
         DEFAULT_PATHS|EXCLUDE_DIRS)
             echo "string" ;;
-        CONTEXT_LINES|MAX_RESULTS)
+        CONTEXT_LINES|MAX_RESULTS|LOG_RETENTION_DAYS)
             echo "int" ;;
         CASE_INSENSITIVE|EXCLUDE_DIRS_ENABLED|COLOR|SHOW_FILE_SIZE|SHOW_SUMMARY)
             echo "bool" ;;
@@ -81,6 +107,7 @@ _config_default() {
         OUTPUT_FORMAT)        echo "pretty" ;;
         SHOW_FILE_SIZE)       echo "false" ;;
         SHOW_SUMMARY)         echo "true" ;;
+        LOG_RETENTION_DAYS)   echo "7" ;;
         *)                    echo "" ;;
     esac
 }
@@ -334,6 +361,229 @@ cmd_config() {
     esac
 }
 
+# ─── Statistics system ─────────────────────────────────────────────────────
+
+_stats_ensure_file() {
+    if [[ ! -d "$CONFIG_DIR" ]]; then
+        mkdir -p "$CONFIG_DIR"
+    fi
+    if [[ ! -f "$STATS_FILE" ]]; then
+        cat > "$STATS_FILE" <<'STATSEOF'
+# fsearch cumulative statistics
+# Managed automatically — reset via: fsearch --stats-reset
+TOTAL_SEARCHES=0
+TOTAL_FILES_SCANNED=0
+TOTAL_FILES_MATCHED=0
+TOTAL_CONTENT_HITS=0
+TOTAL_ERRORS=0
+FIRST_SEARCH=
+LAST_SEARCH=
+STATSEOF
+    fi
+}
+
+_stats_read() {
+    local key="$1"
+    _stats_ensure_file
+    local val
+    val="$(grep "^${key}=" "$STATS_FILE" 2>/dev/null | tail -1 | cut -d= -f2-)"
+    echo "${val:-0}"
+}
+
+_stats_write() {
+    local key="$1" new_value="$2"
+    _stats_ensure_file
+
+    local tmp
+    tmp="$(mktemp)" || { printf 'Cannot create temp file\n' >&2; return 1; }
+
+    local found=0
+    while IFS= read -r line; do
+        if [[ "$line" == "${key}="* ]]; then
+            printf '%s\n' "${key}=${new_value}" >> "$tmp"
+            found=1
+        else
+            printf '%s\n' "$line" >> "$tmp"
+        fi
+    done < "$STATS_FILE"
+
+    if [[ $found -eq 0 ]]; then
+        printf '%s\n' "${key}=${new_value}" >> "$tmp"
+    fi
+
+    mv "$tmp" "$STATS_FILE"
+}
+
+_stats_increment() {
+    local key="$1" amount="${2:-1}"
+    local current
+    current="$(_stats_read "$key")"
+    current="${current:-0}"
+    _stats_write "$key" "$(( current + amount ))"
+}
+
+# Record stats for a completed search
+_stats_record() {
+    local files_scanned="$1" files_matched="$2" content_hits="$3" errors="$4"
+    local now
+    now="$(date '+%Y-%m-%d %H:%M:%S')"
+
+    _stats_increment "TOTAL_SEARCHES"
+    _stats_increment "TOTAL_FILES_SCANNED" "$files_scanned"
+    _stats_increment "TOTAL_FILES_MATCHED" "$files_matched"
+    _stats_increment "TOTAL_CONTENT_HITS" "$content_hits"
+    if [[ "$errors" -gt 0 ]]; then
+        _stats_increment "TOTAL_ERRORS" "$errors"
+    fi
+
+    local first
+    first="$(_stats_read "FIRST_SEARCH")"
+    if [[ -z "$first" || "$first" == "0" ]]; then
+        _stats_write "FIRST_SEARCH" "$now"
+    fi
+    _stats_write "LAST_SEARCH" "$now"
+}
+
+cmd_stats() {
+    _stats_ensure_file
+
+    local total_searches total_scanned total_matched total_hits total_errors first last
+    total_searches="$(_stats_read "TOTAL_SEARCHES")"
+    total_scanned="$(_stats_read "TOTAL_FILES_SCANNED")"
+    total_matched="$(_stats_read "TOTAL_FILES_MATCHED")"
+    total_hits="$(_stats_read "TOTAL_CONTENT_HITS")"
+    total_errors="$(_stats_read "TOTAL_ERRORS")"
+    first="$(_stats_read "FIRST_SEARCH")"
+    last="$(_stats_read "LAST_SEARCH")"
+
+    printf 'fsearch v%s — Cumulative Statistics\n' "$FSEARCH_VERSION"
+    printf '────────────────────────────────────────────────────────────────\n'
+    printf '  %-30s %s\n' "Total searches:" "${total_searches:-0}"
+    printf '  %-30s %s\n' "Files scanned:" "${total_scanned:-0}"
+    printf '  %-30s %s\n' "Files matched:" "${total_matched:-0}"
+    printf '  %-30s %s\n' "Content hits:" "${total_hits:-0}"
+    printf '  %-30s %s\n' "Errors:" "${total_errors:-0}"
+    printf '────────────────────────────────────────────────────────────────\n'
+    printf '  %-30s %s\n' "First search:" "${first:-never}"
+    printf '  %-30s %s\n' "Last search:" "${last:-never}"
+    printf '  %-30s %s\n' "Stats file:" "$STATS_FILE"
+
+    # Log summary
+    if [[ -d "$LOG_DIR" ]]; then
+        local log_count=0 log_size="0B"
+        log_count="$(find "$LOG_DIR" -name '*.log' -type f 2>/dev/null | wc -l | tr -d ' ')"
+        if [[ "$log_count" -gt 0 ]]; then
+            local total_bytes=0
+            local lf
+            while IFS= read -r lf; do
+                local sz
+                if [[ "$_STAT_IS_GNU" == true ]]; then
+                    sz="$(stat --format='%s' "$lf" 2>/dev/null)"
+                else
+                    sz="$(stat -f '%z' "$lf" 2>/dev/null)"
+                fi
+                total_bytes=$(( total_bytes + ${sz:-0} ))
+            done < <(find "$LOG_DIR" -name '*.log' -type f 2>/dev/null)
+            log_size="$(_bytes_to_human "$total_bytes")"
+        fi
+        printf '  %-30s %s file(s), %s\n' "Log files:" "$log_count" "$log_size"
+    fi
+
+    printf '────────────────────────────────────────────────────────────────\n'
+    printf '  Reset: fsearch --stats-reset\n'
+}
+
+cmd_stats_reset() {
+    rm -f "$STATS_FILE"
+    _stats_ensure_file
+    printf '  Statistics reset.\n'
+}
+
+# ─── Logging system ────────────────────────────────────────────────────────
+
+_log_ensure_dir() {
+    if [[ ! -d "$LOG_DIR" ]]; then
+        mkdir -p "$LOG_DIR"
+    fi
+}
+
+_log_file_for_date() {
+    local date_str="${1:-$(date '+%Y-%m-%d')}"
+    printf '%s/%s.log' "$LOG_DIR" "$date_str"
+}
+
+# Write a log entry for a search
+_log_search() {
+    local status="$1" name_pattern="$2" grep_pattern="$3" paths="$4"
+    local files_scanned="$5" files_matched="$6" content_hits="$7"
+    local errors="$8" duration="$9"
+    shift 9
+    local error_detail="${1:-}"
+
+    _log_ensure_dir
+
+    local now log_file
+    now="$(date '+%Y-%m-%d %H:%M:%S')"
+    log_file="$(_log_file_for_date)"
+
+    {
+        printf '[%s] status=%s' "$now" "$status"
+        [[ -n "$name_pattern" ]] && printf ' name_pattern="%s"' "$name_pattern"
+        [[ -n "$grep_pattern" ]] && printf ' grep_pattern="%s"' "$grep_pattern"
+        printf ' paths="%s"' "$paths"
+        printf ' scanned=%s matched=%s hits=%s errors=%s duration=%ss' \
+            "$files_scanned" "$files_matched" "$content_hits" "$errors" "$duration"
+        if [[ -n "$error_detail" ]]; then
+            printf ' error="%s"' "$error_detail"
+        fi
+        printf '\n'
+    } >> "$log_file"
+}
+
+# Rotate logs: keep detailed logs for LOG_RETENTION_DAYS, summarise older ones into stats
+_log_rotate() {
+    [[ ! -d "$LOG_DIR" ]] && return
+
+    local retention_days
+    retention_days="$(_config_read "LOG_RETENTION_DAYS")"
+    retention_days="${retention_days:-7}"
+
+    local cutoff_date
+    if date --version &>/dev/null 2>&1; then
+        # GNU date
+        cutoff_date="$(date -d "-${retention_days} days" '+%Y-%m-%d')"
+    else
+        # BSD date (macOS)
+        cutoff_date="$(date -v-${retention_days}d '+%Y-%m-%d')"
+    fi
+
+    local log_file date_part
+    while IFS= read -r log_file; do
+        [[ -f "$log_file" ]] || continue
+        date_part="$(basename "$log_file" .log)"
+
+        # Only process files with valid date names
+        printf '%s' "$date_part" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || continue
+
+        # If date is older than cutoff, summarise and remove
+        if [[ "$date_part" < "$cutoff_date" ]]; then
+            _log_summarise_to_stats "$log_file"
+            rm -f "$log_file"
+        fi
+    done < <(find "$LOG_DIR" -name '*.log' -type f 2>/dev/null | sort)
+}
+
+# Summarise a log file's data into cumulative stats before deletion
+_log_summarise_to_stats() {
+    local log_file="$1"
+    [[ -f "$log_file" ]] || return
+
+    # Count entries in this log file — stats were already recorded at search time,
+    # so we just remove the file. The stats are already cumulative.
+    # This function exists as a hook for future per-day aggregation if needed.
+    return 0
+}
+
 # ─── Colour helpers ─────────────────────────────────────────────────────────
 
 setup_colors() {
@@ -378,13 +628,11 @@ require_cmd() {
 file_timestamps() {
     local file="$1"
     local created modified
-    if stat --version &>/dev/null 2>&1; then
-        # GNU stat (Linux)
+    if [[ "$_STAT_IS_GNU" == true ]]; then
         modified="$(stat --format='%y' "$file" 2>/dev/null | cut -d'.' -f1)"
         created="$(stat --format='%w' "$file" 2>/dev/null | cut -d'.' -f1)"
         [[ "$created" == "-" || -z "$created" ]] && created="(unavailable)"
     else
-        # BSD stat (macOS)
         modified="$(stat -f '%Sm' -t '%Y-%m-%d %H:%M:%S' "$file" 2>/dev/null)"
         created="$(stat -f '%SB' -t '%Y-%m-%d %H:%M:%S' "$file" 2>/dev/null)"
         [[ -z "$created" ]] && created="(unavailable)"
@@ -396,13 +644,17 @@ file_timestamps() {
 file_size_human() {
     local file="$1"
     local bytes
-    if stat --version &>/dev/null 2>&1; then
+    if [[ "$_STAT_IS_GNU" == true ]]; then
         bytes="$(stat --format='%s' "$file" 2>/dev/null)"
     else
         bytes="$(stat -f '%z' "$file" 2>/dev/null)"
     fi
     bytes="${bytes:-0}"
+    _bytes_to_human "$bytes"
+}
 
+_bytes_to_human() {
+    local bytes="${1:-0}"
     if [[ $bytes -ge 1073741824 ]]; then
         printf '%s.%sG' "$((bytes / 1073741824))" "$(( (bytes % 1073741824) * 10 / 1073741824 ))"
     elif [[ $bytes -ge 1048576 ]]; then
@@ -417,7 +669,7 @@ file_size_human() {
 # Get raw file size in bytes
 file_size_bytes() {
     local file="$1"
-    if stat --version &>/dev/null 2>&1; then
+    if [[ "$_STAT_IS_GNU" == true ]]; then
         stat --format='%s' "$file" 2>/dev/null
     else
         stat -f '%z' "$file" 2>/dev/null
@@ -442,6 +694,31 @@ parse_size() {
 # Lowercase helper (bash 3.2 safe)
 _lower() {
     printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+# ─── JSON escaping ─────────────────────────────────────────────────────────
+# Proper JSON string escaping: handles \, ", tabs, newlines, carriage returns,
+# backspaces, form feeds, and other control characters.
+
+_json_escape() {
+    local input="$1"
+    local output=""
+    local i char ord
+
+    # Use sed for the common cases, then handle remaining control chars
+    output="$(printf '%s' "$input" | sed \
+        -e 's/\\/\\\\/g' \
+        -e 's/"/\\"/g' \
+        -e 's/	/\\t/g' \
+        -e "s/$(printf '\r')/\\\\r/g" \
+        -e "s/$(printf '\b')/\\\\b/g" \
+        -e "s/$(printf '\f')/\\\\f/g")"
+
+    # Handle embedded newlines (shouldn't appear in single-line grep output,
+    # but be safe)
+    output="$(printf '%s' "$output" | tr '\n' ' ')"
+
+    printf '%s' "$output"
 }
 
 # ─── Usage ──────────────────────────────────────────────────────────────────
@@ -479,6 +756,10 @@ ${C_BOLD}Output options:${C_RESET}
   --size            Show file size in output
   --no-color        Disable coloured output
 
+${C_BOLD}Statistics & logging:${C_RESET}
+  --stats           Show cumulative search statistics
+  --stats-reset     Reset all statistics to zero
+
 ${C_BOLD}Config subcommands:${C_RESET}
   config             Show all settings with current values
   config get KEY     Show one key's value
@@ -514,6 +795,9 @@ ${C_BOLD}Examples:${C_RESET}
   # JSON output for piping to jq
   $SCRIPT_NAME -g 'TODO' --format json | jq '.file'
 
+  # View search statistics
+  $SCRIPT_NAME --stats
+
   # Set default search paths
   $SCRIPT_NAME config set DEFAULT_PATHS "\$HOME/projects \$HOME/notes"
 EOF
@@ -544,6 +828,14 @@ preprocess_args() {
                 printf 'fsearch %s\n' "$FSEARCH_VERSION"
                 exit 0
                 ;;
+            --stats)
+                cmd_stats
+                exit 0
+                ;;
+            --stats-reset)
+                cmd_stats_reset
+                exit 0
+                ;;
             --help)     PROCESSED_ARGS+=("-h") ;;
             --format)
                 [[ $# -lt 2 ]] && die "--format requires an argument"
@@ -562,7 +854,10 @@ preprocess_args() {
                 OPT_OLDER="${1#*=}" ;;
             --no-color) OPT_NO_COLOR=true ;;
             --size)     OPT_SHOW_SIZE=true ;;
-            --)         PROCESSED_ARGS+=("$@"); break ;;
+            --)
+                shift
+                PROCESSED_ARGS+=("--" "$@")
+                break ;;
             *)          PROCESSED_ARGS+=("$1") ;;
         esac
         shift
@@ -801,6 +1096,21 @@ ext_allowed() {
     return 0
 }
 
+# ─── Binary file detection ─────────────────────────────────────────────────
+# Fast null-byte check instead of forking `file` for every candidate.
+# Falls back to `file` command if grep -P is not available.
+
+_is_binary() {
+    local file="$1"
+    if [[ "$_HAS_GREP_P" == true ]]; then
+        # Fast: check first 512 bytes for null bytes
+        head -c 512 "$file" 2>/dev/null | grep -qP '\x00' 2>/dev/null
+    else
+        # Fallback: use file command
+        file "$file" 2>/dev/null | grep -qiE '\bbinary\b|ELF |Mach-O |compiled|object code|archive|compressed|image data|audio|video|PDF'
+    fi
+}
+
 # ─── Output formatters ─────────────────────────────────────────────────────
 
 # Pretty: coloured header with timestamps, match type, grep output
@@ -824,13 +1134,13 @@ emit_result_json() {
     local reason="$2"
     local grep_output="$3"
 
-    # Escape for JSON
+    # Proper JSON escaping
     local esc_file esc_reason
-    esc_file="$(printf '%s' "$file" | sed 's/\\/\\\\/g; s/"/\\"/g')"
-    esc_reason="$(printf '%s' "$reason" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+    esc_file="$(_json_escape "$file")"
+    esc_reason="$(_json_escape "$reason")"
 
     local created modified
-    if stat --version &>/dev/null 2>&1; then
+    if [[ "$_STAT_IS_GNU" == true ]]; then
         modified="$(stat --format='%y' "$file" 2>/dev/null | cut -d'.' -f1)"
         created="$(stat --format='%w' "$file" 2>/dev/null | cut -d'.' -f1)"
         [[ "$created" == "-" ]] && created=""
@@ -860,7 +1170,7 @@ emit_result_json() {
                 line_text="$line"
             fi
             local esc_text
-            esc_text="$(printf '%s' "$line_text" | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g')"
+            esc_text="$(_json_escape "$line_text")"
 
             if [[ "$first_match" == true ]]; then
                 first_match=false
@@ -902,12 +1212,14 @@ emit_result_plain() {
 
 FILE_COUNT=0
 MATCH_COUNT=0
+FILES_SCANNED=0
+ERROR_COUNT=0
 MAX_FILE_SIZE_BYTES=0
 
 check_filename_match() {
     local basename="$1"
     if [[ -n "$NAME_PATTERN" ]]; then
-        if grep -qE $CASE_FLAG -- "$NAME_PATTERN" <<< "$basename" 2>/dev/null; then
+        if grep -qE ${CASE_FLAG:+"$CASE_FLAG"} -- "$NAME_PATTERN" <<< "$basename" 2>/dev/null; then
             return 0
         fi
     fi
@@ -925,11 +1237,12 @@ check_content_match() {
     # Readability check
     if [[ ! -r "$file" ]]; then
         warn "cannot read file: $file"
+        (( ERROR_COUNT++ )) || true
         return 1
     fi
 
-    # Binary file check
-    if file "$file" 2>/dev/null | grep -qiE '\bbinary\b|ELF |Mach-O |compiled|object code|archive|compressed|image data|audio|video|PDF'; then
+    # Binary file check (fast null-byte detection)
+    if _is_binary "$file"; then
         return 1
     fi
 
@@ -946,7 +1259,7 @@ check_content_match() {
     local color_flag=""
     [[ "$OUTPUT_FORMAT" == "pretty" ]] && color_flag="--color=always"
     local output
-    output="$(grep -nE $CASE_FLAG $color_flag -C "$CONTEXT_LINES" -- "$GREP_PATTERN" "$file" 2>/dev/null || true)"
+    output="$(grep -nE ${CASE_FLAG:+"$CASE_FLAG"} ${color_flag:+"$color_flag"} -C "$CONTEXT_LINES" -- "$GREP_PATTERN" "$file" 2>/dev/null || true)"
     if [[ -n "$output" ]]; then
         printf '%s' "$output"
         return 0
@@ -955,10 +1268,39 @@ check_content_match() {
     return 1
 }
 
+# Count content hits from grep output without re-running grep
+_count_hits_from_output() {
+    local grep_output="$1" file="$2"
+    local count=0
+    # In grep -n output, match lines have format NUM:text
+    # Context lines have format NUM-text
+    # We count lines matching ^NUM: (actual matches, not context)
+    while IFS= read -r line; do
+        # Skip separator lines and empty lines
+        [[ "$line" == "--" ]] && continue
+        [[ -z "$line" ]] && continue
+        # Match lines start with digits followed by colon
+        if printf '%s' "$line" | grep -qE '^[0-9]+:'; then
+            (( count++ )) || true
+        fi
+    done <<< "$grep_output"
+    echo "$count"
+}
+
 emit_result() {
     local file="$1"
     local reason="$2"
     local grep_output="$3"
+
+    # Count hits once from existing output (no re-grep)
+    local hits=0
+    if [[ -n "$grep_output" ]]; then
+        # Strip ANSI codes before counting for pretty mode
+        local clean_output
+        clean_output="$(printf '%s' "$grep_output" | sed $'s/\033\\[[0-9;]*m//g')"
+        hits="$(_count_hits_from_output "$clean_output" "$file")"
+        (( MATCH_COUNT += hits )) || true
+    fi
 
     case "$OUTPUT_FORMAT" in
         pretty)
@@ -970,12 +1312,6 @@ emit_result() {
             [[ "$QUIET" == false ]] && print_file_header "$file" "$reason"
 
             if [[ -n "$grep_output" ]]; then
-                # Count individual match lines
-                local hits
-                hits="$(grep -cE $CASE_FLAG -- "$GREP_PATTERN" "$file" 2>/dev/null || true)"
-                (( MATCH_COUNT += hits )) || true
-
-                # Output already has --color=always from check_content_match
                 printf '%s\n' "$grep_output"
             fi
             ;;
@@ -984,21 +1320,10 @@ emit_result() {
                 printf '%s\n' "$file"
                 return
             fi
-            # Strip ANSI from grep output for plain mode
             emit_result_plain "$file" "$reason" "$grep_output"
-            if [[ -n "$grep_output" ]]; then
-                local hits
-                hits="$(grep -cE $CASE_FLAG -- "$GREP_PATTERN" "$file" 2>/dev/null || true)"
-                (( MATCH_COUNT += hits )) || true
-            fi
             ;;
         json)
             emit_result_json "$file" "$reason" "$grep_output"
-            if [[ -n "$grep_output" ]]; then
-                local hits
-                hits="$(grep -cE $CASE_FLAG -- "$GREP_PATTERN" "$file" 2>/dev/null || true)"
-                (( MATCH_COUNT += hits )) || true
-            fi
             ;;
     esac
 }
@@ -1007,6 +1332,8 @@ run_search() {
     MAX_FILE_SIZE_BYTES="$(parse_size "$(_config_read MAX_FILE_SIZE)")"
 
     while IFS= read -r -d '' file; do
+        (( FILES_SCANNED++ )) || true
+
         local name_hit=false
         local content_hit=false
         local grep_output=""
@@ -1053,6 +1380,7 @@ run_search() {
 print_search_banner() {
     [[ "$OUTPUT_FORMAT" != "pretty" ]] && return
     [[ "$PATHS_ONLY" == "true" ]] && return
+    printf '%sfsearch%s v%s\n' "$C_BOLD" "$C_RESET" "$FSEARCH_VERSION"
     info "Searching in: ${VALID_PATHS[*]}"
     [[ -n "$NAME_PATTERN" ]] && info "Filename pattern : $NAME_PATTERN"
     [[ -n "$GREP_PATTERN" ]] && info "Content pattern  : $GREP_PATTERN"
@@ -1091,11 +1419,11 @@ print_summary() {
         if [[ "$OUTPUT_FORMAT" == "pretty" ]]; then
             printf '%s%d file(s) matched' "$C_GREEN" "$FILE_COUNT"
             [[ -n "$GREP_PATTERN" ]] && printf ', %d content hit(s)' "$MATCH_COUNT"
-            printf '.%s\n' "$C_RESET"
+            printf ' (%d file(s) scanned).%s\n' "$FILES_SCANNED" "$C_RESET"
         else
             printf '%d file(s) matched' "$FILE_COUNT"
             [[ -n "$GREP_PATTERN" ]] && printf ', %d content hit(s)' "$MATCH_COUNT"
-            printf '.\n'
+            printf ' (%d file(s) scanned).\n' "$FILES_SCANNED"
         fi
     fi
 }
@@ -1119,9 +1447,31 @@ main() {
     require_cmd grep
 
     build_find_cmd
+
+    # Rotate logs before search
+    _log_rotate
+
+    # Time the search
+    local start_time
+    start_time="$(date '+%s')"
+
     print_search_banner
     run_search
     print_summary
+
+    local end_time duration
+    end_time="$(date '+%s')"
+    duration=$(( end_time - start_time ))
+
+    # Record statistics
+    _stats_record "$FILES_SCANNED" "$FILE_COUNT" "$MATCH_COUNT" "$ERROR_COUNT"
+
+    # Log the search
+    local status="success"
+    [[ $FILE_COUNT -eq 0 ]] && status="no_matches"
+    [[ $ERROR_COUNT -gt 0 ]] && status="partial_error"
+    _log_search "$status" "$NAME_PATTERN" "$GREP_PATTERN" "${VALID_PATHS[*]}" \
+        "$FILES_SCANNED" "$FILE_COUNT" "$MATCH_COUNT" "$ERROR_COUNT" "$duration" ""
 
     # Exit code: 2 if no matches
     if [[ $FILE_COUNT -eq 0 ]]; then

@@ -4,7 +4,7 @@
 #  FSEARCH TEST SUITE
 #
 #  File:        test_fsearch.sh
-#  Version:     2.0.0
+#  Version:     2.1.0
 #  Author:      Generated with Claude Code
 #  License:     MIT
 #  Requires:    bash 3.2+, fsearch.sh in same directory
@@ -12,7 +12,8 @@
 #  Description:
 #    Comprehensive test suite for fsearch.sh.  Covers version/help output,
 #    filename search, content search, config subcommands, output formats,
-#    directory exclusions, date filters, error handling, and edge cases.
+#    directory exclusions, date filters, statistics, logging, error handling,
+#    and edge cases.
 #
 #  Usage:
 #    bash test_fsearch.sh              # normal run
@@ -156,14 +157,13 @@ printf 'line1\nline2\nMATCH_TARGET\nline4\nline5\nline6\nline7\n' > "${TEST_ROOT
 # Create a "large" file (just over a threshold we'll use in tests)
 dd if=/dev/zero of="${TEST_ROOT}/large_file.bin" bs=1024 count=100 2>/dev/null
 
+# File with special characters in name
+touch "${TEST_ROOT}/file-with-equals=sign.txt"
+printf 'equals content\n' > "${TEST_ROOT}/file-with-equals=sign.txt"
+
 # Helper: run fsearch with isolated config
 run_fsearch() {
     XDG_CONFIG_HOME="$TEST_CONFIG_HOME" bash "$FSEARCH" "$@" 2>&1
-}
-
-run_fsearch_exit() {
-    XDG_CONFIG_HOME="$TEST_CONFIG_HOME" bash "$FSEARCH" "$@" 2>&1
-    echo "$?"
 }
 
 # Helper: run fsearch and capture exit code separately
@@ -189,12 +189,12 @@ printf "Test fixtures: %s\n" "$TEST_ROOT"
 printf "Test config: %s\n" "$TEST_CONFIG_HOME"
 
 # ============================================================================
-# S3  VERSION AND HELP
+# S1  VERSION AND HELP
 # ============================================================================
 section "S1: Version and help"
 
 out="$(run_fsearch --version)"
-assert_contains "version output contains version number" "$out" "fsearch 2.0.0"
+assert_contains "version output contains version number" "$out" "fsearch 2.1.0"
 
 run_fsearch_rc --version >/dev/null; rc=$?
 assert_exit_code "version exits 0" "0" "$rc"
@@ -203,11 +203,28 @@ out="$(run_fsearch -h)"
 assert_contains "help contains usage section" "$out" "Usage:"
 assert_contains "help contains config section" "$out" "Config subcommands:"
 assert_contains "help contains examples" "$out" "Examples:"
+assert_contains "help contains stats section" "$out" "Statistics & logging:"
 
 # ============================================================================
-# S4  FILENAME SEARCH (-n)
+# S2  VERSION DISPLAY ON SEARCH
 # ============================================================================
-section "S2: Filename search (-n)"
+section "S2: Version display on search"
+
+out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$')"
+assert_contains "version shown in search banner" "$out" "v2.1.0"
+
+# Paths-only mode should NOT show version (minimal output)
+out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$' -0)"
+assert_not_contains "version not shown in -0 mode" "$out" "v2.1.0"
+
+# Plain format should NOT show version
+out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$' --format plain)"
+assert_not_contains "version not shown in plain mode" "$out" "v2.1.0"
+
+# ============================================================================
+# S3  FILENAME SEARCH (-n)
+# ============================================================================
+section "S3: Filename search (-n)"
 
 out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$' -0)"
 assert_contains "finds .txt files" "$out" "file1.txt"
@@ -234,9 +251,9 @@ else
 fi
 
 # ============================================================================
-# S5  CONTENT SEARCH (-g)
+# S4  CONTENT SEARCH (-g)
 # ============================================================================
-section "S3: Content search (-g)"
+section "S4: Content search (-g)"
 
 out="$(run_fsearch -p "$TEST_ROOT" -g 'hello world' -0)"
 assert_contains "finds file containing 'hello world'" "$out" "file1.txt"
@@ -260,9 +277,9 @@ assert_contains "context includes line before match" "$out" "line2"
 assert_contains "context includes line after match" "$out" "line4"
 
 # ============================================================================
-# S6  COMBINED SEARCH (-n + -g)
+# S5  COMBINED SEARCH (-n + -g)
 # ============================================================================
-section "S4: Combined search (-n + -g)"
+section "S5: Combined search (-n + -g)"
 
 out="$(run_fsearch -p "$TEST_ROOT" -n '\.py$' -g 'import' --format plain)"
 assert_contains "combined: finds .py with 'import'" "$out" "file2.py"
@@ -277,9 +294,9 @@ out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$' -g 'hello world' --format plain)"
 assert_contains "file matched by both name and content" "$out" "file1.txt"
 
 # ============================================================================
-# S7  PATH OPTIONS (-p, positional)
+# S6  PATH OPTIONS (-p, positional)
 # ============================================================================
-section "S5: Path options (-p, positional)"
+section "S6: Path options (-p, positional)"
 
 # Custom -p path
 out="$(run_fsearch -p "$TEST_ROOT/sub" -g 'ERROR' -0)"
@@ -299,9 +316,9 @@ out="$(run_fsearch -n '\.txt$' -0 "$TEST_ROOT")"
 assert_contains "positional arg used as path" "$out" "file1.txt"
 
 # ============================================================================
-# S8  RECURSION AND DEPTH (-d)
+# S7  RECURSION AND DEPTH (-d)
 # ============================================================================
-section "S6: Recursion and depth (-d)"
+section "S7: Recursion and depth (-d)"
 
 # Default: recursive
 out="$(run_fsearch -p "$TEST_ROOT" -g 'ERROR' -0)"
@@ -322,9 +339,9 @@ out="$(run_fsearch -p "$TEST_ROOT" -d 3 -g 'ERROR' -0 -E)"
 assert_contains "-d 3 finds depth-3 files" "$out" "deep.log"
 
 # ============================================================================
-# S9  EXTENSION FILTERS (-l, -x)
+# S8  EXTENSION FILTERS (-l, -x)
 # ============================================================================
-section "S7: Extension filters (-l, -x)"
+section "S8: Extension filters (-l, -x)"
 
 # Include only .py
 out="$(run_fsearch -p "$TEST_ROOT" -g 'import' -l py -0)"
@@ -343,12 +360,11 @@ out="$(run_fsearch -p "$TEST_ROOT" -g 'hello' -l TXT -0)"
 assert_contains "-l TXT matches .txt (case-insensitive)" "$out" "file1.txt"
 
 # ============================================================================
-# S10  OUTPUT MODES (-q, -0)
+# S9  OUTPUT MODES (-q, -0)
 # ============================================================================
-section "S8: Output modes (-q, -0)"
+section "S9: Output modes (-q, -0)"
 
 # Quiet mode: no headers but grep content still shown
-# Use a file+content match so grep_output is populated
 out="$(run_fsearch -p "$TEST_ROOT" -g 'hello world' -q)"
 assert_not_contains "-q suppresses file header" "$out" "══╡"
 assert_contains "-q still shows grep output" "$out" "hello world"
@@ -363,10 +379,14 @@ assert_not_contains "-0 suppresses timestamps" "$out" "created:"
 out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$')"
 assert_contains "summary shown by default" "$out" "file(s) matched"
 
+# Summary includes files scanned count
+out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$')"
+assert_contains "summary includes scanned count" "$out" "file(s) scanned"
+
 # ============================================================================
-# S11  OUTPUT FORMATS (--format)
+# S10  OUTPUT FORMATS (--format)
 # ============================================================================
-section "S9: Output formats (--format)"
+section "S10: Output formats (--format)"
 
 # Pretty format (default)
 out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$' -g 'hello')"
@@ -389,9 +409,9 @@ first_char="$(printf '%s' "$out" | head -c1)"
 assert_eq "json line starts with {" "$first_char" "{"
 
 # ============================================================================
-# S12  MAX RESULTS (-m)
+# S11  MAX RESULTS (-m)
 # ============================================================================
-section "S10: Max results (-m)"
+section "S11: Max results (-m)"
 
 out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$' -0 -m 1)"
 # Count lines that are actual file paths (start with /)
@@ -412,9 +432,9 @@ else
 fi
 
 # ============================================================================
-# S13  DATE FILTERS
+# S12  DATE FILTERS
 # ============================================================================
-section "S11: Date filters"
+section "S12: Date filters"
 
 # --newer with a date far in the past should find everything
 out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$' --newer '2000-01-01' -0)"
@@ -429,9 +449,9 @@ out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$' --newer '2030-01-01' -0 2>&1 || t
 assert_contains "--newer 2030-01-01 finds no files" "$out" "No matches found"
 
 # ============================================================================
-# S14  DIRECTORY EXCLUSIONS
+# S13  DIRECTORY EXCLUSIONS
 # ============================================================================
-section "S12: Directory exclusions"
+section "S13: Directory exclusions"
 
 # Default: .git and node_modules excluded
 out="$(run_fsearch -p "$TEST_ROOT" -n 'config' -0)"
@@ -448,9 +468,9 @@ out="$(run_fsearch -p "$TEST_ROOT" -n 'junk' -0 -E)"
 assert_contains "-E includes node_modules/junk.js" "$out" "junk.js"
 
 # ============================================================================
-# S15  MAX FILE SIZE SKIP
+# S14  MAX FILE SIZE SKIP
 # ============================================================================
-section "S13: Max file size skip"
+section "S14: Max file size skip"
 
 # Set a very small max file size for testing
 XDG_CONFIG_HOME="$TEST_CONFIG_HOME" bash "$FSEARCH" config set MAX_FILE_SIZE "50K" >/dev/null 2>&1
@@ -467,9 +487,9 @@ out="$(run_fsearch -p "$TEST_ROOT" -g 'hello' -0)"
 assert_contains "normal files not skipped with 10M limit" "$out" "file1.txt"
 
 # ============================================================================
-# S16  MATCH HIGHLIGHTING
+# S15  MATCH HIGHLIGHTING
 # ============================================================================
-section "S14: Match highlighting"
+section "S15: Match highlighting"
 
 # Pretty format includes ANSI colour codes around matches
 out="$(run_fsearch -p "$TEST_ROOT" -g 'hello' -C 0)"
@@ -489,9 +509,9 @@ else
 fi
 
 # ============================================================================
-# S17  FILE SIZE IN OUTPUT (--size)
+# S16  FILE SIZE IN OUTPUT (--size)
 # ============================================================================
-section "S15: File size in output"
+section "S16: File size in output"
 
 out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$' --size)"
 assert_contains "--size shows size in output" "$out" "size:"
@@ -500,15 +520,16 @@ out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$')"
 assert_not_contains "default hides size in output" "$out" "size:"
 
 # ============================================================================
-# S18  CONFIG SUBCOMMANDS
+# S17  CONFIG SUBCOMMANDS
 # ============================================================================
-section "S16: Config subcommands"
+section "S17: Config subcommands"
 
 # config show
 out="$(run_fsearch config)"
 assert_contains "config show lists keys" "$out" "DEFAULT_PATHS"
 assert_contains "config show lists CONTEXT_LINES" "$out" "CONTEXT_LINES"
 assert_contains "config show has type info" "$out" "[int]"
+assert_contains "config show lists LOG_RETENTION_DAYS" "$out" "LOG_RETENTION_DAYS"
 
 # config get
 out="$(run_fsearch config get CONTEXT_LINES)"
@@ -560,10 +581,19 @@ assert_contains "config path-remove confirms" "$out" "Removed"
 out="$(run_fsearch config get DEFAULT_PATHS)"
 assert_not_contains "config path-remove persisted" "$out" "/tmp/new_search_path"
 
+# config LOG_RETENTION_DAYS
+out="$(run_fsearch config get LOG_RETENTION_DAYS)"
+assert_contains "LOG_RETENTION_DAYS default is 7" "$out" "LOG_RETENTION_DAYS=7"
+
+out="$(run_fsearch config set LOG_RETENTION_DAYS 14)"
+assert_contains "LOG_RETENTION_DAYS can be changed" "$out" "14"
+
+run_fsearch config reset LOG_RETENTION_DAYS >/dev/null
+
 # ============================================================================
-# S19  CONFIG PERSISTENCE
+# S18  CONFIG PERSISTENCE
 # ============================================================================
-section "S17: Config persistence"
+section "S18: Config persistence"
 
 # Config file is created on first set
 rm -rf "${TEST_CONFIG_HOME}/fsearch"
@@ -589,10 +619,109 @@ run_fsearch config set CONTEXT_LINES 8 >/dev/null
 count="$(grep -c '^CONTEXT_LINES=' "${TEST_CONFIG_HOME}/fsearch/config.conf" || true)"
 assert_eq "multiple sets don't duplicate key" "$count" "1"
 
+# Config value containing equals sign
+run_fsearch config set DEFAULT_PATHS "/path/with=equals" >/dev/null
+out="$(run_fsearch config get DEFAULT_PATHS)"
+assert_contains "config value with = persisted correctly" "$out" "/path/with=equals"
+run_fsearch config reset DEFAULT_PATHS >/dev/null
+
 # ============================================================================
-# S20  ERROR HANDLING
+# S19  STATISTICS
 # ============================================================================
-section "S18: Error handling"
+section "S19: Statistics"
+
+# Reset stats for clean testing
+run_fsearch --stats-reset >/dev/null
+
+# Run a search to generate stats
+run_fsearch -p "$TEST_ROOT" -n '\.txt$' -0 >/dev/null 2>&1 || true
+
+# Check stats output
+out="$(run_fsearch --stats)"
+assert_contains "stats shows total searches" "$out" "Total searches:"
+assert_contains "stats shows files scanned" "$out" "Files scanned:"
+assert_contains "stats shows files matched" "$out" "Files matched:"
+assert_contains "stats shows version" "$out" "v2.1.0"
+
+# Verify search was counted
+assert_not_contains "stats total searches is not 0" "$out" "Total searches:                0"
+
+# Run another search and verify count increments
+run_fsearch -p "$TEST_ROOT" -g 'hello' -0 >/dev/null 2>&1 || true
+out="$(run_fsearch --stats)"
+# Should show at least 2 searches now
+assert_match "stats counts multiple searches" "$out" "Total searches:[[:space:]]*[2-9]"
+
+# Stats reset
+run_fsearch --stats-reset >/dev/null
+out="$(run_fsearch --stats)"
+assert_contains "stats reset zeros searches" "$out" "Total searches:                0"
+
+# Stats exit code is 0
+run_fsearch_rc --stats >/dev/null; rc=$?
+assert_exit_code "stats exits 0" "0" "$rc"
+
+run_fsearch_rc --stats-reset >/dev/null; rc=$?
+assert_exit_code "stats-reset exits 0" "0" "$rc"
+
+# ============================================================================
+# S20  SEARCH LOGGING
+# ============================================================================
+section "S20: Search logging"
+
+# Reset for clean testing
+rm -rf "${TEST_CONFIG_HOME}/fsearch/logs"
+
+# Run a search to generate a log entry
+run_fsearch -p "$TEST_ROOT" -n '\.txt$' -0 >/dev/null 2>&1 || true
+
+# Check that log directory and file were created
+log_dir="${TEST_CONFIG_HOME}/fsearch/logs"
+if [[ -d "$log_dir" ]]; then
+    print_pass "log directory created"
+else
+    print_fail "log directory created" "directory not found: $log_dir"
+fi
+
+# Check that a log file exists for today
+today="$(date '+%Y-%m-%d')"
+log_file="${log_dir}/${today}.log"
+if [[ -f "$log_file" ]]; then
+    print_pass "log file created for today"
+else
+    print_fail "log file created for today" "file not found: $log_file"
+fi
+
+# Check log content
+if [[ -f "$log_file" ]]; then
+    log_content="$(cat "$log_file")"
+    assert_contains "log entry has timestamp" "$log_content" "$today"
+    assert_contains "log entry has status" "$log_content" "status="
+    assert_contains "log entry has scanned count" "$log_content" "scanned="
+    assert_contains "log entry has matched count" "$log_content" "matched="
+fi
+
+# Run a no-match search and verify it's logged
+run_fsearch -p "$TEST_ROOT" -g 'ABSOLUTELY_NO_MATCH_12345' -0 >/dev/null 2>&1 || true
+if [[ -f "$log_file" ]]; then
+    log_content="$(cat "$log_file")"
+    assert_contains "no-match search is logged" "$log_content" "no_matches"
+fi
+
+# Multiple searches produce multiple log lines
+if [[ -f "$log_file" ]]; then
+    line_count="$(wc -l < "$log_file" | tr -d ' ')"
+    if [[ "$line_count" -ge 2 ]]; then
+        print_pass "multiple searches produce multiple log entries"
+    else
+        print_fail "multiple searches produce multiple log entries" "only $line_count line(s)"
+    fi
+fi
+
+# ============================================================================
+# S21  ERROR HANDLING
+# ============================================================================
+section "S21: Error handling"
 
 # No pattern specified
 out="$(run_fsearch -p "$TEST_ROOT" 2>&1 || true)"
@@ -620,9 +749,9 @@ out="$(run_fsearch -p "$TEST_ROOT" -d abc -n '.' 2>&1 || true)"
 assert_contains "invalid -d rejected" "$out" "positive integer"
 
 # ============================================================================
-# S21  EDGE CASES
+# S22  EDGE CASES
 # ============================================================================
-section "S19: Edge cases"
+section "S22: Edge cases"
 
 # Spaces in file paths
 out="$(run_fsearch -p "$TEST_ROOT" -g 'spaces in path' -0)"
@@ -640,6 +769,14 @@ assert_not_contains "regex dot is not a wildcard" "$out" ".txt"
 # Exit code 2 for no matches
 run_fsearch_rc -p "$TEST_ROOT" -g 'ABSOLUTELY_NO_MATCH_EVER_12345' >/dev/null 2>&1; rc=$?
 assert_exit_code "exit code 2 when no matches" "2" "$rc"
+
+# -- argument terminator
+out="$(run_fsearch -n '\.txt$' -0 -- "$TEST_ROOT")"
+assert_contains "-- separates options from paths" "$out" "file1.txt"
+
+# File with equals in name
+out="$(run_fsearch -p "$TEST_ROOT" -n 'equals' -0)"
+assert_contains "finds file with = in name" "$out" "file-with-equals=sign.txt"
 
 # ============================================================================
 # SUMMARY

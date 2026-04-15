@@ -4,7 +4,7 @@
 #  FSEARCH INSTALLER
 #
 #  File:        install.sh
-#  Version:     2.0.0
+#  Version:     2.1.0
 #  Author:      Generated with Claude Code
 #  License:     MIT
 #  Requires:    macOS or Linux, bash 3.2+
@@ -29,7 +29,7 @@ set -euo pipefail
 # ─── Constants ───────────────────────────────────────────────────────────────
 
 TOOL_NAME="fsearch"
-TOOL_VERSION="2.0.0"
+TOOL_VERSION="2.1.0"
 SCRIPT_FILE="fsearch.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE="${SCRIPT_DIR}/${SCRIPT_FILE}"
@@ -166,6 +166,12 @@ do_install() {
         success "Created config directory ${CONFIG_DIR}"
     fi
 
+    # Create logs directory
+    if [[ ! -d "${CONFIG_DIR}/logs" ]]; then
+        mkdir -p "${CONFIG_DIR}/logs"
+        success "Created logs directory ${CONFIG_DIR}/logs"
+    fi
+
     # PATH update (only needed for user-local installs)
     if [[ "${INSTALL_DIR}" == "${USER_BIN}" ]]; then
         if printf '%s' "${PATH}" | tr ':' '\n' | grep -qxF "${USER_BIN}"; then
@@ -209,6 +215,7 @@ do_install() {
     printf '  %-44s %s\n' "${TOOL_NAME} -g 'password' -i -0"         "list files containing 'password'"
     printf '  %-44s %s\n' "${TOOL_NAME} config"                       "show all settings"
     printf '  %-44s %s\n' "${TOOL_NAME} config path-add ~/projects"   "add a search path"
+    printf '  %-44s %s\n' "${TOOL_NAME} --stats"                      "view search statistics"
     printf '\n'
 }
 
@@ -235,10 +242,10 @@ do_uninstall() {
 
     [[ "${removed_any}" == false ]] && warn "${TOOL_NAME} was not found in ${USER_BIN} or ${SYSTEM_BIN}"
 
-    # Offer to remove config directory
+    # Offer to remove config directory (includes stats and logs)
     if [[ -d "${CONFIG_DIR}" ]]; then
         printf '\n'
-        printf '  Remove configuration directory %s? [y/N] ' "${CONFIG_DIR}"
+        printf '  Remove configuration, statistics, and logs in %s? [y/N] ' "${CONFIG_DIR}"
         local answer
         read -r answer
         case "${answer}" in
@@ -253,13 +260,15 @@ do_uninstall() {
     fi
 
     # Clean up PATH entries from all shell configs
+    # Uses sed block delete to reliably remove the marker and the line after it
     local rc
     for rc in "${HOME}/.zshrc" "${HOME}/.bash_profile" "${HOME}/.bashrc" "${HOME}/.profile"; do
         [[ -f "${rc}" ]] || continue
         if grep -qF "${PATH_MARKER}" "${rc}" 2>/dev/null; then
             local tmp
             tmp="$(mktemp)"
-            grep -v -A1 "${PATH_MARKER}" "${rc}" | grep -v "^--$" > "${tmp}" || true
+            # Delete the marker line and the next line (the PATH export)
+            sed "/${PATH_MARKER}/,+1d" "${rc}" > "${tmp}"
             mv "${tmp}" "${rc}"
             success "Removed PATH entry from ${rc}"
         fi

@@ -1,8 +1,8 @@
 # fsearch
 
-**Current release: 2.0.0**
+**Current release: 2.1.0**
 
-File search utility for macOS and Linux. Searches configurable directory trees by filename pattern and/or text content, printing timestamps, file metadata, and matching lines with context.
+File search utility for macOS and Linux. Searches configurable directory trees by filename pattern and/or text content, printing timestamps, file metadata, and matching lines with context. Tracks cumulative search statistics and maintains detailed search logs.
 
 ## Quick Start
 
@@ -22,6 +22,9 @@ fsearch -g 'password' -i -0
 
 # JSON output for scripting
 fsearch -g 'TODO' --format json | jq '.file'
+
+# View search statistics
+fsearch --stats
 ```
 
 ## Features
@@ -36,6 +39,9 @@ fsearch -g 'TODO' --format json | jq '.file'
 - **File size display** -- `--size` to show human-readable file sizes
 - **Large file skip** -- configurable max file size for content search (default 10M)
 - **Cross-platform** -- macOS (bash 3.2, BSD stat) and Linux (GNU stat)
+- **Cumulative statistics** -- tracks searches, files scanned, matches found (`--stats`)
+- **Search logging** -- detailed per-search logs with automatic 7-day retention
+- **Version display** -- version shown in every search banner
 
 ## Search Options
 
@@ -60,6 +66,45 @@ fsearch -g 'TODO' --format json | jq '.file'
 --version         Print version
 -h, --help        Show help
 ```
+
+## Statistics & Logging
+
+fsearch tracks cumulative search statistics and maintains detailed search logs.
+
+### Statistics
+
+```bash
+fsearch --stats           # Show cumulative statistics
+fsearch --stats-reset     # Reset all statistics to zero
+```
+
+Statistics tracked:
+- Total searches run
+- Total files scanned
+- Total files matched
+- Total content hits
+- Total errors
+- First and last search timestamps
+- Log file count and size
+
+### Search Logging
+
+Every search is logged to `~/.config/fsearch/logs/` with one file per day. Each log entry records:
+- Timestamp
+- Search status (success, no_matches, partial_error)
+- Name and content patterns used
+- Paths searched
+- Files scanned, matched, and content hits
+- Error count and details
+- Search duration
+
+Log retention is configurable:
+```bash
+fsearch config get LOG_RETENTION_DAYS     # Default: 7
+fsearch config set LOG_RETENTION_DAYS 14  # Keep 14 days
+```
+
+Logs older than the retention period are automatically purged on each search. Statistics are cumulative and persist independently of log rotation.
 
 ## Configuration
 
@@ -90,6 +135,7 @@ fsearch config path                # Show config file location
 | `OUTPUT_FORMAT` | string | `pretty` | Default format |
 | `SHOW_FILE_SIZE` | bool | `false` | Show file size in headers |
 | `SHOW_SUMMARY` | bool | `true` | Show result count |
+| `LOG_RETENTION_DAYS` | int | `7` | Days to keep detailed search logs |
 
 Config file location: `~/.config/fsearch/config.conf`
 
@@ -98,6 +144,10 @@ Config file location: `~/.config/fsearch/config.conf`
 ### Pretty (default)
 
 ```
+fsearch v2.1.0
+Searching in: ~/projects
+Content pattern  : api_key
+
 ══╡ src/auth.py ╞
   created: 2026-03-01 10:30:00  |  modified: 2026-04-10 14:22:15
   match: content
@@ -105,6 +155,9 @@ Config file location: `~/.config/fsearch/config.conf`
 41-def validate_token(token):
 42:    api_key = os.environ["API_KEY"]
 43-    return hmac.compare_digest(token, api_key)
+
+════════════════════════════════════════════════════════════════════════════════
+1 file(s) matched, 1 content hit(s) (42 file(s) scanned).
 ```
 
 ### JSON
@@ -118,6 +171,26 @@ Config file location: `~/.config/fsearch/config.conf`
 ```
 --- src/auth.py [content]
 42:    api_key = os.environ["API_KEY"]
+1 file(s) matched, 1 content hit(s) (42 file(s) scanned).
+```
+
+### Statistics
+
+```
+fsearch v2.1.0 — Cumulative Statistics
+────────────────────────────────────────────────────────────────
+  Total searches:                147
+  Files scanned:                 24831
+  Files matched:                 412
+  Content hits:                  1893
+  Errors:                        3
+────────────────────────────────────────────────────────────────
+  First search:                  2026-04-01 09:15:22
+  Last search:                   2026-04-15 14:30:10
+  Stats file:                    ~/.config/fsearch/stats.conf
+  Log files:                     7 file(s), 12K
+────────────────────────────────────────────────────────────────
+  Reset: fsearch --stats-reset
 ```
 
 ## Installation
@@ -153,6 +226,6 @@ bash test_fsearch.sh --verbose    # Verbose output
 
 | Code | Meaning |
 |------|---------|
-| 0 | Matches found, or config command completed |
+| 0 | Matches found, or config/stats command completed |
 | 1 | Error (invalid arguments, no valid paths) |
 | 2 | No matches found |
