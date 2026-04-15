@@ -560,6 +560,14 @@ assert_contains "config path-remove confirms" "$out" "Removed"
 out="$(run_fsearch config get DEFAULT_PATHS)"
 assert_not_contains "config path-remove persisted" "$out" "/tmp/new_search_path"
 
+# SHOW_PROGRESS appears in config show
+out="$(run_fsearch config)"
+assert_contains "config show lists SHOW_PROGRESS" "$out" "SHOW_PROGRESS"
+
+# --no-progress does not add noise to output
+out="$(run_fsearch -p "$TEST_ROOT" -g 'hello' --no-progress 2>&1)"
+assert_not_contains "--no-progress flag suppresses spinner" "$out" " scanned"
+
 # ============================================================================
 # S19  CONFIG PERSISTENCE
 # ============================================================================

@@ -4,7 +4,7 @@
 #  FSEARCH — File Search Utility
 #
 #  File:        fsearch.sh
-#  Version:     2.0.0
+#  Version:     2.1.0
 #  Author:      Generated with Claude Code
 #  License:     MIT
 #  Requires:    bash 3.2+, find, grep, file, stat
@@ -31,7 +31,7 @@ set -euo pipefail
 
 # ─── Version ────────────────────────────────────────────────────────────────
 
-FSEARCH_VERSION="2.0.0"
+FSEARCH_VERSION="2.1.0"
 
 # ─── Configuration system ──────────────────────────────────────────────────
 
@@ -49,7 +49,8 @@ MAX_RESULTS
 COLOR
 OUTPUT_FORMAT
 SHOW_FILE_SIZE
-SHOW_SUMMARY"
+SHOW_SUMMARY
+SHOW_PROGRESS"
 
 # Returns the data type for a config key
 _config_key_type() {
@@ -58,7 +59,7 @@ _config_key_type() {
             echo "string" ;;
         CONTEXT_LINES|MAX_RESULTS)
             echo "int" ;;
-        CASE_INSENSITIVE|EXCLUDE_DIRS_ENABLED|COLOR|SHOW_FILE_SIZE|SHOW_SUMMARY)
+        CASE_INSENSITIVE|EXCLUDE_DIRS_ENABLED|COLOR|SHOW_FILE_SIZE|SHOW_SUMMARY|SHOW_PROGRESS)
             echo "bool" ;;
         MAX_FILE_SIZE|OUTPUT_FORMAT)
             echo "string" ;;
@@ -81,6 +82,7 @@ _config_default() {
         OUTPUT_FORMAT)        echo "pretty" ;;
         SHOW_FILE_SIZE)       echo "false" ;;
         SHOW_SUMMARY)         echo "true" ;;
+        SHOW_PROGRESS)        echo "true" ;;
         *)                    echo "" ;;
     esac
 }
@@ -478,6 +480,7 @@ ${C_BOLD}Output options:${C_RESET}
   --format <fmt>    Output format: pretty (default), plain, json
   --size            Show file size in output
   --no-color        Disable coloured output
+  --no-progress     Disable progress indicator while searching
 
 ${C_BOLD}Config subcommands:${C_RESET}
   config             Show all settings with current values
@@ -529,6 +532,7 @@ OPT_OLDER=""
 OPT_FORMAT=""
 OPT_NO_COLOR=false
 OPT_SHOW_SIZE=false
+OPT_NO_PROGRESS=false
 
 preprocess_args() {
     PROCESSED_ARGS=()
@@ -560,8 +564,9 @@ preprocess_args() {
                 OPT_OLDER="$2"; shift ;;
             --older=*)
                 OPT_OLDER="${1#*=}" ;;
-            --no-color) OPT_NO_COLOR=true ;;
-            --size)     OPT_SHOW_SIZE=true ;;
+            --no-color)    OPT_NO_COLOR=true ;;
+            --size)        OPT_SHOW_SIZE=true ;;
+            --no-progress) OPT_NO_PROGRESS=true ;;
             --)         PROCESSED_ARGS+=("$@"); break ;;
             *)          PROCESSED_ARGS+=("$1") ;;
         esac
@@ -573,13 +578,14 @@ preprocess_args() {
 
 parse_args() {
     # Load config defaults
-    local cfg_context cfg_case cfg_format cfg_color cfg_size cfg_summary
+    local cfg_context cfg_case cfg_format cfg_color cfg_size cfg_summary cfg_progress
     cfg_context="$(_config_read CONTEXT_LINES)"
     cfg_case="$(_config_read CASE_INSENSITIVE)"
     cfg_color="$(_config_read COLOR)"
     cfg_format="$(_config_read OUTPUT_FORMAT)"
     cfg_size="$(_config_read SHOW_FILE_SIZE)"
     cfg_summary="$(_config_read SHOW_SUMMARY)"
+    cfg_progress="$(_config_read SHOW_PROGRESS)"
 
     # Apply config defaults
     NAME_PATTERN=""
@@ -603,6 +609,10 @@ parse_args() {
     [[ "$OPT_NO_COLOR" == "true" ]] && cfg_color="false"
     [[ -n "$OPT_FORMAT" ]] && OUTPUT_FORMAT="$OPT_FORMAT"
     [[ "$OPT_SHOW_SIZE" == "true" ]] && SHOW_FILE_SIZE="true"
+
+    # Progress: on by default; disabled by --no-progress flag or config
+    _PROGRESS_ENABLED="$cfg_progress"
+    [[ "$OPT_NO_PROGRESS" == "true" ]] && _PROGRESS_ENABLED="false"
 
     # Validate output format
     case "$OUTPUT_FORMAT" in
@@ -907,6 +917,49 @@ emit_result_plain() {
     fi
 }
 
+# ─── Progress indicator ─────────────────────────────────────────────────────
+# Writes a live progress line to stderr (does not touch stdout).
+# Uses \r to overwrite itself so it does not appear in captured output.
+# Only active when stderr is an interactive terminal.
+
+_PROGRESS_ENABLED="false"   # set in parse_args after loading config
+_PROGRESS_ACTIVE=false       # true once a progress line has been written
+_PROGRESS_SCANNED=0          # total files examined (not just matches)
+_SPINNER_CHARS="/-\\|"
+_SPINNER_IDX=0
+
+# Call once per file examined (inside run_search loop).
+# Refreshes the display every 25 files to keep overhead negligible.
+_progress_update() {
+    [[ "$_PROGRESS_ENABLED" != "true" ]] && return
+    [[ ! -t 2 ]] && return
+
+    (( _PROGRESS_SCANNED++ )) || true
+    (( _PROGRESS_SCANNED % 25 != 0 )) && return
+
+    (( _SPINNER_IDX = (_SPINNER_IDX + 1) % 4 )) || true
+    local spin="${_SPINNER_CHARS:$_SPINNER_IDX:1}"
+
+    local term_width
+    term_width="$(tput cols 2>/dev/null || printf '80')"
+
+    local msg
+    msg="$(printf ' %s  %d scanned  %d matched' "$spin" "$_PROGRESS_SCANNED" "$FILE_COUNT")"
+
+    printf '\r%-*s' "$term_width" "$msg" >&2
+    _PROGRESS_ACTIVE=true
+}
+
+# Erase the progress line before printing a result or summary.
+_progress_clear() {
+    [[ "$_PROGRESS_ACTIVE" != "true" ]] && return
+    [[ ! -t 2 ]] && return
+    local term_width
+    term_width="$(tput cols 2>/dev/null || printf '80')"
+    printf '\r%*s\r' "$term_width" "" >&2
+    _PROGRESS_ACTIVE=false
+}
+
 # ─── Core search logic ─────────────────────────────────────────────────────
 
 FILE_COUNT=0
@@ -969,6 +1022,9 @@ emit_result() {
     local reason="$2"
     local grep_output="$3"
 
+    # Clear progress line before printing so it doesn't interleave with results
+    _progress_clear
+
     case "$OUTPUT_FORMAT" in
         pretty)
             if [[ "$PATHS_ONLY" == true ]]; then
@@ -1016,6 +1072,8 @@ run_search() {
     MAX_FILE_SIZE_BYTES="$(parse_size "$(_config_read MAX_FILE_SIZE)")"
 
     while IFS= read -r -d '' file; do
+        _progress_update
+
         local name_hit=false
         local content_hit=false
         local grep_output=""
@@ -1074,6 +1132,8 @@ print_search_banner() {
 # ─── Summary ────────────────────────────────────────────────────────────────
 
 print_summary() {
+    _progress_clear
+
     if [[ "$OUTPUT_FORMAT" == "json" ]]; then
         return
     fi

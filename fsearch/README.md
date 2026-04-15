@@ -1,6 +1,6 @@
 # fsearch
 
-**Current release: 2.0.0**
+**Current release: 2.1.0**
 
 File search utility for macOS and Linux. Searches configurable directory trees by filename pattern and/or text content, printing timestamps, file metadata, and matching lines with context.
 
@@ -32,6 +32,7 @@ fsearch -g 'TODO' --format json | jq '.file'
 - **Multiple output formats** -- pretty (coloured), plain (for piping), JSON (JSONL)
 - **Inline match highlighting** -- matched text highlighted within each line
 - **Date range filters** -- `--newer` / `--older` for modification time
+- **Progress indicator** -- live spinner + scanned/matched counts on stderr while searching (configurable, off with `--no-progress`)
 - **Max results** -- `-m N` to stop after N matches
 - **File size display** -- `--size` to show human-readable file sizes
 - **Large file skip** -- configurable max file size for content search (default 10M)
@@ -57,6 +58,7 @@ fsearch -g 'TODO' --format json | jq '.file'
 --format <fmt>    Output: pretty (default), plain, json
 --size            Show file size in output
 --no-color        Disable colour
+--no-progress     Disable progress indicator while searching
 --version         Print version
 -h, --help        Show help
 ```
@@ -90,6 +92,7 @@ fsearch config path                # Show config file location
 | `OUTPUT_FORMAT` | string | `pretty` | Default format |
 | `SHOW_FILE_SIZE` | bool | `false` | Show file size in headers |
 | `SHOW_SUMMARY` | bool | `true` | Show result count |
+| `SHOW_PROGRESS` | bool | `true` | Show progress indicator while searching |
 
 Config file location: `~/.config/fsearch/config.conf`
 

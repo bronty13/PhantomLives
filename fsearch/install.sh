@@ -4,7 +4,7 @@
 #  FSEARCH INSTALLER
 #
 #  File:        install.sh
-#  Version:     2.0.0
+#  Version:     2.1.0
 #  Author:      Generated with Claude Code
 #  License:     MIT
 #  Requires:    macOS or Linux, bash 3.2+
@@ -29,7 +29,7 @@ set -euo pipefail
 # ─── Constants ───────────────────────────────────────────────────────────────
 
 TOOL_NAME="fsearch"
-TOOL_VERSION="2.0.0"
+TOOL_VERSION="2.1.0"
 SCRIPT_FILE="fsearch.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE="${SCRIPT_DIR}/${SCRIPT_FILE}"

@@ -2,6 +2,13 @@
 
 All notable changes to fsearch are documented in this file.
 
+## [2.1.0] - 2026-04-14
+
+### Features
+
+- **Progress indicator** — live spinner with files-scanned and matches-found counts written to stderr while searching. Active by default; disable with `--no-progress` or `fsearch config set SHOW_PROGRESS false`. Only displayed when stderr is an interactive terminal, so piped/scripted use is unaffected.
+- **New config key `SHOW_PROGRESS`** (bool, default `true`) — persists the progress preference across invocations.
+
 ## [2.0.0] - 2026-04-14
 
 ### Features
