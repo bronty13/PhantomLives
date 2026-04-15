@@ -665,7 +665,9 @@ parse_args() {
         CUSTOM_PATHS+=("$extra")
     done
 
-    [[ -z "$NAME_PATTERN" && -z "$GREP_PATTERN" ]] && die "specify at least -n <pattern> or -g <pattern> (see --help)"
+    if [[ -z "$NAME_PATTERN" && -z "$GREP_PATTERN" ]]; then
+        usage
+    fi
 
     # Resolve search paths
     if [[ ${#CUSTOM_PATHS[@]} -gt 0 ]]; then
