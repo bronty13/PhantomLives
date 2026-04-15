@@ -656,13 +656,20 @@ parse_args() {
     done
     shift $((OPTIND - 1))
 
-    # Remaining positional args treated as paths
+    # Remaining positional args: if no -n/-g given, first bare word is the
+    # search term (content grep); the rest are paths.  If -n/-g already set,
+    # all remaining args are paths (existing behaviour).
     for extra in "$@"; do
-        if [[ "$CUSTOM_PATHS_SET" == false ]]; then
-            CUSTOM_PATHS=()
-            CUSTOM_PATHS_SET=true
+        if [[ -z "$NAME_PATTERN" && -z "$GREP_PATTERN" && ! "$extra" =~ ^[/~\.] ]]; then
+            # Looks like a search term, not a path
+            GREP_PATTERN="$extra"
+        else
+            if [[ "$CUSTOM_PATHS_SET" == false ]]; then
+                CUSTOM_PATHS=()
+                CUSTOM_PATHS_SET=true
+            fi
+            CUSTOM_PATHS+=("$extra")
         fi
-        CUSTOM_PATHS+=("$extra")
     done
 
     if [[ -z "$NAME_PATTERN" && -z "$GREP_PATTERN" ]]; then

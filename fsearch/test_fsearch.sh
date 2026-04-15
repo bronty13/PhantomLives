@@ -594,9 +594,9 @@ assert_eq "multiple sets don't duplicate key" "$count" "1"
 # ============================================================================
 section "S18: Error handling"
 
-# No pattern specified
+# No pattern specified — should show help (usage)
 out="$(run_fsearch -p "$TEST_ROOT" 2>&1 || true)"
-assert_contains "error when no pattern" "$out" "specify at least"
+assert_contains "no pattern shows help" "$out" "Usage:"
 
 # Unreadable file (skip if running as root)
 if [[ "$(id -u)" -ne 0 ]]; then
