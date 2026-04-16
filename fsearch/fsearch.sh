@@ -593,6 +593,80 @@ _log_summarise_to_stats() {
     return 0
 }
 
+# Display log files: today, last N days, or all
+cmd_logs() {
+    local mode="${1:-today}"
+
+    if [[ ! -d "$LOG_DIR" ]]; then
+        printf '  No log directory found: %s\n' "$LOG_DIR"
+        return 0
+    fi
+
+    local log_files=()
+
+    case "$mode" in
+        today)
+            local today_log
+            today_log="$(_log_file_for_date)"
+            [[ -f "$today_log" ]] && log_files=("$today_log")
+            ;;
+        all)
+            while IFS= read -r f; do
+                log_files+=("$f")
+            done < <(find "$LOG_DIR" -name '*.log' -type f 2>/dev/null | sort)
+            ;;
+        *)
+            if printf '%s' "$mode" | grep -qE '^[0-9]+$'; then
+                local days="$mode" cutoff_date
+                if date --version &>/dev/null 2>&1; then
+                    cutoff_date="$(date -d "-${days} days" '+%Y-%m-%d')"
+                else
+                    cutoff_date="$(date -v-${days}d '+%Y-%m-%d')"
+                fi
+                while IFS= read -r f; do
+                    local date_part
+                    date_part="$(basename "$f" .log)"
+                    printf '%s' "$date_part" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || continue
+                    [[ "$date_part" > "$cutoff_date" || "$date_part" == "$cutoff_date" ]] && log_files+=("$f")
+                done < <(find "$LOG_DIR" -name '*.log' -type f 2>/dev/null | sort)
+            else
+                printf 'fsearch: error: --logs requires a number of days or "all" (got: %s)\n' "$mode" >&2
+                return 1
+            fi
+            ;;
+    esac
+
+    if [[ ${#log_files[@]} -eq 0 ]]; then
+        printf '  No log entries found.\n'
+        return 0
+    fi
+
+    for f in "${log_files[@]}"; do
+        printf '── %s ──\n' "$(basename "$f" .log)"
+        cat "$f"
+        printf '\n'
+    done
+}
+
+# Delete all log files
+cmd_logs_delete() {
+    if [[ ! -d "$LOG_DIR" ]]; then
+        printf '  No logs to delete.\n'
+        return 0
+    fi
+
+    local count
+    count="$(find "$LOG_DIR" -name '*.log' -type f 2>/dev/null | wc -l | tr -d ' ')"
+
+    if [[ "$count" -eq 0 ]]; then
+        printf '  No log files to delete.\n'
+        return 0
+    fi
+
+    find "$LOG_DIR" -name '*.log' -type f -delete 2>/dev/null
+    printf '  Deleted %s log file(s).\n' "$count"
+}
+
 # ─── Colour helpers ─────────────────────────────────────────────────────────
 
 setup_colors() {
@@ -769,6 +843,10 @@ ${C_BOLD}Output options:${C_RESET}
 ${C_BOLD}Statistics & logging:${C_RESET}
   --stats           Show cumulative search statistics
   --stats-reset     Reset all statistics to zero
+  --logs            Show today's search log
+  --logs <N>        Show logs from the last N days
+  --logs all        Show all log entries
+  --logs-delete     Delete all log files
 
 ${C_BOLD}Config subcommands:${C_RESET}
   config             Show all settings with current values
@@ -845,6 +923,22 @@ preprocess_args() {
                 ;;
             --stats-reset)
                 cmd_stats_reset
+                exit 0
+                ;;
+            --logs)
+                local _logs_arg="today"
+                if [[ $# -gt 1 ]]; then
+                    local _next="$2"
+                    if printf '%s' "$_next" | grep -qE '^[0-9]+$' || [[ "$_next" == "all" ]]; then
+                        _logs_arg="$_next"
+                        shift
+                    fi
+                fi
+                cmd_logs "$_logs_arg"
+                exit 0
+                ;;
+            --logs-delete)
+                cmd_logs_delete
                 exit 0
                 ;;
             --help)     PROCESSED_ARGS+=("-h") ;;
@@ -998,6 +1092,7 @@ parse_args() {
         printf '%sOther commands:%s\n' "$C_BOLD" "$C_RESET"
         printf '  %s config                         Show/manage settings\n' "$SCRIPT_NAME"
         printf '  %s --stats                        View search statistics\n' "$SCRIPT_NAME"
+        printf '  %s --logs [N|all]                 View search logs\n' "$SCRIPT_NAME"
         printf '  %s -h                             Full help\n' "$SCRIPT_NAME"
         printf '\n'
         exit 1
