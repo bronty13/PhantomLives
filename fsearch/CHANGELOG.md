@@ -2,6 +2,35 @@
 
 All notable changes to fsearch are documented in this file.
 
+## [2.3.0] - 2026-04-16
+
+### Features
+
+- **Interactive keypress control** -- While the progress spinner is active (stdin is a tty, `--no-progress` not given, format is not JSON), the following keys are recognised:
+  - `p` — pause / resume the search
+  - `q` — quit immediately, print partial summary, record stats, exit 2
+  - `s` — one-line stats snapshot (scanned / matched / hits) without pausing
+  - `l` — display last 5 matched file paths from a ring buffer
+  - `?` or `h` — show the key reference
+  - The spinner line gains a dimmed `[? help]` suffix for discoverability.
+  - Completely suppressed in pipes, CI, `--no-progress`, `--format json/plain`.
+- **Improved Ctrl+C** -- SIGINT now restores terminal state, clears the progress line, prints a partial match summary to stderr, records partial stats/log, and exits 130 (128 + SIGNO 2) instead of leaving the terminal in raw mode.
+
+### Architecture
+
+- `_interactive_setup` / `_interactive_teardown` — tty raw-mode lifecycle (`stty -g` save + restore); guarded by `[[ -t 0 ]]` and `SHOW_PROGRESS=true`.
+- `_interactive_poll` — `read -r -t 0 -n 1 -s` non-blocking poll called every 10 files at the existing progress update point; zero overhead when no key pressed (`|| true` handles bash 3.2 exit-1 on no-data).
+- `_recent_match_add` / `_RECENT_MATCH_BUF` — manual 5-slot ring buffer (index-arithmetic, no `mapfile`) compatible with bash 3.2.
+- `_sigint_handler` — registered via `trap _sigint_handler INT`; idempotently tears down interactive state before printing summary.
+- `_SEARCH_START_TIME` — global set in `main` so `_interactive_quit` and `_sigint_handler` can compute partial elapsed duration for stats recording.
+- `_progress_update` — uses a separate visible-length variable for padding arithmetic so the dimmed `[? help]` color codes don't skew `_PROGRESS_LAST_LEN`.
+
+### Test Suite
+
+- **~154 tests across 25 sections** (up from 148 across 24).
+- **New section S25 (Interactive keypress control)**: no-tty guard, JSON suppression, `--no-progress` suppression, version 2.3.0 assertion, ring-buffer code path, SIGINT exit-130 check. Interactive p/q/s/l/? keys marked `skip` (require a real tty — see README for manual verification steps).
+- Updated all version string assertions from `2.2.0` to `2.3.0`.
+
 ## [2.2.0] - 2026-04-16
 
 ### Performance

@@ -1,6 +1,6 @@
 # fsearch
 
-**Current release: 2.2.0**
+**Current release: 2.3.0**
 
 File search utility for macOS and Linux. Searches configurable directory trees by filename pattern and/or text content, printing timestamps, file metadata, and matching lines with context. Tracks cumulative search statistics and maintains detailed search logs.
 
@@ -38,6 +38,8 @@ fsearch --stats
 - **Max results** -- `-m N` to stop after N matches
 - **File size display** -- `--size` to show human-readable file sizes
 - **Large file skip** -- configurable max file size for content search (default 10M)
+- **Interactive search control** -- press `?` while a search is running to see available keys; `p` pauses/resumes, `q` quits with partial summary, `s` shows a live stats snapshot, `l` shows the last 5 matched files. Active only when stdin is a terminal. No-op in pipes, CI, `--no-progress`, and JSON/plain output.
+- **Improved Ctrl+C** -- restores terminal state and prints a partial match summary before exiting (exit code 130).
 - **Cross-platform** -- macOS (bash 3.2, BSD stat) and Linux (GNU stat)
 - **Cumulative statistics** -- tracks searches, files scanned, matches found (`--stats`)
 - **Search logging** -- detailed per-search logs with automatic 7-day retention
@@ -66,6 +68,22 @@ fsearch --stats
 --version         Print version
 -h, --help        Show help
 ```
+
+## Interactive Keys (during search)
+
+When the progress spinner is visible (stdin is a terminal, `--no-progress` not set,
+output format is not JSON), the following keys are active:
+
+| Key   | Action                                       |
+|-------|----------------------------------------------|
+| `?`   | Show key reference                           |
+| `p`   | Pause / resume search                        |
+| `q`   | Quit search, print partial summary           |
+| `s`   | Live stats snapshot (scanned / matched / hits) |
+| `l`   | Show last 5 matched files                    |
+
+The spinner line also shows a `[? help]` hint to make the feature discoverable.
+These keys are completely suppressed in non-tty contexts (pipes, CI, scripts).
 
 ## Statistics & Logging
 
@@ -225,7 +243,7 @@ bash install.sh
 ## Running Tests
 
 ```bash
-bash test_fsearch.sh              # Run all tests (148 tests across 24 sections)
+bash test_fsearch.sh              # Run all tests (~154 tests across 25 sections)
 bash test_fsearch.sh --verbose    # Verbose output
 ```
 

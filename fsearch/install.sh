@@ -29,7 +29,7 @@ set -euo pipefail
 # ─── Constants ───────────────────────────────────────────────────────────────
 
 TOOL_NAME="fsearch"
-TOOL_VERSION="2.2.0"
+TOOL_VERSION="2.3.0"
 SCRIPT_FILE="fsearch.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE="${SCRIPT_DIR}/${SCRIPT_FILE}"

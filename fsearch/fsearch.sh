@@ -41,7 +41,7 @@ set -euo pipefail
 
 # ─── Version ────────────────────────────────────────────────────────────────
 
-FSEARCH_VERSION="2.2.0"
+FSEARCH_VERSION="2.3.0"
 
 # ─── Platform detection (run once at startup) ──────────────────────────────
 
@@ -1360,6 +1360,17 @@ _PROGRESS_IDX=0
 _PROGRESS_ACTIVE=false
 _PROGRESS_LAST_LEN=0
 
+# Interactive keypress control state (set by _interactive_setup)
+_INTERACTIVE_ACTIVE=false
+_INTERACTIVE_PAUSED=false
+_INTERACTIVE_STTY_SAVE=""
+_SEARCH_START_TIME=0
+
+# 5-slot ring buffer for last matched file paths (bash 3.2: no mapfile)
+_RECENT_MATCH_BUF=("" "" "" "" "")
+_RECENT_MATCH_IDX=0
+_RECENT_MATCH_COUNT=0
+
 _progress_update() {
     [[ "$SHOW_PROGRESS" == true ]] || return 0
     local scanned="$1" matched="$2"
@@ -1367,9 +1378,20 @@ _progress_update() {
     local spin="${_PROGRESS_SPINNER[$_PROGRESS_IDX]}"
     _PROGRESS_IDX=$(( (_PROGRESS_IDX + 1) % ${#_PROGRESS_SPINNER[@]} ))
 
-    local line
-    line="$(printf ' %s  Scanning... %d file(s) checked, %d matched' "$spin" "$scanned" "$matched")"
-    local len=${#line}
+    # Compute the visible (no-color) line first so padding arithmetic is correct.
+    # Color escape codes are zero-width on screen but non-zero in ${#string},
+    # so we measure the plain version and use it for _PROGRESS_LAST_LEN.
+    local visible_base hint_plain hint_color line
+    visible_base="$(printf ' %s  Scanning... %d file(s) checked, %d matched' "$spin" "$scanned" "$matched")"
+    if [[ "$_INTERACTIVE_ACTIVE" == true ]]; then
+        hint_plain="  [? help]"
+        hint_color="  ${C_DIM}[? help]${C_RESET}"
+    else
+        hint_plain=""
+        hint_color=""
+    fi
+    local len=$(( ${#visible_base} + ${#hint_plain} ))
+    line="${visible_base}${hint_color}"
 
     # Pad with spaces to overwrite previous longer line
     local pad=""
@@ -1396,6 +1418,133 @@ _progress_clear() {
         printf '\r%s\r' "$spaces" >&2
         _PROGRESS_ACTIVE=false
     fi
+}
+
+# ─── Interactive keypress control ──────────────────────────────────────────
+# Active only when SHOW_PROGRESS=true, stdin is a tty, and output format is
+# not JSON.  All functions are no-ops when _INTERACTIVE_ACTIVE=false, so the
+# feature is invisible in pipes, CI, and scripted contexts.
+
+# Put terminal into raw single-char mode; save current state for restore.
+_interactive_setup() {
+    [[ "$SHOW_PROGRESS" != true || ! -t 0 ]] && return 0
+    [[ "$OUTPUT_FORMAT" == "json" ]] && return 0
+    _INTERACTIVE_STTY_SAVE="$(stty -g 2>/dev/null)" || return 0
+    stty -echo -icanon min 0 time 0 2>/dev/null || return 0
+    _INTERACTIVE_ACTIVE=true
+}
+
+# Restore terminal to its state before _interactive_setup.  Idempotent.
+_interactive_teardown() {
+    [[ "$_INTERACTIVE_ACTIVE" != true ]] && return 0
+    [[ -n "$_INTERACTIVE_STTY_SAVE" ]] && stty "$_INTERACTIVE_STTY_SAVE" 2>/dev/null || true
+    _INTERACTIVE_ACTIVE=false
+    _INTERACTIVE_PAUSED=false
+}
+
+# Non-blocking keypress poll — called every 10 files at the progress tick.
+# read -t 0 returns exit 1 when no data is available (bash 3.2+); || true is required.
+_interactive_poll() {
+    [[ "$_INTERACTIVE_ACTIVE" != true ]] && return 0
+    local key=""
+    IFS= read -r -t 0 -n 1 -s key 2>/dev/null || true
+    [[ -z "$key" ]] && return 0
+    case "$key" in
+        p|P)     _interactive_pause ;;
+        q|Q)     _interactive_quit ;;
+        s|S)     _interactive_stats_snap ;;
+        l|L)     _interactive_last_matches ;;
+        '?'|h|H) _interactive_help ;;
+    esac
+}
+
+# Print the interactive key reference to stderr.
+_interactive_help() {
+    _progress_clear
+    printf '\n%s%s[Interactive keys]%s\n' "$C_BOLD" "$C_CYAN" "$C_RESET" >&2
+    printf '  %sp%s  pause / resume search\n'           "$C_BOLD" "$C_RESET" >&2
+    printf '  %sq%s  quit, print partial summary\n'     "$C_BOLD" "$C_RESET" >&2
+    printf '  %ss%s  live stats snapshot\n'             "$C_BOLD" "$C_RESET" >&2
+    printf '  %sl%s  show last 5 matched files\n'       "$C_BOLD" "$C_RESET" >&2
+    printf '  %s?%s  show this help\n'                  "$C_BOLD" "$C_RESET" >&2
+    printf '\n' >&2
+}
+
+# Pause the search; block until p/q is pressed.  Press p again to resume.
+_interactive_pause() {
+    _progress_clear
+    if [[ "$_INTERACTIVE_PAUSED" == true ]]; then
+        _INTERACTIVE_PAUSED=false
+        printf '\r%s[resumed]%s\n' "$C_GREEN" "$C_RESET" >&2
+        return 0
+    fi
+    _INTERACTIVE_PAUSED=true
+    printf '\r%s[paused — p resume  q quit  ? help]%s\n' "$C_YELLOW" "$C_RESET" >&2
+    while [[ "$_INTERACTIVE_PAUSED" == true ]]; do
+        local key=""
+        IFS= read -r -t 0 -n 1 -s key 2>/dev/null || true
+        case "${key:-}" in
+            p|P)     _INTERACTIVE_PAUSED=false
+                     printf '\r%s[resumed]%s                              \n' \
+                         "$C_GREEN" "$C_RESET" >&2 ;;
+            q|Q)     _interactive_quit ;;
+            '?'|h|H) _interactive_help ;;
+        esac
+        # Brief sleep avoids busy-polling while paused.
+        # BSD sleep (macOS) accepts fractional seconds; integer fallback for strict envs.
+        sleep 0.05 2>/dev/null || sleep 1
+    done
+}
+
+# Quit the search immediately, print a partial summary, record stats, then exit.
+_interactive_quit() {
+    _progress_clear
+    printf '\n%s[search stopped by user]%s\n' "$C_YELLOW" "$C_RESET" >&2
+    _interactive_teardown
+    print_summary
+    local partial_end partial_duration
+    partial_end="$(date '+%s')"
+    partial_duration=$(( partial_end - _SEARCH_START_TIME ))
+    _stats_record "$FILES_SCANNED" "$FILE_COUNT" "$MATCH_COUNT" "$ERROR_COUNT" "$partial_duration"
+    _log_search "interrupted" "$NAME_PATTERN" "$GREP_PATTERN" "${VALID_PATHS[*]}" \
+        "$FILES_SCANNED" "$FILE_COUNT" "$MATCH_COUNT" "$ERROR_COUNT" \
+        "$partial_duration" "user quit"
+    exit 2
+}
+
+# Print a one-line stats snapshot to stderr without pausing.
+_interactive_stats_snap() {
+    _progress_clear
+    printf '\r%s[stats]%s  scanned: %d  matched: %d  hits: %d\n' \
+        "$C_CYAN" "$C_RESET" "$FILES_SCANNED" "$FILE_COUNT" "$MATCH_COUNT" >&2
+}
+
+# Show the last up-to-5 matched file paths from the ring buffer.
+_interactive_last_matches() {
+    _progress_clear
+    printf '\n%s%s[last matched files]%s\n' "$C_BOLD" "$C_CYAN" "$C_RESET" >&2
+    if [[ $_RECENT_MATCH_COUNT -eq 0 ]]; then
+        printf '  (no matches yet)\n' >&2
+    else
+        local filled
+        (( _RECENT_MATCH_COUNT < 5 )) && filled=$_RECENT_MATCH_COUNT || filled=5
+        # Oldest entry: slot 0 when buffer not yet full; _RECENT_MATCH_IDX when full
+        local start_idx=0
+        [[ $_RECENT_MATCH_COUNT -ge 5 ]] && start_idx=$_RECENT_MATCH_IDX
+        local i
+        for (( i=0; i<filled; i++ )); do
+            local slot=$(( (start_idx + i) % 5 ))
+            printf '  %s%s%s\n' "$C_DIM" "${_RECENT_MATCH_BUF[$slot]}" "$C_RESET" >&2
+        done
+    fi
+    printf '\n' >&2
+}
+
+# Add a file path to the 5-slot ring buffer.
+_recent_match_add() {
+    _RECENT_MATCH_BUF[$_RECENT_MATCH_IDX]="$1"
+    _RECENT_MATCH_IDX=$(( (_RECENT_MATCH_IDX + 1) % 5 ))
+    (( _RECENT_MATCH_COUNT++ )) || true
 }
 
 # ─── Core search logic ─────────────────────────────────────────────────────
@@ -1517,12 +1666,15 @@ emit_result() {
 run_search() {
     MAX_FILE_SIZE_BYTES="$(parse_size "$(_config_read MAX_FILE_SIZE)")"
 
+    _interactive_setup    # enable keypress control if stdin is a tty
+
     while IFS= read -r -d '' file; do
         (( FILES_SCANNED++ )) || true
 
-        # Update progress every 10 files to avoid perf overhead
+        # Update progress every 10 files; also poll for keypresses
         if [[ $(( FILES_SCANNED % 10 )) -eq 0 ]]; then
             _progress_update "$FILES_SCANNED" "$FILE_COUNT"
+            _interactive_poll
         fi
 
         local name_hit=false
@@ -1555,6 +1707,7 @@ run_search() {
             fi
 
             emit_result "$file" "$reason" "$grep_output"
+            _recent_match_add "$file"   # keep ring buffer current for 'l' key
 
             # Max results check
             if [[ $MAX_RESULTS -gt 0 && $FILE_COUNT -ge $MAX_RESULTS ]]; then
@@ -1568,8 +1721,9 @@ run_search() {
 
     done < <("${FIND_CMD[@]}" 2>/dev/null)
 
-    # Final progress clear
+    # Final progress clear + tty restore
     _progress_clear
+    _interactive_teardown
 }
 
 # ─── Search banner ──────────────────────────────────────────────────────────
@@ -1628,11 +1782,31 @@ print_summary() {
 # ─── Cleanup ────────────────────────────────────────────────────────────────
 
 cleanup() {
+    _interactive_teardown          # restore tty on any exit path
     [[ -n "${_NEWER_REF:-}" && -f "${_NEWER_REF}" ]] && rm -f "$_NEWER_REF"
     [[ -n "${_OLDER_REF:-}" && -f "${_OLDER_REF}" ]] && rm -f "$_OLDER_REF"
     return 0
 }
 trap cleanup EXIT
+
+# Ctrl+C: restore tty, print partial summary, record stats, exit 130.
+_sigint_handler() {
+    _interactive_teardown
+    _progress_clear
+    printf '\n%s(interrupted)%s\n' "$C_YELLOW" "$C_RESET" >&2
+    print_summary >&2
+    local partial_end partial_duration
+    partial_end="$(date '+%s')"
+    partial_duration=$(( partial_end - ${_SEARCH_START_TIME:-partial_end} ))
+    _stats_record "$FILES_SCANNED" "$FILE_COUNT" "$MATCH_COUNT" \
+        "$ERROR_COUNT" "$partial_duration" 2>/dev/null || true
+    _log_search "interrupted" "${NAME_PATTERN:-}" "${GREP_PATTERN:-}" \
+        "${VALID_PATHS[*]:-}" "$FILES_SCANNED" "$FILE_COUNT" \
+        "$MATCH_COUNT" "$ERROR_COUNT" "$partial_duration" \
+        "SIGINT" 2>/dev/null || true
+    exit 130
+}
+trap _sigint_handler INT
 
 # ─── Main ───────────────────────────────────────────────────────────────────
 
@@ -1651,6 +1825,7 @@ main() {
     # Time the search
     local start_time
     start_time="$(date '+%s')"
+    _SEARCH_START_TIME="$start_time"   # global used by _interactive_quit and _sigint_handler
 
     print_search_banner
     _progress_update 0 0

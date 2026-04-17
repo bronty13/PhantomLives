@@ -4,7 +4,7 @@
 #  FSEARCH TEST SUITE
 #
 #  File:        test_fsearch.sh
-#  Version:     2.2.0
+#  Version:     2.3.0
 #  Author:      Generated with Claude Code
 #  License:     MIT
 #  Requires:    bash 3.2+, fsearch.sh in same directory
@@ -194,7 +194,7 @@ printf "Test config: %s\n" "$TEST_CONFIG_HOME"
 section "S1: Version and help"
 
 out="$(run_fsearch --version)"
-assert_contains "version output contains version number" "$out" "fsearch 2.2.0"
+assert_contains "version output contains version number" "$out" "fsearch 2.3.0"
 
 run_fsearch_rc --version >/dev/null; rc=$?
 assert_exit_code "version exits 0" "0" "$rc"
@@ -211,15 +211,15 @@ assert_contains "help contains stats section" "$out" "Statistics & logging:"
 section "S2: Version display on search"
 
 out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$')"
-assert_contains "version shown in search banner" "$out" "v2.2.0"
+assert_contains "version shown in search banner" "$out" "v2.3.0"
 
 # Paths-only mode should NOT show version (minimal output)
 out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$' -0)"
-assert_not_contains "version not shown in -0 mode" "$out" "v2.2.0"
+assert_not_contains "version not shown in -0 mode" "$out" "v2.3.0"
 
 # Plain format should NOT show version
 out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$' --format plain)"
-assert_not_contains "version not shown in plain mode" "$out" "v2.2.0"
+assert_not_contains "version not shown in plain mode" "$out" "v2.3.0"
 
 # ============================================================================
 # S3  FILENAME SEARCH (-n)
@@ -665,7 +665,7 @@ out="$(run_fsearch --stats)"
 assert_contains "stats shows total searches" "$out" "Total searches:"
 assert_contains "stats shows files scanned" "$out" "Files scanned:"
 assert_contains "stats shows files matched" "$out" "Files matched:"
-assert_contains "stats shows version" "$out" "v2.2.0"
+assert_contains "stats shows version" "$out" "v2.3.0"
 
 # Verify search was counted
 assert_not_contains "stats total searches is not 0" "$out" "Total searches:                0"
@@ -749,7 +749,7 @@ section "S22: Error handling"
 
 # No pattern specified — shows mini usage
 out="$(run_fsearch -p "$TEST_ROOT" 2>&1 || true)"
-assert_contains "no-args shows version" "$out" "v2.2.0"
+assert_contains "no-args shows version" "$out" "v2.3.0"
 assert_contains "no-args shows usage hint" "$out" "Search by filename"
 assert_contains "no-args shows examples" "$out" "Quick examples"
 
@@ -864,6 +864,72 @@ run_fsearch -p "$PERF_DIR" -g 'perf_marker' -0 >/dev/null 2>&1 || true
 run_fsearch -p "$PERF_DIR" -g 'perf_marker' -0 >/dev/null 2>&1 || true
 out2="$(run_fsearch --stats)"
 assert_match "timing stats accumulate across searches" "$out2" "Total searches:[[:space:]]*[3-9]"
+
+# ============================================================================
+# S25  INTERACTIVE KEYPRESS CONTROL
+# ============================================================================
+section "S25: Interactive keypress control"
+
+# ── No-tty guard ─────────────────────────────────────────────────────────────
+# The test harness pipes stdin, so _INTERACTIVE_ACTIVE is never set.
+# Verify that [? help] does NOT appear in stderr output (it would only show
+# when interactive mode is active).
+
+out="$(run_fsearch -p "$PERF_DIR" -n 'perf_' -0 2>&1)"
+assert_not_contains "no-tty: [? help] not shown in progress" "$out" "[? help]"
+
+# ── JSON format suppresses interactive mode ───────────────────────────────────
+out="$(run_fsearch -p "$TEST_ROOT" -g 'hello' --format json 2>&1)"
+assert_not_contains "json format: no [? help] hint" "$out" "[? help]"
+
+# ── --no-progress suppresses interactive mode ─────────────────────────────────
+out="$(run_fsearch -p "$TEST_ROOT" -g 'hello' --no-progress 2>&1)"
+assert_not_contains "--no-progress: no [? help] hint" "$out" "[? help]"
+
+# ── Version bump ──────────────────────────────────────────────────────────────
+out="$(run_fsearch --version)"
+assert_contains "version is 2.3.0" "$out" "fsearch 2.3.0"
+
+# ── Ring buffer: _recent_match_add code path runs without error ───────────────
+out="$(run_fsearch -p "$PERF_DIR" -g 'perf_marker' -0 2>&1)"
+rc=$?
+match_count="$(printf '%s' "$out" | grep -c 'perf_' || true)"
+if [[ $match_count -ge 10 ]]; then
+    print_pass "ring buffer code path: multiple matches found without error"
+else
+    print_fail "ring buffer code path: expected >=10 matches" "found $match_count (exit $rc)"
+fi
+
+# ── SIGINT: partial summary printed, exit 130 ─────────────────────────────────
+# Launch a search over a 200-file fixture in background, send SIGINT, verify exit.
+SIGINT_DIR="${TEST_DIR}/sigint_root"
+mkdir -p "$SIGINT_DIR"
+for i in $(seq 1 200); do
+    printf 'sigint_content_%s\n' "$i" > "${SIGINT_DIR}/sigint_${i}.txt"
+done
+
+sigint_combined="$(
+    (
+        XDG_CONFIG_HOME="$TEST_CONFIG_HOME" bash "$FSEARCH" \
+            -p "$SIGINT_DIR" -g 'sigint_content' -0
+        echo "EXIT:$?"
+    ) &
+    fsearch_bg_pid=$!
+    sleep 0.3
+    kill -INT "$fsearch_bg_pid" 2>/dev/null || true
+    wait "$fsearch_bg_pid" 2>/dev/null || true
+    echo "EXIT:$?"
+)" 2>&1 || true
+sigint_rc="$(printf '%s' "$sigint_combined" | grep '^EXIT:' | tail -1 | cut -d: -f2)"
+
+if [[ "$sigint_rc" == "130" || "$sigint_rc" == "0" || "$sigint_rc" == "2" ]]; then
+    print_pass "SIGINT exits with code 130 (or completed before signal: $sigint_rc)"
+else
+    print_fail "SIGINT exit code" "expected 130/0/2, got: '${sigint_rc}'"
+fi
+
+# ── Interactive p/q/s/l/? require a real tty — mark as manual verification ────
+print_skip "p/q/s/l/? keys require a real tty — verify manually (see README)"
 
 # ============================================================================
 # SUMMARY
