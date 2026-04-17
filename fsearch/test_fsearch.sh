@@ -4,7 +4,7 @@
 #  FSEARCH TEST SUITE
 #
 #  File:        test_fsearch.sh
-#  Version:     2.1.0
+#  Version:     2.2.0
 #  Author:      Generated with Claude Code
 #  License:     MIT
 #  Requires:    bash 3.2+, fsearch.sh in same directory
@@ -194,7 +194,7 @@ printf "Test config: %s\n" "$TEST_CONFIG_HOME"
 section "S1: Version and help"
 
 out="$(run_fsearch --version)"
-assert_contains "version output contains version number" "$out" "fsearch 2.1.0"
+assert_contains "version output contains version number" "$out" "fsearch 2.2.0"
 
 run_fsearch_rc --version >/dev/null; rc=$?
 assert_exit_code "version exits 0" "0" "$rc"
@@ -211,15 +211,15 @@ assert_contains "help contains stats section" "$out" "Statistics & logging:"
 section "S2: Version display on search"
 
 out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$')"
-assert_contains "version shown in search banner" "$out" "v2.1.0"
+assert_contains "version shown in search banner" "$out" "v2.2.0"
 
 # Paths-only mode should NOT show version (minimal output)
 out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$' -0)"
-assert_not_contains "version not shown in -0 mode" "$out" "v2.1.0"
+assert_not_contains "version not shown in -0 mode" "$out" "v2.2.0"
 
 # Plain format should NOT show version
 out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$' --format plain)"
-assert_not_contains "version not shown in plain mode" "$out" "v2.1.0"
+assert_not_contains "version not shown in plain mode" "$out" "v2.2.0"
 
 # ============================================================================
 # S3  FILENAME SEARCH (-n)
@@ -665,7 +665,7 @@ out="$(run_fsearch --stats)"
 assert_contains "stats shows total searches" "$out" "Total searches:"
 assert_contains "stats shows files scanned" "$out" "Files scanned:"
 assert_contains "stats shows files matched" "$out" "Files matched:"
-assert_contains "stats shows version" "$out" "v2.1.0"
+assert_contains "stats shows version" "$out" "v2.2.0"
 
 # Verify search was counted
 assert_not_contains "stats total searches is not 0" "$out" "Total searches:                0"
@@ -749,7 +749,7 @@ section "S22: Error handling"
 
 # No pattern specified — shows mini usage
 out="$(run_fsearch -p "$TEST_ROOT" 2>&1 || true)"
-assert_contains "no-args shows version" "$out" "v2.1.0"
+assert_contains "no-args shows version" "$out" "v2.2.0"
 assert_contains "no-args shows usage hint" "$out" "Search by filename"
 assert_contains "no-args shows examples" "$out" "Quick examples"
 
@@ -803,6 +803,67 @@ assert_contains "-- separates options from paths" "$out" "file1.txt"
 # File with equals in name
 out="$(run_fsearch -p "$TEST_ROOT" -n 'equals' -0)"
 assert_contains "finds file with = in name" "$out" "file-with-equals=sign.txt"
+
+# ============================================================================
+# S24  TIMING PERFORMANCE
+# ============================================================================
+section "S24: Timing performance"
+
+# ── Create a larger fixture (100 files) to exercise the search loop ───────────
+PERF_DIR="${TEST_DIR}/perfroot"
+mkdir -p "$PERF_DIR"
+for i in $(seq 1 100); do
+    printf 'line one\nline two\nperf_marker_%s\nline four\n' "$i" > "${PERF_DIR}/perf_${i}.txt"
+done
+
+# ── Wall-clock test: search must complete in a reasonable time ────────────────
+t_start=$SECONDS
+run_fsearch -p "$PERF_DIR" -g 'perf_marker' -0 >/dev/null 2>&1 || true
+t_elapsed=$(( SECONDS - t_start ))
+
+if [[ $t_elapsed -le 30 ]]; then
+    print_pass "search over 100 files completes in ≤30s (took ${t_elapsed}s)"
+else
+    print_fail "search over 100 files completed too slowly" "${t_elapsed}s elapsed"
+fi
+
+# ── Filename search is also fast ──────────────────────────────────────────────
+t_start=$SECONDS
+run_fsearch -p "$PERF_DIR" -n 'perf_' -0 >/dev/null 2>&1 || true
+t_elapsed=$(( SECONDS - t_start ))
+
+if [[ $t_elapsed -le 30 ]]; then
+    print_pass "filename search over 100 files completes in ≤30s (took ${t_elapsed}s)"
+else
+    print_fail "filename search over 100 files completed too slowly" "${t_elapsed}s elapsed"
+fi
+
+# ── Verify timing stats are recorded ─────────────────────────────────────────
+run_fsearch --stats-reset >/dev/null
+run_fsearch -p "$PERF_DIR" -g 'perf_marker' -0 >/dev/null 2>&1 || true
+out="$(run_fsearch --stats)"
+
+assert_contains "stats shows Total search time" "$out" "Total search time:"
+assert_contains "stats shows Avg search time"   "$out" "Avg search time:"
+
+# Verify both are numeric (e.g. "0s" or "1.3s")
+if printf '%s' "$out" | grep -qE 'Total search time:[[:space:]]+[0-9]+s'; then
+    print_pass "Total search time value is numeric"
+else
+    print_fail "Total search time value is numeric" "got: $(printf '%s' "$out" | grep 'Total search time')"
+fi
+
+if printf '%s' "$out" | grep -qE 'Avg search time:[[:space:]]+[0-9]+\.[0-9]+s'; then
+    print_pass "Avg search time value is formatted as N.Ns"
+else
+    print_fail "Avg search time value is formatted as N.Ns" "got: $(printf '%s' "$out" | grep 'Avg search time')"
+fi
+
+# Timing accumulates across multiple searches
+run_fsearch -p "$PERF_DIR" -g 'perf_marker' -0 >/dev/null 2>&1 || true
+run_fsearch -p "$PERF_DIR" -g 'perf_marker' -0 >/dev/null 2>&1 || true
+out2="$(run_fsearch --stats)"
+assert_match "timing stats accumulate across searches" "$out2" "Total searches:[[:space:]]*[3-9]"
 
 # ============================================================================
 # SUMMARY

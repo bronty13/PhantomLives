@@ -2,6 +2,36 @@
 
 All notable changes to fsearch are documented in this file.
 
+## [2.2.0] - 2026-04-16
+
+### Performance
+
+- **Batched stats writes** -- `_stats_record` now reads all cumulative stats in a single scan of `stats.conf` and writes them back in one atomic operation (temp file + mv). Replaces the previous approach of 5 sequential read/write cycles per search (one per stat key). Reduces post-search file I/O by ~80%.
+- **No-fork hit counting** -- `_count_hits_from_output` now uses bash `=~` pattern matching to identify match lines instead of forking a `grep` subprocess per output line. Eliminates one process fork per matching line on result sets with many hits.
+
+### Features
+
+- **Timing statistics** -- Every search now records its wall-clock duration. `--stats` shows two new fields: `Total search time` (cumulative seconds) and `Avg search time` (per-search average with one decimal place). Stored as `TOTAL_SEARCH_TIME_S` in `stats.conf`. Existing stats files are handled gracefully (missing key defaults to 0).
+
+### Bug Fixes
+
+- **install.sh: PATH not added on fresh macOS** -- The installer now writes the PATH export to `~/.zprofile` for macOS zsh users instead of `~/.zshrc`. `~/.zprofile` is sourced for every login shell (new Terminal window), making the PATH available immediately after opening a new terminal without any manual sourcing.
+- **install.sh: `source` command printed after PATH update** -- The installer now prints the exact `source <file>` command to activate the PATH immediately in the current session, rather than a generic "restart your terminal" message.
+- **install.sh: BSD-incompatible `sed ,+N` in uninstall** -- Replaced `sed "/${PATH_MARKER}/,+1d"` (GNU sed only) with a portable bash loop that removes the marker line and the following PATH export line. Fixes uninstall on macOS.
+- **install.sh: `~/.zprofile` now covered in uninstall sweep** -- The uninstall PATH cleanup now includes `~/.zprofile` in its scan, matching the updated install path.
+- **execute permissions** -- `install.sh` and `fsearch.sh` are now tracked as executable in git (`chmod +x`). Running `./install.sh` no longer requires a manual `chmod` after cloning.
+
+### Test Suite
+
+- **148 tests across 24 sections** (up from 126 tests across 22 sections).
+- **New section S24 (Timing performance)**: wall-clock bounds tests for content and filename search over 100-file fixture; assertions that `Total search time` and `Avg search time` appear in `--stats` output with correct numeric format; accumulation check across multiple searches.
+- Updated all version string assertions from `2.1.0` to `2.2.0`.
+
+### Documentation
+
+- README updated with timing stats fields in the Statistics section and output example.
+- README install section notes that `bash install.sh` works without requiring the file to be executable first.
+
 ## [2.1.0] - 2026-04-15
 
 ### Bug Fixes

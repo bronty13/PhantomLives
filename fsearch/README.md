@@ -1,6 +1,6 @@
 # fsearch
 
-**Current release: 2.1.0**
+**Current release: 2.2.0**
 
 File search utility for macOS and Linux. Searches configurable directory trees by filename pattern and/or text content, printing timestamps, file metadata, and matching lines with context. Tracks cumulative search statistics and maintains detailed search logs.
 
@@ -84,6 +84,7 @@ Statistics tracked:
 - Total files matched
 - Total content hits
 - Total errors
+- Total search time (seconds) and average search time per run
 - First and last search timestamps
 - Log file count and size
 
@@ -144,7 +145,7 @@ Config file location: `~/.config/fsearch/config.conf`
 ### Pretty (default)
 
 ```
-fsearch v2.1.0
+fsearch v2.2.0
 Searching in: ~/projects
 Content pattern  : api_key
 
@@ -177,16 +178,18 @@ Content pattern  : api_key
 ### Statistics
 
 ```
-fsearch v2.1.0 — Cumulative Statistics
+fsearch v2.2.0 — Cumulative Statistics
 ────────────────────────────────────────────────────────────────
   Total searches:                147
   Files scanned:                 24831
   Files matched:                 412
   Content hits:                  1893
   Errors:                        3
+  Total search time:             38s
+  Avg search time:               0.2s
 ────────────────────────────────────────────────────────────────
   First search:                  2026-04-01 09:15:22
-  Last search:                   2026-04-15 14:30:10
+  Last search:                   2026-04-16 09:44:10
   Stats file:                    ~/.config/fsearch/stats.conf
   Log files:                     7 file(s), 12K
 ────────────────────────────────────────────────────────────────
@@ -198,6 +201,8 @@ fsearch v2.1.0 — Cumulative Statistics
 ```bash
 # User-local (no sudo)
 ./install.sh
+# or, if the file is not yet executable after cloning:
+bash install.sh
 
 # System-wide
 ./install.sh --system
@@ -209,6 +214,8 @@ fsearch v2.1.0 — Cumulative Statistics
 ./install.sh --uninstall
 ```
 
+> **macOS note:** The installer writes the PATH entry to `~/.zprofile`, which is sourced for every new Terminal window. After installing, either open a new terminal or run the `source` command printed by the installer to activate `fsearch` immediately.
+
 ## Requirements
 
 - bash 3.2+ (macOS default or newer)
@@ -218,7 +225,7 @@ fsearch v2.1.0 — Cumulative Statistics
 ## Running Tests
 
 ```bash
-bash test_fsearch.sh              # Run all tests
+bash test_fsearch.sh              # Run all tests (148 tests across 24 sections)
 bash test_fsearch.sh --verbose    # Verbose output
 ```
 

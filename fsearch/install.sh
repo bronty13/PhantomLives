@@ -29,7 +29,7 @@ set -euo pipefail
 # ─── Constants ───────────────────────────────────────────────────────────────
 
 TOOL_NAME="fsearch"
-TOOL_VERSION="2.1.0"
+TOOL_VERSION="2.2.0"
 SCRIPT_FILE="fsearch.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE="${SCRIPT_DIR}/${SCRIPT_FILE}"
@@ -88,12 +88,20 @@ detect_shell_configs() {
     local configs=()
 
     case "${SHELL:-}" in
-        */zsh)  configs+=("${HOME}/.zshrc") ;;
+        */zsh)
+            # On macOS, ~/.zprofile is sourced for every login shell (new Terminal window).
+            # Prefer it over ~/.zshrc so the PATH is available without re-sourcing.
+            if [[ "$(uname)" == "Darwin" ]]; then
+                configs+=("${HOME}/.zprofile")
+            else
+                configs+=("${HOME}/.zshrc")
+            fi
+            ;;
         */bash) configs+=("${HOME}/.bash_profile" "${HOME}/.bashrc") ;;
     esac
 
     local f
-    for f in "${HOME}/.zshrc" "${HOME}/.bash_profile" "${HOME}/.bashrc" "${HOME}/.profile"; do
+    for f in "${HOME}/.zprofile" "${HOME}/.zshrc" "${HOME}/.bash_profile" "${HOME}/.bashrc" "${HOME}/.profile"; do
         [[ -f "$f" ]] || continue
         local already=false
         local existing
@@ -103,7 +111,7 @@ detect_shell_configs() {
         [[ "$already" == false ]] && configs+=("$f")
     done
 
-    [[ ${#configs[@]} -eq 0 ]] && configs+=("${HOME}/.zshrc")
+    [[ ${#configs[@]} -eq 0 ]] && configs+=("${HOME}/.zprofile")
 
     printf '%s\n' "${configs[@]}"
 }
@@ -177,7 +185,7 @@ do_install() {
         if printf '%s' "${PATH}" | tr ':' '\n' | grep -qxF "${USER_BIN}"; then
             info "${USER_BIN} is already in \$PATH — skipping shell config update"
         else
-            local shell_configs updated=false rc
+            local shell_configs updated=false rc last_updated_rc=""
             while IFS= read -r rc; do
                 shell_configs+=("$rc")
             done < <(detect_shell_configs)
@@ -190,12 +198,14 @@ do_install() {
                 [[ -f "${rc}" ]] || touch "${rc}"
                 printf '\n%s\n%s\n' "${PATH_MARKER}" "${PATH_SNIPPET}" >> "${rc}"
                 success "Added PATH entry to ${rc}"
+                last_updated_rc="${rc}"
                 updated=true
             done
 
             if [[ "${updated}" == true ]]; then
                 printf '\n'
-                warn "Restart your terminal (or source your shell config) to update \$PATH"
+                warn "To activate now (without reopening your terminal):"
+                printf '      source %s\n' "${last_updated_rc}"
             fi
         fi
     fi
@@ -259,17 +269,26 @@ do_uninstall() {
         esac
     fi
 
-    # Clean up PATH entries from all shell configs
-    # Uses sed block delete to reliably remove the marker and the line after it
+    # Clean up PATH entries from all shell configs.
+    # Uses a portable bash loop (avoids GNU-only sed ,+N address syntax).
     local rc
-    for rc in "${HOME}/.zshrc" "${HOME}/.bash_profile" "${HOME}/.bashrc" "${HOME}/.profile"; do
+    for rc in "${HOME}/.zprofile" "${HOME}/.zshrc" "${HOME}/.bash_profile" "${HOME}/.bashrc" "${HOME}/.profile"; do
         [[ -f "${rc}" ]] || continue
         if grep -qF "${PATH_MARKER}" "${rc}" 2>/dev/null; then
-            local tmp
+            local tmp skip_next=false
             tmp="$(mktemp)"
-            # Delete the marker line and the next line (the PATH export)
-            sed "/${PATH_MARKER}/,+1d" "${rc}" > "${tmp}"
-            mv "${tmp}" "${rc}"
+            while IFS= read -r line || [[ -n "$line" ]]; do
+                if [[ "$skip_next" == true ]]; then
+                    skip_next=false
+                    continue
+                fi
+                if [[ "$line" == "${PATH_MARKER}" ]]; then
+                    skip_next=true  # also drop the PATH export on the next line
+                    continue
+                fi
+                printf '%s\n' "$line" >> "$tmp"
+            done < "${rc}"
+            mv "$tmp" "${rc}"
             success "Removed PATH entry from ${rc}"
         fi
     done

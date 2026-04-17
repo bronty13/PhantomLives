@@ -41,7 +41,7 @@ set -euo pipefail
 
 # ─── Version ────────────────────────────────────────────────────────────────
 
-FSEARCH_VERSION="2.1.0"
+FSEARCH_VERSION="2.2.0"
 
 # ─── Platform detection (run once at startup) ──────────────────────────────
 
@@ -385,12 +385,14 @@ TOTAL_FILES_SCANNED=0
 TOTAL_FILES_MATCHED=0
 TOTAL_CONTENT_HITS=0
 TOTAL_ERRORS=0
+TOTAL_SEARCH_TIME_S=0
 FIRST_SEARCH=
 LAST_SEARCH=
 STATSEOF
     fi
 }
 
+# Read a single stat value; returns 0 if not found (used by cmd_stats display)
 _stats_read() {
     local key="$1"
     _stats_ensure_file
@@ -399,71 +401,74 @@ _stats_read() {
     echo "${val:-0}"
 }
 
-_stats_write() {
-    local key="$1" new_value="$2"
-    _stats_ensure_file
-
-    local tmp
-    tmp="$(mktemp)" || { printf 'Cannot create temp file\n' >&2; return 1; }
-
-    local found=0
-    while IFS= read -r line; do
-        if [[ "$line" == "${key}="* ]]; then
-            printf '%s\n' "${key}=${new_value}" >> "$tmp"
-            found=1
-        else
-            printf '%s\n' "$line" >> "$tmp"
-        fi
-    done < "$STATS_FILE"
-
-    if [[ $found -eq 0 ]]; then
-        printf '%s\n' "${key}=${new_value}" >> "$tmp"
-    fi
-
-    mv "$tmp" "$STATS_FILE"
-}
-
-_stats_increment() {
-    local key="$1" amount="${2:-1}"
-    local current
-    current="$(_stats_read "$key")"
-    current="${current:-0}"
-    _stats_write "$key" "$(( current + amount ))"
-}
-
-# Record stats for a completed search
+# Record stats for a completed search — reads all values in one pass and writes
+# them back atomically, avoiding the 5+ sequential read/write cycles of the old
+# per-key increment approach.
 _stats_record() {
-    local files_scanned="$1" files_matched="$2" content_hits="$3" errors="$4"
+    local files_scanned="$1" files_matched="$2" content_hits="$3" errors="$4" duration_s="${5:-0}"
     local now
     now="$(date '+%Y-%m-%d %H:%M:%S')"
 
-    _stats_increment "TOTAL_SEARCHES"
-    _stats_increment "TOTAL_FILES_SCANNED" "$files_scanned"
-    _stats_increment "TOTAL_FILES_MATCHED" "$files_matched"
-    _stats_increment "TOTAL_CONTENT_HITS" "$content_hits"
-    if [[ "$errors" -gt 0 ]]; then
-        _stats_increment "TOTAL_ERRORS" "$errors"
-    fi
+    _stats_ensure_file
 
-    local first
-    first="$(_stats_read "FIRST_SEARCH")"
-    if [[ -z "$first" || "$first" == "0" ]]; then
-        _stats_write "FIRST_SEARCH" "$now"
-    fi
-    _stats_write "LAST_SEARCH" "$now"
+    # Read all current values in a single scan of the stats file
+    local cur_searches cur_scanned cur_matched cur_hits cur_errors cur_time cur_first
+    cur_searches="$(grep '^TOTAL_SEARCHES='      "$STATS_FILE" 2>/dev/null | tail -1 | cut -d= -f2-)"
+    cur_scanned="$(grep  '^TOTAL_FILES_SCANNED=' "$STATS_FILE" 2>/dev/null | tail -1 | cut -d= -f2-)"
+    cur_matched="$(grep  '^TOTAL_FILES_MATCHED=' "$STATS_FILE" 2>/dev/null | tail -1 | cut -d= -f2-)"
+    cur_hits="$(grep     '^TOTAL_CONTENT_HITS='  "$STATS_FILE" 2>/dev/null | tail -1 | cut -d= -f2-)"
+    cur_errors="$(grep   '^TOTAL_ERRORS='        "$STATS_FILE" 2>/dev/null | tail -1 | cut -d= -f2-)"
+    cur_time="$(grep     '^TOTAL_SEARCH_TIME_S=' "$STATS_FILE" 2>/dev/null | tail -1 | cut -d= -f2-)"
+    cur_first="$(grep    '^FIRST_SEARCH='        "$STATS_FILE" 2>/dev/null | tail -1 | cut -d= -f2-)"
+
+    # Compute new totals
+    local new_searches new_scanned new_matched new_hits new_errors new_time new_first
+    new_searches=$(( ${cur_searches:-0} + 1 ))
+    new_scanned=$(( ${cur_scanned:-0}  + files_scanned ))
+    new_matched=$(( ${cur_matched:-0}  + files_matched ))
+    new_hits=$(( ${cur_hits:-0}        + content_hits ))
+    new_errors=$(( ${cur_errors:-0}    + errors ))
+    new_time=$(( ${cur_time:-0}        + duration_s ))
+    new_first="${cur_first:-}"
+    [[ -z "$new_first" || "$new_first" == "0" ]] && new_first="$now"
+
+    # Write all stats back in a single atomic operation (temp file + mv)
+    local tmp
+    tmp="$(mktemp)" || { printf 'Cannot create temp file\n' >&2; return 1; }
+    cat > "$tmp" <<STATSEOF
+# fsearch cumulative statistics
+# Managed automatically — reset via: fsearch --stats-reset
+TOTAL_SEARCHES=${new_searches}
+TOTAL_FILES_SCANNED=${new_scanned}
+TOTAL_FILES_MATCHED=${new_matched}
+TOTAL_CONTENT_HITS=${new_hits}
+TOTAL_ERRORS=${new_errors}
+TOTAL_SEARCH_TIME_S=${new_time}
+FIRST_SEARCH=${new_first}
+LAST_SEARCH=${now}
+STATSEOF
+    mv "$tmp" "$STATS_FILE"
 }
 
 cmd_stats() {
     _stats_ensure_file
 
-    local total_searches total_scanned total_matched total_hits total_errors first last
+    local total_searches total_scanned total_matched total_hits total_errors total_time first last
     total_searches="$(_stats_read "TOTAL_SEARCHES")"
     total_scanned="$(_stats_read "TOTAL_FILES_SCANNED")"
     total_matched="$(_stats_read "TOTAL_FILES_MATCHED")"
     total_hits="$(_stats_read "TOTAL_CONTENT_HITS")"
     total_errors="$(_stats_read "TOTAL_ERRORS")"
+    total_time="$(_stats_read "TOTAL_SEARCH_TIME_S")"
     first="$(_stats_read "FIRST_SEARCH")"
     last="$(_stats_read "LAST_SEARCH")"
+
+    # Compute average search time with one decimal place (integer arithmetic)
+    local avg_s=0 avg_d=0
+    if [[ "${total_searches:-0}" -gt 0 && "${total_time:-0}" -gt 0 ]]; then
+        avg_s=$(( total_time / total_searches ))
+        avg_d=$(( (total_time * 10 / total_searches) % 10 ))
+    fi
 
     printf 'fsearch v%s — Cumulative Statistics\n' "$FSEARCH_VERSION"
     printf '────────────────────────────────────────────────────────────────\n'
@@ -472,6 +477,8 @@ cmd_stats() {
     printf '  %-30s %s\n' "Files matched:" "${total_matched:-0}"
     printf '  %-30s %s\n' "Content hits:" "${total_hits:-0}"
     printf '  %-30s %s\n' "Errors:" "${total_errors:-0}"
+    printf '  %-30s %ss\n' "Total search time:" "${total_time:-0}"
+    printf '  %-30s %s.%ss\n' "Avg search time:" "$avg_s" "$avg_d"
     printf '────────────────────────────────────────────────────────────────\n'
     printf '  %-30s %s\n' "First search:" "${first:-never}"
     printf '  %-30s %s\n' "Last search:" "${last:-never}"
@@ -1451,21 +1458,17 @@ check_content_match() {
     return 1
 }
 
-# Count content hits from grep output without re-running grep
+# Count content hits from grep output without re-running grep.
+# Uses bash =~ instead of forking grep per line for better performance on large
+# result sets.
 _count_hits_from_output() {
-    local grep_output="$1" file="$2"
+    local grep_output="$1"
     local count=0
-    # In grep -n output, match lines have format NUM:text
-    # Context lines have format NUM-text
-    # We count lines matching ^NUM: (actual matches, not context)
+    # grep -n output: match lines are NUM:text, context lines are NUM-text
+    # Count only lines that start with digits followed by a colon (actual matches)
     while IFS= read -r line; do
-        # Skip separator lines and empty lines
-        [[ "$line" == "--" ]] && continue
-        [[ -z "$line" ]] && continue
-        # Match lines start with digits followed by colon
-        if printf '%s' "$line" | grep -qE '^[0-9]+:'; then
-            (( count++ )) || true
-        fi
+        [[ "$line" == "--" || -z "$line" ]] && continue
+        [[ "$line" =~ ^[0-9]+: ]] && (( count++ )) || true
     done <<< "$grep_output"
     echo "$count"
 }
@@ -1658,8 +1661,8 @@ main() {
     end_time="$(date '+%s')"
     duration=$(( end_time - start_time ))
 
-    # Record statistics
-    _stats_record "$FILES_SCANNED" "$FILE_COUNT" "$MATCH_COUNT" "$ERROR_COUNT"
+    # Record statistics (pass duration so timing totals are tracked)
+    _stats_record "$FILES_SCANNED" "$FILE_COUNT" "$MATCH_COUNT" "$ERROR_COUNT" "$duration"
 
     # Log the search
     local status="success"
