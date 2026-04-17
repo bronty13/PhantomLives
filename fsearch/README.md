@@ -1,6 +1,6 @@
 # fsearch
 
-**Current release: 2.3.0**
+**Current release: 2.3.1**
 
 File search utility for macOS and Linux. Searches configurable directory trees by filename pattern and/or text content, printing timestamps, file metadata, and matching lines with context. Tracks cumulative search statistics and maintains detailed search logs.
 

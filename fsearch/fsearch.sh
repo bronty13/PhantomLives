@@ -4,7 +4,7 @@
 #  FSEARCH — File Search Utility
 #
 #  File:        fsearch.sh
-#  Version:     2.1.0
+#  Version:     2.3.1
 #  Author:      Generated with Claude Code
 #  License:     MIT
 #  Requires:    bash 3.2+, find, grep, file, stat
@@ -41,7 +41,7 @@ set -euo pipefail
 
 # ─── Version ────────────────────────────────────────────────────────────────
 
-FSEARCH_VERSION="2.3.0"
+FSEARCH_VERSION="2.3.1"
 
 # ─── Platform detection (run once at startup) ──────────────────────────────
 
@@ -1426,28 +1426,38 @@ _progress_clear() {
 # feature is invisible in pipes, CI, and scripted contexts.
 
 # Put terminal into raw single-char mode; save current state for restore.
+# Opens /dev/tty on fd 9 so reads work even when fd 0 is redirected inside
+# the search while-loop (which uses process substitution for find output).
 _interactive_setup() {
     [[ "$SHOW_PROGRESS" != true || ! -t 0 ]] && return 0
     [[ "$OUTPUT_FORMAT" == "json" ]] && return 0
-    _INTERACTIVE_STTY_SAVE="$(stty -g 2>/dev/null)" || return 0
-    stty -echo -icanon min 0 time 0 2>/dev/null || return 0
+    exec 9<>/dev/tty 2>/dev/null || return 0
+    _INTERACTIVE_STTY_SAVE="$(stty -g <&9 2>/dev/null)" || { exec 9<&-; return 0; }
+    stty -echo -icanon min 0 time 0 <&9 2>/dev/null || { exec 9<&-; return 0; }
     _INTERACTIVE_ACTIVE=true
 }
 
 # Restore terminal to its state before _interactive_setup.  Idempotent.
 _interactive_teardown() {
     [[ "$_INTERACTIVE_ACTIVE" != true ]] && return 0
-    [[ -n "$_INTERACTIVE_STTY_SAVE" ]] && stty "$_INTERACTIVE_STTY_SAVE" 2>/dev/null || true
+    [[ -n "$_INTERACTIVE_STTY_SAVE" ]] && stty "$_INTERACTIVE_STTY_SAVE" <&9 2>/dev/null || true
+    exec 9<&- 2>/dev/null || true
     _INTERACTIVE_ACTIVE=false
     _INTERACTIVE_PAUSED=false
 }
 
 # Non-blocking keypress poll — called every 10 files at the progress tick.
-# read -t 0 returns exit 1 when no data is available (bash 3.2+); || true is required.
+# Reads from fd 9 (/dev/tty) so keypresses are detected even though fd 0 is
+# redirected to find's pipe inside the while loop.
+# read -t 0 exits 1 when no data → || return 0 skips processing cleanly.
+# Some bash 3.2 builds only test availability with -t 0 without consuming the
+# char; the second unconsumed read (no -t) actually fetches it.
 _interactive_poll() {
     [[ "$_INTERACTIVE_ACTIVE" != true ]] && return 0
     local key=""
-    IFS= read -r -t 0 -n 1 -s key 2>/dev/null || true
+    # stty min 0 time 0 makes the fd non-blocking; plain read -n 1 returns
+    # immediately with whatever is available (empty string = no keypress).
+    IFS= read -r -n 1 -s key <&9 2>/dev/null || return 0
     [[ -z "$key" ]] && return 0
     case "$key" in
         p|P)     _interactive_pause ;;
@@ -1482,7 +1492,7 @@ _interactive_pause() {
     printf '\r%s[paused — p resume  q quit  ? help]%s\n' "$C_YELLOW" "$C_RESET" >&2
     while [[ "$_INTERACTIVE_PAUSED" == true ]]; do
         local key=""
-        IFS= read -r -t 0 -n 1 -s key 2>/dev/null || true
+        IFS= read -r -n 1 -s key <&9 2>/dev/null || true
         case "${key:-}" in
             p|P)     _INTERACTIVE_PAUSED=false
                      printf '\r%s[resumed]%s                              \n' \
@@ -1852,4 +1862,4 @@ main() {
     fi
 }
 
-main "$@"
+[[ "${FSEARCH_SOURCE_ONLY:-}" == "1" ]] || main "$@"

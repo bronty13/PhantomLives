@@ -2,6 +2,19 @@
 
 All notable changes to fsearch are documented in this file.
 
+## [2.3.1] - 2026-04-16
+
+### Bug Fixes
+
+- **Interactive keypress control: fd 9 opened read-only** — `_interactive_setup` used `exec 9</dev/tty`, opening the tty read-only. `stty` silently failed to apply `min 0 time 0` non-blocking settings through a read-only fd, so every keypress was missed. Fixed by opening read-write: `exec 9<>/dev/tty`.
+- **`_interactive_poll` two-step read pattern** — The `read -t 0 -n 1` availability check followed by a separate blocking `read -n 1` fallback was unreliable on macOS because the stty settings never took effect (see above). Simplified to a single `read -r -n 1 -s key <&9`; with `stty min 0 time 0` correctly applied, this returns immediately when no key is pressed.
+- **`_interactive_pause` loop** — Same two-step read issue as `_interactive_poll`; simplified to a single `read -r -n 1 -s key <&9`.
+
+### Testing
+
+- Added `FSEARCH_SOURCE_ONLY=1` source guard at the bottom of `fsearch.sh`, allowing the test suite to source internal functions without running `main`.
+- Replaced the `print_skip` placeholder in S25 with nine fifo-backed key routing tests covering all key bindings (`?`, `h`, `H`, `q`, `Q`, `p`, `P`, `s`, `l`).
+
 ## [2.3.0] - 2026-04-16
 
 ### Features

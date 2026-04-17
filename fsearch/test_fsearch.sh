@@ -4,7 +4,7 @@
 #  FSEARCH TEST SUITE
 #
 #  File:        test_fsearch.sh
-#  Version:     2.3.0
+#  Version:     2.3.1
 #  Author:      Generated with Claude Code
 #  License:     MIT
 #  Requires:    bash 3.2+, fsearch.sh in same directory
@@ -194,7 +194,7 @@ printf "Test config: %s\n" "$TEST_CONFIG_HOME"
 section "S1: Version and help"
 
 out="$(run_fsearch --version)"
-assert_contains "version output contains version number" "$out" "fsearch 2.3.0"
+assert_contains "version output contains version number" "$out" "fsearch 2.3.1"
 
 run_fsearch_rc --version >/dev/null; rc=$?
 assert_exit_code "version exits 0" "0" "$rc"
@@ -211,15 +211,15 @@ assert_contains "help contains stats section" "$out" "Statistics & logging:"
 section "S2: Version display on search"
 
 out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$')"
-assert_contains "version shown in search banner" "$out" "v2.3.0"
+assert_contains "version shown in search banner" "$out" "v2.3.1"
 
 # Paths-only mode should NOT show version (minimal output)
 out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$' -0)"
-assert_not_contains "version not shown in -0 mode" "$out" "v2.3.0"
+assert_not_contains "version not shown in -0 mode" "$out" "v2.3.1"
 
 # Plain format should NOT show version
 out="$(run_fsearch -p "$TEST_ROOT" -n '\.txt$' --format plain)"
-assert_not_contains "version not shown in plain mode" "$out" "v2.3.0"
+assert_not_contains "version not shown in plain mode" "$out" "v2.3.1"
 
 # ============================================================================
 # S3  FILENAME SEARCH (-n)
@@ -665,7 +665,7 @@ out="$(run_fsearch --stats)"
 assert_contains "stats shows total searches" "$out" "Total searches:"
 assert_contains "stats shows files scanned" "$out" "Files scanned:"
 assert_contains "stats shows files matched" "$out" "Files matched:"
-assert_contains "stats shows version" "$out" "v2.3.0"
+assert_contains "stats shows version" "$out" "v2.3.1"
 
 # Verify search was counted
 assert_not_contains "stats total searches is not 0" "$out" "Total searches:                0"
@@ -749,7 +749,7 @@ section "S22: Error handling"
 
 # No pattern specified — shows mini usage
 out="$(run_fsearch -p "$TEST_ROOT" 2>&1 || true)"
-assert_contains "no-args shows version" "$out" "v2.3.0"
+assert_contains "no-args shows version" "$out" "v2.3.1"
 assert_contains "no-args shows usage hint" "$out" "Search by filename"
 assert_contains "no-args shows examples" "$out" "Quick examples"
 
@@ -888,7 +888,7 @@ assert_not_contains "--no-progress: no [? help] hint" "$out" "[? help]"
 
 # ── Version bump ──────────────────────────────────────────────────────────────
 out="$(run_fsearch --version)"
-assert_contains "version is 2.3.0" "$out" "fsearch 2.3.0"
+assert_contains "version is 2.3.1" "$out" "fsearch 2.3.1"
 
 # ── Ring buffer: _recent_match_add code path runs without error ───────────────
 out="$(run_fsearch -p "$PERF_DIR" -g 'perf_marker' -0 2>&1)"
@@ -928,8 +928,48 @@ else
     print_fail "SIGINT exit code" "expected 130/0/2, got: '${sigint_rc}'"
 fi
 
-# ── Interactive p/q/s/l/? require a real tty — mark as manual verification ────
-print_skip "p/q/s/l/? keys require a real tty — verify manually (see README)"
+# ── Key routing: fifo-backed tests (no real tty required) ────────────────────
+# Source fsearch internal functions via FSEARCH_SOURCE_ONLY=1, wire fd 9 to a
+# temp fifo, write one character, call _interactive_poll, and assert the right
+# handler fired.  This tests the routing logic without needing a live terminal.
+
+_run_key_test() {
+    local desc="$1" key="$2" expected="$3"
+    local tmpfifo
+    tmpfifo="$(mktemp -t fsearch_keytest_XXXXXX)"
+    rm -f "$tmpfifo"; mkfifo "$tmpfifo"
+    local got
+    got="$(
+        FSEARCH_SOURCE_ONLY=1 source "$FSEARCH"
+        _INTERACTIVE_ACTIVE=true
+        exec 9<>"$tmpfifo"
+        _called=""
+        _interactive_help()         { _called="help"; }
+        _interactive_quit()         { _called="quit"; }
+        _interactive_pause()        { _called="pause"; }
+        _interactive_stats_snap()   { _called="stats"; }
+        _interactive_last_matches() { _called="last"; }
+        printf '%s' "$key" >&9
+        _interactive_poll
+        printf '%s' "$_called"
+    )" 2>/dev/null
+    rm -f "$tmpfifo"
+    if [[ "$got" == "$expected" ]]; then
+        print_pass "$desc"
+    else
+        print_fail "$desc" "expected=$expected got=$got"
+    fi
+}
+
+_run_key_test "key '?'  → help"    '?' "help"
+_run_key_test "key 'h'  → help"    'h' "help"
+_run_key_test "key 'H'  → help"    'H' "help"
+_run_key_test "key 'q'  → quit"    'q' "quit"
+_run_key_test "key 'Q'  → quit"    'Q' "quit"
+_run_key_test "key 'p'  → pause"   'p' "pause"
+_run_key_test "key 'P'  → pause"   'P' "pause"
+_run_key_test "key 's'  → stats"   's' "stats"
+_run_key_test "key 'l'  → last"    'l' "last"
 
 # ============================================================================
 # SUMMARY

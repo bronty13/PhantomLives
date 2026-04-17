@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Tests for fsearch interactive keypress routing.
+#
+# Each test writes a character into a fifo wired to fd 9, calls
+# _interactive_poll, and asserts the correct handler fired.
+
+set -euo pipefail
+
+FSEARCH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fsearch"
+PASS=0; FAIL=0
+
+run_test() {
+    local desc="$1" key="$2" expected="$3"
+
+    local tmpfifo
+    tmpfifo="$(mktemp -t fsearch_test_XXXXXX)"
+    rm -f "$tmpfifo"
+    mkfifo "$tmpfifo"
+
+    local got
+    got="$(
+        FSEARCH_SOURCE_ONLY=1 source "$FSEARCH"
+
+        _INTERACTIVE_ACTIVE=true
+        exec 9<>"$tmpfifo"
+
+        _called=""
+        _interactive_help()         { _called="help"; }
+        _interactive_quit()         { _called="quit"; }
+        _interactive_pause()        { _called="pause"; }
+        _interactive_stats_snap()   { _called="stats"; }
+        _interactive_last_matches() { _called="last"; }
+
+        printf '%s' "$key" >&9
+        _interactive_poll
+        printf '%s' "$_called"
+    )" 2>/dev/null
+
+    rm -f "$tmpfifo"
+
+    if [[ "$got" == "$expected" ]]; then
+        printf 'PASS  %-32s key=%-3s\n' "$desc" "$key"
+        (( PASS++ )) || true
+    else
+        printf 'FAIL  %-32s key=%-3s  expected=%-6s got=%s\n' \
+            "$desc" "$key" "$expected" "$got"
+        (( FAIL++ )) || true
+    fi
+}
+
+
+printf 'fsearch interactive keypress tests\n'
+printf '────────────────────────────────────────\n'
+
+run_test "? shows help"           '?' "help"
+run_test "h shows help"           'h' "help"
+run_test "H shows help"           'H' "help"
+run_test "q quits"                'q' "quit"
+run_test "Q quits"                'Q' "quit"
+run_test "p pauses"               'p' "pause"
+run_test "P pauses"               'P' "pause"
+run_test "s stats snapshot"       's' "stats"
+run_test "l last matches"         'l' "last"
+
+printf '────────────────────────────────────────\n'
+printf '%d passed, %d failed\n' "$PASS" "$FAIL"
+[[ $FAIL -eq 0 ]]
