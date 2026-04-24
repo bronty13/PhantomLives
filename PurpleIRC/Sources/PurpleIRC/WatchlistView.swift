@@ -10,7 +10,16 @@ struct WatchlistView: View {
                 Image(systemName: "bell.badge").foregroundStyle(Color.purple)
                 Text("Watchlist").font(.headline)
                 Spacer()
-                Button("Manage in Setup…") { model.showSetup = true }
+                Button("Manage in Setup…") {
+                    // SwiftUI only shows one sheet per presenter at a time,
+                    // so we have to dismiss this one before the Setup sheet
+                    // can present. A tiny delay gives the dismiss animation
+                    // time to clear without being visible to the user.
+                    model.showWatchlist = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        model.showSetup = true
+                    }
+                }
                 Button("Done") { model.showWatchlist = false }
                     .keyboardShortcut(.cancelAction)
             }

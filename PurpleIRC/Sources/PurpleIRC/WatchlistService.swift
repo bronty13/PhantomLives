@@ -237,6 +237,37 @@ final class WatchlistService: ObservableObject {
         )
     }
 
+    /// Fire a user-configured `HighlightRule` match. Obeys the rule's own
+    /// `playSound` / `bounceDock` / `systemNotify` toggles instead of the
+    /// watchlist-global flags, so rules are independent of watchlist settings.
+    /// `soundName` is the user's configured "highlight" event sound.
+    func fireRuleAlert(rule: HighlightRule,
+                       from: String,
+                       channel: String,
+                       text: String,
+                       soundName: String) {
+        let hit = HighlightHit(nick: from, channel: channel, text: text, timestamp: Date())
+        recentHighlights.insert(hit, at: 0)
+        if recentHighlights.count > 50 { recentHighlights.removeLast(recentHighlights.count - 50) }
+
+        if rule.bounceDock {
+            NSApp.requestUserAttention(.criticalRequest)
+        }
+        if rule.playSound, !soundName.isEmpty {
+            NSSound(named: soundName)?.play()
+        }
+        if rule.systemNotify {
+            let content = UNMutableNotificationContent()
+            content.title = rule.name.isEmpty ? "Highlight match" : rule.name
+            content.subtitle = "\(from) in \(channel)"
+            content.body = text
+            content.sound = .default
+            let id = "highlight-\(rule.id.uuidString)-\(Int(Date().timeIntervalSince1970))"
+            let req = UNNotificationRequest(identifier: id, content: content, trigger: nil)
+            UNUserNotificationCenter.current().add(req) { _ in }
+        }
+    }
+
     private func fireSystemAlert(title: String, subtitle: String, body: String, identifier: String) {
         if bounceDock {
             NSApp.requestUserAttention(.criticalRequest)

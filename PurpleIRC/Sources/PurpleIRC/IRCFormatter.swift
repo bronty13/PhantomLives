@@ -97,6 +97,37 @@ enum IRCFormatter {
         return out
     }
 
+    /// Overlay per-word highlight color onto an already-rendered AttributedString.
+    /// `ranges` are NSRanges into the *code-stripped* plain text that the
+    /// HighlightMatcher was fed. We walk the rendered string's character view
+    /// (mIRC codes are gone from it too, so offsets line up) and merge the
+    /// color + underline into each matched slice.
+    static func overlayHighlights(_ attributed: AttributedString,
+                                  ranges: [NSRange],
+                                  color: Color) -> AttributedString {
+        guard !ranges.isEmpty else { return attributed }
+        var out = attributed
+        let plain = String(out.characters)
+        var overlay = AttributeContainer()
+        overlay.foregroundColor = color
+        overlay.underlineStyle = .single
+        let baseIdx = out.characters.startIndex
+        for nsRange in ranges {
+            guard let swiftRange = Range(nsRange, in: plain) else { continue }
+            let startOffset = plain.distance(from: plain.startIndex, to: swiftRange.lowerBound)
+            let length = plain.distance(from: swiftRange.lowerBound, to: swiftRange.upperBound)
+            // Bounds check in case the post-format text differs in length from
+            // what the matcher saw (shouldn't happen since both use stripCodes,
+            // but cheap insurance against future render changes).
+            guard startOffset >= 0, length > 0,
+                  startOffset + length <= out.characters.count else { continue }
+            let s = out.characters.index(baseIdx, offsetBy: startOffset)
+            let e = out.characters.index(s, offsetBy: length)
+            out[s..<e].mergeAttributes(overlay)
+        }
+        return out
+    }
+
     /// Returns `raw` with every mIRC code stripped — suitable for bot matching,
     /// URL extraction against plain text, and logs.
     static func stripCodes(_ raw: String) -> String {

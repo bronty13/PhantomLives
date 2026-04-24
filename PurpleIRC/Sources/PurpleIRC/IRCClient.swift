@@ -40,15 +40,8 @@ final class IRCClient {
     private(set) var port: UInt16 = 6667
     private(set) var useTLS: Bool = false
 
-    // SASL state
-    private enum SASLPhase {
-        case idle         // not attempting SASL
-        case awaitingLS   // waiting for CAP LS response
-        case awaitingACK  // CAP REQ sent, waiting for ACK/NAK
-        case authenticating
-        case done         // CAP END sent (success or bypass)
-    }
-    private var saslPhase: SASLPhase = .idle
+    // Registration / SASL state machine (extracted for unit testing).
+    private var negotiator: SASLNegotiator?
     private var pendingConfig: IRCConnectionConfig?
 
     func connect(config: IRCConnectionConfig) {
@@ -109,14 +102,15 @@ final class IRCClient {
                 self.startRegistration()
                 self.receiveLoop()
             case .waiting(let err):
-                self.onState?(.failed("Waiting: \(err.localizedDescription)"))
+                self.onState?(.failed("Waiting: \(self.humanize(err))"))
             case .failed(let err):
                 let proxyReason = ProxyFramer.lastError
                 ProxyFramer.lastError = nil
+                let detail = self.humanize(err)
                 if let proxyReason {
-                    self.onState?(.failed("\(proxyReason) (\(err.localizedDescription))"))
+                    self.onState?(.failed("\(proxyReason) (\(detail))"))
                 } else {
-                    self.onState?(.failed(err.localizedDescription))
+                    self.onState?(.failed(detail))
                 }
                 self.connection = nil
             case .cancelled:
@@ -140,7 +134,7 @@ final class IRCClient {
         connection?.cancel()
         connection = nil
         buffer.removeAll()
-        saslPhase = .idle
+        negotiator = nil
         pendingConfig = nil
     }
 
@@ -166,113 +160,44 @@ final class IRCClient {
         _ = sem.wait(timeout: .now() + 1.0)
     }
 
+    // MARK: - Error presentation
+
+    /// Translate raw `NWError` values into something a human can act on. The
+    /// biggest win is catching TLS handshake failures (errSSLBadProtocolVersion
+    /// is -9836) that happen when TLS is on but the server is plaintext — a
+    /// very common footgun with older IRC networks.
+    private func humanize(_ err: NWError) -> String {
+        let base = err.localizedDescription
+        if useTLS, case .tls(let status) = err {
+            let hint: String
+            switch status {
+            case -9836:   // errSSLBadProtocolVersion — server closed the TLS handshake
+                hint = "server on \(host):\(port) doesn't appear to support TLS. Try turning TLS off, or use the network's TLS port (often 6697/9999)."
+            case -9807, -9808, -9809, -9810, -9812, -9813, -9814, -9815, -9816:
+                // Various SSL trust / cert-chain errors
+                hint = "TLS certificate was rejected. The server may be using a self-signed or untrusted cert."
+            default:
+                hint = "TLS handshake failed (status \(status)). Check whether this port actually serves TLS."
+            }
+            return "\(base) — \(hint)"
+        }
+        return base
+    }
+
     // MARK: - Registration / SASL
 
     private func startRegistration() {
         guard let cfg = pendingConfig else { return }
-
-        // Start capability negotiation before USER/NICK — server holds
-        // registration open until we send CAP END.
-        send("CAP LS 302")
-        if let pw = cfg.serverPassword, !pw.isEmpty {
-            send("PASS \(pw)")
-        }
-        send("NICK \(cfg.nick)")
-        send("USER \(cfg.user) 0 * :\(cfg.realName)")
-
-        if cfg.saslMechanism == .none {
-            // No SASL — close CAP immediately so server moves on.
-            send("CAP END")
-            saslPhase = .done
-        } else {
-            saslPhase = .awaitingLS
-        }
+        let n = SASLNegotiator(config: cfg)
+        negotiator = n
+        for line in n.registrationCommands() { send(line) }
     }
 
-    private func handleCAP(_ msg: IRCMessage) {
-        // CAP <target> <subcommand> [<...>] [:payload]
-        guard msg.params.count >= 2 else { return }
-        let sub = msg.params[1].uppercased()
-        switch sub {
-        case "LS":
-            guard saslPhase == .awaitingLS else { return }
-            let caps = msg.params.last ?? ""
-            let hasSASL = caps.split(separator: " ").contains { token in
-                let name = token.split(separator: "=").first.map(String.init) ?? String(token)
-                return name == "sasl"
-            }
-            // If the server sent a continuation ("* LS * :..."), wait for the rest.
-            let isContinuation = msg.params.count >= 4 && msg.params[2] == "*"
-            if isContinuation && !hasSASL { return }
-            if hasSASL, let cfg = pendingConfig {
-                send("CAP REQ :sasl")
-                saslPhase = .awaitingACK
-                _ = cfg // just to silence unused warning if we change logic
-            } else {
-                send("CAP END")
-                saslPhase = .done
-            }
-        case "ACK":
-            guard saslPhase == .awaitingACK, let cfg = pendingConfig else { return }
-            send("AUTHENTICATE \(cfg.saslMechanism.rawValue)")
-            saslPhase = .authenticating
-        case "NAK":
-            // Server refused SASL cap — proceed without auth.
-            send("CAP END")
-            saslPhase = .done
-        default:
-            break
-        }
-    }
-
-    private func handleAUTHENTICATE(_ msg: IRCMessage) {
-        guard saslPhase == .authenticating, let cfg = pendingConfig else { return }
-        let token = msg.params.last ?? ""
-        guard token == "+" else { return }
-
-        switch cfg.saslMechanism {
-        case .plain:
-            let account = cfg.saslAccount.isEmpty ? cfg.nick : cfg.saslAccount
-            let payload = "\(account)\0\(account)\0\(cfg.saslPassword)"
-            let b64 = Data(payload.utf8).base64EncodedString()
-            // PLAIN payloads below 400 bytes fit in one AUTHENTICATE line.
-            if b64.isEmpty {
-                send("AUTHENTICATE +")
-            } else {
-                send("AUTHENTICATE \(b64)")
-            }
-        case .external:
-            send("AUTHENTICATE +")
-        case .none:
-            send("CAP END")
-            saslPhase = .done
-        }
-    }
-
-    /// Intercept CAP/AUTHENTICATE/SASL numerics to drive the handshake. We
-    /// still forward everything via `onMessage` so ChatModel can log it.
+    /// Drive CAP/AUTHENTICATE/SASL numerics through the negotiator. The
+    /// message is still forwarded to `onMessage` so ChatModel can log it.
     private func interceptForSASL(_ msg: IRCMessage) {
-        switch msg.command.uppercased() {
-        case "CAP":
-            handleCAP(msg)
-        case "AUTHENTICATE":
-            handleAUTHENTICATE(msg)
-        case "903": // RPL_SASLSUCCESS
-            if saslPhase != .done {
-                send("CAP END")
-                saslPhase = .done
-            }
-        case "902", "904", "905", "906", "907":
-            // Aborted / failed / already-authed / abort client. Close cap
-            // negotiation and let the server finish registration; the user
-            // will see the numeric in the server buffer.
-            if saslPhase != .done {
-                send("CAP END")
-                saslPhase = .done
-            }
-        default:
-            break
-        }
+        guard let n = negotiator else { return }
+        for line in n.handle(msg) { send(line) }
     }
 
     // MARK: - Receive pipeline

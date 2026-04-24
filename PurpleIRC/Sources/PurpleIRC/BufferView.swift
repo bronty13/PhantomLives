@@ -259,6 +259,11 @@ struct BufferView: View {
             List(buffer.users, id: \.self) { user in
                 Text(user)
                     .font(.system(.body, design: .monospaced))
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2) {
+                        // Double-click opens a private query with this nick.
+                        model.sendInput("/query \(stripModePrefix(user))")
+                    }
                     .contextMenu { userContextMenu(for: user) }
             }
             .listStyle(.plain)
@@ -295,11 +300,16 @@ struct BufferView: View {
     }
 
     private var inputBar: some View {
-        HStack(spacing: 8) {
-            Text("\(model.nick):")
-                .foregroundStyle(.secondary)
-                .font(.system(.body, design: .monospaced))
-            TextField(placeholder, text: $input)
+        VStack(spacing: 0) {
+            if showingCommandHints {
+                commandHintBar
+                    .transition(.opacity)
+            }
+            HStack(spacing: 8) {
+                Text("\(model.nick):")
+                    .foregroundStyle(.secondary)
+                    .font(.system(.body, design: .monospaced))
+                TextField(placeholder, text: $input)
                 .textFieldStyle(.plain)
                 .font(.system(.body, design: .monospaced))
                 .onSubmit(submit)
@@ -333,9 +343,65 @@ struct BufferView: View {
                     }
                     return .handled
                 }
+            }
+            .padding(10)
+            .background(Color(nsColor: .controlBackgroundColor))
         }
-        .padding(10)
-        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    // MARK: - Slash-command hint bar
+
+    /// Shown above the input when the user is typing a slash command — we
+    /// surface matching commands so /help isn't needed for routine lookups.
+    private var showingCommandHints: Bool {
+        guard input.hasPrefix("/"), !input.contains(" ") else { return false }
+        return !commandHintMatches.isEmpty
+    }
+
+    /// Matches for the current /prefix. Cached via a computed property to
+    /// avoid rebuilding on unrelated @State changes.
+    private var commandHintMatches: [CommandCatalog.Entry] {
+        let typed = String(input.dropFirst())  // drop the leading "/"
+        return Array(CommandCatalog.matches(prefix: typed).prefix(6))
+    }
+
+    @ViewBuilder
+    private var commandHintBar: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "command").font(.caption).foregroundStyle(.secondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(commandHintMatches) { entry in
+                        Button {
+                            // Click a chip → complete to "/name " so the user
+                            // can keep typing args without editing.
+                            input = "/\(entry.id) "
+                            completion = nil
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text("/\(entry.id)")
+                                    .font(.system(.caption, design: .monospaced).bold())
+                                if !entry.args.isEmpty {
+                                    Text(entry.args)
+                                        .font(.system(.caption2, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Capsule().fill(Color.accentColor.opacity(0.12)))
+                        }
+                        .buttonStyle(.plain)
+                        .help(entry.summary)
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+            Text("Tab to complete · /help for details")
+                .font(.caption2).foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(Color(nsColor: .underPageBackgroundColor))
     }
 
     private var placeholder: String {
@@ -368,6 +434,24 @@ struct BufferView: View {
                 completion = next
                 return
             }
+        }
+
+        // Slash-command completion path: when the line is just "/partial"
+        // with no space yet, cycle through matching commands instead of
+        // falling back to nick completion.
+        if input.hasPrefix("/"), !input.contains(" ") {
+            let typed = String(input.dropFirst())
+            let cmds = CommandCatalog.matches(prefix: typed).map { $0.id }
+            guard let first = cmds.first else { return }
+            input = "/\(first) "
+            completion = TabCompletion(
+                typedPrefix: "/",
+                partial: typed,
+                candidates: cmds,
+                index: 0,
+                suffix: " "
+            )
+            return
         }
 
         // Fresh completion: pull the trailing word (text after the last space).
@@ -458,6 +542,7 @@ struct MessageRow: View {
     // Mention takes precedence over watchlist highlight when both apply.
     private var leadingBadge: HighlightBadge? {
         if line.isMention { return HighlightBadge(glyph: "@", color: .orange) }
+        if matchedRule != nil { return HighlightBadge(glyph: "●", color: ruleColor ?? .yellow) }
         if isFromWatchedUser { return HighlightBadge(glyph: "★", color: .purple) }
         return nil
     }
@@ -469,11 +554,30 @@ struct MessageRow: View {
             theme.findBackground
         } else if line.isMention {
             theme.mentionBackground
+        } else if let color = ruleColor {
+            color.opacity(0.18)
+        } else if matchedRule != nil {
+            theme.mentionBackground
         } else if isFromWatchedUser {
             theme.watchlistBackground
         } else {
             Color.clear
         }
+    }
+
+    /// Resolve the HighlightRule tagged on this line (if any) via the shared
+    /// settings store. Returns nil when the rule has been deleted since the
+    /// line was rendered.
+    private var matchedRule: HighlightRule? {
+        guard let id = line.highlightRuleID else { return nil }
+        return model.settings.settings.highlightRules.first { $0.id == id }
+    }
+
+    /// Parsed Color from the matched rule's `colorHex`. Nil when the rule has
+    /// no custom color (fall back to mentionBackground) or the hex is malformed.
+    private var ruleColor: Color? {
+        guard let rule = matchedRule, let hex = rule.colorHex else { return nil }
+        return Color(hex: hex)
     }
 
     private var isFromWatchedUser: Bool {
@@ -511,17 +615,17 @@ struct MessageRow: View {
                 Text("<\(nick)>")
                     .foregroundStyle(isSelf ? theme.ownNickColor : colorForNick(nick, theme: theme))
                     .font(.system(.body, design: .monospaced))
-                Text(IRCFormatter.renderWithLinks(line.text))
+                Text(renderedText(linkColor: .accentColor))
                     .font(.system(.body))
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             }
         case .action(let nick):
             (Text("* \(nick) ").foregroundStyle(colorForNick(nick, theme: theme)).italic()
-             + Text(IRCFormatter.renderWithLinks(line.text)).italic())
+             + Text(renderedText(linkColor: .accentColor)).italic())
         case .notice(let from):
             (Text("-\(from)- ").foregroundStyle(theme.noticeColor).font(.system(.body, design: .monospaced))
-             + Text(IRCFormatter.renderWithLinks(line.text, linkColor: theme.noticeColor))
+             + Text(renderedText(linkColor: theme.noticeColor))
                 .font(.system(.body, design: .monospaced)))
         case .join(let nick):
             Text("→ \(nick) joined")
@@ -548,6 +652,17 @@ struct MessageRow: View {
                 .foregroundStyle(theme.infoColor)
                 .font(.system(.caption, design: .monospaced))
         }
+    }
+
+    /// IRCFormatter render + URL detect + optional highlight-rule word tint.
+    /// Pulled into one helper so privmsg/action/notice all share the overlay.
+    private func renderedText(linkColor: Color) -> AttributedString {
+        let base = IRCFormatter.renderWithLinks(line.text, linkColor: linkColor)
+        guard !line.highlightRanges.isEmpty, let rule = matchedRule else { return base }
+        // Explicit rule color wins; otherwise fall back to something visible
+        // against both light and dark themes.
+        let color = rule.colorHex.flatMap { Color(hex: $0) } ?? .orange
+        return IRCFormatter.overlayHighlights(base, ranges: line.highlightRanges, color: color)
     }
 
     private func colorForNick(_ nick: String, theme: Theme) -> Color {

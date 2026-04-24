@@ -14,6 +14,22 @@ enum SASLMechanism: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// A named set of identifying fields (nick/user/realName/SASL/NickServ) that
+/// can be shared across server profiles. Editing one identity updates every
+/// server profile that references it; users can flip between personas quickly
+/// via the Identity toolbar menu or /identity command.
+struct Identity: Codable, Identifiable, Hashable {
+    var id: UUID = UUID()
+    var name: String = "New identity"
+    var nick: String = ""
+    var user: String = ""
+    var realName: String = ""
+    var saslMechanism: SASLMechanism = .none
+    var saslAccount: String = ""
+    var saslPassword: String = ""
+    var nickServPassword: String = ""
+}
+
 struct ServerProfile: Codable, Identifiable, Hashable {
     var id: UUID = UUID()
     var name: String = "New Server"
@@ -45,6 +61,11 @@ struct ServerProfile: Codable, Identifiable, Hashable {
     var proxyPort: Int = 1080
     var proxyUsername: String = ""
     var proxyPassword: String = ""
+
+    /// Optional link to a global Identity. When non-nil at connect time, the
+    /// identity's nick/user/realName/SASL/NickServ fields override whatever's
+    /// stored inline on this profile.
+    var identityID: UUID? = nil
 
     init(id: UUID = UUID(),
          name: String = "New Server",
@@ -90,6 +111,45 @@ struct ServerProfile: Codable, Identifiable, Hashable {
         self.proxyPassword = proxyPassword
     }
 
+    /// `servers` sorted by display name, case-insensitive ascending. Used for
+    /// every list/picker so the on-disk order doesn't affect what the user sees.
+    static func sortedByName(_ list: [ServerProfile]) -> [ServerProfile] {
+        list.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// Well-known public IRC networks, pre-populated on first launch so users
+    /// don't have to hunt down hostnames. All entries default to TLS/6697
+    /// unless the network historically doesn't offer it on that port.
+    static func defaultServers() -> [ServerProfile] {
+        func make(_ name: String, _ host: String, port: Int = 6697, tls: Bool = true) -> ServerProfile {
+            ServerProfile(name: name, host: host, port: port, useTLS: tls)
+        }
+        // Older networks (Undernet, EFnet, IRCnet) don't reliably offer TLS
+        // on 6697 across all hubs, so they default to plaintext 6667 — the
+        // value that actually connects out of the box. Users can enable TLS
+        // in Setup if the hub they pick supports it.
+        return [
+            make("Libera Chat",  "irc.libera.chat"),
+            make("OFTC",         "irc.oftc.net"),
+            make("EFnet",        "irc.efnet.org",    port: 6667, tls: false),
+            make("Undernet",     "irc.undernet.org", port: 6667, tls: false),
+            make("DALnet",       "irc.dal.net"),
+            make("IRCnet",       "open.ircnet.net",  port: 6667, tls: false),
+            make("QuakeNet",     "irc.quakenet.org", port: 6667, tls: false),
+            make("Rizon",        "irc.rizon.net"),
+            make("EsperNet",     "irc.esper.net"),
+            make("SwiftIRC",     "irc.swiftirc.net"),
+            make("GameSurge",    "irc.gamesurge.net", port: 6667, tls: false),
+            make("GeekShed",     "irc.geekshed.net"),
+            make("Snoonet",      "irc.snoonet.org"),
+            make("Hackint",      "irc.hackint.org"),
+            make("freenode",     "irc.freenode.net"),
+            make("2600net",      "irc.2600.net"),
+            make("AfterNET",     "irc.afternet.org"),
+            make("SorceryNet",   "irc.sorcery.net",  port: 9999),
+        ]
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.id             = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
@@ -113,6 +173,24 @@ struct ServerProfile: Codable, Identifiable, Hashable {
         self.proxyPort      = try c.decodeIfPresent(Int.self, forKey: .proxyPort) ?? 1080
         self.proxyUsername  = try c.decodeIfPresent(String.self, forKey: .proxyUsername) ?? ""
         self.proxyPassword  = try c.decodeIfPresent(String.self, forKey: .proxyPassword) ?? ""
+        self.identityID     = try c.decodeIfPresent(UUID.self, forKey: .identityID)
+    }
+
+    /// Returns a copy of this profile with `identity`'s fields layered on top
+    /// (nick/user/realName/SASL/NickServ). Used at connect time so the
+    /// connection sees the effective identity values without mutating the
+    /// user-edited profile stored in settings.
+    func applyingIdentity(_ identity: Identity?) -> ServerProfile {
+        guard let identity else { return self }
+        var out = self
+        if !identity.nick.isEmpty { out.nick = identity.nick }
+        if !identity.user.isEmpty { out.user = identity.user }
+        if !identity.realName.isEmpty { out.realName = identity.realName }
+        out.saslMechanism = identity.saslMechanism
+        out.saslAccount = identity.saslAccount
+        out.saslPassword = identity.saslPassword
+        out.nickServPassword = identity.nickServPassword
+        return out
     }
 }
 
@@ -141,8 +219,59 @@ struct IgnoreEntry: Codable, Identifiable, Hashable {
     var ignoreNotices: Bool = true
 }
 
+/// Row-tint rule: when an inbound PRIVMSG/NOTICE matches `pattern`, the row
+/// lights up (optionally with per-rule color, sound, dock bounce, notification)
+/// and matched words are color-tinted in the chat view. Distinct from the
+/// "own-nick mention" path so a user can layer rules on top of mentions.
+struct HighlightRule: Codable, Identifiable, Hashable {
+    var id: UUID = UUID()
+    var name: String = ""
+    var pattern: String = ""
+    var isRegex: Bool = false
+    var caseSensitive: Bool = false
+    /// Optional #RRGGBB hex; nil falls back to the theme's mention color.
+    var colorHex: String? = nil
+    var playSound: Bool = true
+    var bounceDock: Bool = true
+    var systemNotify: Bool = true
+    /// Empty = match on all networks; otherwise only these server profile IDs.
+    var networks: [UUID] = []
+    var enabled: Bool = true
+}
+
+/// Where a trigger rule is allowed to fire.
+enum TriggerScope: String, Codable, CaseIterable, Identifiable {
+    case channel
+    case query
+    case both
+    var id: String { rawValue }
+    var displayName: String {
+        switch self {
+        case .channel: return "Channels only"
+        case .query:   return "Private queries only"
+        case .both:    return "Both"
+        }
+    }
+}
+
+/// Auto-reply rule: when an inbound PRIVMSG matches `pattern`, the app sends
+/// `response` back to the originating target. Response supports `$nick`,
+/// `$channel`, `$match`, and `$1`–`$9` (regex capture groups).
+struct TriggerRule: Codable, Identifiable, Hashable {
+    var id: UUID = UUID()
+    var name: String = ""
+    var pattern: String = ""
+    var isRegex: Bool = false
+    var caseSensitive: Bool = false
+    var response: String = ""
+    var scope: TriggerScope = .both
+    /// Empty = any network.
+    var networks: [UUID] = []
+    var enabled: Bool = true
+}
+
 struct AppSettings: Codable {
-    var servers: [ServerProfile] = [ServerProfile(name: "Libera Chat")]
+    var servers: [ServerProfile] = ServerProfile.defaultServers()
     var addressBook: [AddressEntry] = []
     var savedChannels: [SavedChannel] = []
     var ignoreList: [IgnoreEntry] = []
@@ -157,6 +286,11 @@ struct AppSettings: Codable {
     // Persistent logs
     var enablePersistentLogs: Bool = false
     var logMotdAndNumerics: Bool = false
+
+    /// Auto-delete logs older than `purgeLogsAfterDays` on app launch.
+    /// Default off; 90 days is the suggested window when the user turns it on.
+    var purgeLogsEnabled: Bool = false
+    var purgeLogsAfterDays: Int = 90
 
     // CTCP
     var ctcpRepliesEnabled: Bool = true
@@ -178,16 +312,38 @@ struct AppSettings: Codable {
         "privateMessage": "Ping",
         "connect": "Hero",
         "disconnect": "Basso",
-        "ctcp": ""
+        "ctcp": "",
+        "highlight": "Funk"
     ]
     var themeID: String = "classic"
+
+    // Highlight rules (row tint + matched-word color + per-rule alerts)
+    var highlightRules: [HighlightRule] = []
+
+    // Native bot — trigger/response rules and seen-tracker toggle.
+    var triggerRules: [TriggerRule] = []
+    var seenTrackingEnabled: Bool = false
+
+    /// Prompt before /quit (or /exit) terminates the app. Default on; users
+    /// can disable it once they're comfortable with the command.
+    var quitConfirmationEnabled: Bool = true
+
+    /// Named identities the user can link to any server profile.
+    var identities: [Identity] = []
+
+    /// When true AND the keystore is set up AND biometrics are available,
+    /// the launch flow requires Touch ID before the silent Keychain unlock
+    /// is allowed to take effect. Doesn't affect the passphrase prompt —
+    /// biometrics here are a defence-in-depth layer, not a passphrase
+    /// replacement.
+    var requireBiometricsOnLaunch: Bool = false
 
     init() {}
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.servers      = try c.decodeIfPresent([ServerProfile].self, forKey: .servers)
-            ?? [ServerProfile(name: "Libera Chat")]
+            ?? ServerProfile.defaultServers()
         self.addressBook  = try c.decodeIfPresent([AddressEntry].self, forKey: .addressBook) ?? []
         self.savedChannels = try c.decodeIfPresent([SavedChannel].self, forKey: .savedChannels) ?? []
         self.ignoreList   = try c.decodeIfPresent([IgnoreEntry].self, forKey: .ignoreList) ?? []
@@ -198,6 +354,8 @@ struct AppSettings: Codable {
         self.highlightOnOwnNick = try c.decodeIfPresent(Bool.self, forKey: .highlightOnOwnNick) ?? true
         self.enablePersistentLogs = try c.decodeIfPresent(Bool.self, forKey: .enablePersistentLogs) ?? false
         self.logMotdAndNumerics = try c.decodeIfPresent(Bool.self, forKey: .logMotdAndNumerics) ?? false
+        self.purgeLogsEnabled = try c.decodeIfPresent(Bool.self, forKey: .purgeLogsEnabled) ?? false
+        self.purgeLogsAfterDays = try c.decodeIfPresent(Int.self, forKey: .purgeLogsAfterDays) ?? 90
         self.ctcpRepliesEnabled = try c.decodeIfPresent(Bool.self, forKey: .ctcpRepliesEnabled) ?? true
         self.ctcpVersionString = try c.decodeIfPresent(String.self, forKey: .ctcpVersionString)
             ?? "PurpleIRC — https://github.com/bronty13/PhantomLives"
@@ -218,6 +376,12 @@ struct AppSettings: Codable {
                 "ctcp": ""
             ]
         self.themeID = try c.decodeIfPresent(String.self, forKey: .themeID) ?? "classic"
+        self.highlightRules = try c.decodeIfPresent([HighlightRule].self, forKey: .highlightRules) ?? []
+        self.triggerRules = try c.decodeIfPresent([TriggerRule].self, forKey: .triggerRules) ?? []
+        self.seenTrackingEnabled = try c.decodeIfPresent(Bool.self, forKey: .seenTrackingEnabled) ?? false
+        self.quitConfirmationEnabled = try c.decodeIfPresent(Bool.self, forKey: .quitConfirmationEnabled) ?? true
+        self.identities = try c.decodeIfPresent([Identity].self, forKey: .identities) ?? []
+        self.requireBiometricsOnLaunch = try c.decodeIfPresent(Bool.self, forKey: .requireBiometricsOnLaunch) ?? false
     }
 }
 
@@ -231,6 +395,21 @@ final class SettingsStore: ObservableObject {
     let supportDirectoryURL: URL
     let logsDirectoryURL: URL
 
+    /// KeyStore used for envelope encryption. When nil or locked, settings
+    /// are written as plaintext JSON. When unlocked, the JSON body is sealed
+    /// with AES-GCM via the KeyStore's data-encryption key.
+    weak var keyStore: KeyStore?
+
+    /// True iff the on-disk file is currently the encrypted format. The UI
+    /// shows this in the Security tab so the user can tell at a glance
+    /// whether their metadata is actually encrypted.
+    @Published private(set) var isEncryptedOnDisk: Bool = false
+
+    /// File-format magic for encrypted settings. Plaintext JSON starts with
+    /// `{`, so a distinctive binary prefix keeps the two formats trivially
+    /// distinguishable at load time and leaves room for future versions.
+    private static let envelopeMagic: [UInt8] = [0x50, 0x49, 0x52, 0x43, 0x01] // "PIRC\x01"
+
     init() {
         let fm = FileManager.default
         let base = try? fm.url(for: .applicationSupportDirectory,
@@ -242,12 +421,20 @@ final class SettingsStore: ObservableObject {
         self.supportDirectoryURL = dir
         self.logsDirectoryURL = dir.appendingPathComponent("logs", isDirectory: true)
         self.fileURL = dir.appendingPathComponent("settings.json")
+        self.settings = AppSettings()
 
-        if let data = try? Data(contentsOf: fileURL),
-           let decoded = try? JSONDecoder().decode(AppSettings.self, from: data) {
-            self.settings = decoded
-        } else {
-            self.settings = AppSettings()
+        // Detect whether the file on disk is encrypted so the UI knows before
+        // a load is attempted. Plain JSON starts with '{' / whitespace.
+        if let data = try? Data(contentsOf: fileURL) {
+            self.isEncryptedOnDisk = Self.hasEnvelopeMagic(data)
+            // Only load automatically when the file is plaintext; encrypted
+            // files need a keystore unlock first. ChatModel re-tries via
+            // `reload()` once the keystore is ready.
+            if !self.isEncryptedOnDisk {
+                if let decoded = try? JSONDecoder().decode(AppSettings.self, from: data) {
+                    self.settings = resolveCredentials(in: decoded)
+                }
+            }
         }
 
         if settings.selectedServerID == nil {
@@ -255,18 +442,140 @@ final class SettingsStore: ObservableObject {
         }
     }
 
+    /// Re-read the settings file. Used by ChatModel after the KeyStore
+    /// finishes unlocking an encrypted envelope.
+    func reload() {
+        guard let data = try? Data(contentsOf: fileURL) else { return }
+        self.isEncryptedOnDisk = Self.hasEnvelopeMagic(data)
+        let jsonData: Data
+        if isEncryptedOnDisk {
+            guard let ks = keyStore, ks.isUnlocked else { return }
+            let body = data.suffix(from: Self.envelopeMagic.count)
+            guard let decrypted = try? ks.decrypt(Data(body)) else {
+                NSLog("PurpleIRC: settings envelope decrypt failed")
+                return
+            }
+            jsonData = decrypted
+        } else {
+            jsonData = data
+        }
+        if let decoded = try? JSONDecoder().decode(AppSettings.self, from: jsonData) {
+            let resolved = resolveCredentials(in: decoded)
+            // Bypass didSet → save() loop; assigning the struct normally
+            // would trigger a write with the freshly-resolved plaintext.
+            self.settings = resolved
+        }
+    }
+
     func save() {
         do {
+            // Move any cleartext credentials into Keychain BEFORE encoding so
+            // the bytes we write never contain plaintext passwords, even if
+            // envelope encryption is off.
+            let persistable = persistCredentials(in: settings)
+
             let enc = JSONEncoder()
             enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try enc.encode(settings)
-            try data.write(to: fileURL, options: .atomic)
+            let jsonData = try enc.encode(persistable)
+
+            let bytesToWrite: Data
+            if let ks = keyStore, ks.isUnlocked {
+                let cipher = try ks.encrypt(jsonData)
+                var buffer = Data(Self.envelopeMagic)
+                buffer.append(cipher)
+                bytesToWrite = buffer
+                isEncryptedOnDisk = true
+            } else {
+                bytesToWrite = jsonData
+                isEncryptedOnDisk = false
+            }
+            try bytesToWrite.write(to: fileURL, options: .atomic)
         } catch {
             NSLog("PurpleIRC: failed to save settings: \(error)")
         }
     }
 
+    /// True when the on-disk file begins with our envelope magic bytes.
+    private static func hasEnvelopeMagic(_ data: Data) -> Bool {
+        guard data.count >= envelopeMagic.count else { return false }
+        let prefix = Array(data.prefix(envelopeMagic.count))
+        return prefix == envelopeMagic
+    }
+
+    // MARK: - Credential transform
+
+    /// For every profile / identity password field on `src`, push the current
+    /// cleartext into the Keychain and replace it with a "kc:<uuid>" reference.
+    /// Already-referenced values are left alone; empty values delete any
+    /// orphan Keychain item so the account doesn't leak after a clear.
+    private func persistCredentials(in src: AppSettings) -> AppSettings {
+        var out = src
+        out.servers = out.servers.map { prof in
+            var p = prof
+            p.password          = persist(p.password,          account: Self.account(profile: p.id, field: "password"))
+            p.saslPassword      = persist(p.saslPassword,      account: Self.account(profile: p.id, field: "sasl"))
+            p.nickServPassword  = persist(p.nickServPassword,  account: Self.account(profile: p.id, field: "nickserv"))
+            p.proxyPassword     = persist(p.proxyPassword,     account: Self.account(profile: p.id, field: "proxy"))
+            return p
+        }
+        out.identities = out.identities.map { ident in
+            var i = ident
+            i.saslPassword     = persist(i.saslPassword,     account: Self.account(identity: i.id, field: "sasl"))
+            i.nickServPassword = persist(i.nickServPassword, account: Self.account(identity: i.id, field: "nickserv"))
+            return i
+        }
+        return out
+    }
+
+    /// Reverse of `persistCredentials`: every "kc:…" reference is resolved
+    /// back to its Keychain value for in-memory use. Missing items return
+    /// empty string (safer than blocking the whole load on one lost item).
+    private func resolveCredentials(in src: AppSettings) -> AppSettings {
+        var out = src
+        out.servers = out.servers.map { prof in
+            var p = prof
+            p.password          = resolve(p.password)
+            p.saslPassword      = resolve(p.saslPassword)
+            p.nickServPassword  = resolve(p.nickServPassword)
+            p.proxyPassword     = resolve(p.proxyPassword)
+            return p
+        }
+        out.identities = out.identities.map { ident in
+            var i = ident
+            i.saslPassword     = resolve(i.saslPassword)
+            i.nickServPassword = resolve(i.nickServPassword)
+            return i
+        }
+        return out
+    }
+
+    private func persist(_ value: String, account: String) -> String {
+        if CredentialRef.isReference(value) { return value }
+        if value.isEmpty {
+            try? KeychainStore.delete(account: account)
+            return ""
+        }
+        try? KeychainStore.setString(value, for: account)
+        return CredentialRef.makeReference(for: account)
+    }
+
+    private func resolve(_ raw: String) -> String {
+        guard let account = CredentialRef.account(in: raw) else { return raw }
+        return KeychainStore.getString(for: account) ?? ""
+    }
+
+    private static func account(profile: UUID, field: String) -> String {
+        "profile.\(profile.uuidString).\(field)"
+    }
+    private static func account(identity: UUID, field: String) -> String {
+        "identity.\(identity.uuidString).\(field)"
+    }
+
     var fileURLForDisplay: String { fileURL.path }
+
+    /// Filesystem location of settings.json. Exposed so the main toolbar menu
+    /// can "Reveal in Finder" the file.
+    var settingsFileURL: URL { fileURL }
 
     // MARK: - Server helpers
 
@@ -287,6 +596,11 @@ final class SettingsStore: ObservableObject {
         settings.servers.removeAll { $0.id == id }
         if settings.selectedServerID == id {
             settings.selectedServerID = settings.servers.first?.id
+        }
+        // Evict any orphan credentials so the Keychain doesn't accumulate
+        // entries for profiles that no longer exist.
+        for field in ["password", "sasl", "nickserv", "proxy"] {
+            try? KeychainStore.delete(account: Self.account(profile: id, field: field))
         }
     }
 
@@ -334,5 +648,60 @@ final class SettingsStore: ObservableObject {
 
     func removeIgnore(id: UUID) {
         settings.ignoreList.removeAll { $0.id == id }
+    }
+
+    // MARK: - Highlight rules
+
+    func upsertHighlight(_ rule: HighlightRule) {
+        if let i = settings.highlightRules.firstIndex(where: { $0.id == rule.id }) {
+            settings.highlightRules[i] = rule
+        } else {
+            settings.highlightRules.append(rule)
+        }
+    }
+
+    func removeHighlight(id: UUID) {
+        settings.highlightRules.removeAll { $0.id == id }
+    }
+
+    // MARK: - Trigger rules
+
+    func upsertTrigger(_ rule: TriggerRule) {
+        if let i = settings.triggerRules.firstIndex(where: { $0.id == rule.id }) {
+            settings.triggerRules[i] = rule
+        } else {
+            settings.triggerRules.append(rule)
+        }
+    }
+
+    func removeTrigger(id: UUID) {
+        settings.triggerRules.removeAll { $0.id == id }
+    }
+
+    // MARK: - Identities
+
+    func identity(withID id: UUID?) -> Identity? {
+        guard let id else { return nil }
+        return settings.identities.first { $0.id == id }
+    }
+
+    func upsertIdentity(_ identity: Identity) {
+        if let i = settings.identities.firstIndex(where: { $0.id == identity.id }) {
+            settings.identities[i] = identity
+        } else {
+            settings.identities.append(identity)
+        }
+    }
+
+    func removeIdentity(id: UUID) {
+        settings.identities.removeAll { $0.id == id }
+        // Any server profiles referencing this identity revert to their own
+        // inline fields. No need to surface an error — UX is forgiving.
+        for i in settings.servers.indices where settings.servers[i].identityID == id {
+            settings.servers[i].identityID = nil
+        }
+        for field in ["sasl", "nickserv"] {
+            try? KeychainStore.delete(account: Self.account(identity: id, field: field))
+        }
     }
 }

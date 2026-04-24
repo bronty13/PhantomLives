@@ -11,6 +11,9 @@ enum IRCConnectionEvent: Sendable {
     case inbound(IRCMessage)
     case outbound(String)
     case ownNickChanged(String)
+    /// Any user on a shared channel changed nick. `isSelf == true` on our
+    /// own changes (which are *also* delivered as `.ownNickChanged`).
+    case nickChanged(old: String, new: String, isSelf: Bool)
     case privmsg(from: String, target: String, text: String, isAction: Bool, isMention: Bool)
     case notice(from: String, target: String, text: String)
     case join(nick: String, channel: String, isSelf: Bool)
@@ -39,6 +42,19 @@ final class IRCConnection: ObservableObject, Identifiable {
     /// Away state for this network.
     @Published private(set) var isAway: Bool = false
     @Published private(set) var awayReason: String?
+
+    /// Per-network channel directory, fed by RPL_LIST (322). Exposed to the UI
+    /// so the ChannelListView can bind directly. Disk cache is wired up by
+    /// ChatModel via `bindChannelCache(baseDir:)` after construction.
+    let channelList = ChannelListService()
+
+    /// Hook the channel-list service up to the given cache directory, using
+    /// the connection's display name to derive a stable slug for the file.
+    /// Called from ChatModel.addConnection once the support dir is known.
+    func bindChannelCache(baseDir: URL) {
+        let slug = SeenStore.slug(for: displayName)
+        channelList.setCacheLocation(baseDir: baseDir, slug: slug)
+    }
 
     /// Shared across all connections — ChatModel owns the single instance and
     /// routes its delegate calls to the right connection.
@@ -71,6 +87,19 @@ final class IRCConnection: ObservableObject, Identifiable {
     var ctcpVersionString: String = "PurpleIRC"
     var autoReplyWhenAway: Bool = true
     var awayAutoReply: String = ""
+
+    // User-configured highlight rules (pushed in from settings). The matcher
+    // caches compiled regex so busy channels don't recompile per message.
+    var highlightRules: [HighlightRule] = [] {
+        didSet { highlightMatcher.clearCache() }
+    }
+    /// Identity linked to this connection's profile (looked up from global
+    /// AppSettings.identities by `profile.identityID`). Pushed in by ChatModel.
+    /// Overrides nick/user/realName/SASL/NickServ at connect time when set.
+    var activeIdentity: Identity? = nil
+    /// NSSound name for the user's configured "highlight" event sound.
+    var highlightSoundName: String = ""
+    private let highlightMatcher = HighlightMatcher()
 
     // Log writer. ChatModel injects a shared LogStore; nil means no logging.
     var logStore: LogStore?
@@ -117,10 +146,16 @@ final class IRCConnection: ObservableObject, Identifiable {
             appendError("Invalid port on \(profile.name): \(profile.port)")
             return
         }
-        self.nick = profile.nick
-        appendInfo("Connecting to \(profile.name) (\(profile.host):\(portNum), TLS=\(profile.useTLS))…")
-        if profile.saslMechanism != .none {
-            appendInfo("SASL \(profile.saslMechanism.rawValue) will be attempted after CAP negotiation.")
+        // Identity overlay — identity fields win when a linked identity exists.
+        let effective = profile.applyingIdentity(activeIdentity)
+        self.nick = effective.nick
+        if let ident = activeIdentity {
+            appendInfo("Connecting to \(profile.name) as \(ident.name) (\(effective.nick)) — \(profile.host):\(portNum), TLS=\(profile.useTLS)…")
+        } else {
+            appendInfo("Connecting to \(profile.name) (\(profile.host):\(portNum), TLS=\(profile.useTLS))…")
+        }
+        if effective.saslMechanism != .none {
+            appendInfo("SASL \(effective.saslMechanism.rawValue) will be attempted after CAP negotiation.")
         }
 
         let proxyPort = UInt16(exactly: profile.proxyPort) ?? 0
@@ -131,13 +166,13 @@ final class IRCConnection: ObservableObject, Identifiable {
             host: profile.host,
             port: portNum,
             useTLS: profile.useTLS,
-            nick: profile.nick,
-            user: profile.user.isEmpty ? "purpleirc" : profile.user,
-            realName: profile.realName.isEmpty ? "PurpleIRC" : profile.realName,
+            nick: effective.nick,
+            user: effective.user.isEmpty ? "purpleirc" : effective.user,
+            realName: effective.realName.isEmpty ? "PurpleIRC" : effective.realName,
             serverPassword: profile.password.isEmpty ? nil : profile.password,
-            saslMechanism: profile.saslMechanism,
-            saslAccount: profile.saslAccount,
-            saslPassword: profile.saslPassword,
+            saslMechanism: effective.saslMechanism,
+            saslAccount: effective.saslAccount,
+            saslPassword: effective.saslPassword,
             proxyType: profile.proxyType,
             proxyHost: profile.proxyHost,
             proxyPort: proxyPort,
@@ -147,11 +182,19 @@ final class IRCConnection: ObservableObject, Identifiable {
         client.connect(config: config)
     }
 
-    func disconnect() {
+    /// Profile with identity fields overlaid (when one is linked). Used by
+    /// runtime code that needs the current identity values — CTCP replies,
+    /// NickServ IDENTIFY, away reason — so identity changes take effect
+    /// without a reconnect for things that don't require one.
+    private var effectiveProfile: ServerProfile {
+        profile.applyingIdentity(activeIdentity)
+    }
+
+    func disconnect(quitMessage: String = "PurpleIRC signing off") {
         userInitiatedDisconnect = true
         reconnectTask?.cancel()
         reconnectTask = nil
-        client.disconnect(quitMessage: "PurpleIRC signing off")
+        client.disconnect(quitMessage: quitMessage)
     }
 
     /// Public outbound. Bot scripting will call this path.
@@ -202,6 +245,27 @@ final class IRCConnection: ObservableObject, Identifiable {
             client.send("JOIN \(name)")
         } else {
             appendError("Not connected — connect first.")
+        }
+    }
+
+    /// Kick off a LIST against this network. `filter` is passed through as
+    /// the LIST argument (e.g. ">5" on some daemons). Empty string = full
+    /// list. `forceRefresh` wipes the local cache before querying so stale
+    /// entries can't mask deletions upstream.
+    func requestChannelList(filter: String = "", forceRefresh: Bool = false) {
+        guard state == .connected else {
+            appendError("Not connected — connect first.")
+            return
+        }
+        if forceRefresh {
+            channelList.clearCache()
+        }
+        channelList.begin()
+        let trimmed = filter.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty {
+            client.send("LIST")
+        } else {
+            client.send("LIST \(trimmed)")
         }
     }
 
@@ -384,6 +448,16 @@ final class IRCConnection: ObservableObject, Identifiable {
             let names = (msg.params.last ?? "")
                 .split(separator: " ").map { String($0) }.filter { !$0.isEmpty }
             watchlist.handleISON(names)
+        case "321":
+            // RPL_LISTSTART — some daemons send it, some don't. Swallow either
+            // way; we already flipped the loading flag when /LIST was issued.
+            break
+        case "322":
+            // RPL_LIST — one row of the channel directory.
+            channelList.append(from: msg)
+        case "323":
+            // RPL_LISTEND — the directory is complete.
+            channelList.end()
         case "730":
             watchlist.handleMonitorOnline(monitorTargets(from: msg))
         case "731":
@@ -443,9 +517,22 @@ final class IRCConnection: ObservableObject, Identifiable {
                 if !isNotice, ctcpRepliesEnabled {
                     sendCTCPReply(to: from, command: cmd, args: args)
                 }
-                // Log requests/replies to server buffer for visibility.
-                let kind = isNotice ? "CTCP reply" : "CTCP request"
-                appendInfo("\(kind) \(cmd) from \(from): \(args)")
+                // Log requests/replies to server buffer for visibility, and
+                // also mirror into the query buffer for `from` when one is
+                // open — so `/ctcp nick VERSION` shows its answer alongside
+                // the conversation, not just in the server log.
+                let kindLabel = isNotice ? "CTCP reply" : "CTCP request"
+                let info = "\(kindLabel) \(cmd) from \(from): \(args)"
+                appendInfo(info)
+                if let qIdx = buffers.firstIndex(where: {
+                    $0.kind == .query && $0.name.caseInsensitiveCompare(from) == .orderedSame
+                }) {
+                    appendTo(bufferIndex: qIdx, line: ChatLine(
+                        timestamp: Date(),
+                        kind: .info,
+                        text: info
+                    ))
+                }
                 return
             }
         }
@@ -460,6 +547,22 @@ final class IRCConnection: ObservableObject, Identifiable {
             && highlightOnOwnNick
             && Self.containsOwnNick(self.nick, in: plainForMatch)
 
+        // HighlightRule evaluation. Skips our own lines (we already know what
+        // we typed). Runs on both PRIVMSG and NOTICE so users can highlight
+        // NickServ notices, server notices, etc.
+        let hits: [HighlightMatcher.Hit]
+        if from.lowercased() != self.nick.lowercased() {
+            hits = highlightMatcher.evaluate(
+                rules: highlightRules,
+                text: text,
+                networkID: profile.id)
+        } else {
+            hits = []
+        }
+        let firstHit = hits.first
+        let hitRuleID = firstHit?.rule.id
+        let hitRanges = firstHit?.ranges ?? []
+
         // CTCP ACTION rendering
         if text.hasPrefix("\u{01}ACTION "), text.hasSuffix("\u{01}") {
             text = String(text.dropFirst(8).dropLast())
@@ -468,13 +571,16 @@ final class IRCConnection: ObservableObject, Identifiable {
                 timestamp: Date(),
                 kind: .action(nick: from),
                 text: text,
-                isMention: mention
+                isMention: mention,
+                highlightRuleID: hitRuleID,
+                highlightRanges: hitRanges
             ))
             markUnread(at: bIdx)
             emit(.privmsg(from: from, target: bufferName, text: text, isAction: true, isMention: mention))
             if mention {
                 watchlist.fireHighlightAlert(nick: from, channel: bufferName, text: "* \(from) \(IRCFormatter.stripCodes(text))")
             }
+            fireHighlightHits(hits, from: from, channel: bufferName, plain: plainForMatch)
             maybeSendAwayAutoReply(to: from, target: target, isNotice: false)
             return
         }
@@ -484,7 +590,9 @@ final class IRCConnection: ObservableObject, Identifiable {
             appendTo(bufferIndex: bIdx, line: ChatLine(
                 timestamp: Date(),
                 kind: .notice(from: from),
-                text: text
+                text: text,
+                highlightRuleID: hitRuleID,
+                highlightRanges: hitRanges
             ))
             emit(.notice(from: from, target: bufferName, text: text))
         } else {
@@ -492,7 +600,9 @@ final class IRCConnection: ObservableObject, Identifiable {
                 timestamp: Date(),
                 kind: .privmsg(nick: from, isSelf: false),
                 text: text,
-                isMention: mention
+                isMention: mention,
+                highlightRuleID: hitRuleID,
+                highlightRanges: hitRanges
             ))
             emit(.privmsg(from: from, target: bufferName, text: text, isAction: false, isMention: mention))
         }
@@ -501,6 +611,7 @@ final class IRCConnection: ObservableObject, Identifiable {
         if mention {
             watchlist.fireHighlightAlert(nick: from, channel: bufferName, text: IRCFormatter.stripCodes(text))
         }
+        fireHighlightHits(hits, from: from, channel: bufferName, plain: plainForMatch)
 
         // Away auto-reply to direct PMs (not notices, not channel traffic).
         if !isNotice {
@@ -530,11 +641,11 @@ final class IRCConnection: ObservableObject, Identifiable {
             df.locale = Locale(identifier: "en_US_POSIX")
             reply = "TIME \(df.string(from: Date()))"
         case "FINGER":
-            reply = "FINGER \(profile.realName.isEmpty ? "PurpleIRC user" : profile.realName)"
+            reply = "FINGER \(effectiveProfile.realName.isEmpty ? "PurpleIRC user" : effectiveProfile.realName)"
         case "SOURCE":
             reply = "SOURCE https://github.com/bronty13/PhantomLives"
         case "USERINFO":
-            reply = "USERINFO \(profile.realName.isEmpty ? profile.nick : profile.realName)"
+            reply = "USERINFO \(effectiveProfile.realName.isEmpty ? effectiveProfile.nick : effectiveProfile.realName)"
         case "CLIENTINFO":
             reply = "CLIENTINFO ACTION CLIENTINFO FINGER PING SOURCE TIME USERINFO VERSION"
         default:
@@ -596,6 +707,24 @@ final class IRCConnection: ObservableObject, Identifiable {
             return false
         }
         return m(0, 0)
+    }
+
+    /// Fire per-rule alerts for every matched HighlightRule. Uses the rule's
+    /// own playSound/bounceDock/systemNotify toggles, not the watchlist's.
+    private func fireHighlightHits(_ hits: [HighlightMatcher.Hit],
+                                   from: String,
+                                   channel: String,
+                                   plain: String) {
+        guard !hits.isEmpty else { return }
+        for hit in hits {
+            watchlist.fireRuleAlert(
+                rule: hit.rule,
+                from: from,
+                channel: channel,
+                text: plain,
+                soundName: highlightSoundName
+            )
+        }
     }
 
     private static func containsOwnNick(_ nick: String, in text: String) -> Bool {
@@ -678,10 +807,12 @@ final class IRCConnection: ObservableObject, Identifiable {
 
     private func handleNickChange(_ msg: IRCMessage) {
         guard let old = msg.nickFromPrefix, let new = msg.params.first else { return }
-        if old.lowercased() == self.nick.lowercased() {
+        let isSelf = old.lowercased() == self.nick.lowercased()
+        if isSelf {
             self.nick = new
             emit(.ownNickChanged(new))
         }
+        emit(.nickChanged(old: old, new: new, isSelf: isSelf))
         for i in buffers.indices {
             if let u = buffers[i].users.firstIndex(of: old) {
                 buffers[i].users[u] = new
@@ -759,7 +890,37 @@ final class IRCConnection: ObservableObject, Identifiable {
             kind: kind,
             text: text.isEmpty ? msg.raw : text
         ))
+
+        // WHOIS-family replies (and 401 "no such nick") also go to the query
+        // buffer for the target nick when one is already open — so the user
+        // sees the answer in context, not just the server buffer.
+        if Self.whoisNumerics.contains(msg.command),
+           msg.params.count >= 2 {
+            let targetNick = msg.params[1]
+            if let qIdx = buffers.firstIndex(where: {
+                $0.kind == .query && $0.name.caseInsensitiveCompare(targetNick) == .orderedSame
+            }) {
+                appendTo(bufferIndex: qIdx, line: ChatLine(
+                    timestamp: Date(),
+                    kind: kind,
+                    text: text.isEmpty ? msg.raw : text
+                ))
+            }
+        }
     }
+
+    /// Numerics emitted in response to WHOIS (and the "no such nick" reply).
+    /// Each of these has the queried nick at params[1], so we can reliably
+    /// route them to a matching query buffer if the user has one open.
+    private static let whoisNumerics: Set<String> = [
+        // WHOIS replies
+        "311", "312", "313", "314", "315", "317", "318", "319",
+        "330", "338", "378", "379", "671",
+        // WHOWAS replies
+        "369", "406",
+        // Generic "no such nick" — routes back to whatever nick prompted it
+        "401"
+    ]
 
     // MARK: - Commands
 
@@ -885,8 +1046,9 @@ final class IRCConnection: ObservableObject, Identifiable {
     // MARK: - Post-welcome
 
     private func runPostWelcome() {
-        if profile.saslMechanism == .none, !profile.nickServPassword.isEmpty {
-            client.send("PRIVMSG NickServ :IDENTIFY \(profile.nickServPassword)")
+        let eff = effectiveProfile
+        if eff.saslMechanism == .none, !eff.nickServPassword.isEmpty {
+            client.send("PRIVMSG NickServ :IDENTIFY \(eff.nickServPassword)")
             appendInfo("Sent NickServ IDENTIFY.")
         }
         let lines = profile.performOnConnect

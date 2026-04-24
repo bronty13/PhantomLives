@@ -13,6 +13,7 @@ enum SoundEventKind: String, CaseIterable, Identifiable, Codable {
     case disconnect     // network disconnected / dropped
     case ctcp           // incoming CTCP request
     case privateMessage // incoming query PM (not channel)
+    case highlight      // user-configured HighlightRule matched
     var id: String { rawValue }
 
     var displayName: String {
@@ -23,6 +24,7 @@ enum SoundEventKind: String, CaseIterable, Identifiable, Codable {
         case .disconnect:     return "Disconnected"
         case .ctcp:           return "CTCP request"
         case .privateMessage: return "Private message"
+        case .highlight:      return "Highlight match"
         }
     }
 }
@@ -146,5 +148,48 @@ extension Theme {
 
     static func named(_ id: String) -> Theme {
         all.first(where: { $0.id == id }) ?? .classic
+    }
+}
+
+// MARK: - Color(hex:)
+
+extension Color {
+    /// Parse "#RRGGBB" / "RRGGBB" / "#AARRGGBB" / "AARRGGBB". Returns nil for
+    /// anything else. Used by HighlightRule.colorHex so SwiftUI ColorPicker's
+    /// native Color can round-trip through Codable settings.
+    init?(hex: String) {
+        var s = hex.trimmingCharacters(in: .whitespaces)
+        if s.hasPrefix("#") { s.removeFirst() }
+        guard let v = UInt64(s, radix: 16) else { return nil }
+        let r, g, b, a: Double
+        switch s.count {
+        case 6:
+            r = Double((v >> 16) & 0xFF) / 255.0
+            g = Double((v >> 8)  & 0xFF) / 255.0
+            b = Double( v        & 0xFF) / 255.0
+            a = 1.0
+        case 8:
+            a = Double((v >> 24) & 0xFF) / 255.0
+            r = Double((v >> 16) & 0xFF) / 255.0
+            g = Double((v >> 8)  & 0xFF) / 255.0
+            b = Double( v        & 0xFF) / 255.0
+        default:
+            return nil
+        }
+        self.init(.sRGB, red: r, green: g, blue: b, opacity: a)
+    }
+
+    /// #RRGGBB representation of this color (falls back to #000000 on
+    /// extraction failure). Used to persist the ColorPicker selection.
+    var hexRGB: String {
+        #if canImport(AppKit)
+        let ns = NSColor(self).usingColorSpace(.sRGB) ?? NSColor.black
+        let r = Int(round(ns.redComponent * 255))
+        let g = Int(round(ns.greenComponent * 255))
+        let b = Int(round(ns.blueComponent * 255))
+        return String(format: "#%02X%02X%02X", r, g, b)
+        #else
+        return "#000000"
+        #endif
     }
 }

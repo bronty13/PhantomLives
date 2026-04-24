@@ -10,6 +10,11 @@ let package = Package(
         .executableTarget(
             name: "PurpleIRC",
             path: "Sources/PurpleIRC"
+        ),
+        .testTarget(
+            name: "PurpleIRCTests",
+            dependencies: ["PurpleIRC"],
+            path: "Tests/PurpleIRCTests"
         )
     ]
 )

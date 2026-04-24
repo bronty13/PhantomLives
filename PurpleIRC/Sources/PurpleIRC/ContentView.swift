@@ -1,5 +1,76 @@
 import SwiftUI
 
+/// Root view — gates the real UI behind the KeyStore's unlock state when the
+/// user has opted in to encryption. `.notSetup` (no encryption) and
+/// `.unlocked` drop straight through to `ContentView`. `.locked` shows a
+/// modal unlock prompt over a dimmed placeholder.
+struct RootView: View {
+    @EnvironmentObject var model: ChatModel
+    @State private var showUnlockSheet: Bool = false
+    @State private var biometricPending: Bool = false
+
+    /// `effectivelyLocked` is true whenever the UI should be gated: either
+    /// the keystore itself is locked, or biometrics are required and haven't
+    /// resolved yet this session.
+    private var effectivelyLocked: Bool {
+        model.keyStore.state == .locked || biometricPending
+    }
+
+    var body: some View {
+        ZStack {
+            ContentView()
+                .disabled(effectivelyLocked)
+                .blur(radius: effectivelyLocked ? 6 : 0)
+            if effectivelyLocked {
+                Color.black.opacity(0.25).ignoresSafeArea()
+            }
+        }
+        .onAppear { initialGate() }
+        .onChange(of: model.keyStore.state) { _, _ in refreshUnlockSheet() }
+        .sheet(isPresented: $showUnlockSheet) {
+            PassphraseUnlockView(keyStore: model.keyStore) {
+                // Successful unlock — reload settings so the encrypted
+                // envelope's plaintext lands in memory.
+                model.settings.reload()
+                showUnlockSheet = false
+            }
+            .interactiveDismissDisabled(true)
+        }
+    }
+
+    /// Called once on appear. If the user opted into biometric gate AND the
+    /// keystore silently unlocked via the Keychain, prompt Touch ID before
+    /// we let them through. If they fail / cancel, lock the keystore and
+    /// fall back to the passphrase sheet.
+    private func initialGate() {
+        let biometricsRequired = model.settings.settings.requireBiometricsOnLaunch
+        if biometricsRequired,
+           model.keyStore.state == .unlocked,
+           BiometricGate.isAvailable {
+            biometricPending = true
+            Task {
+                let ok = await BiometricGate.verify(
+                    reason: "Unlock PurpleIRC to view encrypted settings and logs."
+                )
+                if ok {
+                    biometricPending = false
+                } else {
+                    // User cancelled or biometry failed — drop to passphrase.
+                    model.keyStore.lock()
+                    biometricPending = false
+                    refreshUnlockSheet()
+                }
+            }
+        } else {
+            refreshUnlockSheet()
+        }
+    }
+
+    private func refreshUnlockSheet() {
+        showUnlockSheet = (model.keyStore.state == .locked)
+    }
+}
+
 struct ContentView: View {
     @EnvironmentObject var model: ChatModel
 
@@ -33,6 +104,17 @@ struct ContentView: View {
                 .help("Servers, address book, and saved channels (⌘,)")
             }
             ToolbarItem(placement: .primaryAction) {
+                IdentityMenu()
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    FilesMenu(settings: model.settings)
+                } label: {
+                    Label("Files", systemImage: "folder")
+                }
+                .help("Reveal PurpleIRC's settings, logs, scripts, and seen data in Finder")
+            }
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     model.showWatchlist = true
                 } label: {
@@ -40,6 +122,18 @@ struct ContentView: View {
                           systemImage: model.watchlist.recentHits.isEmpty ? "bell.badge" : "bell.badge.fill")
                 }
                 .help("Alert me when watched users come online")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    if model.connectionState == .connected {
+                        model.activeConnection?.requestChannelList()
+                    }
+                    model.showChannelList = true
+                } label: {
+                    Label("Channels", systemImage: "list.bullet.rectangle")
+                }
+                .help("Browse the server's channel directory (/list)")
+                .disabled(model.activeConnection == nil)
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -64,6 +158,60 @@ struct ContentView: View {
         .sheet(isPresented: $model.showSetup) {
             SetupView(settings: model.settings)
                 .environmentObject(model)
+        }
+        .confirmationDialog("Quit PurpleIRC?",
+                            isPresented: $model.showQuitConfirmation,
+                            titleVisibility: .visible) {
+            Button("Quit", role: .destructive) {
+                model.performQuit(reason: model.pendingQuitReason)
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("All connections will send a QUIT (\"\(model.pendingQuitReason)\") and the app will close. Turn off confirmation in Setup → Behavior to skip this prompt.")
+        }
+        .sheet(isPresented: $model.showHelp) {
+            HelpView(initialQuery: model.helpPrefillQuery)
+        }
+        .sheet(isPresented: $model.showSeenList) {
+            if let conn = model.activeConnection {
+                SeenListView(
+                    entries: model.botEngine.seenStore.entries(
+                        networkID: conn.id,
+                        networkSlug: SeenStore.slug(for: conn.displayName)),
+                    onQuery: { nick in model.sendInput("/query \(nick)") },
+                    onClear: {
+                        model.botEngine.seenStore.clear(
+                            networkID: conn.id,
+                            networkSlug: SeenStore.slug(for: conn.displayName))
+                        model.showSeenList = false
+                    }
+                )
+            } else {
+                VStack(spacing: 12) {
+                    Text("Connect to a server first.")
+                    Button("Close") { model.showSeenList = false }
+                }
+                .padding(32)
+            }
+        }
+        .sheet(isPresented: $model.showChannelList) {
+            if let conn = model.activeConnection {
+                ChannelListView(
+                    service: conn.channelList,
+                    onJoin: { channel in model.quickJoin(channel) },
+                    onRefresh: { filter, full in
+                        conn.requestChannelList(filter: filter, forceRefresh: full)
+                    }
+                )
+            } else {
+                // No connection — unreachable in practice since the toolbar
+                // button is disabled, but provide a graceful fallback.
+                VStack(spacing: 12) {
+                    Text("Connect to a server first.")
+                    Button("Close") { model.showChannelList = false }
+                }
+                .padding(32)
+            }
         }
     }
 }
@@ -113,7 +261,7 @@ struct SidebarView: View {
             if !channels.isEmpty {
                 Section("Channels") {
                     ForEach(channels) { buf in
-                        bufferRow(buf, icon: "number")
+                        BufferRow(buffer: buf, icon: "number")
                     }
                 }
             }
@@ -121,7 +269,7 @@ struct SidebarView: View {
             if !queries.isEmpty {
                 Section("Private") {
                     ForEach(queries) { buf in
-                        bufferRow(buf, icon: "person.fill")
+                        BufferRow(buffer: buf, icon: "person.fill")
                     }
                 }
             }
@@ -199,21 +347,161 @@ struct SidebarView: View {
         }
     }
 
-    @ViewBuilder
-    private func bufferRow(_ buf: Buffer, icon: String) -> some View {
-        HStack {
-            Label(buf.name, systemImage: icon)
-            Spacer()
-            if buf.unread > 0 {
-                Text("\(buf.unread)")
+}
+
+/// Single channel/query row in the sidebar. Owns per-row hover state so a
+/// close (X) button can appear without affecting neighbors. Right-clicking
+/// opens a context menu for Leave/Close + Copy name.
+struct BufferRow: View {
+    let buffer: Buffer
+    let icon: String
+
+    @EnvironmentObject var model: ChatModel
+    @State private var isHovering: Bool = false
+
+    private var isChannel: Bool { buffer.kind == .channel }
+    private var isSelected: Bool { model.selectedBufferID == buffer.id }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Label(buffer.name, systemImage: icon)
+            Spacer(minLength: 4)
+            if buffer.unread > 0, !isHovering {
+                Text("\(buffer.unread)")
                     .font(.caption)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(Capsule().fill(Color.accentColor))
                     .foregroundStyle(.white)
             }
+            if isHovering || isSelected {
+                Button {
+                    model.closeBuffer(id: buffer.id)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help(isChannel ? "Leave \(buffer.name)" : "Close query with \(buffer.name)")
+            }
         }
-        .tag(buf.id as Buffer.ID?)
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            // Throttle not needed — SwiftUI coalesces hover events well enough.
+            isHovering = hovering
+        }
+        .tag(buffer.id as Buffer.ID?)
+        .contextMenu {
+            if isChannel {
+                channelContextMenu
+            } else {
+                queryContextMenu
+            }
+        }
+    }
+
+    // MARK: - Context menus
+
+    /// Actions appropriate to a channel row in the sidebar.
+    @ViewBuilder
+    private var channelContextMenu: some View {
+        Button("Leave \(buffer.name)") { model.closeBuffer(id: buffer.id) }
+        Divider()
+        Button("Copy channel name") {
+            copyToClipboard(buffer.name)
+        }
+        Divider()
+        Button("Request topic") { model.sendInput("/topic") }
+            .disabled(!isSelected)
+        Button("Request names") { model.sendInput("/names") }
+            .disabled(!isSelected)
+        Button("Request mode") { model.sendInput("/mode \(buffer.name)") }
+    }
+
+    /// Actions appropriate to a private-query (nick) row in the sidebar.
+    @ViewBuilder
+    private var queryContextMenu: some View {
+        let nick = buffer.name
+        Button("Close query with \(nick)") { model.closeBuffer(id: buffer.id) }
+        Divider()
+        Button("WHOIS \(nick)")  { model.sendInput("/whois \(nick)") }
+        Button("WHOWAS \(nick)") { model.sendInput("/whowas \(nick)") }
+        Button("CTCP VERSION")   { model.sendInput("/ctcp \(nick) VERSION") }
+        Button("CTCP PING")      { model.sendInput("/ctcp \(nick) PING \(Int(Date().timeIntervalSince1970))") }
+        Divider()
+        if isInAddressBook(nick) {
+            Button("Remove from address book") { removeFromAddressBook(nick) }
+        } else {
+            Button("Add to address book (watch)") { addToAddressBook(nick, watch: true) }
+            Button("Add to address book") { addToAddressBook(nick, watch: false) }
+        }
+        Divider()
+        if isIgnored(nick) {
+            Button("Stop ignoring \(nick)") { removeIgnore(nick) }
+        } else {
+            Button("Ignore \(nick)!*@*") { model.sendInput("/ignore \(nick)!*@*") }
+            Button("Ignore \(nick) (nick only)") { model.sendInput("/ignore \(nick)") }
+        }
+        Divider()
+        Button("Copy nick") { copyToClipboard(nick) }
+    }
+
+    // MARK: - Context-menu helpers
+
+    private func copyToClipboard(_ text: String) {
+        #if canImport(AppKit)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        #endif
+    }
+
+    private func isInAddressBook(_ nick: String) -> Bool {
+        model.settings.settings.addressBook.contains {
+            $0.nick.caseInsensitiveCompare(nick) == .orderedSame
+        }
+    }
+
+    private func addToAddressBook(_ nick: String, watch: Bool) {
+        var entry = AddressEntry()
+        entry.nick = nick
+        entry.watch = watch
+        model.settings.upsertAddress(entry)
+    }
+
+    private func removeFromAddressBook(_ nick: String) {
+        let matches = model.settings.settings.addressBook.filter {
+            $0.nick.caseInsensitiveCompare(nick) == .orderedSame
+        }
+        for entry in matches {
+            model.settings.removeAddress(id: entry.id)
+        }
+    }
+
+    /// True when any ignore-list mask matches the bare nick. We match both the
+    /// exact nick and common `nick!*@*` / `nick!user@host` shapes so the menu
+    /// label reflects what the user set earlier, whichever form they used.
+    private func isIgnored(_ nick: String) -> Bool {
+        let lower = nick.lowercased()
+        return model.settings.settings.ignoreList.contains { entry in
+            let mask = entry.mask.lowercased()
+            if mask == lower { return true }
+            // Strip user@host suffix for comparison: "alice!*@*" → "alice".
+            let head = mask.split(separator: "!", maxSplits: 1).first.map(String.init) ?? mask
+            return head == lower
+        }
+    }
+
+    private func removeIgnore(_ nick: String) {
+        let lower = nick.lowercased()
+        let matches = model.settings.settings.ignoreList.filter { entry in
+            let mask = entry.mask.lowercased()
+            if mask == lower { return true }
+            let head = mask.split(separator: "!", maxSplits: 1).first.map(String.init) ?? mask
+            return head == lower
+        }
+        for entry in matches {
+            model.settings.removeIgnore(id: entry.id)
+        }
     }
 }
 
@@ -262,14 +550,23 @@ struct ConnectFormView: View {
                             get: { model.settings.settings.selectedServerID ?? model.settings.settings.servers.first!.id },
                             set: { model.settings.settings.selectedServerID = $0 }
                         )) {
-                            ForEach(model.settings.settings.servers) { s in
+                            ForEach(ServerProfile.sortedByName(model.settings.settings.servers)) { s in
                                 Text(s.name).tag(s.id)
                             }
                         }
                         if let p = model.settings.selectedServer() {
+                            // Resolve the identity overlay so Nickname shows
+                            // what will actually be registered on the server.
+                            let identity = model.settings.identity(withID: p.identityID)
+                            let effective = p.applyingIdentity(identity)
                             LabeledContent("Host") { Text("\(p.host):\(p.port)") }
                             LabeledContent("TLS") { Text(p.useTLS ? "yes" : "no") }
-                            LabeledContent("Nickname") { Text(p.nick) }
+                            LabeledContent("Nickname") { Text(effective.nick) }
+                            if let identity {
+                                LabeledContent("Identity") {
+                                    Text(identity.name).foregroundStyle(.secondary)
+                                }
+                            }
                             if !p.autoJoin.isEmpty {
                                 LabeledContent("Auto-join") { Text(p.autoJoin).foregroundStyle(.secondary) }
                             }
@@ -288,5 +585,121 @@ struct ConnectFormView: View {
             }
         }
         .frame(maxWidth: 520)
+    }
+}
+
+// MARK: - Files menu (reveal settings / logs / scripts / seen in Finder)
+
+/// Toolbar dropdown for swapping the active connection's identity. Rendered
+/// as a single button with a menu so the current identity name is always
+/// visible without a click.
+struct IdentityMenu: View {
+    @EnvironmentObject var model: ChatModel
+
+    private var activeConn: IRCConnection? { model.activeConnection }
+    private var currentIdentity: Identity? {
+        guard let conn = activeConn else { return nil }
+        return model.settings.identity(withID: conn.profile.identityID)
+    }
+    private var label: String {
+        currentIdentity?.name ?? "Custom"
+    }
+
+    var body: some View {
+        Menu {
+            if let conn = activeConn {
+                Button {
+                    model.applyIdentity(nil, to: conn)
+                } label: {
+                    if conn.profile.identityID == nil {
+                        Label("Custom (inline profile fields)", systemImage: "checkmark")
+                    } else {
+                        Text("Custom (inline profile fields)")
+                    }
+                }
+                Divider()
+                if model.settings.settings.identities.isEmpty {
+                    Text("No identities defined").disabled(true)
+                } else {
+                    ForEach(model.settings.settings.identities) { ident in
+                        Button {
+                            model.applyIdentity(ident, to: conn)
+                        } label: {
+                            if conn.profile.identityID == ident.id {
+                                Label(ident.name.isEmpty ? "(unnamed)" : ident.name,
+                                      systemImage: "checkmark")
+                            } else {
+                                Text(ident.name.isEmpty ? "(unnamed)" : ident.name)
+                            }
+                        }
+                    }
+                }
+                Divider()
+                Button("Manage identities…") {
+                    model.showSetup = true
+                }
+            } else {
+                Text("Connect first to pick an identity").disabled(true)
+            }
+        } label: {
+            Label(label, systemImage: "person.crop.circle.badge.questionmark")
+        }
+        .help(activeConn == nil ? "Connect to a network to switch identity" : "Identity on \(activeConn!.displayName): \(label) — reconnect to apply")
+        .disabled(activeConn == nil)
+    }
+}
+
+/// Each menu item reveals (or opens) a specific PurpleIRC file or directory in
+/// Finder. Missing directories are created on-demand so the user always lands
+/// somewhere concrete instead of a "couldn't find it" error.
+struct FilesMenu: View {
+    let settings: SettingsStore
+
+    private var supportDir: URL { settings.supportDirectoryURL }
+
+    var body: some View {
+        Button("Reveal settings.json") {
+            Self.revealInFinder(settings.settingsFileURL)
+        }
+        Button("Open logs folder") {
+            Self.openDirectory(settings.logsDirectoryURL)
+        }
+        Button("Open scripts folder") {
+            Self.openDirectory(supportDir.appendingPathComponent("scripts", isDirectory: true))
+        }
+        Button("Open seen-data folder") {
+            Self.openDirectory(supportDir.appendingPathComponent("seen", isDirectory: true))
+        }
+        Divider()
+        Button("Open PurpleIRC support folder") {
+            Self.openDirectory(supportDir)
+        }
+        Divider()
+        Button("Copy support path") {
+            #if canImport(AppKit)
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(supportDir.path, forType: .string)
+            #endif
+        }
+    }
+
+    /// Opens Finder with the target file highlighted. For missing files we
+    /// fall back to the parent directory so the user sees *something*.
+    private static func revealInFinder(_ url: URL) {
+        #if canImport(AppKit)
+        if FileManager.default.fileExists(atPath: url.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } else {
+            openDirectory(url.deletingLastPathComponent())
+        }
+        #endif
+    }
+
+    /// Opens a directory in Finder, creating it first if it doesn't exist.
+    private static func openDirectory(_ url: URL) {
+        #if canImport(AppKit)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(url)
+        #endif
     }
 }

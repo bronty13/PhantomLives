@@ -6,7 +6,10 @@ struct PurpleIRCApp: App {
 
     var body: some Scene {
         WindowGroup("PurpleIRC") {
-            ContentView()
+            // Wrap ContentView in a lock gate so an encrypted envelope
+            // can't be bypassed. When the keystore is locked, the gate
+            // shows an unlock sheet and blocks everything else.
+            RootView()
                 .environmentObject(model)
                 .frame(minWidth: 900, minHeight: 560)
         }

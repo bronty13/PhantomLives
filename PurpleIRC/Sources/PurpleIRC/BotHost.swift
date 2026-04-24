@@ -369,6 +369,8 @@ final class BotHost: ObservableObject {
             return ("outbound", merge(["line": line]))
         case .ownNickChanged(let nick):
             return ("nick", merge(["nick": nick]))
+        case .nickChanged(let old, let new, let isSelf):
+            return ("nickchange", merge(["old": old, "new": new, "isSelf": isSelf]))
         }
     }
 

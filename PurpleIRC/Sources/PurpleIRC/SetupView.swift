@@ -7,19 +7,27 @@ struct SetupView: View {
 
     enum Tab: String, CaseIterable, Identifiable {
         case servers = "Servers"
+        case identities = "Identities"
         case addressBook = "Address Book"
         case channels = "Channels"
         case ignores = "Ignore"
+        case highlights = "Highlights"
+        case bot = "Bot"
         case behavior = "Behavior"
+        case security = "Security"
         case scripts = "PurpleBot"
         var id: String { rawValue }
         var systemImage: String {
             switch self {
             case .servers: return "server.rack"
+            case .identities: return "person.2.wave.2"
             case .addressBook: return "person.crop.rectangle.stack"
             case .channels: return "number"
             case .ignores: return "nosign"
+            case .highlights: return "sparkles"
+            case .bot: return "bolt.badge.a"
             case .behavior: return "slider.horizontal.3"
+            case .security: return "lock.shield"
             case .scripts: return "curlybraces"
             }
         }
@@ -54,9 +62,13 @@ struct SetupView: View {
             Group {
                 switch tab {
                 case .servers:     ServersSetup(settings: settings)
+                case .identities:  IdentitiesSetup(settings: settings)
+                case .security:    SecuritySetup(settings: settings, keyStore: model.keyStore)
                 case .addressBook: AddressBookSetup(settings: settings)
                 case .channels:    ChannelsSetup(settings: settings)
                 case .ignores:     IgnoreSetup(settings: settings)
+                case .highlights:  HighlightsSetup(settings: settings)
+                case .bot:         BotSetup(settings: settings, engine: model.botEngine)
                 case .behavior:    BehaviorSetup(settings: settings)
                 case .scripts:     ScriptsSetup(bot: model.bot)
                 }
@@ -77,7 +89,7 @@ struct ServersSetup: View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
                 List(selection: $selection) {
-                    ForEach(settings.settings.servers) { s in
+                    ForEach(ServerProfile.sortedByName(settings.settings.servers)) { s in
                         HStack {
                             Image(systemName: s.useTLS ? "lock.fill" : "lock.open")
                                 .foregroundStyle(s.useTLS ? .green : .secondary)
@@ -144,6 +156,11 @@ struct ServersSetup: View {
 
 struct ServerEditor: View {
     @Binding var server: ServerProfile
+    @EnvironmentObject var model: ChatModel
+    /// Stable sentinel used in the identity Picker to mean "no linked identity".
+    /// Any value works as long as it's constant and won't collide with a real
+    /// Identity.id, so a hardcoded all-zeros UUID is fine.
+    private static let customSentinel = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
     var body: some View {
         Form {
             Section("Profile") {
@@ -152,7 +169,7 @@ struct ServerEditor: View {
             Section("Connection") {
                 TextField("Host", text: $server.host)
                 Stepper(value: $server.port, in: 1...65535) {
-                    TextField("Port", value: $server.port, format: .number)
+                    TextField("Port", value: $server.port, format: .number.grouping(.never))
                 }
                 Toggle("Use TLS", isOn: $server.useTLS)
                     .onChange(of: server.useTLS) { _, new in
@@ -162,30 +179,78 @@ struct ServerEditor: View {
                 Toggle("Auto-reconnect on drop", isOn: $server.autoReconnect)
             }
             Section("Identity") {
-                TextField("Nickname", text: $server.nick)
-                TextField("Username", text: $server.user)
-                TextField("Real name", text: $server.realName)
-                SecureField("Server password (optional)", text: $server.password)
-            }
-            Section("Authentication (SASL)") {
-                Picker("Mechanism", selection: $server.saslMechanism) {
-                    ForEach(SASLMechanism.allCases) { m in
-                        Text(m.displayName).tag(m)
+                Picker("Use identity", selection: Binding(
+                    get: { server.identityID ?? Self.customSentinel },
+                    set: { newID in
+                        server.identityID = (newID == Self.customSentinel) ? nil : newID
+                    }
+                )) {
+                    Text("— Custom (use fields below) —")
+                        .tag(Self.customSentinel)
+                    ForEach(model.settings.settings.identities) { id in
+                        Text(id.name.isEmpty ? "(unnamed)" : id.name).tag(id.id)
                     }
                 }
-                if server.saslMechanism == .plain {
-                    TextField("Account (defaults to nick)", text: $server.saslAccount)
-                    SecureField("SASL password", text: $server.saslPassword)
+                if let linked = model.settings.identity(withID: server.identityID) {
+                    // Identity linked — show the values that will actually be
+                    // used on the wire, read-only, so the user can see at a
+                    // glance what the profile resolves to.
+                    LabeledContent("Nickname")  { Text(linked.nick.isEmpty    ? "—" : linked.nick)    .foregroundStyle(.secondary) }
+                    LabeledContent("Username")  { Text(linked.user.isEmpty    ? "—" : linked.user)    .foregroundStyle(.secondary) }
+                    LabeledContent("Real name") { Text(linked.realName.isEmpty ? "—" : linked.realName).foregroundStyle(.secondary) }
+                    SecureField("Server password (optional)", text: $server.password)
+                    Text("“\(linked.name)” is linked. Nick, username, real name, SASL, and NickServ come from the identity. Edit them in Setup → Identities.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    // Custom — edit inline on this profile.
+                    TextField("Nickname", text: $server.nick)
+                    TextField("Username", text: $server.user)
+                    TextField("Real name", text: $server.realName)
+                    SecureField("Server password (optional)", text: $server.password)
                 }
-                if server.saslMechanism == .external {
-                    Text("EXTERNAL uses the client certificate presented over TLS. PurpleIRC does not yet load client certs, so this will typically fail.")
-                        .font(.caption).foregroundStyle(.orange)
+            }
+            Section("Authentication (SASL)") {
+                if let linked = model.settings.identity(withID: server.identityID) {
+                    LabeledContent("Mechanism") {
+                        Text(linked.saslMechanism.displayName).foregroundStyle(.secondary)
+                    }
+                    if linked.saslMechanism == .plain {
+                        LabeledContent("Account") {
+                            Text(linked.saslAccount.isEmpty ? "(defaults to nick)" : linked.saslAccount)
+                                .foregroundStyle(.secondary)
+                        }
+                        LabeledContent("Password") {
+                            Text(linked.saslPassword.isEmpty ? "—" : "••••••••").foregroundStyle(.secondary)
+                        }
+                    }
+                } else {
+                    Picker("Mechanism", selection: $server.saslMechanism) {
+                        ForEach(SASLMechanism.allCases) { m in
+                            Text(m.displayName).tag(m)
+                        }
+                    }
+                    if server.saslMechanism == .plain {
+                        TextField("Account (defaults to nick)", text: $server.saslAccount)
+                        SecureField("SASL password", text: $server.saslPassword)
+                    }
+                    if server.saslMechanism == .external {
+                        Text("EXTERNAL uses the client certificate presented over TLS. PurpleIRC does not yet load client certs, so this will typically fail.")
+                            .font(.caption).foregroundStyle(.orange)
+                    }
                 }
             }
             Section("NickServ fallback") {
-                SecureField("NickServ password (ignored when SASL is set)", text: $server.nickServPassword)
-                Text("Sent as PRIVMSG NickServ :IDENTIFY <password> after welcome, only when SASL is disabled.")
-                    .font(.caption).foregroundStyle(.tertiary)
+                if let linked = model.settings.identity(withID: server.identityID) {
+                    LabeledContent("NickServ password") {
+                        Text(linked.nickServPassword.isEmpty ? "—" : "••••••••")
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    SecureField("NickServ password (ignored when SASL is set)", text: $server.nickServPassword)
+                    Text("Sent as PRIVMSG NickServ :IDENTIFY <password> after welcome, only when SASL is disabled.")
+                        .font(.caption).foregroundStyle(.tertiary)
+                }
             }
             Section("Perform on connect") {
                 TextEditor(text: $server.performOnConnect)
@@ -212,7 +277,7 @@ struct ServerEditor: View {
                 if server.proxyType != .none {
                     TextField("Proxy host", text: $server.proxyHost)
                     Stepper(value: $server.proxyPort, in: 1...65535) {
-                        TextField("Proxy port", value: $server.proxyPort, format: .number)
+                        TextField("Proxy port", value: $server.proxyPort, format: .number.grouping(.never))
                     }
                     TextField("Proxy username (optional)", text: $server.proxyUsername)
                     SecureField("Proxy password (optional)", text: $server.proxyPassword)
@@ -434,9 +499,16 @@ struct IgnoreSetup: View {
 
 struct BehaviorSetup: View {
     @ObservedObject var settings: SettingsStore
+    @EnvironmentObject var model: ChatModel
 
     var body: some View {
         Form {
+            Section("Quit") {
+                Toggle("Confirm before /quit or /exit closes the app",
+                       isOn: $settings.settings.quitConfirmationEnabled)
+                Text("/quit and /exit close PurpleIRC entirely (after sending a QUIT to each connected network). Use /disconnect to leave one network without quitting.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
             Section("Persistent logs") {
                 Toggle("Enable persistent logs", isOn: $settings.settings.enablePersistentLogs)
                 Toggle("Include server MOTD and info lines", isOn: $settings.settings.logMotdAndNumerics)
@@ -446,8 +518,30 @@ struct BehaviorSetup: View {
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 }
-                Text("Logs rotate at 4 MB per channel. Files live under the app support directory.")
+                Text("Logs rotate at 4 MB per channel. File names are SHA-256 hashes of the network and channel/nick, so someone browsing the folder can't tell which channels you log.")
                     .font(.caption).foregroundStyle(.tertiary)
+            }
+            Section("Log retention") {
+                Toggle("Auto-delete logs older than N days",
+                       isOn: $settings.settings.purgeLogsEnabled)
+                Stepper(value: $settings.settings.purgeLogsAfterDays, in: 1...3650) {
+                    HStack {
+                        Text("Days to keep")
+                        Spacer()
+                        TextField("", value: $settings.settings.purgeLogsAfterDays,
+                                  format: .number.grouping(.never))
+                            .frame(width: 60)
+                            .multilineTextAlignment(.trailing)
+                    }
+                }
+                .disabled(!settings.settings.purgeLogsEnabled)
+                HStack {
+                    Button("Purge now") { model.purgeLogsNow() }
+                    Spacer()
+                    Text("Runs at app launch when the toggle is on. Off by default; suggested value is 90 days.")
+                        .font(.caption).foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.trailing)
+                }
             }
             Section("CTCP") {
                 Toggle("Reply to CTCP requests", isOn: $settings.settings.ctcpRepliesEnabled)
@@ -666,4 +760,581 @@ struct ScriptsSetup: View {
     Save (⌘S) to reload all scripts. Logs from console.log appear below the \
     editor.
     """
+}
+
+// MARK: - Highlights
+
+struct HighlightsSetup: View {
+    @ObservedObject var settings: SettingsStore
+    @State private var selection: UUID?
+
+    var body: some View {
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                List(selection: $selection) {
+                    ForEach(settings.settings.highlightRules) { rule in
+                        HStack {
+                            Image(systemName: rule.enabled ? "sparkles" : "sparkle")
+                                .foregroundStyle(rule.enabled
+                                                 ? (rule.colorHex.flatMap { Color(hex: $0) } ?? .orange)
+                                                 : .secondary)
+                            VStack(alignment: .leading) {
+                                Text(rule.name.isEmpty ? "(unnamed rule)" : rule.name)
+                                Text(rule.pattern.isEmpty ? "(no pattern)" : rule.pattern)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .tag(rule.id)
+                    }
+                }
+                Divider()
+                HStack {
+                    Button {
+                        var rule = HighlightRule()
+                        rule.name = "New highlight"
+                        settings.upsertHighlight(rule)
+                        selection = rule.id
+                    } label: { Image(systemName: "plus") }
+                    Button {
+                        if let id = selection {
+                            settings.removeHighlight(id: id)
+                            selection = settings.settings.highlightRules.first?.id
+                        }
+                    } label: { Image(systemName: "minus") }
+                        .disabled(selection == nil)
+                    Spacer()
+                }
+                .padding(6)
+            }
+            .frame(width: 240)
+            .background(Color(nsColor: .controlBackgroundColor))
+
+            Divider()
+
+            if let id = selection,
+               let i = settings.settings.highlightRules.firstIndex(where: { $0.id == id }) {
+                HighlightRuleEditor(rule: Binding(
+                    get: { settings.settings.highlightRules[i] },
+                    set: { settings.settings.highlightRules[i] = $0 }
+                ), settings: settings)
+            } else {
+                VStack {
+                    Spacer()
+                    Text("Select a highlight rule").foregroundStyle(.secondary)
+                    Spacer()
+                }
+            }
+        }
+        .onAppear {
+            if selection == nil { selection = settings.settings.highlightRules.first?.id }
+        }
+    }
+}
+
+struct HighlightRuleEditor: View {
+    @Binding var rule: HighlightRule
+    @ObservedObject var settings: SettingsStore
+
+    private var regexError: String? {
+        guard rule.isRegex, !rule.pattern.isEmpty else { return nil }
+        do {
+            _ = try NSRegularExpression(pattern: rule.pattern, options: [])
+            return nil
+        } catch {
+            return "Invalid regex: \(error.localizedDescription)"
+        }
+    }
+
+    var body: some View {
+        Form {
+            Section("Rule") {
+                TextField("Name", text: $rule.name)
+                Toggle("Enabled", isOn: $rule.enabled)
+            }
+            Section("Match") {
+                TextField("Pattern", text: $rule.pattern)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                Toggle("Regular expression", isOn: $rule.isRegex)
+                Toggle("Case sensitive", isOn: $rule.caseSensitive)
+                if let err = regexError {
+                    Text(err).font(.caption).foregroundStyle(.orange)
+                }
+            }
+            Section("Appearance") {
+                Toggle("Custom color", isOn: Binding(
+                    get: { rule.colorHex != nil },
+                    set: { rule.colorHex = $0 ? (rule.colorHex ?? "#FFA500") : nil }
+                ))
+                if rule.colorHex != nil {
+                    ColorPicker("Color", selection: Binding(
+                        get: { Color(hex: rule.colorHex ?? "") ?? .orange },
+                        set: { rule.colorHex = $0.hexRGB }
+                    ), supportsOpacity: false)
+                }
+            }
+            Section("Actions on match") {
+                Toggle("Play highlight sound", isOn: $rule.playSound)
+                Toggle("Bounce Dock icon", isOn: $rule.bounceDock)
+                Toggle("System notification", isOn: $rule.systemNotify)
+            }
+            Section("Networks") {
+                NetworkMultiPicker(settings: settings, selected: $rule.networks)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - Bot (native triggers + seen)
+
+struct BotSetup: View {
+    @ObservedObject var settings: SettingsStore
+    let engine: BotEngine
+    @EnvironmentObject var model: ChatModel
+    @State private var selection: UUID?
+
+    var body: some View {
+        VStack(spacing: 16) {
+            seenSection
+            Divider()
+            triggersSection
+        }
+    }
+
+    private var seenSection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle("Track joins, parts, quits, and messages for /seen",
+                       isOn: $settings.settings.seenTrackingEnabled)
+                Text("When enabled, PurpleIRC keeps a last-seen record per network at \(settings.supportDirectoryURL.appendingPathComponent("seen").path). Use /seen <nick> in any buffer to look up a record.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let conn = model.activeConnection {
+                    HStack {
+                        Text("Active network: \(conn.displayName)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("View seen log…") {
+                            model.showSetup = false
+                            model.showSeenList = true
+                        }
+                        Button("Clear seen data for this network", role: .destructive) {
+                            engine.seenStore.clear(
+                                networkID: conn.id,
+                                networkSlug: SeenStore.slug(for: conn.displayName)
+                            )
+                        }
+                        .disabled(!settings.settings.seenTrackingEnabled)
+                    }
+                }
+            }
+            .padding(6)
+        } label: {
+            Label("Seen tracker", systemImage: "eye")
+        }
+    }
+
+    private var triggersSection: some View {
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                List(selection: $selection) {
+                    ForEach(settings.settings.triggerRules) { rule in
+                        HStack {
+                            Image(systemName: rule.enabled ? "bolt.fill" : "bolt.slash")
+                                .foregroundStyle(rule.enabled ? Color.accentColor : Color.secondary)
+                            VStack(alignment: .leading) {
+                                Text(rule.name.isEmpty ? "(unnamed trigger)" : rule.name)
+                                Text(rule.pattern.isEmpty ? "(no pattern)" : rule.pattern)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .tag(rule.id)
+                    }
+                }
+                Divider()
+                HStack {
+                    Button {
+                        var rule = TriggerRule()
+                        rule.name = "New trigger"
+                        settings.upsertTrigger(rule)
+                        selection = rule.id
+                    } label: { Image(systemName: "plus") }
+                    Button {
+                        if let id = selection {
+                            settings.removeTrigger(id: id)
+                            selection = settings.settings.triggerRules.first?.id
+                        }
+                    } label: { Image(systemName: "minus") }
+                        .disabled(selection == nil)
+                    Spacer()
+                }
+                .padding(6)
+            }
+            .frame(width: 240)
+            .background(Color(nsColor: .controlBackgroundColor))
+
+            Divider()
+
+            if let id = selection,
+               let i = settings.settings.triggerRules.firstIndex(where: { $0.id == id }) {
+                TriggerRuleEditor(rule: Binding(
+                    get: { settings.settings.triggerRules[i] },
+                    set: { settings.settings.triggerRules[i] = $0 }
+                ), settings: settings)
+            } else {
+                VStack {
+                    Spacer()
+                    Text("Select a trigger rule, or add one with + to get started.\nExample: pattern `!rules`, response `The channel rules are at https://example.com/rules`.")
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+            }
+        }
+        .onAppear {
+            if selection == nil { selection = settings.settings.triggerRules.first?.id }
+        }
+    }
+}
+
+struct TriggerRuleEditor: View {
+    @Binding var rule: TriggerRule
+    @ObservedObject var settings: SettingsStore
+
+    private var regexError: String? {
+        guard rule.isRegex, !rule.pattern.isEmpty else { return nil }
+        do {
+            _ = try NSRegularExpression(pattern: rule.pattern, options: [])
+            return nil
+        } catch {
+            return "Invalid regex: \(error.localizedDescription)"
+        }
+    }
+
+    var body: some View {
+        Form {
+            Section("Rule") {
+                TextField("Name", text: $rule.name)
+                Toggle("Enabled", isOn: $rule.enabled)
+            }
+            Section("Match") {
+                TextField("Pattern", text: $rule.pattern)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                Toggle("Regular expression", isOn: $rule.isRegex)
+                Toggle("Case sensitive", isOn: $rule.caseSensitive)
+                Picker("Scope", selection: $rule.scope) {
+                    ForEach(TriggerScope.allCases) { s in
+                        Text(s.displayName).tag(s)
+                    }
+                }
+                if let err = regexError {
+                    Text(err).font(.caption).foregroundStyle(.orange)
+                }
+            }
+            Section("Response") {
+                TextEditor(text: $rule.response)
+                    .font(.system(.body, design: .monospaced))
+                    .frame(minHeight: 60)
+                Text("Placeholders: $nick (sender), $channel (target), $match (full match), $1..$9 (regex capture groups).")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            Section("Networks") {
+                NetworkMultiPicker(settings: settings, selected: $rule.networks)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - Shared: network multi-picker
+
+struct NetworkMultiPicker: View {
+    @ObservedObject var settings: SettingsStore
+    @Binding var selected: [UUID]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle("All networks", isOn: Binding(
+                get: { selected.isEmpty },
+                set: { if $0 { selected = [] } }
+            ))
+            if !selected.isEmpty || !settings.settings.servers.isEmpty {
+                ForEach(ServerProfile.sortedByName(settings.settings.servers)) { profile in
+                    Toggle(profile.name, isOn: Binding(
+                        get: { selected.contains(profile.id) },
+                        set: { on in
+                            if on {
+                                if !selected.contains(profile.id) { selected.append(profile.id) }
+                            } else {
+                                selected.removeAll { $0 == profile.id }
+                            }
+                        }
+                    ))
+                    .disabled(selected.isEmpty)  // disabled while "all networks" mode is on
+                    .foregroundStyle(selected.isEmpty ? .secondary : .primary)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Identities
+
+struct IdentitiesSetup: View {
+    @ObservedObject var settings: SettingsStore
+    @State private var selection: UUID?
+
+    var body: some View {
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                List(selection: $selection) {
+                    ForEach(settings.settings.identities) { ident in
+                        HStack {
+                            Image(systemName: "person.crop.circle")
+                                .foregroundStyle(Color.accentColor)
+                            VStack(alignment: .leading) {
+                                Text(ident.name.isEmpty ? "(unnamed)" : ident.name)
+                                Text(ident.nick.isEmpty ? "(no nick)" : ident.nick)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .tag(ident.id)
+                    }
+                }
+                Divider()
+                HStack {
+                    Button {
+                        let ident = Identity()
+                        settings.upsertIdentity(ident)
+                        selection = ident.id
+                    } label: { Image(systemName: "plus") }
+                    Button {
+                        if let id = selection {
+                            settings.removeIdentity(id: id)
+                            selection = settings.settings.identities.first?.id
+                        }
+                    } label: { Image(systemName: "minus") }
+                        .disabled(selection == nil)
+                    Spacer()
+                }
+                .padding(6)
+            }
+            .frame(width: 240)
+            .background(Color(nsColor: .controlBackgroundColor))
+
+            Divider()
+
+            if let id = selection,
+               let i = settings.settings.identities.firstIndex(where: { $0.id == id }) {
+                IdentityEditor(identity: Binding(
+                    get: { settings.settings.identities[i] },
+                    set: { settings.settings.identities[i] = $0 }
+                ))
+            } else {
+                VStack {
+                    Spacer()
+                    Text("Create an identity with + to share nick, realname, SASL, and NickServ across servers.")
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 24)
+                    Spacer()
+                }
+            }
+        }
+        .onAppear {
+            if selection == nil { selection = settings.settings.identities.first?.id }
+        }
+    }
+}
+
+struct IdentityEditor: View {
+    @Binding var identity: Identity
+    var body: some View {
+        Form {
+            Section("Identity") {
+                TextField("Name (e.g. Work, Casual)", text: $identity.name)
+            }
+            Section("User") {
+                TextField("Nickname", text: $identity.nick)
+                TextField("Username", text: $identity.user)
+                TextField("Real name", text: $identity.realName)
+            }
+            Section("Authentication (SASL)") {
+                Picker("Mechanism", selection: $identity.saslMechanism) {
+                    ForEach(SASLMechanism.allCases) { m in
+                        Text(m.displayName).tag(m)
+                    }
+                }
+                if identity.saslMechanism == .plain {
+                    TextField("Account (defaults to nick)", text: $identity.saslAccount)
+                    SecureField("SASL password", text: $identity.saslPassword)
+                }
+            }
+            Section("NickServ fallback") {
+                SecureField("NickServ password (ignored when SASL is set)", text: $identity.nickServPassword)
+                Text("Sent as PRIVMSG NickServ :IDENTIFY <password> after welcome, only when SASL is disabled.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - Security
+
+/// Manages encryption state: enable/disable, change passphrase, lock, reset.
+/// Surfaces the composite-key design for the user so they understand what
+/// protects what (credentials always via Keychain; metadata + logs only when
+/// they enable encryption and pass an unlock).
+struct SecuritySetup: View {
+    @ObservedObject var settings: SettingsStore
+    @ObservedObject var keyStore: KeyStore
+
+    @State private var showSetupSheet = false
+    @State private var showChangeSheet = false
+    @State private var showResetConfirm = false
+
+    var body: some View {
+        Form {
+            Section("Credentials") {
+                HStack {
+                    Image(systemName: "key.horizontal.fill")
+                        .foregroundStyle(Color.accentColor)
+                    VStack(alignment: .leading) {
+                        Text("Stored in macOS Keychain").bold()
+                        Text("SASL, NickServ, server, and proxy passwords are moved out of settings.json into your login Keychain on save. No passphrase required — this protection is always on.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            Section("Encryption") {
+                statusRow
+                if keyStore.state == .notSetup {
+                    Button("Enable encryption with a passphrase…") {
+                        showSetupSheet = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                    Text("Encrypts settings.json and chat logs with AES-256-GCM. A data-encryption key is random; the passphrase wraps it. Forgotten passphrase = unrecoverable data.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                } else {
+                    HStack {
+                        Button("Change passphrase…") { showChangeSheet = true }
+                            .disabled(!keyStore.isUnlocked)
+                        Button("Lock now") {
+                            keyStore.lock()
+                        }
+                        .disabled(!keyStore.isUnlocked)
+                        Spacer()
+                        Button("Disable encryption…", role: .destructive) {
+                            showResetConfirm = true
+                        }
+                    }
+                    Text("Lock now clears the Keychain-cached key on this Mac — next launch will require your passphrase. Disable erases the keystore and rewrites settings as plaintext.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+            Section("Biometrics") {
+                if BiometricGate.isAvailable {
+                    Toggle("Require Touch ID on launch",
+                           isOn: $settings.settings.requireBiometricsOnLaunch)
+                        .disabled(keyStore.state == .notSetup)
+                    Text("When on and encryption is enabled, the Keychain's silent unlock is gated by Touch ID. Cancelling the prompt falls back to your passphrase. Touch ID is a gate in front of the cached key — it doesn't replace the passphrase.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                } else {
+                    Label("Touch ID isn't available on this Mac.", systemImage: "touchid")
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                }
+            }
+
+            Section("What this protects") {
+                bulletRow("settings.json metadata (servers, channels, triggers, highlights) — encrypted on disk when the passphrase is set.")
+                bulletRow("Chat logs — encrypted per-line when persistent logging is on (see Behavior tab).")
+                bulletRow("Credentials — always in Keychain, regardless of passphrase state.")
+                bulletRow("Not covered: running-memory state, a compromised logged-in session with both the Keychain and the passphrase.")
+            }
+        }
+        .formStyle(.grouped)
+        .sheet(isPresented: $showSetupSheet) {
+            PassphraseSetupView(keyStore: keyStore) {
+                // Force a re-save so the first envelope lands on disk.
+                settings.save()
+            }
+        }
+        .sheet(isPresented: $showChangeSheet) {
+            PassphraseChangeView(keyStore: keyStore)
+        }
+        .confirmationDialog("Disable encryption?",
+                            isPresented: $showResetConfirm,
+                            titleVisibility: .visible) {
+            Button("Erase keystore and rewrite as plaintext", role: .destructive) {
+                keyStore.resetAndWipe()
+                settings.save()  // falls back to plaintext now that keystore is gone
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("The data-encryption key will be destroyed. Existing encrypted log files become unreadable (delete them manually from Files → Open logs folder). Credentials in the Keychain stay put.")
+        }
+    }
+
+    @ViewBuilder
+    private var statusRow: some View {
+        HStack {
+            Image(systemName: keyStore.isUnlocked ? "lock.open.fill"
+                             : keyStore.state == .locked ? "lock.fill"
+                             : "lock.slash")
+                .foregroundStyle(keyStore.isUnlocked ? Color.green
+                                 : keyStore.state == .locked ? Color.orange
+                                 : Color.secondary)
+            VStack(alignment: .leading) {
+                Text(statusTitle).bold()
+                Text(statusDetail).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var statusTitle: String {
+        switch keyStore.state {
+        case .notSetup: return "Not enabled"
+        case .locked:   return "Locked"
+        case .unlocked: return "Unlocked"
+        }
+    }
+
+    private var statusDetail: String {
+        switch keyStore.state {
+        case .notSetup:
+            return "settings.json is plaintext; chat logs are plaintext. Credentials still go to Keychain."
+        case .locked:
+            return "settings.json is encrypted on disk. Enter your passphrase to access it."
+        case .unlocked:
+            return settings.isEncryptedOnDisk
+                ? "settings.json envelope is encrypted on disk; memory holds the decrypted copy."
+                : "Keystore is ready. Save once to write the first encrypted envelope."
+        }
+    }
+
+    @ViewBuilder
+    private func bulletRow(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Text("•").foregroundStyle(.secondary)
+            Text(text).font(.caption).foregroundStyle(.secondary)
+            Spacer()
+        }
+    }
 }
