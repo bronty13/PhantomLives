@@ -1,0 +1,6 @@
+# messages-exporter runtime dependencies (Python 3.9+)
+# Pinned to the versions used during initial testing; unpin if a newer
+# release is preferred.
+Pillow>=11.0.0
+pillow-heif>=1.0.0
+emoji>=2.15.0
