@@ -33,35 +33,68 @@ struct SetupView: View {
         }
     }
 
+    /// Logical grouping used by the sidebar. A segmented bar at 10 tabs is
+    /// unreadable on anything smaller than ~1000px; a sectioned sidebar
+    /// scales indefinitely and matches the System Settings convention.
+    private static let groups: [(String, [Tab])] = [
+        ("Connections", [.servers, .identities, .security]),
+        ("People & places", [.addressBook, .channels, .ignores]),
+        ("Experience", [.highlights, .bot, .behavior, .scripts]),
+    ]
+
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Image(systemName: "gearshape.2")
-                    .font(.title2)
-                    .foregroundStyle(Color.purple)
-                Text("PurpleIRC Setup").font(.title3.weight(.semibold))
-                Text("v\(AppVersion.short)")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .help("Build \(AppVersion.build)")
-                Spacer()
-                Text(settings.fileURLForDisplay)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .truncationMode(.middle)
-                    .lineLimit(1)
-                Button("Done") { model.showSetup = false }
-                    .keyboardShortcut(.cancelAction)
-            }
-            .padding()
+            header
             Divider()
-            Picker("", selection: $tab) {
-                ForEach(Tab.allCases) { t in
-                    Label(t.rawValue, systemImage: t.systemImage).tag(t)
+            HStack(spacing: 0) {
+                sidebar
+                Divider()
+                content
+            }
+        }
+        .frame(minWidth: 820, minHeight: 560)
+    }
+
+    private var header: some View {
+        HStack {
+            Image(systemName: "gearshape.2")
+                .font(.title2)
+                .foregroundStyle(Color.purple)
+            Text("PurpleIRC Setup").font(.title3.weight(.semibold))
+            Text("v\(AppVersion.short)")
+                .font(.caption).foregroundStyle(.secondary)
+                .help("Build \(AppVersion.build)")
+            Spacer()
+            Text(settings.fileURLForDisplay)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .truncationMode(.middle)
+                .lineLimit(1)
+            Button("Done") { model.showSetup = false }
+                .keyboardShortcut(.cancelAction)
+        }
+        .padding()
+    }
+
+    private var sidebar: some View {
+        List(selection: $tab) {
+            ForEach(Self.groups, id: \.0) { (title, tabs) in
+                Section(title) {
+                    ForEach(tabs) { t in
+                        Label(t.rawValue, systemImage: t.systemImage).tag(t)
+                    }
                 }
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal).padding(.top, 8).padding(.bottom, 4)
+        }
+        .listStyle(.sidebar)
+        .frame(minWidth: 180, idealWidth: 200, maxWidth: 220)
+    }
 
+    @ViewBuilder
+    private var content: some View {
+        // Scrollable container — individual tabs can be tall (Behavior has
+        // lots of sections) and we don't want them clipping at the sheet edge.
+        ScrollView {
             Group {
                 switch tab {
                 case .servers:     ServersSetup(settings: settings)
@@ -77,8 +110,8 @@ struct SetupView: View {
                 }
             }
             .padding()
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .frame(minWidth: 700, minHeight: 520)
     }
 }
 

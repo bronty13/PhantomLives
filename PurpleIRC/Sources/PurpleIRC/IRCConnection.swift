@@ -845,6 +845,7 @@ final class IRCConnection: ObservableObject, Identifiable {
             appendTo(bufferIndex: bIdx, line: ChatLine(
                 timestamp: Date(), kind: .info, text: "You left \(chan)"))
             buffers[bIdx].users.removeAll()
+            buffers[bIdx].userModes.removeAll()
         } else {
             appendTo(bufferIndex: bIdx, line: ChatLine(
                 timestamp: Date(),
@@ -852,6 +853,7 @@ final class IRCConnection: ObservableObject, Identifiable {
                 text: "\(who) left" + (reason.map { " (\($0))" } ?? "")
             ))
             buffers[bIdx].users.removeAll(where: { $0 == who })
+            buffers[bIdx].userModes.removeValue(forKey: who.lowercased())
         }
         emit(.part(nick: who, channel: chan, reason: reason, isSelf: isSelf))
     }
@@ -859,8 +861,10 @@ final class IRCConnection: ObservableObject, Identifiable {
     private func handleQuit(_ msg: IRCMessage) {
         guard let who = msg.nickFromPrefix else { return }
         let reason = msg.params.first
+        let lower = who.lowercased()
         for i in buffers.indices where buffers[i].users.contains(who) {
             buffers[i].users.removeAll(where: { $0 == who })
+            buffers[i].userModes.removeValue(forKey: lower)
             appendTo(bufferIndex: i, line: ChatLine(
                 timestamp: Date(),
                 kind: .quit(nick: who, reason: reason),
@@ -878,10 +882,16 @@ final class IRCConnection: ObservableObject, Identifiable {
             emit(.ownNickChanged(new))
         }
         emit(.nickChanged(old: old, new: new, isSelf: isSelf))
+        let oldKey = old.lowercased()
+        let newKey = new.lowercased()
         for i in buffers.indices {
             if let u = buffers[i].users.firstIndex(of: old) {
                 buffers[i].users[u] = new
                 buffers[i].users.sort()
+                // Carry the user's op/voice flags forward to the new nick.
+                if let modes = buffers[i].userModes.removeValue(forKey: oldKey) {
+                    buffers[i].userModes[newKey] = modes
+                }
                 appendTo(bufferIndex: i, line: ChatLine(
                     timestamp: Date(),
                     kind: .nick(old: old, new: new),
@@ -914,24 +924,72 @@ final class IRCConnection: ObservableObject, Identifiable {
         let by = msg.nickFromPrefix ?? "?"
         guard let i = buffers.firstIndex(where: { $0.name == chan }) else { return }
         buffers[i].users.removeAll(where: { $0 == target })
+        buffers[i].userModes.removeValue(forKey: target.lowercased())
         let text = "\(target) was kicked by \(by)" + (reason.map { " (\($0))" } ?? "")
         appendTo(bufferIndex: i, line: ChatLine(
             timestamp: Date(), kind: .info, text: text))
     }
 
-    /// We surface mode changes in the affected channel for visibility. The
-    /// state of mode flags on individual nicks (op/voice) is not tracked
-    /// yet beyond sidebar display; future work.
+    /// Surface the mode change in the affected channel's buffer AND mutate
+    /// the channel's `userModes` map so the user list refreshes its op /
+    /// voice glyphs live. Also handles compound flag strings like `+o-v` by
+    /// walking one character at a time.
     private func handleMode(_ msg: IRCMessage) {
         guard msg.params.count >= 2 else { return }
         let target = msg.params[0]
+        let flags = msg.params[1]
+        let args = Array(msg.params.dropFirst(2))
         let modeLine = msg.params.dropFirst().joined(separator: " ")
         let by = msg.nickFromPrefix ?? "server"
-        if let i = buffers.firstIndex(where: { $0.name == target }) {
-            appendTo(bufferIndex: i, line: ChatLine(
-                timestamp: Date(), kind: .info, text: "\(by) sets mode \(modeLine)"))
-        } else {
+
+        guard let i = buffers.firstIndex(where: { $0.name == target }) else {
             appendInfo("\(by) sets mode \(target) \(modeLine)")
+            return
+        }
+        appendTo(bufferIndex: i, line: ChatLine(
+            timestamp: Date(), kind: .info, text: "\(by) sets mode \(modeLine)"))
+        applyUserModeChanges(channelIndex: i, flags: flags, args: args)
+    }
+
+    /// Walk `flags` once, consuming args for modes that take them, and update
+    /// `buffers[i].userModes`. Only the five privilege letters (q/a/o/h/v)
+    /// are tracked; everything else is skipped (with its arg eaten when the
+    /// RFC says that mode carries an argument) so we don't misalign.
+    private func applyUserModeChanges(channelIndex i: Int, flags: String, args: [String]) {
+        /// User-privilege modes — the only ones we actually track on users.
+        let userModes: Set<Character> = ["q", "a", "o", "h", "v"]
+        /// Modes that always consume an argument (both setting and clearing).
+        /// Includes user modes plus bans / exceptions / invites / channel key.
+        let alwaysConsume: Set<Character> = userModes.union(["b", "e", "I", "k"])
+        /// Modes that consume an argument only when being set (`l` = limit).
+        let consumeOnSet: Set<Character> = ["l"]
+
+        var sign: Character = "+"
+        var argIdx = 0
+        for c in flags {
+            if c == "+" || c == "-" { sign = c; continue }
+
+            let takesArg: Bool
+            if alwaysConsume.contains(c) { takesArg = true }
+            else if consumeOnSet.contains(c) { takesArg = (sign == "+") }
+            else { takesArg = false }
+
+            let arg: String? = {
+                guard takesArg, argIdx < args.count else { return nil }
+                defer { argIdx += 1 }
+                return args[argIdx]
+            }()
+
+            guard userModes.contains(c), let nick = arg else { continue }
+            let key = nick.lowercased()
+            if sign == "+" {
+                buffers[i].userModes[key, default: []].insert(c)
+            } else {
+                buffers[i].userModes[key]?.remove(c)
+                if buffers[i].userModes[key]?.isEmpty == true {
+                    buffers[i].userModes.removeValue(forKey: key)
+                }
+            }
         }
     }
 
@@ -940,10 +998,25 @@ final class IRCConnection: ObservableObject, Identifiable {
         let chan = msg.params[2]
         let names = msg.params[3].split(separator: " ").map { String($0) }
         guard let i = buffers.firstIndex(where: { $0.name == chan }) else { return }
-        let cleaned = names.map { $0.drop(while: { "@+%&~".contains($0) }) }.map(String.init)
-        var set = Set(buffers[i].users)
-        for n in cleaned { set.insert(n) }
-        buffers[i].users = Array(set).sorted()
+
+        // Parse each entry: leading symbols (@+%&~) each map to a user-mode
+        // letter we stash on the buffer, the rest is the clean nick. A user
+        // can wear multiple prefixes (e.g. "@+alice" = op + voice).
+        var existing = Set(buffers[i].users)
+        for raw in names {
+            var rest = raw
+            var modes: Set<Character> = []
+            while let first = rest.first, let letter = Buffer.modeLetter(fromSymbol: first) {
+                modes.insert(letter)
+                rest.removeFirst()
+            }
+            guard !rest.isEmpty else { continue }
+            existing.insert(rest)
+            if !modes.isEmpty {
+                buffers[i].userModes[rest.lowercased(), default: []].formUnion(modes)
+            }
+        }
+        buffers[i].users = Array(existing).sorted()
     }
 
     private func logNumeric(_ msg: IRCMessage) {

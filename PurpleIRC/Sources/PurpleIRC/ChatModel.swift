@@ -39,6 +39,11 @@ struct Buffer: Identifiable, Equatable {
     var kind: Kind
     var lines: [ChatLine] = []
     var users: [String] = []
+    /// Lowercased nick → set of IRC user-mode letters (q, a, o, h, v) that
+    /// have been granted to that user on this channel. Populated from
+    /// RPL_NAMREPLY (353) and kept in sync by MODE handlers. Channels only;
+    /// queries and the server buffer leave this empty.
+    var userModes: [String: Set<Character>] = [:]
     var topic: String = ""
     var unread: Int = 0
 
@@ -50,6 +55,48 @@ struct Buffer: Identifiable, Equatable {
 
     var isChannel: Bool { kind == .channel }
     var displayName: String { name }
+}
+
+// MARK: - Channel user modes
+
+extension Buffer {
+    /// Privilege ranking for display / sort order. Higher wins.
+    static let modeRank: [Character: Int] = [
+        "q": 5, "a": 4, "o": 3, "h": 2, "v": 1
+    ]
+    /// IRC-standard display glyph per user-mode letter (owner, admin, op,
+    /// halfop, voice). Used as the "symbol" column in the user list.
+    static let modeSymbol: [Character: Character] = [
+        "q": "~", "a": "&", "o": "@", "h": "%", "v": "+"
+    ]
+    /// Reverse lookup used when parsing RPL_NAMREPLY prefix characters.
+    static func modeLetter(fromSymbol s: Character) -> Character? {
+        switch s {
+        case "~": return "q"
+        case "&": return "a"
+        case "@": return "o"
+        case "%": return "h"
+        case "+": return "v"
+        default:  return nil
+        }
+    }
+    /// Highest-rank mode letter currently set on `nick` in this channel, or
+    /// nil for a plain user. Callers use this for both display symbol and
+    /// row colour.
+    func highestMode(for nick: String) -> Character? {
+        let modes = userModes[nick.lowercased()] ?? []
+        return modes.max { (Self.modeRank[$0] ?? 0) < (Self.modeRank[$1] ?? 0) }
+    }
+    /// Users sorted by privilege descending, then alphabetical. Matches the
+    /// grouping most IRC clients show (ops cluster at the top).
+    var usersSortedByRank: [String] {
+        users.sorted { a, b in
+            let ra = highestMode(for: a).flatMap { Self.modeRank[$0] } ?? 0
+            let rb = highestMode(for: b).flatMap { Self.modeRank[$0] } ?? 0
+            if ra != rb { return ra > rb }
+            return a.localizedCaseInsensitiveCompare(b) == .orderedAscending
+        }
+    }
 }
 
 extension Buffer {

@@ -256,17 +256,52 @@ struct BufferView: View {
                 .font(.caption).foregroundStyle(.secondary)
                 .padding(.horizontal, 8)
                 .padding(.top, 8)
-            List(buffer.users, id: \.self) { user in
-                Text(user)
-                    .font(.system(.body, design: .monospaced))
+            // Rank-sorted so ops cluster at the top — matches every classic
+            // IRC client and makes scanning for chanops much faster.
+            List(buffer.usersSortedByRank, id: \.self) { user in
+                userRow(user)
                     .contentShape(Rectangle())
                     .onTapGesture(count: 2) {
-                        // Double-click opens a private query with this nick.
                         model.sendInput("/query \(stripModePrefix(user))")
                     }
                     .contextMenu { userContextMenu(for: user) }
             }
             .listStyle(.plain)
+        }
+    }
+
+    /// One row in the user list: fixed-width mode glyph (so nicks align)
+    /// + nick text. Glyph takes its colour from the rank so a glance at
+    /// the list tells you who the operators / voiced users are.
+    @ViewBuilder
+    private func userRow(_ user: String) -> some View {
+        let mode = buffer.highestMode(for: user)
+        let symbol: String = {
+            guard let mode, let glyph = Buffer.modeSymbol[mode] else { return " " }
+            return String(glyph)
+        }()
+        HStack(spacing: 4) {
+            Text(symbol)
+                .font(.system(.body, design: .monospaced).bold())
+                .foregroundStyle(Self.colorForMode(mode))
+                .frame(width: 12, alignment: .center)
+            Text(user)
+                .font(.system(.body, design: .monospaced))
+                .foregroundStyle(mode == nil ? .primary : Self.colorForMode(mode))
+        }
+    }
+
+    /// Colour palette for rank glyphs. Picked to read on both light and dark
+    /// themes without being too loud — op orange is the anchor because it's
+    /// by far the most common privileged rank in real channels.
+    private static func colorForMode(_ mode: Character?) -> Color {
+        switch mode {
+        case "q": return .purple     // ~ owner
+        case "a": return .red        // & admin
+        case "o": return .orange     // @ op
+        case "h": return Color(red: 0.80, green: 0.65, blue: 0.20) // % halfop (muted yellow)
+        case "v": return .blue       // + voice
+        default:  return .primary
         }
     }
 
