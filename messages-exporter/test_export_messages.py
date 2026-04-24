@@ -266,6 +266,20 @@ class TestGetBody(unittest.TestCase):
         blob = b'NSString' + b'\xff' * 5
         self.assertEqual(em.get_body('', blob), '')
 
+    def test_object_replacement_char_stripped_from_text_column(self):
+        # iMessage inserts U+FFFC as an inline-attachment placeholder. It
+        # must not leak into captions/filenames.
+        self.assertEqual(em.get_body('￼Hello', None), 'Hello')
+        self.assertEqual(em.get_body('￼￼￼May 1', None), 'May 1')
+        # A caption that is ONLY placeholders is effectively empty.
+        self.assertEqual(em.get_body('￼￼', None), '')
+
+    def test_object_replacement_char_stripped_from_attributedBody(self):
+        blob = make_ab_blob('￼May 1 - big and bouncey')
+        self.assertEqual(em.get_body('', blob), 'May 1 - big and bouncey')
+        blob2 = make_ab_blob('￼￼￼Hi 🔥')
+        self.assertEqual(em.get_body('', blob2), 'Hi 🔥')
+
 
 # ─── Capability detection sanity ────────────────────────────────────────────
 

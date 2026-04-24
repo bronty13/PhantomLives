@@ -2,6 +2,19 @@
 
 All notable changes to `messages-exporter` are recorded here.
 
+## 1.0.1 — 2026-04-24
+
+### Fixed
+- Caption extraction now strips U+FFFC (Object Replacement Character),
+  which iMessage inserts as a placeholder for inline attachments. Previously
+  this leaked into filenames as a visible `￼` glyph in `--emoji keep` mode
+  and into the transcript/manifest body in all modes.
+
+### Tests
+- Added `get_body` coverage for messages whose `text` column or
+  `attributedBody` string contains U+FFFC, asserting the placeholder is
+  removed while real content is preserved.
+
 ## 1.0.0 — 2026-04-24
 
 Initial release.

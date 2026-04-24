@@ -4,7 +4,7 @@
 #   MESSAGES EXPORTER
 #
 #   File:        export_messages.py
-#   Version:     1.0.0
+#   Version:     1.0.1
 #   Author:      Generated with Claude Code
 #   License:     MIT
 #   Requires:    macOS, Python 3.9+
@@ -48,7 +48,7 @@ import sqlite3, shutil, re, json, argparse, subprocess, sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-__version__ = '1.0.0'
+__version__ = '1.0.1'
 
 # Offset from Unix epoch (1970-01-01 UTC) to Mac absolute time epoch
 # (2001-01-01 UTC). chat.db stores `message.date` in Mac absolute time;
@@ -245,7 +245,9 @@ def get_body(text, ab):
 
     Returns '' if nothing usable is found.
     """
-    t = (text or '').strip()
+    # Strip U+FFFC (Object Replacement Character) — iMessage inserts it
+    # as a placeholder for inline attachments. Noise in filenames/transcript.
+    t = (text or '').replace('￼', '').strip()
     if t:
         return t
     if not ab:
@@ -271,7 +273,8 @@ def get_body(text, ab):
             probe = blob[plus + 2 : plus + 2 + min(length, 4)]
             if probe and all((b >= 32 and b != 127) or b >= 0x80 for b in probe):
                 result = blob[plus + 2 : plus + 2 + length].decode('utf-8',
-                                                                   errors='ignore').strip()
+                                                                   errors='ignore')
+                result = result.replace('￼', '').strip()
                 if result:
                     return result
             # False candidate — keep scanning for the next '+'.

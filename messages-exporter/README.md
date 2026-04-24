@@ -1,6 +1,6 @@
 # messages-exporter
 
-**Current release: 1.0.0**
+**Current release: 1.0.1**
 
 Export iMessage conversations from the Mac Messages app by contact name and
 date range. Each photo, video, and file lands in a single `attachments/`
