@@ -7,6 +7,15 @@ struct BufferView: View {
     @State private var input: String = ""
     @State private var history: [String] = []
     @State private var historyPos: Int = 0
+    @State private var completion: TabCompletion? = nil
+
+    struct TabCompletion {
+        let typedPrefix: String   // text before the completed word (includes trailing space when non-empty)
+        let partial: String       // original partial the user typed (before first tab)
+        let candidates: [String]  // sorted matching nicks
+        var index: Int
+        let suffix: String        // ": " when first word, " " otherwise
+    }
 
     var buffer: Buffer { model.buffers[bufferIndex] }
 
@@ -105,6 +114,18 @@ struct BufferView: View {
                 .textFieldStyle(.plain)
                 .font(.system(.body, design: .monospaced))
                 .onSubmit(submit)
+                .onChange(of: input) { _, _ in
+                    // Any manual edit that breaks the expected tail invalidates
+                    // the active completion; performTabComplete will recompute.
+                    if let c = completion, !input.hasSuffix(c.suffix)
+                        || !input.dropLast(c.suffix.count).hasSuffix(c.candidates[c.index]) {
+                        completion = nil
+                    }
+                }
+                .onKeyPress(.tab) {
+                    performTabComplete()
+                    return .handled
+                }
                 .onKeyPress(.upArrow) {
                     if !history.isEmpty, historyPos > 0 {
                         historyPos -= 1
@@ -144,6 +165,57 @@ struct BufferView: View {
         historyPos = history.count
         model.sendInput(text)
         input = ""
+        completion = nil
+    }
+
+    private func performTabComplete() {
+        // Cycle through candidates if a completion is still active.
+        if let c = completion, !c.candidates.isEmpty {
+            let expected = c.typedPrefix + c.candidates[c.index] + c.suffix
+            if input == expected {
+                var next = c
+                next.index = (c.index + 1) % c.candidates.count
+                input = c.typedPrefix + c.candidates[next.index] + c.suffix
+                completion = next
+                return
+            }
+        }
+
+        // Fresh completion: pull the trailing word (text after the last space).
+        let spaceIdx = input.lastIndex(of: " ")
+        let typedPrefix: String
+        let partial: String
+        if let spaceIdx {
+            typedPrefix = String(input[...spaceIdx])
+            partial = String(input[input.index(after: spaceIdx)...])
+        } else {
+            typedPrefix = ""
+            partial = input
+        }
+        guard !partial.isEmpty else { return }
+
+        // Candidate pool: channel user list for channels, the other party for
+        // queries, plus own nick. Deduped case-insensitively, prefix-matched.
+        var pool = buffer.users
+        if buffer.kind == .query { pool.append(buffer.name) }
+        pool.append(model.nick)
+        let partialLower = partial.lowercased()
+        var seen = Set<String>()
+        let candidates = pool
+            .filter { $0.lowercased().hasPrefix(partialLower) }
+            .filter { seen.insert($0.lowercased()).inserted }
+            .sorted { $0.lowercased() < $1.lowercased() }
+
+        guard let first = candidates.first else { return }
+        let suffix = typedPrefix.isEmpty ? ": " : " "
+        input = typedPrefix + first + suffix
+        completion = TabCompletion(
+            typedPrefix: typedPrefix,
+            partial: partial,
+            candidates: candidates,
+            index: 0,
+            suffix: suffix
+        )
     }
 }
 
@@ -245,18 +317,18 @@ struct MessageRow: View {
                 Text("<\(nick)>")
                     .foregroundStyle(isSelf ? .accentColor : colorForNick(nick))
                     .font(.system(.body, design: .monospaced))
-                Text(line.text)
+                Text(IRCFormatter.renderWithLinks(line.text))
                     .font(.system(.body))
                     .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
             }
         case .action(let nick):
-            Text("* \(nick) \(line.text)")
-                .italic()
-                .foregroundStyle(colorForNick(nick))
+            (Text("* \(nick) ").foregroundStyle(colorForNick(nick)).italic()
+             + Text(IRCFormatter.renderWithLinks(line.text)).italic())
         case .notice(let from):
-            Text("-\(from)- \(line.text)")
-                .foregroundStyle(.purple)
-                .font(.system(.body, design: .monospaced))
+            (Text("-\(from)- ").foregroundStyle(.purple).font(.system(.body, design: .monospaced))
+             + Text(IRCFormatter.renderWithLinks(line.text, linkColor: .purple))
+                .font(.system(.body, design: .monospaced)))
         case .join(let nick):
             Text("→ \(nick) joined")
                 .foregroundStyle(.green)
