@@ -26,6 +26,8 @@ struct PurpleIRCApp: App {
                 Divider()
                 Button("Watchlist…") { model.showWatchlist = true }
                     .keyboardShortcut("w", modifiers: [.command, .shift])
+                Button("DCC Transfers…") { model.showDCC = true }
+                    .keyboardShortcut("t", modifiers: [.command, .shift])
                 Button("Setup…") { model.showSetup = true }
                     .keyboardShortcut(",", modifiers: [.command])
                 Toggle("Show Raw Log", isOn: $model.showRawLog)

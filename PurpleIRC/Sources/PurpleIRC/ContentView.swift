@@ -213,6 +213,10 @@ struct ContentView: View {
                 .padding(32)
             }
         }
+        .sheet(isPresented: $model.showDCC) {
+            DCCView(service: model.dcc)
+                .environmentObject(model)
+        }
     }
 }
 

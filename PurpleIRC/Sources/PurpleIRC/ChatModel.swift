@@ -88,6 +88,7 @@ final class ChatModel: ObservableObject {
     @Published var showChannelList: Bool = false
     @Published var showSeenList: Bool = false
     @Published var showHelp: Bool = false
+    @Published var showDCC: Bool = false
     /// Prefilled search text when /help is invoked with an argument.
     var helpPrefillQuery: String = ""
 
@@ -121,6 +122,9 @@ final class ChatModel: ObservableObject {
     /// See KeyStore.swift — this is the composite-key machine.
     let keyStore: KeyStore
 
+    /// DCC file transfers + direct chats. See DCC.swift.
+    let dcc: DCCService
+
     private var cancellables = Set<AnyCancellable>()
     /// Per-connection cancellables, keyed by connection id, so removing a
     /// connection can drop its subscriptions cleanly.
@@ -137,6 +141,8 @@ final class ChatModel: ObservableObject {
         let seen = SeenStore(supportDirectoryURL: settings.supportDirectoryURL)
         self.botEngine = BotEngine(seenStore: seen)
         self.keyStore = KeyStore(supportDirectoryURL: settings.supportDirectoryURL)
+        let downloads = settings.supportDirectoryURL.appendingPathComponent("downloads", isDirectory: true)
+        self.dcc = DCCService(downloadsDir: downloads)
         // Link keystore to settings so save/load knows whether to wrap the
         // envelope. If the keystore is already unlocked via the Keychain
         // cache (silent path), reload settings immediately so an encrypted
@@ -153,6 +159,7 @@ final class ChatModel: ObservableObject {
         applySettingsToAll()
         bot.attach(self)
         botEngine.attach(to: self)
+        dcc.chatModel = self
         // Age-based log purge runs once at launch when the user has it on.
         runLogPurgeIfEnabled()
         // Fan out bot-visible events to the sound player.
@@ -311,7 +318,11 @@ final class ChatModel: ObservableObject {
             // Resolve identity per connection, if any. Takes effect on the
             // next connect (SASL/NICK/USER are registration-time fields).
             c.activeIdentity = settings.identity(withID: c.profile.identityID)
+            c.dcc = dcc
         }
+        dcc.externalIPOverride = s.dccExternalIP
+        dcc.portRangeStart = s.dccPortRangeStart
+        dcc.portRangeEnd = s.dccPortRangeEnd
         // Make sure the shared watchlist's own alert toggles match settings too.
         watchlist.playSound = s.playSoundOnWatchHit
         watchlist.bounceDock = s.bounceDockOnWatchHit
