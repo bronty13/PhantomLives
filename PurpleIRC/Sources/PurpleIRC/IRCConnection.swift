@@ -17,11 +17,14 @@ enum IRCConnectionEvent: Sendable {
     case part(nick: String, channel: String, reason: String?, isSelf: Bool)
     case quit(nick: String, reason: String?)
     case topic(channel: String, topic: String, setter: String?)
+    case ctcpRequest(from: String, target: String, command: String, args: String)
+    case awayChanged(isAway: Bool, reason: String?)
+    case ignoredMessage(from: String, target: String)
 }
 
-/// One IRC connection: owns its `IRCClient`, its buffers, its watchlist,
-/// reconnect bookkeeping, and a `PassthroughSubject` of events. ChatModel
-/// holds a list of these; each event always carries the network id.
+/// One IRC connection: owns its `IRCClient`, its buffers, its watchlist
+/// reference, reconnect bookkeeping, and a `PassthroughSubject` of events.
+/// ChatModel holds a list of these; each event always carries the network id.
 @MainActor
 final class IRCConnection: ObservableObject, Identifiable {
     let id: UUID = UUID()
@@ -33,10 +36,12 @@ final class IRCConnection: ObservableObject, Identifiable {
     @Published var selectedBufferID: Buffer.ID?
     @Published var rawLog: [String] = []
 
+    /// Away state for this network.
+    @Published private(set) var isAway: Bool = false
+    @Published private(set) var awayReason: String?
+
     /// Shared across all connections — ChatModel owns the single instance and
-    /// routes its delegate calls to the right connection. Keeping one service
-    /// means the watched-list, presence, and recent-hits log are global (what
-    /// the UI wants) without trying to merge state from N sources.
+    /// routes its delegate calls to the right connection.
     let watchlist: WatchlistService
 
     /// Fanout of everything that happens on this connection. PurpleBot's
@@ -57,9 +62,24 @@ final class IRCConnection: ObservableObject, Identifiable {
     private var reconnectAttempt = 0
     private var reconnectTask: Task<Void, Never>?
 
-    /// True while a configured SASL handshake is in progress so ChatModel
-    /// can surface status. Cleared on CAP END success/failure numerics.
     private(set) var saslActive = false
+
+    // Tier 2 knobs — ChatModel pushes these in from settings.
+    var highlightOnOwnNick: Bool = true
+    var ignoreMatchers: [IgnoreEntry] = []
+    var ctcpRepliesEnabled: Bool = true
+    var ctcpVersionString: String = "PurpleIRC"
+    var autoReplyWhenAway: Bool = true
+    var awayAutoReply: String = ""
+
+    // Log writer. ChatModel injects a shared LogStore; nil means no logging.
+    var logStore: LogStore?
+    var loggingEnabled: Bool = false
+    var logNoisyLines: Bool = false
+
+    // Throttle for away auto-replies so a spammer can't DoS us.
+    private var lastAwayReplyAt: [String: Date] = [:]
+    private static let awayReplyInterval: TimeInterval = 120 // seconds per-nick
 
     init(profile: ServerProfile, watchlist: WatchlistService) {
         self.profile = profile
@@ -149,7 +169,7 @@ final class IRCConnection: ObservableObject, Identifiable {
             return
         }
         client.send("PRIVMSG \(buf.name) :\(trimmed)")
-        buffers[bufIdx].appendLine(ChatLine(
+        appendTo(bufferIndex: bufIdx, line: ChatLine(
             timestamp: Date(),
             kind: .privmsg(nick: nick, isSelf: true),
             text: trimmed
@@ -183,14 +203,40 @@ final class IRCConnection: ObservableObject, Identifiable {
         }
     }
 
-    /// Let ChatModel push settings-driven flags in (alert toggles + highlight).
-    /// Highlight-on-own-nick is stored here for use inside `handlePrivmsg`.
-    var highlightOnOwnNick: Bool = true
     func applyAlertOptions(sound: Bool, dock: Bool, banner: Bool, highlight: Bool) {
         watchlist.playSound = sound
         watchlist.bounceDock = dock
         watchlist.systemNotifications = banner
         highlightOnOwnNick = highlight
+    }
+
+    /// Convenience used by the channel-mode UI. Sends a MODE line for the
+    /// target channel and mode string, or no-op if not in a channel.
+    func setMode(on channel: String, modes: String, arg: String? = nil) {
+        guard state == .connected else { return }
+        if let arg {
+            client.send("MODE \(channel) \(modes) \(arg)")
+        } else {
+            client.send("MODE \(channel) \(modes)")
+        }
+    }
+
+    // MARK: - Away
+
+    /// Set or clear the away state on this network. Empty/nil reason clears.
+    func setAway(reason: String?) {
+        if let reason, !reason.trimmingCharacters(in: .whitespaces).isEmpty {
+            isAway = true
+            awayReason = reason
+            client.send("AWAY :\(reason)")
+            appendInfo("You are marked AWAY: \(reason)")
+        } else {
+            isAway = false
+            awayReason = nil
+            client.send("AWAY")
+            appendInfo("You are no longer away.")
+        }
+        emit(.awayChanged(isAway: isAway, reason: awayReason))
     }
 
     // MARK: - State handling
@@ -261,6 +307,8 @@ final class IRCConnection: ObservableObject, Identifiable {
             handleTopic(msg)
         case "KICK":
             handleKick(msg)
+        case "MODE":
+            handleMode(msg)
         case "ERROR":
             let txt = msg.params.joined(separator: " ")
             appendError("ERROR: \(txt)")
@@ -273,6 +321,25 @@ final class IRCConnection: ObservableObject, Identifiable {
             }
             logNumeric(msg)
             reconnectAttempt = 0
+        case "301":
+            // RPL_AWAYMSG — msg.params: [me, nick, "is away: <reason>"]
+            if msg.params.count >= 3 {
+                let who = msg.params[1]
+                let why = msg.params[2]
+                appendInfo("\(who) is away: \(why)")
+            }
+        case "305": // unaway
+            isAway = false
+            awayReason = nil
+            emit(.awayChanged(isAway: false, reason: nil))
+            logNumeric(msg)
+        case "306": // away set
+            isAway = true
+            if awayReason == nil {
+                awayReason = profile.realName.isEmpty ? "away" : "away"
+            }
+            emit(.awayChanged(isAway: true, reason: awayReason))
+            logNumeric(msg)
         case "353":
             handleNames(msg)
         case "366":
@@ -283,7 +350,7 @@ final class IRCConnection: ObservableObject, Identifiable {
                 let topic = msg.params[2]
                 if let i = buffers.firstIndex(where: { $0.name == chan }) {
                     buffers[i].topic = topic
-                    buffers[i].appendLine(ChatLine(
+                    appendTo(bufferIndex: i, line: ChatLine(
                         timestamp: Date(),
                         kind: .topic(setter: nil),
                         text: "Topic: \(topic)"
@@ -335,9 +402,43 @@ final class IRCConnection: ObservableObject, Identifiable {
         let target = msg.params[0]
         var text = msg.params[1]
         let from = msg.nickFromPrefix ?? msg.prefix ?? "?"
+        let fullPrefix = msg.prefix ?? from
+
+        let isCTCP = text.hasPrefix("\u{01}") && text.hasSuffix("\u{01}") && text.count >= 2
+
+        // Ignore filter — silently drop matching messages (we still emit an
+        // event so future bot scripts see the drop; core UI is unaffected).
+        if ignoreMatches(from: from, fullPrefix: fullPrefix,
+                         isNotice: isNotice, isCTCP: isCTCP) {
+            emit(.ignoredMessage(from: from, target: target))
+            return
+        }
 
         if !isNotice {
             watchlist.handleObservedActivity(nick: from, reason: "message")
+        }
+
+        // CTCP handling (everything wrapped in \u0001 except ACTION).
+        if isCTCP {
+            let body = String(text.dropFirst().dropLast())
+            let (cmd, args) = splitCTCP(body)
+            emit(.ctcpRequest(from: from, target: target, command: cmd, args: args))
+
+            if cmd.uppercased() == "ACTION" {
+                // Fall through to the action-rendering path below.
+                text = "\u{01}ACTION \(args)\u{01}"
+            } else {
+                // Respond to a CTCP request (NOT a CTCP reply we received via
+                // NOTICE). Requests come as PRIVMSG — NOTICEs carrying \u0001
+                // are replies and must not trigger another reply.
+                if !isNotice, ctcpRepliesEnabled {
+                    sendCTCPReply(to: from, command: cmd, args: args)
+                }
+                // Log requests/replies to server buffer for visibility.
+                let kind = isNotice ? "CTCP reply" : "CTCP request"
+                appendInfo("\(kind) \(cmd) from \(from): \(args)")
+                return
+            }
         }
 
         let isToSelf = target.lowercased() == self.nick.lowercased()
@@ -350,11 +451,11 @@ final class IRCConnection: ObservableObject, Identifiable {
             && highlightOnOwnNick
             && Self.containsOwnNick(self.nick, in: plainForMatch)
 
-        // CTCP ACTION
+        // CTCP ACTION rendering
         if text.hasPrefix("\u{01}ACTION "), text.hasSuffix("\u{01}") {
             text = String(text.dropFirst(8).dropLast())
             let bIdx = indexOfOrCreateBuffer(name: bufferName, kind: kind)
-            buffers[bIdx].appendLine(ChatLine(
+            appendTo(bufferIndex: bIdx, line: ChatLine(
                 timestamp: Date(),
                 kind: .action(nick: from),
                 text: text,
@@ -365,19 +466,20 @@ final class IRCConnection: ObservableObject, Identifiable {
             if mention {
                 watchlist.fireHighlightAlert(nick: from, channel: bufferName, text: "* \(from) \(IRCFormatter.stripCodes(text))")
             }
+            maybeSendAwayAutoReply(to: from, target: target, isNotice: false)
             return
         }
 
         let bIdx = indexOfOrCreateBuffer(name: bufferName, kind: kind)
         if isNotice {
-            buffers[bIdx].appendLine(ChatLine(
+            appendTo(bufferIndex: bIdx, line: ChatLine(
                 timestamp: Date(),
                 kind: .notice(from: from),
                 text: text
             ))
             emit(.notice(from: from, target: bufferName, text: text))
         } else {
-            buffers[bIdx].appendLine(ChatLine(
+            appendTo(bufferIndex: bIdx, line: ChatLine(
                 timestamp: Date(),
                 kind: .privmsg(nick: from, isSelf: false),
                 text: text,
@@ -390,6 +492,101 @@ final class IRCConnection: ObservableObject, Identifiable {
         if mention {
             watchlist.fireHighlightAlert(nick: from, channel: bufferName, text: IRCFormatter.stripCodes(text))
         }
+
+        // Away auto-reply to direct PMs (not notices, not channel traffic).
+        if !isNotice {
+            maybeSendAwayAutoReply(to: from, target: target, isNotice: false)
+        }
+    }
+
+    private func splitCTCP(_ body: String) -> (String, String) {
+        if let spaceIdx = body.firstIndex(of: " ") {
+            return (String(body[..<spaceIdx]), String(body[body.index(after: spaceIdx)...]))
+        }
+        return (body, "")
+    }
+
+    private func sendCTCPReply(to nick: String, command: String, args: String) {
+        let up = command.uppercased()
+        let reply: String?
+        switch up {
+        case "VERSION":
+            reply = "VERSION \(ctcpVersionString)"
+        case "PING":
+            // Echo back the args verbatim (usually a timestamp).
+            reply = args.isEmpty ? "PING" : "PING \(args)"
+        case "TIME":
+            let df = DateFormatter()
+            df.dateFormat = "EEE MMM d HH:mm:ss yyyy"
+            df.locale = Locale(identifier: "en_US_POSIX")
+            reply = "TIME \(df.string(from: Date()))"
+        case "FINGER":
+            reply = "FINGER \(profile.realName.isEmpty ? "PurpleIRC user" : profile.realName)"
+        case "SOURCE":
+            reply = "SOURCE https://github.com/bronty13/PhantomLives"
+        case "USERINFO":
+            reply = "USERINFO \(profile.realName.isEmpty ? profile.nick : profile.realName)"
+        case "CLIENTINFO":
+            reply = "CLIENTINFO ACTION CLIENTINFO FINGER PING SOURCE TIME USERINFO VERSION"
+        default:
+            reply = nil
+        }
+        guard let body = reply else { return }
+        client.send("NOTICE \(nick) :\u{01}\(body)\u{01}")
+    }
+
+    private func maybeSendAwayAutoReply(to from: String, target: String, isNotice: Bool) {
+        guard isAway, autoReplyWhenAway, !isNotice else { return }
+        // Only for direct PMs (target is our nick), not channel traffic.
+        guard target.lowercased() == self.nick.lowercased() else { return }
+        guard !from.isEmpty, from.lowercased() != self.nick.lowercased() else { return }
+        let now = Date()
+        if let last = lastAwayReplyAt[from.lowercased()],
+           now.timeIntervalSince(last) < Self.awayReplyInterval { return }
+        lastAwayReplyAt[from.lowercased()] = now
+        let msg = awayAutoReply.isEmpty ? "I am away." : awayAutoReply
+        client.send("NOTICE \(from) :[away] \(msg)")
+    }
+
+    /// True when the sender matches any configured ignore entry, honoring
+    /// the entry's per-scope toggles (CTCP / notices) and falling back to
+    /// "match the nick" when no full prefix is available.
+    private func ignoreMatches(from: String, fullPrefix: String,
+                               isNotice: Bool, isCTCP: Bool) -> Bool {
+        guard !ignoreMatchers.isEmpty else { return false }
+        for e in ignoreMatchers {
+            let mask = e.mask.trimmingCharacters(in: .whitespaces)
+            if mask.isEmpty { continue }
+            if !glob(mask.lowercased(), matches: fullPrefix.lowercased())
+                && !glob(mask.lowercased(), matches: from.lowercased()) { continue }
+            if isCTCP && !e.ignoreCTCP { continue }
+            if isNotice && !e.ignoreNotices { continue }
+            return true
+        }
+        return false
+    }
+
+    /// Simple glob matcher — supports `*` (any run) and `?` (single char).
+    /// Case-insensitive (caller must have already lowercased).
+    private func glob(_ pattern: String, matches text: String) -> Bool {
+        let p = Array(pattern); let t = Array(text)
+        func m(_ pi: Int, _ ti: Int) -> Bool {
+            if pi == p.count { return ti == t.count }
+            let pc = p[pi]
+            if pc == "*" {
+                if pi + 1 == p.count { return true }
+                var k = ti
+                while k <= t.count {
+                    if m(pi + 1, k) { return true }
+                    k += 1
+                }
+                return false
+            }
+            if ti == t.count { return false }
+            if pc == "?" || pc == t[ti] { return m(pi + 1, ti + 1) }
+            return false
+        }
+        return m(0, 0)
     }
 
     private static func containsOwnNick(_ nick: String, in text: String) -> Bool {
@@ -418,11 +615,12 @@ final class IRCConnection: ObservableObject, Identifiable {
         let bIdx = indexOfOrCreateBuffer(name: chan, kind: .channel)
         let isSelf = who.lowercased() == self.nick.lowercased()
         if isSelf {
-            buffers[bIdx].appendInfo("You joined \(chan)")
+            appendTo(bufferIndex: bIdx, line: ChatLine(
+                timestamp: Date(), kind: .info, text: "You joined \(chan)"))
             selectedBufferID = buffers[bIdx].id
         } else {
             watchlist.handleObservedActivity(nick: who, reason: "JOIN \(chan)")
-            buffers[bIdx].appendLine(ChatLine(
+            appendTo(bufferIndex: bIdx, line: ChatLine(
                 timestamp: Date(),
                 kind: .join(nick: who),
                 text: "\(who) joined"
@@ -441,10 +639,11 @@ final class IRCConnection: ObservableObject, Identifiable {
         guard let bIdx = buffers.firstIndex(where: { $0.name == chan }) else { return }
         let isSelf = who.lowercased() == self.nick.lowercased()
         if isSelf {
-            buffers[bIdx].appendInfo("You left \(chan)")
+            appendTo(bufferIndex: bIdx, line: ChatLine(
+                timestamp: Date(), kind: .info, text: "You left \(chan)"))
             buffers[bIdx].users.removeAll()
         } else {
-            buffers[bIdx].appendLine(ChatLine(
+            appendTo(bufferIndex: bIdx, line: ChatLine(
                 timestamp: Date(),
                 kind: .part(nick: who, reason: reason),
                 text: "\(who) left" + (reason.map { " (\($0))" } ?? "")
@@ -459,7 +658,7 @@ final class IRCConnection: ObservableObject, Identifiable {
         let reason = msg.params.first
         for i in buffers.indices where buffers[i].users.contains(who) {
             buffers[i].users.removeAll(where: { $0 == who })
-            buffers[i].appendLine(ChatLine(
+            appendTo(bufferIndex: i, line: ChatLine(
                 timestamp: Date(),
                 kind: .quit(nick: who, reason: reason),
                 text: "\(who) quit" + (reason.map { " (\($0))" } ?? "")
@@ -478,7 +677,7 @@ final class IRCConnection: ObservableObject, Identifiable {
             if let u = buffers[i].users.firstIndex(of: old) {
                 buffers[i].users[u] = new
                 buffers[i].users.sort()
-                buffers[i].appendLine(ChatLine(
+                appendTo(bufferIndex: i, line: ChatLine(
                     timestamp: Date(),
                     kind: .nick(old: old, new: new),
                     text: "\(old) is now known as \(new)"
@@ -494,7 +693,7 @@ final class IRCConnection: ObservableObject, Identifiable {
         let who = msg.nickFromPrefix
         guard let i = buffers.firstIndex(where: { $0.name == chan }) else { return }
         buffers[i].topic = topic
-        buffers[i].appendLine(ChatLine(
+        appendTo(bufferIndex: i, line: ChatLine(
             timestamp: Date(),
             kind: .topic(setter: who),
             text: (who.map { "\($0) set topic: " } ?? "Topic: ") + topic
@@ -511,7 +710,24 @@ final class IRCConnection: ObservableObject, Identifiable {
         guard let i = buffers.firstIndex(where: { $0.name == chan }) else { return }
         buffers[i].users.removeAll(where: { $0 == target })
         let text = "\(target) was kicked by \(by)" + (reason.map { " (\($0))" } ?? "")
-        buffers[i].appendInfo(text)
+        appendTo(bufferIndex: i, line: ChatLine(
+            timestamp: Date(), kind: .info, text: text))
+    }
+
+    /// We surface mode changes in the affected channel for visibility. The
+    /// state of mode flags on individual nicks (op/voice) is not tracked
+    /// yet beyond sidebar display; future work.
+    private func handleMode(_ msg: IRCMessage) {
+        guard msg.params.count >= 2 else { return }
+        let target = msg.params[0]
+        let modeLine = msg.params.dropFirst().joined(separator: " ")
+        let by = msg.nickFromPrefix ?? "server"
+        if let i = buffers.firstIndex(where: { $0.name == target }) {
+            appendTo(bufferIndex: i, line: ChatLine(
+                timestamp: Date(), kind: .info, text: "\(by) sets mode \(modeLine)"))
+        } else {
+            appendInfo("\(by) sets mode \(target) \(modeLine)")
+        }
     }
 
     private func handleNames(_ msg: IRCMessage) {
@@ -529,7 +745,7 @@ final class IRCConnection: ObservableObject, Identifiable {
         let i = idx(of: ensureServerBufferID())
         let text = msg.params.dropFirst().joined(separator: " ")
         let kind: ChatLine.Kind = (msg.command == "372" || msg.command == "375" || msg.command == "376") ? .motd : .info
-        buffers[i].appendLine(ChatLine(
+        appendTo(bufferIndex: i, line: ChatLine(
             timestamp: Date(),
             kind: kind,
             text: text.isEmpty ? msg.raw : text
@@ -574,17 +790,22 @@ final class IRCConnection: ObservableObject, Identifiable {
             let target = bits[0]; let text = bits[1]
             client.send("PRIVMSG \(target) :\(text)")
             let bIdx = indexOfOrCreateBuffer(name: target, kind: target.hasPrefix("#") ? .channel : .query)
-            buffers[bIdx].appendLine(ChatLine(
+            appendTo(bufferIndex: bIdx, line: ChatLine(
                 timestamp: Date(),
                 kind: .privmsg(nick: nick, isSelf: true),
                 text: text))
+            selectedBufferID = buffers[bIdx].id
+        case "query":
+            let target = rest.trimmingCharacters(in: .whitespaces)
+            guard !target.isEmpty else { return }
+            let bIdx = indexOfOrCreateBuffer(name: target, kind: target.hasPrefix("#") ? .channel : .query)
             selectedBufferID = buffers[bIdx].id
         case "me":
             guard let target = currentBufferName(), !rest.isEmpty else { return }
             let ctcp = "\u{01}ACTION \(rest)\u{01}"
             client.send("PRIVMSG \(target) :\(ctcp)")
             if let bIdx = buffers.firstIndex(where: { $0.name == target }) {
-                buffers[bIdx].appendLine(ChatLine(
+                appendTo(bufferIndex: bIdx, line: ChatLine(
                     timestamp: Date(), kind: .action(nick: nick), text: rest))
             }
         case "nick":
@@ -603,6 +824,50 @@ final class IRCConnection: ObservableObject, Identifiable {
         case "whois":
             guard !rest.isEmpty else { return }
             client.send("WHOIS \(rest)")
+        case "away":
+            setAway(reason: rest.trimmingCharacters(in: .whitespaces).isEmpty ? nil : rest)
+        case "back":
+            setAway(reason: nil)
+        case "op", "deop", "voice", "devoice":
+            guard let chan = currentBufferName(), chan.hasPrefix("#"),
+                  !rest.isEmpty else { return }
+            let mode: String = {
+                switch cmd {
+                case "op": return "+o"
+                case "deop": return "-o"
+                case "voice": return "+v"
+                case "devoice": return "-v"
+                default: return ""
+                }
+            }()
+            client.send("MODE \(chan) \(mode) \(rest)")
+        case "kick":
+            guard let chan = currentBufferName(), chan.hasPrefix("#"),
+                  !rest.isEmpty else { return }
+            let bits = rest.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true).map(String.init)
+            let who = bits[0]
+            if bits.count > 1 {
+                client.send("KICK \(chan) \(who) :\(bits[1])")
+            } else {
+                client.send("KICK \(chan) \(who)")
+            }
+        case "ban":
+            guard let chan = currentBufferName(), chan.hasPrefix("#"),
+                  !rest.isEmpty else { return }
+            client.send("MODE \(chan) +b \(rest)")
+        case "unban":
+            guard let chan = currentBufferName(), chan.hasPrefix("#"),
+                  !rest.isEmpty else { return }
+            client.send("MODE \(chan) -b \(rest)")
+        case "mode":
+            if rest.isEmpty, let chan = currentBufferName() { client.send("MODE \(chan)") }
+            else { client.send("MODE \(rest)") }
+        case "ctcp":
+            let bits = rest.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true).map(String.init)
+            guard bits.count >= 2 else { return }
+            let target = bits[0]
+            let body = bits[1]
+            client.send("PRIVMSG \(target) :\u{01}\(body)\u{01}")
         default:
             client.send("\(cmd.uppercased()) \(rest)")
         }
@@ -627,6 +892,10 @@ final class IRCConnection: ObservableObject, Identifiable {
             }
         }
         autoJoinIfNeeded()
+        // Re-assert away status after reconnect.
+        if isAway, let reason = awayReason {
+            client.send("AWAY :\(reason)")
+        }
     }
 
     private func autoJoinIfNeeded() {
@@ -642,8 +911,6 @@ final class IRCConnection: ObservableObject, Identifiable {
         }
     }
 
-    /// Run auto-join for saved channels belonging to this profile. ChatModel
-    /// drives this so it can read the shared saved-channel list.
     func joinSavedChannels(_ names: [String]) {
         guard state == .connected else { return }
         var seen = Set<String>()
@@ -687,14 +954,31 @@ final class IRCConnection: ObservableObject, Identifiable {
         }
     }
 
+    /// Append a line to a buffer AND, when persistence is enabled, write it
+    /// to the on-disk log. The file write happens on a detached Task so it
+    /// never blocks the main actor or the buffer mutation.
+    private func appendTo(bufferIndex i: Int, line: ChatLine) {
+        guard i < buffers.count else { return }
+        buffers[i].appendLine(line)
+        if loggingEnabled, let store = logStore {
+            if !logNoisyLines, line.isNoisyLogKind { return }
+            let network = displayName
+            let buffer = buffers[i].name
+            let text = line.toLogLine()
+            Task.detached(priority: .utility) {
+                await store.append(network: network, buffer: buffer, line: text)
+            }
+        }
+    }
+
     private func appendInfo(_ text: String) {
         let i = idx(of: ensureServerBufferID())
-        buffers[i].appendInfo(text)
+        appendTo(bufferIndex: i, line: ChatLine(timestamp: Date(), kind: .info, text: text))
     }
 
     private func appendError(_ text: String) {
         let i = idx(of: ensureServerBufferID())
-        buffers[i].appendError(text)
+        appendTo(bufferIndex: i, line: ChatLine(timestamp: Date(), kind: .error, text: text))
     }
 
     private func emit(_ event: IRCConnectionEvent) {
@@ -712,5 +996,18 @@ extension IRCConnection {
     }
     func watchlistRoutePostInfo(_ text: String) {
         appendInfo(text)
+    }
+
+    /// Post an `.info` line to the currently-selected buffer (or the server
+    /// buffer if nothing is selected). Used by ChatModel when it intercepts
+    /// a slash command like `/ignore` and needs to surface feedback to the
+    /// user without going through the IRC send path.
+    func appendInfoOnSelected(_ text: String) {
+        if let sel = selectedBufferID,
+           let i = buffers.firstIndex(where: { $0.id == sel }) {
+            appendTo(bufferIndex: i, line: ChatLine(timestamp: Date(), kind: .info, text: text))
+        } else {
+            appendInfo(text)
+        }
     }
 }

@@ -83,6 +83,10 @@ final class ChatModel: ObservableObject {
     let watchlist = WatchlistService()
     let settings = SettingsStore()
 
+    /// Shared log writer. Off-main-actor; every connection writes through this
+    /// when `enablePersistentLogs` is on.
+    let logStore: LogStore
+
     /// Merged event stream across all connections. PurpleBot subscribes here.
     let events = PassthroughSubject<(UUID, IRCConnectionEvent), Never>()
 
@@ -97,6 +101,7 @@ final class ChatModel: ObservableObject {
     }
 
     init() {
+        self.logStore = LogStore(baseURL: settings.logsDirectoryURL)
         watchlist.setDelegate(self)
         seedFromSelectedProfile()
         applySettingsToAll()
@@ -185,6 +190,15 @@ final class ChatModel: ObservableObject {
                 banner: s.systemNotificationsOnWatchHit,
                 highlight: s.highlightOnOwnNick
             )
+            // Tier 2: logging, ignore list, CTCP, away auto-reply.
+            c.logStore = logStore
+            c.loggingEnabled = s.enablePersistentLogs
+            c.logNoisyLines = s.logMotdAndNumerics
+            c.ignoreMatchers = s.ignoreList
+            c.ctcpRepliesEnabled = s.ctcpRepliesEnabled
+            c.ctcpVersionString = s.ctcpVersionString
+            c.autoReplyWhenAway = s.autoReplyWhenAway
+            c.awayAutoReply = s.awayAutoReply
         }
         // Make sure the shared watchlist's own alert toggles match settings too.
         watchlist.playSound = s.playSoundOnWatchHit
@@ -205,7 +219,44 @@ final class ChatModel: ObservableObject {
 
     func sendInput(_ text: String) {
         guard let conn = activeConnection else { return }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // /ignore and /unignore mutate persisted settings; everything else
+        // is forwarded verbatim to the connection.
+        if trimmed.hasPrefix("/") {
+            let body = String(trimmed.dropFirst())
+            let bits = body.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true).map(String.init)
+            let cmd = bits.first?.lowercased() ?? ""
+            let rest = bits.count > 1 ? bits[1].trimmingCharacters(in: .whitespaces) : ""
+            switch cmd {
+            case "ignore":
+                if rest.isEmpty {
+                    conn.appendInfoOnSelected(listIgnoreLines())
+                } else {
+                    var entry = IgnoreEntry(); entry.mask = rest
+                    settings.upsertIgnore(entry)
+                    conn.appendInfoOnSelected("Ignoring \(rest)")
+                }
+                return
+            case "unignore":
+                guard !rest.isEmpty else { return }
+                if let match = settings.settings.ignoreList.first(where: { $0.mask == rest }) {
+                    settings.removeIgnore(id: match.id)
+                    conn.appendInfoOnSelected("No longer ignoring \(rest)")
+                } else {
+                    conn.appendInfoOnSelected("No ignore entry matches \(rest)")
+                }
+                return
+            default:
+                break
+            }
+        }
         conn.sendInput(text, from: conn.selectedBufferID)
+    }
+
+    private func listIgnoreLines() -> String {
+        let list = settings.settings.ignoreList
+        if list.isEmpty { return "Ignore list is empty. Use /ignore <mask>." }
+        return "Ignore list:\n" + list.map { "  • \($0.mask)" }.joined(separator: "\n")
     }
 
     func quickJoin(_ channel: String) {

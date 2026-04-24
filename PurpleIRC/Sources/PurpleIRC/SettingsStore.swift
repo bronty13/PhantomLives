@@ -108,15 +108,44 @@ struct SavedChannel: Codable, Identifiable, Hashable {
     var serverID: UUID? = nil
 }
 
+/// A pattern to silently drop incoming PRIVMSG / NOTICE / CTCP from. The mask
+/// is matched against the nick and against `nick!user@host` when available.
+/// Glob-style `*` and `?` are supported.
+struct IgnoreEntry: Codable, Identifiable, Hashable {
+    var id: UUID = UUID()
+    var mask: String = ""
+    var note: String = ""
+    var ignoreCTCP: Bool = true
+    var ignoreNotices: Bool = true
+}
+
 struct AppSettings: Codable {
     var servers: [ServerProfile] = [ServerProfile(name: "Libera Chat")]
     var addressBook: [AddressEntry] = []
     var savedChannels: [SavedChannel] = []
+    var ignoreList: [IgnoreEntry] = []
     var selectedServerID: UUID?
+
+    // Watchlist / highlight alert channels
     var playSoundOnWatchHit: Bool = true
     var bounceDockOnWatchHit: Bool = true
     var systemNotificationsOnWatchHit: Bool = true
     var highlightOnOwnNick: Bool = true
+
+    // Persistent logs
+    var enablePersistentLogs: Bool = false
+    var logMotdAndNumerics: Bool = false
+
+    // CTCP
+    var ctcpRepliesEnabled: Bool = true
+    var ctcpVersionString: String = "PurpleIRC — https://github.com/bronty13/PhantomLives"
+
+    // Away
+    var autoAwayEnabled: Bool = false
+    var autoAwayIdleMinutes: Int = 15
+    var awayReasonDefault: String = "away from keyboard"
+    var autoReplyWhenAway: Bool = true
+    var awayAutoReply: String = "I am currently away (via PurpleIRC). I'll see your message when I return."
 
     init() {}
 
@@ -126,11 +155,23 @@ struct AppSettings: Codable {
             ?? [ServerProfile(name: "Libera Chat")]
         self.addressBook  = try c.decodeIfPresent([AddressEntry].self, forKey: .addressBook) ?? []
         self.savedChannels = try c.decodeIfPresent([SavedChannel].self, forKey: .savedChannels) ?? []
+        self.ignoreList   = try c.decodeIfPresent([IgnoreEntry].self, forKey: .ignoreList) ?? []
         self.selectedServerID = try c.decodeIfPresent(UUID.self, forKey: .selectedServerID)
         self.playSoundOnWatchHit = try c.decodeIfPresent(Bool.self, forKey: .playSoundOnWatchHit) ?? true
         self.bounceDockOnWatchHit = try c.decodeIfPresent(Bool.self, forKey: .bounceDockOnWatchHit) ?? true
         self.systemNotificationsOnWatchHit = try c.decodeIfPresent(Bool.self, forKey: .systemNotificationsOnWatchHit) ?? true
         self.highlightOnOwnNick = try c.decodeIfPresent(Bool.self, forKey: .highlightOnOwnNick) ?? true
+        self.enablePersistentLogs = try c.decodeIfPresent(Bool.self, forKey: .enablePersistentLogs) ?? false
+        self.logMotdAndNumerics = try c.decodeIfPresent(Bool.self, forKey: .logMotdAndNumerics) ?? false
+        self.ctcpRepliesEnabled = try c.decodeIfPresent(Bool.self, forKey: .ctcpRepliesEnabled) ?? true
+        self.ctcpVersionString = try c.decodeIfPresent(String.self, forKey: .ctcpVersionString)
+            ?? "PurpleIRC — https://github.com/bronty13/PhantomLives"
+        self.autoAwayEnabled = try c.decodeIfPresent(Bool.self, forKey: .autoAwayEnabled) ?? false
+        self.autoAwayIdleMinutes = try c.decodeIfPresent(Int.self, forKey: .autoAwayIdleMinutes) ?? 15
+        self.awayReasonDefault = try c.decodeIfPresent(String.self, forKey: .awayReasonDefault) ?? "away from keyboard"
+        self.autoReplyWhenAway = try c.decodeIfPresent(Bool.self, forKey: .autoReplyWhenAway) ?? true
+        self.awayAutoReply = try c.decodeIfPresent(String.self, forKey: .awayAutoReply)
+            ?? "I am currently away (via PurpleIRC). I'll see your message when I return."
     }
 }
 
@@ -141,6 +182,8 @@ final class SettingsStore: ObservableObject {
     }
 
     private let fileURL: URL
+    let supportDirectoryURL: URL
+    let logsDirectoryURL: URL
 
     init() {
         let fm = FileManager.default
@@ -150,6 +193,8 @@ final class SettingsStore: ObservableObject {
                                create: true)
         let dir = (base ?? fm.temporaryDirectory).appendingPathComponent("PurpleIRC", isDirectory: true)
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        self.supportDirectoryURL = dir
+        self.logsDirectoryURL = dir.appendingPathComponent("logs", isDirectory: true)
         self.fileURL = dir.appendingPathComponent("settings.json")
 
         if let data = try? Data(contentsOf: fileURL),
@@ -229,5 +274,19 @@ final class SettingsStore: ObservableObject {
 
     func removeChannel(id: UUID) {
         settings.savedChannels.removeAll { $0.id == id }
+    }
+
+    // MARK: - Ignore list
+
+    func upsertIgnore(_ entry: IgnoreEntry) {
+        if let i = settings.ignoreList.firstIndex(where: { $0.id == entry.id }) {
+            settings.ignoreList[i] = entry
+        } else {
+            settings.ignoreList.append(entry)
+        }
+    }
+
+    func removeIgnore(id: UUID) {
+        settings.ignoreList.removeAll { $0.id == id }
     }
 }

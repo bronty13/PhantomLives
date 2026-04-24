@@ -9,6 +9,17 @@ struct BufferView: View {
     @State private var historyPos: Int = 0
     @State private var completion: TabCompletion? = nil
 
+    // Find-in-buffer state. ⌘F opens the bar, ⌘G cycles matches, Esc closes.
+    @State private var showFind: Bool = false
+    @State private var findQuery: String = ""
+    @State private var findMatchIDs: [UUID] = []
+    @State private var findMatchCursor: Int = 0
+    @FocusState private var findFocused: Bool
+
+    // Topic editor. Click the header topic to open an inline editor.
+    @State private var editingTopic: Bool = false
+    @State private var topicDraft: String = ""
+
     struct TabCompletion {
         let typedPrefix: String   // text before the completed word (includes trailing space when non-empty)
         let partial: String       // original partial the user typed (before first tab)
@@ -23,6 +34,10 @@ struct BufferView: View {
         VStack(spacing: 0) {
             header
             Divider()
+            if showFind {
+                findBar
+                Divider()
+            }
             HStack(spacing: 0) {
                 messagesPane
                 if buffer.isChannel {
@@ -34,20 +49,84 @@ struct BufferView: View {
             Divider()
             inputBar
         }
+        .background(
+            // Invisible shortcut surface: ⌘F / ⌘G / Esc handled here so the
+            // textfield doesn't have to be focused for the global open/cycle.
+            Button("") { toggleFind() }
+                .keyboardShortcut("f", modifiers: .command)
+                .opacity(0).frame(width: 0, height: 0)
+        )
+    }
+
+    private var findBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField("Find in buffer", text: $findQuery)
+                .textFieldStyle(.plain)
+                .focused($findFocused)
+                .onSubmit { cycleFind(forward: true) }
+                .onChange(of: findQuery) { _, _ in recomputeFindMatches() }
+                .onKeyPress(.escape) {
+                    closeFind(); return .handled
+                }
+            if !findMatchIDs.isEmpty {
+                Text("\(findMatchCursor + 1) / \(findMatchIDs.count)")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else if !findQuery.isEmpty {
+                Text("no matches").font(.caption).foregroundStyle(.secondary)
+            }
+            Button(action: { cycleFind(forward: false) }) {
+                Image(systemName: "chevron.up")
+            }.disabled(findMatchIDs.isEmpty)
+            Button(action: { cycleFind(forward: true) }) {
+                Image(systemName: "chevron.down")
+            }
+            .disabled(findMatchIDs.isEmpty)
+            .keyboardShortcut("g", modifiers: .command)
+            Button(action: closeFind) { Image(systemName: "xmark") }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     private var header: some View {
         HStack(spacing: 10) {
             Image(systemName: iconName).foregroundStyle(.secondary)
             Text(buffer.displayName).font(.headline)
-            if !buffer.topic.isEmpty {
-                Text("— \(buffer.topic)")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+            if editingTopic {
+                TextField("Channel topic", text: $topicDraft)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { commitTopicEdit() }
+                    .onKeyPress(.escape) {
+                        editingTopic = false; return .handled
+                    }
+                Button("Set") { commitTopicEdit() }
+                Button("Cancel") { editingTopic = false }
+            } else {
+                if buffer.isChannel {
+                    Button(action: beginTopicEdit) {
+                        Text(buffer.topic.isEmpty ? "(no topic — click to set)" : "— \(buffer.topic)")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Click to edit topic")
+                } else if !buffer.topic.isEmpty {
+                    Text("— \(buffer.topic)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
             }
             Spacer()
+            Button(action: toggleFind) {
+                Image(systemName: "magnifyingglass")
+            }
+            .buttonStyle(.borderless)
+            .help("Find in buffer (⌘F)")
             if buffer.kind != .server {
                 Button(action: { model.closeCurrentBuffer() }) {
                     Label("Close", systemImage: "xmark")
@@ -58,6 +137,22 @@ struct BufferView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    private func beginTopicEdit() {
+        topicDraft = buffer.topic
+        editingTopic = true
+    }
+
+    private func commitTopicEdit() {
+        let t = topicDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        editingTopic = false
+        guard buffer.isChannel else { return }
+        if t.isEmpty {
+            model.sendInput("/topic")
+        } else {
+            model.sendInput("/topic \(t)")
+        }
     }
 
     private var iconName: String {
@@ -73,7 +168,8 @@ struct BufferView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(buffer.lines) { line in
-                        MessageRow(line: line).id(line.id)
+                        MessageRow(line: line, highlight: isFindMatch(line.id))
+                            .id(line.id)
                     }
                     Color.clear.frame(height: 1).id("bottom")
                 }
@@ -82,14 +178,76 @@ struct BufferView: View {
             }
             .background(Color(nsColor: .textBackgroundColor))
             .onChange(of: buffer.lines.count) { _, _ in
-                withAnimation(.linear(duration: 0.1)) {
-                    proxy.scrollTo("bottom", anchor: .bottom)
+                // New messages land during a find — recompute so the match
+                // count stays accurate.
+                if !findQuery.isEmpty { recomputeFindMatches() }
+                if !showFind {
+                    withAnimation(.linear(duration: 0.1)) {
+                        proxy.scrollTo("bottom", anchor: .bottom)
+                    }
+                }
+            }
+            .onChange(of: findMatchCursor) { _, _ in
+                guard !findMatchIDs.isEmpty,
+                      findMatchCursor < findMatchIDs.count else { return }
+                let id = findMatchIDs[findMatchCursor]
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    proxy.scrollTo(id, anchor: .center)
                 }
             }
             .onAppear {
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
         }
+    }
+
+    private func isFindMatch(_ id: UUID) -> Bool {
+        guard !findMatchIDs.isEmpty,
+              findMatchCursor < findMatchIDs.count else { return false }
+        return findMatchIDs[findMatchCursor] == id
+    }
+
+    // MARK: - Find
+
+    private func toggleFind() {
+        if showFind { closeFind() } else { openFind() }
+    }
+
+    private func openFind() {
+        showFind = true
+        findFocused = true
+        recomputeFindMatches()
+    }
+
+    private func closeFind() {
+        showFind = false
+        findQuery = ""
+        findMatchIDs = []
+        findMatchCursor = 0
+    }
+
+    private func recomputeFindMatches() {
+        let q = findQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else {
+            findMatchIDs = []
+            findMatchCursor = 0
+            return
+        }
+        let lower = q.lowercased()
+        // Match against the stripped text (no mIRC codes) so the user searches
+        // what they see, not the raw wire bytes.
+        findMatchIDs = buffer.lines
+            .filter { IRCFormatter.stripCodes($0.text).lowercased().contains(lower) }
+            .map { $0.id }
+        findMatchCursor = 0
+    }
+
+    private func cycleFind(forward: Bool) {
+        guard !findMatchIDs.isEmpty else { return }
+        let n = findMatchIDs.count
+        findMatchCursor = forward
+            ? (findMatchCursor + 1) % n
+            : (findMatchCursor - 1 + n) % n
     }
 
     private var userListPane: some View {
@@ -99,10 +257,41 @@ struct BufferView: View {
                 .padding(.horizontal, 8)
                 .padding(.top, 8)
             List(buffer.users, id: \.self) { user in
-                Text(user).font(.system(.body, design: .monospaced))
+                Text(user)
+                    .font(.system(.body, design: .monospaced))
+                    .contextMenu { userContextMenu(for: user) }
             }
             .listStyle(.plain)
         }
+    }
+
+    /// Right-click / long-press menu on a nick in the user list. Op/kick/etc.
+    /// are all just /commands in the background so the command log stays the
+    /// single source of truth.
+    @ViewBuilder
+    private func userContextMenu(for user: String) -> some View {
+        let nick = stripModePrefix(user)
+        Button("Open query") { model.sendInput("/query \(nick)") }
+        Button("WHOIS") { model.sendInput("/whois \(nick)") }
+        Divider()
+        Button("Op (+o)") { model.sendInput("/op \(nick)") }
+        Button("Deop (-o)") { model.sendInput("/deop \(nick)") }
+        Button("Voice (+v)") { model.sendInput("/voice \(nick)") }
+        Button("Devoice (-v)") { model.sendInput("/devoice \(nick)") }
+        Divider()
+        Button("Kick") { model.sendInput("/kick \(nick)") }
+        Button("Ban") { model.sendInput("/ban \(nick)!*@*") }
+        Divider()
+        Button("Ignore") { model.sendInput("/ignore \(nick)!*@*") }
+    }
+
+    /// Channel user lists may include `@` / `+` / `%` prefixes — strip them
+    /// before using the nick in a command.
+    private func stripModePrefix(_ nick: String) -> String {
+        let prefixes: Set<Character> = ["@", "+", "%", "~", "&"]
+        var s = nick
+        while let first = s.first, prefixes.contains(first) { s.removeFirst() }
+        return s
     }
 
     private var inputBar: some View {
@@ -222,6 +411,7 @@ struct BufferView: View {
 struct MessageRow: View {
     @EnvironmentObject var model: ChatModel
     let line: ChatLine
+    var highlight: Bool = false
 
     private static let timeFmt: DateFormatter = {
         let f = DateFormatter()
@@ -274,7 +464,9 @@ struct MessageRow: View {
 
     @ViewBuilder
     private var highlightBackground: some View {
-        if line.isMention {
+        if highlight {
+            Color.yellow.opacity(0.30)
+        } else if line.isMention {
             Color.orange.opacity(0.18)
         } else if isFromWatchedUser {
             Color.purple.opacity(0.12)
