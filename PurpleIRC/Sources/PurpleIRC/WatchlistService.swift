@@ -41,6 +41,9 @@ final class WatchlistService: ObservableObject {
     var playSound: Bool = true
     var bounceDock: Bool = true
     var systemNotifications: Bool = true
+    /// Named NSSound to play for watchlist hits. Empty string = silent.
+    /// Defaults to Glass to preserve prior behavior.
+    var soundName: String = "Glass"
 
     private weak var delegate: WatchlistDelegate?
     private var supportsMonitor = false
@@ -238,8 +241,8 @@ final class WatchlistService: ObservableObject {
         if bounceDock {
             NSApp.requestUserAttention(.criticalRequest)
         }
-        if playSound {
-            NSSound(named: "Glass")?.play()
+        if playSound, !soundName.isEmpty {
+            NSSound(named: soundName)?.play()
         }
         if systemNotifications {
             let content = UNMutableNotificationContent()

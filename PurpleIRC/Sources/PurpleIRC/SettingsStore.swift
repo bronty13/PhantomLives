@@ -39,6 +39,13 @@ struct ServerProfile: Codable, Identifiable, Hashable {
 
     var autoReconnect: Bool = true
 
+    // Proxy (SOCKS5 / HTTP CONNECT). Type .none = connect directly.
+    var proxyType: ProxyType = .none
+    var proxyHost: String = ""
+    var proxyPort: Int = 1080
+    var proxyUsername: String = ""
+    var proxyPassword: String = ""
+
     init(id: UUID = UUID(),
          name: String = "New Server",
          host: String = "irc.libera.chat",
@@ -54,7 +61,12 @@ struct ServerProfile: Codable, Identifiable, Hashable {
          saslPassword: String = "",
          nickServPassword: String = "",
          performOnConnect: String = "",
-         autoReconnect: Bool = true) {
+         autoReconnect: Bool = true,
+         proxyType: ProxyType = .none,
+         proxyHost: String = "",
+         proxyPort: Int = 1080,
+         proxyUsername: String = "",
+         proxyPassword: String = "") {
         self.id = id
         self.name = name
         self.host = host
@@ -71,6 +83,11 @@ struct ServerProfile: Codable, Identifiable, Hashable {
         self.nickServPassword = nickServPassword
         self.performOnConnect = performOnConnect
         self.autoReconnect = autoReconnect
+        self.proxyType = proxyType
+        self.proxyHost = proxyHost
+        self.proxyPort = proxyPort
+        self.proxyUsername = proxyUsername
+        self.proxyPassword = proxyPassword
     }
 
     init(from decoder: Decoder) throws {
@@ -91,6 +108,11 @@ struct ServerProfile: Codable, Identifiable, Hashable {
         self.nickServPassword = try c.decodeIfPresent(String.self, forKey: .nickServPassword) ?? ""
         self.performOnConnect = try c.decodeIfPresent(String.self, forKey: .performOnConnect) ?? ""
         self.autoReconnect  = try c.decodeIfPresent(Bool.self, forKey: .autoReconnect) ?? true
+        self.proxyType      = try c.decodeIfPresent(ProxyType.self, forKey: .proxyType) ?? .none
+        self.proxyHost      = try c.decodeIfPresent(String.self, forKey: .proxyHost) ?? ""
+        self.proxyPort      = try c.decodeIfPresent(Int.self, forKey: .proxyPort) ?? 1080
+        self.proxyUsername  = try c.decodeIfPresent(String.self, forKey: .proxyUsername) ?? ""
+        self.proxyPassword  = try c.decodeIfPresent(String.self, forKey: .proxyPassword) ?? ""
     }
 }
 
@@ -147,6 +169,19 @@ struct AppSettings: Codable {
     var autoReplyWhenAway: Bool = true
     var awayAutoReply: String = "I am currently away (via PurpleIRC). I'll see your message when I return."
 
+    // Sounds + theme
+    var soundsEnabled: Bool = true
+    /// Map of `SoundEventKind.rawValue` → NSSound name. Empty string = silent.
+    var eventSounds: [String: String] = [
+        "mention": "Glass",
+        "watchlistHit": "Purr",
+        "privateMessage": "Ping",
+        "connect": "Hero",
+        "disconnect": "Basso",
+        "ctcp": ""
+    ]
+    var themeID: String = "classic"
+
     init() {}
 
     init(from decoder: Decoder) throws {
@@ -172,6 +207,17 @@ struct AppSettings: Codable {
         self.autoReplyWhenAway = try c.decodeIfPresent(Bool.self, forKey: .autoReplyWhenAway) ?? true
         self.awayAutoReply = try c.decodeIfPresent(String.self, forKey: .awayAutoReply)
             ?? "I am currently away (via PurpleIRC). I'll see your message when I return."
+        self.soundsEnabled = try c.decodeIfPresent(Bool.self, forKey: .soundsEnabled) ?? true
+        self.eventSounds = try c.decodeIfPresent([String: String].self, forKey: .eventSounds)
+            ?? [
+                "mention": "Glass",
+                "watchlistHit": "Purr",
+                "privateMessage": "Ping",
+                "connect": "Hero",
+                "disconnect": "Basso",
+                "ctcp": ""
+            ]
+        self.themeID = try c.decodeIfPresent(String.self, forKey: .themeID) ?? "classic"
     }
 }
 

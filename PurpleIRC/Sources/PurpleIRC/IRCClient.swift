@@ -20,6 +20,11 @@ struct IRCConnectionConfig {
     var saslMechanism: SASLMechanism
     var saslAccount: String
     var saslPassword: String
+    var proxyType: ProxyType = .none
+    var proxyHost: String = ""
+    var proxyPort: UInt16 = 0
+    var proxyUsername: String = ""
+    var proxyPassword: String = ""
 }
 
 final class IRCClient {
@@ -61,8 +66,34 @@ final class IRCClient {
         }
         params.allowLocalEndpointReuse = true
 
-        let endpointHost = NWEndpoint.Host(config.host)
-        guard let endpointPort = NWEndpoint.Port(rawValue: config.port) else {
+        // If a proxy is configured, insert the ProxyFramer at the bottom of
+        // the application-protocol stack so the handshake runs before any TLS
+        // or plaintext application data flows.
+        let useProxy = config.proxyType != .none && !config.proxyHost.isEmpty && config.proxyPort > 0
+        if useProxy {
+            ProxyFramer.pushConfig(ProxyConfig(
+                type: config.proxyType,
+                host: config.proxyHost,
+                port: config.proxyPort,
+                username: config.proxyUsername,
+                password: config.proxyPassword,
+                targetHost: config.host,
+                targetPort: config.port
+            ))
+            let framerOpts = NWProtocolFramer.Options(definition: ProxyFramer.definition)
+            params.defaultProtocolStack.applicationProtocols.insert(framerOpts, at: 0)
+        }
+
+        let endpointHost: NWEndpoint.Host
+        let endpointPortRaw: UInt16
+        if useProxy {
+            endpointHost = NWEndpoint.Host(config.proxyHost)
+            endpointPortRaw = config.proxyPort
+        } else {
+            endpointHost = NWEndpoint.Host(config.host)
+            endpointPortRaw = config.port
+        }
+        guard let endpointPort = NWEndpoint.Port(rawValue: endpointPortRaw) else {
             onState?(.failed("Invalid port"))
             return
         }
@@ -80,7 +111,13 @@ final class IRCClient {
             case .waiting(let err):
                 self.onState?(.failed("Waiting: \(err.localizedDescription)"))
             case .failed(let err):
-                self.onState?(.failed(err.localizedDescription))
+                let proxyReason = ProxyFramer.lastError
+                ProxyFramer.lastError = nil
+                if let proxyReason {
+                    self.onState?(.failed("\(proxyReason) (\(err.localizedDescription))"))
+                } else {
+                    self.onState?(.failed(err.localizedDescription))
+                }
                 self.connection = nil
             case .cancelled:
                 self.onState?(.disconnected)

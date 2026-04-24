@@ -464,12 +464,13 @@ struct MessageRow: View {
 
     @ViewBuilder
     private var highlightBackground: some View {
+        let theme = model.theme
         if highlight {
-            Color.yellow.opacity(0.30)
+            theme.findBackground
         } else if line.isMention {
-            Color.orange.opacity(0.18)
+            theme.mentionBackground
         } else if isFromWatchedUser {
-            Color.purple.opacity(0.12)
+            theme.watchlistBackground
         } else {
             Color.clear
         }
@@ -491,23 +492,24 @@ struct MessageRow: View {
 
     @ViewBuilder
     private var content: some View {
+        let theme = model.theme
         switch line.kind {
         case .info:
             Text("— \(line.text)")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.infoColor)
                 .font(.system(.body, design: .monospaced))
         case .error:
             Text("! \(line.text)")
-                .foregroundStyle(.red)
+                .foregroundStyle(theme.errorColor)
                 .font(.system(.body, design: .monospaced))
         case .motd:
             Text(line.text)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.motdColor)
                 .font(.system(.callout, design: .monospaced))
         case .privmsg(let nick, let isSelf):
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("<\(nick)>")
-                    .foregroundStyle(isSelf ? .accentColor : colorForNick(nick))
+                    .foregroundStyle(isSelf ? theme.ownNickColor : colorForNick(nick, theme: theme))
                     .font(.system(.body, design: .monospaced))
                 Text(IRCFormatter.renderWithLinks(line.text))
                     .font(.system(.body))
@@ -515,45 +517,45 @@ struct MessageRow: View {
                     .textSelection(.enabled)
             }
         case .action(let nick):
-            (Text("* \(nick) ").foregroundStyle(colorForNick(nick)).italic()
+            (Text("* \(nick) ").foregroundStyle(colorForNick(nick, theme: theme)).italic()
              + Text(IRCFormatter.renderWithLinks(line.text)).italic())
         case .notice(let from):
-            (Text("-\(from)- ").foregroundStyle(.purple).font(.system(.body, design: .monospaced))
-             + Text(IRCFormatter.renderWithLinks(line.text, linkColor: .purple))
+            (Text("-\(from)- ").foregroundStyle(theme.noticeColor).font(.system(.body, design: .monospaced))
+             + Text(IRCFormatter.renderWithLinks(line.text, linkColor: theme.noticeColor))
                 .font(.system(.body, design: .monospaced)))
         case .join(let nick):
             Text("→ \(nick) joined")
-                .foregroundStyle(.green)
+                .foregroundStyle(theme.joinColor)
                 .font(.system(.caption, design: .monospaced))
         case .part(let nick, let reason):
             Text("← \(nick) left\(reason.map { " (\($0))" } ?? "")")
-                .foregroundStyle(.orange)
+                .foregroundStyle(theme.partColor)
                 .font(.system(.caption, design: .monospaced))
         case .quit(let nick, let reason):
             Text("← \(nick) quit\(reason.map { " (\($0))" } ?? "")")
-                .foregroundStyle(.orange)
+                .foregroundStyle(theme.partColor)
                 .font(.system(.caption, design: .monospaced))
         case .nick(let old, let new):
             Text("\(old) → \(new)")
-                .foregroundStyle(.blue)
+                .foregroundStyle(theme.nickNickColor)
                 .font(.system(.caption, design: .monospaced))
         case .topic:
             Text(line.text)
-                .foregroundStyle(.blue)
+                .foregroundStyle(theme.nickNickColor)
                 .font(.system(.body, design: .monospaced))
         case .raw:
             Text(line.text)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.infoColor)
                 .font(.system(.caption, design: .monospaced))
         }
     }
 
-    private func colorForNick(_ nick: String) -> Color {
-        let palette: [Color] = [.pink, .teal, .indigo, .mint, .orange, .cyan, .brown, .purple]
+    private func colorForNick(_ nick: String, theme: Theme) -> Color {
         var hash: UInt32 = 2166136261
         for b in nick.utf8 {
             hash = (hash ^ UInt32(b)) &* 16777619
         }
+        let palette = theme.nickPalette
         return palette[Int(hash % UInt32(palette.count))]
     }
 }

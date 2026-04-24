@@ -11,6 +11,7 @@ struct SetupView: View {
         case channels = "Channels"
         case ignores = "Ignore"
         case behavior = "Behavior"
+        case scripts = "PurpleBot"
         var id: String { rawValue }
         var systemImage: String {
             switch self {
@@ -19,6 +20,7 @@ struct SetupView: View {
             case .channels: return "number"
             case .ignores: return "nosign"
             case .behavior: return "slider.horizontal.3"
+            case .scripts: return "curlybraces"
             }
         }
     }
@@ -56,6 +58,7 @@ struct SetupView: View {
                 case .channels:    ChannelsSetup(settings: settings)
                 case .ignores:     IgnoreSetup(settings: settings)
                 case .behavior:    BehaviorSetup(settings: settings)
+                case .scripts:     ScriptsSetup(bot: model.bot)
                 }
             }
             .padding()
@@ -195,6 +198,27 @@ struct ServerEditor: View {
                 TextField("#channel1, #channel2", text: $server.autoJoin)
                 Text("Channels listed here join automatically after login, in addition to channels under the Channels tab.")
                     .font(.caption).foregroundStyle(.tertiary)
+            }
+            Section("Proxy") {
+                Picker("Type", selection: $server.proxyType) {
+                    ForEach(ProxyType.allCases) { t in
+                        Text(t.displayName).tag(t)
+                    }
+                }
+                .onChange(of: server.proxyType) { _, new in
+                    if new == .http, server.proxyPort == 1080 { server.proxyPort = 8080 }
+                    if new == .socks5, server.proxyPort == 8080 { server.proxyPort = 1080 }
+                }
+                if server.proxyType != .none {
+                    TextField("Proxy host", text: $server.proxyHost)
+                    Stepper(value: $server.proxyPort, in: 1...65535) {
+                        TextField("Proxy port", value: $server.proxyPort, format: .number)
+                    }
+                    TextField("Proxy username (optional)", text: $server.proxyUsername)
+                    SecureField("Proxy password (optional)", text: $server.proxyPassword)
+                    Text("The proxy handshake runs before TLS, so TLS connections via SOCKS5 or HTTP CONNECT are supported.")
+                        .font(.caption).foregroundStyle(.tertiary)
+                }
             }
         }
         .formStyle(.grouped)
@@ -445,7 +469,201 @@ struct BehaviorSetup: View {
                 Text("Use /away [reason] to mark yourself away and /back to return. Auto-replies are throttled per-sender.")
                     .font(.caption).foregroundStyle(.tertiary)
             }
+            Section("Theme") {
+                Picker("Theme", selection: $settings.settings.themeID) {
+                    ForEach(Theme.all, id: \.id) { t in
+                        Text(t.displayName).tag(t.id)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+            Section("Sounds") {
+                Toggle("Enable event sounds", isOn: $settings.settings.soundsEnabled)
+                ForEach(SoundEventKind.allCases) { kind in
+                    HStack {
+                        Text(kind.displayName)
+                        Spacer()
+                        Picker("", selection: soundBinding(for: kind)) {
+                            ForEach(builtInSoundNames, id: \.self) { n in
+                                Text(n.isEmpty ? "— none —" : n).tag(n)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 160)
+                        Button("▶") {
+                            let name = settings.settings.eventSounds[kind.rawValue] ?? ""
+                            if !name.isEmpty { NSSound(named: name)?.play() }
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
     }
+
+    private func soundBinding(for kind: SoundEventKind) -> Binding<String> {
+        Binding(
+            get: { settings.settings.eventSounds[kind.rawValue] ?? "" },
+            set: { settings.settings.eventSounds[kind.rawValue] = $0 }
+        )
+    }
+}
+
+// MARK: - PurpleBot scripts
+
+struct ScriptsSetup: View {
+    @ObservedObject var bot: BotHost
+    @State private var selection: UUID?
+    @State private var draftSource: String = ""
+    @State private var draftName: String = ""
+    @State private var draftEnabled: Bool = true
+
+    var body: some View {
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                List(selection: $selection) {
+                    ForEach(bot.scripts) { s in
+                        HStack {
+                            Image(systemName: s.enabled ? "bolt.fill" : "bolt.slash")
+                                .foregroundStyle(s.enabled ? .green : .secondary)
+                            VStack(alignment: .leading) {
+                                Text(s.name).font(.body)
+                                Text(s.filename).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                        .tag(s.id)
+                    }
+                }
+                Divider()
+                HStack {
+                    Button {
+                        let s = bot.addScript(name: "new script", source: sampleScript)
+                        selection = s.id
+                        loadSelection()
+                    } label: { Image(systemName: "plus") }
+                    Button {
+                        if let id = selection,
+                           let s = bot.scripts.first(where: { $0.id == id }) {
+                            bot.remove(s)
+                            selection = bot.scripts.first?.id
+                            loadSelection()
+                        }
+                    } label: { Image(systemName: "minus") }
+                    .disabled(selection == nil)
+                    Spacer()
+                    Button("Reload all") { bot.reloadAll() }
+                }
+                .padding(6)
+            }
+            .frame(width: 240)
+            .background(Color(nsColor: .controlBackgroundColor))
+
+            Divider()
+
+            if let id = selection,
+               let script = bot.scripts.first(where: { $0.id == id }) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        TextField("Name", text: $draftName)
+                            .textFieldStyle(.roundedBorder)
+                        Toggle("Enabled", isOn: $draftEnabled)
+                        Button("Save") {
+                            bot.update(script, name: draftName,
+                                       source: draftSource, enabled: draftEnabled)
+                        }
+                        .keyboardShortcut("s", modifiers: [.command])
+                    }
+                    TextEditor(text: $draftSource)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(minHeight: 280)
+                    botLogView
+                }
+                .padding()
+                .onAppear { loadSelection() }
+                .onChange(of: selection) { _, _ in loadSelection() }
+            } else {
+                VStack(spacing: 16) {
+                    Spacer()
+                    Image(systemName: "curlybraces.square")
+                        .font(.system(size: 40)).foregroundStyle(.secondary)
+                    Text("PurpleBot — JavaScript scripting")
+                        .font(.headline)
+                    Text(helpText)
+                        .font(.caption).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 420)
+                        .padding(.horizontal)
+                    Spacer()
+                }
+            }
+        }
+        .onAppear {
+            if selection == nil { selection = bot.scripts.first?.id }
+            loadSelection()
+        }
+    }
+
+    private func loadSelection() {
+        guard let id = selection,
+              let s = bot.scripts.first(where: { $0.id == id }) else {
+            draftName = ""; draftSource = ""; draftEnabled = true
+            return
+        }
+        draftName = s.name
+        draftEnabled = s.enabled
+        draftSource = bot.scriptSource(s)
+    }
+
+    private var botLogView: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Bot log").font(.caption).foregroundStyle(.secondary)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 1) {
+                    ForEach(bot.logLines) { line in
+                        Text(line.text)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(color(for: line.level))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                    }
+                }
+                .padding(6)
+            }
+            .frame(minHeight: 100, maxHeight: 160)
+            .background(Color(nsColor: .textBackgroundColor))
+        }
+    }
+
+    private func color(for level: BotHost.BotLogLine.Level) -> Color {
+        switch level {
+        case .info:   return .secondary
+        case .error:  return .red
+        case .script: return .primary
+        }
+    }
+
+    private let sampleScript = """
+    // PurpleBot script — runs inside the app.
+    // Docs (in-flight): irc.on(event, cb), irc.onCommand('name', cb),
+    // irc.msg(target, text), irc.sendActive(raw), irc.setTimer(ms, cb).
+
+    irc.on('privmsg', (e) => {
+      if (e.isMention) {
+        console.log('mentioned by ' + e.from + ' in ' + e.target + ': ' + e.text);
+      }
+    });
+
+    irc.onCommand('hello', (args) => {
+      irc.notify('Hello from PurpleBot! args: ' + args);
+    });
+    """
+
+    private let helpText = """
+    Write small scripts that react to IRC events or register /aliases.
+
+    Select a script on the left — or hit + for a new one — to edit it. Press \
+    Save (⌘S) to reload all scripts. Logs from console.log appear below the \
+    editor.
+    """
 }

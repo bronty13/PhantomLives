@@ -123,6 +123,10 @@ final class IRCConnection: ObservableObject, Identifiable {
             appendInfo("SASL \(profile.saslMechanism.rawValue) will be attempted after CAP negotiation.")
         }
 
+        let proxyPort = UInt16(exactly: profile.proxyPort) ?? 0
+        if profile.proxyType != .none {
+            appendInfo("Via \(profile.proxyType.displayName) proxy \(profile.proxyHost):\(profile.proxyPort).")
+        }
         let config = IRCConnectionConfig(
             host: profile.host,
             port: portNum,
@@ -133,7 +137,12 @@ final class IRCConnection: ObservableObject, Identifiable {
             serverPassword: profile.password.isEmpty ? nil : profile.password,
             saslMechanism: profile.saslMechanism,
             saslAccount: profile.saslAccount,
-            saslPassword: profile.saslPassword
+            saslPassword: profile.saslPassword,
+            proxyType: profile.proxyType,
+            proxyHost: profile.proxyHost,
+            proxyPort: proxyPort,
+            proxyUsername: profile.proxyUsername,
+            proxyPassword: profile.proxyPassword
         )
         client.connect(config: config)
     }

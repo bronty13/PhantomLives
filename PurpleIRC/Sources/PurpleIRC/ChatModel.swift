@@ -90,6 +90,9 @@ final class ChatModel: ObservableObject {
     /// Merged event stream across all connections. PurpleBot subscribes here.
     let events = PassthroughSubject<(UUID, IRCConnectionEvent), Never>()
 
+    /// In-app scripting host (PurpleBot). See BotHost.swift.
+    let bot: BotHost
+
     private var cancellables = Set<AnyCancellable>()
     /// Per-connection cancellables, keyed by connection id, so removing a
     /// connection can drop its subscriptions cleanly.
@@ -102,9 +105,17 @@ final class ChatModel: ObservableObject {
 
     init() {
         self.logStore = LogStore(baseURL: settings.logsDirectoryURL)
+        self.bot = BotHost(supportDir: settings.supportDirectoryURL)
         watchlist.setDelegate(self)
         seedFromSelectedProfile()
         applySettingsToAll()
+        bot.attach(self)
+        // Fan out bot-visible events to the sound player.
+        events
+            .sink { [weak self] tuple in
+                Task { @MainActor in self?.playSoundFor(event: tuple.1) }
+            }
+            .store(in: &cancellables)
         settings.$settings
             .sink { [weak self] _ in
                 Task { @MainActor in self?.onSettingsChanged() }
@@ -180,6 +191,32 @@ final class ChatModel: ObservableObject {
         applySettingsToAll()
     }
 
+    /// Selected theme — read by MessageRow at render time.
+    var theme: Theme { Theme.named(settings.settings.themeID) }
+
+    private func playSoundFor(event: IRCConnectionEvent) {
+        let s = settings.settings
+        switch event {
+        case .state(.connected):
+            SoundPlayer.play(.connect, settings: s)
+        case .state(.disconnected), .state(.failed):
+            SoundPlayer.play(.disconnect, settings: s)
+        case .ctcpRequest:
+            SoundPlayer.play(.ctcp, settings: s)
+        case .privmsg(_, let target, _, _, let isMention):
+            // Private query (target is our own nick) OR a mention — give them
+            // different sounds. Private takes precedence if both apply.
+            let isPrivate = !target.hasPrefix("#") && !target.hasPrefix("&")
+            if isPrivate {
+                SoundPlayer.play(.privateMessage, settings: s)
+            } else if isMention {
+                SoundPlayer.play(.mention, settings: s)
+            }
+        default:
+            break
+        }
+    }
+
     private func applySettingsToAll() {
         watchlist.setWatchedList(settings.watchedFromAddressBook)
         let s = settings.settings
@@ -204,6 +241,7 @@ final class ChatModel: ObservableObject {
         watchlist.playSound = s.playSoundOnWatchHit
         watchlist.bounceDock = s.bounceDockOnWatchHit
         watchlist.systemNotifications = s.systemNotificationsOnWatchHit
+        watchlist.soundName = s.eventSounds["watchlistHit"] ?? "Glass"
     }
 
     // MARK: - Active-connection forwarding (back-compat surface for views)
@@ -246,8 +284,14 @@ final class ChatModel: ObservableObject {
                     conn.appendInfoOnSelected("No ignore entry matches \(rest)")
                 }
                 return
+            case "reloadbots", "reloadscripts":
+                bot.reloadAll()
+                conn.appendInfoOnSelected("Reloaded \(bot.scripts.filter { $0.enabled }.count) bot scripts.")
+                return
             default:
-                break
+                // Let PurpleBot claim the command if it registered a matching
+                // /alias via irc.onCommand(...).
+                if bot.handleCommandAlias(cmd, args: rest) { return }
             }
         }
         conn.sendInput(text, from: conn.selectedBufferID)
