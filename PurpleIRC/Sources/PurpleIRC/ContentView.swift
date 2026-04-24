@@ -65,6 +65,10 @@ struct ContentView: View {
             SetupView(settings: model.settings)
                 .environmentObject(model)
         }
+        .sheet(isPresented: $model.showDCC) {
+            DCCView(service: model.dcc)
+                .environmentObject(model)
+        }
     }
 }
 

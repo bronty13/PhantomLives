@@ -477,6 +477,20 @@ struct BehaviorSetup: View {
                 }
                 .pickerStyle(.segmented)
             }
+            Section("DCC (experimental)") {
+                TextField("External IP (for outgoing offers)", text: $settings.settings.dccExternalIP)
+                    .font(.system(.body, design: .monospaced))
+                HStack {
+                    Stepper(value: $settings.settings.dccPortRangeStart, in: 1024...65535) {
+                        TextField("Port range start", value: $settings.settings.dccPortRangeStart, format: .number)
+                    }
+                    Stepper(value: $settings.settings.dccPortRangeEnd, in: 1024...65535) {
+                        TextField("Port range end", value: $settings.settings.dccPortRangeEnd, format: .number)
+                    }
+                }
+                Text("Outgoing DCC SEND / CHAT listens on this port range and advertises the address above. Behind NAT you'll need to port-forward and set the public IP — auto-detection only picks up LAN addresses. Passive/reverse DCC and RESUME aren't implemented yet.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
             Section("Sounds") {
                 Toggle("Enable event sounds", isOn: $settings.settings.soundsEnabled)
                 ForEach(SoundEventKind.allCases) { kind in

@@ -169,6 +169,11 @@ struct AppSettings: Codable {
     var autoReplyWhenAway: Bool = true
     var awayAutoReply: String = "I am currently away (via PurpleIRC). I'll see your message when I return."
 
+    // DCC (file transfers + chat)
+    var dccExternalIP: String = ""
+    var dccPortRangeStart: Int = 49152
+    var dccPortRangeEnd: Int = 49200
+
     // Sounds + theme
     var soundsEnabled: Bool = true
     /// Map of `SoundEventKind.rawValue` → NSSound name. Empty string = silent.
@@ -207,6 +212,9 @@ struct AppSettings: Codable {
         self.autoReplyWhenAway = try c.decodeIfPresent(Bool.self, forKey: .autoReplyWhenAway) ?? true
         self.awayAutoReply = try c.decodeIfPresent(String.self, forKey: .awayAutoReply)
             ?? "I am currently away (via PurpleIRC). I'll see your message when I return."
+        self.dccExternalIP = try c.decodeIfPresent(String.self, forKey: .dccExternalIP) ?? ""
+        self.dccPortRangeStart = try c.decodeIfPresent(Int.self, forKey: .dccPortRangeStart) ?? 49152
+        self.dccPortRangeEnd = try c.decodeIfPresent(Int.self, forKey: .dccPortRangeEnd) ?? 49200
         self.soundsEnabled = try c.decodeIfPresent(Bool.self, forKey: .soundsEnabled) ?? true
         self.eventSounds = try c.decodeIfPresent([String: String].self, forKey: .eventSounds)
             ?? [

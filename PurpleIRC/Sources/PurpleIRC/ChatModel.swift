@@ -77,6 +77,7 @@ final class ChatModel: ObservableObject {
     @Published var showRawLog: Bool = false
     @Published var showWatchlist: Bool = false
     @Published var showSetup: Bool = false
+    @Published var showDCC: Bool = false
 
     /// Single shared watchlist across all connections. See IRCConnection doc
     /// on why this is shared rather than per-connection.
@@ -93,6 +94,9 @@ final class ChatModel: ObservableObject {
     /// In-app scripting host (PurpleBot). See BotHost.swift.
     let bot: BotHost
 
+    /// DCC file transfers + direct chats. See DCC.swift.
+    let dcc: DCCService
+
     private var cancellables = Set<AnyCancellable>()
     /// Per-connection cancellables, keyed by connection id, so removing a
     /// connection can drop its subscriptions cleanly.
@@ -106,10 +110,13 @@ final class ChatModel: ObservableObject {
     init() {
         self.logStore = LogStore(baseURL: settings.logsDirectoryURL)
         self.bot = BotHost(supportDir: settings.supportDirectoryURL)
+        let downloads = settings.supportDirectoryURL.appendingPathComponent("downloads", isDirectory: true)
+        self.dcc = DCCService(downloadsDir: downloads)
         watchlist.setDelegate(self)
         seedFromSelectedProfile()
         applySettingsToAll()
         bot.attach(self)
+        dcc.chatModel = self
         // Fan out bot-visible events to the sound player.
         events
             .sink { [weak self] tuple in
@@ -236,7 +243,11 @@ final class ChatModel: ObservableObject {
             c.ctcpVersionString = s.ctcpVersionString
             c.autoReplyWhenAway = s.autoReplyWhenAway
             c.awayAutoReply = s.awayAutoReply
+            c.dcc = dcc
         }
+        dcc.externalIPOverride = s.dccExternalIP
+        dcc.portRangeStart = s.dccPortRangeStart
+        dcc.portRangeEnd = s.dccPortRangeEnd
         // Make sure the shared watchlist's own alert toggles match settings too.
         watchlist.playSound = s.playSoundOnWatchHit
         watchlist.bounceDock = s.bounceDockOnWatchHit

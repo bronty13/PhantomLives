@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import AppKit
 
 /// Forward-compat event stream. Every inbound IRC message, every state
 /// transition, and the outbound lines we emit fan out through this enum so
@@ -76,6 +77,10 @@ final class IRCConnection: ObservableObject, Identifiable {
     var logStore: LogStore?
     var loggingEnabled: Bool = false
     var logNoisyLines: Bool = false
+
+    /// DCC service. ChatModel injects the shared instance so /dcc and
+    /// incoming CTCP DCC offers can route to the transfers window.
+    weak var dcc: DCCService?
 
     // Throttle for away auto-replies so a spammer can't DoS us.
     private var lastAwayReplyAt: [String: Date] = [:]
@@ -436,6 +441,11 @@ final class IRCConnection: ObservableObject, Identifiable {
             if cmd.uppercased() == "ACTION" {
                 // Fall through to the action-rendering path below.
                 text = "\u{01}ACTION \(args)\u{01}"
+            } else if cmd.uppercased() == "DCC", !isNotice,
+                      let svc = dcc,
+                      svc.handleIncomingDCC(connection: self, from: from, args: args) {
+                // DCC offer consumed; don't echo as a raw CTCP request.
+                return
             } else {
                 // Respond to a CTCP request (NOT a CTCP reply we received via
                 // NOTICE). Requests come as PRIVMSG — NOTICEs carrying \u0001
@@ -513,6 +523,61 @@ final class IRCConnection: ObservableObject, Identifiable {
             return (String(body[..<spaceIdx]), String(body[body.index(after: spaceIdx)...]))
         }
         return (body, "")
+    }
+
+    private func handleDCCCommand(_ rest: String) {
+        guard let svc = dcc else {
+            appendError("DCC service unavailable.")
+            return
+        }
+        let bits = rest.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: true).map(String.init)
+        guard let subRaw = bits.first else {
+            appendInfo("Usage: /dcc send <nick> [path]  |  /dcc chat <nick>")
+            return
+        }
+        let sub = subRaw.lowercased()
+        switch sub {
+        case "send":
+            guard bits.count >= 2 else {
+                appendInfo("Usage: /dcc send <nick> [path]")
+                return
+            }
+            let nick = bits[1]
+            let providedPath = bits.count >= 3 ? bits[2].trimmingCharacters(in: .whitespaces) : ""
+            if !providedPath.isEmpty {
+                let url = URL(fileURLWithPath: (providedPath as NSString).expandingTildeInPath)
+                guard FileManager.default.fileExists(atPath: url.path) else {
+                    appendError("File not found: \(url.path)")
+                    return
+                }
+                svc.offerSend(to: nick, fileURL: url, on: self)
+            } else {
+                let panel = NSOpenPanel()
+                panel.canChooseDirectories = false
+                panel.canChooseFiles = true
+                panel.allowsMultipleSelection = false
+                panel.begin { [weak self] resp in
+                    guard let self, resp == .OK, let url = panel.url else { return }
+                    Task { @MainActor in
+                        svc.offerSend(to: nick, fileURL: url, on: self)
+                    }
+                }
+            }
+        case "chat":
+            guard bits.count >= 2 else {
+                appendInfo("Usage: /dcc chat <nick>")
+                return
+            }
+            svc.offerChat(to: bits[1], on: self)
+        case "list":
+            chatModelShowDCC()
+        default:
+            appendInfo("Usage: /dcc send <nick> [path]  |  /dcc chat <nick>  |  /dcc list")
+        }
+    }
+
+    private func chatModelShowDCC() {
+        dcc?.chatModel?.showDCC = true
     }
 
     private func sendCTCPReply(to nick: String, command: String, args: String) {
@@ -877,6 +942,8 @@ final class IRCConnection: ObservableObject, Identifiable {
             let target = bits[0]
             let body = bits[1]
             client.send("PRIVMSG \(target) :\u{01}\(body)\u{01}")
+        case "dcc":
+            handleDCCCommand(rest)
         default:
             client.send("\(cmd.uppercased()) \(rest)")
         }
