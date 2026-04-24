@@ -40,6 +40,9 @@ struct SetupView: View {
                     .font(.title2)
                     .foregroundStyle(Color.purple)
                 Text("PurpleIRC Setup").font(.title3.weight(.semibold))
+                Text("v\(AppVersion.short)")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .help("Build \(AppVersion.build)")
                 Spacer()
                 Text(settings.fileURLForDisplay)
                     .font(.caption2)
@@ -118,12 +121,22 @@ struct ServersSetup: View {
                     } label: { Image(systemName: "minus") }
                     .disabled(selection == nil || settings.settings.servers.count <= 1)
                     Spacer()
-                    Button("Set active") {
-                        if let id = selection {
-                            settings.settings.selectedServerID = id
+                    Menu {
+                        Button("Set active") {
+                            if let id = selection {
+                                settings.settings.selectedServerID = id
+                            }
                         }
+                        .disabled(selection == nil || selection == settings.settings.selectedServerID)
+                        Divider()
+                        Button("Add missing default networks") {
+                            addMissingDefaults()
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
                     }
-                    .disabled(selection == nil || selection == settings.settings.selectedServerID)
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
                 }
                 .padding(6)
             }
@@ -151,6 +164,22 @@ struct ServersSetup: View {
                 selection = settings.settings.selectedServerID ?? settings.settings.servers.first?.id
             }
         }
+    }
+
+    /// Append any entries from `ServerProfile.defaultServers()` whose name
+    /// doesn't already appear in the user's list. Idempotent; safe to click
+    /// multiple times. Doesn't touch existing edited profiles, and doesn't
+    /// re-add networks the user deliberately deleted in this session — it
+    /// only matches by name, so if they removed "Undernet", clicking this
+    /// will bring it back. That's the intended behavior (recover missing
+    /// defaults after carrying settings over from an older install).
+    private func addMissingDefaults() {
+        let existingNames = Set(settings.settings.servers.map { $0.name.lowercased() })
+        let missing = ServerProfile.defaultServers().filter {
+            !existingNames.contains($0.name.lowercased())
+        }
+        guard !missing.isEmpty else { return }
+        settings.settings.servers.append(contentsOf: missing)
     }
 }
 

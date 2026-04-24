@@ -71,6 +71,10 @@ struct HelpView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
+            Text("PurpleIRC v\(AppVersion.short) · build \(AppVersion.build)")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .textSelection(.enabled)
             Button("Close") { dismiss() }
                 .keyboardShortcut(.cancelAction)
         }
