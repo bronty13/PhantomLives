@@ -368,6 +368,10 @@ struct AppSettings: Codable {
     var boldChatText: Bool = false
     /// Add extra vertical padding between rows for accessibility.
     var relaxedRowSpacing: Bool = false
+    /// Collapse runs of consecutive join / part / quit / nick lines into a
+    /// single summary row so a netsplit doesn't drown the channel chatter.
+    /// Off keeps every line visible (the classic IRC behavior).
+    var collapseJoinPart: Bool = true
 
     // Highlight rules (row tint + matched-word color + per-rule alerts)
     var highlightRules: [HighlightRule] = []
@@ -436,6 +440,7 @@ struct AppSettings: Codable {
         self.chatFontSize = try c.decodeIfPresent(Double.self, forKey: .chatFontSize) ?? 13
         self.boldChatText = try c.decodeIfPresent(Bool.self, forKey: .boldChatText) ?? false
         self.relaxedRowSpacing = try c.decodeIfPresent(Bool.self, forKey: .relaxedRowSpacing) ?? false
+        self.collapseJoinPart = try c.decodeIfPresent(Bool.self, forKey: .collapseJoinPart) ?? true
         self.highlightRules = try c.decodeIfPresent([HighlightRule].self, forKey: .highlightRules) ?? []
         self.triggerRules = try c.decodeIfPresent([TriggerRule].self, forKey: .triggerRules) ?? []
         self.seenTrackingEnabled = try c.decodeIfPresent(Bool.self, forKey: .seenTrackingEnabled) ?? false

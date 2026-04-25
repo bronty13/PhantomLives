@@ -36,6 +36,15 @@ struct BufferView: View {
     @FocusState private var inputFocused: Bool
     @Environment(\.scenePhase) private var scenePhase
 
+    /// Multi-line paste detection. When the user pastes content with a
+    /// newline, we stash it here and show a confirmation dialog instead of
+    /// flooding the channel — most servers throttle or kick on bursts.
+    @State private var pastedMultiline: String? = nil
+    /// "Send line by line" sheet. Editable so the user can prune lines or
+    /// add a /command line wrapper before sending.
+    @State private var showingMultilineEditor: Bool = false
+    @State private var multilineEditorText: String = ""
+
     struct TabCompletion {
         let typedPrefix: String   // text before the completed word (includes trailing space when non-empty)
         let partial: String       // original partial the user typed (before first tab)
@@ -54,6 +63,67 @@ struct BufferView: View {
         let bs = model.buffers
         if bufferIndex < bs.count { return bs[bufferIndex] }
         return Buffer(name: "", kind: .server)
+    }
+
+    /// Rendered row stream — either a real chat line or a synthetic summary
+    /// row produced by collapsing consecutive join/part/quit/nick lines.
+    /// SwiftUI's ForEach diffs on the `id`, so summaries reuse the first
+    /// member's UUID as a stable key.
+    enum RenderedRow: Identifiable {
+        case line(ChatLine)
+        case summary(id: UUID, entries: [ChatLine])
+        var id: UUID {
+            switch self {
+            case .line(let l):           return l.id
+            case .summary(let id, _):    return id
+            }
+        }
+    }
+
+    /// Walk `buffer.lines` once, coalescing runs of join/part/quit/nick into
+    /// a single summary entry. The grouping resets when (a) a non-membership
+    /// line breaks the run, (b) the user setting is off, or (c) only one
+    /// membership line is in the run (rendering a summary for one event is
+    /// noisy). A 5-minute window prevents two unrelated batches separated by
+    /// hours of silence from being lumped together.
+    private var renderedRows: [RenderedRow] {
+        let lines = buffer.lines
+        guard model.settings.settings.collapseJoinPart else {
+            return lines.map { .line($0) }
+        }
+        var out: [RenderedRow] = []
+        out.reserveCapacity(lines.count)
+        var run: [ChatLine] = []
+        for line in lines {
+            if Self.isMembershipKind(line.kind),
+               (run.isEmpty || line.timestamp.timeIntervalSince(run.last!.timestamp) < 300) {
+                run.append(line)
+                continue
+            }
+            flushRun(&run, into: &out)
+            out.append(.line(line))
+        }
+        flushRun(&run, into: &out)
+        return out
+    }
+
+    private func flushRun(_ run: inout [ChatLine], into out: inout [RenderedRow]) {
+        defer { run.removeAll(keepingCapacity: false) }
+        guard !run.isEmpty else { return }
+        // Single-event runs render as the original line — a "1 user joined"
+        // pill is more noise than the raw line.
+        if run.count == 1 {
+            out.append(.line(run[0]))
+            return
+        }
+        out.append(.summary(id: run[0].id, entries: run))
+    }
+
+    private static func isMembershipKind(_ kind: ChatLine.Kind) -> Bool {
+        switch kind {
+        case .join, .part, .quit, .nick: return true
+        default:                          return false
+        }
     }
 
     var body: some View {
@@ -193,9 +263,15 @@ struct BufferView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(buffer.lines) { line in
-                        MessageRow(line: line, highlight: isFindMatch(line.id))
-                            .id(line.id)
+                    ForEach(renderedRows) { row in
+                        switch row {
+                        case .line(let line):
+                            MessageRow(line: line, highlight: isFindMatch(line.id))
+                                .id(line.id)
+                        case .summary(let id, let entries):
+                            JoinPartSummaryRow(entries: entries)
+                                .id(id)
+                        }
                     }
                     Color.clear.frame(height: 1).id("bottom")
                 }
@@ -310,6 +386,7 @@ struct BufferView: View {
             guard let mode, let glyph = Buffer.modeSymbol[mode] else { return " " }
             return String(glyph)
         }()
+        let isAway = isAway(stripModePrefix(user))
         HStack(spacing: 4) {
             Text(symbol)
                 .font(model.chatFont.bold())
@@ -318,7 +395,21 @@ struct BufferView: View {
             Text(user)
                 .font(model.chatFont)
                 .foregroundStyle(mode == nil ? .primary : Self.colorForMode(mode))
+                .opacity(isAway ? 0.45 : 1.0)
+                .strikethrough(isAway, color: .secondary)
+            if isAway {
+                Image(systemName: "moon.zzz.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
+    }
+
+    /// Lookup against the active connection's `awayByNick` map (populated by
+    /// the IRCv3 `away-notify` cap). Falls back to false when we don't know.
+    private func isAway(_ nick: String) -> Bool {
+        guard let conn = model.activeConnection else { return false }
+        return conn.awayByNick[nick.lowercased()] != nil
     }
 
     /// Colour palette for rank glyphs. Picked to read on both light and dark
@@ -426,6 +517,16 @@ struct BufferView: View {
                     .focused($inputFocused)
                     .onSubmit(submit)
                     .onChange(of: input) { oldValue, newValue in
+                        // Multi-line paste detection. SwiftUI TextField
+                        // collapses pasted text into a single line on macOS
+                        // 14+, but a paste of "a\nb\nc" arrives here intact.
+                        // Catch it before the user accidentally floods the
+                        // channel — present a confirmation with options.
+                        if newValue.contains("\n") || newValue.contains("\r") {
+                            pastedMultiline = newValue
+                            input = ""
+                            return
+                        }
                         // Tab-completion invalidation.
                         if let c = completion, !input.hasSuffix(c.suffix)
                             || !input.dropLast(c.suffix.count).hasSuffix(c.candidates[c.index]) {
@@ -520,6 +621,63 @@ struct BufferView: View {
             for: NSWindow.didBecomeKeyNotification)) { _ in
             refocusInput()
         }
+        .confirmationDialog(
+            "Paste \(multilineLineCount) lines?",
+            isPresented: Binding(
+                get: { pastedMultiline != nil },
+                set: { if !$0 { pastedMultiline = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Send all \(multilineLineCount) lines") {
+                if let text = pastedMultiline { sendLines(text) }
+                pastedMultiline = nil
+            }
+            Button("Open multi-line editor…") {
+                multilineEditorText = pastedMultiline ?? ""
+                pastedMultiline = nil
+                showingMultilineEditor = true
+            }
+            Button("Cancel", role: .cancel) {
+                pastedMultiline = nil
+            }
+        } message: {
+            Text("Sending each line as a separate message will likely flood the channel. Most servers will throttle or disconnect.")
+        }
+        .sheet(isPresented: $showingMultilineEditor) {
+            MultilineEditorSheet(
+                text: $multilineEditorText,
+                onSend: { text in
+                    sendLines(text)
+                    showingMultilineEditor = false
+                },
+                onCancel: { showingMultilineEditor = false }
+            )
+        }
+    }
+
+    /// Number of non-empty lines in the pending paste, for the confirmation
+    /// dialog title. Trailing blank lines are ignored — most pastes end with
+    /// a newline that would otherwise inflate the count.
+    private var multilineLineCount: Int {
+        guard let text = pastedMultiline else { return 0 }
+        return text.split(omittingEmptySubsequences: true,
+                          whereSeparator: { $0 == "\n" || $0 == "\r" }).count
+    }
+
+    /// Send a multi-line block one PRIVMSG at a time. Empty lines are
+    /// dropped. Each line goes through `model.sendInput` so /commands
+    /// embedded in the paste still work.
+    private func sendLines(_ text: String) {
+        let lines = text.split(omittingEmptySubsequences: true,
+                               whereSeparator: { $0 == "\n" || $0 == "\r" })
+        for line in lines {
+            let s = String(line).trimmingCharacters(in: .whitespaces)
+            guard !s.isEmpty else { continue }
+            model.sendInput(s)
+        }
+        history.append(text)
+        if history.count > 200 { history.removeFirst() }
+        historyPos = history.count
     }
 
     /// Force focus into the input box. SwiftUI ignores `inputFocused = true`
@@ -868,37 +1026,51 @@ struct MessageRow: View {
                 .font(model.chatFont)
         case .privmsg(let nick, let isSelf):
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("<\(nick)>")
-                    .foregroundStyle(isSelf ? theme.ownNickColor : colorForNick(nick, theme: theme))
-                    .font(model.chatFont)
+                nickTag("<\(nick)>", nick: nick,
+                        color: isSelf ? theme.ownNickColor : colorForNick(nick, theme: theme),
+                        font: model.chatFont,
+                        suppressMenu: isSelf)
                 Text(renderedText(linkColor: .accentColor))
                     .font(.system(.body))
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             }
         case .action(let nick):
-            (Text("* \(nick) ").foregroundStyle(colorForNick(nick, theme: theme)).italic()
-             + Text(renderedText(linkColor: .accentColor)).italic())
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                nickTag("* \(nick) ", nick: nick,
+                        color: colorForNick(nick, theme: theme),
+                        font: model.chatFont,
+                        italic: true)
+                Text(renderedText(linkColor: .accentColor)).italic()
+            }
         case .notice(let from):
-            (Text("-\(from)- ").foregroundStyle(theme.noticeColor).font(model.chatFont)
-             + Text(renderedText(linkColor: theme.noticeColor))
-                .font(model.chatFont))
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                nickTag("-\(from)- ", nick: from,
+                        color: theme.noticeColor,
+                        font: model.chatFont)
+                Text(renderedText(linkColor: theme.noticeColor))
+                    .font(model.chatFont)
+            }
         case .join(let nick):
-            Text("→ \(nick) joined")
-                .foregroundStyle(theme.joinColor)
-                .font(model.chatCaptionFont)
+            nickTag("→ \(nick) joined",
+                    nick: nick,
+                    color: theme.joinColor,
+                    font: model.chatCaptionFont)
         case .part(let nick, let reason):
-            Text("← \(nick) left\(reason.map { " (\($0))" } ?? "")")
-                .foregroundStyle(theme.partColor)
-                .font(model.chatCaptionFont)
+            nickTag("← \(nick) left\(reason.map { " (\($0))" } ?? "")",
+                    nick: nick,
+                    color: theme.partColor,
+                    font: model.chatCaptionFont)
         case .quit(let nick, let reason):
-            Text("← \(nick) quit\(reason.map { " (\($0))" } ?? "")")
-                .foregroundStyle(theme.partColor)
-                .font(model.chatCaptionFont)
+            nickTag("← \(nick) quit\(reason.map { " (\($0))" } ?? "")",
+                    nick: nick,
+                    color: theme.partColor,
+                    font: model.chatCaptionFont)
         case .nick(let old, let new):
-            Text("\(old) → \(new)")
-                .foregroundStyle(theme.nickNickColor)
-                .font(model.chatCaptionFont)
+            nickTag("\(old) → \(new)",
+                    nick: new,
+                    color: theme.nickNickColor,
+                    font: model.chatCaptionFont)
         case .topic:
             Text(line.text)
                 .foregroundStyle(theme.nickNickColor)
@@ -928,6 +1100,193 @@ struct MessageRow: View {
         }
         let palette = theme.nickPalette
         return palette[Int(hash % UInt32(palette.count))]
+    }
+
+    /// A nick rendered inline in a message row. Identical visual to a plain
+    /// styled `Text`, but right-clicking it opens a context menu with WHOIS /
+    /// query / op / etc. — same options the user-list pane offers. The
+    /// `suppressMenu` flag turns off the menu for the user's own nick on
+    /// their own messages so right-clicking on yourself doesn't offer to
+    /// kick or ban yourself.
+    @ViewBuilder
+    private func nickTag(_ text: String, nick: String, color: Color,
+                         font: Font, italic: Bool = false,
+                         suppressMenu: Bool = false) -> some View {
+        let bare = stripModePrefix(nick)
+        let body = Text(text)
+            .foregroundStyle(color)
+            .font(font)
+            .italic(italic)
+        if suppressMenu {
+            body
+        } else {
+            body
+                .contextMenu { nickMenu(for: bare) }
+                .help("Right-click for actions on \(bare)")
+        }
+    }
+
+    /// Strips the leading IRC mode prefix (~ & @ % +) from a nick. The MessageRow
+    /// generally receives bare nicks already, but the user-list pane stores
+    /// prefixed nicks and we use the same helper everywhere for safety.
+    private func stripModePrefix(_ s: String) -> String {
+        var r = s
+        while let first = r.first, "~&@%+".contains(first) {
+            r.removeFirst()
+        }
+        return r
+    }
+
+    /// Right-click menu offered when the user clicks on a nick rendered
+    /// inside a message body. Mirrors the user-list-pane menu so muscle
+    /// memory carries over from one place to the other.
+    @ViewBuilder
+    private func nickMenu(for nick: String) -> some View {
+        Button("Open query with \(nick)") { model.sendInput("/query \(nick)") }
+        Button("WHOIS \(nick)")            { model.sendInput("/whois \(nick)") }
+        Button("WHOWAS \(nick)")           { model.sendInput("/whowas \(nick)") }
+        Divider()
+        Button("CTCP VERSION") { model.sendInput("/ctcp \(nick) VERSION") }
+        Button("CTCP PING")    { model.sendInput("/ctcp \(nick) PING \(Int(Date().timeIntervalSince1970))") }
+        Divider()
+        Button("Op (+o)")     { model.sendInput("/op \(nick)") }
+        Button("Voice (+v)")  { model.sendInput("/voice \(nick)") }
+        Button("Kick")        { model.sendInput("/kick \(nick)") }
+        Button("Ban")         { model.sendInput("/ban \(nick)!*@*") }
+        Divider()
+        Button("Ignore \(nick)!*@*") { model.sendInput("/ignore \(nick)!*@*") }
+        Divider()
+        Button("Copy nick") {
+            #if canImport(AppKit)
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(nick, forType: .string)
+            #endif
+        }
+    }
+}
+
+/// Compact summary row that replaces a run of consecutive join / part /
+/// quit / nick lines. Click to disclose the underlying lines so a curious
+/// user can still see who exactly came and went.
+struct JoinPartSummaryRow: View {
+    let entries: [ChatLine]
+    @State private var expanded: Bool = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(summary)
+                    .font(.system(.callout, design: .default))
+                    .foregroundStyle(.secondary)
+                    .italic()
+                Spacer()
+                Text(rangeLabel)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { expanded.toggle() }
+
+            if expanded {
+                VStack(alignment: .leading, spacing: 1) {
+                    ForEach(entries) { line in
+                        MessageRow(line: line, highlight: false)
+                    }
+                }
+                .padding(.leading, 16)
+            }
+        }
+        .padding(.vertical, 1)
+    }
+
+    /// Human summary like "3 joined, 2 left, alice→alice_". Counts each
+    /// kind separately so a netsplit doesn't read as "5 events".
+    private var summary: String {
+        var joins = 0, parts = 0, quits = 0
+        var renames: [(String, String)] = []
+        for e in entries {
+            switch e.kind {
+            case .join:                       joins += 1
+            case .part:                       parts += 1
+            case .quit:                       quits += 1
+            case .nick(let old, let new):     renames.append((old, new))
+            default: break
+            }
+        }
+        var pieces: [String] = []
+        if joins > 0 { pieces.append("\(joins) joined") }
+        if parts > 0 { pieces.append("\(parts) parted") }
+        if quits > 0 { pieces.append("\(quits) quit") }
+        if !renames.isEmpty {
+            let preview = renames.prefix(2).map { "\($0.0)→\($0.1)" }.joined(separator: ", ")
+            let extra = renames.count > 2 ? " (+\(renames.count - 2))" : ""
+            pieces.append("renames: \(preview)\(extra)")
+        }
+        return pieces.joined(separator: " · ")
+    }
+
+    private var rangeLabel: String {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss"
+        guard let first = entries.first?.timestamp,
+              let last = entries.last?.timestamp,
+              first != last else {
+            return entries.first.map { f.string(from: $0.timestamp) } ?? ""
+        }
+        return "\(f.string(from: first))–\(f.string(from: last))"
+    }
+}
+
+/// Modal editor for multi-line content the user pasted into the input. They
+/// can prune lines, edit them, or just hit Send to deliver every non-empty
+/// line one-by-one. Designed for pasting code snippets, ASCII art, etc.
+struct MultilineEditorSheet: View {
+    @Binding var text: String
+    let onSend: (String) -> Void
+    let onCancel: () -> Void
+
+    private var nonEmptyLineCount: Int {
+        text.split(omittingEmptySubsequences: true,
+                   whereSeparator: { $0 == "\n" || $0 == "\r" }).count
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Multi-line message")
+                    .font(.headline)
+                Spacer()
+                Text("\(nonEmptyLineCount) lines")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding()
+
+            Divider()
+
+            TextEditor(text: $text)
+                .font(.system(.body, design: .monospaced))
+                .padding(8)
+
+            Divider()
+
+            HStack {
+                Text("Each line is sent as a separate message. /commands work too.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                Button("Cancel", role: .cancel, action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Button("Send all") { onSend(text) }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(nonEmptyLineCount == 0)
+            }
+            .padding()
+        }
+        .frame(minWidth: 540, minHeight: 320)
     }
 }
 

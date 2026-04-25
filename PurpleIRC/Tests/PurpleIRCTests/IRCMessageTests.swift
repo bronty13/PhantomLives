@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import PurpleIRC
 
@@ -113,5 +114,69 @@ struct IRCMessageTests {
     @Test func rawLineIsPreserved() {
         let line = ":a!b@c PRIVMSG #d :hello"
         #expect(IRCMessage.parse(line)?.raw == line)
+    }
+
+    // MARK: - IRCv3 message tags
+
+    @Test func parsesSimpleTagBlock() {
+        let msg = IRCMessage.parse("@time=2026-04-25T10:30:45.000Z :a!b@c PRIVMSG #d :hi")
+        #expect(msg?.tags["time"] == "2026-04-25T10:30:45.000Z")
+        #expect(msg?.command == "PRIVMSG")
+        #expect(msg?.params == ["#d", "hi"])
+    }
+
+    @Test func parsesMultipleTagsSeparatedBySemicolons() {
+        let msg = IRCMessage.parse("@account=alice;msgid=abc-123 :a PRIVMSG #d :hi")
+        #expect(msg?.tags["account"] == "alice")
+        #expect(msg?.tags["msgid"] == "abc-123")
+        #expect(msg?.account == "alice")
+        #expect(msg?.msgID == "abc-123")
+    }
+
+    @Test func tagWithoutEqualsHasEmptyValue() {
+        let msg = IRCMessage.parse("@unset :a PING :x")
+        #expect(msg?.tags["unset"] == "")
+    }
+
+    @Test func tagValueEscapesAreUnescaped() {
+        // \: → ;   \s → space   \\ → \   \r/\n → CR/LF
+        let msg = IRCMessage.parse("@k=a\\sb\\:c\\\\d\\r\\n :a PING :x")
+        #expect(msg?.tags["k"] == "a b;c\\d\r\n")
+    }
+
+    @Test func dropsAccountWhenServerSendsStar() {
+        let msg = IRCMessage.parse("@account=* :a PRIVMSG #d :hi")
+        #expect(msg?.account == nil)
+    }
+
+    @Test func parsesServerTimeIntoDate() {
+        let msg = IRCMessage.parse("@time=2026-04-25T10:30:45.123Z :a PRIVMSG #d :hi")
+        let date = msg?.serverTime
+        #expect(date != nil)
+        // Sanity: roundtrip back through the same parser.
+        if let date {
+            let f = ISO8601DateFormatter()
+            f.formatOptions = [.withInternetDateTime, ISO8601DateFormatter.Options.withFractionalSeconds]
+            #expect(f.string(from: date) == "2026-04-25T10:30:45.123Z")
+        }
+    }
+
+    @Test func parsesServerTimeWithoutFractionalSeconds() {
+        let msg = IRCMessage.parse("@time=2026-04-25T10:30:45Z :a PRIVMSG #d :hi")
+        #expect(msg?.serverTime != nil)
+    }
+
+    @Test func batchRefSurfaces() {
+        let msg = IRCMessage.parse("@batch=abc;time=2026-01-01T00:00:00Z :a PRIVMSG #d :hi")
+        #expect(msg?.batchRef == "abc")
+    }
+
+    @Test func untaggedMessageHasEmptyTagsAndNilHelpers() {
+        let msg = IRCMessage.parse(":a PRIVMSG #d :hi")
+        #expect(msg?.tags.isEmpty == true)
+        #expect(msg?.serverTime == nil)
+        #expect(msg?.account == nil)
+        #expect(msg?.batchRef == nil)
+        #expect(msg?.msgID == nil)
     }
 }

@@ -38,16 +38,18 @@ struct SASLNegotiatorTests {
 
     // MARK: - Registration burst
 
-    @Test func registrationWithoutSASLClosesCAPImmediately() {
+    @Test func registrationAlwaysOpensCAPNegotiation() {
+        // Even without SASL we want server-time / multi-prefix / etc., so
+        // the negotiator no longer emits CAP END inline. It always parks
+        // in .awaitingLS until the server's LS reply arrives.
         let n = SASLNegotiator(config: makeConfig(mechanism: .none))
         let lines = n.registrationCommands()
         #expect(lines == [
             "CAP LS 302",
             "NICK purple-user",
-            "USER purpleirc 0 * :PurpleIRC",
-            "CAP END"
+            "USER purpleirc 0 * :PurpleIRC"
         ])
-        #expect(n.phase == .done)
+        #expect(n.phase == .awaitingLS)
     }
 
     @Test func registrationWithSASLDoesNotCloseCAPYet() {
@@ -87,13 +89,19 @@ struct SASLNegotiatorTests {
         _ = n.registrationCommands()
         #expect(n.phase == .awaitingLS)
 
-        // Server advertises sasl in its CAP LS.
+        // Server advertises sasl + multi-prefix; we request the intersection.
         var out = n.handle(parse(":server CAP * LS :multi-prefix sasl=PLAIN,EXTERNAL"))
-        #expect(out == ["CAP REQ :sasl"])
+        #expect(out.count == 1)
+        #expect(out[0].hasPrefix("CAP REQ :"))
+        // REQ payload includes both caps in some order.
+        let reqCaps = Set(out[0]
+            .replacingOccurrences(of: "CAP REQ :", with: "")
+            .split(separator: " ").map(String.init))
+        #expect(reqCaps == Set(["sasl", "multi-prefix"]))
         #expect(n.phase == .awaitingACK)
 
-        // Server acks the sasl cap.
-        out = n.handle(parse(":server CAP * ACK :sasl"))
+        // Server acks the sasl cap (only sasl matters for the auth path).
+        out = n.handle(parse(":server CAP * ACK :sasl multi-prefix"))
         #expect(out == ["AUTHENTICATE PLAIN"])
         #expect(n.phase == .authenticating)
 
@@ -149,10 +157,31 @@ struct SASLNegotiatorTests {
         #expect(n.phase == .done)
     }
 
-    @Test func lsWithoutSASLEndsNegotiation() {
+    @Test func lsWithoutSASLStillRequestsOtherCaps() {
+        // No sasl in the LS reply, but multi-prefix + account-notify are on
+        // our wishlist — request them anyway, then complete CAP on ACK.
         let n = SASLNegotiator(config: makeConfig(mechanism: .plain, saslPassword: "pw"))
         _ = n.registrationCommands()
         let out = n.handle(parse(":s CAP * LS :multi-prefix chghost account-notify"))
+        #expect(out.count == 1)
+        #expect(out[0].hasPrefix("CAP REQ :"))
+        let reqCaps = Set(out[0]
+            .replacingOccurrences(of: "CAP REQ :", with: "")
+            .split(separator: " ").map(String.init))
+        #expect(reqCaps == Set(["multi-prefix", "account-notify"]))
+        #expect(n.phase == .awaitingACK)
+
+        // Server ACKs both — no sasl available, so we close CAP without auth.
+        let after = n.handle(parse(":s CAP * ACK :multi-prefix account-notify"))
+        #expect(after == ["CAP END"])
+        #expect(n.phase == .done)
+    }
+
+    @Test func lsWithNoOverlappingCapsClosesNegotiation() {
+        // Server only offers caps PurpleIRC isn't asking for → CAP END.
+        let n = SASLNegotiator(config: makeConfig(mechanism: .none))
+        _ = n.registrationCommands()
+        let out = n.handle(parse(":s CAP * LS :inspircd.org/some-extension cool-thing"))
         #expect(out == ["CAP END"])
         #expect(n.phase == .done)
     }
@@ -169,12 +198,18 @@ struct SASLNegotiatorTests {
     @Test func multiFrameLSEventuallyTriggersREQ() {
         let n = SASLNegotiator(config: makeConfig(mechanism: .plain, saslPassword: "pw"))
         _ = n.registrationCommands()
-        // First frame: continuation with no sasl → no-op.
+        // First frame: continuation with multi-prefix → buffer, no-op.
         _ = n.handle(parse(":s CAP * LS * :multi-prefix chghost"))
         #expect(n.phase == .awaitingLS)
-        // Second frame: terminating LS that advertises sasl → REQ.
+        // Second frame: terminating LS that advertises sasl + account-notify
+        // → REQ for the union of all desired matched caps.
         let out = n.handle(parse(":s CAP * LS :account-notify sasl=PLAIN"))
-        #expect(out == ["CAP REQ :sasl"])
+        #expect(out.count == 1)
+        #expect(out[0].hasPrefix("CAP REQ :"))
+        let reqCaps = Set(out[0]
+            .replacingOccurrences(of: "CAP REQ :", with: "")
+            .split(separator: " ").map(String.init))
+        #expect(reqCaps == Set(["sasl", "multi-prefix", "account-notify"]))
         #expect(n.phase == .awaitingACK)
     }
 
@@ -192,8 +227,13 @@ struct SASLNegotiatorTests {
     }
 
     @Test func saslFailureNumericIsNoOpWhenAlreadyDone() {
+        // Drive the negotiator to .done by having the server offer no caps
+        // we want, then send a 904 — should be ignored since we're already
+        // past the CAP/SASL phase.
         let n = SASLNegotiator(config: makeConfig(mechanism: .none))
-        _ = n.registrationCommands()          // sends CAP END, phase=.done
+        _ = n.registrationCommands()
+        _ = n.handle(parse(":s CAP * LS :random-thing"))
+        #expect(n.phase == .done)
         let out = n.handle(parse(":s 904 purple-user :SASL failed"))
         #expect(out == [])
     }

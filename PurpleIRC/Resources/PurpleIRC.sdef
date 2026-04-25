@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<dictionary title="PurpleIRC Terminology" xmlns:xi="http://www.w3.org/2003/XInclude">
+
+    <!--
+        PurpleIRC's AppleScript surface. Distinctive on macOS — almost no
+        modern IRC client exposes scripting at the OS level. The verbs
+        below are the smallest set that lets users automate IRC alongside
+        other macOS tools (Shortcuts, Keyboard Maestro, etc.).
+
+        Convention: every command 4-char code starts with `Pu` so the
+        suite is greppable in `osascript -e` traces.
+    -->
+
+    <suite name="PurpleIRC Suite" code="PURP"
+           description="Commands for controlling PurpleIRC.">
+
+        <command name="connect" code="PURPconn"
+                 description="Connect to the active server profile.">
+            <cocoa class="PurpleConnectCommand"/>
+            <result type="text" description="Status message."/>
+        </command>
+
+        <command name="disconnect" code="PURPdisc"
+                 description="Disconnect from the active network.">
+            <cocoa class="PurpleDisconnectCommand"/>
+            <parameter name="with reason" code="reas" type="text" optional="yes"
+                       description="Optional QUIT reason.">
+                <cocoa key="reason"/>
+            </parameter>
+            <result type="text" description="Status message."/>
+        </command>
+
+        <command name="send message" code="PURPsend"
+                 description="Send a PRIVMSG to a channel or user on the active network.">
+            <cocoa class="PurpleSendMessageCommand"/>
+            <direct-parameter description="Message body." type="text"/>
+            <parameter name="to" code="targ" type="text"
+                       description="Channel (e.g. #swift) or nickname.">
+                <cocoa key="target"/>
+            </parameter>
+            <result type="text" description="Status message."/>
+        </command>
+
+        <command name="join channel" code="PURPjoin"
+                 description="JOIN a channel on the active network.">
+            <cocoa class="PurpleJoinCommand"/>
+            <direct-parameter description="Channel name (with or without leading #)."
+                              type="text"/>
+            <result type="text" description="Status message."/>
+        </command>
+
+        <command name="part channel" code="PURPpart"
+                 description="PART a channel on the active network.">
+            <cocoa class="PurplePartCommand"/>
+            <direct-parameter description="Channel name." type="text"/>
+            <parameter name="with reason" code="reas" type="text" optional="yes"
+                       description="Optional PART reason.">
+                <cocoa key="reason"/>
+            </parameter>
+            <result type="text" description="Status message."/>
+        </command>
+
+        <command name="current nickname" code="PURPnick"
+                 description="Return the active connection's current nickname.">
+            <cocoa class="PurpleCurrentNickCommand"/>
+            <result type="text" description="Current nick, or empty string when offline."/>
+        </command>
+
+        <command name="say in active buffer" code="PURPsay"
+                 description="Send text to the currently selected buffer (channel or query).">
+            <cocoa class="PurpleSayCommand"/>
+            <direct-parameter description="Message body." type="text"/>
+            <result type="text" description="Status message."/>
+        </command>
+
+    </suite>
+</dictionary>

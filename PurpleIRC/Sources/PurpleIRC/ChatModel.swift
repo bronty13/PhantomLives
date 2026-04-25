@@ -151,6 +151,7 @@ final class ChatModel: ObservableObject {
     @Published var activeConnectionID: UUID?
 
     @Published var showRawLog: Bool = false
+    @Published var showAppLog: Bool = false
     @Published var showWatchlist: Bool = false
     @Published var showSetup: Bool = false
     /// One-shot directive for the Setup sheet to land on a specific tab.
@@ -232,6 +233,16 @@ final class ChatModel: ObservableObject {
         // Push the current DEK into the LogStore so new lines get sealed
         // and existing encrypted logs remain readable.
         self.pushKeyToLogStore()
+        // Wire AppLog to a file under the support dir, sealed with the same
+        // DEK as everything else. Locked sessions log to memory only.
+        AppLog.shared.bind(
+            fileURL: settings.supportDirectoryURL.appendingPathComponent("app.log"),
+            key: keyStore.currentKey)
+        AppLog.shared.info("PurpleIRC \(AppVersion.short) launched", category: "Boot")
+        // Expose this model to AppleScript verbs (Resources/PurpleIRC.sdef).
+        // Hooks the singleton bridge so connect / send / join / etc. routed
+        // via Apple Events reach the live ChatModel.
+        AppleScriptBridge.register(host: self)
         watchlist.setDelegate(self)
         seedFromSelectedProfile()
         applySettingsToAll()
@@ -548,6 +559,12 @@ final class ChatModel: ObservableObject {
                 helpPrefillQuery = rest.trimmingCharacters(in: .whitespaces)
                 showHelp = true
                 return
+            case "log", "applog", "debuglog":
+                // Open the diagnostic log viewer (encrypted on disk, levels
+                // debug→critical, filterable). Useful when a user needs to
+                // grab a snapshot for a bug report.
+                showAppLog = true
+                return
             case "identity":
                 handleIdentityCommand(rest: rest, on: conn)
                 return
@@ -684,6 +701,11 @@ final class ChatModel: ObservableObject {
         for c in connections {
             c.channelList.setEncryptionKey(key)
         }
+        // Re-bind AppLog so subsequent emits use the current DEK. Reading
+        // the file picks the right format (encrypted vs plaintext) on its own.
+        AppLog.shared.bind(
+            fileURL: settings.supportDirectoryURL.appendingPathComponent("app.log"),
+            key: key)
     }
 
     /// Channels on `conn` whose user list contains `nick` (case-insensitive).

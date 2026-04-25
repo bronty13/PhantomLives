@@ -7,21 +7,56 @@ final class SASLNegotiator {
     enum Phase: Equatable {
         case idle          // not yet started
         case awaitingLS    // CAP LS sent, waiting for response
-        case awaitingACK   // CAP REQ :sasl sent, waiting for ACK/NAK
+        case awaitingACK   // CAP REQ sent, waiting for ACK/NAK
         case authenticating
         case done          // CAP END sent (success, bypass, or abort)
     }
 
+    /// Caps we want to enable. Order doesn't matter; the server sends them
+    /// back in any order it likes. `chathistory` is included so the
+    /// IRCConnection can probe `CAP LS` for the upper-bound parameter.
+    static let desiredCaps: [String] = [
+        "sasl",
+        "server-time",
+        "multi-prefix",
+        "echo-message",
+        "away-notify",
+        "account-notify",
+        "extended-join",
+        "account-tag",
+        "message-tags",
+        "batch",
+        "chathistory",
+        "draft/chathistory",
+        "labeled-response",
+        "msgid",
+    ]
+
+    /// Caps the server offered AND we asked for (intersection). Filled as
+    /// CAP ACK frames arrive so the rest of the client can guard behaviour
+    /// on what's actually live.
+    private(set) var enabledCaps: Set<String> = []
+
+    /// Server-advertised caps with their `=value` arguments. Lets the rest
+    /// of the client read e.g. `chathistory=400` to learn the max replay.
+    private(set) var serverCapValues: [String: String] = [:]
+
     private(set) var phase: Phase = .idle
     private let config: IRCConnectionConfig
+
+    /// Buffer for multi-frame `CAP LS` replies. The server uses
+    /// `CAP * LS * :...` to signal "more caps follow"; we don't act until
+    /// we see the terminator frame (no `*` separator).
+    private var lsBuffer: [(name: String, value: String?)] = []
 
     init(config: IRCConnectionConfig) {
         self.config = config
     }
 
-    /// Lines to send immediately after the socket becomes ready. Includes the
-    /// registration burst (CAP LS / PASS / NICK / USER) and, when SASL is not
-    /// requested, a trailing CAP END so the server can complete registration.
+    /// Lines to send immediately after the socket becomes ready. Always runs
+    /// CAP LS 302 — even without SASL we want server-time, multi-prefix,
+    /// echo-message, etc. The negotiator finishes negotiation by sending
+    /// CAP END once the wishlist intersection has been requested.
     func registrationCommands() -> [String] {
         var lines: [String] = []
         lines.append("CAP LS 302")
@@ -30,13 +65,7 @@ final class SASLNegotiator {
         }
         lines.append("NICK \(config.nick)")
         lines.append("USER \(config.user) 0 * :\(config.realName)")
-
-        if config.saslMechanism == .none {
-            lines.append("CAP END")
-            phase = .done
-        } else {
-            phase = .awaitingLS
-        }
+        phase = .awaitingLS
         return lines
     }
 
@@ -70,31 +99,85 @@ final class SASLNegotiator {
         switch sub {
         case "LS":
             guard phase == .awaitingLS else { return [] }
-            let caps = msg.params.last ?? ""
-            let hasSASL = caps.split(separator: " ").contains { token in
-                let name = token.split(separator: "=").first.map(String.init) ?? String(token)
-                return name == "sasl"
-            }
-            // "CAP * LS * :..." signals another LS frame follows; wait for it
-            // unless we've already seen sasl in this frame.
+            // "CAP * LS * :..." signals another LS frame follows. Buffer until
+            // we see the non-continuation frame, then act once on the union.
             let isContinuation = msg.params.count >= 4 && msg.params[2] == "*"
-            if isContinuation && !hasSASL { return [] }
-            if hasSASL {
-                phase = .awaitingACK
-                return ["CAP REQ :sasl"]
+            let payload = msg.params.last ?? ""
+            for token in payload.split(separator: " ", omittingEmptySubsequences: true) {
+                let parts = token.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+                let name = String(parts[0])
+                let value = parts.count > 1 ? String(parts[1]) : nil
+                lsBuffer.append((name, value))
             }
-            phase = .done
-            return ["CAP END"]
+            if isContinuation { return [] }
+
+            // Final frame received — record what the server offers and pick
+            // the intersection with our wishlist.
+            for entry in lsBuffer {
+                if let v = entry.value { serverCapValues[entry.name] = v }
+            }
+            let offered = Set(lsBuffer.map { $0.name })
+            lsBuffer.removeAll(keepingCapacity: false)
+
+            let toRequest = Self.desiredCaps.filter { offered.contains($0) }
+            guard !toRequest.isEmpty else {
+                phase = .done
+                return ["CAP END"]
+            }
+            phase = .awaitingACK
+            // Server-side line-length limit is 510 bytes; our request list is
+            // short enough that splitting isn't worth the complexity here.
+            return ["CAP REQ :" + toRequest.joined(separator: " ")]
 
         case "ACK":
             guard phase == .awaitingACK else { return [] }
-            phase = .authenticating
-            return ["AUTHENTICATE \(config.saslMechanism.rawValue)"]
-
-        case "NAK":
-            // Server refused SASL cap — proceed without authenticating.
+            // Record the granted caps so callers can guard behaviour. The
+            // payload is space-separated names, optionally each prefixed with
+            // `-` (server is dropping a cap we previously held).
+            let payload = msg.params.last ?? ""
+            for token in payload.split(separator: " ", omittingEmptySubsequences: true) {
+                let raw = String(token)
+                if raw.hasPrefix("-") {
+                    enabledCaps.remove(String(raw.dropFirst()))
+                } else {
+                    enabledCaps.insert(raw)
+                }
+            }
+            // SASL is the only cap that needs an additional handshake. Skip
+            // ahead if it wasn't part of this batch (e.g. user disabled SASL
+            // but we still asked for tag caps).
+            if enabledCaps.contains("sasl") && config.saslMechanism != .none {
+                phase = .authenticating
+                return ["AUTHENTICATE \(config.saslMechanism.rawValue)"]
+            }
             phase = .done
             return ["CAP END"]
+
+        case "NAK":
+            // Server refused some/all of our requested caps. Soldier on — we
+            // already registered them as "asked"; treat NAK as "none granted
+            // from this batch" and finish CAP. SASL not granted ⇒ no auth.
+            phase = .done
+            return ["CAP END"]
+
+        case "NEW":
+            // Server announces a new cap mid-session. We don't request these
+            // dynamically yet — record the value and move on.
+            let payload = msg.params.last ?? ""
+            for token in payload.split(separator: " ", omittingEmptySubsequences: true) {
+                let parts = token.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+                if parts.count > 1 {
+                    serverCapValues[String(parts[0])] = String(parts[1])
+                }
+            }
+            return []
+
+        case "DEL":
+            let payload = msg.params.last ?? ""
+            for token in payload.split(separator: " ", omittingEmptySubsequences: true) {
+                enabledCaps.remove(String(token))
+            }
+            return []
 
         default:
             return []

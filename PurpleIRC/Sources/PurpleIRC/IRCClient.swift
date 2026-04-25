@@ -200,6 +200,19 @@ final class IRCClient {
         for line in n.handle(msg) { send(line) }
     }
 
+    /// Caps the server actually granted us this session. Empty when CAP
+    /// negotiation hasn't completed yet. Read by IRCConnection to decide
+    /// whether to honour `@time` tags, expect echo-message, etc.
+    var enabledCaps: Set<String> {
+        negotiator?.enabledCaps ?? []
+    }
+
+    /// Server-side cap values (e.g. `chathistory=1000`). Same lifetime as
+    /// `enabledCaps` — keyed by cap name.
+    var serverCapValues: [String: String] {
+        negotiator?.serverCapValues ?? [:]
+    }
+
     // MARK: - Receive pipeline
 
     private func receiveLoop() {

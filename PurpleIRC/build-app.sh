@@ -36,6 +36,14 @@ ICONSET_DIR="$(mktemp -d)/AppIcon.iconset"
 swift Scripts/generate-icon.swift "$ICONSET_DIR" >/dev/null
 iconutil -c icns "$ICONSET_DIR" -o "$RESOURCES/AppIcon.icns"
 
+# AppleScript dictionary. The .sdef declares verbs the OS will route via
+# Apple Events to NSScriptCommand subclasses (see AppleScriptCommands.swift).
+# Combined with NSAppleScriptEnabled + OSAScriptingDefinition in Info.plist,
+# this is what makes Script Editor's "Open Dictionary…" find PurpleIRC.
+if [ -f "Resources/PurpleIRC.sdef" ]; then
+    cp "Resources/PurpleIRC.sdef" "$RESOURCES/PurpleIRC.sdef"
+fi
+
 # HEREDOC without quoted tag so $SHORT_VERSION / $BUILD_NUMBER expand.
 cat > "$CONTENTS/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -54,6 +62,8 @@ cat > "$CONTENTS/Info.plist" <<PLIST
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
+    <key>NSAppleScriptEnabled</key><true/>
+    <key>OSAScriptingDefinition</key><string>PurpleIRC.sdef</string>
 </dict>
 </plist>
 PLIST

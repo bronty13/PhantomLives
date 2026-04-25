@@ -115,6 +115,47 @@ final class IRCConnection: ObservableObject, Identifiable {
     private var lastAwayReplyAt: [String: Date] = [:]
     private static let awayReplyInterval: TimeInterval = 120 // seconds per-nick
 
+    // MARK: - IRCv3 cap-derived state
+
+    /// Lowercased nick → away reason ("" when away with no reason given).
+    /// Missing key means the user is back / never seen as away. Populated
+    /// by the IRCv3 AWAY notification (cap `away-notify`).
+    @Published private(set) var awayByNick: [String: String] = [:]
+
+    /// Lowercased nick → services account name. Populated by the
+    /// `extended-join` cap on JOIN, the `account-notify` cap on the inline
+    /// ACCOUNT command, and `account-tag` on individual messages.
+    @Published private(set) var accountByNick: [String: String] = [:]
+
+    /// True once CAP negotiation has reached a state where these caps are
+    /// trustworthy. Used to gate behaviour like echo-message dedup so the
+    /// pre-CAP burst of activity doesn't accidentally swallow lines.
+    private var hasEchoMessageCap: Bool { client.enabledCaps.contains("echo-message") }
+
+    /// IRCv3 BATCH bookkeeping. Each open batch records its type and any
+    /// extra metadata the server attached so handlers can decide what to
+    /// do with messages bearing that batch's `@batch=` tag.
+    private struct BatchInfo {
+        let id: String
+        let type: String
+        let params: [String]
+    }
+    private var openBatches: [String: BatchInfo] = [:]
+
+    /// Channels we already requested CHATHISTORY for in this session, keyed
+    /// lowercase. Re-joins shouldn't double-fetch — most servers (Soju,
+    /// Ergo) don't gate the request and would happily replay it.
+    private var chatHistoryFetched: Set<String> = []
+
+    /// Effective CHATHISTORY upper bound for `LATEST`/`BEFORE` requests. The
+    /// `chathistory=N` ISUPPORT-style cap argument advertises the server's
+    /// max; we cap at 100 to avoid a flood for users joining busy rooms.
+    private var chatHistoryLimit: Int {
+        let advertised = Int(client.serverCapValues["chathistory"]
+                          ?? client.serverCapValues["draft/chathistory"] ?? "")
+        return min(100, max(20, advertised ?? 50))
+    }
+
     init(profile: ServerProfile, watchlist: WatchlistService) {
         self.profile = profile
         self.watchlist = watchlist
@@ -321,16 +362,25 @@ final class IRCConnection: ObservableObject, Identifiable {
 
     private func handleState(_ s: IRCConnectionState) {
         state = s
+        let logCat = "IRC.\(displayName)"
         switch s {
-        case .connecting: appendInfo("Connecting…")
-        case .connected:  appendInfo("TCP established. Authenticating…")
+        case .connecting:
+            appendInfo("Connecting…")
+            AppLog.shared.info("Connecting to \(profile.host):\(profile.port) (TLS=\(profile.useTLS))",
+                              category: logCat)
+        case .connected:
+            appendInfo("TCP established. Authenticating…")
+            AppLog.shared.info("TCP established; CAP/SASL handshake in progress.",
+                              category: logCat)
         case .disconnected:
             appendInfo("Disconnected.")
+            AppLog.shared.notice("Disconnected from \(profile.host).", category: logCat)
             haveRegisteredWatchlist = false
             watchlist.onDisconnected()
             scheduleReconnectIfNeeded()
         case .failed(let err):
             appendError("Connection failed: \(err)")
+            AppLog.shared.error("Connection failed: \(err)", category: logCat)
             haveRegisteredWatchlist = false
             watchlist.onDisconnected()
             scheduleReconnectIfNeeded()
@@ -428,6 +478,14 @@ final class IRCConnection: ObservableObject, Identifiable {
             handleKick(msg)
         case "MODE":
             handleMode(msg)
+        case "AWAY":
+            handleAwayNotify(msg)
+        case "ACCOUNT":
+            handleAccountNotify(msg)
+        case "CHGHOST":
+            handleChgHost(msg)
+        case "BATCH":
+            handleBatch(msg)
         case "ERROR":
             let txt = msg.params.joined(separator: " ")
             appendError("ERROR: \(txt)")
@@ -446,6 +504,7 @@ final class IRCConnection: ObservableObject, Identifiable {
                 let who = msg.params[1]
                 let why = msg.params[2]
                 appendInfo("\(who) is away: \(why)")
+                awayByNick[who.lowercased()] = why
             }
         case "305": // unaway
             isAway = false
@@ -487,6 +546,10 @@ final class IRCConnection: ObservableObject, Identifiable {
                 haveRegisteredWatchlist = true
                 watchlist.onWelcomeCompleted()
                 runPostWelcome()
+                let caps = client.enabledCaps.sorted().joined(separator: ", ")
+                AppLog.shared.info(
+                    "Welcome completed on \(displayName); negotiated caps: [\(caps.isEmpty ? "none" : caps)]",
+                    category: "IRC.\(displayName)")
             }
         case "372", "375", "371", "002", "003", "004", "250", "251", "252", "253", "254", "255", "265", "266":
             logNumeric(msg)
@@ -521,6 +584,94 @@ final class IRCConnection: ObservableObject, Identifiable {
         }
     }
 
+    /// Per-message timestamp source. Honours the IRCv3 `server-time` cap when
+    /// the server tagged the line; falls back to the client's clock for
+    /// untagged messages and locally-generated chat lines.
+    private func messageTime(_ msg: IRCMessage) -> Date {
+        msg.serverTime ?? Date()
+    }
+
+    /// IRCv3 AWAY notification (`away-notify` cap). The server pushes this
+    /// inline whenever any visible user toggles their away state, so the
+    /// client doesn't need to poll WHOIS to find out.
+    /// Format: `:nick!user@host AWAY [:reason]` — empty trailing means back.
+    private func handleAwayNotify(_ msg: IRCMessage) {
+        guard let nick = msg.nickFromPrefix else { return }
+        let key = nick.lowercased()
+        if let reason = msg.params.first, !reason.isEmpty {
+            awayByNick[key] = reason
+        } else {
+            awayByNick.removeValue(forKey: key)
+        }
+    }
+
+    /// IRCv3 `account-notify`. `:nick!user@host ACCOUNT <name|*>` — `*` means
+    /// the user logged out of services.
+    private func handleAccountNotify(_ msg: IRCMessage) {
+        guard let nick = msg.nickFromPrefix, let acct = msg.params.first else { return }
+        let key = nick.lowercased()
+        if acct == "*" {
+            accountByNick.removeValue(forKey: key)
+        } else {
+            accountByNick[key] = acct
+        }
+    }
+
+    /// IRCv3 CHGHOST. Server pushes when a user's user@host changes
+    /// (typically a hostmask cloak being applied). We refresh the cached
+    /// userhost so the seen tracker / WHOIS routing has the new value.
+    private func handleChgHost(_ msg: IRCMessage) {
+        guard let nick = msg.nickFromPrefix, msg.params.count >= 2 else { return }
+        let user = msg.params[0]
+        let host = msg.params[1]
+        lastUserHostByNick[nick.lowercased()] = "\(user)@\(host)"
+    }
+
+    /// IRCv3 BATCH start/end. `+id <type> [params]` opens a batch; `-id`
+    /// closes it. Messages within the batch carry an `@batch=id` tag; we
+    /// surface the open batches so handlers can ask `msg.batchRef` and check
+    /// `openBatches[ref]?.type` to decide presentation. Today we just bracket
+    /// CHATHISTORY playbacks with an info line so the user sees the boundary.
+    private func handleBatch(_ msg: IRCMessage) {
+        guard let token = msg.params.first else { return }
+        if token.hasPrefix("+") {
+            let id = String(token.dropFirst())
+            let type = msg.params.count > 1 ? msg.params[1] : ""
+            let extras = Array(msg.params.dropFirst(2))
+            openBatches[id] = BatchInfo(id: id, type: type, params: extras)
+            if type == "chathistory", let chan = extras.first,
+               let i = buffers.firstIndex(where: { $0.name == chan }) {
+                appendTo(bufferIndex: i, line: ChatLine(
+                    timestamp: messageTime(msg),
+                    kind: .info,
+                    text: "— Replaying recent history —"))
+            }
+        } else if token.hasPrefix("-") {
+            let id = String(token.dropFirst())
+            if let info = openBatches.removeValue(forKey: id), info.type == "chathistory",
+               let chan = info.params.first,
+               let i = buffers.firstIndex(where: { $0.name == chan }) {
+                appendTo(bufferIndex: i, line: ChatLine(
+                    timestamp: Date(),
+                    kind: .info,
+                    text: "— Live —"))
+            }
+        }
+    }
+
+    /// Issue a CHATHISTORY request for a channel we just joined. No-op when
+    /// the cap wasn't granted, when the request was already issued this
+    /// session, or when the buffer somehow doesn't exist. Servers that don't
+    /// know CHATHISTORY will just NAK the cap and we never get here.
+    private func requestChatHistory(for channel: String) {
+        let key = channel.lowercased()
+        guard !chatHistoryFetched.contains(key) else { return }
+        let caps = client.enabledCaps
+        guard caps.contains("chathistory") || caps.contains("draft/chathistory") else { return }
+        chatHistoryFetched.insert(key)
+        client.send("CHATHISTORY LATEST \(channel) * \(chatHistoryLimit)")
+    }
+
     private func monitorTargets(from msg: IRCMessage) -> [String] {
         guard let payload = msg.params.last else { return [] }
         return payload.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
@@ -532,6 +683,22 @@ final class IRCConnection: ObservableObject, Identifiable {
         var text = msg.params[1]
         let from = msg.nickFromPrefix ?? msg.prefix ?? "?"
         let fullPrefix = msg.prefix ?? from
+        let lineTime = messageTime(msg)
+
+        // Drop the server's echo of our own PRIVMSG when the `echo-message`
+        // cap is enabled — we already optimistically appended a local line in
+        // sendInput. Real backlog (BATCH/CHATHISTORY) carries a batchRef and
+        // is intentionally allowed through so users can replay history.
+        if hasEchoMessageCap,
+           from.lowercased() == self.nick.lowercased(),
+           msg.batchRef == nil {
+            return
+        }
+
+        // Track sender's services account when account-tag rides on the line.
+        if let acct = msg.account {
+            accountByNick[from.lowercased()] = acct
+        }
 
         let isCTCP = text.hasPrefix("\u{01}") && text.hasSuffix("\u{01}") && text.count >= 2
 
@@ -579,7 +746,7 @@ final class IRCConnection: ObservableObject, Identifiable {
                     $0.kind == .query && $0.name.caseInsensitiveCompare(from) == .orderedSame
                 }) {
                     appendTo(bufferIndex: qIdx, line: ChatLine(
-                        timestamp: Date(),
+                        timestamp: lineTime,
                         kind: .info,
                         text: info
                     ))
@@ -619,7 +786,7 @@ final class IRCConnection: ObservableObject, Identifiable {
             text = String(text.dropFirst(8).dropLast())
             let bIdx = indexOfOrCreateBuffer(name: bufferName, kind: kind)
             appendTo(bufferIndex: bIdx, line: ChatLine(
-                timestamp: Date(),
+                timestamp: lineTime,
                 kind: .action(nick: from),
                 text: text,
                 isMention: mention,
@@ -639,7 +806,7 @@ final class IRCConnection: ObservableObject, Identifiable {
         let bIdx = indexOfOrCreateBuffer(name: bufferName, kind: kind)
         if isNotice {
             appendTo(bufferIndex: bIdx, line: ChatLine(
-                timestamp: Date(),
+                timestamp: lineTime,
                 kind: .notice(from: from),
                 text: text,
                 highlightRuleID: hitRuleID,
@@ -647,9 +814,14 @@ final class IRCConnection: ObservableObject, Identifiable {
             ))
             emit(.notice(from: from, target: bufferName, text: text))
         } else {
+            // Self-echoes (echo-message cap is off, but we still see our own
+            // PRIVMSGs from CHATHISTORY replays carrying our nick): mark
+            // `isSelf` so the row renders with the same chrome as locally
+            // echoed lines.
+            let isSelf = from.lowercased() == self.nick.lowercased()
             appendTo(bufferIndex: bIdx, line: ChatLine(
-                timestamp: Date(),
-                kind: .privmsg(nick: from, isSelf: false),
+                timestamp: lineTime,
+                kind: .privmsg(nick: from, isSelf: isSelf),
                 text: text,
                 isMention: mention,
                 highlightRuleID: hitRuleID,
@@ -856,16 +1028,26 @@ final class IRCConnection: ObservableObject, Identifiable {
 
     private func handleJoin(_ msg: IRCMessage) {
         guard let chan = msg.params.first, let who = msg.nickFromPrefix else { return }
+        // extended-join: `:nick!u@h JOIN <channel> <account|*> :<realname>`
+        // Persist the account so replies can reference it (e.g. highlight
+        // rules matching on services account, not just nick).
+        if msg.params.count >= 3, msg.params[1] != "*" {
+            accountByNick[who.lowercased()] = msg.params[1]
+        }
         let bIdx = indexOfOrCreateBuffer(name: chan, kind: .channel)
         let isSelf = who.lowercased() == self.nick.lowercased()
+        let when = messageTime(msg)
         if isSelf {
             appendTo(bufferIndex: bIdx, line: ChatLine(
-                timestamp: Date(), kind: .info, text: "You joined \(chan)"))
+                timestamp: when, kind: .info, text: "You joined \(chan)"))
             selectedBufferID = buffers[bIdx].id
+            // Replay missed messages from the server's CHATHISTORY store
+            // when the cap is live. No-op if the cap wasn't granted.
+            requestChatHistory(for: chan)
         } else {
             watchlist.handleObservedActivity(nick: who, reason: "JOIN \(chan)")
             appendTo(bufferIndex: bIdx, line: ChatLine(
-                timestamp: Date(),
+                timestamp: when,
                 kind: .join(nick: who),
                 text: "\(who) joined"
             ))

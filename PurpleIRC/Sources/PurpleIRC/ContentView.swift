@@ -71,6 +71,10 @@ struct RootView: View {
     }
 }
 
+extension Notification.Name {
+    static let purpleShowAppLog = Notification.Name("PurpleIRC.showAppLog")
+}
+
 struct ContentView: View {
     @EnvironmentObject var model: ChatModel
     @Environment(\.openWindow) private var openWindow
@@ -159,6 +163,12 @@ struct ContentView: View {
         }
         .sheet(isPresented: $model.showRawLog) {
             RawLogView()
+        }
+        .sheet(isPresented: $model.showAppLog) {
+            LogViewerView()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .purpleShowAppLog)) { _ in
+            model.showAppLog = true
         }
         .sheet(isPresented: $model.showWatchlist) {
             WatchlistView(watchlist: model.watchlist)
@@ -811,6 +821,12 @@ struct FilesMenu: View {
             Self.openDirectory(supportDir.appendingPathComponent("seen", isDirectory: true))
         }
         Divider()
+        Button("View app log…") {
+            // The window's environmentObject is what we need to flip; menus
+            // can't reach @EnvironmentObject directly, so we post on the
+            // shared notification center and ContentView toggles state.
+            NotificationCenter.default.post(name: .purpleShowAppLog, object: nil)
+        }
         Button("Open PurpleIRC support folder") {
             Self.openDirectory(supportDir)
         }
