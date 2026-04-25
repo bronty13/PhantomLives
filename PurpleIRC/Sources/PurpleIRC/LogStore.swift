@@ -42,10 +42,35 @@ actor LogStore {
     /// wrapped lines with the header above.
     private var currentKey: SymmetricKey?
 
+    /// Persisted map of (network, buffer) name pairs that have ever been
+    /// logged. The on-disk filenames are SHA-256 slugs to keep the directory
+    /// opaque to disk browsers; this index is the only way to resolve a slug
+    /// back to its friendly name once the buffer leaves memory. Sealed with
+    /// the same DEK as the log files when one is set.
+    struct LogIndex: Codable, Equatable {
+        struct Entry: Codable, Equatable, Hashable {
+            var network: String
+            var buffer: String
+        }
+        var entries: [Entry] = []
+    }
+
+    /// In-memory index — backing for the on-disk `index.json`. Loaded
+    /// lazily; flushed back to disk only when an `append` produces a new
+    /// (network, buffer) pair that wasn't already there.
+    private var index: LogIndex?
+    private var indexLoaded: Bool = false
+
     init(baseURL: URL, rotateBytes: Int = 4 * 1024 * 1024) {
         self.baseURL = baseURL
         self.rotateBytes = rotateBytes
         try? fm.createDirectory(at: baseURL, withIntermediateDirectories: true)
+    }
+
+    /// Path of the index file relative to the logs root. Hidden behind a
+    /// computed property so any future relocation flows through one place.
+    private var indexURL: URL {
+        baseURL.appendingPathComponent("index.json", isDirectory: false)
     }
 
     /// ChatModel pushes the DEK in whenever the KeyStore unlocks or locks.
@@ -190,9 +215,110 @@ actor LogStore {
             } else {
                 try appendPlain(record: record, to: url)
             }
+            // Record the (network, buffer) pair so the chat-log viewer can
+            // resolve slug filenames back to friendly names even when the
+            // user isn't currently in that channel / connected to that
+            // network. Cheap; we cache the in-memory map and only persist
+            // when it changes shape.
+            recordInIndex(network: network, buffer: buffer)
         } catch {
             NSLog("PurpleIRC: log write failed for \(network)/\(buffer): \(error)")
         }
+    }
+
+    /// Every (network, buffer) pair the index knows about, deduplicated and
+    /// sorted by network then buffer. The chat-log viewer calls this so it
+    /// can list every on-disk log even when the buffer / connection isn't
+    /// currently in memory. Falls back to scanning the logs directory when
+    /// no index file exists yet (early adopters with logs predating the
+    /// index — names can't be recovered, but we surface the slugs so they
+    /// can at least see *something* is there).
+    func enumerateIndex() -> [LogIndex.Entry] {
+        loadIndexIfNeeded()
+        var combined = Set(index?.entries ?? [])
+        // Best-effort fallback for legacy installs: any directory whose
+        // .log files we have but no index entry shows up as raw slugs so
+        // the user knows the data exists. The viewer can still call
+        // `read(network:buffer:)` on the slug pair directly — slug() is
+        // idempotent on already-slugged input.
+        for entry in scanLegacyFiles() {
+            combined.insert(entry)
+        }
+        return combined.sorted {
+            if $0.network != $1.network {
+                return $0.network.localizedCaseInsensitiveCompare($1.network) == .orderedAscending
+            }
+            return $0.buffer.localizedCaseInsensitiveCompare($1.buffer) == .orderedAscending
+        }
+    }
+
+    /// Add a (network, buffer) pair to the index if it isn't already there.
+    /// Idempotent and cheap — only writes to disk when the in-memory set
+    /// actually changed shape. Called from the `append` happy path.
+    private func recordInIndex(network: String, buffer: String) {
+        loadIndexIfNeeded()
+        let entry = LogIndex.Entry(network: network, buffer: buffer)
+        if index?.entries.contains(entry) == true { return }
+        if index == nil { index = LogIndex() }
+        index?.entries.append(entry)
+        flushIndex()
+    }
+
+    /// Read the on-disk index into memory. Idempotent. Quietly returns an
+    /// empty index if the file doesn't exist or can't be unwrapped.
+    private func loadIndexIfNeeded() {
+        guard !indexLoaded else { return }
+        indexLoaded = true
+        guard let data = try? Data(contentsOf: indexURL) else { return }
+        guard let plain = try? EncryptedJSON.unwrap(data, key: currentKey) else { return }
+        if let decoded = try? JSONDecoder().decode(LogIndex.self, from: plain) {
+            index = decoded
+        }
+    }
+
+    /// Persist the in-memory index. Errors are swallowed — the index is
+    /// best-effort and a save failure shouldn't break logging.
+    private func flushIndex() {
+        guard let index else { return }
+        guard let data = try? JSONEncoder().encode(index) else { return }
+        _ = try? EncryptedJSON.safeWrite(data, to: indexURL, key: currentKey)
+    }
+
+    /// Walk the logs directory and produce one Entry per .log file found
+    /// without relying on the index. Used as a fallback for installs that
+    /// pre-date the index — slugs can't be reversed but at least they're
+    /// visible. The viewer feeds the raw slugs straight back into `read`.
+    private func scanLegacyFiles() -> [LogIndex.Entry] {
+        guard let networkDirs = try? fm.contentsOfDirectory(
+            at: baseURL, includingPropertiesForKeys: nil) else { return [] }
+        var out: [LogIndex.Entry] = []
+        for netDir in networkDirs {
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: netDir.path, isDirectory: &isDir),
+                  isDir.boolValue else { continue }
+            // Skip the index file itself if it ever ends up at this depth.
+            if netDir.lastPathComponent == "index.json" { continue }
+            guard let logs = try? fm.contentsOfDirectory(
+                at: netDir, includingPropertiesForKeys: nil) else { continue }
+            for log in logs where log.pathExtension == "log" {
+                let bufSlug = log.deletingPathExtension().lastPathComponent
+                let netSlug = netDir.lastPathComponent
+                let entry = LogIndex.Entry(
+                    network: "(slug \(netSlug.prefix(8)))",
+                    buffer: "(slug \(bufSlug.prefix(8)))")
+                // Only push as legacy when the index doesn't already cover
+                // this directory under a real name. If any indexed entry
+                // hashes to this directory, skip the placeholder.
+                let indexHasIt = (index?.entries.contains {
+                    self.slug($0.network) == netSlug
+                    && self.slug($0.buffer) == bufSlug
+                }) ?? false
+                if !indexHasIt {
+                    out.append(entry)
+                }
+            }
+        }
+        return out
     }
 
     /// Returns the file contents as user-readable text. Encrypted records

@@ -21,12 +21,15 @@ struct ChatLogViewerView: View {
     @Environment(\.dismiss) private var dismiss
 
     /// One row in the picker — a (network, buffer-name) pair. Identifiable
-    /// so SwiftUI can diff the list cleanly.
+    /// so SwiftUI can diff the list cleanly. `isLive` distinguishes a buffer
+    /// currently in memory (chat is happening) from a historic / offline
+    /// entry resolved through the LogStore index.
     struct LogTarget: Identifiable, Hashable {
         let id: String          // "<network>::<buffer>" — unique
         let networkName: String
         let bufferName: String
-        let kindLabel: String   // "channel" / "query" / "server"
+        let kindLabel: String   // "channel" / "query" / "server" / "archive"
+        let isLive: Bool
     }
 
     @State private var targets: [LogTarget] = []
@@ -84,10 +87,16 @@ struct ChatLogViewerView: View {
                         ForEach(group.targets) { t in
                             HStack(spacing: 6) {
                                 Image(systemName: iconFor(t.kindLabel))
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(t.isLive ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
                                 Text(t.bufferName)
                                     .lineLimit(1)
                                     .truncationMode(.tail)
+                                    .foregroundStyle(t.isLive ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                                if !t.isLive {
+                                    Text("(archived)")
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                }
                             }
                             .tag(t.id as LogTarget.ID?)
                         }
@@ -172,11 +181,14 @@ struct ChatLogViewerView: View {
 
     // MARK: - Helpers
 
-    /// Iterate all live connections, plus their buffers, and produce one
-    /// `LogTarget` per (network, buffer) pair. Server buffers are exposed
-    /// too — they hold MOTD/notice traffic that's useful to search.
+    /// Walk live connections + the LogStore's persistent index. Live entries
+    /// keep their buffer kind; entries pulled from the index without a
+    /// matching live buffer are tagged "archive" and rendered with a
+    /// dimmed icon so the user can tell they're historic.
     private func rebuildTargetList() {
+        var liveIDs = Set<String>()
         var out: [LogTarget] = []
+        // 1) live connections — most recent state, includes buffer kind.
         for conn in model.connections {
             for buf in conn.buffers {
                 let kind: String
@@ -185,24 +197,44 @@ struct ChatLogViewerView: View {
                 case .query:   kind = "query"
                 case .server:  kind = "server"
                 }
+                let id = "\(conn.displayName)::\(buf.name)"
+                liveIDs.insert(id)
                 out.append(LogTarget(
-                    id: "\(conn.displayName)::\(buf.name)",
+                    id: id,
                     networkName: conn.displayName,
                     bufferName: buf.name,
-                    kindLabel: kind))
+                    kindLabel: kind,
+                    isLive: true))
             }
         }
-        // Stable sort: networks alpha, channels first within a network.
-        out.sort { lhs, rhs in
-            if lhs.networkName != rhs.networkName {
-                return lhs.networkName.localizedCaseInsensitiveCompare(rhs.networkName) == .orderedAscending
+        // 2) historic entries from the LogStore's index. Run async on the
+        // actor; reload the table when results arrive. Live IDs already
+        // captured above so the indexed pass can skip duplicates.
+        let live = liveIDs
+        Task { @MainActor in
+            let entries = await model.logStore.enumerateIndex()
+            var combined = out
+            for e in entries {
+                let id = "\(e.network)::\(e.buffer)"
+                if live.contains(id) { continue }
+                combined.append(LogTarget(
+                    id: id,
+                    networkName: e.network,
+                    bufferName: e.buffer,
+                    kindLabel: "archive",
+                    isLive: false))
             }
-            if lhs.kindLabel != rhs.kindLabel {
-                return Self.kindOrder(lhs.kindLabel) < Self.kindOrder(rhs.kindLabel)
+            combined.sort { lhs, rhs in
+                if lhs.networkName != rhs.networkName {
+                    return lhs.networkName.localizedCaseInsensitiveCompare(rhs.networkName) == .orderedAscending
+                }
+                if lhs.kindLabel != rhs.kindLabel {
+                    return Self.kindOrder(lhs.kindLabel) < Self.kindOrder(rhs.kindLabel)
+                }
+                return lhs.bufferName.localizedCaseInsensitiveCompare(rhs.bufferName) == .orderedAscending
             }
-            return lhs.bufferName.localizedCaseInsensitiveCompare(rhs.bufferName) == .orderedAscending
+            self.targets = combined
         }
-        self.targets = out
     }
 
     private static func kindOrder(_ kind: String) -> Int {
@@ -210,7 +242,8 @@ struct ChatLogViewerView: View {
         case "channel": return 0
         case "query":   return 1
         case "server":  return 2
-        default:        return 3
+        case "archive": return 3
+        default:        return 4
         }
     }
 
@@ -232,6 +265,7 @@ struct ChatLogViewerView: View {
         case "channel": return "number"
         case "query":   return "person.fill"
         case "server":  return "server.rack"
+        case "archive": return "archivebox"
         default:        return "doc.text"
         }
     }

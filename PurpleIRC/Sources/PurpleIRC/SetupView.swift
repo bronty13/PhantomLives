@@ -511,7 +511,26 @@ struct AddressBookSetup: View {
             }
         }
         .onAppear {
-            if selection == nil { selection = settings.settings.addressBook.first?.id }
+            // The sidebar's "Edit address book entry…" passes the entry's
+            // UUID via `pendingAddressBookSelection`. When set, jump to it
+            // directly instead of the default first-row landing. Cleared
+            // after consume so re-opening the tab doesn't re-fire.
+            if let target = model.pendingAddressBookSelection,
+               settings.settings.addressBook.contains(where: { $0.id == target }) {
+                selection = target
+                model.pendingAddressBookSelection = nil
+            } else if selection == nil {
+                selection = settings.settings.addressBook.first?.id
+            }
+        }
+        .onChange(of: model.pendingAddressBookSelection) { _, newValue in
+            // Handles the case where Setup is already open and the
+            // directive arrives mid-flight.
+            guard let target = newValue,
+                  settings.settings.addressBook.contains(where: { $0.id == target })
+            else { return }
+            selection = target
+            model.pendingAddressBookSelection = nil
         }
     }
 

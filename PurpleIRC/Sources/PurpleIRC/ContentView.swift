@@ -598,6 +598,9 @@ struct ContactRow: View {
                 Button("Notify when online") { setWatch(true) }
             }
             Button("Edit address book entry…") {
+                // Pre-select this contact so Setup lands on the right
+                // row instead of the first one.
+                model.pendingAddressBookSelection = entry.id
                 model.pendingSetupTab = .addressBook
                 model.showSetup = true
             }
@@ -723,6 +726,9 @@ struct BufferRow: View {
         Divider()
         if isInAddressBook(nick) {
             Button("Edit address book entry…") {
+                if let entry = addressBookEntry(for: nick) {
+                    model.pendingAddressBookSelection = entry.id
+                }
                 model.pendingSetupTab = .addressBook
                 model.showSetup = true
             }
@@ -760,6 +766,15 @@ struct BufferRow: View {
 
     private func isInAddressBook(_ nick: String) -> Bool {
         model.settings.settings.addressBook.contains {
+            $0.nick.caseInsensitiveCompare(nick) == .orderedSame
+        }
+    }
+
+    /// First address-book entry whose nick matches `nick` case-insensitively.
+    /// Used by the right-click "Edit…" path to pass a UUID into Setup so the
+    /// AddressBook tab can pre-select the same entry the user just acted on.
+    private func addressBookEntry(for nick: String) -> AddressEntry? {
+        model.settings.settings.addressBook.first {
             $0.nick.caseInsensitiveCompare(nick) == .orderedSame
         }
     }

@@ -218,6 +218,11 @@ final class ChatModel: ObservableObject {
     /// Cleared by SetupView once consumed so the next plain "Setup" button
     /// click drops the user on whatever tab they last used (or Servers).
     @Published var pendingSetupTab: SetupView.Tab? = nil
+    /// One-shot directive for AddressBookSetup to pre-select a specific
+    /// entry. Used by the sidebar's "Edit address book entry…" right-click
+    /// action so the user lands on the row they just acted on instead of
+    /// the first entry in the list.
+    @Published var pendingAddressBookSelection: UUID? = nil
     @Published var showChannelList: Bool = false
     @Published var showSeenList: Bool = false
     @Published var showHelp: Bool = false
