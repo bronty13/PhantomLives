@@ -41,7 +41,17 @@ struct BufferView: View {
         let suffix: String        // ": " when first word, " " otherwise
     }
 
-    var buffer: Buffer { model.buffers[bufferIndex] }
+    /// Defensive bounds-check — when the active buffer is removed (e.g.
+    /// the user picks "Leave channel" from the sidebar context menu),
+    /// SwiftUI can briefly re-evaluate this view's body with a stale
+    /// `bufferIndex` before ContentView swaps in a new BufferView. A
+    /// force-subscript would crash on that one frame; the placeholder
+    /// disappears in the very next render pass.
+    var buffer: Buffer {
+        let bs = model.buffers
+        if bufferIndex < bs.count { return bs[bufferIndex] }
+        return Buffer(name: "", kind: .server)
+    }
 
     var body: some View {
         VStack(spacing: 0) {

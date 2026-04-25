@@ -380,7 +380,8 @@ struct BufferRow: View {
             }
             if isHovering || isSelected {
                 Button {
-                    model.closeBuffer(id: buffer.id)
+                    let id = buffer.id
+                    DispatchQueue.main.async { model.closeBuffer(id: id) }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.secondary)
@@ -409,7 +410,14 @@ struct BufferRow: View {
     /// Actions appropriate to a channel row in the sidebar.
     @ViewBuilder
     private var channelContextMenu: some View {
-        Button("Leave \(buffer.name)") { model.closeBuffer(id: buffer.id) }
+        Button("Leave \(buffer.name)") {
+            // Defer one runloop tick so the context menu can fully dismiss
+            // and SwiftUI can complete the row teardown before we mutate
+            // the buffers array — without this, the active-channel "Leave"
+            // crashed on a stale BufferView body re-evaluation.
+            let id = buffer.id
+            DispatchQueue.main.async { model.closeBuffer(id: id) }
+        }
         Divider()
         Button("Copy channel name") {
             copyToClipboard(buffer.name)
@@ -426,7 +434,10 @@ struct BufferRow: View {
     @ViewBuilder
     private var queryContextMenu: some View {
         let nick = buffer.name
-        Button("Close query with \(nick)") { model.closeBuffer(id: buffer.id) }
+        Button("Close query with \(nick)") {
+            let id = buffer.id
+            DispatchQueue.main.async { model.closeBuffer(id: id) }
+        }
         Divider()
         Button("WHOIS \(nick)")  { model.sendInput("/whois \(nick)") }
         Button("WHOWAS \(nick)") { model.sendInput("/whowas \(nick)") }
