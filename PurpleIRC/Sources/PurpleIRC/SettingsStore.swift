@@ -395,6 +395,13 @@ struct AppSettings: Codable {
     /// server profile's UUID string. Empty value = "nothing was open."
     var lastSession: [String: SessionSnapshot] = [:]
 
+    /// Local-LLM assistant configuration. Off by default; enabling it
+    /// shows a suggestion strip above the input bar in query buffers.
+    var assistant: AssistantSettings = AssistantSettings()
+    /// User's persona library — built-ins plus anything they've added.
+    /// Populated lazily the first time the assistant is enabled.
+    var assistantPersonas: [AssistantPersona] = []
+
     // Highlight rules (row tint + matched-word color + per-rule alerts)
     var highlightRules: [HighlightRule] = []
 
@@ -465,6 +472,8 @@ struct AppSettings: Codable {
         self.collapseJoinPart = try c.decodeIfPresent(Bool.self, forKey: .collapseJoinPart) ?? true
         self.restoreOpenBuffersOnLaunch = try c.decodeIfPresent(Bool.self, forKey: .restoreOpenBuffersOnLaunch) ?? true
         self.lastSession = try c.decodeIfPresent([String: SessionSnapshot].self, forKey: .lastSession) ?? [:]
+        self.assistant = try c.decodeIfPresent(AssistantSettings.self, forKey: .assistant) ?? AssistantSettings()
+        self.assistantPersonas = try c.decodeIfPresent([AssistantPersona].self, forKey: .assistantPersonas) ?? []
         self.highlightRules = try c.decodeIfPresent([HighlightRule].self, forKey: .highlightRules) ?? []
         self.triggerRules = try c.decodeIfPresent([TriggerRule].self, forKey: .triggerRules) ?? []
         self.seenTrackingEnabled = try c.decodeIfPresent(Bool.self, forKey: .seenTrackingEnabled) ?? false

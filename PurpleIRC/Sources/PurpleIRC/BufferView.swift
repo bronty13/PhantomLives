@@ -518,6 +518,15 @@ struct BufferView: View {
 
     private var inputBar: some View {
         VStack(spacing: 0) {
+            // Assistant suggestion strip — only renders when the buffer
+            // is engaged with the local-LLM assistant. Sits above the
+            // command-hints popover so the two never visually fight.
+            AssistantSuggestionStrip(bufferIndex: bufferIndex,
+                                     onAccept: { text in input = text },
+                                     onSendDirect: { text in
+                                         sendDirect(text)
+                                     })
+                .transition(.opacity)
             if showingCommandHints {
                 commandSuggestionList
                     .transition(.opacity)
@@ -823,6 +832,19 @@ struct BufferView: View {
         case .channel: return "Message \(buffer.name) — or /command"
         case .query: return "Message \(buffer.name) — or /command"
         }
+    }
+
+    /// Send a text directly without going through the input field.
+    /// Used by the assistant suggestion strip's "Send" action when the
+    /// user accepts a draft as-is. Bypasses the input-bound paste
+    /// detection (no newlines in single-line drafts), updates history.
+    private func sendDirect(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        history.append(trimmed)
+        if history.count > 200 { history.removeFirst() }
+        historyPos = history.count
+        model.sendInput(trimmed)
     }
 
     private func submit() {

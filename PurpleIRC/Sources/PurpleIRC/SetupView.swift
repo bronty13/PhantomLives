@@ -1247,10 +1247,16 @@ struct BotSetup: View {
 
     var body: some View {
         VStack(spacing: 16) {
+            assistantSection
+            Divider()
             seenSection
             Divider()
             triggersSection
         }
+    }
+
+    private var assistantSection: some View {
+        AssistantSetupSection(settings: settings)
     }
 
     private var seenSection: some View {

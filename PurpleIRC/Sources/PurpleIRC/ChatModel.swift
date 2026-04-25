@@ -274,6 +274,11 @@ final class ChatModel: ObservableObject {
     /// each open buffer instead of an empty channel.
     let sessionHistory: SessionHistoryStore
 
+    /// Local-LLM-backed assistant. Off until the user enables it in
+    /// Setup → Bot. Fires suggestions into the strip above the input
+    /// bar; never sends without explicit user confirmation.
+    let assistant = AssistantEngine()
+
     private var cancellables = Set<AnyCancellable>()
     /// Per-connection cancellables, keyed by connection id, so removing a
     /// connection can drop its subscriptions cleanly.
@@ -313,6 +318,27 @@ final class ChatModel: ObservableObject {
         // Initial backfill — covers buffers from the seed connection plus
         // anything in lastSession from a previous run.
         backfillLogIndexFromLiveState()
+        // Assistant engine — first-launch personas + event subscription.
+        seedAssistantPersonasIfNeeded()
+        assistant.personasProvider = { [weak self] in
+            self?.settings.settings.assistantPersonas ?? []
+        }
+        assistant.settingsProvider = { [weak self] in
+            self?.settings.settings.assistant ?? AssistantSettings()
+        }
+        assistant.sendBlock = { [weak self] cid, bid, text in
+            self?.sendAssistantSuggestion(connectionID: cid,
+                                          bufferID: bid, text: text)
+        }
+        assistant.attach(eventStream: events.eraseToAnyPublisher(),
+                         resolveBufferID: { [weak self] cid, bufName in
+            guard let self,
+                  let conn = self.connections.first(where: { $0.id == cid })
+            else { return nil }
+            return conn.buffers.first(where: {
+                $0.name.lowercased() == bufName.lowercased()
+            })?.id
+        })
         // Capture the trailing window of every buffer at quit. The willTerminate
         // notification fires on the main thread; we MUST save synchronously
         // because the run loop is shutting down. An earlier version wrapped
@@ -770,6 +796,11 @@ final class ChatModel: ObservableObject {
                 // files on the fly when the keystore is unlocked.
                 showChatLogs = true
                 return
+            case "assist", "ai", "bot":
+                // Toggle the local-LLM assistant on the active query.
+                // Suggestion-only — no auto-send.
+                toggleAssistantOnSelected()
+                return
             case "identity":
                 handleIdentityCommand(rest: rest, on: conn)
                 return
@@ -1132,5 +1163,81 @@ extension ChatModel: WatchlistDelegate {
         if let active = activeConnection {
             active.watchlistRoutePostInfo(text)
         }
+    }
+
+    // MARK: - Assistant integration
+
+    /// Populate the persona library on first launch with the built-in
+    /// templates. Idempotent — re-running won't re-add templates the
+    /// user has since renamed or deleted (we identify by the fixed
+    /// builtin UUIDs in `AssistantPersona.defaultPersonas`).
+    private func seedAssistantPersonasIfNeeded() {
+        let existingIDs = Set(settings.settings.assistantPersonas.map { $0.id })
+        var added = false
+        for builtin in AssistantPersona.defaultPersonas() {
+            if !existingIDs.contains(builtin.id) {
+                settings.settings.assistantPersonas.append(builtin)
+                added = true
+            }
+        }
+        if added,
+           settings.settings.assistant.defaultPersonaID == nil,
+           let first = settings.settings.assistantPersonas.first {
+            settings.settings.assistant.defaultPersonaID = first.id
+        }
+    }
+
+    /// Toggle the assistant on / off for the active query buffer. Echoes
+    /// state into the buffer so the user has a clear log of what changed.
+    /// Returns true when engagement is now ON.
+    @discardableResult
+    func toggleAssistantOnSelected() -> Bool {
+        guard settings.settings.assistant.enabled else {
+            activeConnection?.appendInfoOnSelected(
+                "Assistant is disabled. Enable it in Setup → Bot → Assistant.")
+            return false
+        }
+        guard let conn = activeConnection,
+              let bufID = conn.selectedBufferID,
+              let buf = conn.buffers.first(where: { $0.id == bufID })
+        else { return false }
+        guard buf.kind == .query else {
+            activeConnection?.appendInfoOnSelected(
+                "/assist only works in query buffers — channels are too noisy for one-on-one suggestions.")
+            return false
+        }
+        // Make sure the engine has a closure that returns this buffer's
+        // lines on demand. Re-registering each time is fine (idempotent
+        // overwrite) and ensures rejoined buffers get a fresh closure.
+        let connRef = conn
+        assistant.registerHistoryProvider(bufferID: bufID) { [weak connRef] in
+            connRef?.buffers.first(where: { $0.id == bufID })?.lines ?? []
+        }
+        let now = assistant.toggleEngagement(bufferID: bufID)
+        if now {
+            let persona = assistant.activePersona(bufferID: bufID)
+            conn.appendInfoOnSelected(
+                "Assistant engaged on /\(buf.name) — persona: \(persona?.name ?? "none"). New incoming messages will draft a reply you can review.")
+        } else {
+            assistant.removeHistoryProvider(bufferID: bufID)
+            conn.appendInfoOnSelected("Assistant disengaged from /\(buf.name).")
+        }
+        return now
+    }
+
+    /// User accepted a suggestion (or edited it). Threads through the
+    /// connection's normal sendInput so /msg, history, logs, and the
+    /// outbound event all fire as if the user typed it themselves.
+    func sendAssistantSuggestion(connectionID: UUID, bufferID: UUID,
+                                 text: String) {
+        guard let conn = connections.first(where: { $0.id == connectionID }),
+              let buf = conn.buffers.first(where: { $0.id == bufferID })
+        else { return }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        // Use /msg so the path is identical to the user typing the
+        // message manually — no special-case rendering.
+        conn.sendInput("/msg \(buf.name) \(trimmed)", from: bufferID)
+        assistant.dismissSuggestion(bufferID: bufferID)
     }
 }
