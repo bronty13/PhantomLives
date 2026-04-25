@@ -1,6 +1,7 @@
 import Foundation
 import JavaScriptCore
 import Combine
+import CryptoKit
 
 /// PurpleBot — the in-app scripting host. Wraps a single `JSContext`, exposes
 /// an `irc` / `console` surface to JS, and fans out every `IRCConnectionEvent`
@@ -80,9 +81,32 @@ final class BotHost: ObservableObject {
 
     // MARK: - Script storage
 
+    /// DEK pushed in by ChatModel whenever the keystore changes state. When
+    /// non-nil, index.json AND every .js source file are wrapped with the
+    /// shared envelope. Plaintext files keep loading because EncryptedJSON
+    /// passes them through verbatim.
+    private var currentKey: SymmetricKey?
+
+    func setEncryptionKey(_ key: SymmetricKey?) {
+        let changed = (key != nil) != (currentKey != nil)
+        currentKey = key
+        if changed {
+            // Newly-keyed: re-read so any encrypted index/script that was
+            // unreadable a moment ago decodes now.
+            loadIndex()
+            rebuildContext()
+        }
+    }
+
     private func loadIndex() {
-        guard let data = try? Data(contentsOf: indexURL),
-              let decoded = try? JSONDecoder().decode([BotScript].self, from: data) else {
+        guard let raw = try? Data(contentsOf: indexURL) else {
+            scripts = []
+            return
+        }
+        guard let json = try? EncryptedJSON.unwrap(raw, key: currentKey),
+              let decoded = try? JSONDecoder().decode([BotScript].self, from: json) else {
+            // Encrypted index with no key yet → leave scripts empty until
+            // setEncryptionKey rolls through.
             scripts = []
             return
         }
@@ -90,19 +114,23 @@ final class BotHost: ObservableObject {
     }
 
     private func saveIndex() {
-        if let data = try? JSONEncoder().encode(scripts) {
-            try? data.write(to: indexURL, options: .atomic)
-        }
+        guard let plain = try? JSONEncoder().encode(scripts) else { return }
+        guard let bytes = try? EncryptedJSON.wrap(plain, key: currentKey) else { return }
+        try? bytes.write(to: indexURL, options: .atomic)
     }
 
     func scriptSource(_ script: BotScript) -> String {
         let url = scriptsDir.appendingPathComponent(script.filename)
-        return (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        guard let raw = try? Data(contentsOf: url) else { return "" }
+        guard let plain = try? EncryptedJSON.unwrap(raw, key: currentKey) else { return "" }
+        return String(data: plain, encoding: .utf8) ?? ""
     }
 
     private func writeScript(_ script: BotScript, source: String) {
         let url = scriptsDir.appendingPathComponent(script.filename)
-        try? source.write(to: url, atomically: true, encoding: .utf8)
+        let plain = Data(source.utf8)
+        guard let bytes = try? EncryptedJSON.wrap(plain, key: currentKey) else { return }
+        try? bytes.write(to: url, options: .atomic)
     }
 
     @discardableResult

@@ -562,6 +562,9 @@ struct IgnoreSetup: View {
 struct BehaviorSetup: View {
     @ObservedObject var settings: SettingsStore
     @EnvironmentObject var model: ChatModel
+    @State private var legacyLogCount: Int = 0
+    @State private var showConvertConfirm: Bool = false
+    @State private var convertResultMessage: String? = nil
 
     var body: some View {
         Form {
@@ -582,6 +585,21 @@ struct BehaviorSetup: View {
                 }
                 Text("Logs rotate at 4 MB per channel. File names are SHA-256 hashes of the network and channel/nick, so someone browsing the folder can't tell which channels you log.")
                     .font(.caption).foregroundStyle(.tertiary)
+                if legacyLogCount > 0 {
+                    HStack {
+                        Label("\(legacyLogCount) plaintext log file\(legacyLogCount == 1 ? "" : "s") left over from before encryption was on.",
+                              systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                        Spacer()
+                        Button("Convert and delete originals…") {
+                            showConvertConfirm = true
+                        }
+                    }
+                }
+                if let msg = convertResultMessage {
+                    Text(msg).font(.caption).foregroundStyle(.secondary)
+                }
             }
             Section("Log retention") {
                 Toggle("Auto-delete logs older than N days",
@@ -670,6 +688,26 @@ struct BehaviorSetup: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear { refreshLegacyLogCount() }
+        .confirmationDialog(
+            "Convert \(legacyLogCount) plaintext log file\(legacyLogCount == 1 ? "" : "s")?",
+            isPresented: $showConvertConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Convert and delete originals", role: .destructive) {
+                model.convertLegacyPlaintextLogs { count in
+                    convertResultMessage = "Converted \(count) file\(count == 1 ? "" : "s") and removed the plaintext originals."
+                    refreshLegacyLogCount()
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Each plaintext log will be re-encrypted into the matching encrypted file. The original plaintext file is deleted only after every record is written successfully.")
+        }
+    }
+
+    private func refreshLegacyLogCount() {
+        model.legacyPlaintextLogCount { n in legacyLogCount = n }
     }
 
     private func soundBinding(for kind: SoundEventKind) -> Binding<String> {

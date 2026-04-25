@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 /// Single last-seen record for a nick. One is kept per network; a new event
 /// overwrites the earlier one.
@@ -31,9 +32,29 @@ final class SeenStore {
     private var pendingWrite: [UUID: Task<Void, Never>] = [:]
     private static let debounceSeconds: UInt64 = 2
 
+    /// Current data-encryption key. ChatModel pushes this in whenever the
+    /// keystore unlocks or locks. Nil = files written/read as plaintext for
+    /// backward compatibility (and so the store works at all when the user
+    /// hasn't enabled encryption).
+    private var currentKey: SymmetricKey?
+
     init(supportDirectoryURL: URL) {
         self.baseURL = supportDirectoryURL.appendingPathComponent("seen", isDirectory: true)
         try? FileManager.default.createDirectory(at: baseURL, withIntermediateDirectories: true)
+    }
+
+    /// ChatModel pushes the DEK in whenever keystore state changes. Setting
+    /// it forces a re-read of any in-memory tables that were populated when
+    /// no key was available (so a freshly-unlocked keystore can pull the
+    /// real data instead of the empty fallback).
+    func setEncryptionKey(_ key: SymmetricKey?) {
+        let changed = (key != nil) != (currentKey != nil)
+        self.currentKey = key
+        if changed {
+            // Flush all in-memory tables so the next lookup re-reads from
+            // disk through the new key.
+            tables.removeAll(keepingCapacity: true)
+        }
     }
 
     // MARK: - Public API
@@ -125,13 +146,23 @@ final class SeenStore {
     private func ensureLoaded(networkID: UUID, slug: String) {
         if tables[networkID] != nil { return }
         let url = fileURL(for: slug)
-        guard let data = try? Data(contentsOf: url) else {
+        guard let raw = try? Data(contentsOf: url) else {
+            tables[networkID] = [:]
+            return
+        }
+        // If the file is encrypted but we don't have a key yet, leave the
+        // table empty — the next call after `setEncryptionKey(...)` will
+        // reload from disk through the unlocked key.
+        let json: Data
+        do {
+            json = try EncryptedJSON.unwrap(raw, key: currentKey)
+        } catch {
             tables[networkID] = [:]
             return
         }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        if let decoded = try? decoder.decode([String: SeenEntry].self, from: data) {
+        if let decoded = try? decoder.decode([String: SeenEntry].self, from: json) {
             tables[networkID] = decoded
         } else {
             tables[networkID] = [:]
@@ -165,8 +196,9 @@ final class SeenStore {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.sortedKeys]
-        guard let data = try? encoder.encode(table) else { return }
-        try? data.write(to: fileURL(for: slug), options: .atomic)
+        guard let plain = try? encoder.encode(table) else { return }
+        guard let bytes = try? EncryptedJSON.wrap(plain, key: currentKey) else { return }
+        try? bytes.write(to: fileURL(for: slug), options: .atomic)
     }
 
     private func fileURL(for slug: String) -> URL {

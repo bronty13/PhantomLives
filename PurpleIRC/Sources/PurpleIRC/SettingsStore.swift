@@ -413,11 +413,6 @@ final class SettingsStore: ObservableObject {
     /// whether their metadata is actually encrypted.
     @Published private(set) var isEncryptedOnDisk: Bool = false
 
-    /// File-format magic for encrypted settings. Plaintext JSON starts with
-    /// `{`, so a distinctive binary prefix keeps the two formats trivially
-    /// distinguishable at load time and leaves room for future versions.
-    private static let envelopeMagic: [UInt8] = [0x50, 0x49, 0x52, 0x43, 0x01] // "PIRC\x01"
-
     init() {
         let fm = FileManager.default
         let base = try? fm.url(for: .applicationSupportDirectory,
@@ -434,7 +429,7 @@ final class SettingsStore: ObservableObject {
         // Detect whether the file on disk is encrypted so the UI knows before
         // a load is attempted. Plain JSON starts with '{' / whitespace.
         if let data = try? Data(contentsOf: fileURL) {
-            self.isEncryptedOnDisk = Self.hasEnvelopeMagic(data)
+            self.isEncryptedOnDisk = EncryptedJSON.hasMagic(data)
             // Only load automatically when the file is plaintext; encrypted
             // files need a keystore unlock first. ChatModel re-tries via
             // `reload()` once the keystore is ready.
@@ -454,24 +449,18 @@ final class SettingsStore: ObservableObject {
     /// finishes unlocking an encrypted envelope.
     func reload() {
         guard let data = try? Data(contentsOf: fileURL) else { return }
-        self.isEncryptedOnDisk = Self.hasEnvelopeMagic(data)
-        let jsonData: Data
-        if isEncryptedOnDisk {
-            guard let ks = keyStore, ks.isUnlocked else { return }
-            let body = data.suffix(from: Self.envelopeMagic.count)
-            guard let decrypted = try? ks.decrypt(Data(body)) else {
-                NSLog("PurpleIRC: settings envelope decrypt failed")
-                return
-            }
-            jsonData = decrypted
-        } else {
-            jsonData = data
+        self.isEncryptedOnDisk = EncryptedJSON.hasMagic(data)
+        let key = (keyStore?.isUnlocked == true) ? keyStore?.currentKey : nil
+        // If the file is encrypted but the keystore isn't open, leave the
+        // in-memory settings as the empty defaults — RootView's lock gate
+        // is what actually surfaces this to the user.
+        if isEncryptedOnDisk, key == nil { return }
+        guard let jsonData = try? EncryptedJSON.unwrap(data, key: key) else {
+            NSLog("PurpleIRC: settings envelope decrypt failed")
+            return
         }
         if let decoded = try? JSONDecoder().decode(AppSettings.self, from: jsonData) {
-            let resolved = resolveCredentials(in: decoded)
-            // Bypass didSet → save() loop; assigning the struct normally
-            // would trigger a write with the freshly-resolved plaintext.
-            self.settings = resolved
+            self.settings = resolveCredentials(in: decoded)
         }
     }
 
@@ -486,28 +475,13 @@ final class SettingsStore: ObservableObject {
             enc.outputFormatting = [.prettyPrinted, .sortedKeys]
             let jsonData = try enc.encode(persistable)
 
-            let bytesToWrite: Data
-            if let ks = keyStore, ks.isUnlocked {
-                let cipher = try ks.encrypt(jsonData)
-                var buffer = Data(Self.envelopeMagic)
-                buffer.append(cipher)
-                bytesToWrite = buffer
-                isEncryptedOnDisk = true
-            } else {
-                bytesToWrite = jsonData
-                isEncryptedOnDisk = false
-            }
+            let key = (keyStore?.isUnlocked == true) ? keyStore?.currentKey : nil
+            let bytesToWrite = try EncryptedJSON.wrap(jsonData, key: key)
+            isEncryptedOnDisk = (key != nil)
             try bytesToWrite.write(to: fileURL, options: .atomic)
         } catch {
             NSLog("PurpleIRC: failed to save settings: \(error)")
         }
-    }
-
-    /// True when the on-disk file begins with our envelope magic bytes.
-    private static func hasEnvelopeMagic(_ data: Data) -> Bool {
-        guard data.count >= envelopeMagic.count else { return false }
-        let prefix = Array(data.prefix(envelopeMagic.count))
-        return prefix == envelopeMagic
     }
 
     // MARK: - Credential transform

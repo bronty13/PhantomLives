@@ -258,6 +258,9 @@ final class ChatModel: ObservableObject {
         let conn = IRCConnection(profile: profile, watchlist: watchlist)
         let cacheDir = settings.supportDirectoryURL.appendingPathComponent("channels", isDirectory: true)
         conn.bindChannelCache(baseDir: cacheDir)
+        // Wire the new connection's channel cache into the active DEK so
+        // its writes match every other persistence path.
+        conn.channelList.setEncryptionKey(keyStore.currentKey)
         connections.append(conn)
         var bag: [AnyCancellable] = []
         conn.objectWillChange
@@ -517,6 +520,26 @@ final class ChatModel: ObservableObject {
         }
     }
 
+    /// Convert any plaintext log files under the logs directory to the
+    /// encrypted format and delete the original plaintext on success.
+    /// Returns the count via the completion so the UI can show a summary.
+    func convertLegacyPlaintextLogs(_ done: @escaping @MainActor (Int) -> Void) {
+        Task { [logStore] in
+            let n = await logStore.convertLegacyPlaintextLogs()
+            await MainActor.run { done(n) }
+        }
+    }
+
+    /// Snapshot of how many plaintext log files exist on disk, refreshed
+    /// each time the Setup view appears so the button label can show
+    /// the right count.
+    func legacyPlaintextLogCount(_ done: @escaping @MainActor (Int) -> Void) {
+        Task { [logStore] in
+            let n = await logStore.countLegacyPlaintextLogs()
+            await MainActor.run { done(n) }
+        }
+    }
+
     /// Unconditional manual purge, triggered by the "Purge now" button in
     /// Setup → Behavior. Uses the user's configured days value so a click
     /// can't accidentally wipe more than the policy allows.
@@ -527,13 +550,19 @@ final class ChatModel: ObservableObject {
         }
     }
 
-    /// Forward the KeyStore's current DEK into the LogStore. Called during
-    /// init and whenever the keystore locks/unlocks. A nil key is intentional
-    /// — it tells LogStore to write plain lines again.
+    /// Forward the KeyStore's current DEK into every persistence subsystem
+    /// (logs, seen tracker, channel cache on each connection, bot scripts).
+    /// Called during init and whenever the keystore locks/unlocks; a nil key
+    /// reverts everything to plaintext writes.
     private func pushKeyToLogStore() {
         let key = keyStore.currentKey
         Task { [logStore] in
             await logStore.setEncryptionKey(key)
+        }
+        botEngine.seenStore.setEncryptionKey(key)
+        bot.setEncryptionKey(key)
+        for c in connections {
+            c.channelList.setEncryptionKey(key)
         }
     }
 

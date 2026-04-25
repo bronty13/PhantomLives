@@ -54,6 +54,92 @@ actor LogStore {
         self.currentKey = key
     }
 
+    /// Walk the logs directory, find every plaintext log file (`.log` files
+    /// without the encrypted-magic header, plus any `.log.plain` rotation
+    /// artifacts), re-encrypt their lines into the canonical encrypted file,
+    /// and delete the plaintext source. Returns the count of files converted.
+    /// Idempotent — already-encrypted files are skipped.
+    @discardableResult
+    func convertLegacyPlaintextLogs() -> Int {
+        guard let key = currentKey else { return 0 }   // no key → nothing to migrate to
+        var converted = 0
+        let enumerator = fm.enumerator(
+            at: baseURL,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        )
+        while let url = enumerator?.nextObject() as? URL {
+            guard (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true else { continue }
+            let name = url.lastPathComponent
+            // Only operate on log-shaped files. `.log.1` rotation files are
+            // intentionally left alone — they belong to the rotation chain.
+            guard name.hasSuffix(".log") || name.hasSuffix(".log.plain") else { continue }
+            guard let raw = try? Data(contentsOf: url) else { continue }
+            // Already encrypted? Skip.
+            if Self.hasEncryptedMagic(raw) { continue }
+
+            // Canonical target = same name, but with .plain stripped if present.
+            // This way any "<network>/<buf>.log.plain" lands back in
+            // "<network>/<buf>.log" alongside ongoing encrypted writes.
+            let targetName: String
+            if name.hasSuffix(".log.plain") {
+                targetName = String(name.dropLast(".plain".count))
+            } else {
+                targetName = name   // self-replace
+            }
+            let target = url.deletingLastPathComponent().appendingPathComponent(targetName)
+
+            // Read each line, encrypt as a record, write into the target.
+            // Pre-existing encrypted target = append; otherwise create fresh.
+            guard let plainText = String(data: raw, encoding: .utf8) else { continue }
+            let lines = plainText.split(omittingEmptySubsequences: false, whereSeparator: { $0 == "\n" })
+                .map(String.init)
+                .filter { !$0.isEmpty }
+            guard !lines.isEmpty else {
+                try? fm.removeItem(at: url)
+                converted += 1
+                continue
+            }
+            do {
+                for line in lines {
+                    try appendEncrypted(record: line, key: key, to: target)
+                }
+                // Only remove the source after every record made it through.
+                if url != target {
+                    try? fm.removeItem(at: url)
+                } else {
+                    // Self-replace case — `appendEncrypted` already rewrote
+                    // the file as encrypted, so the original plaintext
+                    // contents are gone.
+                }
+                converted += 1
+            } catch {
+                NSLog("PurpleIRC: failed to convert \(name): \(error)")
+            }
+        }
+        return converted
+    }
+
+    /// Count plaintext log files under `baseURL` so the UI can show the
+    /// user how many will be converted before they confirm.
+    func countLegacyPlaintextLogs() -> Int {
+        var n = 0
+        let enumerator = fm.enumerator(
+            at: baseURL,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        )
+        while let url = enumerator?.nextObject() as? URL {
+            guard (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true else { continue }
+            let name = url.lastPathComponent
+            guard name.hasSuffix(".log") || name.hasSuffix(".log.plain") else { continue }
+            if let raw = try? Data(contentsOf: url), !Self.hasEncryptedMagic(raw) {
+                n += 1
+            }
+        }
+        return n
+    }
+
     /// Delete every log file under `baseURL` whose modification date is older
     /// than `days` days. Empty directories are pruned too so the Files menu
     /// doesn't show ghost folders. Returns the count of files removed so the

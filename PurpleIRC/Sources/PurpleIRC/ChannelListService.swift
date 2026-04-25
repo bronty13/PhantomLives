@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import CryptoKit
 
 /// Collects RPL_LISTSTART (321), RPL_LIST (322), and RPL_LISTEND (323) replies
 /// into a structured list the UI can search, sort, and act on. One instance
@@ -25,6 +26,18 @@ final class ChannelListService: ObservableObject {
     @Published private(set) var lastUpdated: Date? = nil
 
     private var cacheFileURL: URL?
+    /// DEK used to wrap the on-disk snapshot. ChatModel pushes this in
+    /// whenever the keystore unlocks/locks. Nil = plaintext file (which is
+    /// also the path legacy installs are reading from on disk today).
+    private var currentKey: SymmetricKey?
+
+    /// ChatModel calls this on every keystore state change. A flip in
+    /// presence triggers a reload so we re-decode through the new key.
+    func setEncryptionKey(_ key: SymmetricKey?) {
+        let changed = (key != nil) != (currentKey != nil)
+        currentKey = key
+        if changed { loadCache() }
+    }
 
     /// Wire this service to a persistent cache file. Loads any prior snapshot
     /// so the UI can show stale data immediately while the user decides
@@ -85,10 +98,13 @@ final class ChannelListService: ObservableObject {
 
     private func loadCache() {
         guard let url = cacheFileURL,
-              let data = try? Data(contentsOf: url) else { return }
+              let raw = try? Data(contentsOf: url) else { return }
+        // Encrypted snapshot with no key yet → leave the in-memory state
+        // alone; setEncryptionKey will trigger another loadCache later.
+        guard let json = try? EncryptedJSON.unwrap(raw, key: currentKey) else { return }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        guard let snap = try? decoder.decode(Snapshot.self, from: data) else { return }
+        guard let snap = try? decoder.decode(Snapshot.self, from: json) else { return }
         self.listings = snap.listings
         self.lastUpdated = snap.updatedAt
     }
@@ -99,7 +115,8 @@ final class ChannelListService: ObservableObject {
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.sortedKeys]
         let snap = Snapshot(updatedAt: lastUpdated ?? Date(), listings: listings)
-        guard let data = try? encoder.encode(snap) else { return }
-        try? data.write(to: url, options: .atomic)
+        guard let plain = try? encoder.encode(snap) else { return }
+        guard let bytes = try? EncryptedJSON.wrap(plain, key: currentKey) else { return }
+        try? bytes.write(to: url, options: .atomic)
     }
 }
