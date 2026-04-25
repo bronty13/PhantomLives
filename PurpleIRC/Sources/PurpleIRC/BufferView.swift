@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#endif
 
 struct BufferView: View {
     @EnvironmentObject var model: ChatModel
@@ -451,10 +454,39 @@ struct BufferView: View {
             .padding(10)
             .background(Color(nsColor: .controlBackgroundColor))
         }
-        .task { inputFocused = true }
-        .onChange(of: bufferIndex) { _, _ in inputFocused = true }
+        // Initial focus on appear + after every situation that could
+        // steal it away (buffer switch, app/window activation, scene
+        // phase change). Runs through `refocusInput` so the false→true
+        // refresh trick fires even when @FocusState was already true.
+        .task { refocusInput() }
+        .onChange(of: bufferIndex) { _, _ in refocusInput() }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { inputFocused = true }
+            if phase == .active { refocusInput() }
+        }
+        // macOS scenePhase is iOS-flavoured and doesn't fire reliably for
+        // Cmd+Tab activation, so subscribe to AppKit's own signals too.
+        // Either notification firing is enough; both are belt-and-suspenders.
+        .onReceive(NotificationCenter.default.publisher(
+            for: NSApplication.didBecomeActiveNotification)) { _ in
+            refocusInput()
+        }
+        .onReceive(NotificationCenter.default.publisher(
+            for: NSWindow.didBecomeKeyNotification)) { _ in
+            refocusInput()
+        }
+    }
+
+    /// Force focus into the input box. SwiftUI ignores `inputFocused = true`
+    /// when the state is already true (no-op diff), so the false→true bounce
+    /// is required to actually re-grant first-responder when the user
+    /// returns to the app. The double-async lets macOS finish its own
+    /// first-responder dance before we override.
+    private func refocusInput() {
+        DispatchQueue.main.async {
+            inputFocused = false
+            DispatchQueue.main.async {
+                inputFocused = true
+            }
         }
     }
 
@@ -580,7 +612,9 @@ struct BufferView: View {
         completion = nil
         pickerDismissedFor = nil
         // Keep focus after sending so the next message is one keystroke away.
-        inputFocused = true
+        // refocusInput's false→true bounce makes sure we actually re-grant
+        // first-responder even if the FocusState was already true.
+        refocusInput()
     }
 
     private func performTabComplete() {
