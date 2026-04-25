@@ -402,6 +402,19 @@ struct AppSettings: Codable {
     /// Populated lazily the first time the assistant is enabled.
     var assistantPersonas: [AssistantPersona] = []
 
+    /// Run a compressed + encrypted backup of the support directory at
+    /// every launch. Default ON — it's cheap insurance and the
+    /// d0cc021 / assistant-clobber incidents would have been one-click
+    /// recoveries with this in place.
+    var backupEnabled: Bool = true
+    /// Where backups land. Empty = use the default
+    /// `~/Downloads/PurpleIRC backup/`. Stored as a string so we can
+    /// resolve `~` cleanly via `(NSString as String).expandingTildeInPath`.
+    var backupDirectory: String = ""
+    /// Retention window in days. Files older than this are reaped at
+    /// each backup pass. 0 = keep forever.
+    var backupRetentionDays: Int = 30
+
     // Highlight rules (row tint + matched-word color + per-rule alerts)
     var highlightRules: [HighlightRule] = []
 
@@ -474,6 +487,9 @@ struct AppSettings: Codable {
         self.lastSession = try c.decodeIfPresent([String: SessionSnapshot].self, forKey: .lastSession) ?? [:]
         self.assistant = try c.decodeIfPresent(AssistantSettings.self, forKey: .assistant) ?? AssistantSettings()
         self.assistantPersonas = try c.decodeIfPresent([AssistantPersona].self, forKey: .assistantPersonas) ?? []
+        self.backupEnabled = try c.decodeIfPresent(Bool.self, forKey: .backupEnabled) ?? true
+        self.backupDirectory = try c.decodeIfPresent(String.self, forKey: .backupDirectory) ?? ""
+        self.backupRetentionDays = try c.decodeIfPresent(Int.self, forKey: .backupRetentionDays) ?? 30
         self.highlightRules = try c.decodeIfPresent([HighlightRule].self, forKey: .highlightRules) ?? []
         self.triggerRules = try c.decodeIfPresent([TriggerRule].self, forKey: .triggerRules) ?? []
         self.seenTrackingEnabled = try c.decodeIfPresent(Bool.self, forKey: .seenTrackingEnabled) ?? false

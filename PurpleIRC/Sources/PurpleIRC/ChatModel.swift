@@ -318,6 +318,11 @@ final class ChatModel: ObservableObject {
         // Initial backfill — covers buffers from the seed connection plus
         // anything in lastSession from a previous run.
         backfillLogIndexFromLiveState()
+        // Snapshot the support dir to ~/Downloads/PurpleIRC backup/ on
+        // launch (encrypted with the keystore DEK when available).
+        // Runs after settings have been resolved so we capture the
+        // user's actual data, not init-time defaults.
+        runBackupIfEnabled()
         // Assistant engine — wire the closures + event subscription. We
         // intentionally do NOT seed personas here. Seeding mutates
         // settings.settings, which fires didSet → save() during init.
@@ -395,6 +400,10 @@ final class ChatModel: ObservableObject {
                 // start with empty defaults until unlock). Backfill so the
                 // chat-log viewer can name those buffers.
                 self.backfillLogIndexFromLiveState()
+                // Run a backup pass now that the user's data is loaded
+                // and the DEK is available — this is the first chance
+                // we have to take a fully-encrypted snapshot.
+                self.runBackupIfEnabled()
             }
             .store(in: &cancellables)
 
@@ -1236,6 +1245,115 @@ extension ChatModel: WatchlistDelegate {
             conn.appendInfoOnSelected("Assistant disengaged from /\(buf.name).")
         }
         return now
+    }
+
+    // MARK: - Backup
+
+    /// Resolve the user's configured backup directory, expanding `~` and
+    /// falling back to the default `~/Downloads/PurpleIRC backup/` when
+    /// the field is empty.
+    var backupDirectoryURL: URL {
+        let raw = settings.settings.backupDirectory.trimmingCharacters(in: .whitespaces)
+        let expanded: String
+        if raw.isEmpty {
+            expanded = (("~/Downloads/PurpleIRC backup/") as NSString).expandingTildeInPath
+        } else {
+            expanded = (raw as NSString).expandingTildeInPath
+        }
+        return URL(fileURLWithPath: expanded, isDirectory: true)
+    }
+
+    /// Run one backup pass when the user has it enabled. Errors are
+    /// logged to AppLog rather than thrown — backup failures shouldn't
+    /// surface as crash dialogs to a user who's just launching the app.
+    /// Throttled to at most one backup per 60 seconds so the
+    /// init-time + post-unlock pair don't both write a copy.
+    private static var lastBackupAt: Date = .distantPast
+    private static let backupMinInterval: TimeInterval = 60
+
+    func runBackupIfEnabled() {
+        guard settings.settings.backupEnabled else { return }
+        let now = Date()
+        if now.timeIntervalSince(Self.lastBackupAt) < Self.backupMinInterval {
+            return
+        }
+        Self.lastBackupAt = now
+
+        let supportDir = settings.supportDirectoryURL
+        let backupDir = backupDirectoryURL
+        let key = keyStore.currentKey
+        let retention = max(0, settings.settings.backupRetentionDays)
+
+        // Run on a background thread — the zip can take a few seconds
+        // for users with chunky log archives. Detached so it doesn't
+        // hold up app launch.
+        Task.detached(priority: .background) {
+            do {
+                let url = try BackupService.runBackup(
+                    supportDir: supportDir,
+                    backupDir: backupDir,
+                    key: key)
+                let removed = BackupService.trimOldBackups(
+                    in: backupDir, retentionDays: retention)
+                await MainActor.run {
+                    AppLog.shared.info(
+                        "Backup written to \(url.path); pruned \(removed) older files.",
+                        category: "Backup")
+                }
+            } catch {
+                await MainActor.run {
+                    AppLog.shared.error(
+                        "Backup failed: \(error.localizedDescription)",
+                        category: "Backup")
+                }
+            }
+        }
+    }
+
+    /// Force a backup now, bypassing the throttle. Used by the Setup
+    /// "Run backup now" button. Returns the URL of the new archive on
+    /// success, throws on failure so the UI can surface the error.
+    @discardableResult
+    func runBackupNow() async throws -> URL {
+        Self.lastBackupAt = Date()
+        let supportDir = settings.supportDirectoryURL
+        let backupDir = backupDirectoryURL
+        let key = keyStore.currentKey
+        let retention = max(0, settings.settings.backupRetentionDays)
+        let url = try BackupService.runBackup(
+            supportDir: supportDir, backupDir: backupDir, key: key)
+        _ = BackupService.trimOldBackups(in: backupDir, retentionDays: retention)
+        AppLog.shared.info("Manual backup written to \(url.path)", category: "Backup")
+        return url
+    }
+
+    // MARK: - Factory reset
+
+    /// Wipe the support directory and quit. Called from the Setup →
+    /// Security factory-reset flow after typed confirmation. Doesn't
+    /// touch the backup directory — that's the user's escape hatch and
+    /// must survive the wipe.
+    func performFactoryReset() {
+        let supportDir = settings.supportDirectoryURL
+        AppLog.shared.notice(
+            "Factory reset triggered — wiping \(supportDir.path)",
+            category: "Reset")
+        do {
+            let count = try FactoryReset.wipe(supportDir: supportDir)
+            AppLog.shared.notice("Factory reset removed \(count) entries.",
+                                  category: "Reset")
+        } catch {
+            AppLog.shared.error(
+                "Factory reset failed: \(error.localizedDescription)",
+                category: "Reset")
+        }
+        // Quit so the next launch starts from a fresh-install state.
+        // Doesn't go through performQuit's IRC QUIT path on purpose —
+        // we've just wiped the keystore, no point sending a clean QUIT
+        // before exiting.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            NSApplication.shared.terminate(nil)
+        }
     }
 
     /// User accepted a suggestion (or edited it). Threads through the

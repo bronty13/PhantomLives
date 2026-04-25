@@ -774,6 +774,9 @@ struct BehaviorSetup: View {
                 Text("/quit and /exit close PurpleIRC entirely (after sending a QUIT to each connected network). Use /disconnect to leave one network without quitting.")
                     .font(.caption).foregroundStyle(.tertiary)
             }
+            Section("Backups") {
+                BackupSettingsRow(settings: settings)
+            }
             Section("Session restore") {
                 Toggle("Restore open channels and queries on launch",
                        isOn: $settings.settings.restoreOpenBuffersOnLaunch)
@@ -1635,6 +1638,10 @@ struct SecuritySetup: View {
                 bulletRow("Chat logs — encrypted per-line when persistent logging is on (see Behavior tab).")
                 bulletRow("Credentials — always in Keychain, regardless of passphrase state.")
                 bulletRow("Not covered: running-memory state, a compromised logged-in session with both the Keychain and the passphrase.")
+            }
+
+            Section("Factory reset") {
+                FactoryResetRow()
             }
         }
         .formStyle(.grouped)
