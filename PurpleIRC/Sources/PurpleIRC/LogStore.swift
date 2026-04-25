@@ -226,30 +226,85 @@ actor LogStore {
         }
     }
 
-    /// Every (network, buffer) pair the index knows about, deduplicated and
-    /// sorted by network then buffer. The chat-log viewer calls this so it
-    /// can list every on-disk log even when the buffer / connection isn't
-    /// currently in memory. Falls back to scanning the logs directory when
-    /// no index file exists yet (early adopters with logs predating the
-    /// index — names can't be recovered, but we surface the slugs so they
-    /// can at least see *something* is there).
-    func enumerateIndex() -> [LogIndex.Entry] {
+    /// Pair of (networkSlug, bufferSlug) for log files that are on disk but
+    /// whose human names couldn't be resolved through the index. The viewer
+    /// reads these via `readBySlug` so they're at least openable.
+    struct OrphanLog: Hashable {
+        var networkSlug: String
+        var bufferSlug: String
+    }
+
+    /// Result of enumerating every browseable log on disk. Named entries
+    /// come from the index (or a backfill); orphans are files whose
+    /// network or buffer name was never recorded.
+    struct EnumerationResult {
+        var named: [LogIndex.Entry]
+        var orphans: [OrphanLog]
+    }
+
+    /// Walk both the persistent index and the directory tree. Anything in
+    /// the index OR matched by a backfilled name lands in `named`; anything
+    /// else goes in `orphans` so the viewer can still open them.
+    func enumerateAllLogs() -> EnumerationResult {
         loadIndexIfNeeded()
-        var combined = Set(index?.entries ?? [])
-        // Best-effort fallback for legacy installs: any directory whose
-        // .log files we have but no index entry shows up as raw slugs so
-        // the user knows the data exists. The viewer can still call
-        // `read(network:buffer:)` on the slug pair directly — slug() is
-        // idempotent on already-slugged input.
-        for entry in scanLegacyFiles() {
-            combined.insert(entry)
+        let named = index?.entries ?? []
+
+        // Build the set of (netSlug, bufSlug) pairs that the named index
+        // already covers, so we know which on-disk files are "claimed."
+        var claimedSlugs: Set<OrphanLog> = []
+        for entry in named {
+            claimedSlugs.insert(OrphanLog(
+                networkSlug: slug(entry.network),
+                bufferSlug: slug(entry.buffer)))
         }
-        return combined.sorted {
-            if $0.network != $1.network {
-                return $0.network.localizedCaseInsensitiveCompare($1.network) == .orderedAscending
+
+        var orphans: [OrphanLog] = []
+        guard let networkDirs = try? fm.contentsOfDirectory(
+            at: baseURL, includingPropertiesForKeys: nil) else {
+            return EnumerationResult(named: named.sorted {
+                if $0.network != $1.network {
+                    return $0.network.localizedCaseInsensitiveCompare($1.network) == .orderedAscending
+                }
+                return $0.buffer.localizedCaseInsensitiveCompare($1.buffer) == .orderedAscending
+            }, orphans: [])
+        }
+        for netDir in networkDirs {
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: netDir.path, isDirectory: &isDir),
+                  isDir.boolValue else { continue }
+            guard let logs = try? fm.contentsOfDirectory(
+                at: netDir, includingPropertiesForKeys: nil) else { continue }
+            let netSlug = netDir.lastPathComponent
+            for log in logs where log.pathExtension == "log" {
+                let bufSlug = log.deletingPathExtension().lastPathComponent
+                let pair = OrphanLog(networkSlug: netSlug, bufferSlug: bufSlug)
+                if !claimedSlugs.contains(pair) {
+                    orphans.append(pair)
+                }
             }
-            return $0.buffer.localizedCaseInsensitiveCompare($1.buffer) == .orderedAscending
         }
+
+        return EnumerationResult(
+            named: named.sorted {
+                if $0.network != $1.network {
+                    return $0.network.localizedCaseInsensitiveCompare($1.network) == .orderedAscending
+                }
+                return $0.buffer.localizedCaseInsensitiveCompare($1.buffer) == .orderedAscending
+            },
+            orphans: orphans.sorted {
+                if $0.networkSlug != $1.networkSlug {
+                    return $0.networkSlug < $1.networkSlug
+                }
+                return $0.bufferSlug < $1.bufferSlug
+            }
+        )
+    }
+
+    /// Older API — kept for backwards compatibility with anything that
+    /// just wants the named list. New callers should prefer
+    /// `enumerateAllLogs()` so they can also surface orphans.
+    func enumerateIndex() -> [LogIndex.Entry] {
+        enumerateAllLogs().named
     }
 
     /// Add a (network, buffer) pair to the index if it isn't already there.
@@ -284,43 +339,6 @@ actor LogStore {
         _ = try? EncryptedJSON.safeWrite(data, to: indexURL, key: currentKey)
     }
 
-    /// Walk the logs directory and produce one Entry per .log file found
-    /// without relying on the index. Used as a fallback for installs that
-    /// pre-date the index — slugs can't be reversed but at least they're
-    /// visible. The viewer feeds the raw slugs straight back into `read`.
-    private func scanLegacyFiles() -> [LogIndex.Entry] {
-        guard let networkDirs = try? fm.contentsOfDirectory(
-            at: baseURL, includingPropertiesForKeys: nil) else { return [] }
-        var out: [LogIndex.Entry] = []
-        for netDir in networkDirs {
-            var isDir: ObjCBool = false
-            guard fm.fileExists(atPath: netDir.path, isDirectory: &isDir),
-                  isDir.boolValue else { continue }
-            // Skip the index file itself if it ever ends up at this depth.
-            if netDir.lastPathComponent == "index.json" { continue }
-            guard let logs = try? fm.contentsOfDirectory(
-                at: netDir, includingPropertiesForKeys: nil) else { continue }
-            for log in logs where log.pathExtension == "log" {
-                let bufSlug = log.deletingPathExtension().lastPathComponent
-                let netSlug = netDir.lastPathComponent
-                let entry = LogIndex.Entry(
-                    network: "(slug \(netSlug.prefix(8)))",
-                    buffer: "(slug \(bufSlug.prefix(8)))")
-                // Only push as legacy when the index doesn't already cover
-                // this directory under a real name. If any indexed entry
-                // hashes to this directory, skip the placeholder.
-                let indexHasIt = (index?.entries.contains {
-                    self.slug($0.network) == netSlug
-                    && self.slug($0.buffer) == bufSlug
-                }) ?? false
-                if !indexHasIt {
-                    out.append(entry)
-                }
-            }
-        }
-        return out
-    }
-
     /// Returns the file contents as user-readable text. Encrypted records
     /// are decrypted on the fly; plain files pass through. Mixed-format
     /// files aren't possible — `appendEncrypted` rotates plaintext out
@@ -329,6 +347,39 @@ actor LogStore {
         let url = fileURL(network: network, buffer: buffer)
         guard let data = try? Data(contentsOf: url) else { return nil }
         return decodeFile(data: data)
+    }
+
+    /// Variant of `read` that takes the raw on-disk slug components. The
+    /// slug function is one-way (SHA-256 hex), so for archive entries whose
+    /// human names were never recorded we can't reconstruct them — but the
+    /// slugs ARE the path. This lets the chat-log viewer open those
+    /// orphaned files directly.
+    func readBySlug(networkSlug: String, bufferSlug: String) -> String? {
+        let url = baseURL
+            .appendingPathComponent(networkSlug, isDirectory: true)
+            .appendingPathComponent(bufferSlug + ".log", isDirectory: false)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return decodeFile(data: data)
+    }
+
+    /// Bulk record from outside — ChatModel calls this with every known
+    /// (network, buffer) pair so the viewer can resolve slug filenames
+    /// back to friendly names for buffers currently in memory plus
+    /// anything in saved sessions. Idempotent; only persists if a new
+    /// pair was added.
+    func backfillIndex(_ pairs: [(network: String, buffer: String)]) {
+        loadIndexIfNeeded()
+        var added = false
+        var current = Set(index?.entries ?? [])
+        for pair in pairs {
+            let entry = LogIndex.Entry(network: pair.network, buffer: pair.buffer)
+            if current.insert(entry).inserted {
+                if index == nil { index = LogIndex() }
+                index?.entries.append(entry)
+                added = true
+            }
+        }
+        if added { flushIndex() }
     }
 
     func fileURL(network: String, buffer: String) -> URL {

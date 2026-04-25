@@ -20,16 +20,28 @@ struct ChatLogViewerView: View {
     @EnvironmentObject var model: ChatModel
     @Environment(\.dismiss) private var dismiss
 
-    /// One row in the picker — a (network, buffer-name) pair. Identifiable
-    /// so SwiftUI can diff the list cleanly. `isLive` distinguishes a buffer
-    /// currently in memory (chat is happening) from a historic / offline
-    /// entry resolved through the LogStore index.
+    /// One row in the picker. Identifiable so SwiftUI can diff cleanly.
+    /// Three flavours:
+    /// - Live: buffer currently in a connection. `networkName` / `bufferName`
+    ///   are real, `read(network:buffer:)` works.
+    /// - Archive (named): in the LogStore's index. Same as live but without
+    ///   live state.
+    /// - Archive (orphan): on disk but no name was ever recorded. Slugs are
+    ///   filled and we read via `readBySlug`.
     struct LogTarget: Identifiable, Hashable {
-        let id: String          // "<network>::<buffer>" — unique
+        let id: String          // "<network>::<buffer>" or "slug:<netSlug>::<bufSlug>"
         let networkName: String
         let bufferName: String
-        let kindLabel: String   // "channel" / "query" / "server" / "archive"
+        let kindLabel: String   // "channel" / "query" / "server" / "archive" / "orphan"
         let isLive: Bool
+        /// When non-nil, the viewer reads via `readBySlug` instead of
+        /// `read(network:buffer:)`. Set for orphan archive entries.
+        let slugPair: SlugPair?
+
+        struct SlugPair: Hashable {
+            let networkSlug: String
+            let bufferSlug: String
+        }
     }
 
     @State private var targets: [LogTarget] = []
@@ -92,8 +104,12 @@ struct ChatLogViewerView: View {
                                     .lineLimit(1)
                                     .truncationMode(.tail)
                                     .foregroundStyle(t.isLive ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                                if !t.isLive {
+                                if t.kindLabel == "archive" {
                                     Text("(archived)")
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                } else if t.kindLabel == "orphan" {
+                                    Text("(unknown)")
                                         .font(.caption2)
                                         .foregroundStyle(.tertiary)
                                 }
@@ -181,14 +197,19 @@ struct ChatLogViewerView: View {
 
     // MARK: - Helpers
 
-    /// Walk live connections + the LogStore's persistent index. Live entries
-    /// keep their buffer kind; entries pulled from the index without a
-    /// matching live buffer are tagged "archive" and rendered with a
-    /// dimmed icon so the user can tell they're historic.
+    /// Walk live connections + the LogStore's persistent index + any
+    /// remaining orphan files on disk. Live entries surface with their
+    /// buffer kind; named index entries lacking a live match render as
+    /// "archive"; truly nameless files (predating the index) render as
+    /// "orphan" and read via `readBySlug`.
     private func rebuildTargetList() {
+        // First, ask ChatModel to refresh the index from in-memory state.
+        // This converts "I have no name for this slug" into "this is the
+        // alice query buffer" for everything that's currently open.
+        model.backfillLogIndexFromLiveState()
+
         var liveIDs = Set<String>()
         var out: [LogTarget] = []
-        // 1) live connections — most recent state, includes buffer kind.
         for conn in model.connections {
             for buf in conn.buffers {
                 let kind: String
@@ -204,17 +225,15 @@ struct ChatLogViewerView: View {
                     networkName: conn.displayName,
                     bufferName: buf.name,
                     kindLabel: kind,
-                    isLive: true))
+                    isLive: true,
+                    slugPair: nil))
             }
         }
-        // 2) historic entries from the LogStore's index. Run async on the
-        // actor; reload the table when results arrive. Live IDs already
-        // captured above so the indexed pass can skip duplicates.
         let live = liveIDs
         Task { @MainActor in
-            let entries = await model.logStore.enumerateIndex()
+            let result = await model.logStore.enumerateAllLogs()
             var combined = out
-            for e in entries {
+            for e in result.named {
                 let id = "\(e.network)::\(e.buffer)"
                 if live.contains(id) { continue }
                 combined.append(LogTarget(
@@ -222,7 +241,20 @@ struct ChatLogViewerView: View {
                     networkName: e.network,
                     bufferName: e.buffer,
                     kindLabel: "archive",
-                    isLive: false))
+                    isLive: false,
+                    slugPair: nil))
+            }
+            for orphan in result.orphans {
+                let netLabel = "(slug \(orphan.networkSlug.prefix(8)))"
+                let bufLabel = "(slug \(orphan.bufferSlug.prefix(8)))"
+                combined.append(LogTarget(
+                    id: "slug:\(orphan.networkSlug)::\(orphan.bufferSlug)",
+                    networkName: netLabel,
+                    bufferName: bufLabel,
+                    kindLabel: "orphan",
+                    isLive: false,
+                    slugPair: .init(networkSlug: orphan.networkSlug,
+                                    bufferSlug: orphan.bufferSlug)))
             }
             combined.sort { lhs, rhs in
                 if lhs.networkName != rhs.networkName {
@@ -243,7 +275,8 @@ struct ChatLogViewerView: View {
         case "query":   return 1
         case "server":  return 2
         case "archive": return 3
-        default:        return 4
+        case "orphan":  return 4
+        default:        return 5
         }
     }
 
@@ -266,6 +299,7 @@ struct ChatLogViewerView: View {
         case "query":   return "person.fill"
         case "server":  return "server.rack"
         case "archive": return "archivebox"
+        case "orphan":  return "questionmark.folder"
         default:        return "doc.text"
         }
     }
@@ -281,7 +315,9 @@ struct ChatLogViewerView: View {
     }
 
     /// Resolve the selection back to its target and read the log via the
-    /// LogStore actor. Errors get surfaced inline rather than thrown.
+    /// LogStore actor. Orphan entries (no recoverable name) read via
+    /// `readBySlug` since the network/buffer fields are placeholder
+    /// strings that can't survive being slugified again.
     private func loadSelected() {
         guard let selection,
               let target = targets.first(where: { $0.id == selection })
@@ -290,15 +326,22 @@ struct ChatLogViewerView: View {
         error = nil
         content = ""
         let store = model.logStore
-        let network = target.networkName
-        let buffer = target.bufferName
         Task { @MainActor in
-            let text = await store.read(network: network, buffer: buffer)
+            let text: String?
+            if let pair = target.slugPair {
+                text = await store.readBySlug(
+                    networkSlug: pair.networkSlug,
+                    bufferSlug: pair.bufferSlug)
+            } else {
+                text = await store.read(
+                    network: target.networkName,
+                    buffer: target.bufferName)
+            }
             loading = false
             if let text {
                 content = text
             } else {
-                error = "No log file found for \(network) / \(buffer). Either persistent logging was off when this buffer was active, or the file was rotated/purged."
+                error = "No log file found for \(target.networkName) / \(target.bufferName). Either persistent logging was off when this buffer was active, or the file was rotated/purged."
             }
         }
     }

@@ -310,6 +310,9 @@ final class ChatModel: ObservableObject {
             fileURL: settings.supportDirectoryURL.appendingPathComponent("app.log"),
             key: keyStore.currentKey)
         AppLog.shared.info("PurpleIRC \(AppVersion.short) launched", category: "Boot")
+        // Initial backfill — covers buffers from the seed connection plus
+        // anything in lastSession from a previous run.
+        backfillLogIndexFromLiveState()
         // Capture the trailing window of every buffer at quit. The willTerminate
         // notification fires on the main thread; we MUST save synchronously
         // because the run loop is shutting down. An earlier version wrapped
@@ -356,6 +359,10 @@ final class ChatModel: ObservableObject {
                 guard let self else { return }
                 self.settings.reload()
                 self.pushKeyToLogStore()
+                // Settings now have lastSession populated (encrypted users
+                // start with empty defaults until unlock). Backfill so the
+                // chat-log viewer can name those buffers.
+                self.backfillLogIndexFromLiveState()
             }
             .store(in: &cancellables)
 
@@ -452,6 +459,9 @@ final class ChatModel: ObservableObject {
             .sink { [weak self, weak conn] _ in
                 guard let self, let conn else { return }
                 self.maybeSaveSnapshot(for: conn)
+                // Re-run the backfill so any newly-created buffer shows
+                // up in the chat-log viewer with its real name.
+                self.backfillLogIndexFromLiveState()
             }
             .store(in: &bag)
         // Persist chat history when the connection drops, not only at
@@ -888,6 +898,37 @@ final class ChatModel: ObservableObject {
     /// skip redundant writes when nothing material has changed (the most
     /// common case — every chat-line append fires `$buffers`).
     private var lastSnapshotByProfileID: [UUID: SessionSnapshot] = [:]
+
+    /// Backfill the LogStore index with every (network, buffer) pair we
+    /// can identify from in-memory state. Called at launch and whenever
+    /// connections gain or lose buffers. Without this, log files written
+    /// before the index existed (or while the index was sealed under a
+    /// different DEK) show up as opaque slugs in the chat-log viewer.
+    func backfillLogIndexFromLiveState() {
+        var pairs: [(network: String, buffer: String)] = []
+        // Live connections — every buffer that's currently open.
+        for conn in connections {
+            for buf in conn.buffers where buf.kind != .server {
+                pairs.append((network: conn.displayName, buffer: buf.name))
+            }
+        }
+        // Saved sessions — the channels and queries that were live at the
+        // previous quit. Resolves slug filenames for buffers the user has
+        // PARTed but might still want to read history from.
+        for (key, snap) in settings.settings.lastSession {
+            // The lastSession key is the profile UUID; resolve to the
+            // server profile's display name.
+            guard let uuid = UUID(uuidString: key),
+                  let profile = settings.settings.servers.first(where: { $0.id == uuid })
+            else { continue }
+            let networkName = profile.name.isEmpty ? profile.host : profile.name
+            for c in snap.channels { pairs.append((network: networkName, buffer: c)) }
+            for q in snap.queries  { pairs.append((network: networkName, buffer: q)) }
+        }
+        guard !pairs.isEmpty else { return }
+        let store = logStore
+        Task { await store.backfillIndex(pairs) }
+    }
 
     /// Persist the trailing-window of every buffer on every connected
     /// network. Called at quit (via `willTerminateNotification`) and on
