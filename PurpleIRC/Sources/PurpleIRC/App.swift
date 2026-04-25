@@ -12,6 +12,13 @@ struct PurpleIRCApp: App {
             RootView()
                 .environmentObject(model)
                 .frame(minWidth: 900, minHeight: 560)
+                .onAppear {
+                    // Install the spell-check field-editor injector once
+                    // the first window exists. Idempotent — covers the
+                    // Watch Monitor secondary window too via the global
+                    // didBecomeKeyNotification observer set up inside.
+                    SpellCheckBootstrap.installOnAllWindows()
+                }
         }
         .windowToolbarStyle(.unified)
         .commands {

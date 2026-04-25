@@ -1267,8 +1267,7 @@ struct MultilineEditorSheet: View {
 
             Divider()
 
-            TextEditor(text: $text)
-                .font(.system(.body, design: .monospaced))
+            SpellCheckedTextEditor(text: $text)
                 .padding(8)
 
             Divider()

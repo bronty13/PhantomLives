@@ -551,8 +551,7 @@ struct AddressEntryEditor: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Markdown source")
                         .font(.caption).foregroundStyle(.secondary)
-                    TextEditor(text: $entry.richNotes)
-                        .font(.system(.body, design: .monospaced))
+                    SpellCheckedTextEditor(text: $entry.richNotes)
                         .frame(minHeight: 140)
                         .overlay(
                             RoundedRectangle(cornerRadius: 4)
@@ -818,8 +817,9 @@ struct BehaviorSetup: View {
                           text: $settings.settings.awayReasonDefault)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Auto-reply message").font(.caption).foregroundStyle(.secondary)
-                    TextEditor(text: $settings.settings.awayAutoReply)
-                        .font(.system(.body, design: .monospaced))
+                    SpellCheckedTextEditor(
+                        text: $settings.settings.awayAutoReply,
+                        font: .systemFont(ofSize: 13))
                         .frame(minHeight: 60)
                 }
                 Text("Use /away [reason] to mark yourself away and /back to return. Auto-replies are throttled per-sender.")
@@ -1363,8 +1363,7 @@ struct TriggerRuleEditor: View {
                 }
             }
             Section("Response") {
-                TextEditor(text: $rule.response)
-                    .font(.system(.body, design: .monospaced))
+                SpellCheckedTextEditor(text: $rule.response)
                     .frame(minHeight: 60)
                 Text("Placeholders: $nick (sender), $channel (target), $match (full match), $1..$9 (regex capture groups).")
                     .font(.caption)
