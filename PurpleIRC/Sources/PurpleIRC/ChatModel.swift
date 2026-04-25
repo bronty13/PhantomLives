@@ -23,8 +23,8 @@ struct ActivityEvent: Identifiable, Hashable {
     let detail: String?
 }
 
-struct ChatLine: Identifiable, Equatable {
-    let id = UUID()
+struct ChatLine: Identifiable, Equatable, Codable {
+    let id: UUID
     let timestamp: Date
     let kind: Kind
     let text: String
@@ -36,9 +36,25 @@ struct ChatLine: Identifiable, Equatable {
 
     /// Character-level match ranges in the post-format (code-stripped) text.
     /// Used by MessageRow to tint matched words after IRCFormatter.render.
+    /// Stored as `[location, length]` pairs for Codable compatibility.
     var highlightRanges: [NSRange] = []
 
-    enum Kind: Equatable {
+    init(timestamp: Date,
+         kind: Kind,
+         text: String,
+         isMention: Bool = false,
+         highlightRuleID: UUID? = nil,
+         highlightRanges: [NSRange] = []) {
+        self.id = UUID()
+        self.timestamp = timestamp
+        self.kind = kind
+        self.text = text
+        self.isMention = isMention
+        self.highlightRuleID = highlightRuleID
+        self.highlightRanges = highlightRanges
+    }
+
+    enum Kind: Equatable, Codable {
         case info
         case error
         case motd
@@ -51,6 +67,49 @@ struct ChatLine: Identifiable, Equatable {
         case nick(old: String, new: String)
         case topic(setter: String?)
         case raw
+    }
+
+    // MARK: - Codable (NSRange isn't Codable; pack as `[loc, len]`)
+
+    private enum CodingKeys: String, CodingKey {
+        case id, timestamp, kind, text
+        case isMention, highlightRuleID, highlightRanges
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(UUID.self, forKey: .id)
+        self.timestamp = try c.decode(Date.self, forKey: .timestamp)
+        self.kind = try c.decode(Kind.self, forKey: .kind)
+        self.text = try c.decode(String.self, forKey: .text)
+        self.isMention = try c.decodeIfPresent(Bool.self, forKey: .isMention) ?? false
+        self.highlightRuleID = try c.decodeIfPresent(UUID.self, forKey: .highlightRuleID)
+        // Persisted as flat [loc, len, loc, len, …] integer array.
+        let flat = try c.decodeIfPresent([Int].self, forKey: .highlightRanges) ?? []
+        var out: [NSRange] = []
+        var i = 0
+        while i + 1 < flat.count {
+            out.append(NSRange(location: flat[i], length: flat[i + 1]))
+            i += 2
+        }
+        self.highlightRanges = out
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(timestamp, forKey: .timestamp)
+        try c.encode(kind, forKey: .kind)
+        try c.encode(text, forKey: .text)
+        try c.encode(isMention, forKey: .isMention)
+        try c.encodeIfPresent(highlightRuleID, forKey: .highlightRuleID)
+        var flat: [Int] = []
+        flat.reserveCapacity(highlightRanges.count * 2)
+        for r in highlightRanges {
+            flat.append(r.location)
+            flat.append(r.length)
+        }
+        try c.encode(flat, forKey: .highlightRanges)
     }
 }
 
@@ -204,6 +263,11 @@ final class ChatModel: ObservableObject {
     /// DCC file transfers + direct chats. See DCC.swift.
     let dcc: DCCService
 
+    /// Per-network archive of recent chat lines, written at quit/disconnect
+    /// and replayed on the next launch so users see the trailing window of
+    /// each open buffer instead of an empty channel.
+    let sessionHistory: SessionHistoryStore
+
     private var cancellables = Set<AnyCancellable>()
     /// Per-connection cancellables, keyed by connection id, so removing a
     /// connection can drop its subscriptions cleanly.
@@ -220,6 +284,7 @@ final class ChatModel: ObservableObject {
         let seen = SeenStore(supportDirectoryURL: settings.supportDirectoryURL)
         self.botEngine = BotEngine(seenStore: seen)
         self.keyStore = KeyStore(supportDirectoryURL: settings.supportDirectoryURL)
+        self.sessionHistory = SessionHistoryStore(supportDirectoryURL: settings.supportDirectoryURL)
         let downloads = settings.supportDirectoryURL.appendingPathComponent("downloads", isDirectory: true)
         self.dcc = DCCService(downloadsDir: downloads)
         // Link keystore to settings so save/load knows whether to wrap the
@@ -239,6 +304,15 @@ final class ChatModel: ObservableObject {
             fileURL: settings.supportDirectoryURL.appendingPathComponent("app.log"),
             key: keyStore.currentKey)
         AppLog.shared.info("PurpleIRC \(AppVersion.short) launched", category: "Boot")
+        // Capture the trailing window of every buffer at quit. Notifications
+        // are AppKit-only — guard with canImport at the top of the file if
+        // we ever target Linux.
+        NotificationCenter.default
+            .publisher(for: NSApplication.willTerminateNotification)
+            .sink { [weak self] _ in
+                Task { @MainActor in self?.saveAllHistories() }
+            }
+            .store(in: &cancellables)
         // Expose this model to AppleScript verbs (Resources/PurpleIRC.sdef).
         // Hooks the singleton bridge so connect / send / join / etc. routed
         // via Apple Events reach the live ChatModel.
@@ -321,11 +395,20 @@ final class ChatModel: ObservableObject {
         // AFTER addConnection) still get their session restored.
         if settings.settings.restoreOpenBuffersOnLaunch {
             let key = profile.id.uuidString
+            let history = sessionHistory.load(networkSlug: SeenStore.slug(for: conn.displayName))
             if let snap = settings.settings.lastSession[key] {
                 conn.setPendingRestore(
                     channels: snap.channels,
                     queries: snap.queries,
-                    selected: snap.selected)
+                    selected: snap.selected,
+                    history: history.buffers)
+            } else if !history.buffers.isEmpty {
+                // History without a session snapshot can happen when the
+                // user toggled the lastSession reset — still worth restoring
+                // history into whatever buffers materialize.
+                conn.setPendingRestore(
+                    channels: [], queries: [], selected: nil,
+                    history: history.buffers)
             }
         }
         let pid = profile.id
@@ -334,6 +417,13 @@ final class ChatModel: ObservableObject {
                   self.settings.settings.restoreOpenBuffersOnLaunch
             else { return nil }
             return self.settings.settings.lastSession[pid.uuidString]
+        }
+        conn.sessionHistoryResolver = { [weak self, weak conn] in
+            guard let self, let conn,
+                  self.settings.settings.restoreOpenBuffersOnLaunch
+            else { return [:] }
+            return self.sessionHistory.load(
+                networkSlug: SeenStore.slug(for: conn.displayName)).buffers
         }
 
         connections.append(conn)
@@ -768,6 +858,33 @@ final class ChatModel: ObservableObject {
     /// common case — every chat-line append fires `$buffers`).
     private var lastSnapshotByProfileID: [UUID: SessionSnapshot] = [:]
 
+    /// Persist the trailing-window of every buffer on every connected
+    /// network. Called at quit (via `willTerminateNotification`) and on
+    /// each disconnect so users see their last live state on relaunch.
+    /// Drops the leading "previous session" / trailing "live" markers
+    /// from earlier restores so successive launches don't accumulate
+    /// banner pairs.
+    func saveAllHistories() {
+        for conn in connections where conn.state == .connected {
+            let slug = SeenStore.slug(for: conn.displayName)
+            var network = SessionHistoryStore.NetworkHistory()
+            for buf in conn.buffers where buf.kind != .server {
+                let trimmed = buf.lines
+                    .filter { !Self.isRestoreBannerLine($0) }
+                    .suffix(SessionHistoryStore.linesPerBuffer)
+                network.buffers[buf.name] = Array(trimmed)
+            }
+            sessionHistory.save(networkSlug: slug, history: network)
+        }
+    }
+
+    /// True for the marker lines `replayHistoryIntoBuffer` injects. Filtered
+    /// out at save time so consecutive restores don't visually multiply.
+    private static func isRestoreBannerLine(_ line: ChatLine) -> Bool {
+        guard case .info = line.kind else { return false }
+        return line.text.hasPrefix("── ") && line.text.hasSuffix(" ──")
+    }
+
     /// Compute the connection's current snapshot and write it into settings
     /// if it differs from the last value we saved for that profile. Skipped
     /// when the connection isn't live yet — otherwise the empty initial
@@ -804,6 +921,7 @@ final class ChatModel: ObservableObject {
         }
         botEngine.seenStore.setEncryptionKey(key)
         bot.setEncryptionKey(key)
+        sessionHistory.setEncryptionKey(key)
         for c in connections {
             c.channelList.setEncryptionKey(key)
         }

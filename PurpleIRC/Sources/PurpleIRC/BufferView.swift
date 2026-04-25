@@ -189,6 +189,14 @@ struct BufferView: View {
         HStack(spacing: 10) {
             Image(systemName: iconName).foregroundStyle(.secondary)
             Text(buffer.displayName).font(.headline)
+            // When more than one connection is live, surface the network
+            // the active buffer belongs to. Otherwise "alice on Undernet"
+            // and "alice on Dalnet" look identical in the header.
+            if model.connections.count > 1, let conn = model.activeConnection {
+                Text("on \(conn.displayName)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
             if editingTopic {
                 TextField("Channel topic", text: $topicDraft)
                     .textFieldStyle(.roundedBorder)

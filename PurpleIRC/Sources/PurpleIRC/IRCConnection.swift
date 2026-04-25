@@ -169,12 +169,19 @@ final class IRCConnection: ObservableObject, Identifiable {
     /// has finished. Skipped if the buffer hasn't materialized yet.
     private var pendingRestoreSelection: String?
 
+    /// Per-buffer trailing-window from the previous session. Keyed by the
+    /// buffer name (case-preserved). Populated alongside the channel/query
+    /// list and replayed into each buffer at restore time.
+    private var pendingRestoreHistory: [String: [ChatLine]] = [:]
+
     /// Stash a snapshot to be applied during the post-welcome runloop. Safe
     /// to call before connect; safe to call repeatedly (latest wins).
-    func setPendingRestore(channels: [String], queries: [String], selected: String?) {
+    func setPendingRestore(channels: [String], queries: [String], selected: String?,
+                           history: [String: [ChatLine]] = [:]) {
         self.pendingRestoreChannels = channels
         self.pendingRestoreQueries = queries
         self.pendingRestoreSelection = selected
+        self.pendingRestoreHistory = history
     }
 
     /// Resolver for "what should I restore on welcome?" set by ChatModel.
@@ -183,6 +190,11 @@ final class IRCConnection: ObservableObject, Identifiable {
     /// get their channels and queries back. Returns nil when restore is
     /// disabled or no snapshot exists for this profile.
     var sessionSnapshotResolver: (() -> SessionSnapshot?)?
+
+    /// Resolver for the per-buffer chat-line archive. Same pattern as
+    /// `sessionSnapshotResolver` — re-fetched at welcome time so encrypted
+    /// users (whose archive only loads after unlock) still see history.
+    var sessionHistoryResolver: (() -> [String: [ChatLine]])?
 
     /// Capture the current buffer state for persistence. Server buffer is
     /// always live, so it's not represented in the snapshot — restore
@@ -220,10 +232,15 @@ final class IRCConnection: ObservableObject, Identifiable {
             pendingRestoreQueries  = snap.queries
             pendingRestoreSelection = snap.selected
         }
+        if pendingRestoreHistory.isEmpty,
+           let history = sessionHistoryResolver?() {
+            pendingRestoreHistory = history
+        }
         defer {
             pendingRestoreChannels.removeAll()
             pendingRestoreQueries.removeAll()
             pendingRestoreSelection = nil
+            pendingRestoreHistory.removeAll()
         }
         guard !pendingRestoreChannels.isEmpty || !pendingRestoreQueries.isEmpty else { return }
         AppLog.shared.info(
@@ -231,12 +248,19 @@ final class IRCConnection: ObservableObject, Identifiable {
             category: "IRC.\(displayName)")
 
         // Pre-create query buffers so the sidebar shows them immediately,
-        // even before the other party messages back.
+        // even before the other party messages back. Prepopulated with
+        // history (when present) so users see the trailing window of the
+        // previous session immediately.
         for q in pendingRestoreQueries where !q.isEmpty {
-            _ = indexOfOrCreateBuffer(name: q, kind: .query)
+            let i = indexOfOrCreateBuffer(name: q, kind: .query)
+            replayHistoryIntoBuffer(at: i, name: q)
         }
 
-        // Channels not already in the profile's auto-join list.
+        // Channels: pre-create the buffer with history NOW so the user
+        // sees the trailing window even before the JOIN reply arrives.
+        // The handleJoin path's `indexOfOrCreateBuffer` will reuse the
+        // same buffer when the server confirms the JOIN, then append
+        // "You joined" after the history.
         let alreadyJoining = Set(profile.autoJoin
             .split { $0 == "," || $0 == " " }
             .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
@@ -245,13 +269,22 @@ final class IRCConnection: ObservableObject, Identifiable {
         for raw in pendingRestoreChannels where !raw.isEmpty {
             let name = raw.hasPrefix("#") ? raw : "#" + raw
             let key = name.lowercased()
-            guard !alreadyJoining.contains(key), seen.insert(key).inserted else { continue }
-            client.send("JOIN \(name)")
+            guard seen.insert(key).inserted else { continue }
+            // Pre-create the buffer + replay history regardless of
+            // alreadyJoining (autoJoin will JOIN it; we still want history).
+            let i = indexOfOrCreateBuffer(name: name, kind: .channel)
+            replayHistoryIntoBuffer(at: i, name: name)
+            // Send JOIN unless autoJoin already covered this channel.
+            if !alreadyJoining.contains(key) {
+                client.send("JOIN \(name)")
+            }
         }
 
         // Re-select the previously-active buffer if it now exists. Channel
         // buffers may not yet exist (JOIN is async) — handled by a deferred
         // tick that retries once the buffer materializes.
+        // (With history pre-creation, channels will exist; the deferred
+        // path is kept as a safety net.)
         if let target = pendingRestoreSelection {
             let lower = target.lowercased()
             if let i = buffers.firstIndex(where: { $0.name.lowercased() == lower }) {
@@ -772,6 +805,29 @@ final class IRCConnection: ObservableObject, Identifiable {
                     text: "— Live —"))
             }
         }
+    }
+
+    /// Append the saved history for `name` into `buffers[i]`, bracketed by
+    /// "previous session" / "live" info markers. No-op when there's nothing
+    /// in the pending history map for that name. The bracket markers help
+    /// the user mentally separate stale lines from new traffic — without
+    /// them the buffer reads as if all the history just arrived live.
+    private func replayHistoryIntoBuffer(at i: Int, name: String) {
+        guard let lines = pendingRestoreHistory[name], !lines.isEmpty else { return }
+        guard i < buffers.count else { return }
+        let topMarker = ChatLine(
+            timestamp: lines.first?.timestamp ?? Date(),
+            kind: .info,
+            text: "── \(lines.count) lines from previous session ──")
+        buffers[i].appendLine(topMarker)
+        for line in lines {
+            buffers[i].appendLine(line)
+        }
+        let endMarker = ChatLine(
+            timestamp: Date(),
+            kind: .info,
+            text: "── live ──")
+        buffers[i].appendLine(endMarker)
     }
 
     /// Issue a CHATHISTORY request for a channel we just joined. No-op when
