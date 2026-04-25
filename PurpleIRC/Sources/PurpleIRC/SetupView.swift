@@ -1246,12 +1246,20 @@ struct BotSetup: View {
     @State private var selection: UUID?
 
     var body: some View {
-        VStack(spacing: 16) {
-            assistantSection
-            Divider()
-            seenSection
-            Divider()
-            triggersSection
+        // Wrap in ScrollView — the assistant section + seen + triggers
+        // together blow past the sheet's minHeight on smaller screens,
+        // and without scrolling the header (which contains the Done
+        // button) gets pushed off the top edge of the dialog.
+        ScrollView {
+            VStack(spacing: 16) {
+                assistantSection
+                Divider()
+                seenSection
+                Divider()
+                triggersSection
+            }
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

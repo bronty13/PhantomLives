@@ -5,6 +5,7 @@ import SwiftUI
 /// fetched from Ollama, and lets the user manage their persona library.
 struct AssistantSetupSection: View {
     @ObservedObject var settings: SettingsStore
+    @EnvironmentObject var model: ChatModel
 
     /// Ollama health probe state — populated by the "Test connection"
     /// button. Lets us surface a usable error when the URL is wrong or
@@ -53,6 +54,13 @@ struct AssistantSetupSection: View {
                 onSave: { saved in commit(saved) },
                 onCancel: { editingPersona = nil }
             )
+        }
+        .onAppear {
+            // Seed the built-in personas the first time the user opens
+            // this section. Mutates settings, so it must NOT happen in
+            // ChatModel init (race with the unlock-and-reload pass).
+            // Idempotent — only adds personas not already present.
+            model.seedAssistantPersonasIfNeeded()
         }
     }
 

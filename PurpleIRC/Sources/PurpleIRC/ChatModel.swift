@@ -318,8 +318,14 @@ final class ChatModel: ObservableObject {
         // Initial backfill — covers buffers from the seed connection plus
         // anything in lastSession from a previous run.
         backfillLogIndexFromLiveState()
-        // Assistant engine — first-launch personas + event subscription.
-        seedAssistantPersonasIfNeeded()
+        // Assistant engine — wire the closures + event subscription. We
+        // intentionally do NOT seed personas here. Seeding mutates
+        // settings.settings, which fires didSet → save() during init.
+        // That's the same shape as the d0cc021 data-loss bug — a save
+        // can race with the unlock-and-reload sequence and clobber the
+        // user's encrypted file. The persona library is seeded lazily
+        // by `seedAssistantPersonasIfNeeded` when the user actually
+        // opens Setup → Bot or invokes /assist for the first time.
         assistant.personasProvider = { [weak self] in
             self?.settings.settings.assistantPersonas ?? []
         }
@@ -1167,11 +1173,14 @@ extension ChatModel: WatchlistDelegate {
 
     // MARK: - Assistant integration
 
-    /// Populate the persona library on first launch with the built-in
-    /// templates. Idempotent — re-running won't re-add templates the
-    /// user has since renamed or deleted (we identify by the fixed
-    /// builtin UUIDs in `AssistantPersona.defaultPersonas`).
-    private func seedAssistantPersonasIfNeeded() {
+    /// Populate the persona library with the built-in templates the
+    /// first time the assistant feature is touched. Idempotent — re-
+    /// running won't re-add templates the user has since renamed or
+    /// deleted (we identify by the fixed builtin UUIDs in
+    /// `AssistantPersona.defaultPersonas`). Called from `/assist` and
+    /// from the AssistantSetupSection's `onAppear`. Safe to call once
+    /// the keystore is settled and the user's settings are loaded.
+    func seedAssistantPersonasIfNeeded() {
         let existingIDs = Set(settings.settings.assistantPersonas.map { $0.id })
         var added = false
         for builtin in AssistantPersona.defaultPersonas() {
@@ -1192,6 +1201,10 @@ extension ChatModel: WatchlistDelegate {
     /// Returns true when engagement is now ON.
     @discardableResult
     func toggleAssistantOnSelected() -> Bool {
+        // First-touch seeding — runs at most once per install, only when
+        // the user actually invokes /assist, so we never mutate settings
+        // during init.
+        seedAssistantPersonasIfNeeded()
         guard settings.settings.assistant.enabled else {
             activeConnection?.appendInfoOnSelected(
                 "Assistant is disabled. Enable it in Setup → Bot → Assistant.")
