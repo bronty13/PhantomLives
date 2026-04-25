@@ -174,6 +174,91 @@ enum BackupService {
         }
     }
 
+    /// Result of a non-destructive verification pass. Lets the UI report
+    /// "your archive looks good — it would restore 142 files / 8.3 MB"
+    /// before the user commits to a destructive restore.
+    struct VerifyResult {
+        let fileCount: Int
+        let byteCount: Int64
+        /// Sample of file paths within the archive, capped to keep the
+        /// UI summary bounded. Useful for "yes, my settings.json is in there."
+        let sampleEntries: [String]
+        let isEncryptedArchive: Bool
+    }
+
+    /// Run the entire restore pipeline EXCEPT the destructive swap.
+    /// Decrypts (if needed), unzips to a temp directory, counts files,
+    /// and reports back. Always cleans up the staging dir. Used by
+    /// Setup → Backups → "Verify…" so users can prove a backup is good
+    /// before reaching for the irreversible "Restore and quit" button.
+    static func verifyArchive(at archiveURL: URL,
+                              key: SymmetricKey?) throws -> VerifyResult {
+        let fm = FileManager.default
+        let raw = try Data(contentsOf: archiveURL)
+        guard !raw.isEmpty else { throw RestoreError.archiveEmpty }
+
+        let isEncrypted = EncryptedJSON.hasMagic(raw)
+        let zipData: Data
+        if isEncrypted {
+            guard let key else { throw RestoreError.missingKeyForEncryptedArchive }
+            let body = raw.suffix(from: EncryptedJSON.magic.count)
+            do {
+                zipData = try Crypto.decrypt(Data(body), using: key)
+            } catch {
+                throw RestoreError.decryptFailed
+            }
+        } else {
+            zipData = raw
+        }
+
+        let stagingRoot = fm.temporaryDirectory
+            .appendingPathComponent("purpleirc-verify-\(UUID().uuidString)",
+                                    isDirectory: true)
+        try fm.createDirectory(at: stagingRoot, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: stagingRoot) }
+        let tempZip = stagingRoot.appendingPathComponent("payload.zip")
+        try zipData.write(to: tempZip, options: .atomic)
+        let extractDir = stagingRoot.appendingPathComponent("extracted",
+                                                            isDirectory: true)
+        try fm.createDirectory(at: extractDir, withIntermediateDirectories: true)
+
+        let unzip = Process()
+        unzip.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+        unzip.arguments = ["-q", "-o", tempZip.path, "-d", extractDir.path]
+        let stderrPipe = Pipe()
+        unzip.standardError = stderrPipe
+        try unzip.run()
+        unzip.waitUntilExit()
+        guard unzip.terminationStatus == 0 else {
+            let errBytes = stderrPipe.fileHandleForReading.availableData
+            let errStr = String(data: errBytes, encoding: .utf8) ?? ""
+            throw RestoreError.unzipFailed(status: unzip.terminationStatus,
+                                           stderr: errStr)
+        }
+
+        // Count files + bytes, gather a sample of paths.
+        var fileCount = 0
+        var byteCount: Int64 = 0
+        var sample: [String] = []
+        if let enumerator = fm.enumerator(at: extractDir,
+                                          includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey]) {
+            for case let url as URL in enumerator {
+                let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+                guard values?.isRegularFile == true else { continue }
+                fileCount += 1
+                byteCount += Int64(values?.fileSize ?? 0)
+                if sample.count < 20 {
+                    sample.append(url.path
+                        .replacingOccurrences(of: extractDir.path + "/", with: ""))
+                }
+            }
+        }
+        return VerifyResult(fileCount: fileCount,
+                            byteCount: byteCount,
+                            sampleEntries: sample,
+                            isEncryptedArchive: isEncrypted)
+    }
+
     /// Replace the support directory's contents with the archive at
     /// `archiveURL`. Format auto-detected via the PIRC magic header:
     /// `.zip.enc` files unwrap with `key`, plain `.zip` files extract

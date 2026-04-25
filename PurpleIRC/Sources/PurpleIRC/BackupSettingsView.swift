@@ -19,6 +19,20 @@ struct BackupSettingsRow: View {
     @State private var restoreError: String?
     @State private var restoreConfirmText: String = ""
 
+    /// Verify-flow state — last-clicked archive's verification result.
+    /// Cleared when the user clicks Verify again (so success messages
+    /// don't stick around forever).
+    @State private var verifyResult: BackupService.VerifyResult?
+
+    /// Cached so we don't re-allocate per render. Sized for "8.3 MB"
+    /// readouts; matches the Finder convention.
+    private let byteFormatter: ByteCountFormatter = {
+        let f = ByteCountFormatter()
+        f.allowedUnits = [.useKB, .useMB, .useGB]
+        f.countStyle = .file
+        return f
+    }()
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle("Back up settings + data on every launch",
@@ -58,6 +72,12 @@ struct BackupSettingsRow: View {
                 .disabled(running || !settings.settings.backupEnabled)
                 Button("Open backup folder") { revealInFinder() }
                 Button {
+                    pickVerifyFile()
+                } label: {
+                    Label("Verify…", systemImage: "checkmark.shield")
+                }
+                .help("Read a backup, decrypt it, and confirm the archive is intact — no destructive write.")
+                Button {
                     pickRestoreFile()
                 } label: {
                     Label("Restore from backup…",
@@ -69,6 +89,18 @@ struct BackupSettingsRow: View {
                 Label(err, systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(Color.orange)
+            }
+            if let v = verifyResult {
+                Label("Archive looks good — \(v.fileCount) files, \(byteFormatter.string(fromByteCount: v.byteCount))\(v.isEncryptedArchive ? " (encrypted)" : " (plaintext)")",
+                      systemImage: "checkmark.seal")
+                    .font(.caption)
+                    .foregroundStyle(Color.green)
+                if !v.sampleEntries.isEmpty {
+                    Text("Sample: " + v.sampleEntries.prefix(6).joined(separator: ", ")
+                         + (v.sampleEntries.count > 6 ? "…" : ""))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
             }
 
             if let result = lastResult {
@@ -231,6 +263,30 @@ struct BackupSettingsRow: View {
         panel.directoryURL = model.backupDirectoryURL
         if panel.runModal() == .OK, let url = panel.url {
             settings.settings.backupDirectory = url.path
+        }
+        #endif
+    }
+
+    /// File picker → BackupService.verifyArchive. Non-destructive; just
+    /// reports back whether the archive is intact and what it would
+    /// extract. Does not touch the live support directory.
+    private func pickVerifyFile() {
+        #if canImport(AppKit)
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.prompt = "Verify"
+        panel.directoryURL = model.backupDirectoryURL
+        if panel.runModal() == .OK, let url = panel.url {
+            restoreError = nil
+            verifyResult = nil
+            do {
+                let result = try BackupService.verifyArchive(
+                    at: url, key: model.keyStore.currentKey)
+                verifyResult = result
+            } catch {
+                restoreError = error.localizedDescription
+            }
         }
         #endif
     }
