@@ -156,6 +156,101 @@ final class IRCConnection: ObservableObject, Identifiable {
         return min(100, max(20, advertised ?? 50))
     }
 
+    // MARK: - Session restore (channel + query buffers persisted across launches)
+
+    /// Channels we want to JOIN as soon as registration completes — populated
+    /// by `setPendingRestore` before the connect, consumed in `runPostWelcome`.
+    private var pendingRestoreChannels: [String] = []
+    /// Query buffer names to pre-create after registration so the sidebar
+    /// reflects the previous session before any new traffic arrives. Pure
+    /// UI restore — no IRC verb is sent for queries.
+    private var pendingRestoreQueries: [String] = []
+    /// Best-effort selection target: bare buffer name to focus once restore
+    /// has finished. Skipped if the buffer hasn't materialized yet.
+    private var pendingRestoreSelection: String?
+
+    /// Stash a snapshot to be applied during the post-welcome runloop. Safe
+    /// to call before connect; safe to call repeatedly (latest wins).
+    func setPendingRestore(channels: [String], queries: [String], selected: String?) {
+        self.pendingRestoreChannels = channels
+        self.pendingRestoreQueries = queries
+        self.pendingRestoreSelection = selected
+    }
+
+    /// Capture the current buffer state for persistence. Server buffer is
+    /// always live, so it's not represented in the snapshot — restore
+    /// recreates it implicitly on connect.
+    func currentSessionSnapshot() -> SessionSnapshot {
+        var channels: [String] = []
+        var queries: [String] = []
+        for buf in buffers {
+            switch buf.kind {
+            case .channel: channels.append(buf.name)
+            case .query:   queries.append(buf.name)
+            case .server:  break
+            }
+        }
+        let selected: String? = {
+            guard let id = selectedBufferID,
+                  let buf = buffers.first(where: { $0.id == id }),
+                  buf.kind != .server else { return nil }
+            return buf.name
+        }()
+        return SessionSnapshot(channels: channels, queries: queries, selected: selected)
+    }
+
+    /// Apply pending channel-join + query-buffer restore. Called from
+    /// `runPostWelcome` after `autoJoinIfNeeded` so we don't double-JOIN
+    /// channels already covered by the profile's auto-join list.
+    private func applyPendingRestore() {
+        defer {
+            pendingRestoreChannels.removeAll()
+            pendingRestoreQueries.removeAll()
+            pendingRestoreSelection = nil
+        }
+        guard !pendingRestoreChannels.isEmpty || !pendingRestoreQueries.isEmpty else { return }
+
+        // Pre-create query buffers so the sidebar shows them immediately,
+        // even before the other party messages back.
+        for q in pendingRestoreQueries where !q.isEmpty {
+            _ = indexOfOrCreateBuffer(name: q, kind: .query)
+        }
+
+        // Channels not already in the profile's auto-join list.
+        let alreadyJoining = Set(profile.autoJoin
+            .split { $0 == "," || $0 == " " }
+            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+            .filter { !$0.isEmpty })
+        var seen = Set<String>()
+        for raw in pendingRestoreChannels where !raw.isEmpty {
+            let name = raw.hasPrefix("#") ? raw : "#" + raw
+            let key = name.lowercased()
+            guard !alreadyJoining.contains(key), seen.insert(key).inserted else { continue }
+            client.send("JOIN \(name)")
+        }
+
+        // Re-select the previously-active buffer if it now exists. Channel
+        // buffers may not yet exist (JOIN is async) — handled by a deferred
+        // tick that retries once the buffer materializes.
+        if let target = pendingRestoreSelection {
+            let lower = target.lowercased()
+            if let i = buffers.firstIndex(where: { $0.name.lowercased() == lower }) {
+                selectedBufferID = buffers[i].id
+            } else {
+                let id = id  // capture connection ID, not buffer ID
+                Task { @MainActor [weak self] in
+                    // One retry tick — fairly common for the JOIN reply to
+                    // arrive within a few hundred ms of CAP completion.
+                    try? await Task.sleep(nanoseconds: 800_000_000)
+                    guard let self, self.id == id else { return }
+                    if let i = self.buffers.firstIndex(where: { $0.name.lowercased() == lower }) {
+                        self.selectedBufferID = self.buffers[i].id
+                    }
+                }
+            }
+        }
+    }
+
     init(profile: ServerProfile, watchlist: WatchlistService) {
         self.profile = profile
         self.watchlist = watchlist
@@ -1457,6 +1552,10 @@ final class IRCConnection: ObservableObject, Identifiable {
             }
         }
         autoJoinIfNeeded()
+        // Restore any channels + query buffers that were live at the previous
+        // quit. Skipped silently when the user has the toggle off (ChatModel
+        // doesn't `setPendingRestore` in that case).
+        applyPendingRestore()
         // Re-assert away status after reconnect.
         if isAway, let reason = awayReason {
             client.send("AWAY :\(reason)")

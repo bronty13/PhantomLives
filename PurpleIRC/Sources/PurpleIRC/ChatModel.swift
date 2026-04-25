@@ -311,6 +311,20 @@ final class ChatModel: ObservableObject {
         // Wire the new connection's channel cache into the active DEK so
         // its writes match every other persistence path.
         conn.channelList.setEncryptionKey(keyStore.currentKey)
+
+        // Push the previous-session snapshot into the connection so it can
+        // restore channels + queries during runPostWelcome. Keyed by the
+        // (stable) profile UUID, not the (per-launch) connection UUID.
+        if settings.settings.restoreOpenBuffersOnLaunch {
+            let key = profile.id.uuidString
+            if let snap = settings.settings.lastSession[key] {
+                conn.setPendingRestore(
+                    channels: snap.channels,
+                    queries: snap.queries,
+                    selected: snap.selected)
+            }
+        }
+
         connections.append(conn)
         var bag: [AnyCancellable] = []
         conn.objectWillChange
@@ -318,6 +332,25 @@ final class ChatModel: ObservableObject {
             .store(in: &bag)
         conn.events
             .sink { [weak self] tuple in self?.events.send(tuple) }
+            .store(in: &bag)
+        // Save the connection's buffer list to settings whenever it
+        // changes shape. The check inside `maybeSaveSnapshot` is a cheap
+        // equality test, so cycles where settings.save fires our sink
+        // don't loop — the snapshot only writes when channels or queries
+        // actually change.
+        conn.$buffers
+            .sink { [weak self, weak conn] _ in
+                guard let self, let conn else { return }
+                self.maybeSaveSnapshot(for: conn)
+            }
+            .store(in: &bag)
+        // Also save when the user picks a new buffer so the next launch
+        // restores focus to the same place.
+        conn.$selectedBufferID
+            .sink { [weak self, weak conn] _ in
+                guard let self, let conn else { return }
+                self.maybeSaveSnapshot(for: conn)
+            }
             .store(in: &bag)
         connectionCancellables[conn.id] = bag
         return conn
@@ -684,6 +717,31 @@ final class ChatModel: ObservableObject {
         let days = max(1, settings.settings.purgeLogsAfterDays)
         Task { [logStore] in
             _ = await logStore.purge(olderThanDays: days)
+        }
+    }
+
+    // MARK: - Session snapshot persistence
+
+    /// Cache of the last snapshot written to settings per profile, so we can
+    /// skip redundant writes when nothing material has changed (the most
+    /// common case — every chat-line append fires `$buffers`).
+    private var lastSnapshotByProfileID: [UUID: SessionSnapshot] = [:]
+
+    /// Compute the connection's current snapshot and write it into settings
+    /// if it differs from the last value we saved for that profile. Also
+    /// trims out empty snapshots so the on-disk dictionary doesn't grow
+    /// without bound across deleted server profiles.
+    private func maybeSaveSnapshot(for conn: IRCConnection) {
+        let snap = conn.currentSessionSnapshot()
+        let pid = conn.profile.id
+        if lastSnapshotByProfileID[pid] == snap { return }
+        lastSnapshotByProfileID[pid] = snap
+
+        let key = pid.uuidString
+        if snap.channels.isEmpty && snap.queries.isEmpty {
+            settings.settings.lastSession.removeValue(forKey: key)
+        } else {
+            settings.settings.lastSession[key] = snap
         }
     }
 

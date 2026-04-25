@@ -755,6 +755,12 @@ struct BehaviorSetup: View {
                 Text("/quit and /exit close PurpleIRC entirely (after sending a QUIT to each connected network). Use /disconnect to leave one network without quitting.")
                     .font(.caption).foregroundStyle(.tertiary)
             }
+            Section("Session restore") {
+                Toggle("Restore open channels and queries on launch",
+                       isOn: $settings.settings.restoreOpenBuffersOnLaunch)
+                Text("When you reconnect, PurpleIRC re-joins the channels you had open and re-creates query buffers from your last session. Channel JOINs go through the normal CAP / auto-join path, so server-side ACLs still apply. Off = fresh slate every connect.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
             Section("Persistent logs") {
                 Toggle("Enable persistent logs", isOn: $settings.settings.enablePersistentLogs)
                 Toggle("Include server MOTD and info lines", isOn: $settings.settings.logMotdAndNumerics)

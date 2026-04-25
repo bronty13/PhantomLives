@@ -302,6 +302,18 @@ struct TriggerRule: Codable, Identifiable, Hashable {
     var enabled: Bool = true
 }
 
+/// Snapshot of which channels and query buffers were live on a network at the
+/// most recent quit. Persisted in `AppSettings.lastSession` (keyed by the
+/// server profile's UUID — stable across launches, unlike `IRCConnection.id`)
+/// and replayed on the next connect when `restoreOpenBuffersOnLaunch` is on.
+struct SessionSnapshot: Codable, Equatable {
+    var channels: [String] = []
+    var queries: [String] = []
+    /// Bare name of the buffer that was selected when the snapshot was taken.
+    /// Restored on a best-effort basis after the channels finish JOINing.
+    var selected: String? = nil
+}
+
 struct AppSettings: Codable {
     var servers: [ServerProfile] = ServerProfile.defaultServers()
     var addressBook: [AddressEntry] = []
@@ -373,6 +385,16 @@ struct AppSettings: Codable {
     /// Off keeps every line visible (the classic IRC behavior).
     var collapseJoinPart: Bool = true
 
+    /// On launch, re-open the channels and query buffers that were live at
+    /// the previous quit. Channel JOINs go through the normal CAP/auto-join
+    /// path so server-side ACLs still apply. Off reverts to the classic
+    /// "fresh slate every connect" behavior.
+    var restoreOpenBuffersOnLaunch: Bool = true
+
+    /// Per-network buffer snapshot from the most recent session. Keyed by the
+    /// server profile's UUID string. Empty value = "nothing was open."
+    var lastSession: [String: SessionSnapshot] = [:]
+
     // Highlight rules (row tint + matched-word color + per-rule alerts)
     var highlightRules: [HighlightRule] = []
 
@@ -441,6 +463,8 @@ struct AppSettings: Codable {
         self.boldChatText = try c.decodeIfPresent(Bool.self, forKey: .boldChatText) ?? false
         self.relaxedRowSpacing = try c.decodeIfPresent(Bool.self, forKey: .relaxedRowSpacing) ?? false
         self.collapseJoinPart = try c.decodeIfPresent(Bool.self, forKey: .collapseJoinPart) ?? true
+        self.restoreOpenBuffersOnLaunch = try c.decodeIfPresent(Bool.self, forKey: .restoreOpenBuffersOnLaunch) ?? true
+        self.lastSession = try c.decodeIfPresent([String: SessionSnapshot].self, forKey: .lastSession) ?? [:]
         self.highlightRules = try c.decodeIfPresent([HighlightRule].self, forKey: .highlightRules) ?? []
         self.triggerRules = try c.decodeIfPresent([TriggerRule].self, forKey: .triggerRules) ?? []
         self.seenTrackingEnabled = try c.decodeIfPresent(Bool.self, forKey: .seenTrackingEnabled) ?? false
