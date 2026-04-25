@@ -310,13 +310,16 @@ final class ChatModel: ObservableObject {
             fileURL: settings.supportDirectoryURL.appendingPathComponent("app.log"),
             key: keyStore.currentKey)
         AppLog.shared.info("PurpleIRC \(AppVersion.short) launched", category: "Boot")
-        // Capture the trailing window of every buffer at quit. Notifications
-        // are AppKit-only — guard with canImport at the top of the file if
-        // we ever target Linux.
+        // Capture the trailing window of every buffer at quit. The willTerminate
+        // notification fires on the main thread; we MUST save synchronously
+        // because the run loop is shutting down. An earlier version wrapped
+        // this in `Task { @MainActor in … }` and the task body never ran —
+        // the app exited first, history vanished. `assumeIsolated` lets us
+        // call the @MainActor method synchronously without that loss.
         NotificationCenter.default
             .publisher(for: NSApplication.willTerminateNotification)
             .sink { [weak self] _ in
-                Task { @MainActor in self?.saveAllHistories() }
+                MainActor.assumeIsolated { self?.saveAllHistories() }
             }
             .store(in: &cancellables)
         // Expose this model to AppleScript verbs (Resources/PurpleIRC.sdef).
@@ -449,6 +452,23 @@ final class ChatModel: ObservableObject {
             .sink { [weak self, weak conn] _ in
                 guard let self, let conn else { return }
                 self.maybeSaveSnapshot(for: conn)
+            }
+            .store(in: &bag)
+        // Persist chat history when the connection drops, not only at
+        // app quit. willTerminate covers Cmd+Q; this covers /disconnect,
+        // network loss, and the "Disconnect" toolbar button — without
+        // it, history saves only at quit and an app crash before quit
+        // loses everything.
+        conn.$state
+            .removeDuplicates()
+            .sink { [weak self, weak conn] state in
+                guard let self, let conn else { return }
+                if case .disconnected = state {
+                    self.persistHistoryForConnection(conn)
+                }
+                if case .failed = state {
+                    self.persistHistoryForConnection(conn)
+                }
             }
             .store(in: &bag)
         // Also save when the user picks a new buffer so the next launch
@@ -876,17 +896,30 @@ final class ChatModel: ObservableObject {
     /// from earlier restores so successive launches don't accumulate
     /// banner pairs.
     func saveAllHistories() {
-        for conn in connections where conn.state == .connected {
-            let slug = SeenStore.slug(for: conn.displayName)
-            var network = SessionHistoryStore.NetworkHistory()
-            for buf in conn.buffers where buf.kind != .server {
-                let trimmed = buf.lines
-                    .filter { !Self.isRestoreBannerLine($0) }
-                    .suffix(SessionHistoryStore.linesPerBuffer)
-                network.buffers[buf.name] = Array(trimmed)
-            }
-            sessionHistory.save(networkSlug: slug, history: network)
+        for conn in connections {
+            persistHistoryForConnection(conn)
         }
+    }
+
+    /// Snapshot one connection's buffers and write them to disk. Pulled
+    /// out of `saveAllHistories` so per-disconnect saves can target one
+    /// connection cheaply. Skips connections whose buffers are empty so
+    /// we don't wipe a previously-saved history with nothing — that
+    /// happened during an earlier debug session and was a real footgun.
+    fileprivate func persistHistoryForConnection(_ conn: IRCConnection) {
+        let slug = SeenStore.slug(for: conn.displayName)
+        var network = SessionHistoryStore.NetworkHistory()
+        for buf in conn.buffers where buf.kind != .server {
+            let trimmed = buf.lines
+                .filter { !Self.isRestoreBannerLine($0) }
+                .suffix(SessionHistoryStore.linesPerBuffer)
+            if trimmed.isEmpty { continue }
+            network.buffers[buf.name] = Array(trimmed)
+        }
+        // If the snapshot has nothing worth saving, leave whatever's on
+        // disk in place. Otherwise persist.
+        guard !network.buffers.isEmpty else { return }
+        sessionHistory.save(networkSlug: slug, history: network)
     }
 
     /// True for the marker lines `replayHistoryIntoBuffer` injects. Filtered
