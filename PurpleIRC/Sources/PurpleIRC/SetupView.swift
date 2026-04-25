@@ -5,6 +5,16 @@ struct SetupView: View {
     @ObservedObject var settings: SettingsStore
     @State private var tab: Tab = .servers
 
+    /// Adopt any one-shot tab directive (e.g. the Identity toolbar menu's
+    /// "Manage identities…" button) so the sheet opens on the right tab
+    /// instead of always landing on Servers.
+    private func consumePendingTab() {
+        if let req = model.pendingSetupTab {
+            tab = req
+            model.pendingSetupTab = nil
+        }
+    }
+
     enum Tab: String, CaseIterable, Identifiable {
         case servers = "Servers"
         case identities = "Identities"
@@ -53,6 +63,12 @@ struct SetupView: View {
             }
         }
         .frame(minWidth: 820, minHeight: 560)
+        .onAppear { consumePendingTab() }
+        // The sheet may already be showing when a different tab gets
+        // requested (e.g. user has Setup open, clicks the toolbar Identity
+        // menu's "Manage identities…"). Watching the published value flips
+        // the tab even on already-mounted sheets.
+        .onChange(of: model.pendingSetupTab) { _, _ in consumePendingTab() }
     }
 
     private var header: some View {
@@ -356,64 +372,159 @@ struct ServerEditor: View {
 
 struct AddressBookSetup: View {
     @ObservedObject var settings: SettingsStore
-    @State private var newNick: String = ""
-    @State private var newNote: String = ""
+    @State private var selection: UUID?
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                TextField("Nickname", text: $newNick)
-                    .textFieldStyle(.roundedBorder)
-                TextField("Note (optional)", text: $newNote)
-                    .textFieldStyle(.roundedBorder)
-                Button("Add") {
-                    let n = newNick.trimmingCharacters(in: .whitespaces)
-                    guard !n.isEmpty else { return }
-                    settings.settings.addressBook.append(
-                        AddressEntry(nick: n, note: newNote, watch: true)
+        HStack(spacing: 0) {
+            // Master pane — list of contacts. Watch toggle stays inline so
+            // the user can flip alerts without opening the editor.
+            VStack(spacing: 0) {
+                if settings.settings.addressBook.isEmpty {
+                    ContentUnavailableView(
+                        "No contacts yet",
+                        systemImage: "person.crop.circle.badge.plus",
+                        description: Text("Add nicknames to track. Toggle “Watch” to get alerts when they come online.")
                     )
-                    newNick = ""; newNote = ""
-                }
-                .disabled(newNick.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-            .padding()
-            Divider()
-            if settings.settings.addressBook.isEmpty {
-                ContentUnavailableView(
-                    "No contacts yet",
-                    systemImage: "person.crop.circle.badge.plus",
-                    description: Text("Add nicknames to track. Toggle ‘Watch’ to get alerts when they come online.")
-                )
-                .padding(40)
-            } else {
-                List {
-                    ForEach($settings.settings.addressBook) { $entry in
-                        HStack {
-                            Toggle(isOn: $entry.watch) {
+                    .padding(20)
+                } else {
+                    List(selection: $selection) {
+                        ForEach(settings.settings.addressBook) { entry in
+                            HStack {
                                 Image(systemName: entry.watch ? "bell.fill" : "bell.slash")
+                                    .foregroundStyle(entry.watch ? Color.purple : .secondary)
+                                VStack(alignment: .leading, spacing: 0) {
+                                    Text(entry.nick.isEmpty ? "(unnamed)" : entry.nick)
+                                        .font(.body)
+                                    if !entry.note.isEmpty {
+                                        Text(entry.note)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                }
+                                Spacer()
+                                if !entry.richNotes.isEmpty {
+                                    // Quick visual cue that the contact has
+                                    // longer notes attached.
+                                    Image(systemName: "doc.text")
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                }
                             }
-                            .toggleStyle(.button)
-                            .help(entry.watch ? "Alerts enabled" : "Alerts disabled")
-
-                            TextField("nickname", text: $entry.nick)
-                                .textFieldStyle(.plain)
-                                .font(.system(.body, design: .monospaced))
-                                .frame(width: 160, alignment: .leading)
-                            TextField("note", text: $entry.note)
-                                .textFieldStyle(.plain)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Button {
-                                settings.removeAddress(id: entry.id)
-                            } label: { Image(systemName: "minus.circle") }
-                            .buttonStyle(.borderless)
+                            .tag(entry.id)
                         }
-                        .padding(.vertical, 2)
                     }
                 }
-                .listStyle(.inset)
+                Divider()
+                HStack {
+                    Button {
+                        let new = AddressEntry(nick: "", watch: true)
+                        settings.settings.addressBook.append(new)
+                        selection = new.id
+                    } label: { Image(systemName: "plus") }
+                    Button {
+                        if let id = selection {
+                            settings.removeAddress(id: id)
+                            selection = settings.settings.addressBook.first?.id
+                        }
+                    } label: { Image(systemName: "minus") }
+                        .disabled(selection == nil)
+                    Spacer()
+                }
+                .padding(6)
+            }
+            .frame(minWidth: 240, idealWidth: 260, maxWidth: 300)
+            .background(Color(nsColor: .controlBackgroundColor))
+
+            Divider()
+
+            // Detail pane — full editor for the selected contact.
+            if let id = selection,
+               let i = settings.settings.addressBook.firstIndex(where: { $0.id == id }) {
+                AddressEntryEditor(entry: Binding(
+                    get: { settings.settings.addressBook[i] },
+                    set: { settings.settings.addressBook[i] = $0 }
+                ))
+            } else {
+                VStack {
+                    Spacer()
+                    Text("Select a contact, or click + to add one.")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
             }
         }
+        .onAppear {
+            if selection == nil { selection = settings.settings.addressBook.first?.id }
+        }
+    }
+}
+
+/// Editor for a single AddressEntry. Short fields up top, Markdown editor
+/// + live preview at the bottom. Splits into two panes when there's
+/// vertical room so you can write and see the rendered version side-by-side.
+struct AddressEntryEditor: View {
+    @Binding var entry: AddressEntry
+
+    var body: some View {
+        Form {
+            Section("Contact") {
+                TextField("Nickname", text: $entry.nick)
+                    .textFieldStyle(.roundedBorder)
+                Toggle("Alert when this nick comes online", isOn: $entry.watch)
+                TextField("Short note (shown next to the nick)", text: $entry.note)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            Section("Notes") {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Markdown source")
+                        .font(.caption).foregroundStyle(.secondary)
+                    TextEditor(text: $entry.richNotes)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(minHeight: 140)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(Color.gray.opacity(0.3), lineWidth: 0.5)
+                        )
+                }
+                if !entry.richNotes.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Preview")
+                            .font(.caption).foregroundStyle(.secondary)
+                        ScrollView {
+                            Text(Self.markdown(entry.richNotes))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .textSelection(.enabled)
+                                .padding(8)
+                        }
+                        .frame(minHeight: 100, maxHeight: 200)
+                        .background(Color(nsColor: .textBackgroundColor))
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(Color.gray.opacity(0.3), lineWidth: 0.5)
+                        )
+                    }
+                }
+                Text("Supports **bold**, *italic*, `code`, [links](https://example.com), and bullet lists with `-`. Notes are stored in settings.json so they're encrypted along with the rest of your config.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    /// Parse the Markdown source into an `AttributedString` for preview.
+    /// Falls back to plain text on parse failure so a stray `]` doesn't
+    /// blank the entire preview.
+    private static func markdown(_ src: String) -> AttributedString {
+        let opts = AttributedString.MarkdownParsingOptions(
+            interpretedSyntax: .inlineOnlyPreservingWhitespace
+        )
+        if let parsed = try? AttributedString(markdown: src, options: opts) {
+            return parsed
+        }
+        return AttributedString(src)
     }
 }
 
@@ -644,12 +755,44 @@ struct BehaviorSetup: View {
                     .font(.caption).foregroundStyle(.tertiary)
             }
             Section("Theme") {
-                Picker("Theme", selection: $settings.settings.themeID) {
-                    ForEach(Theme.all, id: \.id) { t in
-                        Text(t.displayName).tag(t.id)
+                // 2-column gallery — each card renders sample chat lines in
+                // the theme's actual colours so the user can see what they're
+                // picking before committing. Click a card to apply.
+                LazyVGrid(
+                    columns: [GridItem(.flexible(), spacing: 10),
+                              GridItem(.flexible(), spacing: 10)],
+                    spacing: 10
+                ) {
+                    ForEach(Theme.all) { theme in
+                        ThemePreviewCard(
+                            theme: theme,
+                            isSelected: theme.id == settings.settings.themeID
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            settings.settings.themeID = theme.id
+                        }
                     }
                 }
-                .pickerStyle(.segmented)
+            }
+            Section("Chat font") {
+                Picker("Font family", selection: $settings.settings.chatFontFamily) {
+                    ForEach(ChatFontFamily.allCases) { f in
+                        Text(f.rawValue).tag(f)
+                    }
+                }
+                HStack {
+                    Text("Size")
+                    Slider(value: $settings.settings.chatFontSize, in: 10...24, step: 1)
+                    Text(verbatim: "\(Int(settings.settings.chatFontSize)) pt")
+                        .frame(width: 50, alignment: .trailing)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                Toggle("Bold chat text", isOn: $settings.settings.boldChatText)
+                Toggle("Relaxed row spacing (accessibility)", isOn: $settings.settings.relaxedRowSpacing)
+                Text("Pairs well with the High Contrast theme. Live preview applies as soon as you change the slider.")
+                    .font(.caption).foregroundStyle(.tertiary)
             }
             Section("DCC (experimental)") {
                 TextField("External IP (for outgoing offers)", text: $settings.settings.dccExternalIP)
@@ -1450,5 +1593,67 @@ struct SecuritySetup: View {
             Text(text).font(.caption).foregroundStyle(.secondary)
             Spacer()
         }
+    }
+}
+
+// MARK: - Theme preview
+
+/// One tile in the theme gallery. Renders a few stylised chat lines using
+/// the theme's actual color knobs so the user can pick by eye instead of
+/// having to apply each option to find out what it looks like. Click a
+/// card to commit; the selected theme gets an accent ring + checkmark.
+struct ThemePreviewCard: View {
+    let theme: Theme
+    let isSelected: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(theme.displayName).font(.headline)
+                Spacer()
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+            }
+            // Mini chat sample — uses real semantic colours from the theme.
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text("<alice>").foregroundStyle(theme.ownNickColor)
+                    Text("hey, anyone tried Swift 6?").foregroundStyle(.primary)
+                }
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text("<bob>").foregroundStyle(theme.nickPalette.first ?? .blue)
+                    Text("just yesterday").foregroundStyle(.primary)
+                }
+                Text("* alice waves").foregroundStyle(theme.actionColor).italic()
+                Text("→ carol joined").foregroundStyle(theme.joinColor)
+                Text("-NickServ- you are now identified")
+                    .foregroundStyle(theme.noticeColor)
+            }
+            .font(.system(.caption, design: .monospaced))
+            .lineLimit(1)
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(nsColor: .textBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 5))
+            // Palette strip — quick read on the per-nick colours that
+            // would land in this theme.
+            HStack(spacing: 3) {
+                ForEach(0..<min(theme.nickPalette.count, 8), id: \.self) { i in
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(theme.nickPalette[i])
+                        .frame(height: 6)
+                }
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isSelected ? Color.accentColor : Color.gray.opacity(0.25),
+                        lineWidth: isSelected ? 2 : 0.5)
+        )
     }
 }

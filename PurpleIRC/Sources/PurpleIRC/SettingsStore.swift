@@ -197,8 +197,40 @@ struct ServerProfile: Codable, Identifiable, Hashable {
 struct AddressEntry: Codable, Identifiable, Hashable {
     var id: UUID = UUID()
     var nick: String = ""
+    /// Short one-liner shown next to the nick in the sidebar / list views.
+    /// Kept terse on purpose — anything longer belongs in `richNotes`.
     var note: String = ""
     var watch: Bool = true
+    /// Free-form Markdown notes. Rendered with `AttributedString(markdown:)`
+    /// in the address-book editor's preview pane, so users can keep
+    /// formatted context (bullet lists, links, emphasis) per-contact.
+    /// Lives inside `settings.json` and therefore inherits the encrypted
+    /// envelope when the keystore is unlocked.
+    var richNotes: String = ""
+
+    init(id: UUID = UUID(),
+         nick: String = "",
+         note: String = "",
+         watch: Bool = true,
+         richNotes: String = "") {
+        self.id = id
+        self.nick = nick
+        self.note = note
+        self.watch = watch
+        self.richNotes = richNotes
+    }
+
+    /// Forward-compatible decoder so older settings.json files (without the
+    /// `richNotes` key) keep loading. Without this, a single missing key
+    /// would fail decode of the whole AddressBook array.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id        = try c.decodeIfPresent(UUID.self,   forKey: .id)        ?? UUID()
+        self.nick      = try c.decodeIfPresent(String.self, forKey: .nick)      ?? ""
+        self.note      = try c.decodeIfPresent(String.self, forKey: .note)      ?? ""
+        self.watch     = try c.decodeIfPresent(Bool.self,   forKey: .watch)     ?? true
+        self.richNotes = try c.decodeIfPresent(String.self, forKey: .richNotes) ?? ""
+    }
 }
 
 struct SavedChannel: Codable, Identifiable, Hashable {
@@ -322,6 +354,16 @@ struct AppSettings: Codable {
     ]
     var themeID: String = "classic"
 
+    // Appearance / accessibility — applied to every chat-text view.
+    var chatFontFamily: ChatFontFamily = .systemMono
+    /// Base font size in points. The Behavior tab clamps the slider to a
+    /// readable range (10–24); below 10 buffers become unscannable.
+    var chatFontSize: Double = 13
+    /// Bold every chat line. Pairs well with the High Contrast theme.
+    var boldChatText: Bool = false
+    /// Add extra vertical padding between rows for accessibility.
+    var relaxedRowSpacing: Bool = false
+
     // Highlight rules (row tint + matched-word color + per-rule alerts)
     var highlightRules: [HighlightRule] = []
 
@@ -384,6 +426,10 @@ struct AppSettings: Codable {
                 "ctcp": ""
             ]
         self.themeID = try c.decodeIfPresent(String.self, forKey: .themeID) ?? "classic"
+        self.chatFontFamily = try c.decodeIfPresent(ChatFontFamily.self, forKey: .chatFontFamily) ?? .systemMono
+        self.chatFontSize = try c.decodeIfPresent(Double.self, forKey: .chatFontSize) ?? 13
+        self.boldChatText = try c.decodeIfPresent(Bool.self, forKey: .boldChatText) ?? false
+        self.relaxedRowSpacing = try c.decodeIfPresent(Bool.self, forKey: .relaxedRowSpacing) ?? false
         self.highlightRules = try c.decodeIfPresent([HighlightRule].self, forKey: .highlightRules) ?? []
         self.triggerRules = try c.decodeIfPresent([TriggerRule].self, forKey: .triggerRules) ?? []
         self.seenTrackingEnabled = try c.decodeIfPresent(Bool.self, forKey: .seenTrackingEnabled) ?? false

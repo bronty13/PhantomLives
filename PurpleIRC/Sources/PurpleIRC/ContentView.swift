@@ -640,6 +640,9 @@ struct IdentityMenu: View {
                 }
                 Divider()
                 Button("Manage identities…") {
+                    // Land directly on the Identities tab instead of
+                    // dropping into Servers and forcing the user to click.
+                    model.pendingSetupTab = .identities
                     model.showSetup = true
                 }
             } else {

@@ -20,6 +20,19 @@ struct BufferView: View {
     @State private var editingTopic: Bool = false
     @State private var topicDraft: String = ""
 
+    // Slash-command picker state.
+    @State private var commandSuggestionIndex: Int = 0
+    /// Input string at the moment the user pressed Esc — keeps the picker
+    /// dismissed until they edit the input again. Reset whenever the input
+    /// changes shape.
+    @State private var pickerDismissedFor: String? = nil
+
+    /// Drives focus on the input field. Granted on appear, when the buffer
+    /// changes, and when the app re-activates so the user can always start
+    /// typing without clicking first.
+    @FocusState private var inputFocused: Bool
+    @Environment(\.scenePhase) private var scenePhase
+
     struct TabCompletion {
         let typedPrefix: String   // text before the completed word (includes trailing space when non-empty)
         let partial: String       // original partial the user typed (before first tab)
@@ -282,11 +295,11 @@ struct BufferView: View {
         }()
         HStack(spacing: 4) {
             Text(symbol)
-                .font(.system(.body, design: .monospaced).bold())
+                .font(model.chatFont.bold())
                 .foregroundStyle(Self.colorForMode(mode))
                 .frame(width: 12, alignment: .center)
             Text(user)
-                .font(.system(.body, design: .monospaced))
+                .font(model.chatFont)
                 .foregroundStyle(mode == nil ? .primary : Self.colorForMode(mode))
         }
     }
@@ -337,106 +350,201 @@ struct BufferView: View {
     private var inputBar: some View {
         VStack(spacing: 0) {
             if showingCommandHints {
-                commandHintBar
+                commandSuggestionList
                     .transition(.opacity)
             }
             HStack(spacing: 8) {
                 Text("\(model.nick):")
                     .foregroundStyle(.secondary)
-                    .font(.system(.body, design: .monospaced))
+                    .font(model.chatFont)
                 TextField(placeholder, text: $input)
-                .textFieldStyle(.plain)
-                .font(.system(.body, design: .monospaced))
-                .onSubmit(submit)
-                .onChange(of: input) { _, _ in
-                    // Any manual edit that breaks the expected tail invalidates
-                    // the active completion; performTabComplete will recompute.
-                    if let c = completion, !input.hasSuffix(c.suffix)
-                        || !input.dropLast(c.suffix.count).hasSuffix(c.candidates[c.index]) {
-                        completion = nil
+                    .textFieldStyle(.plain)
+                    .font(model.chatFont)
+                    .focused($inputFocused)
+                    .onSubmit(submit)
+                    .onChange(of: input) { oldValue, newValue in
+                        // Tab-completion invalidation.
+                        if let c = completion, !input.hasSuffix(c.suffix)
+                            || !input.dropLast(c.suffix.count).hasSuffix(c.candidates[c.index]) {
+                            completion = nil
+                        }
+                        // Any edit re-engages the slash picker that the user
+                        // might have dismissed earlier — only the *exact*
+                        // dismissed string keeps it hidden.
+                        if newValue != pickerDismissedFor {
+                            pickerDismissedFor = nil
+                        }
+                        // Reset highlight when the matching set changes.
+                        if oldValue != newValue {
+                            commandSuggestionIndex = 0
+                        }
                     }
-                }
-                .onKeyPress(.tab) {
-                    performTabComplete()
-                    return .handled
-                }
-                .onKeyPress(.upArrow) {
-                    if !history.isEmpty, historyPos > 0 {
-                        historyPos -= 1
-                        input = history[historyPos]
+                    .onKeyPress(.tab) {
+                        if showingCommandHints, let pick = currentSuggestion() {
+                            commit(suggestion: pick)
+                            return .handled
+                        }
+                        performTabComplete()
                         return .handled
                     }
-                    return .ignored
-                }
-                .onKeyPress(.downArrow) {
-                    if historyPos < history.count - 1 {
-                        historyPos += 1
-                        input = history[historyPos]
-                    } else {
-                        historyPos = history.count
-                        input = ""
+                    // Return must be intercepted *before* onSubmit so a
+                    // highlighted suggestion gets applied instead of sent
+                    // verbatim. When the picker isn't open we return .ignored
+                    // so SwiftUI's onSubmit fires as normal.
+                    .onKeyPress(.return) {
+                        if showingCommandHints, let pick = currentSuggestion() {
+                            commit(suggestion: pick)
+                            return .handled
+                        }
+                        return .ignored
                     }
-                    return .handled
-                }
+                    .onKeyPress(.upArrow) {
+                        if showingCommandHints {
+                            commandSuggestionIndex = max(0, commandSuggestionIndex - 1)
+                            return .handled
+                        }
+                        if !history.isEmpty, historyPos > 0 {
+                            historyPos -= 1
+                            input = history[historyPos]
+                            return .handled
+                        }
+                        return .ignored
+                    }
+                    .onKeyPress(.downArrow) {
+                        if showingCommandHints {
+                            commandSuggestionIndex = min(commandHintMatches.count - 1, commandSuggestionIndex + 1)
+                            return .handled
+                        }
+                        if historyPos < history.count - 1 {
+                            historyPos += 1
+                            input = history[historyPos]
+                        } else {
+                            historyPos = history.count
+                            input = ""
+                        }
+                        return .handled
+                    }
+                    .onKeyPress(.escape) {
+                        if showingCommandHints {
+                            // Stash the current input string so the picker
+                            // stays dismissed until the user types more.
+                            pickerDismissedFor = input
+                            return .handled
+                        }
+                        return .ignored
+                    }
             }
             .padding(10)
             .background(Color(nsColor: .controlBackgroundColor))
         }
+        .task { inputFocused = true }
+        .onChange(of: bufferIndex) { _, _ in inputFocused = true }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { inputFocused = true }
+        }
     }
 
-    // MARK: - Slash-command hint bar
+    // MARK: - Slash-command picker
 
-    /// Shown above the input when the user is typing a slash command — we
-    /// surface matching commands so /help isn't needed for routine lookups.
+    /// Vertical picker visible only when (a) the input is `/something` with
+    /// no space yet, (b) it matches at least one command, and (c) the user
+    /// hasn't pressed Esc on the current input. Same shape as Claude's
+    /// slash menu — arrow keys move highlight, Enter / Tab commit.
     private var showingCommandHints: Bool {
         guard input.hasPrefix("/"), !input.contains(" ") else { return false }
+        guard pickerDismissedFor != input else { return false }
         return !commandHintMatches.isEmpty
     }
 
-    /// Matches for the current /prefix. Cached via a computed property to
-    /// avoid rebuilding on unrelated @State changes.
+    /// Matches for the current /prefix. Cached via a computed property so
+    /// SwiftUI's diffing doesn't recompute on unrelated state changes.
     private var commandHintMatches: [CommandCatalog.Entry] {
         let typed = String(input.dropFirst())  // drop the leading "/"
-        return Array(CommandCatalog.matches(prefix: typed).prefix(6))
+        return Array(CommandCatalog.matches(prefix: typed).prefix(8))
+    }
+
+    /// Whichever entry the highlight cursor is currently on — nil if the
+    /// list is empty or the cursor somehow drifted out of bounds.
+    private func currentSuggestion() -> CommandCatalog.Entry? {
+        let m = commandHintMatches
+        guard !m.isEmpty else { return nil }
+        return m[min(max(0, commandSuggestionIndex), m.count - 1)]
+    }
+
+    /// Replace the typed `/prefix` with `/cmd ` so the user can keep
+    /// typing args. Resets every related state knob.
+    private func commit(suggestion entry: CommandCatalog.Entry) {
+        input = "/\(entry.id) "
+        completion = nil
+        pickerDismissedFor = nil
+        commandSuggestionIndex = 0
     }
 
     @ViewBuilder
-    private var commandHintBar: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "command").font(.caption).foregroundStyle(.secondary)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(commandHintMatches) { entry in
-                        Button {
-                            // Click a chip → complete to "/name " so the user
-                            // can keep typing args without editing.
-                            input = "/\(entry.id) "
-                            completion = nil
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text("/\(entry.id)")
-                                    .font(.system(.caption, design: .monospaced).bold())
-                                if !entry.args.isEmpty {
-                                    Text(entry.args)
-                                        .font(.system(.caption2, design: .monospaced))
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(Capsule().fill(Color.accentColor.opacity(0.12)))
-                        }
-                        .buttonStyle(.plain)
-                        .help(entry.summary)
-                    }
+    private var commandSuggestionList: some View {
+        let matches = commandHintMatches
+        VStack(spacing: 0) {
+            ForEach(Array(matches.enumerated()), id: \.element.id) { index, entry in
+                suggestionRow(entry, isSelected: index == commandSuggestionIndex) {
+                    commandSuggestionIndex = index
+                    commit(suggestion: entry)
+                }
+                if index < matches.count - 1 {
+                    Divider()
                 }
             }
-            Spacer(minLength: 0)
-            Text("Tab to complete · /help for details")
-                .font(.caption2).foregroundStyle(.tertiary)
+            Divider()
+            HStack {
+                Text("↑↓ to move · ⏎ Tab to commit · Esc to dismiss")
+                    .font(.caption2).foregroundStyle(.tertiary)
+                Spacer()
+                Text("/help for details")
+                    .font(.caption2).foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 4)
         }
+        .background(Color(nsColor: .controlBackgroundColor))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color.gray.opacity(0.3), lineWidth: 0.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 6))
         .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .background(Color(nsColor: .underPageBackgroundColor))
+        .padding(.bottom, 4)
+        .shadow(color: .black.opacity(0.08), radius: 4, y: -1)
+    }
+
+    @ViewBuilder
+    private func suggestionRow(_ entry: CommandCatalog.Entry,
+                               isSelected: Bool,
+                               onTap: @escaping () -> Void) -> some View {
+        Button(action: onTap) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("/\(entry.id)")
+                    .font(.system(.body, design: .monospaced).bold())
+                    .foregroundStyle(isSelected ? Color.white : Color.primary)
+                if !entry.args.isEmpty {
+                    Text(entry.args)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(isSelected ? Color.white.opacity(0.9) : .secondary)
+                }
+                Spacer()
+                Text(entry.summary)
+                    .font(.caption)
+                    .foregroundStyle(isSelected ? Color.white.opacity(0.9) : Color.secondary.opacity(0.7))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                isSelected
+                    ? Color.accentColor
+                    : Color.clear
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private var placeholder: String {
@@ -456,6 +564,9 @@ struct BufferView: View {
         model.sendInput(text)
         input = ""
         completion = nil
+        pickerDismissedFor = nil
+        // Keep focus after sending so the next message is one keystroke away.
+        inputFocused = true
     }
 
     private func performTabComplete() {
@@ -541,23 +652,23 @@ struct MessageRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             if let badge = leadingBadge {
-                Text(badge.glyph).foregroundStyle(badge.color).font(.system(.caption, design: .monospaced))
+                Text(badge.glyph).foregroundStyle(badge.color).font(model.chatCaptionFont)
             } else {
                 Text(Self.timeFmt.string(from: line.timestamp))
-                    .font(.system(.caption, design: .monospaced))
+                    .font(model.chatCaptionFont)
                     .foregroundStyle(.secondary)
                     .frame(width: 40, alignment: .leading)
             }
             if leadingBadge != nil {
                 Text(Self.timeFmt.string(from: line.timestamp))
-                    .font(.system(.caption, design: .monospaced))
+                    .font(model.chatCaptionFont)
                     .foregroundStyle(.secondary)
                     .frame(width: 40, alignment: .leading)
             }
             content
             Spacer(minLength: 0)
         }
-        .padding(.vertical, leadingBadge != nil ? 2 : 0)
+        .padding(.vertical, leadingBadge != nil ? 2 : (model.settings.settings.relaxedRowSpacing ? 3 : 0))
         .padding(.horizontal, leadingBadge != nil ? 4 : 0)
         .background(highlightBackground)
         .overlay(alignment: .leading) {
@@ -636,20 +747,20 @@ struct MessageRow: View {
         case .info:
             Text("— \(line.text)")
                 .foregroundStyle(theme.infoColor)
-                .font(.system(.body, design: .monospaced))
+                .font(model.chatFont)
         case .error:
             Text("! \(line.text)")
                 .foregroundStyle(theme.errorColor)
-                .font(.system(.body, design: .monospaced))
+                .font(model.chatFont)
         case .motd:
             Text(line.text)
                 .foregroundStyle(theme.motdColor)
-                .font(.system(.callout, design: .monospaced))
+                .font(model.chatFont)
         case .privmsg(let nick, let isSelf):
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("<\(nick)>")
                     .foregroundStyle(isSelf ? theme.ownNickColor : colorForNick(nick, theme: theme))
-                    .font(.system(.body, design: .monospaced))
+                    .font(model.chatFont)
                 Text(renderedText(linkColor: .accentColor))
                     .font(.system(.body))
                     .fixedSize(horizontal: false, vertical: true)
@@ -659,33 +770,33 @@ struct MessageRow: View {
             (Text("* \(nick) ").foregroundStyle(colorForNick(nick, theme: theme)).italic()
              + Text(renderedText(linkColor: .accentColor)).italic())
         case .notice(let from):
-            (Text("-\(from)- ").foregroundStyle(theme.noticeColor).font(.system(.body, design: .monospaced))
+            (Text("-\(from)- ").foregroundStyle(theme.noticeColor).font(model.chatFont)
              + Text(renderedText(linkColor: theme.noticeColor))
-                .font(.system(.body, design: .monospaced)))
+                .font(model.chatFont))
         case .join(let nick):
             Text("→ \(nick) joined")
                 .foregroundStyle(theme.joinColor)
-                .font(.system(.caption, design: .monospaced))
+                .font(model.chatCaptionFont)
         case .part(let nick, let reason):
             Text("← \(nick) left\(reason.map { " (\($0))" } ?? "")")
                 .foregroundStyle(theme.partColor)
-                .font(.system(.caption, design: .monospaced))
+                .font(model.chatCaptionFont)
         case .quit(let nick, let reason):
             Text("← \(nick) quit\(reason.map { " (\($0))" } ?? "")")
                 .foregroundStyle(theme.partColor)
-                .font(.system(.caption, design: .monospaced))
+                .font(model.chatCaptionFont)
         case .nick(let old, let new):
             Text("\(old) → \(new)")
                 .foregroundStyle(theme.nickNickColor)
-                .font(.system(.caption, design: .monospaced))
+                .font(model.chatCaptionFont)
         case .topic:
             Text(line.text)
                 .foregroundStyle(theme.nickNickColor)
-                .font(.system(.body, design: .monospaced))
+                .font(model.chatFont)
         case .raw:
             Text(line.text)
                 .foregroundStyle(theme.infoColor)
-                .font(.system(.caption, design: .monospaced))
+                .font(model.chatCaptionFont)
         }
     }
 
@@ -727,7 +838,7 @@ struct RawLogView: View {
                     LazyVStack(alignment: .leading, spacing: 1) {
                         ForEach(Array(model.rawLog.enumerated()), id: \.offset) { i, line in
                             Text(line)
-                                .font(.system(.caption, design: .monospaced))
+                                .font(model.chatCaptionFont)
                                 .foregroundStyle(line.hasPrefix(">>") ? .blue : .primary)
                                 .textSelection(.enabled)
                                 .id(i)

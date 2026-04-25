@@ -132,6 +132,10 @@ final class ChatModel: ObservableObject {
     @Published var showRawLog: Bool = false
     @Published var showWatchlist: Bool = false
     @Published var showSetup: Bool = false
+    /// One-shot directive for the Setup sheet to land on a specific tab.
+    /// Cleared by SetupView once consumed so the next plain "Setup" button
+    /// click drops the user on whatever tab they last used (or Servers).
+    @Published var pendingSetupTab: SetupView.Tab? = nil
     @Published var showChannelList: Bool = false
     @Published var showSeenList: Bool = false
     @Published var showHelp: Bool = false
@@ -330,6 +334,24 @@ final class ChatModel: ObservableObject {
 
     /// Selected theme — read by MessageRow at render time.
     var theme: Theme { Theme.named(settings.settings.themeID) }
+
+    /// Resolved chat font (family + size + optional bold). Read by every
+    /// view that renders chat text — keeps font customisation in one place
+    /// instead of scattered `.font(...)` calls.
+    var chatFont: Font {
+        let s = settings.settings
+        let base = s.chatFontFamily.font(size: CGFloat(s.chatFontSize))
+        return s.boldChatText ? base.bold() : base
+    }
+
+    /// Caption-sized variant of the chat font (timestamps, join/part lines).
+    /// Scales down 25% from the user's base size so timestamps still feel
+    /// secondary even at large body sizes.
+    var chatCaptionFont: Font {
+        let s = settings.settings
+        let size = max(9, CGFloat(s.chatFontSize) * 0.78)
+        return s.chatFontFamily.font(size: size)
+    }
 
     private func playSoundFor(event: IRCConnectionEvent) {
         let s = settings.settings
