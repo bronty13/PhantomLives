@@ -49,4 +49,30 @@ enum EncryptedJSON {
         let body = file.suffix(from: magic.count)
         return try Crypto.decrypt(Data(body), using: key)
     }
+
+    /// Outcome of `safeWrite`. The `.skippedLockedEncrypted` case lets
+    /// callers log / surface the protection without treating it as an error.
+    enum SafeWriteResult {
+        case wrote
+        case skippedLockedEncrypted
+    }
+
+    /// Wrap `plain` and write it to `url`, **but refuse the write entirely
+    /// when the file already on disk is encrypted and the caller hasn't
+    /// supplied a key**. Without this guard, an early or stale save can
+    /// silently clobber the user's encrypted data with plaintext defaults
+    /// (e.g. SettingsStore.init mutates settings before ChatModel has had a
+    /// chance to wire the keystore). Keeps the invariant: never downgrade
+    /// an encrypted file to plaintext implicitly.
+    @discardableResult
+    static func safeWrite(_ plain: Data, to url: URL, key: SymmetricKey?) throws -> SafeWriteResult {
+        if key == nil,
+           let existing = try? Data(contentsOf: url),
+           hasMagic(existing) {
+            return .skippedLockedEncrypted
+        }
+        let bytes = try wrap(plain, key: key)
+        try bytes.write(to: url, options: .atomic)
+        return .wrote
+    }
 }

@@ -307,12 +307,22 @@ final class ChatModel: ObservableObject {
     // MARK: - Settings sync
 
     private func onSettingsChanged() {
-        // If the selected server in settings changed, make that the active
-        // connection (creating one if needed).
-        if let selID = settings.settings.selectedServerID,
-           !connections.contains(where: { $0.id == activeConnectionID && $0.profile.id == selID }) {
-            if let existing = connections.first(where: { $0.profile.id == selID }) {
-                activeConnectionID = existing.id
+        // If the selected server in settings changed, follow it: switch to
+        // an existing connection for that profile or seed a new one. The
+        // "seed if missing" branch matters at unlock time — settings come
+        // back from the encrypted envelope pointing at a profile that was
+        // never live during the locked-startup phase.
+        if let selID = settings.settings.selectedServerID {
+            let alreadyActive = connections.contains {
+                $0.id == activeConnectionID && $0.profile.id == selID
+            }
+            if !alreadyActive {
+                if let existing = connections.first(where: { $0.profile.id == selID }) {
+                    activeConnectionID = existing.id
+                } else if let profile = settings.settings.servers.first(where: { $0.id == selID }) {
+                    let conn = addConnection(for: profile)
+                    activeConnectionID = conn.id
+                }
             }
         }
         applySettingsToAll()

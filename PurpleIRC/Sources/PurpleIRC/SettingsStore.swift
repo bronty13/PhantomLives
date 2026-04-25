@@ -439,10 +439,11 @@ final class SettingsStore: ObservableObject {
                 }
             }
         }
-
-        if settings.selectedServerID == nil {
-            settings.selectedServerID = settings.servers.first?.id
-        }
+        // No selectedServerID-defaulting here: mutating during init would
+        // trigger didSet → save() while keyStore is still nil, and that's
+        // the path that used to clobber an encrypted settings file with
+        // plaintext defaults. selectedServer() falls back to .servers.first
+        // when the ID is nil, which is the only place the value is read.
     }
 
     /// Re-read the settings file. Used by ChatModel after the KeyStore
@@ -476,9 +477,16 @@ final class SettingsStore: ObservableObject {
             let jsonData = try enc.encode(persistable)
 
             let key = (keyStore?.isUnlocked == true) ? keyStore?.currentKey : nil
-            let bytesToWrite = try EncryptedJSON.wrap(jsonData, key: key)
-            isEncryptedOnDisk = (key != nil)
-            try bytesToWrite.write(to: fileURL, options: .atomic)
+            let result = try EncryptedJSON.safeWrite(jsonData, to: fileURL, key: key)
+            switch result {
+            case .wrote:
+                isEncryptedOnDisk = (key != nil)
+            case .skippedLockedEncrypted:
+                // The file on disk is encrypted but we don't have a key —
+                // refuse to overwrite it. This is a hard guarantee against
+                // the early-init save and lock-time stale-save cases.
+                NSLog("PurpleIRC: skipped settings save (encrypted on disk, no key in hand)")
+            }
         } catch {
             NSLog("PurpleIRC: failed to save settings: \(error)")
         }

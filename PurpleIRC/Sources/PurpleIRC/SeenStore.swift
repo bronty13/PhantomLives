@@ -197,8 +197,9 @@ final class SeenStore {
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.sortedKeys]
         guard let plain = try? encoder.encode(table) else { return }
-        guard let bytes = try? EncryptedJSON.wrap(plain, key: currentKey) else { return }
-        try? bytes.write(to: fileURL(for: slug), options: .atomic)
+        // Use safeWrite so a stale call with no key can't clobber an
+        // encrypted seen-data file with plaintext.
+        _ = try? EncryptedJSON.safeWrite(plain, to: fileURL(for: slug), key: currentKey)
     }
 
     private func fileURL(for slug: String) -> URL {

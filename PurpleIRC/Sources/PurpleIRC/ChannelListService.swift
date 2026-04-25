@@ -116,7 +116,8 @@ final class ChannelListService: ObservableObject {
         encoder.outputFormatting = [.sortedKeys]
         let snap = Snapshot(updatedAt: lastUpdated ?? Date(), listings: listings)
         guard let plain = try? encoder.encode(snap) else { return }
-        guard let bytes = try? EncryptedJSON.wrap(plain, key: currentKey) else { return }
-        try? bytes.write(to: url, options: .atomic)
+        // safeWrite refuses to overwrite an encrypted snapshot if we lost
+        // the key (e.g. user locked mid-fetch).
+        _ = try? EncryptedJSON.safeWrite(plain, to: url, key: currentKey)
     }
 }

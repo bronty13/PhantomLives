@@ -115,8 +115,7 @@ final class BotHost: ObservableObject {
 
     private func saveIndex() {
         guard let plain = try? JSONEncoder().encode(scripts) else { return }
-        guard let bytes = try? EncryptedJSON.wrap(plain, key: currentKey) else { return }
-        try? bytes.write(to: indexURL, options: .atomic)
+        _ = try? EncryptedJSON.safeWrite(plain, to: indexURL, key: currentKey)
     }
 
     func scriptSource(_ script: BotScript) -> String {
@@ -129,8 +128,7 @@ final class BotHost: ObservableObject {
     private func writeScript(_ script: BotScript, source: String) {
         let url = scriptsDir.appendingPathComponent(script.filename)
         let plain = Data(source.utf8)
-        guard let bytes = try? EncryptedJSON.wrap(plain, key: currentKey) else { return }
-        try? bytes.write(to: url, options: .atomic)
+        _ = try? EncryptedJSON.safeWrite(plain, to: url, key: currentKey)
     }
 
     @discardableResult
