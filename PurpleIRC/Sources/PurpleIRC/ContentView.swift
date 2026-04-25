@@ -275,6 +275,24 @@ struct SidebarView: View {
             get: { model.selectedBufferID },
             set: { if let v = $0 { model.selectBuffer(v) } }
         )) {
+            // Networks section — shows every live IRCConnection so the
+            // user can switch between concurrently-connected networks. Hidden
+            // when only one or zero connections exist (no value to add).
+            if model.connections.count > 1 {
+                Section("Networks") {
+                    ForEach(model.connections) { conn in
+                        NetworkRow(connection: conn,
+                                   isActive: conn.id == model.activeConnectionID)
+                    }
+                    AddNetworkRow()
+                }
+            } else if model.connections.count == 1 {
+                // Single connection: still expose the "+ Add network" so
+                // discovering multi-network is easy without cluttering the
+                // sidebar with a one-row Networks header.
+                Section { AddNetworkRow() }
+            }
+
             let channels = model.buffers.filter { $0.kind == .channel }
             if !channels.isEmpty {
                 Section("Channels") {
@@ -360,6 +378,129 @@ struct SidebarView: View {
     private func presence(for entry: AddressEntry) -> WatchPresence {
         guard entry.watch else { return .unknown }
         return model.watchlist.presence[entry.nick.lowercased()] ?? .unknown
+    }
+}
+
+/// One row in the Networks section. Single click selects the connection
+/// (which swaps every other sidebar section to that connection's buffers).
+/// Right-click exposes connect / disconnect / remove. Status dot mirrors
+/// the live IRCConnection state.
+struct NetworkRow: View {
+    @ObservedObject var connection: IRCConnection
+    let isActive: Bool
+    @EnvironmentObject var model: ChatModel
+    @State private var hovering: Bool = false
+
+    private var identityName: String? {
+        guard let id = connection.profile.identityID else { return nil }
+        return model.settings.identity(withID: id)?.name
+    }
+
+    private var stateColor: Color {
+        switch connection.state {
+        case .connected:    return .green
+        case .connecting:   return .yellow
+        case .failed:       return .red
+        case .disconnected: return .gray
+        }
+    }
+
+    private var stateLabel: String {
+        switch connection.state {
+        case .connected:    return "connected"
+        case .connecting:   return "connecting"
+        case .failed:       return "failed"
+        case .disconnected: return "offline"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle().fill(stateColor).frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(connection.displayName)
+                    .font(.body)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                if let identityName, !identityName.isEmpty {
+                    Text(identityName)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 4)
+            if hovering, connection.state == .connected {
+                Button {
+                    connection.disconnect()
+                } label: {
+                    Image(systemName: "bolt.slash")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Disconnect from \(connection.displayName)")
+            }
+        }
+        .padding(.vertical, 1)
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .onTapGesture { model.selectConnection(id: connection.id) }
+        .background(isActive ? Color.accentColor.opacity(0.18) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .help("\(connection.displayName) — \(stateLabel)")
+        .contextMenu {
+            if connection.state == .connected || connection.state == .connecting {
+                Button("Disconnect") { connection.disconnect() }
+            } else {
+                Button("Connect") { connection.connect() }
+            }
+            Divider()
+            Button("Remove from list", role: .destructive) {
+                let id = connection.id
+                DispatchQueue.main.async { model.removeConnection(id: id) }
+            }
+        }
+    }
+}
+
+/// "+ Add network" affordance at the bottom of the Networks section.
+/// Menu lists every saved server profile; selecting one spawns a fresh
+/// connection — including a second connection to a profile already in
+/// use, since some workflows (multiple identities on one server, ZNC
+/// modules, dedicated bouncer connections) need that.
+struct AddNetworkRow: View {
+    @EnvironmentObject var model: ChatModel
+
+    var body: some View {
+        Menu {
+            if model.settings.settings.servers.isEmpty {
+                Text("No server profiles — add one in Setup → Servers")
+                    .disabled(true)
+            } else {
+                ForEach(ServerProfile.sortedByName(model.settings.settings.servers)) { profile in
+                    Button(profile.name.isEmpty ? profile.host : profile.name) {
+                        model.connectAdditionalProfile(profile)
+                    }
+                }
+            }
+            Divider()
+            Button("Edit profiles…") {
+                model.pendingSetupTab = .servers
+                model.showSetup = true
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "plus.circle")
+                    .foregroundStyle(.secondary)
+                Text("Add network")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+        }
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .help("Connect to another server — same profile twice is fine")
     }
 }
 

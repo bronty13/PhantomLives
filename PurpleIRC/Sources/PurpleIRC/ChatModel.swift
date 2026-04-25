@@ -381,6 +381,36 @@ final class ChatModel: ObservableObject {
         applySettingsToAll()
     }
 
+    /// Spawn a NEW connection for the given profile, ignoring any existing
+    /// connection for that profile. Used by the Networks panel's "Add"
+    /// menu so the user can run multiple simultaneous connections to the
+    /// same server (different identities, multiple bouncers, etc.).
+    /// The new connection becomes active and starts connecting immediately.
+    @discardableResult
+    func connectAdditionalProfile(_ profile: ServerProfile) -> IRCConnection {
+        let conn = addConnection(for: profile)
+        activeConnectionID = conn.id
+        applySettingsToAll()
+        conn.connect()
+        return conn
+    }
+
+    /// Connect-or-activate semantics: if a connection for the given profile
+    /// is already running, focus it; otherwise spawn one and connect.
+    /// Distinct from `connectAdditionalProfile` (which always spawns a
+    /// fresh connection). This is the right verb for the Networks panel's
+    /// per-profile "Connect" button.
+    func connectProfile(_ profile: ServerProfile) {
+        if let existing = connections.first(where: { $0.profile.id == profile.id }) {
+            activeConnectionID = existing.id
+            if existing.state != .connected && existing.state != .connecting {
+                existing.connect()
+            }
+            return
+        }
+        connectAdditionalProfile(profile)
+    }
+
     /// Remove a connection (and its cancellables). If it was the active one,
     /// the first remaining connection becomes active.
     func removeConnection(id: UUID) {
