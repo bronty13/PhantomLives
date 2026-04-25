@@ -1584,8 +1584,14 @@ struct SecuritySetup: View {
                     Text("When on and encryption is enabled, the Keychain's silent unlock is gated by Touch ID. Cancelling the prompt falls back to your passphrase. Touch ID is a gate in front of the cached key — it doesn't replace the passphrase.")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
+                    // Surface the live availability diagnostic so a "ready"
+                    // row reads as confidence and a transient failure
+                    // (locked out, etc.) tells the user what to fix.
+                    Label(BiometricGate.availabilityDetail, systemImage: "touchid")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 } else {
-                    Label("Touch ID isn't available on this Mac.", systemImage: "touchid")
+                    Label(BiometricGate.availabilityDetail, systemImage: "touchid")
                         .foregroundStyle(.secondary)
                         .font(.caption)
                 }

@@ -275,22 +275,18 @@ struct SidebarView: View {
             get: { model.selectedBufferID },
             set: { if let v = $0 { model.selectBuffer(v) } }
         )) {
-            // Networks section — shows every live IRCConnection so the
-            // user can switch between concurrently-connected networks. Hidden
-            // when only one or zero connections exist (no value to add).
-            if model.connections.count > 1 {
-                Section("Networks") {
-                    ForEach(model.connections) { conn in
-                        NetworkRow(connection: conn,
-                                   isActive: conn.id == model.activeConnectionID)
-                    }
-                    AddNetworkRow()
+            // Networks section — always visible so the same row appears
+            // whether the user kicked off the connection via the toolbar
+            // Connect button or the "+ Add network" affordance below.
+            // Earlier we hid this when only one connection existed, which
+            // made the toolbar-Connect path produce no row, then a second
+            // Connect (via Add) produced two — confusing.
+            Section("Networks") {
+                ForEach(model.connections) { conn in
+                    NetworkRow(connection: conn,
+                               isActive: conn.id == model.activeConnectionID)
                 }
-            } else if model.connections.count == 1 {
-                // Single connection: still expose the "+ Add network" so
-                // discovering multi-network is easy without cluttering the
-                // sidebar with a one-row Networks header.
-                Section { AddNetworkRow() }
+                AddNetworkRow()
             }
 
             let channels = model.buffers.filter { $0.kind == .channel }
