@@ -27,6 +27,9 @@ struct ChannelListView: View {
                 TableColumn("Channel", value: \.name) { row in
                     Text(row.name)
                         .font(.system(.body, design: .monospaced))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .help(row.name)
                 }
                 .width(min: 140, ideal: 200)
                 TableColumn("Users", value: \.users) { row in

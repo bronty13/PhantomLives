@@ -392,16 +392,23 @@ struct BufferView: View {
                 .font(model.chatFont.bold())
                 .foregroundStyle(Self.colorForMode(mode))
                 .frame(width: 12, alignment: .center)
+            // Single-line + truncation prevents long nicks from wrapping
+            // inside the fixed-width user list pane (~180pt). Tooltip
+            // surfaces the full nick on hover so nothing is hidden.
             Text(user)
                 .font(model.chatFont)
                 .foregroundStyle(mode == nil ? .primary : Self.colorForMode(mode))
                 .opacity(isAway ? 0.45 : 1.0)
                 .strikethrough(isAway, color: .secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .help(user)
             if isAway {
                 Image(systemName: "moon.zzz.fill")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
+            Spacer(minLength: 0)
         }
     }
 

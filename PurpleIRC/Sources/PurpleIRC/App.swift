@@ -18,6 +18,12 @@ struct PurpleIRCApp: App {
                     // Watch Monitor secondary window too via the global
                     // didBecomeKeyNotification observer set up inside.
                     SpellCheckBootstrap.installOnAllWindows()
+                    // macOS state-restoration auto-reopens the Watch Monitor
+                    // window when it was open at last quit. The Watch Monitor
+                    // is a "summon as needed" panel, not a primary window —
+                    // close any auto-restored copy so the user only sees it
+                    // when they explicitly open it via toolbar or ⇧⌘M.
+                    closeWatchMonitorIfAutoRestored()
                 }
         }
         .windowToolbarStyle(.unified)
@@ -48,6 +54,27 @@ struct PurpleIRCApp: App {
         Window("Watch Monitor", id: "watch-monitor") {
             WatchMonitorView()
                 .environmentObject(model)
+        }
+    }
+}
+
+/// Close any Watch Monitor window AppKit auto-restored at launch. SwiftUI
+/// scene IDs surface as the underlying NSWindow's `identifier` with a
+/// "SwiftUI.Window-<id>" prefix; we match on the `watch-monitor` suffix so
+/// future SwiftUI version bumps don't silently break the heuristic. Title
+/// match is a belt-and-suspenders fallback. Runs after a tiny delay so
+/// SwiftUI has time to finish window creation before we close it — closing
+/// mid-creation can leave the menu bar's "Window" submenu in a stale state.
+@MainActor
+fileprivate func closeWatchMonitorIfAutoRestored() {
+    Task { @MainActor in
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        for window in NSApp.windows {
+            let id = window.identifier?.rawValue ?? ""
+            let title = window.title
+            if id.contains("watch-monitor") || title == "Watch Monitor" {
+                window.close()
+            }
         }
     }
 }
