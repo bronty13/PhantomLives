@@ -577,10 +577,21 @@ struct BufferRow: View {
         Button("CTCP PING")      { model.sendInput("/ctcp \(nick) PING \(Int(Date().timeIntervalSince1970))") }
         Divider()
         if isInAddressBook(nick) {
-            Button("Remove from address book") { removeFromAddressBook(nick) }
+            Button("Edit address book entry…") {
+                model.pendingSetupTab = .addressBook
+                model.showSetup = true
+            }
+            if isWatchedInAddressBook(nick) {
+                Button("Stop notifying when online") { setAddressBookWatch(nick, on: false) }
+            } else {
+                Button("Notify when online") { setAddressBookWatch(nick, on: true) }
+            }
+            Button("Remove from address book", role: .destructive) {
+                removeFromAddressBook(nick)
+            }
         } else {
-            Button("Add to address book (watch)") { addToAddressBook(nick, watch: true) }
             Button("Add to address book") { addToAddressBook(nick, watch: false) }
+            Button("Add to address book + notify when online") { addToAddressBook(nick, watch: true) }
         }
         Divider()
         if isIgnored(nick) {
@@ -621,6 +632,27 @@ struct BufferRow: View {
         }
         for entry in matches {
             model.settings.removeAddress(id: entry.id)
+        }
+    }
+
+    /// True when there is an address book entry for this nick AND that entry
+    /// has the `watch` (notify-when-online) flag set. Lets the context menu
+    /// show "Notify…" or "Stop notifying…" based on current state.
+    private func isWatchedInAddressBook(_ nick: String) -> Bool {
+        model.settings.settings.addressBook.contains {
+            $0.nick.caseInsensitiveCompare(nick) == .orderedSame && $0.watch
+        }
+    }
+
+    /// Flip the watch flag on every address book entry matching this nick
+    /// (case-insensitive). Goes through `upsertAddress` so the row's
+    /// per-contact alert settings (sound, dock, banner, message) survive.
+    private func setAddressBookWatch(_ nick: String, on: Bool) {
+        for entry in model.settings.settings.addressBook
+            where entry.nick.caseInsensitiveCompare(nick) == .orderedSame {
+            var copy = entry
+            copy.watch = on
+            model.settings.upsertAddress(copy)
         }
     }
 
