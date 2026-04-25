@@ -362,8 +362,28 @@ final class IRCConnection: ObservableObject, Identifiable {
 
     // MARK: - Message handling
 
+    /// Most-recent `user@host` per nick on this network. Captured from every
+    /// inbound IRC message that carries a prefix; consumed by BotEngine when
+    /// it stamps a SeenEntry so the seen audit can show host changes.
+    private var lastUserHostByNick: [String: String] = [:]
+
+    /// Read-only accessor for the captured user@host map. Returns nil when
+    /// we haven't seen the nick send anything yet on this connection.
+    func userHost(for nick: String) -> String? {
+        lastUserHostByNick[nick.lowercased()]
+    }
+
     private func handle(_ msg: IRCMessage) {
         emit(.inbound(msg))
+        // Update the user@host map first so BotEngine sees the freshest
+        // value when the same handle() call later emits a higher-level
+        // event (.privmsg, .join, etc.) and the bot consults userHost(for:).
+        if let prefix = msg.prefix,
+           let bang = prefix.firstIndex(of: "!"),
+           let nick = msg.nickFromPrefix {
+            let userHost = String(prefix[prefix.index(after: bang)...])
+            lastUserHostByNick[nick.lowercased()] = userHost
+        }
         switch msg.command {
         case "PING":
             let token = msg.params.first ?? ""

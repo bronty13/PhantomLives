@@ -72,11 +72,15 @@ final class BotEngine {
             }
         case .nickChanged(let old, let new, let isSelf):
             if settings.seenTrackingEnabled, !isSelf {
+                // Both old and new nicks share the same user@host on a
+                // rename, so a single lookup is enough.
+                let userHost = conn.userHost(for: new) ?? conn.userHost(for: old)
                 seenStore.recordNickChange(
                     networkID: conn.id,
                     networkSlug: SeenStore.slug(for: conn.displayName),
                     oldNick: old,
-                    newNick: new
+                    newNick: new,
+                    userHost: userHost
                 )
             }
         default:
@@ -92,7 +96,11 @@ final class BotEngine {
             nick: nick,
             kind: kind,
             channel: channel,
-            detail: detail
+            detail: detail,
+            // Pull the freshest known user@host from the connection so
+            // each sighting can later be cross-referenced (host changes,
+            // shared hosts across nicks, etc.).
+            userHost: conn.userHost(for: nick)
         )
     }
 
@@ -155,31 +163,39 @@ final class BotEngine {
     nonisolated static func describe(_ entry: SeenEntry, queriedNick: String) -> String {
         let when = Self.formatRelative(entry.timestamp)
         let target = entry.nick
+        // user@host suffix appears at the end of the line so /seen output
+        // stays scannable while still surfacing the host info.
+        let host = entry.lastUserHost.map { " [\($0)]" } ?? ""
+        let historyTail: String = {
+            let n = max(0, entry.history.count - 1)
+            guard n > 0 else { return "" }
+            return " — \(n) more sighting\(n == 1 ? "" : "s") on file"
+        }()
         switch entry.kind {
         case "msg":
             let where_ = entry.channel.map { " in \($0)" } ?? ""
             let sample = entry.detail.map { ", saying \"\($0)\"" } ?? ""
-            return "\(target) was last seen \(when)\(where_)\(sample)"
+            return "\(target) was last seen \(when)\(where_)\(sample)\(host)\(historyTail)"
         case "join":
             let where_ = entry.channel.map { " joining \($0)" } ?? ""
-            return "\(target) was last seen \(when)\(where_)"
+            return "\(target) was last seen \(when)\(where_)\(host)\(historyTail)"
         case "part":
             let where_ = entry.channel.map { " leaving \($0)" } ?? ""
             let reason = entry.detail.map { " (\($0))" } ?? ""
-            return "\(target) was last seen \(when)\(where_)\(reason)"
+            return "\(target) was last seen \(when)\(where_)\(reason)\(host)\(historyTail)"
         case "quit":
             let reason = entry.detail.map { " (\($0))" } ?? ""
-            return "\(target) was last seen \(when), quitting\(reason)"
+            return "\(target) was last seen \(when), quitting\(reason)\(host)\(historyTail)"
         case "nick":
             if let renamed = entry.renamedTo {
-                return "\(target) changed nick to \(renamed) \(when). Try /seen \(renamed)."
+                return "\(target) changed nick to \(renamed) \(when)\(host). Try /seen \(renamed)."
             }
             if let was = entry.detail {
-                return "\(target) (\(was)) was last seen \(when)"
+                return "\(target) (\(was)) was last seen \(when)\(host)\(historyTail)"
             }
-            return "\(target) changed nick \(when)"
+            return "\(target) changed nick \(when)\(host)"
         default:
-            return "\(target) was last seen \(when)"
+            return "\(target) was last seen \(when)\(host)\(historyTail)"
         }
     }
 

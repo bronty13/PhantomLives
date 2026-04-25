@@ -416,12 +416,123 @@ extension Theme {
         ]
     )
 
+    /// Lavender — flagship light. Soft lavender surface with deep plum
+    /// text and royal-purple accents. PurpleIRC's signature light look.
+    static let lavender = Theme(
+        id: "lavender",
+        displayName: "Lavender",
+        chatBackground: Color(hex: "#F5F0FA") ?? .white,
+        chatForeground: Color(hex: "#3D1D5C") ?? .black,
+        ownNickColor: Color(hex: "#7B2CBF") ?? .purple,
+        infoColor: Color(hex: "#7C5C95") ?? .secondary,
+        errorColor: Color(hex: "#C8302D") ?? .red,
+        motdColor: Color(hex: "#9A85B2") ?? .secondary,
+        noticeColor: Color(hex: "#9A4CC4") ?? .purple,
+        actionColor: Color(hex: "#C246A0") ?? .pink,
+        joinColor: Color(hex: "#3F8C5F") ?? .green,
+        partColor: Color(hex: "#C26A30") ?? .orange,
+        nickNickColor: Color(hex: "#5C45A0") ?? .blue,
+        mentionBackground: (Color(hex: "#FFD45C") ?? .yellow).opacity(0.30),
+        watchlistBackground: (Color(hex: "#9A4CC4") ?? .purple).opacity(0.18),
+        findBackground: (Color(hex: "#FFD45C") ?? .yellow).opacity(0.40),
+        nickPalette: [
+            Color(hex: "#7B2CBF") ?? .purple, Color(hex: "#3F8C5F") ?? .green,
+            Color(hex: "#C26A30") ?? .orange, Color(hex: "#5C45A0") ?? .blue,
+            Color(hex: "#C246A0") ?? .pink,   Color(hex: "#0F8B8D") ?? .teal,
+            Color(hex: "#C8302D") ?? .red,    Color(hex: "#7C5C95") ?? .secondary
+        ]
+    )
+
+    /// Royal Cream — warm cream surface with deep plum text. The "long
+    /// reading" companion to Lavender for users who prefer warm vs cool
+    /// light themes.
+    static let royalCream = Theme(
+        id: "royalCream",
+        displayName: "Royal Cream",
+        chatBackground: Color(hex: "#FAF5F2") ?? .white,
+        chatForeground: Color(hex: "#4A2870") ?? .black,
+        ownNickColor: Color(hex: "#7B2CBF") ?? .purple,
+        infoColor: Color(hex: "#8B6E7E") ?? .secondary,
+        errorColor: Color(hex: "#B5302A") ?? .red,
+        motdColor: Color(hex: "#9C8A8A") ?? .secondary,
+        noticeColor: Color(hex: "#9A4CC4") ?? .purple,
+        actionColor: Color(hex: "#B5447B") ?? .pink,
+        joinColor: Color(hex: "#5C7B3A") ?? .green,
+        partColor: Color(hex: "#A06030") ?? .orange,
+        nickNickColor: Color(hex: "#4A2870") ?? .purple,
+        mentionBackground: (Color(hex: "#D4A95E") ?? .yellow).opacity(0.30),
+        watchlistBackground: (Color(hex: "#9A4CC4") ?? .purple).opacity(0.20),
+        findBackground: (Color(hex: "#E5C97D") ?? .yellow).opacity(0.40),
+        nickPalette: [
+            Color(hex: "#7B2CBF") ?? .purple, Color(hex: "#5C7B3A") ?? .green,
+            Color(hex: "#D4A95E") ?? .orange, Color(hex: "#A05F30") ?? .brown,
+            Color(hex: "#B5447B") ?? .pink,   Color(hex: "#4A2870") ?? .blue,
+            Color(hex: "#0F8B8D") ?? .teal,   Color(hex: "#B5302A") ?? .red
+        ]
+    )
+
+    /// Royal Purple — flagship dark. Deep eggplant surface with lavender
+    /// text and warm gold + magenta accents. PurpleIRC's signature dark.
+    static let royalPurple = Theme(
+        id: "royalPurple",
+        displayName: "Royal Purple",
+        chatBackground: Color(hex: "#1B0F2E") ?? .black,
+        chatForeground: Color(hex: "#E0D4F2") ?? .white,
+        ownNickColor: Color(hex: "#FFB347") ?? .orange,
+        infoColor: Color(hex: "#9985B5") ?? .secondary,
+        errorColor: Color(hex: "#FF7A8A") ?? .red,
+        motdColor: Color(hex: "#7C6896") ?? .secondary,
+        noticeColor: Color(hex: "#D9A6E8") ?? .pink,
+        actionColor: Color(hex: "#E8A4D4") ?? .pink,
+        joinColor: Color(hex: "#A8E89C") ?? .green,
+        partColor: Color(hex: "#FFC580") ?? .orange,
+        nickNickColor: Color(hex: "#B8A4FF") ?? .blue,
+        mentionBackground: (Color(hex: "#FFB347") ?? .orange).opacity(0.22),
+        watchlistBackground: (Color(hex: "#D9A6E8") ?? .purple).opacity(0.22),
+        findBackground: (Color(hex: "#FFE066") ?? .yellow).opacity(0.36),
+        nickPalette: [
+            Color(hex: "#FFB347") ?? .orange, Color(hex: "#B8A4FF") ?? .blue,
+            Color(hex: "#A8E89C") ?? .green,  Color(hex: "#E8A4D4") ?? .pink,
+            Color(hex: "#D9A6E8") ?? .purple, Color(hex: "#FFE066") ?? .yellow,
+            Color(hex: "#7AC4D4") ?? .cyan,   Color(hex: "#FF9999") ?? .red
+        ]
+    )
+
+    /// Twilight — softer dark purple. Easier-on-the-eyes companion to
+    /// Royal Purple for long sessions.
+    static let twilight = Theme(
+        id: "twilight",
+        displayName: "Twilight",
+        chatBackground: Color(hex: "#2A1B3D") ?? .black,
+        chatForeground: Color(hex: "#D8C4ED") ?? .white,
+        ownNickColor: Color(hex: "#FFB6C1") ?? .pink,
+        infoColor: Color(hex: "#8E78A8") ?? .secondary,
+        errorColor: Color(hex: "#FF8A95") ?? .red,
+        motdColor: Color(hex: "#6F5B85") ?? .secondary,
+        noticeColor: Color(hex: "#C29AED") ?? .purple,
+        actionColor: Color(hex: "#E8A8D9") ?? .pink,
+        joinColor: Color(hex: "#90E0C0") ?? .green,
+        partColor: Color(hex: "#FFB088") ?? .orange,
+        nickNickColor: Color(hex: "#A8C8FF") ?? .blue,
+        mentionBackground: (Color(hex: "#FFB6C1") ?? .pink).opacity(0.20),
+        watchlistBackground: (Color(hex: "#C29AED") ?? .purple).opacity(0.20),
+        findBackground: (Color(hex: "#FFE799") ?? .yellow).opacity(0.34),
+        nickPalette: [
+            Color(hex: "#FFB6C1") ?? .pink,   Color(hex: "#A8C8FF") ?? .blue,
+            Color(hex: "#90E0C0") ?? .green,  Color(hex: "#FFE799") ?? .yellow,
+            Color(hex: "#C29AED") ?? .purple, Color(hex: "#88D8E8") ?? .cyan,
+            Color(hex: "#FFB088") ?? .orange, Color(hex: "#E8A8D9") ?? .pink
+        ]
+    )
+
     static let all: [Theme] = [
-        // Light themes first so they're not buried below the darks.
+        // Flagship purple — signature looks for the product. Lead with these.
+        .lavender, .royalCream, .royalPurple, .twilight,
+        // Other lights
         .paper, .solarizedLight, .sepia, .candy,
         // System-adaptive
         .classic, .highContrast,
-        // Dark themes
+        // Other darks
         .midnight, .solarizedDark, .nord, .dracula, .tokyoNight
     ]
 

@@ -1,24 +1,78 @@
 import Foundation
 import CryptoKit
 
-/// Single last-seen record for a nick. One is kept per network; a new event
-/// overwrites the earlier one.
+/// One observation of a nick at a specific moment. SeenEntry holds the
+/// most recent values for quick `/seen` lookup; the `history` array is a
+/// rolling list of these so the user can audit every recorded sighting.
+struct SeenSighting: Codable, Hashable {
+    var timestamp: Date
+    /// "msg" / "join" / "part" / "quit" / "nick" — same vocabulary as the
+    /// top-level entry kind. Kept as String for forward compatibility.
+    var kind: String
+    var channel: String?
+    var detail: String?
+    /// `user@host` portion of the IRC prefix at the moment of this sighting.
+    /// Lets the user spot when a familiar nick connects from a new host or
+    /// when two nicks share a host (potentially the same person).
+    var userHost: String?
+}
+
+/// Most-recent sighting for a nick, plus a rolling history. One per nick
+/// per network. New events both overwrite the top-level fields *and* prepend
+/// to `history` so `/seen` stays fast while a separate "View history" UI
+/// can surface every captured sighting.
 struct SeenEntry: Codable, Hashable, Identifiable {
     /// Lowercased nick — unique per network, stable across edits.
     var id: String { nick.lowercased() }
     /// Original-case nick as it appeared on the wire.
     var nick: String
     var timestamp: Date
-    /// "msg", "join", "part", "quit", "nick". Stored as String for forward
-    /// compatibility with future categories.
     var kind: String
-    /// Channel where the event occurred (nil for .quit / .nick events).
     var channel: String?
-    /// Message text, part/quit reason, or new nick — context-dependent.
     var detail: String?
     /// On nick-change, points at the new nick so lookups by the old nick
     /// can forward the user to the fresh record. Nil for everything else.
     var renamedTo: String?
+    /// `user@host` of the most recent sighting. Same as `history.first?.userHost`
+    /// going forward; kept as a top-level field so `/seen` doesn't have to
+    /// poke into the history array for the common case.
+    var lastUserHost: String?
+    /// Rolling history of recent sightings (newest first). Capped to keep
+    /// per-nick storage bounded — `SeenStore.historyCap` is the limit.
+    var history: [SeenSighting] = []
+
+    init(nick: String,
+         timestamp: Date,
+         kind: String,
+         channel: String? = nil,
+         detail: String? = nil,
+         renamedTo: String? = nil,
+         lastUserHost: String? = nil,
+         history: [SeenSighting] = []) {
+        self.nick = nick
+        self.timestamp = timestamp
+        self.kind = kind
+        self.channel = channel
+        self.detail = detail
+        self.renamedTo = renamedTo
+        self.lastUserHost = lastUserHost
+        self.history = history
+    }
+
+    /// Backward-compatible decoder so older seen JSON (no `lastUserHost` /
+    /// `history`) keeps loading on upgrade. Without this, a single missing
+    /// key would null the whole table.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.nick         = try c.decode(String.self, forKey: .nick)
+        self.timestamp    = try c.decode(Date.self,   forKey: .timestamp)
+        self.kind         = try c.decode(String.self, forKey: .kind)
+        self.channel      = try c.decodeIfPresent(String.self, forKey: .channel)
+        self.detail       = try c.decodeIfPresent(String.self, forKey: .detail)
+        self.renamedTo    = try c.decodeIfPresent(String.self, forKey: .renamedTo)
+        self.lastUserHost = try c.decodeIfPresent(String.self, forKey: .lastUserHost)
+        self.history      = try c.decodeIfPresent([SeenSighting].self, forKey: .history) ?? []
+    }
 }
 
 /// Per-network last-seen index. JSON files live at
@@ -59,61 +113,123 @@ final class SeenStore {
 
     // MARK: - Public API
 
-    /// Record an activity event. `kind` must be one of "msg"/"join"/"part"/"quit"/"nick".
+    /// Cap on the per-nick history array. 50 covers the typical "did this
+    /// nick connect from a different host yesterday" question without
+    /// blowing up on heavily-active users.
+    static let historyCap = 50
+
+    /// Record an activity event. `kind` must be one of
+    /// "msg"/"join"/"part"/"quit"/"nick". `userHost` is the `user@host`
+    /// portion of the IRC prefix at observation time — when supplied it
+    /// helps the user spot host changes / shared hosts across nicks.
     func record(networkID: UUID,
                 networkSlug: String,
                 nick: String,
                 kind: String,
                 channel: String?,
-                detail: String?) {
+                detail: String?,
+                userHost: String? = nil) {
         guard !nick.isEmpty else { return }
         ensureLoaded(networkID: networkID, slug: networkSlug)
-        let entry = SeenEntry(
-            nick: nick,
-            timestamp: Date(),
+
+        let now = Date()
+        let sighting = SeenSighting(
+            timestamp: now,
             kind: kind,
             channel: channel,
             detail: detail,
-            renamedTo: nil
+            userHost: userHost
         )
-        tables[networkID, default: [:]][nick.lowercased()] = entry
+
+        let key = nick.lowercased()
+        var entry = tables[networkID]?[key] ?? SeenEntry(
+            nick: nick,
+            timestamp: now,
+            kind: kind
+        )
+        // Top-level fields = most recent observation, for fast lookup.
+        entry.nick = nick
+        entry.timestamp = now
+        entry.kind = kind
+        entry.channel = channel
+        entry.detail = detail
+        entry.renamedTo = nil
+        if let userHost { entry.lastUserHost = userHost }
+        // History gets the new sighting prepended; cap to bound storage.
+        entry.history.insert(sighting, at: 0)
+        if entry.history.count > Self.historyCap {
+            entry.history.removeLast(entry.history.count - Self.historyCap)
+        }
+        tables[networkID, default: [:]][key] = entry
         scheduleWrite(networkID: networkID, slug: networkSlug)
     }
 
-    /// Record a nick change. The old nick's entry is updated to point at the
-    /// new nick so a later `/seen <old>` can forward the user.
+    /// Record a nick change. The old nick's entry is updated to point at
+    /// the new nick (so `/seen <old>` forwards), and the new nick gets a
+    /// fresh entry seeded with a "was <old>" detail. Both sides also get
+    /// a sighting prepended to their history so the audit trail is complete.
     func recordNickChange(networkID: UUID,
                           networkSlug: String,
                           oldNick: String,
-                          newNick: String) {
+                          newNick: String,
+                          userHost: String? = nil) {
         guard !oldNick.isEmpty, !newNick.isEmpty else { return }
         ensureLoaded(networkID: networkID, slug: networkSlug)
         let now = Date()
-        // Carry forward timestamp/detail into the old nick's forwarding record.
-        var forward = SeenEntry(
-            nick: oldNick,
-            timestamp: now,
-            kind: "nick",
-            channel: nil,
-            detail: newNick,
-            renamedTo: newNick
-        )
-        if let existing = tables[networkID]?[oldNick.lowercased()] {
-            // Preserve earlier channel context in case useful for display.
-            forward.channel = existing.channel
-        }
-        tables[networkID, default: [:]][oldNick.lowercased()] = forward
+        let oldKey = oldNick.lowercased()
+        let newKey = newNick.lowercased()
 
-        // Seed the new nick with an entry too, so `/seen <new>` immediately works.
-        let fresh = SeenEntry(
-            nick: newNick,
+        // Old nick: forwarding record.
+        var forward = tables[networkID]?[oldKey] ?? SeenEntry(
+            nick: oldNick, timestamp: now, kind: "nick"
+        )
+        forward.nick = oldNick
+        forward.timestamp = now
+        forward.kind = "nick"
+        forward.detail = newNick
+        forward.renamedTo = newNick
+        if let userHost { forward.lastUserHost = userHost }
+        forward.history.insert(SeenSighting(
             timestamp: now,
             kind: "nick",
-            channel: tables[networkID]?[oldNick.lowercased()]?.channel,
-            detail: "was \(oldNick)",
-            renamedTo: nil
+            channel: forward.channel,
+            detail: "→ \(newNick)",
+            userHost: userHost
+        ), at: 0)
+        if forward.history.count > Self.historyCap {
+            forward.history.removeLast(forward.history.count - Self.historyCap)
+        }
+        tables[networkID, default: [:]][oldKey] = forward
+
+        // New nick: fresh-or-updated entry, carries history forward from
+        // the old name so the rename doesn't reset the timeline.
+        var fresh = tables[networkID]?[newKey] ?? SeenEntry(
+            nick: newNick, timestamp: now, kind: "nick"
         )
-        tables[networkID, default: [:]][newNick.lowercased()] = fresh
+        fresh.nick = newNick
+        fresh.timestamp = now
+        fresh.kind = "nick"
+        fresh.channel = tables[networkID]?[oldKey]?.channel
+        fresh.detail = "was \(oldNick)"
+        fresh.renamedTo = nil
+        if let userHost { fresh.lastUserHost = userHost }
+        fresh.history.insert(SeenSighting(
+            timestamp: now,
+            kind: "nick",
+            channel: fresh.channel,
+            detail: "was \(oldNick)",
+            userHost: userHost
+        ), at: 0)
+        // Inherit the old nick's older sightings so the new nick's history
+        // gives a continuous picture of activity across rename events.
+        if let oldHistory = tables[networkID]?[oldKey]?.history.dropFirst() {
+            fresh.history.append(contentsOf: oldHistory)
+        }
+        if fresh.history.count > Self.historyCap {
+            fresh.history.removeLast(fresh.history.count - Self.historyCap)
+        }
+        tables[networkID, default: [:]][newKey] = fresh
+
         scheduleWrite(networkID: networkID, slug: networkSlug)
     }
 
