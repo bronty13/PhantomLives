@@ -211,6 +211,7 @@ final class ChatModel: ObservableObject {
 
     @Published var showRawLog: Bool = false
     @Published var showAppLog: Bool = false
+    @Published var showChatLogs: Bool = false
     @Published var showWatchlist: Bool = false
     @Published var showSetup: Bool = false
     /// One-shot directive for the Setup sheet to land on a specific tab.
@@ -728,6 +729,11 @@ final class ChatModel: ObservableObject {
                 // debug→critical, filterable). Useful when a user needs to
                 // grab a snapshot for a bug report.
                 showAppLog = true
+                return
+            case "logs", "viewlogs", "chatlog", "chatlogs":
+                // Open the chat log viewer — decrypts the per-buffer log
+                // files on the fly when the keystore is unlocked.
+                showChatLogs = true
                 return
             case "identity":
                 handleIdentityCommand(rest: rest, on: conn)

@@ -73,6 +73,7 @@ struct RootView: View {
 
 extension Notification.Name {
     static let purpleShowAppLog = Notification.Name("PurpleIRC.showAppLog")
+    static let purpleShowChatLogs = Notification.Name("PurpleIRC.showChatLogs")
 }
 
 struct ContentView: View {
@@ -167,8 +168,15 @@ struct ContentView: View {
         .sheet(isPresented: $model.showAppLog) {
             LogViewerView()
         }
+        .sheet(isPresented: $model.showChatLogs) {
+            ChatLogViewerView()
+                .environmentObject(model)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .purpleShowAppLog)) { _ in
             model.showAppLog = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .purpleShowChatLogs)) { _ in
+            model.showChatLogs = true
         }
         .sheet(isPresented: $model.showWatchlist) {
             WatchlistView(watchlist: model.watchlist)
@@ -990,6 +998,9 @@ struct FilesMenu: View {
             Self.openDirectory(supportDir.appendingPathComponent("seen", isDirectory: true))
         }
         Divider()
+        Button("View chat logs…") {
+            NotificationCenter.default.post(name: .purpleShowChatLogs, object: nil)
+        }
         Button("View app log…") {
             // The window's environmentObject is what we need to flip; menus
             // can't reach @EnvironmentObject directly, so we post on the
