@@ -8,14 +8,15 @@ struct WatchlistView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Image(systemName: "bell.badge").foregroundStyle(Color.purple)
-                Text("Watchlist").font(.headline)
+                Text("Recent watchlist hits").font(.headline)
                 Spacer()
-                Button("Manage in Setup…") {
-                    // SwiftUI only shows one sheet per presenter at a time,
-                    // so we have to dismiss this one before the Setup sheet
-                    // can present. A tiny delay gives the dismiss animation
-                    // time to clear without being visible to the user.
+                Button("Open Address Book…") {
+                    // Watchlist + Address Book used to live in two places;
+                    // they're unified now, but this sheet stays as a
+                    // live "what just happened" feed. Hand off to the
+                    // Address Book tab where contacts + alerts live.
                     model.showWatchlist = false
+                    model.pendingSetupTab = .addressBook
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                         model.showSetup = true
                     }
@@ -27,14 +28,10 @@ struct WatchlistView: View {
             Divider()
 
             recentHitsSection
-            Divider()
-            alertOptionsSection
-            Divider()
-            watchedListSection
 
             Divider()
             VStack(alignment: .leading, spacing: 4) {
-                Text("Tip: add or edit watched users in Setup → Address Book.")
+                Text("Watched contacts and alert options live in Setup → Address Book.")
                     .font(.caption).foregroundStyle(.secondary)
                 Text(watchlist.notificationsAuthorized
                      ? "macOS notifications: authorized ✓"
@@ -44,7 +41,7 @@ struct WatchlistView: View {
             }
             .padding(10)
         }
-        .frame(minWidth: 520, minHeight: 520)
+        .frame(minWidth: 520, minHeight: 380)
     }
 
     private var recentHitsSection: some View {
@@ -87,74 +84,7 @@ struct WatchlistView: View {
         .padding(.vertical, 10)
     }
 
-    private var alertOptionsSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label("Alert options", systemImage: "slider.horizontal.3")
-                .font(.subheadline.weight(.semibold))
-            Toggle("System notification (banner + Notification Center)",
-                   isOn: Binding(
-                    get: { model.settings.settings.systemNotificationsOnWatchHit },
-                    set: { model.settings.settings.systemNotificationsOnWatchHit = $0 }))
-            Toggle("Play sound",
-                   isOn: Binding(
-                    get: { model.settings.settings.playSoundOnWatchHit },
-                    set: { model.settings.settings.playSoundOnWatchHit = $0 }))
-            Toggle("Bounce Dock icon (critical)",
-                   isOn: Binding(
-                    get: { model.settings.settings.bounceDockOnWatchHit },
-                    set: { model.settings.settings.bounceDockOnWatchHit = $0 }))
-            Divider().padding(.vertical, 2)
-            Toggle("Alert when my nick is mentioned",
-                   isOn: Binding(
-                    get: { model.settings.settings.highlightOnOwnNick },
-                    set: { model.settings.settings.highlightOnOwnNick = $0 }))
-            Text("Uses the same sound / banner / dock-bounce toggles above.")
-                .font(.caption2).foregroundStyle(.tertiary)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-    }
-
-    private var watchedListSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label("Watched users", systemImage: "person.2.badge.gearshape")
-                .font(.subheadline.weight(.semibold))
-            if watchlist.watched.isEmpty {
-                Text("No one on the list yet. Open Setup → Address Book to add entries.")
-                    .font(.caption).foregroundStyle(.secondary)
-            } else {
-                List(watchlist.watched, id: \.self) { nick in
-                    HStack {
-                        Circle().fill(color(for: nick)).frame(width: 10, height: 10)
-                        Text(nick).font(.system(.body, design: .monospaced))
-                        Spacer()
-                        Text(label(for: nick)).font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                .frame(minHeight: 100)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-    }
-
     private static let timeFmt: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "HH:mm:ss"; return f
     }()
-
-    private func color(for nick: String) -> Color {
-        switch watchlist.presence[nick.lowercased()] ?? .unknown {
-        case .online: return .green
-        case .offline: return .gray
-        case .unknown: return .yellow
-        }
-    }
-
-    private func label(for nick: String) -> String {
-        switch watchlist.presence[nick.lowercased()] ?? .unknown {
-        case .online: return "online"
-        case .offline: return "offline"
-        case .unknown: return model.connectionState == .connected ? "checking…" : "no connection"
-        }
-    }
 }

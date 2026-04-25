@@ -377,9 +377,54 @@ struct ServerEditor: View {
 
 struct AddressBookSetup: View {
     @ObservedObject var settings: SettingsStore
+    @EnvironmentObject var model: ChatModel
     @State private var selection: UUID?
 
     var body: some View {
+        VStack(spacing: 0) {
+            alertOptionsBar
+            Divider()
+            contactsAndEditor
+        }
+    }
+
+    /// Global alert configuration that fires when a watched user comes
+    /// online or our own nick is mentioned. Lives at the top of the
+    /// Address Book tab so the contact list and the alerts they trigger
+    /// stay in one place — used to be split between this tab and the
+    /// Watchlist sheet.
+    private var alertOptionsBar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "bell.badge.fill")
+                    .foregroundStyle(Color.purple)
+                Text("Alerts").font(.subheadline.weight(.semibold))
+                Spacer()
+                Text("Apply to every watched contact below + own-nick mentions")
+                    .font(.caption2).foregroundStyle(.tertiary)
+            }
+            HStack(spacing: 24) {
+                Toggle("System notification",
+                       isOn: $settings.settings.systemNotificationsOnWatchHit)
+                Toggle("Play sound",
+                       isOn: $settings.settings.playSoundOnWatchHit)
+                Toggle("Bounce Dock",
+                       isOn: $settings.settings.bounceDockOnWatchHit)
+                Toggle("Alert on own nick",
+                       isOn: $settings.settings.highlightOnOwnNick)
+                Spacer()
+            }
+            .toggleStyle(.checkbox)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    /// The original master/detail body, lifted out so the new alerts bar
+    /// can sit above it without ballooning indentation.
+    @ViewBuilder
+    private var contactsAndEditor: some View {
         HStack(spacing: 0) {
             // Master pane — list of contacts. Watch toggle stays inline so
             // the user can flip alerts without opening the editor.
@@ -415,6 +460,12 @@ struct AddressBookSetup: View {
                                         .font(.caption2)
                                         .foregroundStyle(.tertiary)
                                 }
+                            }
+                            // Whole-row hit area so a click between the
+                            // bell icon and the nick still counts as a tap.
+                            .contentShape(Rectangle())
+                            .onTapGesture(count: 2) {
+                                openQuery(for: entry)
                             }
                             .tag(entry.id)
                         }
@@ -461,6 +512,21 @@ struct AddressBookSetup: View {
         }
         .onAppear {
             if selection == nil { selection = settings.settings.addressBook.first?.id }
+        }
+    }
+
+    /// Open a /query buffer for the contact's nick and dismiss the Setup
+    /// sheet so the user lands directly in the conversation. Falls back
+    /// silently if the entry has no nick yet.
+    private func openQuery(for entry: AddressEntry) {
+        let nick = entry.nick.trimmingCharacters(in: .whitespaces)
+        guard !nick.isEmpty else { return }
+        // Dismiss Setup first so the new buffer is what's on screen
+        // when the /query routes through ChatModel — handing off the
+        // input is what makes the buffer "open" if it didn't exist.
+        model.showSetup = false
+        DispatchQueue.main.async {
+            model.sendInput("/query \(nick)")
         }
     }
 }
