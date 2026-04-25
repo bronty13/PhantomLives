@@ -13,6 +13,12 @@ struct BackupSettingsRow: View {
     @State private var lastResult: Result<URL, Error>?
     @State private var running: Bool = false
 
+    /// Restore-flow state — picker presented? confirmation showing? URL?
+    /// inline error?
+    @State private var pendingRestore: URL?
+    @State private var restoreError: String?
+    @State private var restoreConfirmText: String = ""
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle("Back up settings + data on every launch",
@@ -51,7 +57,18 @@ struct BackupSettingsRow: View {
                 }
                 .disabled(running || !settings.settings.backupEnabled)
                 Button("Open backup folder") { revealInFinder() }
+                Button {
+                    pickRestoreFile()
+                } label: {
+                    Label("Restore from backup…",
+                          systemImage: "tray.and.arrow.up")
+                }
                 Spacer()
+            }
+            if let err = restoreError {
+                Label(err, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(Color.orange)
             }
 
             if let result = lastResult {
@@ -70,6 +87,76 @@ struct BackupSettingsRow: View {
             recentBackupsList
         }
         .padding(.vertical, 4)
+        .sheet(item: Binding(
+            get: { pendingRestore.map { RestoreCandidate(url: $0) } },
+            set: { pendingRestore = $0?.url }
+        )) { candidate in
+            restoreConfirmSheet(for: candidate.url)
+        }
+    }
+
+    /// Identifiable wrapper around the pending-restore URL so we can use
+    /// `.sheet(item:)` semantics — the URL identity is the URL itself.
+    private struct RestoreCandidate: Identifiable {
+        let url: URL
+        var id: String { url.path }
+    }
+
+    @ViewBuilder
+    private func restoreConfirmSheet(for url: URL) -> some View {
+        VStack(spacing: 12) {
+            HStack(alignment: .top) {
+                Image(systemName: "tray.and.arrow.up")
+                    .foregroundStyle(Color.orange)
+                    .font(.largeTitle)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Restore from backup?")
+                        .font(.title3.weight(.semibold))
+                    Text(url.lastPathComponent)
+                        .font(.callout.monospaced())
+                        .foregroundStyle(.secondary)
+                    Text("Replaces every PurpleIRC data file with the contents of this archive — settings, keystore, logs, seen tracker, history, scripts, channel cache. **Backups in your backup folder are not touched.** The app will quit afterwards so the next launch reads the restored state.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 4)
+                    if url.pathExtension == "enc" {
+                        Label("Encrypted archive — must decrypt with your current keystore key. If you've reset your passphrase since the backup, this will fail.",
+                              systemImage: "lock")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .padding(.top, 4)
+                    }
+                }
+            }
+            Text("To confirm, type: RESTORE")
+                .font(.caption)
+                .padding(.top, 6)
+            TextField("RESTORE", text: $restoreConfirmText)
+                .textFieldStyle(.roundedBorder)
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) {
+                    pendingRestore = nil
+                    restoreConfirmText = ""
+                }
+                .keyboardShortcut(.cancelAction)
+                Button(role: .destructive) {
+                    let target = url
+                    pendingRestore = nil
+                    do {
+                        try model.performRestore(from: target)
+                        // performRestore terminates the app; no further UI.
+                    } catch {
+                        restoreError = error.localizedDescription
+                    }
+                } label: {
+                    Text("Restore and quit")
+                }
+                .disabled(restoreConfirmText != "RESTORE")
+            }
+        }
+        .padding(20)
+        .frame(width: 520)
     }
 
     // MARK: - Recent backups list
@@ -144,6 +231,25 @@ struct BackupSettingsRow: View {
         panel.directoryURL = model.backupDirectoryURL
         if panel.runModal() == .OK, let url = panel.url {
             settings.settings.backupDirectory = url.path
+        }
+        #endif
+    }
+
+    /// Open a file picker pre-targeted at the backup directory so the
+    /// user can pick a `PurpleIRC-…zip[.enc]` to restore. Stash the URL
+    /// in `pendingRestore` to trigger the typed-confirmation sheet.
+    private func pickRestoreFile() {
+        #if canImport(AppKit)
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowedContentTypes = []        // free-form; we filter manually
+        panel.prompt = "Restore"
+        panel.directoryURL = model.backupDirectoryURL
+        if panel.runModal() == .OK, let url = panel.url {
+            restoreError = nil
+            restoreConfirmText = ""
+            pendingRestore = url
         }
         #endif
     }

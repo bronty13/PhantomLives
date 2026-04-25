@@ -151,6 +151,108 @@ enum BackupService {
         f.dateFormat = "yyyy-MM-dd-HHmmss"
         return f.string(from: Date())
     }
+
+    // MARK: - Restore
+
+    enum RestoreError: Error, LocalizedError {
+        case missingKeyForEncryptedArchive
+        case decryptFailed
+        case unzipFailed(status: Int32, stderr: String)
+        case archiveEmpty
+
+        var errorDescription: String? {
+            switch self {
+            case .missingKeyForEncryptedArchive:
+                return "This archive is encrypted but the keystore is locked. Set up the passphrase in Security first, then retry."
+            case .decryptFailed:
+                return "Couldn't decrypt — the archive was sealed with a different keystore key (e.g. you've reset the passphrase since the backup was taken)."
+            case .unzipFailed(let s, let err):
+                return "unzip exited \(s): \(err)"
+            case .archiveEmpty:
+                return "Archive contained nothing — it may be corrupted."
+            }
+        }
+    }
+
+    /// Replace the support directory's contents with the archive at
+    /// `archiveURL`. Format auto-detected via the PIRC magic header:
+    /// `.zip.enc` files unwrap with `key`, plain `.zip` files extract
+    /// directly. Idempotent in the sense that calling it twice with the
+    /// same archive produces the same support-dir state.
+    ///
+    /// IMPORTANT: this is destructive — every file under `supportDir`
+    /// is removed before extraction. The caller should have asked the
+    /// user to confirm and should terminate the app afterwards so the
+    /// next launch reads the restored state from a clean process.
+    /// `backupDirURL` is preserved if it's inside the support dir
+    /// (defensive, though ours is in ~/Downloads by default).
+    static func restore(from archiveURL: URL,
+                        into supportDir: URL,
+                        key: SymmetricKey?) throws {
+        let fm = FileManager.default
+        let raw = try Data(contentsOf: archiveURL)
+        guard !raw.isEmpty else { throw RestoreError.archiveEmpty }
+
+        // 1. Get the inner zip bytes — decrypt if needed.
+        let zipData: Data
+        if EncryptedJSON.hasMagic(raw) {
+            guard let key else { throw RestoreError.missingKeyForEncryptedArchive }
+            let body = raw.suffix(from: EncryptedJSON.magic.count)
+            do {
+                zipData = try Crypto.decrypt(Data(body), using: key)
+            } catch {
+                throw RestoreError.decryptFailed
+            }
+        } else {
+            zipData = raw
+        }
+
+        // 2. Stage a temp directory and write the zip into it.
+        let stagingRoot = fm.temporaryDirectory
+            .appendingPathComponent("purpleirc-restore-\(UUID().uuidString)",
+                                    isDirectory: true)
+        try fm.createDirectory(at: stagingRoot, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: stagingRoot) }
+        let tempZip = stagingRoot.appendingPathComponent("payload.zip")
+        try zipData.write(to: tempZip, options: .atomic)
+
+        // 3. Extract to a fresh subdir of staging.
+        let extractDir = stagingRoot.appendingPathComponent("extracted",
+                                                            isDirectory: true)
+        try fm.createDirectory(at: extractDir, withIntermediateDirectories: true)
+        let unzip = Process()
+        unzip.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+        unzip.arguments = ["-q", "-o", tempZip.path, "-d", extractDir.path]
+        let stderrPipe = Pipe()
+        unzip.standardError = stderrPipe
+        try unzip.run()
+        unzip.waitUntilExit()
+        guard unzip.terminationStatus == 0 else {
+            let errBytes = stderrPipe.fileHandleForReading.availableData
+            let errStr = String(data: errBytes, encoding: .utf8) ?? ""
+            throw RestoreError.unzipFailed(status: unzip.terminationStatus,
+                                           stderr: errStr)
+        }
+
+        // 4. Wipe the live support dir contents, then move staged files in.
+        // Refuses to operate on a non-PurpleIRC directory just like
+        // FactoryReset.wipe — same safety guard, same reason.
+        guard supportDir.lastPathComponent == "PurpleIRC" else { return }
+        if let existing = try? fm.contentsOfDirectory(at: supportDir,
+                                                       includingPropertiesForKeys: nil) {
+            for url in existing {
+                try? fm.removeItem(at: url)
+            }
+        }
+        if let extracted = try? fm.contentsOfDirectory(at: extractDir,
+                                                       includingPropertiesForKeys: nil) {
+            for url in extracted {
+                let target = supportDir.appendingPathComponent(url.lastPathComponent)
+                try? fm.removeItem(at: target)
+                try fm.moveItem(at: url, to: target)
+            }
+        }
+    }
 }
 
 // MARK: - Factory reset

@@ -1327,6 +1327,26 @@ extension ChatModel: WatchlistDelegate {
         return url
     }
 
+    /// Apply a backup archive over the live support directory and quit.
+    /// The user picks the archive in the Setup → Backups UI; we perform
+    /// the destructive swap here and terminate so the next launch reads
+    /// the restored state from a clean process. Errors propagate so the
+    /// UI can surface them inline.
+    func performRestore(from archiveURL: URL) throws {
+        AppLog.shared.notice(
+            "Restore triggered from \(archiveURL.path)",
+            category: "Restore")
+        try BackupService.restore(
+            from: archiveURL,
+            into: settings.supportDirectoryURL,
+            key: keyStore.currentKey)
+        AppLog.shared.notice("Restore complete; terminating to relaunch.",
+                              category: "Restore")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            NSApplication.shared.terminate(nil)
+        }
+    }
+
     // MARK: - Factory reset
 
     /// Wipe the support directory and quit. Called from the Setup →
