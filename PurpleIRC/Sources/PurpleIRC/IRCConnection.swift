@@ -367,6 +367,27 @@ final class IRCConnection: ObservableObject, Identifiable {
     /// it stamps a SeenEntry so the seen audit can show host changes.
     private var lastUserHostByNick: [String: String] = [:]
 
+    /// When a /whois (or /whowas) is issued from a channel context, we
+    /// stash the originating buffer ID here keyed by the target nick so
+    /// the reply numerics can be mirrored back to that channel — the
+    /// user doesn't have to switch to the server buffer just to see the
+    /// answer to a question they asked from a channel right-click.
+    /// Cleared when RPL_ENDOFWHOIS (318) / RPL_ENDOFWHOWAS (369) /
+    /// ERR_NOSUCHNICK (401) / ERR_WASNOSUCHNICK (406) arrives.
+    private var whoisOriginByNick: [String: Buffer.ID] = [:]
+
+    /// Record the buffer the user issued /whois or /whowas from so the
+    /// reply lands in the right place. Only does anything when the
+    /// current selection is a channel — server-buffer requests already
+    /// land in the server buffer naturally, so no point duplicating.
+    private func registerWhoisOrigin(target: String, selection: Buffer.ID?) {
+        guard let sel = selection,
+              let buf = buffers.first(where: { $0.id == sel }),
+              buf.kind == .channel else { return }
+        let key = target.split(separator: " ").first.map(String.init)?.lowercased() ?? target.lowercased()
+        whoisOriginByNick[key] = sel
+    }
+
     /// Read-only accessor for the captured user@host map. Returns nil when
     /// we haven't seen the nick send anything yet on this connection.
     func userHost(for nick: String) -> String? {
@@ -1049,23 +1070,49 @@ final class IRCConnection: ObservableObject, Identifiable {
             text: text.isEmpty ? msg.raw : text
         ))
 
-        // WHOIS-family replies (and 401 "no such nick") also go to the query
-        // buffer for the target nick when one is already open — so the user
-        // sees the answer in context, not just the server buffer.
+        // WHOIS-family replies route to up to three places so the user sees
+        // the answer wherever they were when they asked it:
+        //   1. Server buffer (always — done above).
+        //   2. Query buffer for the target nick if one is open.
+        //   3. The channel buffer the request was issued from, when the
+        //      right-click happened in a channel user list.
         if Self.whoisNumerics.contains(msg.command),
            msg.params.count >= 2 {
             let targetNick = msg.params[1]
+            let key = targetNick.lowercased()
+            let line = ChatLine(
+                timestamp: Date(),
+                kind: kind,
+                text: text.isEmpty ? msg.raw : text
+            )
+            // Query buffer mirror.
             if let qIdx = buffers.firstIndex(where: {
                 $0.kind == .query && $0.name.caseInsensitiveCompare(targetNick) == .orderedSame
             }) {
-                appendTo(bufferIndex: qIdx, line: ChatLine(
-                    timestamp: Date(),
-                    kind: kind,
-                    text: text.isEmpty ? msg.raw : text
-                ))
+                appendTo(bufferIndex: qIdx, line: line)
+            }
+            // Originating channel mirror.
+            if let originID = whoisOriginByNick[key],
+               let originIdx = buffers.firstIndex(where: { $0.id == originID }) {
+                appendTo(bufferIndex: originIdx, line: line)
+            }
+            // Clear the origin record once the reply is complete so a
+            // later /whois from a different buffer doesn't get its
+            // answer routed to the wrong channel.
+            if Self.whoisEndNumerics.contains(msg.command) {
+                whoisOriginByNick.removeValue(forKey: key)
             }
         }
     }
+
+    /// End-of-reply numerics — clear the whois origin record once any of
+    /// these arrives so a stale entry doesn't redirect a later request.
+    private static let whoisEndNumerics: Set<String> = [
+        "318",  // RPL_ENDOFWHOIS
+        "369",  // RPL_ENDOFWHOWAS
+        "401",  // ERR_NOSUCHNICK
+        "406",  // ERR_WASNOSUCHNICK
+    ]
 
     /// Numerics emitted in response to WHOIS (and the "no such nick" reply).
     /// Each of these has the queried nick at params[1], so we can reliably
@@ -1151,7 +1198,12 @@ final class IRCConnection: ObservableObject, Identifiable {
             if let target = currentBufferName() { client.send("NAMES \(target)") }
         case "whois":
             guard !rest.isEmpty else { return }
+            registerWhoisOrigin(target: rest, selection: selection)
             client.send("WHOIS \(rest)")
+        case "whowas":
+            guard !rest.isEmpty else { return }
+            registerWhoisOrigin(target: rest, selection: selection)
+            client.send("WHOWAS \(rest)")
         case "away":
             setAway(reason: rest.trimmingCharacters(in: .whitespaces).isEmpty ? nil : rest)
         case "back":

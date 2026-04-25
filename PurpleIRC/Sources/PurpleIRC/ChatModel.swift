@@ -2,6 +2,27 @@ import Foundation
 import SwiftUI
 import Combine
 
+/// A timestamped record of someone joining, parting, quitting, or changing
+/// nick — across every connection. Powers the Watch Monitor window. Kept
+/// flat (not tied to ChatLine.Kind) so the monitor can render its own
+/// presentation without dragging chat-row styling along.
+struct ActivityEvent: Identifiable, Hashable {
+    enum Kind: String, Codable, CaseIterable {
+        case join, part, quit, nick
+    }
+    let id = UUID()
+    let timestamp: Date
+    let kind: Kind
+    let networkName: String
+    let nick: String
+    /// `user@host` portion of the IRC prefix at observation time, when known.
+    let userHost: String?
+    /// Channel for join/part. nil for quit (network-level) and nick changes.
+    let channel: String?
+    /// Reason / new-nick / other context. Free-form display string.
+    let detail: String?
+}
+
 struct ChatLine: Identifiable, Equatable {
     let id = UUID()
     let timestamp: Date
@@ -143,6 +164,12 @@ final class ChatModel: ObservableObject {
     /// Prefilled search text when /help is invoked with an argument.
     var helpPrefillQuery: String = ""
 
+    /// Rolling cross-network feed of join / part / quit / nick events for
+    /// the Watch Monitor window. Capped to keep memory bounded — see
+    /// `activityFeedCap`. Newest events appended at the end.
+    @Published var activityFeed: [ActivityEvent] = []
+    private static let activityFeedCap = 1000
+
     /// Surfaced when the user types /quit or /exit AND has the confirmation
     /// toggle enabled. When they confirm, `performQuit` fires.
     @Published var showQuitConfirmation: Bool = false
@@ -217,6 +244,14 @@ final class ChatModel: ObservableObject {
         events
             .sink { [weak self] tuple in
                 Task { @MainActor in self?.playSoundFor(event: tuple.1) }
+            }
+            .store(in: &cancellables)
+        // Cross-network presence feed for the Watch Monitor window.
+        events
+            .sink { [weak self] tuple in
+                Task { @MainActor in
+                    self?.appendToActivityFeed(connectionID: tuple.0, event: tuple.1)
+                }
             }
             .store(in: &cancellables)
         // React to KeyStore state flips (lock / unlock / setup / reset):
@@ -351,6 +386,59 @@ final class ChatModel: ObservableObject {
         let s = settings.settings
         let size = max(9, CGFloat(s.chatFontSize) * 0.78)
         return s.chatFontFamily.font(size: size)
+    }
+
+    /// Translate the inbound IRC event stream into ActivityEvent rows for
+    /// the Watch Monitor. Filters everything except join / part / quit /
+    /// nickChanged. Caps at `activityFeedCap` by trimming the oldest.
+    private func appendToActivityFeed(connectionID: UUID,
+                                      event: IRCConnectionEvent) {
+        guard let conn = connections.first(where: { $0.id == connectionID }) else { return }
+        let net = conn.displayName
+        let now = Date()
+        let userHost: String?
+        let new: ActivityEvent
+
+        switch event {
+        case .join(let nick, let channel, let isSelf):
+            guard !isSelf else { return }
+            userHost = conn.userHost(for: nick)
+            new = ActivityEvent(timestamp: now, kind: .join, networkName: net,
+                                nick: nick, userHost: userHost,
+                                channel: channel, detail: nil)
+        case .part(let nick, let channel, let reason, let isSelf):
+            guard !isSelf else { return }
+            userHost = conn.userHost(for: nick)
+            new = ActivityEvent(timestamp: now, kind: .part, networkName: net,
+                                nick: nick, userHost: userHost,
+                                channel: channel, detail: reason)
+        case .quit(let nick, let reason):
+            guard nick.lowercased() != conn.nick.lowercased() else { return }
+            userHost = conn.userHost(for: nick)
+            new = ActivityEvent(timestamp: now, kind: .quit, networkName: net,
+                                nick: nick, userHost: userHost,
+                                channel: nil, detail: reason)
+        case .nickChanged(let old, let newNick, let isSelf):
+            guard !isSelf else { return }
+            userHost = conn.userHost(for: newNick) ?? conn.userHost(for: old)
+            new = ActivityEvent(timestamp: now, kind: .nick, networkName: net,
+                                nick: old, userHost: userHost,
+                                channel: nil, detail: "→ \(newNick)")
+        default:
+            return
+        }
+        activityFeed.append(new)
+        // Trim oldest to keep memory bounded. 1000 entries is enough for
+        // a long-running session without becoming a chore to render.
+        if activityFeed.count > Self.activityFeedCap {
+            activityFeed.removeFirst(activityFeed.count - Self.activityFeedCap)
+        }
+    }
+
+    /// Wipe the watch-monitor history. Wired to the Clear button in the
+    /// monitor window's toolbar.
+    func clearActivityFeed() {
+        activityFeed.removeAll()
     }
 
     private func playSoundFor(event: IRCConnectionEvent) {

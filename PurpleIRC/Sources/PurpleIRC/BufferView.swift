@@ -702,16 +702,10 @@ struct MessageRow: View {
             if let badge = leadingBadge {
                 Text(badge.glyph).foregroundStyle(badge.color).font(model.chatCaptionFont)
             } else {
-                Text(Self.timeFmt.string(from: line.timestamp))
-                    .font(model.chatCaptionFont)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 40, alignment: .leading)
+                timestampText
             }
             if leadingBadge != nil {
-                Text(Self.timeFmt.string(from: line.timestamp))
-                    .font(model.chatCaptionFont)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 40, alignment: .leading)
+                timestampText
             }
             content
             Spacer(minLength: 0)
@@ -726,6 +720,21 @@ struct MessageRow: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 4))
         .textSelection(.enabled)
+    }
+
+    /// Timestamp text with size-locked layout. Previously had a fixed
+    /// 40 pt frame which was correct for the default 13 pt body but
+    /// caused "10:05" to wrap into "10:0\n5" once the user bumped the
+    /// chat font size. `lineLimit(1)` + `fixedSize(horizontal:)` lets
+    /// the column be exactly as wide as the formatted string and never
+    /// any wider, so vertical alignment with messages stays clean.
+    private var timestampText: some View {
+        Text(Self.timeFmt.string(from: line.timestamp))
+            .font(model.chatCaptionFont)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .monospacedDigit()
     }
 
     private struct HighlightBadge {
