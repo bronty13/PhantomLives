@@ -189,7 +189,11 @@ struct BufferView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
             }
-            .background(Color(nsColor: .textBackgroundColor))
+            // Theme-driven surface — fixed themes (Solarized, Sepia, Dracula,
+            // Paper, etc.) supply their own colour; "follow OS" themes
+            // (Classic, High Contrast) fall through to .textBackgroundColor.
+            .background(model.theme.chatBackground)
+            .foregroundStyle(model.theme.chatForeground)
             .onChange(of: buffer.lines.count) { _, _ in
                 // New messages land during a find — recompute so the match
                 // count stays accurate.

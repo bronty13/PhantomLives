@@ -23,6 +23,7 @@ struct SetupView: View {
         case ignores = "Ignore"
         case highlights = "Highlights"
         case bot = "Bot"
+        case appearance = "Appearance"
         case behavior = "Behavior"
         case security = "Security"
         case scripts = "PurpleBot"
@@ -36,6 +37,7 @@ struct SetupView: View {
             case .ignores: return "nosign"
             case .highlights: return "sparkles"
             case .bot: return "bolt.badge.a"
+            case .appearance: return "paintpalette"
             case .behavior: return "slider.horizontal.3"
             case .security: return "lock.shield"
             case .scripts: return "curlybraces"
@@ -49,7 +51,7 @@ struct SetupView: View {
     private static let groups: [(String, [Tab])] = [
         ("Connections", [.servers, .identities, .security]),
         ("People & places", [.addressBook, .channels, .ignores]),
-        ("Experience", [.highlights, .bot, .behavior, .scripts]),
+        ("Experience", [.appearance, .highlights, .bot, .behavior, .scripts]),
     ]
 
     var body: some View {
@@ -108,26 +110,29 @@ struct SetupView: View {
 
     @ViewBuilder
     private var content: some View {
-        // Scrollable container — individual tabs can be tall (Behavior has
-        // lots of sections) and we don't want them clipping at the sheet edge.
-        ScrollView {
-            Group {
-                switch tab {
-                case .servers:     ServersSetup(settings: settings)
-                case .identities:  IdentitiesSetup(settings: settings)
-                case .security:    SecuritySetup(settings: settings, keyStore: model.keyStore)
-                case .addressBook: AddressBookSetup(settings: settings)
-                case .channels:    ChannelsSetup(settings: settings)
-                case .ignores:     IgnoreSetup(settings: settings)
-                case .highlights:  HighlightsSetup(settings: settings)
-                case .bot:         BotSetup(settings: settings, engine: model.botEngine)
-                case .behavior:    BehaviorSetup(settings: settings)
-                case .scripts:     ScriptsSetup(bot: model.bot)
-                }
+        // No outer ScrollView — Form-based tabs (.appearance, .behavior,
+        // .security, .scripts, .ignores, .channels, .addressBook detail)
+        // scroll natively via .formStyle(.grouped). Master/detail tabs
+        // (.servers, .identities, .highlights, .bot, .addressBook) need
+        // their full sheet height so the bottom +/− toolbar stays
+        // reachable instead of being pushed below the scroll edge by
+        // a long list.
+        Group {
+            switch tab {
+            case .servers:     ServersSetup(settings: settings)
+            case .identities:  IdentitiesSetup(settings: settings)
+            case .security:    SecuritySetup(settings: settings, keyStore: model.keyStore)
+            case .addressBook: AddressBookSetup(settings: settings)
+            case .channels:    ChannelsSetup(settings: settings)
+            case .ignores:     IgnoreSetup(settings: settings)
+            case .highlights:  HighlightsSetup(settings: settings)
+            case .bot:         BotSetup(settings: settings, engine: model.botEngine)
+            case .appearance:  AppearanceSetup(settings: settings)
+            case .behavior:    BehaviorSetup(settings: settings)
+            case .scripts:     ScriptsSetup(bot: model.bot)
             }
-            .padding()
-            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
@@ -754,46 +759,9 @@ struct BehaviorSetup: View {
                 Text("Use /away [reason] to mark yourself away and /back to return. Auto-replies are throttled per-sender.")
                     .font(.caption).foregroundStyle(.tertiary)
             }
-            Section("Theme") {
-                // 2-column gallery — each card renders sample chat lines in
-                // the theme's actual colours so the user can see what they're
-                // picking before committing. Click a card to apply.
-                LazyVGrid(
-                    columns: [GridItem(.flexible(), spacing: 10),
-                              GridItem(.flexible(), spacing: 10)],
-                    spacing: 10
-                ) {
-                    ForEach(Theme.all) { theme in
-                        ThemePreviewCard(
-                            theme: theme,
-                            isSelected: theme.id == settings.settings.themeID
-                        )
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            settings.settings.themeID = theme.id
-                        }
-                    }
-                }
-            }
-            Section("Chat font") {
-                Picker("Font family", selection: $settings.settings.chatFontFamily) {
-                    ForEach(ChatFontFamily.allCases) { f in
-                        Text(f.rawValue).tag(f)
-                    }
-                }
-                HStack {
-                    Text("Size")
-                    Slider(value: $settings.settings.chatFontSize, in: 10...24, step: 1)
-                    Text(verbatim: "\(Int(settings.settings.chatFontSize)) pt")
-                        .frame(width: 50, alignment: .trailing)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-                Toggle("Bold chat text", isOn: $settings.settings.boldChatText)
-                Toggle("Relaxed row spacing (accessibility)", isOn: $settings.settings.relaxedRowSpacing)
-                Text("Pairs well with the High Contrast theme. Live preview applies as soon as you change the slider.")
-                    .font(.caption).foregroundStyle(.tertiary)
-            }
+            // Theme + Chat font moved to the dedicated Appearance tab so
+            // Behavior stays focused on functional knobs (logging, CTCP,
+            // away, sounds, DCC). Easier to reach + less crowded.
             Section("DCC (experimental)") {
                 TextField("External IP (for outgoing offers)", text: $settings.settings.dccExternalIP)
                     .font(.system(.body, design: .monospaced))
@@ -1093,6 +1061,11 @@ struct HighlightsSetup: View {
 struct HighlightRuleEditor: View {
     @Binding var rule: HighlightRule
     @ObservedObject var settings: SettingsStore
+    /// Live colour for the ColorPicker — kept separate from `rule.colorHex`
+    /// because a Binding(get:set:) wrapped around the hex string round-trip
+    /// chokes on Color/hex conversion drift, and the user's selection
+    /// silently doesn't stick. Sync explicitly via .onChange.
+    @State private var pickerColor: Color = .orange
 
     private var regexError: String? {
         guard rule.isRegex, !rule.pattern.isEmpty else { return nil }
@@ -1123,15 +1096,36 @@ struct HighlightRuleEditor: View {
             Section("Appearance") {
                 Toggle("Custom color", isOn: Binding(
                     get: { rule.colorHex != nil },
-                    set: { rule.colorHex = $0 ? (rule.colorHex ?? "#FFA500") : nil }
+                    set: { enabled in
+                        if enabled {
+                            let hex = rule.colorHex ?? "#FFA500"
+                            rule.colorHex = hex
+                            pickerColor = Color(hex: hex) ?? .orange
+                        } else {
+                            rule.colorHex = nil
+                        }
+                    }
                 ))
                 if rule.colorHex != nil {
-                    ColorPicker("Color", selection: Binding(
-                        get: { Color(hex: rule.colorHex ?? "") ?? .orange },
-                        set: { rule.colorHex = $0.hexRGB }
-                    ), supportsOpacity: false)
+                    // ColorPicker bound to a real @State — much more
+                    // reliable than a Binding(get:set:) over the hex string.
+                    // Live changes propagate to rule.colorHex via onChange.
+                    ColorPicker("Color", selection: $pickerColor, supportsOpacity: false)
+                        .onChange(of: pickerColor) { _, new in
+                            // Only commit while custom mode is on, so
+                            // toggling off-then-on doesn't accidentally
+                            // overwrite the saved colour with the picker
+                            // default.
+                            if rule.colorHex != nil {
+                                rule.colorHex = new.hexRGB
+                            }
+                        }
                 }
             }
+            // Keep pickerColor in sync when the user switches between rules
+            // or when colorHex is mutated from elsewhere (e.g. settings reload).
+            .onAppear { syncPickerColor() }
+            .onChange(of: rule.id) { _, _ in syncPickerColor() }
             Section("Actions on match") {
                 Toggle("Play highlight sound", isOn: $rule.playSound)
                 Toggle("Bounce Dock icon", isOn: $rule.bounceDock)
@@ -1142,6 +1136,13 @@ struct HighlightRuleEditor: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// Pull the current rule's hex into the live ColorPicker state.
+    /// Called on appear and on rule.id change so swapping between rules in
+    /// the master list resets the picker to the right colour.
+    private func syncPickerColor() {
+        pickerColor = (rule.colorHex.flatMap { Color(hex: $0) }) ?? .orange
     }
 }
 
@@ -1633,7 +1634,10 @@ struct ThemePreviewCard: View {
             .lineLimit(1)
             .padding(8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(nsColor: .textBackgroundColor))
+            // Use the theme's own chat background so cards visibly differ —
+            // cream for Solarized Light, deep navy for Tokyo Night, etc.
+            .background(theme.chatBackground)
+            .foregroundStyle(theme.chatForeground)
             .clipShape(RoundedRectangle(cornerRadius: 5))
             // Palette strip — quick read on the per-nick colours that
             // would land in this theme.
@@ -1655,5 +1659,83 @@ struct ThemePreviewCard: View {
                 .stroke(isSelected ? Color.accentColor : Color.gray.opacity(0.25),
                         lineWidth: isSelected ? 2 : 0.5)
         )
+    }
+}
+
+// MARK: - Appearance
+
+/// Theme picker + chat font controls. Lives in its own tab so the user
+/// can find visual customisation without hunting through Behavior.
+/// Themes are grouped into Light / Adaptive / Dark sections so the gallery
+/// reads like a proper picker instead of a wall of cards.
+struct AppearanceSetup: View {
+    @ObservedObject var settings: SettingsStore
+
+    /// Adaptive themes use the OS appearance for background — they aren't
+    /// strictly "light" or "dark" so they get their own section.
+    private static let adaptiveIDs: Set<String> = ["classic", "highContrast"]
+
+    private var lightThemes: [Theme] {
+        Theme.all.filter { !Self.adaptiveIDs.contains($0.id) && $0.isLightish }
+    }
+    private var darkThemes: [Theme] {
+        Theme.all.filter { !Self.adaptiveIDs.contains($0.id) && !$0.isLightish }
+    }
+    private var adaptiveThemes: [Theme] {
+        Theme.all.filter { Self.adaptiveIDs.contains($0.id) }
+    }
+
+    var body: some View {
+        Form {
+            Section("Light themes") {
+                themeGrid(lightThemes)
+            }
+            Section("Adaptive (follows macOS appearance)") {
+                themeGrid(adaptiveThemes)
+            }
+            Section("Dark themes") {
+                themeGrid(darkThemes)
+            }
+            Section("Chat font") {
+                Picker("Font family", selection: $settings.settings.chatFontFamily) {
+                    ForEach(ChatFontFamily.allCases) { f in
+                        Text(f.rawValue).tag(f)
+                    }
+                }
+                HStack {
+                    Text("Size")
+                    Slider(value: $settings.settings.chatFontSize, in: 10...24, step: 1)
+                    Text(verbatim: "\(Int(settings.settings.chatFontSize)) pt")
+                        .frame(width: 50, alignment: .trailing)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                Toggle("Bold chat text", isOn: $settings.settings.boldChatText)
+                Toggle("Relaxed row spacing (accessibility)", isOn: $settings.settings.relaxedRowSpacing)
+                Text("Pairs well with High Contrast. Live preview applies as soon as you adjust the slider.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    @ViewBuilder
+    private func themeGrid(_ themes: [Theme]) -> some View {
+        LazyVGrid(
+            columns: [GridItem(.flexible(), spacing: 10),
+                      GridItem(.flexible(), spacing: 10)],
+            spacing: 10
+        ) {
+            ForEach(themes) { theme in
+                ThemePreviewCard(
+                    theme: theme,
+                    isSelected: theme.id == settings.settings.themeID
+                )
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    settings.settings.themeID = theme.id
+                }
+            }
+        }
     }
 }

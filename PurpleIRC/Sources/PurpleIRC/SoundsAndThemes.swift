@@ -82,6 +82,15 @@ enum ChatFontFamily: String, CaseIterable, Codable, Identifiable {
 struct Theme: Identifiable, Hashable {
     let id: String
     let displayName: String
+    /// Surface colour for the message pane. Themes that want to follow the
+    /// OS appearance (light vs dark) keep this at `Color(nsColor: .textBackgroundColor)`;
+    /// fixed themes (Solarized, Sepia, Dracula, Paper, etc.) supply their
+    /// own background so picking "Solarized Light" actually shows cream
+    /// even when the user's macOS is in dark mode.
+    let chatBackground: Color
+    /// Default body text colour — applied via .foregroundStyle on the
+    /// chat container so child Text views inherit when they don't override.
+    let chatForeground: Color
     let ownNickColor: Color
     let infoColor: Color
     let errorColor: Color
@@ -96,12 +105,30 @@ struct Theme: Identifiable, Hashable {
     let findBackground: Color
     /// Nicks are hashed into this palette for consistent per-user coloring.
     let nickPalette: [Color]
+
+    /// True when the theme is meant to read as a light theme (light bg).
+    /// Used by the Appearance tab to group / sort cards. Heuristic: green
+    /// channel value of `chatBackground` over 0.55 → light. Adaptive themes
+    /// (Classic, High Contrast) fall back to the OS appearance and aren't
+    /// classified.
+    var isLightish: Bool {
+        #if canImport(AppKit)
+        let ns = NSColor(chatBackground).usingColorSpace(.sRGB) ?? .clear
+        // Approximate luminance via the green channel — close enough for
+        // grouping; full Y′ would mean importing more or hand-rolling.
+        return ns.greenComponent > 0.55
+        #else
+        return false
+        #endif
+    }
 }
 
 extension Theme {
     static let classic = Theme(
         id: "classic",
         displayName: "Classic",
+        chatBackground: Color(nsColor: .textBackgroundColor),
+        chatForeground: .primary,
         ownNickColor: .accentColor,
         infoColor: .secondary,
         errorColor: .red,
@@ -120,6 +147,8 @@ extension Theme {
     static let midnight = Theme(
         id: "midnight",
         displayName: "Midnight",
+        chatBackground: Color(red: 0.10, green: 0.12, blue: 0.16),
+        chatForeground: Color(white: 0.92),
         ownNickColor: Color(red: 0.55, green: 0.85, blue: 1.0),
         infoColor: Color(white: 0.65),
         errorColor: Color(red: 1.0, green: 0.45, blue: 0.45),
@@ -147,6 +176,8 @@ extension Theme {
     static let candy = Theme(
         id: "candy",
         displayName: "Candy",
+        chatBackground: Color(red: 1.00, green: 0.96, blue: 0.97),
+        chatForeground: Color(red: 0.30, green: 0.10, blue: 0.25),
         ownNickColor: Color(red: 0.80, green: 0.35, blue: 0.65),
         infoColor: Color(red: 0.55, green: 0.45, blue: 0.60),
         errorColor: Color(red: 0.90, green: 0.25, blue: 0.35),
@@ -178,6 +209,8 @@ extension Theme {
     static let solarizedLight = Theme(
         id: "solarizedLight",
         displayName: "Solarized Light",
+        chatBackground: Color(hex: "#FDF6E3") ?? .white,
+        chatForeground: Color(hex: "#586E75") ?? .black,
         ownNickColor: Color(hex: "#268BD2") ?? .blue,
         infoColor: Color(hex: "#586E75") ?? .secondary,
         errorColor: Color(hex: "#DC322F") ?? .red,
@@ -202,6 +235,8 @@ extension Theme {
     static let solarizedDark = Theme(
         id: "solarizedDark",
         displayName: "Solarized Dark",
+        chatBackground: Color(hex: "#002B36") ?? .black,
+        chatForeground: Color(hex: "#93A1A1") ?? .white,
         ownNickColor: Color(hex: "#268BD2") ?? .blue,
         infoColor: Color(hex: "#93A1A1") ?? .secondary,
         errorColor: Color(hex: "#DC322F") ?? .red,
@@ -226,6 +261,8 @@ extension Theme {
     static let nord = Theme(
         id: "nord",
         displayName: "Nord",
+        chatBackground: Color(hex: "#2E3440") ?? .black,
+        chatForeground: Color(hex: "#D8DEE9") ?? .white,
         ownNickColor: Color(hex: "#88C0D0") ?? .cyan,
         infoColor: Color(hex: "#D8DEE9") ?? .secondary,
         errorColor: Color(hex: "#BF616A") ?? .red,
@@ -251,6 +288,8 @@ extension Theme {
     static let dracula = Theme(
         id: "dracula",
         displayName: "Dracula",
+        chatBackground: Color(hex: "#282A36") ?? .black,
+        chatForeground: Color(hex: "#F8F8F2") ?? .white,
         ownNickColor: Color(hex: "#FF79C6") ?? .pink,
         infoColor: Color(hex: "#6272A4") ?? .secondary,
         errorColor: Color(hex: "#FF5555") ?? .red,
@@ -276,6 +315,8 @@ extension Theme {
     static let highContrast = Theme(
         id: "highContrast",
         displayName: "High Contrast",
+        chatBackground: Color(nsColor: .textBackgroundColor),
+        chatForeground: .primary,
         ownNickColor: Color(red: 0.30, green: 0.55, blue: 1.0),
         infoColor: .primary,
         errorColor: Color(red: 1.0,  green: 0.20, blue: 0.20),
@@ -298,6 +339,8 @@ extension Theme {
     static let sepia = Theme(
         id: "sepia",
         displayName: "Sepia",
+        chatBackground: Color(hex: "#F4F0E8") ?? .white,
+        chatForeground: Color(hex: "#5B4636") ?? .black,
         ownNickColor: Color(hex: "#8B5E3C") ?? .brown,
         infoColor: Color(hex: "#7A6753") ?? .secondary,
         errorColor: Color(hex: "#A03020") ?? .red,
@@ -318,11 +361,68 @@ extension Theme {
         ]
     )
 
+    /// Paper — clean off-white reading surface with restrained accents.
+    /// The "minimal light" option for users who want something distinctly
+    /// non-dark on top of (or independent of) the OS appearance.
+    static let paper = Theme(
+        id: "paper",
+        displayName: "Paper",
+        chatBackground: Color(hex: "#FAFAF7") ?? .white,
+        chatForeground: Color(hex: "#2A2A2A") ?? .black,
+        ownNickColor: Color(hex: "#1A6FB0") ?? .blue,
+        infoColor: Color(hex: "#777777") ?? .secondary,
+        errorColor: Color(hex: "#B5302A") ?? .red,
+        motdColor: Color(hex: "#888888") ?? .secondary,
+        noticeColor: Color(hex: "#7B47B5") ?? .purple,
+        actionColor: Color(hex: "#B5447B") ?? .pink,
+        joinColor: Color(hex: "#3F8C3F") ?? .green,
+        partColor: Color(hex: "#B86A22") ?? .orange,
+        nickNickColor: Color(hex: "#1A6FB0") ?? .blue,
+        mentionBackground: (Color(hex: "#FFD45C") ?? .yellow).opacity(0.30),
+        watchlistBackground: (Color(hex: "#7B47B5") ?? .purple).opacity(0.16),
+        findBackground: (Color(hex: "#FFD45C") ?? .yellow).opacity(0.45),
+        nickPalette: [
+            Color(hex: "#B5302A") ?? .red,    Color(hex: "#1A6FB0") ?? .blue,
+            Color(hex: "#3F8C3F") ?? .green,  Color(hex: "#B86A22") ?? .orange,
+            Color(hex: "#7B47B5") ?? .purple, Color(hex: "#0F8B8D") ?? .teal,
+            Color(hex: "#B5447B") ?? .pink,   Color(hex: "#5C5C5C") ?? .secondary
+        ]
+    )
+
+    /// Tokyo Night — popular dark dev theme; deep navy background with
+    /// vibrant cool accents.
+    static let tokyoNight = Theme(
+        id: "tokyoNight",
+        displayName: "Tokyo Night",
+        chatBackground: Color(hex: "#1A1B26") ?? .black,
+        chatForeground: Color(hex: "#C0CAF5") ?? .white,
+        ownNickColor: Color(hex: "#7AA2F7") ?? .blue,
+        infoColor: Color(hex: "#565F89") ?? .secondary,
+        errorColor: Color(hex: "#F7768E") ?? .red,
+        motdColor: Color(hex: "#414868") ?? .secondary,
+        noticeColor: Color(hex: "#BB9AF7") ?? .purple,
+        actionColor: Color(hex: "#BB9AF7") ?? .purple,
+        joinColor: Color(hex: "#9ECE6A") ?? .green,
+        partColor: Color(hex: "#FF9E64") ?? .orange,
+        nickNickColor: Color(hex: "#2AC3DE") ?? .cyan,
+        mentionBackground: (Color(hex: "#E0AF68") ?? .yellow).opacity(0.22),
+        watchlistBackground: (Color(hex: "#BB9AF7") ?? .purple).opacity(0.20),
+        findBackground: (Color(hex: "#E0AF68") ?? .yellow).opacity(0.34),
+        nickPalette: [
+            Color(hex: "#F7768E") ?? .red,    Color(hex: "#9ECE6A") ?? .green,
+            Color(hex: "#E0AF68") ?? .yellow, Color(hex: "#7AA2F7") ?? .blue,
+            Color(hex: "#BB9AF7") ?? .purple, Color(hex: "#2AC3DE") ?? .cyan,
+            Color(hex: "#FF9E64") ?? .orange, Color(hex: "#73DACA") ?? .mint
+        ]
+    )
+
     static let all: [Theme] = [
-        .classic, .midnight, .candy,
-        .solarizedLight, .solarizedDark,
-        .nord, .dracula,
-        .sepia, .highContrast
+        // Light themes first so they're not buried below the darks.
+        .paper, .solarizedLight, .sepia, .candy,
+        // System-adaptive
+        .classic, .highContrast,
+        // Dark themes
+        .midnight, .solarizedDark, .nord, .dracula, .tokyoNight
     ]
 
     static func named(_ id: String) -> Theme {
