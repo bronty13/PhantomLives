@@ -522,6 +522,11 @@ struct BufferView: View {
                     .textFieldStyle(.plain)
                     .font(model.chatFont)
                     .focused($inputFocused)
+                    // Background anchor that flips on continuous spell-check
+                    // on the window's shared field editor. Every TextField
+                    // in this window inherits the underline behaviour for
+                    // the rest of the session.
+                    .background(SpellCheckActivator())
                     .onSubmit(submit)
                     .onChange(of: input) { oldValue, newValue in
                         // Multi-line paste detection. SwiftUI TextField

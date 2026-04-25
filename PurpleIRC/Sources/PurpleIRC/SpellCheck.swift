@@ -24,19 +24,68 @@ import AppKit
 
 // MARK: - 1. Bootstrap (no-op; kept for API compatibility)
 
-/// **Reverted.** A previous version of this file installed a global
-/// `NSWindowDelegate` on every window so it could intercept
-/// `windowWillReturnFieldEditor:` and serve a spell-check-enabled NSTextView
-/// as the field editor for every TextField. That broke SwiftUI's own
-/// window-lifecycle delegate calls (sheet dismissal, restoration), so the
-/// install path is now a no-op. Spell-check is still available on
-/// long-form `SpellCheckedTextEditor` fields below — that's the part of
-/// the feature that's safe.
+/// Was an aggressive global NSWindowDelegate replacement; broke SwiftUI's
+/// own window-lifecycle delegate calls and prevented the app from loading.
+/// Reverted to a no-op. Spell-check on TextFields now goes through
+/// `SpellCheckActivator` (per-field, drops into `.background`) which only
+/// configures the existing field editor without touching window delegates.
 @MainActor
 enum SpellCheckBootstrap {
-    /// No-op. Kept so `App.swift`'s call site doesn't need to be touched
-    /// while we figure out a safer approach to TextField spell-check.
     static func installOnAllWindows() {}
+}
+
+// MARK: - 1b. Per-field activator (safe, additive)
+
+/// Drop-in zero-pixel anchor that, once attached to a window, toggles
+/// continuous spell-check on the **window's existing field editor**. AppKit
+/// reuses one field editor across every NSTextField (and SwiftUI TextField)
+/// in a given window, so we only need to flip its flag once and every
+/// TextField in that window inherits the behaviour for the rest of the
+/// session.
+///
+/// Usage:
+/// ```
+/// TextField("…", text: $input)
+///     .background(SpellCheckActivator())
+/// ```
+///
+/// Why this is safe (unlike the previous attempt): we never replace the
+/// window's delegate, never substitute a custom field editor, and never
+/// monitor `didBecomeKeyNotification`. We only set well-documented
+/// instance properties on the field editor AppKit already created.
+struct SpellCheckActivator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = SpellCheckAnchorView(frame: .zero)
+        return view
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {
+        // No-op: the configuration is one-shot from `viewDidMoveToWindow`.
+        // SwiftUI may call `update` repeatedly during layout — bailing out
+        // here keeps the configuration cost to "exactly once per window."
+    }
+}
+
+/// Tiny NSView whose only job is to know when it joins a window so it can
+/// configure that window's field editor. Owns no layout, no drawing,
+/// no responder chain participation.
+final class SpellCheckAnchorView: NSView {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let window else { return }
+        // `fieldEditor(_:for:)` lazily creates a single shared field editor
+        // on first call, which is what SwiftUI's TextField uses behind the
+        // scenes. Setting flags on it propagates to every TextField in
+        // the window for the lifetime of the window.
+        guard let editor = window.fieldEditor(true, for: nil) as? NSTextView else { return }
+        editor.isContinuousSpellCheckingEnabled = true
+        editor.isAutomaticSpellingCorrectionEnabled = false
+        editor.isGrammarCheckingEnabled = false
+        // Off everywhere — IRC nicks and channel names look enough like
+        // English to repeatedly trip these.
+        editor.isAutomaticQuoteSubstitutionEnabled = false
+        editor.isAutomaticDashSubstitutionEnabled = false
+        editor.isAutomaticTextReplacementEnabled = false
+    }
 }
 
 // MARK: - 2. SpellCheckedTextEditor
