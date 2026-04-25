@@ -503,6 +503,18 @@ final class SettingsStore: ObservableObject {
     /// whether their metadata is actually encrypted.
     @Published private(set) var isEncryptedOnDisk: Bool = false
 
+    /// Hard guard against the "init-time mutation clobbers encrypted file"
+    /// data-loss class. Stays `false` until either:
+    ///   - SettingsStore.init successfully decoded a plaintext file, OR
+    ///   - reload() successfully decoded an encrypted file post-unlock, OR
+    ///   - markAsLoadedForFreshInstall() was called explicitly when the
+    ///     file genuinely doesn't exist (first launch).
+    /// Save refuses while this is `false` so any didSet → save() that
+    /// fires before the user's data lands in memory cannot overwrite the
+    /// real on-disk file with empty defaults. Same incident class as
+    /// `d0cc021` and the assistant rollout's persona seed.
+    private var hasLoadedFromDisk: Bool = false
+
     init() {
         let fm = FileManager.default
         let base = try? fm.url(for: .applicationSupportDirectory,
@@ -526,8 +538,15 @@ final class SettingsStore: ObservableObject {
             if !self.isEncryptedOnDisk {
                 if let decoded = try? JSONDecoder().decode(AppSettings.self, from: data) {
                     self.settings = resolveCredentials(in: decoded)
+                    self.hasLoadedFromDisk = true
                 }
             }
+            // Encrypted file present but not yet decoded: hasLoadedFromDisk
+            // stays false, so save() refuses until reload() succeeds.
+        } else {
+            // No file on disk → fresh install. Allow saves so the first
+            // user edit persists.
+            self.hasLoadedFromDisk = true
         }
         // No selectedServerID-defaulting here: mutating during init would
         // trigger didSet → save() while keyStore is still nil, and that's
@@ -552,10 +571,19 @@ final class SettingsStore: ObservableObject {
         }
         if let decoded = try? JSONDecoder().decode(AppSettings.self, from: jsonData) {
             self.settings = resolveCredentials(in: decoded)
+            self.hasLoadedFromDisk = true
         }
     }
 
     func save() {
+        guard hasLoadedFromDisk else {
+            // Pre-load mutation tried to save. Refuse — the user's real
+            // data is still on disk encrypted, and writing defaults
+            // would clobber it under the same key. Logged so a debug
+            // session can spot the call site.
+            NSLog("PurpleIRC: settings save skipped — file not yet loaded")
+            return
+        }
         do {
             // Move any cleartext credentials into Keychain BEFORE encoding so
             // the bytes we write never contain plaintext passwords, even if
