@@ -575,15 +575,25 @@ final class IRCConnection: ObservableObject, Identifiable {
     private var whoisOriginByNick: [String: Buffer.ID] = [:]
 
     /// Record the buffer the user issued /whois or /whowas from so the
-    /// reply lands in the right place. Only does anything when the
-    /// current selection is a channel — server-buffer requests already
-    /// land in the server buffer naturally, so no point duplicating.
+    /// reply lands in the right place. Channel and query buffers are both
+    /// valid origins; server-buffer requests fall through to the default
+    /// "land in server buffer" behavior so no entry is needed for those.
     private func registerWhoisOrigin(target: String, selection: Buffer.ID?) {
         guard let sel = selection,
               let buf = buffers.first(where: { $0.id == sel }),
-              buf.kind == .channel else { return }
+              buf.kind == .channel || buf.kind == .query else { return }
         let key = target.split(separator: " ").first.map(String.init)?.lowercased() ?? target.lowercased()
         whoisOriginByNick[key] = sel
+    }
+
+    /// Auto-WHOIS on new query opens — same registerWhoisOrigin pattern but
+    /// the origin is the query buffer's own ID so the reply lands inside
+    /// the conversation. Per-buffer log writes pick up the WHOIS lines for
+    /// free.
+    private func autoWhoisForQuery(_ nick: String, queryBufferID: Buffer.ID) {
+        let key = nick.lowercased()
+        whoisOriginByNick[key] = queryBufferID
+        client.send("WHOIS \(nick)")
     }
 
     /// Read-only accessor for the captured user@host map. Returns nil when
@@ -955,7 +965,11 @@ final class IRCConnection: ObservableObject, Identifiable {
         // CTCP ACTION rendering
         if text.hasPrefix("\u{01}ACTION "), text.hasSuffix("\u{01}") {
             text = String(text.dropFirst(8).dropLast())
-            let bIdx = indexOfOrCreateBuffer(name: bufferName, kind: kind)
+            let r = indexOfOrCreateBufferTracked(name: bufferName, kind: kind)
+            let bIdx = r.index
+            if r.created, kind == .query {
+                autoWhoisForQuery(bufferName, queryBufferID: buffers[bIdx].id)
+            }
             appendTo(bufferIndex: bIdx, line: ChatLine(
                 timestamp: lineTime,
                 kind: .action(nick: from),
@@ -974,7 +988,14 @@ final class IRCConnection: ObservableObject, Identifiable {
             return
         }
 
-        let bIdx = indexOfOrCreateBuffer(name: bufferName, kind: kind)
+        let r = indexOfOrCreateBufferTracked(name: bufferName, kind: kind)
+        let bIdx = r.index
+        // Auto-WHOIS the first time someone PMs us (or we open a /msg)
+        // so the user immediately sees who they're talking to. The reply
+        // routes back into this same query buffer via whoisOriginByNick.
+        if r.created, kind == .query {
+            autoWhoisForQuery(bufferName, queryBufferID: buffers[bIdx].id)
+        }
         if isNotice {
             appendTo(bufferIndex: bIdx, line: ChatLine(
                 timestamp: lineTime,
@@ -1517,17 +1538,26 @@ final class IRCConnection: ObservableObject, Identifiable {
             guard bits.count == 2 else { return }
             let target = bits[0]; let text = bits[1]
             client.send("PRIVMSG \(target) :\(text)")
-            let bIdx = indexOfOrCreateBuffer(name: target, kind: target.hasPrefix("#") ? .channel : .query)
-            appendTo(bufferIndex: bIdx, line: ChatLine(
+            let kindToCreate: Buffer.Kind = target.hasPrefix("#") ? .channel : .query
+            let result = indexOfOrCreateBufferTracked(name: target, kind: kindToCreate)
+            appendTo(bufferIndex: result.index, line: ChatLine(
                 timestamp: Date(),
                 kind: .privmsg(nick: nick, isSelf: true),
                 text: text))
-            selectedBufferID = buffers[bIdx].id
+            selectedBufferID = buffers[result.index].id
+            // Auto-WHOIS on /msg-spawned queries — same UX as a /query.
+            if result.created, kindToCreate == .query {
+                autoWhoisForQuery(target, queryBufferID: buffers[result.index].id)
+            }
         case "query":
             let target = rest.trimmingCharacters(in: .whitespaces)
             guard !target.isEmpty else { return }
-            let bIdx = indexOfOrCreateBuffer(name: target, kind: target.hasPrefix("#") ? .channel : .query)
-            selectedBufferID = buffers[bIdx].id
+            let kindToCreate: Buffer.Kind = target.hasPrefix("#") ? .channel : .query
+            let result = indexOfOrCreateBufferTracked(name: target, kind: kindToCreate)
+            selectedBufferID = buffers[result.index].id
+            if result.created, kindToCreate == .query {
+                autoWhoisForQuery(target, queryBufferID: buffers[result.index].id)
+            }
         case "me":
             guard let target = currentBufferName(), !rest.isEmpty else { return }
             let ctcp = "\u{01}ACTION \(rest)\u{01}"
@@ -1682,6 +1712,20 @@ final class IRCConnection: ObservableObject, Identifiable {
         let buf = Buffer(name: name, kind: kind)
         buffers.append(buf)
         return buffers.count - 1
+    }
+
+    /// Same as `indexOfOrCreateBuffer` but reports whether the buffer was
+    /// newly created. Callers that want to do something distinctive on
+    /// first-creation (e.g. auto-WHOIS on a new query) use this variant.
+    private func indexOfOrCreateBufferTracked(name: String, kind: Buffer.Kind)
+        -> (index: Int, created: Bool)
+    {
+        if let i = buffers.firstIndex(where: { $0.name.lowercased() == name.lowercased() }) {
+            return (i, false)
+        }
+        let buf = Buffer(name: name, kind: kind)
+        buffers.append(buf)
+        return (buffers.count - 1, true)
     }
 
     private func idx(of id: Buffer.ID) -> Int {
