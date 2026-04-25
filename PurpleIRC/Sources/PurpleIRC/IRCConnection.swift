@@ -177,6 +177,13 @@ final class IRCConnection: ObservableObject, Identifiable {
         self.pendingRestoreSelection = selected
     }
 
+    /// Resolver for "what should I restore on welcome?" set by ChatModel.
+    /// Run on every welcome so encrypted-store users — whose `lastSession`
+    /// dictionary isn't populated until after the keystore unlocks — still
+    /// get their channels and queries back. Returns nil when restore is
+    /// disabled or no snapshot exists for this profile.
+    var sessionSnapshotResolver: (() -> SessionSnapshot?)?
+
     /// Capture the current buffer state for persistence. Server buffer is
     /// always live, so it's not represented in the snapshot — restore
     /// recreates it implicitly on connect.
@@ -203,12 +210,25 @@ final class IRCConnection: ObservableObject, Identifiable {
     /// `runPostWelcome` after `autoJoinIfNeeded` so we don't double-JOIN
     /// channels already covered by the profile's auto-join list.
     private func applyPendingRestore() {
+        // Encrypted-keystore users have their lastSession dictionary
+        // populated only after the unlock unwraps the settings envelope,
+        // which happens AFTER addConnection ran. Pull a fresh snapshot
+        // each welcome so those users still get restore.
+        if pendingRestoreChannels.isEmpty && pendingRestoreQueries.isEmpty,
+           let snap = sessionSnapshotResolver?() {
+            pendingRestoreChannels = snap.channels
+            pendingRestoreQueries  = snap.queries
+            pendingRestoreSelection = snap.selected
+        }
         defer {
             pendingRestoreChannels.removeAll()
             pendingRestoreQueries.removeAll()
             pendingRestoreSelection = nil
         }
         guard !pendingRestoreChannels.isEmpty || !pendingRestoreQueries.isEmpty else { return }
+        AppLog.shared.info(
+            "Restoring session for \(displayName): \(pendingRestoreChannels.count) channels, \(pendingRestoreQueries.count) queries",
+            category: "IRC.\(displayName)")
 
         // Pre-create query buffers so the sidebar shows them immediately,
         // even before the other party messages back.

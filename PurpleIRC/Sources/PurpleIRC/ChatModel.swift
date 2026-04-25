@@ -315,6 +315,10 @@ final class ChatModel: ObservableObject {
         // Push the previous-session snapshot into the connection so it can
         // restore channels + queries during runPostWelcome. Keyed by the
         // (stable) profile UUID, not the (per-launch) connection UUID.
+        // Set both an eager copy AND a resolver; the resolver lets the
+        // connection re-fetch on every welcome so encrypted-keystore users
+        // (whose lastSession is empty until after unlock — which happens
+        // AFTER addConnection) still get their session restored.
         if settings.settings.restoreOpenBuffersOnLaunch {
             let key = profile.id.uuidString
             if let snap = settings.settings.lastSession[key] {
@@ -323,6 +327,13 @@ final class ChatModel: ObservableObject {
                     queries: snap.queries,
                     selected: snap.selected)
             }
+        }
+        let pid = profile.id
+        conn.sessionSnapshotResolver = { [weak self] in
+            guard let self,
+                  self.settings.settings.restoreOpenBuffersOnLaunch
+            else { return nil }
+            return self.settings.settings.lastSession[pid.uuidString]
         }
 
         connections.append(conn)
@@ -728,10 +739,17 @@ final class ChatModel: ObservableObject {
     private var lastSnapshotByProfileID: [UUID: SessionSnapshot] = [:]
 
     /// Compute the connection's current snapshot and write it into settings
-    /// if it differs from the last value we saved for that profile. Also
-    /// trims out empty snapshots so the on-disk dictionary doesn't grow
-    /// without bound across deleted server profiles.
+    /// if it differs from the last value we saved for that profile. Skipped
+    /// when the connection isn't live yet — otherwise the empty initial
+    /// `[]` value emitted by Combine on subscribe would clobber the saved
+    /// snapshot before `applyPendingRestore` had a chance to use it.
     private func maybeSaveSnapshot(for conn: IRCConnection) {
+        // Only persist while the connection is live. Disconnected/connecting
+        // states don't hold authoritative buffer state — either we haven't
+        // restored yet (so the saved snapshot is still authoritative) or
+        // we're in a transient teardown (don't wipe on the way out).
+        guard conn.state == .connected else { return }
+
         let snap = conn.currentSessionSnapshot()
         let pid = conn.profile.id
         if lastSnapshotByProfileID[pid] == snap { return }
