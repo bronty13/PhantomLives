@@ -22,100 +22,21 @@ import AppKit
 ///    TextEditor wherever long-form text is being authored (currently the
 ///    Address Book entry's Markdown notes).
 
-// MARK: - 1. Window field editor injector
+// MARK: - 1. Bootstrap (no-op; kept for API compatibility)
 
-/// Custom field editor — same as a stock NSTextView, but with continuous
-/// spell-check pre-enabled. Auto-correct stays OFF: IRC nicks and channel
-/// names look enough like English words that auto-correct would constantly
-/// mangle them, but spelling underlines are still useful for prose.
-@MainActor
-final class SpellCheckedFieldEditor: NSTextView {
-    override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
-        super.init(frame: frameRect, textContainer: container)
-        configure()
-    }
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        configure()
-    }
-    private func configure() {
-        isFieldEditor = true
-        isContinuousSpellCheckingEnabled = true
-        isAutomaticSpellingCorrectionEnabled = false
-        isGrammarCheckingEnabled = false
-        // IRC users frequently type URLs; let the system make them clickable
-        // so command-click works without us re-implementing link detection
-        // for every single text field.
-        isAutomaticLinkDetectionEnabled = true
-        // Smart quotes and dashes ruin nick references like "don't" → "don’t"
-        // and rewrite "--" into "—". Off everywhere; if the user wants them
-        // they can request via the Edit menu's Substitutions submenu.
-        isAutomaticQuoteSubstitutionEnabled = false
-        isAutomaticDashSubstitutionEnabled = false
-        isAutomaticTextReplacementEnabled = false
-    }
-}
-
-/// Window delegate that returns the spell-check field editor while passing
-/// every other delegate call through to whatever delegate was set before us
-/// (typically nil for SwiftUI hosting windows, but we cooperate either way).
-@MainActor
-final class SpellCheckingWindowDelegate: NSObject, NSWindowDelegate {
-    /// Hold the previous delegate so SwiftUI's bookkeeping continues to work.
-    /// Weak — if SwiftUI deallocates its delegate, we don't keep it alive.
-    private weak var passthrough: NSWindowDelegate?
-
-    /// Attach to a window. If the window already has *this same delegate
-    /// type* installed we no-op (re-attaching would lose the passthrough
-    /// chain to a delegate we already wrap).
-    func install(on window: NSWindow) {
-        if window.delegate is SpellCheckingWindowDelegate { return }
-        passthrough = window.delegate
-        window.delegate = self
-    }
-
-    func windowWillReturnFieldEditor(_ sender: NSWindow, to client: Any?) -> Any? {
-        // NSTextView has no zero-arg init — synthesize a tiny frame; AppKit
-        // will resize the field editor to match the active control before
-        // first display.
-        SpellCheckedFieldEditor(frame: .zero, textContainer: nil)
-    }
-
-    // Forward unrecognized selectors to the previous delegate so SwiftUI
-    // window callbacks (windowDidResize:, etc.) keep flowing.
-    override func responds(to aSelector: Selector!) -> Bool {
-        if super.responds(to: aSelector) { return true }
-        return passthrough?.responds(to: aSelector) ?? false
-    }
-    override func forwardingTarget(for aSelector: Selector!) -> Any? {
-        if let p = passthrough, p.responds(to: aSelector) { return p }
-        return nil
-    }
-}
-
-/// One-shot installer that walks every existing NSWindow and subscribes for
-/// future ones. Idempotent — repeated calls are safe; each window is only
-/// wrapped once thanks to the type check in `install(on:)`.
+/// **Reverted.** A previous version of this file installed a global
+/// `NSWindowDelegate` on every window so it could intercept
+/// `windowWillReturnFieldEditor:` and serve a spell-check-enabled NSTextView
+/// as the field editor for every TextField. That broke SwiftUI's own
+/// window-lifecycle delegate calls (sheet dismissal, restoration), so the
+/// install path is now a no-op. Spell-check is still available on
+/// long-form `SpellCheckedTextEditor` fields below — that's the part of
+/// the feature that's safe.
 @MainActor
 enum SpellCheckBootstrap {
-    private static var observer: NSObjectProtocol?
-    private static let delegate = SpellCheckingWindowDelegate()
-
-    static func installOnAllWindows() {
-        for w in NSApp.windows { delegate.install(on: w) }
-        if observer != nil { return }
-        // New windows announce themselves via didBecomeKeyNotification
-        // (NSWindow has no global "did add" notification on macOS). The
-        // first time a SwiftUI scene's window becomes key we install.
-        observer = NotificationCenter.default.addObserver(
-            forName: NSWindow.didBecomeKeyNotification,
-            object: nil, queue: .main
-        ) { note in
-            if let w = note.object as? NSWindow {
-                Task { @MainActor in delegate.install(on: w) }
-            }
-        }
-    }
+    /// No-op. Kept so `App.swift`'s call site doesn't need to be touched
+    /// while we figure out a safer approach to TextField spell-check.
+    static func installOnAllWindows() {}
 }
 
 // MARK: - 2. SpellCheckedTextEditor
