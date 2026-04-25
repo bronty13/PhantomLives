@@ -73,6 +73,7 @@ struct RootView: View {
 
 struct ContentView: View {
     @EnvironmentObject var model: ChatModel
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         NavigationSplitView {
@@ -122,6 +123,14 @@ struct ContentView: View {
                           systemImage: model.watchlist.recentHits.isEmpty ? "bell.badge" : "bell.badge.fill")
                 }
                 .help("Alert me when watched users come online")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    openWindow(id: "watch-monitor")
+                } label: {
+                    Label("Watch Monitor", systemImage: "waveform.badge.magnifyingglass")
+                }
+                .help("Open the cross-network activity monitor (⇧⌘M)")
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -256,11 +265,6 @@ struct SidebarView: View {
             get: { model.selectedBufferID },
             set: { if let v = $0 { model.selectBuffer(v) } }
         )) {
-            Section("Server") {
-                ForEach(model.buffers.filter { $0.kind == .server }) { buf in
-                    Label(buf.name, systemImage: "server.rack").tag(buf.id as Buffer.ID?)
-                }
-            }
             let channels = model.buffers.filter { $0.kind == .channel }
             if !channels.isEmpty {
                 Section("Channels") {
@@ -269,11 +273,29 @@ struct SidebarView: View {
                     }
                 }
             }
-            let queries = model.buffers.filter { $0.kind == .query }
-            if !queries.isEmpty {
+
+            // Private grouping — direct queries with users plus the
+            // network/server console rows. The server rows live here so the
+            // sidebar reads as "channels above, anything addressed to *you*
+            // below". A subtle divider + dim styling on the server rows keeps
+            // them distinct from query rows above and saved/contacts below.
+            let queries  = model.buffers.filter { $0.kind == .query }
+            let servers  = model.buffers.filter { $0.kind == .server }
+            if !queries.isEmpty || !servers.isEmpty {
                 Section("Private") {
                     ForEach(queries) { buf in
                         BufferRow(buffer: buf, icon: "person.fill")
+                    }
+                    if !queries.isEmpty && !servers.isEmpty {
+                        // Visual separator between user queries and the
+                        // network console rows. Pulled in from the row edge
+                        // so it reads as a divider, not a real list row.
+                        Divider()
+                            .padding(.horizontal, 6)
+                            .listRowSeparator(.hidden)
+                    }
+                    ForEach(servers) { buf in
+                        ServerConsoleRow(buffer: buf)
                     }
                 }
             }
@@ -307,24 +329,7 @@ struct SidebarView: View {
             if !addresses.isEmpty {
                 Section("Contacts") {
                     ForEach(addresses) { a in
-                        Button {
-                            model.sendInput("/msg \(a.nick) ")
-                        } label: {
-                            HStack {
-                                Circle()
-                                    .fill(contactColor(for: a))
-                                    .frame(width: 8, height: 8)
-                                Text(a.nick)
-                                    .font(.system(.body, design: .monospaced))
-                                if a.watch {
-                                    Image(systemName: "bell.fill")
-                                        .font(.caption2)
-                                        .foregroundStyle(Color.purple)
-                                }
-                                Spacer()
-                            }
-                        }
-                        .buttonStyle(.plain)
+                        ContactRow(entry: a, presence: presence(for: a))
                     }
                 }
             }
@@ -342,15 +347,132 @@ struct SidebarView: View {
         }
     }
 
-    private func contactColor(for entry: AddressEntry) -> Color {
+    private func presence(for entry: AddressEntry) -> WatchPresence {
+        guard entry.watch else { return .unknown }
+        return model.watchlist.presence[entry.nick.lowercased()] ?? .unknown
+    }
+}
+
+/// Server console row in the sidebar — the network-info buffer that holds
+/// raw notices, MOTD, server replies, etc. Styled distinctly from channel and
+/// query rows: smaller/secondary type with a subtle accent dot so it reads as
+/// "this is the network itself" rather than a peer or a topic.
+struct ServerConsoleRow: View {
+    let buffer: Buffer
+    @EnvironmentObject var model: ChatModel
+    @State private var isHovering: Bool = false
+
+    private var isSelected: Bool { model.selectedBufferID == buffer.id }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "server.rack")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(buffer.name)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 4)
+            if buffer.unread > 0, !isHovering {
+                Text("\(buffer.unread)")
+                    .font(.caption2)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Color.secondary.opacity(0.35)))
+                    .foregroundStyle(.white)
+            }
+        }
+        .padding(.vertical, 1)
+        .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
+        .tag(buffer.id as Buffer.ID?)
+        .contextMenu {
+            Button("Copy network name") {
+                #if canImport(AppKit)
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(buffer.name, forType: .string)
+                #endif
+            }
+            Divider()
+            if isSelected {
+                Button("Disconnect from this network") { model.disconnect() }
+            }
+        }
+    }
+}
+
+/// Address-book contact row in the sidebar. Single-click selects, double-click
+/// opens a `/query` buffer with the contact, and the right-click menu exposes
+/// every reasonable contact action (whois/whowas, watch toggle, edit, remove).
+struct ContactRow: View {
+    let entry: AddressEntry
+    let presence: WatchPresence
+
+    @EnvironmentObject var model: ChatModel
+
+    var body: some View {
+        HStack {
+            Circle()
+                .fill(dotColor)
+                .frame(width: 8, height: 8)
+            Text(entry.nick)
+                .font(.system(.body, design: .monospaced))
+            if entry.watch {
+                Image(systemName: "bell.fill")
+                    .font(.caption2)
+                    .foregroundStyle(Color.purple)
+            }
+            Spacer()
+        }
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            model.sendInput("/query \(entry.nick)")
+        }
+        .contextMenu {
+            Button("Open query with \(entry.nick)") {
+                model.sendInput("/query \(entry.nick)")
+            }
+            Button("WHOIS \(entry.nick)")  { model.sendInput("/whois \(entry.nick)") }
+            Button("WHOWAS \(entry.nick)") { model.sendInput("/whowas \(entry.nick)") }
+            Divider()
+            if entry.watch {
+                Button("Stop notifying when online") { setWatch(false) }
+            } else {
+                Button("Notify when online") { setWatch(true) }
+            }
+            Button("Edit address book entry…") {
+                model.pendingSetupTab = .addressBook
+                model.showSetup = true
+            }
+            Button("Remove from address book", role: .destructive) {
+                model.settings.removeAddress(id: entry.id)
+            }
+            Divider()
+            Button("Copy nick") {
+                #if canImport(AppKit)
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(entry.nick, forType: .string)
+                #endif
+            }
+        }
+    }
+
+    private var dotColor: Color {
         guard entry.watch else { return .gray }
-        switch model.watchlist.presence[entry.nick.lowercased()] ?? .unknown {
+        switch presence {
         case .online: return .green
         case .offline: return .gray
         case .unknown: return .yellow
         }
     }
 
+    private func setWatch(_ on: Bool) {
+        var copy = entry
+        copy.watch = on
+        model.settings.upsertAddress(copy)
+    }
 }
 
 /// Single channel/query row in the sidebar. Owns per-row hover state so a

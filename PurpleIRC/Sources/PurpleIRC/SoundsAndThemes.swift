@@ -75,6 +75,38 @@ enum ChatFontFamily: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+// MARK: - Timestamp formats
+
+/// Curated DateFormatter patterns for chat-line timestamps. Each `rawValue`
+/// is a real `dateFormat` string, so the picker writes the chosen pattern
+/// straight into AppSettings and BufferView feeds it to a DateFormatter.
+/// Stored as String in settings so a future "custom format" field can
+/// drop in without touching the data layer.
+enum TimestampFormat: String, CaseIterable, Identifiable, Codable {
+    case time24       = "HH:mm:ss"
+    case time24NoSec  = "HH:mm"
+    case time12       = "h:mm:ss a"
+    case time12NoSec  = "h:mm a"
+    case dateTime     = "MMM d, HH:mm"
+    case dateTimeFull = "yyyy-MM-dd HH:mm:ss"
+    case isoCompact   = "yyyy-MM-dd HH:mm"
+    var id: String { rawValue }
+
+    /// Human-readable preview for the picker — sample value plus a
+    /// short hint so users don't have to read DateFormatter syntax.
+    var displayName: String {
+        switch self {
+        case .time24:        return "23:59:59 — 24-hour, with seconds (default)"
+        case .time24NoSec:   return "23:59 — 24-hour"
+        case .time12:        return "11:59:59 PM — 12-hour, with seconds"
+        case .time12NoSec:   return "11:59 PM — 12-hour"
+        case .dateTime:      return "Apr 25, 23:59 — short date + time"
+        case .dateTimeFull:  return "2026-04-25 23:59:59 — full timestamp"
+        case .isoCompact:    return "2026-04-25 23:59 — date + time"
+        }
+    }
+}
+
 // MARK: - Themes
 
 /// A minimal color theme: just the knobs that actually show up in the chat

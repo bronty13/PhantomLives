@@ -355,6 +355,11 @@ struct AppSettings: Codable {
     var themeID: String = "classic"
 
     // Appearance / accessibility — applied to every chat-text view.
+    /// Pattern fed straight into `DateFormatter.dateFormat` for chat-line
+    /// timestamps. Defaults to "HH:mm:ss"; user can pick a preset (or a
+    /// custom string) via Setup → Appearance.
+    var timestampFormat: String = "HH:mm:ss"
+
     var chatFontFamily: ChatFontFamily = .systemMono
     /// Base font size in points. The Behavior tab clamps the slider to a
     /// readable range (10–24); below 10 buffers become unscannable.
@@ -426,6 +431,7 @@ struct AppSettings: Codable {
                 "ctcp": ""
             ]
         self.themeID = try c.decodeIfPresent(String.self, forKey: .themeID) ?? "classic"
+        self.timestampFormat = try c.decodeIfPresent(String.self, forKey: .timestampFormat) ?? "HH:mm:ss"
         self.chatFontFamily = try c.decodeIfPresent(ChatFontFamily.self, forKey: .chatFontFamily) ?? .systemMono
         self.chatFontSize = try c.decodeIfPresent(Double.self, forKey: .chatFontSize) ?? 13
         self.boldChatText = try c.decodeIfPresent(Bool.self, forKey: .boldChatText) ?? false

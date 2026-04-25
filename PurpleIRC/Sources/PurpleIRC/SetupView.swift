@@ -1762,6 +1762,22 @@ struct AppearanceSetup: View {
             Section("Dark themes") {
                 themeGrid(darkThemes)
             }
+            Section("Time display") {
+                Picker("Timestamp format", selection: $settings.settings.timestampFormat) {
+                    ForEach(TimestampFormat.allCases) { fmt in
+                        Text(fmt.displayName).tag(fmt.rawValue)
+                    }
+                    // Surface custom-pattern values (e.g. ones the user typed
+                    // by hand into settings.json) so the picker can still
+                    // reflect them without losing the value on display.
+                    if !TimestampFormat.allCases.contains(where: { $0.rawValue == settings.settings.timestampFormat }) {
+                        Text("Custom: \(settings.settings.timestampFormat)")
+                            .tag(settings.settings.timestampFormat)
+                    }
+                }
+                Text("Live preview — change applies immediately to every chat buffer.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
             Section("Chat font") {
                 Picker("Font family", selection: $settings.settings.chatFontFamily) {
                     ForEach(ChatFontFamily.allCases) { f in

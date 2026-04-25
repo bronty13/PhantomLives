@@ -342,7 +342,24 @@ struct BufferView: View {
     private func userContextMenu(for user: String) -> some View {
         let nick = stripModePrefix(user)
         Button("Open query") { model.sendInput("/query \(nick)") }
-        Button("WHOIS") { model.sendInput("/whois \(nick)") }
+        // WHOIS / WHOWAS replies are mirrored back to this channel
+        // automatically (registerWhoisOrigin in IRCConnection), so the
+        // user sees the answer without leaving the buffer.
+        Button("WHOIS \(nick)") { model.sendInput("/whois \(nick)") }
+        Button("WHOWAS \(nick)") { model.sendInput("/whowas \(nick)") }
+        Divider()
+        if isInAddressBook(nick) {
+            Button("Remove from address book") {
+                removeFromAddressBook(nick)
+            }
+        } else {
+            Button("Add to address book (notify when online)") {
+                addToAddressBook(nick, watch: true)
+            }
+            Button("Add to address book") {
+                addToAddressBook(nick, watch: false)
+            }
+        }
         Divider()
         Button("Op (+o)") { model.sendInput("/op \(nick)") }
         Button("Deop (-o)") { model.sendInput("/deop \(nick)") }
@@ -353,6 +370,35 @@ struct BufferView: View {
         Button("Ban") { model.sendInput("/ban \(nick)!*@*") }
         Divider()
         Button("Ignore") { model.sendInput("/ignore \(nick)!*@*") }
+    }
+
+    /// Look up whether the nick already exists in the user's address book.
+    /// Case-insensitive match — IRC nicks are case-insensitive on the wire.
+    private func isInAddressBook(_ nick: String) -> Bool {
+        model.settings.settings.addressBook.contains {
+            $0.nick.caseInsensitiveCompare(nick) == .orderedSame
+        }
+    }
+
+    /// Add a nick to the address book with the given watch flag. If a
+    /// matching entry already exists this is a no-op (callers gate on
+    /// `isInAddressBook` already).
+    private func addToAddressBook(_ nick: String, watch: Bool) {
+        guard !isInAddressBook(nick) else { return }
+        var entry = AddressEntry()
+        entry.nick = nick
+        entry.watch = watch
+        model.settings.upsertAddress(entry)
+    }
+
+    /// Remove every address-book entry whose nick matches (case-insensitive).
+    private func removeFromAddressBook(_ nick: String) {
+        let matches = model.settings.settings.addressBook.filter {
+            $0.nick.caseInsensitiveCompare(nick) == .orderedSame
+        }
+        for entry in matches {
+            model.settings.removeAddress(id: entry.id)
+        }
     }
 
     /// Channel user lists may include `@` / `+` / `%` prefixes — strip them
@@ -691,11 +737,18 @@ struct MessageRow: View {
     let line: ChatLine
     var highlight: Bool = false
 
-    private static let timeFmt: DateFormatter = {
+    /// Render the chat-line timestamp using the user's configured
+    /// `timestampFormat`. Recomputed per row so changes in Appearance
+    /// take effect immediately, no relaunch required. Falls back to the
+    /// 24-hour default when the pattern is empty.
+    private var formattedTimestamp: String {
+        let pattern = model.settings.settings.timestampFormat.isEmpty
+            ? "HH:mm:ss"
+            : model.settings.settings.timestampFormat
         let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        return f
-    }()
+        f.dateFormat = pattern
+        return f.string(from: line.timestamp)
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -729,7 +782,7 @@ struct MessageRow: View {
     /// the column be exactly as wide as the formatted string and never
     /// any wider, so vertical alignment with messages stays clean.
     private var timestampText: some View {
-        Text(Self.timeFmt.string(from: line.timestamp))
+        Text(formattedTimestamp)
             .font(model.chatCaptionFont)
             .foregroundStyle(.secondary)
             .lineLimit(1)
