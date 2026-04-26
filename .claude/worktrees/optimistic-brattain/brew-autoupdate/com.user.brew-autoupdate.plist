@@ -1,0 +1,158 @@
+<!--
+  ============================================================================
+
+   HOMEBREW AUTO-UPDATE LAUNCHD DAEMON CONFIGURATION
+
+   File:     com.user.brew-autoupdate.plist
+   Location: ~/Library/LaunchAgents/ (after install)
+
+   This is a macOS launchd property list (plist) that schedules the
+   Homebrew Auto-Update script to run automatically as a background daemon.
+
+   launchd is macOS's system service manager (similar to systemd on Linux
+   or Task Scheduler on Windows). Files in ~/Library/LaunchAgents/ define
+   per-user daemons that run when the user is logged in.
+
+   Schedule: 4 times daily at 12:00 AM, 6:00 AM, 12:00 PM, 6:00 PM
+   (configurable by editing the StartCalendarInterval entries below)
+
+   Key behaviors:
+   - Runs in the user's GUI session (allows Notification Center alerts)
+   - Low I/O priority and nice=10 (won't compete with user activity)
+   - Automatically handles sleep/wake (missed jobs run on wake)
+   - launchd stdout/stderr captured separately from script's own logs
+
+   Management commands:
+     Load (start):   launchctl load -w ~/Library/LaunchAgents/com.user.brew-autoupdate.plist
+     Unload (stop):  launchctl unload ~/Library/LaunchAgents/com.user.brew-autoupdate.plist
+     Check status:   launchctl list com.user.brew-autoupdate
+     - or -          brew-logs status
+
+   To change the schedule:
+     Edit the StartCalendarInterval array below. Each <dict> defines one
+     run time using Hour (0-23) and Minute (0-59) keys. Add or remove
+     entries as needed, then unload and reload the plist.
+
+  ============================================================================
+-->
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- ================================================================
+         LABEL
+         Unique identifier for this launchd job. Used by launchctl to
+         reference the job (e.g., launchctl list com.user.brew-autoupdate).
+         Convention: reverse-DNS style. "com.user" indicates a user-level
+         agent (not a system daemon).
+         ================================================================ -->
+    <key>Label</key>
+    <string>com.user.brew-autoupdate</string>
+
+    <!-- ================================================================
+         PROGRAM ARGUMENTS
+         The command to execute. Uses /bin/bash explicitly rather than
+         relying on the shebang line, ensuring the correct shell is used
+         even if file permissions or PATH issues exist under launchd.
+         ================================================================ -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>INSTALL_DIR_PLACEHOLDER/.config/brew-autoupdate/brew-autoupdate.sh</string>
+    </array>
+
+    <!-- ================================================================
+         SCHEDULE: 4 TIMES DAILY
+         StartCalendarInterval works like cron: each <dict> defines a
+         recurring time. Supported keys: Month, Day, Weekday, Hour, Minute.
+         Omitted keys match all values (like * in cron).
+
+         Current schedule:
+           00:00 (midnight)  - Catches overnight formulae updates
+           06:00 (6 AM)      - Before typical workday starts
+           12:00 (noon)      - Midday refresh
+           18:00 (6 PM)      - Evening update
+
+         To change frequency, add/remove <dict> entries and reload the plist.
+         ================================================================ -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <!-- Run at midnight (00:00) -->
+        <dict>
+            <key>Hour</key>
+            <integer>0</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+        <!-- Run at 6:00 AM -->
+        <dict>
+            <key>Hour</key>
+            <integer>6</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+        <!-- Run at noon (12:00 PM) -->
+        <dict>
+            <key>Hour</key>
+            <integer>12</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+        <!-- Run at 6:00 PM -->
+        <dict>
+            <key>Hour</key>
+            <integer>18</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+    </array>
+
+    <!-- ================================================================
+         LAUNCHD-LEVEL LOG CAPTURE
+         These capture stdout/stderr from the launchd process itself.
+         Separate from the script's own logging - these catch errors that
+         occur before the script's log redirection takes effect (e.g.,
+         bash not found, permission denied on script file).
+         ================================================================ -->
+    <key>StandardOutPath</key>
+    <string>HOME_PLACEHOLDER/Library/Logs/brew-autoupdate/launchd-stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>HOME_PLACEHOLDER/Library/Logs/brew-autoupdate/launchd-stderr.log</string>
+
+    <!-- ================================================================
+         RESOURCE PRIORITY
+         LowPriorityIO: Reduces I/O scheduling priority so brew downloads
+           and installations don't slow down user-facing applications.
+         Nice: Unix niceness value (0-20). 10 = lower CPU priority than
+           normal processes, but still runs (not starved).
+         ProcessType: "Background" tells macOS this is a background task,
+           allowing the system to defer it during high-load periods.
+         ================================================================ -->
+    <key>LowPriorityIO</key>
+    <true/>
+
+    <key>Nice</key>
+    <integer>10</integer>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <!-- ================================================================
+         ENVIRONMENT VARIABLES
+         launchd runs with a minimal environment (no .bashrc/.zshrc).
+         We must explicitly set PATH to include Homebrew's directories,
+         and HOME so the script can find ~/Library/Logs and ~/.config.
+
+         PATH includes both Apple Silicon (/opt/homebrew) and Intel
+         (/usr/local) Homebrew locations for portability.
+         ================================================================ -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>HOME_PLACEHOLDER</string>
+    </dict>
+</dict>
+</plist>
