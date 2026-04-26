@@ -1,0 +1,5 @@
+.build/
+.swiftpm/
+MessagesExporterGUI.app/
+*.xcodeproj/
+Package.resolved
