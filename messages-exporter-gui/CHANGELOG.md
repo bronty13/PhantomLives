@@ -2,6 +2,17 @@
 
 All notable changes to messages-exporter-gui will be documented in this file.
 
+## [1.0.3] — 2026-04-26
+
+### Fixed
+
+- UI freeze when typing in the contact field. `ContactsService.suggestions(for:)` is now `nonisolated async` and dispatches the `CNContactStore.unifiedContacts(matching:)` query to a detached Task; previously the synchronous AddressBook query ran on the main thread on every keystroke and could stall the UI for seconds on large books.
+- LogPane scroll anchor used an ID that incorporated the line count, which forced SwiftUI to tear down and rebuild the entire log Text view on every appended CLI line. Replaced with a stable zero-height anchor view at the bottom of the scroll content.
+
+### Changed
+
+- Contact field debounces autocomplete queries by 200 ms and cancels in-flight queries when a new keystroke arrives.
+
 ## [1.0.2] — 2026-04-26
 
 ### Changed

@@ -11,6 +11,7 @@ struct LogPane: View {
     let runFolder: URL?
     let lastError: String?
 
+    private static let bottomAnchorID = "log-bottom-anchor"
     private var joined: String { lines.joined(separator: "\n") }
 
     var body: some View {
@@ -41,19 +42,22 @@ struct LogPane: View {
             }
             ScrollViewReader { proxy in
                 ScrollView {
-                    Text(joined)
-                        .font(.system(.caption, design: .monospaced))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(8)
-                        .id("log-bottom-anchor-\(lines.count)")
+                    VStack(spacing: 0) {
+                        Text(joined)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(8)
+                        // Stable, zero-height anchor at the bottom. Keeps
+                        // the Text view's identity stable so SwiftUI doesn't
+                        // tear it down and rebuild on every appended line.
+                        Color.clear.frame(height: 0).id(Self.bottomAnchorID)
+                    }
                 }
                 .background(Color.black.opacity(0.05))
                 .onChange(of: lines.count) { _, count in
                     guard count > 0 else { return }
-                    withAnimation(.linear(duration: 0.05)) {
-                        proxy.scrollTo("log-bottom-anchor-\(count)", anchor: .bottom)
-                    }
+                    proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
                 }
             }
             actionRow

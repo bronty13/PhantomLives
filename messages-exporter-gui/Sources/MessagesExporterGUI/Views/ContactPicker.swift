@@ -4,12 +4,18 @@ import SwiftUI
 /// while the user types and surfaces them in a popover. The selected
 /// name is what gets passed to the CLI's substring matcher — the popover
 /// is purely a UX nicety and the user is free to type anything.
+///
+/// Queries are debounced (200 ms) and dispatched as cancellable Tasks
+/// against the async `ContactsService.suggestions(for:)`. Avoids the
+/// per-keystroke main-thread stall that the previous synchronous query
+/// caused on large AddressBooks.
 struct ContactPicker: View {
     @Binding var contact: String
     @EnvironmentObject private var contacts: ContactsService
 
     @State private var suggestions: [String] = []
     @State private var showSuggestions = false
+    @State private var refreshTask: Task<Void, Never>?
     @FocusState private var fieldFocused: Bool
 
     var body: some View {
@@ -18,7 +24,7 @@ struct ContactPicker: View {
                 .textFieldStyle(.roundedBorder)
                 .focused($fieldFocused)
                 .onChange(of: contact) { _, new in
-                    refresh(prefix: new)
+                    scheduleRefresh(prefix: new)
                 }
                 .onChange(of: fieldFocused) { _, focused in
                     if !focused { showSuggestions = false }
@@ -57,18 +63,25 @@ struct ContactPicker: View {
         .padding(.vertical, 4)
     }
 
-    private func refresh(prefix: String) {
+    private func scheduleRefresh(prefix: String) {
+        refreshTask?.cancel()
         let trimmed = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count >= 1 else {
             suggestions = []
             showSuggestions = false
             return
         }
-        let matches = contacts.suggestions(for: trimmed)
-        // Suppress the popover when the only suggestion is exactly what
-        // they've already typed (avoids a useless one-row popover).
-        let filtered = matches.filter { $0.caseInsensitiveCompare(trimmed) != .orderedSame }
-        suggestions = filtered
-        showSuggestions = !filtered.isEmpty && fieldFocused
+        refreshTask = Task {
+            // Debounce: drop intermediate keystrokes within 200 ms.
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard !Task.isCancelled else { return }
+            let matches = await contacts.suggestions(for: trimmed)
+            guard !Task.isCancelled else { return }
+            // Suppress popover when the only suggestion is exactly what
+            // they've already typed.
+            let filtered = matches.filter { $0.caseInsensitiveCompare(trimmed) != .orderedSame }
+            suggestions = filtered
+            showSuggestions = !filtered.isEmpty && fieldFocused
+        }
     }
 }
