@@ -1,0 +1,451 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		11302B9543C534A95C352463 /* PlaylistDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E74627533D1A38C38F61A7C4 /* PlaylistDetailView.swift */; };
+		163A059B7B4B319EDDDF7B8E /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A88BA94B8C821D63F74871 /* AppState.swift */; };
+		16EEED5B84A7D552828B7BED /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DAEFCC19A6FFA7495F91928 /* SettingsView.swift */; };
+		28427FD4F6BBCB983637BE02 /* ExportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB2CB8319BC9B1A42474B0D5 /* ExportSheet.swift */; };
+		306F40135333C155F2C0C81E /* SpotifyAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75F37693DE956CFDBA84003C /* SpotifyAuthService.swift */; };
+		38001FCF2A71193BCEE7D224 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99B319791162E38FC4769B77 /* ContentView.swift */; };
+		39E7ECCDA888986E22DD8E5E /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A7706EBA1306DC99A029C63 /* WelcomeView.swift */; };
+		4011E0AD8D11D0FCDD162B16 /* TrackDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEBCA9C529B44939D740F50D /* TrackDetailView.swift */; };
+		44866FDB52D8AD494DACCD34 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 6B33BD6E042C3432888A9904 /* GRDB */; };
+		462DDA5D7520FB54A217CDA2 /* MusicJournalApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E612388FF30973504E4848B4 /* MusicJournalApp.swift */; };
+		4B10D6375BF37888602E9056 /* SpotifyAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F3DD3861F36E5540D27F7F6 /* SpotifyAPIService.swift */; };
+		54AA057BAF2F8F7BB6F92618 /* PlaylistTrack.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F6B9DA391EEB52B1C49C46F /* PlaylistTrack.swift */; };
+		62155F00CCEEAE54A0F67FDE /* Track.swift in Sources */ = {isa = PBXBuildFile; fileRef = 481DB5BE4875B162D404A2FB /* Track.swift */; };
+		72CABF6E3C0D0A37EB9D5F6E /* ExportMenuCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B4E4CC167CA60B599FDE6C1 /* ExportMenuCommands.swift */; };
+		9F4F4439082794BB85491C95 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C77E20413EFCFF699EBCC0C8 /* Assets.xcassets */; };
+		AFF9836CC9071F2F66A79CCD /* DatabaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20AC623E65E8DDC42B83EA1E /* DatabaseService.swift */; };
+		CABCAF9C103BF67AA54EBD87 /* Playlist.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E05D542F8CE07FF91373B1B /* Playlist.swift */; };
+		E1CBC21A70C7845BB766F518 /* ExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9088907A489A45C3AB4B85A7 /* ExportService.swift */; };
+		ED6332037B07DBD0404E202B /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8B1D512FEDDA86633DEAB32 /* SidebarView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0DAEFCC19A6FFA7495F91928 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		1A7706EBA1306DC99A029C63 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
+		1F6B9DA391EEB52B1C49C46F /* PlaylistTrack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistTrack.swift; sourceTree = "<group>"; };
+		20AC623E65E8DDC42B83EA1E /* DatabaseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseService.swift; sourceTree = "<group>"; };
+		2E05D542F8CE07FF91373B1B /* Playlist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Playlist.swift; sourceTree = "<group>"; };
+		481DB5BE4875B162D404A2FB /* Track.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Track.swift; sourceTree = "<group>"; };
+		4B4E4CC167CA60B599FDE6C1 /* ExportMenuCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportMenuCommands.swift; sourceTree = "<group>"; };
+		75F37693DE956CFDBA84003C /* SpotifyAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyAuthService.swift; sourceTree = "<group>"; };
+		8F3DD3861F36E5540D27F7F6 /* SpotifyAPIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyAPIService.swift; sourceTree = "<group>"; };
+		8F905BD6FEDB753DF7723977 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		9088907A489A45C3AB4B85A7 /* ExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportService.swift; sourceTree = "<group>"; };
+		96C350EF1539E73C282A69DE /* MusicJournal.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MusicJournal.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		99B319791162E38FC4769B77 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A8B1D512FEDDA86633DEAB32 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
+		AEBCA9C529B44939D740F50D /* TrackDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackDetailView.swift; sourceTree = "<group>"; };
+		C5699E5B239DBDCEE28C9B0E /* MusicJournal.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MusicJournal.entitlements; sourceTree = "<group>"; };
+		C77E20413EFCFF699EBCC0C8 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		E1A88BA94B8C821D63F74871 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		E612388FF30973504E4848B4 /* MusicJournalApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicJournalApp.swift; sourceTree = "<group>"; };
+		E74627533D1A38C38F61A7C4 /* PlaylistDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistDetailView.swift; sourceTree = "<group>"; };
+		EB2CB8319BC9B1A42474B0D5 /* ExportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportSheet.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		5B143FC5B0FE501460D3A4A1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				44866FDB52D8AD494DACCD34 /* GRDB in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		32A35C17242DF2FA57364996 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				96C350EF1539E73C282A69DE /* MusicJournal.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		33B8C89A5CD8C15F6EBFE61F /* App */ = {
+			isa = PBXGroup;
+			children = (
+				E1A88BA94B8C821D63F74871 /* AppState.swift */,
+				8F905BD6FEDB753DF7723977 /* Info.plist */,
+				C5699E5B239DBDCEE28C9B0E /* MusicJournal.entitlements */,
+				E612388FF30973504E4848B4 /* MusicJournalApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		516C4924B8E6FDB3B7D32938 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				C77E20413EFCFF699EBCC0C8 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		592F4460C13701FEE0CB9AA2 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				2E05D542F8CE07FF91373B1B /* Playlist.swift */,
+				1F6B9DA391EEB52B1C49C46F /* PlaylistTrack.swift */,
+				481DB5BE4875B162D404A2FB /* Track.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		7266E4DF3A0C4E28CA554EFE /* MusicJournal */ = {
+			isa = PBXGroup;
+			children = (
+				33B8C89A5CD8C15F6EBFE61F /* App */,
+				592F4460C13701FEE0CB9AA2 /* Models */,
+				516C4924B8E6FDB3B7D32938 /* Resources */,
+				9CAE9766A4A977E914CE6557 /* Services */,
+				DF75BBF84A58CA507950DD18 /* Views */,
+			);
+			name = MusicJournal;
+			path = Sources/MusicJournal;
+			sourceTree = "<group>";
+		};
+		760E615C7341A00C5C492CA6 = {
+			isa = PBXGroup;
+			children = (
+				7266E4DF3A0C4E28CA554EFE /* MusicJournal */,
+				32A35C17242DF2FA57364996 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		9CAE9766A4A977E914CE6557 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				20AC623E65E8DDC42B83EA1E /* DatabaseService.swift */,
+				9088907A489A45C3AB4B85A7 /* ExportService.swift */,
+				8F3DD3861F36E5540D27F7F6 /* SpotifyAPIService.swift */,
+				75F37693DE956CFDBA84003C /* SpotifyAuthService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		DF75BBF84A58CA507950DD18 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				99B319791162E38FC4769B77 /* ContentView.swift */,
+				4B4E4CC167CA60B599FDE6C1 /* ExportMenuCommands.swift */,
+				EB2CB8319BC9B1A42474B0D5 /* ExportSheet.swift */,
+				E74627533D1A38C38F61A7C4 /* PlaylistDetailView.swift */,
+				0DAEFCC19A6FFA7495F91928 /* SettingsView.swift */,
+				A8B1D512FEDDA86633DEAB32 /* SidebarView.swift */,
+				AEBCA9C529B44939D740F50D /* TrackDetailView.swift */,
+				1A7706EBA1306DC99A029C63 /* WelcomeView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		7728DDE486133AA8030026BD /* MusicJournal */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9639E8E0DC8BF113BC9C7F5B /* Build configuration list for PBXNativeTarget "MusicJournal" */;
+			buildPhases = (
+				68C090B37048562AE1577DDA /* Sources */,
+				0DA74C4B2582B7DBFAF17FDD /* Resources */,
+				5B143FC5B0FE501460D3A4A1 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MusicJournal;
+			packageProductDependencies = (
+				6B33BD6E042C3432888A9904 /* GRDB */,
+			);
+			productName = MusicJournal;
+			productReference = 96C350EF1539E73C282A69DE /* MusicJournal.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		52917DE89ADDE03C83119D4C /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					7728DDE486133AA8030026BD = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 6BC9E049A12DAEBA00531CBF /* Build configuration list for PBXProject "MusicJournal" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 760E615C7341A00C5C492CA6;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A6954992E09B6EE525D3B9F2 /* XCRemoteSwiftPackageReference "GRDB" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 32A35C17242DF2FA57364996 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				7728DDE486133AA8030026BD /* MusicJournal */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		0DA74C4B2582B7DBFAF17FDD /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9F4F4439082794BB85491C95 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		68C090B37048562AE1577DDA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				163A059B7B4B319EDDDF7B8E /* AppState.swift in Sources */,
+				38001FCF2A71193BCEE7D224 /* ContentView.swift in Sources */,
+				AFF9836CC9071F2F66A79CCD /* DatabaseService.swift in Sources */,
+				72CABF6E3C0D0A37EB9D5F6E /* ExportMenuCommands.swift in Sources */,
+				E1CBC21A70C7845BB766F518 /* ExportService.swift in Sources */,
+				28427FD4F6BBCB983637BE02 /* ExportSheet.swift in Sources */,
+				462DDA5D7520FB54A217CDA2 /* MusicJournalApp.swift in Sources */,
+				CABCAF9C103BF67AA54EBD87 /* Playlist.swift in Sources */,
+				11302B9543C534A95C352463 /* PlaylistDetailView.swift in Sources */,
+				54AA057BAF2F8F7BB6F92618 /* PlaylistTrack.swift in Sources */,
+				16EEED5B84A7D552828B7BED /* SettingsView.swift in Sources */,
+				ED6332037B07DBD0404E202B /* SidebarView.swift in Sources */,
+				4B10D6375BF37888602E9056 /* SpotifyAPIService.swift in Sources */,
+				306F40135333C155F2C0C81E /* SpotifyAuthService.swift in Sources */,
+				62155F00CCEEAE54A0F67FDE /* Track.swift in Sources */,
+				4011E0AD8D11D0FCDD162B16 /* TrackDetailView.swift in Sources */,
+				39E7ECCDA888986E22DD8E5E /* WelcomeView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		2A3265D11BB0368D87F58CB9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		3D377F22744092F85889C61D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Sources/MusicJournal/App/MusicJournal.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = SRKV8T38CD;
+				INFOPLIST_FILE = Sources/MusicJournal/App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bronty.MusicJournal;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.10;
+			};
+			name = Release;
+		};
+		4ECBFF63171456E96F57284A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		BF9A1190CECDACD4B75ECC1F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Sources/MusicJournal/App/MusicJournal.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = SRKV8T38CD;
+				INFOPLIST_FILE = Sources/MusicJournal/App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bronty.MusicJournal;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.10;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		6BC9E049A12DAEBA00531CBF /* Build configuration list for PBXProject "MusicJournal" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4ECBFF63171456E96F57284A /* Debug */,
+				2A3265D11BB0368D87F58CB9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		9639E8E0DC8BF113BC9C7F5B /* Build configuration list for PBXNativeTarget "MusicJournal" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BF9A1190CECDACD4B75ECC1F /* Debug */,
+				3D377F22744092F85889C61D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A6954992E09B6EE525D3B9F2 /* XCRemoteSwiftPackageReference "GRDB" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/groue/GRDB.swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 6.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		6B33BD6E042C3432888A9904 /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A6954992E09B6EE525D3B9F2 /* XCRemoteSwiftPackageReference "GRDB" */;
+			productName = GRDB;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 52917DE89ADDE03C83119D4C /* Project object */;
+}
