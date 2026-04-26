@@ -5,7 +5,7 @@ Last updated: 2026-04-26.
 
 ## What it is
 
-A small SwiftUI macOS front end for the sibling `messages-exporter` Python CLI. Wraps the CLI's stdout into a progress bar + copyable log, replaces the typed contact name with a Contacts.framework autocomplete, and adds one-click buttons to reveal the run folder and open the transcript / summary / manifest.
+A small SwiftUI macOS front end for the sibling `messages-exporter` Python CLI. Wraps the CLI's stdout into a progress bar + copyable log, and adds one-click buttons to reveal the run folder and open the transcript / summary / manifest.
 
 ```
 swift build                        # debug build
@@ -20,12 +20,10 @@ Requires macOS 14+, Swift 5.9+. Tests run via Command Line Tools' bundled `Testi
 
 The app does three things and nothing else: format the CLI invocation, spawn it as a child process, and parse its stdout. There is **no chat.db reader, no AddressBook walker, no media handler in Swift** — those all live in the CLI and stay there.
 
-- `App.swift` — `@main`. WindowGroup + Settings scene. Owns one `ExportRunner` and one `ContactsService` injected via `environmentObject`. Calls `ContactsService.requestAccessIfNeeded()` on appear.
-- `RootView.swift` — top-level form (Output / Contact / From / To / Emoji), Run row + ProgressBar, LogPane, version footer. Aligned-label custom layout (`LabeledRow`), not a Form, so all five inputs fit above the fold. Also defines `OutputFolderRow`, `VersionFooter`, the `InstallSheet`, and the `SettingsView` scene.
+- `App.swift` — `@main`. WindowGroup + Settings scene. Owns one `ExportRunner` injected via `environmentObject`.
+- `RootView.swift` — top-level form (Output / Contact / From / To / Emoji), Run row + ProgressBar, LogPane, version footer. Aligned-label custom layout (`LabeledRow`), not a Form, so all five inputs fit above the fold. Also defines `OutputFolderRow`, `VersionFooter`, the `InstallSheet`, and the `SettingsView` scene. The Contact field is a plain `TextField` — the CLI does its own AddressBook substring matching, so the GUI deliberately does not touch `Contacts.framework` (see "Why no Contacts.framework" below).
 - `Model/ExportRequest.swift` — pure value type. Builds the argv passed to the CLI with the date format the CLI's argparse expects (`yyyy-MM-dd HH:mm`, local TZ, `en_US_POSIX` locale).
 - `Model/ExportRunner.swift` — `@MainActor ObservableObject`. Spawns `Process`, streams stdout via `Pipe.readabilityHandler`, parses `[N/5]` markers and the `[4/5] Writing to ...` line. Pre-flights `~/.local/bin/export_messages` existence and offers to run sibling `install.sh` if missing. Also detects `authorization denied` / `operation not permitted` in stdout and surfaces a Full Disk Access message.
-- `Model/ContactsService.swift` — wraps `CNContactStore`. Permission-tolerant — denied permission silently disables the popover; exports still work because the CLI does its own AddressBook lookup.
-- `Views/ContactPicker.swift` — TextField bound to a `String` with a popover-driven suggestion list.
 - `Views/ProgressBar.swift` — 5-segment bar that fills as `runner.stage` advances.
 - `Views/LogPane.swift` — single selectable Text inside a ScrollView for cross-line copy, Copy-log button, and the post-run Reveal / Transcript / Summary / Manifest action row. Each open button is disabled when its file isn't present.
 
@@ -51,9 +49,8 @@ If the CLI's stdout format ever changes, those parsers and the unit tests around
 
 The `Info.plist` is generated inline in the build script. Notable keys:
 
-- `NSContactsUsageDescription` — required for `CNContactStore` access; without it macOS denies the prompt outright.
 - `LSMinimumSystemVersion` = 14.0 — matches the SwiftUI deployment target in `Package.swift`.
-- `CFBundleIdentifier` = `com.example.MessagesExporterGUI` — placeholder; change before any signed/notarized release.
+- `CFBundleIdentifier` = `com.bronty13.MessagesExporterGUI`. Avoid `com.example.*` — modern macOS treats it with extra TCC suspicion; we hit this in 1.0.4 troubleshooting.
 
 Ad-hoc codesigned (`codesign --force --sign -`) so it launches without a dev cert. There is no app icon yet — add one mirroring `PurpleIRC/Scripts/generate-icon.swift` when needed.
 
@@ -75,9 +72,19 @@ Per `PhantomLives/CLAUDE.md`, every functional change should:
 
 `./run-tests.sh` is the gate. The Process-spawning paths are integration-only and not covered by the unit tests.
 
+## Why no Contacts.framework
+
+A previous version (1.0.0–1.0.4) used `CNContactStore` for in-GUI autocomplete. It was removed in 1.0.5 because:
+
+- The CLI already does its own AddressBook substring match. The GUI autocomplete was strictly duplicating work — dropping it loses no functionality.
+- Ad-hoc signing rotates `cdhash` on every rebuild, and TCC pins grants to `cdhash`. After a rebuild the old TCC row exists but doesn't match the new binary — macOS reports `notDetermined` AND silently refuses to re-prompt.
+- For unsigned/untrusted bundles `tccd` doesn't even register the `requestAccess` call — no entry appears in System Settings → Privacy & Security → Contacts, leaving no manual-grant path.
+- The `com.example.*` bundle prefix (used originally) makes some macOS frameworks even more suspicious.
+
+If we ever want autocomplete back, the lighter-weight option is shelling out to `osascript` (uses Script Editor's existing TCC grants) rather than reintroducing a direct `Contacts.framework` dependency.
+
 ## Known limitations
 
-- No app icon. The `.app` shows the generic placeholder.
 - No way to cancel a running export from the UI. The underlying `Process` is held by the runner; adding a `terminate()` button is straightforward but not currently exposed.
 - The install-sheet path search (`installScriptCandidates`) is hard-coded to look next to the `.app` or under `~/Documents/GitHub/PhantomLives/messages-exporter/`. Move the `.app` to a non-standard location and the sheet's "Install now" will fail to find the script — user must run `install.sh` manually.
 - No "recent runs" history. Each launch starts fresh.

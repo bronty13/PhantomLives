@@ -2,6 +2,27 @@
 
 All notable changes to messages-exporter-gui will be documented in this file.
 
+## [1.0.5] — 2026-04-26
+
+### Added
+
+- App icon. `Scripts/generate-icon.swift` renders a chat bubble over a download arrow on a teal gradient squircle; `build-app.sh` regenerates the `.iconset` every build and runs `iconutil` to produce `AppIcon.icns`. Mirrors the deterministic-icon approach used by the sibling PurpleIRC subproject.
+
+### Removed
+
+- In-app contact autocomplete via `Contacts.framework`. The Contact field is now a plain text field; the CLI matches the typed substring against AddressBook itself (which it already did — the GUI autocomplete was duplicating the work). Removing it eliminates a whole class of TCC headaches with ad-hoc-signed development builds (cdhash rotation invalidating prior grants, `tccd` silently dropping `requestAccess` for unsigned/untrusted bundles, missing entries in System Settings → Privacy & Security → Contacts).
+- `ContactsService`, `ContactPicker`, `NSContactsUsageDescription` from Info.plist, and the 1.0.4 watchdog/fallback-button machinery — all now dead code.
+
+### Changed
+
+- Bundle identifier renamed from `com.example.MessagesExporterGUI` to `com.bronty13.MessagesExporterGUI` (the `com.example.*` prefix triggers extra TCC suspicion on modern macOS). UserDefaults under the old ID are not migrated; if you had a custom output folder set, re-pick it in Settings.
+
+## [1.0.4] — 2026-04-26 (reverted in 1.0.5)
+
+### Fixed
+
+- Contacts permission was permanently stuck at `notDetermined` after rebuilding the app. Watchdog + "Open Privacy Settings" fallback added. Reverted in 1.0.5 by removing the Contacts integration entirely.
+
 ## [1.0.3] — 2026-04-26
 
 ### Fixed

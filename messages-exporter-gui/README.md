@@ -1,8 +1,8 @@
 # messages-exporter-gui
 
-**Current release: 1.0.2**
+**Current release: 1.0.5**
 
-Native macOS SwiftUI front end for the [`messages-exporter`](../messages-exporter/) CLI. Provides a contact picker (autocompleted from AddressBook), native date/time pickers, a streamed copyable log of the export run, and one-click buttons to open the resulting transcript / summary / manifest or reveal the output folder.
+Native macOS SwiftUI front end for the [`messages-exporter`](../messages-exporter/) CLI. Provides a contact text field, native date/time pickers, a streamed copyable log of the export run, and one-click buttons to open the resulting transcript / summary / manifest or reveal the output folder.
 
 ## Quick start
 
@@ -25,7 +25,6 @@ See [INSTALL.md](INSTALL.md) for the full install / Full Disk Access walk-throug
 
 - macOS 14 (Sonoma) or later
 - **Full Disk Access** for `MessagesExporterGUI.app` itself (System Settings → Privacy & Security → Full Disk Access). The CLI reads `~/Library/Messages/chat.db`, which is sandboxed; child processes inherit the parent's TCC entitlements, so granting FDA to a Terminal that previously ran the CLI does not transfer.
-- Optional: **Contacts** permission (granted on first launch) for autocomplete in the contact field. Denying it doesn't break exports — the CLI's own AddressBook lookup still runs.
 
 ## Defaults
 
@@ -53,10 +52,8 @@ Sources/MessagesExporterGUI/
 ├── RootView.swift               Form, run controls, settings, install sheet
 ├── Model/
 │   ├── ExportRequest.swift      Argv builder
-│   ├── ExportRunner.swift       Process spawn + stdout streaming
-│   └── ContactsService.swift    CNContactStore autocomplete
+│   └── ExportRunner.swift       Process spawn + stdout streaming
 └── Views/
-    ├── ContactPicker.swift      Text field + suggestions popover
     ├── ProgressBar.swift        5-stage indicator
     └── LogPane.swift            Scrolling stdout + Reveal/Transcript/Summary/Manifest buttons
 ```

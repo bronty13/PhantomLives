@@ -7,7 +7,7 @@ Day-to-day reference for the SwiftUI front end. For first-time setup see [INSTAL
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  Output │  📁 /Users/you/Downloads  [Default]  [Choose…]        │
-│ Contact │  Sallie                            (autocomplete ▼)   │
+│ Contact │  Sallie                                                │
 │    From │  📅 2026-04-26  🕒 00:00                               │
 │      To │  📅 2026-04-26  🕒 17:00                               │
 │   Emoji │  [Strip] [Word] [Keep]                                │
@@ -37,9 +37,8 @@ Day-to-day reference for the SwiftUI front end. For first-time setup see [INSTAL
 
 ### Contact
 
-- Type any part of a contact's name (first, last, full, nickname). The popover shows up to 8 matches from your AddressBook via Apple's Contacts framework.
-- Pick a suggestion or type freely — the underlying CLI does its own AddressBook lookup with the string you submit, so the popover is purely a typing aid.
-- If you've denied Contacts permission, a small note appears under the field. Suggestions are silently disabled; exports still work.
+- Type any part of a contact's name (first, last, full, nickname). The CLI matches the string against AddressBook itself — full-name matches are most reliable, but a unique substring works too.
+- Misspellings or names with no AddressBook match cause the export to finish with no output folder; check the log if you don't see the post-run buttons.
 
 ### Date range
 
@@ -108,7 +107,7 @@ Open with **Messages Exporter → Settings…** (⌘,):
 
 - **Default output folder** — same control as the inline picker, plus a "Reset to Downloads" shortcut.
 
-Settings persist via `@AppStorage` (UserDefaults). Wipe with `defaults delete com.example.MessagesExporterGUI`.
+Settings persist via `@AppStorage` (UserDefaults). Wipe with `defaults delete com.bronty13.MessagesExporterGUI`.
 
 ## Keyboard shortcuts
 
@@ -126,4 +125,4 @@ Settings persist via `@AppStorage` (UserDefaults). Wipe with `defaults delete co
 - The CLI lives at `~/.local/bin/export_messages` (or `/usr/local/bin/` if installed with `--system`).
 - The CLI's Python venv lives at `~/.venvs/messages-exporter/`.
 - Exports default to `~/Downloads/` (configurable per the section above).
-- User defaults live under bundle ID `com.example.MessagesExporterGUI`.
+- User defaults live under bundle ID `com.bronty13.MessagesExporterGUI`.

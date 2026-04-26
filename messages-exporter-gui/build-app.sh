@@ -28,9 +28,13 @@ mkdir -p "$MACOS" "$RESOURCES"
 
 cp "$BIN_PATH/MessagesExporterGUI" "$MACOS/MessagesExporterGUI"
 
+# App icon: regenerate the .iconset each build (the generator is deterministic,
+# so this is fine) and let iconutil roll it into AppIcon.icns.
+ICONSET_DIR="$(mktemp -d)/AppIcon.iconset"
+swift Scripts/generate-icon.swift "$ICONSET_DIR" >/dev/null
+iconutil -c icns "$ICONSET_DIR" -o "$RESOURCES/AppIcon.icns"
+
 # HEREDOC without quoted tag so $SHORT_VERSION / $BUILD_NUMBER expand.
-# NSContactsUsageDescription is required for CNContactStore access on
-# macOS; without it the OS denies the permission prompt outright.
 cat > "$CONTENTS/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -38,21 +42,25 @@ cat > "$CONTENTS/Info.plist" <<PLIST
 <dict>
     <key>CFBundleName</key><string>MessagesExporterGUI</string>
     <key>CFBundleDisplayName</key><string>Messages Exporter</string>
-    <key>CFBundleIdentifier</key><string>com.example.MessagesExporterGUI</string>
+    <key>CFBundleIdentifier</key><string>com.bronty13.MessagesExporterGUI</string>
     <key>CFBundleVersion</key><string>${BUILD_NUMBER}</string>
     <key>CFBundleShortVersionString</key><string>${SHORT_VERSION}</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleExecutable</key><string>MessagesExporterGUI</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
-    <key>NSContactsUsageDescription</key><string>Used to autocomplete contact names when choosing a conversation to export. Permission is optional — the underlying export tool reads AddressBook directly.</string>
 </dict>
 </plist>
 PLIST
 
-# Ad-hoc sign so macOS will launch it even without a dev cert.
+# Strip Finder xattrs codesign rejects, then ad-hoc sign so macOS will
+# launch it without a dev cert. The app no longer uses any TCC-protected
+# APIs in-process (the CLI handles AddressBook lookup), so even if signing
+# silently fails the GUI continues to work.
+xattr -cr "$APP_DIR" 2>/dev/null || true
 codesign --force --sign - "$APP_DIR" 2>/dev/null || true
 
 echo "Built $APP_DIR"

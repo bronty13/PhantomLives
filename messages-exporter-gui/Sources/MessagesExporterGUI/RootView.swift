@@ -16,8 +16,7 @@ enum SettingsKeys {
 }
 
 struct RootView: View {
-    @EnvironmentObject private var runner:   ExportRunner
-    @EnvironmentObject private var contacts: ContactsService
+    @EnvironmentObject private var runner: ExportRunner
 
     @State private var contact = ""
     @State private var start: Date = Self.todayAtStartOfDay()
@@ -38,7 +37,9 @@ struct RootView: View {
                     OutputFolderRow(path: $outputDirPath)
                 }
                 LabeledRow("Contact") {
-                    ContactPicker(contact: $contact)
+                    TextField("Contact name", text: $contact)
+                        .textFieldStyle(.roundedBorder)
+                        .help("Substring matched against AddressBook by the CLI.")
                 }
                 LabeledRow("From") {
                     DatePicker("", selection: $start,

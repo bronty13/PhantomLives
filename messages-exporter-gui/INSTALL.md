@@ -56,10 +56,6 @@ If you skip this, the first export will fail with:
 Full Disk Access denied. Open System Settings → Privacy & Security → Full Disk Access, add MessagesExporterGUI.app, then quit and relaunch it.
 ```
 
-## 4. (Optional) Grant Contacts permission
-
-On first launch the app asks for Contacts access. This is purely for autocomplete in the contact field. Denying it doesn't break exports — the underlying CLI walks AddressBook on its own — you just don't get suggestions while typing.
-
 ## Updating
 
 ```bash
@@ -82,7 +78,7 @@ rm -rf PhantomLives/messages-exporter-gui/MessagesExporterGUI.app
 PhantomLives/messages-exporter/install.sh --uninstall
 
 # Forget the user defaults
-defaults delete com.example.MessagesExporterGUI 2>/dev/null || true
+defaults delete com.bronty13.MessagesExporterGUI 2>/dev/null || true
 ```
 
-Then remove the FDA / Contacts entries from System Settings if you want.
+Then remove the Full Disk Access entry from System Settings if you want.
