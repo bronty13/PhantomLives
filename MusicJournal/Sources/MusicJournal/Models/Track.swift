@@ -38,9 +38,22 @@ struct Track: Codable, FetchableRecord, MutablePersistableRecord {
 
     // MARK: - User-owned fields (never overwritten by sync)
 
+    /// "Song Notes" in the UI — facts, context, cultural impact. May be
+    /// written by the LLM via the round-trip flow.
+    /// (Field is still named `userNotes` in code/DB for migration safety.)
     var userNotes: String
+    /// "Personal Notes" in the UI — the user's private commentary on what
+    /// the song means to them. Never touched by the LLM.
+    var personalNotes: String
     /// Star rating 1–5; nil means unrated.
     var userRating: Int?
+    /// Release year of the song (or whichever year the user finds meaningful).
+    /// Optional — nil if not entered.
+    var songYear: Int?
+    /// Markdown-formatted lyrics — full song text or excerpts.
+    var lyrics: String
+    /// Markdown-formatted summary / interpretation of the lyrics.
+    var lyricSummary: String
 
     var syncedAt: Date
 
@@ -51,7 +64,7 @@ struct Track: Codable, FetchableRecord, MutablePersistableRecord {
         case spotifyId, name, artistNames, albumName, albumSpotifyId
         case albumImageURL, durationMs, trackNumber, discNumber
         case isExplicit, isLocal, popularity, previewURL, spotifyURL
-        case userNotes, userRating, syncedAt
+        case userNotes, personalNotes, userRating, songYear, lyrics, lyricSummary, syncedAt
     }
 
     mutating func didInsert(_ inserted: InsertionSuccess) {
@@ -81,8 +94,10 @@ extension Track: Identifiable {
 }
 
 // MARK: - Hashable
-
-extension Track: Hashable {
-    static func == (lhs: Track, rhs: Track) -> Bool { lhs.spotifyId == rhs.spotifyId }
-    func hash(into hasher: inout Hasher) { hasher.combine(spotifyId) }
-}
+//
+// Synthesised Equatable/Hashable (compare/hash *all* stored properties).
+// A custom == that compared only `spotifyId` would make SwiftUI miss
+// content changes (e.g. a sync that backfills songYear) — the new struct
+// would be `==` to the previous one, so views wouldn't re-render and
+// `.onChange` triggers wouldn't fire.
+extension Track: Hashable {}

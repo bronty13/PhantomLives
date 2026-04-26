@@ -36,9 +36,22 @@ final class ExportService {
             md += "### \(i + 1). \(track.name) \(rating)\n\n"
             md += "**Artist:** \(track.artistNames)  \n"
             md += "**Album:** \(track.albumName)  \n"
-            md += "**Duration:** \(track.durationFormatted)  \n\n"
+            md += "**Duration:** \(track.durationFormatted)  \n"
+            if let year = track.songYear {
+                md += "**Year:** \(year)  \n"
+            }
+            md += "\n"
+            if !track.lyricSummary.isEmpty {
+                md += "**Lyric Summary**\n\n\(track.lyricSummary)\n\n"
+            }
+            if !track.lyrics.isEmpty {
+                md += "**Lyrics**\n\n\(track.lyrics)\n\n"
+            }
             if !track.userNotes.isEmpty {
-                md += "> \(track.userNotes)\n\n"
+                md += "**Song Notes**\n\n\(track.userNotes)\n\n"
+            }
+            if !track.personalNotes.isEmpty {
+                md += "**Personal Notes**\n\n\(track.personalNotes)\n\n"
             }
         }
         md += "\n---\n*Exported from Music Journal \(AppVersion.display) on \(Date().formatted())*\n"

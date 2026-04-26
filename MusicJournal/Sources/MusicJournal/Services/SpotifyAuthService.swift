@@ -32,7 +32,12 @@ final class SpotifyAuthService: NSObject, ObservableObject, ASWebAuthenticationP
 
     @Published var isAuthenticated = false
     @Published var displayName: String?
+    /// Spotify user ID (the `id` from /me). Used to filter the sidebar
+    /// to only playlists the signed-in user owns.
+    @Published var userSpotifyId: String?
     @Published var loginError: String?
+
+    private let userIdDefaultsKey = "com.bronty.MusicJournal.userSpotifyId"
 
     // MARK: - Configuration
 
@@ -51,6 +56,13 @@ final class SpotifyAuthService: NSObject, ObservableObject, ASWebAuthenticationP
     override init() {
         super.init()
         loadTokensFromKeychain()
+        userSpotifyId = UserDefaults.standard.string(forKey: userIdDefaultsKey)
+        // Backfill for installs that pre-date user-ID capture: if we have
+        // a valid session but no stored ID, fetch /me in the background so
+        // the sidebar filter starts working without forcing re-login.
+        if isAuthenticated && userSpotifyId == nil {
+            Task { await fetchUserProfile() }
+        }
     }
 
     // MARK: - Token access
@@ -125,9 +137,11 @@ final class SpotifyAuthService: NSObject, ObservableObject, ASWebAuthenticationP
         refreshToken = nil
         tokenExpiry = nil
         displayName = nil
+        userSpotifyId = nil
         isAuthenticated = false
         loginError = nil
         clearKeychain()
+        UserDefaults.standard.removeObject(forKey: userIdDefaultsKey)
     }
 
     // MARK: - ASWebAuthenticationPresentationContextProviding
@@ -200,6 +214,8 @@ final class SpotifyAuthService: NSObject, ObservableObject, ASWebAuthenticationP
             let (data, _) = try await URLSession.shared.data(for: request)
             let profile = try JSONDecoder().decode(UserProfile.self, from: data)
             displayName = profile.displayName
+            userSpotifyId = profile.id
+            UserDefaults.standard.set(profile.id, forKey: userIdDefaultsKey)
             isAuthenticated = true
         } catch {}
     }
@@ -317,6 +333,10 @@ private struct TokenResponse: Decodable {
 }
 
 private struct UserProfile: Decodable {
+    let id: String
     let displayName: String?
-    enum CodingKeys: String, CodingKey { case displayName = "display_name" }
+    enum CodingKeys: String, CodingKey {
+        case id
+        case displayName = "display_name"
+    }
 }

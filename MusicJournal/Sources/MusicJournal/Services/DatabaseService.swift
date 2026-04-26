@@ -84,6 +84,23 @@ final class DatabaseService {
             }
         }
 
+        migrator.registerMigration("v2_track_extra_fields") { db in
+            // User-owned, never overwritten by sync. Defaults make existing
+            // rows valid without data backfill.
+            try db.alter(table: "tracks") { t in
+                t.add(column: "songYear", .integer)
+                t.add(column: "lyrics", .text).notNull().defaults(to: "")
+                t.add(column: "lyricSummary", .text).notNull().defaults(to: "")
+            }
+        }
+
+        migrator.registerMigration("v3_personal_notes") { db in
+            // "Personal Notes" — user-only, never touched by the LLM.
+            try db.alter(table: "tracks") { t in
+                t.add(column: "personalNotes", .text).notNull().defaults(to: "")
+            }
+        }
+
         try migrator.migrate(dbQueue)
     }
 
@@ -168,6 +185,12 @@ final class DatabaseService {
                     existing.popularity = track.popularity
                     existing.previewURL = track.previewURL
                     existing.syncedAt = track.syncedAt
+                    // Backfill songYear from the album's release_date when
+                    // the user hasn't entered one yet. Preserves manual
+                    // overrides on subsequent syncs.
+                    if existing.songYear == nil, let synced = track.songYear {
+                        existing.songYear = synced
+                    }
                     try existing.update(db)
                 } else {
                     try track.insert(db)
@@ -190,12 +213,63 @@ final class DatabaseService {
         }
     }
 
-    /// Saves user notes and star rating for a track.
-    func updateTrackNotes(spotifyId: String, notes: String, rating: Int?) throws {
+    /// One track's worth of partial user-field updates for a bulk apply.
+    /// `nil` fields leave the existing column value unchanged.
+    struct TrackUpdate {
+        let spotifyId: String
+        let songYear: Int?
+        let lyrics: String?
+        let lyricSummary: String?
+        let notes: String?
+        let rating: Int?
+    }
+
+    /// Applies a batch of partial track updates in a single transaction.
+    /// Returns the spotifyIds that matched an existing row.
+    @discardableResult
+    func applyTrackUpdates(_ updates: [TrackUpdate]) throws -> [String] {
+        try dbQueue.write { db in
+            var applied: [String] = []
+            for u in updates {
+                guard var existing = try Track
+                    .filter(Column("spotifyId") == u.spotifyId)
+                    .fetchOne(db)
+                else { continue }
+                if let y = u.songYear { existing.songYear = y }
+                if let l = u.lyrics { existing.lyrics = l }
+                if let s = u.lyricSummary { existing.lyricSummary = s }
+                if let n = u.notes { existing.userNotes = n }
+                if let r = u.rating { existing.userRating = r }
+                try existing.update(db)
+                applied.append(u.spotifyId)
+            }
+            return applied
+        }
+    }
+
+    /// Saves all user-owned fields for a track in one write.
+    func updateTrackUserFields(
+        spotifyId: String,
+        notes: String,
+        personalNotes: String,
+        rating: Int?,
+        songYear: Int?,
+        lyrics: String,
+        lyricSummary: String
+    ) throws {
         try dbQueue.write { db in
             try db.execute(
-                sql: "UPDATE tracks SET userNotes = ?, userRating = ? WHERE spotifyId = ?",
-                arguments: [notes, rating, spotifyId]
+                sql: """
+                    UPDATE tracks
+                    SET userNotes = ?,
+                        personalNotes = ?,
+                        userRating = ?,
+                        songYear = ?,
+                        lyrics = ?,
+                        lyricSummary = ?
+                    WHERE spotifyId = ?
+                    """,
+                arguments: [notes, personalNotes, rating, songYear, lyrics, lyricSummary, spotifyId]
             )
         }
     }

@@ -30,6 +30,11 @@ final class AppState: ObservableObject {
     /// single source rather than drilling into the auth service directly.
     @Published var isAuthenticated = false
 
+    /// Mirrors SpotifyAuthService.userSpotifyId so views observing AppState
+    /// re-render when the ID is captured/cleared (SwiftUI does not observe
+    /// nested ObservableObjects automatically).
+    @Published var userSpotifyId: String?
+
     /// Last successful full-sync timestamp; persisted across launches via
     /// UserDefaults so the toolbar "Synced X ago" label survives restarts.
     @Published var lastSyncDate: Date? = UserDefaults.standard.object(forKey: "lastSyncDate") as? Date {
@@ -46,10 +51,14 @@ final class AppState: ObservableObject {
     // MARK: - Init
 
     init() {
-        // Keep isAuthenticated in sync with the auth service automatically.
+        // Keep isAuthenticated and userSpotifyId in sync with the auth
+        // service automatically.
         spotifyAuth.$isAuthenticated
             .receive(on: RunLoop.main)
             .assign(to: &$isAuthenticated)
+        spotifyAuth.$userSpotifyId
+            .receive(on: RunLoop.main)
+            .assign(to: &$userSpotifyId)
 
         Task { await loadFromDatabase() }
     }
@@ -87,7 +96,18 @@ final class AppState: ObservableObject {
         defer { isSyncing = false; syncStatus = nil }
         do {
             let api = SpotifyAPIService(auth: spotifyAuth)
-            let fetched = try await api.fetchAllPlaylists()
+            let allFetched = try await api.fetchAllPlaylists()
+            // Skip playlists not owned by the signed-in user — Spotify
+            // development-mode quotas return zero tracks for them, so they
+            // would just clutter the sidebar and waste sync time. Keep the
+            // pre-filter behaviour (sync everything) when the user ID is
+            // not yet known, so the next launch's profile fetch can settle.
+            let fetched: [Playlist]
+            if let userId = userSpotifyId {
+                fetched = allFetched.filter { $0.ownerSpotifyId == userId }
+            } else {
+                fetched = allFetched
+            }
             try db.upsertPlaylists(fetched)
 
             let toSync = fetched

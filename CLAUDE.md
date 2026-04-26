@@ -10,12 +10,11 @@ Stacks in use across subprojects: Bash, Python (with self-bootstrapping `.venv`s
 
 ### Nested git repositories
 
-A few subdirectories are **separate git repos**, not part of PhantomLives. Run `git` inside their directory; commits made from the repo root will not include them, and pushing the outer repo will not push them:
+One subdirectory is a **separate git repo**, not part of PhantomLives. Run `git` inside its directory; commits made from the repo root will not include it, and pushing the outer repo will not push it:
 
-- `MusicJournal/` — independent repo, no remote configured
 - `video-analyzer/` — fork of `byjlw/video-analyzer` (different `origin`)
 
-Everything else (including `fsearch/`, `PurpleIRC/`, `messages-exporter/`, etc.) lives in the outer `bronty13/PhantomLives` repo.
+Everything else (including `MusicJournal/`, `fsearch/`, `PurpleIRC/`, `messages-exporter/`, etc.) lives in the outer `bronty13/PhantomLives` repo. (`MusicJournal/` was briefly an independent repo before being imported into PhantomLives at commit `58f3d35`.)
 
 ## Release-hygiene rules (from `.github/copilot-instructions.md`)
 

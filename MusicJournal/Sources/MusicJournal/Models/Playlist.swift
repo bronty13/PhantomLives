@@ -63,7 +63,14 @@ extension Playlist: Identifiable {
 }
 
 // MARK: - Hashable
-
+//
+// Custom == compares only `spotifyId` so that sidebar List selection
+// (`selection: $selectedPlaylist` keyed on Playlist values) survives sync —
+// every sync bumps `syncedAt`, which would otherwise make the new value
+// `!=` the binding's old value and visually clear the selection.
+//
+// Track gets *synthesised* Equatable instead because its inspector view
+// needs SwiftUI to detect content changes; see Track.swift.
 extension Playlist: Hashable {
     static func == (lhs: Playlist, rhs: Playlist) -> Bool { lhs.spotifyId == rhs.spotifyId }
     func hash(into hasher: inout Hasher) { hasher.combine(spotifyId) }

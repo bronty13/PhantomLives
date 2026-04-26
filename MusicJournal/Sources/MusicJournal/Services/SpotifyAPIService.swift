@@ -251,6 +251,14 @@ struct SpotifyAlbum: Decodable {
     let id: String
     let name: String
     let images: [SpotifyImage]?
+    /// `YYYY` or `YYYY-MM-DD` depending on `release_date_precision`. We
+    /// only need the year, so we tolerate either form.
+    let releaseDate: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, images
+        case releaseDate = "release_date"
+    }
 }
 struct SpotifyExternalURLs: Decodable { let spotify: String }
 
@@ -299,7 +307,20 @@ extension Track {
         self.previewURL = item.previewUrl
         self.spotifyURL = item.externalUrls?.spotify ?? ""
         self.userNotes = ""
+        self.personalNotes = ""
         self.userRating = nil
+        // First-sync seed for songYear from album.release_date — preserved
+        // by upsertTracks if the user hasn't overridden it.
+        self.songYear = Track.parseYear(from: item.album?.releaseDate)
+        self.lyrics = ""
+        self.lyricSummary = ""
         self.syncedAt = Date()
+    }
+
+    /// Extracts the leading 4-digit year from a Spotify release_date string
+    /// (`YYYY`, `YYYY-MM`, or `YYYY-MM-DD`). Returns nil if no year is found.
+    static func parseYear(from releaseDate: String?) -> Int? {
+        guard let s = releaseDate, s.count >= 4 else { return nil }
+        return Int(s.prefix(4))
     }
 }

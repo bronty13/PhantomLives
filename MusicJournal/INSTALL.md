@@ -67,11 +67,13 @@ Replace `YOUR_CLIENT_ID_HERE` with the Client ID you copied in Step 1.
 
 ## Step 6 — Generate the Xcode project
 
+`MusicJournal.xcodeproj` is committed to the repo, so you can usually just open it. But the source of truth is `project.yml`, and any time you add or remove a Swift file you should regenerate:
+
 ```bash
 xcodegen generate
 ```
 
-This reads `project.yml` and creates `MusicJournal.xcodeproj`. You must re-run this whenever `project.yml` changes (e.g. after adding new source files).
+This reads `project.yml` and rewrites `MusicJournal.xcodeproj`.
 
 ---
 
@@ -99,7 +101,11 @@ Xcode will automatically resolve the GRDB Swift Package dependency on first buil
 4. The app loads your playlists from any previously cached data immediately.
 5. Click the **↻ sync** button in the toolbar (or press **⌘⇧R**) to fetch all playlists and tracks.
 
-> The initial sync can take several minutes depending on how many playlists you have. A status bar at the bottom of the window shows progress.
+> The initial sync can take several minutes depending on how many playlists you have. A status bar at the bottom of the window shows progress. Only playlists you own are retained — non-user-owned playlists are skipped (Spotify dev-mode quotas would return zero tracks for them anyway).
+
+### Optional: configure the LLM round-trip
+
+The app can hand off track annotation work to your LLM of choice via the system clipboard (Claude / ChatGPT / Gemini / local Ollama). No per-LLM integration — just open **Settings → LLM Prompt** to view or edit the bundled Track and Playlist prompt templates. See `USER_MANUAL.md` for the full flow.
 
 ---
 
@@ -120,8 +126,8 @@ You can open this file with any SQLite browser (e.g. [DB Browser for SQLite](htt
 There is no auto-updater. To update:
 
 1. Pull or copy the new source files.
-2. Re-run `xcodegen generate` if `project.yml` changed.
-3. Build and run in Xcode.
+2. Re-run `xcodegen generate` if source files were added/removed or `project.yml` changed.
+3. Build and run in Xcode. Database migrations run automatically on first launch of the new build.
 
 Your database is not affected by rebuilds — it lives in Application Support, not the app bundle.
 

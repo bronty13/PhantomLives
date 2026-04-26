@@ -12,34 +12,68 @@ struct SidebarView: View {
     @Binding var selectedPlaylist: Playlist?
     @State private var searchText = ""
 
-    /// Playlists filtered by the search text; shows all when the field is empty.
+    /// Only the playlists owned by the signed-in Spotify user.
+    /// Spotify's development mode returns zero tracks for playlists the user
+    /// does not own, so showing them in the sidebar is just noise. If the
+    /// user ID is unknown (legacy installs), fall back to showing everything.
+    private var ownedByUser: [Playlist] {
+        guard let userId = appState.userSpotifyId else {
+            return appState.playlists
+        }
+        return appState.playlists.filter { $0.ownerSpotifyId == userId }
+    }
+
+    /// User-owned playlists filtered by the search text.
     var filtered: [Playlist] {
-        guard !searchText.isEmpty else { return appState.playlists }
-        return appState.playlists.filter {
+        guard !searchText.isEmpty else { return ownedByUser }
+        return ownedByUser.filter {
             $0.name.localizedCaseInsensitiveContains(searchText) ||
             $0.userTitle.localizedCaseInsensitiveContains(searchText)
         }
     }
 
     var body: some View {
-        List(filtered, selection: $selectedPlaylist) { playlist in
-            PlaylistRowView(playlist: playlist)
-                .tag(playlist)
-                // Explicit insets prevent the thumbnail from touching the
-                // left edge of the window when no playlist is selected.
-                .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 8))
-        }
-        .searchable(text: $searchText, placement: .sidebar, prompt: "Search playlists")
-        .navigationTitle("Music Journal")
-        .navigationSubtitle("\(appState.playlists.count) playlists")
-        .toolbar {
-            ToolbarItem {
-                if let date = appState.lastSyncDate {
-                    Text("Synced \(date.formatted(.relative(presentation: .named)))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+        // Inline search + list. Avoids `.searchable(.sidebar)` and
+        // `.navigationTitle` / `.navigationSubtitle` — the implicit chrome
+        // they install in the sidebar column was the source of the
+        // leading-edge content shift on macOS Tahoe NavigationSplitView.
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Search playlists", text: $searchText)
+                    .textFieldStyle(.plain)
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+
+            List(filtered, selection: $selectedPlaylist) { playlist in
+                PlaylistRowView(playlist: playlist)
+                    .tag(playlist)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 8))
+            }
+            .scrollContentBackground(.hidden)
+
+            HStack {
+                Text("\(ownedByUser.count) playlists")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
         }
     }
 }

@@ -10,7 +10,9 @@
 		11302B9543C534A95C352463 /* PlaylistDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E74627533D1A38C38F61A7C4 /* PlaylistDetailView.swift */; };
 		163A059B7B4B319EDDDF7B8E /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A88BA94B8C821D63F74871 /* AppState.swift */; };
 		16EEED5B84A7D552828B7BED /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DAEFCC19A6FFA7495F91928 /* SettingsView.swift */; };
+		225D66D0D698583346E2D5C9 /* Version.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BDEF21140B9FD0611513088 /* Version.swift */; };
 		28427FD4F6BBCB983637BE02 /* ExportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB2CB8319BC9B1A42474B0D5 /* ExportSheet.swift */; };
+		297BE0758A250E50C0FCD5DB /* LLMPromptService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3970809348D2DF6939C92E22 /* LLMPromptService.swift */; };
 		306F40135333C155F2C0C81E /* SpotifyAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75F37693DE956CFDBA84003C /* SpotifyAuthService.swift */; };
 		38001FCF2A71193BCEE7D224 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99B319791162E38FC4769B77 /* ContentView.swift */; };
 		39E7ECCDA888986E22DD8E5E /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A7706EBA1306DC99A029C63 /* WelcomeView.swift */; };
@@ -26,6 +28,7 @@
 		CABCAF9C103BF67AA54EBD87 /* Playlist.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E05D542F8CE07FF91373B1B /* Playlist.swift */; };
 		E1CBC21A70C7845BB766F518 /* ExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9088907A489A45C3AB4B85A7 /* ExportService.swift */; };
 		ED6332037B07DBD0404E202B /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8B1D512FEDDA86633DEAB32 /* SidebarView.swift */; };
+		F460E33CE687239F8B29A5AF /* MarkdownEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A3D9BB62FEA05D646D96CA9 /* MarkdownEditor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -34,8 +37,11 @@
 		1F6B9DA391EEB52B1C49C46F /* PlaylistTrack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistTrack.swift; sourceTree = "<group>"; };
 		20AC623E65E8DDC42B83EA1E /* DatabaseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseService.swift; sourceTree = "<group>"; };
 		2E05D542F8CE07FF91373B1B /* Playlist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Playlist.swift; sourceTree = "<group>"; };
+		3970809348D2DF6939C92E22 /* LLMPromptService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMPromptService.swift; sourceTree = "<group>"; };
+		3BDEF21140B9FD0611513088 /* Version.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Version.swift; sourceTree = "<group>"; };
 		481DB5BE4875B162D404A2FB /* Track.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Track.swift; sourceTree = "<group>"; };
 		4B4E4CC167CA60B599FDE6C1 /* ExportMenuCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportMenuCommands.swift; sourceTree = "<group>"; };
+		6A3D9BB62FEA05D646D96CA9 /* MarkdownEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownEditor.swift; sourceTree = "<group>"; };
 		75F37693DE956CFDBA84003C /* SpotifyAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyAuthService.swift; sourceTree = "<group>"; };
 		8F3DD3861F36E5540D27F7F6 /* SpotifyAPIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyAPIService.swift; sourceTree = "<group>"; };
 		8F905BD6FEDB753DF7723977 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -79,6 +85,7 @@
 				8F905BD6FEDB753DF7723977 /* Info.plist */,
 				C5699E5B239DBDCEE28C9B0E /* MusicJournal.entitlements */,
 				E612388FF30973504E4848B4 /* MusicJournalApp.swift */,
+				3BDEF21140B9FD0611513088 /* Version.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -127,6 +134,7 @@
 			children = (
 				20AC623E65E8DDC42B83EA1E /* DatabaseService.swift */,
 				9088907A489A45C3AB4B85A7 /* ExportService.swift */,
+				3970809348D2DF6939C92E22 /* LLMPromptService.swift */,
 				8F3DD3861F36E5540D27F7F6 /* SpotifyAPIService.swift */,
 				75F37693DE956CFDBA84003C /* SpotifyAuthService.swift */,
 			);
@@ -139,6 +147,7 @@
 				99B319791162E38FC4769B77 /* ContentView.swift */,
 				4B4E4CC167CA60B599FDE6C1 /* ExportMenuCommands.swift */,
 				EB2CB8319BC9B1A42474B0D5 /* ExportSheet.swift */,
+				6A3D9BB62FEA05D646D96CA9 /* MarkdownEditor.swift */,
 				E74627533D1A38C38F61A7C4 /* PlaylistDetailView.swift */,
 				0DAEFCC19A6FFA7495F91928 /* SettingsView.swift */,
 				A8B1D512FEDDA86633DEAB32 /* SidebarView.swift */,
@@ -195,7 +204,7 @@
 			mainGroup = 760E615C7341A00C5C492CA6;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				A6954992E09B6EE525D3B9F2 /* XCRemoteSwiftPackageReference "GRDB" */,
+				A6954992E09B6EE525D3B9F2 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 32A35C17242DF2FA57364996 /* Products */;
@@ -229,6 +238,8 @@
 				72CABF6E3C0D0A37EB9D5F6E /* ExportMenuCommands.swift in Sources */,
 				E1CBC21A70C7845BB766F518 /* ExportService.swift in Sources */,
 				28427FD4F6BBCB983637BE02 /* ExportSheet.swift in Sources */,
+				297BE0758A250E50C0FCD5DB /* LLMPromptService.swift in Sources */,
+				F460E33CE687239F8B29A5AF /* MarkdownEditor.swift in Sources */,
 				462DDA5D7520FB54A217CDA2 /* MusicJournalApp.swift in Sources */,
 				CABCAF9C103BF67AA54EBD87 /* Playlist.swift in Sources */,
 				11302B9543C534A95C352463 /* PlaylistDetailView.swift in Sources */,
@@ -239,6 +250,7 @@
 				306F40135333C155F2C0C81E /* SpotifyAuthService.swift in Sources */,
 				62155F00CCEEAE54A0F67FDE /* Track.swift in Sources */,
 				4011E0AD8D11D0FCDD162B16 /* TrackDetailView.swift in Sources */,
+				225D66D0D698583346E2D5C9 /* Version.swift in Sources */,
 				39E7ECCDA888986E22DD8E5E /* WelcomeView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -309,7 +321,6 @@
 				CODE_SIGN_ENTITLEMENTS = Sources/MusicJournal/App/MusicJournal.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				DEVELOPMENT_TEAM = SRKV8T38CD;
 				INFOPLIST_FILE = Sources/MusicJournal/App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -392,7 +403,6 @@
 				CODE_SIGN_ENTITLEMENTS = Sources/MusicJournal/App/MusicJournal.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				DEVELOPMENT_TEAM = SRKV8T38CD;
 				INFOPLIST_FILE = Sources/MusicJournal/App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -429,7 +439,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		A6954992E09B6EE525D3B9F2 /* XCRemoteSwiftPackageReference "GRDB" */ = {
+		A6954992E09B6EE525D3B9F2 /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/groue/GRDB.swift";
 			requirement = {
@@ -442,7 +452,7 @@
 /* Begin XCSwiftPackageProductDependency section */
 		6B33BD6E042C3432888A9904 /* GRDB */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A6954992E09B6EE525D3B9F2 /* XCRemoteSwiftPackageReference "GRDB" */;
+			package = A6954992E09B6EE525D3B9F2 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
 			productName = GRDB;
 		};
 /* End XCSwiftPackageProductDependency section */

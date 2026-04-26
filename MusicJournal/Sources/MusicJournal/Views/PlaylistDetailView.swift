@@ -8,8 +8,13 @@ import SwiftUI
 
 /// Full-detail view for a selected playlist: header, track table, and
 /// an optional side panel for the selected track.
+///
+/// Takes only the playlist's `spotifyId` and resolves the live `Playlist`
+/// value from `AppState` on every render. This means `saveNotes` triggers
+/// a re-render with fresh DB data automatically — earlier the view held a
+/// snapshot taken at construction, so edits only appeared after restart.
 struct PlaylistDetailView: View {
-    let playlist: Playlist
+    let playlistId: String
     @EnvironmentObject var appState: AppState
     @State private var tracks: [Track] = []
     @State private var selectedTrackId: String?
@@ -20,25 +25,62 @@ struct PlaylistDetailView: View {
     @State private var customTitle: String = ""
     @State private var showExport = false
 
+    // LLM playlist round-trip state.
+    @State private var llmError: String?
+    @State private var llmStatus: String?
+
+    /// Live lookup against the AppState array — re-runs on every render.
+    private var playlist: Playlist? {
+        appState.playlists.first { $0.spotifyId == playlistId }
+    }
+
+    /// True when a track is selected; toggling closes the inspector and
+    /// clears the selection so the inspector close button works as expected.
+    private var inspectorBinding: Binding<Bool> {
+        Binding(
+            get: { selectedTrackId != nil },
+            set: { newValue in if !newValue { selectedTrackId = nil } }
+        )
+    }
+
     var body: some View {
-        HSplitView {
-            VStack(spacing: 0) {
-                // Header shows the actual track count from the DB, not Spotify's
-                // potentially-stale estimate.
-                PlaylistHeaderView(playlist: playlist, trackCount: tracks.count)
-
-                Divider()
-
-                TrackListView(tracks: tracks, selectedTrackId: $selectedTrackId)
+        Group {
+            if let playlist {
+                content(for: playlist)
+            } else {
+                // Playlist removed from AppState (e.g. user disconnected
+                // mid-view). Showing nothing is preferable to crashing.
+                EmptyView()
             }
-            .frame(minWidth: 360)
+        }
+    }
 
-            if let track = selectedTrack {
-                TrackDetailView(track: track, onSave: { _ in
-                    Task { await loadTracks() }
-                })
-                .frame(minWidth: 280, maxWidth: 380)
+    @ViewBuilder
+    private func content(for playlist: Playlist) -> some View {
+        VStack(spacing: 0) {
+            // Header shows the actual track count from the DB, not Spotify's
+            // potentially-stale estimate.
+            PlaylistHeaderView(playlist: playlist, trackCount: tracks.count)
+
+            Divider()
+
+            TrackListView(tracks: tracks, selectedTrackId: $selectedTrackId)
+        }
+        // `.inspector` is the macOS 14+ native trailing-panel API. Unlike
+        // HSplitView, it doesn't force the parent NavigationSplitView to
+        // renegotiate column widths when it appears/disappears — which was
+        // the source of the sidebar leading-edge clip on track selection.
+        .inspector(isPresented: inspectorBinding) {
+            Group {
+                if let track = selectedTrack {
+                    TrackDetailView(track: track, onSave: { _ in
+                        Task { await loadTracks() }
+                    })
+                } else {
+                    EmptyView()
+                }
             }
+            .inspectorColumnWidth(min: 280, ideal: 320, max: 400)
         }
         .navigationTitle(playlist.userTitle.isEmpty ? playlist.name : playlist.userTitle)
         .toolbar {
@@ -49,11 +91,29 @@ struct PlaylistDetailView: View {
                     editingNotes = true
                 }
                 Button("Export") { showExport = true }
+                Menu {
+                    Button(copyPromptLabel) { copyPlaylistPrompt(playlist) }
+                        .disabled(unannotatedCount == 0)
+                    Button("Apply Response") { applyPlaylistResponse(playlist) }
+                } label: {
+                    Label(llmMenuLabel, systemImage: "text.bubble")
+                }
+                .help("Playlist-level LLM round-trip. Each Copy Prompt picks the next \(LLMPromptService.batchSize) tracks that don't yet have notes/summary — paste into your LLM, copy the JSON reply, click Apply.")
             }
         }
         // Reload when the selected playlist changes or after a sync completes.
-        .task(id: playlist.spotifyId) { await loadTracks() }
+        .task(id: playlistId) { await loadTracks() }
         .onChange(of: appState.lastSyncDate) { Task { await loadTracks() } }
+        .alert("LLM", isPresented: .constant(llmError != nil)) {
+            Button("OK") { llmError = nil }
+        } message: {
+            Text(llmError ?? "")
+        }
+        .alert("LLM Apply Result", isPresented: .constant(llmStatus != nil)) {
+            Button("OK") { llmStatus = nil }
+        } message: {
+            Text(llmStatus ?? "")
+        }
         .sheet(isPresented: $editingNotes) {
             PlaylistNotesSheet(
                 playlistName: playlist.name,
@@ -69,17 +129,161 @@ struct PlaylistDetailView: View {
 
     private func loadTracks() async {
         do {
-            tracks = try DatabaseService.shared.fetchTracks(forPlaylist: playlist.spotifyId)
+            tracks = try DatabaseService.shared.fetchTracks(forPlaylist: playlistId)
         } catch {}
     }
 
     private func saveNotes() {
         try? DatabaseService.shared.updatePlaylistNotes(
-            spotifyId: playlist.spotifyId,
+            spotifyId: playlistId,
             notes: notes,
             title: customTitle
         )
         Task { await appState.loadFromDatabase() }
+    }
+
+    // MARK: - LLM playlist round-trip
+
+    /// Number of tracks in this playlist that haven't been LLM-annotated yet.
+    private var unannotatedCount: Int {
+        LLMPromptService.tracksNeedingAnnotation(tracks).count
+    }
+
+    /// Number of tracks the next batch will include (capped by `batchSize`).
+    private var nextBatchCount: Int {
+        min(unannotatedCount, LLMPromptService.batchSize)
+    }
+
+    private var llmMenuLabel: String {
+        if unannotatedCount == 0 {
+            return "LLM (all \(tracks.count) annotated)"
+        }
+        return "LLM (\(unannotatedCount) unannotated)"
+    }
+
+    private var copyPromptLabel: String {
+        if unannotatedCount == 0 { return "All Tracks Annotated" }
+        return "Copy Prompt — Next \(nextBatchCount) of \(unannotatedCount)"
+    }
+
+    private func copyPlaylistPrompt(_ playlist: Playlist) {
+        let pending = LLMPromptService.tracksNeedingAnnotation(tracks)
+        guard !pending.isEmpty else {
+            llmStatus = "Every track in this playlist already has LLM annotation. Nothing to copy."
+            return
+        }
+        let batch = Array(pending.prefix(LLMPromptService.batchSize))
+        let prompt = LLMPromptService.renderPlaylist(
+            playlist,
+            batchTracks: batch,
+            totalCount: tracks.count
+        )
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(prompt, forType: .string)
+        llmStatus = """
+        Prompt copied for \(batch.count) tracks (of \(pending.count) remaining unannotated).
+
+        Paste into your LLM, copy the JSON response, then click Apply Response.
+        """
+    }
+
+    private func applyPlaylistResponse(_ playlist: Playlist) {
+        let pb = NSPasteboard.general
+        guard let raw = pb.string(forType: .string), !raw.isEmpty else {
+            llmError = LLMPromptService.ParseError.empty.localizedDescription
+            return
+        }
+        do {
+            let resp = try LLMPromptService.parsePlaylistResponse(raw)
+
+            // Playlist-level updates — only if the LLM provided non-empty
+            // values AND the existing playlist field is empty. This prevents
+            // batch-N's playlist summary from clobbering batch-1's.
+            let newNotes = resp.playlistNotes ?? ""
+            let newTitle = resp.playlistTitle ?? ""
+            let writeNotes = !newNotes.isEmpty && playlist.userNotes.isEmpty
+            let writeTitle = !newTitle.isEmpty && playlist.userTitle.isEmpty
+            if writeNotes || writeTitle {
+                try? DatabaseService.shared.updatePlaylistNotes(
+                    spotifyId: playlistId,
+                    notes: writeNotes ? newNotes : playlist.userNotes,
+                    title: writeTitle ? newTitle : playlist.userTitle
+                )
+            }
+
+            // Per-track updates (matched by spotifyId).
+            let updates: [DatabaseService.TrackUpdate] = (resp.tracks ?? []).map { t in
+                DatabaseService.TrackUpdate(
+                    spotifyId: t.spotifyId,
+                    songYear: t.songYear,
+                    lyrics: t.lyrics?.isEmpty == false ? t.lyrics : nil,
+                    lyricSummary: t.lyricSummary?.isEmpty == false ? t.lyricSummary : nil,
+                    notes: t.notes?.isEmpty == false ? t.notes : nil,
+                    rating: nil
+                )
+            }
+            let appliedIds = (try? DatabaseService.shared.applyTrackUpdates(updates)) ?? []
+            let skipped = updates.count - appliedIds.count
+
+            // Refresh views.
+            Task {
+                await appState.loadFromDatabase()
+                await loadTracks()
+            }
+
+            llmStatus = formatApplyReport(
+                appliedTracks: appliedIds.count,
+                skippedTracks: skipped,
+                wrotePlaylistNotes: writeNotes,
+                wrotePlaylistTitle: writeTitle,
+                hadPlaylistNotesInResponse: !newNotes.isEmpty,
+                hadPlaylistTitleInResponse: !newTitle.isEmpty
+            )
+        } catch {
+            llmError = error.localizedDescription
+        }
+    }
+
+    private func formatApplyReport(
+        appliedTracks: Int,
+        skippedTracks: Int,
+        wrotePlaylistNotes: Bool,
+        wrotePlaylistTitle: Bool,
+        hadPlaylistNotesInResponse: Bool,
+        hadPlaylistTitleInResponse: Bool
+    ) -> String {
+        var lines: [String] = []
+        if appliedTracks == 0 && !wrotePlaylistNotes && !wrotePlaylistTitle {
+            lines.append("Nothing was applied.")
+        } else {
+            lines.append("Applied:")
+            if appliedTracks > 0 {
+                lines.append("• \(appliedTracks) track\(appliedTracks == 1 ? "" : "s")")
+            }
+            if wrotePlaylistNotes { lines.append("• Playlist notes") }
+            if wrotePlaylistTitle { lines.append("• Playlist title") }
+        }
+        if skippedTracks > 0 {
+            lines.append("")
+            lines.append("Skipped \(skippedTracks) track update\(skippedTracks == 1 ? "" : "s") — spotifyId not found in this playlist.")
+        }
+        if hadPlaylistNotesInResponse && !wrotePlaylistNotes {
+            lines.append("")
+            lines.append("Playlist notes in response were ignored (this playlist already had notes — first batch wins).")
+        }
+        if hadPlaylistTitleInResponse && !wrotePlaylistTitle {
+            lines.append("Playlist title in response was ignored (custom title already set).")
+        }
+        let remaining = unannotatedCount - appliedTracks
+        if remaining > 0 {
+            lines.append("")
+            lines.append("\(remaining) tracks still need annotation. Click Copy Prompt again to continue.")
+        } else {
+            lines.append("")
+            lines.append("🎉 All tracks in this playlist are now annotated.")
+        }
+        return lines.joined(separator: "\n")
     }
 }
 
@@ -222,10 +426,7 @@ struct PlaylistNotesSheet: View {
 
             Text("My Notes")
                 .font(.headline)
-            TextEditor(text: $notes)
-                .font(.body)
-                .frame(minHeight: 200)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.3)))
+            MarkdownEditor(text: $notes, minHeight: 200)
 
             HStack {
                 Spacer()

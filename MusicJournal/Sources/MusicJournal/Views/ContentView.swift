@@ -1,13 +1,16 @@
 // ContentView.swift
 // Root view of the application.
-// Shows WelcomeView when unauthenticated, or the NavigationSplitView layout
-// once the user has connected Spotify. A frosted-glass status banner slides
-// in at the bottom of the window during an active sync.
+// Shows WelcomeView when unauthenticated, or a manual HStack-based
+// sidebar-detail layout once the user has connected Spotify. A frosted-glass
+// status banner slides in at the bottom of the window during an active sync.
 
 import SwiftUI
 
-/// Root container that gates on authentication state and hosts the main
-/// sidebar-detail navigation split view.
+/// Root container. Uses a plain `HStack` instead of `NavigationSplitView`
+/// because three successive attempts at fixing macOS Tahoe's sidebar
+/// chrome-positioning bug all failed under one repro path or another. With
+/// a manual layout we own every pixel of the sidebar's frame and there is
+/// no implicit chrome to mis-position.
 struct ContentView: View {
     @EnvironmentObject var appState: AppState
     @State private var selectedPlaylist: Playlist?
@@ -17,15 +20,21 @@ struct ContentView: View {
             if !appState.isAuthenticated {
                 WelcomeView()
             } else {
-                NavigationSplitView {
+                HStack(spacing: 0) {
                     SidebarView(selectedPlaylist: $selectedPlaylist)
-                        .navigationSplitViewColumnWidth(min: 240, ideal: 280)
-                } detail: {
-                    if let playlist = selectedPlaylist {
-                        PlaylistDetailView(playlist: playlist)
-                    } else {
-                        EmptyStateView()
+                        .frame(width: 300)
+                        .background(.ultraThinMaterial)
+                    Divider()
+                    Group {
+                        if let playlist = selectedPlaylist {
+                            // Pass only the ID — PlaylistDetailView resolves the
+                            // live value from AppState so saves reflect immediately.
+                            PlaylistDetailView(playlistId: playlist.spotifyId)
+                        } else {
+                            EmptyStateView()
+                        }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
         }
