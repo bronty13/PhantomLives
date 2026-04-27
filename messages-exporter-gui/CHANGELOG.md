@@ -2,6 +2,12 @@
 
 All notable changes to messages-exporter-gui will be documented in this file.
 
+## [1.0.6] — 2026-04-27
+
+### Changed
+
+- Default output folder is now `~/Downloads/messages-exporter-gui/` (previously `~/Downloads/` directly). Per-run subfolders (`<contact>_<YYYYMMDD_HHMMSS>/`) land inside it, so all messages exports collect in one predictable place. The directory is created on demand if missing. Implements the new project-wide convention captured in `PhantomLives/CLAUDE.md`. Existing custom paths in user defaults are preserved — click **Reset** (or **Reset to Downloads** in Settings) to adopt the new default.
+
 ## [1.0.5] — 2026-04-26
 
 ### Added

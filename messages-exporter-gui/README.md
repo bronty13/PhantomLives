@@ -1,6 +1,6 @@
 # messages-exporter-gui
 
-**Current release: 1.0.5**
+**Current release: 1.0.6**
 
 Native macOS SwiftUI front end for the [`messages-exporter`](../messages-exporter/) CLI. Provides a contact text field, native date/time pickers, a streamed copyable log of the export run, and one-click buttons to open the resulting transcript / summary / manifest or reveal the output folder.
 
@@ -28,7 +28,7 @@ See [INSTALL.md](INSTALL.md) for the full install / Full Disk Access walk-throug
 
 ## Defaults
 
-- **Output folder**: `~/Downloads/` (each run creates `<contact>_<YYYYMMDD_HHMMSS>/` inside). Change inline in the main window or in **Messages Exporter → Settings…**.
+- **Output folder**: `~/Downloads/messages-exporter-gui/` (each run creates `<contact>_<YYYYMMDD_HHMMSS>/` inside). Created on demand if it doesn't exist. Change inline in the main window or in **Messages Exporter → Settings…**.
 - **Start date/time**: today, 00:00 local
 - **End date/time**: today, current local time
 - **Emoji handling**: `word` (e.g., 🔥 → `(fire)` in filenames)

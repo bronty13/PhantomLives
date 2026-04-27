@@ -6,7 +6,7 @@ Day-to-day reference for the SwiftUI front end. For first-time setup see [INSTAL
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Output │  📁 /Users/you/Downloads  [Default]  [Choose…]        │
+│  Output │  📁 ~/Downloads/messages-exporter-gui  [Default]      │
 │ Contact │  Sallie                                                │
 │    From │  📅 2026-04-26  🕒 00:00                               │
 │      To │  📅 2026-04-26  🕒 17:00                               │
@@ -29,9 +29,9 @@ Day-to-day reference for the SwiftUI front end. For first-time setup see [INSTAL
 
 ### Output folder
 
-- Defaults to `~/Downloads/`. The "Default" badge appears whenever the current path matches the system Downloads folder.
+- Defaults to `~/Downloads/messages-exporter-gui/` (created on demand). The "Default" badge appears whenever the current path matches this default.
 - **Choose…** opens a folder picker; pick any directory you have write access to.
-- **Reset** appears when the path is non-default; restores the system Downloads folder.
+- **Reset** appears when the path is non-default; restores `~/Downloads/messages-exporter-gui/`.
 - The path persists across launches (stored in user defaults). The Settings scene (**Messages Exporter → Settings…** or ⌘,) shows the same value.
 - Each export creates a `<Contact>_<YYYYMMDD_HHMMSS>/` subfolder inside the chosen path — the path itself is the *parent* of every run.
 
@@ -105,7 +105,7 @@ See `messages-exporter/README.md` for the full filename rules and sanitization d
 
 Open with **Messages Exporter → Settings…** (⌘,):
 
-- **Default output folder** — same control as the inline picker, plus a "Reset to Downloads" shortcut.
+- **Default output folder** — same control as the inline picker, plus a "Reset to Downloads" shortcut that restores `~/Downloads/messages-exporter-gui/`.
 
 Settings persist via `@AppStorage` (UserDefaults). Wipe with `defaults delete com.bronty13.MessagesExporterGUI`.
 
@@ -124,5 +124,5 @@ Settings persist via `@AppStorage` (UserDefaults). Wipe with `defaults delete co
 - The `.app` lives wherever you built it (typically `PhantomLives/messages-exporter-gui/MessagesExporterGUI.app`).
 - The CLI lives at `~/.local/bin/export_messages` (or `/usr/local/bin/` if installed with `--system`).
 - The CLI's Python venv lives at `~/.venvs/messages-exporter/`.
-- Exports default to `~/Downloads/` (configurable per the section above).
+- Exports default to `~/Downloads/messages-exporter-gui/` (configurable per the section above).
 - User defaults live under bundle ID `com.bronty13.MessagesExporterGUI`.

@@ -1,12 +1,19 @@
 import SwiftUI
 import AppKit
 
-/// Default parent directory for exports. The CLI creates a
-/// `<contact>_<timestamp>` subfolder inside whatever path we pass it,
-/// so exports land at e.g. ~/Downloads/Sallie_20260426_172132/.
+/// Default parent directory for exports. Per the PhantomLives convention,
+/// every tool's user-facing output defaults to a subfolder of ~/Downloads/
+/// named after the project, so all exports across all tools land in one
+/// predictable place. The CLI then creates a `<contact>_<timestamp>`
+/// subfolder inside this, e.g.
+/// ~/Downloads/messages-exporter-gui/Sallie_20260427_172132/.
+/// Created on demand the first time it's read.
 private func defaultOutputDir() -> URL {
-    FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+    let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
         ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads")
+    let dir = downloads.appendingPathComponent("messages-exporter-gui", isDirectory: true)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    return dir
 }
 
 /// User-configurable export root. Stored in UserDefaults so the
