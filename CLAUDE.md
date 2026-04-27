@@ -28,6 +28,23 @@ These apply to **every** code, config, script, test, or doc change. Do not skip 
 6. Update operational files (config defaults, installers, helper scripts, command help text) when relevant.
 7. If a hygiene item genuinely doesn't apply, explicitly say why in the commit/PR notes.
 
+## Default output location
+
+Every PhantomLives tool that writes user-visible output (exports, transcripts, reports, generated files, baselines, etc.) **must** default its output path to:
+
+```
+~/Downloads/<project-or-app-name>/
+```
+
+The folder name matches the subproject directory or the app's display name (e.g. `~/Downloads/messages-exporter-gui/`, `~/Downloads/transcribe/`, `~/Downloads/MacSysInfo/`). Tools that further organize each run into a timestamped subfolder do so *inside* this directory (e.g. `~/Downloads/messages-exporter-gui/<contact>_<YYYYMMDD_HHMMSS>/`).
+
+Rules:
+
+- The default must be created on demand — don't fail if `~/Downloads/<name>/` doesn't exist yet; `mkdir -p` it.
+- Users can override (CLI flag, Settings pane, env var) but the override must persist (UserDefaults / config file) so it sticks across runs.
+- Document the default in `README.md` and `USER_MANUAL.md`.
+- Internal caches, logs, and config still live under `~/Library/Application Support/<name>/` or `~/.config/<name>/` — this rule is only for things the user is meant to find and open.
+
 ## Per-subproject commands
 
 | Subproject | Build / Run | Tests |
