@@ -6,7 +6,7 @@ Metal-accelerated speech-to-text using Whisper on Apple MLX.
 All processing is local — no data leaves your machine.
 """
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 import os
 import subprocess
@@ -476,7 +476,11 @@ examples:
 
     # Input / Output
     parser.add_argument("-i", "--input", required=True, help="Input video or audio file")
-    parser.add_argument("-o", "--output", default=None, help="Output file (default: stdout)")
+    parser.add_argument(
+        "-o", "--output",
+        default=None,
+        help="Output file. Default: ~/Downloads/transcribe/<input-basename>.<format> (created on demand). Pass `-` to write to stdout instead.",
+    )
     parser.add_argument(
         "-f", "--format",
         choices=["txt", "srt", "vtt", "json"],
@@ -540,8 +544,17 @@ def main() -> None:
         log(f"Error: Input file not found: {args.input}")
         sys.exit(1)
 
-    # Validate output directory
-    if args.output:
+    # Resolve output path. Per the PhantomLives default-output convention,
+    # omitting -o defaults to ~/Downloads/transcribe/<input-basename>.<fmt>;
+    # `-o -` is the explicit escape hatch for stdout (pipe-friendly).
+    if args.output is None:
+        default_dir = os.path.expanduser("~/Downloads/transcribe")
+        os.makedirs(default_dir, exist_ok=True)
+        input_base = os.path.splitext(os.path.basename(args.input))[0]
+        args.output = os.path.join(default_dir, f"{input_base}.{args.format}")
+    elif args.output == "-":
+        args.output = None  # Sentinel for "write to stdout" downstream.
+    else:
         out_dir = os.path.dirname(os.path.abspath(args.output))
         if not os.path.isdir(out_dir):
             log(f"Error: Output directory does not exist: {out_dir}")

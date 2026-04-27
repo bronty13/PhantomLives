@@ -32,14 +32,17 @@ To force a clean reinstall of dependencies, delete the `.venv/` directory and re
 ## Quick Start
 
 ```bash
-# Basic transcription to stdout
+# Basic transcription — writes to ~/Downloads/transcribe/meeting.txt
 python transcribe.py -i meeting.mp4
 
-# Save as SRT subtitles
+# Pipe to stdout instead (for grep / other tools)
+python transcribe.py -i meeting.mp4 -o -
+
+# Save as SRT subtitles to a specific path
 python transcribe.py -i meeting.mp4 -o meeting.srt -f srt
 
-# Use a smaller model for speed
-python transcribe.py -i meeting.mp4 -m small -o meeting.txt
+# Use a smaller model for speed (still goes to ~/Downloads/transcribe/)
+python transcribe.py -i meeting.mp4 -m small
 
 # Transcribe and summarize
 python transcribe.py -i lecture.mp4 --summarize -v
@@ -126,7 +129,7 @@ python transcribe.py -i call.mp4 --summarize --llm-model mlx-community/some-cust
 python transcribe.py -i call.mp4 --summarize --max-tokens 2048
 ```
 
-When writing to a file (`-o`), the summary is saved as `<name>.summary.txt` alongside the transcript.
+When writing to a file (the default, or any explicit `-o`), the summary is saved as `<name>.summary.txt` alongside the transcript. With `-o -` (stdout mode), the summary prints after the transcript instead.
 
 Default LLM: `mistral-7b-4bit` (Mistral 7B Instruct, ~4 GB RAM)
 
@@ -146,7 +149,7 @@ options:
   -h, --help            show help message and exit
   -V, --version         show version and exit
   -i, --input INPUT     input video or audio file
-  -o, --output OUTPUT   output file (default: stdout)
+  -o, --output OUTPUT   output file (default: ~/Downloads/transcribe/<input>.<fmt>; pass `-` for stdout)
   -f, --format FORMAT   output format: txt, srt, vtt, json (default: txt)
 
 whisper options:
