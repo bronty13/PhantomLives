@@ -4,6 +4,36 @@ All notable changes to MacSearchReplace are documented here.
 This project follows [Semantic Versioning](https://semver.org/) once it tags
 a 1.0; pre-1.0 versions may break compatibility freely.
 
+## [Unreleased]
+
+### Added — Funduc parity audit and roadmap (2026-04-28)
+- `Docs/planning/sr_feature_catalog.md` — exhaustive feature inventory of
+  Funduc Search and Replace for Windows, derived from the decompiled CHM
+  help files at `~/Downloads/SR/`. 1,491 lines across 16 sections.
+  Authoritative reference for the rebuild.
+- `Docs/planning/codebase_assessment.md` — snapshot of the current Swift
+  codebase as of 2026-04-27.
+- `Docs/planning/parity_plan.md` — gap analysis against the catalog and a
+  6-phase roadmap (engine → search modes → files & filters → UI rebuild →
+  scripts & CLI → polish). Documents the seven load-bearing decisions
+  (regex engine, UI shape, script format, CLI shape, replacement tokens,
+  file operations, print) and the user's selections.
+- `Docs/planning/phase_a_plan.md` — concrete Phase A implementation plan:
+  new `SnRFunducRegex` and `SnRFunducReplace` modules, AST design, ICU
+  translator strategy, custom evaluators for non-translatable operators
+  (`!`, `+n`, `^^`, `$$`), test corpus from catalog examples, wiring
+  approach, ~17-day estimate.
+
+### Note
+- The audit found that the prior "Phase 4 = Funduc parity" claim does not
+  hold against the original help-file source of truth: regex syntax
+  (PCRE vs Funduc's bespoke `*[0-9]`-style), replacement-token syntax
+  (`\#path` vs `%%srpath%%`), several search modes (HTML, ignore-whitespace,
+  boolean, clipboard), file operations on results, script format
+  (`.snrscript` JSON vs `.srs` ASCII), and CLI shape all diverge from the
+  Windows original. The roadmap above plans the work needed to close the
+  gap.
+
 ## [Unreleased] — Phase 4: Funduc parity
 
 ### Added
