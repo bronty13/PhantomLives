@@ -1,0 +1,12 @@
+.DS_Store
+.build/
+.swiftpm/
+DerivedData/
+build/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+Apps/MacSearchReplace/Vendored/rg
+Apps/MacSearchReplace/Vendored/rg-*
+Packages/SnRCore/.build/
+Packages/SnRCore/.swiftpm/
+Tests/Fixtures/synthetic-*
