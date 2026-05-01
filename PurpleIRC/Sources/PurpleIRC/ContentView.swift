@@ -244,6 +244,90 @@ struct ContentView: View {
             DCCView(service: model.dcc)
                 .environmentObject(model)
         }
+        .sheet(isPresented: $model.showNukeConfirmation) {
+            NukeConfirmationSheet()
+                .environmentObject(model)
+        }
+    }
+}
+
+/// Two-step confirmation for `/nuke`. The destructive button is disabled
+/// until the user types the literal phrase NUKE; this is the same pattern
+/// GitHub uses for repo deletion. The sheet enumerates exactly what will
+/// be wiped so there's no surprise after the click.
+struct NukeConfirmationSheet: View {
+    @EnvironmentObject var model: ChatModel
+    @State private var confirmation: String = ""
+    @State private var lastResult: NukeResult? = nil
+    private let requiredPhrase = "NUKE"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.title2)
+                    .foregroundStyle(.red)
+                Text("Wipe everything?")
+                    .font(.title2.bold())
+            }
+
+            Text("`/nuke` is destructive. It removes every file PurpleIRC has written to disk and every Keychain item it owns, then quits the app. There is no undo.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("This will delete:").font(.caption.bold())
+                Text("• settings.json (every server, identity, address-book entry, ignore, highlight, trigger, alias)")
+                Text("• keystore.json (the wrapped DEK; you'll be re-prompted to set up encryption next launch)")
+                Text("• All chat logs, channel-list cache, seen tracker, app debug log, session history")
+                Text("• PurpleBot scripts and their on-disk index")
+                Text("• Saved DCC downloads and any backups under the support directory")
+                Text("• Every Keychain item under com.purpleirc")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Type **\(requiredPhrase)** to confirm:")
+                    .font(.callout)
+                TextField(requiredPhrase, text: $confirmation)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                    .disableAutocorrection(true)
+            }
+
+            if let r = lastResult {
+                Text(r.summary)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) {
+                    confirmation = ""
+                    model.showNukeConfirmation = false
+                }
+                .keyboardShortcut(.cancelAction)
+                Button(role: .destructive) {
+                    model.performNukeAndQuit()
+                } label: {
+                    Label("Wipe everything and quit", systemImage: "trash.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                .disabled(confirmation != requiredPhrase)
+            }
+        }
+        .padding(24)
+        .frame(width: 540)
     }
 }
 

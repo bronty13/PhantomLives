@@ -633,42 +633,24 @@ struct BufferView: View {
             .padding(10)
             .background(Color(nsColor: .controlBackgroundColor))
         }
-        // Initial focus on appear + after every situation that could
-        // steal it away (buffer switch, app/window activation, scene
-        // phase change). Runs through `refocusInput` so the false→true
-        // refresh trick fires even when @FocusState was already true.
-        .task { refocusInput() }
-        .onChange(of: bufferIndex) { _, _ in refocusInput() }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { refocusInput() }
-        }
-        // macOS scenePhase is iOS-flavoured and doesn't fire reliably for
-        // Cmd+Tab activation, so subscribe to AppKit's own signals too.
-        // Either notification firing is enough; both are belt-and-suspenders.
-        .onReceive(NotificationCenter.default.publisher(
-            for: NSApplication.didBecomeActiveNotification)) { _ in
-            refocusInput()
-        }
-        .onReceive(NotificationCenter.default.publisher(
-            for: NSWindow.didBecomeKeyNotification)) { _ in
-            refocusInput()
-        }
-        // Sheet dismissal doesn't fire didBecomeKey (the same window stays
-        // key), so observe each modal flag and refocus when it transitions
-        // back to false. Without this, dismissing Setup / Help / Watchlist
-        // / DCC / Channel List / Seen / Raw Log / App Log / Chat Logs
-        // leaves no first-responder, and the user has to click the input
-        // box before they can type again.
-        .onChange(of: model.showSetup)        { _, n in if !n { refocusInput() } }
-        .onChange(of: model.showHelp)         { _, n in if !n { refocusInput() } }
-        .onChange(of: model.showWatchlist)    { _, n in if !n { refocusInput() } }
-        .onChange(of: model.showDCC)          { _, n in if !n { refocusInput() } }
-        .onChange(of: model.showChannelList)  { _, n in if !n { refocusInput() } }
-        .onChange(of: model.showSeenList)     { _, n in if !n { refocusInput() } }
-        .onChange(of: model.showRawLog)       { _, n in if !n { refocusInput() } }
-        .onChange(of: model.showAppLog)       { _, n in if !n { refocusInput() } }
-        .onChange(of: model.showChatLogs)     { _, n in if !n { refocusInput() } }
-        .onChange(of: showingMultilineEditor) { _, n in if !n { refocusInput() } }
+        // Focus + slash-bridge observers extracted into a ViewModifier so
+        // the compiler doesn't have to type-check ~20 chained .onChange's
+        // inside this view's body — that timed out at "expression too
+        // complex" with everything inline.
+        .modifier(BufferViewObservers(
+            bufferIndex: bufferIndex,
+            scenePhase: scenePhase,
+            showingMultilineEditor: showingMultilineEditor,
+            refocus: refocusInput,
+            consumeFindRequest: { q in
+                findQuery = q
+                openFind()
+            },
+            consumeClearRequest: {
+                findMatchIDs = []
+                findMatchCursor = 0
+            }
+        ))
         .confirmationDialog(
             "Paste \(multilineLineCount) lines?",
             isPresented: Binding(
@@ -1383,5 +1365,65 @@ struct RawLogView: View {
             }
         }
         .frame(minWidth: 720, minHeight: 440)
+    }
+}
+
+/// Bundles BufferView's focus and slash-bridge observers into a single
+/// ViewModifier. Inlining ~20 `.onChange(of:)` modifiers in BufferView's
+/// body timed the Swift type-checker out ("expression too complex"); the
+/// modifier split keeps each body's expression depth small.
+private struct BufferViewObservers: ViewModifier {
+    @EnvironmentObject var model: ChatModel
+    let bufferIndex: Int
+    let scenePhase: ScenePhase
+    let showingMultilineEditor: Bool
+    let refocus: () -> Void
+    /// Called with the requested query when /find fires. The caller is
+    /// responsible for opening the find bar; this modifier only bridges
+    /// the request and clears it.
+    let consumeFindRequest: (String) -> Void
+    /// Called when /clear fires. The caller resets find-match state.
+    let consumeClearRequest: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .task { refocus() }
+            .onChange(of: bufferIndex) { _, _ in refocus() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { refocus() }
+            }
+            .onReceive(NotificationCenter.default.publisher(
+                for: NSApplication.didBecomeActiveNotification)) { _ in
+                refocus()
+            }
+            .onReceive(NotificationCenter.default.publisher(
+                for: NSWindow.didBecomeKeyNotification)) { _ in
+                refocus()
+            }
+            // Sheet dismissal — see BufferView for the rationale on why
+            // each one needs its own observer (sheet dismissal doesn't
+            // fire NSWindow.didBecomeKey).
+            .onChange(of: model.showSetup)        { _, n in if !n { refocus() } }
+            .onChange(of: model.showHelp)         { _, n in if !n { refocus() } }
+            .onChange(of: model.showWatchlist)    { _, n in if !n { refocus() } }
+            .onChange(of: model.showDCC)          { _, n in if !n { refocus() } }
+            .onChange(of: model.showChannelList)  { _, n in if !n { refocus() } }
+            .onChange(of: model.showSeenList)     { _, n in if !n { refocus() } }
+            .onChange(of: model.showRawLog)       { _, n in if !n { refocus() } }
+            .onChange(of: model.showAppLog)       { _, n in if !n { refocus() } }
+            .onChange(of: model.showChatLogs)     { _, n in if !n { refocus() } }
+            .onChange(of: showingMultilineEditor) { _, n in if !n { refocus() } }
+            // Slash-command bridges from ChatModel into BufferView's
+            // local UI state.
+            .onChange(of: model.findRequest) { _, q in
+                guard let q else { return }
+                consumeFindRequest(q)
+                model.findRequest = nil
+            }
+            .onChange(of: model.clearBufferRequest) { _, id in
+                guard id != nil else { return }
+                consumeClearRequest()
+                model.clearBufferRequest = nil
+            }
     }
 }

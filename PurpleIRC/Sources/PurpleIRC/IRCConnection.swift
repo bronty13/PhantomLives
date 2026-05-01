@@ -485,6 +485,53 @@ final class IRCConnection: ObservableObject, Identifiable {
         }
     }
 
+    /// Wipe a buffer's rendered scrollback. UI-only — channel membership
+    /// stays intact so the user keeps receiving fresh PRIVMSGs. Used by
+    /// `/clear`. Resets the truncation-notice flag so the next overflow
+    /// surfaces a fresh notice.
+    func clearBufferLines(id: Buffer.ID) {
+        guard let i = buffers.firstIndex(where: { $0.id == id }) else { return }
+        buffers[i].lines.removeAll()
+        buffers[i].truncationNoticeShown = false
+    }
+
+    /// Reset the unread badge on every buffer. Doesn't touch line content.
+    /// Used by `/markread`.
+    func markAllBuffersRead() {
+        for i in buffers.indices {
+            buffers[i].unread = 0
+        }
+    }
+
+    /// Cycle the active buffer in the connection's list. Wraps at the
+    /// edges. Used by `/next` and `/prev`.
+    func cycleBuffer(forward: Bool) {
+        guard !buffers.isEmpty else { return }
+        let currentIdx = buffers.firstIndex(where: { $0.id == selectedBufferID }) ?? 0
+        let next = forward
+            ? (currentIdx + 1) % buffers.count
+            : (currentIdx - 1 + buffers.count) % buffers.count
+        selectBuffer(buffers[next].id)
+    }
+
+    /// Switch to a buffer by name (case-insensitive, exact > prefix > contains).
+    /// Returns false if no match. Used by `/goto`.
+    @discardableResult
+    func selectBufferByName(_ name: String) -> Bool {
+        let q = name.lowercased()
+        let candidates = buffers
+        if let exact = candidates.first(where: { $0.name.lowercased() == q }) {
+            selectBuffer(exact.id); return true
+        }
+        if let pre = candidates.first(where: { $0.name.lowercased().hasPrefix(q) }) {
+            selectBuffer(pre.id); return true
+        }
+        if let sub = candidates.first(where: { $0.name.lowercased().contains(q) }) {
+            selectBuffer(sub.id); return true
+        }
+        return false
+    }
+
     func applyAlertOptions(sound: Bool, dock: Bool, banner: Bool, highlight: Bool) {
         watchlist.playSound = sound
         watchlist.bounceDock = dock
@@ -1711,6 +1758,91 @@ final class IRCConnection: ObservableObject, Identifiable {
             client.send("PRIVMSG \(target) :\u{01}\(body)\u{01}")
         case "dcc":
             handleDCCCommand(rest)
+        case "reconnect":
+            // Disconnect and immediately reconnect this network. Bypasses
+            // the auto-reconnect timer so the user gets a fresh attempt
+            // right now without waiting on backoff. We disconnect with a
+            // recognizable QUIT reason so server-side observers see the
+            // intent.
+            appendInfo("Reconnect requested.")
+            // Avoid scheduleReconnectIfNeeded firing on top of us — set
+            // the flag, disconnect, then clear it before kicking a fresh
+            // connect.
+            userInitiatedDisconnect = true
+            reconnectTask?.cancel(); reconnectTask = nil
+            client.disconnect(quitMessage: "Reconnecting")
+            Task { @MainActor [weak self] in
+                // Brief pause so the cancel propagates and the OS sees
+                // the close before we open a new socket.
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                guard let self else { return }
+                self.userInitiatedDisconnect = false
+                self.reconnectAttempt = 0
+                self.connect()
+            }
+        case "rejoin", "cycle":
+            // PART + JOIN current channel — refreshes server-side state
+            // (membership, modes, NAMES, topic) without dropping the
+            // connection. No-op outside a channel buffer.
+            guard let chan = currentBufferName(),
+                  let bufID = selectedBufferID,
+                  let buf = buffers.first(where: { $0.id == bufID }),
+                  buf.kind == .channel else {
+                appendError("/rejoin only works inside a channel buffer.")
+                return
+            }
+            let reason = rest.isEmpty ? "rejoining" : rest
+            client.send("PART \(chan) :\(reason)")
+            // Tiny delay so the server sees PART before JOIN — strict
+            // back-to-back can race on some daemons.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                self?.client.send("JOIN \(chan)")
+            }
+        case "invite":
+            // /invite <nick> [#channel] — channel defaults to current.
+            let bits = rest.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true).map(String.init)
+            guard let nick = bits.first, !nick.isEmpty else {
+                appendInfo("Usage: /invite <nick> [#channel]")
+                return
+            }
+            let chan = bits.count > 1 ? bits[1] : (currentBufferName() ?? "")
+            guard !chan.isEmpty else {
+                appendError("/invite needs a channel — either as the second argument or by being in a channel buffer.")
+                return
+            }
+            client.send("INVITE \(nick) \(chan)")
+        case "knock":
+            // KNOCK <channel> [reason] — supported by some servers (Solanum,
+            // InspIRCd) for invite-only channels. Server will reply 480 if
+            // unsupported; we let the user see that response naturally.
+            guard !rest.isEmpty else {
+                appendInfo("Usage: /knock <#channel> [reason]")
+                return
+            }
+            client.send("KNOCK \(rest)")
+        case "motd":
+            client.send(rest.isEmpty ? "MOTD" : "MOTD \(rest)")
+        case "lusers":
+            client.send("LUSERS")
+        case "admin":
+            client.send(rest.isEmpty ? "ADMIN" : "ADMIN \(rest)")
+        case "info":
+            client.send(rest.isEmpty ? "INFO" : "INFO \(rest)")
+        case "version":
+            client.send(rest.isEmpty ? "VERSION" : "VERSION \(rest)")
+        case "silence":
+            // SILENCE +mask / -mask / list — server-side ignore on networks
+            // that support it (DALnet, EFnet, IRCnet variants). We just
+            // pass it through as-is so the user can experiment with the
+            // syntax their network expects.
+            client.send(rest.isEmpty ? "SILENCE" : "SILENCE \(rest)")
+        case "unsilence":
+            guard !rest.isEmpty else {
+                appendInfo("Usage: /unsilence <mask>")
+                return
+            }
+            client.send("SILENCE -\(rest)")
         default:
             client.send("\(cmd.uppercased()) \(rest)")
         }

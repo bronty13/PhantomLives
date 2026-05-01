@@ -264,6 +264,21 @@ final class ChatModel: ObservableObject {
     /// confirmation flips on, applied when the user confirms.
     var pendingQuitReason: String = ""
 
+    /// Surfaced by `/nuke`. The confirmation sheet (in ContentView) requires
+    /// the user to type the literal phrase `NUKE` before the destructive
+    /// button enables. NukeService does the actual wiping.
+    @Published var showNukeConfirmation: Bool = false
+
+    /// One-shot find-bar prefill request. Set by `/find <text>`; consumed
+    /// (set back to nil) by BufferView once the find bar opens. nil means
+    /// no pending request.
+    @Published var findRequest: String? = nil
+
+    /// One-shot "clear current buffer" request, identifying which buffer
+    /// to wipe. BufferView clears it after consuming. Channels keep their
+    /// server-side membership; this is a UI-only scrollback wipe.
+    @Published var clearBufferRequest: Buffer.ID? = nil
+
     /// Single shared watchlist across all connections. See IRCConnection doc
     /// on why this is shared rather than per-connection.
     let watchlist = WatchlistService()
@@ -794,6 +809,14 @@ final class ChatModel: ObservableObject {
             let bits = body.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true).map(String.init)
             let cmd = bits.first?.lowercased() ?? ""
             let rest = bits.count > 1 ? bits[1].trimmingCharacters(in: .whitespaces) : ""
+            // User-defined alias: `/alias <name> <expansion>` stored in
+            // settings; expansion may itself begin with a slash. Looked up
+            // BEFORE built-ins so the user can shadow built-ins on purpose.
+            if let expansion = settings.settings.userAliases[cmd], !expansion.isEmpty {
+                let expanded = expansion + (rest.isEmpty ? "" : " \(rest)")
+                sendInput(expanded)
+                return
+            }
             switch cmd {
             case "ignore":
                 if rest.isEmpty {
@@ -891,6 +914,128 @@ final class ChatModel: ObservableObject {
                     conn.appendInfoOnSelected("No record of \(nick) on this network.")
                 }
                 return
+            case "nuke":
+                // Two-step destructive reset. First call surfaces the
+                // confirmation sheet; only after the user types the literal
+                // phrase NUKE in the sheet does NukeService actually run.
+                requestNuke()
+                return
+            case "clear", "cls":
+                // UI-only scrollback wipe. BufferView observes the request
+                // flag and drops its rendered lines; the IRCConnection's
+                // buffer also gets its lines array reset so the wipe sticks
+                // across re-renders. Server-side membership is unchanged.
+                if let bufID = conn.selectedBufferID {
+                    clearBufferRequest = bufID
+                    conn.clearBufferLines(id: bufID)
+                    conn.appendInfoOnSelected("Buffer cleared.")
+                }
+                return
+            case "find", "search":
+                // Open the find bar pre-filled with the query (or empty).
+                findRequest = rest
+                return
+            case "markread", "markallread":
+                // Reset unread counts across every buffer on every network.
+                for c in connections { c.markAllBuffersRead() }
+                conn.appendInfoOnSelected("Marked all buffers as read.")
+                return
+            case "next", "nextbuffer":
+                conn.cycleBuffer(forward: true)
+                return
+            case "prev", "previous", "prevbuffer":
+                conn.cycleBuffer(forward: false)
+                return
+            case "goto", "switch":
+                guard !rest.isEmpty else {
+                    conn.appendInfoOnSelected("Usage: /goto <buffer-name>")
+                    return
+                }
+                if !conn.selectBufferByName(rest) {
+                    conn.appendInfoOnSelected("No buffer matching '\(rest)' on this network.")
+                }
+                return
+            case "network":
+                guard !rest.isEmpty else {
+                    let names = connections.map { $0.displayName }.joined(separator: ", ")
+                    conn.appendInfoOnSelected("Connected networks: \(names.isEmpty ? "(none)" : names)")
+                    return
+                }
+                let lower = rest.lowercased()
+                if let match = connections.first(where: {
+                    $0.displayName.lowercased() == lower
+                }) ?? connections.first(where: {
+                    $0.displayName.lowercased().contains(lower)
+                }) {
+                    activeConnectionID = match.id
+                } else {
+                    conn.appendInfoOnSelected("No network matching '\(rest)'.")
+                }
+                return
+            case "theme":
+                guard !rest.isEmpty else {
+                    let names = Theme.all.map { $0.id }.joined(separator: ", ")
+                    conn.appendInfoOnSelected("Available themes: \(names). Current: \(settings.settings.themeID).")
+                    return
+                }
+                let lower = rest.lowercased()
+                if let match = Theme.all.first(where: { $0.id.lowercased() == lower }) {
+                    settings.settings.themeID = match.id
+                    conn.appendInfoOnSelected("Theme: \(match.id)")
+                } else {
+                    conn.appendInfoOnSelected("No theme named '\(rest)'.")
+                }
+                return
+            case "font":
+                handleFontCommand(rest: rest, on: conn)
+                return
+            case "density":
+                guard let d = ChatDensity(rawValue: rest.lowercased()) else {
+                    conn.appendInfoOnSelected("Usage: /density compact|cozy|comfortable")
+                    return
+                }
+                settings.settings.chatDensity = d
+                conn.appendInfoOnSelected("Density: \(d.displayName)")
+                return
+            case "zoom":
+                handleZoomCommand(rest: rest, on: conn)
+                return
+            case "timestamp", "ts":
+                handleTimestampCommand(rest: rest, on: conn)
+                return
+            case "lock":
+                // Drop the in-memory DEK and remove the Keychain cache;
+                // every encrypted persistence path now refuses to write
+                // (per safeWrite.skippedLockedEncrypted) until the user
+                // re-enters the passphrase.
+                keyStore.lock()
+                conn.appendInfoOnSelected("Keystore locked. Re-enter passphrase to unlock.")
+                return
+            case "backup":
+                // Surface the backup sheet — already implemented by
+                // BackupService + BackupSettingsView. Land the user on
+                // the right Setup tab so they can review settings too.
+                pendingSetupTab = .behavior
+                showSetup = true
+                return
+            case "export":
+                handleExportCommand(rest: rest, on: conn)
+                return
+            case "alias":
+                handleAliasCommand(rest: rest, on: conn)
+                return
+            case "repeat":
+                handleRepeatCommand(rest: rest, on: conn)
+                return
+            case "timer":
+                handleTimerCommand(rest: rest, on: conn)
+                return
+            case "summary":
+                handleSummaryCommand(rest: rest, on: conn)
+                return
+            case "translate":
+                handleTranslateCommand(rest: rest, on: conn)
+                return
             default:
                 // Let PurpleBot claim the command if it registered a matching
                 // /alias via irc.onCommand(...).
@@ -898,6 +1043,261 @@ final class ChatModel: ObservableObject {
             }
         }
         conn.sendInput(text, from: conn.selectedBufferID)
+    }
+
+    /// Surface the `/nuke` confirmation sheet. Idempotent — clicking the
+    /// same flag twice while it's already true is a no-op for SwiftUI.
+    func requestNuke() {
+        showNukeConfirmation = true
+    }
+
+    /// Execute the destructive reset. Called by the confirmation sheet
+    /// once the user has typed the literal phrase NUKE.
+    func performNukeAndQuit() {
+        let result = NukeService.performNuke(model: self)
+        AppLog.shared.warn("NUKE result: \(result.summary)", category: "Nuke")
+        NukeService.terminate(after: 0.5)
+    }
+
+    // MARK: - Slash command helpers
+
+    /// `/font + - reset | <ptsize> | family <name>`
+    private func handleFontCommand(rest: String, on conn: IRCConnection) {
+        let trimmed = rest.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else {
+            conn.appendInfoOnSelected(
+                "Font: \(settings.settings.chatFontFamily.rawValue) @ \(Int(settings.settings.chatFontSize))pt. " +
+                "Usage: /font + | - | reset | <pt> | family <name>")
+            return
+        }
+        if trimmed == "+" {
+            settings.settings.chatFontSize = min(28, settings.settings.chatFontSize + 1)
+        } else if trimmed == "-" {
+            settings.settings.chatFontSize = max(8, settings.settings.chatFontSize - 1)
+        } else if trimmed.lowercased() == "reset" {
+            settings.settings.chatFontSize = 13
+        } else if let pt = Double(trimmed) {
+            settings.settings.chatFontSize = max(8, min(28, pt))
+        } else if trimmed.lowercased().hasPrefix("family ") {
+            let name = String(trimmed.dropFirst("family ".count)).trimmingCharacters(in: .whitespaces)
+            if let fam = ChatFontFamily.allCases.first(where: { $0.rawValue.lowercased() == name.lowercased() }) {
+                settings.settings.chatFontFamily = fam
+            } else {
+                conn.appendInfoOnSelected("Unknown font family. Choices: " +
+                    ChatFontFamily.allCases.map { $0.rawValue }.joined(separator: ", "))
+                return
+            }
+        } else {
+            conn.appendInfoOnSelected("Usage: /font + | - | reset | <pt> | family <name>")
+            return
+        }
+        conn.appendInfoOnSelected("Font: \(settings.settings.chatFontFamily.rawValue) @ \(Int(settings.settings.chatFontSize))pt")
+    }
+
+    /// `/zoom + - reset | <multiplier>`
+    private func handleZoomCommand(rest: String, on conn: IRCConnection) {
+        let trimmed = rest.trimmingCharacters(in: .whitespaces).lowercased()
+        var z = settings.settings.viewZoom
+        switch trimmed {
+        case "":      conn.appendInfoOnSelected("Zoom: \(String(format: "%.2f", z))×. Usage: /zoom + | - | reset | <0.5–2.0>"); return
+        case "+":     z = min(2.0, z + 0.1)
+        case "-":     z = max(0.5, z - 0.1)
+        case "reset": z = 1.0
+        default:
+            guard let v = Double(trimmed) else {
+                conn.appendInfoOnSelected("Usage: /zoom + | - | reset | <0.5–2.0>")
+                return
+            }
+            z = max(0.5, min(2.0, v))
+        }
+        settings.settings.viewZoom = z
+        conn.appendInfoOnSelected(String(format: "Zoom: %.2f×", z))
+    }
+
+    /// `/timestamp on | off | <DateFormatter pattern>`
+    private func handleTimestampCommand(rest: String, on conn: IRCConnection) {
+        let trimmed = rest.trimmingCharacters(in: .whitespaces)
+        switch trimmed.lowercased() {
+        case "":
+            conn.appendInfoOnSelected("Timestamp: \"\(settings.settings.timestampFormat)\". Usage: /timestamp on | off | <pattern>")
+        case "off":
+            settings.settings.timestampFormat = ""
+            conn.appendInfoOnSelected("Timestamp hidden.")
+        case "on":
+            settings.settings.timestampFormat = "HH:mm:ss"
+            conn.appendInfoOnSelected("Timestamp: HH:mm:ss")
+        default:
+            settings.settings.timestampFormat = trimmed
+            conn.appendInfoOnSelected("Timestamp: \"\(trimmed)\"")
+        }
+    }
+
+    /// `/export buffer | all`
+    /// Writes plaintext transcripts to ~/Downloads/PurpleIRC export/<timestamp>/.
+    private func handleExportCommand(rest: String, on conn: IRCConnection) {
+        let target = rest.trimmingCharacters(in: .whitespaces).lowercased()
+        let mode: ExportMode
+        switch target {
+        case "", "buffer", "current": mode = .currentBuffer
+        case "all": mode = .allBuffers
+        default:
+            conn.appendInfoOnSelected("Usage: /export buffer | all")
+            return
+        }
+        Task { @MainActor in
+            let url = await exportTranscripts(mode: mode)
+            if let url {
+                conn.appendInfoOnSelected("Export written to \(url.path)")
+            } else {
+                conn.appendInfoOnSelected("Export failed.")
+            }
+        }
+    }
+
+    private enum ExportMode { case currentBuffer, allBuffers }
+
+    private func exportTranscripts(mode: ExportMode) async -> URL? {
+        let stamp = DateFormatter()
+        stamp.dateFormat = "yyyyMMdd_HHmmss"
+        let baseDir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Downloads", isDirectory: true)
+            .appendingPathComponent("PurpleIRC export", isDirectory: true)
+            .appendingPathComponent(stamp.string(from: Date()), isDirectory: true)
+        try? FileManager.default.createDirectory(at: baseDir, withIntermediateDirectories: true)
+
+        let lineFmt = DateFormatter()
+        lineFmt.dateFormat = "yyyy-MM-dd HH:mm:ss"
+
+        func dump(buf: Buffer, network: String) {
+            let body = buf.lines.map { line -> String in
+                "[\(lineFmt.string(from: line.timestamp))] \(line.text)"
+            }.joined(separator: "\n")
+            let safeName = buf.name.replacingOccurrences(of: "/", with: "_")
+            let netSafe = network.replacingOccurrences(of: "/", with: "_")
+            let url = baseDir.appendingPathComponent("\(netSafe)__\(safeName).txt")
+            try? body.write(to: url, atomically: true, encoding: .utf8)
+        }
+
+        switch mode {
+        case .currentBuffer:
+            guard let conn = activeConnection,
+                  let bufID = conn.selectedBufferID,
+                  let buf = conn.buffers.first(where: { $0.id == bufID }) else { return nil }
+            dump(buf: buf, network: conn.displayName)
+        case .allBuffers:
+            for c in connections {
+                for b in c.buffers where !b.lines.isEmpty {
+                    dump(buf: b, network: c.displayName)
+                }
+            }
+        }
+        return baseDir
+    }
+
+    /// `/alias`           — list user aliases
+    /// `/alias name args` — define
+    /// `/alias -name`     — remove
+    private func handleAliasCommand(rest: String, on conn: IRCConnection) {
+        let trimmed = rest.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else {
+            let aliases = settings.settings.userAliases
+            if aliases.isEmpty {
+                conn.appendInfoOnSelected("No user aliases. Usage: /alias <name> <expansion> — or /alias -<name> to remove.")
+            } else {
+                let lines = aliases
+                    .sorted(by: { $0.key < $1.key })
+                    .map { "  /\($0.key) → \($0.value)" }
+                    .joined(separator: "\n")
+                conn.appendInfoOnSelected("User aliases:\n\(lines)")
+            }
+            return
+        }
+        if trimmed.hasPrefix("-") {
+            let name = String(trimmed.dropFirst()).lowercased()
+            if settings.settings.userAliases.removeValue(forKey: name) != nil {
+                conn.appendInfoOnSelected("Removed alias /\(name).")
+            } else {
+                conn.appendInfoOnSelected("No alias /\(name).")
+            }
+            return
+        }
+        let parts = trimmed.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true).map(String.init)
+        guard parts.count == 2 else {
+            conn.appendInfoOnSelected("Usage: /alias <name> <expansion>")
+            return
+        }
+        let name = parts[0].lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let expansion = parts[1]
+        guard !name.isEmpty else {
+            conn.appendInfoOnSelected("Alias name cannot be empty.")
+            return
+        }
+        settings.settings.userAliases[name] = expansion
+        conn.appendInfoOnSelected("Alias /\(name) → \(expansion)")
+    }
+
+    /// `/repeat <n> <command>` — fires the command N times with a small
+    /// inter-fire delay so a server-side flood-throttle doesn't kill the
+    /// connection. Capped at 20 to make accidental loops survivable.
+    private func handleRepeatCommand(rest: String, on conn: IRCConnection) {
+        let parts = rest.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true).map(String.init)
+        guard parts.count == 2, let n = Int(parts[0]), n > 0 else {
+            conn.appendInfoOnSelected("Usage: /repeat <count 1-20> <command>")
+            return
+        }
+        let cap = min(20, n)
+        let cmd = parts[1]
+        Task { @MainActor [weak self] in
+            for _ in 0..<cap {
+                self?.sendInput(cmd)
+                try? await Task.sleep(nanoseconds: 250_000_000) // 250 ms
+            }
+        }
+    }
+
+    /// `/timer <seconds> <command>` — fire-and-forget delayed command,
+    /// capped at 1 hour so a typo can't wedge a stray task forever.
+    private func handleTimerCommand(rest: String, on conn: IRCConnection) {
+        let parts = rest.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true).map(String.init)
+        guard parts.count == 2, let secs = Int(parts[0]), secs > 0 else {
+            conn.appendInfoOnSelected("Usage: /timer <seconds 1-3600> <command>")
+            return
+        }
+        let s = min(3600, secs)
+        let cmd = parts[1]
+        conn.appendInfoOnSelected("Will run in \(s)s: \(cmd)")
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(s) * 1_000_000_000)
+            self?.sendInput(cmd)
+        }
+    }
+
+    /// `/summary [N]` — local-LLM digest of the most recent N lines in
+    /// the active buffer. Stub for now: surfaces a "configure assistant"
+    /// hint when AssistantEngine isn't ready. Full integration lands
+    /// alongside the broader assistant work; the command shape is in
+    /// place so users see it in autocomplete + /help.
+    private func handleSummaryCommand(rest: String, on conn: IRCConnection) {
+        if !settings.settings.assistant.enabled {
+            conn.appendInfoOnSelected("/summary requires the local-LLM assistant. Enable it in Setup → Power-user → Assistant.")
+            return
+        }
+        let n = Int(rest.trimmingCharacters(in: .whitespaces)) ?? 50
+        conn.appendInfoOnSelected("(Summary of last \(n) lines — assistant integration coming soon.)")
+    }
+
+    /// `/translate <lang>` — stub for the same reason as /summary.
+    private func handleTranslateCommand(rest: String, on conn: IRCConnection) {
+        if !settings.settings.assistant.enabled {
+            conn.appendInfoOnSelected("/translate requires the local-LLM assistant. Enable it in Setup → Power-user → Assistant.")
+            return
+        }
+        let target = rest.trimmingCharacters(in: .whitespaces)
+        guard !target.isEmpty else {
+            conn.appendInfoOnSelected("Usage: /translate <language>")
+            return
+        }
+        conn.appendInfoOnSelected("(Translate next message → \(target) — assistant integration coming soon.)")
     }
 
     private func listIgnoreLines() -> String {

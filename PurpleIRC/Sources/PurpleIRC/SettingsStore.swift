@@ -314,12 +314,52 @@ struct SessionSnapshot: Codable, Equatable {
     var selected: String? = nil
 }
 
+/// Density of chat rows. Pure UI knob — no protocol or persistence
+/// implications beyond what the renderer reads at draw time. Switched via
+/// `/density` slash command or the Appearance tab.
+enum ChatDensity: String, Codable, CaseIterable, Identifiable {
+    case compact      // tight rows, minimal vertical padding
+    case cozy         // default — modest breathing room
+    case comfortable  // generous padding for readability
+    var id: String { rawValue }
+    var displayName: String {
+        switch self {
+        case .compact:     return "Compact"
+        case .cozy:        return "Cozy"
+        case .comfortable: return "Comfortable"
+        }
+    }
+    /// Vertical padding multiplier the BufferView applies to chat rows.
+    var rowPadding: CGFloat {
+        switch self {
+        case .compact:     return 1
+        case .cozy:        return 3
+        case .comfortable: return 6
+        }
+    }
+}
+
 struct AppSettings: Codable {
     var servers: [ServerProfile] = ServerProfile.defaultServers()
     var addressBook: [AddressEntry] = []
     var savedChannels: [SavedChannel] = []
     var ignoreList: [IgnoreEntry] = []
     var selectedServerID: UUID?
+
+    /// User-defined `/alias <name> <expansion>` entries. Looked up in
+    /// `ChatModel.sendInput` before built-in commands so user shortcuts
+    /// can shadow them. Plain dictionary on disk; not encrypted beyond
+    /// the surrounding settings envelope.
+    var userAliases: [String: String] = [:]
+
+    /// Chat-row density. Switched live by `/density` or in Appearance.
+    var chatDensity: ChatDensity = .cozy
+
+    /// Whole-buffer text zoom multiplier (`/zoom + - reset`). Multiplies
+    /// the configured chat font size — kept separate so the setting in
+    /// the Appearance tab stays the user's "real" preference and zoom
+    /// is treated as an ephemeral lens.
+    var viewZoom: Double = 1.0
 
     // Watchlist / highlight alert channels
     var playSoundOnWatchHit: Bool = true
