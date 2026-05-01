@@ -50,6 +50,12 @@ final class WatchlistService: ObservableObject {
     private var serverMonitorLimit: Int = 0
     private var isonTimer: Timer?
     private var seenInChannel: Set<String> = []
+    /// Per-nick last-alert timestamp for short-window dedupe across the
+    /// MONITOR / ISON / observed-activity sources. Without this, a watched
+    /// user's PRIVMSG firing handleObservedActivity at roughly the same
+    /// instant a poll cycle returns ISON for them produces two banners.
+    private var lastAlertAt: [String: Date] = [:]
+    private static let alertDedupeWindow: TimeInterval = 3.0
 
     init() {
         requestAuth()
@@ -209,7 +215,24 @@ final class WatchlistService: ObservableObject {
     }
 
     private func fireOnlineAlert(nick: String, source: String) {
-        let hit = WatchHit(nick: nick, source: source, timestamp: Date())
+        // Short-window dedupe across MONITOR / ISON / PRIVMSG sources so a
+        // single sighting that simultaneously trips two paths produces one
+        // banner, not two. Manual test alerts skip the gate by design so
+        // users can verify notification permission repeatedly.
+        let key = nick.lowercased()
+        let now = Date()
+        if source != "manual test",
+           let last = lastAlertAt[key],
+           now.timeIntervalSince(last) < Self.alertDedupeWindow {
+            return
+        }
+        lastAlertAt[key] = now
+        if lastAlertAt.count > 256 {
+            let cutoff = now.addingTimeInterval(-Self.alertDedupeWindow * 4)
+            lastAlertAt = lastAlertAt.filter { $0.value > cutoff }
+        }
+
+        let hit = WatchHit(nick: nick, source: source, timestamp: now)
         recentHits.insert(hit, at: 0)
         if recentHits.count > 25 { recentHits.removeLast(recentHits.count - 25) }
 
@@ -219,7 +242,7 @@ final class WatchlistService: ObservableObject {
             title: "\(nick) is online",
             subtitle: "PurpleIRC watchlist",
             body: "Spotted \(nick) via \(source)",
-            identifier: "watch-\(nick)-\(Int(Date().timeIntervalSince1970))"
+            identifier: "watch-\(nick)-\(Int(now.timeIntervalSince1970))"
         )
     }
 

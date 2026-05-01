@@ -194,8 +194,7 @@ final class SASLNegotiator {
             let account = config.saslAccount.isEmpty ? config.nick : config.saslAccount
             let payload = "\(account)\0\(account)\0\(config.saslPassword)"
             let b64 = Data(payload.utf8).base64EncodedString()
-            // PLAIN payloads below 400 bytes fit in a single AUTHENTICATE line.
-            return [b64.isEmpty ? "AUTHENTICATE +" : "AUTHENTICATE \(b64)"]
+            return Self.chunkedAuthenticate(b64)
 
         case .external:
             return ["AUTHENTICATE +"]
@@ -204,5 +203,30 @@ final class SASLNegotiator {
             phase = .done
             return ["CAP END"]
         }
+    }
+
+    /// Split a SASL payload across 400-byte AUTHENTICATE lines per IRCv3 SASL.
+    /// A payload that's an exact multiple of 400 bytes — including 0 — gets a
+    /// trailing `AUTHENTICATE +` to signal "no more chunks coming." A short
+    /// payload (1–399 bytes) fits in a single line and needs no terminator.
+    static func chunkedAuthenticate(_ b64: String) -> [String] {
+        guard !b64.isEmpty else { return ["AUTHENTICATE +"] }
+        let chunkSize = 400
+        if b64.count < chunkSize {
+            return ["AUTHENTICATE \(b64)"]
+        }
+        var lines: [String] = []
+        var idx = b64.startIndex
+        while idx < b64.endIndex {
+            let end = b64.index(idx, offsetBy: chunkSize, limitedBy: b64.endIndex) ?? b64.endIndex
+            lines.append("AUTHENTICATE \(b64[idx..<end])")
+            idx = end
+        }
+        // Per spec: payloads that are an exact multiple of 400 bytes need a
+        // trailing `AUTHENTICATE +` so the server knows the message is done.
+        if b64.count % chunkSize == 0 {
+            lines.append("AUTHENTICATE +")
+        }
+        return lines
     }
 }

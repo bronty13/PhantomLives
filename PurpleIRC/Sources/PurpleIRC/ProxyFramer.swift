@@ -195,6 +195,13 @@ final class ProxyFramer: NWProtocolFramerImplementation {
             case .httpConnectSent:
                 let data = Data(accumulator)
                 guard let range = data.range(of: Data([0x0D, 0x0A, 0x0D, 0x0A])) else {
+                    // Cap header size to defend against an unbounded proxy
+                    // response — a hostile proxy could otherwise feed bytes
+                    // forever and grow `accumulator`.
+                    if accumulator.count > 16 * 1024 {
+                        fail(framer, "HTTP CONNECT: response header exceeded 16 KiB")
+                        return 0
+                    }
                     return 1 // need at least more bytes
                 }
                 let headerEnd = range.upperBound
@@ -204,9 +211,29 @@ final class ProxyFramer: NWProtocolFramerImplementation {
                     .split(separator: "\r\n", maxSplits: 1, omittingEmptySubsequences: false)
                     .first.map(String.init) ?? ""
                 let parts = firstLine.split(separator: " ", maxSplits: 2).map(String.init)
-                guard parts.count >= 2, parts[1] == "200" else {
+                // Require an HTTP/1.x version line and an exact "200" status.
+                // Some proxies will return chunked or extended status lines;
+                // treat anything but a strict 2xx as a hard fail rather than
+                // letting non-tunnel bytes pretend to be application data.
+                guard parts.count >= 2,
+                      parts[0].uppercased().hasPrefix("HTTP/1."),
+                      parts[1] == "200" else {
                     fail(framer, "HTTP CONNECT rejected: \(firstLine)")
                     return 0
+                }
+                // Successful CONNECT responses MUST NOT include a body, but
+                // a sloppy / hostile proxy might send one anyway. A non-zero
+                // Content-Length header advertises body bytes that would be
+                // mistaken for tunnel data — refuse it.
+                let lower = header.lowercased()
+                if let clRange = lower.range(of: "\r\ncontent-length:") {
+                    let after = lower[clRange.upperBound...]
+                    let value = after.prefix(while: { $0 != "\r" && $0 != "\n" })
+                        .trimmingCharacters(in: .whitespaces)
+                    if let n = Int(value), n != 0 {
+                        fail(framer, "HTTP CONNECT: proxy returned a body (Content-Length: \(n))")
+                        return 0
+                    }
                 }
                 phase = .ready
                 framer.markReady()

@@ -28,7 +28,8 @@ activate correctly when launched from the `.app` bundle (SwiftUI's
 - **SASL PLAIN / EXTERNAL** via CAP LS 302, plus **NickServ IDENTIFY** fallback
 - **Perform-on-connect** lines (raw IRC or slash commands, per server profile)
 - **Auto-reconnect** with exponential backoff when the connection drops
-- Automatic `PING`/`PONG`, `433` nick-collision retry, `001` welcome handling
+- Automatic `PING`/`PONG`, bounded `433` nick-collision retry (4 fallback
+  attempts before surfacing an error), `001` welcome handling
 - Channels, private messages (queries), server log buffer
 - JOIN / PART / QUIT / NICK / TOPIC / NAMES tracking with a live user list
 - Slash commands: `/join`, `/part`, `/msg`, `/me`, `/nick`, `/topic`,
@@ -38,6 +39,25 @@ activate correctly when launched from the `.app` bundle (SwiftUI's
 - **Own-nick highlight**: messages mentioning your nick are tinted orange,
   marked with `@`, and fire the same sound / banner / dock-bounce alerts
   used for the watchlist
+
+### Security posture
+
+- **Credentials are masked in the raw IRC log and the in-app debug log.**
+  `PASS …`, `AUTHENTICATE …` (control markers `+`/`*` preserved), and
+  `PRIVMSG NickServ :IDENTIFY [acct] …` all render as `****` in the
+  viewer. The bytes on the wire are unchanged.
+- **Outbound IRC lines are scrubbed for CR / LF / NUL** at every API
+  boundary (slash commands, AppleScript, PurpleBot scripts) and again
+  at the wire seam. A multi-line PRIVMSG body is collapsed into one
+  line rather than smuggling a second IRC command.
+- **Settings, logs, the keystore, and PurpleBot scripts are written
+  with owner-only POSIX perms (`0600`).** When the user has set up a
+  passphrase, every persistence file is also AES-256-GCM sealed with
+  a per-install DEK.
+- **DCC listener binds to the IP it advertises**, not `0.0.0.0`,
+  so a peer on the same LAN can't race the legitimate recipient
+  to grab the file. Passive (reverse) DCC is still on the roadmap
+  for full NAT-friendly transfers — see HANDOFF.md.
 
 ### Setup window (⌘,)
 

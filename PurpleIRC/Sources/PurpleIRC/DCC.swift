@@ -183,18 +183,20 @@ final class DCCService: ObservableObject {
         )
         transfers.insert(t, at: 0)
 
-        guard let (listener, port) = createListener() else {
+        // Resolve the address we'll advertise BEFORE binding the listener so
+        // we can bind to that specific interface — listening on the wildcard
+        // 0.0.0.0 would let any host that can reach the port race the peer.
+        guard let ipString = resolveExternalIP() else {
+            t.state = .failed("No external IP — set one in Setup ▸ Behavior ▸ DCC.")
+            return
+        }
+        guard let (listener, port) = createListener(bindHost: ipString) else {
             t.state = .failed("No available port in DCC range")
             return
         }
         t.listener = listener
         startSendListener(transfer: t, listener: listener)
 
-        guard let ipString = resolveExternalIP() else {
-            t.state = .failed("No external IP — set one in Setup ▸ Behavior ▸ DCC.")
-            listener.cancel()
-            return
-        }
         let ipInt = ipv4StringToInt(ipString)
         let safeName = fileURL.lastPathComponent.replacingOccurrences(of: " ", with: "_")
         let cmd = "DCC SEND \(safeName) \(ipInt) \(port) \(size)"
@@ -207,18 +209,17 @@ final class DCCService: ObservableObject {
         let c = DCCChatSession(direction: .sending, peerNick: nick, state: .listening)
         chats.insert(c, at: 0)
 
-        guard let (listener, port) = createListener() else {
+        guard let ipString = resolveExternalIP() else {
+            c.state = .failed("No external IP — set one in Setup ▸ Behavior ▸ DCC.")
+            return
+        }
+        guard let (listener, port) = createListener(bindHost: ipString) else {
             c.state = .failed("No available port in DCC range")
             return
         }
         c.listener = listener
         startChatListener(session: c, listener: listener)
 
-        guard let ipString = resolveExternalIP() else {
-            c.state = .failed("No external IP — set one in Setup ▸ Behavior ▸ DCC.")
-            listener.cancel()
-            return
-        }
         let ipInt = ipv4StringToInt(ipString)
         let cmd = "DCC CHAT chat \(ipInt) \(port)"
         connection.sendRaw("PRIVMSG \(nick) :\u{01}\(cmd)\u{01}")
@@ -344,11 +345,29 @@ final class DCCService: ObservableObject {
 
     // MARK: - Listener plumbing
 
-    private func createListener() -> (NWListener, UInt16)? {
-        let params = NWParameters.tcp
-        params.allowLocalEndpointReuse = true
+    private func createListener(bindHost: String) -> (NWListener, UInt16)? {
+        // Bind to the specific advertised IP so we don't accept connections
+        // on every interface. Failing that (interface not present, IP not
+        // resolvable), fall back to wildcard so DCC still works on hosts
+        // whose advertised address isn't the bind address (NAT, manual
+        // override). Wildcard remains a known footgun documented in HANDOFF.
         for p in portRangeStart...portRangeEnd {
             guard let port = NWEndpoint.Port(rawValue: UInt16(p)) else { continue }
+            let params = NWParameters.tcp
+            params.allowLocalEndpointReuse = true
+            params.requiredLocalEndpoint = NWEndpoint.hostPort(
+                host: NWEndpoint.Host(bindHost), port: port
+            )
+            if let listener = try? NWListener(using: params, on: port) {
+                return (listener, UInt16(p))
+            }
+        }
+        // Last-ditch wildcard fallback (LAN-only setups where bind to a
+        // public-facing IP is denied by the OS).
+        for p in portRangeStart...portRangeEnd {
+            guard let port = NWEndpoint.Port(rawValue: UInt16(p)) else { continue }
+            let params = NWParameters.tcp
+            params.allowLocalEndpointReuse = true
             if let listener = try? NWListener(using: params, on: port) {
                 return (listener, UInt16(p))
             }
@@ -587,11 +606,31 @@ final class DCCService: ObservableObject {
     }
 
     private func sanitizeFilename(_ s: String) -> String {
-        let stripped = s
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "\\", with: "_")
-            .replacingOccurrences(of: "..", with: "_")
-        return stripped.isEmpty ? "dcc-file" : stripped
+        // Strip every character class an attacker could use to escape the
+        // intended filename: directory separators, NUL, control bytes, and
+        // a literal `..` segment that would survive Unicode round-trips.
+        var cleaned = String(s.unicodeScalars.map { sc -> Character in
+            if sc.value < 0x20 || sc.value == 0x7F { return "_" }
+            switch sc {
+            case "/", "\\", ":": return "_"
+            default: return Character(sc)
+            }
+        })
+        cleaned = cleaned.replacingOccurrences(of: "..", with: "_")
+        // Take only the last path component in case the platform's URL
+        // construction would still split on a remaining separator we missed.
+        let lastComponent = (cleaned as NSString).lastPathComponent
+        // Trim leading dots (hidden files) and surrounding whitespace; reject
+        // names that collapse to empty or to dot-only strings.
+        let trimmed = lastComponent
+            .trimmingCharacters(in: .whitespaces)
+            .drop(while: { $0 == "." })
+        let final = String(trimmed)
+        if final.isEmpty || final.allSatisfy({ $0 == "." || $0 == "_" }) {
+            return "dcc-file"
+        }
+        // Cap length so a 64KB filename can't blow up downstream UI.
+        return String(final.prefix(255))
     }
 
     private func formatBytes(_ n: UInt64) -> String {

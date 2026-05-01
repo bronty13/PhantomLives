@@ -73,6 +73,15 @@ enum EncryptedJSON {
         }
         let bytes = try wrap(plain, key: key)
         try bytes.write(to: url, options: .atomic)
+        // Tighten POSIX perms on the at-rest file to owner-only. The
+        // contents are already sealed with AES-GCM when `key != nil`, but
+        // restricting world/group read is cheap defence-in-depth and also
+        // protects unencrypted-mode users (whose JSON would otherwise
+        // inherit the user's umask, typically 0644).
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: url.path
+        )
         return .wrote
     }
 }

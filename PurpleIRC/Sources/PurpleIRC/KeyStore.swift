@@ -66,8 +66,12 @@ final class KeyStore: ObservableObject {
 
     init(supportDirectoryURL: URL) {
         self.fileURL = supportDirectoryURL.appendingPathComponent("keystore.json")
+        // Full SHA-256 hex of the support-directory path. Truncating to
+        // 48 bits added no value and made colliding-path attacks plausible
+        // (2^24 expected attempts) — there's no length pressure on the
+        // Keychain account name.
         let pathHash = SHA256.hash(data: Data(supportDirectoryURL.path.utf8))
-            .prefix(6).map { String(format: "%02x", $0) }.joined()
+            .map { String(format: "%02x", $0) }.joined()
         self.keychainDEKAccount = "dek-v1-\(pathHash)"
         refreshState()
     }
@@ -211,6 +215,12 @@ final class KeyStore: ObservableObject {
         enc.outputFormatting = [.sortedKeys]
         let data = try enc.encode(env)
         try data.write(to: fileURL, options: .atomic)
+        // Owner-only perms — the wrapped DEK is useless without the
+        // passphrase, but tightening the file mode is cheap defence.
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: fileURL.path
+        )
     }
 
     private func loadEnvelope() throws -> Envelope {

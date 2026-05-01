@@ -46,6 +46,10 @@ struct IRCMessage {
     static func parse(_ line: String) -> IRCMessage? {
         var rest = line.trimmingCharacters(in: .newlines)
         if rest.isEmpty { return nil }
+        // Reject lines containing NUL (forbidden by RFC 1459) so a server
+        // can't smuggle binary garbage into nick / channel / target fields
+        // that downstream code uses as buffer keys or file slugs.
+        if rest.contains("\0") { return nil }
 
         // IRCv3 message tags — leading "@k1=v1;k2=v2 ".
         var tags: [String: String] = [:]
@@ -119,7 +123,11 @@ struct IRCMessage {
             case "n"?:  out.append("\n")
             case "\\"?: out.append("\\")
             case let other?: out.append(other)
-            case nil:   break // dangling backslash — drop it
+            case nil:
+                // Dangling backslash: malformed per IRCv3 but preserve it
+                // so debugging a buggy server doesn't have to guess where
+                // the value got truncated.
+                out.append("\\")
             }
         }
         return out
@@ -135,4 +143,56 @@ struct IRCMessage {
         f.formatOptions = [.withInternetDateTime]
         return f
     }()
+}
+
+/// IRC line / field sanitization. Outbound lines must not contain CR, LF, or
+/// NUL — those are protocol terminators and any user-controlled string that
+/// ends up in a PRIVMSG, NOTICE, JOIN, channel name, or topic must be
+/// scrubbed before it's interpolated into the wire format.
+enum IRCSanitize {
+    /// Strip CR / LF / NUL from a single field (nick, channel, target, body).
+    /// Use at API boundaries that take user/script input *before* assembling
+    /// the IRC line. This collapses a multi-line `text` into a single line
+    /// rather than silently truncating it at the first newline.
+    static func field(_ s: String) -> String {
+        guard s.contains(where: { $0 == "\r" || $0 == "\n" || $0 == "\0" }) else { return s }
+        return String(s.unicodeScalars.filter { $0 != "\r" && $0 != "\n" && $0 != "\0" })
+    }
+
+    /// Strip CR / LF / NUL from a fully-assembled IRC line. Defence-in-depth
+    /// at the wire seam — every send() path runs through this so a missed
+    /// callsite can't smuggle a second command.
+    static func line(_ s: String) -> String { field(s) }
+
+    /// Mask credentials in a raw IRC line for *display / log* purposes only.
+    /// Recognises the three credential-bearing patterns we send:
+    ///   - `PRIVMSG NickServ :IDENTIFY <pw>` (and `IDENTIFY <acct> <pw>`)
+    ///   - `PASS <pw>` (server password, sent before NICK/USER)
+    ///   - `AUTHENTICATE <base64>` (SASL — non-control payloads)
+    /// The wire send is left untouched. Returns the input unchanged when
+    /// no credential pattern matches.
+    static func maskForDisplay(_ line: String) -> String {
+        if let r = line.range(of: #"^PASS\s+\S.*$"#,
+                              options: [.regularExpression, .caseInsensitive]) {
+            return line.replacingCharacters(in: r, with: "PASS ****")
+        }
+        if let r = line.range(of: #"^AUTHENTICATE\s+\S+"#,
+                              options: [.regularExpression, .caseInsensitive]) {
+            // Leave control markers (+, *) visible — they carry no secret.
+            let payload = line[r].split(separator: " ", maxSplits: 1)
+                .last.map(String.init) ?? ""
+            if payload == "+" || payload == "*" { return line }
+            return line.replacingCharacters(in: r, with: "AUTHENTICATE ****")
+        }
+        // PRIVMSG NickServ :IDENTIFY [acct] pass — match outbound (no prefix)
+        // and the inbound echo (`:nick!user@host PRIVMSG NickServ :IDENTIFY ...`)
+        // both. The regex looks for the verb anywhere on the line so the
+        // optional `:prefix ` part doesn't hide the secret in echo-message.
+        if line.range(of: #"(?i)PRIVMSG\s+NickServ\s+:IDENTIFY\s+.+$"#,
+                      options: .regularExpression) != nil,
+           let identifyEnd = line.range(of: "IDENTIFY", options: .caseInsensitive)?.upperBound {
+            return String(line[..<identifyEnd]) + " ****"
+        }
+        return line
+    }
 }

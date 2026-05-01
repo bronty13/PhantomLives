@@ -126,6 +126,9 @@ struct Buffer: Identifiable, Equatable {
     var userModes: [String: Set<Character>] = [:]
     var topic: String = ""
     var unread: Int = 0
+    /// True once we've emitted the "scrollback truncated" notice. Reset never
+    /// — once a buffer hits the cap the user has been told; we don't repeat.
+    var truncationNoticeShown: Bool = false
 
     enum Kind: Equatable {
         case server
@@ -180,10 +183,28 @@ extension Buffer {
 }
 
 extension Buffer {
+    /// Maximum scrollback retained per buffer. Older lines are dropped from
+    /// the head when this limit is exceeded; a one-shot info notice flags
+    /// the first occurrence so a busy channel's scrollback isn't silently
+    /// truncated.
+    static let maxScrollbackLines = 5000
+
     mutating func appendLine(_ l: ChatLine) {
         lines.append(l)
-        if lines.count > 5000 {
-            lines.removeFirst(lines.count - 5000)
+        if lines.count > Self.maxScrollbackLines {
+            // Show the truncation notice exactly once per buffer — far less
+            // noisy than re-emitting it on every overflow, and enough for
+            // the user to know history is being shed.
+            if !truncationNoticeShown {
+                truncationNoticeShown = true
+                let notice = ChatLine(
+                    timestamp: Date(),
+                    kind: .info,
+                    text: "— Scrollback exceeded \(Self.maxScrollbackLines) lines; older history is being trimmed —"
+                )
+                lines.append(notice)
+            }
+            lines.removeFirst(lines.count - Self.maxScrollbackLines)
         }
     }
 

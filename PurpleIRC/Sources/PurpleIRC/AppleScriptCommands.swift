@@ -80,10 +80,12 @@ final class PurpleDisconnectCommand: NSScriptCommand {
 final class PurpleSendMessageCommand: NSScriptCommand {
     override func performDefaultImplementation() -> Any? {
         guard let host = chatHost() else { return "PurpleIRC not ready." }
-        let body = directParameter as? String ?? ""
-        guard let target = evaluatedArguments?["target"] as? String, !target.isEmpty else {
+        let body = IRCSanitize.field(directParameter as? String ?? "")
+        guard let rawTarget = evaluatedArguments?["target"] as? String else {
             return "Missing target — use `to \"#channel\"` or `to \"nick\"`."
         }
+        let target = IRCSanitize.field(rawTarget)
+        guard !target.isEmpty else { return "Invalid target." }
         guard !body.isEmpty else { return "Empty message body." }
         MainActor.assumeIsolated {
             host.sendInput("/msg \(target) \(body)")
@@ -96,7 +98,7 @@ final class PurpleSendMessageCommand: NSScriptCommand {
 final class PurpleJoinCommand: NSScriptCommand {
     override func performDefaultImplementation() -> Any? {
         guard let host = chatHost() else { return "PurpleIRC not ready." }
-        let chan = (directParameter as? String) ?? ""
+        let chan = IRCSanitize.field((directParameter as? String) ?? "")
         guard !chan.isEmpty else { return "Empty channel name." }
         let normalized = chan.hasPrefix("#") ? chan : "#" + chan
         MainActor.assumeIsolated {
@@ -110,9 +112,9 @@ final class PurpleJoinCommand: NSScriptCommand {
 final class PurplePartCommand: NSScriptCommand {
     override func performDefaultImplementation() -> Any? {
         guard let host = chatHost() else { return "PurpleIRC not ready." }
-        let chan = (directParameter as? String) ?? ""
+        let chan = IRCSanitize.field((directParameter as? String) ?? "")
         guard !chan.isEmpty else { return "Empty channel name." }
-        let reason = evaluatedArguments?["reason"] as? String
+        let reason = (evaluatedArguments?["reason"] as? String).map(IRCSanitize.field)
         let line: String
         if let reason, !reason.isEmpty {
             line = "/part \(chan) \(reason)"
@@ -139,7 +141,7 @@ final class PurpleCurrentNickCommand: NSScriptCommand {
 final class PurpleSayCommand: NSScriptCommand {
     override func performDefaultImplementation() -> Any? {
         guard let host = chatHost() else { return "PurpleIRC not ready." }
-        let body = (directParameter as? String) ?? ""
+        let body = IRCSanitize.field((directParameter as? String) ?? "")
         guard !body.isEmpty else { return "Empty message body." }
         MainActor.assumeIsolated {
             host.sendInput(body)

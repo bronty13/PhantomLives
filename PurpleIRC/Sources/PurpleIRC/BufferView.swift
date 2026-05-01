@@ -338,6 +338,9 @@ struct BufferView: View {
         findQuery = ""
         findMatchIDs = []
         findMatchCursor = 0
+        // Hand focus back to the message box so the user can keep typing
+        // instead of being stranded with no first-responder.
+        refocusInput()
     }
 
     private func recomputeFindMatches() {
@@ -650,6 +653,22 @@ struct BufferView: View {
             for: NSWindow.didBecomeKeyNotification)) { _ in
             refocusInput()
         }
+        // Sheet dismissal doesn't fire didBecomeKey (the same window stays
+        // key), so observe each modal flag and refocus when it transitions
+        // back to false. Without this, dismissing Setup / Help / Watchlist
+        // / DCC / Channel List / Seen / Raw Log / App Log / Chat Logs
+        // leaves no first-responder, and the user has to click the input
+        // box before they can type again.
+        .onChange(of: model.showSetup)        { _, n in if !n { refocusInput() } }
+        .onChange(of: model.showHelp)         { _, n in if !n { refocusInput() } }
+        .onChange(of: model.showWatchlist)    { _, n in if !n { refocusInput() } }
+        .onChange(of: model.showDCC)          { _, n in if !n { refocusInput() } }
+        .onChange(of: model.showChannelList)  { _, n in if !n { refocusInput() } }
+        .onChange(of: model.showSeenList)     { _, n in if !n { refocusInput() } }
+        .onChange(of: model.showRawLog)       { _, n in if !n { refocusInput() } }
+        .onChange(of: model.showAppLog)       { _, n in if !n { refocusInput() } }
+        .onChange(of: model.showChatLogs)     { _, n in if !n { refocusInput() } }
+        .onChange(of: showingMultilineEditor) { _, n in if !n { refocusInput() } }
         .confirmationDialog(
             "Paste \(multilineLineCount) lines?",
             isPresented: Binding(

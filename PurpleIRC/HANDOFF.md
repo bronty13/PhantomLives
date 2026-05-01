@@ -2,7 +2,8 @@
 
 Snapshot of where the project stands so a future session (human or AI)
 can pick up without re-deriving everything from the commit history.
-Last updated: 2026-04-25, at commit `08e85bd`.
+Last updated: 2026-05-01, after the 1.0.92 security & robustness pass
+plus a "Future direction ideas" capture.
 
 ## What it is
 
@@ -14,7 +15,7 @@ loads, etc.).
 ```
 swift build                        # debug build
 ./build-app.sh                     # release build → PurpleIRC.app
-./run-tests.sh                     # 83 tests via swift-testing
+./run-tests.sh                     # 164 tests via swift-testing
 open PurpleIRC.app
 ```
 
@@ -61,6 +62,147 @@ stream across every connection, UUID-tagged so listeners can scope.
 | 6 | UX polish + appearance                     | Done       | `330dc50` / `4fa8501` / `cf9d37d` |
 | 7 | IRCv3 modernization + bigger features      | Done       | `3715298` / `08e85bd` / `d457cf8` |
 | 8 | Multi-network UX                           | Done       | `d457cf8` / `567a7e7` |
+| 9 | Security & robustness pass                 | Done       | `1.0.92` |
+
+## Security & robustness pass (1.0.92, 2026-04-30)
+
+Driven by a two-agent code review (security-only + bugs/correctness).
+Full per-finding writeup is in `CHANGELOG.md`; the highlights worth a
+future-session brief:
+
+### New invariants
+
+- **Every outbound IRC line passes through `IRCSanitize`.** Wire-seam
+  scrub in `IRCClient.send` / `sendSync`; field-level scrub at every
+  script API and AppleScript verb. Any path that builds an IRC line
+  from user/script input must use `IRCSanitize.field(_)` on each
+  field — assume the wire layer is the **last** line of defence,
+  not the only one.
+- **Credentials never appear in logs.** `IRCSanitize.maskForDisplay`
+  rewrites `PASS`, `AUTHENTICATE` (preserving `+` / `*` control
+  markers), and `PRIVMSG NickServ :IDENTIFY [acct] pw` for both
+  outbound and inbound (echo-message) raw-log paths. New code that
+  logs a full IRC line should run it through this helper.
+- **DCC listener binds to the advertised IP**, not `0.0.0.0`. The
+  bind host is resolved (override or `primaryIPv4()`) **before** the
+  `NWListener` is created. `createListener(bindHost:)` retries the
+  port range with `requiredLocalEndpoint` set; only when every
+  bind fails does it fall back to wildcard.
+- **Encrypted-at-rest files written with `0600`.** `EncryptedJSON
+  .safeWrite` and `KeyStore.persist` set owner-only POSIX perms after
+  the atomic write. New stores using `safeWrite` inherit this for
+  free.
+- **PurpleBot scripts carry a SHA-256 `contentHash`.** Captured at
+  `writeScript` time, verified at `scriptSource(_)` load. A nil
+  hash is grandfathered for legacy scripts; verification failure
+  surfaces in the bot log, not the JSContext. Editing a script via
+  the Setup UI re-stamps the hash automatically.
+- **`IRCMessage.parse` rejects lines containing NUL.** Server input
+  with embedded `\0` is dropped at the parser, not propagated into
+  buffer keys / file slugs.
+
+### Behaviour changes worth knowing
+
+- **Reconnect Task re-validates state inside `MainActor.run`.** It
+  captures `connID = id` before sleep and re-checks `Task.isCancelled`,
+  `userInitiatedDisconnect`, `state == .connecting/.connected`, and
+  identity match. If you add another path that sets
+  `userInitiatedDisconnect`, also `reconnectTask?.cancel()` (already
+  done in `disconnect()` and the new 433-exhaust path).
+- **433 nick collision capped at 4 retries** (`maxNickCollisionRetries`),
+  reset on `001` and on each `connect()`. The retry now also writes
+  the new candidate back into `self.nick` so subsequent retries
+  diverge from the right baseline. After exhaustion the connection
+  marks `userInitiatedDisconnect = true` and disconnects — so the
+  reconnect path doesn't loop on the failure.
+- **Watchlist alert dedupe** uses a 3 s `lastAlertAt[nickKey]` window
+  shared across MONITOR / ISON / PRIVMSG / JOIN paths. Manual test
+  alerts bypass the gate intentionally.
+- **`lastAwayReplyAt` is bounded.** Once it grows past 1024 entries,
+  rows older than the throttle window are pruned. This is the only
+  unbounded per-nick dict left in the connection — no other path
+  accumulates one entry per unique sender.
+- **Restore-buffer selection is hook-driven, not timer-driven.** The
+  desired buffer name lives in `pendingRestoreSelectName` and
+  `indexOfOrCreateBuffer{,Tracked}` calls
+  `applyPendingRestoreSelectionIfMatches` on every create / lookup.
+  No more 800 ms `Task.sleep` window; no more blank pane on slow
+  JOIN replies.
+- **`closeBuffer` chooses the next selection BEFORE mutating the
+  array** — no more one-frame placeholder render.
+- **BATCH bracket safety:** `openBatches` capped at 256 entries
+  (warns + evicts oldest), duplicate `+id` warns, dict cleared on
+  disconnect / failed (along with `chatHistoryFetched`). Orphan
+  `-id` is silently dropped — flaky links produce them and there's
+  nothing actionable to do.
+- **Buffer scrollback (`Buffer.maxScrollbackLines = 5000`) emits a
+  one-shot info line on first overflow.** New per-buffer flag
+  `truncationNoticeShown` — don't reset it inside `appendLine`.
+- **Sheet dismissal refocuses the message box.** `BufferView` now
+  `.onChange(of:)` every `model.show*` flag plus the local
+  `showingMultilineEditor` and refocuses on `false`. Closing the
+  Find bar does the same.
+
+### Sharp edges added this round
+
+- **`IRCSanitize.field` collapses multi-line strings, it does not
+  preserve line structure.** A `text` like `"first\nsecond"` becomes
+  `"firstsecond"`, not two PRIVMSGs. That's intentional — multi-line
+  PRIVMSG isn't a thing in legacy IRC, and the multi-line paste
+  sheet is the right path for that intent. Don't try to "fix" the
+  collapse by inserting spaces or splitting; the sanitizer must
+  produce a single line for the wire.
+- **`IRCSanitize.maskForDisplay` mutates display only.** Never call
+  it on a string that's about to be sent. The wire path uses the
+  unmasked line; only `onRaw` callbacks see the masked version.
+- **PurpleBot script `contentHash` is `Optional<String>` for
+  back-compat.** Adding a SHA verification step that requires the
+  hash to be non-nil would lock out every script written before
+  this round. If you ever want to enforce strictness, do it behind
+  a Setting toggle so users can opt in once they've re-saved their
+  scripts.
+- **The `IRCMessage` parser drops NUL-containing lines silently.**
+  If you're chasing a "messages disappearing" report, check whether
+  the server is sending control bytes mid-payload before assuming
+  a logic bug.
+
+### File-by-file touch list (this round)
+
+```
+Sources/PurpleIRC/
+  IRCMessage.swift        + IRCSanitize enum (field/line/maskForDisplay)
+                          + dangling-backslash preservation
+                          + parse() rejects NUL-containing lines
+  IRCClient.swift         + sanitize on send / sendSync; mask onRaw both ways
+  IRCConnection.swift     + reconnect Task hardening
+                          + 433 retry cap (nickCollisionRetries)
+                          + lastAwayReplyAt eviction
+                          + applyPendingRestore: pendingRestoreSelectName
+                          + closeBuffer selects next before remove
+                          + handleBatch cap + warnings; reset on disconnect
+  AppleScriptCommands.swift  + sanitize all 4 verb call sites
+  BotHost.swift           + sanitize irc.send/sendActive/msg/notice
+                          + BotScript.contentHash (SHA-256, verified)
+  DCC.swift               + bind to advertised IP (createListener(bindHost:))
+                          + tighter sanitizeFilename
+  WatchlistService.swift  + lastAlertAt window dedupe in fireOnlineAlert
+  EncryptedJSON.swift     + safeWrite sets POSIX 0600
+  KeyStore.swift          + full SHA-256 Keychain account
+                          + persist sets POSIX 0600
+  ProxyFramer.swift       + HTTP CONNECT: HTTP/1.x check, Content-Length
+                            refusal, 16 KiB header cap
+  SASLNegotiator.swift    + chunkedAuthenticate (400-byte chunks + +)
+  SessionHistoryStore.swift  + load() trims per-buffer to linesPerBuffer
+  ChatModel.swift         + Buffer.truncationNoticeShown flag
+                          + maxScrollbackLines constant + first-overflow notice
+  BufferView.swift        + .onChange handlers for every model.show* flag
+                          + Find-bar close refocuses input
+```
+
+No test additions in this round — all 164 existing tests still pass
+(`./run-tests.sh`). Worth adding regression tests for: `IRCSanitize`
+(field/line/maskForDisplay), the SASL chunker, the 433 retry cap,
+and the BATCH cap + reset. Punted to keep the diff focused.
 
 ## What shipped since the last handoff (`9491157` → `08e85bd`)
 
@@ -424,6 +566,121 @@ double the addressable script ecosystem. Mid-effort.
 ### Tier 4 items (still deferred)
 mIRC scripting-language compat, DLL loading, identd, UPnP. PurpleBot
 + AppleScript supersede the scripting motivation.
+
+## Future direction ideas
+
+Brainstorm captured 2026-05-01 — none of these are committed work, just
+the candidate set for the next round of differentiation. Grouped by
+theme, with a short tradeoff note on each so a future session can
+triage without re-deriving the discussion.
+
+### Novelty / "what no other macOS IRC client does"
+
+- **Local-LLM "while you were away" backlog summarization.** Reuse the
+  existing `OllamaClient` + `AssistantEngine`. Scroll to the unread
+  mark, hit ⌘R, get a 3-sentence digest of what happened, your @-
+  mentions, and any open questions in that buffer. Tradeoff: only
+  useful if a local model is configured; quality scales with model
+  size.
+- **OMEMO-style end-to-end encryption layered over PRIVMSG.** PurpleIRC
+  already cares about at-rest crypto; E2E on the wire is the natural
+  extension and genuinely novel for IRC (XMPP has it; no macOS IRC
+  client does). Tradeoff: requires an out-of-band key-exchange UI,
+  only works peer-to-peer when both sides run PurpleIRC, and is real
+  cryptographic engineering that needs review.
+- **macOS Shortcuts.app actions + Focus Filter integration.** "Set
+  away when Focus = Sleep," "post next clipboard line to #standup,"
+  "hide non-work networks while in Work focus." Small effort,
+  high native-platform polish.
+- **Cross-network unified search (`⌘⇧F`).** Searches every connected
+  network's logs at once, plus a global Saved-Messages pinboard
+  reachable by right-click → "Pin to sidebar." Pure UX; no protocol
+  work.
+- **Smart highlight rules from natural language.** "Alert me when
+  someone asks about Swift concurrency" → AssistantEngine compiles
+  to a regex + scope rule. Rides the existing LLM integration.
+- **AI-suggested replies in the input bar.** `AssistantSuggestionStrip
+  .swift` is already scaffolded; expand to in-line ghost-text
+  completions and accept-with-tab.
+- **`+draft/react` + `+draft/reply` IRCv3 first-mover.** HANDOFF's
+  Known Gaps already calls these out as differentiation
+  opportunities; build a real reaction picker UI.
+- **Bridge connectors (Matrix → channel rendering inside PurpleIRC).**
+  Biggest moat, biggest scope; fundamentally changes what the app
+  is. Could also do Slack / Discord but each is its own protocol
+  obstacle course.
+- **"Why did this fire?" debugger for highlight / trigger rules.**
+  Tap a highlighted line, see which rule(s) matched and why
+  (matched substring, captured groups, scope, network filter).
+  Niche but loved by power users.
+- **Quick Look + Spotlight indexing of chat logs.** Mac-native
+  superpower most chat apps don't bother with — let the OS file
+  search find a phrase across every channel log.
+
+### Watchlist + Address Book — make them more capable
+
+The biggest single leap here is treating the unit of identity as a
+**Person**, not a per-network nick. Most other ideas in this section
+fall out cleanly once that exists.
+
+- **Cross-network identity unification ("Person" model).** Link
+  `alice` on Libera + `alice_` on OFTC + `alice@matrix` under one
+  Contact. Combined presence ("any nick online → person online"),
+  unified PM timeline, single notes / alert settings. Tradeoff: the
+  Person model ripples through buffers, sidebar grouping, watchlist
+  persistence, and the alert dedupe — meaningful refactor, but no
+  other macOS IRC client has this.
+- **Per-contact unified message timeline.** A "Person" buffer that
+  interleaves DMs across networks + this contact's lines from
+  shared channels, chronologically. Reuses LogStore + SeenStore;
+  the view is the new piece.
+- **"Usually online at" heatmap + next-online prediction.** Pure
+  SeenStore extension. Add an online/offline edge log, render a
+  7×24 heatmap on the contact card, surface "alice is usually
+  online weekdays 6–10 PM your time."
+- **Reciprocal watch detection.** Some servers expose `MONITOR L`
+  (or its equivalent) which lets you discover who has *you* on
+  their watch list. Show "alice is watching you back" on the
+  contact card. Trivial server-side, niche but novel.
+- **Per-contact quiet hours + escalation chain.** "Don't ping me
+  about bob between 9 PM–7 AM, but if he mentions <topic>
+  escalate to a banner regardless." Falls naturally out of the
+  existing per-contact alert overrides.
+- **Contact tags / groups with sidebar collapsing.** Family /
+  Coworkers / Maintainers, with bulk operations, group-level
+  mute, and dynamic groups like "Recently active" and "Hasn't
+  been seen in 30+ days."
+- **Auto-link nicks via `account-tag`.** When `alice` and `alice_`
+  authenticate to the same services account, suggest unifying
+  them. Cheap win that feeds the Person model.
+- **First-message pop-on-watch.** When a watched contact first
+  messages you in a session, auto-open the query buffer instead
+  of just alerting. Half there already; needs the toggle.
+- **Per-contact "catch-up" summary on reopening a quiet query.**
+  Uses the Ollama integration: "you haven't talked to bob in 6
+  weeks. Last topic was X. He's been active in #foo about Y."
+- **Address-book vCard export + import.** Round-trippable contact
+  backup; one-click "share contact card" via DCC.
+- **Watch-by-channel.** Alert when a watched contact joins a
+  *specific* channel (not just goes online). Useful for catching
+  someone in #help-channel without watching the whole network.
+- **Contact "mood" / activity sparkline.** Small per-row chart of
+  recent message volume; spot the people you've gone quiet with.
+
+### Triage notes for the next pickup
+
+- **Lowest-effort / highest-payoff:** activity heatmap, contact
+  tags, first-message pop-on-watch, Shortcuts.app actions.
+- **Medium-effort, big UX gain:** per-contact unified timeline,
+  cross-network unified search, Saved-Messages pinboard, "why
+  did this fire?" debugger.
+- **Big bets worth a roadmap discussion:** Person model (Contact
+  unification), OMEMO-on-IRC, bridge connectors, LLM-powered
+  backlog summarization promoted to a first-class feature.
+
+If a future session picks one of these, the handoff convention is
+to file it as the next tier (#10 onward) in the Tier-status table
+above and write a brief design note here before swinging code.
 
 ## Sharp edges to remember
 

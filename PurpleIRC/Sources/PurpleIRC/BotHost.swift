@@ -49,6 +49,11 @@ final class BotHost: ObservableObject {
         var enabled: Bool = true
         /// Relative filename under scriptsDir.
         var filename: String
+        /// Hex-encoded SHA-256 of the most recently saved script source.
+        /// Compared at load time so a tampered or partially-decrypted file
+        /// can't silently execute. Optional for backwards compatibility
+        /// with scripts written before this field existed.
+        var contentHash: String? = nil
     }
 
     struct BotLogLine: Identifiable {
@@ -122,22 +127,39 @@ final class BotHost: ObservableObject {
         let url = scriptsDir.appendingPathComponent(script.filename)
         guard let raw = try? Data(contentsOf: url) else { return "" }
         guard let plain = try? EncryptedJSON.unwrap(raw, key: currentKey) else { return "" }
+        // Integrity check: refuse to return source whose SHA-256 doesn't
+        // match the hash captured the last time we wrote the script.
+        // Optional check (nil hash = grandfathered-in legacy script).
+        if let expected = script.contentHash {
+            let actual = Self.sha256Hex(plain)
+            guard actual == expected else {
+                appendLog(.error,
+                          "Script \(script.name) rejected: content hash mismatch (expected \(expected.prefix(8))…, got \(actual.prefix(8))…). Reload after editing in Setup.")
+                return ""
+            }
+        }
         return String(data: plain, encoding: .utf8) ?? ""
     }
 
-    private func writeScript(_ script: BotScript, source: String) {
+    private func writeScript(_ script: inout BotScript, source: String) {
         let url = scriptsDir.appendingPathComponent(script.filename)
         let plain = Data(source.utf8)
+        script.contentHash = Self.sha256Hex(plain)
         _ = try? EncryptedJSON.safeWrite(plain, to: url, key: currentKey)
+    }
+
+    private static func sha256Hex(_ data: Data) -> String {
+        let digest = SHA256.hash(data: data)
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 
     @discardableResult
     func addScript(name: String, source: String) -> BotScript {
         let slug = fileSafe(name.isEmpty ? "script" : name)
         let rand = UUID().uuidString.prefix(6).lowercased()
-        let s = BotScript(name: name.isEmpty ? "untitled" : name,
+        var s = BotScript(name: name.isEmpty ? "untitled" : name,
                           filename: "\(slug)-\(rand).js")
-        writeScript(s, source: source)
+        writeScript(&s, source: source)
         scripts.append(s)
         saveIndex()
         rebuildContext()
@@ -148,7 +170,7 @@ final class BotHost: ObservableObject {
         guard let i = scripts.firstIndex(where: { $0.id == script.id }) else { return }
         scripts[i].name = name
         scripts[i].enabled = enabled
-        writeScript(scripts[i], source: source)
+        writeScript(&scripts[i], source: source)
         saveIndex()
         rebuildContext()
     }
@@ -213,30 +235,46 @@ final class BotHost: ObservableObject {
 
         let irc = JSValue(newObjectIn: ctx)!
 
-        // irc.send(networkNameOrId, rawLine)
+        // irc.send(networkNameOrId, rawLine) — raw IRC line (single line only;
+        // CR/LF/NUL are stripped at the wire seam to prevent command injection
+        // from a sloppy or malicious script).
         let sendBlock: @convention(block) (String, String) -> Void = { [weak self] net, line in
-            Task { @MainActor in self?.sendOnNetwork(name: net, line: line) }
+            let safeNet  = IRCSanitize.field(net)
+            let safeLine = IRCSanitize.line(line)
+            guard !safeLine.isEmpty else { return }
+            Task { @MainActor in self?.sendOnNetwork(name: safeNet, line: safeLine) }
         }
         irc.setObject(sendBlock, forKeyedSubscript: "send" as NSString)
 
         // irc.sendActive(rawLine)
         let sendActiveBlock: @convention(block) (String) -> Void = { [weak self] line in
-            Task { @MainActor in self?.sendOnActive(line) }
+            let safeLine = IRCSanitize.line(line)
+            guard !safeLine.isEmpty else { return }
+            Task { @MainActor in self?.sendOnActive(safeLine) }
         }
         irc.setObject(sendActiveBlock, forKeyedSubscript: "sendActive" as NSString)
 
-        // irc.msg(target, text) — PRIVMSG on the active connection.
+        // irc.msg(target, text) — PRIVMSG on the active connection. Each
+        // field is scrubbed for CR/LF/NUL before assembly so a multi-line
+        // text collapses into a single PRIVMSG rather than smuggling a
+        // second IRC command after the message body.
         let msgBlock: @convention(block) (String, String) -> Void = { [weak self] target, text in
+            let safeTarget = IRCSanitize.field(target)
+            let safeText   = IRCSanitize.field(text)
+            guard !safeTarget.isEmpty, !safeText.isEmpty else { return }
             Task { @MainActor in
-                self?.sendOnActive("PRIVMSG \(target) :\(text)")
+                self?.sendOnActive("PRIVMSG \(safeTarget) :\(safeText)")
             }
         }
         irc.setObject(msgBlock, forKeyedSubscript: "msg" as NSString)
 
         // irc.notice(target, text) — NOTICE on the active connection.
         let noticeBlock: @convention(block) (String, String) -> Void = { [weak self] target, text in
+            let safeTarget = IRCSanitize.field(target)
+            let safeText   = IRCSanitize.field(text)
+            guard !safeTarget.isEmpty, !safeText.isEmpty else { return }
             Task { @MainActor in
-                self?.sendOnActive("NOTICE \(target) :\(text)")
+                self?.sendOnActive("NOTICE \(safeTarget) :\(safeText)")
             }
         }
         irc.setObject(noticeBlock, forKeyedSubscript: "notice" as NSString)

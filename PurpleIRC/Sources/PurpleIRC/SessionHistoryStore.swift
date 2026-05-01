@@ -45,15 +45,20 @@ final class SessionHistoryStore: ObservableObject {
     /// Read the saved history for a network. Returns an empty default if
     /// the file is missing, can't be unwrapped, or fails to decode — never
     /// throws, because a corrupt history file should never block restore.
+    /// Each per-buffer line list is trimmed to `linesPerBuffer` immediately
+    /// after decode so a tampered or bloated file can't blow up memory.
     func load(networkSlug: String) -> NetworkHistory {
         let url = fileURL(for: networkSlug)
         guard let data = try? Data(contentsOf: url) else {
             return NetworkHistory()
         }
         guard let plain = try? EncryptedJSON.unwrap(data, key: key),
-              let decoded = try? JSONDecoder().decode(NetworkHistory.self, from: plain)
+              var decoded = try? JSONDecoder().decode(NetworkHistory.self, from: plain)
         else {
             return NetworkHistory()
+        }
+        for (name, lines) in decoded.buffers where lines.count > Self.linesPerBuffer {
+            decoded.buffers[name] = Array(lines.suffix(Self.linesPerBuffer))
         }
         return decoded
     }

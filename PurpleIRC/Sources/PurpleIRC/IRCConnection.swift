@@ -79,6 +79,12 @@ final class IRCConnection: ObservableObject, Identifiable {
     private var reconnectAttempt = 0
     private var reconnectTask: Task<Void, Never>?
 
+    // Bounded 433 (nick-in-use) handling. Without this we'd keep appending
+    // `_` forever and eventually hit NICKLEN, generating cascading 432/433
+    // replies and no successful registration.
+    private var nickCollisionRetries = 0
+    private static let maxNickCollisionRetries = 4
+
     private(set) var saslActive = false
 
     // Tier 2 knobs — ChatModel pushes these in from settings.
@@ -281,28 +287,26 @@ final class IRCConnection: ObservableObject, Identifiable {
         }
 
         // Re-select the previously-active buffer if it now exists. Channel
-        // buffers may not yet exist (JOIN is async) — handled by a deferred
-        // tick that retries once the buffer materializes.
-        // (With history pre-creation, channels will exist; the deferred
-        // path is kept as a safety net.)
+        // buffers may not yet exist (JOIN is async); store the target name
+        // and let the JOIN handler resolve it the moment the buffer
+        // materializes. Replaces a fire-and-forget 800 ms Task that left
+        // a blank buffer on the screen when JOIN took longer than expected.
         if let target = pendingRestoreSelection {
             let lower = target.lowercased()
             if let i = buffers.firstIndex(where: { $0.name.lowercased() == lower }) {
                 selectedBufferID = buffers[i].id
+                pendingRestoreSelectName = nil
             } else {
-                let id = id  // capture connection ID, not buffer ID
-                Task { @MainActor [weak self] in
-                    // One retry tick — fairly common for the JOIN reply to
-                    // arrive within a few hundred ms of CAP completion.
-                    try? await Task.sleep(nanoseconds: 800_000_000)
-                    guard let self, self.id == id else { return }
-                    if let i = self.buffers.firstIndex(where: { $0.name.lowercased() == lower }) {
-                        self.selectedBufferID = self.buffers[i].id
-                    }
-                }
+                pendingRestoreSelectName = lower
             }
         }
     }
+
+    /// Buffer name (lowercased) we still want to focus once it appears.
+    /// Cleared by `indexOfOrCreateBuffer` the moment a matching buffer is
+    /// created so the eventual JOIN reply lands the user on the right
+    /// channel without a deferred timer.
+    private var pendingRestoreSelectName: String?
 
     init(profile: ServerProfile, watchlist: WatchlistService) {
         self.profile = profile
@@ -335,6 +339,7 @@ final class IRCConnection: ObservableObject, Identifiable {
         reconnectTask?.cancel()
         reconnectTask = nil
         userInitiatedDisconnect = false
+        nickCollisionRetries = 0
 
         guard let portNum = UInt16(exactly: profile.port) else {
             appendError("Invalid port on \(profile.name): \(profile.port)")
@@ -429,8 +434,18 @@ final class IRCConnection: ObservableObject, Identifiable {
         if buf.kind == .channel, state == .connected {
             client.send("PART \(buf.name) :closed")
         }
+        // Pick the next selection BEFORE mutating the array so SwiftUI
+        // doesn't render a placeholder buffer for one frame. Prefer the
+        // buffer immediately after the closed one; fall back to the one
+        // before; fall back to first.
+        let nextID: Buffer.ID? = {
+            if selectedBufferID != id { return selectedBufferID }
+            if i + 1 < buffers.count { return buffers[i + 1].id }
+            if i > 0 { return buffers[i - 1].id }
+            return nil
+        }()
         buffers.remove(at: i)
-        if selectedBufferID == id { selectedBufferID = buffers.first?.id }
+        selectedBufferID = nextID ?? buffers.first?.id
     }
 
     func quickJoin(_ channel: String) {
@@ -525,12 +540,18 @@ final class IRCConnection: ObservableObject, Identifiable {
             AppLog.shared.notice("Disconnected from \(profile.host).", category: logCat)
             haveRegisteredWatchlist = false
             watchlist.onDisconnected()
+            // Drop any half-open BATCH/chathistory state so a reconnect
+            // doesn't see ghosts left over from the previous session.
+            openBatches.removeAll()
+            chatHistoryFetched.removeAll()
             scheduleReconnectIfNeeded()
         case .failed(let err):
             appendError("Connection failed: \(err)")
             AppLog.shared.error("Connection failed: \(err)", category: logCat)
             haveRegisteredWatchlist = false
             watchlist.onDisconnected()
+            openBatches.removeAll()
+            chatHistoryFetched.removeAll()
             scheduleReconnectIfNeeded()
         }
         emit(.state(s))
@@ -547,15 +568,27 @@ final class IRCConnection: ObservableObject, Identifiable {
         appendInfo(String(format: "Reconnecting in %.1fs (attempt %d)…", delay, reconnectAttempt))
 
         reconnectTask?.cancel()
-        reconnectTask = Task { [weak self] in
+        // Capture the current connection identity so a delayed wake-up can
+        // tell whether `self` is still the same logical connection (the
+        // user might have disconnected and reconnected to a different
+        // profile in the meantime, reusing the slot).
+        let connID = id
+        let task = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-            if Task.isCancelled { return }
+            // Re-check cancellation on the same actor as the state we read,
+            // so a disconnect issued during the sleep wins the race.
             await MainActor.run {
                 guard let self else { return }
+                if Task.isCancelled { return }
+                guard self.id == connID else { return }
                 if self.userInitiatedDisconnect { return }
+                // Don't double-fire if disconnect+manual reconnect already
+                // started a new attempt while we were sleeping.
+                if self.state == .connecting || self.state == .connected { return }
                 self.connect()
             }
         }
+        reconnectTask = task
     }
 
     // MARK: - Message handling
@@ -656,6 +689,7 @@ final class IRCConnection: ObservableObject, Identifiable {
             }
             logNumeric(msg)
             reconnectAttempt = 0
+            nickCollisionRetries = 0
         case "301":
             // RPL_AWAYMSG — msg.params: [me, nick, "is away: <reason>"]
             if msg.params.count >= 3 {
@@ -734,8 +768,21 @@ final class IRCConnection: ObservableObject, Identifiable {
         case "900", "901", "902", "903", "904", "905", "906", "907":
             logNumeric(msg)
         case "433":
+            // Cap retries — without this, the underscore tail grows forever
+            // and we eventually trip the server's NICKLEN limit, generating
+            // a fresh 432/433 cascade with no path to registration.
+            nickCollisionRetries += 1
+            if nickCollisionRetries > Self.maxNickCollisionRetries {
+                appendError("Nickname and \(Self.maxNickCollisionRetries) fallbacks all in use. Disconnecting; pick a different nick in Setup.")
+                userInitiatedDisconnect = true
+                reconnectTask?.cancel()
+                reconnectTask = nil
+                client.disconnect()
+                return
+            }
             let alt = self.nick + "_"
-            appendError("Nickname in use. Trying \(alt)")
+            appendError("Nickname in use. Trying \(alt) (attempt \(nickCollisionRetries)/\(Self.maxNickCollisionRetries))")
+            self.nick = alt
             client.send("NICK \(alt)")
         default:
             logNumeric(msg)
@@ -790,12 +837,29 @@ final class IRCConnection: ObservableObject, Identifiable {
     /// surface the open batches so handlers can ask `msg.batchRef` and check
     /// `openBatches[ref]?.type` to decide presentation. Today we just bracket
     /// CHATHISTORY playbacks with an info line so the user sees the boundary.
+    ///
+    /// Robustness: a duplicate `+id` overwrites and logs a warning. An
+    /// orphan `-id` (no matching `+id` ever seen) is ignored silently —
+    /// they happen on flaky links and aren't actionable. The
+    /// `openBatches` dict is also capped at 256 entries so a hostile or
+    /// buggy server can't exhaust memory by opening batches forever.
     private func handleBatch(_ msg: IRCMessage) {
-        guard let token = msg.params.first else { return }
+        guard let token = msg.params.first, !token.isEmpty else { return }
         if token.hasPrefix("+") {
             let id = String(token.dropFirst())
+            guard !id.isEmpty else { return }
             let type = msg.params.count > 1 ? msg.params[1] : ""
             let extras = Array(msg.params.dropFirst(2))
+            if openBatches[id] != nil {
+                AppLog.shared.warn("Duplicate BATCH +\(id); replacing prior entry.",
+                                   category: "IRC.\(displayName)")
+            }
+            // Cap before insert so the dict never exceeds the limit.
+            if openBatches.count >= Self.maxOpenBatches {
+                AppLog.shared.warn("BATCH cap reached (\(Self.maxOpenBatches)); evicting oldest.",
+                                   category: "IRC.\(displayName)")
+                if let drop = openBatches.keys.first { openBatches.removeValue(forKey: drop) }
+            }
             openBatches[id] = BatchInfo(id: id, type: type, params: extras)
             if type == "chathistory", let chan = extras.first,
                let i = buffers.firstIndex(where: { $0.name == chan }) {
@@ -814,8 +878,14 @@ final class IRCConnection: ObservableObject, Identifiable {
                     kind: .info,
                     text: "— Live —"))
             }
+            // Orphan `-id` (no matching `+id`) is silently ignored — flaky
+            // links produce them and there's nothing the user can do.
         }
     }
+
+    /// Cap on simultaneously-open BATCH ids. Keeps a misbehaving server
+    /// from accumulating dictionary entries indefinitely.
+    private static let maxOpenBatches = 256
 
     /// Append the saved history for `name` into `buffers[i]`, bracketed by
     /// "previous session" / "live" info markers. No-op when there's nothing
@@ -1131,9 +1201,17 @@ final class IRCConnection: ObservableObject, Identifiable {
         guard target.lowercased() == self.nick.lowercased() else { return }
         guard !from.isEmpty, from.lowercased() != self.nick.lowercased() else { return }
         let now = Date()
-        if let last = lastAwayReplyAt[from.lowercased()],
+        let key = from.lowercased()
+        if let last = lastAwayReplyAt[key],
            now.timeIntervalSince(last) < Self.awayReplyInterval { return }
-        lastAwayReplyAt[from.lowercased()] = now
+        lastAwayReplyAt[key] = now
+        // Bound dictionary growth: a long session in a busy network would
+        // otherwise accumulate one entry per unique sender forever. Drop
+        // entries older than the throttle window when the dict gets large.
+        if lastAwayReplyAt.count > 1024 {
+            let cutoff = now.addingTimeInterval(-Self.awayReplyInterval)
+            lastAwayReplyAt = lastAwayReplyAt.filter { $0.value > cutoff }
+        }
         let msg = awayAutoReply.isEmpty ? "I am away." : awayAutoReply
         client.send("NOTICE \(from) :[away] \(msg)")
     }
@@ -1707,10 +1785,12 @@ final class IRCConnection: ObservableObject, Identifiable {
 
     private func indexOfOrCreateBuffer(name: String, kind: Buffer.Kind) -> Int {
         if let i = buffers.firstIndex(where: { $0.name.lowercased() == name.lowercased() }) {
+            applyPendingRestoreSelectionIfMatches(name: name, id: buffers[i].id)
             return i
         }
         let buf = Buffer(name: name, kind: kind)
         buffers.append(buf)
+        applyPendingRestoreSelectionIfMatches(name: name, id: buf.id)
         return buffers.count - 1
     }
 
@@ -1721,11 +1801,24 @@ final class IRCConnection: ObservableObject, Identifiable {
         -> (index: Int, created: Bool)
     {
         if let i = buffers.firstIndex(where: { $0.name.lowercased() == name.lowercased() }) {
+            applyPendingRestoreSelectionIfMatches(name: name, id: buffers[i].id)
             return (i, false)
         }
         let buf = Buffer(name: name, kind: kind)
         buffers.append(buf)
+        applyPendingRestoreSelectionIfMatches(name: name, id: buf.id)
         return (buffers.count - 1, true)
+    }
+
+    /// If the user wanted to focus this buffer at restore time, do it now —
+    /// the moment the buffer materializes. Replaces the old fire-and-forget
+    /// 800 ms retry that left a blank pane on the screen when JOIN took
+    /// longer than the timer.
+    private func applyPendingRestoreSelectionIfMatches(name: String, id: Buffer.ID) {
+        guard let want = pendingRestoreSelectName,
+              name.lowercased() == want else { return }
+        selectedBufferID = id
+        pendingRestoreSelectName = nil
     }
 
     private func idx(of id: Buffer.ID) -> Int {

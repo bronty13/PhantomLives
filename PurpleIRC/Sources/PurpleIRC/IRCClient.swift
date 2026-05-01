@@ -140,10 +140,14 @@ final class IRCClient {
 
     func send(_ line: String) {
         guard let conn = connection else { return }
-        let trimmed = line.hasSuffix("\r\n") ? line : line + "\r\n"
+        // Strip CR / LF / NUL inside the payload before re-appending the
+        // single CRLF terminator. Anything else would let an attacker-
+        // controlled field smuggle a second IRC command.
+        let safe = IRCSanitize.line(line)
+        guard !safe.isEmpty else { return }
+        let trimmed = safe + "\r\n"
         guard let data = trimmed.data(using: .utf8) else { return }
-        let outbound = String(trimmed.dropLast(2))
-        onRaw?(outbound, true)
+        onRaw?(IRCSanitize.maskForDisplay(safe), true)
         conn.send(content: data, completion: .contentProcessed { error in
             if let error {
                 self.onState?(.failed("send failed: \(error.localizedDescription)"))
@@ -153,7 +157,9 @@ final class IRCClient {
 
     private func sendSync(_ line: String) {
         guard let conn = connection else { return }
-        let trimmed = line.hasSuffix("\r\n") ? line : line + "\r\n"
+        let safe = IRCSanitize.line(line)
+        guard !safe.isEmpty else { return }
+        let trimmed = safe + "\r\n"
         guard let data = trimmed.data(using: .utf8) else { return }
         let sem = DispatchSemaphore(value: 0)
         conn.send(content: data, completion: .contentProcessed { _ in sem.signal() })
@@ -243,7 +249,10 @@ final class IRCClient {
             buffer.removeSubrange(buffer.startIndex...nlIndex)
             guard let line = String(data: lineData, encoding: .utf8)
                 ?? String(data: lineData, encoding: .isoLatin1) else { continue }
-            onRaw?(line, false)
+            // The parser must see the unmasked line; only the raw-log
+            // display gets masked so credentials in echo-message replies
+            // and SASL replays don't surface in the viewer.
+            onRaw?(IRCSanitize.maskForDisplay(line), false)
             if let msg = IRCMessage.parse(line) {
                 interceptForSASL(msg)
                 onMessage?(msg)
