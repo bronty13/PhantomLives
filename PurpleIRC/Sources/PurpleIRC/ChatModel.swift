@@ -279,6 +279,22 @@ final class ChatModel: ObservableObject {
     /// server-side membership; this is a UI-only scrollback wipe.
     @Published var clearBufferRequest: Buffer.ID? = nil
 
+    /// Generic single-line input prompt surfaced by ContentView whenever
+    /// a menu item needs user input (Set Topic…, WHOIS…, Invite…). The
+    /// prompt's `onSubmit` runs the chosen action with the typed text.
+    /// Set to nil to dismiss.
+    @Published var inputPrompt: InputPrompt? = nil
+
+    struct InputPrompt: Identifiable {
+        let id = UUID()
+        let title: String
+        let message: String
+        let placeholder: String
+        let defaultText: String
+        let confirmLabel: String
+        let onSubmit: (String) -> Void
+    }
+
     /// Single shared watchlist across all connections. See IRCConnection doc
     /// on why this is shared rather than per-connection.
     let watchlist = WatchlistService()
@@ -797,6 +813,92 @@ final class ChatModel: ObservableObject {
 
     func disconnect() {
         activeConnection?.disconnect()
+    }
+
+    /// Disconnect + immediately reconnect the active network. Bypasses
+    /// the auto-reconnect backoff timer so the user gets a fresh attempt
+    /// right now. Routes through the connection's existing `/reconnect`
+    /// path so menu and slash command share semantics.
+    func reconnect() {
+        activeConnection?.handleReconnectFromMenu()
+    }
+
+    /// Cycle the active connection forward / backward through the open
+    /// connection list. Wraps at the edges. Used by the Buffer menu's
+    /// Next Network / Previous Network items.
+    func cycleNetwork(forward: Bool) {
+        guard !connections.isEmpty else { return }
+        let currentIdx = connections.firstIndex(where: { $0.id == activeConnectionID }) ?? 0
+        let next = forward
+            ? (currentIdx + 1) % connections.count
+            : (currentIdx - 1 + connections.count) % connections.count
+        activeConnectionID = connections[next].id
+    }
+
+    /// Wipe scrollback on the currently-selected buffer (UI only).
+    func clearCurrentBuffer() {
+        guard let conn = activeConnection,
+              let id = conn.selectedBufferID else { return }
+        clearBufferRequest = id
+        conn.clearBufferLines(id: id)
+    }
+
+    /// Reset every buffer's unread badge across every connection.
+    func markAllReadEverywhere() {
+        for c in connections { c.markAllBuffersRead() }
+    }
+
+    /// Cycle the active connection's buffer forward / backward.
+    func cycleBuffer(forward: Bool) {
+        activeConnection?.cycleBuffer(forward: forward)
+    }
+
+    // MARK: - Font / theme / density convenience (menu-driven)
+
+    private static let chatFontMin: Double = 8
+    private static let chatFontMax: Double = 28
+    private static let chatFontDefault: Double = 13
+
+    func incrementFontSize() {
+        settings.settings.chatFontSize = min(Self.chatFontMax,
+                                             settings.settings.chatFontSize + 1)
+    }
+    func decrementFontSize() {
+        settings.settings.chatFontSize = max(Self.chatFontMin,
+                                             settings.settings.chatFontSize - 1)
+    }
+    func resetFontSize() {
+        settings.settings.chatFontSize = Self.chatFontDefault
+    }
+
+    func setTheme(byID id: String) {
+        guard Theme.all.contains(where: { $0.id == id }) else { return }
+        settings.settings.themeID = id
+    }
+
+    func setDensity(_ d: ChatDensity) {
+        settings.settings.chatDensity = d
+    }
+
+    // MARK: - Input prompt helpers
+
+    /// Surface a one-line input dialog. Convenience wrapper used by the
+    /// Conversation / Network menus so menu actions don't have to mint
+    /// their own InputPrompt struct each time.
+    func requestInput(title: String,
+                      message: String,
+                      placeholder: String = "",
+                      defaultText: String = "",
+                      confirmLabel: String = "OK",
+                      onSubmit: @escaping (String) -> Void) {
+        inputPrompt = InputPrompt(
+            title: title,
+            message: message,
+            placeholder: placeholder,
+            defaultText: defaultText,
+            confirmLabel: confirmLabel,
+            onSubmit: onSubmit
+        )
     }
 
     func sendInput(_ text: String) {

@@ -514,6 +514,23 @@ final class IRCConnection: ObservableObject, Identifiable {
         selectBuffer(buffers[next].id)
     }
 
+    /// Disconnect + reconnect this network without waiting on backoff.
+    /// Same body as the `/reconnect` command path; lifted into a public
+    /// method so menu items and shortcut bindings can call it directly.
+    func handleReconnectFromMenu() {
+        appendInfo("Reconnect requested.")
+        userInitiatedDisconnect = true
+        reconnectTask?.cancel(); reconnectTask = nil
+        client.disconnect(quitMessage: "Reconnecting")
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard let self else { return }
+            self.userInitiatedDisconnect = false
+            self.reconnectAttempt = 0
+            self.connect()
+        }
+    }
+
     /// Switch to a buffer by name (case-insensitive, exact > prefix > contains).
     /// Returns false if no match. Used by `/goto`.
     @discardableResult

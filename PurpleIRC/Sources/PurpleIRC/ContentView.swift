@@ -248,6 +248,57 @@ struct ContentView: View {
             NukeConfirmationSheet()
                 .environmentObject(model)
         }
+        // Generic single-line input prompt — covers Set Topic…, WHOIS…,
+        // WHOWAS…, Invite…, Join Channel…, Open Query…, etc. so each
+        // menu entry doesn't have to mint its own one-off sheet.
+        .sheet(item: $model.inputPrompt) { prompt in
+            InputPromptSheet(prompt: prompt) {
+                model.inputPrompt = nil
+            }
+        }
+    }
+}
+
+/// One-line text input dialog backed by `ChatModel.inputPrompt`. Menu
+/// items push an `InputPrompt` describing what they want; the sheet
+/// renders, captures the answer, and calls back. Cancel just dismisses.
+struct InputPromptSheet: View {
+    let prompt: ChatModel.InputPrompt
+    let dismiss: () -> Void
+    @State private var text: String = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(prompt.title).font(.title3.bold())
+            if !prompt.message.isEmpty {
+                Text(prompt.message)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            TextField(prompt.placeholder, text: $text)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { commit() }
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button(prompt.confirmLabel) { commit() }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(width: 460)
+        .onAppear { text = prompt.defaultText }
+    }
+
+    private func commit() {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        prompt.onSubmit(trimmed)
+        dismiss()
     }
 }
 
