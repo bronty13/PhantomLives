@@ -5,6 +5,139 @@ All notable changes to PurpleIRC are recorded here. The bundle's
 count (`1.0.<count>`); CHANGELOG entries use the same scheme so the
 version on the About panel matches the entry that introduced it.
 
+## [1.0.95] — 2026-05-01
+
+### Changed (Phase 3 — Setup reorganization)
+
+- **Setup sidebar regrouped into 6 sections × 20 tabs** (was 3 × 11),
+  mirroring the macOS System Settings layout so adding more in later
+  phases doesn't crowd anything:
+  - **Connections** — Servers, Identities, Proxy & DCC *(new)*
+  - **People & places** — Address Book, Channels, Ignore, Highlights
+  - **Behavior** — Behavior, Notifications *(new)*, Logging *(new)*
+  - **Personalization** — Appearance, Themes *(new)*, Fonts *(new)*,
+    Sounds *(new)*
+  - **Power-user** — Bot, PurpleBot, Assistant *(new)*,
+    Shortcuts & Aliases *(new)*, Backup *(new)*
+  - **Security** — Security
+- **Behavior** trimmed to its functional core (Quit, Session restore,
+  CTCP, Away) with a "where to find moved settings" pointer block.
+- **Appearance** trimmed to meta-knobs (Timestamp, Density picker,
+  Bold / Relaxed / Collapse toggles); a new Density picker is wired
+  to `settings.chatDensity` and matches the View → Density submenu
+  added in 1.0.94.
+- **Notifications** consolidates every alert channel (sound / dock /
+  banner) for watchlist hits and own-nick mentions into one tab,
+  rather than scattering them across Behavior + Appearance + Highlights.
+- **Logging** lifts persistent-log toggles, retention, and the legacy
+  plaintext conversion path out of Behavior so a user worried about
+  disk usage or compliance has one tab to audit.
+- **Themes / Fonts / Sounds** promoted from sections to their own tabs
+  so they have room to grow into the Theme Builder (Phase 4) and
+  custom font picker (Phase 5).
+- **Shortcuts & Aliases** is the home for `userAliases` (list / add /
+  remove); ships with built-in keyboard-shortcut documentation, with
+  user-customizable shortcuts deferred.
+- **Backup** surfaces `BackupSettingsRow` + `FactoryResetRow` plus a
+  pointer to the `/nuke` destructive reset.
+
+## [1.0.94] — 2026-05-01
+
+### Added (Phase 2 — Full macOS menu system)
+
+- **8 native menus** replace the single "IRC" menu, each backed by a
+  small private View struct so `App.body`'s `.commands` block stays
+  scannable.
+  - **File** — New Network… (⌘N), Close Buffer (⌘W), Export Current
+    Buffer…, Export All Buffers…
+  - **PurpleIRC** (after Settings…) — Lock Keystore (⇧⌘L), Reset
+    Everything (NUKE)…
+  - **Edit** (after Pasteboard) — Find in Buffer… (⌘F)
+  - **View** — Show Raw Log toggle, Increase / Decrease / Reset Font
+    Size (⌘= / ⌘- / ⌘0), Density submenu (Compact / Cozy /
+    Comfortable), Theme submenu (every `Theme.all` entry, with a
+    checkmark on the current selection)
+  - **Buffer** — Next / Previous Buffer (⌘⌥→/←), Next / Previous
+    Network (⌘⌥↓/↑), Mark All as Read (⌃⌘M), Clear Buffer
+  - **Network** — Connect (⌘K), Disconnect (⇧⌘D), Reconnect (⇧⌘R),
+    Channel List… (⇧⌘L), Watchlist… (⇧⌘A — moved from ⇧⌘W since
+    that's the system "Close Window"), Watch Monitor… (⇧⌘M),
+    DCC Transfers… (⇧⌘T), Seen Log…
+  - **Conversation** — Join Channel… (⇧⌘J), Open Query… (⇧⌘Q),
+    Set Topic…, Invite User…, WHOIS…, WHOWAS…
+  - **Help** (after system Help) — Slash Command Reference… (⇧⌘?),
+    App Diagnostic Log…, Chat Logs…
+- **Menu state derives from live model state** (active connection
+  presence, connection state, current buffer kind) so menu items
+  reflect what's possible without manual refreshes.
+- **Theme + Density submenus generate from `Theme.all` /
+  `ChatDensity.allCases`**, so adding a theme picks up automatically.
+- **Generic `InputPromptSheet`** backed by `ChatModel.inputPrompt`
+  for menu-driven dialogs (Set Topic, Join Channel, Open Query,
+  Invite, WHOIS, WHOWAS) — one sheet, many uses, instead of a forest
+  of one-off modals.
+
+### Added (model surface for menus)
+
+- `ChatModel.reconnect()` → `IRCConnection.handleReconnectFromMenu()`
+- `ChatModel.cycleNetwork(forward:)`
+- `ChatModel.clearCurrentBuffer()`, `markAllReadEverywhere()`,
+  `cycleBuffer(forward:)`
+- `ChatModel.incrementFontSize()` / `decrementFontSize()` / `resetFontSize()`
+- `ChatModel.setTheme(byID:)` / `setDensity(_:)`
+- `ChatModel.requestInput(...)` wrapper around the new
+  `InputPrompt` struct.
+
+## [1.0.93] — 2026-05-01
+
+### Added (Phase 1 — Slash command surface + `/nuke`)
+
+- **`/nuke`** — two-step destructive reset. Routes through
+  `NukeService` which disconnects every network, locks the keystore,
+  wipes `settings.json` + `keystore.json` + every encrypted subtree
+  (`channels/`, `history/`, `scripts/`, `seen/`, `logs/`, `downloads/`,
+  `backups/`, `blobs/`, `photos/`, `app.log`), clears every Keychain
+  item under `com.purpleirc`, then quits. Sanity rail refuses to run
+  if `supportDirectoryURL` doesn't look like an Application Support /
+  `.config` path. The confirmation sheet (`NukeConfirmationSheet`)
+  enumerates exactly what will be wiped and disables the destructive
+  button until the user types the literal phrase **NUKE**.
+- **21 new model-level slash commands**: `/clear` (`/cls`), `/find`
+  (`/search`), `/markread` (`/markallread`), `/next` (`/nextbuffer`),
+  `/prev` (`/previous`, `/prevbuffer`), `/goto` (`/switch`),
+  `/network`, `/theme`, `/font`, `/density`, `/zoom`, `/timestamp`
+  (`/ts`), `/lock`, `/backup`, `/export`, `/alias`, `/repeat`,
+  `/timer`, `/summary`, `/translate`.
+- **11 new connection-level slash commands**: `/reconnect`, `/rejoin`
+  (`/cycle`), `/invite`, `/knock`, `/motd`, `/lusers`, `/admin`,
+  `/info`, `/version`, `/silence`, `/unsilence`.
+- **User-defined aliases** (`AppSettings.userAliases`). Resolved
+  *before* built-in commands so the user can shadow built-ins on
+  purpose. Editable inline via `/alias <name> <expansion>` and
+  `/alias -<name>`, or in the new Setup → Shortcuts & Aliases tab.
+- **`ChatDensity` enum** (`.compact` / `.cozy` / `.comfortable`)
+  with a `.cozy` default, plus an integrated row-padding
+  multiplier consumed at draw time.
+- **`AppSettings.viewZoom`** — 0.5–2.0 multiplier on top of the
+  configured chat font size, switchable live with `/zoom`.
+
+### Changed
+
+- **`CommandCatalog` synced**. Every working command (the new ones
+  plus the existing-but-hidden `/watch`, `/unwatch`, `/dcc`, `/log`,
+  `/logs`, `/assist`, `/reloadbots`, etc.) is now an entry, so they
+  show in `/`-autocomplete and the `/help` sheet. Categories grew
+  from 8 to 15 (Connection, Channels, Messages, Identity, Moderation,
+  User lookup, Server info, DCC, Window & buffer, Appearance, Logs,
+  Bot, Automation, Dangerous, App) so the list stays scannable.
+- **`BufferView` body extracted into a `BufferViewObservers` modifier**
+  to keep Swift's "expression too complex" type-checker happy after
+  `/find` and `/clear` bridges joined the existing focus-restore
+  observers. Behaviourally identical.
+- **`IRCConnection` gained four buffer helpers**: `clearBufferLines(id:)`,
+  `markAllBuffersRead()`, `cycleBuffer(forward:)`, and
+  `selectBufferByName(_:)` (exact > prefix > contains match).
+
 ## [1.0.92] — 2026-04-30
 
 ### Security

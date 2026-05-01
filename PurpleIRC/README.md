@@ -32,8 +32,27 @@ activate correctly when launched from the `.app` bundle (SwiftUI's
   attempts before surfacing an error), `001` welcome handling
 - Channels, private messages (queries), server log buffer
 - JOIN / PART / QUIT / NICK / TOPIC / NAMES tracking with a live user list
-- Slash commands: `/join`, `/part`, `/msg`, `/me`, `/nick`, `/topic`,
-  `/whois`, `/names`, `/close`, `/raw`, `/quit`, `/watch`, `/unwatch`
+- Slash commands: 60+ entries in `Commands.swift`, surfaced in the
+  `/`-autocomplete strip and the `/help` sheet. Highlights:
+  - Channels: `/join` `/part` `/rejoin` `/topic` `/names` `/mode`
+    `/list` `/close` `/invite` `/knock`
+  - Messages: `/msg` `/query` `/me` `/notice` `/ctcp` `/raw`
+  - Identity: `/nick` `/away` `/back` `/identity`
+  - Moderation: `/op` `/deop` `/voice` `/devoice` `/kick` `/ban`
+    `/unban` `/ignore` `/silence`
+  - User lookup: `/whois` `/whowas` `/seen` `/watch` `/unwatch`
+  - Server info: `/motd` `/lusers` `/admin` `/info` `/version`
+  - Window & buffer: `/clear` `/find` `/markread` `/next` `/prev`
+    `/goto` `/network`
+  - Appearance: `/theme` `/font` `/density` `/zoom` `/timestamp`
+  - Logs: `/log` `/logs` `/export`
+  - Automation: `/alias` `/repeat` `/timer` `/summary` `/translate`
+  - Dangerous: `/lock` `/backup` `/nuke` (the last is a two-step
+    typed-confirmation destructive reset)
+- **Full macOS menu system** — File, Edit, View, Buffer, Network,
+  Conversation, Help — backed by typed `ChatModel` methods and the
+  same slash dispatcher, with built-in keyboard shortcuts for every
+  menu action.
 - Input history (↑ / ↓) and a raw protocol log viewer (IRC → Show Raw Log)
 - Auto-join list on the connect form, unread badges in the sidebar
 - **Own-nick highlight**: messages mentioning your nick are tinted orange,
@@ -61,17 +80,32 @@ activate correctly when launched from the `.app` bundle (SwiftUI's
 
 ### Setup window (⌘,)
 
-Three tabs, all persisted to `~/Library/Application Support/PurpleIRC/settings.json`:
+20 tabs in 6 sidebar groups (mirroring macOS System Settings), all
+persisted to `~/Library/Application Support/PurpleIRC/settings.json`:
+
+- **Connections** — Servers, Identities, Proxy & DCC
+- **People & places** — Address Book, Channels, Ignore, Highlights
+- **Behavior** — Behavior, Notifications, Logging
+- **Personalization** — Appearance, Themes, Fonts, Sounds
+- **Power-user** — Bot, PurpleBot, Assistant, Shortcuts & Aliases, Backup
+- **Security** — Security
+
+The biggest tabs:
 
 - **Servers** — named server profiles (host, port, TLS, nick/user/realname,
   password, auto-join). Each profile also carries its own **SASL**
   mechanism/account/password, a **NickServ** fallback password, a
-  **perform-on-connect** script, and an **auto-reconnect** toggle. Pick
-  the active profile; Connect uses it.
+  **perform-on-connect** script, and an **auto-reconnect** toggle.
 - **Address Book** — watched contacts with optional notes. Each entry has a
   "watch" toggle that drives the real-time online alerts.
 - **Channels** — saved channels with one-click Join from the sidebar; also
   auto-join on connect (on top of the profile's auto-join list).
+- **Themes** — 16 built-in themes (Classic, Midnight, Solarized
+  light/dark, Nord, Dracula, Tokyo Night, Lavender, Royal Purple,
+  Twilight, …). WYSIWYG Theme Builder + per-event colors land in
+  the next round.
+- **Shortcuts & Aliases** — define `/alias <name> <expansion>` entries;
+  resolved before built-in commands, so you can shadow them on purpose.
 
 The sidebar exposes a **Saved** section (quick-join) and a **Contacts**
 section (click to open a `/msg` draft; bell icon + dot show watch + presence).

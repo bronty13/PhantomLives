@@ -2,8 +2,9 @@
 
 Snapshot of where the project stands so a future session (human or AI)
 can pick up without re-deriving everything from the commit history.
-Last updated: 2026-05-01, after the 1.0.92 security & robustness pass
-plus a "Future direction ideas" capture.
+Last updated: 2026-05-01, after the 1.0.93 / 1.0.94 / 1.0.95 UI build-
+out (slash commands + macOS menu system + Setup reorganization). Tier
+#9 closed; Tier #10 (UI polish) is in flight.
 
 ## What it is
 
@@ -63,6 +64,7 @@ stream across every connection, UUID-tagged so listeners can scope.
 | 7 | IRCv3 modernization + bigger features      | Done       | `3715298` / `08e85bd` / `d457cf8` |
 | 8 | Multi-network UX                           | Done       | `d457cf8` / `567a7e7` |
 | 9 | Security & robustness pass                 | Done       | `1.0.92` |
+| 10 | UI build-out (commands, menus, settings)  | In flight  | `1.0.93–1.0.95` (Phases 1–3) |
 
 ## Security & robustness pass (1.0.92, 2026-04-30)
 
@@ -681,6 +683,138 @@ fall out cleanly once that exists.
 If a future session picks one of these, the handoff convention is
 to file it as the next tier (#10 onward) in the Tier-status table
 above and write a brief design note here before swinging code.
+
+## UI build-out — Tier #10 (in flight, 2026-05-01)
+
+A multi-phase reshape of the user-facing surface. Phases 1–3 shipped
+in 1.0.93 / 1.0.94 / 1.0.95 (commits `8641bec`, `e1d3aed`, `589d1de`).
+Full per-phase writeup is in `CHANGELOG.md`; the architectural
+decisions worth a future-session brief:
+
+### Single source of truth for commands
+
+`Commands.swift` is the authoritative catalog. Both the `/`-autocomplete
+strip in the input bar AND the `/help` sheet read from
+`CommandCatalog.all`. Phase 1 grew the categories from 8 to 15 and
+added entries for every working command (the new ones plus the
+existing-but-hidden `/watch`, `/dcc`, `/log`, etc.). When you add a
+new command, add a `CommandCatalog.Entry` for it — otherwise it's
+invisible to autocomplete and `/help`.
+
+### The slash dispatcher has THREE layers
+
+In order:
+1. `ChatModel.sendInput` — user-defined `userAliases` (resolved
+   first so users can shadow built-ins on purpose), then a switch
+   covering model-level commands (`/nuke`, `/clear`, `/find`,
+   `/markread`, `/next`, `/prev`, `/goto`, `/network`, `/theme`,
+   `/font`, `/density`, `/zoom`, `/timestamp`, `/lock`, `/backup`,
+   `/export`, `/alias`, `/repeat`, `/timer`, `/summary`,
+   `/translate`, `/help`, `/log{,s}`, `/assist`, `/identity`,
+   `/quit`, `/list`, `/seen`, `/ignore`, `/unignore`, `/reloadbots`).
+2. `IRCConnection.handleCommand` — connection-level commands
+   (`/connect`, `/disconnect`, `/reconnect`, `/rejoin`, `/join`,
+   `/part`, `/msg`, `/query`, `/me`, `/nick`, `/topic`, `/raw`,
+   `/close`, `/names`, `/whois`, `/whowas`, `/away`, `/back`,
+   `/op`, `/deop`, `/voice`, `/devoice`, `/kick`, `/ban`, `/unban`,
+   `/mode`, `/ctcp`, `/dcc`, `/invite`, `/knock`, `/motd`,
+   `/lusers`, `/admin`, `/info`, `/version`, `/silence`,
+   `/unsilence`).
+3. `BotHost.handleCommandAlias` — JS-script-registered aliases
+   (`irc.onCommand("foo", cb)`).
+
+If a command is missing from layers 1 and 2, layer 3 gets a chance;
+unmatched commands fall through to a literal raw send via
+`client.send("\(cmd.uppercased()) \(rest)")` — which is by design,
+not a bug. That's how `/whois` worked before it was wired explicitly.
+
+### Menus and slash commands share one code path
+
+Phase 2 menus call `model.sendInput("/something")` for anything
+that's already a slash command, and call typed model methods
+(`cycleBuffer`, `cycleNetwork`, `incrementFontSize`, `setTheme(byID:)`,
+`setDensity(_:)`) for new actions. Don't write a parallel
+implementation in a menu handler — route through the dispatcher so
+the slash command and menu item can never drift.
+
+### Generic input prompt
+
+`ChatModel.inputPrompt: InputPrompt?` is the model side of the
+single-line input dialog. `ChatModel.requestInput(...)` wraps it.
+`ContentView` presents `InputPromptSheet` via `.sheet(item:)`. Used
+by Conversation menu items (Set Topic / Join Channel / Open Query /
+Invite / WHOIS / WHOWAS) so we don't proliferate one-off modals.
+When you need a new menu-driven prompt, use this — don't add another
+sheet flag.
+
+### NukeService
+
+`/nuke` lives in `Sources/PurpleIRC/NukeService.swift`. The flow:
+
+1. `ChatModel.requestNuke()` flips `showNukeConfirmation`.
+2. `NukeConfirmationSheet` (in ContentView.swift) renders the scary
+   list of what will be wiped and disables the destructive button
+   until the user types the literal phrase **NUKE**.
+3. On confirm, `ChatModel.performNukeAndQuit()` calls
+   `NukeService.performNuke(model:)` which:
+   - Disconnects every live connection with QUIT reason `"PurpleIRC reset (NUKE)"`.
+   - Calls `keyStore.lock()` so any pending encrypted writes hit
+     `EncryptedJSON.safeWrite`'s skippedLockedEncrypted guard.
+   - Refuses to proceed if `supportDirectoryURL.path` doesn't
+     contain `"Application Support"` or `".config"` (sanity rail
+     against a pathological override pointing at $HOME).
+   - Removes the well-known top-level files (`settings.json`,
+     `keystore.json`, `app.log`) and subtrees (`channels/`,
+     `history/`, `scripts/`, `seen/`, `logs/`, `downloads/`,
+     `backups/`, plus forward-compat `blobs/` and `photos/`).
+   - Calls `KeychainStore.deleteAll()`.
+4. `NukeService.terminate(after: 0.5)` schedules an `NSApp.terminate`
+   so the AppLog write can flush.
+
+If you add a new persistent subtree under the support dir, add it to
+the `subtrees` array in `NukeService.wipeSupportDirectory(_:)` —
+otherwise `/nuke` will leave it behind.
+
+### BufferView observers, again
+
+The Phase 1 / 2 work bumped BufferView's chained-modifier count past
+Swift's "expression too complex" threshold a second time. The
+`BufferViewObservers` `ViewModifier` (private struct at the bottom of
+`BufferView.swift`) bundles every focus-restore observer plus the
+`/find` and `/clear` model-state bridges. When you add another
+sheet-dismiss observer, add it inside that modifier — NOT inline in
+BufferView's body, or the type-checker will fall over again.
+
+### Setup tabs and the `Tab` enum
+
+`SetupView.Tab` is now 20 cases in 6 sidebar groups. The dispatch
+switch in `SetupView.content` MUST cover every case (Swift exhausts
+it). When you add a new tab:
+1. Add the case to the `Tab` enum + a `systemImage`.
+2. Add it to the `groups` array in the right section.
+3. Add the dispatch case in `content`.
+4. Implement the new `XxxSetup: View` struct (convention is to put
+   it after the existing tabs at the end of `SetupView.swift`).
+
+The "Where to find moved settings" pointer blocks in Behavior and
+Appearance are how we handle discoverability after splits — keep
+them up to date when you move things again.
+
+### New persistent fields (since 1.0.92)
+
+`AppSettings` gained:
+- `userAliases: [String: String]` — slash command aliases
+- `chatDensity: ChatDensity` (`.compact` / `.cozy` / `.comfortable`)
+- `viewZoom: Double` — 0.5–2.0 multiplier on chat font size
+
+Plus `Buffer.truncationNoticeShown: Bool` (Phase-prior; resets on
+`clearBufferLines`).
+
+When you add new fields, remember the established pattern:
+- Default value on the property declaration (so old `settings.json`
+  files just get the default).
+- For complex types, add a `decodeIfPresent` fallback to the custom
+  decoder so missing keys don't fail decode of the whole `AppSettings`.
 
 ## Sharp edges to remember
 
