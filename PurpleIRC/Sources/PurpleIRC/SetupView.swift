@@ -16,42 +16,63 @@ struct SetupView: View {
     }
 
     enum Tab: String, CaseIterable, Identifiable {
-        case servers = "Servers"
-        case identities = "Identities"
-        case addressBook = "Address Book"
-        case channels = "Channels"
-        case ignores = "Ignore"
-        case highlights = "Highlights"
-        case bot = "Bot"
-        case appearance = "Appearance"
-        case behavior = "Behavior"
-        case security = "Security"
-        case scripts = "PurpleBot"
+        case servers      = "Servers"
+        case identities   = "Identities"
+        case proxyDcc     = "Proxy & DCC"
+        case addressBook  = "Address Book"
+        case channels     = "Channels"
+        case ignores      = "Ignore"
+        case highlights   = "Highlights"
+        case behavior     = "Behavior"
+        case notifications = "Notifications"
+        case logging      = "Logging"
+        case appearance   = "Appearance"
+        case themes       = "Themes"
+        case fonts        = "Fonts"
+        case sounds       = "Sounds"
+        case bot          = "Bot"
+        case scripts      = "PurpleBot"
+        case assistant    = "Assistant"
+        case shortcuts    = "Shortcuts & Aliases"
+        case backup       = "Backup"
+        case security     = "Security"
         var id: String { rawValue }
         var systemImage: String {
             switch self {
-            case .servers: return "server.rack"
-            case .identities: return "person.2.wave.2"
-            case .addressBook: return "person.crop.rectangle.stack"
-            case .channels: return "number"
-            case .ignores: return "nosign"
-            case .highlights: return "sparkles"
-            case .bot: return "bolt.badge.a"
-            case .appearance: return "paintpalette"
-            case .behavior: return "slider.horizontal.3"
-            case .security: return "lock.shield"
-            case .scripts: return "curlybraces"
+            case .servers:       return "server.rack"
+            case .identities:    return "person.2.wave.2"
+            case .proxyDcc:      return "network"
+            case .addressBook:   return "person.crop.rectangle.stack"
+            case .channels:      return "number"
+            case .ignores:       return "nosign"
+            case .highlights:    return "sparkles"
+            case .behavior:      return "slider.horizontal.3"
+            case .notifications: return "bell.badge"
+            case .logging:       return "doc.text"
+            case .appearance:    return "paintpalette"
+            case .themes:        return "swatchpalette"
+            case .fonts:         return "textformat"
+            case .sounds:        return "speaker.wave.2"
+            case .bot:           return "bolt.badge.a"
+            case .scripts:       return "curlybraces"
+            case .assistant:     return "brain"
+            case .shortcuts:     return "command"
+            case .backup:        return "externaldrive.badge.timemachine"
+            case .security:      return "lock.shield"
             }
         }
     }
 
-    /// Logical grouping used by the sidebar. A segmented bar at 10 tabs is
-    /// unreadable on anything smaller than ~1000px; a sectioned sidebar
-    /// scales indefinitely and matches the System Settings convention.
+    /// Logical grouping used by the sidebar — six sections, mirroring
+    /// macOS System Settings. A segmented bar at 20 tabs would be
+    /// unreadable; a sectioned sidebar scales indefinitely.
     private static let groups: [(String, [Tab])] = [
-        ("Connections", [.servers, .identities, .security]),
-        ("People & places", [.addressBook, .channels, .ignores]),
-        ("Experience", [.appearance, .highlights, .bot, .behavior, .scripts]),
+        ("Connections",     [.servers, .identities, .proxyDcc]),
+        ("People & places", [.addressBook, .channels, .ignores, .highlights]),
+        ("Behavior",        [.behavior, .notifications, .logging]),
+        ("Personalization", [.appearance, .themes, .fonts, .sounds]),
+        ("Power-user",      [.bot, .scripts, .assistant, .shortcuts, .backup]),
+        ("Security",        [.security]),
     ]
 
     var body: some View {
@@ -119,17 +140,26 @@ struct SetupView: View {
         // a long list.
         Group {
             switch tab {
-            case .servers:     ServersSetup(settings: settings)
-            case .identities:  IdentitiesSetup(settings: settings)
-            case .security:    SecuritySetup(settings: settings, keyStore: model.keyStore)
-            case .addressBook: AddressBookSetup(settings: settings)
-            case .channels:    ChannelsSetup(settings: settings)
-            case .ignores:     IgnoreSetup(settings: settings)
-            case .highlights:  HighlightsSetup(settings: settings)
-            case .bot:         BotSetup(settings: settings, engine: model.botEngine)
-            case .appearance:  AppearanceSetup(settings: settings)
-            case .behavior:    BehaviorSetup(settings: settings)
-            case .scripts:     ScriptsSetup(bot: model.bot)
+            case .servers:       ServersSetup(settings: settings)
+            case .identities:    IdentitiesSetup(settings: settings)
+            case .proxyDcc:      ProxyDccSetup(settings: settings)
+            case .security:      SecuritySetup(settings: settings, keyStore: model.keyStore)
+            case .addressBook:   AddressBookSetup(settings: settings)
+            case .channels:      ChannelsSetup(settings: settings)
+            case .ignores:       IgnoreSetup(settings: settings)
+            case .highlights:    HighlightsSetup(settings: settings)
+            case .bot:           BotSetup(settings: settings, engine: model.botEngine)
+            case .appearance:    AppearanceSetup(settings: settings)
+            case .themes:        ThemesSetup(settings: settings)
+            case .fonts:         FontsSetup(settings: settings)
+            case .sounds:        SoundsSetup(settings: settings)
+            case .behavior:      BehaviorSetup(settings: settings)
+            case .notifications: NotificationsSetup(settings: settings)
+            case .logging:       LoggingSetup(settings: settings)
+            case .assistant:     AssistantSetup(settings: settings)
+            case .shortcuts:     ShortcutsAliasesSetup(settings: settings)
+            case .backup:        BackupSetup(settings: settings)
+            case .scripts:       ScriptsSetup(bot: model.bot)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -761,10 +791,6 @@ struct IgnoreSetup: View {
 
 struct BehaviorSetup: View {
     @ObservedObject var settings: SettingsStore
-    @EnvironmentObject var model: ChatModel
-    @State private var legacyLogCount: Int = 0
-    @State private var showConvertConfirm: Bool = false
-    @State private var convertResultMessage: String? = nil
 
     var body: some View {
         Form {
@@ -774,63 +800,11 @@ struct BehaviorSetup: View {
                 Text("/quit and /exit close PurpleIRC entirely (after sending a QUIT to each connected network). Use /disconnect to leave one network without quitting.")
                     .font(.caption).foregroundStyle(.tertiary)
             }
-            Section("Backups") {
-                BackupSettingsRow(settings: settings)
-            }
             Section("Session restore") {
                 Toggle("Restore open channels and queries on launch",
                        isOn: $settings.settings.restoreOpenBuffersOnLaunch)
                 Text("When you reconnect, PurpleIRC re-joins the channels you had open and re-creates query buffers from your last session. Channel JOINs go through the normal CAP / auto-join path, so server-side ACLs still apply. Off = fresh slate every connect.")
                     .font(.caption).foregroundStyle(.tertiary)
-            }
-            Section("Persistent logs") {
-                Toggle("Enable persistent logs", isOn: $settings.settings.enablePersistentLogs)
-                Toggle("Include server MOTD and info lines", isOn: $settings.settings.logMotdAndNumerics)
-                LabeledContent("Log directory") {
-                    Text(settings.logsDirectoryURL.path)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-                Text("Logs rotate at 4 MB per channel. File names are SHA-256 hashes of the network and channel/nick, so someone browsing the folder can't tell which channels you log.")
-                    .font(.caption).foregroundStyle(.tertiary)
-                if legacyLogCount > 0 {
-                    HStack {
-                        Label("\(legacyLogCount) plaintext log file\(legacyLogCount == 1 ? "" : "s") left over from before encryption was on.",
-                              systemImage: "exclamationmark.triangle")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                        Spacer()
-                        Button("Convert and delete originals…") {
-                            showConvertConfirm = true
-                        }
-                    }
-                }
-                if let msg = convertResultMessage {
-                    Text(msg).font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            Section("Log retention") {
-                Toggle("Auto-delete logs older than N days",
-                       isOn: $settings.settings.purgeLogsEnabled)
-                Stepper(value: $settings.settings.purgeLogsAfterDays, in: 1...3650) {
-                    HStack {
-                        Text("Days to keep")
-                        Spacer()
-                        TextField("", value: $settings.settings.purgeLogsAfterDays,
-                                  format: .number.grouping(.never))
-                            .frame(width: 60)
-                            .multilineTextAlignment(.trailing)
-                    }
-                }
-                .disabled(!settings.settings.purgeLogsEnabled)
-                HStack {
-                    Button("Purge now") { model.purgeLogsNow() }
-                    Spacer()
-                    Text("Runs at app launch when the toggle is on. Off by default; suggested value is 90 days.")
-                        .font(.caption).foregroundStyle(.tertiary)
-                        .multilineTextAlignment(.trailing)
-                }
             }
             Section("CTCP") {
                 Toggle("Reply to CTCP requests", isOn: $settings.settings.ctcpRepliesEnabled)
@@ -853,73 +827,16 @@ struct BehaviorSetup: View {
                 Text("Use /away [reason] to mark yourself away and /back to return. Auto-replies are throttled per-sender.")
                     .font(.caption).foregroundStyle(.tertiary)
             }
-            // Theme + Chat font moved to the dedicated Appearance tab so
-            // Behavior stays focused on functional knobs (logging, CTCP,
-            // away, sounds, DCC). Easier to reach + less crowded.
-            Section("DCC (experimental)") {
-                TextField("External IP (for outgoing offers)", text: $settings.settings.dccExternalIP)
-                    .font(.system(.body, design: .monospaced))
-                HStack {
-                    Stepper(value: $settings.settings.dccPortRangeStart, in: 1024...65535) {
-                        TextField("Port range start", value: $settings.settings.dccPortRangeStart, format: .number)
-                    }
-                    Stepper(value: $settings.settings.dccPortRangeEnd, in: 1024...65535) {
-                        TextField("Port range end", value: $settings.settings.dccPortRangeEnd, format: .number)
-                    }
-                }
-                Text("Outgoing DCC SEND / CHAT listens on this port range and advertises the address above. Behind NAT you'll need to port-forward and set the public IP — auto-detection only picks up LAN addresses. Passive/reverse DCC and RESUME aren't implemented yet.")
-                    .font(.caption).foregroundStyle(.tertiary)
+            Section("Where to find moved settings") {
+                Text("• Notifications (sound / dock / banner alerts) → **Notifications** tab")
+                Text("• Persistent logs and retention → **Logging** tab")
+                Text("• Per-event sound chooser → **Sounds** tab")
+                Text("• DCC + proxy → **Proxy & DCC** tab")
+                Text("• Backups → **Backup** tab")
             }
-            Section("Sounds") {
-                Toggle("Enable event sounds", isOn: $settings.settings.soundsEnabled)
-                ForEach(SoundEventKind.allCases) { kind in
-                    HStack {
-                        Text(kind.displayName)
-                        Spacer()
-                        Picker("", selection: soundBinding(for: kind)) {
-                            ForEach(builtInSoundNames, id: \.self) { n in
-                                Text(n.isEmpty ? "— none —" : n).tag(n)
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(width: 160)
-                        Button("▶") {
-                            let name = settings.settings.eventSounds[kind.rawValue] ?? ""
-                            if !name.isEmpty { NSSound(named: name)?.play() }
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                }
-            }
+            .font(.caption)
         }
         .formStyle(.grouped)
-        .onAppear { refreshLegacyLogCount() }
-        .confirmationDialog(
-            "Convert \(legacyLogCount) plaintext log file\(legacyLogCount == 1 ? "" : "s")?",
-            isPresented: $showConvertConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Convert and delete originals", role: .destructive) {
-                model.convertLegacyPlaintextLogs { count in
-                    convertResultMessage = "Converted \(count) file\(count == 1 ? "" : "s") and removed the plaintext originals."
-                    refreshLegacyLogCount()
-                }
-            }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("Each plaintext log will be re-encrypted into the matching encrypted file. The original plaintext file is deleted only after every record is written successfully.")
-        }
-    }
-
-    private func refreshLegacyLogCount() {
-        model.legacyPlaintextLogCount { n in legacyLogCount = n }
-    }
-
-    private func soundBinding(for kind: SoundEventKind) -> Binding<String> {
-        Binding(
-            get: { settings.settings.eventSounds[kind.rawValue] ?? "" },
-            set: { settings.settings.eventSounds[kind.rawValue] = $0 }
-        )
     }
 }
 
@@ -1788,8 +1705,228 @@ struct ThemePreviewCard: View {
 struct AppearanceSetup: View {
     @ObservedObject var settings: SettingsStore
 
-    /// Adaptive themes use the OS appearance for background — they aren't
-    /// strictly "light" or "dark" so they get their own section.
+    var body: some View {
+        Form {
+            Section("Time display") {
+                Picker("Timestamp format", selection: $settings.settings.timestampFormat) {
+                    ForEach(TimestampFormat.allCases) { fmt in
+                        Text(fmt.displayName).tag(fmt.rawValue)
+                    }
+                    if !TimestampFormat.allCases.contains(where: { $0.rawValue == settings.settings.timestampFormat }) {
+                        Text("Custom: \(settings.settings.timestampFormat)")
+                            .tag(settings.settings.timestampFormat)
+                    }
+                }
+                Text("Live preview — change applies immediately to every chat buffer. /timestamp on|off|<pattern> works as a slash command too.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+            Section("Density") {
+                Picker("Chat row density", selection: $settings.settings.chatDensity) {
+                    ForEach(ChatDensity.allCases) { d in
+                        Text(d.displayName).tag(d)
+                    }
+                }
+                .pickerStyle(.segmented)
+                Text("Vertical breathing room between chat rows. /density compact|cozy|comfortable also works.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+            Section("Reading aids") {
+                Toggle("Bold chat text", isOn: $settings.settings.boldChatText)
+                Toggle("Relaxed row spacing (accessibility)", isOn: $settings.settings.relaxedRowSpacing)
+                Toggle("Collapse runs of join / part / quit lines",
+                       isOn: $settings.settings.collapseJoinPart)
+                Text("Each toggle applies immediately. Bold pairs well with High Contrast.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+            Section("Where to find moved settings") {
+                Text("• Theme grid → **Themes** tab")
+                Text("• Font family / size / weight → **Fonts** tab")
+                Text("• Per-event sound chooser → **Sounds** tab")
+            }
+            .font(.caption)
+        }
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - Proxy & DCC
+
+/// Network plumbing that used to live at the bottom of Behavior. Splitting
+/// it out keeps the per-network proxy + DCC settings together so a user
+/// configuring a corporate proxy doesn't have to scroll past quit / away
+/// toggles to find them.
+struct ProxyDccSetup: View {
+    @ObservedObject var settings: SettingsStore
+
+    var body: some View {
+        Form {
+            Section("DCC (file transfers + chat)") {
+                TextField("External IP (for outgoing offers)",
+                          text: $settings.settings.dccExternalIP)
+                    .font(.system(.body, design: .monospaced))
+                HStack {
+                    Stepper(value: $settings.settings.dccPortRangeStart, in: 1024...65535) {
+                        TextField("Port range start",
+                                  value: $settings.settings.dccPortRangeStart,
+                                  format: .number)
+                    }
+                    Stepper(value: $settings.settings.dccPortRangeEnd, in: 1024...65535) {
+                        TextField("Port range end",
+                                  value: $settings.settings.dccPortRangeEnd,
+                                  format: .number)
+                    }
+                }
+                Text("Outgoing DCC SEND / CHAT listens on this port range and advertises the address above. Behind NAT you'll need to port-forward and set the public IP — auto-detection only picks up LAN addresses. Passive/reverse DCC and RESUME aren't implemented yet.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+            Section("Proxy") {
+                Text("Per-server proxy settings (SOCKS5 / HTTP CONNECT) live on each server profile under **Servers**. Defaults are direct connection.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - Notifications
+
+/// All the channels through which an event can grab the user's attention,
+/// surfaced as a single tab so they're easy to tune as a group rather
+/// than scattered across Behavior + Appearance + Highlights.
+struct NotificationsSetup: View {
+    @ObservedObject var settings: SettingsStore
+
+    var body: some View {
+        Form {
+            Section("Watchlist hits") {
+                Toggle("Play sound", isOn: $settings.settings.playSoundOnWatchHit)
+                Toggle("Bounce Dock icon", isOn: $settings.settings.bounceDockOnWatchHit)
+                Toggle("Show macOS notification banner",
+                       isOn: $settings.settings.systemNotificationsOnWatchHit)
+                Text("A watch hit fires when a watched address-book contact comes online (via MONITOR or ISON polling) or speaks while you're connected.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+            Section("Own-nick mention") {
+                Toggle("Highlight when someone says my nick",
+                       isOn: $settings.settings.highlightOnOwnNick)
+                Text("Mentions tint the row, mark it with @, and fire the same sound + banner + dock-bounce alerts as watchlist hits. Per-rule alerts on the **Highlights** tab override these defaults.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+            Section("Highlight rules") {
+                Text("Per-rule sound / dock / banner toggles live alongside the rule editor on the **Highlights** tab.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+            Section("System") {
+                Text("PurpleIRC requests notification permission the first time the app launches. If you denied it, grant access in **System Settings → Notifications → PurpleIRC**.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - Logging
+
+/// Persistent chat-log toggles, retention policy, and the legacy plaintext
+/// conversion path. Lifted out of Behavior so a user worried about disk
+/// usage or compliance has a single tab to audit.
+struct LoggingSetup: View {
+    @ObservedObject var settings: SettingsStore
+    @EnvironmentObject var model: ChatModel
+    @State private var legacyLogCount: Int = 0
+    @State private var showConvertConfirm: Bool = false
+    @State private var convertResultMessage: String? = nil
+
+    var body: some View {
+        Form {
+            Section("Persistent logs") {
+                Toggle("Enable persistent logs",
+                       isOn: $settings.settings.enablePersistentLogs)
+                Toggle("Include server MOTD and info lines",
+                       isOn: $settings.settings.logMotdAndNumerics)
+                LabeledContent("Log directory") {
+                    Text(settings.logsDirectoryURL.path)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+                Text("Logs rotate at 4 MB per channel. File names are SHA-256 hashes of the network and channel/nick, so someone browsing the folder can't tell which channels you log.")
+                    .font(.caption).foregroundStyle(.tertiary)
+                if legacyLogCount > 0 {
+                    HStack {
+                        Label("\(legacyLogCount) plaintext log file\(legacyLogCount == 1 ? "" : "s") left over from before encryption was on.",
+                              systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                        Spacer()
+                        Button("Convert and delete originals…") {
+                            showConvertConfirm = true
+                        }
+                    }
+                }
+                if let msg = convertResultMessage {
+                    Text(msg).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Section("Retention") {
+                Toggle("Auto-delete logs older than N days",
+                       isOn: $settings.settings.purgeLogsEnabled)
+                Stepper(value: $settings.settings.purgeLogsAfterDays, in: 1...3650) {
+                    HStack {
+                        Text("Days to keep")
+                        Spacer()
+                        TextField("",
+                                  value: $settings.settings.purgeLogsAfterDays,
+                                  format: .number.grouping(.never))
+                            .frame(width: 60)
+                            .multilineTextAlignment(.trailing)
+                    }
+                }
+                .disabled(!settings.settings.purgeLogsEnabled)
+                HStack {
+                    Button("Purge now") { model.purgeLogsNow() }
+                    Spacer()
+                    Text("Runs at app launch when the toggle is on. Off by default; suggested value is 90 days.")
+                        .font(.caption).foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.trailing)
+                }
+            }
+            Section("Diagnostic log") {
+                Text("App-level events (debug → critical) live in the in-app diagnostic log, encrypted on disk. Open it via /log, the Help menu, or the Files menu. Useful for bug reports.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+        }
+        .formStyle(.grouped)
+        .onAppear { refreshLegacyLogCount() }
+        .confirmationDialog(
+            "Convert \(legacyLogCount) plaintext log file\(legacyLogCount == 1 ? "" : "s")?",
+            isPresented: $showConvertConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Convert and delete originals", role: .destructive) {
+                model.convertLegacyPlaintextLogs { count in
+                    convertResultMessage = "Converted \(count) file\(count == 1 ? "" : "s") and removed the plaintext originals."
+                    refreshLegacyLogCount()
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Each plaintext log will be re-encrypted into the matching encrypted file. The original plaintext file is deleted only after every record is written successfully.")
+        }
+    }
+
+    private func refreshLegacyLogCount() {
+        model.legacyPlaintextLogCount { n in legacyLogCount = n }
+    }
+}
+
+// MARK: - Themes
+
+/// Theme grid lifted out of Appearance so it can grow into a Theme
+/// Builder + custom-themes story (Phase 4) without crowding the parent.
+struct ThemesSetup: View {
+    @ObservedObject var settings: SettingsStore
+
     private static let adaptiveIDs: Set<String> = ["classic", "highContrast"]
 
     private var lightThemes: [Theme] {
@@ -1804,48 +1941,11 @@ struct AppearanceSetup: View {
 
     var body: some View {
         Form {
-            Section("Light themes") {
-                themeGrid(lightThemes)
-            }
-            Section("Adaptive (follows macOS appearance)") {
-                themeGrid(adaptiveThemes)
-            }
-            Section("Dark themes") {
-                themeGrid(darkThemes)
-            }
-            Section("Time display") {
-                Picker("Timestamp format", selection: $settings.settings.timestampFormat) {
-                    ForEach(TimestampFormat.allCases) { fmt in
-                        Text(fmt.displayName).tag(fmt.rawValue)
-                    }
-                    // Surface custom-pattern values (e.g. ones the user typed
-                    // by hand into settings.json) so the picker can still
-                    // reflect them without losing the value on display.
-                    if !TimestampFormat.allCases.contains(where: { $0.rawValue == settings.settings.timestampFormat }) {
-                        Text("Custom: \(settings.settings.timestampFormat)")
-                            .tag(settings.settings.timestampFormat)
-                    }
-                }
-                Text("Live preview — change applies immediately to every chat buffer.")
-                    .font(.caption).foregroundStyle(.tertiary)
-            }
-            Section("Chat font") {
-                Picker("Font family", selection: $settings.settings.chatFontFamily) {
-                    ForEach(ChatFontFamily.allCases) { f in
-                        Text(f.rawValue).tag(f)
-                    }
-                }
-                HStack {
-                    Text("Size")
-                    Slider(value: $settings.settings.chatFontSize, in: 10...24, step: 1)
-                    Text(verbatim: "\(Int(settings.settings.chatFontSize)) pt")
-                        .frame(width: 50, alignment: .trailing)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-                Toggle("Bold chat text", isOn: $settings.settings.boldChatText)
-                Toggle("Relaxed row spacing (accessibility)", isOn: $settings.settings.relaxedRowSpacing)
-                Text("Pairs well with High Contrast. Live preview applies as soon as you adjust the slider.")
+            Section("Light themes")    { themeGrid(lightThemes) }
+            Section("Adaptive (follows macOS appearance)") { themeGrid(adaptiveThemes) }
+            Section("Dark themes")     { themeGrid(darkThemes) }
+            Section("Coming soon") {
+                Text("WYSIWYG Theme Builder, per-event colors (join / part / kick / etc.), per-network theme overrides, and `.purpletheme` import/export are scheduled for Phase 4.")
                     .font(.caption).foregroundStyle(.tertiary)
             }
         }
@@ -1870,5 +1970,217 @@ struct AppearanceSetup: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Fonts
+
+/// Font controls lifted out of Appearance. Slim today; will grow with
+/// a custom-font picker, per-element fonts, and OpenType-feature toggles
+/// in Phase 5.
+struct FontsSetup: View {
+    @ObservedObject var settings: SettingsStore
+
+    var body: some View {
+        Form {
+            Section("Chat font") {
+                Picker("Family", selection: $settings.settings.chatFontFamily) {
+                    ForEach(ChatFontFamily.allCases) { f in
+                        Text(f.rawValue).tag(f)
+                    }
+                }
+                HStack {
+                    Text("Size")
+                    Slider(value: $settings.settings.chatFontSize, in: 10...24, step: 1)
+                    Text(verbatim: "\(Int(settings.settings.chatFontSize)) pt")
+                        .frame(width: 50, alignment: .trailing)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                Toggle("Bold chat text", isOn: $settings.settings.boldChatText)
+                Text("/font + - reset | <pt> | family <name> works as a slash command. ⌘= / ⌘- / ⌘0 in the View menu adjust size live.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+            Section("Zoom") {
+                HStack {
+                    Text("View zoom")
+                    Slider(value: $settings.settings.viewZoom, in: 0.5...2.0, step: 0.05)
+                    Text(verbatim: String(format: "%.2f×", settings.settings.viewZoom))
+                        .frame(width: 60, alignment: .trailing)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                Text("Multiplies chat font size on top of the slider above. /zoom + - reset.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+            Section("Coming soon") {
+                Text("Custom-font picker (any installed monospace), separate UI / chat / timestamp fonts, ligature toggle, letter-spacing, line-height, and OpenType-feature toggles arrive in Phase 5.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - Sounds
+
+/// Per-event sound chooser, promoted from a Section to its own tab.
+struct SoundsSetup: View {
+    @ObservedObject var settings: SettingsStore
+
+    var body: some View {
+        Form {
+            Section("Master") {
+                Toggle("Enable event sounds", isOn: $settings.settings.soundsEnabled)
+                Text("Master switch. Per-event sound choices below are saved either way.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+            Section("Per-event") {
+                ForEach(SoundEventKind.allCases) { kind in
+                    HStack {
+                        Text(kind.displayName)
+                        Spacer()
+                        Picker("", selection: soundBinding(for: kind)) {
+                            ForEach(builtInSoundNames, id: \.self) { n in
+                                Text(n.isEmpty ? "— none —" : n).tag(n)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 160)
+                        Button("▶") {
+                            let name = settings.settings.eventSounds[kind.rawValue] ?? ""
+                            if !name.isEmpty { NSSound(named: name)?.play() }
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private func soundBinding(for kind: SoundEventKind) -> Binding<String> {
+        Binding(
+            get: { settings.settings.eventSounds[kind.rawValue] ?? "" },
+            set: { settings.settings.eventSounds[kind.rawValue] = $0 }
+        )
+    }
+}
+
+// MARK: - Assistant
+
+/// Local-LLM assistant configuration. Wraps the existing
+/// AssistantSetupSection so the work that already lives there doesn't
+/// get reimplemented.
+struct AssistantSetup: View {
+    @ObservedObject var settings: SettingsStore
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                AssistantSetupSection(settings: settings)
+            }
+            .padding()
+        }
+    }
+}
+
+// MARK: - Shortcuts & Aliases
+
+/// User-defined `/alias` entries, listed and editable. Keyboard shortcut
+/// customization is documented but not yet wired (the menu items in
+/// Phase 2 use built-in shortcuts).
+struct ShortcutsAliasesSetup: View {
+    @ObservedObject var settings: SettingsStore
+    @State private var newName: String = ""
+    @State private var newExpansion: String = ""
+
+    private var aliasesSorted: [(String, String)] {
+        settings.settings.userAliases.sorted(by: { $0.key < $1.key })
+    }
+
+    var body: some View {
+        Form {
+            Section("User aliases") {
+                if aliasesSorted.isEmpty {
+                    Text("No user aliases yet. Add one below or use `/alias <name> <expansion>` in any chat buffer.")
+                        .font(.caption).foregroundStyle(.tertiary)
+                } else {
+                    ForEach(aliasesSorted, id: \.0) { name, expansion in
+                        HStack {
+                            Text("/\(name)")
+                                .font(.system(.body, design: .monospaced))
+                                .frame(width: 120, alignment: .leading)
+                            Text("→")
+                                .foregroundStyle(.secondary)
+                            Text(expansion)
+                                .font(.system(.body, design: .monospaced))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Spacer()
+                            Button(role: .destructive) {
+                                settings.settings.userAliases.removeValue(forKey: name)
+                            } label: {
+                                Image(systemName: "minus.circle")
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    }
+                }
+            }
+            Section("Add an alias") {
+                HStack {
+                    TextField("name", text: $newName)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 140)
+                    Text("→").foregroundStyle(.secondary)
+                    TextField("/expansion", text: $newExpansion)
+                        .textFieldStyle(.roundedBorder)
+                    Button("Add") { addAlias() }
+                        .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty
+                                  || newExpansion.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                Text("Aliases are resolved before built-in commands, so you can shadow built-ins on purpose. Example: name `j`, expansion `/join` makes `/j #foo` join `#foo`.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+            Section("Keyboard shortcuts") {
+                Text("PurpleIRC ships with built-in keyboard shortcuts for every menu item — see the menus or the Help → Slash Command Reference… sheet for the full list. User-customizable shortcuts are scheduled for a later round.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private func addAlias() {
+        let name = newName.trimmingCharacters(in: .whitespaces).lowercased()
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let expansion = newExpansion.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, !expansion.isEmpty else { return }
+        settings.settings.userAliases[name] = expansion
+        newName = ""
+        newExpansion = ""
+    }
+}
+
+// MARK: - Backup
+
+/// Lifts BackupSettingsRow + FactoryResetRow into their own tab so the
+/// "I want to safeguard / reset my data" task is one click from Setup
+/// instead of buried under Behavior.
+struct BackupSetup: View {
+    @ObservedObject var settings: SettingsStore
+
+    var body: some View {
+        Form {
+            Section("Backups") {
+                BackupSettingsRow(settings: settings)
+            }
+            Section("Factory reset") {
+                FactoryResetRow()
+                Text("Use the destructive `/nuke` slash command (or PurpleIRC menu → Reset Everything…) when you're sure: it wipes every file PurpleIRC has on disk plus every Keychain item, then quits.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+        }
+        .formStyle(.grouped)
     }
 }
