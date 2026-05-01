@@ -539,7 +539,12 @@ struct NetworkRow: View {
     @ObservedObject var connection: IRCConnection
     let isActive: Bool
     @EnvironmentObject var model: ChatModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hovering: Bool = false
+    /// Drives the connecting-state pulse animation. Toggled on a
+    /// repeating timer so the dot eases between two scales while the
+    /// connection is in progress; suppressed under reduce-motion.
+    @State private var pulse: Bool = false
 
     private var identityName: String? {
         guard let id = connection.profile.identityID else { return nil }
@@ -566,7 +571,34 @@ struct NetworkRow: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Circle().fill(stateColor).frame(width: 8, height: 8)
+            // Animated state dot — pulses while connecting, holds
+            // a soft halo while connected, and fades to gray on
+            // disconnect. accessibilityReduceMotion suppresses the
+            // pulse and halo (the static color still conveys state).
+            ZStack {
+                if connection.state == .connected, !reduceMotion {
+                    Circle()
+                        .fill(stateColor.opacity(0.35))
+                        .frame(width: 14, height: 14)
+                        .blur(radius: 2)
+                }
+                Circle()
+                    .fill(stateColor)
+                    .frame(width: 8, height: 8)
+                    .scaleEffect(pulse && connection.state == .connecting && !reduceMotion ? 1.3 : 1.0)
+                    .animation(
+                        reduceMotion
+                            ? nil
+                            : .easeInOut(duration: 0.6).repeatForever(autoreverses: true),
+                        value: pulse
+                    )
+            }
+            .onAppear {
+                if connection.state == .connecting && !reduceMotion { pulse = true }
+            }
+            .onChange(of: connection.state) { _, new in
+                pulse = (new == .connecting && !reduceMotion)
+            }
             VStack(alignment: .leading, spacing: 0) {
                 Text(connection.displayName)
                     .font(.body)

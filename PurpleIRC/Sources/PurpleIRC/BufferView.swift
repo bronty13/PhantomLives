@@ -189,6 +189,15 @@ struct BufferView: View {
         HStack(spacing: 10) {
             Image(systemName: iconName).foregroundStyle(.secondary)
             Text(buffer.displayName).font(.headline)
+                .foregroundStyle(
+                    LinearGradient(
+                        // Subtle gradient on the buffer name — adds
+                        // a touch of depth without compromising
+                        // legibility on either light or dark themes.
+                        colors: [.primary, .primary.opacity(0.7)],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                )
             // When more than one connection is live, surface the network
             // the active buffer belongs to. Otherwise "alice on Undernet"
             // and "alice on Dalnet" look identical in the header.
@@ -935,8 +944,13 @@ struct BufferView: View {
 
 struct MessageRow: View {
     @EnvironmentObject var model: ChatModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let line: ChatLine
     var highlight: Bool = false
+    /// Hover halo state — pure visual feedback, doesn't drive any
+    /// model state. Honoured only when the user hasn't asked the OS
+    /// to reduce motion.
+    @State private var hovering: Bool = false
 
     /// Render the chat-line timestamp using the user's configured
     /// `timestampFormat`. Recomputed per row so changes in Appearance
@@ -964,9 +978,9 @@ struct MessageRow: View {
             content
             Spacer(minLength: 0)
         }
-        .padding(.vertical, leadingBadge != nil ? 2 : (model.settings.settings.relaxedRowSpacing ? 3 : 0))
+        .padding(.vertical, rowVerticalPadding)
         .padding(.horizontal, leadingBadge != nil ? 4 : 0)
-        .background(highlightBackground)
+        .background(rowBackground)
         .overlay(alignment: .leading) {
             if let badge = leadingBadge {
                 Rectangle().fill(badge.color).frame(width: 3)
@@ -974,6 +988,39 @@ struct MessageRow: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 4))
         .textSelection(.enabled)
+        .onHover { hovering in
+            // Subtle hover halo — only when not reducing motion AND
+            // the row isn't already standing out (highlight / mention
+            // wins over hover so the eye still tracks the loud rows).
+            self.hovering = hovering
+        }
+    }
+
+    /// Composite row background: highlight / mention / watch-hit takes
+    /// precedence, then a subtle hover halo on top of an empty row.
+    /// Honors `accessibilityReduceMotion` by suppressing the hover halo
+    /// for users who want fewer focal-point shifts.
+    @ViewBuilder
+    private var rowBackground: some View {
+        let base = highlightBackground
+        if hovering, !reduceMotion {
+            ZStack {
+                base
+                Color.primary.opacity(0.04)
+            }
+        } else {
+            base
+        }
+    }
+
+    /// Density-aware vertical padding. Adds the relaxed-spacing bump
+    /// on top of the density baseline, so accessibility-conscious users
+    /// stack both effects when they want maximum air.
+    private var rowVerticalPadding: CGFloat {
+        if leadingBadge != nil { return 2 }
+        let density = model.settings.settings.chatDensity.rowPadding
+        let extra: CGFloat = model.settings.settings.relaxedRowSpacing ? 3 : 0
+        return density / 2 + extra
     }
 
     /// Timestamp text with size-locked layout. Previously had a fixed

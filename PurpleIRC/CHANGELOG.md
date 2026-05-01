@@ -5,6 +5,94 @@ All notable changes to PurpleIRC are recorded here. The bundle's
 count (`1.0.<count>`); CHANGELOG entries use the same scheme so the
 version on the About panel matches the entry that introduced it.
 
+## [1.0.101] — 2026-05-01
+
+### Added (Phase 8 — Visual polish)
+
+- **Animated network state dot** in the sidebar Networks section.
+  Pulses (1.0× ↔ 1.3× scale) while the connection is in
+  `.connecting`. A soft blurred halo glows behind the dot while
+  `.connected`. Both effects suppressed under
+  `accessibilityReduceMotion` so motion-sensitive users still get
+  the static colour cue without the animation.
+- **Hover halo on chat rows** — `MessageRow` gains a 4% primary
+  overlay when hovering, layered above the existing
+  highlight/mention/watch-hit background so loud rows still take
+  precedence. Suppressed under reduce-motion.
+- **Density-aware row padding wired in** — `MessageRow` now reads
+  `chatDensity.rowPadding / 2` as the vertical padding baseline,
+  with the existing `relaxedRowSpacing` toggle stacking on top so
+  accessibility-conscious users can combine both. Compact ≈ 0.5 pt,
+  Cozy ≈ 1.5 pt, Comfortable ≈ 3 pt.
+- **Subtle gradient on the buffer header title** —
+  `LinearGradient(.primary → .primary.opacity(0.7))` from top to
+  bottom. Adds depth without compromising legibility on either
+  light or dark themes.
+
+### Changed
+
+- `MessageRow` now consumes `Environment(\.accessibilityReduceMotion)`
+  in two places (hover halo, animation). When new visual effects
+  land, follow the same pattern.
+
+## [1.0.100] — 2026-05-01
+
+### Added (Phase 7 — Encrypted blob attachment store)
+
+- **`BlobStore` actor (new file)** — encrypted file-attachment
+  storage at `<supportDir>/blobs/<uuid>.bin`. Each payload sealed
+  via the keystore-derived DEK through `EncryptedJSON.safeWrite`;
+  metadata index at `blobs/index.json`. Mirrors the LogStore
+  pattern (single off-main actor, set-key push, encrypted
+  envelope). Init inlines the index load — calling actor-isolated
+  `loadIndex()` from init triggers a Swift 6 isolation
+  diagnostic.
+- **`BlobStore.BlobRecord`** — Codable on-disk metadata (id,
+  filename, contentType, sizeBytes, createdAt, attachedTo).
+- **`BlobStore.AttachmentRef`** — lightweight (id, filename,
+  contentType, sizeBytes) inlined on owners (`AddressEntry
+  .attachments` today; future channels / messages later) so the
+  editor renders lists without round-tripping through the store.
+  The store is the source of truth for the bytes; inline refs
+  are a denormalised view.
+- **API surface**: `store(data:filename:contentType:attachedTo:)`,
+  `store(fileURL:attachedTo:)` (auto-guesses MIME via UTType),
+  `read(_:)`, `delete(_:)`, `writeToTempFile(_:)` (materialises
+  to `~/tmp/PurpleIRC-blobs/` for Open / Reveal handoffs to
+  NSWorkspace), `setEncryptionKey(_:)` (reloads index when
+  key transitions).
+- **Why a separate store rather than inline like profile photos?**
+  Photos are tiny (~10 KB). Documents are routinely 5+ MB.
+  Inlining 5 MB of base64 in `settings.json` forces every save
+  to rewrite the whole encrypted envelope and every load to
+  decrypt it. The blob store keeps `settings.json` small —
+  only the metadata lives there — and pays the encrypt /
+  decrypt cost only when the user opens the attachment.
+- **`AddressEntry.attachments`** — new array; `decodeIfPresent`
+  for backward compat.
+- **`ChatModel.blobStore: BlobStore`** — initialised against the
+  support directory; receives keystore-key pushes via the same
+  `pushKeyToLogStore` path that feeds the seen / session-history /
+  bot stores.
+- **AddressEntryEditor → new "Attachments" section** between
+  Contact and Notes:
+  - "Attach file…" button (NSOpenPanel, multi-select, no type
+    filter — any file is fair game).
+  - Drop target accepting file URLs from Finder, routed through
+    the same store path.
+  - **`AttachmentRow`** view: SF Symbol icon resolved from MIME
+    prefix (`image/*` → photo, `video/*` → film, `audio/*` →
+    music.note, `text/*` → doc.text, `pdf` → doc.richtext, `zip`
+    → archivebox, `json`/`xml` → curlybraces, otherwise → doc),
+    filename + contentType + ByteCountFormatter size, three
+    buttons: Open (NSWorkspace.open via temp file), Reveal
+    (Finder reveal via temp file), Remove (drops both the inline
+    ref AND the blob-store payload).
+- **`/nuke` already covered** — `NukeService.wipeSupportDirectory`
+  enumerated `blobs/` in its subtree list back in Phase 1
+  (forward-compat), so attachments wipe cleanly with no
+  NukeService change this round.
+
 ## [1.0.99] — 2026-05-01
 
 ### Added (Phase 6 — Address book profile photos)

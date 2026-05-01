@@ -2,9 +2,8 @@
 
 Snapshot of where the project stands so a future session (human or AI)
 can pick up without re-deriving everything from the commit history.
-Last updated: 2026-05-01, after Phase 5 (1.0.98) of the UI build-out.
-Tier #9 closed; Tier #10 (UI build-out) is 5/8 phases shipped — Phase
-6 (address-book photos) is up next.
+Last updated: 2026-05-01. Tier #9 closed; Tier #10 (UI build-out)
+**complete** — all 8 phases shipped through 1.0.101.
 
 ## What it is
 
@@ -64,7 +63,7 @@ stream across every connection, UUID-tagged so listeners can scope.
 | 7 | IRCv3 modernization + bigger features      | Done       | `3715298` / `08e85bd` / `d457cf8` |
 | 8 | Multi-network UX                           | Done       | `d457cf8` / `567a7e7` |
 | 9 | Security & robustness pass                 | Done       | `1.0.92` |
-| 10 | UI build-out (commands, menus, settings, themes, fonts) | 5/8 phases | `1.0.93–1.0.98` (Phases 1–5) |
+| 10 | UI build-out (commands, menus, settings, themes, fonts, photos, blobs, polish) | Done | `1.0.93–1.0.101` (Phases 1–8) |
 
 ## Security & robustness pass (1.0.92, 2026-04-30)
 
@@ -854,6 +853,76 @@ When you add new fields, remember the established pattern:
   `.sheet(item: $model.themeBuilderDraft)`. The Themes tab and
   `/theme builder` both use this seam — don't add another
   presentation path.
+
+### Address-book photos + blob attachments (Phases 6 + 7) — architectural cheatsheet
+
+- **Two-tier storage by payload size.** Small payloads (profile
+  photos, ≤256 px JPEG, typically 8-20 KB) inline as
+  `AddressEntry.photoData: Data?` so the avatar is available
+  zero-async at every render seam. Larger payloads (file
+  attachments, routinely 1-50 MB) live in `BlobStore` at
+  `<supportDir>/blobs/<uuid>.bin` with a lightweight
+  `AttachmentRef` (id + filename + contentType + sizeBytes)
+  inlined on the owner. The `AttachmentRef` tells the editor
+  what to render in a list without ever reading the bytes.
+- **`PhotoUtilities`** owns the downscale pipeline
+  (`maxDimension = 256`, `jpegQuality = 0.85`) AND the
+  deterministic-tint avatar fallback (SHA-256 of
+  `nick.lowercased()` first byte mod palette[11]). When you need
+  an avatar anywhere, use `ContactAvatar(entry:size:)` or its
+  nick-only sibling `ContactAvatarByNick`. The `size` parameter
+  is the only knob — initials font and outer stroke scale
+  automatically so the same view works at 18 pt (sidebar) and
+  96 pt (contact card).
+- **`BlobStore` is an actor.** Every store / read / delete crosses
+  the actor boundary, so callers must `await`. `AddressEntryEditor
+  .pickAttachment()` and `handleAttachmentDrop()` show the
+  pattern: capture `entry.id` in a local `let entryID` BEFORE
+  the `Task`, do the store call inside the Task, then jump back
+  to MainActor to update the inline ref array. Don't try to
+  reach into `entry.attachments` from inside the Task — the
+  binding isn't Sendable.
+- **`writeToTempFile(_:)`** is the standard handoff to NSWorkspace
+  for Open / Reveal. The OS reaps `~/tmp/PurpleIRC-blobs/`
+  later; callers don't have to clean up.
+- **Removal is the editor's job, not the store's.** When the
+  user removes an attachment, the editor must drop BOTH the
+  inline `AttachmentRef` from `entry.attachments` AND call
+  `blobStore.delete(_:)`. The store doesn't reach back into
+  AddressEntry to keep things in sync — orphan blobs are
+  cheap, but stale refs in the inline list would render as
+  ghost rows.
+- **NukeService already lists `blobs/` and `photos/`** (it was
+  forward-compat from Phase 1), so `/nuke` clears attachments
+  cleanly with no per-phase change needed.
+- **Encryption posture identical to other persistence.** Both
+  `BlobStore` and the inlined `photoData` ride the same
+  EncryptedJSON envelope as the rest of the support directory,
+  so when the keystore is unlocked everything is sealed with
+  AES-256-GCM under the per-install DEK.
+
+### Visual polish (Phase 8) — playbook
+
+- **`accessibilityReduceMotion` is the gate** for every animation
+  added in this round. `MessageRow` and `NetworkRow` consume it
+  via `@Environment(\.accessibilityReduceMotion)` and short-
+  circuit the visual effect when on. Static color cues survive
+  so motion-sensitive users still see the state change — they
+  just don't get the pulse / halo / hover overlay.
+- **Hover halos are a 4% primary overlay layered above the
+  highlight background.** `MessageRow.rowBackground` shows the
+  pattern: highlight / mention / watch-hit takes precedence,
+  hover halo only paints over an "empty" row.
+- **Density baseline + relaxed-spacing extra are additive.**
+  `MessageRow.rowVerticalPadding` reads
+  `chatDensity.rowPadding / 2` AND adds `relaxedRowSpacing ?
+  3 : 0` so accessibility users can stack both for maximum
+  air. Don't pick one over the other.
+- **Pulse animations**: easeInOut, 0.6 s, repeatForever
+  autoreverses. NetworkRow's connecting-state dot is the
+  canonical pattern. Do NOT scope an animation broader than
+  the smallest moving element — animating a parent VStack
+  cascades the pulse into every child.
 
 ### Font system (Phase 5) — architectural cheatsheet
 

@@ -96,8 +96,11 @@ The biggest tabs:
   password, auto-join). Each profile also carries its own **SASL**
   mechanism/account/password, a **NickServ** fallback password, a
   **perform-on-connect** script, and an **auto-reconnect** toggle.
-- **Address Book** — watched contacts with optional notes. Each entry has a
-  "watch" toggle that drives the real-time online alerts.
+- **Address Book** — watched contacts with optional notes, **profile
+  photos** (auto-downscaled to ≤256 px JPEG), and **encrypted file
+  attachments** (any size, stored in the per-install AES-GCM-sealed
+  blob store). Each entry has a "watch" toggle that drives real-time
+  online alerts.
 - **Channels** — saved channels with one-click Join from the sidebar; also
   auto-join on connect (on top of the profile's auto-join list).
 - **Themes** — 16 built-in themes (Classic, Midnight, Solarized
