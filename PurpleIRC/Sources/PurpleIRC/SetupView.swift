@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 
 struct SetupView: View {
     @EnvironmentObject var model: ChatModel
@@ -615,6 +617,37 @@ struct AddressEntryEditor: View {
 
     var body: some View {
         Form {
+            Section("Photo") {
+                HStack(spacing: 16) {
+                    ContactAvatar(entry: entry, size: 72)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Button {
+                                pickPhoto()
+                            } label: {
+                                Label("Choose photo…", systemImage: "photo.on.rectangle")
+                            }
+                            if entry.photoData != nil {
+                                Button(role: .destructive) {
+                                    entry.photoData = nil
+                                } label: {
+                                    Label("Remove", systemImage: "xmark.circle")
+                                }
+                            }
+                        }
+                        Text(entry.photoData != nil
+                             ? "Photo embedded in settings.json (downscaled to ≤256 px, JPEG)."
+                             : "No photo. Falls back to the auto-tinted initial avatar.")
+                            .font(.caption).foregroundStyle(.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                }
+                .onDrop(of: [.image, .fileURL], isTargeted: nil) { providers in
+                    handleDrop(providers)
+                    return true
+                }
+            }
             Section("Contact") {
                 TextField("Nickname", text: $entry.nick)
                     .textFieldStyle(.roundedBorder)
@@ -671,6 +704,56 @@ struct AddressEntryEditor: View {
             return parsed
         }
         return AttributedString(src)
+    }
+
+    /// NSOpenPanel-driven photo picker. Filters to common image types,
+    /// passes the chosen file through PhotoUtilities for downscale +
+    /// JPEG re-encode so the inline storage stays small even when the
+    /// user picks a 4K wallpaper.
+    private func pickPhoto() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.title = "Choose profile photo"
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            if let data = PhotoUtilities.loadDownscaled(from: url) {
+                Task { @MainActor in
+                    entry.photoData = data
+                }
+            }
+        }
+    }
+
+    /// Drag-and-drop entry point. Accepts both `.image` (raw bitmap
+    /// dragged from another app) and `.fileURL` (e.g. dragged from
+    /// Finder). Resolves to a Data and routes through the same
+    /// PhotoUtilities pipeline as the picker.
+    private func handleDrop(_ providers: [NSItemProvider]) {
+        for provider in providers {
+            if provider.canLoadObject(ofClass: NSImage.self) {
+                provider.loadObject(ofClass: NSImage.self) { obj, _ in
+                    guard let img = obj as? NSImage,
+                          let data = PhotoUtilities.downscaleAndEncode(img) else { return }
+                    Task { @MainActor in
+                        entry.photoData = data
+                    }
+                }
+                return
+            }
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) { item, _ in
+                    guard let urlData = item as? Data,
+                          let url = URL(dataRepresentation: urlData, relativeTo: nil),
+                          let data = PhotoUtilities.loadDownscaled(from: url) else { return }
+                    Task { @MainActor in
+                        entry.photoData = data
+                    }
+                }
+                return
+            }
+        }
     }
 }
 

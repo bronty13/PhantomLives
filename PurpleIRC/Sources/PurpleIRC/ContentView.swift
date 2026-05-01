@@ -714,10 +714,18 @@ struct ContactRow: View {
     @EnvironmentObject var model: ChatModel
 
     var body: some View {
-        HStack {
-            Circle()
-                .fill(dotColor)
-                .frame(width: 8, height: 8)
+        HStack(spacing: 8) {
+            // Avatar overlaid with the presence dot in the bottom-right
+            // corner — keeps the row compact while surfacing both pieces
+            // of identity at a glance.
+            ZStack(alignment: .bottomTrailing) {
+                ContactAvatar(entry: entry, size: 22)
+                Circle()
+                    .fill(dotColor)
+                    .frame(width: 7, height: 7)
+                    .overlay(Circle().stroke(Color(nsColor: .controlBackgroundColor), lineWidth: 1.5))
+                    .offset(x: 1, y: 1)
+            }
             Text(entry.nick)
                 .font(.system(.body, design: .monospaced))
             if entry.watch {

@@ -215,22 +215,30 @@ struct AddressEntry: Codable, Identifiable, Hashable {
     /// Lives inside `settings.json` and therefore inherits the encrypted
     /// envelope when the keystore is unlocked.
     var richNotes: String = ""
+    /// Optional profile photo, stored inline as JPEG/PNG bytes after
+    /// being downscaled to ≤ 256×256 by `PhotoUtilities.downscaleAndEncode`
+    /// on import so settings.json doesn't bloat. nil = no photo;
+    /// the UI falls back to a tinted-circle avatar with the nick's
+    /// first character. Encoded as base64 by JSONEncoder.
+    var photoData: Data? = nil
 
     init(id: UUID = UUID(),
          nick: String = "",
          note: String = "",
          watch: Bool = true,
-         richNotes: String = "") {
+         richNotes: String = "",
+         photoData: Data? = nil) {
         self.id = id
         self.nick = nick
         self.note = note
         self.watch = watch
         self.richNotes = richNotes
+        self.photoData = photoData
     }
 
     /// Forward-compatible decoder so older settings.json files (without the
-    /// `richNotes` key) keep loading. Without this, a single missing key
-    /// would fail decode of the whole AddressBook array.
+    /// `richNotes` or `photoData` keys) keep loading. Without this, a
+    /// single missing key would fail decode of the whole AddressBook array.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.id        = try c.decodeIfPresent(UUID.self,   forKey: .id)        ?? UUID()
@@ -238,6 +246,7 @@ struct AddressEntry: Codable, Identifiable, Hashable {
         self.note      = try c.decodeIfPresent(String.self, forKey: .note)      ?? ""
         self.watch     = try c.decodeIfPresent(Bool.self,   forKey: .watch)     ?? true
         self.richNotes = try c.decodeIfPresent(String.self, forKey: .richNotes) ?? ""
+        self.photoData = try c.decodeIfPresent(Data.self,   forKey: .photoData)
     }
 }
 
