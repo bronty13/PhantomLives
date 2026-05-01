@@ -15,7 +15,7 @@ loads, etc.).
 ```
 swift build                        # debug build
 ./build-app.sh                     # release build → PurpleIRC.app
-./run-tests.sh                     # 164 tests via swift-testing
+./run-tests.sh                     # 222 tests via swift-testing
 open PurpleIRC.app
 ```
 

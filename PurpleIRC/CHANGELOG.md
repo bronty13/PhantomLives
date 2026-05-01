@@ -5,6 +5,60 @@ All notable changes to PurpleIRC are recorded here. The bundle's
 count (`1.0.<count>`); CHANGELOG entries use the same scheme so the
 version on the About panel matches the entry that introduced it.
 
+## [1.0.102] — 2026-05-01
+
+### Tests
+
+- **+58 tests across 4 new suites** — covers the components added in
+  Phases 1-8 (UserTheme, BlobStore, FontStyle, PhotoUtilities). Total
+  now 222 tests across 16 suites.
+- **`UserThemeTests` (16 tests)** — `duplicate(of:name:)` snapshots
+  every color slot and produces a fresh UUID; `materialised`
+  tolerates missing palette slots, oversized palettes, and garbage
+  hex values; `kindOverridesMaterialised` parses good entries and
+  drops bad keys / values; `Theme.resolve(id:userThemes:)` lets
+  built-ins win on id collision and falls back to `.classic` on
+  miss; UserTheme round-trips through JSON; ChatLineKindTag
+  rawValues are pinned (renaming any of the 14 tags would break
+  every existing user theme on disk).
+- **`BlobStoreTests` (10 tests)** — store + read round-trip for
+  both plaintext and AES-GCM-sealed payloads; `delete` is
+  idempotent and removes both file + index row; `writeToTempFile`
+  produces a readable file with the right name; index survives
+  across BlobStore instances pointed at the same dir; encrypted
+  index loads empty without a key, then re-loads when the key
+  arrives via `setEncryptionKey`; `allRecords` sorts newest first;
+  `store(fileURL:)` auto-guesses MIME from the file extension.
+- **`FontStyleTests` (16 tests)** — root resolution from legacy
+  fields produces the right family/size/weight; built-in tokens
+  (`system-mono`, `system-proportional`) flag correctly;
+  FontStyle fields override legacy fields when set, and inherit
+  when at the sentinel; slot inheritance from the chat-body
+  parent leaves unset fields untouched; partial overrides only
+  affect the set fields; FontStyle round-trips through JSON;
+  Weight rawValues are pinned (saved per-element fonts would
+  break otherwise).
+- **`PhotoUtilitiesTests` (16 tests)** — `initials(for:)` picks
+  the first alphanumeric (uppercased), skips leading non-letters,
+  falls back to "?" for empty / punctuation-only nicks;
+  `avatarTint(for:)` is deterministic and case-insensitive across
+  calls (compared by sRGB component triplet — SwiftUI Color
+  equality returns identity for catalog wrappers, not value
+  equality), and produces visibly distinct colors across 10
+  arbitrary nicks; `downscale` is a no-op for already-small
+  images, preserves aspect ratio for both landscape and portrait,
+  handles zero-sized images gracefully; `downscaleAndEncode`
+  produces a decodable JPEG with dimensions ≤ 256 px;
+  `loadDownscaled(from:)` returns nil for missing or
+  non-image files.
+
+### Notes
+
+`UserThemeTests`, `FontStyleTests`, and `BlobStoreTests` exercise
+shaped fields whose stability is part of the on-disk file format.
+Renaming any of those rawValues / property names will surface as
+test breakage, which is the intended early-warning signal.
+
 ## [1.0.101] — 2026-05-01
 
 ### Added (Phase 8 — Visual polish)
