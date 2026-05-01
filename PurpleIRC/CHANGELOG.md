@@ -5,6 +5,45 @@ All notable changes to PurpleIRC are recorded here. The bundle's
 count (`1.0.<count>`); CHANGELOG entries use the same scheme so the
 version on the About panel matches the entry that introduced it.
 
+## [1.0.103] — 2026-05-01
+
+### Changed (build-app.sh)
+
+- **Real Developer ID signing**, with auto-detection. The script now
+  scans `security find-identity -v -p codesigning` for a
+  `Developer ID Application:` cert and signs with it when found,
+  falling back to ad-hoc (`-`) signing otherwise so the script
+  keeps working in CI / on machines without your cert. Override
+  via `CODESIGN_IDENTITY=...` (use `-` to force ad-hoc, or pass a
+  full common-name to pin a specific cert when multiple are
+  installed).
+- **`--options runtime --timestamp` added** when a real cert is
+  used. Hardened runtime + Apple-issued timestamp are both
+  prerequisites for `notarytool submit`; without them Apple
+  notary rejects the bundle.
+- **Build moved to `/tmp` to dodge iCloud Drive's xattr races.**
+  PhantomLives lives under `~/Documents` which is iCloud-synced;
+  iCloud re-attaches `com.apple.FinderInfo` to fresh files at
+  unpredictable moments, and `codesign --strict` refuses to sign
+  or verify any bundle carrying that xattr. Assembly + sign +
+  verify all happen in `mktemp -d` (which iCloud doesn't watch),
+  then `ditto --noextattr` copies the finished bundle back into
+  the project directory. The signature is embedded in the bundle
+  contents so iCloud's eventual FinderInfo reattach in the
+  project-dir copy doesn't disturb it.
+- **xattr cleanup expanded** — explicit `xattr -d` calls for
+  `com.apple.FinderInfo`, `com.apple.fileprovider.fpfs#P`,
+  `com.apple.provenance`, and `com.apple.quarantine` in addition
+  to the recursive `xattr -cr` clear, so any one of them
+  surviving the recursive sweep can't block the sign.
+- **Verify step uses exit code, not output parsing.** Previous
+  `tail -1 | grep "valid on disk"` was looking at the second
+  line of `codesign --verify --verbose=2` output ("satisfies
+  its Designated Requirement"), so the check always reported
+  failure even on success. Now uses `codesign`'s exit code
+  directly, with the failure log captured to `/tmp/codesign-
+  verify.log` for diagnostic.
+
 ## [1.0.102] — 2026-05-01
 
 ### Tests

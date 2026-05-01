@@ -20,12 +20,21 @@ echo "Building (configuration=$CONFIG, version=$SHORT_VERSION build $BUILD_NUMBE
 swift build -c "$CONFIG"
 
 BIN_PATH="$(swift build -c "$CONFIG" --show-bin-path)"
-APP_DIR="PurpleIRC.app"
+
+# Build the .app bundle in a tmp directory OUTSIDE iCloud Drive's reach.
+# PhantomLives lives under ~/Documents which is iCloud-synced; iCloud
+# Drive re-attaches `com.apple.FinderInfo` to fresh files at arbitrary
+# moments, and codesign --strict (required for notarisation) refuses to
+# sign or verify any bundle carrying that xattr. Doing the assembly +
+# sign + verify in /tmp sidesteps the race entirely; we then `ditto
+# --noextattr` the finished bundle back into the project directory.
+FINAL_APP_DIR="PurpleIRC.app"
+WORK_DIR="$(mktemp -d -t purpleirc-build)"
+APP_DIR="$WORK_DIR/PurpleIRC.app"
 CONTENTS="$APP_DIR/Contents"
 MACOS="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
 
-rm -rf "$APP_DIR"
 mkdir -p "$MACOS" "$RESOURCES"
 
 cp "$BIN_PATH/PurpleIRC" "$MACOS/PurpleIRC"
@@ -68,8 +77,85 @@ cat > "$CONTENTS/Info.plist" <<PLIST
 </plist>
 PLIST
 
-# Ad-hoc sign so macOS will launch it even without a dev cert.
-codesign --force --sign - "$APP_DIR" 2>/dev/null || true
+# Sign the bundle. Prefer a real Developer ID Application certificate
+# when one is available in the user's keychain — that's what makes the
+# app distributable outside the Mac App Store and notarisation-eligible.
+# Override the auto-detection by exporting CODESIGN_IDENTITY before
+# running this script (e.g. CODESIGN_IDENTITY="-" forces ad-hoc; a
+# specific common-name like "Developer ID Application: Jane Doe (XYZ)"
+# pins to that one when multiple are installed).
+#
+# Auto-detect: prefer Developer ID Application, fall back to ad-hoc.
+detect_codesign_identity() {
+    if [ -n "${CODESIGN_IDENTITY:-}" ]; then
+        echo "$CODESIGN_IDENTITY"
+        return
+    fi
+    # First valid Developer ID Application certificate, if any.
+    local devid
+    devid=$(security find-identity -v -p codesigning 2>/dev/null \
+        | grep -E '"Developer ID Application:' \
+        | head -1 \
+        | sed -E 's/.*"(Developer ID Application:[^"]+)".*/\1/')
+    if [ -n "$devid" ]; then
+        echo "$devid"
+    else
+        echo "-"
+    fi
+}
 
-echo "Built $APP_DIR"
-echo "Run with:  open $APP_DIR"
+CODESIGN_ID="$(detect_codesign_identity)"
+
+# Strip extended attributes before signing. swift build / cp pick up
+# `com.apple.quarantine` / Finder info / resource forks from the
+# source tree that codesign refuses to sign over ("resource fork,
+# Finder information, or similar detritus not allowed"). iCloud
+# Drive (PhantomLives lives under ~/Documents) ALSO re-attaches
+# `com.apple.FinderInfo` and `com.apple.fileprovider.fpfs#P` at
+# arbitrary times, so we delete the offenders explicitly in
+# addition to the recursive clear.
+xattr -cr "$APP_DIR" 2>/dev/null || true
+find "$APP_DIR" -exec xattr -d com.apple.FinderInfo {} \; 2>/dev/null || true
+find "$APP_DIR" -exec xattr -d 'com.apple.fileprovider.fpfs#P' {} \; 2>/dev/null || true
+find "$APP_DIR" -exec xattr -d com.apple.provenance {} \; 2>/dev/null || true
+find "$APP_DIR" -exec xattr -d com.apple.quarantine {} \; 2>/dev/null || true
+
+if [ "$CODESIGN_ID" = "-" ]; then
+    echo "Signing ad-hoc (no Developer ID Application cert found)..."
+    codesign --force --sign - "$APP_DIR" 2>/dev/null || true
+else
+    echo "Signing with: $CODESIGN_ID"
+    # --options runtime turns on the hardened runtime, which is required
+    # for notarisation. --timestamp embeds an Apple-issued timestamp;
+    # also notarisation-required. Without these flags the bundle still
+    # signs but Apple will reject it from notary submission.
+    codesign --force \
+             --sign "$CODESIGN_ID" \
+             --options runtime \
+             --timestamp \
+             "$APP_DIR"
+    # Verify the signature actually took. Fail loudly so a CI build
+    # doesn't ship an unsigned bundle silently. codesign --verify exits
+    # non-zero on failure; capture the exit code rather than parsing
+    # output (which varies across macOS versions).
+    if codesign --verify --deep --strict --verbose=2 "$APP_DIR" 2>/tmp/codesign-verify.log; then
+        echo "Signature verified."
+    else
+        echo "WARNING: codesign verification failed:"
+        cat /tmp/codesign-verify.log
+    fi
+fi
+
+# Copy the signed bundle back into the project directory using `ditto
+# --noextattr` so iCloud Drive's eventual FinderInfo reattach doesn't
+# disturb the embedded signature. The signed bundle is now in two
+# places: the canonical /tmp build (where verification just succeeded
+# under --strict) and the project-dir copy (where iCloud may stamp
+# metadata, but the embedded signature itself stays valid because it
+# only covers the bundle's contents, not its file-system metadata).
+rm -rf "$FINAL_APP_DIR"
+ditto --noextattr "$APP_DIR" "$FINAL_APP_DIR"
+rm -rf "$WORK_DIR"
+
+echo "Built $FINAL_APP_DIR"
+echo "Run with:  open $FINAL_APP_DIR"
