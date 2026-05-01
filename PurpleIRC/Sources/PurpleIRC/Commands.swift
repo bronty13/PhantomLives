@@ -107,7 +107,9 @@ enum CommandCatalog {
         .init(id: "network",    args: "[name]",            summary: "Switch active network, or list connected ones.",                     category: .window,     aliases: []),
 
         // Appearance
-        .init(id: "theme",      args: "[name]",            summary: "List themes or switch to one by id.",                                category: .appearance, aliases: []),
+        .init(id: "theme",      args: "[name|builder|import <path>|export <id> <path>]",
+              summary: "List themes, switch by id, open the WYSIWYG builder, or import/export a `.purpletheme` file.",
+              category: .appearance, aliases: []),
         .init(id: "font",       args: "+|-|reset|<pt>|family <name>", summary: "Adjust chat font size or family.",                        category: .appearance, aliases: []),
         .init(id: "density",    args: "compact|cozy|comfortable", summary: "Switch chat-row vertical density.",                           category: .appearance, aliases: []),
         .init(id: "zoom",       args: "+|-|reset|<0.5–2.0>", summary: "Whole-buffer text zoom multiplier.",                                category: .appearance, aliases: []),

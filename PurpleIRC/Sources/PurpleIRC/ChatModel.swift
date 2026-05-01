@@ -279,6 +279,16 @@ final class ChatModel: ObservableObject {
     /// server-side membership; this is a UI-only scrollback wipe.
     @Published var clearBufferRequest: Buffer.ID? = nil
 
+    /// Draft passed to `ThemeBuilderView` when the slash command (or a
+    /// future menu item) wants to summon the WYSIWYG builder. Non-nil
+    /// presents the sheet; `ThemeBuilderView` clears it on dismiss
+    /// indirectly via `.sheet(item:)`.
+    @Published var themeBuilderDraft: UserTheme? = nil
+    /// True when `themeBuilderDraft` represents a brand-new theme (not
+    /// yet in `settings.userThemes`). Drives the builder's Delete
+    /// button visibility and the title.
+    @Published var themeBuilderIsNew: Bool = false
+
     /// Generic single-line input prompt surfaced by ContentView whenever
     /// a menu item needs user input (Set Topic…, WHOIS…, Invite…). The
     /// prompt's `onSubmit` runs the chosen action with the typed text.
@@ -671,8 +681,43 @@ final class ChatModel: ObservableObject {
         applySettingsToAll()
     }
 
-    /// Selected theme — read by MessageRow at render time.
-    var theme: Theme { Theme.named(settings.settings.themeID) }
+    /// Selected theme — read by MessageRow at render time. Resolution
+    /// order:
+    ///   1. The active connection's `themeOverrideID` (per-network
+    ///      theme override on the profile), if it resolves to a
+    ///      built-in or a user theme.
+    ///   2. The global `settings.themeID`, looked up against built-ins
+    ///      and user themes.
+    ///   3. `.classic` as the ultimate fallback.
+    var theme: Theme {
+        let userThemes = settings.settings.userThemes
+        if let override = activeConnection?.profile.themeOverrideID, !override.isEmpty {
+            let t = Theme.resolve(id: override, userThemes: userThemes)
+            // resolve falls back to .classic on miss; only honour the
+            // override when it actually resolved to something specific.
+            if t.id != "classic" || override == "classic" { return t }
+        }
+        return Theme.resolve(id: settings.settings.themeID, userThemes: userThemes)
+    }
+
+    /// Per-event color override, when the active theme is a UserTheme
+    /// that has a non-nil entry for `tag`. nil means "use the theme's
+    /// typed slot (`infoColor`, `joinColor`, etc.)" — MessageRow handles
+    /// the fallback at the call site.
+    func kindColor(for tag: ChatLineKindTag) -> Color? {
+        let userThemes = settings.settings.userThemes
+        // Resolve which UserTheme (if any) is currently active.
+        let activeID: String = {
+            if let override = activeConnection?.profile.themeOverrideID, !override.isEmpty {
+                return override
+            }
+            return settings.settings.themeID
+        }()
+        guard let user = userThemes.first(where: { $0.id.uuidString == activeID }) else {
+            return nil
+        }
+        return user.kindOverridesMaterialised[tag]
+    }
 
     /// Resolved chat font (family + size + optional bold). Read by every
     /// view that renders chat text — keeps font customisation in one place
@@ -1075,18 +1120,7 @@ final class ChatModel: ObservableObject {
                 }
                 return
             case "theme":
-                guard !rest.isEmpty else {
-                    let names = Theme.all.map { $0.id }.joined(separator: ", ")
-                    conn.appendInfoOnSelected("Available themes: \(names). Current: \(settings.settings.themeID).")
-                    return
-                }
-                let lower = rest.lowercased()
-                if let match = Theme.all.first(where: { $0.id.lowercased() == lower }) {
-                    settings.settings.themeID = match.id
-                    conn.appendInfoOnSelected("Theme: \(match.id)")
-                } else {
-                    conn.appendInfoOnSelected("No theme named '\(rest)'.")
-                }
+                handleThemeCommand(rest: rest, on: conn)
                 return
             case "font":
                 handleFontCommand(rest: rest, on: conn)
@@ -1162,6 +1196,109 @@ final class ChatModel: ObservableObject {
     }
 
     // MARK: - Slash command helpers
+
+    /// `/theme`           — list built-ins + user themes + show current
+    /// `/theme <id>`      — switch to a theme by id
+    /// `/theme builder`   — open the WYSIWYG ThemeBuilderView sheet
+    /// `/theme import <path>` — load a `.purpletheme` JSON from disk
+    /// `/theme export <id> <path>` — save a user theme to disk
+    private func handleThemeCommand(rest: String, on conn: IRCConnection) {
+        let trimmed = rest.trimmingCharacters(in: .whitespaces)
+
+        // No-arg list view.
+        if trimmed.isEmpty {
+            let builtins = Theme.all.map { $0.id }.joined(separator: ", ")
+            let users = settings.settings.userThemes
+                .map { "\($0.name) [\($0.id.uuidString.prefix(8))…]" }
+                .joined(separator: ", ")
+            var lines = ["Built-ins: \(builtins)"]
+            if !users.isEmpty { lines.append("Custom: \(users)") }
+            lines.append("Current: \(settings.settings.themeID)")
+            lines.append("Try: /theme <id>, /theme builder, /theme import <path>, /theme export <id> <path>.")
+            conn.appendInfoOnSelected(lines.joined(separator: "\n"))
+            return
+        }
+
+        // Subcommands.
+        let firstSpace = trimmed.firstIndex(of: " ")
+        let head = firstSpace.map { String(trimmed[trimmed.startIndex..<$0]).lowercased() }
+            ?? trimmed.lowercased()
+        let tail = firstSpace.map { String(trimmed[trimmed.index(after: $0)...])
+            .trimmingCharacters(in: .whitespaces) } ?? ""
+
+        switch head {
+        case "builder", "edit", "new":
+            // Snapshot the active theme as the starting point so the
+            // builder opens with a meaningful palette rather than blank.
+            let active = Theme.resolve(id: settings.settings.themeID,
+                                       userThemes: settings.settings.userThemes)
+            themeBuilderDraft = UserTheme.duplicate(of: active, name: "")
+            themeBuilderIsNew = true
+            return
+        case "import":
+            guard !tail.isEmpty else {
+                conn.appendInfoOnSelected("Usage: /theme import <path-to-.purpletheme>")
+                return
+            }
+            let url = URL(fileURLWithPath: (tail as NSString).expandingTildeInPath)
+            if let imported = ThemeImporter.importTheme(from: url, into: settings) {
+                settings.settings.themeID = imported.id.uuidString
+                conn.appendInfoOnSelected("Imported '\(imported.name)' and switched to it.")
+            } else {
+                conn.appendInfoOnSelected("Couldn't read \(url.path) as a .purpletheme file.")
+            }
+            return
+        case "export":
+            // /theme export <id-or-name> <path>
+            let parts = tail.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+                .map(String.init)
+            guard parts.count == 2 else {
+                conn.appendInfoOnSelected("Usage: /theme export <user-theme-name-or-id> <path>")
+                return
+            }
+            let key = parts[0]
+            let path = (parts[1] as NSString).expandingTildeInPath
+            guard let user = settings.settings.userThemes.first(where: {
+                $0.id.uuidString == key
+                    || $0.id.uuidString.hasPrefix(key)
+                    || $0.name.lowercased() == key.lowercased()
+            }) else {
+                conn.appendInfoOnSelected("No user theme matching '\(key)'. Built-ins can't be exported (they're code).")
+                return
+            }
+            do {
+                let enc = JSONEncoder()
+                enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let data = try enc.encode(user)
+                try data.write(to: URL(fileURLWithPath: path), options: .atomic)
+                conn.appendInfoOnSelected("Exported '\(user.name)' to \(path)")
+            } catch {
+                conn.appendInfoOnSelected("Export failed: \(error.localizedDescription)")
+            }
+            return
+        default:
+            break
+        }
+
+        // Plain `/theme <id>` — match against built-ins by id, then user
+        // themes by uuid prefix or by name (case-insensitive).
+        let lower = trimmed.lowercased()
+        if let built = Theme.all.first(where: { $0.id.lowercased() == lower }) {
+            settings.settings.themeID = built.id
+            conn.appendInfoOnSelected("Theme: \(built.id)")
+            return
+        }
+        if let user = settings.settings.userThemes.first(where: {
+            $0.id.uuidString == trimmed
+                || $0.id.uuidString.hasPrefix(trimmed)
+                || $0.name.lowercased() == lower
+        }) {
+            settings.settings.themeID = user.id.uuidString
+            conn.appendInfoOnSelected("Theme: \(user.name)")
+            return
+        }
+        conn.appendInfoOnSelected("No theme matching '\(trimmed)'. Try /theme to list available themes.")
+    }
 
     /// `/font + - reset | <ptsize> | family <name>`
     private func handleFontCommand(rest: String, on conn: IRCConnection) {

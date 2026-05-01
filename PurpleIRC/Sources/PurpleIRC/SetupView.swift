@@ -274,6 +274,17 @@ struct ServerEditor: View {
     /// Any value works as long as it's constant and won't collide with a real
     /// Identity.id, so a hardcoded all-zeros UUID is fine.
     private static let customSentinel = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+
+    /// Bridge `themeOverrideID: String?` (nil = no override) to a String
+    /// the Picker can drive (empty string = no override). Avoids a
+    /// branch on Optional in the picker selection.
+    private var themeOverrideBinding: Binding<String> {
+        Binding(
+            get: { server.themeOverrideID ?? "" },
+            set: { server.themeOverrideID = $0.isEmpty ? nil : $0 }
+        )
+    }
+
     var body: some View {
         Form {
             Section("Profile") {
@@ -375,6 +386,22 @@ struct ServerEditor: View {
             Section("Auto-join") {
                 TextField("#channel1, #channel2", text: $server.autoJoin)
                 Text("Channels listed here join automatically after login, in addition to channels under the Channels tab.")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }
+            Section("Theme") {
+                Picker("Theme override", selection: themeOverrideBinding) {
+                    Text("— Use global theme —").tag("")
+                    ForEach(Theme.all) { t in
+                        Text(t.displayName).tag(t.id)
+                    }
+                    if !model.settings.settings.userThemes.isEmpty {
+                        Divider()
+                        ForEach(model.settings.settings.userThemes) { u in
+                            Text("\(u.name) (custom)").tag(u.id.uuidString)
+                        }
+                    }
+                }
+                Text("Pick a theme that takes precedence over the global selection for buffers belonging to this network. Useful for visually distinguishing networks at a glance.")
                     .font(.caption).foregroundStyle(.tertiary)
             }
             Section("Proxy") {
@@ -1922,10 +1949,14 @@ struct LoggingSetup: View {
 
 // MARK: - Themes
 
-/// Theme grid lifted out of Appearance so it can grow into a Theme
-/// Builder + custom-themes story (Phase 4) without crowding the parent.
+/// Theme grid + WYSIWYG builder launchpad. The grid renders built-in
+/// themes (grouped light / adaptive / dark) AND user themes (with
+/// edit + delete affordances). New / Edit / Duplicate route to
+/// ThemeBuilderView.
 struct ThemesSetup: View {
     @ObservedObject var settings: SettingsStore
+    @State private var builderDraft: UserTheme? = nil
+    @State private var builderIsNew: Bool = false
 
     private static let adaptiveIDs: Set<String> = ["classic", "highContrast"]
 
@@ -1941,15 +1972,139 @@ struct ThemesSetup: View {
 
     var body: some View {
         Form {
+            Section("Custom themes") {
+                if settings.settings.userThemes.isEmpty {
+                    Text("No custom themes yet. Click **+ New theme** to duplicate the currently-selected theme as a starting point, or **Import…** to load a `.purpletheme` file someone shared.")
+                        .font(.caption).foregroundStyle(.tertiary)
+                } else {
+                    ForEach(settings.settings.userThemes) { user in
+                        userThemeRow(user)
+                    }
+                }
+                HStack {
+                    Button {
+                        startNewFromActive()
+                    } label: {
+                        Label("New theme", systemImage: "plus.square.on.square")
+                    }
+                    Button {
+                        importThemeFile()
+                    } label: {
+                        Label("Import…", systemImage: "square.and.arrow.down")
+                    }
+                    Spacer()
+                }
+                .padding(.top, 4)
+            }
             Section("Light themes")    { themeGrid(lightThemes) }
             Section("Adaptive (follows macOS appearance)") { themeGrid(adaptiveThemes) }
             Section("Dark themes")     { themeGrid(darkThemes) }
-            Section("Coming soon") {
-                Text("WYSIWYG Theme Builder, per-event colors (join / part / kick / etc.), per-network theme overrides, and `.purpletheme` import/export are scheduled for Phase 4.")
-                    .font(.caption).foregroundStyle(.tertiary)
-            }
         }
         .formStyle(.grouped)
+        .sheet(item: $builderDraft) { draft in
+            ThemeBuilderView(
+                settings: settings,
+                draft: draft,
+                isNew: builderIsNew
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func userThemeRow(_ user: UserTheme) -> some View {
+        HStack(spacing: 10) {
+            // Tiny preview swatch — chat background + foreground tile.
+            ZStack {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color(hex: user.chatBackgroundHex) ?? .gray)
+                Text("Aa")
+                    .foregroundStyle(Color(hex: user.chatForegroundHex) ?? .white)
+                    .font(.caption.bold())
+            }
+            .frame(width: 44, height: 28)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(user.id.uuidString == settings.settings.themeID
+                            ? Color.accentColor : Color.gray.opacity(0.3),
+                            lineWidth: user.id.uuidString == settings.settings.themeID ? 2 : 1)
+            )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(user.name).font(.body)
+                if let basedOn = user.basedOn {
+                    Text("Based on \(basedOn)")
+                        .font(.caption2).foregroundStyle(.tertiary)
+                }
+            }
+            Spacer()
+            Button("Use") {
+                settings.settings.themeID = user.id.uuidString
+            }
+            .disabled(user.id.uuidString == settings.settings.themeID)
+            Button {
+                builderDraft = user
+                builderIsNew = false
+            } label: {
+                Image(systemName: "pencil")
+            }
+            .help("Edit in the Theme Builder")
+            .buttonStyle(.borderless)
+            Button {
+                duplicateUserTheme(user)
+            } label: {
+                Image(systemName: "doc.on.doc")
+            }
+            .help("Duplicate")
+            .buttonStyle(.borderless)
+            Button(role: .destructive) {
+                deleteUserTheme(user)
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+        }
+    }
+
+    private func startNewFromActive() {
+        // Resolve whatever's currently selected (built-in OR existing
+        // user theme) and snapshot it as the starting point. Materialising
+        // a user theme back through duplicate(of:) round-trips its
+        // colors via Color, which can drift slightly on the OS color
+        // pipeline — acceptable here since the user's editing it.
+        let active = Theme.resolve(id: settings.settings.themeID,
+                                    userThemes: settings.settings.userThemes)
+        builderDraft = UserTheme.duplicate(of: active, name: "")
+        builderIsNew = true
+    }
+
+    private func duplicateUserTheme(_ user: UserTheme) {
+        var copy = user
+        copy.id = UUID()
+        copy.name = "\(user.name) copy"
+        copy.createdAt = Date()
+        settings.settings.userThemes.append(copy)
+    }
+
+    private func deleteUserTheme(_ user: UserTheme) {
+        settings.settings.userThemes.removeAll { $0.id == user.id }
+        if settings.settings.themeID == user.id.uuidString {
+            settings.settings.themeID = user.basedOn ?? "classic"
+        }
+    }
+
+    private func importThemeFile() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.title = "Import theme"
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            Task { @MainActor in
+                if let imported = ThemeImporter.importTheme(from: url, into: settings) {
+                    settings.settings.themeID = imported.id.uuidString
+                }
+            }
+        }
     }
 
     @ViewBuilder

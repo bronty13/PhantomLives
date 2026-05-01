@@ -67,6 +67,13 @@ struct ServerProfile: Codable, Identifiable, Hashable {
     /// stored inline on this profile.
     var identityID: UUID? = nil
 
+    /// Optional per-network theme override. When non-nil and the id
+    /// resolves (built-in or user theme), `ChatModel.theme` returns
+    /// this instead of `settings.themeID` for buffers belonging to
+    /// connections of this profile. Empty / unresolvable ids fall
+    /// back to the global theme silently.
+    var themeOverrideID: String? = nil
+
     init(id: UUID = UUID(),
          name: String = "New Server",
          host: String = "irc.libera.chat",
@@ -174,6 +181,7 @@ struct ServerProfile: Codable, Identifiable, Hashable {
         self.proxyUsername  = try c.decodeIfPresent(String.self, forKey: .proxyUsername) ?? ""
         self.proxyPassword  = try c.decodeIfPresent(String.self, forKey: .proxyPassword) ?? ""
         self.identityID     = try c.decodeIfPresent(UUID.self, forKey: .identityID)
+        self.themeOverrideID = try c.decodeIfPresent(String.self, forKey: .themeOverrideID)
     }
 
     /// Returns a copy of this profile with `identity`'s fields layered on top
@@ -405,6 +413,12 @@ struct AppSettings: Codable {
         "highlight": "Funk"
     ]
     var themeID: String = "classic"
+
+    /// User-built themes — `UserTheme` snapshots with hex color slots
+    /// + per-event overrides. Listed alongside built-ins in the
+    /// Themes tab and the View → Theme menu; selectable by
+    /// `themeID = userTheme.id.uuidString`.
+    var userThemes: [UserTheme] = []
 
     // Appearance / accessibility — applied to every chat-text view.
     /// Pattern fed straight into `DateFormatter.dateFormat` for chat-line

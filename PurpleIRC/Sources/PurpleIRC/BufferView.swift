@@ -1054,23 +1054,37 @@ struct MessageRow: View {
     @ViewBuilder
     private var content: some View {
         let theme = model.theme
+        // Per-event color overlay: a UserTheme can override any of these
+        // slots independently. nil = inherit from the theme's typed slot.
+        let infoC    = model.kindColor(for: .info)        ?? theme.infoColor
+        let errorC   = model.kindColor(for: .error)       ?? theme.errorColor
+        let motdC    = model.kindColor(for: .info)        ?? theme.motdColor
+        let ownC     = model.kindColor(for: .privmsgSelf) ?? theme.ownNickColor
+        let actionC  = model.kindColor(for: .action)
+        let noticeC  = model.kindColor(for: .notice)      ?? theme.noticeColor
+        let joinC    = model.kindColor(for: .join)        ?? theme.joinColor
+        let partC    = model.kindColor(for: .part)        ?? theme.partColor
+        let quitC    = model.kindColor(for: .quit)        ?? theme.partColor
+        let nickC    = model.kindColor(for: .nick)        ?? theme.nickNickColor
+        let topicC   = model.kindColor(for: .topic)       ?? theme.nickNickColor
+        let rawC     = model.kindColor(for: .raw)         ?? theme.infoColor
         switch line.kind {
         case .info:
             Text("— \(line.text)")
-                .foregroundStyle(theme.infoColor)
+                .foregroundStyle(infoC)
                 .font(model.chatFont)
         case .error:
             Text("! \(line.text)")
-                .foregroundStyle(theme.errorColor)
+                .foregroundStyle(errorC)
                 .font(model.chatFont)
         case .motd:
             Text(line.text)
-                .foregroundStyle(theme.motdColor)
+                .foregroundStyle(motdC)
                 .font(model.chatFont)
         case .privmsg(let nick, let isSelf):
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 nickTag("<\(nick)>", nick: nick,
-                        color: isSelf ? theme.ownNickColor : colorForNick(nick, theme: theme),
+                        color: isSelf ? ownC : (model.kindColor(for: .privmsg) ?? colorForNick(nick, theme: theme)),
                         font: model.chatFont,
                         suppressMenu: isSelf)
                 Text(renderedText(linkColor: .accentColor))
@@ -1081,7 +1095,7 @@ struct MessageRow: View {
         case .action(let nick):
             HStack(alignment: .firstTextBaseline, spacing: 0) {
                 nickTag("* \(nick) ", nick: nick,
-                        color: colorForNick(nick, theme: theme),
+                        color: actionC ?? colorForNick(nick, theme: theme),
                         font: model.chatFont,
                         italic: true)
                 Text(renderedText(linkColor: .accentColor)).italic()
@@ -1089,38 +1103,38 @@ struct MessageRow: View {
         case .notice(let from):
             HStack(alignment: .firstTextBaseline, spacing: 0) {
                 nickTag("-\(from)- ", nick: from,
-                        color: theme.noticeColor,
+                        color: noticeC,
                         font: model.chatFont)
-                Text(renderedText(linkColor: theme.noticeColor))
+                Text(renderedText(linkColor: noticeC))
                     .font(model.chatFont)
             }
         case .join(let nick):
             nickTag("→ \(nick) joined",
                     nick: nick,
-                    color: theme.joinColor,
+                    color: joinC,
                     font: model.chatCaptionFont)
         case .part(let nick, let reason):
             nickTag("← \(nick) left\(reason.map { " (\($0))" } ?? "")",
                     nick: nick,
-                    color: theme.partColor,
+                    color: partC,
                     font: model.chatCaptionFont)
         case .quit(let nick, let reason):
             nickTag("← \(nick) quit\(reason.map { " (\($0))" } ?? "")",
                     nick: nick,
-                    color: theme.partColor,
+                    color: quitC,
                     font: model.chatCaptionFont)
         case .nick(let old, let new):
             nickTag("\(old) → \(new)",
                     nick: new,
-                    color: theme.nickNickColor,
+                    color: nickC,
                     font: model.chatCaptionFont)
         case .topic:
             Text(line.text)
-                .foregroundStyle(theme.nickNickColor)
+                .foregroundStyle(topicC)
                 .font(model.chatFont)
         case .raw:
             Text(line.text)
-                .foregroundStyle(theme.infoColor)
+                .foregroundStyle(rawC)
                 .font(model.chatCaptionFont)
         }
     }

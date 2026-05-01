@@ -571,6 +571,188 @@ extension Theme {
     static func named(_ id: String) -> Theme {
         all.first(where: { $0.id == id }) ?? .classic
     }
+
+    /// Resolve a theme id against the union of built-ins and user themes.
+    /// Built-ins win on id collision (don't let a user theme shadow
+    /// `classic` by mistake). Falls back to `.classic` when no match.
+    static func resolve(id: String, userThemes: [UserTheme]) -> Theme {
+        if let built = all.first(where: { $0.id == id }) { return built }
+        if let custom = userThemes.first(where: { $0.id.uuidString == id }) {
+            return custom.materialised
+        }
+        return .classic
+    }
+}
+
+// MARK: - Per-event color overlay
+
+/// Stable string tags for `ChatLine.Kind` variants so the theme system
+/// can keep a sparse `[String: Color]` overlay without depending on
+/// SwiftUI Color's brittle Codable conformance. UserTheme stores hex
+/// strings keyed by these tags; a missing key means "inherit from the
+/// theme's base palette."
+enum ChatLineKindTag: String, CaseIterable, Codable {
+    case info        = "info"
+    case error       = "error"
+    case privmsgSelf = "privmsg.self"   // your own messages
+    case privmsg     = "privmsg"        // others' messages
+    case action      = "action"          // /me lines
+    case notice      = "notice"
+    case join        = "join"
+    case part        = "part"
+    case quit        = "quit"
+    case nick        = "nick"
+    case topic       = "topic"
+    case raw         = "raw"
+    case mention     = "mention"         // own-nick mention background
+    case watchlist   = "watchlist"       // watch-hit row background
+
+    var displayName: String {
+        switch self {
+        case .info:        return "System / info"
+        case .error:       return "Error"
+        case .privmsgSelf: return "Your own messages"
+        case .privmsg:     return "Other people's messages"
+        case .action:      return "/me actions"
+        case .notice:      return "NOTICE lines"
+        case .join:        return "Join"
+        case .part:        return "Part"
+        case .quit:        return "Quit"
+        case .nick:        return "Nick change"
+        case .topic:       return "Topic change"
+        case .raw:         return "Raw protocol lines"
+        case .mention:     return "Mention background"
+        case .watchlist:   return "Watch-hit background"
+        }
+    }
+}
+
+// Per-event overrides aren't stored on `Theme` itself — that would force
+// touching the 16 built-in theme literals + every Hashable conformance.
+// Instead, ChatModel.kindColor(for:) resolves overrides by looking up
+// the currently-active UserTheme (when one is selected) in
+// `AppSettings.userThemes` and reading its `kindOverrideHex` map.
+// MessageRow calls `model.kindColor(for:) ?? theme.someColor` at the
+// render seam.
+
+// MARK: - UserTheme (Codable, persisted in AppSettings.userThemes)
+
+/// Round-trippable theme stored in `settings.json`. Mirrors `Theme`'s
+/// fields as hex strings (so SwiftUI Color doesn't have to Codable
+/// itself), plus a `kindOverrides` map for per-event palette tweaks.
+///
+/// On load, `materialised` produces a real `Theme` value the renderer
+/// can use. The materialised theme carries its overrides via the
+/// `_overrideStore` table so `Theme.kindOverride(for:)` returns them
+/// without changing the built-in `Theme` struct's stored properties.
+struct UserTheme: Codable, Identifiable, Hashable {
+    var id: UUID = UUID()
+    var name: String
+    /// Built-in theme this was duplicated from, if any. Pure metadata —
+    /// the renderer doesn't use it; it's surfaced in the builder so the
+    /// user can see where their custom started.
+    var basedOn: String?
+    /// Wall-clock creation time. Surfaced in the builder list so the
+    /// user can sort their library.
+    var createdAt: Date = Date()
+
+    // Hex-encoded color slots — same names as Theme so the builder UI
+    // can be a pure mapping table.
+    var chatBackgroundHex: String
+    var chatForegroundHex: String
+    var ownNickColorHex: String
+    var infoColorHex: String
+    var errorColorHex: String
+    var motdColorHex: String
+    var noticeColorHex: String
+    var actionColorHex: String
+    var joinColorHex: String
+    var partColorHex: String
+    var nickNickColorHex: String
+    var mentionBackgroundHex: String
+    var watchlistBackgroundHex: String
+    var findBackgroundHex: String
+    /// Hex per nick-palette slot. Builder enforces 8 entries; loader
+    /// pads or truncates to 8 so every theme has the same shape.
+    var nickPaletteHex: [String]
+    /// Per-event color overrides keyed by `ChatLineKindTag.rawValue`.
+    /// Sparse — a missing key means "inherit from the slot above".
+    var kindOverrideHex: [String: String] = [:]
+
+    /// Build a UserTheme by snapshotting an existing built-in theme.
+    /// The new theme gets a fresh UUID and a name derived from the base.
+    static func duplicate(of base: Theme, name: String) -> UserTheme {
+        UserTheme(
+            name: name.isEmpty ? "Custom from \(base.displayName)" : name,
+            basedOn: base.id,
+            chatBackgroundHex:     base.chatBackground.hexRGB,
+            chatForegroundHex:     base.chatForeground.hexRGB,
+            ownNickColorHex:       base.ownNickColor.hexRGB,
+            infoColorHex:          base.infoColor.hexRGB,
+            errorColorHex:         base.errorColor.hexRGB,
+            motdColorHex:          base.motdColor.hexRGB,
+            noticeColorHex:        base.noticeColor.hexRGB,
+            actionColorHex:        base.actionColor.hexRGB,
+            joinColorHex:          base.joinColor.hexRGB,
+            partColorHex:          base.partColor.hexRGB,
+            nickNickColorHex:      base.nickNickColor.hexRGB,
+            mentionBackgroundHex:  base.mentionBackground.hexRGB,
+            watchlistBackgroundHex: base.watchlistBackground.hexRGB,
+            findBackgroundHex:     base.findBackground.hexRGB,
+            nickPaletteHex: base.nickPalette.map { $0.hexRGB }
+        )
+    }
+
+    /// Construct the runtime `Theme` from this UserTheme. Hex strings
+    /// that fail to parse fall back to a sane default. Per-event
+    /// overrides are NOT applied here — `ChatModel.kindColor(for:)`
+    /// resolves them at render time so MessageRow can fall back to
+    /// the theme's typed slot when an override is missing.
+    var materialised: Theme {
+        let bg = Color(hex: chatBackgroundHex) ?? Color(nsColor: .textBackgroundColor)
+        let fg = Color(hex: chatForegroundHex) ?? .primary
+        // Pad/truncate the palette to 8 entries so renderers can index
+        // safely without bounds checks.
+        var palette = nickPaletteHex.compactMap { Color(hex: $0) }
+        let fallback: [Color] = [.pink, .teal, .indigo, .mint, .orange, .cyan, .brown, .purple]
+        if palette.count < 8 { palette.append(contentsOf: fallback.suffix(8 - palette.count)) }
+        if palette.count > 8 { palette = Array(palette.prefix(8)) }
+
+        return Theme(
+            id: id.uuidString,
+            displayName: name,
+            chatBackground: bg,
+            chatForeground: fg,
+            ownNickColor:   Color(hex: ownNickColorHex)   ?? .accentColor,
+            infoColor:      Color(hex: infoColorHex)      ?? .secondary,
+            errorColor:     Color(hex: errorColorHex)     ?? .red,
+            motdColor:      Color(hex: motdColorHex)      ?? .secondary,
+            noticeColor:    Color(hex: noticeColorHex)    ?? .purple,
+            actionColor:    Color(hex: actionColorHex)    ?? .purple,
+            joinColor:      Color(hex: joinColorHex)      ?? .green,
+            partColor:      Color(hex: partColorHex)      ?? .orange,
+            nickNickColor:  Color(hex: nickNickColorHex)  ?? .blue,
+            mentionBackground:   Color(hex: mentionBackgroundHex)   ?? .orange.opacity(0.18),
+            watchlistBackground: Color(hex: watchlistBackgroundHex) ?? .purple.opacity(0.12),
+            findBackground:      Color(hex: findBackgroundHex)      ?? .yellow.opacity(0.30),
+            nickPalette: palette
+        )
+    }
+
+    /// Per-event color overrides as a `[ChatLineKindTag: Color]` dict —
+    /// the on-disk `[String: String]` parsed into typed Colors. Used
+    /// by `ChatModel.kindColor(for:)` to resolve overrides at render
+    /// time. Values that fail to parse are silently dropped (so a
+    /// hand-edited corrupt entry doesn't break rendering).
+    var kindOverridesMaterialised: [ChatLineKindTag: Color] {
+        var out: [ChatLineKindTag: Color] = [:]
+        for (k, v) in kindOverrideHex {
+            if let tag = ChatLineKindTag(rawValue: k), let c = Color(hex: v) {
+                out[tag] = c
+            }
+        }
+        return out
+    }
 }
 
 // MARK: - Color(hex:)

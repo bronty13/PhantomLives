@@ -256,6 +256,17 @@ struct ContentView: View {
                 model.inputPrompt = nil
             }
         }
+        // Theme Builder sheet — driven by /theme builder (or any menu
+        // item that wants to open the builder) via the model's
+        // themeBuilderDraft flag. Live preview + per-event overrides;
+        // see ThemeBuilderView.swift for the contract.
+        .sheet(item: $model.themeBuilderDraft) { draft in
+            ThemeBuilderView(
+                settings: model.settings,
+                draft: draft,
+                isNew: model.themeBuilderIsNew
+            )
+        }
     }
 }
 
