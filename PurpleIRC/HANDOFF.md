@@ -2,9 +2,9 @@
 
 Snapshot of where the project stands so a future session (human or AI)
 can pick up without re-deriving everything from the commit history.
-Last updated: 2026-05-01, after the 1.0.93 / 1.0.94 / 1.0.95 UI build-
-out (slash commands + macOS menu system + Setup reorganization). Tier
-#9 closed; Tier #10 (UI polish) is in flight.
+Last updated: 2026-05-01, after Phase 5 (1.0.98) of the UI build-out.
+Tier #9 closed; Tier #10 (UI build-out) is 5/8 phases shipped — Phase
+6 (address-book photos) is up next.
 
 ## What it is
 
@@ -64,7 +64,7 @@ stream across every connection, UUID-tagged so listeners can scope.
 | 7 | IRCv3 modernization + bigger features      | Done       | `3715298` / `08e85bd` / `d457cf8` |
 | 8 | Multi-network UX                           | Done       | `d457cf8` / `567a7e7` |
 | 9 | Security & robustness pass                 | Done       | `1.0.92` |
-| 10 | UI build-out (commands, menus, settings)  | In flight  | `1.0.93–1.0.95` (Phases 1–3) |
+| 10 | UI build-out (commands, menus, settings, themes, fonts) | 5/8 phases | `1.0.93–1.0.98` (Phases 1–5) |
 
 ## Security & robustness pass (1.0.92, 2026-04-30)
 
@@ -815,6 +815,88 @@ When you add new fields, remember the established pattern:
   files just get the default).
 - For complex types, add a `decodeIfPresent` fallback to the custom
   decoder so missing keys don't fail decode of the whole `AppSettings`.
+
+### Theme system (Phases 4) — architectural cheatsheet
+
+- **Two-track theme universe:** built-in `Theme` literals (16 of
+  them in `SoundsAndThemes.swift`) coexist with user `UserTheme`
+  values stored in `AppSettings.userThemes`. `Theme.resolve(id:
+  userThemes:)` is the join point: built-ins win on id collision so
+  a UserTheme can't accidentally shadow `classic`. UserTheme uses
+  hex strings for every color (round-trippable via Codable) and
+  materialises to a `Theme` via the `materialised` computed
+  property when the renderer needs concrete `Color` values.
+- **Per-event color overrides** live as `[String: String]` on
+  UserTheme keyed by `ChatLineKindTag.rawValue`. They're NOT stored
+  on `Theme` — Theme stays untouched so the 16 built-in literals
+  don't need updating. Resolution happens at render time via
+  `ChatModel.kindColor(for: ChatLineKindTag) -> Color?`, which
+  looks up the active UserTheme (override or global) and reads its
+  `kindOverridesMaterialised` dict. nil means "inherit", and the
+  caller (`MessageRow.content`) falls back to the typed slot
+  (`infoColor`, `joinColor`, etc.). When you add a new
+  ChatLineKindTag, add it to the enum + give it a sensible seed
+  in `ThemeBuilderView.seedHex(for:)` so the first reveal isn't
+  black.
+- **Per-network theme override** is `ServerProfile.themeOverrideID:
+  String?`. `ChatModel.theme` consults it before
+  `settings.themeID`. Empty string = use global. The picker in
+  ServerEditor surfaces both built-ins and user themes with a
+  divider between groups.
+- **`.purpletheme` files** are plain UserTheme JSON. `ThemeImporter
+  .importTheme(from:into:)` is the single read entry point — it
+  fresh-stamps UUID + createdAt so multiple imports of the same
+  file don't collide. Export is just `JSONEncoder().encode(theme)`
+  via `NSSavePanel`.
+- **ThemeBuilderView is the canonical sheet.** Anywhere that wants
+  to open the builder sets `model.themeBuilderDraft` (and
+  `themeBuilderIsNew`). ContentView presents it via
+  `.sheet(item: $model.themeBuilderDraft)`. The Themes tab and
+  `/theme builder` both use this seam — don't add another
+  presentation path.
+
+### Font system (Phase 5) — architectural cheatsheet
+
+- **`FontStyle` is a sparse override container.** Every field has
+  an "inherit" sentinel (empty `family`, zero `size`, `.inherit`
+  weight, nil `italic` / `ligatures` / `tracking` /
+  `lineHeightMultiple`). Fields you don't touch fall back through
+  the chain.
+- **Inheritance chain:** `nick / timestamp / systemLine` →
+  `chatBody` slot → legacy fields (`chatFontFamily`,
+  `chatFontSize`, `boldChatText`). `FontStyle.resolveChatBody(
+  legacy:legacySize:legacyBold:style:)` is the ROOT step (legacy
+  → root resolved); `FontStyle.resolved(parent:)` is each
+  subsequent step. The renderer just calls
+  `ChatModel.font(for: .nick).swiftUIFont` and gets a fully
+  resolved `ResolvedFont` back — no chain walking at the call site.
+- **Built-in family tokens** are `"system-mono"` and
+  `"system-proportional"`. The `ResolvedFont` carries
+  `isBuiltInMonoToken` / `isBuiltInPropToken` flags so the SwiftUI
+  Font factory routes to `.system(size:design:)` instead of
+  `.custom("system-mono", ...)`, which would silently fail.
+- **Ligatures need an AttributedString.** SwiftUI's `Text` doesn't
+  expose a ligature toggle on macOS. `purpleText(_:_:)` wraps the
+  string in an `AttributedString` carrying `.ligature = 0` when
+  the resolved font asks for ligatures off; ligatures-on uses the
+  raw `Text(_:)` so the font's natural ligature behaviour survives.
+- **`View.purpleFont(_:)` modifier** applies SwiftUI Font +
+  `.tracking(_:)` + `.lineSpacing(_:)` in one call. The line-
+  spacing math is `(multiplier - 1.0) * size` — done once in the
+  modifier so call sites don't re-implement it.
+- **Installed-font discovery** is cached. `InstalledFonts
+  .allFamilyNames` and `.monospacedFamilyNames` snapshot once on
+  first use; macOS doesn't change them frequently enough to
+  justify a refresh hook.
+- **Picker UI** lives in `FontFamilyPickerSheet` in SetupView. It
+  takes a `monoOnly` initial value (defaults ON for chat body,
+  OFF for nick / timestamp / system slots). Each row renders the
+  family in itself so users pick by visual feedback.
+- **Adding a new font slot** is one case in the `FontSlot` enum
+  (FontStyle.swift) + one stored property on AppSettings + one
+  branch in `ChatModel.font(for:)` + one DisclosureGroup in the
+  Fonts setup tab. Renderers updated last, since they discover
+  the slot via `model.font(for:)`.
 
 ## Sharp edges to remember
 

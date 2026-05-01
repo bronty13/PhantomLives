@@ -102,8 +102,18 @@ The biggest tabs:
   auto-join on connect (on top of the profile's auto-join list).
 - **Themes** — 16 built-in themes (Classic, Midnight, Solarized
   light/dark, Nord, Dracula, Tokyo Night, Lavender, Royal Purple,
-  Twilight, …). WYSIWYG Theme Builder + per-event colors land in
-  the next round.
+  Twilight, …) plus a **WYSIWYG Theme Builder** with a live preview
+  pane, per-event color overrides (paint joins / parts / kicks /
+  notices independently), and `.purpletheme` JSON import/export.
+  Per-network theme overrides on each `ServerProfile` so different
+  networks look visually distinct at a glance.
+- **Fonts** — pick any installed family via the searchable picker
+  (with a Monospaced-only filter for the chat body). Per-element
+  fonts: chat body, nick column, timestamp column, system lines —
+  each with its own family / size / weight / italic / ligatures /
+  letter-spacing / line-height. The chat-body slot is the
+  inheritance root; per-element slots only override what they
+  care about.
 - **Shortcuts & Aliases** — define `/alias <name> <expansion>` entries;
   resolved before built-in commands, so you can shadow them on purpose.
 

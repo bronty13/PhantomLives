@@ -5,6 +5,126 @@ All notable changes to PurpleIRC are recorded here. The bundle's
 count (`1.0.<count>`); CHANGELOG entries use the same scheme so the
 version on the About panel matches the entry that introduced it.
 
+## [1.0.98] — 2026-05-01
+
+### Added (Phase 5 — Fonts: per-element slots + advanced typography)
+
+- **`FontStyle` data model** (new file `FontStyle.swift`) — sparse
+  Codable container with "inherit" sentinels on every field
+  (empty `family`, zero `size`, `.inherit` weight, nil `italic` /
+  `ligatures` / `tracking` / `lineHeightMultiple`). Walks an
+  inheritance chain so a slot can override only what it cares about
+  while everything else falls back to its parent.
+- **`ResolvedFont`** — materialised concrete-value bag the renderer
+  reads (family, size, weight, italic, ligaturesEnabled, tracking,
+  lineHeightMultiple, plus `isBuiltInMonoToken` / `isBuiltInPropToken`
+  flags so the SwiftUI Font factory routes to `.system(...)` vs
+  `.custom(...)` correctly).
+- **Four `FontSlot`s** on `AppSettings` — `chatBodyFont`, `nickFont`,
+  `timestampFont`, `systemLineFont`, all defaulting to pure inherit
+  so old `settings.json` files render unchanged. The chat-body slot
+  inherits from the legacy `chatFontFamily` / `chatFontSize` /
+  `boldChatText` fields.
+- **`ChatModel.font(for: FontSlot) -> ResolvedFont`** — single resolver
+  every renderer reads. `chatFont` now goes through it; `chatCaptionFont`
+  honours the system-line slot and recomposes at 78% the slot's
+  configured size.
+- **`View.purpleFont(_:)` modifier** — applies SwiftUI Font + tracking
+  + lineSpacing in one call so call sites don't reimplement the
+  `(multiplier - 1.0) * size` line-spacing math.
+- **`purpleText(_:_:)` helper** — wraps a string in an
+  `AttributedString` with `.ligature = 0` when the resolved font has
+  ligatures off, since SwiftUI's `Text` doesn't expose a ligature
+  toggle on macOS.
+- **`InstalledFonts` cache** — `NSFontManager.shared.availableFontFamilies`
+  fetched once at first use, plus a monospaced-only subset filtered
+  via `NSFontManager.traits(of:).contains(.fixedPitchFontMask)`.
+- **`FontFamilyPickerSheet`** — searchable list of every installed
+  family (~500 on a typical Mac), with a "Monospaced only" toggle
+  (defaults ON when picking for the chat body). Each row renders the
+  family name + "AaBb 123" sample in that family so users pick by
+  visual feedback rather than guessing from PostScript names.
+- **Fonts tab rebuilt** — three sections:
+  - **Chat font (root)**: legacy enum picker + "Pick installed font…"
+    button that overrides the enum at resolve time, plus a "Clear"
+    affordance to drop back. Size slider, bold toggle, /font slash-
+    command pointer.
+  - **Chat body — advanced**: ligatures, tracking (-2 → +4 pt),
+    line-height (0.8× → 2.0×), weight, italic.
+  - **Per-element overrides**: collapsible DisclosureGroups for Nick /
+    Timestamp / System-line slots. Each has its own family picker,
+    size slider with an "inherit" sentinel at 0 pt, weight, italic,
+    ligatures, tracking, and line-height. Everything inherits from
+    the chat body unless overridden.
+
+## [1.0.97] — 2026-05-01
+
+### Added (Phase 4 — Theme system: UserTheme + per-event colors + WYSIWYG builder)
+
+- **`UserTheme` model** in `SoundsAndThemes.swift` — Codable struct
+  mirroring `Theme`'s shape with hex strings for every color slot,
+  plus a sparse `kindOverrideHex: [String: String]` map keyed by
+  `ChatLineKindTag.rawValue` for per-event overrides. `materialised`
+  produces a runtime `Theme`; `kindOverridesMaterialised` produces
+  the typed `[Tag: Color]` dict. `UserTheme.duplicate(of:name:)`
+  snapshots a built-in or user theme as the starting point.
+- **`ChatLineKindTag` enum** — 14 stable string tags (info, error,
+  privmsg, privmsgSelf, action, notice, join, part, quit, nick,
+  topic, raw, mention, watchlist) so per-event overrides survive
+  Codable round-trips and rename-resilient over time.
+- **`Theme.resolve(id:userThemes:)`** — built-ins win on id collision,
+  then user themes by uuid, then `.classic` fallback.
+- **`AppSettings.userThemes: [UserTheme]`** — persisted alongside
+  `themeID`.
+- **`ServerProfile.themeOverrideID: String?`** — per-network theme
+  override, decoded with `decodeIfPresent` so old `settings.json`
+  files don't fail.
+- **`ChatModel.theme`** rewritten to consult
+  `activeConnection.profile.themeOverrideID` first, then
+  `settings.themeID`, both via the resolver.
+- **`ChatModel.kindColor(for:)`** — overlay lookup; nil means
+  "inherit", letting MessageRow fall back to the typed slot
+  (`infoColor`, `joinColor`, etc.).
+- **MessageRow rewired** — every kind (info, error, privmsg, action,
+  notice, join, part, quit, nick, topic, raw, motd) reads
+  `model.kindColor(for: tag) ?? theme.someColor`, so a UserTheme
+  paints each event independently.
+- **`ThemeBuilderView` (new file)** — WYSIWYG sheet with HSplitView:
+  editor on the left (Theme name; Surface bg/fg; Per-event base
+  palette; Backgrounds; 8-slot Nick palette; Per-event color
+  overrides with + to add and ↺ to drop), live preview on the
+  right (15 sample rows covering every kind a UserTheme can
+  repaint, painted against the draft's `chatBackground` /
+  `chatForeground`). Save / Save As / Delete / Export to
+  `.purpletheme` JSON via `NSSavePanel`.
+- **`ThemeImporter.importTheme(from:into:)`** — reads a `.purpletheme`
+  file, decodes UserTheme, fresh-stamps UUID + createdAt so multiple
+  imports don't collide, appends to `settings.userThemes`.
+- **Themes tab rebuilt** — new "Custom themes" section above the
+  built-in grids: per-row swatch tile, name + basedOn caption,
+  Use / Edit / Duplicate / Delete affordances. Plus "+ New theme"
+  (snapshots active theme and opens the builder) and "Import…"
+  (NSOpenPanel → ThemeImporter).
+- **ServerEditor → Theme override picker** — "Use global theme"
+  sentinel, divided list of built-ins and user themes, persisted via
+  `themeOverrideID`.
+- **`/theme` command refactored** into a real subcommand parser:
+  - `/theme` — list built-ins + user themes + show current
+  - `/theme <id-or-name>` — switch (handles uuid prefix matching)
+  - `/theme builder` (also `edit`, `new`) — open the WYSIWYG sheet
+  - `/theme import <path>` — load a `.purpletheme` file
+  - `/theme export <user-theme-name-or-id> <path>` — write to disk
+- **`ChatModel.themeBuilderDraft` + `themeBuilderIsNew`** —
+  `@Published` state surfaced by ContentView via
+  `.sheet(item: $model.themeBuilderDraft)` so the slash command and
+  the Setup tab share one presentation path.
+
+## [1.0.96] — 2026-05-01
+
+### Documentation
+
+Captured Phases 1–3 in CHANGELOG / HANDOFF / README. No code change.
+
 ## [1.0.95] — 2026-05-01
 
 ### Changed (Phase 3 — Setup reorganization)
