@@ -1,7 +1,7 @@
 # messages-exporter-gui — Handoff
 
 Snapshot of where the project stands so a future session (human or AI) can pick up without re-deriving everything from the commit history.
-Last updated: 2026-04-26.
+Last updated: 2026-05-01.
 
 ## What it is
 
@@ -21,9 +21,9 @@ Requires macOS 14+, Swift 5.9+. Tests run via Command Line Tools' bundled `Testi
 The app does three things and nothing else: format the CLI invocation, spawn it as a child process, and parse its stdout. There is **no chat.db reader, no AddressBook walker, no media handler in Swift** — those all live in the CLI and stay there.
 
 - `App.swift` — `@main`. WindowGroup + Settings scene. Owns one `ExportRunner` injected via `environmentObject`.
-- `RootView.swift` — top-level form (Output / Contact / From / To / Emoji), Run row + ProgressBar, LogPane, version footer. Aligned-label custom layout (`LabeledRow`), not a Form, so all five inputs fit above the fold. Also defines `OutputFolderRow`, `VersionFooter`, the `InstallSheet`, and the `SettingsView` scene. The Contact field is a plain `TextField` — the CLI does its own AddressBook substring matching, so the GUI deliberately does not touch `Contacts.framework` (see "Why no Contacts.framework" below).
-- `Model/ExportRequest.swift` — pure value type. Builds the argv passed to the CLI with the date format the CLI's argparse expects (`yyyy-MM-dd HH:mm`, local TZ, `en_US_POSIX` locale).
-- `Model/ExportRunner.swift` — `@MainActor ObservableObject`. Spawns `Process`, streams stdout via `Pipe.readabilityHandler`, parses `[N/5]` markers and the `[4/5] Writing to ...` line. Pre-flights `~/.local/bin/export_messages` existence and offers to run sibling `install.sh` if missing. Also detects `authorization denied` / `operation not permitted` in stdout and surfaces a Full Disk Access message.
+- `RootView.swift` — top-level form (Output / Contact / From / To / Mode / Emoji), Run row + ProgressBar, LogPane, version footer. Aligned-label custom layout (`LabeledRow`), not a Form, so all six inputs fit above the fold. Also defines `OutputFolderRow`, `VersionFooter`, the `InstallSheet`, and the `SettingsView` scene. The Contact field is a plain `TextField` — the CLI does its own AddressBook substring matching, so the GUI deliberately does not touch `Contacts.framework` (see "Why no Contacts.framework" below). The Mode picker selects between `Sanitized` (default) and `Raw (forensic)`; selecting Raw greys out the Emoji control because the CLI ignores `--emoji` in raw mode.
+- `Model/ExportRequest.swift` — pure value type. Builds the argv passed to the CLI with the date format the CLI's argparse expects (`yyyy-MM-dd HH:mm`, local TZ, `en_US_POSIX` locale). Carries `mode: ExportMode` and appends `--raw` to the argv when `.raw` is selected.
+- `Model/ExportRunner.swift` — `@MainActor ObservableObject`. Spawns `Process`, streams stdout via `Pipe.readabilityHandler`, parses `[N/5]` markers and the `[4/5] Writing to ...` line. Pre-flights `~/.local/bin/export_messages` existence and offers to run sibling `install.sh` if missing. Pre-flights Full Disk Access via `probeReadable(path:)` against `~/Library/Messages/chat.db` and exposes the result as `@Published fdaStatus: FullDiskAccessStatus` so the main view can show a sheet on launch and a persistent banner if dismissed. Provides `resetTCCEntries()` (shells out to `/usr/bin/tccutil reset SystemPolicyAllFiles <bundle-id>` to wipe stale cdhash-pinned entries) and `openPrivacySettings()` (deep-links to `x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles`). The runtime detection of `authorization denied` / `operation not permitted` in CLI stdout also flips `fdaStatus` to `.denied` so the banner appears post-failure.
 - `Views/ProgressBar.swift` — 5-segment bar that fills as `runner.stage` advances.
 - `Views/LogPane.swift` — single selectable Text inside a ScrollView for cross-line copy, Copy-log button, and the post-run Reveal / Transcript / Summary / Manifest action row. Each open button is disabled when its file isn't present.
 
@@ -52,7 +52,9 @@ The `Info.plist` is generated inline in the build script. Notable keys:
 - `LSMinimumSystemVersion` = 14.0 — matches the SwiftUI deployment target in `Package.swift`.
 - `CFBundleIdentifier` = `com.bronty13.MessagesExporterGUI`. Avoid `com.example.*` — modern macOS treats it with extra TCC suspicion; we hit this in 1.0.4 troubleshooting.
 
-Ad-hoc codesigned (`codesign --force --sign -`) so it launches without a dev cert. There is no app icon yet — add one mirroring `PurpleIRC/Scripts/generate-icon.swift` when needed.
+Code-signed with the maintainer's **Developer ID Application** certificate when present in the keychain (env var `DEVELOPER_ID`, default `Developer ID Application: Robert Olen (SRKV8T38CD)`), with `--options runtime` (Hardened Runtime) and `--timestamp` (trusted timestamp). Falls back to ad-hoc (`codesign --sign -`) when the cert isn't installed — the app still launches, but FDA grants rotate on every rebuild because TCC keys ad-hoc grants on cdhash.
+
+The app icon is regenerated each build via `Scripts/generate-icon.swift` + `iconutil`.
 
 ## What the GUI deliberately does not do
 

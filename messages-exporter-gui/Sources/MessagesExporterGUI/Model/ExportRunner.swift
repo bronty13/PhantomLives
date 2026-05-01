@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import AppKit
 
 /// Thread-safe accumulator for byte chunks that may not align with
 /// newline boundaries. Locked because Pipe's readabilityHandler closure
@@ -36,6 +37,20 @@ private final class LineBuffer: @unchecked Sendable {
     }
 }
 
+/// Whether `~/Library/Messages/chat.db` is readable by this process.
+/// Driven by `ExportRunner.checkFullDiskAccess()` — refreshed on launch
+/// and on demand from the FDA sheet. `.unknown` is the pre-check value;
+/// `.granted` and `.denied` are persisted decisions. We can never go from
+/// `.denied` to `.granted` without a relaunch (TCC pins the cdhash at
+/// process spawn), so the sheet's main call to action is "Quit and
+/// relaunch" rather than "Re-check".
+enum FullDiskAccessStatus: Equatable {
+    case unknown
+    case granted
+    case denied
+    case missingDB   // Messages.app never used — treat as a non-blocking case
+}
+
 /// Spawns the `export_messages` CLI as a child process and republishes its
 /// stdout/stderr into SwiftUI-observable state. The CLI is the source of
 /// truth — this runner only formats the invocation, parses the well-known
@@ -50,6 +65,7 @@ final class ExportRunner: ObservableObject {
     @Published private(set) var runFolder: URL?
     @Published private(set) var lastError: String?
     @Published private(set) var lastExitStatus: Int32?
+    @Published private(set) var fdaStatus: FullDiskAccessStatus = .unknown
 
     /// Resolved path to the installed CLI. Computed once — if the user
     /// installs after launching the app, hit "Run" again and it'll be
@@ -58,6 +74,102 @@ final class ExportRunner: ObservableObject {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         return "\(home)/.local/bin/export_messages"
     }()
+
+    /// chat.db location — the canonical FDA-gated file we probe.
+    static let messagesDBPath: String = {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return "\(home)/Library/Messages/chat.db"
+    }()
+
+    /// Bundle ID used by `tccutil reset` to wipe stale TCC entries.
+    /// Hard-coded to match Info.plist's CFBundleIdentifier — a runtime
+    /// `Bundle.main.bundleIdentifier` lookup would return nil in unit-test
+    /// contexts and `swift run` (no .app wrapper).
+    static let bundleIdentifier = "com.bronty13.MessagesExporterGUI"
+
+    /// Pure probe: try to open + read 1 byte from `path`, classify into
+    /// `FullDiskAccessStatus`. Extracted so tests can drive it against a
+    /// tempdir, without needing to monkey with the real chat.db.
+    ///
+    /// We open + read 1 byte rather than `isReadableFile` because the
+    /// latter is a stat-based answer that doesn't always match TCC's
+    /// runtime decision — TCC enforces at I/O time on macOS 14.
+    nonisolated static func probeReadable(path: String) -> FullDiskAccessStatus {
+        guard FileManager.default.fileExists(atPath: path) else {
+            // chat.db absent — Messages.app has never been used on this
+            // account. Don't block the user with an FDA sheet; the CLI
+            // will print its own clearer error if they try to export.
+            return .missingDB
+        }
+        let url = URL(fileURLWithPath: path)
+        do {
+            let handle = try FileHandle(forReadingFrom: url)
+            _ = try handle.read(upToCount: 1)
+            try handle.close()
+            return .granted
+        } catch {
+            return .denied
+        }
+    }
+
+    /// Probe whether this process can read `~/Library/Messages/chat.db`.
+    /// macOS gates that file behind Full Disk Access; without FDA the
+    /// open() syscall returns EPERM regardless of POSIX permissions.
+    ///
+    /// Side effect: updates `fdaStatus`. Idempotent and cheap; safe to
+    /// call multiple times. Note that going from .denied -> .granted in
+    /// a single launch is impossible (TCC pins the cdhash at process
+    /// spawn); the user must quit and relaunch after granting.
+    func checkFullDiskAccess() {
+        fdaStatus = Self.probeReadable(path: Self.messagesDBPath)
+    }
+
+    /// Open System Settings → Privacy & Security → Full Disk Access. The
+    /// `x-apple.systempreferences:` URL scheme is documented for security
+    /// and Privacy panes; this anchor is stable across macOS 13–14.
+    static func openPrivacySettings() {
+        let urlString =
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+        if let url = URL(string: urlString) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    /// Wipe any existing FDA TCC rows for this bundle ID via `tccutil`.
+    ///
+    /// Use case: ad-hoc signing rotates `cdhash` on every rebuild, and
+    /// TCC keys grants on (bundle ID, cdhash). After several rebuilds
+    /// the user accumulates duplicate "MessagesExporterGUI"/"…  2"
+    /// entries — `tccutil reset` removes all of them so the next
+    /// re-grant produces a single clean entry.
+    ///
+    /// Returns true on `tccutil` exit 0. The running process still
+    /// holds its old TCC decision in memory, so the user must quit and
+    /// relaunch after this for any newly-granted access to take effect.
+    func resetTCCEntries() async -> Bool {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        p.arguments = ["reset", "SystemPolicyAllFiles", Self.bundleIdentifier]
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError  = pipe
+        do {
+            try p.run()
+        } catch {
+            appendLine("[tccutil] failed to launch: \(error.localizedDescription)")
+            return false
+        }
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            p.terminationHandler = { _ in cont.resume() }
+        }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        if let s = String(data: data, encoding: .utf8), !s.isEmpty {
+            for line in s.split(separator: "\n") {
+                appendLine("[tccutil] \(line)")
+            }
+        }
+        return p.terminationStatus == 0
+    }
 
     /// install.sh path, derived from the GUI app's location relative to
     /// the messages-exporter sibling subproject. We cannot assume the .app
@@ -139,6 +251,11 @@ final class ExportRunner: ObservableObject {
             // irrelevant.
             let log = logLines.joined(separator: "\n")
             if log.contains("authorization denied") || log.contains("operation not permitted") {
+                // Reflect the runtime denial back into the preflight state
+                // so the persistent banner appears even when the launch-
+                // time probe initially passed (rare, but possible if TCC
+                // policy changed between launch and the first export).
+                fdaStatus = .denied
                 lastError = "Full Disk Access denied. Open System Settings → Privacy & Security → Full Disk Access, add MessagesExporterGUI.app, then quit and relaunch it."
             } else {
                 lastError = "export_messages exited with status \(lastExitStatus ?? -1)."

@@ -24,6 +24,20 @@ MACOS="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
 
 rm -rf "$APP_DIR"
+
+# Wipe Finder-created "MessagesExporterGUI 2.app" / "MessagesExporterGUI 3.app"
+# duplicates. macOS auto-renames .app bundles when an old copy is pinned (e.g.
+# previously launched and still listed in TCC); the duplicates accumulate
+# distinct cdhashes and pollute System Settings → Privacy & Security → Full
+# Disk Access with stale entries that no longer match the live binary.
+shopt -s nullglob 2>/dev/null || true
+for dup in MessagesExporterGUI\ [0-9]*.app; do
+    if [ -d "$dup" ]; then
+        echo "Removing duplicate bundle: $dup"
+        rm -rf "$dup"
+    fi
+done
+
 mkdir -p "$MACOS" "$RESOURCES"
 
 cp "$BIN_PATH/MessagesExporterGUI" "$MACOS/MessagesExporterGUI"
@@ -56,12 +70,52 @@ cat > "$CONTENTS/Info.plist" <<PLIST
 </plist>
 PLIST
 
-# Strip Finder xattrs codesign rejects, then ad-hoc sign so macOS will
-# launch it without a dev cert. The app no longer uses any TCC-protected
-# APIs in-process (the CLI handles AddressBook lookup), so even if signing
-# silently fails the GUI continues to work.
+# Strip Finder xattrs codesign rejects. `xattr -cr` skips the bundle dir
+# itself on some macOS versions, so explicitly clear the root too — a
+# leftover com.apple.FinderInfo on the .app dir will fail strict verify
+# with "Disallowed xattr ... found".
 xattr -cr "$APP_DIR" 2>/dev/null || true
-codesign --force --sign - "$APP_DIR" 2>/dev/null || true
+xattr -c  "$APP_DIR" 2>/dev/null || true
+
+# Code-sign. With a Developer ID Application certificate, TCC keys grants
+# on (team ID, bundle ID) — so a rebuild preserves the user's Full Disk
+# Access permission rather than rotating the cdhash and creating a new
+# Privacy entry. Ad-hoc signing (the legacy fallback) is fine for fresh
+# checkouts that don't have the cert installed; the app will still launch
+# but FDA must be re-granted on every rebuild.
+#
+# Override DEVELOPER_ID to a different cert, or set it to "-" to force
+# ad-hoc. The default matches the maintainer's installed cert.
+DEVELOPER_ID="${DEVELOPER_ID:-Developer ID Application: Robert Olen (SRKV8T38CD)}"
+
+if [ "$DEVELOPER_ID" != "-" ] && \
+   security find-identity -p codesigning -v 2>/dev/null \
+        | grep -q "$DEVELOPER_ID"; then
+    echo "Signing with Developer ID: $DEVELOPER_ID"
+    # --options runtime enables Hardened Runtime, required for notarization
+    # and a no-op outside it. --timestamp embeds a trusted timestamp so the
+    # signature stays verifiable after the cert eventually expires.
+    codesign --force --options runtime --timestamp \
+             --sign "$DEVELOPER_ID" "$APP_DIR"
+    # Verify without --strict. iCloud File Provider (active when the
+    # build directory lives under ~/Documents) re-adds a directory-level
+    # com.apple.FinderInfo xattr immediately after signing, which strict
+    # mode rejects as "detritus" — but the embedded signature itself
+    # remains valid and launch / TCC don't use strict either. Use
+    # codesign's exit code directly rather than grepping its output;
+    # piping into grep -q under `set -o pipefail` triggers SIGPIPE on
+    # codesign and produces a confusing false negative.
+    if codesign --verify --verbose=2 "$APP_DIR" >/dev/null 2>&1; then
+        TEAM_ID=$(codesign -dv "$APP_DIR" 2>&1 | sed -n 's/^TeamIdentifier=//p')
+        echo "✓ Signature verified (TeamIdentifier=${TEAM_ID:-unknown})"
+    else
+        echo "⚠️  codesign --verify reported issues — see output above"
+    fi
+else
+    echo "Developer ID '$DEVELOPER_ID' not in keychain — ad-hoc signing"
+    echo "    (FDA must be re-granted after every rebuild in this mode)"
+    codesign --force --sign - "$APP_DIR" 2>/dev/null || true
+fi
 
 echo "Built $APP_DIR"
 echo "Run with:  open $APP_DIR"

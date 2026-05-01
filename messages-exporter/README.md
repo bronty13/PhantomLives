@@ -1,11 +1,19 @@
 # messages-exporter
 
-**Current release: 1.0.1**
+**Current release: 1.2.0**
 
 Export iMessage conversations from the Mac Messages app by contact name and
-date range. Each photo, video, and file lands in a single `attachments/`
-folder and is auto-renamed from the text message that follows it, so you
-can scan a folder like a storyboard.
+date range. Two output modes:
+
+- **Sanitized** (default) — each photo/video/file lands in a single
+  `attachments/` folder and is auto-renamed from the text message that
+  follows it, so you can scan a folder like a storyboard. EXIF/GPS is
+  stripped; HEIC is converted to JPG.
+- **Raw / forensic** (`--raw`) — byte-identical copies of every attachment
+  with original filenames, flat directory laid out in chronological sort
+  order, **MD5 + SHA-1 + SHA-256** + extracted EXIF in `metadata.json`,
+  and an append-only `chain_of_custody.log` recording every action with
+  all three hashes per artifact.
 
 ## Quick Start
 
@@ -29,6 +37,10 @@ export_messages "Jane Doe" --start "2026-04-01" --end "2026-04-30 23:59:59"
 - **Sanitization** — strips EXIF/GPS from images (exiftool/PIL) and metadata from
   videos (ffmpeg `-map_metadata -1 -c copy`, no re-encoding)
 - **Emoji modes** — `strip`, `word` (🔥 → `(fire)`, default), or `keep` (literal)
+- **Raw / forensic mode** (`--raw`) — flat directory, original filenames,
+  byte-identical copies, MD5 + SHA-1 + SHA-256 + EXIF in
+  `metadata.json`, and an append-only `chain_of_custody.log` with all
+  three hashes per action
 - **Self-contained venv** — shebang points at the venv, so you just run the command
 - **Graceful degradation** — missing dependencies are noted at startup and the
   best available fallback is used
@@ -55,7 +67,7 @@ from, because `~/Library/Messages/chat.db` is sandboxed by macOS:
 
 ```
 export_messages <contact> [--start DATE] [--end DATE] [--output DIR]
-                          [--emoji {strip,word,keep}] [--version]
+                          [--emoji {strip,word,keep}] [--raw] [--version]
 ```
 
 ### Arguments
@@ -70,6 +82,13 @@ export_messages <contact> [--start DATE] [--end DATE] [--output DIR]
   - `strip` — drop emoji entirely
   - `word` — replace with `(name)`, e.g. 🔥 → `(fire)` **(default)**
   - `keep` — retain the emoji character in the filename
+- `--raw` — forensic raw export. Flat directory, original filenames
+  preserved (prefixed with `[seq]_[YYYYMMDDTHHMMSS]_[sender]_` for
+  chronological sort), no HEIC→JPG, no EXIF strip. Writes
+  `metadata.json` (per-attachment `hashes={md5,sha1,sha256}` +
+  extracted EXIF + filesystem timestamps) and `chain_of_custody.log`
+  (append-only line per action with all three hashes).
+  `--emoji` is silently ignored when `--raw` is set.
 
 ### Examples
 
@@ -88,9 +107,12 @@ export_messages "Jane" --emoji keep --start "2026-04-01"
 
 # Strip emoji entirely
 export_messages "Jane" --emoji strip --start "2026-04-01"
+
+# Forensic raw export (no sanitization, sha256 + EXIF metadata)
+export_messages "Jane" --raw --start "2026-04-01" --end "2026-04-30 23:59:59"
 ```
 
-## Output layout
+## Output layout — sanitized (default)
 
 ```
 <output>/<Contact>_<YYYYMMDD_HHMMSS>/
@@ -103,6 +125,39 @@ export_messages "Jane" --emoji strip --start "2026-04-01"
 ├── manifest.json        Structured export (per-message, per-attachment)
 └── summary.txt          Run statistics and settings used
 ```
+
+## Output layout — raw / forensic (`--raw`)
+
+```
+<output>/<Contact>_<YYYYMMDD_HHMMSS>_raw/
+├── 00001_20260426T155500_Me.txt              ← message body (when present)
+├── 00001_20260426T155500_Me_IMG_5523.HEIC    ← attachment, byte-identical
+├── 00002_20260426T155510_+15551234567_video.MOV
+├── 00002_20260426T155510_+15551234567.txt
+├── ...
+├── transcript.txt          Human-readable chronological transcript with sha256 prefixes
+├── manifest.json           Compact per-message + saved-name + sha256
+├── metadata.json           Full per-attachment metadata: orig path, mime,
+│                           size, hashes={md5,sha1,sha256}, fs timestamps,
+│                           extracted EXIF
+├── chain_of_custody.log    Append-only line per action (START, COPY,
+│                           WRITE_BODY, MISSING_SOURCE, COPY_FAILED, END)
+│                           with timestamps and md5+sha1+sha256 hashes
+└── summary.txt             Run statistics
+```
+
+In raw mode every attachment is written byte-for-byte from the source —
+no HEIC→JPG conversion, no EXIF/GPS strip, no extension normalization.
+Filenames keep the original stem (prefixed for sort order). EXIF is
+extracted as data into `metadata.json` rather than removed from the file.
+
+Three hash algorithms (MD5, SHA-1, SHA-256) are computed in a single
+streaming pass over each artifact and recorded both in `metadata.json`
+(per-attachment under `hashes`, per-message body under `body_hashes`)
+and in `chain_of_custody.log` (on the COPY and WRITE_BODY records).
+SHA-256 is the modern integrity primitive; MD5 and SHA-1 are still
+expected by older forensic tooling and historical chain-of-custody
+reports.
 
 ### Filename rules
 

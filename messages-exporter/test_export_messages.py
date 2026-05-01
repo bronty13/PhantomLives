@@ -19,6 +19,7 @@
 # =============================================================================
 
 import importlib.util
+import json
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -279,6 +280,269 @@ class TestGetBody(unittest.TestCase):
         self.assertEqual(em.get_body('', blob), 'May 1 - big and bouncey')
         blob2 = make_ab_blob('￼￼￼Hi 🔥')
         self.assertEqual(em.get_body('', blob2), 'Hi 🔥')
+
+
+# ─── Raw-mode helpers ──────────────────────────────────────────────────────
+
+class TestHashesFile(unittest.TestCase):
+    def test_known_hashes_of_empty_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / 'empty.bin'
+            p.write_bytes(b'')
+            # Well-known digests of the empty input — useful canaries:
+            # if the chunk loop ever short-circuits on EOF differently,
+            # these will catch it.
+            h = em.hashes_file(p)
+            self.assertEqual(h['md5'],
+                'd41d8cd98f00b204e9800998ecf8427e')
+            self.assertEqual(h['sha1'],
+                'da39a3ee5e6b4b0d3255bfef95601890afd80709')
+            self.assertEqual(h['sha256'],
+                'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
+
+    def test_known_hashes_of_abc(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / 'abc.bin'
+            p.write_bytes(b'abc')
+            h = em.hashes_file(p)
+            self.assertEqual(h['md5'],
+                '900150983cd24fb0d6963f7d28e17f72')
+            self.assertEqual(h['sha1'],
+                'a9993e364706816aba3e25717850c26c9cd0d89d')
+            self.assertEqual(h['sha256'],
+                'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad')
+
+    def test_handles_files_larger_than_chunk(self):
+        # Confirm chunked reading doesn't drop bytes for any of the three.
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / 'big.bin'
+            payload = b'x' * (3 * (1 << 20) + 17)  # 3 MiB + change
+            p.write_bytes(payload)
+            import hashlib
+            h = em.hashes_file(p)
+            self.assertEqual(h['md5'],    hashlib.md5(payload).hexdigest())
+            self.assertEqual(h['sha1'],   hashlib.sha1(payload).hexdigest())
+            self.assertEqual(h['sha256'], hashlib.sha256(payload).hexdigest())
+
+    def test_returns_lowercase_hex(self):
+        # Forensic tools are case-sensitive about hash representation;
+        # standardize on lowercase.
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / 'x.bin'
+            p.write_bytes(b'forensic')
+            h = em.hashes_file(p)
+            for algo in ('md5', 'sha1', 'sha256'):
+                self.assertEqual(h[algo], h[algo].lower())
+                self.assertTrue(all(c in '0123456789abcdef' for c in h[algo]))
+
+
+class TestFsStat(unittest.TestCase):
+    def test_returns_size_and_iso_timestamps(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / 'f.txt'
+            p.write_text('hello', encoding='utf-8')
+            st = em.fs_stat(p)
+            self.assertEqual(st['size_bytes'], 5)
+            # Both required timestamp fields present and parseable as ISO.
+            self.assertIn('mtime', st)
+            self.assertIn('ctime', st)
+            datetime.fromisoformat(st['mtime'])
+            datetime.fromisoformat(st['ctime'])
+            # birthtime is macOS-specific but should be present in CI on Mac.
+            if 'birthtime' in st:
+                datetime.fromisoformat(st['birthtime'])
+
+
+class TestRawPrefix(unittest.TestCase):
+    def _dt(self, *parts):
+        # Naive local-time datetime — raw_prefix uses .strftime directly,
+        # tz handling is the caller's job (main() passes an astimezone()'d dt).
+        return datetime(*parts)
+
+    def test_me_prefix(self):
+        dt = self._dt(2026, 4, 26, 15, 55, 0)
+        self.assertEqual(
+            em.raw_prefix(1, dt, is_from_me=True, sender_handle=None,
+                          contact='Sallie'),
+            '00001_20260426T155500_Me')
+
+    def test_other_with_handle(self):
+        dt = self._dt(2026, 4, 26, 15, 55, 0)
+        self.assertEqual(
+            em.raw_prefix(42, dt, is_from_me=False,
+                          sender_handle='+15551234567', contact='Sallie'),
+            '00042_20260426T155500_+15551234567')
+
+    def test_other_falls_back_to_contact_when_handle_missing(self):
+        dt = self._dt(2026, 4, 26, 15, 55, 0)
+        self.assertEqual(
+            em.raw_prefix(7, dt, is_from_me=False, sender_handle=None,
+                          contact='Sallie'),
+            '00007_20260426T155500_Sallie')
+
+    def test_unknown_when_no_handle_and_no_contact(self):
+        dt = self._dt(2026, 4, 26, 15, 55, 0)
+        self.assertEqual(
+            em.raw_prefix(7, dt, is_from_me=False, sender_handle=None,
+                          contact=None),
+            '00007_20260426T155500_unknown')
+
+    def test_unsafe_chars_in_sender_are_sanitized(self):
+        dt = self._dt(2026, 4, 26, 15, 55, 0)
+        # san() replaces /\<>:|?* with _
+        self.assertEqual(
+            em.raw_prefix(1, dt, is_from_me=False,
+                          sender_handle='bad/name?', contact='X'),
+            '00001_20260426T155500_bad_name_')
+
+    def test_seq_zero_padded_to_5_digits(self):
+        dt = self._dt(2026, 4, 26, 15, 55, 0)
+        p = em.raw_prefix(99999, dt, True, None, 'X')
+        self.assertTrue(p.startswith('99999_'))
+        # Width 5 doesn't truncate larger numbers (Python format pads, not truncates).
+        p2 = em.raw_prefix(123456, dt, True, None, 'X')
+        self.assertTrue(p2.startswith('123456_'))
+
+
+class TestExportRawSmoke(unittest.TestCase):
+    """End-to-end-ish test of export_raw() with a fake msgs/atts pair.
+
+    We synthesize one message with a body and one with a fake attachment
+    pointing at a real on-disk file inside the temp dir. No chat.db needed.
+    The asserts focus on the artifacts: directory layout, sha256 in the
+    metadata, transcript shape, chain-of-custody log lines.
+    """
+
+    def test_writes_expected_artifacts_and_records_hashes(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d) / 'OUT'
+            base.mkdir()
+            # Synthesize a source attachment file.
+            src_dir = Path(d) / 'src'
+            src_dir.mkdir()
+            src = src_dir / 'photo.jpg'
+            src.write_bytes(b'\xff\xd8\xff\xe0FAKEJPEG')
+
+            # Two messages: one text-only from "Me", one from contact with
+            # an attachment. mts() expects mac-epoch nanoseconds for modern
+            # macOS — tts() returns seconds, so we feed it tts(...) * 1e9.
+            t0 = em.parse('2026-04-26 15:55:00')
+            t1 = em.parse('2026-04-26 15:56:00')
+            msgs = [
+                # (rowid, date, is_from_me, text, attributedBody, handle)
+                (1001, em.tts(t0) * 1e9, 1, 'hello from me', None, None),
+                (1002, em.tts(t1) * 1e9, 0, '', None, '+15551234567'),
+            ]
+            atts = {
+                1001: [],
+                1002: [(str(src), 'image/jpeg', 'photo.jpg', 9001)],
+            }
+
+            counts = em.export_raw(
+                base=base, contact='Sallie',
+                handles=['+15551234567'],
+                start_dt=t0, end_dt=t1,
+                msgs=msgs, atts=atts,
+            )
+
+            # Counters: one photo, no videos, no other, no errors.
+            self.assertEqual(counts['pc'], 1)
+            self.assertEqual(counts['vc'], 0)
+            self.assertEqual(counts['fc'], 0)
+            self.assertEqual(counts['errors'], 0)
+
+            # Required artifacts written.
+            for name in ('transcript.txt', 'manifest.json',
+                         'metadata.json', 'chain_of_custody.log'):
+                self.assertTrue((base / name).exists(),
+                                f'{name} should exist')
+
+            # Body file for message 1 (Me, text-only).
+            body_files = list(base.glob('00001_*_Me.txt'))
+            self.assertEqual(len(body_files), 1)
+            self.assertEqual(body_files[0].read_text(encoding='utf-8'),
+                             'hello from me')
+
+            # Attachment for message 2 — saved with original filename, byte-identical.
+            saved = list(base.glob('00002_*_photo.jpg'))
+            self.assertEqual(len(saved), 1)
+            self.assertEqual(saved[0].read_bytes(), src.read_bytes(),
+                             'raw mode must preserve original bytes')
+
+            # metadata.json structure + all three hashes captured.
+            md = json.loads((base / 'metadata.json').read_text())
+            self.assertEqual(md['export']['mode'], 'raw')
+            self.assertEqual(md['export']['contact'], 'Sallie')
+            self.assertEqual(md['export']['counts']['photos'], 1)
+            self.assertEqual(len(md['messages']), 2)
+            att_rec = md['messages'][1]['attachments'][0]
+            self.assertEqual(att_rec['orig_filename'], 'photo.jpg')
+            self.assertEqual(att_rec['saved_as'], saved[0].name)
+            self.assertEqual(att_rec['kind'], 'photo')
+            self.assertEqual(att_rec['size_bytes'], len(b'\xff\xd8\xff\xe0FAKEJPEG'))
+            # All three hashes of the synthetic file are deterministic.
+            import hashlib
+            payload = b'\xff\xd8\xff\xe0FAKEJPEG'
+            self.assertEqual(att_rec['hashes']['md5'],
+                             hashlib.md5(payload).hexdigest())
+            self.assertEqual(att_rec['hashes']['sha1'],
+                             hashlib.sha1(payload).hexdigest())
+            self.assertEqual(att_rec['hashes']['sha256'],
+                             hashlib.sha256(payload).hexdigest())
+            # fs_timestamps populated, error nil.
+            self.assertIsNotNone(att_rec['fs_timestamps'])
+            self.assertIsNone(att_rec['error'])
+            # Body file metadata: body_hashes carries all three too.
+            body_msg = md['messages'][0]
+            self.assertIsNotNone(body_msg['body_hashes'])
+            self.assertEqual(body_msg['body_hashes']['sha256'],
+                             hashlib.sha256(b'hello from me').hexdigest())
+            self.assertEqual(body_msg['body_hashes']['md5'],
+                             hashlib.md5(b'hello from me').hexdigest())
+            self.assertEqual(body_msg['body_hashes']['sha1'],
+                             hashlib.sha1(b'hello from me').hexdigest())
+
+            # Chain-of-custody log: START, VERSION, WRITE_BODY, COPY, END.
+            # Both COPY and WRITE_BODY records carry md5+sha1+sha256.
+            log = (base / 'chain_of_custody.log').read_text()
+            self.assertIn('START contact="Sallie"', log)
+            self.assertIn('VERSION exporter=', log)
+            self.assertIn('WRITE_BODY', log)
+            self.assertIn(f'sha256={att_rec["hashes"]["sha256"]}', log)
+            self.assertIn(f'md5={att_rec["hashes"]["md5"]}', log)
+            self.assertIn(f'sha1={att_rec["hashes"]["sha1"]}', log)
+            self.assertIn('COPY src=', log)
+            self.assertIn('END messages=2 photos=1', log)
+            # The compact manifest.json still surfaces sha256 for quick
+            # diff-vs-export checks, while the full hash set lives in
+            # metadata.json.
+            mf = json.loads((base / 'manifest.json').read_text())
+            self.assertEqual(mf[1]['att'][0]['sha256'],
+                             att_rec['hashes']['sha256'])
+
+    def test_missing_source_records_error_without_failing(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d) / 'OUT'
+            base.mkdir()
+            t0 = em.parse('2026-04-26 15:55:00')
+            msgs = [(2001, em.tts(t0) * 1e9, 0, '', None, '+15551234567')]
+            # Source path that does not exist on disk.
+            atts = {2001: [('/nonexistent/path/missing.jpg', 'image/jpeg',
+                            'missing.jpg', 9999)]}
+
+            counts = em.export_raw(
+                base=base, contact='X', handles=['+15551234567'],
+                start_dt=t0, end_dt=t0, msgs=msgs, atts=atts,
+            )
+            self.assertEqual(counts['errors'], 1)
+            md = json.loads((base / 'metadata.json').read_text())
+            att_rec = md['messages'][0]['attachments'][0]
+            self.assertEqual(att_rec['error'], 'MISSING_SOURCE')
+            self.assertIsNone(att_rec['saved_as'])
+            # No file should have been created in the output dir.
+            self.assertEqual(list(base.glob('*missing.jpg*')), [])
+            log = (base / 'chain_of_custody.log').read_text()
+            self.assertIn('MISSING_SOURCE', log)
 
 
 # ─── Capability detection sanity ────────────────────────────────────────────

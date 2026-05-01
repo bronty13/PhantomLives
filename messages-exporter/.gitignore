@@ -1,0 +1,2 @@
+# Real export output — contains user iMessage data, must never be committed.
+messages_export/

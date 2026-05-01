@@ -91,6 +91,14 @@ struct LogPane: View {
                            label: "Manifest",
                            icon: "curlybraces",
                            in: runFolder)
+                openButton(name: "metadata.json",
+                           label: "Metadata",
+                           icon: "info.circle",
+                           in: runFolder)
+                openButton(name: "chain_of_custody.log",
+                           label: "Custody log",
+                           icon: "checkmark.seal",
+                           in: runFolder)
                 Spacer()
                 Text(runFolder.path)
                     .font(.caption)

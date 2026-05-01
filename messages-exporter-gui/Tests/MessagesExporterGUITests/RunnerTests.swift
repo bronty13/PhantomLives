@@ -24,7 +24,8 @@ struct ExportRequestTests {
             start: date(2026, 4, 26, 15, 55),
             end:   date(2026, 4, 26, 17, 0),
             outputDir: URL(fileURLWithPath: "/Users/me/Downloads"),
-            emoji: .word
+            emoji: .word,
+            mode: .sanitized
         )
         #expect(req.argumentList() == [
             "Sallie",
@@ -42,7 +43,8 @@ struct ExportRequestTests {
             start: nil,
             end:   nil,
             outputDir: URL(fileURLWithPath: "/tmp/out"),
-            emoji: .strip
+            emoji: .strip,
+            mode: .sanitized
         )
         let args = req.argumentList()
         #expect(args.contains("Jane"))
@@ -50,6 +52,40 @@ struct ExportRequestTests {
         #expect(!args.contains("--end"))
         #expect(args.contains("--emoji"))
         #expect(args.contains("strip"))
+        #expect(!args.contains("--raw"))
+    }
+
+    @Test("raw mode appends --raw and keeps --emoji (CLI ignores it)")
+    func rawMode() {
+        let req = ExportRequest(
+            contact: "Sallie",
+            start: date(2026, 4, 26, 15, 55),
+            end:   date(2026, 4, 26, 17, 0),
+            outputDir: URL(fileURLWithPath: "/Users/me/Downloads"),
+            emoji: .word,
+            mode: .raw
+        )
+        let args = req.argumentList()
+        #expect(args.contains("--raw"))
+        #expect(args.last == "--raw") // appended last
+        // Sanity: still includes the rest of the standard args.
+        #expect(args.contains("Sallie"))
+        #expect(args.contains("--start"))
+        #expect(args.contains("--end"))
+        #expect(args.contains("--output"))
+        #expect(args.contains("--emoji"))
+    }
+
+    @Test("sanitized mode does not include --raw")
+    func sanitizedExcludesRaw() {
+        let req = ExportRequest(
+            contact: "Jane",
+            start: nil, end: nil,
+            outputDir: URL(fileURLWithPath: "/tmp/out"),
+            emoji: .keep,
+            mode: .sanitized
+        )
+        #expect(!req.argumentList().contains("--raw"))
     }
 }
 
@@ -92,5 +128,67 @@ struct ExportRunnerParserTests {
     @Test("runFolderPath trims trailing whitespace")
     func runFolderTrim() {
         #expect(ExportRunner.runFolderPath(in: "[4/5] Writing to /tmp/out   ") == "/tmp/out")
+    }
+}
+
+@Suite("Full Disk Access probe")
+struct FullDiskAccessProbeTests {
+
+    /// Helper: make a temp file containing some bytes and return its path.
+    private func tempReadableFile() -> String {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("medexp-fda-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: dir,
+                                                 withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("file.bin")
+        try? Data([0x01, 0x02, 0x03]).write(to: url)
+        return url.path
+    }
+
+    @Test("missingDB when the file does not exist")
+    func missingDB() {
+        let bogus = "/tmp/medexp-does-not-exist-\(UUID().uuidString)/chat.db"
+        #expect(ExportRunner.probeReadable(path: bogus) == .missingDB)
+    }
+
+    @Test("granted when the file is readable")
+    func granted() {
+        let path = tempReadableFile()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        #expect(ExportRunner.probeReadable(path: path) == .granted)
+    }
+
+    @Test("denied when the file exists but cannot be opened")
+    func denied() throws {
+        // chmod 000 simulates "open will fail" the same way TCC does at the
+        // syscall layer (EACCES rather than EPERM, but probeReadable
+        // classifies any open/read error as .denied — that's the contract).
+        let path = tempReadableFile()
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600],
+                                                   ofItemAtPath: path)
+            try? FileManager.default.removeItem(atPath: path)
+        }
+        try FileManager.default.setAttributes([.posixPermissions: 0],
+                                              ofItemAtPath: path)
+        // Skip on root — root bypasses POSIX perms and the read would still
+        // succeed, breaking the assertion. CI on macOS runs as the user.
+        if getuid() == 0 {
+            return
+        }
+        #expect(ExportRunner.probeReadable(path: path) == .denied)
+    }
+
+    @Test("messagesDBPath points at ~/Library/Messages/chat.db")
+    func canonicalPath() {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        #expect(ExportRunner.messagesDBPath == "\(home)/Library/Messages/chat.db")
+    }
+
+    @Test("bundle identifier matches Info.plist")
+    func bundleIdentifier() {
+        // If this ever drifts, `tccutil reset` on the wrong ID would
+        // silently leave the user's stale entries in place.
+        #expect(ExportRunner.bundleIdentifier == "com.bronty13.MessagesExporterGUI")
     }
 }

@@ -10,6 +10,7 @@ Day-to-day reference for the SwiftUI front end. For first-time setup see [INSTAL
 │ Contact │  Sallie                                                │
 │    From │  📅 2026-04-26  🕒 00:00                               │
 │      To │  📅 2026-04-26  🕒 17:00                               │
+│    Mode │  [Sanitized] [Raw (forensic)]                          │
 │   Emoji │  [Strip] [Word] [Keep]                                │
 │ ─────────────────────────────────────────────────────────────── │
 │  ▶ Run export   ░░░░░░░░░░░░░░░░░░░  Stage 0/5 — Idle           │
@@ -46,9 +47,16 @@ Day-to-day reference for the SwiftUI front end. For first-time setup see [INSTAL
 - Defaults: **From** = today 00:00; **To** = today, current time.
 - The CLI accepts the range inclusively. To export everything from a date forward, set **To** to a far-future time.
 
+### Mode
+
+| Mode             | What you get                                                                                                                                                                                                                                                                                                          |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sanitized (default) | Existing pipeline. HEIC→JPG conversion, EXIF/GPS stripped, `.jpeg` normalized to `.jpg`, attachments named after the next text message (`[seq]_[caption].ext`), all media dropped into a single `attachments/` folder.                                                                                                  |
+| Raw (forensic)   | Byte-identical attachment copies under their **original** filenames (prefixed with `[seq]_[YYYYMMDDTHHMMSS]_[sender]_` for chronological sort). Flat directory layout. Each message's body becomes `[seq]_[YYYYMMDDTHHMMSS]_[sender].txt`. The run folder additionally contains `metadata.json` (sha256 + extracted EXIF + filesystem timestamps per attachment) and `chain_of_custody.log` (append-only line per action). The Emoji control is greyed out — it has no effect in raw mode. |
+
 ### Emoji handling
 
-Affects how emoji in message captions are rendered in the saved attachment filenames:
+Affects how emoji in message captions are rendered in the saved attachment filenames (Sanitized mode only):
 
 | Mode  | 🔥 in caption becomes…           |
 | ----- | -------------------------------- |
@@ -74,10 +82,14 @@ This only affects filenames, not the transcript or manifest.
    - **Transcript** — opens `transcript.txt` in your default text app.
    - **Summary** — opens `summary.txt` (counts, range, version used).
    - **Manifest** — opens `manifest.json` (per-message structured export).
+   - **Metadata** *(raw mode only)* — opens `metadata.json` (per-attachment sha256, EXIF, filesystem timestamps).
+   - **Custody log** *(raw mode only)* — opens `chain_of_custody.log` (append-only action log with sha256 hashes).
 
-   Each button is disabled if the corresponding file isn't in the run folder (e.g., `manifest.json` is always written, but a custom build that skipped the manifest stage would disable it).
+   Each button is disabled if the corresponding file isn't in the run folder (e.g., `metadata.json` and `chain_of_custody.log` are only written in raw mode, so they stay disabled in sanitized mode).
 
 ## What lands in the run folder
+
+### Sanitized mode
 
 ```
 <output>/<Contact>_<YYYYMMDD_HHMMSS>/
@@ -90,13 +102,42 @@ This only affects filenames, not the transcript or manifest.
 └── manifest.json           per-message + per-attachment structured data
 ```
 
+### Raw (forensic) mode
+
+```
+<output>/<Contact>_<YYYYMMDD_HHMMSS>_raw/
+├── 00001_20260426T155500_Me.txt                    body of message 1 (if any)
+├── 00001_20260426T155500_Me_IMG_5523.HEIC          attachment, byte-identical
+├── 00002_20260426T155510_+15551234567_video.MOV
+├── 00002_20260426T155510_+15551234567.txt
+├── ...
+├── transcript.txt          chronological transcript with sha256 prefixes
+├── manifest.json           compact per-message + saved-name + sha256
+├── metadata.json           full per-attachment metadata (sha256, EXIF,
+│                           filesystem timestamps, source path)
+├── chain_of_custody.log    append-only line per action with sha256
+└── summary.txt             counts, range, mode=raw (forensic), version
+```
+
 See `messages-exporter/README.md` for the full filename rules and sanitization details.
+
+## Full Disk Access on launch
+
+The app preflights `~/Library/Messages/chat.db` on every launch. If the file isn't readable you'll see a **"Full Disk Access required"** sheet before the main window is interactive. The sheet offers four actions:
+
+- **Open Privacy Settings** — deep-links to System Settings → Privacy & Security → Full Disk Access. Drag `MessagesExporterGUI.app` into the list (or click +), toggle it on.
+- **Reset Privacy entries** — runs `tccutil reset SystemPolicyAllFiles com.bronty13.MessagesExporterGUI` against the running user's TCC database. Use this when you see duplicate "MessagesExporterGUI" / "MessagesExporterGUI 2" entries in System Settings — common after several rebuilds, because each ad-hoc-signed rebuild rotates the `cdhash`. Reset wipes them all so the next grant produces a single clean entry.
+- **Quit** — TCC pins the cdhash at process spawn, so a granted permission only takes effect on the *next* launch. Quit explicitly here, grant access, and relaunch.
+- **Continue anyway** — dismiss the sheet without resolving. A persistent orange "Full Disk Access required" banner stays at the top of the window so you don't forget; clicking **Resolve…** on that banner re-opens the sheet.
+
+If FDA is fine, none of the above appears — you go straight to the main form.
 
 ## Errors you might see
 
 | Banner                                                             | Meaning                                                                                                                      |
 | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| **Full Disk Access denied. Open System Settings…**                 | The GUI app itself needs FDA. Add `MessagesExporterGUI.app` in Privacy & Security and relaunch — TCC ignores running apps.   |
+| **Full Disk Access required** (orange banner)                      | Preflight detected `chat.db` is unreadable. Click **Resolve…** to re-open the sheet, or grant FDA in System Settings and relaunch. |
+| **Full Disk Access denied. Open System Settings…**                 | An export attempt hit the FDA wall mid-run. Same fix as above — add `MessagesExporterGUI.app` in Privacy & Security and relaunch. |
 | **Export finished with no output folder**                          | The contact didn't match anyone in AddressBook, or no messages fell in the date range. Try a shorter name or wider range.    |
 | **export_messages CLI is not installed**                           | The pre-flight didn't find `~/.local/bin/export_messages`. Click **Run** again to trigger the install sheet.                 |
 | **Could not locate messages-exporter/install.sh next to the app.** | The GUI looks for the install script either next to the `.app` or in `~/Documents/GitHub/PhantomLives/messages-exporter/`. Move the `.app` next to its sibling subproject, or run `install.sh` manually. |

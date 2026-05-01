@@ -1,8 +1,8 @@
 # messages-exporter-gui
 
-**Current release: 1.0.6**
+**Current release: 1.0.10**
 
-Native macOS SwiftUI front end for the [`messages-exporter`](../messages-exporter/) CLI. Provides a contact text field, native date/time pickers, a streamed copyable log of the export run, and one-click buttons to open the resulting transcript / summary / manifest or reveal the output folder.
+Native macOS SwiftUI front end for the [`messages-exporter`](../messages-exporter/) CLI. Provides a contact text field, native date/time pickers, a streamed copyable log of the export run, a **Sanitized | Raw (forensic)** mode picker, a Full Disk Access preflight that detects missing permission on launch and offers to clean up stale TCC entries, and one-click buttons to open the resulting transcript / summary / manifest / metadata / chain-of-custody log or reveal the output folder.
 
 ## Quick start
 
@@ -31,6 +31,7 @@ See [INSTALL.md](INSTALL.md) for the full install / Full Disk Access walk-throug
 - **Output folder**: `~/Downloads/messages-exporter-gui/` (each run creates `<contact>_<YYYYMMDD_HHMMSS>/` inside). Created on demand if it doesn't exist. Change inline in the main window or in **Messages Exporter → Settings…**.
 - **Start date/time**: today, 00:00 local
 - **End date/time**: today, current local time
+- **Mode**: `Sanitized` (HEIC→JPG, EXIF stripped, caption-derived filenames). Switch to `Raw (forensic)` for byte-identical attachment copies, original filenames, sha256 + EXIF in `metadata.json`, and an append-only `chain_of_custody.log`. Emoji handling is ignored in raw mode.
 - **Emoji handling**: `word` (e.g., 🔥 → `(fire)` in filenames)
 
 ## Build / test
@@ -62,7 +63,11 @@ See [HANDOFF.md](HANDOFF.md) for a deeper architecture snapshot.
 
 ## Troubleshooting
 
-**Export finishes with "Full Disk Access denied"** — the GUI lacks FDA. Open System Settings → Privacy & Security → Full Disk Access, add `MessagesExporterGUI.app`, then quit and relaunch the app (TCC changes don't take effect for a running process).
+**FDA sheet on launch / "Full Disk Access required" banner** — the GUI checks `~/Library/Messages/chat.db` on every launch and surfaces this sheet when it can't read the file. Click **Open Privacy Settings**, drag the `.app` into the Full Disk Access list, then **Quit** and relaunch (TCC permission changes don't apply to a running process).
+
+**Duplicate "MessagesExporterGUI" / "MessagesExporterGUI 2" entries in System Settings** — ad-hoc rebuilds rotate the app's `cdhash`, so old TCC entries no longer match the live binary. Use the FDA sheet's **Reset Privacy entries** button (or `tccutil reset SystemPolicyAllFiles com.bronty13.MessagesExporterGUI` from a terminal) to wipe them in one shot, then re-grant.
+
+**Export finishes with "Full Disk Access denied"** — same root cause; the runtime check now also flips the persistent banner on. Re-grant FDA and relaunch.
 
 **Export finishes with "no output folder"** — the contact name didn't match anyone in AddressBook, or no messages exist in the selected date range. Try widening the range or simplifying the name.
 

@@ -27,34 +27,76 @@ Verify:
 
 ```bash
 ~/.local/bin/export_messages --version
-# messages-exporter 1.0.1
+# messages-exporter 1.1.0
 ```
 
 ## 2. Build the GUI
 
 ```bash
 cd PhantomLives/messages-exporter-gui
-./run-tests.sh               # 7 tests, ~5 seconds
+./run-tests.sh               # 14 tests, ~5 seconds
 ./build-app.sh               # ~30 seconds first time; produces MessagesExporterGUI.app
 open MessagesExporterGUI.app
 ```
 
-`build-app.sh` derives the version from git (`CFBundleShortVersionString = 1.0.<commit-count>`). Override with `SHORT_VERSION=...` if you need a specific value. The `.app` is ad-hoc signed so macOS will launch it without a dev cert.
+`build-app.sh` derives the version from git (`CFBundleShortVersionString = 1.0.<commit-count>`). Override with `SHORT_VERSION=...` if you need a specific value.
+
+### Code signing
+
+`build-app.sh` signs the bundle with a **Developer ID Application** certificate when one is in the keychain (Hardened Runtime + trusted timestamp), and falls back to ad-hoc signing otherwise. The fallback works for fresh checkouts that don't have the maintainer's cert installed.
+
+```bash
+# Use the maintainer's cert (the script's default):
+./build-app.sh
+
+# Override with your own Developer ID:
+DEVELOPER_ID="Developer ID Application: Your Name (TEAMID)" ./build-app.sh
+
+# Force ad-hoc (matches the legacy behavior; Privacy entries will rotate
+# on every rebuild):
+DEVELOPER_ID=- ./build-app.sh
+```
+
+Why it matters: with a real Developer ID signature, TCC keys Full Disk Access grants on `(team ID, bundle ID)` rather than the per-build cdhash, so rebuilds preserve the user's grant instead of accumulating duplicate "MessagesExporterGUI 2 / 3 / …" entries in System Settings. Ad-hoc rebuilds rotate the cdhash and require a re-grant each time.
 
 ## 3. Grant Full Disk Access (required)
 
 The CLI reads `~/Library/Messages/chat.db`, which lives behind macOS's sandboxed Privacy framework. The GUI spawns the CLI as a child process, and **child processes inherit TCC (Privacy) entitlements from their parent**. So even if you've previously granted Full Disk Access to your Terminal, the GUI app itself needs it too.
+
+The app preflights this on launch: if `chat.db` isn't readable, you'll see a sheet titled **"Full Disk Access required"** with one-click buttons to open the right Privacy pane and to reset stale entries (see below). You can also just follow these steps manually:
 
 1. Open **System Settings → Privacy & Security → Full Disk Access**.
 2. Click **+** and pick `MessagesExporterGUI.app` (typically `PhantomLives/messages-exporter-gui/MessagesExporterGUI.app`).
 3. Toggle the switch on.
 4. **Quit and relaunch** the app — TCC permission changes don't apply to a running process.
 
-If you skip this, the first export will fail with:
+If you skip this, exports fail with:
 
 ```
 Full Disk Access denied. Open System Settings → Privacy & Security → Full Disk Access, add MessagesExporterGUI.app, then quit and relaunch it.
 ```
+
+### Duplicate "MessagesExporterGUI" / "MessagesExporterGUI 2" entries
+
+Because the `.app` is **ad-hoc code-signed**, every rebuild produces a fresh
+code-signature hash (`cdhash`). TCC keys its grants on `(bundle ID, cdhash)`,
+so a TCC entry created against last week's build no longer matches today's
+binary — and macOS may add a new entry rather than reusing the old one. Over
+many rebuilds this accumulates as multiple "MessagesExporterGUI" rows in the
+Privacy list, often disambiguated as "MessagesExporterGUI 2", "… 3", etc.
+
+The in-app FDA sheet has a **Reset Privacy entries** button that wipes them
+all in one shot, so the next grant produces a single clean row. Or run the
+equivalent from a terminal:
+
+```bash
+tccutil reset SystemPolicyAllFiles com.bronty13.MessagesExporterGUI
+```
+
+After the reset, quit the app, re-grant Full Disk Access in System Settings,
+and relaunch.
+
+`build-app.sh` also wipes any `MessagesExporterGUI 2.app` / `MessagesExporterGUI 3.app` Finder copies it finds in the project directory before each release build, which prevents the duplicates from accumulating in the first place.
 
 ## Updating
 

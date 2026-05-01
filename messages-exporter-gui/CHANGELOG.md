@@ -2,6 +2,121 @@
 
 All notable changes to messages-exporter-gui will be documented in this file.
 
+## [1.0.10] — 2026-05-01
+
+### Changed
+
+- `build-app.sh` signs with a **Developer ID Application** certificate
+  when one is in the keychain (env var `DEVELOPER_ID`, default
+  `Developer ID Application: Robert Olen (SRKV8T38CD)`), and falls back
+  to ad-hoc signing otherwise. Sets `--options runtime` (Hardened
+  Runtime, required for future notarization, no-op without it) and
+  `--timestamp` (embeds a trusted timestamp so the signature stays
+  verifiable past the cert's eventual expiry).
+- Verification step uses codesign's exit code directly rather than
+  grepping its output — piping into `grep -q` under `set -o pipefail`
+  triggered a SIGPIPE-induced false negative.
+- Strips `com.apple.FinderInfo` from the bundle root explicitly (in
+  addition to the recursive `xattr -cr`); a leftover directory-level
+  FinderInfo xattr (added back by iCloud File Provider on `~/Documents/`
+  paths after every save) was failing strict signature verification
+  even though the embedded signature itself was valid.
+
+### Why this matters for FDA stability
+
+With a Developer ID Application certificate, TCC keys grants on
+`(team ID, bundle ID)` rather than the cdhash. So a rebuild now
+preserves the user's Full Disk Access permission instead of rotating
+the cdhash and creating a fresh "MessagesExporterGUI 2" Privacy entry.
+The in-app FDA preflight + reset button is still the right tool when
+TCC ends up in a weird state, but it should rarely be necessary on
+this build flow.
+
+## [1.0.9] — 2026-05-01
+
+### Fixed
+
+- The persistent FDA banner used to remain visible after dismissing the
+  sheet even when the user had granted access in the meantime — the
+  status was probed once on launch and never re-checked. Three changes
+  fix this:
+  1. The view subscribes to `NSApplication.didBecomeActiveNotification`
+     and re-probes on every focus return, so granting access in System
+     Settings and switching back to the app clears the banner
+     automatically.
+  2. The sheet's "Continue anyway" button now re-probes before
+     dismissing.
+  3. New "I've granted access" primary action on the sheet performs an
+     explicit re-probe and shows a hint if the result is still denied
+     (rare — would indicate the TCC grant didn't apply to the running
+     cdhash, which only a relaunch can fix).
+- The inline banner gained a **Re-check** button alongside **Resolve…**
+  for the same purpose without re-opening the sheet.
+
+## [1.0.8] — 2026-05-01
+
+### Added
+
+- **Full Disk Access preflight on launch.** The app probes
+  `~/Library/Messages/chat.db` for readability before the main window
+  becomes interactive. If the open() syscall returns EPERM (the FDA-
+  denied signal), a modal sheet titled "Full Disk Access required" is
+  presented with explanatory copy and four actions: **Open Privacy
+  Settings** (deep-links to System Settings → Privacy & Security → Full
+  Disk Access), **Reset Privacy entries** (runs `tccutil reset
+  SystemPolicyAllFiles com.bronty13.MessagesExporterGUI` to wipe stale
+  cdhash-pinned grants — useful after several ad-hoc-signed rebuilds
+  accumulate duplicate "MessagesExporterGUI" / "MessagesExporterGUI 2"
+  entries), **Quit** (since TCC pins cdhash at spawn, a granted
+  permission only takes effect on the next launch), and **Continue
+  anyway** (dismisses the sheet but leaves a persistent orange banner
+  at the top of the main window so the user doesn't forget).
+- Inline orange "Full Disk Access required" banner with a **Resolve…**
+  button that re-opens the FDA sheet, displayed whenever
+  `runner.fdaStatus == .denied`. Survives across the rest of the
+  session (TCC can't transition denied→granted without a relaunch).
+- The runtime FDA-denied detection (`authorization denied` / `operation
+  not permitted` in CLI stdout) now also flips `fdaStatus` to
+  `.denied` so the banner appears even when the launch-time probe
+  briefly succeeded but a subsequent export hit the wall.
+- `ExportRunner.probeReadable(path:)` — pure helper extracted so the
+  new `FullDiskAccessProbeTests` suite can exercise the classification
+  logic against a tempdir instead of the live chat.db.
+
+### Changed
+
+- `build-app.sh` now removes `MessagesExporterGUI 2.app`,
+  `MessagesExporterGUI 3.app`, etc., on every release build. macOS
+  Finder auto-renames `.app` bundles when an old copy is in use, and
+  those duplicates would otherwise show up as separate Privacy entries
+  with their own (stale) cdhashes — the very TCC noise the new
+  preflight sheet exists to clean up.
+- README and INSTALL describe the FDA preflight, the duplicate-entry
+  reset path, and the underlying cdhash rotation cause.
+
+## [1.0.7] — 2026-05-01
+
+### Added
+
+- **Mode** segmented picker — choose between **Sanitized** (default — the
+  existing pipeline: HEIC→JPG, EXIF stripped, caption-derived filenames)
+  and **Raw (forensic)** (passes `--raw` to the CLI). In raw mode each
+  attachment is copied byte-for-byte with its original filename and a
+  sortable `[seq]_[YYYYMMDDTHHMMSS]_[sender]_` prefix; the run folder also
+  contains `metadata.json` (sha256 + extracted EXIF + filesystem
+  timestamps per attachment) and an append-only `chain_of_custody.log`.
+  The Emoji picker is greyed out when raw is selected (the CLI ignores
+  `--emoji` in that mode).
+- **Metadata** and **Custody log** action-row buttons that open
+  `metadata.json` and `chain_of_custody.log` respectively. Both are
+  disabled when their file isn't present in the run folder, which is the
+  case in sanitized mode.
+
+### CLI dependency
+
+Requires `messages-exporter` 1.1.0 (the version that introduces `--raw`).
+Re-run `messages-exporter/install.sh` to upgrade the bundled CLI.
+
 ## [1.0.6] — 2026-04-27
 
 ### Changed
