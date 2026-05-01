@@ -5,6 +5,44 @@ All notable changes to PurpleIRC are recorded here. The bundle's
 count (`1.0.<count>`); CHANGELOG entries use the same scheme so the
 version on the About panel matches the entry that introduced it.
 
+## [1.0.99] — 2026-05-01
+
+### Added (Phase 6 — Address book profile photos)
+
+- **`AddressEntry.photoData: Data?`** — optional inline JPEG bytes,
+  decoded with `decodeIfPresent` for backward compat. Storage round-
+  trips through the existing encrypted-settings envelope, so photos
+  inherit the keystore-derived AES-GCM seal alongside contact notes.
+- **`PhotoUtilities` module (new file)** — downscaling pipeline
+  (`maxDimension = 256` px on the longest side, JPEG re-encode at
+  quality 0.85), `loadDownscaled(from:)` / `downscaleAndEncode(_:)`
+  helpers, `initials(for:)` (first alphanumeric, uppercased, "?"
+  fallback), and `avatarTint(for:)` (deterministic Color from
+  SHA-256 hash of the lowercased nick → palette of 11) so the
+  same nick always lands on the same swatch.
+- **`ContactAvatar` view** — single configuration knob (`size` in
+  points). Renders the entry's photo when present (Image
+  scaledToFill + Circle clip) or a tinted-gradient circle with
+  the deterministic initial. Initials font auto-scales at ~46% of
+  size; 0.5 px outer stroke at primary.opacity(0.08) for definition
+  against any background.
+- **`ContactAvatarByNick`** — convenience wrapper that resolves a
+  nick against `settings.addressBook` (case-insensitive). When no
+  match exists, synthesises an empty entry so the placeholder
+  still renders the deterministic tint + initial. Nicks not yet
+  in the address book share the visual identity.
+- **AddressEntryEditor → new Photo section at top:** 72-pt avatar
+  preview, "Choose photo…" button (NSOpenPanel filtered to `.image`),
+  Remove button when one is set, plus a drop target accepting both
+  `.image` (raw bitmap from another app) and `.fileURL` (Finder
+  drag) — both resolve through PhotoUtilities so the inline
+  storage invariant holds regardless of source.
+- **Sidebar Contacts row** now leads with a 22-pt `ContactAvatar`
+  overlaid with the existing presence dot in the bottom-right
+  corner (haloed with a 1.5 px stroke against the control
+  background so the dot reads against any avatar tint). Identity
+  + presence both visible without enlarging the row.
+
 ## [1.0.98] — 2026-05-01
 
 ### Added (Phase 5 — Fonts: per-element slots + advanced typography)

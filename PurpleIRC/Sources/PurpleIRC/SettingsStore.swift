@@ -222,31 +222,43 @@ struct AddressEntry: Codable, Identifiable, Hashable {
     /// first character. Encoded as base64 by JSONEncoder.
     var photoData: Data? = nil
 
+    /// File attachments associated with this contact. The actual
+    /// bytes live in the encrypted `BlobStore` (see BlobStore.swift);
+    /// this array carries the lightweight refs (id + filename + MIME
+    /// + size) so the editor can render the list without reading the
+    /// store. The store is the source of truth for the bytes.
+    var attachments: [BlobStore.AttachmentRef] = []
+
     init(id: UUID = UUID(),
          nick: String = "",
          note: String = "",
          watch: Bool = true,
          richNotes: String = "",
-         photoData: Data? = nil) {
+         photoData: Data? = nil,
+         attachments: [BlobStore.AttachmentRef] = []) {
         self.id = id
         self.nick = nick
         self.note = note
         self.watch = watch
         self.richNotes = richNotes
         self.photoData = photoData
+        self.attachments = attachments
     }
 
     /// Forward-compatible decoder so older settings.json files (without the
-    /// `richNotes` or `photoData` keys) keep loading. Without this, a
-    /// single missing key would fail decode of the whole AddressBook array.
+    /// `richNotes` / `photoData` / `attachments` keys) keep loading.
+    /// Without this, a single missing key would fail decode of the
+    /// whole AddressBook array.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.id        = try c.decodeIfPresent(UUID.self,   forKey: .id)        ?? UUID()
-        self.nick      = try c.decodeIfPresent(String.self, forKey: .nick)      ?? ""
-        self.note      = try c.decodeIfPresent(String.self, forKey: .note)      ?? ""
-        self.watch     = try c.decodeIfPresent(Bool.self,   forKey: .watch)     ?? true
-        self.richNotes = try c.decodeIfPresent(String.self, forKey: .richNotes) ?? ""
-        self.photoData = try c.decodeIfPresent(Data.self,   forKey: .photoData)
+        self.id          = try c.decodeIfPresent(UUID.self,   forKey: .id)          ?? UUID()
+        self.nick        = try c.decodeIfPresent(String.self, forKey: .nick)        ?? ""
+        self.note        = try c.decodeIfPresent(String.self, forKey: .note)        ?? ""
+        self.watch       = try c.decodeIfPresent(Bool.self,   forKey: .watch)       ?? true
+        self.richNotes   = try c.decodeIfPresent(String.self, forKey: .richNotes)   ?? ""
+        self.photoData   = try c.decodeIfPresent(Data.self,   forKey: .photoData)
+        self.attachments = try c.decodeIfPresent([BlobStore.AttachmentRef].self,
+                                                 forKey: .attachments) ?? []
     }
 }
 

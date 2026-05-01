@@ -614,6 +614,7 @@ struct AddressBookSetup: View {
 /// vertical room so you can write and see the rendered version side-by-side.
 struct AddressEntryEditor: View {
     @Binding var entry: AddressEntry
+    @EnvironmentObject var model: ChatModel
 
     var body: some View {
         Form {
@@ -654,6 +655,32 @@ struct AddressEntryEditor: View {
                 Toggle("Alert when this nick comes online", isOn: $entry.watch)
                 TextField("Short note (shown next to the nick)", text: $entry.note)
                     .textFieldStyle(.roundedBorder)
+            }
+
+            Section("Attachments") {
+                if entry.attachments.isEmpty {
+                    Text("No attachments. Click **Attach file…** or drop any file into this section. Bytes live in the encrypted blob store; this list shows lightweight references.")
+                        .font(.caption).foregroundStyle(.tertiary)
+                } else {
+                    ForEach(entry.attachments) { ref in
+                        AttachmentRow(ref: ref) {
+                            openAttachment(ref)
+                        } onReveal: {
+                            revealAttachment(ref)
+                        } onRemove: {
+                            removeAttachment(ref)
+                        }
+                    }
+                }
+                Button {
+                    pickAttachment()
+                } label: {
+                    Label("Attach file…", systemImage: "paperclip")
+                }
+            }
+            .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                handleAttachmentDrop(providers)
+                return true
             }
 
             Section("Notes") {
@@ -723,6 +750,98 @@ struct AddressEntryEditor: View {
                     entry.photoData = data
                 }
             }
+        }
+    }
+
+    /// NSOpenPanel-driven attachment picker. No type filter — any file
+    /// is fair game. Routed through the BlobStore so the bytes are
+    /// encrypted at rest the same way every other persistence path is.
+    private func pickAttachment() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.title = "Attach files to \(entry.nick.isEmpty ? "this contact" : entry.nick)"
+        panel.begin { response in
+            guard response == .OK else { return }
+            let urls = panel.urls
+            let entryID = entry.id
+            Task {
+                for url in urls {
+                    if let rec = await model.blobStore.store(fileURL: url, attachedTo: entryID) {
+                        await MainActor.run {
+                            entry.attachments.append(BlobStore.AttachmentRef(
+                                id: rec.id,
+                                filename: rec.filename,
+                                contentType: rec.contentType,
+                                sizeBytes: rec.sizeBytes
+                            ))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Drag-and-drop entry point for attachments. Accepts file URLs
+    /// dragged from Finder, routes them through the BlobStore the
+    /// same way the picker does.
+    private func handleAttachmentDrop(_ providers: [NSItemProvider]) {
+        let entryID = entry.id
+        for provider in providers {
+            guard provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else { continue }
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) { item, _ in
+                guard let urlData = item as? Data,
+                      let url = URL(dataRepresentation: urlData, relativeTo: nil) else { return }
+                Task {
+                    if let rec = await model.blobStore.store(fileURL: url, attachedTo: entryID) {
+                        await MainActor.run {
+                            entry.attachments.append(BlobStore.AttachmentRef(
+                                id: rec.id,
+                                filename: rec.filename,
+                                contentType: rec.contentType,
+                                sizeBytes: rec.sizeBytes
+                            ))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// "Open" — materialise the blob to a temp file and hand off to
+    /// the OS via NSWorkspace. The OS picks the right handler based
+    /// on file extension / UTType.
+    private func openAttachment(_ ref: BlobStore.AttachmentRef) {
+        let id = ref.id
+        Task {
+            guard let url = await model.blobStore.writeToTempFile(id) else { return }
+            await MainActor.run {
+                NSWorkspace.shared.open(url)
+            }
+        }
+    }
+
+    /// "Reveal in Finder" — same temp-file materialisation as Open,
+    /// then `activateFileViewerSelecting` so the user gets a Finder
+    /// window with the file selected.
+    private func revealAttachment(_ ref: BlobStore.AttachmentRef) {
+        let id = ref.id
+        Task {
+            guard let url = await model.blobStore.writeToTempFile(id) else { return }
+            await MainActor.run {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
+        }
+    }
+
+    /// Remove the attachment from BOTH the inline ref list and the
+    /// blob store. Keeping them in sync is the editor's job — the
+    /// store doesn't reach back into AddressEntry.
+    private func removeAttachment(_ ref: BlobStore.AttachmentRef) {
+        entry.attachments.removeAll { $0.id == ref.id }
+        let id = ref.id
+        Task {
+            await model.blobStore.delete(id)
         }
     }
 
@@ -2688,5 +2807,79 @@ struct BackupSetup: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+// MARK: - Attachment row
+
+/// One row in the AddressEntryEditor's "Attachments" section. Shows
+/// the file icon (resolved from the MIME type via UTType), filename,
+/// and a human-readable size, plus three affordances: Open (hand
+/// off to the OS via NSWorkspace), Reveal (in Finder), Remove
+/// (drops both the inline ref and the blob-store payload).
+struct AttachmentRow: View {
+    let ref: BlobStore.AttachmentRef
+    let onOpen: () -> Void
+    let onReveal: () -> Void
+    let onRemove: () -> Void
+
+    private var iconName: String {
+        // Map common MIME prefixes to SF Symbols. Anything not on
+        // this list falls through to a generic doc icon — keeps the
+        // visual cue useful without exhaustive enumeration.
+        let mime = ref.contentType.lowercased()
+        if mime.hasPrefix("image/")             { return "photo" }
+        if mime.hasPrefix("video/")             { return "film" }
+        if mime.hasPrefix("audio/")             { return "music.note" }
+        if mime.hasPrefix("text/")              { return "doc.text" }
+        if mime.contains("pdf")                 { return "doc.richtext" }
+        if mime.contains("zip") || mime.contains("compressed") { return "archivebox" }
+        if mime.contains("json") || mime.contains("xml") { return "curlybraces" }
+        return "doc"
+    }
+
+    private var formattedSize: String {
+        ByteCountFormatter.string(fromByteCount: Int64(ref.sizeBytes),
+                                  countStyle: .file)
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: iconName)
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(ref.filename)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text("\(ref.contentType) • \(formattedSize)")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            Spacer()
+            Button {
+                onOpen()
+            } label: {
+                Image(systemName: "arrow.up.right.square")
+            }
+            .help("Open with default app")
+            .buttonStyle(.borderless)
+            Button {
+                onReveal()
+            } label: {
+                Image(systemName: "magnifyingglass")
+            }
+            .help("Reveal in Finder")
+            .buttonStyle(.borderless)
+            Button(role: .destructive) {
+                onRemove()
+            } label: {
+                Image(systemName: "trash")
+            }
+            .help("Remove attachment (deletes blob)")
+            .buttonStyle(.borderless)
+        }
+        .padding(.vertical, 2)
     }
 }

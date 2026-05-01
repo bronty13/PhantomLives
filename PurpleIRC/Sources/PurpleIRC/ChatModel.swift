@@ -336,6 +336,12 @@ final class ChatModel: ObservableObject {
     /// each open buffer instead of an empty channel.
     let sessionHistory: SessionHistoryStore
 
+    /// Encrypted file-attachment store. Owns the bytes that
+    /// `AddressEntry.attachments` references. See BlobStore.swift for
+    /// the rationale on why attachments live in their own store
+    /// rather than inline on AddressEntry like profile photos do.
+    let blobStore: BlobStore
+
     /// Local-LLM-backed assistant. Off until the user enables it in
     /// Setup → Bot. Fires suggestions into the strip above the input
     /// bar; never sends without explicit user confirmation.
@@ -358,6 +364,7 @@ final class ChatModel: ObservableObject {
         self.botEngine = BotEngine(seenStore: seen)
         self.keyStore = KeyStore(supportDirectoryURL: settings.supportDirectoryURL)
         self.sessionHistory = SessionHistoryStore(supportDirectoryURL: settings.supportDirectoryURL)
+        self.blobStore = BlobStore(supportDirectoryURL: settings.supportDirectoryURL)
         let downloads = settings.supportDirectoryURL.appendingPathComponent("downloads", isDirectory: true)
         self.dcc = DCCService(downloadsDir: downloads)
         // Link keystore to settings so save/load knows whether to wrap the
@@ -1748,6 +1755,9 @@ final class ChatModel: ObservableObject {
         botEngine.seenStore.setEncryptionKey(key)
         bot.setEncryptionKey(key)
         sessionHistory.setEncryptionKey(key)
+        Task { [blobStore] in
+            await blobStore.setEncryptionKey(key)
+        }
         for c in connections {
             c.channelList.setEncryptionKey(key)
         }
