@@ -723,18 +723,53 @@ final class ChatModel: ObservableObject {
     /// view that renders chat text — keeps font customisation in one place
     /// instead of scattered `.font(...)` calls.
     var chatFont: Font {
+        font(for: .chatBody).swiftUIFont
+    }
+
+    /// Per-slot font resolution. Walks the inheritance chain so a nick
+    /// or timestamp slot can override only the fields it cares about
+    /// while inheriting everything else from the chat-body root, which
+    /// in turn falls back to the legacy `chatFontFamily` / `chatFontSize`
+    /// / `boldChatText` fields. Renderers should call this once per
+    /// row rather than re-walking the chain inline.
+    func font(for slot: FontSlot) -> ResolvedFont {
         let s = settings.settings
-        let base = s.chatFontFamily.font(size: CGFloat(s.chatFontSize))
-        return s.boldChatText ? base.bold() : base
+        let chatBody = FontStyle.resolveChatBody(
+            legacy: s.chatFontFamily,
+            legacySize: s.chatFontSize,
+            legacyBold: s.boldChatText,
+            style: s.chatBodyFont
+        )
+        switch slot {
+        case .chatBody:    return chatBody
+        case .nick:        return s.nickFont.resolved(parent: chatBody)
+        case .timestamp:   return s.timestampFont.resolved(parent: chatBody)
+        case .systemLine:  return s.systemLineFont.resolved(parent: chatBody)
+        }
     }
 
     /// Caption-sized variant of the chat font (timestamps, join/part lines).
     /// Scales down 25% from the user's base size so timestamps still feel
-    /// secondary even at large body sizes.
+    /// secondary even at large body sizes. Honours the per-element
+    /// system-line slot so a user who sets a different font for system
+    /// rows sees it here too.
     var chatCaptionFont: Font {
-        let s = settings.settings
-        let size = max(9, CGFloat(s.chatFontSize) * 0.78)
-        return s.chatFontFamily.font(size: size)
+        let sys = font(for: .systemLine)
+        // Recompose the resolved font at 78% size — the slot's
+        // configured size becomes the "100%" baseline that captions
+        // shrink against. Avoids a separate "captionSize" knob.
+        let captionSize = max(9, sys.size * 0.78)
+        let recomposed: Font = {
+            if sys.isBuiltInMonoToken {
+                return .system(size: captionSize, design: .monospaced)
+            } else if sys.isBuiltInPropToken {
+                return .system(size: captionSize)
+            } else {
+                return .custom(sys.family, size: captionSize)
+            }
+        }()
+        let weighted = recomposed.weight(sys.weight)
+        return sys.italic ? weighted.italic() : weighted
     }
 
     /// Translate the inbound IRC event stream into ActivityEvent rows for

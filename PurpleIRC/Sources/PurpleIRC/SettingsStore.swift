@@ -434,6 +434,20 @@ struct AppSettings: Codable {
     var boldChatText: Bool = false
     /// Add extra vertical padding between rows for accessibility.
     var relaxedRowSpacing: Bool = false
+
+    // MARK: - Per-element font style overrides
+
+    /// Chat-body font style. Overrides the legacy `chatFontFamily` /
+    /// `chatFontSize` / `boldChatText` fields when its own fields are
+    /// non-empty. All-default = pure inheritance from the legacy fields,
+    /// which preserves backwards compatibility with old settings.json.
+    var chatBodyFont: FontStyle = FontStyle()
+    /// Nick column (`<nick>`). Empty = inherit chat-body slot.
+    var nickFont: FontStyle = FontStyle()
+    /// Leading [HH:mm:ss] timestamp column. Empty = inherit.
+    var timestampFont: FontStyle = FontStyle()
+    /// System / info / error / join / part / quit / nick lines.
+    var systemLineFont: FontStyle = FontStyle()
     /// Collapse runs of consecutive join / part / quit / nick lines into a
     /// single summary row so a netsplit doesn't drown the channel chatter.
     /// Off keeps every line visible (the classic IRC behavior).
