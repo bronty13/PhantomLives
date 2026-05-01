@@ -3,7 +3,9 @@
 Snapshot of where the project stands so a future session (human or AI)
 can pick up without re-deriving everything from the commit history.
 Last updated: 2026-05-01. Tier #9 closed; Tier #10 (UI build-out)
-**complete** — all 8 phases shipped through 1.0.101.
+**complete** — all 8 phases shipped through 1.0.101, plus a test
+catch-up pass (1.0.102) and Developer ID signing (1.0.103). Bundle
+is now notarisation-ready (hardened runtime + Apple timestamp).
 
 ## What it is
 
@@ -64,6 +66,8 @@ stream across every connection, UUID-tagged so listeners can scope.
 | 8 | Multi-network UX                           | Done       | `d457cf8` / `567a7e7` |
 | 9 | Security & robustness pass                 | Done       | `1.0.92` |
 | 10 | UI build-out (commands, menus, settings, themes, fonts, photos, blobs, polish) | Done | `1.0.93–1.0.101` (Phases 1–8) |
+| 11 | Test catch-up (UserTheme / BlobStore / FontStyle / PhotoUtilities) | Done | `1.0.102` |
+| 12 | Developer ID signing + iCloud-safe build pipeline | Done | `1.0.103` |
 
 ## Security & robustness pass (1.0.92, 2026-04-30)
 
@@ -900,6 +904,108 @@ When you add new fields, remember the established pattern:
   EncryptedJSON envelope as the rest of the support directory,
   so when the keystore is unlocked everything is sealed with
   AES-256-GCM under the per-install DEK.
+
+### Test coverage (Tier #11, 1.0.102) — what's pinned
+
+Four new suites raised the test count from 164 → 222. The shape
+of these suites matters for future contributors — three of them
+deliberately pin **on-disk format invariants** that would silently
+break user data if changed:
+
+- **`ChatLineKindTag.rawValue` is part of the file format.**
+  `UserThemeTests.kindTagRawValuesAreStableStrings` enumerates
+  all 14 cases and pins their string values. Renaming an enum
+  case is fine; renaming its `rawValue` (e.g. `"privmsg.self"` →
+  `"privmsg-self"`) will silently drop every existing user theme's
+  override for that kind. The test catches this at PR time.
+- **`FontStyle.Weight.rawValue` is part of the file format.**
+  Same pattern — `FontStyleTests.weightRawValuesAreStableStrings`
+  pins the strings. Saved per-element fonts depend on these.
+- **`UserTheme` JSON round-trip** — full re-encode + decode +
+  field equality test. Add a stored property → the test still
+  passes because JSON encoding includes new fields automatically;
+  REMOVE one → decode fails on existing settings.json files
+  unless you add a `decodeIfPresent` fallback. The test isn't
+  load-bearing here, but the *pattern* (memberwise round-trip)
+  is the right invariant to keep adding for new formats.
+- **`PhotoUtilities.avatarTint` determinism** — uses sRGB
+  component triplets via `NSColor.usingColorSpace(.sRGB)` for
+  comparison, NOT SwiftUI Color equality. SwiftUI Color returns
+  identity for "catalog colors" — every call mints a fresh
+  wrapper for the same underlying values, so `Color1 == Color2`
+  is unreliable. When you write a Color-equality test in this
+  codebase, copy the `components(_:)` helper out of
+  `PhotoUtilitiesTests`.
+
+`BlobStoreTests` covers the actor-boundary patterns (every store
+/ read / delete is `await`ed) and the encrypted-index reload
+behaviour (`setEncryptionKey` after init re-loads the index from
+disk). When you add new store methods, mirror the pattern: check
+both the plaintext and AES-GCM-sealed paths, verify index
+persistence across instances pointed at the same dir.
+
+### Build pipeline + signing (Tier #12, 1.0.103) — playbook
+
+`build-app.sh` does three things now: builds the binary, assembles
++ signs the .app bundle in `/tmp`, then `ditto`s back to the
+project directory. Why this shape:
+
+- **iCloud Drive xattr race.** PhantomLives lives under
+  `~/Documents`, which is iCloud-synced. iCloud re-attaches
+  `com.apple.FinderInfo` to fresh files at unpredictable
+  moments. `codesign --strict` (required for notarisation
+  eligibility) refuses to sign or verify any bundle carrying
+  that xattr. Building in `mktemp -d` (which iCloud doesn't
+  watch) sidesteps the race entirely.
+- **`ditto --noextattr` for the writeback.** Plain `cp` would
+  drag every xattr along. `ditto` is the macOS-native bundle
+  copy tool and `--noextattr` strips file-system metadata
+  during the copy. The signature itself is embedded in the
+  bundle's `Contents/_CodeSignature/CodeResources` and is not
+  affected by xattrs that iCloud later re-attaches.
+
+**Signing identity auto-detection.** The script scans
+`security find-identity -v -p codesigning` for a `Developer ID
+Application:` cert and signs with the first match, falling
+back to ad-hoc (`-`) when none is found. Override via the
+`CODESIGN_IDENTITY` env var:
+- `CODESIGN_IDENTITY="-"` — force ad-hoc (CI / contributor with
+  no cert)
+- `CODESIGN_IDENTITY="Developer ID Application: Name (TEAMID)"`
+  — pin to a specific cert when you have multiple installed
+
+**Hardened runtime + timestamp.** `--options runtime --timestamp`
+get added when a real cert is used; both are notarisation
+prerequisites. Without them Apple notary will reject the
+bundle even though codesign accepts it. Don't drop those flags
+without thinking through what you'd lose.
+
+**Verify check.** Uses `codesign --verify`'s exit code, not
+output parsing — the previous `tail -1 | grep "valid on disk"`
+was looking at the wrong line ("satisfies its Designated
+Requirement") and silently masked failures. The verify failure
+log is captured to `/tmp/codesign-verify.log` for diagnostic.
+
+**xattr cleanup is belt-and-braces.** The script runs
+`xattr -cr` (recursive clear) AND explicit `xattr -d` for the
+four offenders (`com.apple.FinderInfo`,
+`com.apple.fileprovider.fpfs#P`, `com.apple.provenance`,
+`com.apple.quarantine`) on every file. Either alone has been
+seen to fail when iCloud is in the loop; together they're
+reliable.
+
+**Notarisation is the next obvious step**, not yet wired:
+1. One-time: `xcrun notarytool store-credentials` with an
+   Apple ID + app-specific password.
+2. Per-build: `ditto -c -k --keepParent PurpleIRC.app
+   PurpleIRC.zip`, then `xcrun notarytool submit
+   PurpleIRC.zip --keychain-profile <name> --wait`.
+3. After approval: `xcrun stapler staple PurpleIRC.app` to
+   embed the notary ticket so the bundle works offline /
+   first-launch.
+
+Add as a `notarize` subcommand or env-flag-gated tail in
+build-app.sh when ready.
 
 ### Visual polish (Phase 8) — playbook
 

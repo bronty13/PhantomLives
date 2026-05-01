@@ -13,6 +13,7 @@ and a SwiftUI + `NavigationSplitView` UI.
 ```sh
 ./build-app.sh            # builds PurpleIRC.app
 open PurpleIRC.app           # launch
+./run-tests.sh            # 222 tests via swift-testing
 ```
 
 The script produces a release build by default; set `CONFIG=debug` for a
@@ -21,6 +22,31 @@ debug build.
 You can also iterate with `swift build` + `swift run`, but the UI will only
 activate correctly when launched from the `.app` bundle (SwiftUI's
 `WindowGroup` needs `Info.plist`).
+
+### Code signing
+
+`build-app.sh` auto-detects a **Developer ID Application** certificate
+in your login keychain (via `security find-identity -v -p codesigning`)
+and signs with it when found, falling back to ad-hoc signing
+otherwise. When a real cert is used the script also enables the
+hardened runtime and embeds an Apple-issued timestamp so the bundle
+is eligible for `xcrun notarytool submit`.
+
+Override the auto-detection via env var:
+
+```sh
+# Force ad-hoc (CI / fresh contributor without a cert)
+CODESIGN_IDENTITY="-" ./build-app.sh
+
+# Pin to a specific cert when multiple are installed
+CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./build-app.sh
+```
+
+The script builds + signs in `mktemp -d` and `ditto`s the finished
+bundle back into the project directory. This sidesteps an iCloud
+Drive race where `com.apple.FinderInfo` re-attaches to fresh files
+under `~/Documents` and breaks `codesign --strict`. See HANDOFF.md
+for the full architecture.
 
 ## Features
 - TLS & plain-text TCP (defaults to `irc.libera.chat:6697` over TLS)
