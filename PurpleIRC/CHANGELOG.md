@@ -5,6 +5,120 @@ All notable changes to PurpleIRC are recorded here. The bundle's
 count (`1.0.<count>`); CHANGELOG entries use the same scheme so the
 version on the About panel matches the entry that introduced it.
 
+## [1.0.110] — 2026-05-02
+
+### Added (Address Book + Tags — multi-select, auto-naming, duplicate guards)
+
+- **Auto-numbered placeholder names** at create time. The Address Book
+  `+` button now seeds new contacts with `New Contact 1`, `New Contact
+  2`, … via `AddressEntry.nextDefaultNick(existing:)`, walking the
+  list and stopping at the first gap. The Tag Manager `+` button does
+  the equivalent with `New Tag 1`, `New Tag 2`, … via
+  `ContactTag.nextDefaultName(existing:)`. Both are case-insensitive,
+  so the next slot is picked correctly even after a manual rename
+  collides with an old default.
+- **Duplicate-name guards.**
+  - `ContactTag.nameClashes(_:in:excluding:)` and
+    `AddressEntry.nickClashes(_:in:excluding:)` power non-blocking
+    inline warnings under the name / nickname field in their
+    respective editors. The user can keep typing — the warning is
+    advisory — but the orange triangle catches accidental duplicates
+    the moment they happen.
+  - `ContactTagAddPopover.createAndPick` now folds duplicates into
+    the existing tag instead of minting a second copy. Type `Friend`
+    when there's already a `friend` tag and you get the existing
+    tag assigned, not a duplicate.
+- **Multi-select + bulk delete.** Both the Address Book contact list
+  and the Tag Manager list now use `Set<UUID>` selection so cmd-click
+  / shift-click work natively. The `−` button deletes every selected
+  row in one pass; the editor pane only renders for single-selection
+  (multi-selection shows a "N selected" placeholder so the form is
+  never ambiguous about what it's editing). Multi-deletes
+  always confirm (tags always confirm regardless of count because
+  the deletion cascades across contacts; contacts confirm only when
+  N > 1 to preserve the prior 1-click feel for single deletes).
+  Both bulk deletes follow the same selection-before-mutation
+  discipline as the 1.0.109 crash fix.
+
+## [1.0.109] — 2026-05-02
+
+### Fixed
+
+- **Crash when deleting a tag from "Manage tags…".** The tag editor's
+  TextField bindings captured the tag's array index once at body
+  computation; when `deleteTag` shrank `contactTags`, a pending
+  binding write hit an out-of-range index and crashed the app.
+  Replaced every editor binding with id-based safe lookups (returns
+  no-op when the tag is gone) and reordered the delete action to
+  clear `selection` *before* mutating the array, so the editor
+  pane immediately stops referencing the deleted row.
+- **Crash when deleting the last address-book entry.** Same root
+  cause and same fix in `AddressBookSetup`. The detail pane wrapped
+  `AddressEntryEditor` in a `Binding(get:set:)` that captured the
+  contact's array index; deleting the last contact (or any contact
+  while a TextField had a pending commit) sent the binding's `set`
+  out of bounds. Now the binding looks up the row by id every time,
+  and the minus button picks the next selection (or `nil` when the
+  list is about to be empty) BEFORE calling `removeAddress`.
+
+### Added
+
+- **Per-tag chip color.** `ContactTag.colorHex` (optional `#RRGGBB`)
+  joins the existing fields. The Manage Tags editor gains a Color
+  section with a "Custom color" toggle and a `ColorPicker` (same
+  pattern as `HighlightRuleEditor`) — the live chip rendered next to
+  the picker previews the result. Tags without a custom color keep
+  the default purple chip everywhere they're rendered. Forward-
+  compatible decoder so older settings.json files keep loading.
+- **Auto-assigned colors at create time.** Both tag-creation paths
+  (Manage Tags `+` and the inline "Create" affordance in the
+  per-contact picker) now seed the new tag with the least-used color
+  from a 12-entry palette via `ContactTag.nextDefaultColorHex(...)`.
+  Purple is first so the very first tag still matches the address
+  book's theme color; subsequent tags rotate through blue / green /
+  orange / red / pink / teal / amber / brown / indigo / cyan / lime
+  before any color is reused. Users can still override via the
+  Custom color section.
+
+## [1.0.108] — 2026-05-02
+
+### Added (Address Book — tags + cross-store matches + toolbar shortcut)
+
+- **Contact tags.** New `ContactTag` model (id, name, optional
+  description) lives on `AppSettings.contactTags` so it inherits the
+  same encrypted-envelope persistence as every other settings field.
+  `AddressEntry` gains `tagIDs: [UUID]`; both new fields use a
+  forward-compatible decoder so older `settings.json` files keep
+  loading. `SettingsStore.upsertTag` / `deleteTag(id:)` are the only
+  mutation paths — `deleteTag` cascades through every address-book
+  entry and strips the id, so removing a tag never leaves a dangling
+  reference behind.
+- **Manage tags sheet.** New "Manage tags…" button at the top of
+  Setup → Address Book opens a master/detail sheet for adding,
+  renaming, editing the description of, and deleting tags. The list
+  shows usage counts and the editor surfaces every contact currently
+  carrying the selected tag. Delete is confirmation-gated and the
+  prompt explains the cascade up front.
+- **Per-contact tag picker.** `AddressEntryEditor` gains a Tags
+  section with chip rows (remove via the chip's ✕) and an "Add tag…"
+  popover that lists every defined tag (already-assigned ones grey
+  out) plus an inline "Create" field so users can mint a new tag
+  without context-switching. Tag chips also render on the contact
+  list rows so users can scan tagged contacts at a glance.
+- **Cross-store match panel inside the contact editor.** New
+  `ContactMatchesSection` walks every connected network's
+  `SeenStore` plus the `LogStore` index for the contact's nick.
+  Exact and fuzzy (case-insensitive substring) matches are
+  surfaced separately, with action buttons that open the seen log
+  on the right network, jump to the chat-log viewer, or open a
+  `/query` buffer with the matched nick. The panel reruns whenever
+  the user edits the nickname; log lookups are awaited off-actor
+  since `LogStore` is an actor.
+- **Toolbar shortcut.** New Address Book toolbar button
+  (`person.crop.rectangle.stack`) opens Setup straight to the
+  Address Book tab via the existing `pendingSetupTab` plumbing — no
+  more "Setup → sidebar → Address Book" three-click landing.
+
 ## [1.0.103] — 2026-05-01
 
 ### Changed (build-app.sh)

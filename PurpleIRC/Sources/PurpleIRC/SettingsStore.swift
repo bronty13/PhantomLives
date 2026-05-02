@@ -229,13 +229,20 @@ struct AddressEntry: Codable, Identifiable, Hashable {
     /// store. The store is the source of truth for the bytes.
     var attachments: [BlobStore.AttachmentRef] = []
 
+    /// IDs of tags assigned to this contact. The tag definitions live in
+    /// `AppSettings.contactTags`; deleting a tag there cascades through
+    /// `SettingsStore.deleteTag(id:)` which strips the id from every
+    /// entry's `tagIDs`. Empty = no tags.
+    var tagIDs: [UUID] = []
+
     init(id: UUID = UUID(),
          nick: String = "",
          note: String = "",
          watch: Bool = true,
          richNotes: String = "",
          photoData: Data? = nil,
-         attachments: [BlobStore.AttachmentRef] = []) {
+         attachments: [BlobStore.AttachmentRef] = [],
+         tagIDs: [UUID] = []) {
         self.id = id
         self.nick = nick
         self.note = note
@@ -243,10 +250,11 @@ struct AddressEntry: Codable, Identifiable, Hashable {
         self.richNotes = richNotes
         self.photoData = photoData
         self.attachments = attachments
+        self.tagIDs = tagIDs
     }
 
     /// Forward-compatible decoder so older settings.json files (without the
-    /// `richNotes` / `photoData` / `attachments` keys) keep loading.
+    /// `richNotes` / `photoData` / `attachments` / `tagIDs` keys) keep loading.
     /// Without this, a single missing key would fail decode of the
     /// whole AddressBook array.
     init(from decoder: Decoder) throws {
@@ -259,6 +267,124 @@ struct AddressEntry: Codable, Identifiable, Hashable {
         self.photoData   = try c.decodeIfPresent(Data.self,   forKey: .photoData)
         self.attachments = try c.decodeIfPresent([BlobStore.AttachmentRef].self,
                                                  forKey: .attachments) ?? []
+        self.tagIDs      = try c.decodeIfPresent([UUID].self, forKey: .tagIDs)      ?? []
+    }
+}
+
+/// User-defined label for address-book contacts. Any number of tags can be
+/// assigned to a contact via `AddressEntry.tagIDs`; deleting the tag here
+/// cascades through `SettingsStore.deleteTag(id:)`.
+struct ContactTag: Codable, Identifiable, Hashable {
+    var id: UUID = UUID()
+    /// User-visible label. Trimmed at the edges; case-preserved.
+    var name: String = ""
+    /// Optional longer explanation shown as a tooltip on the chip and
+    /// next to the name in the manager.
+    var detail: String = ""
+    /// Optional `#RRGGBB` chip color. Nil = inherit the default purple
+    /// used everywhere else in the address book. Same hex shape as
+    /// `HighlightRule.colorHex` so it round-trips through `Color(hex:)`
+    /// / `.hexRGB` cleanly.
+    var colorHex: String? = nil
+
+    init(id: UUID = UUID(), name: String = "", detail: String = "", colorHex: String? = nil) {
+        self.id = id
+        self.name = name
+        self.detail = detail
+        self.colorHex = colorHex
+    }
+
+    /// Forward-compatible decoder. Mirrors AddressEntry's pattern so a
+    /// future field doesn't break old settings files.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id       = try c.decodeIfPresent(UUID.self,   forKey: .id)       ?? UUID()
+        self.name     = try c.decodeIfPresent(String.self, forKey: .name)     ?? ""
+        self.detail   = try c.decodeIfPresent(String.self, forKey: .detail)   ?? ""
+        self.colorHex = try c.decodeIfPresent(String.self, forKey: .colorHex)
+    }
+
+    /// Auto-assign palette used when a new tag is created without an
+    /// explicit color. Picked to be visually distinguishable both as the
+    /// chip's faded background AND as the foreground accent. Purple
+    /// stays first so the very first tag still matches the address-book
+    /// theme color.
+    static let defaultPalette: [String] = [
+        "#7E57C2", // purple
+        "#42A5F5", // blue
+        "#66BB6A", // green
+        "#FFA726", // orange
+        "#EF5350", // red
+        "#EC407A", // pink
+        "#26A69A", // teal
+        "#FBC02D", // amber
+        "#8D6E63", // brown
+        "#5C6BC0", // indigo
+        "#26C6DA", // cyan
+        "#9CCC65"  // light green
+    ]
+
+    /// Pick the next default color for a brand-new tag: returns the
+    /// palette entry that's used by the fewest existing tags. Ties are
+    /// broken by palette order so the first slots fill before repeats
+    /// start. Deterministic — same `existing` input → same output.
+    static func nextDefaultColorHex(existing: [ContactTag]) -> String {
+        var usage: [String: Int] = [:]
+        for tag in existing {
+            if let hex = tag.colorHex { usage[hex, default: 0] += 1 }
+        }
+        return defaultPalette.min { (usage[$0] ?? 0) < (usage[$1] ?? 0) }
+            ?? defaultPalette[0]
+    }
+
+    /// Pick a default placeholder name for a brand-new tag that doesn't
+    /// collide with any existing one. Walks "New Tag 1", "New Tag 2", …
+    /// and stops at the first gap (case-insensitive comparison).
+    static func nextDefaultName(existing: [ContactTag]) -> String {
+        let used = Set(existing.map {
+            $0.name.trimmingCharacters(in: .whitespaces).lowercased()
+        })
+        var n = 1
+        while used.contains("new tag \(n)") { n += 1 }
+        return "New Tag \(n)"
+    }
+
+    /// True when `name` (case-insensitive, trimmed) matches some other
+    /// tag's name. Used by the editor to surface a duplicate warning
+    /// without blocking the user mid-edit.
+    static func nameClashes(_ name: String, in existing: [ContactTag], excluding: UUID) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !trimmed.isEmpty else { return false }
+        return existing.contains {
+            $0.id != excluding && $0.name.trimmingCharacters(in: .whitespaces).lowercased() == trimmed
+        }
+    }
+}
+
+extension AddressEntry {
+    /// Pick a default placeholder nickname for a brand-new contact that
+    /// doesn't collide with any existing one. Walks "New Contact 1",
+    /// "New Contact 2", … and stops at the first gap. Users typically
+    /// rename these to real nicks immediately, but the placeholder
+    /// keeps the list scannable while several drafts are open.
+    static func nextDefaultNick(existing: [AddressEntry]) -> String {
+        let used = Set(existing.map {
+            $0.nick.trimmingCharacters(in: .whitespaces).lowercased()
+        })
+        var n = 1
+        while used.contains("new contact \(n)") { n += 1 }
+        return "New Contact \(n)"
+    }
+
+    /// True when `nick` matches some other entry's nick (case-insensitive,
+    /// per RFC 1459 nick comparison rules — close enough for the address
+    /// book's "did I add this person twice" question).
+    static func nickClashes(_ nick: String, in existing: [AddressEntry], excluding: UUID) -> Bool {
+        let trimmed = nick.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !trimmed.isEmpty else { return false }
+        return existing.contains {
+            $0.id != excluding && $0.nick.trimmingCharacters(in: .whitespaces).lowercased() == trimmed
+        }
     }
 }
 
@@ -371,6 +497,10 @@ enum ChatDensity: String, Codable, CaseIterable, Identifiable {
 struct AppSettings: Codable {
     var servers: [ServerProfile] = ServerProfile.defaultServers()
     var addressBook: [AddressEntry] = []
+    /// User-defined tags that can be applied to address-book contacts.
+    /// Mutated through `SettingsStore.upsertTag` / `deleteTag` so the
+    /// delete path can cascade across `AddressEntry.tagIDs`.
+    var contactTags: [ContactTag] = []
     var savedChannels: [SavedChannel] = []
     var ignoreList: [IgnoreEntry] = []
     var selectedServerID: UUID?
@@ -532,6 +662,7 @@ struct AppSettings: Codable {
         self.servers      = try c.decodeIfPresent([ServerProfile].self, forKey: .servers)
             ?? ServerProfile.defaultServers()
         self.addressBook  = try c.decodeIfPresent([AddressEntry].self, forKey: .addressBook) ?? []
+        self.contactTags  = try c.decodeIfPresent([ContactTag].self, forKey: .contactTags) ?? []
         self.savedChannels = try c.decodeIfPresent([SavedChannel].self, forKey: .savedChannels) ?? []
         self.ignoreList   = try c.decodeIfPresent([IgnoreEntry].self, forKey: .ignoreList) ?? []
         self.selectedServerID = try c.decodeIfPresent(UUID.self, forKey: .selectedServerID)
@@ -833,6 +964,27 @@ final class SettingsStore: ObservableObject {
 
     var watchedFromAddressBook: [String] {
         settings.addressBook.filter { $0.watch }.map { $0.nick }.filter { !$0.isEmpty }
+    }
+
+    // MARK: - Contact tags
+
+    func upsertTag(_ tag: ContactTag) {
+        if let i = settings.contactTags.firstIndex(where: { $0.id == tag.id }) {
+            settings.contactTags[i] = tag
+        } else {
+            settings.contactTags.append(tag)
+        }
+    }
+
+    /// Remove a tag entirely and strip the same id from every contact's
+    /// `tagIDs`. Mutating settings two ways back-to-back triggers two
+    /// didSet → save() passes; that's cheap and keeps the operation
+    /// understandable (no batched state).
+    func deleteTag(id: UUID) {
+        settings.contactTags.removeAll { $0.id == id }
+        for i in settings.addressBook.indices {
+            settings.addressBook[i].tagIDs.removeAll { $0 == id }
+        }
     }
 
     // MARK: - Channels

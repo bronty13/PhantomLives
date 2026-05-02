@@ -110,6 +110,15 @@ struct ContentView: View {
                 .help("Servers, address book, and saved channels (⌘,)")
             }
             ToolbarItem(placement: .primaryAction) {
+                Button {
+                    model.pendingSetupTab = .addressBook
+                    model.showSetup = true
+                } label: {
+                    Label("Address Book", systemImage: "person.crop.rectangle.stack")
+                }
+                .help("Open the address book — contacts, tags, notes, and attachments")
+            }
+            ToolbarItem(placement: .primaryAction) {
                 IdentityMenu()
             }
             ToolbarItem(placement: .primaryAction) {

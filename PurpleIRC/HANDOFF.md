@@ -2,10 +2,12 @@
 
 Snapshot of where the project stands so a future session (human or AI)
 can pick up without re-deriving everything from the commit history.
-Last updated: 2026-05-01. Tier #9 closed; Tier #10 (UI build-out)
+Last updated: 2026-05-02. Tier #9 closed; Tier #10 (UI build-out)
 **complete** — all 8 phases shipped through 1.0.101, plus a test
-catch-up pass (1.0.102) and Developer ID signing (1.0.103). Bundle
-is now notarisation-ready (hardened runtime + Apple timestamp).
+catch-up pass (1.0.102), Developer ID signing (1.0.103), and the
+Address Book tags / multi-select / cross-store-match work
+(1.0.108–1.0.110). Bundle is notarisation-ready (hardened runtime
++ Apple timestamp).
 
 ## What it is
 
@@ -17,7 +19,7 @@ loads, etc.).
 ```
 swift build                        # debug build
 ./build-app.sh                     # release build → PurpleIRC.app
-./run-tests.sh                     # 222 tests via swift-testing
+./run-tests.sh                     # 245 tests via swift-testing
 open PurpleIRC.app
 ```
 
@@ -279,6 +281,49 @@ theme rather than chronologically.
   menu (open query, WHOIS, WHOWAS, notify toggle, edit entry, remove).
 - Same address-book actions on the right-click menu of query rows in
   the Private section, channel user-list pane, and chat-body nicks.
+- **Tags (1.0.108).** `AppSettings.contactTags: [ContactTag]` stores
+  user-defined labels (id, name, optional description, optional
+  `colorHex` added in 1.0.109); each `AddressEntry.tagIDs` references
+  them. `SettingsStore.deleteTag(id:)` cascades — removes the
+  definition and strips the id from every entry. UI: "Manage tags…"
+  sheet at the top of the tab + per-contact chip row + "Add tag…"
+  popover with inline create.
+- **Cross-store match panel (1.0.108).** Each contact editor now
+  surfaces exact + fuzzy matches against every connected network's
+  `SeenStore` and the `LogStore` index, with one-click jumps to the
+  seen log, the chat-log viewer, or `/query`.
+- **Toolbar shortcut (1.0.108).** New `person.crop.rectangle.stack`
+  toolbar button opens Setup straight to the Address Book tab via
+  the existing `pendingSetupTab` plumbing.
+- **Crash-class fix (1.0.109).** Both the Address Book and Tag
+  Manager detail panes wrapped their `Form`/`AddressEntryEditor` in
+  a `Binding(get:set:)` that captured the row's array index once at
+  body computation time. Deleting that row underneath an active
+  TextField (or deleting the last row in the list) sent a pending
+  binding write out of bounds. Both panes now use id-based safe
+  lookups inside the binding closures, AND clear `selection` BEFORE
+  mutating the array. Same shape regression to watch out for in
+  any future master/detail Form.
+- **Per-tag chip color + auto-color rotation (1.0.109).**
+  `ContactTag.colorHex` (`#RRGGBB`) joins the model. Manage Tags
+  editor gets a Color section with a "Custom color" toggle and a
+  `ColorPicker` (same pattern as `HighlightRuleEditor` — live
+  `@State` + `.onChange` write-through). New tags get auto-assigned
+  via `ContactTag.nextDefaultColorHex(existing:)` which picks the
+  least-used entry from a 12-entry palette (`defaultPalette`).
+- **Auto-naming + duplicate guards + multi-select (1.0.110).** Both
+  the Address Book contact list and the Tag Manager list switched
+  from `UUID?` selection to `Set<UUID>`, so cmd-click / shift-click
+  multi-select works natively and the `−` button bulk-deletes.
+  Editor pane only renders for single-select. Plus button uses
+  `ContactTag.nextDefaultName` / `AddressEntry.nextDefaultNick`
+  to seed `New Tag N` / `New Contact N` placeholders that walk
+  forward and stop at the first gap (case-insensitive). Duplicate
+  detection lives on `ContactTag.nameClashes` /
+  `AddressEntry.nickClashes` (case-insensitive, trimmed,
+  excludes-self) and powers a non-blocking orange warning under
+  the field. `ContactTagAddPopover.createAndPick` folds duplicate
+  names into the existing tag instead of minting a copy.
 
 ### Seen tracker (`cf9d37d`)
 - Per-network JSON file; `SeenEntry.history` rolling array (cap 50)
@@ -651,10 +696,10 @@ fall out cleanly once that exists.
   about bob between 9 PM–7 AM, but if he mentions <topic>
   escalate to a banner regardless." Falls naturally out of the
   existing per-contact alert overrides.
-- **Contact tags / groups with sidebar collapsing.** Family /
-  Coworkers / Maintainers, with bulk operations, group-level
-  mute, and dynamic groups like "Recently active" and "Hasn't
-  been seen in 30+ days."
+- **Sidebar collapsing by tag.** Tags ship in 1.0.108; what's left
+  is grouping the Contacts section in the main sidebar by tag with
+  bulk operations, group-level mute, and dynamic groups like
+  "Recently active" and "Hasn't been seen in 30+ days."
 - **Auto-link nicks via `account-tag`.** When `alice` and `alice_`
   authenticate to the same services account, suggest unifying
   them. Cheap win that feeds the Person model.
@@ -943,6 +988,32 @@ behaviour (`setEncryptionKey` after init re-loads the index from
 disk). When you add new store methods, mirror the pattern: check
 both the plaintext and AES-GCM-sealed paths, verify index
 persistence across instances pointed at the same dir.
+
+### Address-book / tag tests (1.0.110) — what's pinned
+
+`ContactTagTests` raised the count to 245 (+23 tests in 1 new
+suite). It pins three things that must not regress:
+
+- **Forward-compat decoders.** `ContactTag` and `AddressEntry`
+  must decode `{}` and pre-1.0.108 / pre-1.0.109 payloads with
+  every missing field falling through to its default. Same shape
+  as the SettingsRoundtripTests forward-compat tests — adding a
+  new field is fine, removing one without a `decodeIfPresent`
+  fallback would null user data. Tests:
+  `contactTagDecodesEmptyJSON`,
+  `contactTagDecodesPayloadMissingColorHex`,
+  `addressEntryDecodesPre108JSON`.
+- **`SettingsStore.deleteTag(id:)` cascades.** The whole
+  point — delete a tag, every contact's `tagIDs` loses the id.
+  `deleteTagCascadesAcrossEveryContact` constructs a 4-contact /
+  2-tag fixture and asserts the cascade cleared every reference.
+  If you change the cascade shape (e.g. soft-delete), update the
+  test.
+- **Auto-name / auto-color helpers don't drift.** The "fills
+  gaps" test catches a careless rewrite that would forever
+  count up rather than reusing freed default-name slots. The
+  palette test pins both the count (12) and uniqueness, so the
+  least-used tie-breaker stays meaningful.
 
 ### Build pipeline + signing (Tier #12, 1.0.103) — playbook
 

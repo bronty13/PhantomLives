@@ -13,7 +13,7 @@ and a SwiftUI + `NavigationSplitView` UI.
 ```sh
 ./build-app.sh            # builds PurpleIRC.app
 open PurpleIRC.app           # launch
-./run-tests.sh            # 222 tests via swift-testing
+./run-tests.sh            # 245 tests via swift-testing
 ```
 
 The script produces a release build by default; set `CONFIG=debug` for a
@@ -123,10 +123,21 @@ The biggest tabs:
   mechanism/account/password, a **NickServ** fallback password, a
   **perform-on-connect** script, and an **auto-reconnect** toggle.
 - **Address Book** — watched contacts with optional notes, **profile
-  photos** (auto-downscaled to ≤256 px JPEG), and **encrypted file
+  photos** (auto-downscaled to ≤256 px JPEG), **encrypted file
   attachments** (any size, stored in the per-install AES-GCM-sealed
-  blob store). Each entry has a "watch" toggle that drives real-time
-  online alerts.
+  blob store), and **user-defined tags** (any number per contact,
+  optional per-tag color from a 12-entry rotating palette;
+  deleting a tag cascades across every contact). Each contact editor
+  also surfaces **exact + fuzzy matches** of the nick against every
+  connected network's seen log and the chat-log archive, with
+  one-click jumps to the seen list, the chat-log viewer, or `/query`.
+  Both the contact list and the Tag Manager support **cmd-click /
+  shift-click multi-select with bulk delete**; new contacts and tags
+  are seeded with auto-numbered placeholder names (`New Contact 1`,
+  `New Tag 1`, …) that walk forward and stop at the first gap, and
+  duplicate names / nicknames trigger a non-blocking warning under
+  the field. A toolbar shortcut (`person.crop.rectangle.stack`)
+  opens the tab in one click.
 - **Channels** — saved channels with one-click Join from the sidebar; also
   auto-join on connect (on top of the profile's auto-join list).
 - **Themes** — 16 built-in themes (Classic, Midnight, Solarized
