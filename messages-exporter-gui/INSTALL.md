@@ -27,14 +27,20 @@ Verify:
 
 ```bash
 ~/.local/bin/export_messages --version
-# messages-exporter 1.1.0
+# messages-exporter 1.3.0
 ```
+
+### Optional: Whisper transcription (`transcribe/` subproject)
+
+The GUI's **Transcribe** checkbox is opt-in and shells out to the sibling [`transcribe/`](../transcribe/) project. Nothing extra to install up front — `transcribe.py` self-bootstraps the first time it runs (creates `.venv/`, installs `mlx-whisper` + `mlx-lm`, installs `ffmpeg` via Homebrew if missing, downloads the chosen Whisper model from HuggingFace). Apple Silicon required.
+
+The CLI looks for the script at `~/Documents/GitHub/PhantomLives/transcribe/transcribe.py` by default; override with the `TRANSCRIBE_SCRIPT` env var if you keep it elsewhere. **No Ollama or other server is required** — Whisper runs in-process via Apple's MLX framework, locally and on-device.
 
 ## 2. Build the GUI
 
 ```bash
 cd PhantomLives/messages-exporter-gui
-./run-tests.sh               # 14 tests, ~5 seconds
+./run-tests.sh               # 18 tests, ~5 seconds
 ./build-app.sh               # ~30 seconds first time; produces MessagesExporterGUI.app
 open MessagesExporterGUI.app
 ```

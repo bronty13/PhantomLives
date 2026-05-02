@@ -19,7 +19,10 @@ private func defaultOutputDir() -> URL {
 /// User-configurable export root. Stored in UserDefaults so the
 /// Settings scene and the main window stay in sync.
 enum SettingsKeys {
-    static let outputDir = "outputDirPath"
+    static let outputDir       = "outputDirPath"
+    static let transcribeOn    = "transcribeEnabled"
+    static let transcribeModel = "transcribeModel"
+    static let debugLogging    = "debugLogging"
 }
 
 struct RootView: View {
@@ -30,10 +33,14 @@ struct RootView: View {
     @State private var end:   Date = Date()
     @State private var emoji: EmojiMode = .word
     @State private var mode:  ExportMode = .sanitized
-    @State private var showInstallSheet = false
-    @State private var showFDASheet     = false
+    @State private var showInstallSheet  = false
+    @State private var showFDASheet      = false
+    @State private var showCancelConfirm = false
 
     @AppStorage(SettingsKeys.outputDir) private var outputDirPath: String = defaultOutputDir().path
+    @AppStorage(SettingsKeys.transcribeOn) private var transcribeEnabled: Bool = false
+    @AppStorage(SettingsKeys.transcribeModel) private var transcribeModelRaw: String = WhisperModel.turbo.rawValue
+    @AppStorage(SettingsKeys.debugLogging) private var debugLogging: Bool = false
 
     private static let labelWidth: CGFloat = 70
 
@@ -93,6 +100,18 @@ struct RootView: View {
                           ? "Ignored in raw mode — original filenames are preserved."
                           : "Emoji handling in derived filenames.")
                 }
+                LabeledRow("Transcribe") {
+                    HStack(spacing: 8) {
+                        Toggle(isOn: $transcribeEnabled) {
+                            Text("Audio / video → Whisper")
+                        }
+                        .toggleStyle(.checkbox)
+                        Text("(\(WhisperModel(rawValue: transcribeModelRaw)?.shortLabel ?? "turbo"))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .help("Change the Whisper model in Settings ⌘,. First run downloads the model (~1 GB for turbo) and bootstraps a venv — subsequent runs are fast.")
+                    }
+                }
             }
             .padding(.horizontal, 14)
             .padding(.top, 12)
@@ -110,6 +129,25 @@ struct RootView: View {
                 .keyboardShortcut(.return, modifiers: [.command])
                 .controlSize(.large)
                 .disabled(runner.isRunning || contact.trimmingCharacters(in: .whitespaces).isEmpty)
+
+                if runner.isRunning {
+                    Button(role: .destructive) {
+                        showCancelConfirm = true
+                    } label: {
+                        Label(runner.isCancelling ? "Cancelling…" : "Cancel",
+                              systemImage: "stop.fill")
+                    }
+                    .controlSize(.large)
+                    .disabled(runner.isCancelling)
+                    .confirmationDialog("Cancel export?",
+                                        isPresented: $showCancelConfirm,
+                                        titleVisibility: .visible) {
+                        Button("Stop export", role: .destructive) { runner.cancel() }
+                        Button("Keep running", role: .cancel) { }
+                    } message: {
+                        Text("The export is still in progress. Any attachments already written will remain in the output folder.")
+                    }
+                }
 
                 ProgressBar(stage: runner.stage, isRunning: runner.isRunning)
             }
@@ -168,7 +206,10 @@ struct RootView: View {
             end: end,
             outputDir: URL(fileURLWithPath: outputDirPath),
             emoji: emoji,
-            mode: mode
+            mode: mode,
+            transcribe: transcribeEnabled,
+            transcribeModel: WhisperModel(rawValue: transcribeModelRaw) ?? .turbo,
+            debug: debugLogging
         )
         await runner.run(request)
     }
@@ -417,6 +458,8 @@ private struct InstallSheet: View {
     @Binding var showInstallSheet: Bool
     @State private var installing = false
 
+    private static let bottomID = "install-log-bottom"
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Messages Exporter CLI is not installed")
@@ -425,9 +468,32 @@ private struct InstallSheet: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if installing || !runner.logLines.isEmpty {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            Text(runner.logLines.joined(separator: "\n"))
+                                .font(.system(.caption, design: .monospaced))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(8)
+                                .textSelection(.enabled)
+                            Color.clear.frame(height: 0).id(Self.bottomID)
+                        }
+                    }
+                    .background(Color.black.opacity(0.05))
+                    .frame(height: 180)
+                    .onChange(of: runner.logLines.count) { _, count in
+                        guard count > 0 else { return }
+                        proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                    }
+                }
+            }
+
             HStack {
                 Spacer()
                 Button("Cancel") { showInstallSheet = false }
+                    .disabled(installing)
                 Button(installing ? "Installing…" : "Install now") {
                     installing = true
                     Task {
@@ -441,12 +507,14 @@ private struct InstallSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 460)
+        .frame(width: 560)
     }
 }
 
 struct SettingsView: View {
     @AppStorage(SettingsKeys.outputDir) private var outputDirPath: String = defaultOutputDir().path
+    @AppStorage(SettingsKeys.transcribeModel) private var transcribeModelRaw: String = WhisperModel.turbo.rawValue
+    @AppStorage(SettingsKeys.debugLogging) private var debugLogging: Bool = false
 
     var body: some View {
         Form {
@@ -476,8 +544,30 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            Section("Whisper transcription") {
+                Picker("Model", selection: $transcribeModelRaw) {
+                    ForEach(WhisperModel.allCases) { m in
+                        Text(m.label).tag(m.rawValue)
+                    }
+                }
+                Text("Used when the inline **Transcribe** checkbox is on. First run for a given model downloads it (~150 MB for tiny up to ~3 GB for large) and self-bootstraps a venv at PhantomLives/transcribe/.venv via mlx-whisper. Subsequent runs reuse the cached model. Apple Silicon Metal-accelerated; no server.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Reset to turbo") {
+                    transcribeModelRaw = WhisperModel.turbo.rawValue
+                }
+                .controlSize(.small)
+            }
+            Section("Diagnostics") {
+                Toggle("Debug logging", isOn: $debugLogging)
+                Text("Shows pip install lines, HuggingFace download progress, and Whisper internals in the log pane. Turn on when troubleshooting a transcription failure.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 200)
+        .frame(width: 560, height: 440)
     }
 }

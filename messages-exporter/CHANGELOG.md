@@ -2,6 +2,112 @@
 
 All notable changes to `messages-exporter` are recorded here.
 
+## 1.3.2 — 2026-05-01
+
+### Added
+- `--debug` flag. When set, the transcription subprocess receives
+  `HF_HUB_DISABLE_PROGRESS_BARS` and `TQDM_DISABLE` unset (so
+  HuggingFace file-fetch progress bars, pip install output, and Whisper
+  model-load bars are all visible). In the default (non-debug) mode those
+  env vars are set to `1` so the subprocess is silent on known-noisy
+  progress output.
+- `TQDM_DISABLE=1` and `HF_HUB_DISABLE_PROGRESS_BARS=1` injected into
+  the `transcribe_attachment()` child env for every non-debug run, on
+  top of the existing `PYTHONUNBUFFERED=1`. This suppresses the
+  "Fetching N files" HuggingFace model-cache check bars that tqdm
+  renders even when the model is already on disk.
+- Secondary tqdm line filter in the transcription streaming loop: any
+  line containing `it/s]`, `it/s,`, `█`, or matching `%|` is silently
+  dropped in non-debug mode. Defense-in-depth for libraries that use
+  tqdm internally but don't check `TQDM_DISABLE` (e.g. older
+  huggingface-hub versions).
+
+### Changed
+- `export_raw()` signature gains a `debug=False` parameter and threads
+  it through to every `transcribe_attachment()` call.
+
+## 1.3.1 — 2026-05-01
+
+### Fixed
+- `--transcribe` failed silently with a misleading "input file not
+  found" message when transcribe.py crashed during its bootstrap
+  (e.g. truststore unavailable on Python 3.9, mismatched .venv ABI,
+  PEP 604 union syntax on a too-old interpreter). Two changes:
+  - **Python 3.10+ probe**: messages-exporter now searches a list of
+    well-known brew/system locations (and falls back to PATH) for a
+    Python 3.10+ to invoke transcribe.py, instead of reusing its own
+    venv interpreter. Override with `$TRANSCRIBE_PYTHON`. Returns a
+    clear "no Python 3.10+ found" error to the per-attachment record
+    rather than crashing transcribe.py.
+  - **Better error classification**: an explicit `Error: …` line from
+    transcribe.py is surfaced verbatim; a Python traceback is shown
+    as `transcribe.py crashed: …` with the last few lines so the
+    actual failure is visible; the exit-code mapping is now a
+    fallback rather than the default. Captures up to 600 chars of
+    tail (was 300) so the truncation doesn't cut off paths.
+
+### Added
+- `find_python_for_transcribe()` and `_python_at_least(path, M, m)`
+  helpers, with new test cases (`TestPythonAtLeast`,
+  `TestFindPythonForTranscribe`).
+- `TestTranscribeAttachment` regressions:
+  `test_python_traceback_classified_as_crash_not_misleading_label`,
+  `test_explicit_error_line_is_surfaced_verbatim`,
+  `test_no_python_available_returns_actionable_error`,
+  `test_exit_code_3_with_no_explicit_error_falls_back_to_mapping`.
+
+## 1.3.0 — 2026-05-01
+
+### Added
+- `--transcribe` flag: post-processes each audio/video attachment
+  through the sibling `PhantomLives/transcribe/` project (Apple-MLX
+  Whisper, Metal-accelerated, all local). Writes
+  `<attachment>.transcript.json` (segments with timestamps) and
+  `<attachment>.transcript.txt` (segment text joined by newlines,
+  synthesized locally from the JSON) next to each audio/video
+  attachment. Works in both raw and sanitized modes.
+- `--transcribe-model` flag (default `turbo`, choices include `tiny`,
+  `base`, `small`, `medium`, `large`). `turbo` is near-large quality
+  at ~8x the throughput.
+- In raw mode, both transcript sidecars are hashed (md5/sha1/sha256)
+  and recorded in `metadata.json` (under
+  `attachments[].transcript.hashes.{txt,json}`) and
+  `chain_of_custody.log` (one `TRANSCRIBE` line per success carrying
+  all hashes + sizes + duration_seconds). On failure the attachment's
+  `transcript` field captures the structured error and a
+  `TRANSCRIBE_FAILED` line is written to the log; the export
+  continues.
+- In sanitized mode, transcript sidecars land next to the saved
+  attachment in `attachments/`, and `manifest.json` carries a per-
+  attachment `transcript` object with hashes when successful.
+- `metadata.json` (raw mode) gains an `export.transcribe` block
+  documenting whether transcription was enabled, the model used, and
+  the resolved transcribe.py path.
+
+### Helpers
+- `is_transcribable(mime, ext)` — recognizes audio (.mp3, .m4a, .wav,
+  .aac, .flac, .ogg, .opus, .aiff, .aif, .caf, .amr, .wma) plus any
+  video classified by `knd()` plus any `audio/*` MIME type.
+- `find_transcribe_script()` — resolves transcribe.py via
+  `$TRANSCRIBE_SCRIPT` env override or the default
+  `~/Documents/GitHub/PhantomLives/transcribe/transcribe.py`.
+- `transcribe_attachment(...)` — Popen-based wrapper that streams
+  stdout+stderr through to our stdout in real time (so the GUI log
+  pane shows Whisper progress while the model crunches), maps
+  documented exit codes (1=missing, 2=deps, 3=ffmpeg-decode,
+  4=transcription error, 130=interrupted) to short reason strings,
+  and writes the .txt sidecar from the JSON segments to avoid a
+  second Whisper pass.
+
+### Tests
+- `TestIsTranscribable` (mime + ext, audio + video + photo + other
+  cases), `TestFindTranscribeScript` (env override, missing path,
+  default fallback), `TestTranscribeAttachment` (mocked Popen):
+  missing-script error, success with segments → synthesized .txt,
+  success with no segments → top-level text, exit 3 → ffmpeg-decode
+  error mapping, exit 2 → mlx-whisper dependency error, exit 0 with
+  no JSON → treated as failure.
+
 ## 1.2.0 — 2026-05-01
 
 ### Added

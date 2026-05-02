@@ -2,6 +2,70 @@
 
 All notable changes to messages-exporter-gui will be documented in this file.
 
+## [1.0.12] — 2026-05-01
+
+### Added
+- **Cancel export button.** A destructive "Cancel" button appears in the
+  run row while an export is in progress. Clicking it shows a
+  `confirmationDialog` ("Cancel export?") to prevent accidental
+  termination. Confirming sends `SIGTERM` to the child process and
+  shows a "Cancelling…" label with the button disabled until the
+  process exits. Any attachments already written to disk are preserved.
+- **Debug Logging toggle** in **Settings → Diagnostics**. When on,
+  passes `--debug` to the CLI, which enables full tqdm/Whisper/pip
+  output from the transcription subprocess. Off by default — normal
+  runs show only meaningful progress lines. Persists in UserDefaults
+  across launches.
+- **Streaming log pane in the Install sheet.** The sheet now shows a
+  scrolling log pane (180 px) that streams install output in real time
+  so the user can see brew/pip steps rather than just a spinning
+  indicator.
+- **`\r` (carriage return) line handling in `LineBuffer`.** tqdm
+  progress bars overwrite the current terminal line using `\r`; the
+  buffer now tracks bare-`\r` vs `\r\n` vs `\n` and sets a
+  `replacesLast` flag. `processLine(_:replacesLast:)` replaces the
+  last log entry when `replacesLast` is true, so progress bars animate
+  in the log pane instead of producing hundreds of duplicate lines.
+
+### Changed
+- `ExportRequest` gains a `debug: Bool = false` field. `argumentList()`
+  appends `--debug` when true.
+
+### CLI dependency
+Requires `messages-exporter` 1.3.2 (the version that introduces
+`--debug`). Re-run `messages-exporter/install.sh` to upgrade.
+
+## [1.0.11] — 2026-05-01
+
+### Added
+
+- **Optional Whisper transcription of audio/video attachments.** New
+  inline **Transcribe** checkbox alongside the Mode picker. When on,
+  passes `--transcribe --transcribe-model <model>` to the CLI; the
+  CLI then shells out to the sibling `PhantomLives/transcribe/`
+  project (Apple-MLX Whisper, Metal-accelerated, fully local) for
+  every audio/video attachment and writes
+  `<attachment>.transcript.json` + `<attachment>.transcript.txt`
+  next to each AV file. In raw mode both sidecars are hashed
+  (md5/sha1/sha256) and recorded in `metadata.json` and
+  `chain_of_custody.log`. Failures don't stop the export — the
+  per-attachment error is captured in metadata + log.
+- **Settings → Whisper transcription**: model picker (tiny / base /
+  small / medium / large / **turbo** default) with descriptive
+  labels, RAM hints, and a "Reset to turbo" shortcut. The selected
+  model persists in `UserDefaults` so it sticks across runs.
+- `WhisperModel` Swift enum mirroring the CLI's `WHISPER_MODELS` list
+  — a unit test asserts the rawValues match the CLI exactly so a
+  rename on either side is caught locally.
+
+### CLI dependency
+
+Requires `messages-exporter` 1.3.0 (the version that introduces
+`--transcribe`). Re-run `messages-exporter/install.sh` to upgrade the
+bundled CLI. The Whisper transcription itself relies on the sibling
+`PhantomLives/transcribe/` subproject existing on disk — the GUI
+records a one-line warning in the export log if it can't be found.
+
 ## [1.0.10] — 2026-05-01
 
 ### Changed

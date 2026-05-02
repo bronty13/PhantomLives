@@ -44,11 +44,11 @@ See module header for full description. Run with --help for CLI options or
 --version for the version string.
 """
 
-import sqlite3, shutil, re, json, argparse, subprocess, sys, hashlib
+import sqlite3, shutil, re, json, argparse, subprocess, sys, hashlib, os, time
 from datetime import datetime, timezone
 from pathlib import Path
 
-__version__ = '1.2.0'
+__version__ = '1.3.2'
 
 # Offset from Unix epoch (1970-01-01 UTC) to Mac absolute time epoch
 # (2001-01-01 UTC). chat.db stores `message.date` in Mac absolute time;
@@ -565,7 +565,8 @@ def _now_iso():
     return datetime.now(tz=timezone.utc).isoformat()
 
 
-def export_raw(base, contact, handles, start_dt, end_dt, msgs, atts):
+def export_raw(base, contact, handles, start_dt, end_dt, msgs, atts,
+               transcribe_enabled=False, transcribe_model='turbo', debug=False):
     """Forensic export: original bytes, flat layout, hashes + EXIF metadata.
 
     Writes into `base` (already created):
@@ -591,6 +592,23 @@ def export_raw(base, contact, handles, start_dt, end_dt, msgs, atts):
     log.append(f'{started} VERSION exporter={__version__} '
                f'exiftool={ev or "unavailable"}')
 
+    # Resolve the transcribe script once. If --transcribe was requested
+    # but the script can't be found, log a single banner-level warning
+    # rather than spamming a per-attachment error 50 times.
+    transcribe_script = None
+    if transcribe_enabled:
+        transcribe_script = find_transcribe_script()
+        if transcribe_script:
+            log.append(f'{started} TRANSCRIBE_ENABLED model={transcribe_model} '
+                       f'script={transcribe_script}')
+        else:
+            log.append(f'{started} TRANSCRIBE_UNAVAILABLE model={transcribe_model} '
+                       f'reason="transcribe.py not found; '
+                       f'set TRANSCRIBE_SCRIPT or place at '
+                       f'~/Documents/GitHub/PhantomLives/transcribe/"')
+            print('      ⚠️  --transcribe requested but transcribe.py not found; '
+                  'audio/video will be exported without transcripts.')
+
     metadata = {
         'export': {
             'version': __version__,
@@ -601,6 +619,11 @@ def export_raw(base, contact, handles, start_dt, end_dt, msgs, atts):
             'range_end_utc':   end_dt.isoformat()   if end_dt   else None,
             'started_at_utc':  started,
             'exiftool_version': ev,
+            'transcribe': {
+                'enabled': bool(transcribe_enabled),
+                'model':   transcribe_model if transcribe_enabled else None,
+                'script_path': str(transcribe_script) if transcribe_script else None,
+            },
         },
         'messages': [],
     }
@@ -669,6 +692,7 @@ def export_raw(base, contact, handles, start_dt, end_dt, msgs, atts):
                 'hashes': None,         # {'md5','sha1','sha256'} once copied
                 'fs_timestamps': None,
                 'exif': None,
+                'transcript': None,     # populated if --transcribe + audio/video
                 'error': None,
             }
 
@@ -720,6 +744,60 @@ def export_raw(base, contact, handles, start_dt, end_dt, msgs, atts):
             log.append(f'{_now_iso()} COPY src={src} dest={dest.name} '
                        f'md5={h["md5"]} sha1={h["sha1"]} '
                        f'sha256={h["sha256"]} size={stat["size_bytes"]}')
+
+            # Optional Whisper transcription for audio/video attachments.
+            # Pre-flight already logged a single banner if the script was
+            # missing; here we just skip the call.
+            if (transcribe_enabled and transcribe_script
+                    and is_transcribable(mime, ext)):
+                print(f'      [transcribe] {dest.name} '
+                      f'(model={transcribe_model}, this may take a minute…)')
+                tr = transcribe_attachment(
+                    src_path=dest, dest_attachment_path=dest,
+                    model=transcribe_model, script=transcribe_script,
+                    stream_label='        [whisper]',
+                    debug=debug)
+                tr_meta = {
+                    'enabled': True,
+                    'model': tr['model'],
+                    'duration_seconds': tr['duration_seconds'],
+                    'txt_file':  tr['txt_path'].name  if tr['txt_path']  else None,
+                    'json_file': tr['json_path'].name if tr['json_path'] else None,
+                    'hashes': None,
+                    'error': tr['error'],
+                }
+                if tr['ok']:
+                    txt_h  = hashes_file(tr['txt_path'])
+                    json_h = hashes_file(tr['json_path'])
+                    tr_meta['hashes'] = {'txt': txt_h, 'json': json_h}
+                    txt_size  = tr['txt_path'].stat().st_size
+                    json_size = tr['json_path'].stat().st_size
+                    tx.append(f'    [transcript] {tr["txt_path"].name} '
+                              f'sha256={txt_h["sha256"][:16]}…')
+                    log.append(f'{_now_iso()} TRANSCRIBE attachment={dest.name} '
+                               f'model={tr["model"]} '
+                               f'duration_s={tr["duration_seconds"]} '
+                               f'txt={tr["txt_path"].name} '
+                               f'txt_md5={txt_h["md5"]} '
+                               f'txt_sha1={txt_h["sha1"]} '
+                               f'txt_sha256={txt_h["sha256"]} '
+                               f'txt_size={txt_size} '
+                               f'json={tr["json_path"].name} '
+                               f'json_md5={json_h["md5"]} '
+                               f'json_sha1={json_h["sha1"]} '
+                               f'json_sha256={json_h["sha256"]} '
+                               f'json_size={json_size}')
+                else:
+                    tx.append(f'    [transcript] FAILED: {tr["error"]}')
+                    log.append(f'{_now_iso()} TRANSCRIBE_FAILED '
+                               f'attachment={dest.name} '
+                               f'model={tr["model"]} '
+                               f'duration_s={tr["duration_seconds"]} '
+                               f'error="{tr["error"]}"')
+                att_meta['transcript'] = tr_meta
+            else:
+                att_meta['transcript'] = None
+
             msg_meta['attachments'].append(att_meta)
 
         tx.append('')
@@ -755,6 +833,322 @@ def export_raw(base, contact, handles, start_dt, end_dt, msgs, atts):
     return {'pc': pc, 'vc': vc, 'fc': fc, 'errors': errors}
 
 
+# ─── Transcription (optional, via sibling transcribe/ subproject) ───────────
+#
+# When `--transcribe` is set, after each audio/video attachment is copied,
+# we shell out to PhantomLives/transcribe/transcribe.py (an Apple-MLX
+# Whisper wrapper that self-bootstraps its own venv on first run). Output
+# is written next to the attachment as `<attachment>.transcript.json`
+# (segments + word-level timestamps) and `<attachment>.transcript.txt`
+# (segment text joined by newlines, derived from the json). In raw mode
+# both files are hashed (md5/sha1/sha256) and recorded in metadata.json
+# and chain_of_custody.log alongside the source attachment's hashes.
+#
+# Failures are non-fatal: the export continues and a structured error is
+# captured per-attachment so a forensic auditor can see exactly which
+# files were skipped and why. Expected error categories are mapped from
+# transcribe.py's documented exit codes.
+
+# Audio file extensions iMessage may carry (voice memos are typically
+# .caf or .m4a; the rest are user-attached files). knd() already
+# classifies videos correctly; this set adds the audio side.
+_AUDIO_EXTENSIONS = {
+    '.mp3', '.m4a', '.wav', '.aac', '.flac', '.ogg', '.opus',
+    '.aiff', '.aif', '.caf', '.amr', '.wma',
+}
+
+# Mapping from transcribe.py's documented exit codes to a short reason
+# string we can surface in the chain-of-custody log without dumping the
+# full stderr. The default message includes the captured stderr tail
+# (truncated) so unexpected codes still get diagnosable detail.
+_TRANSCRIBE_EXIT_REASONS = {
+    1: 'input file not found',
+    2: 'ffmpeg or mlx-whisper not installed',
+    3: 'ffmpeg could not decode the input',
+    4: 'transcription error (mlx-whisper)',
+    130: 'interrupted',
+}
+
+WHISPER_MODELS = ['tiny', 'base', 'small', 'medium', 'large', 'turbo']
+
+
+def is_transcribable(mime, ext):
+    """Decide whether an attachment is audio/video and therefore worth
+    feeding to Whisper. Both photo and 'file' kinds skip transcription.
+    """
+    if knd(mime, (ext or '').lower()) == 'video':
+        return True
+    e = (ext or '').lower()
+    if e in _AUDIO_EXTENSIONS:
+        return True
+    if mime and mime.startswith('audio/'):
+        return True
+    return False
+
+
+def find_transcribe_script():
+    """Locate `transcribe.py` from the sibling PhantomLives subproject.
+
+    Resolution order:
+      1. $TRANSCRIBE_SCRIPT (env var) — explicit override.
+      2. ~/Documents/GitHub/PhantomLives/transcribe/transcribe.py — the
+         repo layout this exporter ships from.
+
+    Returns a Path on success, or None if the script cannot be found
+    (caller surfaces a clear "set TRANSCRIBE_SCRIPT" hint).
+    """
+    env = os.environ.get('TRANSCRIBE_SCRIPT')
+    if env:
+        p = Path(env).expanduser()
+        return p if p.is_file() else None
+    candidate = (Path.home() / 'Documents' / 'GitHub' / 'PhantomLives'
+                 / 'transcribe' / 'transcribe.py')
+    return candidate if candidate.is_file() else None
+
+
+def _python_at_least(path, major, minor):
+    """Return True if running `path -V` reports >= (major, minor)."""
+    try:
+        r = subprocess.run([path, '-c',
+                            'import sys; '
+                            'print("%d.%d" % sys.version_info[:2])'],
+                           capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if r.returncode != 0:
+        return False
+    parts = r.stdout.strip().split('.')
+    if len(parts) != 2:
+        return False
+    try:
+        return (int(parts[0]), int(parts[1])) >= (major, minor)
+    except ValueError:
+        return False
+
+
+def find_python_for_transcribe():
+    """Find a Python interpreter ≥3.10 to invoke transcribe.py with.
+
+    transcribe.py uses PEP 604 union syntax (`str | None`) which fails
+    to parse on Python <3.10, and the bootstrap installs `mlx>=0.16`
+    which has no wheels for older interpreters. messages-exporter
+    itself may be running under a 3.9 venv (Apple's CommandLineTools
+    Python is the most common cause), so we cannot just reuse
+    `sys.executable`.
+
+    Override with $TRANSCRIBE_PYTHON if the heuristics pick a wrong
+    interpreter. Returns a path string on success, None otherwise.
+    """
+    env = os.environ.get('TRANSCRIBE_PYTHON')
+    if env and Path(env).is_file() and _python_at_least(env, 3, 10):
+        return env
+
+    # Common stable locations preferred first — brew Apple Silicon,
+    # brew Intel, then anything Python.org installed under Frameworks.
+    candidates = [
+        '/opt/homebrew/bin/python3',
+        '/opt/homebrew/bin/python3.13',
+        '/opt/homebrew/bin/python3.12',
+        '/opt/homebrew/bin/python3.11',
+        '/opt/homebrew/bin/python3.10',
+        '/usr/local/bin/python3',
+        '/usr/local/bin/python3.13',
+        '/usr/local/bin/python3.12',
+        '/usr/local/bin/python3.11',
+        '/usr/local/bin/python3.10',
+        '/Library/Frameworks/Python.framework/Versions/3.13/bin/python3',
+        '/Library/Frameworks/Python.framework/Versions/3.12/bin/python3',
+        '/Library/Frameworks/Python.framework/Versions/3.11/bin/python3',
+        '/Library/Frameworks/Python.framework/Versions/3.10/bin/python3',
+    ]
+    for p in candidates:
+        if Path(p).is_file() and _python_at_least(p, 3, 10):
+            return p
+
+    # Last-ditch PATH walk, but skip our own venv's bin dir to avoid
+    # picking up the same 3.9 we're trying to escape.
+    own_venv_bin = str(Path(sys.executable).parent)
+    for d in os.environ.get('PATH', '').split(os.pathsep):
+        if not d or d == own_venv_bin:
+            continue
+        for name in ('python3.13', 'python3.12', 'python3.11',
+                     'python3.10', 'python3'):
+            p = Path(d) / name
+            if p.is_file() and _python_at_least(str(p), 3, 10):
+                return str(p)
+    return None
+
+
+def transcribe_attachment(src_path, dest_attachment_path, model, script,
+                          stream_label, debug=False):
+    """Run transcribe.py against `src_path`. Writes two files alongside
+    `dest_attachment_path`:
+
+        <dest>.transcript.json   — segments + word-level timestamps
+        <dest>.transcript.txt    — segment text joined (synthesized
+                                   locally from the JSON to avoid
+                                   re-running Whisper for two formats).
+
+    Streams transcribe's combined stdout/stderr through to our stdout
+    in real time (each line prefixed with `stream_label` so the GUI's
+    log pane shows progress while Whisper runs). On any error returns
+    a structured result with `ok=False` and a short, actionable reason
+    — the export loop continues and the failure is recorded in
+    metadata.json + chain_of_custody.log.
+
+    Returns a dict:
+        ok:               bool
+        json_path:        Path or None
+        txt_path:         Path or None
+        model:            str
+        duration_seconds: float (wall-clock from launch to exit)
+        error:            str or None
+    """
+    result = {
+        'ok': False,
+        'json_path': None,
+        'txt_path': None,
+        'model': model,
+        'duration_seconds': None,
+        'error': None,
+    }
+
+    if script is None or not Path(script).is_file():
+        result['error'] = ('transcribe.py not found '
+                           '(expected at ~/Documents/GitHub/PhantomLives/transcribe/, '
+                           'or set TRANSCRIBE_SCRIPT to override)')
+        return result
+
+    json_path = Path(str(dest_attachment_path) + '.transcript.json')
+    txt_path  = Path(str(dest_attachment_path) + '.transcript.txt')
+
+    # transcribe.py needs Python 3.10+ (PEP 604 syntax + mlx wheel
+    # availability). Our own sys.executable may be the 3.9
+    # CommandLineTools Python, in which case we'd never get past
+    # transcribe.py's parser. Probe for a 3.10+ interpreter.
+    python_exe = find_python_for_transcribe()
+    if python_exe is None:
+        result['error'] = ('no Python 3.10+ found to run transcribe.py. '
+                           'Install one (e.g. `brew install python@3.12`) '
+                           'or set $TRANSCRIBE_PYTHON to a 3.10+ binary.')
+        return result
+
+    cmd = [
+        python_exe, str(script),
+        '-i', str(src_path),
+        '-o', str(json_path),
+        '-f', 'json',
+        '-m', model,
+    ]
+    if debug:
+        cmd.append('-v')
+
+    started = time.time()
+    try:
+        # Stream stdout+stderr through our own stdout so the GUI log
+        # pane shows progress while Whisper crunches. PYTHONUNBUFFERED=1
+        # forces transcribe.py and its re-exec'd venv Python to flush each
+        # line immediately rather than block-buffering until process exit.
+        child_env = os.environ.copy()
+        child_env['PYTHONUNBUFFERED'] = '1'
+        if not debug:
+            child_env['HF_HUB_DISABLE_PROGRESS_BARS'] = '1'
+            child_env['TQDM_DISABLE'] = '1'
+        proc = subprocess.Popen(cmd,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT,
+                                text=True, bufsize=1,
+                                env=child_env)
+    except OSError as ex:
+        result['error'] = f'failed to spawn transcribe.py: {ex}'
+        return result
+
+    last_lines = []  # rolling tail for diagnostic if exit != 0
+    try:
+        for line in proc.stdout:
+            stripped = line.rstrip()
+            if not stripped:
+                continue
+            last_lines.append(stripped)
+            if len(last_lines) > 30:
+                last_lines = last_lines[-30:]
+            # Skip tqdm progress lines (contain the bar fill character or
+            # the it/s rate suffix) — these slip through when HF_HUB_DISABLE_
+            # PROGRESS_BARS doesn't propagate through an os.execv chain.
+            if not debug and ('it/s]' in stripped or 'it/s,' in stripped
+                              or '█' in stripped or '|' in stripped
+                              and '%|' in stripped):
+                continue
+            print(f'{stream_label} {stripped}', flush=True)
+        proc.wait(timeout=3600)  # 1-hour cap per attachment
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        result['error'] = 'transcription timed out (>1h)'
+        return result
+    except KeyboardInterrupt:
+        proc.kill()
+        result['error'] = 'interrupted'
+        raise
+
+    result['duration_seconds'] = round(time.time() - started, 2)
+
+    if proc.returncode != 0:
+        # Output classification, in priority order:
+        #   1. transcribe.py's own "Error: <msg>" log lines — those are
+        #      the documented user-facing messages and most useful.
+        #   2. A Python traceback ("Traceback (most recent call last)")
+        #      means the script crashed; the exit-code mapping is noise
+        #      because most uncaught exceptions exit 1 too. Show the
+        #      crash detail instead of "input file not found".
+        #   3. Otherwise fall back to the exit-code mapping plus tail.
+        explicit = next((l for l in last_lines if l.startswith('Error: ')), None)
+        crashed = any('Traceback (most recent call last)' in l
+                      for l in last_lines)
+        if explicit:
+            result['error'] = explicit[len('Error: '):][:600]
+        elif crashed:
+            # Show the last few lines so the actual exception is visible.
+            tail = ' | '.join(last_lines[-5:])
+            result['error'] = f'transcribe.py crashed: {tail[:600]}'
+        else:
+            reason = _TRANSCRIBE_EXIT_REASONS.get(
+                proc.returncode, f'exit {proc.returncode}')
+            tail = ' | '.join(last_lines[-5:]) if last_lines else ''
+            result['error'] = (f'{reason}{(": " + tail) if tail else ""}')[:600]
+
+        # Clean up partial json if any.
+        try:
+            if json_path.exists():
+                json_path.unlink()
+        except OSError:
+            pass
+        return result
+
+    if not json_path.is_file():
+        result['error'] = 'transcribe.py exited 0 but produced no JSON output'
+        return result
+
+    # Synthesize the .txt sidecar locally from the JSON segments. Same
+    # logic transcribe.py's format_txt() uses, replicated to avoid a
+    # second Whisper run.
+    try:
+        data = json.loads(json_path.read_text(encoding='utf-8'))
+        segments = data.get('segments', []) or []
+        if segments:
+            txt = '\n'.join(seg.get('text', '').strip() for seg in segments)
+        else:
+            txt = (data.get('text') or '').strip()
+        txt_path.write_text(txt, encoding='utf-8')
+    except (json.JSONDecodeError, OSError) as ex:
+        result['error'] = f'failed to synthesize .txt sidecar: {ex}'
+        return result
+
+    result['ok']        = True
+    result['json_path'] = json_path
+    result['txt_path']  = txt_path
+    return result
+
+
 # ─── Main ───────────────────────────────────────────────────────────────────
 
 def build_arg_parser():
@@ -779,6 +1173,21 @@ def build_arg_parser():
                          'EXIF in metadata.json, append-only '
                          'chain_of_custody.log carrying all three hashes per '
                          'action. Implies --emoji is ignored.')
+    ap.add_argument('--transcribe', action='store_true',
+                    help='post-process audio/video attachments through the '
+                         'sibling PhantomLives/transcribe/ project (Apple-MLX '
+                         'Whisper). Writes <attachment>.transcript.json '
+                         '(segments) + .transcript.txt (synthesized) next to '
+                         'each audio/video attachment. In raw mode both files '
+                         'are hashed and recorded in metadata.json + '
+                         'chain_of_custody.log. Failures are non-fatal.')
+    ap.add_argument('--transcribe-model', default='turbo', choices=WHISPER_MODELS,
+                    help='Whisper model for --transcribe (default: turbo, a '
+                         'good quality/speed balance). Larger models give '
+                         'better quality but use more RAM and time.')
+    ap.add_argument('--debug', action='store_true',
+                    help='verbose debug output: show pip install lines, '
+                         'HuggingFace download progress, and Whisper internals')
     ap.add_argument('--version', action='version',
                     version=f'%(prog)s {__version__}')
     return ap
@@ -921,9 +1330,19 @@ def main():
         base = Path(a.output) / f'{san(a.contact)}_{tag}_raw'
         base.mkdir(parents=True, exist_ok=True)
         print(f'[4/5] Writing to {base}')
-        counts = export_raw(base, a.contact, hh, s, e, msgs, atts)
+        counts = export_raw(base, a.contact, hh, s, e, msgs, atts,
+                            transcribe_enabled=a.transcribe,
+                            transcribe_model=a.transcribe_model,
+                            debug=a.debug)
         pc, vc, fc, errors = counts['pc'], counts['vc'], counts['fc'], counts['errors']
     else:
+        # Resolve transcribe script once for the whole sanitized run too.
+        transcribe_script = None
+        if a.transcribe:
+            transcribe_script = find_transcribe_script()
+            if not transcribe_script:
+                print('      ⚠️  --transcribe requested but transcribe.py not found; '
+                      'audio/video will be exported without transcripts.')
         # Caption rule: if a message has media, its caption is the body of
         # the first following message that has non-empty text. Matches the
         # observed pattern where the sender posts photos first, then texts
@@ -1012,11 +1431,47 @@ def main():
                     res = f'MISSING: {fname}'
                 cap = caps.get(i, '')
                 tx.append(f'  [{k.upper()}] {xfer} caption="{cap}" {res}')
-                entry['att'].append({
+                att_entry = {
                     'k': k, 'orig': xfer, 'cap': cap,
                     'saved': str(dest.relative_to(base)) if dest else None,
                     'converted': bool(converted) if k == 'photo' else None,
-                })
+                    'transcript': None,
+                }
+
+                # Optional Whisper transcription for audio/video. Sidecar
+                # files land next to the saved attachment in attachments/.
+                # Skip silently for non-AV kinds and missing source.
+                if (a.transcribe and transcribe_script and dest is not None
+                        and src and src.exists()
+                        and is_transcribable(mime, ext)):
+                    print(f'      [transcribe] {dest.name} '
+                          f'(model={a.transcribe_model}, this may take a minute…)')
+                    tr = transcribe_attachment(
+                        src_path=dest, dest_attachment_path=dest,
+                        model=a.transcribe_model, script=transcribe_script,
+                        stream_label='        [whisper]',
+                        debug=a.debug)
+                    tr_meta = {
+                        'enabled': True,
+                        'model': tr['model'],
+                        'duration_seconds': tr['duration_seconds'],
+                        'txt_file':  tr['txt_path'].name  if tr['txt_path']  else None,
+                        'json_file': tr['json_path'].name if tr['json_path'] else None,
+                        'hashes': None,
+                        'error': tr['error'],
+                    }
+                    if tr['ok']:
+                        tr_meta['hashes'] = {
+                            'txt':  hashes_file(tr['txt_path']),
+                            'json': hashes_file(tr['json_path']),
+                        }
+                        tx.append(f'    [transcript] {tr["txt_path"].name} '
+                                  f'sha256={tr_meta["hashes"]["txt"]["sha256"][:16]}…')
+                    else:
+                        tx.append(f'    [transcript] FAILED: {tr["error"]}')
+                    att_entry['transcript'] = tr_meta
+
+                entry['att'].append(att_entry)
             tx.append('')
             mf.append(entry)
 

@@ -6,11 +6,25 @@ Metal-accelerated speech-to-text using Whisper on Apple MLX.
 All processing is local — no data leaves your machine.
 """
 
-__version__ = "1.4.0"
+__version__ = "1.4.2"
 
 import os
 import subprocess
 import sys
+
+# Hard requirement: PEP 604 union syntax (`str | None`) below means we
+# need 3.10+ to parse this file at all. Detect the case where the
+# user invoked us with an older Python (e.g. /usr/bin/python3 from
+# CommandLineTools, which is 3.9 on macOS Sonoma) and surface a clear
+# error before the parser fails on a `|` operator.
+if sys.version_info < (3, 10):
+    sys.stderr.write(
+        f"transcribe.py requires Python 3.10+. Found "
+        f"{'.'.join(map(str, sys.version_info[:3]))} at {sys.executable}.\n"
+        f"Install a newer Python (e.g. `brew install python@3.12`) and "
+        f"invoke this script with that interpreter.\n"
+    )
+    sys.exit(2)
 
 # ---------------------------------------------------------------------------
 # Virtual environment bootstrap
@@ -21,12 +35,22 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 VENV_DIR = os.path.join(SCRIPT_DIR, ".venv")
 VENV_PYTHON = os.path.join(VENV_DIR, "bin", "python")
 
+# Core deps required for transcription. mlx-whisper does the actual work;
+# mlx-lm is only needed for --summarize but is cheap to install eagerly.
 REQUIRED_PACKAGES = [
     "mlx>=0.16.0",
     "mlx-whisper>=0.4.0",
     "mlx-lm>=0.19.0",
-    "truststore>=0.10.0",
 ]
+
+# Optional: truststore wires macOS Keychain CA roots into urllib's TLS
+# stack so corporate proxies / self-signed roots Just Work. Only added
+# when running on Python 3.10+ — earlier versions don't have a wheel
+# (its ssl-module hooks rely on CPython 3.10+ internals). The runtime
+# import is already wrapped in try/except so a missing truststore is
+# harmless on 3.9.
+if sys.version_info >= (3, 10):
+    REQUIRED_PACKAGES.append("truststore>=0.10.0")
 
 
 def _in_venv() -> bool:
@@ -34,11 +58,44 @@ def _in_venv() -> bool:
     return os.path.abspath(sys.prefix) == os.path.abspath(VENV_DIR)
 
 
+def _venv_python_is_modern() -> bool:
+    """Return True if VENV_PYTHON exists and reports Python >= 3.10.
+
+    A pre-existing .venv built against an older interpreter (e.g. a
+    CommandLineTools 3.9 from before this script started using PEP 604
+    syntax) silently breaks the bootstrap pip install — caller deletes
+    and recreates when this returns False.
+    """
+    if not os.path.isfile(VENV_PYTHON):
+        return False
+    try:
+        r = subprocess.run(
+            [VENV_PYTHON, "-c",
+             "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)"],
+            check=False, capture_output=True, timeout=5,
+        )
+        return r.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def _bootstrap_venv() -> None:
     """Create the venv, install packages, and re-exec this script."""
     import venv
+    import shutil as _shu
 
-    if not os.path.isdir(VENV_DIR):
+    # Detect a stale .venv (e.g. left over from a CommandLineTools 3.9
+    # install from before this script needed 3.10+). Rebuilding is
+    # cheaper than asking the user to rm -rf manually — the new venv
+    # picks up the running interpreter, which the script-level guard
+    # has already validated as 3.10+.
+    if os.path.isdir(VENV_DIR) and not _venv_python_is_modern():
+        print(f"Rebuilding {VENV_DIR} (existing copy is on Python <3.10) ...",
+              file=sys.stderr)
+        _shu.rmtree(VENV_DIR)
+
+    first_run = not os.path.isdir(VENV_DIR)
+    if first_run:
         print("Creating virtual environment ...", file=sys.stderr)
         venv.create(VENV_DIR, with_pip=True)
 
@@ -48,11 +105,16 @@ def _bootstrap_venv() -> None:
         print("ffmpeg not found — installing via Homebrew ...", file=sys.stderr)
         subprocess.run(["brew", "install", "ffmpeg"], check=True)
 
-    # Install / update packages
-    print("Installing dependencies (first run may take a few minutes) ...", file=sys.stderr)
+    # Install / update packages. Only announce on first run (venv just created);
+    # subsequent runs pip-check silently so repeated transcriptions stay quiet.
+    verbose = '-v' in sys.argv or '--verbose' in sys.argv
+    if first_run or verbose:
+        print("Installing dependencies (first run may take a few minutes) ...",
+              file=sys.stderr, flush=True)
+    pip_sink = None if verbose else subprocess.DEVNULL
     subprocess.run(
-        [VENV_PYTHON, "-m", "pip", "install", "--quiet"] + REQUIRED_PACKAGES,
-        check=True,
+        [VENV_PYTHON, "-m", "pip", "install", "--progress-bar", "off"] + REQUIRED_PACKAGES,
+        check=True, stdout=pip_sink, stderr=pip_sink,
     )
 
     # Re-exec this script under the venv Python, preserving all arguments
@@ -183,7 +245,7 @@ _verbosity = 0  # -1 = quiet, 0 = normal, 1 = verbose
 def log(msg: str, level: int = 0) -> None:
     """Print to stderr if verbosity allows."""
     if _verbosity >= level:
-        print(msg, file=sys.stderr)
+        print(msg, file=sys.stderr, flush=True)
 
 
 def log_verbose(msg: str) -> None:
@@ -285,8 +347,16 @@ def transcribe_audio(
     import mlx_whisper
 
     repo = MODEL_REGISTRY[model]["repo"]
-    log(f"Transcribing with model '{model}' ({repo}) ...")
-    log_verbose(f"  RAM estimate: {MODEL_REGISTRY[model]['ram']}")
+    log(f"Transcribing with model '{model}' ...")
+    log_verbose(f"  repo: {repo}  RAM: {MODEL_REGISTRY[model]['ram']}")
+
+    # Warn about a first-run model download before handing off to mlx_whisper.
+    cache_slug = "models--" + repo.replace("/", "--")
+    cache_path = os.path.join(os.path.expanduser("~/.cache/huggingface/hub"), cache_slug)
+    if not os.path.isdir(cache_path):
+        ram = MODEL_REGISTRY[model].get("ram", "?")
+        log(f"Downloading model '{model}' from HuggingFace ({ram}) — "
+            f"first run only, may take several minutes ...")
 
     result = mlx_whisper.transcribe(
         audio_path,
@@ -595,7 +665,7 @@ def main() -> None:
         if args.output:
             with open(args.output, "w", encoding="utf-8") as f:
                 f.write(transcript_output)
-            log(f"Transcript written to {args.output}")
+            log(f"Transcript: {os.path.basename(args.output)}")
         else:
             print(transcript_output)
 

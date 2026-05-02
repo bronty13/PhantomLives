@@ -1,6 +1,6 @@
 # messages-exporter
 
-**Current release: 1.2.0**
+**Current release: 1.3.2**
 
 Export iMessage conversations from the Mac Messages app by contact name and
 date range. Two output modes:
@@ -41,6 +41,12 @@ export_messages "Jane Doe" --start "2026-04-01" --end "2026-04-30 23:59:59"
   byte-identical copies, MD5 + SHA-1 + SHA-256 + EXIF in
   `metadata.json`, and an append-only `chain_of_custody.log` with all
   three hashes per action
+- **Optional Whisper transcription** (`--transcribe`) — post-processes
+  audio/video attachments through the sibling `transcribe/` project
+  (Apple-MLX Whisper, Metal-accelerated, fully local). Writes
+  `<attachment>.transcript.json` + `<attachment>.transcript.txt`
+  next to each AV attachment. Hashed and logged to
+  `chain_of_custody.log` in raw mode. Failures don't stop the export.
 - **Self-contained venv** — shebang points at the venv, so you just run the command
 - **Graceful degradation** — missing dependencies are noted at startup and the
   best available fallback is used
@@ -67,7 +73,9 @@ from, because `~/Library/Messages/chat.db` is sandboxed by macOS:
 
 ```
 export_messages <contact> [--start DATE] [--end DATE] [--output DIR]
-                          [--emoji {strip,word,keep}] [--raw] [--version]
+                          [--emoji {strip,word,keep}] [--raw]
+                          [--transcribe [--transcribe-model MODEL]]
+                          [--debug] [--version]
 ```
 
 ### Arguments
@@ -89,6 +97,25 @@ export_messages <contact> [--start DATE] [--end DATE] [--output DIR]
   extracted EXIF + filesystem timestamps) and `chain_of_custody.log`
   (append-only line per action with all three hashes).
   `--emoji` is silently ignored when `--raw` is set.
+- `--transcribe` — opt-in Whisper transcription of audio/video
+  attachments via the sibling `transcribe/` subproject. Writes
+  `<attachment>.transcript.json` (segments) and
+  `<attachment>.transcript.txt` (segment text joined by newlines,
+  synthesized locally from the JSON) next to each AV attachment.
+  Runs out-of-process (sees `transcribe.py` via `TRANSCRIBE_SCRIPT`
+  env override or the default
+  `~/Documents/GitHub/PhantomLives/transcribe/transcribe.py`).
+  Failures are non-fatal — the export continues and a structured
+  error message is recorded per-attachment.
+- `--transcribe-model {tiny,base,small,medium,large,turbo}` —
+  Whisper model (default `turbo`). `turbo` is near-large quality at
+  ~8× throughput. Larger models give better quality at the cost of
+  more RAM and time.
+- `--debug` — verbose mode. Shows full tqdm/pip output from the
+  transcription subprocess (HuggingFace file-fetch bars, model-load
+  progress, pip "Requirement already satisfied" lines). Default: off —
+  progress noise is suppressed via `TQDM_DISABLE=1` /
+  `HF_HUB_DISABLE_PROGRESS_BARS=1` in the child environment.
 
 ### Examples
 
@@ -110,6 +137,12 @@ export_messages "Jane" --emoji strip --start "2026-04-01"
 
 # Forensic raw export (no sanitization, sha256 + EXIF metadata)
 export_messages "Jane" --raw --start "2026-04-01" --end "2026-04-30 23:59:59"
+
+# With Whisper transcription of audio/video attachments
+export_messages "Jane" --raw --transcribe --start "2026-04-01"
+
+# Larger Whisper model
+export_messages "Jane" --transcribe --transcribe-model large --start "2026-04-01"
 ```
 
 ## Output layout — sanitized (default)
@@ -158,6 +191,33 @@ and in `chain_of_custody.log` (on the COPY and WRITE_BODY records).
 SHA-256 is the modern integrity primitive; MD5 and SHA-1 are still
 expected by older forensic tooling and historical chain-of-custody
 reports.
+
+## Whisper transcription (optional)
+
+When `--transcribe` is set, every audio/video attachment is fed to
+[`PhantomLives/transcribe/`](../transcribe/) — an Apple-MLX wrapper
+around OpenAI Whisper that runs entirely on-device using Metal. **No
+servers, no Ollama, no internet.** Pass `--transcribe-model large` if
+you want higher quality at the cost of speed.
+
+Two sidecar files land next to each AV attachment:
+
+- `<attachment>.transcript.json` — full Whisper output (segments with
+  start/end timestamps, language detection, etc.).
+- `<attachment>.transcript.txt` — plain text, segment lines joined.
+  Synthesized locally from the JSON to avoid running Whisper twice.
+
+In raw mode both sidecars are hashed (md5/sha1/sha256). Each successful
+transcription emits a `TRANSCRIBE` line in `chain_of_custody.log`
+carrying both files' sizes, all three hashes, the model used, and the
+wall-clock duration. Failures emit a `TRANSCRIBE_FAILED` line with the
+mapped reason — the export keeps going.
+
+First run for a given model auto-bootstraps the `transcribe/` project's
+`.venv` and downloads the Whisper weights from HuggingFace (one-time,
+~150 MB for `tiny` up to ~3 GB for `large`). Subsequent runs are fast.
+Requires Apple Silicon and `ffmpeg` (the `transcribe/` installer
+handles it).
 
 ### Filename rules
 

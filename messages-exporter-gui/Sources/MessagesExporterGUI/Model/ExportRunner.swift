@@ -7,6 +7,7 @@ import AppKit
 /// is Sendable but cannot directly capture mutable Data.
 private final class LineBuffer: @unchecked Sendable {
     private var data = Data()
+    private var lastWasCarriageReturn = false   // for CR-overwrite tracking
     private let lock = NSLock()
 
     func append(_ chunk: Data) {
@@ -14,17 +15,32 @@ private final class LineBuffer: @unchecked Sendable {
         data.append(chunk)
     }
 
-    /// Pulls every complete (newline-terminated) line out of the buffer,
-    /// leaving any partial trailing fragment behind.
-    func extractLines() -> [String] {
+    /// Pulls every complete line out of the buffer, splitting on \n, \r\n,
+    /// or bare \r. Returns (text, replacesLast) pairs — replacesLast is true
+    /// when the previous terminator was a bare \r, matching terminal carriage-
+    /// return overwrite behavior (e.g. pip progress bars).
+    func extractLines() -> [(String, replacesLast: Bool)] {
         lock.lock(); defer { lock.unlock() }
-        var lines: [String] = []
-        while let nlIndex = data.firstIndex(of: 0x0A) {
-            let lineData = data.prefix(upTo: nlIndex)
-            data.removeSubrange(data.startIndex...nlIndex)
-            lines.append(String(data: lineData, encoding: .utf8) ?? "")
+        var result: [(String, Bool)] = []
+        while true {
+            // Find the earliest \n or \r.
+            guard let idx = data.indices.first(where: { data[$0] == 0x0A || data[$0] == 0x0D })
+            else { break }
+
+            let lineData = data.prefix(upTo: idx)
+            let isCR = data[idx] == 0x0D
+            var removeEnd = data.index(after: idx)
+            // \r\n → treat as a single newline, not as a bare CR.
+            let isBareCR = isCR && (removeEnd >= data.endIndex || data[removeEnd] != 0x0A)
+            if isCR && !isBareCR { removeEnd = data.index(after: removeEnd) }
+            data.removeSubrange(data.startIndex..<removeEnd)
+
+            let text = String(data: lineData, encoding: .utf8) ?? ""
+            let replaces = lastWasCarriageReturn
+            lastWasCarriageReturn = isBareCR
+            result.append((text, replaces))
         }
-        return lines
+        return result
     }
 
     /// Empties whatever remains (a final line without a trailing newline).
@@ -33,6 +49,7 @@ private final class LineBuffer: @unchecked Sendable {
         guard !data.isEmpty else { return [] }
         let tail = String(data: data, encoding: .utf8) ?? ""
         data.removeAll()
+        lastWasCarriageReturn = false
         return tail.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
     }
 }
@@ -60,12 +77,15 @@ enum FullDiskAccessStatus: Equatable {
 final class ExportRunner: ObservableObject {
 
     @Published private(set) var isRunning  = false
+    @Published private(set) var isCancelling = false
     @Published private(set) var stage      = 0          // 0...5
     @Published private(set) var logLines: [String] = []
     @Published private(set) var runFolder: URL?
     @Published private(set) var lastError: String?
     @Published private(set) var lastExitStatus: Int32?
     @Published private(set) var fdaStatus: FullDiskAccessStatus = .unknown
+
+    private var runningProcess: Process?
 
     /// Resolved path to the installed CLI. Computed once — if the user
     /// installs after launching the app, hit "Run" again and it'll be
@@ -240,6 +260,11 @@ final class ExportRunner: ObservableObject {
 
         // CLI exits 0 even when nothing matched. The run folder is the
         // best signal of "did anything actually happen?"
+        if isCancelling {
+            isCancelling = false
+            appendLine("[export] Cancelled.")
+            return
+        }
         if ok && runFolder == nil {
             lastError = "Export finished with no output folder — likely no contact match or no messages in range."
         } else if !ok {
@@ -261,6 +286,13 @@ final class ExportRunner: ObservableObject {
                 lastError = "export_messages exited with status \(lastExitStatus ?? -1)."
             }
         }
+    }
+
+    /// Terminate the running export. No-op if nothing is running.
+    func cancel() {
+        guard isRunning, let process = runningProcess else { return }
+        isCancelling = true
+        process.terminate()
     }
 
     // MARK: - Process plumbing
@@ -300,9 +332,9 @@ final class ExportRunner: ObservableObject {
             let chunk = handle.availableData
             guard !chunk.isEmpty else { return }
             buffer.append(chunk)
-            for line in buffer.extractLines() {
+            for (line, replaces) in buffer.extractLines() {
                 Task { @MainActor [weak self] in
-                    self?.processLine(line)
+                    self?.processLine(line, replacesLast: replaces)
                 }
             }
         }
@@ -314,16 +346,18 @@ final class ExportRunner: ObservableObject {
             pipe.fileHandleForReading.readabilityHandler = nil
             return false
         }
+        runningProcess = process
 
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             process.terminationHandler = { _ in cont.resume() }
         }
+        runningProcess = nil
         pipe.fileHandleForReading.readabilityHandler = nil
 
         // Drain anything remaining (final line without a trailing newline).
         let tail = pipe.fileHandleForReading.availableData
         if !tail.isEmpty { buffer.append(tail) }
-        for line in buffer.extractLines() { processLine(line) }
+        for (line, replaces) in buffer.extractLines() { processLine(line, replacesLast: replaces) }
         for line in buffer.drainTrailing() { processLine(line) }
 
         lastExitStatus = process.terminationStatus
@@ -332,14 +366,14 @@ final class ExportRunner: ObservableObject {
 
     // MARK: - Line parsing (visible for tests)
 
-    func processLine(_ line: String) {
-        appendLine(line)
-        if let s = Self.stageNumber(in: line) {
-            stage = s
+    func processLine(_ line: String, replacesLast: Bool = false) {
+        if replacesLast && !logLines.isEmpty {
+            logLines[logLines.count - 1] = line
+        } else {
+            appendLine(line)
         }
-        if let folder = Self.runFolderPath(in: line) {
-            runFolder = URL(fileURLWithPath: folder)
-        }
+        if let s = Self.stageNumber(in: line) { stage = s }
+        if let folder = Self.runFolderPath(in: line) { runFolder = URL(fileURLWithPath: folder) }
     }
 
     private func appendLine(_ line: String) {

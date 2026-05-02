@@ -34,6 +34,27 @@ enum ExportMode: String, CaseIterable, Identifiable {
     }
 }
 
+/// Whisper model size for `--transcribe`. The CLI validates the choice
+/// (`choices=WHISPER_MODELS`) — this enum just keeps the GUI's picker
+/// honest about which values are accepted. `turbo` is the default
+/// because it lands at near-large quality with ~8x the throughput.
+enum WhisperModel: String, CaseIterable, Identifiable {
+    case tiny, base, small, medium, large, turbo
+
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .tiny:   return "tiny — ~1 GB, fastest, lowest quality"
+        case .base:   return "base — ~1 GB, fast, acceptable"
+        case .small:  return "small — ~2 GB, balanced"
+        case .medium: return "medium — ~5 GB, high quality"
+        case .large:  return "large — ~10 GB, best quality, slowest"
+        case .turbo:  return "turbo — ~6 GB, near-large quality at 8x speed (default)"
+        }
+    }
+    var shortLabel: String { rawValue }
+}
+
 struct ExportRequest: Equatable {
     var contact: String
     var start: Date?
@@ -41,6 +62,9 @@ struct ExportRequest: Equatable {
     var outputDir: URL
     var emoji: EmojiMode
     var mode: ExportMode
+    var transcribe: Bool
+    var transcribeModel: WhisperModel
+    var debug: Bool = false
 
     func argumentList() -> [String] {
         var args: [String] = [contact]
@@ -49,6 +73,10 @@ struct ExportRequest: Equatable {
         args += ["--output", outputDir.path]
         args += ["--emoji", emoji.rawValue]
         if mode == .raw { args += ["--raw"] }
+        if transcribe {
+            args += ["--transcribe", "--transcribe-model", transcribeModel.rawValue]
+        }
+        if debug { args += ["--debug"] }
         return args
     }
 

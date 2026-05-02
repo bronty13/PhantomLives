@@ -1,8 +1,8 @@
 # messages-exporter-gui
 
-**Current release: 1.0.10**
+**Current release: 1.0.12**
 
-Native macOS SwiftUI front end for the [`messages-exporter`](../messages-exporter/) CLI. Provides a contact text field, native date/time pickers, a streamed copyable log of the export run, a **Sanitized | Raw (forensic)** mode picker, a Full Disk Access preflight that detects missing permission on launch and offers to clean up stale TCC entries, and one-click buttons to open the resulting transcript / summary / manifest / metadata / chain-of-custody log or reveal the output folder.
+Native macOS SwiftUI front end for the [`messages-exporter`](../messages-exporter/) CLI. Provides a contact text field, native date/time pickers, a streamed copyable log of the export run, a **Sanitized | Raw (forensic)** mode picker, an opt-in **Whisper transcription** of audio/video attachments via the sibling [`transcribe`](../transcribe/) project, a Full Disk Access preflight that detects missing permission on launch and offers to clean up stale TCC entries, and one-click buttons to open the resulting transcript / summary / manifest / metadata / chain-of-custody log or reveal the output folder.
 
 ## Quick start
 
@@ -32,6 +32,7 @@ See [INSTALL.md](INSTALL.md) for the full install / Full Disk Access walk-throug
 - **Start date/time**: today, 00:00 local
 - **End date/time**: today, current local time
 - **Mode**: `Sanitized` (HEIC→JPG, EXIF stripped, caption-derived filenames). Switch to `Raw (forensic)` for byte-identical attachment copies, original filenames, sha256 + EXIF in `metadata.json`, and an append-only `chain_of_custody.log`. Emoji handling is ignored in raw mode.
+- **Transcribe**: off. When on, audio/video attachments are run through the local Whisper model (default `turbo`, configurable in **Messages Exporter → Settings…**). Sidecars `<attachment>.transcript.json` and `<attachment>.transcript.txt` land next to each AV file; raw-mode sidecars are hashed and logged.
 - **Emoji handling**: `word` (e.g., 🔥 → `(fire)` in filenames)
 
 ## Build / test

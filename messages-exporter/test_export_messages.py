@@ -20,10 +20,13 @@
 
 import importlib.util
 import json
+import os
+import sys
 import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest import mock
 
 # ─── Module loader ──────────────────────────────────────────────────────────
 # The script lives in a hyphenated directory (messages-exporter/) so a plain
@@ -543,6 +546,343 @@ class TestExportRawSmoke(unittest.TestCase):
             self.assertEqual(list(base.glob('*missing.jpg*')), [])
             log = (base / 'chain_of_custody.log').read_text()
             self.assertIn('MISSING_SOURCE', log)
+
+
+# ─── Transcription helpers ──────────────────────────────────────────────────
+
+class TestIsTranscribable(unittest.TestCase):
+    def test_video_by_mime(self):
+        self.assertTrue(em.is_transcribable('video/mp4', '.mp4'))
+        self.assertTrue(em.is_transcribable('video/quicktime', '.mov'))
+
+    def test_video_by_ext_when_mime_missing(self):
+        self.assertTrue(em.is_transcribable(None, '.mov'))
+        self.assertTrue(em.is_transcribable('', '.MOV'))    # case-insensitive
+
+    def test_audio_by_ext(self):
+        self.assertTrue(em.is_transcribable(None, '.mp3'))
+        self.assertTrue(em.is_transcribable(None, '.m4a'))
+        self.assertTrue(em.is_transcribable(None, '.caf'))   # iMessage voice memos
+        self.assertTrue(em.is_transcribable(None, '.wav'))
+
+    def test_audio_by_mime(self):
+        # Audio mime without an extension we recognize still transcribes.
+        self.assertTrue(em.is_transcribable('audio/x-something', '.bin'))
+
+    def test_photo_skipped(self):
+        self.assertFalse(em.is_transcribable('image/jpeg', '.jpg'))
+        self.assertFalse(em.is_transcribable(None, '.heic'))
+
+    def test_other_files_skipped(self):
+        self.assertFalse(em.is_transcribable('application/pdf', '.pdf'))
+        self.assertFalse(em.is_transcribable(None, '.txt'))
+        self.assertFalse(em.is_transcribable(None, ''))
+
+
+class TestPythonAtLeast(unittest.TestCase):
+    def test_returns_true_for_self(self):
+        # Whatever Python ran the test suite is >= 3.0; pin a concrete
+        # lower bound just below current to make sure the check is real.
+        self.assertTrue(em._python_at_least(sys.executable, 3, 0))
+
+    def test_returns_false_for_nonexistent_path(self):
+        self.assertFalse(em._python_at_least('/nonexistent/python', 3, 10))
+
+    def test_returns_false_for_too_high_version(self):
+        # 99.99 is plausibly never going to ship.
+        self.assertFalse(em._python_at_least(sys.executable, 99, 99))
+
+
+class TestFindPythonForTranscribe(unittest.TestCase):
+    def test_env_override_when_compatible(self):
+        # If the test runner is on >=3.10 itself, sys.executable is a
+        # valid override; verify the resolution path. On 3.9 we skip.
+        if sys.version_info < (3, 10):
+            self.skipTest('no 3.10+ available to point at')
+        with mock.patch.dict(os.environ,
+                             {'TRANSCRIBE_PYTHON': sys.executable}):
+            self.assertEqual(em.find_python_for_transcribe(), sys.executable)
+
+    def test_env_override_ignored_when_incompatible(self):
+        # /usr/bin/false exits non-zero so version probe fails.
+        with mock.patch.dict(os.environ,
+                             {'TRANSCRIBE_PYTHON': '/usr/bin/false'}):
+            self.assertNotEqual(em.find_python_for_transcribe(),
+                                '/usr/bin/false')
+
+    def test_env_override_ignored_when_missing(self):
+        with mock.patch.dict(os.environ,
+                             {'TRANSCRIBE_PYTHON': '/nonexistent/python'}):
+            # Either returns None or a fallback PATH match; should
+            # never return the bogus override.
+            r = em.find_python_for_transcribe()
+            self.assertNotEqual(r, '/nonexistent/python')
+
+
+class TestFindTranscribeScript(unittest.TestCase):
+    def test_env_override_when_file_exists(self):
+        with tempfile.NamedTemporaryFile(suffix='.py', delete=False) as f:
+            path = f.name
+        try:
+            with mock.patch.dict(os.environ, {'TRANSCRIBE_SCRIPT': path}):
+                self.assertEqual(em.find_transcribe_script(), Path(path))
+        finally:
+            os.unlink(path)
+
+    def test_env_override_returns_none_when_missing(self):
+        with mock.patch.dict(os.environ,
+                             {'TRANSCRIBE_SCRIPT': '/nonexistent/path.py'}):
+            self.assertIsNone(em.find_transcribe_script())
+
+    def test_no_env_falls_back_to_default(self):
+        # Just exercise the lookup. The default may or may not exist on
+        # the test runner's machine; either result is acceptable here —
+        # we just want the call not to raise.
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop('TRANSCRIBE_SCRIPT', None)
+            r = em.find_transcribe_script()
+            self.assertTrue(r is None or isinstance(r, Path))
+
+
+class TestTranscribeAttachment(unittest.TestCase):
+    """`transcribe_attachment` shells out to a child process. We don't run
+    real Whisper here — we mock subprocess.Popen with a tiny fake that
+    can simulate success, failure exit codes, and missing-output cases.
+    """
+
+    def _make_fake_popen(self, *, returncode, stdout_lines=(),
+                         json_to_write=None, json_path_holder=None):
+        """Return a function suitable for monkey-patching subprocess.Popen.
+
+        json_path_holder is a list whose [0] element is set to the
+        json_path argument the helper passed in cmd[5], so the fake can
+        write a JSON file there to simulate transcribe.py producing
+        output. Pass `json_to_write=None` to simulate no-output success.
+        """
+        outer = self
+
+        class FakeProc:
+            def __init__(self, cmd, **_kwargs):
+                # cmd format: [python, script, '-i', src, '-o', json,
+                #              '-f', 'json', '-m', model]
+                if json_path_holder is not None and len(cmd) > 5:
+                    json_path_holder[0] = cmd[5]
+                self.stdout = iter(s + '\n' for s in stdout_lines)
+                self.returncode = returncode
+                self._json = json_to_write
+                self._path = cmd[5] if len(cmd) > 5 else None
+
+            def wait(self, timeout=None):
+                if self._json is not None and self._path:
+                    Path(self._path).write_text(json.dumps(self._json),
+                                                encoding='utf-8')
+
+            def kill(self):
+                pass
+        return FakeProc
+
+    def test_missing_script_returns_actionable_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            dest = Path(d) / 'video.MOV'
+            dest.write_bytes(b'fake')
+            r = em.transcribe_attachment(
+                src_path=dest, dest_attachment_path=dest,
+                model='turbo', script=None, stream_label='[t]')
+            self.assertFalse(r['ok'])
+            self.assertIn('transcribe.py not found', r['error'])
+
+    def test_success_writes_json_and_synthesizes_txt_with_segments(self):
+        with tempfile.TemporaryDirectory() as d:
+            dest = Path(d) / 'video.MOV'
+            dest.write_bytes(b'fake')
+            script = Path(d) / 'transcribe.py'
+            script.write_text('# stub')
+            payload = {
+                'segments': [
+                    {'start': 0.0, 'end': 2.0, 'text': '  Hello there.'},
+                    {'start': 2.0, 'end': 4.0, 'text': 'How are you?  '},
+                ],
+                'language': 'en',
+            }
+            FakePopen = self._make_fake_popen(
+                returncode=0, json_to_write=payload)
+            with mock.patch.object(em, 'find_python_for_transcribe',
+                                   return_value=sys.executable), \
+                 mock.patch('subprocess.Popen', FakePopen):
+                r = em.transcribe_attachment(
+                    src_path=dest, dest_attachment_path=dest,
+                    model='turbo', script=script, stream_label='[t]')
+            self.assertTrue(r['ok'], f'expected success, got: {r}')
+            self.assertIsNotNone(r['json_path'])
+            self.assertIsNotNone(r['txt_path'])
+            self.assertEqual(r['json_path'].name, 'video.MOV.transcript.json')
+            self.assertEqual(r['txt_path'].name,  'video.MOV.transcript.txt')
+            # txt sidecar joins segment text with newlines, stripped.
+            self.assertEqual(r['txt_path'].read_text(encoding='utf-8'),
+                             'Hello there.\nHow are you?')
+
+    def test_success_with_no_segments_uses_top_level_text(self):
+        with tempfile.TemporaryDirectory() as d:
+            dest = Path(d) / 'voice.m4a'
+            dest.write_bytes(b'fake')
+            script = Path(d) / 'transcribe.py'
+            script.write_text('# stub')
+            payload = {'text': 'Just a single phrase.'}
+            FakePopen = self._make_fake_popen(
+                returncode=0, json_to_write=payload)
+            with mock.patch.object(em, 'find_python_for_transcribe',
+                                   return_value=sys.executable), \
+                 mock.patch('subprocess.Popen', FakePopen):
+                r = em.transcribe_attachment(
+                    src_path=dest, dest_attachment_path=dest,
+                    model='turbo', script=script, stream_label='[t]')
+            self.assertTrue(r['ok'])
+            self.assertEqual(r['txt_path'].read_text(encoding='utf-8'),
+                             'Just a single phrase.')
+
+    def test_exit_code_3_with_explicit_error_uses_transcribe_message(self):
+        # Exit 3 in transcribe.py = ffmpeg failed to decode. When the
+        # script also emits its documented "Error: ..." line, that's what
+        # the user wants to see (not our paraphrased exit-code mapping).
+        with tempfile.TemporaryDirectory() as d:
+            dest = Path(d) / 'corrupt.mp4'
+            dest.write_bytes(b'not actually a video')
+            script = Path(d) / 'transcribe.py'
+            script.write_text('# stub')
+            FakePopen = self._make_fake_popen(
+                returncode=3,
+                stdout_lines=['Error: ffmpeg failed (exit code 1).'])
+            with mock.patch.object(em, 'find_python_for_transcribe',
+                                   return_value=sys.executable), \
+                 mock.patch('subprocess.Popen', FakePopen):
+                r = em.transcribe_attachment(
+                    src_path=dest, dest_attachment_path=dest,
+                    model='turbo', script=script, stream_label='[t]')
+            self.assertFalse(r['ok'])
+            self.assertIn('ffmpeg failed', r['error'])
+            # Partial json (none in this case) cleaned up.
+            self.assertFalse((dest.parent / 'corrupt.mp4.transcript.json').exists())
+
+    def test_exit_code_3_with_no_explicit_error_falls_back_to_mapping(self):
+        # When the child died on exit 3 with no "Error: ..." line, the
+        # exit-code mapping IS the best signal we have.
+        with tempfile.TemporaryDirectory() as d:
+            dest = Path(d) / 'corrupt.mp4'
+            dest.write_bytes(b'x')
+            script = Path(d) / 'transcribe.py'
+            script.write_text('# stub')
+            FakePopen = self._make_fake_popen(returncode=3)
+            with mock.patch.object(em, 'find_python_for_transcribe',
+                                   return_value=sys.executable), \
+                 mock.patch('subprocess.Popen', FakePopen):
+                r = em.transcribe_attachment(
+                    src_path=dest, dest_attachment_path=dest,
+                    model='turbo', script=script, stream_label='[t]')
+            self.assertFalse(r['ok'])
+            self.assertIn('ffmpeg could not decode', r['error'])
+
+    def test_exit_code_2_maps_to_dependency_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            dest = Path(d) / 'a.mov'
+            dest.write_bytes(b'x')
+            script = Path(d) / 'transcribe.py'
+            script.write_text('# stub')
+            FakePopen = self._make_fake_popen(returncode=2)
+            with mock.patch.object(em, 'find_python_for_transcribe',
+                                   return_value=sys.executable), \
+                 mock.patch('subprocess.Popen', FakePopen):
+                r = em.transcribe_attachment(
+                    src_path=dest, dest_attachment_path=dest,
+                    model='turbo', script=script, stream_label='[t]')
+            self.assertFalse(r['ok'])
+            self.assertIn('mlx-whisper', r['error'])
+
+    def test_python_traceback_classified_as_crash_not_misleading_label(self):
+        # Regression: exit 1 + "Traceback ..." must not surface as
+        # "input file not found" — that mapping was the documented
+        # exit-1 message but Python's default uncaught-exception exit
+        # code is also 1, so any crash got mis-classified.
+        with tempfile.TemporaryDirectory() as d:
+            dest = Path(d) / 'a.mov'
+            dest.write_bytes(b'x')
+            script = Path(d) / 'transcribe.py'
+            script.write_text('# stub')
+            FakePopen = self._make_fake_popen(
+                returncode=1,
+                stdout_lines=[
+                    'Traceback (most recent call last):',
+                    '  File "transcribe.py", line 53, in _bootstrap_venv',
+                    '    subprocess.run(...)',
+                    'subprocess.CalledProcessError: pip install failed',
+                ])
+            # Need the python_for_transcribe lookup to succeed so we
+            # actually run the Popen path. Mock it.
+            with mock.patch.object(em, 'find_python_for_transcribe',
+                                   return_value=sys.executable), \
+                 mock.patch('subprocess.Popen', FakePopen):
+                r = em.transcribe_attachment(
+                    src_path=dest, dest_attachment_path=dest,
+                    model='turbo', script=script, stream_label='[t]')
+            self.assertFalse(r['ok'])
+            self.assertIn('crashed', r['error'])
+            self.assertIn('CalledProcessError', r['error'])
+            # And specifically NOT the misleading exit-1 default reason.
+            self.assertNotIn('input file not found', r['error'])
+
+    def test_explicit_error_line_is_surfaced_verbatim(self):
+        # When transcribe.py emits its documented "Error: ..." line, we
+        # show it directly rather than the exit-code mapping.
+        with tempfile.TemporaryDirectory() as d:
+            dest = Path(d) / 'a.mov'
+            dest.write_bytes(b'x')
+            script = Path(d) / 'transcribe.py'
+            script.write_text('# stub')
+            FakePopen = self._make_fake_popen(
+                returncode=1,
+                stdout_lines=['Error: Input file not found: /missing.mp4'])
+            with mock.patch.object(em, 'find_python_for_transcribe',
+                                   return_value=sys.executable), \
+                 mock.patch('subprocess.Popen', FakePopen):
+                r = em.transcribe_attachment(
+                    src_path=dest, dest_attachment_path=dest,
+                    model='turbo', script=script, stream_label='[t]')
+            self.assertFalse(r['ok'])
+            self.assertIn('Input file not found: /missing.mp4', r['error'])
+
+    def test_no_python_available_returns_actionable_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            dest = Path(d) / 'a.mov'
+            dest.write_bytes(b'x')
+            script = Path(d) / 'transcribe.py'
+            script.write_text('# stub')
+            with mock.patch.object(em, 'find_python_for_transcribe',
+                                   return_value=None):
+                r = em.transcribe_attachment(
+                    src_path=dest, dest_attachment_path=dest,
+                    model='turbo', script=script, stream_label='[t]')
+            self.assertFalse(r['ok'])
+            self.assertIn('Python 3.10+', r['error'])
+            self.assertIn('TRANSCRIBE_PYTHON', r['error'])
+
+    def test_exit_zero_with_no_json_is_treated_as_failure(self):
+        # transcribe.py promises to write the file when -o is provided.
+        # If exit was 0 but the file is missing, something is genuinely
+        # wrong — surface it rather than letting hashes_file() crash.
+        with tempfile.TemporaryDirectory() as d:
+            dest = Path(d) / 'a.mov'
+            dest.write_bytes(b'x')
+            script = Path(d) / 'transcribe.py'
+            script.write_text('# stub')
+            FakePopen = self._make_fake_popen(
+                returncode=0, json_to_write=None)  # don't write file
+            with mock.patch.object(em, 'find_python_for_transcribe',
+                                   return_value=sys.executable), \
+                 mock.patch('subprocess.Popen', FakePopen):
+                r = em.transcribe_attachment(
+                    src_path=dest, dest_attachment_path=dest,
+                    model='turbo', script=script, stream_label='[t]')
+            self.assertFalse(r['ok'])
+            self.assertIn('produced no JSON output', r['error'])
 
 
 # ─── Capability detection sanity ────────────────────────────────────────────

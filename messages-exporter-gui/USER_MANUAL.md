@@ -6,12 +6,13 @@ Day-to-day reference for the SwiftUI front end. For first-time setup see [INSTAL
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Output │  📁 ~/Downloads/messages-exporter-gui  [Default]      │
-│ Contact │  Sallie                                                │
-│    From │  📅 2026-04-26  🕒 00:00                               │
-│      To │  📅 2026-04-26  🕒 17:00                               │
-│    Mode │  [Sanitized] [Raw (forensic)]                          │
-│   Emoji │  [Strip] [Word] [Keep]                                │
+│      Output │  📁 ~/Downloads/messages-exporter-gui  [Default]   │
+│     Contact │  Sallie                                             │
+│        From │  📅 2026-04-26  🕒 00:00                            │
+│          To │  📅 2026-04-26  🕒 17:00                            │
+│        Mode │  [Sanitized] [Raw (forensic)]                       │
+│       Emoji │  [Strip] [Word] [Keep]                              │
+│  Transcribe │  ☐ Audio / video → Whisper (turbo)                  │
 │ ─────────────────────────────────────────────────────────────── │
 │  ▶ Run export   ░░░░░░░░░░░░░░░░░░░  Stage 0/5 — Idle           │
 │                                                                  │
@@ -54,6 +55,31 @@ Day-to-day reference for the SwiftUI front end. For first-time setup see [INSTAL
 | Sanitized (default) | Existing pipeline. HEIC→JPG conversion, EXIF/GPS stripped, `.jpeg` normalized to `.jpg`, attachments named after the next text message (`[seq]_[caption].ext`), all media dropped into a single `attachments/` folder.                                                                                                  |
 | Raw (forensic)   | Byte-identical attachment copies under their **original** filenames (prefixed with `[seq]_[YYYYMMDDTHHMMSS]_[sender]_` for chronological sort). Flat directory layout. Each message's body becomes `[seq]_[YYYYMMDDTHHMMSS]_[sender].txt`. The run folder additionally contains `metadata.json` (sha256 + extracted EXIF + filesystem timestamps per attachment) and `chain_of_custody.log` (append-only line per action). The Emoji control is greyed out — it has no effect in raw mode. |
 
+### Transcribe
+
+Off by default. When checked, every audio/video attachment is run through Apple-MLX Whisper (the sibling [`transcribe/`](../transcribe/) project) after it's copied. Two sidecar files are produced next to each AV attachment:
+
+- `<attachment>.transcript.json` — full Whisper output: language, segments with start/end timestamps, word-level timestamps when enabled.
+- `<attachment>.transcript.txt` — plain text, one segment per line. Synthesized locally from the JSON to avoid running Whisper twice.
+
+Behavior:
+
+- **Local only.** No servers, no Ollama, no internet. Apple Silicon Metal-accelerated.
+- **First run is slow.** The very first time you transcribe with a given Whisper model, the `transcribe/` project bootstraps a `.venv` and downloads the model from HuggingFace (~150 MB for `tiny` up to ~3 GB for `large`). Subsequent runs reuse the cached model.
+- **Failures are non-fatal.** If `ffmpeg` can't decode a file, the file is corrupt, or any other expected error occurs, the transcription is skipped, the per-attachment error is captured in `metadata.json` / `chain_of_custody.log` (raw) or `manifest.json` (sanitized), and the rest of the export continues.
+- **Hashes** of both sidecar files (md5/sha1/sha256) are recorded in **raw** mode for forensic verification.
+
+Choose the Whisper model in **Messages Exporter → Settings… → Whisper transcription** (⌘,):
+
+| Model  | RAM    | Notes                                            |
+| ------ | ------ | ------------------------------------------------ |
+| tiny   | ~1 GB  | Fastest, lowest quality                          |
+| base   | ~1 GB  | Fast, acceptable                                 |
+| small  | ~2 GB  | Balanced                                         |
+| medium | ~5 GB  | High quality                                     |
+| large  | ~10 GB | Best quality, slowest                            |
+| turbo  | ~6 GB  | Near-large quality, ~8× faster (**default**)     |
+
 ### Emoji handling
 
 Affects how emoji in message captions are rendered in the saved attachment filenames (Sanitized mode only):
@@ -76,7 +102,8 @@ This only affects filenames, not the transcript or manifest.
    4. Write attachments (copy + sanitize media)
    5. Done
 3. The log pane streams stdout in real time. Drag-select to copy any portion, or click **Copy log** to grab everything in one shot.
-4. When the run finishes successfully, the action row beneath the log pane lights up:
+4. To stop a run in progress, click **Cancel**. A confirmation sheet ("Cancel export?") appears — choose **Stop export** to send SIGTERM to the child process, or **Keep running** to dismiss. Any attachments already written to the output folder are preserved. The button shows "Cancelling…" while the process exits.
+5. When the run finishes successfully, the action row beneath the log pane lights up:
 
    - **Reveal** — opens Finder selecting the run folder.
    - **Transcript** — opens `transcript.txt` in your default text app.
@@ -147,6 +174,8 @@ If FDA is fine, none of the above appears — you go straight to the main form.
 Open with **Messages Exporter → Settings…** (⌘,):
 
 - **Default output folder** — same control as the inline picker, plus a "Reset to Downloads" shortcut that restores `~/Downloads/messages-exporter-gui/`.
+- **Whisper transcription** — model picker for `--transcribe` runs (see the Transcribe section above).
+- **Diagnostics → Debug Logging** — when on, passes `--debug` to the CLI. This enables full verbose output from the transcription subprocess: HuggingFace file-fetch progress bars, pip install lines, and Whisper model-load bars. Off by default. Enable when a transcription run silently fails or hangs and you need to see what the child process is doing.
 
 Settings persist via `@AppStorage` (UserDefaults). Wipe with `defaults delete com.bronty13.MessagesExporterGUI`.
 

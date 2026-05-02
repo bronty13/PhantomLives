@@ -92,6 +92,11 @@ if [ "$DEVELOPER_ID" != "-" ] && \
    security find-identity -p codesigning -v 2>/dev/null \
         | grep -q "$DEVELOPER_ID"; then
     echo "Signing with Developer ID: $DEVELOPER_ID"
+    # Strip again immediately before signing: iCloud File Provider (active when
+    # the project lives under ~/Documents) re-adds com.apple.FinderInfo between
+    # the earlier xattr -c and this point, causing "detritus not allowed".
+    xattr -cr "$APP_DIR" 2>/dev/null || true
+    xattr -c  "$APP_DIR" 2>/dev/null || true
     # --options runtime enables Hardened Runtime, required for notarization
     # and a no-op outside it. --timestamp embeds a trusted timestamp so the
     # signature stays verifiable after the cert eventually expires.

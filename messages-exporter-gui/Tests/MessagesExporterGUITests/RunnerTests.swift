@@ -25,7 +25,9 @@ struct ExportRequestTests {
             end:   date(2026, 4, 26, 17, 0),
             outputDir: URL(fileURLWithPath: "/Users/me/Downloads"),
             emoji: .word,
-            mode: .sanitized
+            mode: .sanitized,
+            transcribe: false,
+            transcribeModel: .turbo
         )
         #expect(req.argumentList() == [
             "Sallie",
@@ -44,7 +46,9 @@ struct ExportRequestTests {
             end:   nil,
             outputDir: URL(fileURLWithPath: "/tmp/out"),
             emoji: .strip,
-            mode: .sanitized
+            mode: .sanitized,
+            transcribe: false,
+            transcribeModel: .turbo
         )
         let args = req.argumentList()
         #expect(args.contains("Jane"))
@@ -63,11 +67,12 @@ struct ExportRequestTests {
             end:   date(2026, 4, 26, 17, 0),
             outputDir: URL(fileURLWithPath: "/Users/me/Downloads"),
             emoji: .word,
-            mode: .raw
+            mode: .raw,
+            transcribe: false,
+            transcribeModel: .turbo
         )
         let args = req.argumentList()
         #expect(args.contains("--raw"))
-        #expect(args.last == "--raw") // appended last
         // Sanity: still includes the rest of the standard args.
         #expect(args.contains("Sallie"))
         #expect(args.contains("--start"))
@@ -83,9 +88,105 @@ struct ExportRequestTests {
             start: nil, end: nil,
             outputDir: URL(fileURLWithPath: "/tmp/out"),
             emoji: .keep,
-            mode: .sanitized
+            mode: .sanitized,
+            transcribe: false,
+            transcribeModel: .turbo
         )
         #expect(!req.argumentList().contains("--raw"))
+    }
+
+    @Test("transcribe off omits --transcribe and --transcribe-model")
+    func transcribeOff() {
+        let req = ExportRequest(
+            contact: "Jane",
+            start: nil, end: nil,
+            outputDir: URL(fileURLWithPath: "/tmp/out"),
+            emoji: .word,
+            mode: .sanitized,
+            transcribe: false,
+            transcribeModel: .turbo
+        )
+        let args = req.argumentList()
+        #expect(!args.contains("--transcribe"))
+        #expect(!args.contains("--transcribe-model"))
+    }
+
+    @Test("transcribe on appends --transcribe and the chosen model")
+    func transcribeOnTurbo() {
+        let req = ExportRequest(
+            contact: "Jane",
+            start: nil, end: nil,
+            outputDir: URL(fileURLWithPath: "/tmp/out"),
+            emoji: .word,
+            mode: .sanitized,
+            transcribe: true,
+            transcribeModel: .turbo
+        )
+        let args = req.argumentList()
+        #expect(args.contains("--transcribe"))
+        // Model arg lives next to --transcribe-model in the array.
+        if let idx = args.firstIndex(of: "--transcribe-model") {
+            #expect(args[args.index(after: idx)] == "turbo")
+        } else {
+            Issue.record("--transcribe-model not present")
+        }
+    }
+
+    @Test("transcribe on with non-default model passes it through")
+    func transcribeOnLarge() {
+        let req = ExportRequest(
+            contact: "Jane",
+            start: nil, end: nil,
+            outputDir: URL(fileURLWithPath: "/tmp/out"),
+            emoji: .word,
+            mode: .raw,
+            transcribe: true,
+            transcribeModel: .large
+        )
+        let args = req.argumentList()
+        #expect(args.contains("--transcribe"))
+        #expect(args.contains("large"))
+        #expect(args.contains("--raw"))   // raw + transcribe compose
+    }
+
+    @Test("WhisperModel rawValues match CLI choices")
+    func whisperRawValues() {
+        // The CLI's `WHISPER_MODELS` list is the source of truth; the
+        // GUI enum mirrors it. If a value gets renamed on the CLI side,
+        // this catches it locally before the CLI rejects the run.
+        let expected: Set<String> = ["tiny", "base", "small",
+                                     "medium", "large", "turbo"]
+        let actual = Set(WhisperModel.allCases.map { $0.rawValue })
+        #expect(actual == expected)
+    }
+
+    @Test("debug true appends --debug")
+    func debugOn() {
+        let req = ExportRequest(
+            contact: "Jane",
+            start: nil, end: nil,
+            outputDir: URL(fileURLWithPath: "/tmp/out"),
+            emoji: .word,
+            mode: .sanitized,
+            transcribe: false,
+            transcribeModel: .turbo,
+            debug: true
+        )
+        #expect(req.argumentList().contains("--debug"))
+    }
+
+    @Test("debug false (default) omits --debug")
+    func debugOff() {
+        let req = ExportRequest(
+            contact: "Jane",
+            start: nil, end: nil,
+            outputDir: URL(fileURLWithPath: "/tmp/out"),
+            emoji: .word,
+            mode: .sanitized,
+            transcribe: false,
+            transcribeModel: .turbo
+        )
+        #expect(!req.argumentList().contains("--debug"))
     }
 }
 
@@ -128,6 +229,41 @@ struct ExportRunnerParserTests {
     @Test("runFolderPath trims trailing whitespace")
     func runFolderTrim() {
         #expect(ExportRunner.runFolderPath(in: "[4/5] Writing to /tmp/out   ") == "/tmp/out")
+    }
+}
+
+@Suite("ExportRunner processLine")
+@MainActor
+struct ProcessLineTests {
+
+    @Test("processLine appends a normal line")
+    func appendsLine() {
+        let runner = ExportRunner()
+        runner.processLine("hello", replacesLast: false)
+        runner.processLine("world", replacesLast: false)
+        #expect(runner.logLines == ["hello", "world"])
+    }
+
+    @Test("processLine with replacesLast:true overwrites the previous line")
+    func replacesLastLine() {
+        let runner = ExportRunner()
+        runner.processLine("initial", replacesLast: false)
+        runner.processLine("overwrite", replacesLast: true)
+        #expect(runner.logLines == ["overwrite"])
+    }
+
+    @Test("replacesLast:true on an empty log falls back to append")
+    func replacesLastWhenEmpty() {
+        let runner = ExportRunner()
+        runner.processLine("first", replacesLast: true)
+        #expect(runner.logLines == ["first"])
+    }
+
+    @Test("stage advances when the line contains [N/5]")
+    func stageAdvancesViaProcessLine() {
+        let runner = ExportRunner()
+        runner.processLine("[3/5] Reading messages", replacesLast: false)
+        #expect(runner.stage == 3)
     }
 }
 

@@ -1,7 +1,7 @@
 # messages-exporter-gui — Handoff
 
 Snapshot of where the project stands so a future session (human or AI) can pick up without re-deriving everything from the commit history.
-Last updated: 2026-05-01.
+Last updated: 2026-05-01 (v1.0.12).
 
 ## What it is
 
@@ -10,7 +10,7 @@ A small SwiftUI macOS front end for the sibling `messages-exporter` Python CLI. 
 ```
 swift build                        # debug build
 ./build-app.sh                     # release build → MessagesExporterGUI.app
-./run-tests.sh                     # 7 tests via swift-testing
+./run-tests.sh                     # 24 tests via swift-testing
 open MessagesExporterGUI.app
 ```
 
@@ -22,8 +22,8 @@ The app does three things and nothing else: format the CLI invocation, spawn it 
 
 - `App.swift` — `@main`. WindowGroup + Settings scene. Owns one `ExportRunner` injected via `environmentObject`.
 - `RootView.swift` — top-level form (Output / Contact / From / To / Mode / Emoji), Run row + ProgressBar, LogPane, version footer. Aligned-label custom layout (`LabeledRow`), not a Form, so all six inputs fit above the fold. Also defines `OutputFolderRow`, `VersionFooter`, the `InstallSheet`, and the `SettingsView` scene. The Contact field is a plain `TextField` — the CLI does its own AddressBook substring matching, so the GUI deliberately does not touch `Contacts.framework` (see "Why no Contacts.framework" below). The Mode picker selects between `Sanitized` (default) and `Raw (forensic)`; selecting Raw greys out the Emoji control because the CLI ignores `--emoji` in raw mode.
-- `Model/ExportRequest.swift` — pure value type. Builds the argv passed to the CLI with the date format the CLI's argparse expects (`yyyy-MM-dd HH:mm`, local TZ, `en_US_POSIX` locale). Carries `mode: ExportMode` and appends `--raw` to the argv when `.raw` is selected.
-- `Model/ExportRunner.swift` — `@MainActor ObservableObject`. Spawns `Process`, streams stdout via `Pipe.readabilityHandler`, parses `[N/5]` markers and the `[4/5] Writing to ...` line. Pre-flights `~/.local/bin/export_messages` existence and offers to run sibling `install.sh` if missing. Pre-flights Full Disk Access via `probeReadable(path:)` against `~/Library/Messages/chat.db` and exposes the result as `@Published fdaStatus: FullDiskAccessStatus` so the main view can show a sheet on launch and a persistent banner if dismissed. Provides `resetTCCEntries()` (shells out to `/usr/bin/tccutil reset SystemPolicyAllFiles <bundle-id>` to wipe stale cdhash-pinned entries) and `openPrivacySettings()` (deep-links to `x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles`). The runtime detection of `authorization denied` / `operation not permitted` in CLI stdout also flips `fdaStatus` to `.denied` so the banner appears post-failure.
+- `Model/ExportRequest.swift` — pure value type. Builds the argv passed to the CLI with the date format the CLI's argparse expects (`yyyy-MM-dd HH:mm`, local TZ, `en_US_POSIX` locale). Carries `mode: ExportMode` (appends `--raw` when `.raw`), `transcribe: Bool` + `transcribeModel: WhisperModel` (appends `--transcribe --transcribe-model <model>` when `transcribe` is on), and `debug: Bool` (appends `--debug` when true). The `WhisperModel` enum mirrors the CLI's `WHISPER_MODELS` list — a unit test asserts the rawValues match exactly.
+- `Model/ExportRunner.swift` — `@MainActor ObservableObject`. Spawns `Process`, streams stdout via `Pipe.readabilityHandler`, parses `[N/5]` markers and the `[4/5] Writing to ...` line. Pre-flights `~/.local/bin/export_messages` existence and offers to run sibling `install.sh` if missing. Pre-flights Full Disk Access via `probeReadable(path:)` against `~/Library/Messages/chat.db` and exposes the result as `@Published fdaStatus: FullDiskAccessStatus` so the main view can show a sheet on launch and a persistent banner if dismissed. Provides `resetTCCEntries()` (shells out to `/usr/bin/tccutil reset SystemPolicyAllFiles <bundle-id>` to wipe stale cdhash-pinned entries) and `openPrivacySettings()` (deep-links to `x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles`). The runtime detection of `authorization denied` / `operation not permitted` in CLI stdout also flips `fdaStatus` to `.denied` so the banner appears post-failure. Exposes `isCancelling: Bool` and `cancel()` — `cancel()` sends SIGTERM to the child process and sets `isCancelling`; the run loop checks `isCancelling` after termination and records `[export] Cancelled.` rather than treating a status-15 exit as an error.
 - `Views/ProgressBar.swift` — 5-segment bar that fills as `runner.stage` advances.
 - `Views/LogPane.swift` — single selectable Text inside a ScrollView for cross-line copy, Copy-log button, and the post-run Reveal / Transcript / Summary / Manifest action row. Each open button is disabled when its file isn't present.
 
@@ -40,7 +40,7 @@ If the CLI's stdout format ever changes, those parsers and the unit tests around
 ### Subprocess plumbing notes
 
 - `ExportRunner.runProcessStreaming` pipes stdout and stderr into the same `Pipe`, with `PYTHONUNBUFFERED=1` injected into the child env so the `[N/5]` lines arrive in real time rather than at process exit.
-- `LineBuffer` (private to ExportRunner) is a small `@unchecked Sendable` reference type with an `NSLock` — it exists solely to satisfy Swift's strict-concurrency checks while accumulating partial-line bytes from `readabilityHandler` (which runs serially per file handle but isn't typed as such).
+- `LineBuffer` (private to ExportRunner) is a small `@unchecked Sendable` reference type with an `NSLock` — it exists solely to satisfy Swift's strict-concurrency checks while accumulating partial-line bytes from `readabilityHandler` (which runs serially per file handle but isn't typed as such). `extractLines()` splits on `\n`, `\r\n`, and bare `\r`, and returns `(String, replacesLast: Bool)` pairs — `replacesLast` is true when the previous terminator was a bare `\r`, matching terminal carriage-return overwrite semantics (tqdm progress bars animate in-place rather than producing a new line per tick).
 - `nonisolated static` on `stageNumber(in:)` and `runFolderPath(in:)` is what lets the test suite call them off the main actor. They're pure functions of their input string.
 
 ## Build / release
@@ -87,6 +87,5 @@ If we ever want autocomplete back, the lighter-weight option is shelling out to 
 
 ## Known limitations
 
-- No way to cancel a running export from the UI. The underlying `Process` is held by the runner; adding a `terminate()` button is straightforward but not currently exposed.
 - The install-sheet path search (`installScriptCandidates`) is hard-coded to look next to the `.app` or under `~/Documents/GitHub/PhantomLives/messages-exporter/`. Move the `.app` to a non-standard location and the sheet's "Install now" will fail to find the script — user must run `install.sh` manually.
 - No "recent runs" history. Each launch starts fresh.
