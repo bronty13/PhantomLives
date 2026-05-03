@@ -1,0 +1,40 @@
+name: SizzleBot
+options:
+  bundleIdPrefix: com.bronty
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16"
+
+targets:
+  SizzleBot:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/SizzleBot
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bronty.SizzleBot
+        SWIFT_VERSION: "5.10"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        CODE_SIGN_STYLE: Automatic
+        INFOPLIST_FILE: Sources/SizzleBot/App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/SizzleBot/App/SizzleBot.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    scheme:
+      testTargets:
+        - SizzleBotTests
+
+  SizzleBotTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/SizzleBotTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bronty.SizzleBotTests
+        SWIFT_VERSION: "5.10"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+    dependencies:
+      - target: SizzleBot

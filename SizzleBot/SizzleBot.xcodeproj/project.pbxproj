@@ -1,0 +1,533 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0E89EF87B4C812D7113F1466 /* SampleCharacters.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6A17CADBC43C4F94090BFB5 /* SampleCharacters.swift */; };
+		1262C47A3FB41F7CE0BFCB38 /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF0FBD7C8BCB33D6F6312EF3 /* SetupView.swift */; };
+		1CFCCC093BD94311BD3CDEE5 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C50BE8279A276EC58CFC7E2 /* SettingsView.swift */; };
+		28246F374FAACD8BDFB6EA56 /* CharacterStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34BFBD8A8284C0CF3F206323 /* CharacterStoreTests.swift */; };
+		2E48433265E4BBC5F773157F /* OllamaSetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = E82E17A3CC5E35442EBE89A4 /* OllamaSetup.swift */; };
+		35A700D7B322E6F0AA7F654C /* Conversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19AAC3D85426EA0BBCF75FCB /* Conversation.swift */; };
+		3A222AB22FCB2D75AAA762B8 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BA7F57AD8BF5EC318A0DF53 /* SidebarView.swift */; };
+		3D52AE174EC9F251C5478D4A /* VersionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF4D9A586854B8E842F3DFC5 /* VersionTests.swift */; };
+		450E38A0938A5127A34648DB /* ConversationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D90D5E7757901B544387F1A /* ConversationStore.swift */; };
+		510561627A00F0EF026F6746 /* SizzleBotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBB2415216C9FC9DEAA1ED85 /* SizzleBotApp.swift */; };
+		52DB49F5C2C253C7BE206C55 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43C0A133DD2849383AB68DB5 /* ContentView.swift */; };
+		5E8B97BF1D2BC5C6C47E7274 /* Character.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10B79C625EDD3E69FAEBCC9A /* Character.swift */; };
+		62212776D3BE8F486248E5EC /* TypingIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8D80BE81155A3372A95A292 /* TypingIndicator.swift */; };
+		7ACB1270108AF2C055C61F89 /* CharacterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52D60EF26B64CBD9E6291B32 /* CharacterTests.swift */; };
+		7B979FF246E035364E677850 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B733494952B88533662F7AC1 /* WelcomeView.swift */; };
+		9281B284C3D3AC9F13E21764 /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = 628D2ED8F16D44A7505322FB /* Message.swift */; };
+		9810C3AFA1616CCBB630EF7F /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB13A7BEFC3837E26AA990D7 /* ChatView.swift */; };
+		9C5824E41BF7EC3A2BD90609 /* CharacterStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E83E4206FE110B2C07EAA884 /* CharacterStore.swift */; };
+		A067DD9742635A25ED006A3A /* MessageBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5298E0CF18C84D8D42BA783F /* MessageBubble.swift */; };
+		A0AD852DE275513BA9E7B753 /* OllamaModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03E67EBF5445FD28D4F8DACD /* OllamaModelTests.swift */; };
+		A6A140843399B7D9A5331E6D /* OllamaModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03E0AFB6D023E37B3E657299 /* OllamaModel.swift */; };
+		B7F3BFCA9CE68FAB806489EE /* CharacterEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4934CBA7F3A5ED7BB9340A75 /* CharacterEditorView.swift */; };
+		D01FE545D8EE2F9DD6FAB77E /* OllamaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BD4CEF550A8BC52F3E4595F /* OllamaService.swift */; };
+		EF7F22756B64F3970907AC25 /* MessageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22541BC4D1B7437B43AD0E13 /* MessageTests.swift */; };
+		FA94833228F575747AD08758 /* Version.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A60DA55CE736485C2ED4BE /* Version.swift */; };
+		FF7C29D7EF6F69C7B39BD7E5 /* MessageInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B24C37AA27D81F9E2DF4C42 /* MessageInputView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		4ED9C51AB49F89AB0121156D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0EAAE0EC9665121C668CA57B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C8201A01B1CF0A12B5618D72;
+			remoteInfo = SizzleBot;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		03E0AFB6D023E37B3E657299 /* OllamaModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaModel.swift; sourceTree = "<group>"; };
+		03E67EBF5445FD28D4F8DACD /* OllamaModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaModelTests.swift; sourceTree = "<group>"; };
+		10B79C625EDD3E69FAEBCC9A /* Character.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Character.swift; sourceTree = "<group>"; };
+		19AAC3D85426EA0BBCF75FCB /* Conversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Conversation.swift; sourceTree = "<group>"; };
+		22541BC4D1B7437B43AD0E13 /* MessageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageTests.swift; sourceTree = "<group>"; };
+		34BFBD8A8284C0CF3F206323 /* CharacterStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterStoreTests.swift; sourceTree = "<group>"; };
+		3BA7F57AD8BF5EC318A0DF53 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
+		3D90D5E7757901B544387F1A /* ConversationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationStore.swift; sourceTree = "<group>"; };
+		43C0A133DD2849383AB68DB5 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		4934CBA7F3A5ED7BB9340A75 /* CharacterEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterEditorView.swift; sourceTree = "<group>"; };
+		4CA0C0A3365F87788A1E7BF1 /* SizzleBotTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SizzleBotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		5298E0CF18C84D8D42BA783F /* MessageBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubble.swift; sourceTree = "<group>"; };
+		52D60EF26B64CBD9E6291B32 /* CharacterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterTests.swift; sourceTree = "<group>"; };
+		60A60DA55CE736485C2ED4BE /* Version.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Version.swift; sourceTree = "<group>"; };
+		628D2ED8F16D44A7505322FB /* Message.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Message.swift; sourceTree = "<group>"; };
+		7C50BE8279A276EC58CFC7E2 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		8BD4CEF550A8BC52F3E4595F /* OllamaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaService.swift; sourceTree = "<group>"; };
+		9B24C37AA27D81F9E2DF4C42 /* MessageInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageInputView.swift; sourceTree = "<group>"; };
+		A9CFF1B6D9D9738F5858B528 /* SizzleBot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SizzleBot.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AB13A7BEFC3837E26AA990D7 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+		AF4D9A586854B8E842F3DFC5 /* VersionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VersionTests.swift; sourceTree = "<group>"; };
+		B733494952B88533662F7AC1 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
+		BE756533D9120DE5C9DB018C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		C6A17CADBC43C4F94090BFB5 /* SampleCharacters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleCharacters.swift; sourceTree = "<group>"; };
+		CF0FBD7C8BCB33D6F6312EF3 /* SetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupView.swift; sourceTree = "<group>"; };
+		D76EF4B2E0D9EF338FDBCFC8 /* SizzleBot.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SizzleBot.entitlements; sourceTree = "<group>"; };
+		D8D80BE81155A3372A95A292 /* TypingIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingIndicator.swift; sourceTree = "<group>"; };
+		E82E17A3CC5E35442EBE89A4 /* OllamaSetup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaSetup.swift; sourceTree = "<group>"; };
+		E83E4206FE110B2C07EAA884 /* CharacterStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterStore.swift; sourceTree = "<group>"; };
+		EBB2415216C9FC9DEAA1ED85 /* SizzleBotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SizzleBotApp.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0B04467E1FACA252AB280A2C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A9CFF1B6D9D9738F5858B528 /* SizzleBot.app */,
+				4CA0C0A3365F87788A1E7BF1 /* SizzleBotTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		0D5380AE510F6483459C0B69 = {
+			isa = PBXGroup;
+			children = (
+				E515FA5E34F945058B56C94A /* SizzleBot */,
+				EA4CF5EE86FBCEBBCDC370D3 /* SizzleBotTests */,
+				0B04467E1FACA252AB280A2C /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		2AD2ADB16EBF42BC56CC1298 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				10B79C625EDD3E69FAEBCC9A /* Character.swift */,
+				19AAC3D85426EA0BBCF75FCB /* Conversation.swift */,
+				628D2ED8F16D44A7505322FB /* Message.swift */,
+				03E0AFB6D023E37B3E657299 /* OllamaModel.swift */,
+				C6A17CADBC43C4F94090BFB5 /* SampleCharacters.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		319C8930D5C18D267F514CC7 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				4934CBA7F3A5ED7BB9340A75 /* CharacterEditorView.swift */,
+				AB13A7BEFC3837E26AA990D7 /* ChatView.swift */,
+				43C0A133DD2849383AB68DB5 /* ContentView.swift */,
+				5298E0CF18C84D8D42BA783F /* MessageBubble.swift */,
+				9B24C37AA27D81F9E2DF4C42 /* MessageInputView.swift */,
+				7C50BE8279A276EC58CFC7E2 /* SettingsView.swift */,
+				CF0FBD7C8BCB33D6F6312EF3 /* SetupView.swift */,
+				3BA7F57AD8BF5EC318A0DF53 /* SidebarView.swift */,
+				D8D80BE81155A3372A95A292 /* TypingIndicator.swift */,
+				B733494952B88533662F7AC1 /* WelcomeView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		59965F6608BC5C201718BC6F /* App */ = {
+			isa = PBXGroup;
+			children = (
+				BE756533D9120DE5C9DB018C /* Info.plist */,
+				D76EF4B2E0D9EF338FDBCFC8 /* SizzleBot.entitlements */,
+				EBB2415216C9FC9DEAA1ED85 /* SizzleBotApp.swift */,
+				60A60DA55CE736485C2ED4BE /* Version.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		CE430143100C66B9606A1CA0 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				E83E4206FE110B2C07EAA884 /* CharacterStore.swift */,
+				3D90D5E7757901B544387F1A /* ConversationStore.swift */,
+				8BD4CEF550A8BC52F3E4595F /* OllamaService.swift */,
+				E82E17A3CC5E35442EBE89A4 /* OllamaSetup.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		E515FA5E34F945058B56C94A /* SizzleBot */ = {
+			isa = PBXGroup;
+			children = (
+				59965F6608BC5C201718BC6F /* App */,
+				2AD2ADB16EBF42BC56CC1298 /* Models */,
+				CE430143100C66B9606A1CA0 /* Services */,
+				319C8930D5C18D267F514CC7 /* Views */,
+			);
+			name = SizzleBot;
+			path = Sources/SizzleBot;
+			sourceTree = "<group>";
+		};
+		EA4CF5EE86FBCEBBCDC370D3 /* SizzleBotTests */ = {
+			isa = PBXGroup;
+			children = (
+				34BFBD8A8284C0CF3F206323 /* CharacterStoreTests.swift */,
+				52D60EF26B64CBD9E6291B32 /* CharacterTests.swift */,
+				22541BC4D1B7437B43AD0E13 /* MessageTests.swift */,
+				03E67EBF5445FD28D4F8DACD /* OllamaModelTests.swift */,
+				AF4D9A586854B8E842F3DFC5 /* VersionTests.swift */,
+			);
+			name = SizzleBotTests;
+			path = Tests/SizzleBotTests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		C8201A01B1CF0A12B5618D72 /* SizzleBot */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A14154137708CF6F57C126D8 /* Build configuration list for PBXNativeTarget "SizzleBot" */;
+			buildPhases = (
+				E77FF395D74DDA914FB488FA /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SizzleBot;
+			packageProductDependencies = (
+			);
+			productName = SizzleBot;
+			productReference = A9CFF1B6D9D9738F5858B528 /* SizzleBot.app */;
+			productType = "com.apple.product-type.application";
+		};
+		E0EE135C598E5EDEFB5540CD /* SizzleBotTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9156C12786F460CF37C84076 /* Build configuration list for PBXNativeTarget "SizzleBotTests" */;
+			buildPhases = (
+				B4576C3C71A4A595BA416E99 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3DA9AC419343D7C82DB7B10D /* PBXTargetDependency */,
+			);
+			name = SizzleBotTests;
+			packageProductDependencies = (
+			);
+			productName = SizzleBotTests;
+			productReference = 4CA0C0A3365F87788A1E7BF1 /* SizzleBotTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		0EAAE0EC9665121C668CA57B /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					C8201A01B1CF0A12B5618D72 = {
+						ProvisioningStyle = Automatic;
+					};
+					E0EE135C598E5EDEFB5540CD = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 797911CB5649FC5AC3872539 /* Build configuration list for PBXProject "SizzleBot" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 0D5380AE510F6483459C0B69;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 0B04467E1FACA252AB280A2C /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				C8201A01B1CF0A12B5618D72 /* SizzleBot */,
+				E0EE135C598E5EDEFB5540CD /* SizzleBotTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B4576C3C71A4A595BA416E99 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				28246F374FAACD8BDFB6EA56 /* CharacterStoreTests.swift in Sources */,
+				7ACB1270108AF2C055C61F89 /* CharacterTests.swift in Sources */,
+				EF7F22756B64F3970907AC25 /* MessageTests.swift in Sources */,
+				A0AD852DE275513BA9E7B753 /* OllamaModelTests.swift in Sources */,
+				3D52AE174EC9F251C5478D4A /* VersionTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E77FF395D74DDA914FB488FA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5E8B97BF1D2BC5C6C47E7274 /* Character.swift in Sources */,
+				B7F3BFCA9CE68FAB806489EE /* CharacterEditorView.swift in Sources */,
+				9C5824E41BF7EC3A2BD90609 /* CharacterStore.swift in Sources */,
+				9810C3AFA1616CCBB630EF7F /* ChatView.swift in Sources */,
+				52DB49F5C2C253C7BE206C55 /* ContentView.swift in Sources */,
+				35A700D7B322E6F0AA7F654C /* Conversation.swift in Sources */,
+				450E38A0938A5127A34648DB /* ConversationStore.swift in Sources */,
+				9281B284C3D3AC9F13E21764 /* Message.swift in Sources */,
+				A067DD9742635A25ED006A3A /* MessageBubble.swift in Sources */,
+				FF7C29D7EF6F69C7B39BD7E5 /* MessageInputView.swift in Sources */,
+				A6A140843399B7D9A5331E6D /* OllamaModel.swift in Sources */,
+				D01FE545D8EE2F9DD6FAB77E /* OllamaService.swift in Sources */,
+				2E48433265E4BBC5F773157F /* OllamaSetup.swift in Sources */,
+				0E89EF87B4C812D7113F1466 /* SampleCharacters.swift in Sources */,
+				1CFCCC093BD94311BD3CDEE5 /* SettingsView.swift in Sources */,
+				1262C47A3FB41F7CE0BFCB38 /* SetupView.swift in Sources */,
+				3A222AB22FCB2D75AAA762B8 /* SidebarView.swift in Sources */,
+				510561627A00F0EF026F6746 /* SizzleBotApp.swift in Sources */,
+				62212776D3BE8F486248E5EC /* TypingIndicator.swift in Sources */,
+				FA94833228F575747AD08758 /* Version.swift in Sources */,
+				7B979FF246E035364E677850 /* WelcomeView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		3DA9AC419343D7C82DB7B10D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C8201A01B1CF0A12B5618D72 /* SizzleBot */;
+			targetProxy = 4ED9C51AB49F89AB0121156D /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		3FA158436966732A8D48912F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		61A315C9E6F5694599EE0AC0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Sources/SizzleBot/App/SizzleBot.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Sources/SizzleBot/App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bronty.SizzleBot;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.10;
+			};
+			name = Release;
+		};
+		73023725A3280FD4EC41E8B8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Sources/SizzleBot/App/SizzleBot.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Sources/SizzleBot/App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bronty.SizzleBot;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.10;
+			};
+			name = Debug;
+		};
+		9E3CE19A45E025593CAE7DE8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		CBCD2B4B3165EFEF7A5134C2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bronty.SizzleBotTests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.10;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SizzleBot.app/Contents/MacOS/SizzleBot";
+			};
+			name = Debug;
+		};
+		F3A7543DFC94EF02A51D6C0A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bronty.SizzleBotTests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.10;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SizzleBot.app/Contents/MacOS/SizzleBot";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		797911CB5649FC5AC3872539 /* Build configuration list for PBXProject "SizzleBot" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3FA158436966732A8D48912F /* Debug */,
+				9E3CE19A45E025593CAE7DE8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		9156C12786F460CF37C84076 /* Build configuration list for PBXNativeTarget "SizzleBotTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CBCD2B4B3165EFEF7A5134C2 /* Debug */,
+				F3A7543DFC94EF02A51D6C0A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A14154137708CF6F57C126D8 /* Build configuration list for PBXNativeTarget "SizzleBot" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				73023725A3280FD4EC41E8B8 /* Debug */,
+				61A315C9E6F5694599EE0AC0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 0EAAE0EC9665121C668CA57B /* Project object */;
+}
