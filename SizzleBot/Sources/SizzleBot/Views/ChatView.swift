@@ -7,6 +7,7 @@ struct ChatView: View {
     @EnvironmentObject var characterStore: CharacterStore
 
     @State private var inputText = ""
+    @State private var attachments: [Attachment] = []
     @State private var isGenerating = false
     @State private var streamBuffer = ""
     @State private var errorMessage: String?
@@ -68,8 +69,10 @@ struct ChatView: View {
             Divider()
             MessageInputView(
                 text: $inputText,
+                attachments: $attachments,
                 isGenerating: isGenerating,
                 accentColor: character.color,
+                acceptsImages: character.supportsImages,
                 onSend: sendMessage,
                 onStop: { isGenerating = false }
             )
@@ -82,14 +85,20 @@ struct ChatView: View {
 
     private func sendMessage() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isGenerating else { return }
+        let images = attachments.map { $0.base64 }
+        guard (!text.isEmpty || !images.isEmpty), !isGenerating else { return }
 
         inputText = ""
+        attachments.removeAll()
         errorMessage = nil
         streamBuffer = ""
         isGenerating = true
 
-        let userMsg = Message(role: .user, content: text)
+        let userMsg = Message(
+            role: .user,
+            content: text.isEmpty ? "(Describe this image.)" : text,
+            images: images.isEmpty ? nil : images
+        )
         conversationStore.addMessage(userMsg, to: character.id)
 
         let history = conversationStore.conversation(for: character.id).messages
@@ -124,6 +133,10 @@ struct ChatHeader: View {
     @EnvironmentObject var conversationStore: ConversationStore
     @EnvironmentObject var ollamaService: OllamaService
 
+    private var effective: (model: String, fellBack: Bool) {
+        ollamaService.effectiveModel(for: character)
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             Text(character.avatar)
@@ -139,6 +152,10 @@ struct ChatHeader: View {
 
             Spacer()
 
+            if effective.fellBack, let preferred = character.preferredModel {
+                FallbackBadge(preferred: preferred, actual: effective.model)
+            }
+
             Menu {
                 Button("Edit Character") { showingEditor = true }
                 Divider()
@@ -146,7 +163,12 @@ struct ChatHeader: View {
                     conversationStore.clearConversation(for: character.id)
                 }
                 Divider()
-                Text("Model: \(character.preferredModel ?? ollamaService.selectedModel)")
+                if let preferred = character.preferredModel {
+                    Text("Preferred model: \(preferred)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text("Running on: \(effective.model)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } label: {
@@ -159,6 +181,26 @@ struct ChatHeader: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+}
+
+private struct FallbackBadge: View {
+    let preferred: String
+    let actual: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption2)
+            Text("Using \(actual)")
+                .font(.caption2.weight(.medium))
+        }
+        .foregroundStyle(.orange)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(Color.orange.opacity(0.15))
+        .clipShape(Capsule())
+        .help("This character prefers \(preferred), but it isn't installed. Install it from Settings → Install Models, or it will keep using \(actual).")
     }
 }
 

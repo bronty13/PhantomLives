@@ -81,9 +81,74 @@ struct CharacterTests {
         #expect(ids == ids2)
     }
 
-    @Test("There are exactly 17 built-in characters")
+    @Test("There are exactly 18 built-in characters")
     func builtInCount() {
-        #expect(Character.builtIn.count == 17)
+        #expect(Character.builtIn.count == 18)
+    }
+
+    @Test("Likeness Architect is present, vision-enabled, and prefers a vision model")
+    func likenessArchitectPresent() {
+        guard let arch = Character.builtIn.first(where: { $0.name == "Likeness Architect" }) else {
+            Issue.record("Likeness Architect built-in is missing")
+            return
+        }
+        #expect(arch.supportsImages, "Likeness Architect must accept image attachments")
+        let preferred = arch.preferredModel ?? ""
+        #expect(
+            OllamaModel.recommendation(for: preferred)?.kind == .vision,
+            "preferred model \(preferred) must be vision-capable"
+        )
+    }
+
+    @Test("Likeness Architect prompt enforces clothing-fidelity & no-invention discipline")
+    func likenessArchitectFidelityCues() {
+        guard let arch = Character.builtIn.first(where: { $0.name == "Likeness Architect" }) else {
+            Issue.record("Likeness Architect built-in is missing")
+            return
+        }
+        let p = arch.systemPrompt.lowercased()
+        // Fidelity discipline.
+        #expect(p.contains("only what is actually visible") || p.contains("only what's actually visible"),
+                "must instruct the model to describe only what is visible")
+        #expect(p.contains("never guess") || p.contains("do not guess") || p.contains("never invent") || p.contains("do not invent"),
+                "must forbid guessing / inventing details")
+        // Detailed clothing requirements.
+        #expect(p.contains("every visible garment"),
+                "must require enumerating every visible garment")
+        #expect(p.contains("fit") && p.contains("color") && p.contains("fabric"),
+                "must call out fit / color / fabric for clothing")
+        #expect(p.contains("layering"),
+                "must mention layering so combos like t-shirt-under-flannel are captured")
+    }
+
+    @Test("supportsImages reflects acceptsImages and defaults to false")
+    func supportsImagesFlag() {
+        let plain = Character(name: "X", avatar: "X", tagline: "", systemPrompt: "p", greeting: "g")
+        #expect(!plain.supportsImages, "default should be false")
+
+        let vision = Character(name: "Y", avatar: "Y", tagline: "", systemPrompt: "p", greeting: "g", acceptsImages: true)
+        #expect(vision.supportsImages)
+    }
+
+    @Test("Pre-1.3 Character JSON without acceptsImages decodes to supportsImages == false")
+    func backwardCompatDecodingWithoutAcceptsImages() throws {
+        // Simulates a Character persisted before the acceptsImages field existed.
+        let legacyJSON = """
+        {
+          "id": "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB",
+          "name": "Legacy",
+          "avatar": "X",
+          "tagline": "old",
+          "systemPrompt": "old prompt",
+          "greeting": "hi",
+          "isBuiltIn": false,
+          "accentColor": "blue",
+          "createdAt": 770000000.0
+        }
+        """
+        let decoded = try JSONDecoder().decode(Character.self, from: legacyJSON.data(using: .utf8)!)
+        #expect(!decoded.supportsImages)
+        #expect(decoded.acceptsImages == nil)
     }
 
     @Test("All built-in characters have non-empty required fields")

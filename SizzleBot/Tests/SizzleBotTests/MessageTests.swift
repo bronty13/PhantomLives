@@ -47,4 +47,34 @@ struct MessageTests {
         let msg = Message(role: .assistant, content: content)
         #expect(msg.content == content)
     }
+
+    @Test("Default initializer leaves images nil")
+    func imagesDefaultNil() {
+        let msg = Message(role: .user, content: "no image")
+        #expect(msg.images == nil)
+    }
+
+    @Test("Images round-trip through Codable")
+    func imagesCodableRoundTrip() throws {
+        let images = ["AAAAaaaaBBBB==", "CCCCccccDDDD=="]
+        let original = Message(role: .user, content: "describe", images: images)
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(Message.self, from: data)
+        #expect(decoded.images == images)
+    }
+
+    @Test("Pre-1.3 Message JSON without images field decodes with nil images")
+    func backwardCompatNoImagesField() throws {
+        let legacyJSON = """
+        {
+          "id": "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC",
+          "role": "user",
+          "content": "older message",
+          "timestamp": 770000000.0
+        }
+        """
+        let decoded = try JSONDecoder().decode(Message.self, from: legacyJSON.data(using: .utf8)!)
+        #expect(decoded.images == nil)
+        #expect(decoded.content == "older message")
+    }
 }

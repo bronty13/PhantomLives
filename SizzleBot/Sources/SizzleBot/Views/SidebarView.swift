@@ -104,19 +104,68 @@ struct CharacterRow: View {
 
 struct OllamaStatusBar: View {
     @EnvironmentObject var ollamaService: OllamaService
+    @EnvironmentObject var ollamaSetup: OllamaSetup
+
+    private var activeDisplayName: String {
+        ollamaService.selectedModel.components(separatedBy: ":").first ?? ollamaService.selectedModel
+    }
 
     var body: some View {
         HStack(spacing: 6) {
             Circle()
                 .fill(ollamaService.isConnected ? Color.green : Color.red)
                 .frame(width: 7, height: 7)
-            Text(ollamaService.isConnected
-                 ? "Ollama · \(ollamaService.selectedModel)"
-                 : "Ollama offline")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+
+            if ollamaService.isConnected {
+                Menu {
+                    Section("Switch model") {
+                        if ollamaService.availableModels.isEmpty {
+                            Text("No models installed")
+                        } else {
+                            ForEach(ollamaService.availableModels) { model in
+                                Button {
+                                    ollamaService.setModel(model.name)
+                                } label: {
+                                    if model.name == ollamaService.selectedModel {
+                                        Label(model.displayName, systemImage: "checkmark")
+                                    } else {
+                                        Text(model.displayName)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Divider()
+                    SettingsLink {
+                        Label("Open Settings…", systemImage: "gearshape")
+                    }
+                    Button {
+                        Task { await ollamaService.checkConnection() }
+                    } label: {
+                        Label("Refresh model list", systemImage: "arrow.clockwise")
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Ollama · \(activeDisplayName)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+            } else {
+                Text("Ollama offline")
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+            }
+
             Spacer()
+
             if !ollamaService.isConnected {
                 Button("Retry") { Task { await ollamaService.checkConnection() } }
                     .buttonStyle(.borderless)

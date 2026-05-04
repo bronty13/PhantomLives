@@ -1,0 +1,12 @@
+# Xcode user-specific state — local UI, scheme bookmarks, breakpoints.
+xcuserdata/
+*.xcuserstate
+*.xcscheme.local
+
+# Build artifacts.
+DerivedData/
+build/
+.build/
+
+# macOS metadata.
+.DS_Store

@@ -1,6 +1,6 @@
 # SizzleBot — User Manual
 
-**Version 1.0.0**
+**Version 1.5.0**
 
 ---
 
@@ -76,11 +76,11 @@ Right-click any character for options:
 - **Reset to Default** — restores a built-in character's original system prompt, name, and style (only appears if you have edited the character)
 - **Delete** — removes a custom character (not available for built-in characters)
 
-### Connection status bar
+### Connection status bar / quick model switcher
 
-The strip at the bottom of the sidebar shows the Ollama connection state:
-- 🟢 `Ollama · dolphin-mistral` — server connected, active model shown
-- 🔴 `Ollama offline` — server not running; click **Retry** to reconnect
+The strip at the bottom of the sidebar shows the Ollama connection state and is also the fastest way to change models:
+- 🟢 `Ollama · dolphin-mistral ⌄` — server connected, active model shown. **Click it** to open a menu listing every installed model; pick one to switch instantly. The same menu has **Open Settings…** and **Refresh model list**.
+- 🔴 `Ollama offline` — server not running; click **Retry** to reconnect.
 
 ---
 
@@ -130,6 +130,40 @@ Responses appear token-by-token as the model generates them. While generating:
 | 👨‍🍳 | **Chef Beaumont** | Flamboyant French chef; filters all of life through cuisine |
 | 🎭 | **The Shapeshifter** | Asks what role to play, then becomes it completely |
 | ⏰ | **Unit 2387** | Time traveler from 2387; bewildered by present-day things |
+| 📸 | **Likeness Architect** | Vision bot — describes a person in a photo as an image-generation prompt (privacy-preserving) |
+
+### The Likeness Architect (📸)
+
+The Likeness Architect is a vision bot built for a specific privacy-preserving workflow: you have a real photo of a person and want to generate fresh character art that *resembles* them, without using the original photo as input to an image generator.
+
+How to use:
+
+1. Make sure a vision-capable model is installed — open **Settings → Install Models** and click **Install** on **Llama 3.2 Vision 11B** (recommended), **LLaVA 7B**, or **Moondream 2B**. The chat header will show a small orange "Using <fallback>" badge until you have one installed; the architect's preferred model is `llama3.2-vision`.
+2. Select **Likeness Architect** in the sidebar.
+3. Drop a photo onto the message field, click the 📎 paperclip, or paste an image. A thumbnail appears above the input — click the X to remove it.
+4. Optionally add a note ("close-up", "want a fantasy vibe"), then send.
+5. You receive a single dense paragraph describing physical features (face, hair, eyes, build, clothing, lighting, mood) plus a `Style variants:` line with three remix tags you can swap into your image generator (e.g. *"noir b&w, fantasy oil painting, cyberpunk neon"*).
+
+The architect **never** names the subject, identifies them, or references unique scars / tattoos / brand logos / context that would tie the description back to a specific real person. The output is a likeness *inspired by* the photo — not a re-creation of it.
+
+If the photo has multiple people, it will ask which one. If it has no person, it will say so.
+
+#### Generating the image
+
+Below every architect reply you'll see a **Generate an image with this prompt:** panel listing one row per option:
+
+- **Plain (no style)** — paragraph alone.
+- **One row per parsed `Style variants:` tag** — paragraph + that style appended.
+
+Each row's `Use ▾` menu gives you three actions:
+
+- **Copy to Clipboard** — paste anywhere (Bing Image Creator, Ideogram, Midjourney, etc.).
+- **Send to Draw Things** — copies the prompt and brings Draw Things to the front. Paste with ⌘V into the prompt field, then Generate.
+- **Send to DiffusionBee** — same flow with DiffusionBee.
+
+A short status line under the panel confirms each action and tells you to paste with ⌘V. If the app isn't installed in `/Applications` (or `~/Applications`), the prompt is still copied — the panel just says "Draw Things not found in /Applications." so you know to install it or paste elsewhere.
+
+> **Why not one-click prefill?** Neither Draw Things nor DiffusionBee documents a URL scheme that lets a third-party app pre-populate the prompt field. Copy + foreground + paste is the only flow that works reliably across versions.
 
 ### The Shapeshifter
 
@@ -156,7 +190,8 @@ Click the **+** button in the sidebar toolbar or press **⌘N**.
 | **System Prompt** | The core personality instruction sent to the model before every message. This is what makes the character feel distinctive — describe their voice, history, quirks, and speaking style in detail. |
 | **Greeting** | The opening message shown when a new conversation begins (optional) |
 | **Accent Color** | Tint color used for their chat bubbles and name label |
-| **Preferred Model** | Override the global model for this character (optional); leave blank to use the global default |
+| **Preferred Model** | Override the global model for this character (optional); leave blank to use the global default. If the model isn't installed, the chat falls back to the global default and the chat header shows an orange "Using <fallback>" badge with a hint to install it. |
+| **Accept image attachments** | Toggle on to enable the 📎 paperclip and drag-and-drop on this character's chat. Pair with a vision-capable preferred model (`llama3.2-vision`, `llava`, or `moondream`). |
 
 Click **Save** to create the character. It appears immediately in the **My Characters** section.
 
@@ -221,8 +256,24 @@ Open **SizzleBot → Settings** (⌘,).
 |---|---|
 | **Connection** | 🟢 Connected / 🔴 Offline — live status |
 | **Refresh** | Re-check the Ollama server and reload the model list |
-| **Active Model** | The global default model used by characters with no preferred model set |
-| **Recommended Models** | Expandable list of suggested models with `ollama pull` commands you can copy |
+
+### Active Model
+
+The global default model used by characters with no preferred model set. Each row in the picker shows the model name, an **alignment chip** (green **Uncensored** / yellow **Lightly aligned** / orange **Aligned**), and disk size when known.
+
+### Install Models
+
+A list of recommended models with one-click installation. Each row shows:
+
+- **Name & alignment chip** — green / yellow / orange
+- **Description** — what the model is good for and how aggressively it hedges
+- **Action** — one of:
+  - **Install** — pulls the model in-process via Ollama with a live progress bar; usually a few GB on first download.
+  - **Installing…** with a progress bar and status (e.g. *"pulling manifest"*, *"downloading"*, *"verifying sha256"*).
+  - **Installed** + **Use** — model is available; click **Use** to switch the active model to it.
+  - **Active** (green checkmark) — this is your current default model.
+
+You no longer need to drop into Terminal to run `ollama pull <model>` — everything happens inside SizzleBot.
 
 ### Characters
 
@@ -236,16 +287,45 @@ Links to [ollama.com](https://ollama.com) and shows the server address.
 
 ---
 
+## Staying in character
+
+SizzleBot is built for immersive character chat, so every request automatically prepends a short **roleplay framing preamble** to the character's system prompt before it is sent to the model. The preamble tells the model to:
+
+- Stay fully and continuously in character.
+- Never break the scene to add safety warnings, content advisories, ethical caveats, refusals, or moral lectures.
+- Avoid hedging phrases like *"As an AI…"*, *"I'm sorry, but…"*, *"It's important to note…"*, *"Please remember…"*.
+- Treat heavy topics through the character's voice and worldview rather than stepping out of the scene.
+
+This applies to every built-in character and every character you create. You do **not** need to add anti-disclaimer language to your own system prompts — the preamble already covers it.
+
+If a particular model is still injecting nags despite the preamble, switch to a less heavily-aligned model in **Settings → Active Model**. The recommended list in Settings is sorted with the most roleplay-friendly (uncensored) models first.
+
+---
+
 ## Changing the AI model
 
-SizzleBot uses whatever Ollama models you have installed. To add more:
+The fastest way: click the `Ollama · <model> ⌄` strip at the bottom of the sidebar and pick one of your installed models.
+
+To **install** a new model:
+
+1. Open **Settings** (⌘,) — or **sidebar menu → Open Settings…**
+2. Scroll to **Install Models**.
+3. Click **Install** next to the model you want. Watch the progress bar.
+4. When it shows **Installed**, click **Use** (or pick it from the sidebar menu) to switch.
+
+If you prefer Terminal, the equivalent commands still work and the picker will pick them up after **Refresh model list**:
 
 ```bash
-ollama pull mistral          # fast, general purpose
-ollama pull llama3.1         # larger and more capable
-ollama pull dolphin-llama3   # uncensored Llama 3
-ollama pull gemma3           # efficient on Apple Silicon
+ollama pull dolphin-mistral          # default — uncensored, roleplay-friendly
+ollama pull dolphin-llama3           # uncensored Llama 3 8B, stronger reasoning
+ollama pull nous-hermes2             # expressive, lightly aligned, long scenes
+ollama pull wizard-vicuna-uncensored # heavily uncensored, adult fiction
+ollama pull llama3.1                 # aligned; larger & capable, may add caveats
+ollama pull mistral                  # moderately aligned; fast, general purpose
+ollama pull gemma3                   # Google-aligned; efficient on Apple Silicon
 ```
+
+**If a model is hedging or adding disclaimers despite the in-character preamble**, install one of the green **Uncensored** options (`wizard-vicuna-uncensored` or `dolphin-llama3` are good defaults) and switch to it from the sidebar menu.
 
 After pulling, go to **Settings → Refresh** and the new model appears in the **Active Model** picker.
 

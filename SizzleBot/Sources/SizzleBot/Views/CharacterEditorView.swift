@@ -17,6 +17,7 @@ struct CharacterEditorView: View {
     @State private var greeting = ""
     @State private var accentColor = "blue"
     @State private var preferredModel = ""
+    @State private var acceptsImages = false
     @State private var showingEmojiPicker = false
 
     private let emojiOptions = [
@@ -146,6 +147,12 @@ struct CharacterEditorView: View {
                 Section("Advanced") {
                     TextField("Preferred model (optional, overrides global)", text: $preferredModel)
                         .foregroundStyle(.secondary)
+                    Toggle("Accept image attachments", isOn: $acceptsImages)
+                    if acceptsImages {
+                        Text("Use a vision-capable model like `llama3.2-vision`, `llava`, or `moondream`. Install one from Settings → Install Models.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             .formStyle(.grouped)
@@ -163,6 +170,7 @@ struct CharacterEditorView: View {
         greeting = char.greeting
         accentColor = char.accentColor
         preferredModel = char.preferredModel ?? ""
+        acceptsImages = char.supportsImages
     }
 
     private func save() {
@@ -177,6 +185,7 @@ struct CharacterEditorView: View {
             updated.greeting = greeting
             updated.accentColor = accentColor
             updated.preferredModel = model
+            updated.acceptsImages = acceptsImages ? true : nil
             characterStore.updateCharacter(updated)
         } else {
             let char = Character(
@@ -186,7 +195,8 @@ struct CharacterEditorView: View {
                 systemPrompt: systemPrompt,
                 greeting: greeting,
                 preferredModel: model,
-                accentColor: accentColor
+                accentColor: accentColor,
+                acceptsImages: acceptsImages ? true : nil
             )
             characterStore.addCharacter(char)
             characterStore.selectedCharacter = characterStore.characters.last

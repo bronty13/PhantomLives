@@ -7,11 +7,15 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0BCE294EAE5290962463987F /* OllamaServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 501770403EB01B70DA120294 /* OllamaServiceTests.swift */; };
+		0E2B49864213A4714DA170B8 /* PromptExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C3DDA146FDC21A950DF2218 /* PromptExporter.swift */; };
 		0E89EF87B4C812D7113F1466 /* SampleCharacters.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6A17CADBC43C4F94090BFB5 /* SampleCharacters.swift */; };
 		1262C47A3FB41F7CE0BFCB38 /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF0FBD7C8BCB33D6F6312EF3 /* SetupView.swift */; };
 		1CFCCC093BD94311BD3CDEE5 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C50BE8279A276EC58CFC7E2 /* SettingsView.swift */; };
 		28246F374FAACD8BDFB6EA56 /* CharacterStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34BFBD8A8284C0CF3F206323 /* CharacterStoreTests.swift */; };
+		2E06682F9D916C34A24C4E56 /* ImageAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D40E89288988B0C85CF6E5 /* ImageAttachment.swift */; };
 		2E48433265E4BBC5F773157F /* OllamaSetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = E82E17A3CC5E35442EBE89A4 /* OllamaSetup.swift */; };
+		2F2A1C6BC7A7F016381694D1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F676865C530C601C3DBCA7EF /* Assets.xcassets */; };
 		35A700D7B322E6F0AA7F654C /* Conversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19AAC3D85426EA0BBCF75FCB /* Conversation.swift */; };
 		3A222AB22FCB2D75AAA762B8 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BA7F57AD8BF5EC318A0DF53 /* SidebarView.swift */; };
 		3D52AE174EC9F251C5478D4A /* VersionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF4D9A586854B8E842F3DFC5 /* VersionTests.swift */; };
@@ -20,6 +24,7 @@
 		52DB49F5C2C253C7BE206C55 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43C0A133DD2849383AB68DB5 /* ContentView.swift */; };
 		5E8B97BF1D2BC5C6C47E7274 /* Character.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10B79C625EDD3E69FAEBCC9A /* Character.swift */; };
 		62212776D3BE8F486248E5EC /* TypingIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8D80BE81155A3372A95A292 /* TypingIndicator.swift */; };
+		66B6B16CB1365E0F6D10B279 /* PromptExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB9DB15707119C0CE485E62B /* PromptExporterTests.swift */; };
 		7ACB1270108AF2C055C61F89 /* CharacterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52D60EF26B64CBD9E6291B32 /* CharacterTests.swift */; };
 		7B979FF246E035364E677850 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B733494952B88533662F7AC1 /* WelcomeView.swift */; };
 		9281B284C3D3AC9F13E21764 /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = 628D2ED8F16D44A7505322FB /* Message.swift */; };
@@ -31,6 +36,7 @@
 		B7F3BFCA9CE68FAB806489EE /* CharacterEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4934CBA7F3A5ED7BB9340A75 /* CharacterEditorView.swift */; };
 		D01FE545D8EE2F9DD6FAB77E /* OllamaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BD4CEF550A8BC52F3E4595F /* OllamaService.swift */; };
 		EF7F22756B64F3970907AC25 /* MessageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22541BC4D1B7437B43AD0E13 /* MessageTests.swift */; };
+		F2DCAAD45B6296885DE0597D /* PromptActionsPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A666D6D89D3810A2E26323AC /* PromptActionsPanel.swift */; };
 		FA94833228F575747AD08758 /* Version.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A60DA55CE736485C2ED4BE /* Version.swift */; };
 		FF7C29D7EF6F69C7B39BD7E5 /* MessageInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B24C37AA27D81F9E2DF4C42 /* MessageInputView.swift */; };
 /* End PBXBuildFile section */
@@ -50,6 +56,7 @@
 		03E67EBF5445FD28D4F8DACD /* OllamaModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaModelTests.swift; sourceTree = "<group>"; };
 		10B79C625EDD3E69FAEBCC9A /* Character.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Character.swift; sourceTree = "<group>"; };
 		19AAC3D85426EA0BBCF75FCB /* Conversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Conversation.swift; sourceTree = "<group>"; };
+		1C3DDA146FDC21A950DF2218 /* PromptExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptExporter.swift; sourceTree = "<group>"; };
 		22541BC4D1B7437B43AD0E13 /* MessageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageTests.swift; sourceTree = "<group>"; };
 		34BFBD8A8284C0CF3F206323 /* CharacterStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterStoreTests.swift; sourceTree = "<group>"; };
 		3BA7F57AD8BF5EC318A0DF53 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
@@ -57,6 +64,7 @@
 		43C0A133DD2849383AB68DB5 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		4934CBA7F3A5ED7BB9340A75 /* CharacterEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterEditorView.swift; sourceTree = "<group>"; };
 		4CA0C0A3365F87788A1E7BF1 /* SizzleBotTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SizzleBotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		501770403EB01B70DA120294 /* OllamaServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaServiceTests.swift; sourceTree = "<group>"; };
 		5298E0CF18C84D8D42BA783F /* MessageBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubble.swift; sourceTree = "<group>"; };
 		52D60EF26B64CBD9E6291B32 /* CharacterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterTests.swift; sourceTree = "<group>"; };
 		60A60DA55CE736485C2ED4BE /* Version.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Version.swift; sourceTree = "<group>"; };
@@ -64,18 +72,22 @@
 		7C50BE8279A276EC58CFC7E2 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		8BD4CEF550A8BC52F3E4595F /* OllamaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaService.swift; sourceTree = "<group>"; };
 		9B24C37AA27D81F9E2DF4C42 /* MessageInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageInputView.swift; sourceTree = "<group>"; };
+		A666D6D89D3810A2E26323AC /* PromptActionsPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptActionsPanel.swift; sourceTree = "<group>"; };
 		A9CFF1B6D9D9738F5858B528 /* SizzleBot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SizzleBot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AB13A7BEFC3837E26AA990D7 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		AF4D9A586854B8E842F3DFC5 /* VersionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VersionTests.swift; sourceTree = "<group>"; };
 		B733494952B88533662F7AC1 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		BE756533D9120DE5C9DB018C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		C0D40E89288988B0C85CF6E5 /* ImageAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageAttachment.swift; sourceTree = "<group>"; };
 		C6A17CADBC43C4F94090BFB5 /* SampleCharacters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleCharacters.swift; sourceTree = "<group>"; };
+		CB9DB15707119C0CE485E62B /* PromptExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptExporterTests.swift; sourceTree = "<group>"; };
 		CF0FBD7C8BCB33D6F6312EF3 /* SetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupView.swift; sourceTree = "<group>"; };
 		D76EF4B2E0D9EF338FDBCFC8 /* SizzleBot.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SizzleBot.entitlements; sourceTree = "<group>"; };
 		D8D80BE81155A3372A95A292 /* TypingIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingIndicator.swift; sourceTree = "<group>"; };
 		E82E17A3CC5E35442EBE89A4 /* OllamaSetup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaSetup.swift; sourceTree = "<group>"; };
 		E83E4206FE110B2C07EAA884 /* CharacterStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterStore.swift; sourceTree = "<group>"; };
 		EBB2415216C9FC9DEAA1ED85 /* SizzleBotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SizzleBotApp.swift; sourceTree = "<group>"; };
+		F676865C530C601C3DBCA7EF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -117,6 +129,7 @@
 				43C0A133DD2849383AB68DB5 /* ContentView.swift */,
 				5298E0CF18C84D8D42BA783F /* MessageBubble.swift */,
 				9B24C37AA27D81F9E2DF4C42 /* MessageInputView.swift */,
+				A666D6D89D3810A2E26323AC /* PromptActionsPanel.swift */,
 				7C50BE8279A276EC58CFC7E2 /* SettingsView.swift */,
 				CF0FBD7C8BCB33D6F6312EF3 /* SetupView.swift */,
 				3BA7F57AD8BF5EC318A0DF53 /* SidebarView.swift */,
@@ -142,8 +155,10 @@
 			children = (
 				E83E4206FE110B2C07EAA884 /* CharacterStore.swift */,
 				3D90D5E7757901B544387F1A /* ConversationStore.swift */,
+				C0D40E89288988B0C85CF6E5 /* ImageAttachment.swift */,
 				8BD4CEF550A8BC52F3E4595F /* OllamaService.swift */,
 				E82E17A3CC5E35442EBE89A4 /* OllamaSetup.swift */,
+				1C3DDA146FDC21A950DF2218 /* PromptExporter.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -151,6 +166,7 @@
 		E515FA5E34F945058B56C94A /* SizzleBot */ = {
 			isa = PBXGroup;
 			children = (
+				F676865C530C601C3DBCA7EF /* Assets.xcassets */,
 				59965F6608BC5C201718BC6F /* App */,
 				2AD2ADB16EBF42BC56CC1298 /* Models */,
 				CE430143100C66B9606A1CA0 /* Services */,
@@ -167,6 +183,8 @@
 				52D60EF26B64CBD9E6291B32 /* CharacterTests.swift */,
 				22541BC4D1B7437B43AD0E13 /* MessageTests.swift */,
 				03E67EBF5445FD28D4F8DACD /* OllamaModelTests.swift */,
+				501770403EB01B70DA120294 /* OllamaServiceTests.swift */,
+				CB9DB15707119C0CE485E62B /* PromptExporterTests.swift */,
 				AF4D9A586854B8E842F3DFC5 /* VersionTests.swift */,
 			);
 			name = SizzleBotTests;
@@ -181,6 +199,7 @@
 			buildConfigurationList = A14154137708CF6F57C126D8 /* Build configuration list for PBXNativeTarget "SizzleBot" */;
 			buildPhases = (
 				E77FF395D74DDA914FB488FA /* Sources */,
+				CB0946264250F4B7DC8301CE /* Resources */,
 			);
 			buildRules = (
 			);
@@ -248,6 +267,17 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		CB0946264250F4B7DC8301CE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2F2A1C6BC7A7F016381694D1 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		B4576C3C71A4A595BA416E99 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -257,6 +287,8 @@
 				7ACB1270108AF2C055C61F89 /* CharacterTests.swift in Sources */,
 				EF7F22756B64F3970907AC25 /* MessageTests.swift in Sources */,
 				A0AD852DE275513BA9E7B753 /* OllamaModelTests.swift in Sources */,
+				0BCE294EAE5290962463987F /* OllamaServiceTests.swift in Sources */,
+				66B6B16CB1365E0F6D10B279 /* PromptExporterTests.swift in Sources */,
 				3D52AE174EC9F251C5478D4A /* VersionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -272,12 +304,15 @@
 				52DB49F5C2C253C7BE206C55 /* ContentView.swift in Sources */,
 				35A700D7B322E6F0AA7F654C /* Conversation.swift in Sources */,
 				450E38A0938A5127A34648DB /* ConversationStore.swift in Sources */,
+				2E06682F9D916C34A24C4E56 /* ImageAttachment.swift in Sources */,
 				9281B284C3D3AC9F13E21764 /* Message.swift in Sources */,
 				A067DD9742635A25ED006A3A /* MessageBubble.swift in Sources */,
 				FF7C29D7EF6F69C7B39BD7E5 /* MessageInputView.swift in Sources */,
 				A6A140843399B7D9A5331E6D /* OllamaModel.swift in Sources */,
 				D01FE545D8EE2F9DD6FAB77E /* OllamaService.swift in Sources */,
 				2E48433265E4BBC5F773157F /* OllamaSetup.swift in Sources */,
+				F2DCAAD45B6296885DE0597D /* PromptActionsPanel.swift in Sources */,
+				0E2B49864213A4714DA170B8 /* PromptExporter.swift in Sources */,
 				0E89EF87B4C812D7113F1466 /* SampleCharacters.swift in Sources */,
 				1CFCCC093BD94311BD3CDEE5 /* SettingsView.swift in Sources */,
 				1262C47A3FB41F7CE0BFCB38 /* SetupView.swift in Sources */,

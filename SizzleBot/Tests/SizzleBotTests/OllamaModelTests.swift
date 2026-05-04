@@ -78,4 +78,46 @@ struct OllamaModelTests {
             #expect(!rec.description.isEmpty, "empty description for \(rec.id)")
         }
     }
+
+    @Test("Every recommended model carries an alignment tag")
+    func recommendationHasAlignment() {
+        for rec in OllamaModel.recommended {
+            #expect(
+                [.uncensored, .lightlyAligned, .aligned].contains(rec.alignment),
+                "missing or unknown alignment on \(rec.id)"
+            )
+        }
+    }
+
+    @Test("recommendation(for:) resolves bare and tagged ollama names")
+    func recommendationLookupTolerant() {
+        #expect(OllamaModel.recommendation(for: "dolphin-mistral")?.id == "dolphin-mistral")
+        #expect(OllamaModel.recommendation(for: "dolphin-mistral:latest")?.id == "dolphin-mistral")
+        #expect(OllamaModel.recommendation(for: "dolphin-mistral:7b-q4_K_M")?.id == "dolphin-mistral")
+    }
+
+    @Test("recommendation(for:) returns nil for unknown models")
+    func recommendationLookupUnknown() {
+        #expect(OllamaModel.recommendation(for: "totally-made-up-model") == nil)
+    }
+
+    @Test("dolphin-mistral and dolphin-llama3 are flagged Uncensored")
+    func dolphinModelsUncensored() {
+        #expect(OllamaModel.recommendation(for: "dolphin-mistral")?.alignment == .uncensored)
+        #expect(OllamaModel.recommendation(for: "dolphin-llama3")?.alignment == .uncensored)
+        #expect(OllamaModel.recommendation(for: "wizard-vicuna-uncensored")?.alignment == .uncensored)
+    }
+}
+
+@Suite("OllamaSetup on-demand pulls")
+@MainActor
+struct OllamaSetupOnDemandTests {
+
+    @Test("pull dictionaries start empty")
+    func pullStateStartsEmpty() {
+        let setup = OllamaSetup()
+        #expect(setup.pullProgress.isEmpty)
+        #expect(setup.pullStatus.isEmpty)
+        #expect(setup.pullErrors.isEmpty)
+    }
 }

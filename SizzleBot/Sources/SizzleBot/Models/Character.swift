@@ -11,6 +11,11 @@ struct Character: Codable, Identifiable, Hashable {
     var isBuiltIn: Bool
     var accentColor: String
     var createdAt: Date
+    /// True if the character is meant to receive image attachments (vision bot).
+    /// Optional for backward compat with persisted Characters from < 1.3.0.
+    var acceptsImages: Bool?
+
+    var supportsImages: Bool { acceptsImages ?? false }
 
     init(
         id: UUID = UUID(),
@@ -22,7 +27,8 @@ struct Character: Codable, Identifiable, Hashable {
         preferredModel: String? = nil,
         isBuiltIn: Bool = false,
         accentColor: String = "blue",
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        acceptsImages: Bool? = nil
     ) {
         self.id = id
         self.name = name
@@ -34,6 +40,7 @@ struct Character: Codable, Identifiable, Hashable {
         self.isBuiltIn = isBuiltIn
         self.accentColor = accentColor
         self.createdAt = createdAt
+        self.acceptsImages = acceptsImages
     }
 
     var color: Color {

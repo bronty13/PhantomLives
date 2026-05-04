@@ -16,6 +16,13 @@ class OllamaSetup: ObservableObject {
     @Published var state: SetupState = .idle
     @Published var statusMessage = ""
 
+    /// On-demand model pulls from Settings. Keyed by model id.
+    /// Kept separate from `state` so the SetupView is not hijacked by
+    /// installs the user kicks off after the app is already running.
+    @Published var pullProgress: [String: Double] = [:]
+    @Published var pullStatus: [String: String] = [:]
+    @Published var pullErrors: [String: String] = [:]
+
     private let baseURL = "http://localhost:11434"
     private let defaultModel = "dolphin-mistral"
 
@@ -122,6 +129,67 @@ class OllamaSetup: ObservableObject {
         } catch {
             state = .failed("Could not pull model '\(model)': \(error.localizedDescription)")
         }
+    }
+
+    /// User-initiated install of a model from Settings. Reports progress on
+    /// `pullProgress` / `pullStatus` and refreshes the supplied service when
+    /// done so the new model appears in the picker without a manual reload.
+    /// Does NOT touch `state` / `statusMessage` (those drive SetupView).
+    func pullModelOnDemand(_ model: String, then refresh: OllamaService? = nil) async {
+        guard ollamaBinary != nil else {
+            pullErrors[model] = "Ollama is not installed. Run setup first."
+            return
+        }
+
+        if !(await isServerRunning()) {
+            if let bin = ollamaBinary { startServer(binary: bin) }
+            for _ in 0..<30 {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                if await isServerRunning() { break }
+            }
+            if !(await isServerRunning()) {
+                pullErrors[model] = "Ollama server is not running."
+                return
+            }
+        }
+
+        pullErrors.removeValue(forKey: model)
+        pullProgress[model] = 0
+        pullStatus[model] = "Connecting…"
+
+        guard let url = URL(string: "\(baseURL)/api/pull") else {
+            pullProgress.removeValue(forKey: model)
+            pullStatus.removeValue(forKey: model)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["name": model, "stream": true])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 3600
+
+        do {
+            let (asyncBytes, _) = try await URLSession.shared.bytes(for: request)
+            for try await line in asyncBytes.lines {
+                guard let data = line.data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                else { continue }
+
+                if let status = json["status"] as? String { pullStatus[model] = status }
+                let total = json["total"] as? Double ?? 0
+                let completed = json["completed"] as? Double ?? 0
+                if total > 0 { pullProgress[model] = completed / total }
+
+                if let done = json["done"] as? Bool, done { break }
+                if let status = json["status"] as? String, status == "success" { break }
+            }
+        } catch {
+            pullErrors[model] = error.localizedDescription
+        }
+
+        pullProgress.removeValue(forKey: model)
+        pullStatus.removeValue(forKey: model)
+        await refresh?.checkConnection()
     }
 
     private func isServerRunning() async -> Bool {
