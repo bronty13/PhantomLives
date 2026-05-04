@@ -145,6 +145,28 @@ struct AppSettings: Codable {
         """,
     ]
 
+    // Default media paths — used for one-time backfill on production clips
+    // and for the "Set defaults" path-helper buttons in the editor.
+    // Patterns use `{date}` and `{title}` placeholders.
+    var defaultProductionBase: String    = "~/Dropbox/Sallie Content/Clips"
+    var defaultProductionPattern: String = "{date} {title}"
+    var defaultFCPBase: String           = "/Volumes/PRO-G40/"
+    var defaultFCPPattern: String        = "Content Working/{date} Session/{title}"
+    /// One-time-only marker set after the v1 backfill runs. Reset to false to
+    /// allow the AppState init to re-run the auto-backfill on next launch.
+    var pathBackfillV1Done: Bool = false
+
+    // File handling
+    /// Threshold (in megabytes) above which the main MP4 is considered "too
+    /// big" — the file audit then expects a `<Title>_reduced.mp4` companion,
+    /// and Phase 2 file ops will auto-generate one.
+    var largeFileThresholdMB: Int = 950
+    /// Number of frames to capture from each clip during Phase 2 frame
+    /// extraction. The first frame comes from the 1–9s window (so the title
+    /// card is captured); the remainder are evenly randomly spaced through
+    /// the rest of the clip.
+    var numFramesToCapture: Int = 15
+
     // Posting
     var postingBatchAutoAdvance: Bool = true
 

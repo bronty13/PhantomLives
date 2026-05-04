@@ -101,4 +101,74 @@ enum ReportService {
             }
         }) ?? []
     }
+
+    // MARK: - Weekly rollup
+
+    /// Three-week go-live preview + a list of clips not yet in `production`.
+    /// Week boundaries respect `settings.calendarFirstWeekday`.
+    struct WeeklyRollup {
+        struct Item: Identifiable {
+            let clip: Clip
+            var id: String { clip.id }
+        }
+        let lastWeek:        [Item]
+        let thisWeek:        [Item]
+        let nextWeek:        [Item]
+        let notInProduction: [Item]
+        let lastWeekRange:  (start: Date, end: Date)
+        let thisWeekRange:  (start: Date, end: Date)
+        let nextWeekRange:  (start: Date, end: Date)
+    }
+
+    static func weeklyRollup(appState: AppState, anchor: Date = Date()) -> WeeklyRollup {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone   = .current
+        cal.firstWeekday = max(1, min(7, appState.settings.calendarFirstWeekday))
+
+        let interval = cal.dateInterval(of: .weekOfYear, for: anchor)
+            ?? DateInterval(start: anchor, duration: 7 * 86400)
+        let thisStart = interval.start
+        let thisEnd   = interval.end                          // start of next week
+        let lastStart = cal.date(byAdding: .day, value: -7, to: thisStart) ?? thisStart
+        let lastEnd   = thisStart
+        let nextStart = thisEnd
+        let nextEnd   = cal.date(byAdding: .day, value: 7, to: thisEnd) ?? thisEnd
+
+        let isoFmt = DateFormatter()
+        isoFmt.dateFormat = "yyyy-MM-dd"
+        isoFmt.locale = Locale(identifier: "en_US_POSIX")
+
+        let active = appState.clips.filter { !$0.archived }
+
+        func inRange(_ clip: Clip, start: Date, end: Date) -> Bool {
+            guard let go = clip.goLiveDate, !go.isEmpty,
+                  let date = isoFmt.date(from: go) else { return false }
+            return date >= start && date < end
+        }
+
+        let byGoLive: (Clip, Clip) -> Bool = { ($0.goLiveDate ?? "") < ($1.goLiveDate ?? "") }
+
+        let lastWeek = active.filter { inRange($0, start: lastStart, end: lastEnd) }
+            .sorted(by: byGoLive).map { WeeklyRollup.Item(clip: $0) }
+        let thisWeek = active.filter { inRange($0, start: thisStart, end: thisEnd) }
+            .sorted(by: byGoLive).map { WeeklyRollup.Item(clip: $0) }
+        let nextWeek = active.filter { inRange($0, start: nextStart, end: nextEnd) }
+            .sorted(by: byGoLive).map { WeeklyRollup.Item(clip: $0) }
+        let notInProduction = active.filter { $0.statusEnum != .production }
+            .sorted { lhs, rhs in
+                if lhs.statusEnum.sortOrder != rhs.statusEnum.sortOrder {
+                    return lhs.statusEnum.sortOrder < rhs.statusEnum.sortOrder
+                }
+                return lhs.title < rhs.title
+            }
+            .map { WeeklyRollup.Item(clip: $0) }
+
+        return WeeklyRollup(
+            lastWeek: lastWeek, thisWeek: thisWeek, nextWeek: nextWeek,
+            notInProduction: notInProduction,
+            lastWeekRange: (lastStart, lastEnd),
+            thisWeekRange: (thisStart, thisEnd),
+            nextWeekRange: (nextStart, nextEnd)
+        )
+    }
 }

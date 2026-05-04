@@ -195,6 +195,58 @@ final class DatabaseService {
                 """)
         }
 
+        migrator.registerMigration("v5_clip_categories_order") { db in
+            // Per-clip category order matters: posting platforms each surface
+            // categories differently but every one of them respects the order
+            // in which the creator listed them. Add a `position` column
+            // (default 0) and backfill it from rowid so existing data has a
+            // deterministic, stable initial ordering.
+            try db.alter(table: "clip_categories") { t in
+                t.add(column: "position", .integer).notNull().defaults(to: 0)
+            }
+            try db.execute(sql: """
+                UPDATE clip_categories
+                   SET position = (
+                       SELECT COUNT(*) FROM clip_categories cc2
+                       WHERE cc2.clip_id = clip_categories.clip_id
+                         AND cc2.rowid   < clip_categories.rowid
+                   )
+                """)
+            try db.create(index: "idx_clip_categories_pos",
+                          on: "clip_categories",
+                          columns: ["clip_id", "position"])
+        }
+
+        migrator.registerMigration("v6_clip_transcript") { db in
+            // Adds the `transcript` column for whisper-generated transcripts.
+            // Stored as plain text; Phase 2 file-handling pipeline writes here
+            // after running the sibling transcribe.py against the production
+            // MP4. Empty string means "not yet transcribed" — same convention
+            // as descriptionRaw / descriptionRefined.
+            try db.alter(table: "clips") { t in
+                t.add(column: "transcript", .text).notNull().defaults(to: "")
+            }
+        }
+
+        migrator.registerMigration("v7_clip_hashes") { db in
+            // File-integrity hashes + sizes for the canonical MP4 pair. The
+            // user can re-run hashing on demand from the editor; an empty
+            // string in any column means "not yet hashed". `bytes` columns
+            // stay nullable because we may know the hash before the size
+            // (or vice-versa).
+            try db.alter(table: "clips") { t in
+                t.add(column: "mp4_md5",            .text).notNull().defaults(to: "")
+                t.add(column: "mp4_sha1",           .text).notNull().defaults(to: "")
+                t.add(column: "mp4_sha256",         .text).notNull().defaults(to: "")
+                t.add(column: "mp4_size_bytes",     .integer)
+                t.add(column: "reduced_md5",        .text).notNull().defaults(to: "")
+                t.add(column: "reduced_sha1",       .text).notNull().defaults(to: "")
+                t.add(column: "reduced_sha256",     .text).notNull().defaults(to: "")
+                t.add(column: "reduced_size_bytes", .integer)
+                t.add(column: "hashes_computed_at", .text).notNull().defaults(to: "")
+            }
+        }
+
         try migrator.migrate(dbPool)
     }
 
@@ -466,30 +518,48 @@ final class DatabaseService {
 
     // MARK: - Clip ↔ category
 
+    /// Returns the clip's category IDs in user-defined order (the `position`
+    /// column added in v5). The position-based ordering matters: every
+    /// posting site renders the category list in the order we hand it to
+    /// them, and the order is meaningful to the creator.
     func categoryIds(forClip clipId: String) throws -> [Int64] {
         try dbPool.read { db in
             try Int64.fetchAll(db,
-                sql: "SELECT category_id FROM clip_categories WHERE clip_id = ? ORDER BY category_id",
+                sql: """
+                    SELECT category_id FROM clip_categories
+                     WHERE clip_id = ?
+                     ORDER BY position, category_id
+                    """,
                 arguments: [clipId])
         }
     }
 
+    /// Replace the category set for a clip, preserving the input order. Each
+    /// row gets a sequential `position` (0, 1, 2…) so the next read returns
+    /// IDs in the same order the caller passed in. Any change — including a
+    /// pure reorder — appends a `clip_history` row.
     func setCategories(forClip clipId: String, categoryIds: [Int64]) throws {
         try dbPool.write { db in
-            // Read old set first so we can record the diff.
             let oldIds = try Int64.fetchAll(db,
-                sql: "SELECT category_id FROM clip_categories WHERE clip_id = ?",
+                sql: """
+                    SELECT category_id FROM clip_categories
+                     WHERE clip_id = ?
+                     ORDER BY position, category_id
+                    """,
                 arguments: [clipId])
-            let oldSet = Set(oldIds)
-            let newSet = Set(categoryIds)
+
             try db.execute(sql: "DELETE FROM clip_categories WHERE clip_id = ?", arguments: [clipId])
-            for cid in categoryIds {
-                try db.execute(sql: "INSERT INTO clip_categories (clip_id, category_id) VALUES (?, ?)",
-                              arguments: [clipId, cid])
+            for (idx, cid) in categoryIds.enumerated() {
+                try db.execute(sql: """
+                    INSERT INTO clip_categories (clip_id, category_id, position)
+                    VALUES (?, ?, ?)
+                    """, arguments: [clipId, cid, idx])
             }
-            if oldSet != newSet {
-                let oldStr = oldIds.sorted().map(String.init).joined(separator: ",")
-                let newStr = categoryIds.sorted().map(String.init).joined(separator: ",")
+
+            // Order-aware diff: a reorder is a change.
+            if oldIds != categoryIds {
+                let oldStr = oldIds.map(String.init).joined(separator: ",")
+                let newStr = categoryIds.map(String.init).joined(separator: ",")
                 try db.execute(sql: """
                     INSERT INTO clip_history (clip_id, field, old_value, new_value, changed_at)
                     VALUES (?, 'categories', ?, ?, ?)

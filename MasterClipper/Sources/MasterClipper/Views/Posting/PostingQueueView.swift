@@ -1,22 +1,27 @@
 import SwiftUI
 
-/// Workflow queue for clips that aren't yet fully posted. Master/detail view:
-/// the table on the left lists clips by pipeline status, and the right pane
-/// shows the standard `ClipEditView` so the user can fill in editing artifacts
-/// (FCP folder, production folder, length) inline.
+/// Workflow queue for clips that are post-ready but not yet fully posted.
+/// Mirrors `EditingQueueView` — same master/detail layout, same editor on
+/// the right — but defaults to `to_post + posting` status and shows posting
+/// progress (X of N scoped sites done) instead of editing-stage progress.
 ///
-/// Status auto-advances on save: filling all three editing fields promotes the
-/// clip from `editing` → `to_post`; marking sites posted later moves it through
-/// `posting` → `production`.
-struct EditingQueueView: View {
+/// Use this when you want to focus on the "what's ready to push out" pile
+/// without the noise of clips still in editing. The per-site batch wizard
+/// (Posting Batch) is still the right tool for actually marking sites
+/// posted; this is the at-a-glance backlog.
+struct PostingQueueView: View {
     @EnvironmentObject private var appState: AppState
 
-    @State private var statusFilter: Set<ClipStatus> = [.new, .editing, .toPost]
-    @State private var personaFilter: String = ""        // empty = all personas
+    @State private var statusFilter: Set<ClipStatus> = [.toPost, .posting]
+    @State private var personaFilter: String = ""
     @State private var selection: Clip.ID?
     @State private var sortOrder: [KeyPathComparator<Clip>] = [
-        KeyPathComparator(\Clip.contentDate, order: .forward)
+        KeyPathComparator(\Clip.goLiveDate, order: .forward)
     ]
+    /// clipId → set of siteIds the clip has been posted to. Loaded once and
+    /// refreshed when the clip count changes — cheap enough that we don't
+    /// need a per-clip diff.
+    @State private var postedByClip: [String: Set<Int64>] = [:]
     @State private var showingVerificationWorkflow: Bool = false
 
     var body: some View {
@@ -31,7 +36,7 @@ struct EditingQueueView: View {
             ClipDetailView(clipId: selection)
                 .frame(minWidth: 480)
         }
-        .navigationTitle("Editing Queue")
+        .navigationTitle("Posting Queue")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
@@ -47,8 +52,10 @@ struct EditingQueueView: View {
             FileAuditWorkflow(clips: filteredClips)
         }
         .onAppear {
+            refreshPostings()
             if selection == nil { selection = filteredClips.first?.id }
         }
+        .onChange(of: appState.clips.count) { _, _ in refreshPostings() }
         .onChange(of: appState.focusedClipId) { _, newValue in
             if let id = newValue {
                 selection = id
@@ -61,7 +68,7 @@ struct EditingQueueView: View {
 
     private var filterBar: some View {
         HStack(spacing: 8) {
-            ForEach([ClipStatus.new, .editing, .toPost, .posting], id: \.self) { status in
+            ForEach([ClipStatus.toPost, .posting, .production], id: \.self) { status in
                 statusToggle(status)
             }
 
@@ -108,26 +115,21 @@ struct EditingQueueView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Queue table
+    // MARK: - Queue
 
     private var filteredClips: [Clip] {
         var result = appState.clips
             .filter { !$0.archived }
             .filter { statusFilter.contains($0.statusEnum) }
-
         if !personaFilter.isEmpty {
             result = result.filter {
                 $0.personaCode.caseInsensitiveCompare(personaFilter) == .orderedSame
             }
         }
-
         return result.sorted(using: sortOrder)
     }
 
     private var queueTable: some View {
-        // Every column is sortable — `value:` keypaths drive the sort order.
-        // Computed-only columns (Status, Editing progress) sort by a derived
-        // string we attach explicitly via `value: \ClipExt.x` style helpers.
         Table(filteredClips, selection: $selection, sortOrder: $sortOrder) {
             TableColumn("Title", value: \Clip.title) { clip in
                 Text(clip.title.isEmpty ? "—" : clip.title)
@@ -149,17 +151,10 @@ struct EditingQueueView: View {
             }
             .width(min: 96, ideal: 104)
 
-            TableColumn("Editing", value: \Clip.editingProgressKey) { clip in
-                editingProgressCell(clip)
+            TableColumn("Posting") { clip in
+                postingProgressCell(clip)
             }
-            .width(min: 96, ideal: 104)
-
-            TableColumn("Recorded", value: \Clip.contentDate, comparator: OptionalStringComparator()) { clip in
-                Text(clip.contentDate ?? "—")
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-            }
-            .width(min: 92, ideal: 100)
+            .width(min: 160, ideal: 220)
 
             TableColumn("Go-Live", value: \Clip.goLiveDate, comparator: OptionalStringComparator()) { clip in
                 Text(clip.goLiveDate ?? "—")
@@ -168,7 +163,7 @@ struct EditingQueueView: View {
             }
             .width(min: 92, ideal: 100)
 
-            TableColumn("Length", value: \Clip.lengthSecondsKey) { clip in
+            TableColumn("Length", value: \Clip.lengthSecondsKeyPosting) { clip in
                 Text(DurationFormatter.format(clip.lengthSeconds))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(clip.lengthSeconds == nil ? .tertiary : .primary)
@@ -180,6 +175,49 @@ struct EditingQueueView: View {
             }
             .width(min: 130, ideal: 140)
         }
+    }
+
+    // MARK: - Posting-progress cell
+
+    /// Per-site mini-pill row: site code + ✓/○. Hovering / clicking the
+    /// row jumps into the editor, where the existing PostingGrid handles
+    /// flipping individual sites.
+    private func postingProgressCell(_ clip: Clip) -> some View {
+        let sites = scopedSites(for: clip)
+        let posted = postedByClip[clip.id] ?? []
+        let postedCount = sites.filter { posted.contains($0.id ?? -1) }.count
+        return HStack(spacing: 4) {
+            ForEach(sites) { site in
+                sitePill(site: site, posted: posted.contains(site.id ?? -1))
+            }
+            Text("\(postedCount)/\(sites.count)")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func sitePill(site: Site, posted: Bool) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: posted ? "checkmark.circle.fill" : "circle")
+                .font(.caption2)
+                .foregroundStyle(posted ? .green : Color(NSColor.tertiaryLabelColor))
+            Text(site.code)
+                .font(.caption2.monospaced())
+                .foregroundStyle(posted ? .primary : .secondary)
+        }
+        .padding(.horizontal, 5).padding(.vertical, 1)
+        .background(
+            (posted ? Color.green : Color.gray).opacity(posted ? 0.15 : 0.10),
+            in: Capsule()
+        )
+        .help(posted ? "\(site.displayName) — posted" : "\(site.displayName) — pending")
+    }
+
+    private func scopedSites(for clip: Clip) -> [Site] {
+        appState.sites
+            .filter { !$0.archived }
+            .filter { $0.appliesTo(personaCode: clip.personaCode) }
+            .sorted { $0.sortOrder < $1.sortOrder }
     }
 
     // MARK: - Cells
@@ -194,28 +232,6 @@ struct EditingQueueView: View {
         .foregroundStyle(statusColor(s))
     }
 
-    private func editingProgressCell(_ clip: Clip) -> some View {
-        let fcp  = !(clip.fcpProjectFolder ?? "").isEmpty
-        let prod = !(clip.productionFolder ?? "").isEmpty
-        let dur  = clip.lengthSeconds != nil
-        let count = [fcp, prod, dur].filter { $0 }.count
-        return HStack(spacing: 3) {
-            indicator(filled: fcp, label: "FCP")
-            indicator(filled: prod, label: "Prod")
-            indicator(filled: dur, label: "Len")
-            Text("\(count)/3")
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private func indicator(filled: Bool, label: String) -> some View {
-        Image(systemName: filled ? "checkmark.circle.fill" : "circle")
-            .font(.caption2)
-            .foregroundStyle(filled ? .green : Color(NSColor.tertiaryLabelColor))
-            .help(filled ? "\(label) filled" : "\(label) missing")
-    }
-
     private func statusColor(_ s: ClipStatus) -> Color {
         switch s {
         case .new:        return .gray
@@ -226,12 +242,18 @@ struct EditingQueueView: View {
         case .archived:   return .secondary
         }
     }
+
+    // MARK: - Data
+
+    private func refreshPostings() {
+        if let map = try? PostingService.postedSitesByClip() {
+            postedByClip = map
+        }
+    }
 }
 
-// MARK: - Sort helpers
+// MARK: - Sort comparator
 
-/// Comparator for `String?` columns that sorts nils at the end regardless of
-/// direction. Empty strings are treated as nil for sort purposes.
 private struct OptionalStringComparator: SortComparator {
     var order: SortOrder = .forward
 
@@ -240,7 +262,7 @@ private struct OptionalStringComparator: SortComparator {
         let r = (rhs ?? "").isEmpty ? nil : rhs
         switch (l, r) {
         case (nil, nil): return .orderedSame
-        case (nil, _):   return .orderedDescending   // nils to the end
+        case (nil, _):   return .orderedDescending
         case (_, nil):   return .orderedAscending
         case let (a?, b?):
             let raw = a.compare(b)
@@ -260,20 +282,7 @@ private extension ComparisonResult {
     }
 }
 
-// MARK: - Sort key helpers on Clip
-
 private extension Clip {
-    /// Sortable key for the editing-progress column: "1/3", "2/3", "3/3" etc.
-    /// Lex sort over zero-padded counts gets the right order.
-    var editingProgressKey: String {
-        let fcp  = !(fcpProjectFolder ?? "").isEmpty
-        let prod = !(productionFolder ?? "").isEmpty
-        let dur  = lengthSeconds != nil
-        return String([fcp, prod, dur].filter { $0 }.count)
-    }
-
-    /// Sortable key for the length column. nils sort last as "9999999".
-    var lengthSecondsKey: Int {
-        lengthSeconds ?? Int.max
-    }
+    /// Length sort key — nils sort last as Int.max.
+    var lengthSecondsKeyPosting: Int { lengthSeconds ?? Int.max }
 }

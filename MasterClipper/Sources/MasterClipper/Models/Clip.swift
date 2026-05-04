@@ -78,6 +78,19 @@ struct Clip: Codable, FetchableRecord, PersistableRecord, Identifiable, Hashable
     var status: String                          // ClipStatus.rawValue (auto-derived)
     var archived: Bool
     var notes: String
+    var transcript: String                      // whisper-generated; empty when not yet run
+
+    // File-integrity hashes (empty string = not yet computed)
+    var mp4Md5: String
+    var mp4Sha1: String
+    var mp4Sha256: String
+    var mp4SizeBytes: Int64?
+    var reducedMd5: String
+    var reducedSha1: String
+    var reducedSha256: String
+    var reducedSizeBytes: Int64?
+    var hashesComputedAt: String                // ISO timestamp; empty until first run
+
     var createdAt: String
     var updatedAt: String
 
@@ -107,6 +120,16 @@ struct Clip: Codable, FetchableRecord, PersistableRecord, Identifiable, Hashable
         case status
         case archived
         case notes
+        case transcript
+        case mp4Md5            = "mp4_md5"
+        case mp4Sha1           = "mp4_sha1"
+        case mp4Sha256         = "mp4_sha256"
+        case mp4SizeBytes      = "mp4_size_bytes"
+        case reducedMd5        = "reduced_md5"
+        case reducedSha1       = "reduced_sha1"
+        case reducedSha256     = "reduced_sha256"
+        case reducedSizeBytes  = "reduced_size_bytes"
+        case hashesComputedAt  = "hashes_computed_at"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }

@@ -1,17 +1,23 @@
 import SwiftUI
+import AppKit
 
 struct ClipEditView: View {
     @EnvironmentObject private var appState: AppState
     let clip: Clip
 
     @State private var draft: Clip
-    @State private var selectedCategoryIds: Set<Int64> = []
-    @State private var initialCategoryIds: Set<Int64> = []
+    @State private var selectedCategoryIds: [Int64] = []
+    @State private var initialCategoryIds: [Int64] = []
     @State private var saveError: String?
     @State private var lastSavedAt: Date?
     @State private var refining: Bool = false
     @State private var refineError: String?
     @State private var showingDeleteConfirm: Bool = false
+    @State private var showingAuditSheet: Bool = false
+    @State private var transcribing: Bool = false
+    @State private var transcribeMessage: String?
+    @State private var hashing: Bool = false
+    @State private var hashMessage: String?
 
     init(clip: Clip) {
         self.clip = clip
@@ -103,23 +109,49 @@ struct ClipEditView: View {
                     }
 
                     Section("Editing (post-production)") {
-                        HStack {
-                            Text("FCP project folder").frame(width: 150, alignment: .leading)
-                            TextField("Path…", text: bindingOptional(\.fcpProjectFolder))
-                                .textFieldStyle(.roundedBorder)
-                            Button("Choose…") { pickFolder(\.fcpProjectFolder) }
-                        }
-                        HStack {
-                            Text("Production folder").frame(width: 150, alignment: .leading)
-                            TextField("Path…", text: bindingOptional(\.productionFolder))
-                                .textFieldStyle(.roundedBorder)
-                            Button("Choose…") { pickFolder(\.productionFolder) }
-                        }
+                        folderRow(label: "FCP project folder", keyPath: \.fcpProjectFolder, isFCP: true)
+                        folderRow(label: "Production folder",  keyPath: \.productionFolder, isFCP: false)
                         HStack {
                             Text("Length").frame(width: 150, alignment: .leading)
                             LengthField(lengthSeconds: $draft.lengthSeconds)
                             Spacer()
                         }
+                        HStack {
+                            Text("Files").frame(width: 150, alignment: .leading)
+                            Button {
+                                showingAuditSheet = true
+                            } label: {
+                                Label("Verify files", systemImage: "checkmark.shield")
+                            }
+                            .help("Check that the FCP/Production folders exist and the expected MP4, reduced MP4, thumbnail, and FCP bundle are in place")
+                            Spacer()
+                        }
+                        HStack {
+                            Text("Thumbnail").frame(width: 150, alignment: .leading)
+                            if let thumb = draft.thumbnailFilename, !thumb.isEmpty {
+                                Text(thumb)
+                                    .font(.callout.monospaced())
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                    .help(thumb)
+                                Button {
+                                    revealThumbnail()
+                                } label: {
+                                    Label("Reveal", systemImage: "folder")
+                                }
+                                .buttonStyle(.borderless)
+                                .help("Open the picked thumbnail file in Finder.")
+                            } else {
+                                Text("Not picked yet — open Verify files to choose a frame.")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }
+                    }
+
+                    Section("Integrity") {
+                        integritySection
                     }
 
                     Section("Schedule / pricing") {
@@ -142,6 +174,15 @@ struct ClipEditView: View {
                             .frame(minHeight: 80)
                             .border(.separator)
                             .help("Searchable notes — title-rename markers and refine timestamps land here automatically.")
+                    }
+
+                    Section("Video Transcription (auto-generated)") {
+                        transcriptControls
+                        TextEditor(text: $draft.transcript)
+                            .frame(minHeight: 100)
+                            .font(.callout)
+                            .border(.separator)
+                            .help("Whisper-generated transcript of the production MP4. Editable — your edits persist with the clip on save.")
                     }
 
                     Section("Audit") {
@@ -186,6 +227,16 @@ struct ClipEditView: View {
         } message: {
             let titleText = clip.title.isEmpty ? clip.id : "\"\(clip.title)\""
             Text("\(titleText) and all its postings, category links, and history will be permanently deleted. This cannot be undone — restore from a backup if you change your mind.")
+        }
+        .sheet(isPresented: $showingAuditSheet) {
+            FileAuditSheet(clip: draft) { result in
+                if let f = result.detectedClipFilename, draft.clipFilename != f {
+                    draft.clipFilename = f
+                }
+                if let f = result.detectedPreviewFilename, draft.previewFilename != f {
+                    draft.previewFilename = f
+                }
+            }
         }
     }
 
@@ -261,7 +312,7 @@ struct ClipEditView: View {
     private var currentAuditResult: ClipAuditService.Result {
         ClipAuditService.audit(
             draft,
-            categoryIds: Array(selectedCategoryIds),
+            categoryIds: selectedCategoryIds,
             appState: appState
         )
     }
@@ -441,6 +492,36 @@ struct ClipEditView: View {
         )
     }
 
+    /// Folder row with text field, Choose / Reveal / Set default buttons.
+    /// The `isFCP` flag picks which default-path computer to use.
+    @ViewBuilder
+    private func folderRow(label: String, keyPath: WritableKeyPath<Clip, String?>, isFCP: Bool) -> some View {
+        HStack {
+            Text(label).frame(width: 150, alignment: .leading)
+            TextField("Path…", text: bindingOptional(keyPath))
+                .textFieldStyle(.roundedBorder)
+            Button {
+                if let path = isFCP
+                    ? PathDefaultsService.fcpPath(for: draft, settings: appState.settings)
+                    : PathDefaultsService.productionPath(for: draft, settings: appState.settings) {
+                    draft[keyPath: keyPath] = path
+                }
+            } label: {
+                Image(systemName: "wand.and.rays")
+            }
+            .help("Set to the configured default path (Settings → File Locations)")
+            .buttonStyle(.borderless)
+            Button("Choose…") { pickFolder(keyPath) }
+            Button {
+                PathDefaultsService.revealInFinder(draft[keyPath: keyPath])
+            } label: {
+                Label("Reveal", systemImage: "folder")
+            }
+            .disabled((draft[keyPath: keyPath] ?? "").isEmpty)
+            .help("Open this folder in Finder (falls back to the deepest existing parent)")
+        }
+    }
+
     /// Optional date row: shows a `DatePicker` when the field is set, otherwise
     /// a "Set date" button. The Clear button next to the picker re-nils the
     /// field. Storage stays as ISO `YYYY-MM-DD` strings — no schema change.
@@ -498,8 +579,8 @@ struct ClipEditView: View {
     private func loadCategories() {
         do {
             let ids = try DatabaseService.shared.categoryIds(forClip: clip.id)
-            selectedCategoryIds = Set(ids)
-            initialCategoryIds = Set(ids)
+            selectedCategoryIds = ids
+            initialCategoryIds = ids
         } catch {
             saveError = error.localizedDescription
         }
@@ -521,7 +602,7 @@ struct ClipEditView: View {
             try appState.updateClip(draft)
             try DatabaseService.shared.setCategories(
                 forClip: draft.id,
-                categoryIds: Array(selectedCategoryIds)
+                categoryIds: selectedCategoryIds
             )
             initialCategoryIds = selectedCategoryIds
             lastSavedAt = Date()
@@ -578,7 +659,7 @@ struct ClipEditView: View {
     private func save() {
         do {
             try appState.updateClip(draft)
-            try DatabaseService.shared.setCategories(forClip: draft.id, categoryIds: Array(selectedCategoryIds))
+            try DatabaseService.shared.setCategories(forClip: draft.id, categoryIds: selectedCategoryIds)
             // Re-pull the saved row (server-side may have appended notes)
             if let refreshed = try DatabaseService.shared.fetchClip(id: draft.id) {
                 draft = refreshed
@@ -588,6 +669,261 @@ struct ClipEditView: View {
             lastSavedAt = Date()
         } catch {
             saveError = error.localizedDescription
+        }
+    }
+
+    // MARK: - Transcript
+
+    @ViewBuilder
+    private var transcriptControls: some View {
+        let mp4Path = expectedMP4Path()
+        let scriptAvailable = TranscriptionService.locateScript() != nil
+        let canTranscribe = mp4Path != nil && scriptAvailable && !transcribing
+        HStack(spacing: 10) {
+            Button {
+                runTranscribe()
+            } label: {
+                if transcribing {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Transcribing…")
+                    }
+                } else {
+                    Label("Generate transcript", systemImage: "waveform")
+                }
+            }
+            .disabled(!canTranscribe)
+            .help(transcribeHelpText(mp4Path: mp4Path, scriptAvailable: scriptAvailable))
+            if !draft.transcript.isEmpty {
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(draft.transcript, forType: .string)
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+                .buttonStyle(.borderless)
+            }
+            Spacer()
+            if let msg = transcribeMessage {
+                Text(msg).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            }
+        }
+    }
+
+    /// Returns the canonical `<production>/<Title>.mp4` path that the
+    /// audit + reduce pipeline already use. Nil when the production folder
+    /// or title isn't filled in yet.
+    private func expectedMP4Path() -> String? {
+        let prod = (draft.productionFolder ?? "").trimmingCharacters(in: .whitespaces)
+        let title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prod.isEmpty, !title.isEmpty else { return nil }
+        let expanded = (prod as NSString).expandingTildeInPath
+        return ((expanded as NSString).appendingPathComponent(title) as NSString).appendingPathExtension("mp4")
+    }
+
+    private func transcribeHelpText(mp4Path: String?, scriptAvailable: Bool) -> String {
+        if !scriptAvailable {
+            return "transcribe.py not found at ~/Documents/GitHub/PhantomLives/transcribe/ — install the sibling project first."
+        }
+        if mp4Path == nil {
+            return "Set the production folder + title first; transcription reads <production>/<Title>.mp4"
+        }
+        return "Run MLX whisper on the production MP4 and store the transcript here."
+    }
+
+    // MARK: - Integrity (file hashes)
+
+    @ViewBuilder
+    private var integritySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("File hashes").font(.callout.weight(.semibold))
+                Spacer()
+                if hashing {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Hashing…").font(.caption).foregroundStyle(.secondary)
+                    }
+                } else {
+                    Button {
+                        runHash()
+                    } label: {
+                        Label("Recompute hashes", systemImage: "function")
+                    }
+                    .help("Stream both the main and reduced MP4 through MD5 / SHA-1 / SHA-256 and save the digests onto this clip.")
+                }
+            }
+
+            if !draft.hashesComputedAt.isEmpty {
+                Text("Last computed \(draft.hashesComputedAt)")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.tertiary)
+            }
+            if let msg = hashMessage {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle.fill").foregroundStyle(.indigo)
+                    Text(msg).font(.caption).foregroundStyle(.indigo)
+                    Spacer()
+                    Button("Dismiss") { hashMessage = nil }
+                        .buttonStyle(.borderless).controlSize(.small)
+                }
+            }
+
+            hashFileBlock(
+                title: "Main MP4",
+                sizeBytes: draft.mp4SizeBytes,
+                md5: draft.mp4Md5, sha1: draft.mp4Sha1, sha256: draft.mp4Sha256
+            )
+            hashFileBlock(
+                title: "Reduced MP4",
+                sizeBytes: draft.reducedSizeBytes,
+                md5: draft.reducedMd5, sha1: draft.reducedSha1, sha256: draft.reducedSha256
+            )
+        }
+    }
+
+    private func hashFileBlock(title: String, sizeBytes: Int64?, md5: String, sha1: String, sha256: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(title).font(.caption.weight(.semibold))
+                if let s = sizeBytes {
+                    Text(ByteCountFormatter.string(fromByteCount: s, countStyle: .file))
+                        .font(.caption.monospaced()).foregroundStyle(.secondary)
+                } else {
+                    Text("size unknown").font(.caption).foregroundStyle(.tertiary)
+                }
+                Spacer()
+            }
+            hashRow(label: "MD5",    digest: md5)
+            hashRow(label: "SHA-1",  digest: sha1)
+            hashRow(label: "SHA-256", digest: sha256)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func hashRow(label: String, digest: String) -> some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .font(.caption2.weight(.medium))
+                .frame(width: 64, alignment: .leading)
+                .foregroundStyle(.secondary)
+            if digest.isEmpty {
+                Text("not yet computed")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Spacer()
+            } else {
+                Text(digest)
+                    .font(.caption2.monospaced())
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(digest)
+                Spacer()
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(digest, forType: .string)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .help("Copy \(label) to the clipboard.")
+            }
+        }
+    }
+
+    /// Hash the main MP4 (and the reduced MP4 if it exists) in one
+    /// background pass, persist the digests + sizes, and refresh the
+    /// editor's draft so the new values render immediately.
+    private func runHash() {
+        guard !hashing else { return }
+        hashMessage = nil
+        guard let mainPath = expectedMP4Path() else {
+            hashMessage = "Set the production folder + title first."
+            return
+        }
+        let reducedPath = expectedReducedMP4Path()
+
+        hashing = true
+        let id = clip.id
+        Task {
+            do {
+                let main = try await HashService.hash(filePath: mainPath)
+                let reduced: HashService.Hashes? = await {
+                    guard let p = reducedPath, FileManager.default.fileExists(atPath: p) else { return nil }
+                    return try? await HashService.hash(filePath: p)
+                }()
+
+                if var live = try DatabaseService.shared.fetchClip(id: id) {
+                    live.mp4Md5         = main.md5
+                    live.mp4Sha1        = main.sha1
+                    live.mp4Sha256      = main.sha256
+                    live.mp4SizeBytes   = main.sizeBytes
+                    if let r = reduced {
+                        live.reducedMd5        = r.md5
+                        live.reducedSha1       = r.sha1
+                        live.reducedSha256     = r.sha256
+                        live.reducedSizeBytes  = r.sizeBytes
+                    } else {
+                        live.reducedMd5 = ""
+                        live.reducedSha1 = ""
+                        live.reducedSha256 = ""
+                        live.reducedSizeBytes = nil
+                    }
+                    live.hashesComputedAt = DatabaseService.isoNow()
+                    try appState.updateClip(live)
+                    draft = live
+                }
+                let n = reduced == nil ? 1 : 2
+                hashMessage = "Hashed \(n) file\(n == 1 ? "" : "s")."
+                hashing = false
+            } catch {
+                hashMessage = "Hash failed: \(error.localizedDescription)"
+                hashing = false
+            }
+        }
+    }
+
+    /// Mirror of `expectedMP4Path()` for the reduced companion.
+    private func expectedReducedMP4Path() -> String? {
+        let prod = (draft.productionFolder ?? "").trimmingCharacters(in: .whitespaces)
+        let title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prod.isEmpty, !title.isEmpty else { return nil }
+        let expanded = (prod as NSString).expandingTildeInPath
+        let name = title + "_reduced.mp4"
+        return (expanded as NSString).appendingPathComponent(name)
+    }
+
+    private func revealThumbnail() {
+        guard let thumb = draft.thumbnailFilename, !thumb.isEmpty,
+              let prod = draft.productionFolder?.trimmingCharacters(in: .whitespaces),
+              !prod.isEmpty else { return }
+        let expanded = (prod as NSString).expandingTildeInPath
+        let path = (expanded as NSString).appendingPathComponent(thumb)
+        if FileManager.default.fileExists(atPath: path) {
+            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: expanded)])
+        }
+    }
+
+    private func runTranscribe() {
+        guard !transcribing, let path = expectedMP4Path() else { return }
+        transcribing = true
+        transcribeMessage = nil
+        Task {
+            do {
+                let outcome = try await TranscriptionService.transcribe(sourcePath: path)
+                draft.transcript = outcome.transcript
+                let secs = String(format: "%.1fs", outcome.durationSeconds)
+                transcribeMessage = "Transcribed in \(secs) (\(outcome.wordCount) words)"
+                transcribing = false
+            } catch {
+                transcribeMessage = "Transcribe failed: \(error.localizedDescription)"
+                transcribing = false
+            }
         }
     }
 }

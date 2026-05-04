@@ -34,6 +34,24 @@ enum PostingService {
         }
     }
 
+    /// Map of clipId → set of siteIds the clip has been posted to (status =
+    /// 'posted'). One query for the whole table — used by the Posting Queue
+    /// to render per-clip progress without N+1 DB hits.
+    static func postedSitesByClip() throws -> [String: Set<Int64>] {
+        let pool = DatabaseService.shared.dbPool
+        return try pool.read { db in
+            var result: [String: Set<Int64>] = [:]
+            let sql = "SELECT clip_id, site_id FROM clip_postings WHERE status = 'posted'"
+            let rows = try Row.fetchAll(db, sql: sql)
+            for row in rows {
+                let cid: String = row["clip_id"]
+                let sid: Int64  = row["site_id"]
+                result[cid, default: []].insert(sid)
+            }
+            return result
+        }
+    }
+
     static func markPosted(clipId: String, siteId: Int64, date: Date = Date()) throws {
         let now = DatabaseService.isoNow()
         let dateStr = DatabaseService.isoDate(date)

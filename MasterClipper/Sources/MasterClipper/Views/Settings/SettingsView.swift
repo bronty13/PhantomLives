@@ -26,6 +26,9 @@ struct SettingsView: View {
             ImportExportTab()
                 .tabItem { Label("Import / Export", systemImage: "square.and.arrow.down.on.square") }
 
+            FileLocationsTab()
+                .tabItem { Label("File Locations", systemImage: "folder.badge.gearshape") }
+
             BackupSettingsTab()
                 .tabItem { Label("Backup", systemImage: "externaldrive.fill.badge.timemachine") }
         }

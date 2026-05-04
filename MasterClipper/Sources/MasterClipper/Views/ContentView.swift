@@ -21,6 +21,7 @@ private struct DetailRouterView: View {
             switch appState.selectedSection {
             case .dashboard:    DashboardView()
             case .editingQueue: EditingQueueView()
+            case .postingQueue: PostingQueueView()
             case .clips:        ClipListView()
             case .calendar:     CalendarRootView()
             case .postingBatch: PostingBatchView()

@@ -27,11 +27,12 @@ All paths are user-overridable in **Settings → Backup** and **Settings → Imp
 | Section | Purpose |
 |---|---|
 | **Dashboard** | Top stats (clickable filters), per-target posting progress bars, full clip × site posting matrix |
-| **Editing Queue** | Master/detail of clips not yet fully posted, by status: new / editing / to_post / posting |
+| **Editing Queue** | Master/detail of clips in `new` / `editing` / `to_post`. Toolbar: **Run File Verification**. Count badge in sidebar. |
+| **Posting Queue** | Master/detail of clips in `to_post` / `posting`, with per-site posting-progress pills. Toolbar: **Run File Verification**. Count badge in sidebar. |
 | **Clips** | Master/detail of every clip. Sortable Table, filters, search |
 | **Calendar** | Year / Quarter / Month / Week / Day. Auto-pops from clip go-live dates |
 | **Posting Batch** | Drill-down site × persona posting wizard with focused per-clip windows |
-| **Reports** | Full Clip / Posting Status / Category Usage / Calendar Rollup, exportable to 6 formats |
+| **Reports** | Full Clip / Weekly / Posting Status / Category Usage / Calendar Rollup / Clip Audit. Each report has its own MD / PDF / CSV export menu with auto-reveal. |
 | **Import** | 5-step smart-import wizard for xlsx / csv / tsv / pasted text |
 
 ## The workflow pipeline
@@ -143,6 +144,77 @@ Failing clips show as orange-bordered cards with the open issues listed. Click a
 
 The clip editor also shows a **live audit banner** at the top of the form. Orange when issues are open, green when clean. Recomputes as you edit — fix the missing field and the banner clears immediately.
 
+## Verify files (per-clip)
+
+The clip editor's "Editing (post-production)" section has a **Verify files** button that opens a sheet checking nine things:
+
+1. **FCP project folder** exists *(warn-only — drive may not be mounted)*
+2. **Production folder** exists *(missing here is concerning — likely a typo)*
+3. **Main MP4** (`<Title>.mp4`) — under threshold, OR over threshold with a reduced version present
+4. **Reduced MP4** (`<Title>_reduced.mp4`) — required only when main is over threshold
+5. **Thumbnail frames** (`<Title>_frame_NN.png`) — N captured per the **Frames to capture per clip** setting
+6. **FCP bundle** (`<Title>.fcpbundle`)
+7. **Description** (refined preferred, raw acceptable)
+8. **Video transcription** (whisper transcript stored on the clip)
+9. **File hashes** (MD5 / SHA-1 / SHA-256 for main + reduced)
+
+When everything's clean, the sheet leads with a tall green **All checks passed** banner.
+
+Each row that can be fixed surfaces an inline action pill — these run in place without leaving the audit:
+
+| Row | Action when broken |
+|---|---|
+| FCP project folder | **Choose…** — NSOpenPanel to pick the folder |
+| Main MP4 | **Push from FCP** — moves the rendered MP4 from the FCP folder into Production with the canonical name (creates Production folder if missing) |
+| Main MP4 (over threshold, no reduced) | **Reduce now** — `<Title>_reduced.mp4` re-encode |
+| Reduced MP4 | **Reduce now** if missing |
+| Thumbnail frames | **Capture / Re-capture** N frames + visual frame picker (`LazyVGrid` of preview tiles) — click a tile, click **Use as thumbnail** to promote it to `<Title>.png` |
+| Video transcription | **Generate / Re-generate** via `transcribe.py` |
+| File hashes | **Compute / Re-compute** MD5 / SHA-1 / SHA-256 |
+
+Self-correcting **rename suggestions** appear when an expected file is missing but a similarly-named file is in the same folder (Levenshtein-matched). Single-click rename, plus **Fix all** in the footer.
+
+## Bulk file-verification workflow
+
+Run the audit across an entire queue at once:
+
+- **Run File Verification** toolbar button on **Editing Queue** and **Posting Queue**.
+- The sheet walks every visible (filtered) clip one at a time. Header has:
+  - Segmented filter — **All clips** vs **Only with issues** (preflight audits every clip on open and remembers which ones had issues).
+  - Progress bar.
+  - Per-clip status counts.
+- Footer: **Stop workflow / Previous / Skip / Next** (or **Finish** on the last one).
+- All inline pills work the same as the per-clip sheet — fix things in place, then advance.
+- Final **Workflow complete** screen shows initially clean / fixed during run / skipped / still has issues, with click-through to clips still needing work.
+
+## Video transcription
+
+The clip editor's **Video Transcription (auto-generated)** section runs MLX Whisper via the sibling `~/Documents/GitHub/PhantomLives/transcribe/transcribe.py`:
+
+- Default model: `turbo`. Uses `-q` for quiet output, captures stdout.
+- Whisper's per-segment line breaks are collapsed into a single continuous paragraph before storage.
+- The transcript field is editable — your edits persist with autosave like any other field.
+- Disabled with a hint when `transcribe.py` isn't installed.
+
+Also available as an inline action on the **Video transcription** audit row (Generate / Re-generate).
+
+## Thumbnails
+
+Production thumbnails come from frame captures of the main MP4:
+
+- **Capture N frames** (default 15, configurable in Settings → File Locations). Frame 1 is sampled from the 1–9 s window so it usually catches the title card; frames 2–N are evenly distributed across the rest of the clip in random samples. All N write to `<Title>_frame_NN.png` in Production.
+- **Pick the canonical thumbnail** — the audit's Thumbnail-frames row shows a `LazyVGrid` of every captured frame as a clickable preview tile. Click a tile to select it; click **Use as thumbnail** to promote it. The chosen frame:
+  1. Is copied to `<Title>.png` in Production (overwriting any prior copy).
+  2. Has its filename stored on `clip.thumbnailFilename` so the picker remembers across sessions.
+  3. Causes any stale `<Title>.png` mirror in the FCP folder to be cleaned up — Production stays the single source of truth.
+- The chosen filename also surfaces on the editor's **Thumbnail** row in the Editing section, with a Reveal button.
+
+## File integrity (hashes)
+
+The clip editor's **Integrity** section shows MD5 / SHA-1 / SHA-256 fingerprints for both the main and reduced MP4, with file size and last-computed timestamp. Click any digest's copy icon to put it on the clipboard.
+
+Hashes are streamed in 4 MB chunks via CryptoKit — multi-GB clips don't blow memory and the UI stays responsive. The **Recompute hashes** button (and the audit's **Compute / Re-compute** action on the **File hashes** row) hashes both files in one background pass and persists the digests + sizes + ISO timestamp.
+
 ## Deleting clips
 
 Three ways:
@@ -182,6 +254,38 @@ Drill-down wizard. Three stages with breadcrumb navigation at the top.
 3. **Posting** — focused view of one clip with **per-field copy buttons** (title / categories / keywords / performers / length / price / dates / filenames as one-line copy rows; description as multi-line scrollable copy panel). Posting notes textarea below saves into the clip_postings row. **Mark posted** + **Posted & next** (⌘↩) advance through the queue.
 
 When a queue empties, falls back to the queue stage with an "all done" page and a **Next batch** button to jump to the next (site, persona) target.
+
+## File locations & path defaults
+
+**Settings → File Locations** configures the path templates used by the editor's path-helper buttons (`wand.and.rays`) and the one-time backfill:
+
+| Field | Default |
+|---|---|
+| Production base | `~/Dropbox/Sallie Content/Clips` |
+| Production pattern | `{date} {title}` |
+| FCP base | `/Volumes/PRO-G40/` |
+| FCP pattern | `Content Working/{date} Session/{title}` |
+| Large-file threshold | 950 MB |
+| Frames to capture per clip | 15 |
+
+Placeholders `{date}` (clip's content date, falling back to go-live date) and `{title}` (sanitised — `/` `\` `:` → `-`) are substituted into the pattern.
+
+The first time the app launches after this feature shipped, **a one-time backfill** populates the FCP and Production columns for every clip in `production` status whose path is currently empty. **Run backfill now** in Settings forces a re-run any time.
+
+## Reports
+
+The Reports section has six panels, each with its own export menu (Markdown / PDF / CSV) that auto-reveals the saved file in Finder. A persistent **Reveal** button appears next to the menu after the first save.
+
+| Report | Shows |
+|---|---|
+| **Full Clip Report** | Sortable table of every clip — ID / Persona / Title / Status / Length / Go-Live |
+| **Weekly Report** | Three-week go-live window (Last / This / Next) plus a "Not in production" list. Anchor date shifts with chevrons. |
+| **Posting Status** | One row per (clip, scoped site) with posted/pending state and posted date. "Hide already-posted" filter. |
+| **Category Usage** | Per-category clip counts. |
+| **Calendar Rollup** | Per-(month, persona) event counts for a selected year. |
+| **Clip Audit** | The 7-point clip checklist as bulk cards (separate from the per-clip Verify files audit). Clickable into the editor. |
+
+The toolbar **Export…** menu at the top of the Reports section is distinct — it dumps the *full clip dataset* in any format. The per-report menus only export that report's view.
 
 ## Exports
 

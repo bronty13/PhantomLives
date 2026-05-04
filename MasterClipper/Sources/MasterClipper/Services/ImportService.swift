@@ -261,6 +261,16 @@ final class ImportService: ObservableObject {
                     status: mapStatus(parsed.status),
                     archived: false,
                     notes: parsed.notes ?? "",
+                    transcript: existing?.transcript ?? "",
+                    mp4Md5:    existing?.mp4Md5    ?? "",
+                    mp4Sha1:   existing?.mp4Sha1   ?? "",
+                    mp4Sha256: existing?.mp4Sha256 ?? "",
+                    mp4SizeBytes: existing?.mp4SizeBytes,
+                    reducedMd5:    existing?.reducedMd5    ?? "",
+                    reducedSha1:   existing?.reducedSha1   ?? "",
+                    reducedSha256: existing?.reducedSha256 ?? "",
+                    reducedSizeBytes: existing?.reducedSizeBytes,
+                    hashesComputedAt: existing?.hashesComputedAt ?? "",
                     createdAt: existing?.createdAt ?? now,
                     updatedAt: now
                 )

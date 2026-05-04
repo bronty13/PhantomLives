@@ -2,11 +2,12 @@ import SwiftUI
 
 struct ReportsRootView: View {
     enum Kind: String, CaseIterable, Hashable {
-        case fullClip, postingStatus, categoryUsage, calendar, audit
+        case fullClip, weekly, postingStatus, categoryUsage, calendar, audit
 
         var label: String {
             switch self {
             case .fullClip:       return "Full Clip Report"
+            case .weekly:         return "Weekly Report"
             case .postingStatus:  return "Posting Status"
             case .categoryUsage:  return "Category Usage"
             case .calendar:       return "Calendar Rollup"
@@ -17,6 +18,7 @@ struct ReportsRootView: View {
         var icon: String {
             switch self {
             case .fullClip:       return "list.bullet.rectangle"
+            case .weekly:         return "calendar.badge.exclamationmark"
             case .postingStatus:  return "paperplane"
             case .categoryUsage:  return "tag.fill"
             case .calendar:       return "calendar.badge.clock"
@@ -39,6 +41,7 @@ struct ReportsRootView: View {
             Group {
                 switch selection {
                 case .fullClip:       FullClipReportView()
+                case .weekly:         WeeklyReportView()
                 case .postingStatus:  PostingStatusReportView()
                 case .categoryUsage:  CategoryUsageReportView()
                 case .calendar:       CalendarReportView()
@@ -62,10 +65,22 @@ struct FullClipReportView: View {
     @EnvironmentObject private var appState: AppState
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Full clip report — \(appState.clips.count) clips")
-                .font(.title3.weight(.semibold)).padding(12)
+            HStack {
+                Text("Full clip report — \(appState.clips.count) clips")
+                    .font(.title3.weight(.semibold))
+                Spacer()
+                ReportExportMenu(
+                    suggestedBaseName: "MasterClipper-clips-\(stamp())",
+                    provider: .init(
+                        markdown: { ExportService.exportMarkdown(clips: clips, appState: appState).data(using: .utf8) ?? Data() },
+                        pdf:      { ExportService.exportPDFReport(clips: clips, appState: appState) },
+                        csv:      { ExportService.exportCSV(clips: clips, appState: appState).data(using: .utf8) ?? Data() }
+                    )
+                )
+            }
+            .padding(12)
             Divider()
-            Table(appState.clips.sorted { $0.createdAt > $1.createdAt }) {
+            Table(clips) {
                 TableColumn("ID")      { Text($0.id).font(.caption.monospaced()) }.width(min: 110)
                 TableColumn("Persona") { Text($0.personaCode) }.width(min: 70)
                 TableColumn("Title")   { Text($0.title.isEmpty ? "—" : $0.title) }
@@ -75,6 +90,8 @@ struct FullClipReportView: View {
             }
         }
     }
+
+    private var clips: [Clip] { appState.clips.sorted { $0.createdAt > $1.createdAt } }
 }
 
 struct PostingStatusReportView: View {
@@ -94,6 +111,14 @@ struct PostingStatusReportView: View {
                 Spacer()
                 Toggle("Hide already-posted", isOn: $hideCompleted)
                     .toggleStyle(.switch).controlSize(.small)
+                ReportExportMenu(
+                    suggestedBaseName: "MasterClipper-posting-status-\(stamp())",
+                    provider: .init(
+                        markdown: { ExportService.exportPostingStatusMarkdown(rows: visible).data(using: .utf8) ?? Data() },
+                        pdf:      { ExportService.exportPostingStatusPDF(rows: visible) },
+                        csv:      { ExportService.exportPostingStatusCSV(rows: visible).data(using: .utf8) ?? Data() }
+                    )
+                )
             }
             .padding(12)
 
@@ -122,12 +147,25 @@ struct PostingStatusReportView: View {
 }
 
 struct CategoryUsageReportView: View {
+    @EnvironmentObject private var appState: AppState
     @State private var rows: [ReportService.CategoryUsageRow] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Category usage")
-                .font(.title3.weight(.semibold)).padding(12)
+            HStack {
+                Text("Category usage")
+                    .font(.title3.weight(.semibold))
+                Spacer()
+                ReportExportMenu(
+                    suggestedBaseName: "MasterClipper-category-usage-\(stamp())",
+                    provider: .init(
+                        markdown: { ExportService.exportCategoryUsageMarkdown(rows: rows).data(using: .utf8) ?? Data() },
+                        pdf:      { ExportService.exportCategoryUsagePDF(rows: rows) },
+                        csv:      { ExportService.exportCategoryUsageCSV(rows: rows).data(using: .utf8) ?? Data() }
+                    )
+                )
+            }
+            .padding(12)
             Divider()
             Table(rows) {
                 TableColumn("Category") { Text($0.name) }
@@ -137,6 +175,15 @@ struct CategoryUsageReportView: View {
         }
         .onAppear { rows = ReportService.categoryUsage() }
     }
+}
+
+/// Date-stamp helper used by every report's suggested export filename.
+@MainActor
+private func stamp() -> String {
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.dateFormat = "yyyy-MM-dd-HHmmss"
+    return f.string(from: Date())
 }
 
 struct CalendarReportView: View {

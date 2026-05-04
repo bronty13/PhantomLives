@@ -29,8 +29,19 @@ struct ClipAuditReportView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Clip audit")
-                .font(.title3.weight(.semibold))
+            HStack {
+                Text("Clip audit")
+                    .font(.title3.weight(.semibold))
+                Spacer()
+                ReportExportMenu(
+                    suggestedBaseName: "MasterClipper-audit-\(stamp())",
+                    provider: .init(
+                        markdown: { ExportService.exportAuditMarkdown(results: rows).data(using: .utf8) ?? Data() },
+                        pdf:      { ExportService.exportAuditPDF(results: rows) },
+                        csv:      { ExportService.exportAuditCSV(results: rows).data(using: .utf8) ?? Data() }
+                    )
+                )
+            }
             HStack(spacing: 12) {
                 Label("\(failingCount) failing", systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(failingCount > 0 ? .orange : .secondary)
@@ -48,6 +59,13 @@ struct ClipAuditReportView: View {
                 .font(.caption).foregroundStyle(.secondary)
         }
         .padding(14)
+    }
+
+    private func stamp() -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd-HHmmss"
+        return f.string(from: Date())
     }
 
     @ViewBuilder

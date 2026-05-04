@@ -20,12 +20,13 @@ final class AppState: ObservableObject {
     @Published var pendingPostingFilter: PostingFilter? = nil
 
     enum Section: String, Hashable, CaseIterable {
-        case dashboard, editingQueue, clips, calendar, postingBatch, reports, importView
+        case dashboard, editingQueue, postingQueue, clips, calendar, postingBatch, reports, importView
 
         var title: String {
             switch self {
             case .dashboard:    return "Dashboard"
             case .editingQueue: return "Editing Queue"
+            case .postingQueue: return "Posting Queue"
             case .clips:        return "Clips"
             case .calendar:     return "Calendar"
             case .postingBatch: return "Posting Batch"
@@ -38,6 +39,7 @@ final class AppState: ObservableObject {
             switch self {
             case .dashboard:    return "rectangle.3.group.fill"
             case .editingQueue: return "wand.and.stars"
+            case .postingQueue: return "tray.full"
             case .clips:        return "film.stack.fill"
             case .calendar:     return "calendar"
             case .postingBatch: return "paperplane.fill"
@@ -101,6 +103,19 @@ final class AppState: ObservableObject {
         }
 
         reloadAll()
+
+        // One-time backfill: any production clips without production_folder /
+        // fcp_project_folder get them populated from the configured defaults.
+        // Marker prevents re-running on every launch; the user can also force
+        // it from Settings → File Locations.
+        if !settingsStore.settings.pathBackfillV1Done {
+            _ = PathDefaultsService.backfill(appState: self)
+            var s = settingsStore.settings
+            s.pathBackfillV1Done = true
+            settingsStore.settings = s
+            settingsStore.save()
+        }
+
         BackupService.runIfEnabled(settingsStore: settingsStore)
         Task { @MainActor in
             await OllamaSetup.shared.run(settings: settings)
@@ -211,6 +226,10 @@ final class AppState: ObservableObject {
             status: ClipStatus.production.rawValue,
             archived: false,
             notes: "",
+            transcript: "",
+            mp4Md5: "", mp4Sha1: "", mp4Sha256: "", mp4SizeBytes: nil,
+            reducedMd5: "", reducedSha1: "", reducedSha256: "", reducedSizeBytes: nil,
+            hashesComputedAt: "",
             createdAt: now,
             updatedAt: now
         )

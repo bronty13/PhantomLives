@@ -18,8 +18,11 @@ Mutation flow: View → `appState.someMutation(...)` → `DatabaseService.shared
 | App platform | macOS 14+, SwiftUI, Swift 5.10 |
 | Project layout | XcodeGen (`project.yml`) → `MasterClipper.xcodeproj` |
 | Build / sign | `./build-app.sh` (auto-versioned from `git rev-list --count HEAD`, ad-hoc or Developer ID, builds in `/tmp`) |
-| Database | GRDB.swift 6 — `DatabasePool`, `DatabaseMigrator`, append-only |
+| Database | GRDB.swift 6 — `DatabasePool`, `DatabaseMigrator`, append-only (currently at `v7`) |
 | LLM | Ollama on `http://localhost:11434`, default model auto-picked from `/api/tags` |
+| Speech-to-text | Sibling `~/Documents/GitHub/PhantomLives/transcribe/transcribe.py` (MLX Whisper). Shelled out via `Process` with `-o -` to capture stdout. |
+| AVFoundation | `AVAssetExportSession` for re-encode (HEVC + H.264 preset tiers); `AVAssetImageGenerator` for frame capture |
+| Hashing | `CryptoKit` `Insecure.MD5` / `Insecure.SHA1` / `SHA256`, streamed in 4 MB chunks |
 | Backup | `/usr/bin/zip -rqX` of Application Support dir, throttled 60 s, retention-trimmed |
 | Import (xlsx) | Manual reader: `/usr/bin/unzip -p` streams `xl/sharedStrings.xml`, `xl/workbook.xml`, `xl/_rels/workbook.xml.rels`, `xl/worksheets/sheetN.xml`; SAX-parsed by Foundation `XMLParser` |
 | Export | OOXML for XLSX/DOCX (manual + `/usr/bin/zip`), `CGContext(consumer:)` for PDF, static HTML pre-rendered server-side for mobile-friendly self-contained reports |
@@ -61,9 +64,15 @@ Sources/MasterClipper/
 │   ├── OllamaSetup.swift                 binary detection + auto-start
 │   ├── CalendarService.swift             generateYear, eventsByDate, dateRange
 │   ├── IDGeneratorService.swift          atomic UPSERT against id_sequences
-│   ├── PostingService.swift              clipsNotPosted, markPosted
-│   ├── ReportService.swift               postingStatus, categoryUsage, calendarRollup
+│   ├── PostingService.swift              clipsNotPosted, markPosted, postedSitesByClip
+│   ├── ReportService.swift               postingStatus, categoryUsage, calendarRollup, weeklyRollup
 │   ├── ClipAuditService.swift            7-point clip checklist (per-clip + bulk)
+│   ├── FileAuditService.swift            9-point file audit + rename suggestions + promoteFrameToThumbnail
+│   ├── ClipReduceService.swift           AVAssetExportSession iterative re-encode under threshold
+│   ├── FrameCaptureService.swift         AVAssetImageGenerator → <Title>_frame_NN.png
+│   ├── HashService.swift                 CryptoKit MD5 / SHA-1 / SHA-256 streaming
+│   ├── TranscriptionService.swift        shells out to sibling transcribe.py
+│   ├── PathDefaultsService.swift         compute / backfill production + FCP folder paths
 │   ├── SearchService.swift               AND-token LIKE
 │   └── FuzzyMatch.swift                  Levenshtein + alias dict for column auto-mapping
 ├── Views/
@@ -74,16 +83,21 @@ Sources/MasterClipper/
 │   ├── Clips/
 │   │   ├── ClipListView.swift            master Table; persona/status/posting/archived filters; AND-token search
 │   │   ├── ClipDetailView.swift          right pane router
-│   │   ├── ClipEditView.swift            sticky header, full form, auto-save on disappear, refine button
+│   │   ├── ClipEditView.swift            sticky header, full form, auto-save on disappear, refine button,
+│   │   │                                 transcript section, integrity (hashes) section, file-audit launch
 │   │   ├── ClipHistoryView.swift         change log disclosure
 │   │   ├── ClipExportSheet.swift         per-clip plain-text / MD / PDF
 │   │   ├── NewClipView.swift             sheet
 │   │   ├── PostingGrid.swift             site × posted toggle inside the editor
 │   │   ├── CategoryChipPicker.swift      + FlowLayout
-│   │   └── LengthField.swift
+│   │   ├── LengthField.swift
+│   │   ├── FileAuditSheet.swift          per-clip Verify files sheet (rows + inline action pills)
+│   │   ├── FileAuditWorkflow.swift       bulk audit walkthrough; All / Issues-only filter; Skip / Previous / Next
+│   │   └── ThumbnailFramePicker.swift    LazyVGrid of frame previews, parent-owned `picked` Binding
 │   ├── Editing/
-│   │   └── EditingQueueView.swift        new / editing / to_post / posting filter chips
+│   │   └── EditingQueueView.swift        new / editing / to_post filter chips, Run File Verification toolbar
 │   ├── Posting/
+│   │   ├── PostingQueueView.swift        to_post / posting parallel to Editing Queue, per-site progress pills
 │   │   ├── PostingBatchView.swift        drill-down: Sites → Queue → Posting
 │   │   ├── PostingTarget.swift           PostingTargets.expanded(appState:)
 │   │   └── PostingClipWindow.swift       per-field copy buttons + Mark posted + Posted & next
@@ -93,15 +107,18 @@ Sources/MasterClipper/
 │   │   └── ImportWizardView.swift        5-step wizard (Source → Sheets → Mapping → Preview → Done)
 │   ├── Reports/
 │   │   ├── ReportsRootView.swift         Full clip / Posting status / Category usage / Calendar rollup / Audit
-│   │   └── ClipAuditReportView.swift     bulk audit cards, click → clip editor
+│   │   ├── WeeklyReportView.swift        Last / This / Next week + "Not in production" list
+│   │   ├── ClipAuditReportView.swift     bulk audit cards, click → clip editor
+│   │   └── ReportExportMenu.swift        per-report MD / PDF / CSV menu + auto-reveal + persistent Reveal
 │   ├── Settings/
-│   │   ├── SettingsView.swift            8-tab TabView
+│   │   ├── SettingsView.swift            9-tab TabView
 │   │   ├── PersonasSettingsTab.swift     ColorPicker for persona colour
 │   │   ├── CategoriesSettingsTab.swift
 │   │   ├── SitesSettingsTab.swift        persona-scope checkboxes
 │   │   ├── CalendarRulesTab.swift
 │   │   ├── OllamaSettingsTab.swift       prompt template editor + Reset to default + Test refine
 │   │   ├── ImportExportTab.swift
+│   │   ├── FileLocationsTab.swift        path defaults + frame count + threshold + one-shot backfill
 │   │   └── BackupSettingsTab.swift       Run / Test / Restore / Reveal / Wipe
 │   └── Shared/
 │       ├── HexColor.swift                Color(hex:) + Color.toHex()
@@ -114,7 +131,7 @@ Sources/MasterClipper/
 
 ## Database schema
 
-11 tables, four migrations. `grdb_migrations` is the GRDB-managed bookkeeping table.
+11 tables, seven migrations (`v1_initial` … `v7_clip_hashes`). `grdb_migrations` is the GRDB-managed bookkeeping table.
 
 ```
 personas        (id, code UNIQUE, display_name, color_hex, sort_order, archived)
@@ -127,8 +144,13 @@ clips           (id PK TEXT "YYYY-MM-DD-#####", external_clip_id, tracking_tag,
                  length_seconds, price_cents, sales_count, income_cents,
                  content_date, go_live_date,
                  fcp_project_folder, production_folder,
-                 status, archived, notes, created_at, updated_at)
-clip_categories (clip_id, category_id, PK)
+                 status, archived, notes,
+                 transcript,                                    -- v6 (whisper output)
+                 mp4_md5, mp4_sha1, mp4_sha256, mp4_size_bytes, -- v7 (file integrity)
+                 reduced_md5, reduced_sha1, reduced_sha256, reduced_size_bytes,
+                 hashes_computed_at,
+                 created_at, updated_at)
+clip_categories (clip_id, category_id, position, PK)            -- position added in v5
 clip_postings   (clip_id, site_id, posted_date, status, notes, created_at, updated_at, PK)
 clip_history    (id, clip_id, field, old_value, new_value, changed_at)
 id_sequences    (date_key PK "yyyyMMdd", last_seq)
@@ -137,6 +159,15 @@ calendar_events (id, date, persona_code, clip_id, title, notes, created_at, upda
 calendar_rules  (persona_code, weekday 1–7, enabled, PK)
 prices          (id, label, price_cents, notes)
 ```
+
+Migration log:
+- **v1_initial** — base schema + seed data (4 personas, 5 sites, calendar rules).
+- **v2_clip_history** — append-only field-change log.
+- **v3_editing_pipeline** — `fcp_project_folder` + `production_folder` columns.
+- **v4_persona_color_refresh** — replace placeholder persona hexes with real defaults.
+- **v5_clip_categories_order** — `position` column on `clip_categories` (per-clip ordered tags).
+- **v6_clip_transcript** — `transcript` text column.
+- **v7_clip_hashes** — file-integrity hashes + sizes.
 
 Migrations are append-only — never edit a previously-shipped one. To change the schema, register a new `vN_…` migration in `DatabaseService.migrate()` after all the existing ones.
 

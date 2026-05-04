@@ -383,6 +383,451 @@ enum ExportService {
         return pdf as Data
     }
 
+    // MARK: - Weekly report
+
+    /// Markdown for the weekly rollup. Sections for last / this / next week +
+    /// the not-in-production list. Tables use github-flavoured pipes so it
+    /// renders nicely in iMessage / Notion / GitHub previews.
+    static func exportWeeklyMarkdown(rollup: ReportService.WeeklyRollup, appState: AppState) -> String {
+        var md = "# Weekly Report\n\n"
+        md += "_Anchor week: \(formatRange(rollup.thisWeekRange)) · exported \(isoNow())_\n\n"
+        md += weeklyMarkdownSection(title: "Last week",
+                                    subtitle: "Items that went live last week",
+                                    range: rollup.lastWeekRange,
+                                    items: rollup.lastWeek)
+        md += weeklyMarkdownSection(title: "This week",
+                                    subtitle: "Items going live this week",
+                                    range: rollup.thisWeekRange,
+                                    items: rollup.thisWeek)
+        md += weeklyMarkdownSection(title: "Next week",
+                                    subtitle: "Items going live the following week",
+                                    range: rollup.nextWeekRange,
+                                    items: rollup.nextWeek)
+        md += "## Not in production · \(rollup.notInProduction.count) item\(rollup.notInProduction.count == 1 ? "" : "s")\n\n"
+        md += "Active clips that haven't reached the Production stage yet.\n\n"
+        if rollup.notInProduction.isEmpty {
+            md += "_Everything's in production._\n\n"
+        } else {
+            md += "| Status | Persona | Title | Go-Live |\n"
+            md += "|---|---|---|---|\n"
+            for item in rollup.notInProduction {
+                let title = item.clip.title.isEmpty ? "Untitled" : item.clip.title
+                md += "| \(item.clip.statusEnum.label) | \(item.clip.personaCode) | \(title.replacingOccurrences(of: "|", with: "\\|")) | \(item.clip.goLiveDate ?? "—") |\n"
+            }
+            md += "\n"
+        }
+        return md
+    }
+
+    private static func weeklyMarkdownSection(
+        title: String,
+        subtitle: String,
+        range: (start: Date, end: Date),
+        items: [ReportService.WeeklyRollup.Item]
+    ) -> String {
+        var md = "## \(title) · \(formatRange(range)) · \(items.count) item\(items.count == 1 ? "" : "s")\n\n"
+        md += "_\(subtitle)_\n\n"
+        if items.isEmpty {
+            md += "_Nothing scheduled._\n\n"
+            return md
+        }
+        md += "| Date | Persona | Title | Status |\n"
+        md += "|---|---|---|---|\n"
+        for item in items {
+            let t = item.clip.title.isEmpty ? "Untitled" : item.clip.title
+            md += "| \(item.clip.goLiveDate ?? "—") | \(item.clip.personaCode) | \(t.replacingOccurrences(of: "|", with: "\\|")) | \(item.clip.statusEnum.label) |\n"
+        }
+        md += "\n"
+        return md
+    }
+
+    /// CSV with a "Section" column so consumers can ingest all four lists in
+    /// one file. Order: Last Week → This Week → Next Week → Not In Production.
+    static func exportWeeklyCSV(rollup: ReportService.WeeklyRollup) -> String {
+        var lines = ["Section,Go-Live,Persona,Title,Status".self]
+        let groups: [(String, [ReportService.WeeklyRollup.Item])] = [
+            ("Last Week",        rollup.lastWeek),
+            ("This Week",        rollup.thisWeek),
+            ("Next Week",        rollup.nextWeek),
+            ("Not In Production", rollup.notInProduction),
+        ]
+        for (section, items) in groups {
+            for item in items {
+                let row: [String] = [
+                    section,
+                    item.clip.goLiveDate ?? "",
+                    item.clip.personaCode,
+                    item.clip.title,
+                    item.clip.statusEnum.label,
+                ]
+                lines.append(row.map { $0.csvEscaped }.joined(separator: ","))
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// Multi-page PDF rendered with the same `CGContext(consumer:)` pattern
+    /// used by `exportPDFReport(clips:appState:)`. One section header + table
+    /// per week, plus the not-in-production list at the end.
+    static func exportWeeklyPDF(rollup: ReportService.WeeklyRollup, appState: AppState) -> Data {
+        let pageW: CGFloat = 612
+        let pageH: CGFloat = 792
+        let margin: CGFloat = 50
+        let pdf = NSMutableData()
+        var mediaBox = CGRect(origin: .zero, size: CGSize(width: pageW, height: pageH))
+
+        guard let consumer = CGDataConsumer(data: pdf as CFMutableData),
+              let ctx = CGContext(consumer: consumer, mediaBox: &mediaBox, nil)
+        else { return Data() }
+
+        var fromTop: CGFloat = margin
+        func beginPage() {
+            ctx.beginPDFPage(nil)
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
+            fromTop = margin
+        }
+        func ensureRoom(_ h: CGFloat) {
+            if fromTop + h > pageH - margin { ctx.endPDFPage(); beginPage() }
+        }
+        func draw(_ s: String, x: CGFloat, lineH: CGFloat, bold: Bool = false, color: NSColor = .black) {
+            let font = bold ? NSFont.boldSystemFont(ofSize: lineH * 0.75)
+                            : NSFont.systemFont(ofSize: lineH * 0.75)
+            NSAttributedString(string: s, attributes: [.font: font, .foregroundColor: color])
+                .draw(at: CGPoint(x: x, y: pageH - fromTop - lineH + lineH * 0.25))
+        }
+        func line(_ s: String, lineH: CGFloat, bold: Bool = false, indent: CGFloat = 0, color: NSColor = .black) {
+            ensureRoom(lineH); draw(s, x: margin + indent, lineH: lineH, bold: bold, color: color); fromTop += lineH
+        }
+
+        beginPage()
+        line("Weekly Report", lineH: 26, bold: true)
+        line("Anchor week: \(formatRange(rollup.thisWeekRange)) · exported \(isoNow())",
+             lineH: 12, color: .secondaryLabelColor)
+        fromTop += 8
+
+        func renderWeek(title: String,
+                        subtitle: String,
+                        range: (start: Date, end: Date),
+                        items: [ReportService.WeeklyRollup.Item]) {
+            line("\(title) — \(formatRange(range))  ·  \(items.count) item\(items.count == 1 ? "" : "s")",
+                 lineH: 16, bold: true)
+            line(subtitle, lineH: 11, color: .secondaryLabelColor)
+            fromTop += 4
+            if items.isEmpty {
+                line("(nothing scheduled)", lineH: 11, indent: 8, color: .tertiaryLabelColor)
+                fromTop += 6
+                return
+            }
+            // Header row
+            ensureRoom(13)
+            let cols: [CGFloat] = [90, 50, 290, 80]
+            let labels = ["Go-Live", "Persona", "Title", "Status"]
+            for (i, l) in labels.enumerated() {
+                draw(l, x: margin + cols[..<i].reduce(0, +), lineH: 11, bold: true)
+            }
+            fromTop += 13
+            for item in items {
+                ensureRoom(12)
+                let titleStr = item.clip.title.isEmpty ? "Untitled" : item.clip.title
+                let truncated = titleStr.count > 50 ? String(titleStr.prefix(48)) + "…" : titleStr
+                let cells = [
+                    item.clip.goLiveDate ?? "—",
+                    item.clip.personaCode,
+                    truncated,
+                    item.clip.statusEnum.label,
+                ]
+                for (i, c) in cells.enumerated() {
+                    draw(c, x: margin + cols[..<i].reduce(0, +), lineH: 11)
+                }
+                fromTop += 12
+            }
+            fromTop += 8
+        }
+
+        renderWeek(title: "Last week",
+                   subtitle: "Items that went live last week",
+                   range: rollup.lastWeekRange,
+                   items: rollup.lastWeek)
+        renderWeek(title: "This week",
+                   subtitle: "Items going live this week",
+                   range: rollup.thisWeekRange,
+                   items: rollup.thisWeek)
+        renderWeek(title: "Next week",
+                   subtitle: "Items going live the following week",
+                   range: rollup.nextWeekRange,
+                   items: rollup.nextWeek)
+
+        // Not in production block
+        line("Not in production  ·  \(rollup.notInProduction.count) item\(rollup.notInProduction.count == 1 ? "" : "s")",
+             lineH: 16, bold: true)
+        line("Active clips that haven't reached the Production stage yet.",
+             lineH: 11, color: .secondaryLabelColor)
+        fromTop += 4
+        if rollup.notInProduction.isEmpty {
+            line("(everything is in production)", lineH: 11, indent: 8, color: .tertiaryLabelColor)
+        } else {
+            ensureRoom(13)
+            let cols: [CGFloat] = [90, 50, 290, 80]
+            let labels = ["Status", "Persona", "Title", "Go-Live"]
+            for (i, l) in labels.enumerated() {
+                draw(l, x: margin + cols[..<i].reduce(0, +), lineH: 11, bold: true)
+            }
+            fromTop += 13
+            for item in rollup.notInProduction {
+                ensureRoom(12)
+                let titleStr = item.clip.title.isEmpty ? "Untitled" : item.clip.title
+                let truncated = titleStr.count > 50 ? String(titleStr.prefix(48)) + "…" : titleStr
+                let cells = [
+                    item.clip.statusEnum.label,
+                    item.clip.personaCode,
+                    truncated,
+                    item.clip.goLiveDate ?? "—",
+                ]
+                for (i, c) in cells.enumerated() {
+                    draw(c, x: margin + cols[..<i].reduce(0, +), lineH: 11)
+                }
+                fromTop += 12
+            }
+        }
+
+        ctx.endPDFPage()
+        ctx.closePDF()
+        return pdf as Data
+    }
+
+    private static func formatRange(_ range: (start: Date, end: Date)) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d, yyyy"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        let lastDay = Calendar.current.date(byAdding: .day, value: -1, to: range.end) ?? range.end
+        return "\(f.string(from: range.start)) – \(f.string(from: lastDay))"
+    }
+
+    // MARK: - Posting status report
+
+    static func exportPostingStatusCSV(rows: [ReportService.PostingStatusRow]) -> String {
+        var lines = ["Clip ID,Persona,Title,Site Code,Site Name,Posted,Posted Date"]
+        for r in rows {
+            lines.append([
+                r.clipId, r.personaCode, r.clipTitle, r.siteCode, r.siteName,
+                r.posted ? "yes" : "no", r.postedDate ?? ""
+            ].map { $0.csvEscaped }.joined(separator: ","))
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    static func exportPostingStatusMarkdown(rows: [ReportService.PostingStatusRow]) -> String {
+        var md = "# Posting Status Report\n\n"
+        md += "_\(rows.count) (clip × site) pair\(rows.count == 1 ? "" : "s") · exported \(isoNow())_\n\n"
+        md += "| Clip ID | Persona | Title | Site | Posted | Date |\n"
+        md += "|---|---|---|---|---|---|\n"
+        for r in rows {
+            let title = r.clipTitle.replacingOccurrences(of: "|", with: "\\|")
+            md += "| `\(r.clipId)` | \(r.personaCode) | \(title) | \(r.siteName) (\(r.siteCode)) | \(r.posted ? "✓" : "—") | \(r.postedDate ?? "—") |\n"
+        }
+        return md
+    }
+
+    static func exportPostingStatusPDF(rows: [ReportService.PostingStatusRow]) -> Data {
+        renderPDF(title: "Posting Status Report",
+                  subtitle: "\(rows.count) (clip × site) pair\(rows.count == 1 ? "" : "s")",
+                  columns: [(label: "Clip ID", width: 110), (label: "Persona", width: 50),
+                            (label: "Title", width: 220), (label: "Site", width: 90),
+                            (label: "Posted", width: 50)],
+                  rows: rows.map { r -> [String] in
+                      [r.clipId, r.personaCode,
+                       r.clipTitle.count > 38 ? String(r.clipTitle.prefix(36)) + "…" : r.clipTitle,
+                       r.siteCode, r.posted ? r.postedDate ?? "yes" : "—"]
+                  })
+    }
+
+    // MARK: - Category usage report
+
+    static func exportCategoryUsageCSV(rows: [ReportService.CategoryUsageRow]) -> String {
+        var lines = ["Category,Clip Count"]
+        for r in rows {
+            lines.append([r.name, "\(r.clipCount)"].map { $0.csvEscaped }.joined(separator: ","))
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    static func exportCategoryUsageMarkdown(rows: [ReportService.CategoryUsageRow]) -> String {
+        var md = "# Category Usage Report\n\n"
+        md += "_\(rows.count) categor\(rows.count == 1 ? "y" : "ies") · exported \(isoNow())_\n\n"
+        md += "| Category | Clip count |\n|---|---|\n"
+        for r in rows {
+            md += "| \(r.name.replacingOccurrences(of: "|", with: "\\|")) | \(r.clipCount) |\n"
+        }
+        return md
+    }
+
+    static func exportCategoryUsagePDF(rows: [ReportService.CategoryUsageRow]) -> Data {
+        renderPDF(title: "Category Usage Report",
+                  subtitle: "\(rows.count) categor\(rows.count == 1 ? "y" : "ies")",
+                  columns: [(label: "Category", width: 320), (label: "Clip count", width: 90)],
+                  rows: rows.map { ["\($0.name)", "\($0.clipCount)"] })
+    }
+
+    // MARK: - Clip audit report
+
+    static func exportAuditCSV(results: [ClipAuditService.Result]) -> String {
+        var lines = ["Clip ID,Persona,Title,Status,Issue"]
+        for r in results {
+            if r.issues.isEmpty {
+                lines.append([r.clipId, r.personaCode, r.title, "clean", ""]
+                    .map { $0.csvEscaped }.joined(separator: ","))
+            } else {
+                for issue in r.issues {
+                    lines.append([r.clipId, r.personaCode, r.title, "failing", issue.label]
+                        .map { $0.csvEscaped }.joined(separator: ","))
+                }
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    static func exportAuditMarkdown(results: [ClipAuditService.Result]) -> String {
+        let failing = results.filter { !$0.ok }
+        let clean   = results.filter(\.ok)
+        var md = "# Clip Audit Report\n\n"
+        md += "_\(failing.count) failing · \(clean.count) clean · exported \(isoNow())_\n\n"
+        md += "## Failing clips\n\n"
+        if failing.isEmpty {
+            md += "_None — every clip passed the audit._\n\n"
+        } else {
+            for r in failing {
+                let t = r.title.isEmpty ? "Untitled" : r.title
+                md += "### \(t.replacingOccurrences(of: "|", with: "\\|"))  \n"
+                md += "`\(r.clipId)` · \(r.personaCode)\n\n"
+                for issue in r.issues {
+                    md += "- \(issue.label)\n"
+                }
+                md += "\n"
+            }
+        }
+        return md
+    }
+
+    static func exportAuditPDF(results: [ClipAuditService.Result]) -> Data {
+        let failing = results.filter { !$0.ok }
+        let clean   = results.filter(\.ok)
+
+        let pageW: CGFloat = 612
+        let pageH: CGFloat = 792
+        let margin: CGFloat = 50
+        let pdf = NSMutableData()
+        var mediaBox = CGRect(origin: .zero, size: CGSize(width: pageW, height: pageH))
+        guard let consumer = CGDataConsumer(data: pdf as CFMutableData),
+              let ctx = CGContext(consumer: consumer, mediaBox: &mediaBox, nil)
+        else { return Data() }
+
+        var fromTop: CGFloat = margin
+        func beginPage() {
+            ctx.beginPDFPage(nil)
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
+            fromTop = margin
+        }
+        func ensureRoom(_ h: CGFloat) {
+            if fromTop + h > pageH - margin { ctx.endPDFPage(); beginPage() }
+        }
+        func draw(_ s: String, x: CGFloat, lineH: CGFloat, bold: Bool = false, color: NSColor = .black) {
+            let font = bold ? NSFont.boldSystemFont(ofSize: lineH * 0.75)
+                            : NSFont.systemFont(ofSize: lineH * 0.75)
+            NSAttributedString(string: s, attributes: [.font: font, .foregroundColor: color])
+                .draw(at: CGPoint(x: x, y: pageH - fromTop - lineH + lineH * 0.25))
+        }
+        func line(_ s: String, lineH: CGFloat, bold: Bool = false, indent: CGFloat = 0, color: NSColor = .black) {
+            ensureRoom(lineH); draw(s, x: margin + indent, lineH: lineH, bold: bold, color: color); fromTop += lineH
+        }
+
+        beginPage()
+        line("Clip Audit Report", lineH: 26, bold: true)
+        line("\(failing.count) failing · \(clean.count) clean · exported \(isoNow())",
+             lineH: 12, color: .secondaryLabelColor)
+        fromTop += 8
+
+        if failing.isEmpty {
+            line("Every clip passed the audit. 🎉", lineH: 14, color: .secondaryLabelColor)
+        } else {
+            for r in failing {
+                ensureRoom(60)
+                let t = r.title.isEmpty ? "Untitled" : r.title
+                line(t, lineH: 16, bold: true)
+                line("\(r.clipId) · \(r.personaCode)", lineH: 11, color: .secondaryLabelColor)
+                for issue in r.issues {
+                    line("• \(issue.label)", lineH: 11, indent: 14)
+                }
+                fromTop += 6
+            }
+        }
+
+        ctx.endPDFPage()
+        ctx.closePDF()
+        return pdf as Data
+    }
+
+    // MARK: - Generic table-style PDF helper
+
+    private static func renderPDF(title: String,
+                                  subtitle: String,
+                                  columns: [(label: String, width: CGFloat)],
+                                  rows: [[String]]) -> Data {
+        let pageW: CGFloat = 612
+        let pageH: CGFloat = 792
+        let margin: CGFloat = 50
+        let pdf = NSMutableData()
+        var mediaBox = CGRect(origin: .zero, size: CGSize(width: pageW, height: pageH))
+        guard let consumer = CGDataConsumer(data: pdf as CFMutableData),
+              let ctx = CGContext(consumer: consumer, mediaBox: &mediaBox, nil)
+        else { return Data() }
+
+        var fromTop: CGFloat = margin
+        func beginPage() {
+            ctx.beginPDFPage(nil)
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
+            fromTop = margin
+        }
+        func ensureRoom(_ h: CGFloat) {
+            if fromTop + h > pageH - margin { ctx.endPDFPage(); beginPage() }
+        }
+        func draw(_ s: String, x: CGFloat, lineH: CGFloat, bold: Bool = false, color: NSColor = .black) {
+            let font = bold ? NSFont.boldSystemFont(ofSize: lineH * 0.75)
+                            : NSFont.systemFont(ofSize: lineH * 0.75)
+            NSAttributedString(string: s, attributes: [.font: font, .foregroundColor: color])
+                .draw(at: CGPoint(x: x, y: pageH - fromTop - lineH + lineH * 0.25))
+        }
+
+        beginPage()
+        ensureRoom(40)
+        draw(title, x: margin, lineH: 26, bold: true); fromTop += 26
+        draw("\(subtitle) · exported \(isoNow())", x: margin, lineH: 12, color: .secondaryLabelColor); fromTop += 16
+
+        // Header
+        ensureRoom(14)
+        var x = margin
+        for c in columns {
+            draw(c.label, x: x, lineH: 12, bold: true)
+            x += c.width
+        }
+        fromTop += 14
+
+        // Rows
+        for r in rows {
+            ensureRoom(12)
+            x = margin
+            for (i, c) in columns.enumerated() {
+                let cell = i < r.count ? r[i] : ""
+                draw(cell, x: x, lineH: 11)
+                x += c.width
+            }
+            fromTop += 12
+        }
+
+        ctx.endPDFPage()
+        ctx.closePDF()
+        return pdf as Data
+    }
+
     // MARK: - Helpers
 
     private static func categoryNames(forClip id: String, appState: AppState) -> [String] {
