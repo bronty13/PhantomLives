@@ -12,7 +12,11 @@ struct EditingQueueView: View {
     @EnvironmentObject private var appState: AppState
 
     @State private var statusFilter: Set<ClipStatus> = [.new, .editing, .toPost]
+    @State private var personaFilter: String = ""        // empty = all personas
     @State private var selection: Clip.ID?
+    @State private var sortOrder: [KeyPathComparator<Clip>] = [
+        KeyPathComparator(\Clip.contentDate, order: .forward)
+    ]
 
     var body: some View {
         HSplitView {
@@ -45,6 +49,18 @@ struct EditingQueueView: View {
             ForEach([ClipStatus.new, .editing, .toPost, .posting], id: \.self) { status in
                 statusToggle(status)
             }
+
+            Divider().frame(height: 18)
+
+            Picker("Persona", selection: $personaFilter) {
+                Text("All personas").tag("")
+                ForEach(appState.personas) { p in
+                    Text(p.code).tag(p.code)
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(width: 160)
+
             Spacer()
             Text("\(filteredClips.count) clips")
                 .font(.caption).foregroundStyle(.secondary)
@@ -80,22 +96,25 @@ struct EditingQueueView: View {
     // MARK: - Queue table
 
     private var filteredClips: [Clip] {
-        appState.clips
+        var result = appState.clips
             .filter { !$0.archived }
             .filter { statusFilter.contains($0.statusEnum) }
-            .sorted { lhs, rhs in
-                if lhs.statusEnum.sortOrder != rhs.statusEnum.sortOrder {
-                    return lhs.statusEnum.sortOrder < rhs.statusEnum.sortOrder
-                }
-                return (lhs.contentDate ?? lhs.createdAt) < (rhs.contentDate ?? rhs.createdAt)
+
+        if !personaFilter.isEmpty {
+            result = result.filter {
+                $0.personaCode.caseInsensitiveCompare(personaFilter) == .orderedSame
             }
+        }
+
+        return result.sorted(using: sortOrder)
     }
 
     private var queueTable: some View {
-        // Title is column 1 with the same big-font / wide-min treatment as
-        // the Clips list — the editing queue should read at a glance.
-        Table(filteredClips, selection: $selection) {
-            TableColumn("Title") { clip in
+        // Every column is sortable — `value:` keypaths drive the sort order.
+        // Computed-only columns (Status, Editing progress) sort by a derived
+        // string we attach explicitly via `value: \ClipExt.x` style helpers.
+        Table(filteredClips, selection: $selection, sortOrder: $sortOrder) {
+            TableColumn("Title", value: \Clip.title) { clip in
                 Text(clip.title.isEmpty ? "—" : clip.title)
                     .font(.title3.weight(.semibold))
                     .lineLimit(1)
@@ -105,36 +124,43 @@ struct EditingQueueView: View {
             }
             .width(min: 240, ideal: 460)
 
-            TableColumn("Persona") { clip in
+            TableColumn("Persona", value: \Clip.personaCode) { clip in
                 PersonaPill(code: clip.personaCode)
             }
             .width(min: 86, ideal: 96)
 
-            TableColumn("Status") { clip in
+            TableColumn("Status", value: \Clip.status) { clip in
                 statusCell(clip.statusEnum)
             }
             .width(min: 96, ideal: 104)
 
-            TableColumn("Editing") { clip in
+            TableColumn("Editing", value: \Clip.editingProgressKey) { clip in
                 editingProgressCell(clip)
             }
             .width(min: 96, ideal: 104)
 
-            TableColumn("Recorded") { clip in
+            TableColumn("Recorded", value: \Clip.contentDate, comparator: OptionalStringComparator()) { clip in
                 Text(clip.contentDate ?? "—")
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
             }
             .width(min: 92, ideal: 100)
 
-            TableColumn("Length") { clip in
+            TableColumn("Go-Live", value: \Clip.goLiveDate, comparator: OptionalStringComparator()) { clip in
+                Text(clip.goLiveDate ?? "—")
+                    .font(.caption.monospaced())
+                    .foregroundStyle((clip.goLiveDate ?? "").isEmpty ? .tertiary : .secondary)
+            }
+            .width(min: 92, ideal: 100)
+
+            TableColumn("Length", value: \Clip.lengthSecondsKey) { clip in
                 Text(DurationFormatter.format(clip.lengthSeconds))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(clip.lengthSeconds == nil ? .tertiary : .primary)
             }
             .width(min: 56, ideal: 68)
 
-            TableColumn("ID") { clip in
+            TableColumn("ID", value: \Clip.id) { clip in
                 Text(clip.id).font(.caption.monospaced())
             }
             .width(min: 130, ideal: 140)
@@ -184,5 +210,55 @@ struct EditingQueueView: View {
         case .production: return .green
         case .archived:   return .secondary
         }
+    }
+}
+
+// MARK: - Sort helpers
+
+/// Comparator for `String?` columns that sorts nils at the end regardless of
+/// direction. Empty strings are treated as nil for sort purposes.
+private struct OptionalStringComparator: SortComparator {
+    var order: SortOrder = .forward
+
+    func compare(_ lhs: String?, _ rhs: String?) -> ComparisonResult {
+        let l = (lhs ?? "").isEmpty ? nil : lhs
+        let r = (rhs ?? "").isEmpty ? nil : rhs
+        switch (l, r) {
+        case (nil, nil): return .orderedSame
+        case (nil, _):   return .orderedDescending   // nils to the end
+        case (_, nil):   return .orderedAscending
+        case let (a?, b?):
+            let raw = a.compare(b)
+            return order == .forward ? raw : raw.flipped
+        default:         return .orderedSame
+        }
+    }
+}
+
+private extension ComparisonResult {
+    var flipped: ComparisonResult {
+        switch self {
+        case .orderedAscending:  return .orderedDescending
+        case .orderedDescending: return .orderedAscending
+        case .orderedSame:       return .orderedSame
+        }
+    }
+}
+
+// MARK: - Sort key helpers on Clip
+
+private extension Clip {
+    /// Sortable key for the editing-progress column: "1/3", "2/3", "3/3" etc.
+    /// Lex sort over zero-padded counts gets the right order.
+    var editingProgressKey: String {
+        let fcp  = !(fcpProjectFolder ?? "").isEmpty
+        let prod = !(productionFolder ?? "").isEmpty
+        let dur  = lengthSeconds != nil
+        return String([fcp, prod, dur].filter { $0 }.count)
+    }
+
+    /// Sortable key for the length column. nils sort last as "9999999".
+    var lengthSecondsKey: Int {
+        lengthSeconds ?? Int.max
     }
 }

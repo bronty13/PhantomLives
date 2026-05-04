@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-05-04 — Audit, delete, simpler UI, date pickers
+
+- **Clip audit** — new `ClipAuditService` with seven checks: clip ID exists, persona is set + resolves, title exists and isn't a placeholder, refined description set, ≥ 1 category, content date set, go-live date set.
+  - **Per-clip banner** at the top of `ClipEditView`. Orange triangle + each open issue listed when failing; green checkmark "all checks passed" when clean. Recomputes live from the in-edit `draft` + selected categories — no save / refresh cycle needed.
+  - **Bulk audit report** in `Reports → Clip Audit`. Lists every failing clip as a clickable card; click navigates to the clip editor with focus pre-applied. "Hide clean" toggle, running tally, Re-run button.
+- **Delete records** — three discoverable paths:
+  - Toolbar **trash button** in the Clips list (⌘⌫ keyboard shortcut, disabled when nothing's selected).
+  - Right-click context menu (was already there).
+  - **Delete clip…** button in the clip editor footer.
+  - All three open the same confirmation alert quoting the clip's title before deleting. `ON DELETE CASCADE` cleans up postings, category links, and history rows.
+- **Date pickers** for `contentDate` and `goLiveDate`. macOS native compact `DatePicker` when set; "Set date" button + "Not set" label when nil; `×` icon to clear back to nil. Also wired into the New Clip sheet (toggle + picker, default off = "Use today"). Storage stays as ISO `YYYY-MM-DD` strings.
+- **Inline category creation** in `CategoryChipPicker`. Type a new category name and hit Return — the row is inserted via `DatabaseService.ensureCategory(named:)` and immediately selected on the clip. Existing-name match is case-insensitive (won't create duplicates).
+- **Editing Queue: persona filter + sortable columns**. Filter bar gets a Persona dropdown next to the status chips. Every column is now a sortable `KeyPathComparator` — `Recorded` and `Go-Live` use a custom `OptionalStringComparator` that sinks nils to the end regardless of direction. New `Go-Live` column added.
+- **Simpler clip editor**. Removed Identity → "Clip ID" duplicate label (it's in the sticky header), External Clip ID, Tracking Tag; removed Categorization → Keywords / Performers; removed the Files section entirely. Eight fields gone. Underlying columns preserved — imports still populate them, exports still emit them, search still indexes them.
+- **Strict refine improvements**:
+  - **Strip wrapping quotes** from Ollama output (straight + smart `"…"` and `'…'`). Up to 3 nested wraps peeled.
+  - **Paragraph format normalisation**: trims, collapses 2+ spaces to one, collapses 3+ newlines to a single paragraph break, **joins single in-paragraph newlines with spaces** so sentence-per-line input becomes flowing prose. Idempotent.
+  - Both run as a single `OllamaService.cleanRefineOutput(...)` post-processing pass after streaming completes.
+
 ## 2026-05-03 — Polish pass
 
 - **Mobile-friendly HTML export.** Cards now pre-render as static HTML (no JSON.parse / no `atob`) so the file works in iOS Files preview, iMessage Quick Look, and any environment that limits JavaScript. JS layer is a progressive enhancement that adds live filter on top.

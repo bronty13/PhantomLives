@@ -11,6 +11,7 @@ struct ClipListView: View {
     @State private var selection: Clip.ID?
     @State private var showingNewSheet: Bool = false
     @State private var showingExportSheet: Bool = false
+    @State private var showingDeleteConfirm: Bool = false
     @State private var postedSitesByClip: [String: Set<Int64>] = [:]
     @State private var sortOrder: [KeyPathComparator<Clip>] = [
         KeyPathComparator(\Clip.createdAt, order: .reverse)
@@ -44,11 +45,34 @@ struct ClipListView: View {
                 }
                 .disabled(selection == nil)
 
+                Button(role: .destructive) {
+                    showingDeleteConfirm = true
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .disabled(selection == nil)
+                .keyboardShortcut(.delete, modifiers: .command)
+                .help("Delete the selected clip (⌘⌫)")
+
                 Button {
                     appState.reloadClips()
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
+            }
+        }
+        .alert("Delete this clip?", isPresented: $showingDeleteConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                if let id = selection { deleteClip(id: id) }
+            }
+        } message: {
+            if let id = selection,
+               let clip = appState.clips.first(where: { $0.id == id }) {
+                let titleText = clip.title.isEmpty ? clip.id : "\"\(clip.title)\""
+                Text("\(titleText) and all its postings, category links, and history will be permanently deleted. This cannot be undone — restore from a backup if you change your mind.")
+            } else {
+                Text("This clip and all its associated data will be permanently deleted. This cannot be undone.")
             }
         }
         .sheet(isPresented: $showingExportSheet) {

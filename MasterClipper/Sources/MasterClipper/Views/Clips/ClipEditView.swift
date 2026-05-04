@@ -11,6 +11,7 @@ struct ClipEditView: View {
     @State private var lastSavedAt: Date?
     @State private var refining: Bool = false
     @State private var refineError: String?
+    @State private var showingDeleteConfirm: Bool = false
 
     init(clip: Clip) {
         self.clip = clip
@@ -34,15 +35,9 @@ struct ClipEditView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    auditBanner
                     Form {
                     Section("Identity") {
-                        LabeledContent("Clip ID") {
-                            Text(draft.id).font(.body.monospaced()).textSelection(.enabled)
-                        }
-                        TextField("External Clip ID (legacy)", text: bindingOptional(\.externalClipId))
-                            .textFieldStyle(.roundedBorder)
-                        TextField("Tracking Tag", text: bindingOptional(\.trackingTag))
-                            .textFieldStyle(.roundedBorder)
                         Picker("Persona", selection: $draft.personaCode) {
                             ForEach(appState.personas) { p in
                                 Text("\(p.code) — \(p.displayName)").tag(p.code)
@@ -90,10 +85,6 @@ struct ClipEditView: View {
 
                     Section("Categorization") {
                         CategoryChipPicker(selectedIds: $selectedCategoryIds)
-                        TextField("Keywords (comma-separated)", text: $draft.keywords)
-                            .textFieldStyle(.roundedBorder)
-                        TextField("Performers", text: $draft.performers)
-                            .textFieldStyle(.roundedBorder)
                     }
 
                     Section("Workflow status") {
@@ -132,30 +123,14 @@ struct ClipEditView: View {
                     }
 
                     Section("Schedule / pricing") {
+                        optionalDateRow(label: "Content date", keyPath: \.contentDate)
+                        optionalDateRow(label: "Go-Live date", keyPath: \.goLiveDate)
                         HStack {
-                            Text("Content date").frame(width: 90, alignment: .leading)
-                            TextField("YYYY-MM-DD", text: bindingOptional(\.contentDate))
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 160)
-                        }
-                        HStack {
-                            Text("Go-Live date").frame(width: 90, alignment: .leading)
-                            TextField("YYYY-MM-DD", text: bindingOptional(\.goLiveDate))
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 160)
-                        }
-                        HStack {
-                            Text("Price").frame(width: 90, alignment: .leading)
+                            Text("Price").frame(width: 100, alignment: .leading)
                             TextField("USD", text: priceBinding)
                                 .textFieldStyle(.roundedBorder)
                                 .frame(width: 100)
                         }
-                    }
-
-                    Section("Files") {
-                        TextField("Clip filename",      text: bindingOptional(\.clipFilename)).textFieldStyle(.roundedBorder)
-                        TextField("Thumbnail filename", text: bindingOptional(\.thumbnailFilename)).textFieldStyle(.roundedBorder)
-                        TextField("Preview filename",   text: bindingOptional(\.previewFilename)).textFieldStyle(.roundedBorder)
                     }
 
                     Section("Postings") {
@@ -199,6 +174,19 @@ struct ClipEditView: View {
         // Catch-all: any time this view leaves the hierarchy — different clip,
         // different sidebar section, window close — flush pending edits.
         .onDisappear { autoSaveIfChanged() }
+        .alert("Delete this clip?", isPresented: $showingDeleteConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                do {
+                    try appState.deleteClip(id: clip.id)
+                } catch {
+                    saveError = error.localizedDescription
+                }
+            }
+        } message: {
+            let titleText = clip.title.isEmpty ? clip.id : "\"\(clip.title)\""
+            Text("\(titleText) and all its postings, category links, and history will be permanently deleted. This cannot be undone — restore from a backup if you change your mind.")
+        }
     }
 
     // MARK: - Sticky header
@@ -265,6 +253,64 @@ struct ClipEditView: View {
     }
 
     // MARK: - Status badge / hint
+
+    // MARK: - Audit banner
+
+    /// Live-derived audit result for the in-progress draft + selected
+    /// categories. Recomputes every render — cheap, no caching needed.
+    private var currentAuditResult: ClipAuditService.Result {
+        ClipAuditService.audit(
+            draft,
+            categoryIds: Array(selectedCategoryIds),
+            appState: appState
+        )
+    }
+
+    @ViewBuilder
+    private var auditBanner: some View {
+        let result = currentAuditResult
+        if result.issues.isEmpty {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.seal.fill")
+                    .foregroundStyle(.green)
+                Text("Clip audit — all checks passed")
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.green)
+                Spacer()
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(.green.opacity(0.4), lineWidth: 1))
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .font(.title3)
+                    Text("Clip audit — \(result.issues.count) issue\(result.issues.count == 1 ? "" : "s") to fix")
+                        .font(.headline)
+                    Spacer()
+                }
+                ForEach(result.issues) { issue in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: issue.systemImage)
+                            .foregroundStyle(.orange)
+                            .frame(width: 18, alignment: .center)
+                        Text(issue.label)
+                            .font(.callout)
+                    }
+                }
+                Text("Fix the items above and the banner will clear automatically.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .padding(.top, 2)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(.orange.opacity(0.55), lineWidth: 1))
+        }
+    }
 
     private var statusBadge: some View {
         let s = draft.statusEnum
@@ -344,6 +390,12 @@ struct ClipEditView: View {
                     .font(.caption)
             }
             Spacer()
+            Button(role: .destructive) {
+                showingDeleteConfirm = true
+            } label: {
+                Label("Delete clip…", systemImage: "trash")
+            }
+            .help("Permanently delete this clip and everything linked to it")
             Button("Discard changes") {
                 draft = clip
                 loadCategories()
@@ -387,6 +439,60 @@ struct ClipEditView: View {
             get: { draft[keyPath: keyPath] ?? "" },
             set: { draft[keyPath: keyPath] = $0.isEmpty ? nil : $0 }
         )
+    }
+
+    /// Optional date row: shows a `DatePicker` when the field is set, otherwise
+    /// a "Set date" button. The Clear button next to the picker re-nils the
+    /// field. Storage stays as ISO `YYYY-MM-DD` strings — no schema change.
+    @ViewBuilder
+    private func optionalDateRow(label: String, keyPath: WritableKeyPath<Clip, String?>) -> some View {
+        HStack(spacing: 10) {
+            Text(label).frame(width: 100, alignment: .leading)
+            if let parsed = Self.parseISODate(draft[keyPath: keyPath]) {
+                DatePicker(label,
+                    selection: Binding(
+                        get: { parsed },
+                        set: { newDate in
+                            draft[keyPath: keyPath] = Self.formatISODate(newDate)
+                        }
+                    ),
+                    displayedComponents: [.date]
+                )
+                .labelsHidden()
+                Button {
+                    draft[keyPath: keyPath] = nil
+                } label: {
+                    Image(systemName: "xmark.circle")
+                }
+                .buttonStyle(.borderless)
+                .help("Clear \(label)")
+            } else {
+                Text("Not set")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Button("Set date") {
+                    draft[keyPath: keyPath] = Self.formatISODate(Date())
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+            Spacer()
+        }
+    }
+
+    private static func parseISODate(_ s: String?) -> Date? {
+        guard let s, !s.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        return fmt.date(from: s.trimmingCharacters(in: .whitespaces))
+    }
+
+    private static func formatISODate(_ d: Date) -> String {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        return fmt.string(from: d)
     }
 
     private func loadCategories() {
@@ -449,6 +555,12 @@ struct ClipEditView: View {
                         draft.descriptionRefined += token
                     }
                 )
+                // Post-process: peel any matched pair of wrapping quotes the
+                // model produced AND normalise whitespace into clean paragraph
+                // format (single-space runs, no trailing whitespace, single
+                // blank line between paragraphs). The prompt asks for this but
+                // small models drift; this pass is the deterministic safety net.
+                draft.descriptionRefined = OllamaService.cleanRefineOutput(draft.descriptionRefined)
                 refining = false
                 if wasEmpty {
                     let stamp = "[Refined \(DatabaseService.isoDate(Date()))]"

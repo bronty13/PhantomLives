@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ReportsRootView: View {
     enum Kind: String, CaseIterable, Hashable {
-        case fullClip, postingStatus, categoryUsage, calendar
+        case fullClip, postingStatus, categoryUsage, calendar, audit
 
         var label: String {
             switch self {
@@ -10,6 +10,7 @@ struct ReportsRootView: View {
             case .postingStatus:  return "Posting Status"
             case .categoryUsage:  return "Category Usage"
             case .calendar:       return "Calendar Rollup"
+            case .audit:          return "Clip Audit"
             }
         }
 
@@ -19,6 +20,7 @@ struct ReportsRootView: View {
             case .postingStatus:  return "paperplane"
             case .categoryUsage:  return "tag.fill"
             case .calendar:       return "calendar.badge.clock"
+            case .audit:          return "checkmark.shield"
             }
         }
     }
@@ -40,6 +42,7 @@ struct ReportsRootView: View {
                 case .postingStatus:  PostingStatusReportView()
                 case .categoryUsage:  CategoryUsageReportView()
                 case .calendar:       CalendarReportView()
+                case .audit:          ClipAuditReportView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

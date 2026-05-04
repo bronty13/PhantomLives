@@ -83,6 +83,8 @@ Posting batches expand each (site, persona scope) into separate (site, persona) 
 
 Configurable in **Settings → Categories**. Used as multi-select chips on each clip. New categories also auto-create on import (any unrecognised tag in the source data becomes a category).
 
+You can also create a new category **directly from any clip** without leaving the editor: under the chip picker, type a new name in the "Create new category — type and press Return" field. Case-insensitive duplicates are detected and reused. New categories appear in **Settings → Categories** automatically.
+
 ## Clip ID format
 
 Every clip has a primary key `YYYY-MM-DD-#####`, e.g. `2026-05-03-00042`. The date prefix is the clip's **Content Date** if known, else today. The 5-digit suffix is per-day (atomic UPSERT against `id_sequences`).
@@ -110,6 +112,10 @@ If `ollama` is installed (`brew install ollama`), the app auto-starts `ollama se
 
 The default prompt is a **strict word-for-word proofreader** — it will only fix spelling, punctuation, and grammar; it will not rephrase, swap synonyms, reorder sentences, or improve style. Temperature is 0 (greedy decoding) so the output is reproducible. Five worked examples in the prompt anchor the LLM to the desired behaviour.
 
+After streaming completes, the app post-processes the result to:
+- **Strip wrapping quotes** (`"…"` / `'…'`, smart and straight)
+- **Normalise paragraph format**: trim each line, collapse multi-space runs, **join single in-paragraph newlines with spaces** (sentence-per-line input becomes flowing prose), and collapse 3+ newlines to a single paragraph break
+
 Per-clip workflow:
 
 1. Paste raw transcription into **Description (raw transcription)** on the clip's edit form.
@@ -120,6 +126,32 @@ Per-clip workflow:
 If the configured model isn't installed, **Settings → Ollama** shows a one-click "Use \<first installed\>" banner so you don't have to type the model name.
 
 **Reset to default** (in the prompt editor header) drops back to the strict proofread prompt anytime.
+
+## Clip audit
+
+**Reports → Clip Audit** runs a seven-point checklist against every non-archived clip:
+
+1. Clip ID exists
+2. Persona is set (and resolves to a known persona record)
+3. Title exists and isn't a placeholder ("Untitled" / "TBD" / under 3 chars)
+4. Refined description is non-empty
+5. At least one category selected
+6. Content date is set
+7. Go-Live date is set
+
+Failing clips show as orange-bordered cards with the open issues listed. Click any card to jump to its editor; clean clips drop off the list. Re-run from the header any time to refresh.
+
+The clip editor also shows a **live audit banner** at the top of the form. Orange when issues are open, green when clean. Recomputes as you edit — fix the missing field and the banner clears immediately.
+
+## Deleting clips
+
+Three ways:
+
+- **Toolbar trash button** in the Clips list (⌘⌫). Disabled when no clip is selected.
+- **Right-click → Delete** on any row in the table.
+- **Delete clip…** button in the clip editor footer.
+
+All three open a confirmation alert quoting the clip's title. Postings, category links, and history rows cascade-delete with the clip. Run a backup first if you're not sure (or restore from the last auto-backup if you change your mind).
 
 ## Smart import
 

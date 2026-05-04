@@ -4,6 +4,10 @@ struct CategoryChipPicker: View {
     @EnvironmentObject private var appState: AppState
     @Binding var selectedIds: Set<Int64>
 
+    @State private var inlineNewName: String = ""
+    @FocusState private var inlineFocused: Bool
+    @State private var error: String?
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             FlowLayout(spacing: 6) {
@@ -23,7 +27,7 @@ struct CategoryChipPicker: View {
                             return !selectedIds.contains(cid)
                         }
                     if available.isEmpty {
-                        Text("No more categories — add some in Settings → Categories")
+                        Text("No more existing categories — type below to create one")
                     } else {
                         ForEach(available) { cat in
                             Button(cat.name) {
@@ -32,7 +36,7 @@ struct CategoryChipPicker: View {
                         }
                     }
                 } label: {
-                    Label("Add", systemImage: "plus.circle.fill")
+                    Label("Pick existing", systemImage: "plus.circle.fill")
                         .labelStyle(.titleAndIcon)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
@@ -41,6 +45,48 @@ struct CategoryChipPicker: View {
                 .menuStyle(.borderlessButton)
                 .fixedSize()
             }
+
+            // Inline "create new category" — type a name and hit Return.
+            HStack(spacing: 8) {
+                Image(systemName: "plus.circle")
+                    .foregroundStyle(.secondary)
+                TextField("Create new category — type and press Return", text: $inlineNewName)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($inlineFocused)
+                    .onSubmit { createInline() }
+                    .frame(maxWidth: 360)
+                if !inlineNewName.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Button("Add", action: createInline)
+                        .keyboardShortcut(.defaultAction)
+                }
+                if let err = error {
+                    Text(err).font(.caption).foregroundStyle(.red)
+                }
+            }
+        }
+    }
+
+    /// Create-or-attach: if a category with the typed name (case-insensitive)
+    /// already exists, select it; otherwise create a new one and select it.
+    /// Cleared and re-focused on success so the user can rapid-fire tags.
+    private func createInline() {
+        let raw = inlineNewName.trimmingCharacters(in: .whitespaces)
+        guard !raw.isEmpty else { return }
+        do {
+            // Reuse existing category if one matches by name (case-insensitive)
+            if let existing = appState.categories.first(where: { $0.name.caseInsensitiveCompare(raw) == .orderedSame }),
+               let id = existing.id {
+                selectedIds.insert(id)
+            } else {
+                let cat = try DatabaseService.shared.ensureCategory(named: raw)
+                if let id = cat.id { selectedIds.insert(id) }
+                appState.reloadCategories()
+            }
+            inlineNewName = ""
+            error = nil
+            inlineFocused = true
+        } catch {
+            self.error = error.localizedDescription
         }
     }
 

@@ -123,3 +123,96 @@ enum OllamaError: Error, LocalizedError {
         }
     }
 }
+
+extension OllamaService {
+    /// Final post-processing pass for refine output. Strips wrapping quotes
+    /// and normalises whitespace into clean paragraph format.
+    static func cleanRefineOutput(_ s: String) -> String {
+        normalizeParagraphFormat(stripWrappingQuotes(s))
+    }
+
+    /// Whitespace normalisation that preserves paragraph structure but kills
+    /// every form of incidental whitespace garbage. Idempotent.
+    ///
+    /// Rules:
+    ///   - Trim leading/trailing whitespace + newlines from the whole string.
+    ///   - Replace tabs with single spaces.
+    ///   - Trim whitespace from the start and end of every line.
+    ///   - Collapse runs of 2+ spaces to a single space.
+    ///   - Treat any run of 2+ newlines as a paragraph separator. Within a
+    ///     paragraph, single newlines (e.g. "Sentence one.\nSentence two.")
+    ///     are joined with a single space so each paragraph reads as flowing
+    ///     prose. Paragraph breaks render as exactly one blank line.
+    static func normalizeParagraphFormat(_ s: String) -> String {
+        // 1. Top-level normalisation: line endings + tabs + outer trim.
+        var t = s
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r",   with: "\n")
+            .replacingOccurrences(of: "\t",   with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // 2. Trim each line + collapse multi-space runs inside the line.
+        t = t.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line -> String in
+                var l = String(line).trimmingCharacters(in: .whitespaces)
+                while l.contains("  ") {
+                    l = l.replacingOccurrences(of: "  ", with: " ")
+                }
+                return l
+            }
+            .joined(separator: "\n")
+
+        // 3. Collapse 3+ consecutive newlines down to exactly 2 — one blank
+        //    line is the canonical paragraph separator.
+        while t.contains("\n\n\n") {
+            t = t.replacingOccurrences(of: "\n\n\n", with: "\n\n")
+        }
+
+        // 4. Split on paragraph breaks (\n\n). Within each paragraph any
+        //    remaining single newlines (sentence-per-line layout) are joined
+        //    with single spaces so the paragraph reads as one block of prose.
+        let paragraphs = t.components(separatedBy: "\n\n")
+            .map { paragraph -> String in
+                var p = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
+                p = p.replacingOccurrences(of: "\n", with: " ")
+                while p.contains("  ") {
+                    p = p.replacingOccurrences(of: "  ", with: " ")
+                }
+                return p
+            }
+            .filter { !$0.isEmpty }
+
+        return paragraphs.joined(separator: "\n\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Strip up to a few matched pairs of wrapping quotes from the start and
+    /// end of the string. The strict-proofread workflow doesn't want quotes
+    /// that the input was wrapped in to leak into the output. Inner quotes
+    /// (between non-edge characters) are untouched.
+    static func stripWrappingQuotes(_ s: String) -> String {
+        var t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Cap iterations so a malformed input can't loop us.
+        for _ in 0..<3 {
+            let pairs: [(String, String)] = [
+                ("\"", "\""),
+                ("\u{201C}", "\u{201D}"),  // smart double quotes
+                ("\u{2018}", "\u{2019}"),  // smart single quotes
+                ("'", "'"),
+            ]
+            var stripped = false
+            for (open, close) in pairs
+                where t.hasPrefix(open)
+                   && t.hasSuffix(close)
+                   && t.count > open.count + close.count
+            {
+                t = String(t.dropFirst(open.count).dropLast(close.count))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                stripped = true
+                break
+            }
+            if !stripped { break }
+        }
+        return t
+    }
+}

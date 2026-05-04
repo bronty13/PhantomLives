@@ -57,11 +57,13 @@ Sources/MasterClipper/
 │   ├── ExportService.swift               CSV / MD / XLSX / DOCX / PDF (full + per-clip)
 │   ├── HtmlExportService.swift           static-first, mobile-friendly card grid
 │   ├── OllamaService.swift               nonisolated static refine(...) — temperature 0
+│   │                                     + cleanRefineOutput / stripWrappingQuotes / normalizeParagraphFormat
 │   ├── OllamaSetup.swift                 binary detection + auto-start
 │   ├── CalendarService.swift             generateYear, eventsByDate, dateRange
 │   ├── IDGeneratorService.swift          atomic UPSERT against id_sequences
 │   ├── PostingService.swift              clipsNotPosted, markPosted
 │   ├── ReportService.swift               postingStatus, categoryUsage, calendarRollup
+│   ├── ClipAuditService.swift            7-point clip checklist (per-clip + bulk)
 │   ├── SearchService.swift               AND-token LIKE
 │   └── FuzzyMatch.swift                  Levenshtein + alias dict for column auto-mapping
 ├── Views/
@@ -90,7 +92,8 @@ Sources/MasterClipper/
 │   ├── Import/
 │   │   └── ImportWizardView.swift        5-step wizard (Source → Sheets → Mapping → Preview → Done)
 │   ├── Reports/
-│   │   └── ReportsRootView.swift         Full clip / Posting status / Category usage / Calendar rollup
+│   │   ├── ReportsRootView.swift         Full clip / Posting status / Category usage / Calendar rollup / Audit
+│   │   └── ClipAuditReportView.swift     bulk audit cards, click → clip editor
 │   ├── Settings/
 │   │   ├── SettingsView.swift            8-tab TabView
 │   │   ├── PersonasSettingsTab.swift     ColorPicker for persona colour
@@ -144,7 +147,7 @@ Migrations are append-only — never edit a previously-shipped one. To change th
 - **Auto-derived status.** Set anywhere `clip` is inserted or any `clip_postings` row changes. Never edited directly. The display badge in the editor reflects the recomputed value.
 - **Posting** is **track-only**. Sites have no `urlTemplate`; nothing in MasterClipper opens browsers or hits site APIs.
 - **Backup scope is metadata only.** The zip contains the SQLite DB + `settings.json`. Referenced video / thumbnail / preview files are not vaulted — only their filenames are stored.
-- **Description fields are bifurcated**: `description_raw` is the user's raw transcription; `description_refined` is the LLM-cleaned version. Refine writes to `refined` only; raw is never overwritten. The first time `refined` is set, `[Refined YYYY-MM-DD]` is appended to `notes`.
+- **Description fields are bifurcated**: `description_raw` is the user's raw transcription; `description_refined` is the LLM-cleaned version. Refine writes to `refined` only; raw is never overwritten. The first time `refined` is set, `[Refined YYYY-MM-DD]` is appended to `notes`. After streaming, `OllamaService.cleanRefineOutput` strips wrapping quotes and normalises paragraph whitespace (single in-paragraph newlines → space; 3+ newlines → 2; multi-space runs → single).
 - **Calendar generation** can produce up to one event per (date, persona) — the unique index `idx_cal_unique` enforces this. Two personas active on the same weekday yield two distinct events on that date (intentional). Clips with `goLiveDate` are also surfaced on the calendar at display time without writing to `calendar_events`.
 
 ## Auto-status formula

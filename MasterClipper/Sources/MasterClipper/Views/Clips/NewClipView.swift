@@ -8,7 +8,8 @@ struct NewClipView: View {
 
     @State private var personaCode: String = ""
     @State private var title: String = ""
-    @State private var contentDateText: String = ""
+    @State private var contentDate: Date = Date()
+    @State private var contentDateActive: Bool = false
     @State private var error: String?
 
     var body: some View {
@@ -26,12 +27,31 @@ struct NewClipView: View {
                 TextField("Title (optional)", text: $title)
                     .textFieldStyle(.roundedBorder)
 
-                TextField("Content date (YYYY-MM-DD, blank = today)", text: $contentDateText)
-                    .textFieldStyle(.roundedBorder)
+                // Optional content date — toggle controls whether the picker
+                // is used at all. When off, the new clip's id and contentDate
+                // both fall back to today.
+                HStack(spacing: 10) {
+                    Toggle(isOn: $contentDateActive) {
+                        Text("Content date")
+                    }
+                    .toggleStyle(.checkbox)
+                    if contentDateActive {
+                        DatePicker("",
+                            selection: $contentDate,
+                            displayedComponents: [.date]
+                        )
+                        .labelsHidden()
+                    } else {
+                        Text("Use today")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
             }
             .formStyle(.grouped)
 
-            Text("The clip ID is generated as YYYYMMDD#### keyed off the content date. Leave content date blank to use today.")
+            Text("The clip ID is generated as YYYY-MM-DD-##### keyed off the content date. Leave content date off to use today.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -60,19 +80,12 @@ struct NewClipView: View {
 
     private func create() {
         do {
-            var date: Date? = nil
-            let trimmed = contentDateText.trimmingCharacters(in: .whitespaces)
-            if !trimmed.isEmpty {
-                let fmt = DateFormatter()
-                fmt.dateFormat = "yyyy-MM-dd"
-                fmt.locale = Locale(identifier: "en_US_POSIX")
-                guard let parsed = fmt.date(from: trimmed) else {
-                    error = "Content date must be YYYY-MM-DD."
-                    return
-                }
-                date = parsed
-            }
-            let clip = try appState.createClip(personaCode: personaCode, title: title, contentDate: date)
+            let date: Date? = contentDateActive ? contentDate : nil
+            let clip = try appState.createClip(
+                personaCode: personaCode,
+                title: title,
+                contentDate: date
+            )
             onCreated(clip)
         } catch {
             self.error = error.localizedDescription
