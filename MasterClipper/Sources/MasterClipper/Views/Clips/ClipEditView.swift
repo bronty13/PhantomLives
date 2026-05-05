@@ -169,6 +169,10 @@ struct ClipEditView: View {
                         PostingGrid(clipId: draft.id, personaCode: draft.personaCode)
                     }
 
+                    Section("Posting status") {
+                        postingExclusionRows
+                    }
+
                     Section("Notes") {
                         TextEditor(text: $draft.notes)
                             .frame(minHeight: 80)
@@ -729,6 +733,36 @@ struct ClipEditView: View {
             return "Set the production folder + title first; transcription reads <production>/<Title>.mp4"
         }
         return "Run MLX whisper on the production MP4 and store the transcript here."
+    }
+
+    // MARK: - Posting exclusion
+
+    @ViewBuilder
+    private var postingExclusionRows: some View {
+        Toggle("Exclude from posting", isOn: $draft.postingExcluded)
+            .toggleStyle(.switch)
+            .help("Excluded clips are filtered out of every per-site posting batch and the Posting Queue.")
+        if draft.postingExcluded {
+            HStack {
+                Text("Reason").frame(width: 100, alignment: .leading)
+                Picker("Reason", selection: $draft.exclusionReason) {
+                    Text("(pick one)").tag("")
+                    ForEach(appState.exclusionReasons.filter { !$0.archived }) { r in
+                        Text(r.label).tag(r.label)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                Spacer()
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Notes (free text — useful for \"Other\" / \"Custom\" reasons)")
+                    .font(.caption).foregroundStyle(.secondary)
+                TextEditor(text: $draft.exclusionNotes)
+                    .frame(minHeight: 50, maxHeight: 80)
+                    .border(.separator)
+            }
+        }
     }
 
     // MARK: - Integrity (file hashes)

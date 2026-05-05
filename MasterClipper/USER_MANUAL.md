@@ -84,6 +84,8 @@ Posting batches expand each (site, persona scope) into separate (site, persona) 
 
 Configurable in **Settings → Categories**. Used as multi-select chips on each clip. New categories also auto-create on import (any unrecognised tag in the source data becomes a category).
 
+**Categories are uppercase.** As of the v8 migration, every existing category name was uppercased and case-collisions were merged onto the lowest-id row (with `clip_categories` links re-pointed). Going forward, every code path that creates a category — `DatabaseService.ensureCategory(named:)`, the inline picker, the settings tab, import — uppercases on input so they all land on the same canonical row.
+
 You can also create a new category **directly from any clip** without leaving the editor: under the chip picker, type a new name in the "Create new category — type and press Return" field. Case-insensitive duplicates are detected and reused. New categories appear in **Settings → Categories** automatically.
 
 ## Clip ID format
@@ -245,15 +247,30 @@ Use this for one-time imports of clips you've already published. For new clips t
 
 Right-click any clip in the Clips list → **"Mark as historical (all scope sites posted)"**. Same logic, applied to one clip at a time. Useful for cleaning up a clip that should have been historical but wasn't.
 
+## Excluding clips from posting
+
+Mark any clip as **do not post** from the editor's **Posting status** section: toggle the switch on, pick a reason from the dropdown (default options: **Custom**, **Not Posted - Sent Individually**, **Other - Please specify**), optionally fill in free-text notes. Excluded clips are filtered out of:
+
+- Per-site posting batches (`PostingService.clipsNotPosted`).
+- The **Posting Queue** sidebar section.
+
+They still appear in the Editing Queue, the Clips list, and the Calendar — exclusion is a posting-only concern. Their pipeline status auto-derives the same way as any other clip; the exclusion is a separate dimension.
+
+The dropdown of available reasons is configured in **Settings → Posting** (label CRUD, archive toggle, sort order). Reasons are stored as strings on the clip, so renaming a reason in Settings doesn't retroactively change clips already tagged with the old label.
+
 ## Posting Batch
 
 Drill-down wizard. Three stages with breadcrumb navigation at the top.
 
 1. **Sites** — grid of (site, persona) cards. Each card shows pending count or a green "All posted" check.
 2. **Queue** — pending clips for the chosen target. **Start posting** kicks off the first; **Open** on any row jumps straight to it.
-3. **Posting** — focused view of one clip with **per-field copy buttons** (title / categories / keywords / performers / length / price / dates / filenames as one-line copy rows; description as multi-line scrollable copy panel). Posting notes textarea below saves into the clip_postings row. **Mark posted** + **Posted & next** (⌘↩) advance through the queue.
+3. **Posting** — focused per-clip window with persona-coloured banner. Pinned at the top: title, clip ID, full Production folder path (with **Reveal** + **Open clip in editor**), thumbnail filename, and MD5 / SHA-1 / SHA-256 file hashes (each click-to-copy). Below: read-only refined description (with copy), editable categories, schedule strip with editable Price field, and a Posting notes textarea that saves into the clip_postings row.
+
+   Action bar: **Copy all (markdown)**, **Skip for now** (advance without marking — clip stays in queue for later), **Mark posted** (⌘S), **Posted & next** (⌘↩). Mark posted is disabled until the price is set — zero is allowed for free clips.
 
 When a queue empties, falls back to the queue stage with an "all done" page and a **Next batch** button to jump to the next (site, persona) target.
+
+Excluded clips (see [Excluding clips from posting](#excluding-clips-from-posting) above) never appear in any of these queues.
 
 ## File locations & path defaults
 

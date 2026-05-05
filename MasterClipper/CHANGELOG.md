@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-05-04 — Posting workflow refinements, exclusion flag, uppercase categories
+
+- **Skip in posting workflow** — new **Skip for now** button in `PostingClipWindow` advances to the next clip without marking the current one posted. The clip stays in the queue so the user can come back to it later.
+- **Price required to post** — Mark posted / Posted & next are disabled until the price is set (zero is allowed for free clips). Inline orange hint appears in the action bar when the price is empty so the gate is obvious.
+- **Editable price in the posting window** — Price moved into the schedule strip as a TextField with `$` prefix; saves on submit, on Mark posted / Posted & next, and on view dismissal. Persists via `appState.updateClip` so the rest of the app sees the new price immediately.
+- **Posting Queue: Price column** — added between Length and ID, sortable (nils last via a dedicated `priceCentsKeyPosting` key extension).
+- **Per-clip "do not post" flag** — new clip columns (`posting_excluded`, `exclusion_reason`, `exclusion_notes`) plus a configurable `exclusion_reasons` table seeded with **Custom**, **Not Posted - Sent Individually**, **Other - Please specify**. New **Posting status** section in the editor: toggle, reason dropdown (filtered to non-archived reasons), free-text notes. Excluded clips are filtered out of `PostingService.clipsNotPosted` (per-site batches) and the Posting Queue.
+- **Posting settings tab** — new **Settings → Posting** tab for managing the exclusion-reason dropdown (label CRUD, archive toggle, sort order).
+- **Categories are uppercase** — v8 migration uppercases every existing category name and dedupes case-collisions onto the lowest-id row, re-pointing `clip_categories` links and deleting the duplicates. Going forward, `DatabaseService.ensureCategory(named:)` and the categories settings tab uppercase on input — every code path that creates a category lands on the same canonical row.
+- **DB migration**:
+  - `v8_categories_uppercase_and_exclusions` — three things in one migration: uppercase + dedupe categories, add the exclusion columns to `clips`, create + seed `exclusion_reasons`.
+- **PostingClipWindow header redesign** — persona-coloured banner with big persona pill (gradient, drop shadow, code + display name), title, clip ID, full Production folder path with **Reveal** + **Open clip in editor** buttons, thumbnail filename row, and MD5 / SHA-1 / SHA-256 rows (each with copy-to-clipboard).
+- **PostingClipWindow body slim-down** — Description (refined) is read-only; Categorization is editable via `CategoryChipPicker` and persists every change immediately; schedule strip shows Length / Price (editable) / Content date / Go-Live date. Removed Keywords, Performers, Clip filename, Preview filename, and the raw-description block.
+
 ## 2026-05-04 — File-verification flow, queues, transcripts, hashes
 
 - **Verify files** — per-clip file audit (button in the editor's "Editing (post-production)" section) opens a sheet checking nine things: FCP project folder, Production folder, Main MP4 (`<Title>.mp4`), Reduced MP4 (`<Title>_reduced.mp4`, only required when main is over threshold), Thumbnail frames (`<Title>_frame_NN.png`), FCP bundle (`<Title>.fcpbundle`), Description, Video transcription, File hashes. Each row reports OK / warn / missing / N/A with file size, detail line, and a Reveal button.

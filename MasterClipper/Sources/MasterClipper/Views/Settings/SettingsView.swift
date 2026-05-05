@@ -20,6 +20,9 @@ struct SettingsView: View {
             CalendarRulesTab()
                 .tabItem { Label("Calendar Rules", systemImage: "calendar") }
 
+            PostingSettingsTab()
+                .tabItem { Label("Posting", systemImage: "paperplane.circle") }
+
             OllamaSettingsTab()
                 .tabItem { Label("Ollama", systemImage: "brain") }
 

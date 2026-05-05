@@ -18,7 +18,7 @@ Mutation flow: View → `appState.someMutation(...)` → `DatabaseService.shared
 | App platform | macOS 14+, SwiftUI, Swift 5.10 |
 | Project layout | XcodeGen (`project.yml`) → `MasterClipper.xcodeproj` |
 | Build / sign | `./build-app.sh` (auto-versioned from `git rev-list --count HEAD`, ad-hoc or Developer ID, builds in `/tmp`) |
-| Database | GRDB.swift 6 — `DatabasePool`, `DatabaseMigrator`, append-only (currently at `v7`) |
+| Database | GRDB.swift 6 — `DatabasePool`, `DatabaseMigrator`, append-only (currently at `v8`) |
 | LLM | Ollama on `http://localhost:11434`, default model auto-picked from `/api/tags` |
 | Speech-to-text | Sibling `~/Documents/GitHub/PhantomLives/transcribe/transcribe.py` (MLX Whisper). Shelled out via `Process` with `-o -` to capture stdout. |
 | AVFoundation | `AVAssetExportSession` for re-encode (HEVC + H.264 preset tiers); `AVAssetImageGenerator` for frame capture |
@@ -111,11 +111,12 @@ Sources/MasterClipper/
 │   │   ├── ClipAuditReportView.swift     bulk audit cards, click → clip editor
 │   │   └── ReportExportMenu.swift        per-report MD / PDF / CSV menu + auto-reveal + persistent Reveal
 │   ├── Settings/
-│   │   ├── SettingsView.swift            9-tab TabView
+│   │   ├── SettingsView.swift            10-tab TabView
 │   │   ├── PersonasSettingsTab.swift     ColorPicker for persona colour
-│   │   ├── CategoriesSettingsTab.swift
+│   │   ├── CategoriesSettingsTab.swift   uppercase-on-input
 │   │   ├── SitesSettingsTab.swift        persona-scope checkboxes
 │   │   ├── CalendarRulesTab.swift
+│   │   ├── PostingSettingsTab.swift      exclusion-reason dropdown CRUD
 │   │   ├── OllamaSettingsTab.swift       prompt template editor + Reset to default + Test refine
 │   │   ├── ImportExportTab.swift
 │   │   ├── FileLocationsTab.swift        path defaults + frame count + threshold + one-shot backfill
@@ -131,7 +132,7 @@ Sources/MasterClipper/
 
 ## Database schema
 
-11 tables, seven migrations (`v1_initial` … `v7_clip_hashes`). `grdb_migrations` is the GRDB-managed bookkeeping table.
+12 tables, eight migrations (`v1_initial` … `v8_categories_uppercase_and_exclusions`). `grdb_migrations` is the GRDB-managed bookkeeping table.
 
 ```
 personas        (id, code UNIQUE, display_name, color_hex, sort_order, archived)
@@ -149,6 +150,7 @@ clips           (id PK TEXT "YYYY-MM-DD-#####", external_clip_id, tracking_tag,
                  mp4_md5, mp4_sha1, mp4_sha256, mp4_size_bytes, -- v7 (file integrity)
                  reduced_md5, reduced_sha1, reduced_sha256, reduced_size_bytes,
                  hashes_computed_at,
+                 posting_excluded, exclusion_reason, exclusion_notes, -- v8 (do-not-post flag)
                  created_at, updated_at)
 clip_categories (clip_id, category_id, position, PK)            -- position added in v5
 clip_postings   (clip_id, site_id, posted_date, status, notes, created_at, updated_at, PK)
@@ -158,6 +160,7 @@ calendar_events (id, date, persona_code, clip_id, title, notes, created_at, upda
                  UNIQUE INDEX on (date, persona_code))
 calendar_rules  (persona_code, weekday 1–7, enabled, PK)
 prices          (id, label, price_cents, notes)
+exclusion_reasons (id, label UNIQUE, sort_order, archived)      -- v8 (configurable dropdown)
 ```
 
 Migration log:
@@ -168,6 +171,7 @@ Migration log:
 - **v5_clip_categories_order** — `position` column on `clip_categories` (per-clip ordered tags).
 - **v6_clip_transcript** — `transcript` text column.
 - **v7_clip_hashes** — file-integrity hashes + sizes.
+- **v8_categories_uppercase_and_exclusions** — uppercase + dedupe existing category names, add `posting_excluded` / `exclusion_reason` / `exclusion_notes` to `clips`, create the `exclusion_reasons` lookup table seeded with three default reasons.
 
 Migrations are append-only — never edit a previously-shipped one. To change the schema, register a new `vN_…` migration in `DatabaseService.migrate()` after all the existing ones.
 

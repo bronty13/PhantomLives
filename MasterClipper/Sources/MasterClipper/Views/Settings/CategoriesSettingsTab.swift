@@ -54,7 +54,12 @@ struct CategoriesSettingsTab: View {
                     .textFieldStyle(.roundedBorder)
                     .frame(minWidth: 220)
                 Button("Add") {
-                    let trimmed = newName.trimmingCharacters(in: .whitespaces)
+                    // Categories are stored uppercase as of v8 — normalise
+                    // here so the settings table doesn't round-trip mixed
+                    // case rows that won't match `ensureCategory(named:)`.
+                    let trimmed = newName
+                        .trimmingCharacters(in: .whitespaces)
+                        .uppercased()
                     guard !trimmed.isEmpty else { return }
                     do {
                         let cat = Category(id: nil, name: trimmed,

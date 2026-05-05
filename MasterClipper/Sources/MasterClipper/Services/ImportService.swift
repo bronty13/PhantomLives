@@ -271,6 +271,9 @@ final class ImportService: ObservableObject {
                     reducedSha256: existing?.reducedSha256 ?? "",
                     reducedSizeBytes: existing?.reducedSizeBytes,
                     hashesComputedAt: existing?.hashesComputedAt ?? "",
+                    postingExcluded: existing?.postingExcluded ?? false,
+                    exclusionReason: existing?.exclusionReason ?? "",
+                    exclusionNotes:  existing?.exclusionNotes  ?? "",
                     createdAt: existing?.createdAt ?? now,
                     updatedAt: now
                 )

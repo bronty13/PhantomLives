@@ -8,6 +8,7 @@ final class AppState: ObservableObject {
     @Published var sites: [Site] = []
     @Published var categories: [Category] = []
     @Published var calendarRules: [CalendarRule] = []
+    @Published var exclusionReasons: [ExclusionReason] = []
     @Published var isLoading: Bool = false
     @Published var errorMessage: String? = nil
     @Published var selectedSection: Section = .dashboard
@@ -132,11 +133,12 @@ final class AppState: ObservableObject {
     func reloadAll() {
         isLoading = true
         do {
-            clips         = try DatabaseService.shared.fetchAllClips()
-            personas      = try DatabaseService.shared.fetchPersonas()
-            sites         = try DatabaseService.shared.fetchSites()
-            categories    = try DatabaseService.shared.fetchCategories()
-            calendarRules = try DatabaseService.shared.fetchRules()
+            clips            = try DatabaseService.shared.fetchAllClips()
+            personas         = try DatabaseService.shared.fetchPersonas()
+            sites            = try DatabaseService.shared.fetchSites()
+            categories       = try DatabaseService.shared.fetchCategories()
+            calendarRules    = try DatabaseService.shared.fetchRules()
+            exclusionReasons = try DatabaseService.shared.fetchExclusionReasons()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -178,6 +180,14 @@ final class AppState: ObservableObject {
     func reloadCalendarRules() {
         do {
             calendarRules = try DatabaseService.shared.fetchRules()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func reloadExclusionReasons() {
+        do {
+            exclusionReasons = try DatabaseService.shared.fetchExclusionReasons()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -230,6 +240,9 @@ final class AppState: ObservableObject {
             mp4Md5: "", mp4Sha1: "", mp4Sha256: "", mp4SizeBytes: nil,
             reducedMd5: "", reducedSha1: "", reducedSha256: "", reducedSizeBytes: nil,
             hashesComputedAt: "",
+            postingExcluded: false,
+            exclusionReason: "",
+            exclusionNotes: "",
             createdAt: now,
             updatedAt: now
         )

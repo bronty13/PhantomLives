@@ -114,6 +114,11 @@ struct PostingBatchView: View {
                     onClose: { stage = .queue; currentClip = nil },
                     onAdvance: { advanceAfter($0) }
                 )
+                // Per-clip identity — without this, SwiftUI reuses the
+                // window's @State (priceDraft, notes, etc.) across
+                // clips, so advancing carries over the previous clip's
+                // values instead of seeding from the new one.
+                .id(clip.id)
             } else if let target = selectedTarget {
                 queueView(for: target)
             } else {

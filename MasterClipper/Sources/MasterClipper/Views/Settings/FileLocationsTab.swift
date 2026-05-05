@@ -137,6 +137,7 @@ struct FileLocationsTab: View {
             mp4Md5: "", mp4Sha1: "", mp4Sha256: "", mp4SizeBytes: nil,
             reducedMd5: "", reducedSha1: "", reducedSha256: "", reducedSizeBytes: nil,
             hashesComputedAt: "",
+            postingExcluded: false, exclusionReason: "", exclusionNotes: "",
             createdAt: "", updatedAt: ""
         )
     }

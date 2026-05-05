@@ -21,6 +21,7 @@ enum PostingService {
             let sql = """
             SELECT c.* FROM clips c
             WHERE c.archived = 0
+              AND c.posting_excluded = 0
               AND \(scopeClause)
               AND NOT EXISTS (
                   SELECT 1 FROM clip_postings p

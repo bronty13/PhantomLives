@@ -120,6 +120,7 @@ struct PostingQueueView: View {
     private var filteredClips: [Clip] {
         var result = appState.clips
             .filter { !$0.archived }
+            .filter { !$0.postingExcluded }
             .filter { statusFilter.contains($0.statusEnum) }
         if !personaFilter.isEmpty {
             result = result.filter {
@@ -169,6 +170,13 @@ struct PostingQueueView: View {
                     .foregroundStyle(clip.lengthSeconds == nil ? .tertiary : .primary)
             }
             .width(min: 56, ideal: 68)
+
+            TableColumn("Price", value: \Clip.priceCentsKeyPosting) { clip in
+                Text(clip.priceCents.map { String(format: "$%.2f", Double($0) / 100) } ?? "—")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(clip.priceCents == nil ? .tertiary : .primary)
+            }
+            .width(min: 64, ideal: 72)
 
             TableColumn("ID", value: \Clip.id) { clip in
                 Text(clip.id).font(.caption.monospaced())
@@ -285,4 +293,8 @@ private extension ComparisonResult {
 private extension Clip {
     /// Length sort key — nils sort last as Int.max.
     var lengthSecondsKeyPosting: Int { lengthSeconds ?? Int.max }
+
+    /// Price sort key — nils sort last so unpriced clips fall to the
+    /// bottom regardless of sort direction.
+    var priceCentsKeyPosting: Int { priceCents ?? Int.max }
 }

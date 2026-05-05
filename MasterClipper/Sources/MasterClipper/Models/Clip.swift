@@ -91,6 +91,13 @@ struct Clip: Codable, FetchableRecord, PersistableRecord, Identifiable, Hashable
     var reducedSizeBytes: Int64?
     var hashesComputedAt: String                // ISO timestamp; empty until first run
 
+    /// Per-clip "do not post" flag. Excluded clips are filtered out of
+    /// posting batches and the Posting Queue. Reason + notes are
+    /// surfaced in the editor and the clip detail.
+    var postingExcluded: Bool
+    var exclusionReason: String                 // picked from exclusion_reasons.label
+    var exclusionNotes: String
+
     var createdAt: String
     var updatedAt: String
 
@@ -130,6 +137,9 @@ struct Clip: Codable, FetchableRecord, PersistableRecord, Identifiable, Hashable
         case reducedSha256     = "reduced_sha256"
         case reducedSizeBytes  = "reduced_size_bytes"
         case hashesComputedAt  = "hashes_computed_at"
+        case postingExcluded   = "posting_excluded"
+        case exclusionReason   = "exclusion_reason"
+        case exclusionNotes    = "exclusion_notes"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }

@@ -247,6 +247,81 @@ final class DatabaseService {
             }
         }
 
+        migrator.registerMigration("v8_categories_uppercase_and_exclusions") { db in
+            // 1. Categories: collapse case-insensitive duplicates onto the
+            //    lowest-id row, re-pointing clip_categories links and
+            //    deleting the duplicates, then uppercase what's left.
+            //    Going forward the UI enforces uppercase on input.
+            let rows = try Row.fetchAll(db, sql: "SELECT id, name FROM categories")
+            var byUpper: [String: Int64] = [:]      // upperName → keeperId
+            var merges: [(dupId: Int64, keeperId: Int64)] = []
+            for r in rows {
+                let id: Int64 = r["id"]
+                let name: String = r["name"]
+                let upper = name.uppercased()
+                if let keeper = byUpper[upper] {
+                    merges.append((dupId: id, keeperId: keeper))
+                } else {
+                    byUpper[upper] = id
+                }
+            }
+            for (dupId, keeperId) in merges {
+                let clipIds = try String.fetchAll(db, sql:
+                    "SELECT clip_id FROM clip_categories WHERE category_id = ?",
+                    arguments: [dupId])
+                for clipId in clipIds {
+                    let exists: Int = try Int.fetchOne(db, sql: """
+                        SELECT EXISTS(SELECT 1 FROM clip_categories
+                                      WHERE clip_id = ? AND category_id = ?)
+                        """, arguments: [clipId, keeperId]) ?? 0
+                    if exists == 0 {
+                        try db.execute(sql: """
+                            UPDATE clip_categories SET category_id = ?
+                            WHERE clip_id = ? AND category_id = ?
+                            """, arguments: [keeperId, clipId, dupId])
+                    } else {
+                        try db.execute(sql: """
+                            DELETE FROM clip_categories
+                            WHERE clip_id = ? AND category_id = ?
+                            """, arguments: [clipId, dupId])
+                    }
+                }
+                try db.execute(sql: "DELETE FROM categories WHERE id = ?", arguments: [dupId])
+            }
+            try db.execute(sql: "UPDATE categories SET name = UPPER(name)")
+
+            // 2. Per-clip "exclude from posting" flag — opt-out reason on
+            //    why a particular clip won't be posted (sent individually,
+            //    custom commission, …). Filtered out of posting queues
+            //    and per-site batches.
+            try db.alter(table: "clips") { t in
+                t.add(column: "posting_excluded", .integer).notNull().defaults(to: 0)
+                t.add(column: "exclusion_reason", .text).notNull().defaults(to: "")
+                t.add(column: "exclusion_notes",  .text).notNull().defaults(to: "")
+            }
+
+            // 3. Configurable dropdown of exclusion reasons — managed in
+            //    Settings → Posting. Seeded with the three standard
+            //    reasons; user can add / archive their own.
+            try db.create(table: "exclusion_reasons") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("label", .text).notNull().unique()
+                t.column("sort_order", .integer).notNull().defaults(to: 0)
+                t.column("archived", .integer).notNull().defaults(to: 0)
+            }
+            let seeds: [(String, Int)] = [
+                ("Custom",                          0),
+                ("Not Posted - Sent Individually",  1),
+                ("Other - Please specify",          2),
+            ]
+            for (label, idx) in seeds {
+                try db.execute(sql: """
+                    INSERT OR IGNORE INTO exclusion_reasons (label, sort_order, archived)
+                    VALUES (?, ?, 0)
+                    """, arguments: [label, idx])
+            }
+        }
+
         try migrator.migrate(dbPool)
     }
 
@@ -357,14 +432,36 @@ final class DatabaseService {
     }
 
     func ensureCategory(named name: String) throws -> Category {
-        try dbPool.write { db in
-            if let existing = try Category.filter(Column("name") == name).fetchOne(db) {
+        // Categories are stored uppercase as of v8 — normalise here so
+        // every code path (inline picker, import, settings CRUD) lands
+        // on the same row regardless of how the user typed it in.
+        let upper = name.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        return try dbPool.write { db in
+            if let existing = try Category.filter(Column("name") == upper).fetchOne(db) {
                 return existing
             }
-            var c = Category(id: nil, name: name, sortOrder: 0, archived: false)
+            var c = Category(id: nil, name: upper, sortOrder: 0, archived: false)
             try c.insert(db)
             return c
         }
+    }
+
+    // MARK: - Exclusion reasons
+
+    func fetchExclusionReasons(includeArchived: Bool = false) throws -> [ExclusionReason] {
+        try dbPool.read { db in
+            var q = ExclusionReason.order(Column("sort_order").asc, Column("label").asc)
+            if !includeArchived { q = q.filter(Column("archived") == false) }
+            return try q.fetchAll(db)
+        }
+    }
+
+    func saveExclusionReason(_ r: inout ExclusionReason) throws {
+        try dbPool.write { db in try r.save(db) }
+    }
+
+    func deleteExclusionReason(id: Int64) throws {
+        _ = try dbPool.write { db in try ExclusionReason.deleteOne(db, key: id) }
     }
 
     // MARK: - Clips
