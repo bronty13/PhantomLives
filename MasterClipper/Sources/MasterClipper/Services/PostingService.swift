@@ -56,20 +56,25 @@ enum PostingService {
     static func markPosted(clipId: String, siteId: Int64, date: Date = Date()) throws {
         let now = DatabaseService.isoNow()
         let dateStr = DatabaseService.isoDate(date)
-        try DatabaseService.shared.dbPool.write { db in
-            let existing = try ClipPosting
+        // Read the existing row for createdAt + notes, then route the
+        // write through `DatabaseService.upsertPosting` so it triggers
+        // the clip-status recompute + history-row writes. Earlier this
+        // wrote directly via `row.save(db)`, which left clips stuck in
+        // `to_post` even after the first posting was marked posted.
+        let existing = try DatabaseService.shared.dbPool.read { db in
+            try ClipPosting
                 .filter(Column("clip_id") == clipId && Column("site_id") == siteId)
                 .fetchOne(db)
-            let row = ClipPosting(
-                clipId: clipId,
-                siteId: siteId,
-                postedDate: dateStr,
-                status: PostingStatus.posted.rawValue,
-                notes: existing?.notes ?? "",
-                createdAt: existing?.createdAt ?? now,
-                updatedAt: now
-            )
-            try row.save(db)
         }
+        let row = ClipPosting(
+            clipId: clipId,
+            siteId: siteId,
+            postedDate: dateStr,
+            status: PostingStatus.posted.rawValue,
+            notes: existing?.notes ?? "",
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now
+        )
+        try DatabaseService.shared.upsertPosting(row)
     }
 }

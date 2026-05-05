@@ -179,7 +179,7 @@ struct PostingQueueView: View {
             .width(min: 64, ideal: 72)
 
             TableColumn("ID", value: \Clip.id) { clip in
-                Text(clip.id).font(.caption.monospaced())
+                ClipIDLabel(id: clip.id, style: .caption)
             }
             .width(min: 130, ideal: 140)
         }

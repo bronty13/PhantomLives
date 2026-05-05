@@ -28,6 +28,8 @@ struct FileAuditSheet: View {
     @State private var captureMessage: String?
     @State private var hashing: Bool = false
     @State private var hashMessage: String?
+    @State private var refining: Bool = false
+    @State private var refineMessage: String?
     /// Currently-picked frame number for the thumbnail picker. Owned by
     /// the sheet so it survives re-renders triggered by re-audits.
     /// Seeded once from `clip.thumbnailFilename` on first audit.
@@ -117,6 +119,8 @@ struct FileAuditSheet: View {
             && check.status == .missing
             && result.fcpMp4Candidate != nil
             && !(clip.productionFolder ?? "").isEmpty
+        let canRefineDescription = check.id == result.description.id
+            && check.status == .warn   // raw present, refined empty
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 12) {
@@ -161,6 +165,10 @@ struct FileAuditSheet: View {
 
             if canPushFromFCP, let candidate = result.fcpMp4Candidate {
                 pushFromFCPAction(candidate: candidate)
+            }
+
+            if canRefineDescription {
+                refineDescriptionAction()
             }
 
             if isTranscriptRow, let src = result.mp4.path {
@@ -242,6 +250,84 @@ struct FileAuditSheet: View {
             runAudit()
         } catch {
             renameError = "Couldn't promote frame: \(error.localizedDescription)"
+        }
+    }
+
+    /// Inline refine pill on the Description (raw only) row. Streams
+    /// the raw description through Ollama, writes the refined output
+    /// onto `clip.descriptionRefined`, re-audits.
+    private func refineDescriptionAction() -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "wand.and.stars")
+                .font(.caption).foregroundStyle(.purple)
+            Text("Refine raw description via Ollama")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.purple)
+            Spacer()
+            Button {
+                runRefine()
+            } label: {
+                if refining {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Refining…")
+                    }
+                } else {
+                    Label("Refine", systemImage: "wand.and.stars")
+                }
+            }
+            .controlSize(.small)
+            .disabled(refining)
+            .help("Stream the raw description through Ollama and save the proofread output to descriptionRefined.")
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.purple.opacity(0.07), in: RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(.purple.opacity(0.25), lineWidth: 1))
+    }
+
+    private func runRefine() {
+        guard !refining else { return }
+        refining = true
+        refineMessage = nil
+        let id = clip.id
+        let template = appState.settings.refinePromptTemplate
+        let model = appState.settings.ollamaModel
+        let baseURL = appState.settings.ollamaBaseURL
+        Task {
+            do {
+                guard let live = try DatabaseService.shared.fetchClip(id: id) else {
+                    refineMessage = "Couldn't reload the clip."
+                    refining = false
+                    return
+                }
+                var accumulated = ""
+                try await OllamaService.refine(
+                    description: live.descriptionRaw,
+                    promptTemplate: template,
+                    model: model,
+                    baseURLString: baseURL,
+                    onToken: { token in accumulated += token }
+                )
+                let cleaned = OllamaService.cleanRefineOutput(accumulated)
+                if var updated = try DatabaseService.shared.fetchClip(id: id) {
+                    updated.descriptionRefined = cleaned
+                    let stamp = "[Refined \(DatabaseService.isoDate(Date()))]"
+                    if !updated.notes.contains(stamp) {
+                        updated.notes = updated.notes.isEmpty
+                            ? stamp
+                            : updated.notes + "\n" + stamp
+                    }
+                    try appState.updateClip(updated)
+                }
+                refining = false
+                clearAllMessages()
+                runAudit()
+            } catch {
+                refining = false
+                refineMessage = "Refine failed: \(error.localizedDescription)"
+                runAudit()
+            }
         }
     }
 
@@ -442,7 +528,11 @@ struct FileAuditSheet: View {
 
         do {
             if var live = try DatabaseService.shared.fetchClip(id: clip.id) {
-                live.fcpProjectFolder = url.path
+                // Save the standardized URL path so subsequent string-
+                // based existence checks always match the volume's
+                // canonical name (Unicode normalisation, trailing
+                // slashes, "/private/tmp" → "/tmp", etc.).
+                live.fcpProjectFolder = url.standardizedFileURL.path
                 try appState.updateClip(live)
                 clearAllMessages()
                 runAudit()
@@ -706,6 +796,17 @@ struct FileAuditSheet: View {
                     Text(hashMessage).font(.caption).foregroundStyle(.indigo)
                     Spacer()
                     Button("Dismiss") { self.hashMessage = nil }
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let refineMessage {
+                HStack(spacing: 6) {
+                    Image(systemName: "wand.and.stars").foregroundStyle(.purple)
+                    Text(refineMessage).font(.caption).foregroundStyle(.purple)
+                    Spacer()
+                    Button("Dismiss") { self.refineMessage = nil }
                         .buttonStyle(.borderless)
                         .controlSize(.small)
                 }
@@ -1000,6 +1101,7 @@ struct FileAuditSheet: View {
         transcribeMessage = nil
         captureMessage = nil
         hashMessage = nil
+        refineMessage = nil
     }
 
     private func prettyPreset(_ preset: String) -> String {

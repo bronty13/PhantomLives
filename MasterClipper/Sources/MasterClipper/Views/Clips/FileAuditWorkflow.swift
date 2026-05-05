@@ -42,6 +42,8 @@ struct FileAuditWorkflow: View {
     @State private var captureMessage: String?
     @State private var hashing: Bool = false
     @State private var hashMessage: String?
+    @State private var refining: Bool = false
+    @State private var refineMessage: String?
     /// Per-clip picked frame number, owned by the workflow so it
     /// survives picker re-renders. Seeded from each clip's stored
     /// `thumbnailFilename` on entry; user clicks update this map and
@@ -183,6 +185,11 @@ struct FileAuditWorkflow: View {
                         hashMessage = nil
                     }
                 }
+                if let msg = refineMessage {
+                    pillBanner(msg, color: .purple, icon: "wand.and.stars") {
+                        refineMessage = nil
+                    }
+                }
             }
             .padding(16)
         }
@@ -194,9 +201,7 @@ struct FileAuditWorkflow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(clip.title.isEmpty ? "Untitled clip" : clip.title)
                     .font(.headline)
-                Text(clip.id)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                ClipIDLabel(id: clip.id, style: .captionSecondary)
             }
             Spacer()
             Button {
@@ -251,6 +256,8 @@ struct FileAuditWorkflow: View {
             && check.status == .missing
             && result.fcpMp4Candidate != nil
             && !(clip.productionFolder ?? "").isEmpty
+        let canRefineDescription = check.id == result.description.id
+            && check.status == .warn
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 12) {
@@ -290,6 +297,10 @@ struct FileAuditWorkflow: View {
 
             if canPushFromFCP, let candidate = result.fcpMp4Candidate {
                 pushFromFCPPill(clipId: clip.id, candidate: candidate, title: clip.title)
+            }
+
+            if canRefineDescription {
+                refineDescriptionPill(clipId: clip.id)
             }
 
             if isTranscriptRow, let src = result.mp4.path {
@@ -393,6 +404,7 @@ struct FileAuditWorkflow: View {
         transcribeMessage = nil
         captureMessage = nil
         hashMessage = nil
+        refineMessage = nil
     }
 
     private func renamePill(_ s: FileAuditService.SuggestedRename, clipId: String) -> some View {
@@ -473,6 +485,81 @@ struct FileAuditWorkflow: View {
             }
         } catch {
             renameError = "Push failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Inline refine pill on the Description (raw only) audit row.
+    /// Streams Ollama and persists `descriptionRefined`.
+    private func refineDescriptionPill(clipId: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "wand.and.stars")
+                .font(.caption).foregroundStyle(.purple)
+            Text("Refine raw description via Ollama")
+                .font(.caption.weight(.semibold)).foregroundStyle(.purple)
+            Spacer()
+            Button {
+                runRefine(clipId: clipId)
+            } label: {
+                if refining {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Refining…")
+                    }
+                } else {
+                    Label("Refine", systemImage: "wand.and.stars")
+                }
+            }
+            .controlSize(.small)
+            .disabled(refining)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.purple.opacity(0.07), in: RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(.purple.opacity(0.25), lineWidth: 1))
+    }
+
+    private func runRefine(clipId: String) {
+        guard !refining else { return }
+        refining = true
+        refineMessage = nil
+        let template = appState.settings.refinePromptTemplate
+        let model = appState.settings.ollamaModel
+        let baseURL = appState.settings.ollamaBaseURL
+        Task {
+            do {
+                guard let live = try DatabaseService.shared.fetchClip(id: clipId) else {
+                    refineMessage = "Couldn't reload the clip."
+                    refining = false
+                    return
+                }
+                var accumulated = ""
+                try await OllamaService.refine(
+                    description: live.descriptionRaw,
+                    promptTemplate: template,
+                    model: model,
+                    baseURLString: baseURL,
+                    onToken: { token in accumulated += token }
+                )
+                let cleaned = OllamaService.cleanRefineOutput(accumulated)
+                if var updated = try DatabaseService.shared.fetchClip(id: clipId) {
+                    updated.descriptionRefined = cleaned
+                    let stamp = "[Refined \(DatabaseService.isoDate(Date()))]"
+                    if !updated.notes.contains(stamp) {
+                        updated.notes = updated.notes.isEmpty
+                            ? stamp
+                            : updated.notes + "\n" + stamp
+                    }
+                    try appState.updateClip(updated)
+                }
+                refining = false
+                clearAllMessages()
+                if let idx = clips.firstIndex(where: { $0.id == clipId }) {
+                    runAudit(for: clips[idx], recordInitial: false)
+                }
+            } catch {
+                refining = false
+                refineMessage = "Refine failed: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -613,7 +700,10 @@ struct FileAuditWorkflow: View {
 
         do {
             if var live = appState.clips.first(where: { $0.id == clipId }) {
-                live.fcpProjectFolder = url.path
+                // Standardised path: handles trailing-slash + Unicode
+                // normalisation so `fileExists(atPath:)` matches the
+                // volume's canonical name on subsequent re-audits.
+                live.fcpProjectFolder = url.standardizedFileURL.path
                 try appState.updateClip(live)
                 clearAllMessages()
                 if let idx = clips.firstIndex(where: { $0.id == clipId }) {

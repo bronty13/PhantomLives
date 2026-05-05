@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-05-05 — Status auto-recompute fix, click-to-copy IDs, file-audit hardening
+
+- **Status-recompute bug fix.** `PostingService.markPosted` was writing posting rows directly via `row.save(db)`, bypassing the clip-status recompute that lives inside `DatabaseService.upsertPosting`. Result: clips with postings created via the batch flow stayed in `to_post` even after the first scoped site was marked posted. `markPosted` now routes through `upsertPosting`, which triggers status recompute + history-row writes. Backfilled via `v9_recompute_clip_status` migration.
+- **Excluded clips auto-promote to production.** `computeStatus` now returns `production` when `postingExcluded == true` — there's nothing to post, so the clip is "done" pipeline-wise and shouldn't sit in `to_post`. Same auto-promotion when the clip's persona has no scoped sites (e.g. `Shr` / `N/A` without site assignments) and editing is complete. Backfilled via `v10_status_for_excluded_and_no_scope`.
+- **Click-to-copy clip IDs.** New reusable `ClipIDLabel` view replaces every visible `Text(clip.id)` in the editor sticky header, Clips list, Editing Queue, Posting Queue, Posting Batch queue rows, posting window header, and bulk audit clip banner. Tap any ID to copy; brief "Copied" pill flashes. Two callsites kept as plain Text because they live inside parent `Button` rows (audit-report card, workflow summary list).
+- **Posting workflow refinements**:
+  - **Skip for now** button — advances without marking posted; the clip stays in the queue. `advanceAfter` now correctly walks past the current clip (was picking `pendingClips.first`, which was the same clip when nothing had been removed).
+  - Counter math fix: position is now `(batchStartCount − pending) + currentClipIndexInPending + 1`, so both Mark posted and Skip advance the counter by exactly one.
+  - **Show queue list** button + `PostingQueueListSheet` — modal sheet listing every pending clip in order with click-to-copy ID / title / production filename, plus bulk-copy buttons (Titles / Filenames / Markdown table) for sites that allow uploading multiple clips at once.
+  - **Editable price** field in the schedule strip — saves on submit, on Mark posted, on disappear. Mark posted is gated on the price being set (zero allowed for free clips); inline orange hint appears when empty.
+  - **Title copy button** next to the title in both the posting window header and the clip editor's sticky header.
+  - **Posting notes mirror to clip notes** — when posting notes are saved, they're appended to `clip.notes` as `[Posted <siteCode> YYYY-MM-DD] <text>` so the editor's main Notes field surfaces every posting context together.
+  - Per-clip identity (`.id(clip.id)`) on `PostingClipWindow` so `@State` (priceDraft, notes, picked categories) doesn't carry across clips on Posted-and-next.
+  - Header font bumps — counter `.caption` → `.callout`, current-clip title in breadcrumb `.headline` → `.title3.weight(.semibold)`.
+- **File-audit hardening**:
+  - **Sandbox dropped** — `com.apple.security.app-sandbox` is gone, leaving just `com.apple.security.network.client` (Ollama). The audit calls `FileManager.fileExists(atPath:)` with string paths, which the sandbox refused for user-selected URLs (the bookmark-grant only carries via the URL, not the string), so audit rows stayed red even after the user picked the right folder.
+  - **`isDirectory` is now multi-pass** — exact literal → URL standardisation → Unicode NFC normalisation → whitespace-trimmed fallback. Catches volume-name NFC/NFD differences (common on external drives) and round-trip whitespace mismatches.
+  - **`expand()` preserves trailing/leading spaces** in filenames — macOS allows them and we've seen real folder names like `...MILF ` (trailing space) that would otherwise mismatch after trimming. Only `\n`, `\r`, `\t`, NUL are stripped now.
+  - **Pickers save `URL.standardizedFileURL.path`** — so subsequent existence checks match the volume's canonical form.
+- **Description-refine action on the Description (raw only) audit row.** New purple inline pill with **Refine** button — streams Ollama with the configured model + prompt, runs `cleanRefineOutput` for quote-stripping + paragraph-format normalisation, persists to `clip.descriptionRefined`, appends `[Refined YYYY-MM-DD]` to notes, re-audits. Same wiring in both the per-clip sheet and the workflow.
+
 ## 2026-05-04 — Posting workflow refinements, exclusion flag, uppercase categories
 
 - **Skip in posting workflow** — new **Skip for now** button in `PostingClipWindow` advances to the next clip without marking the current one posted. The clip stays in the queue so the user can come back to it later.

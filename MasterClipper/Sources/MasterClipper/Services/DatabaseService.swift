@@ -322,6 +322,52 @@ final class DatabaseService {
             }
         }
 
+        migrator.registerMigration("v9_recompute_clip_status") { db in
+            // Earlier `PostingService.markPosted` wrote directly via
+            // `row.save(db)`, bypassing the clip-status recompute that
+            // lives inside `upsertPosting`. Any clip with postings
+            // created via the batch flow could stay in `to_post` even
+            // after the first site was marked posted. Sweep every
+            // active clip and snap its `status` to whatever
+            // `computeStatus` says now.
+            let clips = try Clip.filter(Column("archived") == false).fetchAll(db)
+            for var clip in clips {
+                let recomputed = try Self.computeStatus(for: clip, in: db)
+                if recomputed != clip.status {
+                    let now = Self.isoNow()
+                    try db.execute(sql: """
+                        INSERT INTO clip_history (clip_id, field, old_value, new_value, changed_at)
+                        VALUES (?, 'status', ?, ?, ?)
+                        """, arguments: [clip.id, clip.status, recomputed, now])
+                    clip.status = recomputed
+                    clip.updatedAt = now
+                    try clip.update(db)
+                }
+            }
+        }
+
+        migrator.registerMigration("v10_status_for_excluded_and_no_scope") { db in
+            // `computeStatus` now handles two cases that previously
+            // stuck clips at `to_post`:
+            //   • postingExcluded → production
+            //   • no scoped sites + editing complete → production
+            // Sweep every active clip and snap its status accordingly.
+            let clips = try Clip.filter(Column("archived") == false).fetchAll(db)
+            for var clip in clips {
+                let recomputed = try Self.computeStatus(for: clip, in: db)
+                if recomputed != clip.status {
+                    let now = Self.isoNow()
+                    try db.execute(sql: """
+                        INSERT INTO clip_history (clip_id, field, old_value, new_value, changed_at)
+                        VALUES (?, 'status', ?, ?, ?)
+                        """, arguments: [clip.id, clip.status, recomputed, now])
+                    clip.status = recomputed
+                    clip.updatedAt = now
+                    try clip.update(db)
+                }
+            }
+        }
+
         try migrator.migrate(dbPool)
     }
 
@@ -514,6 +560,13 @@ final class DatabaseService {
     /// state. Called from every insert/update path. Does not modify the clip's
     /// `archived` flag (that's a separate column).
     private static func computeStatus(for clip: Clip, in db: Database) throws -> String {
+        // Excluded-from-posting clips are "done" from the pipeline POV
+        // — there's nothing to post, so promote straight to production
+        // so they don't sit forever in `to_post` / `posting`.
+        if clip.postingExcluded {
+            return ClipStatus.production.rawValue
+        }
+
         // Scoped sites for this clip's persona
         let activeSites = try Site.filter(Column("archived") == false).fetchAll(db)
         let scoped = activeSites.filter { $0.appliesTo(personaCode: clip.personaCode) }
@@ -535,7 +588,18 @@ final class DatabaseService {
         let editingFilled = [fcpFilled, prodFilled, durFilled].filter { $0 }.count
         let editingComplete = editingFilled == 3
 
-        if !scopedIds.isEmpty && postedScoped.count == scopedIds.count {
+        // No scoped sites for this persona (e.g. Shr / N/A clips when
+        // no site is configured for them) — nothing to post, so once
+        // editing is complete the clip graduates straight to
+        // production. Without this branch such clips would stick at
+        // `to_post` forever.
+        if scopedIds.isEmpty {
+            if editingComplete   { return ClipStatus.production.rawValue }
+            if editingFilled > 0 { return ClipStatus.editing.rawValue }
+            return ClipStatus.new.rawValue
+        }
+
+        if postedScoped.count == scopedIds.count {
             return ClipStatus.production.rawValue
         }
         if !postedScoped.isEmpty {

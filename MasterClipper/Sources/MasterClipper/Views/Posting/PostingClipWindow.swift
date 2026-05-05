@@ -127,12 +127,21 @@ struct PostingClipWindow: View {
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(clip.title.isEmpty ? "Untitled clip" : clip.title)
-                    .font(.title2.weight(.semibold))
-                    .textSelection(.enabled)
-                Text(clip.id)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.tertiary)
+                HStack(spacing: 6) {
+                    Text(clip.title.isEmpty ? "Untitled clip" : clip.title)
+                        .font(.title2.weight(.semibold))
+                        .textSelection(.enabled)
+                    Button {
+                        copy(clip.title, fieldName: "Title")
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .help("Copy title to clipboard")
+                    .disabled(clip.title.isEmpty)
+                }
+                ClipIDLabel(id: clip.id, style: .captionTertiary)
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -422,9 +431,14 @@ struct PostingClipWindow: View {
     // MARK: - Persistence
 
     private func postWithNotes() {
-        // If the user typed posting notes, append them to the clip_postings row.
-        guard !notes.trimmingCharacters(in: .whitespaces).isEmpty,
-              let siteId = target.site.id else { return }
+        let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        // If the user typed posting notes, append them to the
+        // clip_postings row AND mirror them to clip.notes — that way
+        // the per-clip Notes textarea in the editor surfaces the
+        // posting context the user added at posting time, all in one
+        // place, without us having to add a separate UI to view the
+        // per-site notes column.
+        guard !trimmed.isEmpty, let siteId = target.site.id else { return }
         do {
             let now = DatabaseService.isoNow()
             let dateStr = DatabaseService.isoDate(Date())
@@ -435,11 +449,22 @@ struct PostingClipWindow: View {
                 siteId: siteId,
                 postedDate: dateStr,
                 status: PostingStatus.posted.rawValue,
-                notes: existing?.notes.isEmpty == false ? existing!.notes + "\n" + notes : notes,
+                notes: existing?.notes.isEmpty == false ? existing!.notes + "\n" + trimmed : trimmed,
                 createdAt: existing?.createdAt ?? now,
                 updatedAt: now
             )
             try DatabaseService.shared.upsertPosting(row)
+
+            // Mirror into clip.notes — tagged with site code + posted
+            // date so the user can see exactly which posting added
+            // each note.
+            if var live = try DatabaseService.shared.fetchClip(id: clip.id) {
+                let marker = "[Posted \(target.site.code) \(dateStr)] \(trimmed)"
+                live.notes = live.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? marker
+                    : live.notes + "\n" + marker
+                try appState.updateClip(live)
+            }
         } catch {
             // Surfaces via reload in caller; nothing extra to do.
         }

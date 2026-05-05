@@ -21,6 +21,7 @@ struct PostingBatchView: View {
     @State private var batchStartCount: Int = 0
     @State private var pendingCounts: [String: Int] = [:]
     @State private var loadError: String?
+    @State private var showingQueueList: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,6 +33,11 @@ struct PostingBatchView: View {
         .navigationTitle("Posting Batch")
         .onAppear { reloadCounts() }
         .onChange(of: appState.clips.count) { _, _ in reloadCounts() }
+        .sheet(isPresented: $showingQueueList) {
+            if let target = selectedTarget {
+                PostingQueueListSheet(target: target, clips: pendingClips)
+            }
+        }
     }
 
     // MARK: - Breadcrumbs
@@ -57,26 +63,47 @@ struct PostingBatchView: View {
 
             if let clip = currentClip, stage == .posting {
                 Image(systemName: "chevron.right")
-                    .foregroundStyle(.tertiary).font(.caption)
+                    .foregroundStyle(.tertiary).font(.callout)
                 Text(clip.title.isEmpty ? "Untitled" : clip.title)
-                    .font(.headline)
+                    .font(.title3.weight(.semibold))
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
 
             Spacer()
 
-            // Right-side status
+            // Right-side status. Position in the batch = clips already
+            // marked posted (= batchStartCount - pending) PLUS the
+            // current clip's offset inside the still-pending list (so
+            // skipping a clip — which doesn't remove it — bumps the
+            // counter forward correctly).
             if stage == .queue {
                 Text("\(pendingClips.count) of \(batchStartCount) remaining")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.callout).foregroundStyle(.secondary)
                     .monospacedDigit()
             } else if stage == .posting,
-                      let clip = currentClip,
-                      let idx = pendingClips.firstIndex(where: { $0.id == clip.id }) {
-                Text("Clip \(idx + 1) of \(batchStartCount)")
-                    .font(.caption).foregroundStyle(.secondary)
+                      let clip = currentClip {
+                let posted = batchStartCount - pendingClips.count
+                let idxInPending = pendingClips.firstIndex(where: { $0.id == clip.id }) ?? 0
+                let position = posted + idxInPending + 1
+                Text("Clip \(position) of \(batchStartCount)")
+                    .font(.callout).foregroundStyle(.secondary)
                     .monospacedDigit()
+            }
+
+            // Show-queue button — surfaces the full pending list so
+            // the user can see / copy IDs / titles / filenames in
+            // order for sites that allow bulk-uploading multiple
+            // clips at once. Only visible when there's a queue to show.
+            if (stage == .queue || stage == .posting),
+               selectedTarget != nil,
+               !pendingClips.isEmpty {
+                Button {
+                    showingQueueList = true
+                } label: {
+                    Label("Show queue list", systemImage: "list.number")
+                }
+                .help("Open a list of every pending clip in this batch — IDs, titles, and production filenames, all click-to-copy.")
             }
         }
         .padding(14)
@@ -279,7 +306,7 @@ struct PostingBatchView: View {
                         .font(.caption.monospaced()).foregroundStyle(.secondary)
                 }
                 HStack(spacing: 12) {
-                    Text(clip.id).font(.caption.monospaced()).foregroundStyle(.secondary)
+                    ClipIDLabel(id: clip.id, style: .captionSecondary)
                     if let date = clip.goLiveDate, !date.isEmpty {
                         Label(date, systemImage: "calendar").font(.caption).foregroundStyle(.secondary)
                     }
@@ -348,18 +375,31 @@ struct PostingBatchView: View {
     }
 
     private func advanceAfter(_ clip: Clip) {
-        // markPosted already removed the just-posted clip from pendingClips.
-        if let next = pendingClips.first {
+        // Two paths land here:
+        //   • Mark posted / Posted & next — `markPosted` already
+        //     removed the clip from pendingClips, so the next clip is
+        //     just `pendingClips.first`.
+        //   • Skip for now — clip is STILL in pendingClips at some
+        //     index; we want the one after it.
+        let nextClip: Clip? = {
+            if let curIdx = pendingClips.firstIndex(where: { $0.id == clip.id }) {
+                // Skip path: still in the list — pick the next entry.
+                let nextIdx = curIdx + 1
+                return nextIdx < pendingClips.count ? pendingClips[nextIdx] : nil
+            }
+            // Mark-posted path: clip already gone — first remaining is next.
+            return pendingClips.first
+        }()
+        if let next = nextClip {
             currentClip = next
-            // stay in .posting stage
         } else {
-            // Queue is empty — fall back to the queue stage so the user sees
-            // the "all done" empty state and can move to the next target.
+            // Queue is empty (or the user skipped the last clip) —
+            // fall back to the queue stage so the user sees the
+            // "all done" empty state and can move to the next target.
             currentClip = nil
             stage = .queue
             reloadCounts()
         }
-        _ = clip
     }
 
     private func nextTargetAfterCurrent() -> PostingTarget? {

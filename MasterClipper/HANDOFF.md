@@ -18,7 +18,7 @@ Mutation flow: View → `appState.someMutation(...)` → `DatabaseService.shared
 | App platform | macOS 14+, SwiftUI, Swift 5.10 |
 | Project layout | XcodeGen (`project.yml`) → `MasterClipper.xcodeproj` |
 | Build / sign | `./build-app.sh` (auto-versioned from `git rev-list --count HEAD`, ad-hoc or Developer ID, builds in `/tmp`) |
-| Database | GRDB.swift 6 — `DatabasePool`, `DatabaseMigrator`, append-only (currently at `v8`) |
+| Database | GRDB.swift 6 — `DatabasePool`, `DatabaseMigrator`, append-only (currently at `v10`) |
 | LLM | Ollama on `http://localhost:11434`, default model auto-picked from `/api/tags` |
 | Speech-to-text | Sibling `~/Documents/GitHub/PhantomLives/transcribe/transcribe.py` (MLX Whisper). Shelled out via `Process` with `-o -` to capture stdout. |
 | AVFoundation | `AVAssetExportSession` for re-encode (HEVC + H.264 preset tiers); `AVAssetImageGenerator` for frame capture |
@@ -132,7 +132,7 @@ Sources/MasterClipper/
 
 ## Database schema
 
-12 tables, eight migrations (`v1_initial` … `v8_categories_uppercase_and_exclusions`). `grdb_migrations` is the GRDB-managed bookkeeping table.
+12 tables, ten migrations (`v1_initial` … `v10_status_for_excluded_and_no_scope`). `grdb_migrations` is the GRDB-managed bookkeeping table.
 
 ```
 personas        (id, code UNIQUE, display_name, color_hex, sort_order, archived)
@@ -172,6 +172,8 @@ Migration log:
 - **v6_clip_transcript** — `transcript` text column.
 - **v7_clip_hashes** — file-integrity hashes + sizes.
 - **v8_categories_uppercase_and_exclusions** — uppercase + dedupe existing category names, add `posting_excluded` / `exclusion_reason` / `exclusion_notes` to `clips`, create the `exclusion_reasons` lookup table seeded with three default reasons.
+- **v9_recompute_clip_status** — data-only sweep. Earlier `PostingService.markPosted` wrote posting rows directly via `row.save(db)`, bypassing the clip-status recompute that lives inside `upsertPosting`. Walks every active clip and snaps `status` to whatever `computeStatus` says now; writes a `clip_history` row per flip.
+- **v10_status_for_excluded_and_no_scope** — second data sweep after `computeStatus` learned two new shortcuts: `postingExcluded == true` → `production`, and "no scoped sites + editing complete" → `production`. Same per-flip history-row pattern.
 
 Migrations are append-only — never edit a previously-shipped one. To change the schema, register a new `vN_…` migration in `DatabaseService.migrate()` after all the existing ones.
 
@@ -190,16 +192,26 @@ Migrations are append-only — never edit a previously-shipped one. To change th
 In `DatabaseService.computeStatus(for:in:)`:
 
 ```
+if clip.postingExcluded                                            → "production"  (v10)
+
 let scopedSites = active sites where appliesTo(personaCode)
 let postedScoped = clip_postings where status='posted' AND site IN scopedSites
 let editingFilled = count of (fcp_project_folder, production_folder, length_seconds) that are non-empty
 
-if scopedSites.nonEmpty && postedScoped.count == scopedSites.count → "production"
-elif postedScoped.count > 0                                       → "posting"
-elif editingFilled == 3                                           → "to_post"
-elif editingFilled  > 0                                           → "editing"
-else                                                              → "new"
+# No scoped sites at all (Shr / N/A personas without any site assigned) — v10
+if scopedSites.isEmpty:
+    if editingComplete  → "production"
+    elif editingFilled  → "editing"
+    else                → "new"
+
+if postedScoped.count == scopedSites.count → "production"
+elif postedScoped.count > 0                → "posting"
+elif editingComplete                       → "to_post"
+elif editingFilled                         → "editing"
+else                                       → "new"
 ```
+
+The recompute fires on every `insertClip`, `updateClip`, and `upsertPosting`. **`PostingService.markPosted` routes through `upsertPosting`** (was a direct `row.save(db)` until v9 — see migration log).
 
 ## Auto-save
 

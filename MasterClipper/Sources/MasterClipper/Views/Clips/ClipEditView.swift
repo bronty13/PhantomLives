@@ -279,17 +279,26 @@ struct ClipEditView: View {
             VStack(alignment: .leading, spacing: 3) {
                 // Title — large by default, never shrinks below this size.
                 // Truncates with "…" if too long; full text in tooltip on hover.
-                Text(draft.title.isEmpty ? "Untitled clip" : draft.title)
-                    .font(.title2.weight(.semibold))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .help(draft.title.isEmpty ? "Untitled clip" : draft.title)
+                HStack(spacing: 6) {
+                    Text(draft.title.isEmpty ? "Untitled clip" : draft.title)
+                        .font(.title2.weight(.semibold))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .help(draft.title.isEmpty ? "Untitled clip" : draft.title)
+                    Button {
+                        copyTitle()
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .help("Copy title to clipboard")
+                    .disabled(draft.title.isEmpty)
+                }
 
                 HStack(spacing: 8) {
-                    Text(draft.id)
-                        .font(.callout.monospaced())
+                    ClipIDLabel(id: draft.id, style: .body)
                         .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
                     Text("·").foregroundStyle(.tertiary)
                     statusBadge
                 }
@@ -928,6 +937,13 @@ struct ClipEditView: View {
         let expanded = (prod as NSString).expandingTildeInPath
         let name = title + "_reduced.mp4"
         return (expanded as NSString).appendingPathComponent(name)
+    }
+
+    private func copyTitle() {
+        let value = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
     }
 
     private func revealThumbnail() {

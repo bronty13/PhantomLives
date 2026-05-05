@@ -509,8 +509,24 @@ enum FileAuditService {
     // MARK: - Helpers
 
     private static func expand(_ path: String?) -> String? {
-        guard let p = path?.trimmingCharacters(in: .whitespaces), !p.isEmpty else { return nil }
-        return (p as NSString).expandingTildeInPath
+        guard let p = path, !p.isEmpty else { return nil }
+        // Only strip characters that should never appear in a real
+        // filesystem path — newlines, tabs, NUL. Trailing / leading
+        // SPACES are legal in macOS filenames (e.g. "MILF " with a
+        // trailing space is a real folder name we've seen in the wild),
+        // so we deliberately preserve them here. The caller's existence
+        // check then matches the on-disk name exactly.
+        let invalid = CharacterSet(charactersIn: "\n\r\t\u{0}")
+        let cleaned = p.trimmingCharacters(in: invalid)
+        guard !cleaned.isEmpty else { return nil }
+        var expanded = (cleaned as NSString).expandingTildeInPath
+        // Strip a trailing path separator so the exact-string match
+        // doesn't depend on whether the path was stored with or
+        // without the trailing slash.
+        while expanded.count > 1 && expanded.hasSuffix("/") {
+            expanded = String(expanded.dropLast())
+        }
+        return expanded
     }
 
     private static func sanitizeTitle(_ title: String) -> String {
@@ -522,8 +538,39 @@ enum FileAuditService {
     }
 
     private static func isDirectory(_ path: String, fm: FileManager) -> Bool {
+        // Multi-pass check, in cheap-to-expensive order. We've seen all
+        // four cases in real user data:
+        //   1. Exact literal path matches on-disk.
+        //   2. URL round-trip succeeds (handles trailing-slash + a few
+        //      symlink quirks like /tmp ↔ /private/tmp).
+        //   3. Unicode normalisation (NFC vs NFD on the volume name —
+        //      external drives often arrive in NFD).
+        //   4. Whitespace-trimmed variant — covers the case where the
+        //      stored path has a stray trailing space the on-disk name
+        //      doesn't have, OR vice-versa where the on-disk name has
+        //      a trailing space that some upstream code stripped.
         var isDir: ObjCBool = false
-        return fm.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue
+        if fm.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue {
+            return true
+        }
+        let url = URL(fileURLWithPath: path).standardizedFileURL
+        if (try? url.resourceValues(forKeys: [.isDirectoryKey])
+                .isDirectory) == true {
+            return true
+        }
+        let nfc = path.precomposedStringWithCanonicalMapping
+        var nfcDir: ObjCBool = false
+        if nfc != path, fm.fileExists(atPath: nfc, isDirectory: &nfcDir), nfcDir.boolValue {
+            return true
+        }
+        let trimmed = path.trimmingCharacters(in: .whitespaces)
+        var trimDir: ObjCBool = false
+        if trimmed != path,
+           fm.fileExists(atPath: trimmed, isDirectory: &trimDir),
+           trimDir.boolValue {
+            return true
+        }
+        return false
     }
 
     private static func fileSize(_ path: String, fm: FileManager) -> Int64? {

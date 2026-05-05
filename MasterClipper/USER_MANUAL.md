@@ -249,12 +249,14 @@ Right-click any clip in the Clips list → **"Mark as historical (all scope site
 
 ## Excluding clips from posting
 
-Mark any clip as **do not post** from the editor's **Posting status** section: toggle the switch on, pick a reason from the dropdown (default options: **Custom**, **Not Posted - Sent Individually**, **Other - Please specify**), optionally fill in free-text notes. Excluded clips are filtered out of:
+Mark any clip as **do not post** from the editor's **Posting status** section: toggle the switch on, pick a reason from the dropdown (default options: **Custom**, **Not Posted - Sent Individually**, **Other - Please specify**), optionally fill in free-text notes.
 
-- Per-site posting batches (`PostingService.clipsNotPosted`).
-- The **Posting Queue** sidebar section.
+Excluded clips:
+- **Auto-promote to `production`** — there's nothing to post, so they're "done" pipeline-wise. No need to manually shuffle their status.
+- **Are filtered out** of every per-site posting batch (`PostingService.clipsNotPosted`) and the **Posting Queue** sidebar section.
+- Still appear in the Editing Queue, the Clips list, and the Calendar — exclusion is a posting-only concern.
 
-They still appear in the Editing Queue, the Clips list, and the Calendar — exclusion is a posting-only concern. Their pipeline status auto-derives the same way as any other clip; the exclusion is a separate dimension.
+Same auto-promotion happens for clips whose persona has no scoped sites at all (e.g. `Shr` / `N/A` when no site is configured for them) once editing is complete. There's literally nothing to post, so they graduate straight to `production`.
 
 The dropdown of available reasons is configured in **Settings → Posting** (label CRUD, archive toggle, sort order). Reasons are stored as strings on the clip, so renaming a reason in Settings doesn't retroactively change clips already tagged with the old label.
 
@@ -264,9 +266,15 @@ Drill-down wizard. Three stages with breadcrumb navigation at the top.
 
 1. **Sites** — grid of (site, persona) cards. Each card shows pending count or a green "All posted" check.
 2. **Queue** — pending clips for the chosen target. **Start posting** kicks off the first; **Open** on any row jumps straight to it.
-3. **Posting** — focused per-clip window with persona-coloured banner. Pinned at the top: title, clip ID, full Production folder path (with **Reveal** + **Open clip in editor**), thumbnail filename, and MD5 / SHA-1 / SHA-256 file hashes (each click-to-copy). Below: read-only refined description (with copy), editable categories, schedule strip with editable Price field, and a Posting notes textarea that saves into the clip_postings row.
+3. **Posting** — focused per-clip window with persona-coloured banner. Pinned at the top: title (with copy-to-clipboard button), clip ID (click-to-copy), full Production folder path (with **Reveal** + **Open clip in editor**), thumbnail filename, and MD5 / SHA-1 / SHA-256 file hashes (each click-to-copy). Below: read-only refined description (with copy), editable categories, schedule strip with editable Price field, and a Posting notes textarea.
+
+   **Posting notes are saved twice** — to the per-(clip, site) `clip_postings.notes` column AND mirrored to the clip's main Notes field as `[Posted <siteCode> YYYY-MM-DD] <text>`, so the editor's Notes section surfaces every posting context together.
 
    Action bar: **Copy all (markdown)**, **Skip for now** (advance without marking — clip stays in queue for later), **Mark posted** (⌘S), **Posted & next** (⌘↩). Mark posted is disabled until the price is set — zero is allowed for free clips.
+
+The breadcrumb header has a **Show queue list** button (numbered-list icon) — opens a sheet with every pending clip in order. Each row has click-to-copy ID / title / production filename. Footer has bulk-copy buttons (Titles / Filenames / Markdown table) for sites that allow uploading multiple clips at once.
+
+The position indicator (`Clip N of M`) is computed as "clips already posted + offset of current clip in remaining list + 1" so both Mark posted and Skip advance the counter by exactly one.
 
 When a queue empties, falls back to the queue stage with an "all done" page and a **Next batch** button to jump to the next (site, persona) target.
 
