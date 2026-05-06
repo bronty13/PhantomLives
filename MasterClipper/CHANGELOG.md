@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-05-06 — Category cleanup
+
+- **Archive unused (N)…** button on **Settings → Categories** with a count badge. One click + confirmation flips `archived = 1` on every category not currently referenced by any `clip_categories` row. Reversible — flip the row's Archived toggle in the same table to bring it back. Single-transaction `UPDATE`. The button greys out + drops the count once everything's clean.
+- **`ensureCategory` un-archives on re-use.** If an archived category is re-attached to a clip later (via inline picker, import, or the historical-categories backfill), it automatically un-archives back into the picker. So the cleanup is fully reversible without manual intervention even when the import path runs.
+
+## 2026-05-06 — Information Needed report
+
+- New **Information Needed** report under Reports. Lists every active clip in `new` / `editing` status that's missing at least one of: raw description, categories, go-live date. Each card shows `ID — Title [Persona]`, the description (or `Blank` if empty), the categories (or `None Defined` if empty), plus the go-live row only when it's the missing field. Orange `desc` / `cats` / `go-live` badges in the card header summarize what's open.
+- **Copy for creator** button copies a clipboard payload prefixed with `Please confirm/provide the following:` in the exact per-clip layout the user wanted, ready to paste into Messages / email.
+
+## 2026-05-06 — Historical-clip category backfill from C4S snapshot
+
+- **Backfill historical categories…** button on the C4S Historical view's toolbar. Opens a planner sheet that finds production clips with no categories assigned and matches each against `c4s_historical` by title (using `FuzzyMatch.normalize` so apostrophes / commas / punctuation drift count as the same title), then proposes the C4S row's `categories + keywords` as the new category list — in that order, deduped, uppercased, position-preserved.
+- **Four buckets in the sheet** with per-row checkboxes: *Exact*, *Strong fuzzy* (≥ 0.92), *Maybe* (0.75–0.92), *Cannot match*. Defaults: exact + strong checked; maybe unchecked; cannot-match shown as a copyable list. Each match row shows the persona pill, source title → C4S title (with an orange `(store: X)` warning if the candidate sits in the other store), and a chip preview of every category that would be applied. Score pill on every fuzzy row.
+- **Match-key rationale.** `external_clip_id` in the `clips` table turned out to be the legacy import sequence number, not the C4S clip ID, so it can't be used to join. Title is the only viable key.
+- **Single-transaction commit.** `DatabaseService.applyHistoricalCategoryBackfill(_:)` ensures every category exists (uppercased via `ensureCategoryInTransaction` so we never deadlock by re-entering `dbPool.write`) and inserts each `clip_categories` row with `position = i`. Clips that gained categories between plan-time and commit-time are silently skipped — no overwrites, ever.
+- **Filter scope** for "historical": `status = 'production' AND zero clip_categories rows` (operational definition, since there's no `is_historical` flag — `Mark as historical` just calls `markAllScopedSitesPosted`).
+
+## 2026-05-05 — Clips4Sale historical snapshot table, dashboard exclusion fix
+
+- **C4S Historical** — new sidebar section + `c4s_historical` table holding the most recent on-demand Clips4Sale storefront export per store. Columns mirror the C4S export 1:1 (status, clip ID, tracking tag, title, description, categories, keywords, three filenames, performers, price/sales/income); plus a `store` key (CoC | PoA) and `imported_at` timestamp. Each import wholly replaces every row for the chosen store inside one transaction, so the table is always a current snapshot, never a journal.
+- **C4S Historical importer** — modal sheet with file picker, store toggle (auto-pre-selected from `COC_…` / `POA_…` filename prefixes), and a 3-row preview before commit. Accepts the .xlsx export verbatim and the "csv" export which C4S writes as **pipe-delimited** with `"`-quoted fields and embedded newlines inside descriptions; the parser is a state machine over Unicode scalars that handles both. Shows extension and existing row count up-front; falls back to ZIP-magic content sniffing when the file has no recognizable extension.
+- **C4S Historical view** — `HSplitView` table (Store, Title, Status, C4S ID, Price, Sales, Income, Categories) with sortable columns and free-text search across title / description / keywords / categories / clip-id / performers; right-side detail panel with persona-coloured store pill, full description, category and keyword chips, file row, and tracking tag — all click-to-copy via `.textSelection(.enabled)`. Top toolbar segmented control filters All / CoC / PoA with live counts.
+- **Schema migration v11** — adds `c4s_historical` and its `store` / `clip_id` indexes. Append-only; fresh installs and upgrades both pick it up.
+- **Dashboard fix** — `Clip × site posting status` matrix on the Dashboard now filters out `posting_excluded` clips. They auto-promote to `production` (since there's nothing to post) and don't belong on the per-site grid.
+
 ## 2026-05-05 — Status auto-recompute fix, click-to-copy IDs, file-audit hardening
 
 - **Status-recompute bug fix.** `PostingService.markPosted` was writing posting rows directly via `row.save(db)`, bypassing the clip-status recompute that lives inside `DatabaseService.upsertPosting`. Result: clips with postings created via the batch flow stayed in `to_post` even after the first scoped site was marked posted. `markPosted` now routes through `upsertPosting`, which triggers status recompute + history-row writes. Backfilled via `v9_recompute_clip_status` migration.

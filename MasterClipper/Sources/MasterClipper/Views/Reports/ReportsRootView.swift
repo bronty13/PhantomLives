@@ -2,27 +2,29 @@ import SwiftUI
 
 struct ReportsRootView: View {
     enum Kind: String, CaseIterable, Hashable {
-        case fullClip, weekly, postingStatus, categoryUsage, calendar, audit
+        case fullClip, weekly, postingStatus, categoryUsage, calendar, audit, informationNeeded
 
         var label: String {
             switch self {
-            case .fullClip:       return "Full Clip Report"
-            case .weekly:         return "Weekly Report"
-            case .postingStatus:  return "Posting Status"
-            case .categoryUsage:  return "Category Usage"
-            case .calendar:       return "Calendar Rollup"
-            case .audit:          return "Clip Audit"
+            case .fullClip:           return "Full Clip Report"
+            case .weekly:             return "Weekly Report"
+            case .postingStatus:      return "Posting Status"
+            case .categoryUsage:      return "Category Usage"
+            case .calendar:           return "Calendar Rollup"
+            case .audit:              return "Clip Audit"
+            case .informationNeeded:  return "Information Needed"
             }
         }
 
         var icon: String {
             switch self {
-            case .fullClip:       return "list.bullet.rectangle"
-            case .weekly:         return "calendar.badge.exclamationmark"
-            case .postingStatus:  return "paperplane"
-            case .categoryUsage:  return "tag.fill"
-            case .calendar:       return "calendar.badge.clock"
-            case .audit:          return "checkmark.shield"
+            case .fullClip:           return "list.bullet.rectangle"
+            case .weekly:             return "calendar.badge.exclamationmark"
+            case .postingStatus:      return "paperplane"
+            case .categoryUsage:      return "tag.fill"
+            case .calendar:           return "calendar.badge.clock"
+            case .audit:              return "checkmark.shield"
+            case .informationNeeded:  return "questionmark.bubble"
             }
         }
     }
@@ -45,7 +47,8 @@ struct ReportsRootView: View {
                 case .postingStatus:  PostingStatusReportView()
                 case .categoryUsage:  CategoryUsageReportView()
                 case .calendar:       CalendarReportView()
-                case .audit:          ClipAuditReportView()
+                case .audit:              ClipAuditReportView()
+                case .informationNeeded:  InformationNeededReportView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

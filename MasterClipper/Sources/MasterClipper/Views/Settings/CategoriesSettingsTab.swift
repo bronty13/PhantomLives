@@ -4,11 +4,34 @@ struct CategoriesSettingsTab: View {
     @EnvironmentObject private var appState: AppState
     @State private var newName: String = ""
     @State private var error: String?
+    @State private var unusedCount: Int = 0
+    @State private var showingCleanupConfirm: Bool = false
+    @State private var lastCleanupMessage: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Categories")
-                .font(.title3.weight(.semibold))
+            HStack(alignment: .firstTextBaseline) {
+                Text("Categories")
+                    .font(.title3.weight(.semibold))
+                Spacer()
+                if let msg = lastCleanupMessage {
+                    Text(msg).font(.caption).foregroundStyle(.green)
+                }
+                Button {
+                    showingCleanupConfirm = true
+                } label: {
+                    Label(
+                        unusedCount > 0
+                            ? "Archive unused (\(unusedCount))…"
+                            : "Archive unused",
+                        systemImage: "archivebox"
+                    )
+                }
+                .disabled(unusedCount == 0)
+                .help(unusedCount == 0
+                      ? "Every active category is in use"
+                      : "Archive every category that isn't currently attached to any clip — reversible from this table")
+            }
             Text("Categories are reusable tags shown as chips on each clip. Add new ones here, then pick them in the clip editor.")
                 .font(.caption).foregroundStyle(.secondary)
 
@@ -79,5 +102,38 @@ struct CategoriesSettingsTab: View {
             }
         }
         .padding(20)
+        .onAppear { refreshUnusedCount() }
+        .onChange(of: appState.clips.count)      { _, _ in refreshUnusedCount() }
+        .onChange(of: appState.categories.count) { _, _ in refreshUnusedCount() }
+        .confirmationDialog(
+            "Archive \(unusedCount) unused categor\(unusedCount == 1 ? "y" : "ies")?",
+            isPresented: $showingCleanupConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Archive \(unusedCount)", role: .destructive) {
+                runCleanup()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Categories not currently attached to any clip will be hidden from pickers. They stay in the table — flip the Archived toggle to bring one back, or attach it to a clip and it un-archives automatically.")
+        }
+    }
+
+    private func refreshUnusedCount() {
+        unusedCount = (try? DatabaseService.shared.unusedActiveCategoryCount()) ?? 0
+    }
+
+    private func runCleanup() {
+        do {
+            let n = try DatabaseService.shared.archiveUnusedCategories()
+            appState.reloadCategories()
+            refreshUnusedCount()
+            lastCleanupMessage = "Archived \(n) categor\(n == 1 ? "y" : "ies")."
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                lastCleanupMessage = nil
+            }
+        } catch {
+            self.error = "Cleanup failed: \(error.localizedDescription)"
+        }
     }
 }

@@ -50,6 +50,11 @@ struct SidebarView: View {
                 !$0.archived && ($0.statusEnum == .toPost || $0.statusEnum == .posting)
             }.count
             return n > 0 ? "\(n)" : nil
+        case .c4sHistorical:
+            // Cheap aggregate count over the snapshot table. Failures
+            // just suppress the badge — empty table reads as nil too.
+            let n = (try? DatabaseService.shared.c4sHistoricalCount()) ?? 0
+            return n > 0 ? "\(n)" : nil
         default:
             return nil
         }

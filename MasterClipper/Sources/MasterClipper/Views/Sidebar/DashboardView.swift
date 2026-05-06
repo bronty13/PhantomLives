@@ -66,13 +66,16 @@ struct DashboardView: View {
             by: \.clipId
         ).mapValues { Set($0.map(\.siteId)) }
 
-        return appState.clips.filter { !$0.archived }.map { clip in
-            let scoped = appState.sites
-                .filter { !$0.archived && $0.appliesTo(personaCode: clip.personaCode) }
-                .sorted { $0.sortOrder < $1.sortOrder }
-            let posted = postedByClip[clip.id] ?? []
-            return ClipSummary(clip: clip, scopedSites: scoped, postedSiteIds: posted)
-        }
+        return appState.clips
+            .filter { !$0.archived }
+            .filter { !$0.postingExcluded }    // not-to-be-posted clips don't belong on the matrix
+            .map { clip in
+                let scoped = appState.sites
+                    .filter { !$0.archived && $0.appliesTo(personaCode: clip.personaCode) }
+                    .sorted { $0.sortOrder < $1.sortOrder }
+                let posted = postedByClip[clip.id] ?? []
+                return ClipSummary(clip: clip, scopedSites: scoped, postedSiteIds: posted)
+            }
     }
 
     private var filteredSummaries: [ClipSummary] {

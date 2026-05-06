@@ -74,7 +74,9 @@ Sources/MasterClipper/
 │   ├── TranscriptionService.swift        shells out to sibling transcribe.py
 │   ├── PathDefaultsService.swift         compute / backfill production + FCP folder paths
 │   ├── SearchService.swift               AND-token LIKE
-│   └── FuzzyMatch.swift                  Levenshtein + alias dict for column auto-mapping
+│   ├── FuzzyMatch.swift                  Levenshtein + alias dict for column auto-mapping
+│   ├── C4SHistoricalImportService.swift  XLSX + pipe-CSV parser; ZIP-magic content sniff
+│   └── HistoricalCategoryBackfillService.swift  title-match planner — exact / strong / maybe / unmatched buckets
 ├── Views/
 │   ├── ContentView.swift                 NavigationSplitView root
 │   ├── Sidebar/
@@ -106,10 +108,15 @@ Sources/MasterClipper/
 │   ├── Import/
 │   │   └── ImportWizardView.swift        5-step wizard (Source → Sheets → Mapping → Preview → Done)
 │   ├── Reports/
-│   │   ├── ReportsRootView.swift         Full clip / Posting status / Category usage / Calendar rollup / Audit
+│   │   ├── ReportsRootView.swift         Full clip / Posting status / Category usage / Calendar rollup / Audit / Information needed
 │   │   ├── WeeklyReportView.swift        Last / This / Next week + "Not in production" list
 │   │   ├── ClipAuditReportView.swift     bulk audit cards, click → clip editor
+│   │   ├── InformationNeededReportView.swift  new/editing clips missing desc / cats / go-live + Copy for creator
 │   │   └── ReportExportMenu.swift        per-report MD / PDF / CSV menu + auto-reveal + persistent Reveal
+│   ├── C4SHistorical/
+│   │   ├── C4SHistoricalView.swift       table + detail HSplitView; toolbar Backfill / Import buttons
+│   │   ├── C4SHistoricalImportSheet.swift  file picker + store toggle + 3-row preview
+│   │   └── HistoricalCategoryBackfillSheet.swift  per-row checkboxes across the four match buckets
 │   ├── Settings/
 │   │   ├── SettingsView.swift            10-tab TabView
 │   │   ├── PersonasSettingsTab.swift     ColorPicker for persona colour
@@ -132,7 +139,7 @@ Sources/MasterClipper/
 
 ## Database schema
 
-12 tables, ten migrations (`v1_initial` … `v10_status_for_excluded_and_no_scope`). `grdb_migrations` is the GRDB-managed bookkeeping table.
+13 tables, eleven migrations (`v1_initial` … `v11_c4s_historical`). `grdb_migrations` is the GRDB-managed bookkeeping table.
 
 ```
 personas        (id, code UNIQUE, display_name, color_hex, sort_order, archived)
@@ -161,6 +168,11 @@ calendar_events (id, date, persona_code, clip_id, title, notes, created_at, upda
 calendar_rules  (persona_code, weekday 1–7, enabled, PK)
 prices          (id, label, price_cents, notes)
 exclusion_reasons (id, label UNIQUE, sort_order, archived)      -- v8 (configurable dropdown)
+c4s_historical  (id, store, clip_status, clip_id, tracking_tag, -- v11 (C4S storefront snapshot)
+                 title, description_text, categories, keywords,
+                 clip_filename, thumbnail_filename, preview_filename,
+                 performers, price_cents, sales_count, income_cents,
+                 imported_at)
 ```
 
 Migration log:
@@ -174,6 +186,7 @@ Migration log:
 - **v8_categories_uppercase_and_exclusions** — uppercase + dedupe existing category names, add `posting_excluded` / `exclusion_reason` / `exclusion_notes` to `clips`, create the `exclusion_reasons` lookup table seeded with three default reasons.
 - **v9_recompute_clip_status** — data-only sweep. Earlier `PostingService.markPosted` wrote posting rows directly via `row.save(db)`, bypassing the clip-status recompute that lives inside `upsertPosting`. Walks every active clip and snaps `status` to whatever `computeStatus` says now; writes a `clip_history` row per flip.
 - **v10_status_for_excluded_and_no_scope** — second data sweep after `computeStatus` learned two new shortcuts: `postingExcluded == true` → `production`, and "no scoped sites + editing complete" → `production`. Same per-flip history-row pattern.
+- **v11_c4s_historical** — `c4s_historical` table (one row per C4S storefront clip per store) plus indexes on `store` and `clip_id`. Driven by `C4SHistoricalImportService` which parses both the `.xlsx` export and the pipe-delimited `.csv` export (C4S misnames it CSV — fields are `|`-separated with quoted multi-line descriptions). `DatabaseService.replaceC4SHistorical(store:with:)` does a single-transaction `DELETE WHERE store = ?` + insert.
 
 Migrations are append-only — never edit a previously-shipped one. To change the schema, register a new `vN_…` migration in `DatabaseService.migrate()` after all the existing ones.
 
@@ -186,6 +199,9 @@ Migrations are append-only — never edit a previously-shipped one. To change th
 - **Backup scope is metadata only.** The zip contains the SQLite DB + `settings.json`. Referenced video / thumbnail / preview files are not vaulted — only their filenames are stored.
 - **Description fields are bifurcated**: `description_raw` is the user's raw transcription; `description_refined` is the LLM-cleaned version. Refine writes to `refined` only; raw is never overwritten. The first time `refined` is set, `[Refined YYYY-MM-DD]` is appended to `notes`. After streaming, `OllamaService.cleanRefineOutput` strips wrapping quotes and normalises paragraph whitespace (single in-paragraph newlines → space; 3+ newlines → 2; multi-space runs → single).
 - **Calendar generation** can produce up to one event per (date, persona) — the unique index `idx_cal_unique` enforces this. Two personas active on the same weekday yield two distinct events on that date (intentional). Clips with `goLiveDate` are also surfaced on the calendar at display time without writing to `calendar_events`.
+- **`external_clip_id` is *not* the C4S clip ID** in any current install — it's the legacy import sequence number. `c4s_historical.clip_id` (the real C4S ID) cannot be joined against it. Title (post-`FuzzyMatch.normalize`) is the only viable join key between the two tables, used by `HistoricalCategoryBackfillService`.
+- **`ensureCategory` un-archives on re-use.** The Categories cleanup (`archiveUnusedCategories`) flips `archived = 1` on every category not currently referenced by `clip_categories`. Any subsequent attach (inline picker, import wizard, historical backfill) calls `ensureCategory(named:)`, which un-archives the row in the same write transaction so the cleanup is fully reversible without manual flag-flipping.
+- **No `is_historical` flag on clips.** "Historical-import" clips look identical to clips that worked through the pipeline normally (status = `production`, every scoped site marked posted) — `Mark as historical` just calls `markAllScopedSitesPosted`. The category-backfill operational filter (`status = 'production' AND zero clip_categories rows`) is a proxy, not a hard gate.
 
 ## Auto-status formula
 

@@ -33,6 +33,7 @@ All paths are user-overridable in **Settings → Backup** and **Settings → Imp
 | **Calendar** | Year / Quarter / Month / Week / Day. Auto-pops from clip go-live dates |
 | **Posting Batch** | Drill-down site × persona posting wizard with focused per-clip windows |
 | **Reports** | Full Clip / Weekly / Posting Status / Category Usage / Calendar Rollup / Clip Audit. Each report has its own MD / PDF / CSV export menu with auto-reveal. |
+| **C4S Historical** | Snapshot of the most recent Clips4Sale on-demand storefront export per store (CoC + PoA). Sortable grid + per-row detail. Each import wholly replaces the chosen store's rows. |
 | **Import** | 5-step smart-import wizard for xlsx / csv / tsv / pasted text |
 
 ## The workflow pipeline
@@ -87,6 +88,12 @@ Configurable in **Settings → Categories**. Used as multi-select chips on each 
 **Categories are uppercase.** As of the v8 migration, every existing category name was uppercased and case-collisions were merged onto the lowest-id row (with `clip_categories` links re-pointed). Going forward, every code path that creates a category — `DatabaseService.ensureCategory(named:)`, the inline picker, the settings tab, import — uppercases on input so they all land on the same canonical row.
 
 You can also create a new category **directly from any clip** without leaving the editor: under the chip picker, type a new name in the "Create new category — type and press Return" field. Case-insensitive duplicates are detected and reused. New categories appear in **Settings → Categories** automatically.
+
+### Cleaning up unused categories
+
+Imports often grow the category table faster than the clip table — every unique tag on every imported row becomes a Category, but most of them only ever appear once. The **Archive unused (N)…** button at the top right of **Settings → Categories** reports how many active categories aren't currently attached to *any* clip; one click + confirmation flips them all to `archived = 1` in a single transaction.
+
+Archived categories are hidden from the inline picker, the chip-based filters, and the import auto-suggest. They stay in the Categories table (flip the **Archived** toggle on a row to bring it back), and `ensureCategory` un-archives on re-use — so if a future import or the historical-categories backfill ever re-attaches an archived category to a clip, it auto-revives back into the picker without manual intervention.
 
 ## Clip ID format
 
@@ -309,8 +316,45 @@ The Reports section has six panels, each with its own export menu (Markdown / PD
 | **Category Usage** | Per-category clip counts. |
 | **Calendar Rollup** | Per-(month, persona) event counts for a selected year. |
 | **Clip Audit** | The 7-point clip checklist as bulk cards (separate from the per-clip Verify files audit). Clickable into the editor. |
+| **Information Needed** | Every clip in `new` / `editing` status that's missing a description, categories, or go-live date. Each card shows ID — Title [Persona], Description (or `Blank`), Categories (or `None Defined`). **Copy for creator** button packages the list into a clipboard payload prefixed with `Please confirm/provide the following:` for sending to the creator. |
 
 The toolbar **Export…** menu at the top of the Reports section is distinct — it dumps the *full clip dataset* in any format. The per-report menus only export that report's view.
+
+## C4S Historical
+
+A separate sidebar section that holds the **most recent on-demand Clips4Sale storefront export** per store. The C4S admin page can produce a `.xlsx` or "`.csv`" export of every clip in your store with status / sales / 6-month income; this section stores the snapshot in `c4s_historical` so you can analyse it without leaving the app.
+
+**Schema is one row per C4S clip per store.** Columns mirror the C4S export (status, clip ID, tracking tag, title, description, categories, keywords, three filenames, performers, price, sales count, last-6-months income) plus a `store` key (`CoC` | `PoA`) and an `imported_at` timestamp.
+
+**Import (Cmd-I):** opens a sheet with
+
+- **Source file** — pick the `.xlsx` or `.csv`. The C4S "csv" is actually pipe-delimited with quoted fields and embedded newlines inside descriptions; the importer parses both formats. The picker also accepts files with no extension and content-sniffs them via the ZIP magic.
+- **Store** — segmented control (CoC / PoA). Auto-pre-selects from filename prefixes like `COC_…` or `POA_…`. The orange banner reads `All N existing CoC rows will be replaced.`
+- **Preview** — shows the parsed row count and the first three rows so you can sanity-check before committing.
+- **Replace `<Store>` rows** — wraps the delete + insert in a single transaction. The other store's rows are untouched.
+
+**Browse:** the body is a `HSplitView` — sortable table on the left (Store / Title / Status / C4S ID / Price / Sales / Income / Categories), detail panel on the right showing the persona-coloured store pill, full description, category and keyword chips, file row, and tracking tag. Top toolbar: store filter (All / CoC / PoA with counts), free-text search across title / description / keywords / categories / clip-id / performers, **Import…** button.
+
+**Use case:** the Dashboard and Reports show your clip pipeline; this section shows the *posted reality* on Clips4Sale. The two sides won't always match (clips you've delisted on C4S, clips C4S has under review, etc.), so this snapshot is the source of truth for "what does my storefront look like right now". You re-run the import as often as you want; older snapshots aren't kept.
+
+### Backfill categories on historical clips
+
+The toolbar's **Backfill categories…** button (enabled once you have a snapshot) opens a planner that fills in categories on production clips that have none — using the categories *already assigned to the same clip on the storefront* as the source of truth. Useful right after a historical import: those clips come in with title and persona but no category metadata.
+
+The matcher uses **title only** — your `external_clip_id` is a legacy sequence number, not the real C4S clip ID, so it can't join. Titles are normalized (lowercased, apostrophes / commas stripped, whitespace collapsed) before comparing.
+
+The sheet groups proposals into four buckets, each with per-row checkboxes:
+
+| Bucket | Score | Default | Notes |
+|---|---|---|---|
+| **Exact** | 1.00 | ✓ | Same title after normalization. Safe. |
+| **Strong fuzzy** | ≥ 0.92 | ✓ | Likely the same clip — typo / punctuation drift. Eyeball before running. |
+| **Maybe** | 0.75–0.92 | ✗ | Could be the same clip with a reworded title — tick the ones you accept. |
+| **Cannot match** | < 0.75 | (n/a) | Copyable list. Mostly customs / delisted clips. |
+
+Each match row shows persona pill, source title → C4S title, and a chip preview of every category that would be applied. An orange `(store: X)` flag appears if the best candidate sits in the *other* store (rare; review carefully). The category list is built as `c4s.categories + c4s.keywords` (in that order), uppercased, deduped by first occurrence, position preserved.
+
+**Run** wraps every category-ensure + `clip_categories` insert in one transaction. Clips that already have categories at commit time are silently skipped — backfill never overwrites.
 
 ## Exports
 

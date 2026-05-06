@@ -21,31 +21,33 @@ final class AppState: ObservableObject {
     @Published var pendingPostingFilter: PostingFilter? = nil
 
     enum Section: String, Hashable, CaseIterable {
-        case dashboard, editingQueue, postingQueue, clips, calendar, postingBatch, reports, importView
+        case dashboard, editingQueue, postingQueue, clips, calendar, postingBatch, reports, c4sHistorical, importView
 
         var title: String {
             switch self {
-            case .dashboard:    return "Dashboard"
-            case .editingQueue: return "Editing Queue"
-            case .postingQueue: return "Posting Queue"
-            case .clips:        return "Clips"
-            case .calendar:     return "Calendar"
-            case .postingBatch: return "Posting Batch"
-            case .reports:      return "Reports"
-            case .importView:   return "Import"
+            case .dashboard:     return "Dashboard"
+            case .editingQueue:  return "Editing Queue"
+            case .postingQueue:  return "Posting Queue"
+            case .clips:         return "Clips"
+            case .calendar:      return "Calendar"
+            case .postingBatch:  return "Posting Batch"
+            case .reports:       return "Reports"
+            case .c4sHistorical: return "C4S Historical"
+            case .importView:    return "Import"
             }
         }
 
         var systemImage: String {
             switch self {
-            case .dashboard:    return "rectangle.3.group.fill"
-            case .editingQueue: return "wand.and.stars"
-            case .postingQueue: return "tray.full"
-            case .clips:        return "film.stack.fill"
-            case .calendar:     return "calendar"
-            case .postingBatch: return "paperplane.fill"
-            case .reports:      return "chart.bar.doc.horizontal"
-            case .importView:   return "square.and.arrow.down"
+            case .dashboard:     return "rectangle.3.group.fill"
+            case .editingQueue:  return "wand.and.stars"
+            case .postingQueue:  return "tray.full"
+            case .clips:         return "film.stack.fill"
+            case .calendar:      return "calendar"
+            case .postingBatch:  return "paperplane.fill"
+            case .reports:       return "chart.bar.doc.horizontal"
+            case .c4sHistorical: return "chart.line.uptrend.xyaxis"
+            case .importView:    return "square.and.arrow.down"
             }
         }
     }

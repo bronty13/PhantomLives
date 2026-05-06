@@ -25,8 +25,9 @@ private struct DetailRouterView: View {
             case .clips:        ClipListView()
             case .calendar:     CalendarRootView()
             case .postingBatch: PostingBatchView()
-            case .reports:      ReportsRootView()
-            case .importView:   ImportWizardView()
+            case .reports:       ReportsRootView()
+            case .c4sHistorical: C4SHistoricalView()
+            case .importView:    ImportWizardView()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

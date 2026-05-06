@@ -368,6 +368,33 @@ final class DatabaseService {
             }
         }
 
+        migrator.registerMigration("v11_c4s_historical") { db in
+            // Single-table store for on-demand Clips4Sale storefront exports.
+            // Each import replaces every row for the chosen `store`
+            // (CoC | PoA), so the table is always a current snapshot.
+            try db.create(table: "c4s_historical") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("store", .text).notNull()
+                t.column("clip_status", .text).notNull().defaults(to: "")
+                t.column("clip_id", .text).notNull().defaults(to: "")
+                t.column("tracking_tag", .text).notNull().defaults(to: "")
+                t.column("title", .text).notNull().defaults(to: "")
+                t.column("description_text", .text).notNull().defaults(to: "")
+                t.column("categories", .text).notNull().defaults(to: "")
+                t.column("keywords", .text).notNull().defaults(to: "")
+                t.column("clip_filename", .text).notNull().defaults(to: "")
+                t.column("thumbnail_filename", .text).notNull().defaults(to: "")
+                t.column("preview_filename", .text).notNull().defaults(to: "")
+                t.column("performers", .text).notNull().defaults(to: "")
+                t.column("price_cents", .integer)
+                t.column("sales_count", .integer)
+                t.column("income_cents", .integer)
+                t.column("imported_at", .text).notNull()
+            }
+            try db.create(index: "idx_c4s_hist_store",   on: "c4s_historical", columns: ["store"])
+            try db.create(index: "idx_c4s_hist_clip_id", on: "c4s_historical", columns: ["clip_id"])
+        }
+
         try migrator.migrate(dbPool)
     }
 
@@ -483,12 +510,57 @@ final class DatabaseService {
         // on the same row regardless of how the user typed it in.
         let upper = name.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
         return try dbPool.write { db in
-            if let existing = try Category.filter(Column("name") == upper).fetchOne(db) {
+            if var existing = try Category.filter(Column("name") == upper).fetchOne(db) {
+                // Un-archive on re-use. The "Archive unused" cleanup
+                // hides categories that aren't currently attached to a
+                // clip; re-attaching one (via import, backfill, or the
+                // inline picker) should bring it back into the picker.
+                if existing.archived {
+                    existing.archived = false
+                    try existing.update(db)
+                }
                 return existing
             }
             var c = Category(id: nil, name: upper, sortOrder: 0, archived: false)
             try c.insert(db)
             return c
+        }
+    }
+
+    /// Archive every category that isn't currently referenced by any
+    /// `clip_categories` row. Returns the number of categories
+    /// archived. Reversible — flip the row's `archived` toggle in
+    /// **Settings → Categories** to bring it back, or just attach it
+    /// to a clip (`ensureCategory` un-archives on re-use).
+    @discardableResult
+    func archiveUnusedCategories() throws -> Int {
+        try dbPool.write { db in
+            // Count first so we can return how many flipped.
+            let n = try Int.fetchOne(db, sql: """
+                SELECT COUNT(*) FROM categories
+                 WHERE archived = 0
+                   AND id NOT IN (SELECT category_id FROM clip_categories)
+                """) ?? 0
+            try db.execute(sql: """
+                UPDATE categories
+                   SET archived = 1
+                 WHERE archived = 0
+                   AND id NOT IN (SELECT category_id FROM clip_categories)
+                """)
+            return n
+        }
+    }
+
+    /// How many active categories aren't currently attached to any
+    /// clip. Drives the "Clean up unused" button label so the user
+    /// knows what they're committing to.
+    func unusedActiveCategoryCount() throws -> Int {
+        try dbPool.read { db in
+            try Int.fetchOne(db, sql: """
+                SELECT COUNT(*) FROM categories
+                 WHERE archived = 0
+                   AND id NOT IN (SELECT category_id FROM clip_categories)
+                """) ?? 0
         }
     }
 
@@ -508,6 +580,113 @@ final class DatabaseService {
 
     func deleteExclusionReason(id: Int64) throws {
         _ = try dbPool.write { db in try ExclusionReason.deleteOne(db, key: id) }
+    }
+
+    // MARK: - C4S historical
+
+    func fetchC4SHistorical(store: String? = nil) throws -> [C4SHistoricalRecord] {
+        try dbPool.read { db in
+            var q = C4SHistoricalRecord
+                .order(Column("store").asc, Column("title").collating(.localizedCaseInsensitiveCompare).asc)
+            if let store = store, !store.isEmpty {
+                q = q.filter(Column("store") == store)
+            }
+            return try q.fetchAll(db)
+        }
+    }
+
+    func c4sHistoricalCount(store: String? = nil) throws -> Int {
+        try dbPool.read { db in
+            if let store = store, !store.isEmpty {
+                return try C4SHistoricalRecord.filter(Column("store") == store).fetchCount(db)
+            }
+            return try C4SHistoricalRecord.fetchCount(db)
+        }
+    }
+
+    /// Wholesale replace: every row whose `store` matches is deleted, then
+    /// the supplied rows are inserted with a single `imported_at` stamp.
+    /// Whole thing happens in one transaction so the table is never half
+    /// in/half out of date for that store. Returns the number of inserted rows.
+    @discardableResult
+    func replaceC4SHistorical(store: String, with rows: [C4SHistoricalRecord]) throws -> Int {
+        try dbPool.write { db in
+            try db.execute(sql: "DELETE FROM c4s_historical WHERE store = ?", arguments: [store])
+            for var row in rows {
+                row.id = nil
+                row.store = store
+                try row.insert(db)
+            }
+            return rows.count
+        }
+    }
+
+    // MARK: - Historical category backfill
+
+    /// Targets for `HistoricalCategoryBackfillService`: production-status
+    /// clips with no categories assigned. We use this filter (rather
+    /// than a "is_historical" flag) because there isn't one — clips
+    /// that came in via `Mark as historical` look identical to clips
+    /// that worked through the pipeline normally, except for the
+    /// missing categories.
+    func fetchProductionClipsWithoutCategories() throws -> [Clip] {
+        try dbPool.read { db in
+            try Clip.fetchAll(db, sql: """
+                SELECT c.* FROM clips c
+                 WHERE c.archived = 0
+                   AND c.status = 'production'
+                   AND NOT EXISTS (
+                       SELECT 1 FROM clip_categories cc
+                        WHERE cc.clip_id = c.id
+                   )
+                 ORDER BY c.persona_code, c.title
+                """)
+        }
+    }
+
+    /// Apply the user-confirmed subset of a backfill plan. For each
+    /// candidate: ensure each Category exists (uppercased), then insert
+    /// `clip_categories` rows with the supplied positional order. The
+    /// whole batch happens in one transaction so the operation is
+    /// all-or-nothing. Skips any clip that gained categories between
+    /// plan-time and commit-time.
+    @discardableResult
+    func applyHistoricalCategoryBackfill(
+        _ candidates: [HistoricalCategoryBackfillService.Candidate]
+    ) throws -> Int {
+        try dbPool.write { db in
+            var assigned = 0
+            for cand in candidates {
+                let existing = try Int.fetchOne(db, sql:
+                    "SELECT COUNT(*) FROM clip_categories WHERE clip_id = ?",
+                    arguments: [cand.clipId]) ?? 0
+                guard existing == 0 else { continue }
+
+                for (pos, name) in cand.categories.enumerated() {
+                    let category = try Self.ensureCategoryInTransaction(named: name, db: db)
+                    guard let categoryId = category.id else { continue }
+                    try db.execute(sql: """
+                        INSERT OR IGNORE INTO clip_categories (clip_id, category_id, position)
+                        VALUES (?, ?, ?)
+                        """, arguments: [cand.clipId, categoryId, pos])
+                }
+                assigned += 1
+            }
+            return assigned
+        }
+    }
+
+    /// In-transaction variant of `ensureCategory`. The public
+    /// `ensureCategory(named:)` opens its own write block, which would
+    /// deadlock if called from inside another `dbPool.write`.
+    private static func ensureCategoryInTransaction(named name: String, db: GRDB.Database) throws -> Category {
+        let upper = name.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if let existing = try Category.filter(Column("name") == upper).fetchOne(db) {
+            return existing
+        }
+        var c = Category(id: nil, name: upper, sortOrder: 0, archived: false)
+        try c.insert(db)
+        return c
     }
 
     // MARK: - Clips
