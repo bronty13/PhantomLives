@@ -30,6 +30,10 @@ struct FileAuditWorkflow: View {
     @State private var initiallyClean: Set<String> = []
     @State private var auditCache: [String: FileAuditService.Result] = [:]
     @State private var renameError: String?
+    @State private var bulkProvisionRunning: Bool = false
+    @State private var bulkProvisionMessage: String?
+    @State private var bulkRestampRunning: Bool = false
+    @State private var bulkRestampMessage: String?
     @State private var reducing: Bool = false
     @State private var reduceMessage: String?
     @State private var transcribing: Bool = false
@@ -122,10 +126,154 @@ struct FileAuditWorkflow: View {
                     .font(.callout.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
+            HStack(spacing: 10) {
+                let candidates = clipsNeedingProductionFolder()
+                let outOfPattern = clipsWithOutOfPatternProductionFolder()
+                Button {
+                    runBulkProvisionProduction()
+                } label: {
+                    if bulkProvisionRunning {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.small)
+                            Text("Stamping…")
+                        }
+                    } else {
+                        Label("Stamp \(candidates.count) missing production folder\(candidates.count == 1 ? "" : "s")",
+                              systemImage: "folder.badge.plus")
+                    }
+                }
+                .controlSize(.small)
+                .disabled(candidates.isEmpty || bulkProvisionRunning)
+                .help("For every clip in the queue with no production folder set, create `<base>/<contentDate> <Title>/` and (when an FCP MP4 candidate exists) copy it in as `Title.<ext>`. Single transaction per clip; failures are reported per row.")
+
+                Button {
+                    runBulkRestampProduction()
+                } label: {
+                    if bulkRestampRunning {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.small)
+                            Text("Re-stamping…")
+                        }
+                    } else {
+                        Label("Re-stamp \(outOfPattern.count) out-of-pattern folder\(outOfPattern.count == 1 ? "" : "s")",
+                              systemImage: "folder.badge.gearshape")
+                    }
+                }
+                .controlSize(.small)
+                .disabled(outOfPattern.isEmpty || bulkRestampRunning)
+                .help("Walk every clip whose stored production folder doesn't match the current pattern. mkdir -p the new `<base>/<contentDate> <Title>/` folder, copy the per-clip files (`Title.<ext>` and `Title_*.*`) from the old folder, then update the clip's path. Old folders are NOT deleted.")
+
+                if let msg = bulkProvisionMessage {
+                    Text(msg).font(.caption).foregroundStyle(.secondary)
+                }
+                if let msg = bulkRestampMessage {
+                    Text(msg).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
             ProgressView(value: progressValue)
                 .progressViewStyle(.linear)
         }
         .padding(16)
+    }
+
+    /// Subset of `clips` that look like good targets for the bulk
+    /// provision-folder pass — no production folder set, but a content
+    /// date and title are both available so the path is well-defined.
+    private func clipsNeedingProductionFolder() -> [Clip] {
+        clips.filter { c in
+            (c.productionFolder ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+                && !(c.contentDate ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+                && !c.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
+    /// Clips whose stored `production_folder` doesn't match what the
+    /// current pattern resolves to. Driven off the same path resolver as
+    /// the audit pill so the two stay in sync.
+    private func clipsWithOutOfPatternProductionFolder() -> [Clip] {
+        clips.filter { c in
+            let stored = (c.productionFolder ?? "").trimmingCharacters(in: .whitespaces)
+            guard !stored.isEmpty else { return false }
+            guard let expected = PathDefaultsService.productionPath(
+                for: c, settings: appState.settings
+            ) else { return false }
+            let lhs = (stored as NSString).expandingTildeInPath
+                .precomposedStringWithCanonicalMapping
+            let rhs = (expected as NSString).expandingTildeInPath
+                .precomposedStringWithCanonicalMapping
+            return lhs != rhs
+        }
+    }
+
+    private func runBulkRestampProduction() {
+        guard !bulkRestampRunning else { return }
+        bulkRestampRunning = true
+        bulkRestampMessage = "Re-stamping…"
+        Task { @MainActor in
+            let r = PathDefaultsService.restampOutOfPatternProductionFolders(appState: appState)
+            bulkRestampRunning = false
+            var pieces: [String] = ["Stamped \(r.stamped) of \(r.stamped + r.matched + r.failed.count + r.skippedNoExpected)"]
+            if r.filesCopied > 0 { pieces.append("\(r.filesCopied) files copied") }
+            if r.failed.count > 0 { pieces.append("\(r.failed.count) failed") }
+            bulkRestampMessage = pieces.joined(separator: " · ")
+            // Re-audit visible clips so the UI shows the new paths.
+            for clip in clips {
+                if let live = try? DatabaseService.shared.fetchClip(id: clip.id) {
+                    runAudit(for: live, recordInitial: false)
+                }
+            }
+        }
+    }
+
+    private func runBulkProvisionProduction() {
+        guard !bulkProvisionRunning else { return }
+        let baseTrim = appState.settings.defaultProductionBase.trimmingCharacters(in: .whitespaces)
+        guard !baseTrim.isEmpty else {
+            bulkProvisionMessage = "Production root not configured (Settings → File Locations)."
+            return
+        }
+        let candidates = clipsNeedingProductionFolder()
+        guard !candidates.isEmpty else {
+            bulkProvisionMessage = "Nothing to stamp — no clips in this queue have a missing production folder."
+            return
+        }
+        bulkProvisionRunning = true
+        bulkProvisionMessage = "Stamping \(candidates.count) clip\(candidates.count == 1 ? "" : "s")…"
+        Task {
+            var ok = 0, copied = 0, failed = 0
+            for clip in candidates {
+                do {
+                    let auditResult = FileAuditService.audit(clip: clip, settings: appState.settings)
+                    let outcome = try FileAuditService.provisionProductionFolder(
+                        clip: clip,
+                        settings: appState.settings,
+                        fcpSourceFilename: auditResult.fcpMp4Candidate
+                    )
+                    var mutated = clip
+                    mutated.productionFolder = outcome.productionPath
+                    if let canonical = outcome.canonicalFilename {
+                        mutated.clipFilename = canonical
+                        copied += 1
+                    }
+                    try appState.updateClip(mutated)
+                    ok += 1
+                } catch {
+                    failed += 1
+                }
+            }
+            bulkProvisionRunning = false
+            var pieces: [String] = ["Stamped \(ok) of \(candidates.count)"]
+            if copied > 0 { pieces.append("\(copied) with FCP copy") }
+            if failed > 0 { pieces.append("\(failed) failed") }
+            bulkProvisionMessage = pieces.joined(separator: " · ")
+            // Re-audit visible clips so the UI reflects the new state.
+            for clip in candidates {
+                if let live = try? DatabaseService.shared.fetchClip(id: clip.id) {
+                    runAudit(for: live, recordInitial: false)
+                }
+            }
+        }
     }
 
     private var progressText: String {
@@ -258,6 +406,11 @@ struct FileAuditWorkflow: View {
             && !(clip.productionFolder ?? "").isEmpty
         let canRefineDescription = check.id == result.description.id
             && check.status == .warn
+        let canProvisionProduction = check.id == result.production.id
+            && check.status != .ok
+            && !(clip.contentDate ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+            && !appState.settings.defaultProductionBase.trimmingCharacters(in: .whitespaces).isEmpty
+            && !clip.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 12) {
@@ -297,6 +450,13 @@ struct FileAuditWorkflow: View {
 
             if canPushFromFCP, let candidate = result.fcpMp4Candidate {
                 pushFromFCPPill(clipId: clip.id, candidate: candidate, title: clip.title)
+            }
+
+            if canProvisionProduction {
+                provisionProductionFolderPill(
+                    clip: clip,
+                    candidate: result.fcpMp4Candidate
+                )
             }
 
             if canRefineDescription {
@@ -463,6 +623,85 @@ struct FileAuditWorkflow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.green.opacity(0.07), in: RoundedRectangle(cornerRadius: 6))
         .overlay(RoundedRectangle(cornerRadius: 6).stroke(.green.opacity(0.25), lineWidth: 1))
+    }
+
+    /// Inline "Create production folder" pill on the Production row when
+    /// the folder is missing. Folder layout = `<base>/<contentDate>` per
+    /// the user's stated convention. With a candidate the pill copies
+    /// `<fcp>/<candidate>` → `<prod>/<sanitizedTitle>.<ext>` in one call.
+    private func provisionProductionFolderPill(
+        clip: Clip,
+        candidate: String?
+    ) -> some View {
+        let willCopy = candidate != nil
+        let titleSafe = clip.title
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: "\\", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let ext = (candidate.map { ($0 as NSString).pathExtension } ?? "")
+        let destFilename = ext.isEmpty ? titleSafe : "\(titleSafe).\(ext)"
+        // Same resolution as provisionProductionFolder so preview = reality.
+        let plannedPath = PathDefaultsService.productionPath(
+            for: clip,
+            settings: appState.settings
+        ) ?? "(set the production root in Settings → File Locations)"
+        let clipId = clip.id
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: "folder.badge.plus")
+                    .font(.caption).foregroundStyle(.blue)
+                Text(willCopy
+                     ? "Create production folder + copy from FCP"
+                     : "Create production folder")
+                    .font(.caption.weight(.semibold)).foregroundStyle(.blue)
+                Spacer()
+                Button {
+                    runProvisionProductionFolder(clipId: clipId, candidate: candidate)
+                } label: {
+                    Label(willCopy ? "Create + copy" : "Create",
+                          systemImage: "folder.badge.plus")
+                }
+                .controlSize(.small)
+            }
+            HStack(spacing: 6) {
+                Text(plannedPath).font(.caption.monospaced()).foregroundStyle(.secondary)
+                if willCopy {
+                    Image(systemName: "arrow.right").font(.caption2).foregroundStyle(.tertiary)
+                    Text(destFilename).font(.caption.monospaced())
+                }
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.blue.opacity(0.07), in: RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(.blue.opacity(0.25), lineWidth: 1))
+    }
+
+    private func runProvisionProductionFolder(clipId: String, candidate: String?) {
+        do {
+            guard let live = try DatabaseService.shared.fetchClip(id: clipId) else {
+                renameError = "Couldn't reload the clip."
+                return
+            }
+            let outcome = try FileAuditService.provisionProductionFolder(
+                clip: live,
+                settings: appState.settings,
+                fcpSourceFilename: candidate
+            )
+            var mutated = live
+            mutated.productionFolder = outcome.productionPath
+            if let canonical = outcome.canonicalFilename {
+                mutated.clipFilename = canonical
+            }
+            try appState.updateClip(mutated)
+            clearAllMessages()
+            if let idx = clips.firstIndex(where: { $0.id == clipId }) {
+                runAudit(for: clips[idx], recordInitial: false)
+            }
+        } catch {
+            renameError = "Provision failed: \(error.localizedDescription)"
+        }
     }
 
     private func runPushFromFCP(clipId: String, candidate: String) {

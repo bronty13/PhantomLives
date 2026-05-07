@@ -101,6 +101,60 @@ Every clip has a primary key `YYYY-MM-DD-#####`, e.g. `2026-05-03-00042`. The da
 
 The legacy `#` field from any imported spreadsheet is preserved on each clip as `external_clip_id`.
 
+## New Clip workflow
+
+⌘N (or **+ New Clip** in the Clips toolbar) opens a single sheet that captures everything you typically know at clip-creation time:
+
+**Identity** (all three required to save)
+- **Persona** — picker, defaults to your configured default persona
+- **Title** — free text. Required.
+- **Content date** — required. Click **Use today** for a fast default; the clip ID is generated as `YYYY-MM-DD-#####` keyed off this date when you save.
+
+The Save button stays disabled until all three are set; an inline orange "Required: Persona, Title, Content date" hint lists exactly what's missing.
+
+**Metadata** (optional — fill in what you have)
+- **Description** — multi-line raw description. Refinement still runs later in the clip editor.
+- **Categories** — full ordered chip picker. Pick existing categories from the menu or type a new one and press Return. Drag chips to reorder; the order is persisted in `clip_categories.position` so every posting site respects it.
+- **Go-live date** — toggleable date picker.
+
+**Source folder (FCP path)**
+- **Choose…** opens a folder picker. The selected path becomes the clip's `fcp_project_folder` on save.
+- The sheet enumerates every `.mov` directly inside that folder, sorts them ascending by macOS filesystem creation time (the same `kMDItemFSCreationDate` your shell pipeline reads), and shows each one with **microsecond-precision** creation timestamp.
+- Each row shows its expected position (1, 2, 3 …) and the current filename. Files whose current name doesn't match `<position>.mov` are flagged **Out of order** in orange, with an inline `→ N.mov` hint showing the target name.
+- **Fix order (rename to N.mov)** renames every `.mov` in the folder so the names match shoot order: 1.mov, 2.mov, …, N.mov. Two-phase rename — every file is first moved to a unique temp name, then to its final target — so collisions never occur even when you're swapping numbered files (e.g. 1.mov ↔ 2.mov). The button is disabled when everything is already correctly numbered. If a non-`.mov` file in the folder happens to share a target name, the operation aborts before touching anything and surfaces the conflict.
+- **Capture file metadata** hashes every `.mov` in the folder (MD5, SHA-1, SHA-256, plus byte size) and saves the result as one `clip_segments` row per file. Position, filename, and microsecond-precision creation timestamp are stored alongside the hashes. Save & Close runs this automatically after the clip is saved, with `Hashing N of M — <filename>` progress in the action bar; this button lets you trigger a recapture without closing the sheet.
+- **Refresh** re-reads the folder.
+
+**Notes** (optional)
+- Multi-line input under Go-Live Date. On save, your text is appended to `clip.notes` as `[New clip YYYY-MM-DD] <text>` so it sits in the editor's Notes timeline alongside the editing- and posting-workflow markers (no extra log table — one chronology, one place to read it). Empty notes are a no-op.
+
+**Action bar**
+- **Save & Close** — creates the clip with everything you entered, persists categories with their order, and dismisses the sheet (selecting the new clip in the Clips list).
+- **Save & Continue to Editing →** — same save path, but instead of dismissing it hands off to the [Editing Workflow](#editing-workflow) sheet for the same clip so you can run the file audit and capture editing notes immediately.
+- **Copy Status to Clipboard** — saves first if needed, then copies a status block in this exact format:
+
+  ```
+  <id> - <title> [<persona>]
+  Description: <desc or "Blank">
+  Categories: <list or "None Defined">
+  Go-live date: Not set
+  ```
+
+  The `Go-live date:` line is included **only** when the date hasn't been set; once it's set, it's omitted from the clipboard payload. The button briefly flashes **Copied** as confirmation.
+- **Cancel / Close** — dismisses. If you've already clicked Save once, this just closes the sheet (the clip remains in the database).
+
+The keyboard shortcut still works — ⌘N anywhere in the app opens the workflow sheet.
+
+## Editing workflow
+
+Open it via **Save & Continue to Editing →** in the new-clip workflow, or from any clip — select the clip in the **Clips** list, then click **Editing Workflow** in the toolbar (or press the toolbar button when it's enabled). One sheet, two halves:
+
+**File audit** — read-only summary of `FileAuditService.audit(clip:)`. Shows a counts pill (✅ OK / ⚠️ warning / ❌ missing) and one row per check (FCP folder, Production folder, Main MP4, Reduced MP4, Thumbnail frames, FCP bundle, Description, Transcript, Hashes) with status icon, label, detail string, and file size. **Re-run** re-audits in place after the underlying files change. **Open full audit…** hands off to the per-clip audit sheet that has all the inline action pills (rename to detected name, push render from FCP, reduce, capture thumbnails, compute hashes, refine description, generate transcript) — once you dismiss it, the editing workflow re-audits so the summary reflects whatever you fixed.
+
+**Editing notes** — multi-line input. On **Save notes & close**, your text is appended to `clip.notes` as `[Editing YYYY-MM-DD] <text>` so it lands in the same chronological timeline as `[New clip …]` markers from creation and `[Posted <site> …]` markers from posting. Disclosure group below the editor previews the existing `clip.notes` so you can see exactly what timeline you're appending to. An empty save just closes — no marker written, no history row.
+
+The clip's Notes textarea in the regular editor reads as one chronology across the entire lifecycle: creation → editing → posting. No separate audit-log table — `clip.notes` is the single source of truth.
+
 ## Calendar release rules
 
 Each persona has a per-weekday checkbox in **Settings → Calendar Rules**. Defaults:
@@ -152,6 +206,33 @@ If the configured model isn't installed, **Settings → Ollama** shows a one-cli
 Failing clips show as orange-bordered cards with the open issues listed. Click any card to jump to its editor; clean clips drop off the list. Re-run from the header any time to refresh.
 
 The clip editor also shows a **live audit banner** at the top of the form. Orange when issues are open, green when clean. Recomputes as you edit — fix the missing field and the banner clears immediately.
+
+## Production-folder fix (audit pill + bulk)
+
+When the **Production folder** row in the file audit shows a missing/warn status — typically right after a New Clip workflow that didn't pre-set the path — a one-click pill stamps the folder for you.
+
+**Where it appears**
+- Per-clip: in **Verify files** (`FileAuditSheet`) on the *Production folder* row.
+- Per-clip mid-walkthrough: same pill inside the bulk **File-Verification Workflow** (`FileAuditWorkflow`).
+- Bulk: header button **Stamp N missing production folders** in the file-verification workflow walks every queued clip with no folder set.
+
+**What it does**
+1. Resolves the path as `<settings.defaultProductionBase>/<contentDate>/` — no title in the folder name. The title goes into the *file* inside the folder, not the folder itself.
+2. `mkdir -p` (idempotent — re-runs on an already-stamped folder are no-ops).
+3. If the audit detected an FCP MP4 candidate (`fcpMp4Candidate` — best-match by title against `.mp4`s in the FCP folder), the file is **copied** into the new production folder as `<sanitizedTitle>.<sourceExt>`. **Copy, not move** — FCP keeps its render.
+4. Writes `clip.productionFolder = <path>` and (when a copy happened) `clip.clipFilename = <Title>.<ext>` in one save.
+5. Re-audits so the row turns green.
+
+**Two pill variants**
+- **Create + copy** (blue) — when an FCP MP4 candidate exists. Pill preview shows `<plannedPath> → Title.ext`.
+- **Create** (blue) — when no candidate. Just stamps the empty folder.
+
+**Bulk pass**
+- *Stamp N missing production folders* in the workflow header. Walks every clip in the current queue whose production folder is empty but has a content date + title set. Runs the same provision pass per clip; summary line at the end: `Stamped 12 of 14 · 8 with FCP copy · 2 failed`. Failures (missing source file, destination already exists, FCP volume not mounted) are tallied, don't abort the run, and don't roll back already-stamped clips.
+
+**Pre-flight checks**
+- The pill is hidden if the production-root setting is blank (Settings → File Locations) or the clip has no content date / no title — the path can't be defined.
+- Existing destination files are NOT overwritten — the pill bails on `Destination already exists` and tells you the path so you can resolve manually.
 
 ## Verify files (per-clip)
 
@@ -223,6 +304,18 @@ Production thumbnails come from frame captures of the main MP4:
 The clip editor's **Integrity** section shows MD5 / SHA-1 / SHA-256 fingerprints for both the main and reduced MP4, with file size and last-computed timestamp. Click any digest's copy icon to put it on the clipboard.
 
 Hashes are streamed in 4 MB chunks via CryptoKit — multi-GB clips don't blow memory and the UI stays responsive. The **Recompute hashes** button (and the audit's **Compute / Re-compute** action on the **File hashes** row) hashes both files in one background pass and persists the digests + sizes + ISO timestamp.
+
+## File segments (per-`.mov`)
+
+The new-clip workflow captures one `clip_segments` row per source `.mov` it sees in the picked folder. Each row stores:
+
+- 1-based **position** (matching chronological order from the folder browser)
+- current **filename** (1.mov, 2.mov, …, after Fix order)
+- microsecond-precision **creation date**
+- file **size**
+- **MD5 / SHA-1 / SHA-256** digests (streamed in one pass, same engine as the main / reduced MP4 hashes)
+
+These are surfaced in the clip editor's **File segments** section as a sortable read-only table. Each hash cell shows a 10-char preview that copies the full digest on click (full digest in the tooltip). **Refresh** re-pulls from the database; **Recapture** re-reads the FCP folder, re-hashes every `.mov`, and replaces the stored rows in one transaction (shows the same `Hashing N of M …` progress as the workflow). Deleting a clip cascades — its `clip_segments` rows go with it.
 
 ## Deleting clips
 
@@ -412,6 +505,12 @@ This makes title history searchable and survives subsequent edits.
 ## Change history
 
 Every per-field change to a clip lands in `clip_history` — title rename, status auto-transition, posting toggle, category-set update. Visible at the bottom of every clip's edit form in a "Change history" disclosure (collapsed by default, with a row count).
+
+## Resetting window state
+
+If the window opens off-screen, the sidebar is stuck collapsed, or the split-view widths look wrong and quitting + reopening doesn't fix it, use **Window → Reset Window State…**. The alert offers **Cancel** / **Reset & Quit** — Reset clears the persisted frame, split-view widths, sidebar collapse state, and the AppKit Saved Application State snapshot, then quits the app. Relaunch from the Dock or Finder; the next launch will open at the default 1400×900 size with the standard layout.
+
+The same reset fires automatically once per release whenever the bundled `windowResetVersion` constant is bumped — no action needed; the next launch silently picks a clean layout.
 
 ## Light / Dark / System
 

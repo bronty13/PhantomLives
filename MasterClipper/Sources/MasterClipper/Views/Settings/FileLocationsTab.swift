@@ -9,6 +9,8 @@ struct FileLocationsTab: View {
     @EnvironmentObject private var appState: AppState
     @State private var lastResult: PathDefaultsService.BackfillResult?
     @State private var error: String?
+    @State private var lastRestamp: PathDefaultsService.RestampResult?
+    @State private var restamping: Bool = false
 
     var body: some View {
         Form {
@@ -93,6 +95,37 @@ struct FileLocationsTab: View {
                 }
             }
 
+            Section("Re-stamp out-of-pattern production folders") {
+                Text("Walk every active clip whose stored production folder doesn't match the current Production pattern. For each mismatch: `mkdir -p` the new folder, copy the per-clip files (`<Title>.<ext>` and `<Title>_*.*` like `_reduced.mp4` / `_frame_NN.png`) from the old folder, then update the clip's path. Old folders are NOT deleted — they may still hold files for clips that haven't been migrated yet, plus anything you put in them manually.")
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Button {
+                        runRestamp()
+                    } label: {
+                        if restamping {
+                            HStack(spacing: 6) {
+                                ProgressView().controlSize(.small)
+                                Text("Re-stamping…")
+                            }
+                        } else {
+                            Label("Re-stamp now", systemImage: "folder.badge.gearshape")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(restamping)
+                    if let r = lastRestamp {
+                        Text("Stamped \(r.stamped) · already-matched \(r.matched) · files copied \(r.filesCopied) · failed \(r.failed.count)")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if let r = lastRestamp, !r.failed.isEmpty {
+                    ForEach(Array(r.failed.enumerated()), id: \.offset) { _, f in
+                        Text("\(f.clipId): \(f.reason)")
+                            .font(.caption2).foregroundStyle(.red)
+                    }
+                }
+            }
+
             Section("Placeholders") {
                 Text("`{date}` is the clip's content date (falls back to go-live date). `{title}` is the clip title with `/`, `\\`, and `:` replaced with `-`. Tilde (`~`) in the base path is expanded to the user's home directory.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -155,5 +188,18 @@ struct FileLocationsTab: View {
         let result = PathDefaultsService.backfill(appState: appState)
         lastResult = result
         error = nil
+    }
+
+    private func runRestamp() {
+        guard !restamping else { return }
+        restamping = true
+        // Run on the main actor — file ops are bounded (per-clip, a handful
+        // of small files each) and we want the UI to reflect the new clip
+        // paths immediately afterwards.
+        Task { @MainActor in
+            let r = PathDefaultsService.restampOutOfPatternProductionFolders(appState: appState)
+            lastRestamp = r
+            restamping = false
+        }
     }
 }

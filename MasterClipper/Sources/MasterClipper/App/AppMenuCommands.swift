@@ -50,6 +50,14 @@ struct AppMenuCommands: Commands {
                 NotificationCenter.default.post(name: .backupRequested, object: nil)
             }
         }
+
+        CommandGroup(after: .windowArrangement) {
+            Divider()
+            Button("Reset Window State…") {
+                NotificationCenter.default.post(name: .windowResetRequested, object: nil)
+            }
+            .help("Wipe persisted window frame, split-view widths, and sidebar collapse state. Takes effect after relaunch.")
+        }
     }
 }
 
@@ -59,4 +67,5 @@ extension Notification.Name {
     static let exportRequested   = Notification.Name("exportRequested")
     static let backupRequested   = Notification.Name("backupRequested")
     static let refineRequested   = Notification.Name("refineRequested")
+    static let windowResetRequested = Notification.Name("windowResetRequested")
 }

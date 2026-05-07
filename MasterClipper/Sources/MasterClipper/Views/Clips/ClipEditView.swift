@@ -19,6 +19,14 @@ struct ClipEditView: View {
     @State private var hashing: Bool = false
     @State private var hashMessage: String?
 
+    // Per-segment file metadata captured by the new-clip workflow. Loaded
+    // from `clip_segments` on appear / clip-id change. The recapture toggle
+    // re-runs hashing against the clip's `fcp_project_folder` if set.
+    @State private var segments: [ClipSegment] = []
+    @State private var segmentsCapturing: Bool = false
+    @State private var segmentsProgress: String = ""
+    @State private var segmentsMessage: String?
+
     init(clip: Clip) {
         self.clip = clip
         _draft = State(initialValue: clip)
@@ -189,6 +197,10 @@ struct ClipEditView: View {
                             .help("Whisper-generated transcript of the production MP4. Editable — your edits persist with the clip on save.")
                     }
 
+                    Section("File segments") {
+                        segmentsSection
+                    }
+
                     Section("Audit") {
                         LabeledContent("Created")  { Text(draft.createdAt).font(.caption.monospaced()) }
                         LabeledContent("Updated")  { Text(draft.updatedAt).font(.caption.monospaced()) }
@@ -206,7 +218,10 @@ struct ClipEditView: View {
                 .padding(20)
             }
         }
-        .onAppear(perform: loadCategories)
+        .onAppear {
+            loadCategories()
+            loadSegments()
+        }
         .onChange(of: clip.id) { _, _ in
             // Different clip selected — flush pending changes on the OLD draft
             // before swapping in the new one. (The .id(...) modifier in
@@ -215,6 +230,7 @@ struct ClipEditView: View {
             autoSaveIfChanged()
             draft = clip
             loadCategories()
+            loadSegments()
         }
         // Catch-all: any time this view leaves the hierarchy — different clip,
         // different sidebar section, window close — flush pending edits.
@@ -596,6 +612,156 @@ struct ClipEditView: View {
             initialCategoryIds = ids
         } catch {
             saveError = error.localizedDescription
+        }
+    }
+
+    // MARK: - File segments (clip_segments)
+
+    /// Disclosure-style section that lists the captured `.mov` segments for
+    /// this clip with their position, filename, ctime, size, and three
+    /// hashes. Read-only here (the new-clip workflow is the system of record);
+    /// a "Recapture" button re-runs hashing against the FCP folder.
+    @ViewBuilder
+    private var segmentsSection: some View {
+        if segments.isEmpty && !segmentsCapturing {
+            HStack {
+                Text("No file segments captured for this clip yet.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if (draft.fcpProjectFolder ?? "").trimmingCharacters(in: .whitespaces).isEmpty == false {
+                    Button("Capture from FCP folder", action: recaptureSegments)
+                }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                if segmentsCapturing {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text(segmentsProgress)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+                if let msg = segmentsMessage {
+                    Text(msg).font(.caption2).foregroundStyle(.secondary)
+                }
+                segmentsTable
+                HStack {
+                    Text("\(segments.count) segment\(segments.count == 1 ? "" : "s")")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Refresh", action: loadSegments)
+                        .disabled(segmentsCapturing)
+                    Button("Recapture", action: recaptureSegments)
+                        .disabled(segmentsCapturing
+                                  || (draft.fcpProjectFolder ?? "").trimmingCharacters(in: .whitespaces).isEmpty)
+                        .help("Re-hash every .mov in the FCP folder and replace the stored segment rows.")
+                }
+            }
+        }
+    }
+
+    private var segmentsTable: some View {
+        Table(segments) {
+            TableColumn("#") { (s: ClipSegment) in
+                Text("\(s.position)").font(.caption.monospacedDigit())
+            }
+            .width(30)
+
+            TableColumn("Filename") { (s: ClipSegment) in
+                Text(s.filename).font(.caption.monospaced()).textSelection(.enabled)
+            }
+            .width(min: 90, ideal: 110)
+
+            TableColumn("Created") { (s: ClipSegment) in
+                Text(s.creationDate).font(.caption2.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+            }
+            .width(min: 220, ideal: 260)
+
+            TableColumn("Size") { (s: ClipSegment) in
+                Text(Self.formatSize(s.sizeBytes)).font(.caption.monospaced()).foregroundStyle(.secondary)
+            }
+            .width(min: 70, ideal: 80)
+
+            TableColumn("MD5") { (s: ClipSegment) in
+                hashCell(s.md5)
+            }
+            .width(min: 90, ideal: 110)
+
+            TableColumn("SHA-1") { (s: ClipSegment) in
+                hashCell(s.sha1)
+            }
+            .width(min: 90, ideal: 110)
+
+            TableColumn("SHA-256") { (s: ClipSegment) in
+                hashCell(s.sha256)
+            }
+            .width(min: 90, ideal: 110)
+        }
+        .frame(minHeight: 140, idealHeight: 200, maxHeight: 320)
+    }
+
+    /// Truncated hash with click-to-copy + the full digest as tooltip.
+    @ViewBuilder
+    private func hashCell(_ hex: String) -> some View {
+        if hex.isEmpty {
+            Text("—").font(.caption2).foregroundStyle(.tertiary)
+        } else {
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(hex, forType: .string)
+            } label: {
+                Text(String(hex.prefix(10)) + "…")
+                    .font(.caption2.monospaced())
+            }
+            .buttonStyle(.borderless)
+            .help(hex + "\n\nClick to copy")
+        }
+    }
+
+    private static func formatSize(_ bytes: Int64?) -> String {
+        guard let bytes else { return "—" }
+        let f = ByteCountFormatter()
+        f.countStyle = .file
+        return f.string(fromByteCount: bytes)
+    }
+
+    private func loadSegments() {
+        do {
+            segments = try DatabaseService.shared.fetchSegments(forClip: clip.id)
+        } catch {
+            saveError = error.localizedDescription
+        }
+    }
+
+    private func recaptureSegments() {
+        let trimmed = (draft.fcpProjectFolder ?? "").trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        let url = URL(fileURLWithPath: trimmed)
+        let clipId = clip.id
+        segmentsCapturing = true
+        segmentsProgress = ""
+        segmentsMessage = nil
+        Task {
+            defer { segmentsCapturing = false }
+            do {
+                let result = try await ClipSegmentService.captureAndPersist(
+                    folder: url,
+                    clipId: clipId
+                ) { current, total, filename in
+                    segmentsProgress = "Hashing \(current) of \(total) — \(filename)"
+                }
+                segments = result.segments
+                segmentsMessage = result.failures.isEmpty
+                    ? "Captured metadata for \(result.segments.count) file\(result.segments.count == 1 ? "" : "s")."
+                    : "Captured \(result.segments.count - result.failures.count) of \(result.segments.count) — \(result.failures.count) failed."
+            } catch {
+                segmentsMessage = "Capture failed: \(error.localizedDescription)"
+            }
         }
     }
 

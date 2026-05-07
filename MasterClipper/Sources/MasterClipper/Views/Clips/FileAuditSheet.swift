@@ -121,6 +121,11 @@ struct FileAuditSheet: View {
             && !(clip.productionFolder ?? "").isEmpty
         let canRefineDescription = check.id == result.description.id
             && check.status == .warn   // raw present, refined empty
+        let canProvisionProduction = check.id == result.production.id
+            && check.status != .ok
+            && !(clip.contentDate ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+            && !appState.settings.defaultProductionBase.trimmingCharacters(in: .whitespaces).isEmpty
+            && !clip.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 12) {
@@ -165,6 +170,10 @@ struct FileAuditSheet: View {
 
             if canPushFromFCP, let candidate = result.fcpMp4Candidate {
                 pushFromFCPAction(candidate: candidate)
+            }
+
+            if canProvisionProduction {
+                provisionProductionFolderAction(candidate: result.fcpMp4Candidate)
             }
 
             if canRefineDescription {
@@ -361,6 +370,85 @@ struct FileAuditSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.green.opacity(0.07), in: RoundedRectangle(cornerRadius: 6))
         .overlay(RoundedRectangle(cornerRadius: 6).stroke(.green.opacity(0.25), lineWidth: 1))
+    }
+
+    /// "Create production folder" pill. Renders on the Production row when
+    /// the folder is missing/warn, the clip has a content date + title, and
+    /// the production-root setting is configured. Folder layout:
+    ///   `<settings.defaultProductionBase>/<contentDate>/`
+    /// When `candidate` is non-nil, the pill copies `<fcp>/<candidate>` →
+    /// `<prod>/<sanitizedTitle>.<ext>` in the same call.
+    private func provisionProductionFolderAction(candidate: String?) -> some View {
+        let willCopy = candidate != nil
+        let titleSafe = clip.title
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: "\\", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let ext = (candidate.map { ($0 as NSString).pathExtension } ?? "")
+        let destFilename = ext.isEmpty ? titleSafe : "\(titleSafe).\(ext)"
+        // Mirror the same resolution provisionProductionFolder uses, so the
+        // pill preview can never disagree with what actually gets created.
+        let plannedPath = PathDefaultsService.productionPath(
+            for: clip,
+            settings: appState.settings
+        ) ?? "(set the production root in Settings → File Locations)"
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: "folder.badge.plus")
+                    .font(.caption).foregroundStyle(.blue)
+                Text(willCopy
+                     ? "Create production folder + copy from FCP"
+                     : "Create production folder")
+                    .font(.caption.weight(.semibold)).foregroundStyle(.blue)
+                Spacer()
+                Button {
+                    runProvisionProductionFolder(candidate: candidate)
+                } label: {
+                    Label(willCopy ? "Create + copy" : "Create",
+                          systemImage: "folder.badge.plus")
+                }
+                .controlSize(.small)
+                .help(willCopy
+                      ? "Creates `\(plannedPath)`, sets it as the clip's production folder, and copies `\(candidate ?? "")` from FCP into it as `\(destFilename)`. Source stays in FCP — copy, not move."
+                      : "Creates `\(plannedPath)` and sets it as the clip's production folder. No file copy.")
+            }
+            HStack(spacing: 6) {
+                Text(plannedPath).font(.caption.monospaced()).foregroundStyle(.secondary)
+                if willCopy {
+                    Image(systemName: "arrow.right").font(.caption2).foregroundStyle(.tertiary)
+                    Text(destFilename).font(.caption.monospaced())
+                }
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.blue.opacity(0.07), in: RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(.blue.opacity(0.25), lineWidth: 1))
+    }
+
+    private func runProvisionProductionFolder(candidate: String?) {
+        do {
+            guard let live = try DatabaseService.shared.fetchClip(id: clip.id) else {
+                renameError = "Couldn't reload the clip."
+                return
+            }
+            let outcome = try FileAuditService.provisionProductionFolder(
+                clip: live,
+                settings: appState.settings,
+                fcpSourceFilename: candidate
+            )
+            var mutated = live
+            mutated.productionFolder = outcome.productionPath
+            if let canonical = outcome.canonicalFilename {
+                mutated.clipFilename = canonical
+            }
+            try appState.updateClip(mutated)
+            clearAllMessages()
+            runAudit()
+        } catch {
+            renameError = "Provision failed: \(error.localizedDescription)"
+        }
     }
 
     private func runPushFromFCP(candidate: String) {

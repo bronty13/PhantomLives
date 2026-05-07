@@ -148,10 +148,29 @@ struct AppSettings: Codable {
     // Default media paths — used for one-time backfill on production clips
     // and for the "Set defaults" path-helper buttons in the editor.
     // Patterns use `{date}` and `{title}` placeholders.
+    //
+    // Production layout: `<base>/<contentDate> <Title>/<Title>.<ext>` — the
+    // folder is `<date> <title>` (one folder per clip, human-scannable in
+    // Finder), the file inside it is `<Title>.<ext>`. Default pattern is
+    // therefore `{date} {title}`. A briefly-shipped default of just `{date}`
+    // is auto-upgraded on launch by `AppState.init` (see
+    // `legacyProductionPatternDefaults`). Users who customized the pattern
+    // are left alone.
     var defaultProductionBase: String    = "~/Dropbox/Sallie Content/Clips"
     var defaultProductionPattern: String = "{date} {title}"
     var defaultFCPBase: String           = "/Volumes/PRO-G40/"
     var defaultFCPPattern: String        = "Content Working/{date} Session/{title}"
+
+    /// Earlier shipped defaults for `defaultProductionPattern`. Anything
+    /// matching one of these gets silently upgraded to the current default
+    /// on launch so the production-folder layout stays consistent across
+    /// the pill, the wand button, and the path-defaults backfill. The
+    /// `{date}`-only entry catches the brief window where that was the
+    /// shipped default (and any user already auto-upgraded into it) so they
+    /// land on the final `{date} {title}` layout.
+    static let legacyProductionPatternDefaults: [String] = [
+        "{date}",
+    ]
     /// One-time-only marker set after the v1 backfill runs. Reset to false to
     /// allow the AppState init to re-run the auto-backfill on next launch.
     var pathBackfillV1Done: Bool = false

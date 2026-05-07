@@ -395,6 +395,31 @@ final class DatabaseService {
             try db.create(index: "idx_c4s_hist_clip_id", on: "c4s_historical", columns: ["clip_id"])
         }
 
+        migrator.registerMigration("v12_clip_segments") { db in
+            // One row per source `.mov` for a clip — captured at New-Clip
+            // workflow time so the file's identity (filename + ctime + size +
+            // MD5/SHA-1/SHA-256) is memorialised before any further editing
+            // touches the source on disk.
+            try db.create(table: "clip_segments") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("clip_id", .text)
+                    .notNull()
+                    .references("clips", onDelete: .cascade)
+                t.column("position", .integer).notNull()
+                t.column("filename", .text).notNull().defaults(to: "")
+                t.column("creation_date", .text).notNull().defaults(to: "")
+                t.column("size_bytes", .integer)
+                t.column("md5", .text).notNull().defaults(to: "")
+                t.column("sha1", .text).notNull().defaults(to: "")
+                t.column("sha256", .text).notNull().defaults(to: "")
+                t.column("hashed_at", .text).notNull().defaults(to: "")
+                t.column("created_at", .text).notNull()
+                t.column("updated_at", .text).notNull()
+                t.uniqueKey(["clip_id", "position"])
+            }
+            try db.create(index: "idx_clip_segments_clip", on: "clip_segments", columns: ["clip_id"])
+        }
+
         try migrator.migrate(dbPool)
     }
 
@@ -908,6 +933,46 @@ final class DatabaseService {
         }
     }
 
+    // MARK: - Segments
+
+    /// Returns the segments belonging to a clip ordered by 1-based `position`.
+    func fetchSegments(forClip clipId: String) throws -> [ClipSegment] {
+        try dbPool.read { db in
+            try ClipSegment
+                .filter(Column("clip_id") == clipId)
+                .order(Column("position"))
+                .fetchAll(db)
+        }
+    }
+
+    /// Replace the entire segment set for a clip in one transaction. The
+    /// caller hands in `[ClipSegment]` already populated with hashes and
+    /// metadata; we DELETE the existing rows and INSERT the new ones so
+    /// stale segments from a previous (larger) folder snapshot don't linger.
+    /// `clip_id` is overwritten on each row to guarantee they all belong to
+    /// `clipId` regardless of what the caller put there.
+    func replaceSegments(forClip clipId: String, with segments: [ClipSegment]) throws {
+        try dbPool.write { db in
+            try db.execute(sql: "DELETE FROM clip_segments WHERE clip_id = ?", arguments: [clipId])
+            for segment in segments {
+                var row = segment
+                row.clipId = clipId
+                row.id = nil   // force INSERT — autoincrement PK
+                try row.insert(db)
+            }
+        }
+    }
+
+    /// Drop every segment row for a clip. Cascades automatically when the
+    /// clip itself is deleted (FK ON DELETE CASCADE), but available
+    /// explicitly so a "rebuild segments from scratch" flow can clear the
+    /// table without recreating the clip row.
+    func deleteSegments(forClip clipId: String) throws {
+        _ = try dbPool.write { db in
+            try db.execute(sql: "DELETE FROM clip_segments WHERE clip_id = ?", arguments: [clipId])
+        }
+    }
+
     // MARK: - Postings
 
     func fetchPostings(forClip clipId: String) throws -> [ClipPosting] {
@@ -1069,6 +1134,7 @@ final class DatabaseService {
             try db.execute(sql: "DELETE FROM clip_history")
             try db.execute(sql: "DELETE FROM clip_postings")
             try db.execute(sql: "DELETE FROM clip_categories")
+            try db.execute(sql: "DELETE FROM clip_segments")
             try db.execute(sql: "DELETE FROM calendar_events")
             try db.execute(sql: "DELETE FROM clips")
             try db.execute(sql: "DELETE FROM id_sequences")

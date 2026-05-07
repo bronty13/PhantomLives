@@ -12,6 +12,8 @@ struct ClipListView: View {
     @State private var showingNewSheet: Bool = false
     @State private var showingExportSheet: Bool = false
     @State private var showingDeleteConfirm: Bool = false
+    @State private var showingEditingSheet: Bool = false
+    @State private var editingWorkflowClipId: String? = nil
     @State private var postedSitesByClip: [String: Set<Int64>] = [:]
     @State private var sortOrder: [KeyPathComparator<Clip>] = [
         KeyPathComparator(\Clip.createdAt, order: .reverse)
@@ -37,6 +39,17 @@ struct ClipListView: View {
                 } label: {
                     Label("New Clip", systemImage: "plus")
                 }
+
+                Button {
+                    if let id = selection {
+                        editingWorkflowClipId = id
+                        showingEditingSheet = true
+                    }
+                } label: {
+                    Label("Editing Workflow", systemImage: "wand.and.stars")
+                }
+                .disabled(selection == nil)
+                .help("Run the file audit and capture editing notes (appended to clip notes)")
 
                 Button {
                     showingExportSheet = true
@@ -84,14 +97,47 @@ struct ClipListView: View {
             }
         }
         .sheet(isPresented: $showingNewSheet) {
-            NewClipView { newClip in
-                selection = newClip.id
-                showingNewSheet = false
-            } onCancel: {
-                showingNewSheet = false
-            }
+            ClipWorkflowView(
+                onCompleted: { newClip in
+                    selection = newClip.id
+                    showingNewSheet = false
+                },
+                onContinueToEditing: { newClip in
+                    // Hand off to the editing workflow. SwiftUI dismisses
+                    // sheets sequentially, so set the next-sheet state and
+                    // dismiss this one — the dismiss-completion .onChange
+                    // below opens the editing sheet once SwiftUI is ready.
+                    selection = newClip.id
+                    editingWorkflowClipId = newClip.id
+                    showingNewSheet = false
+                },
+                onCancel: {
+                    showingNewSheet = false
+                }
+            )
             .environmentObject(appState)
-            .frame(minWidth: 460, minHeight: 380)
+        }
+        .onChange(of: showingNewSheet) { _, presenting in
+            // After the new-clip sheet dismisses, if we recorded a clip id
+            // for the editing workflow chain, open it now. Two-step gate
+            // (presenting=false + non-nil id) avoids the race where SwiftUI
+            // collapses two .sheet bindings that flip in the same render.
+            if !presenting, editingWorkflowClipId != nil, !showingEditingSheet {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    showingEditingSheet = true
+                }
+            }
+        }
+        .sheet(isPresented: $showingEditingSheet) {
+            if let id = editingWorkflowClipId {
+                EditingWorkflowView(clipId: id) {
+                    showingEditingSheet = false
+                    editingWorkflowClipId = nil
+                }
+                .environmentObject(appState)
+            } else {
+                Text("No clip selected").padding()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .newClipRequested)) { _ in
             showingNewSheet = true

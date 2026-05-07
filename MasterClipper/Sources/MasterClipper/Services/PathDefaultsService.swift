@@ -100,6 +100,144 @@ enum PathDefaultsService {
         return r
     }
 
+    // MARK: - Re-stamp existing production folders to current pattern
+
+    struct RestampResult {
+        var matched: Int = 0          // clips whose stored path already matched
+        var stamped: Int = 0          // clips whose folder was migrated successfully
+        var filesCopied: Int = 0      // total per-clip files copied across all stamps
+        var failed: [(clipId: String, reason: String)] = []
+        var skippedNoFolder: Int = 0  // clips with empty productionFolder (nothing to migrate)
+        var skippedNoExpected: Int = 0 // clips where current settings can't compute a path
+    }
+
+    /// Walk every active clip with a non-empty `production_folder` and, when
+    /// the stored value doesn't match what the current settings pattern
+    /// resolves to, migrate it:
+    ///
+    /// 1. `mkdir -p` the new (`<base>/<contentDate> <title>` by default) folder.
+    /// 2. Copy every per-clip file from the old folder to the new one. A file
+    ///    counts as per-clip when its name is exactly `<sanitizedTitle>.<ext>`
+    ///    *or* starts with `<sanitizedTitle>_` (e.g. `Title.mp4`, `Title.png`,
+    ///    `Title_reduced.mp4`, `Title_frame_07.png`). Anything else is left
+    ///    behind so the OTHER clips that historically shared the old date-only
+    ///    folder still find their files there.
+    /// 3. Update `clip.production_folder` to the new path.
+    ///
+    /// Old folder is **never** deleted — it may still be referenced by other
+    /// clips that haven't been migrated yet, or contain files that don't
+    /// match the per-clip prefix. Re-stamping is idempotent; running with
+    /// nothing-to-migrate is a no-op.
+    @discardableResult
+    static func restampOutOfPatternProductionFolders(appState: AppState) -> RestampResult {
+        let fm = FileManager.default
+        var r = RestampResult()
+
+        for clip in appState.clips where !clip.archived {
+            let current = (clip.productionFolder ?? "").trimmingCharacters(in: .whitespaces)
+            guard !current.isEmpty else {
+                r.skippedNoFolder += 1
+                continue
+            }
+            guard let expected = productionPath(for: clip, settings: appState.settings) else {
+                r.skippedNoExpected += 1
+                continue
+            }
+
+            let currentExpanded = (current as NSString).expandingTildeInPath
+                .precomposedStringWithCanonicalMapping
+            let expectedExpanded = (expected as NSString).expandingTildeInPath
+                .precomposedStringWithCanonicalMapping
+
+            if currentExpanded == expectedExpanded {
+                r.matched += 1
+                continue
+            }
+
+            // mkdir -p new folder (idempotent — pre-existing is fine).
+            do {
+                try fm.createDirectory(atPath: expectedExpanded,
+                                       withIntermediateDirectories: true,
+                                       attributes: nil)
+            } catch {
+                r.failed.append((clipId: clip.id,
+                                 reason: "mkdir failed: \(error.localizedDescription)"))
+                continue
+            }
+
+            // Copy per-clip files when the old folder is reachable. Skipped
+            // silently when the old volume isn't mounted — the DB pointer
+            // will be updated regardless so future audits look at the right
+            // location once the user creates the canonical files there.
+            let safeTitle = sanitize(clip.title)
+            let copiedCount = copyPerClipFiles(
+                from: currentExpanded,
+                to: expectedExpanded,
+                titleSanitized: safeTitle,
+                fm: fm
+            )
+            r.filesCopied += copiedCount
+
+            // Persist the new path on the clip.
+            var mutated = clip
+            mutated.productionFolder = expectedExpanded
+            do {
+                try DatabaseService.shared.updateClip(mutated)
+                r.stamped += 1
+            } catch {
+                r.failed.append((clipId: clip.id,
+                                 reason: "DB update failed: \(error.localizedDescription)"))
+            }
+        }
+
+        appState.reloadClips()
+        return r
+    }
+
+    /// Copy every file in `oldDir` whose name is `<title>.<ext>` or starts
+    /// with `<title>_` into `newDir`. Files that already exist in `newDir`
+    /// are skipped (we never overwrite). Returns the number of files
+    /// actually copied.
+    private static func copyPerClipFiles(
+        from oldDir: String,
+        to newDir: String,
+        titleSanitized title: String,
+        fm: FileManager
+    ) -> Int {
+        guard !title.isEmpty else { return 0 }
+        var isDir: ObjCBool = false
+        guard fm.fileExists(atPath: oldDir, isDirectory: &isDir), isDir.boolValue else {
+            return 0
+        }
+        guard let entries = try? fm.contentsOfDirectory(atPath: oldDir) else {
+            return 0
+        }
+        var copied = 0
+        for name in entries {
+            // Match either `<title>.<anything>` or `<title>_<anything>`. Hard
+            // boundary on `.` / `_` so "Foo" doesn't catch "Foo Bar.mp4".
+            let nfc = name.precomposedStringWithCanonicalMapping
+            let titleNFC = title.precomposedStringWithCanonicalMapping
+            let exact = nfc == titleNFC
+            let dotted  = nfc.hasPrefix(titleNFC + ".")
+            let undered = nfc.hasPrefix(titleNFC + "_")
+            guard exact || dotted || undered else { continue }
+
+            let src = (oldDir as NSString).appendingPathComponent(name)
+            let dst = (newDir as NSString).appendingPathComponent(name)
+            if fm.fileExists(atPath: dst) { continue }
+            do {
+                try fm.copyItem(atPath: src, toPath: dst)
+                copied += 1
+            } catch {
+                // Best-effort — keep walking so partial failures don't lose
+                // the other matched files.
+                continue
+            }
+        }
+        return copied
+    }
+
     // MARK: - Reveal helper
 
     /// Opens the given path in Finder. Falls back to revealing the deepest

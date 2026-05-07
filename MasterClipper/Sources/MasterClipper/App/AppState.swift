@@ -105,6 +105,19 @@ final class AppState: ObservableObject {
             settingsStore.save()
         }
 
+        // Same auto-upgrade idea for the production-folder pattern. Final
+        // layout is `<base>/<contentDate> <Title>/<Title>.<ext>` — folder
+        // includes the title for human scannability, file inside is just
+        // `<Title>.<ext>`. Default pattern therefore = `{date} {title}`.
+        // Anyone still on a known-legacy default gets bumped so the pill,
+        // the wand button, and the backfill all produce the same shape.
+        if AppSettings.legacyProductionPatternDefaults.contains(settingsStore.settings.defaultProductionPattern) {
+            var s = settingsStore.settings
+            s.defaultProductionPattern = "{date} {title}"
+            settingsStore.settings = s
+            settingsStore.save()
+        }
+
         reloadAll()
 
         // One-time backfill: any production clips without production_folder /

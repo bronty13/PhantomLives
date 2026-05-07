@@ -684,6 +684,154 @@ enum FileAuditService {
         return destPath
     }
 
+    // MARK: - Provision production folder
+
+    enum ProvisionError: LocalizedError {
+        case missingProductionBase
+        case missingContentDate
+        case missingTitle
+        case sourceMissing(String)
+        case destExists(String)
+        case copyFailed(from: String, to: String, underlying: String)
+        case mkdirFailed(String, underlying: String)
+
+        var errorDescription: String? {
+            switch self {
+            case .missingProductionBase:
+                return "Production root isn't set. Configure it in Settings → File Locations."
+            case .missingContentDate:
+                return "Clip has no content date — set one before stamping a production folder."
+            case .missingTitle:
+                return "Clip has no title — set one before stamping a production folder."
+            case .sourceMissing(let p):
+                return "FCP source not found: \(p)"
+            case .destExists(let p):
+                return "Destination already exists: \(p) — refusing to overwrite. Resolve manually."
+            case .copyFailed(let from, let to, let why):
+                return "Copy failed: \(from) → \(to) (\(why))"
+            case .mkdirFailed(let p, let why):
+                return "Couldn't create folder \(p): \(why)"
+            }
+        }
+    }
+
+    /// Outcome of `provisionProductionFolder`. The caller writes
+    /// `productionPath` into `clip.productionFolder` and (when set)
+    /// `canonicalFilename` into `clip.clipFilename`.
+    struct ProvisionResult {
+        /// Absolute, expanded path to the production folder. Always present
+        /// on success — created on demand if it didn't exist.
+        let productionPath: String
+        /// `true` when this call actually created the folder; `false` when
+        /// the folder was already on disk.
+        let createdFolder: Bool
+        /// Original filename that was copied from FCP, when applicable.
+        let copiedFromFCP: String?
+        /// Final filename inside the production folder (`<Title>.<ext>`),
+        /// when a copy was performed. Caller stores on `clip.clipFilename`.
+        let canonicalFilename: String?
+    }
+
+    /// One-click "fix the missing production folder" used by the audit
+    /// pills. Path resolution delegates to `PathDefaultsService.productionPath`
+    /// so the pill, the editor's "Set default" wand button, and the one-time
+    /// backfill all produce the same shape — for the shipped default pattern
+    /// `{date} {title}` that's `<base>/<contentDate> <Title>`.
+    ///
+    /// When `fcpSourceFilename` is non-nil and the file exists in
+    /// `clip.fcpProjectFolder`, the file is **copied** (not moved — the FCP
+    /// project keeps its render) into the new folder as `<Title>.<sourceExt>`.
+    /// Final layout: `<base>/<contentDate> <Title>/<Title>.<ext>`. The folder
+    /// name carries date + title for human scannability, the file inside is
+    /// just the title — so `Title.Extension`-style references on other
+    /// surfaces (audit, editor, exports) all match.
+    @discardableResult
+    static func provisionProductionFolder(
+        clip: Clip,
+        settings: AppSettings,
+        fcpSourceFilename: String?
+    ) throws -> ProvisionResult {
+        let fm = FileManager.default
+
+        let baseTrim = settings.defaultProductionBase.trimmingCharacters(in: .whitespaces)
+        guard !baseTrim.isEmpty else { throw ProvisionError.missingProductionBase }
+
+        let contentDate = (clip.contentDate ?? "").trimmingCharacters(in: .whitespaces)
+        guard !contentDate.isEmpty else { throw ProvisionError.missingContentDate }
+
+        let titleTrim = clip.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !titleTrim.isEmpty else { throw ProvisionError.missingTitle }
+
+        // Single source of truth for path resolution — keeps the pill in
+        // lockstep with the wand button and the backfill regardless of any
+        // future pattern customisation.
+        guard let prodPath = PathDefaultsService.productionPath(for: clip, settings: settings) else {
+            // PathDefaultsService returns nil only when base is empty or
+            // there's no usable date — both of which we've already
+            // validated, but defend against drift.
+            throw ProvisionError.missingProductionBase
+        }
+
+        // mkdir -p
+        var isDir: ObjCBool = false
+        let preExisted = fm.fileExists(atPath: prodPath, isDirectory: &isDir) && isDir.boolValue
+        if !preExisted {
+            do {
+                try fm.createDirectory(atPath: prodPath,
+                                       withIntermediateDirectories: true,
+                                       attributes: nil)
+            } catch {
+                throw ProvisionError.mkdirFailed(prodPath, underlying: error.localizedDescription)
+            }
+        }
+
+        // Optional copy from FCP. Skipped silently when caller didn't pass
+        // a candidate — the empty-folder case still returns success.
+        var copiedFromFCP: String? = nil
+        var canonicalFilename: String? = nil
+        if let sourceName = fcpSourceFilename?.trimmingCharacters(in: .whitespaces),
+           !sourceName.isEmpty,
+           let fcp = clip.fcpProjectFolder?.trimmingCharacters(in: .whitespaces),
+           !fcp.isEmpty {
+            let fcpExpanded = (fcp as NSString).expandingTildeInPath
+            let sourcePath = (fcpExpanded as NSString).appendingPathComponent(sourceName)
+            guard fm.fileExists(atPath: sourcePath) else {
+                throw ProvisionError.sourceMissing(sourcePath)
+            }
+
+            // Preserve the source's extension so the user's "Title.Extension"
+            // mapping holds — an .mov source becomes Title.mov, an .mp4
+            // becomes Title.mp4. Sanitize the title with the existing helper
+            // so `/`, `\`, `:` collapse to `-`.
+            let ext = (sourceName as NSString).pathExtension
+            let safeTitle = sanitizeTitle(titleTrim)
+            let destName = ext.isEmpty ? safeTitle : "\(safeTitle).\(ext)"
+            let destPath = (prodPath as NSString).appendingPathComponent(destName)
+
+            if fm.fileExists(atPath: destPath) {
+                throw ProvisionError.destExists(destPath)
+            }
+            do {
+                try fm.copyItem(atPath: sourcePath, toPath: destPath)
+            } catch {
+                throw ProvisionError.copyFailed(
+                    from: sourcePath,
+                    to: destPath,
+                    underlying: error.localizedDescription
+                )
+            }
+            copiedFromFCP = sourceName
+            canonicalFilename = destName
+        }
+
+        return ProvisionResult(
+            productionPath: prodPath,
+            createdFolder: !preExisted,
+            copiedFromFCP: copiedFromFCP,
+            canonicalFilename: canonicalFilename
+        )
+    }
+
     /// Promote a `<Title>_frame_NN.png` capture into the canonical
     /// `<Title>.png` thumbnail. Copies the picked frame into Production
     /// (overwriting any prior `<Title>.png` there) and deletes any stale
