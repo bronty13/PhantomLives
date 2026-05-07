@@ -37,6 +37,11 @@ enum SampleDataService {
             resourceName: "madeline_soto_case_data",
             displayTitle: "Murder of Madeline Soto"
         ),
+        SampleSpec(
+            caseId: "sample-harmony-montgomery",
+            resourceName: "harmony_montgomery_case_data",
+            displayTitle: "Murder of Harmony Montgomery"
+        ),
     ]
 
     static func isSampleCaseId(_ id: String) -> Bool {
@@ -215,33 +220,59 @@ enum SampleDataService {
         return CaseStatus.active.rawValue
     }
 
-    /// Map a JSON `role_category` (with a free-text `role` fallback for
-    /// disambiguation) to the closest `PersonRole` enum case.
+    /// Map a JSON `role_category` (when present) or freeform `role` string
+    /// to the closest `PersonRole` enum case. Different sample sources use
+    /// different shapes — Madeline Soto carries a normalized `role_category`
+    /// while Harmony Montgomery only has the freeform `role` — so we check
+    /// both fields uniformly. Matching is keyword-based to handle composite
+    /// strings like "Biological Mother / Witness / Civil Plaintiff".
     internal static func mapRole(_ category: String?, fallback: String?) -> PersonRole {
-        let cat = (category ?? "").lowercased()
-        let fb  = (fallback ?? "").lowercased()
-        if cat.contains("victim")     { return .victim }
-        if cat.contains("suspect")    { return .suspect }
-        if cat.contains("prosecution") || cat.contains("legal counsel") || fb.contains("attorney") {
-            return .attorney
-        }
-        if cat.contains("law enforcement") || cat.contains("forensics") || fb.contains("detective") {
-            return .detective
-        }
-        if cat.contains("witness") { return .witness }
+        let combined = ((category ?? "") + " | " + (fallback ?? "")).lowercased()
+        // "Suspect / Convicted Defendant" should land on .suspect even though
+        // it also contains "convicted" — check suspect/defendant first so
+        // legitimate suspect rows beat the witness fallback below.
+        if combined.contains("suspect") || combined.contains("defendant")
+            || combined.contains("convicted offender") { return .suspect }
+        // "Biological Mother / Witness" is primarily a witness, so match
+        // witness before victim — otherwise composite roles all collapse to
+        // the wrong bucket.
+        if combined.contains("witness") { return .witness }
+        if combined.contains("victim") { return .victim }
+        if combined.contains("attorney") || combined.contains("prosecut")
+            || combined.contains("legal counsel") { return .attorney }
+        if combined.contains("law enforcement") || combined.contains("forensics")
+            || combined.contains("detective") || combined.contains("officer")
+            || combined.contains("sergeant") || combined.contains("corporal")
+            || combined.contains("captain") || combined.contains("special agent")
+            || combined.contains("medical examiner") || combined.contains("crime analyst")
+            || combined.contains("crime scene") { return .detective }
         return .other
     }
 
     internal static func mapImportance(_ category: String?) -> Importance {
         switch category ?? "" {
-        case "Day of Disappearance", "Body Recovery", "Resolution":
+        // Critical — the act, the discovery, the verdict / sentencing
+        case "Day of Disappearance", "Body Recovery", "Resolution",
+             "Homicide", "Verdict", "Sentencing":
             return .critical
-        case "Background - Pattern of Abuse", "Charges", "Arrest", "Court", "Memorial":
+        // High — abuse pattern, body movement, charges, arrests, court
+        // proceedings, last-known sightings of the victim
+        case "Background - Pattern of Abuse", "Charges", "Charge", "Arrest",
+             "Court", "Memorial", "Abuse", "Concealment",
+             "Last Sighting", "Last Contact", "Trial",
+             "Court / Custody":
             return .high
-        case "Pre-Disappearance", "Investigation", "Forensics", "Custody", "Legal Action":
+        // Medium — investigation, civil/probate proceedings, witness statements,
+        // government reports, child welfare touchpoints
+        case "Pre-Disappearance", "Investigation", "Forensics", "Custody",
+             "Legal Action", "Court / Pretrial", "Civil", "Civil / Probate",
+             "Government Report", "Witness Account", "Child Welfare",
+             "Concern Raised", "Welfare Fraud", "Conviction (Other)":
             return .medium
         default:
-            return .low   // Background, Tangential, missing
+            // Background, Tangential, missing — and any future category we
+            // forget to tag explicitly defaults to .low rather than crashing.
+            return .low
         }
     }
 
@@ -266,6 +297,14 @@ enum SampleDataService {
         var parts: [String] = []
         if !jp.role.isEmpty                         { parts.append("**Role:** \(jp.role)") }
         if let agency = jp.agency, !agency.isEmpty  { parts.append("**Agency:** \(agency)") }
+
+        var lifeline: [String] = []
+        if let dob = jp.dob, !dob.isEmpty { lifeline.append("**Born:** \(dob)") }
+        if let dod = jp.dod, !dod.isEmpty { lifeline.append("**Died:** \(dod)") }
+        if !lifeline.isEmpty {
+            parts.append(lifeline.joined(separator: "  ·  "))
+        }
+
         if !jp.description.isEmpty                  { parts.append(jp.description) }
         if let rel = jp.relationship_to_case, !rel.isEmpty { parts.append("*\(rel)*") }
         return parts.joined(separator: "\n\n")
@@ -318,38 +357,90 @@ enum SampleDataService {
         }
     }
 
-    /// Mirrors the JSON document at the top level. We ignore the extra
-    /// catalog sections (`evidence_log`, `vehicles_of_interest`, …) for now
-    /// — the model doesn't have a place for them, and the timeline + people
-    /// alone make for a meaningful sample case.
+    /// Mirrors the JSON document at the top level. The shape is intentionally
+    /// lenient — different curated sample sources use different field names
+    /// (Madeline Soto: `name`/`timeline_events`/`people_involved`/`full_name`;
+    /// Harmony Montgomery: `title`/`events`/`people`/`name`) — so each
+    /// nested struct decodes both variants and ignores catalog sections
+    /// (`evidence_log`, `vehicles_of_interest`, …) that don't map to any
+    /// model in Timeliner.
     internal struct SamplePayload: Decodable {
         let case_: JSONCase
         let people: [JSONPerson]
         let timeline_events: [JSONEvent]
         let metadata: JSONMetadata?
 
-        enum CodingKeys: String, CodingKey {
-            case case_ = "case"
-            case people, timeline_events, metadata
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: AnyKey.self)
+            self.case_ = try c.decode(JSONCase.self, forKey: AnyKey("case"))
+            self.people = try c.decode([JSONPerson].self, forKey: AnyKey("people"))
+            // Accept either `timeline_events` (Madeline shape) or `events`
+            // (Harmony shape). One of them must be present.
+            if let evs = try? c.decode([JSONEvent].self, forKey: AnyKey("timeline_events")) {
+                self.timeline_events = evs
+            } else {
+                self.timeline_events = try c.decode([JSONEvent].self, forKey: AnyKey("events"))
+            }
+            self.metadata = try? c.decode(JSONMetadata.self, forKey: AnyKey("metadata"))
         }
     }
 
     internal struct JSONCase: Decodable {
         let id: String
+        /// Display title — accepts either `name` or `title` field.
         let name: String
+        /// Combined summary + outcome (Harmony shape uses both).
         let summary: String
         let status: String
-        let tags: [String]?
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: AnyKey.self)
+            self.id = try c.decode(String.self, forKey: AnyKey("id"))
+            if let n = try? c.decode(String.self, forKey: AnyKey("name")) {
+                self.name = n
+            } else {
+                self.name = try c.decode(String.self, forKey: AnyKey("title"))
+            }
+            self.status = try c.decode(String.self, forKey: AnyKey("status"))
+            let summary = (try? c.decode(String.self, forKey: AnyKey("summary"))) ?? ""
+            let outcome = (try? c.decode(String.self, forKey: AnyKey("outcome"))) ?? ""
+            self.summary = outcome.isEmpty
+                ? summary
+                : (summary + (summary.isEmpty ? "" : "\n\n") + "**Outcome:** " + outcome)
+        }
     }
 
     internal struct JSONPerson: Decodable {
         let id: String
+        /// Display name — accepts either `full_name` or `name`.
         let full_name: String
         let role: String
         let role_category: String?
         let agency: String?
+        /// Long-form description — accepts either `description` or `notes`.
         let description: String
         let relationship_to_case: String?
+        let dob: String?
+        let dod: String?
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: AnyKey.self)
+            self.id = try c.decode(String.self, forKey: AnyKey("id"))
+            if let n = try? c.decode(String.self, forKey: AnyKey("full_name")) {
+                self.full_name = n
+            } else {
+                self.full_name = try c.decode(String.self, forKey: AnyKey("name"))
+            }
+            self.role = (try? c.decode(String.self, forKey: AnyKey("role"))) ?? ""
+            self.role_category = try? c.decode(String.self, forKey: AnyKey("role_category"))
+            self.agency = try? c.decode(String.self, forKey: AnyKey("agency"))
+            self.description = (try? c.decode(String.self, forKey: AnyKey("description")))
+                ?? (try? c.decode(String.self, forKey: AnyKey("notes")))
+                ?? ""
+            self.relationship_to_case = try? c.decode(String.self, forKey: AnyKey("relationship_to_case"))
+            self.dob = try? c.decode(String.self, forKey: AnyKey("dob"))
+            self.dod = try? c.decode(String.self, forKey: AnyKey("dod"))
+        }
     }
 
     internal struct JSONEvent: Decodable {
@@ -360,11 +451,41 @@ enum SampleDataService {
         let title: String
         let description: String
         let location: String?
+        /// Linked person IDs — accepts either `people_involved` or `people`.
         let people_involved: [String]?
         let source: String?
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: AnyKey.self)
+            self.id = try c.decode(String.self, forKey: AnyKey("id"))
+            self.date = try c.decode(String.self, forKey: AnyKey("date"))
+            self.time = try? c.decode(String.self, forKey: AnyKey("time"))
+            self.category = try? c.decode(String.self, forKey: AnyKey("category"))
+            self.title = try c.decode(String.self, forKey: AnyKey("title"))
+            self.description = (try? c.decode(String.self, forKey: AnyKey("description"))) ?? ""
+            self.location = try? c.decode(String.self, forKey: AnyKey("location"))
+            self.people_involved = (try? c.decode([String].self, forKey: AnyKey("people_involved")))
+                ?? (try? c.decode([String].self, forKey: AnyKey("people")))
+            self.source = try? c.decode(String.self, forKey: AnyKey("source"))
+        }
     }
 
     internal struct JSONMetadata: Decodable {
         let primary_source: String?
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: AnyKey.self)
+            self.primary_source = try? c.decode(String.self, forKey: AnyKey("primary_source"))
+        }
+    }
+
+    /// Ad-hoc CodingKey that accepts any string — used so we can decode the
+    /// same field from one of several aliased keys.
+    private struct AnyKey: CodingKey {
+        var stringValue: String
+        init(_ s: String) { self.stringValue = s }
+        init?(stringValue: String) { self.stringValue = stringValue }
+        var intValue: Int? { nil }
+        init?(intValue: Int) { return nil }
     }
 }

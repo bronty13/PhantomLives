@@ -8,24 +8,52 @@ final class SampleDataServiceTests: XCTestCase {
     /// path) and should decode into the documented totals.
     @MainActor
     func testBundledMadelineSotoSamplePayloadParses() throws {
-        let url = Bundle.main.url(
-            forResource: "madeline_soto_case_data",
-            withExtension: "json",
-            subdirectory: "SampleData"
-        ) ?? Bundle.main.url(
-            forResource: "madeline_soto_case_data",
-            withExtension: "json"
-        )
-        guard let url else {
-            XCTFail("madeline_soto_case_data.json not bundled in Timeliner.app")
-            return
-        }
-        let data = try Data(contentsOf: url)
-        let payload = try SampleDataService.decodePayload(data)
+        let payload = try loadSample(named: "madeline_soto_case_data")
         XCTAssertEqual(payload.case_.id, "case_001")
         XCTAssertEqual(payload.case_.name, "Murder of Madeline Soto")
         XCTAssertEqual(payload.people.count, 43)
         XCTAssertEqual(payload.timeline_events.count, 150)
+    }
+
+    /// Harmony Montgomery JSON uses a different shape (`title` not `name`,
+    /// `events` not `timeline_events`, `notes` not `description`,
+    /// `people` not `people_involved`). The lenient decoder should accept
+    /// it without code changes per-sample.
+    @MainActor
+    func testBundledHarmonyMontgomerySamplePayloadParses() throws {
+        let payload = try loadSample(named: "harmony_montgomery_case_data")
+        XCTAssertEqual(payload.case_.name, "Murder of Harmony Montgomery")
+        XCTAssertGreaterThan(payload.people.count, 20)
+        XCTAssertGreaterThan(payload.timeline_events.count, 30)
+        // Outcome line should have been folded into the merged summary.
+        XCTAssertTrue(payload.case_.summary.contains("Outcome:"),
+                      "Harmony summary should include the merged outcome footer")
+        // Cross-shape sanity: an event's `people_involved` should resolve
+        // even though the source JSON used `people`.
+        let homicide = payload.timeline_events.first { $0.category == "Homicide" }
+        XCTAssertNotNil(homicide)
+        XCTAssertEqual(homicide?.people_involved?.isEmpty, false,
+                       "Homicide event should carry linked person IDs from the `people` field")
+    }
+
+    // MARK: - Helpers
+
+    @MainActor
+    private func loadSample(named resource: String) throws -> SampleDataService.SamplePayload {
+        let url = Bundle.main.url(
+            forResource: resource,
+            withExtension: "json",
+            subdirectory: "SampleData"
+        ) ?? Bundle.main.url(
+            forResource: resource,
+            withExtension: "json"
+        )
+        guard let url else {
+            XCTFail("\(resource).json not bundled in Timeliner.app")
+            throw NSError(domain: "test", code: -1)
+        }
+        let data = try Data(contentsOf: url)
+        return try SampleDataService.decodePayload(data)
     }
 
     @MainActor

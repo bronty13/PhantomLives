@@ -1,0 +1,568 @@
+{
+  "case": {
+    "id": "case-001",
+    "title": "Murder of Harmony Montgomery",
+    "victim": "Harmony Renee Montgomery",
+    "status": "Closed - Convicted",
+    "case_type": "Homicide / Child Abuse / Missing Person",
+    "jurisdictions": ["Manchester, NH", "Hillsborough County, NH", "Massachusetts (custody history)"],
+    "summary": "Five-year-old Harmony Renee Montgomery was beaten to death by her biological father, Adam Montgomery, in early December 2019, after a Massachusetts juvenile court awarded him custody in February 2019. Her remains were concealed for months and ultimately disposed of; her body has never been recovered. She was not reported missing until November 2021, when her biological mother, Crystal Sorey, alerted Manchester (NH) Police. Adam Montgomery was convicted of second-degree murder and related charges on February 22, 2024, and sentenced to 45 years to life on May 9, 2024.",
+    "outcome": "Adam Montgomery convicted of second-degree murder, second-degree assault, witness tampering, falsifying physical evidence, and abuse of corpse. Sentenced to a minimum of 56 years (consecutive). Kayla Montgomery convicted of perjury and welfare fraud. Body never recovered. Harmony declared legally dead March 12, 2024."
+  },
+
+  "people": [
+    {
+      "id": "p-001",
+      "name": "Harmony Renee Montgomery",
+      "role": "Victim",
+      "dob": "2014-06-07",
+      "dod": "2019-12-07 (presumed)",
+      "notes": "Five-year-old victim. Born in Massachusetts to Crystal Sorey and Adam Montgomery. Blind in one eye; had behavioral and developmental challenges. Spent much of her life in Massachusetts DCF custody. Declared legally dead by a New Hampshire judge on March 12, 2024. Body never recovered."
+    },
+    {
+      "id": "p-002",
+      "name": "Adam Montgomery",
+      "role": "Suspect / Convicted Defendant",
+      "dob": "1990-01-22",
+      "notes": "Biological father of Harmony. Convicted of second-degree murder, second-degree assault, witness tampering, falsifying physical evidence, and abuse of a corpse. Already serving a 30-year sentence on unrelated felony weapons charges at time of murder trial. Refused to attend most of his trial."
+    },
+    {
+      "id": "p-003",
+      "name": "Crystal Sorey",
+      "role": "Biological Mother / Witness / Civil Plaintiff",
+      "notes": "Harmony's biological mother. Filed missing persons report November 18, 2021. History of substance abuse during Harmony's early years; later regained sobriety. Testified at Adam Montgomery's trial. Filed wrongful death lawsuit against the State of New Hampshire (DCYF) on September 13, 2024 (case 216-2024-CV-00722)."
+    },
+    {
+      "id": "p-004",
+      "name": "Kayla Montgomery (née Marrero)",
+      "role": "Stepmother / Co-defendant / State's Witness",
+      "notes": "Adam Montgomery's wife at the time of the murder. Initially charged with welfare fraud and later perjury for lying to a grand jury. Turned state's witness; testified in detail about Harmony's death and the months Adam spent moving and concealing the body. Was incarcerated at the time of trial."
+    },
+    {
+      "id": "p-005",
+      "name": "Michael Montgomery Sr.",
+      "role": "Family - Paternal Grandfather",
+      "notes": "Adam Montgomery's biological father, confirmed via paternity test in 1998."
+    },
+    {
+      "id": "p-006",
+      "name": "Melissa E. Newhall",
+      "role": "Family - Paternal Grandmother",
+      "dob": "1974-04-17",
+      "notes": "Adam Montgomery's biological mother. Was 16 when Adam was born."
+    },
+    {
+      "id": "p-007",
+      "name": "Kevin Montgomery",
+      "role": "Witness - Family",
+      "notes": "Harmony's great-uncle (Adam's uncle). Reluctant prosecution witness. Testified that in 2019 he found Harmony in the kitchen with a black eye, and Adam admitted, in vulgar terms, to bashing her around the house."
+    },
+    {
+      "id": "p-008",
+      "name": "Michael Montgomery (Adam's brother)",
+      "role": "Witness - Family",
+      "notes": "Adam Montgomery's brother. Told investigators he had witnessed his brother's abusive behavior toward Harmony. Adam allegedly told him 'I bashed her around this house.'"
+    },
+    {
+      "id": "p-009",
+      "name": "Rebecca Maines",
+      "role": "Witness - Civilian",
+      "notes": "Adam Montgomery's best friend. Testified that Adam told her he hated Harmony because she reminded him of her mother, Crystal Sorey."
+    },
+    {
+      "id": "p-010",
+      "name": "Travis (witness)",
+      "role": "Witness - Civilian",
+      "notes": "Witness whose testimony came closest to a confession from Adam, though no witness reported a direct confession to the killing."
+    },
+    {
+      "id": "p-011",
+      "name": "The Raftery family",
+      "role": "Foster Family",
+      "notes": "Massachusetts foster family that cared for Harmony on three separate placements between 2014 and 2018. Returned Harmony to DCF in spring 2018 after the third placement, citing escalating behavioral challenges from repeated removals and reunifications."
+    },
+    {
+      "id": "p-012",
+      "name": "The Blair family (Blare)",
+      "role": "Adoptive Family of Sibling",
+      "notes": "Adoptive parents of Harmony's younger half-brother Jamison. Contacted New Hampshire DCYF in September 2021 with concerns that Crystal Sorey had not seen Harmony."
+    },
+    {
+      "id": "p-013",
+      "name": "Jamison",
+      "role": "Family - Half-Sibling",
+      "notes": "Harmony's younger half-brother. Adopted by Blair and Johnathan Miller. His adoptive fathers read a victim impact statement on his behalf at sentencing."
+    },
+    {
+      "id": "p-014",
+      "name": "Blair Miller and Johnathan Miller",
+      "role": "Adoptive Parents of Half-Sibling",
+      "notes": "Adoptive fathers of Harmony's half-brother Jamison. Read his victim impact statement at Adam Montgomery's sentencing."
+    },
+    {
+      "id": "p-015",
+      "name": "Allen Aldenberg",
+      "role": "Law Enforcement - Manchester (NH) Police Chief",
+      "notes": "Public face of the missing-person and homicide investigation. Held the December 31, 2021 press conference announcing Harmony's disappearance, and the August 11, 2022 press conference announcing the case had become a homicide investigation."
+    },
+    {
+      "id": "p-016",
+      "name": "John Formella",
+      "role": "Law Enforcement / Prosecution - New Hampshire Attorney General",
+      "notes": "New Hampshire AG. Joined Chief Aldenberg on August 11, 2022 to publicly state the investigation was now a homicide and that Adam Montgomery was believed to have killed Harmony."
+    },
+    {
+      "id": "p-017",
+      "name": "Ben Agati",
+      "role": "Prosecution - Senior Assistant Attorney General",
+      "notes": "Lead prosecutor at trial. Delivered closing argument calling Adam Montgomery an 'enraged tyrant.' Made surprise offer at sentencing to reduce recommendation if Adam disclosed the location of Harmony's remains."
+    },
+    {
+      "id": "p-018",
+      "name": "Christopher Knowles",
+      "role": "Prosecution - Assistant Attorney General",
+      "notes": "Co-prosecutor on the case."
+    },
+    {
+      "id": "p-019",
+      "name": "Caroline Smith",
+      "role": "Defense - Public Defender",
+      "notes": "Lead public defender for Adam Montgomery. Delivered closing argument blaming Kayla Montgomery for Harmony's death."
+    },
+    {
+      "id": "p-020",
+      "name": "James Brooks",
+      "role": "Defense - Public Defender",
+      "notes": "Co-counsel for Adam Montgomery."
+    },
+    {
+      "id": "p-021",
+      "name": "Hon. Amy Messer",
+      "role": "Court - Superior Court Judge",
+      "notes": "Hillsborough County Superior Court (Northern District) judge who presided over Adam Montgomery's murder trial and sentenced him on May 9, 2024."
+    },
+    {
+      "id": "p-022",
+      "name": "Maria Mossaides",
+      "role": "Government - Massachusetts Office of the Child Advocate Director",
+      "notes": "Director of the Massachusetts Office of the Child Advocate. Oversaw the May 2022 OCA investigative report finding state systems failed Harmony."
+    },
+    {
+      "id": "p-023",
+      "name": "Chris Sununu",
+      "role": "Government - Governor of New Hampshire",
+      "notes": "Then-Governor of New Hampshire. Wrote a public letter criticizing the Massachusetts judge's decision to award Adam Montgomery custody of Harmony."
+    },
+    {
+      "id": "p-024",
+      "name": "Massachusetts DCF Case Management Team",
+      "role": "Government - Child Welfare",
+      "notes": "Department of Children and Families staff at the Jackson Square Area Office who managed Harmony's case in Massachusetts from 2014-2019."
+    },
+    {
+      "id": "p-025",
+      "name": "Manchester (NH) Police Detectives",
+      "role": "Law Enforcement - Investigators",
+      "notes": "Lead detectives drafted the affidavit detailing the recovery of physical evidence (including ceiling-vent search at FIT Shelter) and the U-Haul/Tobin Bridge toll trail. Specific names not consistently published."
+    },
+    {
+      "id": "p-026",
+      "name": "Crystal Sorey's boyfriend (late 2019)",
+      "role": "Witness - Civilian",
+      "notes": "Lived with Crystal Sorey in late 2019. Told police Harmony was not with her mother at any point after October 2019 and that he had never met Harmony in person. Name not published."
+    },
+    {
+      "id": "p-027",
+      "name": "U-Haul rental clerk - South Willow Street, Manchester NH",
+      "role": "Witness - Civilian",
+      "notes": "Employee at U-Haul rental location where Adam Montgomery rented the moving truck used to dispose of Harmony's remains in March 2020."
+    },
+    {
+      "id": "p-028",
+      "name": "Restaurant employee (Adam's workplace)",
+      "role": "Witness - Civilian",
+      "notes": "Employee at Adam Montgomery's then-workplace (a now-closed restaurant). Told police he saw Kayla bring a maternity tote bag - which contained Harmony's remains - to Adam at work, but did not question it."
+    }
+  ],
+
+  "events": [
+    {
+      "id": "e-001",
+      "date": "2014-06-07",
+      "category": "Background",
+      "title": "Harmony Montgomery is born",
+      "location": "Massachusetts",
+      "description": "Harmony Renee Montgomery is born to Crystal Sorey (24) and Adam Montgomery (25). Adam is incarcerated at the time. Harmony is diagnosed with holoprosencephaly, a rare brain condition, and is blind in one eye.",
+      "people": ["p-001", "p-002", "p-003"]
+    },
+    {
+      "id": "e-002",
+      "date": "2014-08",
+      "category": "Child Welfare",
+      "title": "Harmony placed in MA DCF custody at 2 months old",
+      "location": "Massachusetts",
+      "description": "At approximately two months old, Harmony is placed into the custody of the Massachusetts Department of Children and Families. She will move repeatedly between her mother, foster care, and back over the next several years.",
+      "people": ["p-001", "p-003", "p-024", "p-011"]
+    },
+    {
+      "id": "e-003",
+      "date": "2017",
+      "category": "Child Welfare",
+      "title": "Crystal Sorey allows unauthorized contact with Adam Montgomery",
+      "location": "Massachusetts",
+      "description": "Crystal Sorey informs DCF that Adam Montgomery has contacted her and spoken with Harmony by phone. She is warned that this is not allowed. Reports of neglect are filed at the DCF Jackson Square Area Office alleging unsupervised visits between Adam and Harmony.",
+      "people": ["p-001", "p-002", "p-003", "p-024"]
+    },
+    {
+      "id": "e-004",
+      "date": "2018-01",
+      "category": "Child Welfare",
+      "title": "Harmony removed from Crystal Sorey's care for the third time",
+      "location": "Massachusetts",
+      "description": "At about 3.5 years old, Harmony is removed from Crystal Sorey's care a third time due to substance abuse and is placed back with the Raftery foster family.",
+      "people": ["p-001", "p-003", "p-011", "p-024"]
+    },
+    {
+      "id": "e-005",
+      "date": "2018-04",
+      "category": "Child Welfare",
+      "title": "Raftery foster family returns Harmony to DCF",
+      "location": "Massachusetts",
+      "description": "After three months, the Raftery foster family returns Harmony to DCF, citing escalating behavioral issues believed to be the result of repeated removals and reunifications.",
+      "people": ["p-001", "p-011", "p-024"]
+    },
+    {
+      "id": "e-006",
+      "date": "2018-06-07",
+      "category": "Child Welfare",
+      "title": "Foster Care Review Meeting on Harmony's 4th birthday",
+      "location": "Massachusetts",
+      "description": "On Harmony's fourth birthday, DCF holds a Foster Care Review meeting. The permanency goal would shift several times in the months that followed.",
+      "people": ["p-001", "p-024"]
+    },
+    {
+      "id": "e-007",
+      "date": "2018-07",
+      "category": "Child Welfare",
+      "title": "Crystal Sorey loses custody; Harmony placed in foster care system",
+      "location": "Massachusetts",
+      "description": "Crystal Sorey loses custody of Harmony, who is placed in the Massachusetts foster care system.",
+      "people": ["p-001", "p-003", "p-024"]
+    },
+    {
+      "id": "e-008",
+      "date": "2018-10",
+      "category": "Child Welfare",
+      "title": "Adam Montgomery requests custody of Harmony",
+      "location": "Massachusetts",
+      "description": "Adam Montgomery, who has had inconsistent and supervised contact with Harmony since his 2015 release from prison, formally requests that she be placed in his care.",
+      "people": ["p-001", "p-002", "p-024"]
+    },
+    {
+      "id": "e-009",
+      "date": "2019-02",
+      "category": "Court / Custody",
+      "title": "Massachusetts judge awards Adam Montgomery custody of Harmony",
+      "location": "Massachusetts Juvenile Court",
+      "description": "A Massachusetts juvenile court judge awards Adam Montgomery full custody of Harmony, ruling that an Interstate Compact on the Placement of Children (ICPC) home study did not apply for constitutional reasons because he was found to be a fit parent. Within roughly a week, Adam takes Harmony to New Hampshire and Massachusetts DCF involvement ends.",
+      "people": ["p-001", "p-002", "p-024"]
+    },
+    {
+      "id": "e-010",
+      "date": "2019-04",
+      "category": "Last Contact",
+      "title": "Last confirmed contact between Crystal Sorey and Harmony (FaceTime)",
+      "location": "Remote (FaceTime)",
+      "description": "Crystal Sorey speaks with Harmony for what would prove to be the last time, via a FaceTime call around Easter 2019.",
+      "people": ["p-001", "p-003"]
+    },
+    {
+      "id": "e-011",
+      "date": "2019-07",
+      "category": "Abuse",
+      "title": "Adam Montgomery strikes Harmony in the face",
+      "location": "Manchester, NH",
+      "description": "Adam Montgomery strikes Harmony with such force he 'altered the profile of her face,' according to prosecutors' sentencing memo. This incident later forms the basis of the second-degree assault charge.",
+      "people": ["p-001", "p-002"]
+    },
+    {
+      "id": "e-012",
+      "date": "2019",
+      "category": "Witness Account",
+      "title": "Kevin Montgomery witnesses Harmony with black eye",
+      "location": "Manchester, NH",
+      "description": "Adam's uncle Kevin Montgomery finds Harmony in the kitchen with a black eye. Adam admits, in profane terms, to having 'bashed her around' the house.",
+      "people": ["p-001", "p-002", "p-007"]
+    },
+    {
+      "id": "e-013",
+      "date": "2019-10",
+      "category": "Last Sighting",
+      "title": "Last known sighting of Harmony by authorities",
+      "location": "Manchester, NH",
+      "description": "Manchester Police officers respond to a house call and see Harmony in person. This is the last time she is seen by authorities.",
+      "people": ["p-001", "p-025"]
+    },
+    {
+      "id": "e-014",
+      "date": "2019-late",
+      "category": "Background",
+      "title": "Montgomery family becomes homeless",
+      "location": "Manchester, NH",
+      "description": "The Montgomerys are evicted from their home and begin living in their car before moving to a homeless shelter. Adam and Kayla are dealing with major substance abuse issues; Harmony is repeatedly beaten by Adam in the car after bathroom accidents.",
+      "people": ["p-001", "p-002", "p-004"]
+    },
+    {
+      "id": "e-015",
+      "date": "2019-12-07",
+      "category": "Homicide",
+      "title": "Adam Montgomery beats Harmony to death",
+      "location": "Family vehicle, Manchester, NH (en route from a methadone clinic, near a Burger King)",
+      "description": "While driving the family from a methadone clinic, Adam becomes enraged that Harmony soiled herself in the family car. He repeatedly strikes her in the head with a closed fist, continuing the attack at red lights and stop signs. He stops only when he feels 'something different' and acknowledges he 'really hurt her this time.' Harmony dies. Adam hides her body in a duffel bag.",
+      "people": ["p-001", "p-002", "p-004"]
+    },
+    {
+      "id": "e-016",
+      "date": "2019-12 to 2020-03",
+      "category": "Concealment",
+      "title": "Adam and Kayla Montgomery conceal Harmony's body for months",
+      "location": "Multiple - Manchester, NH",
+      "description": "Over roughly three months, Adam moves the body between locations: the trunk of a friend's car; a cooler in the hallway of his mother-in-law's apartment building; a ceiling vent at the FIT homeless shelter; an apartment freezer at 644 Union Street; and a maternity tote bag that Kayla pushed in a stroller between her own children to deliver to Adam's restaurant workplace. The body is initially frozen, later thawed, cut up, and treated with lye.",
+      "people": ["p-001", "p-002", "p-004", "p-028"]
+    },
+    {
+      "id": "e-017",
+      "date": "2020-01-21",
+      "category": "Child Welfare",
+      "title": "NH DCYF welfare check call goes unanswered",
+      "location": "New Hampshire",
+      "description": "A New Hampshire DCYF child protection worker leaves a voicemail for Crystal Sorey to confirm Harmony's residence. She does not return the call.",
+      "people": ["p-001", "p-003"]
+    },
+    {
+      "id": "e-018",
+      "date": "2020-03-early",
+      "category": "Concealment",
+      "title": "Body disposal via U-Haul; toll violations on Tobin Bridge",
+      "location": "Manchester, NH → Boston, MA (Tobin Bridge)",
+      "description": "Adam Montgomery rents a U-Haul van from a location on South Willow Street in Manchester, NH, and disposes of Harmony's remains. MassDOT records three toll violations on the Tobin Bridge: 4:44 a.m. north, 4:45 a.m. south, and 5:25 a.m. local north — consistent with a hurried round trip. The exact disposal site is never determined; her body has not been recovered. Kayla later testifies that Adam took only the maternity bag containing Harmony's body and refused to disclose his destination.",
+      "people": ["p-001", "p-002", "p-004", "p-027"]
+    },
+    {
+      "id": "e-019",
+      "date": "2021-01-07",
+      "category": "Welfare Fraud",
+      "title": "Kayla Montgomery falsely lists Harmony in NH DHHS household",
+      "location": "New Hampshire",
+      "description": "Kayla Montgomery tells NH DHHS her household includes 4 children, listing Harmony as a member to claim benefits. The DHHS caseworker notes Kayla 'seemed confused' about whether Harmony lived there. This forms the basis of later welfare fraud charges.",
+      "people": ["p-004"]
+    },
+    {
+      "id": "e-020",
+      "date": "2021-06-02",
+      "category": "Welfare Fraud",
+      "title": "Kayla Montgomery's account-change report to NH DHHS",
+      "location": "New Hampshire",
+      "description": "An account change report on Kayla's case begins. DHHS records note Harmony's case management was closed because Kayla said Harmony 'moved back with her mother.'",
+      "people": ["p-004"]
+    },
+    {
+      "id": "e-021",
+      "date": "2021-09",
+      "category": "Concern Raised",
+      "title": "Adoptive parents of Harmony's brother contact NH DCYF",
+      "location": "New Hampshire",
+      "description": "The adoptive parents of Harmony's half-brother Jamison contact NH DCYF, raising concerns that Crystal Sorey has not seen Harmony in a long time.",
+      "people": ["p-001", "p-003", "p-012", "p-014"]
+    },
+    {
+      "id": "e-022",
+      "date": "2021-11-18",
+      "category": "Investigation",
+      "title": "Crystal Sorey reports Harmony missing to Manchester Police",
+      "location": "Manchester, NH",
+      "description": "After failing to reach Adam — who had blocked her on social media and by phone — and not having contact with Harmony for over two years, Crystal Sorey reports Harmony missing. Police note her last contact with Harmony was the FaceTime call around Easter 2019.",
+      "people": ["p-001", "p-003", "p-025"]
+    },
+    {
+      "id": "e-023",
+      "date": "2021-12-31",
+      "category": "Investigation",
+      "title": "Manchester Police press conference; public learns Harmony is missing",
+      "location": "Manchester, NH",
+      "description": "Police Chief Allen Aldenberg holds a press conference announcing the search for 7-year-old Harmony Montgomery, last seen in 2019. He announces a tip line and a $10,000 reward. The case becomes national news.",
+      "people": ["p-001", "p-015", "p-025"]
+    },
+    {
+      "id": "e-024",
+      "date": "2022-01-02",
+      "category": "Investigation",
+      "title": "Police search 77 Gilford Street, Manchester",
+      "location": "77 Gilford Street, Manchester, NH",
+      "description": "Manchester Police search the residence on Gilford Street, the last known address where Harmony was reported to have lived. Drone footage shows a tent set up in the backyard.",
+      "people": ["p-015", "p-025"]
+    },
+    {
+      "id": "e-025",
+      "date": "2022-01-04",
+      "category": "Arrest",
+      "title": "Adam Montgomery arrested",
+      "location": "Manchester, NH",
+      "description": "Adam Montgomery is arrested while sleeping in a car after giving contradictory statements about Harmony's whereabouts. He is charged with second-degree assault (for the July 2019 strike), endangering the welfare of a child, and interference with custody by concealing a child.",
+      "people": ["p-002", "p-025"]
+    },
+    {
+      "id": "e-026",
+      "date": "2022-01-05",
+      "category": "Arrest",
+      "title": "Kayla Montgomery arrested at FIT Shelter",
+      "location": "FIT Homeless Shelter, Manchester, NH",
+      "description": "Kayla Montgomery is arrested at the FIT homeless shelter and charged with felony welfare fraud for claiming Harmony as a household member after Thanksgiving 2019 to collect benefits exceeding $1,500. Her mother takes temporary custody of her children. Bail set at $5,000; she remains in custody.",
+      "people": ["p-004", "p-025"]
+    },
+    {
+      "id": "e-027",
+      "date": "2022-04-04",
+      "category": "Arrest",
+      "title": "Adam Montgomery arrested on weapons charges",
+      "location": "Manchester, NH",
+      "description": "Adam Montgomery is arrested on charges connected to the 2019 theft of an AR-15 and a 12-gauge shotgun: 2 counts of receiving stolen property, 2 counts of being a felon in possession, and 2 counts of armed career criminal.",
+      "people": ["p-002"]
+    },
+    {
+      "id": "e-028",
+      "date": "2022-05-04",
+      "category": "Government Report",
+      "title": "Massachusetts OCA releases 101-page investigative report",
+      "location": "Boston, MA",
+      "description": "The Massachusetts Office of the Child Advocate, led by Maria Mossaides, releases a 101-page report finding that state officials prioritized parental rights over Harmony's well-being and that the system failed her. The report makes recommendations to DCF, the Juvenile Court, and CPCS.",
+      "people": ["p-001", "p-022"]
+    },
+    {
+      "id": "e-029",
+      "date": "2022-08-11",
+      "category": "Investigation",
+      "title": "Authorities announce homicide investigation",
+      "location": "Manchester, NH",
+      "description": "Manchester Police Chief Allen Aldenberg and New Hampshire AG John Formella publicly state they believe Harmony is dead and that her father murdered her. The disappearance is now formally investigated as a homicide.",
+      "people": ["p-001", "p-002", "p-015", "p-016"]
+    },
+    {
+      "id": "e-030",
+      "date": "2022-10",
+      "category": "Charge",
+      "title": "Adam Montgomery indicted for second-degree murder",
+      "location": "Hillsborough County, NH",
+      "description": "Adam Montgomery is charged with second-degree murder in the death of Harmony, along with related charges including witness tampering, falsifying physical evidence, and abuse of corpse.",
+      "people": ["p-002", "p-016"]
+    },
+    {
+      "id": "e-031",
+      "date": "2023-04",
+      "category": "Investigation",
+      "title": "Searches for Harmony's body in Florida",
+      "location": "Florida",
+      "description": "Investigators conduct additional searches for Harmony's remains, this time in Florida. No remains are recovered.",
+      "people": ["p-001", "p-025"]
+    },
+    {
+      "id": "e-032",
+      "date": "2023-06",
+      "category": "Conviction (Other)",
+      "title": "Adam Montgomery convicted on weapons charges; 30-year sentence",
+      "location": "Hillsborough County Superior Court, NH",
+      "description": "A Hillsborough County jury finds Adam Montgomery guilty of six felony weapons charges in a separate case. He is sentenced to 30-60 years in prison.",
+      "people": ["p-002"]
+    },
+    {
+      "id": "e-033",
+      "date": "2023-09",
+      "category": "Court / Pretrial",
+      "title": "Murder trial delayed for new defense co-counsel",
+      "location": "Hillsborough County Superior Court, NH",
+      "description": "The murder trial is delayed because the defense indicates it needs time to prepare new co-counsel.",
+      "people": ["p-002", "p-019", "p-020"]
+    },
+    {
+      "id": "e-034",
+      "date": "2024-01",
+      "category": "Court / Pretrial",
+      "title": "Defense moves to sever charges into separate trials",
+      "location": "Hillsborough County Superior Court, NH",
+      "description": "Adam Montgomery's defense team files a motion to split the charges, seeking separate trials for the second-degree assault and the second-degree murder charges. The motion is ultimately denied.",
+      "people": ["p-002", "p-019", "p-020"]
+    },
+    {
+      "id": "e-035",
+      "date": "2024-02-07",
+      "category": "Trial",
+      "title": "Jury seated in Adam Montgomery murder trial",
+      "location": "Hillsborough County Superior Court (Northern District), Manchester, NH",
+      "description": "A 17-member jury is seated. Adam Montgomery appears via Zoom and concedes elements of the falsifying physical evidence and abuse-of-corpse charges, but the trial proceeds on all charges. Jurors are bused to a methadone clinic and a Manchester Burger King — locations central to the prosecution's timeline.",
+      "people": ["p-002", "p-017", "p-019", "p-021"]
+    },
+    {
+      "id": "e-036",
+      "date": "2024-02-08",
+      "category": "Trial",
+      "title": "Opening arguments; testimony begins",
+      "location": "Hillsborough County Superior Court, Manchester, NH",
+      "description": "Opening arguments are heard. Prosecutor Ben Agati tells the jury this is 'the beginning of a journey [they]'ll likely never forget.' Testimony begins with Crystal Sorey, Kevin Montgomery, and a Raftery foster mother. Adam Montgomery does not appear.",
+      "people": ["p-002", "p-003", "p-007", "p-011", "p-017", "p-019", "p-021"]
+    },
+    {
+      "id": "e-037",
+      "date": "2024-02-08 to 2024-02-21",
+      "category": "Trial",
+      "title": "Trial testimony - Kayla Montgomery and others",
+      "location": "Hillsborough County Superior Court, Manchester, NH",
+      "description": "Kayla Montgomery testifies in detail about Adam's abuse, the killing, and the months of concealment, including the cooler, the freezer at 644 Union Street, the ceiling vent at the FIT shelter, the maternity bag, and the Tobin Bridge disposal. Rebecca Maines testifies that Adam said he hated Harmony because she reminded him of Crystal. The defense calls no witnesses.",
+      "people": ["p-002", "p-004", "p-007", "p-009", "p-010", "p-017", "p-018", "p-019", "p-020", "p-021"]
+    },
+    {
+      "id": "e-038",
+      "date": "2024-02-21",
+      "category": "Trial",
+      "title": "Closing arguments; jury begins deliberations",
+      "location": "Hillsborough County Superior Court, Manchester, NH",
+      "description": "Defense attorney Caroline Smith argues in closing that Kayla Montgomery is responsible for Harmony's death. Prosecutor Ben Agati delivers a forceful closing, calling Adam an 'enraged tyrant.' The jury begins deliberations.",
+      "people": ["p-002", "p-017", "p-019", "p-021"]
+    },
+    {
+      "id": "e-039",
+      "date": "2024-02-22",
+      "category": "Verdict",
+      "title": "Adam Montgomery found guilty on all counts",
+      "location": "Hillsborough County Superior Court, Manchester, NH",
+      "description": "After about a day of deliberation, the jury finds Adam Montgomery guilty of second-degree murder, second-degree assault, witness tampering, falsifying physical evidence, and abuse of corpse.",
+      "people": ["p-002", "p-017", "p-019", "p-021"]
+    },
+    {
+      "id": "e-040",
+      "date": "2024-03-12",
+      "category": "Civil / Probate",
+      "title": "Harmony Montgomery declared legally dead",
+      "location": "New Hampshire",
+      "description": "A New Hampshire judge grants Crystal Sorey's request to have Harmony declared legally dead, citing Adam Montgomery's confession to abusing her corpse. Her body has not been recovered.",
+      "people": ["p-001", "p-003"]
+    },
+    {
+      "id": "e-041",
+      "date": "2024-05-09",
+      "category": "Sentencing",
+      "title": "Adam Montgomery sentenced to 45 years to life",
+      "location": "Hillsborough County Superior Court, Manchester, NH",
+      "description": "Judge Amy Messer sentences Adam Montgomery to 45 years to life for second-degree murder; 4-8 years for assault; 3.5-7 years for witness tampering; 3.5-7 years for falsifying evidence; and a 12-month suspended sentence for abuse of corpse. All consecutive, totaling a 56-year minimum, on top of his existing 30-year weapons sentence. Prosecutor Ben Agati makes a surprise offer to recommend a shorter sentence if Adam reveals the location of Harmony's remains within 7 days; Adam declines. Crystal Sorey delivers a victim impact statement; adoptive fathers Blair and Johnathan Miller speak on behalf of Harmony's half-brother Jamison.",
+      "people": ["p-002", "p-003", "p-013", "p-014", "p-017", "p-021"]
+    },
+    {
+      "id": "e-042",
+      "date": "2024-09-13",
+      "category": "Civil",
+      "title": "Crystal Sorey files wrongful death lawsuit against State of NH",
+      "location": "Hillsborough County Superior Court (Northern District), NH",
+      "description": "Crystal Sorey files a wrongful death lawsuit against the State of New Hampshire (case 216-2024-CV-00722), alleging the New Hampshire Division for Children, Youth and Families (DCYF) was negligent in protecting Harmony despite multiple reports of abuse and neglect.",
+      "people": ["p-001", "p-003"]
+    }
+  ]
+}

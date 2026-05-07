@@ -64,7 +64,13 @@ export, anniversary reminders, theme builder, font slots).
   `installIfFirstRunCompleted` runs from `AppState.init` once per
   install (gated by `AppSettings.sampleDataEverInstalled`); the
   Settings → General **Restore Sample Data…** button is the explicit
-  re-add path.
+  re-add path. The Codable layer accepts multiple shapes seen across
+  curated sources (`name`/`title`, `timeline_events`/`events`,
+  `people_involved`/`people`, `description`/`notes`, etc.) via
+  per-field aliasing so a new sample doesn't usually require a
+  conversion step. Currently shipped: Madeline Soto (Florida, plea
+  deal, body recovered) and Harmony Montgomery (NH, jury conviction,
+  body never recovered, civil + appeal still active).
 
 ## Data model
 
