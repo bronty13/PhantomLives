@@ -13,6 +13,8 @@ struct SettingsView: View {
                 .tabItem { Label("External Refs", systemImage: "link") }
             FileStoreSettingsView()
                 .tabItem { Label("File Store", systemImage: "folder") }
+            PeopleSettingsView()
+                .tabItem { Label("People", systemImage: "person.2") }
             BackupSettingsView()
                 .tabItem { Label("Backup", systemImage: "externaldrive.badge.timemachine") }
         }

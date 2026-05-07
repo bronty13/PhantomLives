@@ -18,7 +18,7 @@ struct PurpleTrackerApp: App {
             CommandGroup(after: .newItem) {
                 Button("New Matter") {
                     if let firstType = appState.types.first {
-                        try? appState.createMatter(typeId: firstType.id)
+                        _ = try? appState.createMatter(typeId: firstType.id)
                     }
                 }
                 .keyboardShortcut("n")

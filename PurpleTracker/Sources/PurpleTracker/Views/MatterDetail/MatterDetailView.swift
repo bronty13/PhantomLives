@@ -109,6 +109,13 @@ struct MatterDetailView: View {
                         .font(.caption)
                         .foregroundStyle(due < Date() && matter.status != "Closed" ? .red : .secondary)
                 }
+                if let p = app.peopleById[matter.requestorAssociateId],
+                   !matter.requestorAssociateId.isEmpty {
+                    Label(p.displayNameWithTitle, systemImage: "person.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .help("Requestor — Settings → People to manage roster")
+                }
                 Spacer()
                 if let secs = app.totalSecondsByMatter[matter.id] {
                     Label("Total \(TimeFormat.hm(secs))", systemImage: "timer")

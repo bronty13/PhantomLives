@@ -4,6 +4,65 @@ All notable changes to PurpleTracker are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] — People, Interested Parties, app icon
+
+### Added
+- **People roster** — new `person` table keyed on Associate ID, populated
+  from the daily ADP IMP UserFeed CSV
+  (`~/Downloads/ADP_IMP_UserFeed_YYYY-MM-DD.csv`).
+  - Settings → **People** lets you import a specific file or "Import Latest
+    from Downloads", and shows totals + last-imported timestamp.
+  - **Auto-import on launch** (default ON, toggleable in Settings → People):
+    on every launch, scans `~/Downloads/` for the newest matching file and
+    imports it if the filename hasn't been imported before.
+  - Re-imports are upserts on Associate ID; titles, names, departments, and
+    position status are refreshed each time.
+- **Requestor** on every Matter — searchable picker over the People roster.
+  Display is `Name (Title)`. Stored as a stable Associate ID FK.
+- **Interested Parties** — five fixed slots per Matter, each a People-roster
+  picker. Carry forward to the next instance for cadenced Matters.
+- **External Interested Parties** — five free-text slots per Matter for
+  contacts who aren't in the company roster. Carry forward for cadenced
+  Matters.
+- **Cross-Matter search** now also matches Requestor + Internal IP names
+  (resolved via the People roster) and External IP free text.
+- **Matter list IP badge** — `person.2.fill` glyph with a count appears on
+  any row where one or more IP slot is populated.
+- **PersonPicker dropdown without typing** — focusing the picker shows the
+  top 50 active people sorted by last name, so users can browse without
+  typing. Typed queries still use the prefix → contains scoring.
+- **App icon** — Big-Sur-style purple squircle with a white "PT" monogram and
+  a small accent dot. Generator script lives at `Resources/make_icon.py`.
+- **Test coverage:** new tests for CRLF/BOM CSV handling, the real ADP
+  UserFeed parse, External IP rendering in exports, IP carry-forward across
+  cadenced successors, and the latest-ADP-file scan helper.
+
+### Changed
+- `RequestorPicker` is now a thin wrapper around a generalized `PersonPicker`
+  (one component drives all six person slots on a Matter).
+- Export Markdown header now includes **Requestor**, and References
+  enumerates **Interested Parties** and **External Interested Parties**.
+- Default secondary file-store template is `~/Downloads/PurpleTracker/{title}`
+  (was `~/Downloads/{title}`); existing user customisations are preserved.
+
+### Fixed
+- **CSV parser CRLF bug** — Swift treats `\r\n` as a single grapheme cluster,
+  so the original `Character`-based `parseCSV` silently swallowed every
+  Windows line ending and collapsed the entire file into one row. Parser now
+  iterates `Unicode.Scalar`, strips an optional UTF-8 BOM, and tolerates lone
+  `\r` (classic Mac) endings. Regression tests guard the fix.
+- Cleaned the three `result of 'try?' is unused` warnings in
+  `OverviewTab.pathRow`, `PurpleTrackerApp` New-Matter command, and
+  `SidebarView` New-Matter menu.
+
+### Schema
+- Migration `v2_people_and_requestor` — added `person` table, indexes on
+  `(last_name, first_name)` and `position_status`, and `requestor_associate_id`
+  on `matter`.
+- Migration `v3_interested_parties` — added 10 columns to `matter`:
+  `interested_party{1..5}_associate_id` (FK person.id) and
+  `external_interested_party{1..5}` (free text).
+
 ## [1.0.0] — initial release
 
 ### Added

@@ -200,6 +200,44 @@ PurpleTracker follows the PhantomLives auto-backup-on-launch standard:
 - **File Store** — edit the primary & secondary path templates.
 - **Backup** — toggle, folder, retention (default 30 days), Backup Now,
   Recent Backups list with Verify / Restore / Reveal.
+- **People** — import the ADP IMP UserFeed CSV, browse the roster, toggle
+  auto-import on launch.
+
+---
+
+## People, Requestor & Interested Parties
+
+PurpleTracker keeps a local roster of company people sourced from the daily
+**ADP IMP UserFeed** CSV that lands in `~/Downloads/` as
+`ADP_IMP_UserFeed_YYYY-MM-DD.csv`.
+
+**Importing:**
+
+- *Auto on launch* (default ON) — Settings → People → "Auto-import latest ADP
+  file on launch". On every launch, the newest matching file in `~/Downloads/`
+  is imported if its filename hasn't been imported before. Filename is the
+  dedupe key, so you only pay the cost once per ADP rotation.
+- *Manual* — Settings → People → **Import CSV…** to pick any file, or
+  **Import Latest from Downloads** to grab the newest one immediately.
+- All imports upsert by Associate ID, so you can re-import any time —
+  job titles, names, departments, and position status are refreshed.
+
+**Using on a Matter:**
+
+- **Requestor** — one slot per Matter. Searchable picker; click the field to
+  see the top 50 active people, or start typing to narrow.
+- **Interested Parties** — five slots per Matter, all pickers over the
+  People roster.
+- **External Interested Parties** — five free-text slots for contacts who
+  aren't on the company roster (auditors, vendor reps, client SMEs, etc.).
+- The matter list shows a small `person.2` badge with a count whenever any
+  IP slot is populated. Search matches Requestor + IP names (resolved) and
+  External IP free text.
+- Cadenced Matters carry every Requestor / IP slot forward to the successor.
+
+---
+
+## Settings overview
 
 ---
 

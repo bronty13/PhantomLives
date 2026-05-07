@@ -25,7 +25,7 @@ struct AppSettings: Codable {
     var fileStorePrimaryTemplate: String =
         "~/Library/CloudStorage/OneDrive-defiSOLUTIONS/{year}/{date} {title}"
     var fileStoreSecondaryTemplate: String =
-        "~/Downloads/{title}"
+        "~/Downloads/PurpleTracker/{title}"
 
     // Spell-check
     var autocorrectEnabled: Bool = false    // continuous spellcheck always on; correction off by default
@@ -33,6 +33,12 @@ struct AppSettings: Codable {
     // Active-timer persistence (so a relaunch can offer to resume)
     var activeTimerMatterId: String = ""
     var activeTimerStartedAt: String = ""   // ISO-8601
+
+    // People auto-import — when on, the most recent
+    // `~/Downloads/ADP_IMP_UserFeed_*.csv` is imported on launch if it
+    // hasn't been imported before. Filename (not contents) is the dedupe key.
+    var peopleAutoImportOnLaunchEnabled: Bool = true
+    var lastImportedAdpFilename: String = ""
 }
 
 @MainActor
@@ -54,7 +60,13 @@ final class SettingsStore: ObservableObject {
 
     func load() {
         guard let data = try? Data(contentsOf: fileURL),
-              let decoded = try? JSONDecoder().decode(AppSettings.self, from: data) else { return }
+              var decoded = try? JSONDecoder().decode(AppSettings.self, from: data) else { return }
+        // One-shot migration: bump the legacy secondary-store default
+        // (`~/Downloads/{title}`) to the new default (`~/Downloads/PurpleTracker/{title}`).
+        // Only touches users who never customised it.
+        if decoded.fileStoreSecondaryTemplate == "~/Downloads/{title}" {
+            decoded.fileStoreSecondaryTemplate = "~/Downloads/PurpleTracker/{title}"
+        }
         settings = decoded
     }
 

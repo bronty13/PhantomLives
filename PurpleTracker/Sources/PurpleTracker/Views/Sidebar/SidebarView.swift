@@ -32,11 +32,7 @@ struct SidebarView: View {
                 }
             }
             Section("Tools") {
-                NavigationLink {
-                    WeeklyTimesheetView()
-                } label: {
-                    Label("Weekly Timesheet", systemImage: "calendar.badge.clock")
-                }
+                row("Weekly Timesheet", "calendar.badge.clock", section: .weeklyTimesheet)
             }
         }
         .listStyle(.sidebar)
@@ -46,7 +42,7 @@ struct SidebarView: View {
                 Menu {
                     ForEach(app.types) { t in
                         Button(t.name) {
-                            try? app.createMatter(typeId: t.id)
+                            _ = try? app.createMatter(typeId: t.id)
                         }
                     }
                 } label: {

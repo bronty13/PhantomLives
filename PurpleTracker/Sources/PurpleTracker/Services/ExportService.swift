@@ -63,6 +63,10 @@ enum ExportService {
         out += "**Matter ID:** `\(m.id)`  \n"
         out += "**Type:** \(typeName)  \n"
         out += "**Status:** \(m.status)  \n"
+        if !m.requestorAssociateId.isEmpty,
+           let p = (try? PeopleService.fetch(id: m.requestorAssociateId)) ?? nil {
+            out += "**Requestor:** \(p.displayNameWithTitle)  \n"
+        }
         if let due = m.dueAt { out += "**Due:** \(df.string(from: due))  \n" }
         out += "**Created:** \(df.string(from: m.createdAt))  \n"
         out += "**Last Modified:** \(df.string(from: m.modifiedAt))  \n"
@@ -82,6 +86,33 @@ enum ExportService {
         }
         if !m.external3Number.isEmpty || !m.external3Url.isEmpty {
             out += "- **\(settings.external3Label):** \(m.external3Number) \(m.external3Url.isEmpty ? "" : "<\(m.external3Url)>")\n"
+        }
+
+        // Interested Parties
+        let internalIPs: [String] = [
+            m.interestedParty1AssociateId, m.interestedParty2AssociateId,
+            m.interestedParty3AssociateId, m.interestedParty4AssociateId,
+            m.interestedParty5AssociateId
+        ]
+        let resolvedIPs = internalIPs.enumerated().compactMap { (i, aid) -> String? in
+            guard !aid.isEmpty,
+                  let p = (try? PeopleService.fetch(id: aid)) ?? nil else { return nil }
+            return "  \(i + 1). \(p.displayNameWithTitle)"
+        }
+        if !resolvedIPs.isEmpty {
+            out += "- **Interested Parties:**\n"
+            out += resolvedIPs.joined(separator: "\n") + "\n"
+        }
+        let externalIPs: [String] = [
+            m.externalInterestedParty1, m.externalInterestedParty2,
+            m.externalInterestedParty3, m.externalInterestedParty4,
+            m.externalInterestedParty5
+        ].enumerated().compactMap { (i, v) in
+            v.isEmpty ? nil : "  \(i + 1). \(v)"
+        }
+        if !externalIPs.isEmpty {
+            out += "- **External Interested Parties:**\n"
+            out += externalIPs.joined(separator: "\n") + "\n"
         }
 
         if !m.descriptionMd.isEmpty { out += "\n## Description\n\n\(m.descriptionMd)\n" }

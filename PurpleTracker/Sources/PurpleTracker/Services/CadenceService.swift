@@ -36,7 +36,18 @@ enum CadenceService {
             fileStorePrimary: previous.fileStorePrimary,
             fileStoreSecondary: previous.fileStoreSecondary,
             cadenceId: previous.cadenceId,
-            parentMatterId: previous.id
+            parentMatterId: previous.id,
+            requestorAssociateId: previous.requestorAssociateId,
+            interestedParty1AssociateId: previous.interestedParty1AssociateId,
+            interestedParty2AssociateId: previous.interestedParty2AssociateId,
+            interestedParty3AssociateId: previous.interestedParty3AssociateId,
+            interestedParty4AssociateId: previous.interestedParty4AssociateId,
+            interestedParty5AssociateId: previous.interestedParty5AssociateId,
+            externalInterestedParty1: previous.externalInterestedParty1,
+            externalInterestedParty2: previous.externalInterestedParty2,
+            externalInterestedParty3: previous.externalInterestedParty3,
+            externalInterestedParty4: previous.externalInterestedParty4,
+            externalInterestedParty5: previous.externalInterestedParty5
         )
     }
 }

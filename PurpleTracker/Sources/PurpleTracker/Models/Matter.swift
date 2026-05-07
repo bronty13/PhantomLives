@@ -34,6 +34,23 @@ struct Matter: Codable, Hashable, Identifiable, FetchableRecord, MutablePersista
 
     var cadenceId: String?                  // FK cadence.id (nullable; only set for cadenced Matters)
     var parentMatterId: String?             // links a cadence-spawned Matter to its predecessor
+    var requestorAssociateId: String        // FK person.id ("" = no requestor assigned)
+
+    // Interested Parties — internal company people (FK person.id, "" = unset).
+    // Five fixed slots so we can address them with stable bindings in the UI.
+    var interestedParty1AssociateId: String
+    var interestedParty2AssociateId: String
+    var interestedParty3AssociateId: String
+    var interestedParty4AssociateId: String
+    var interestedParty5AssociateId: String
+
+    // External Interested Parties — free text (e.g. third-party contact names),
+    // not tied to the People roster.
+    var externalInterestedParty1: String
+    var externalInterestedParty2: String
+    var externalInterestedParty3: String
+    var externalInterestedParty4: String
+    var externalInterestedParty5: String
 
     enum CodingKeys: String, CodingKey {
         case id, title, status
@@ -57,6 +74,17 @@ struct Matter: Codable, Hashable, Identifiable, FetchableRecord, MutablePersista
         case fileStoreSecondary = "file_store_secondary"
         case cadenceId = "cadence_id"
         case parentMatterId = "parent_matter_id"
+        case requestorAssociateId = "requestor_associate_id"
+        case interestedParty1AssociateId = "interested_party1_associate_id"
+        case interestedParty2AssociateId = "interested_party2_associate_id"
+        case interestedParty3AssociateId = "interested_party3_associate_id"
+        case interestedParty4AssociateId = "interested_party4_associate_id"
+        case interestedParty5AssociateId = "interested_party5_associate_id"
+        case externalInterestedParty1 = "external_interested_party1"
+        case externalInterestedParty2 = "external_interested_party2"
+        case externalInterestedParty3 = "external_interested_party3"
+        case externalInterestedParty4 = "external_interested_party4"
+        case externalInterestedParty5 = "external_interested_party5"
     }
 
     static func newDraft(id: String, typeId: String, title: String = "") -> Matter {
@@ -84,7 +112,18 @@ struct Matter: Codable, Hashable, Identifiable, FetchableRecord, MutablePersista
             fileStorePrimary: "",
             fileStoreSecondary: "",
             cadenceId: nil,
-            parentMatterId: nil
+            parentMatterId: nil,
+            requestorAssociateId: "",
+            interestedParty1AssociateId: "",
+            interestedParty2AssociateId: "",
+            interestedParty3AssociateId: "",
+            interestedParty4AssociateId: "",
+            interestedParty5AssociateId: "",
+            externalInterestedParty1: "",
+            externalInterestedParty2: "",
+            externalInterestedParty3: "",
+            externalInterestedParty4: "",
+            externalInterestedParty5: ""
         )
     }
 }

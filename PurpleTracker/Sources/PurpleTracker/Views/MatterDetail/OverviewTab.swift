@@ -10,11 +10,66 @@ struct OverviewTab: View {
         VStack(alignment: .leading, spacing: 16) {
             datesAndCode
             Divider()
+            requestorSection
+            Divider()
+            interestedPartiesSection
+            Divider()
+            externalInterestedPartiesSection
+            Divider()
             references
             Divider()
             externals
             Divider()
             cadenceSection
+        }
+    }
+
+    private var interestedPartiesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Interested Parties").font(.headline)
+            interestedPartyRow(label: "IP 1", id: $matter.interestedParty1AssociateId)
+            interestedPartyRow(label: "IP 2", id: $matter.interestedParty2AssociateId)
+            interestedPartyRow(label: "IP 3", id: $matter.interestedParty3AssociateId)
+            interestedPartyRow(label: "IP 4", id: $matter.interestedParty4AssociateId)
+            interestedPartyRow(label: "IP 5", id: $matter.interestedParty5AssociateId)
+        }
+    }
+
+    private func interestedPartyRow(label: String, id: Binding<String>) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            Text(label).frame(width: 80, alignment: .trailing).foregroundStyle(.secondary)
+            PersonPicker(selectedId: id,
+                         placeholder: "Type a name…",
+                         clearHelp: "Clear \(label)")
+        }
+    }
+
+    private var externalInterestedPartiesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("External Interested Parties").font(.headline)
+            externalIPRow(label: "External IP 1", text: $matter.externalInterestedParty1)
+            externalIPRow(label: "External IP 2", text: $matter.externalInterestedParty2)
+            externalIPRow(label: "External IP 3", text: $matter.externalInterestedParty3)
+            externalIPRow(label: "External IP 4", text: $matter.externalInterestedParty4)
+            externalIPRow(label: "External IP 5", text: $matter.externalInterestedParty5)
+        }
+    }
+
+    private func externalIPRow(label: String, text: Binding<String>) -> some View {
+        HStack {
+            Text(label).frame(width: 120, alignment: .trailing).foregroundStyle(.secondary)
+            TextField("Name / contact", text: text)
+                .textFieldStyle(.roundedBorder)
+        }
+    }
+
+    private var requestorSection: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Text("Requestor").frame(width: 80, alignment: .trailing).foregroundStyle(.secondary)
+            RequestorPicker(selectedId: Binding(
+                get: { matter.requestorAssociateId },
+                set: { matter.requestorAssociateId = $0 }
+            ))
         }
     }
 
@@ -60,11 +115,9 @@ struct OverviewTab: View {
             TextField("", text: binding)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(.body, design: .monospaced))
-            if isPrimary {
-                Button("Create") {
-                    try? FileStoreService.createDirectory(at: binding.wrappedValue)
-                    FileStoreService.reveal(path: binding.wrappedValue)
-                }
+            Button("Create") {
+                _ = try? FileStoreService.createDirectory(at: binding.wrappedValue)
+                FileStoreService.reveal(path: binding.wrappedValue)
             }
             Button("Reveal") { FileStoreService.reveal(path: binding.wrappedValue) }
             Button {

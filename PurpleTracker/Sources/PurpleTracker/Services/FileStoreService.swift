@@ -30,17 +30,63 @@ enum FileStoreService {
         return render(template: template, title: title, date: date)
     }
 
-    /// Replace illegal POSIX path characters and trim leading/trailing dots/
-    /// spaces. Empty input becomes `Untitled`.
+    /// Sanitize a string for use as a single path component. Strips characters
+    /// that aren't allowed on macOS or that cause trouble on the SMB / OneDrive
+    /// / Windows surfaces this app routinely syncs to:
+    ///
+    /// - control chars (`0x00`–`0x1F`, `0x7F`)
+    /// - path separators and reserved chars: `/ \ : ? < > | " *`
+    /// - leading/trailing dots and whitespace (Finder hides leading dots; Windows
+    ///   trims trailing dots & spaces silently and the names then collide)
+    /// - reserved Windows device names (`CON`, `PRN`, `AUX`, `NUL`, `COM1…9`,
+    ///   `LPT1…9`) — get a trailing underscore so they round-trip on OneDrive
+    ///
+    /// Empty input becomes `Untitled`. The result never exceeds 200 bytes
+    /// (well under HFS+/APFS' 255-byte filename limit even with multibyte UTF-8).
     static func sanitize(_ s: String) -> String {
-        let collapsed = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        if collapsed.isEmpty { return "Untitled" }
-        let bad = CharacterSet(charactersIn: "/:\\?<>|\"*\0")
-        let cleaned = collapsed
+        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return "Untitled" }
+
+        // Disallowed: path separators, Windows-reserved chars, NUL, and any
+        // control character (C0 + DEL). We map all of them to "-" rather than
+        // dropping them, so two distinct titles can't accidentally collide.
+        var bad = CharacterSet(charactersIn: "/\\:?<>|\"*\0")
+        bad.formUnion(.controlCharacters)
+
+        let cleaned = trimmed
             .components(separatedBy: bad)
             .joined(separator: "-")
-            .trimmingCharacters(in: CharacterSet(charactersIn: ". "))
-        return cleaned.isEmpty ? "Untitled" : cleaned
+            // Collapse runs of "-" so we don't end up with e.g. "a---b".
+            .replacingOccurrences(of: #"-{2,}"#, with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: ". -"))
+
+        if cleaned.isEmpty { return "Untitled" }
+
+        // Avoid Windows-reserved device names (case-insensitive, with or without
+        // an extension). Append "_" if the bare stem matches.
+        let reserved: Set<String> = [
+            "con", "prn", "aux", "nul",
+            "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
+            "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9"
+        ]
+        let stem = (cleaned as NSString).deletingPathExtension.lowercased()
+        let final = reserved.contains(stem) ? cleaned + "_" : cleaned
+
+        // Cap at 200 bytes UTF-8 so we never blow the 255-byte filename limit.
+        return Self.truncatedUTF8(final, maxBytes: 200)
+    }
+
+    private static func truncatedUTF8(_ s: String, maxBytes: Int) -> String {
+        guard s.utf8.count > maxBytes else { return s }
+        var out = ""
+        var bytes = 0
+        for ch in s {
+            let chBytes = String(ch).utf8.count
+            if bytes + chBytes > maxBytes { break }
+            out.append(ch)
+            bytes += chBytes
+        }
+        return out.trimmingCharacters(in: CharacterSet(charactersIn: ". -"))
     }
 
     /// Expand `~` and create the directory. Returns the resolved URL.

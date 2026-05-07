@@ -48,7 +48,14 @@ final class CadenceServiceTests: XCTestCase {
             notesMd: "notes",
             fileStorePrimary: "/tmp/p", fileStoreSecondary: "/tmp/s",
             cadenceId: "cad-q",
-            parentMatterId: nil
+            parentMatterId: nil,
+            requestorAssociateId: "",
+            interestedParty1AssociateId: "AID-IP1", interestedParty2AssociateId: "",
+            interestedParty3AssociateId: "", interestedParty4AssociateId: "",
+            interestedParty5AssociateId: "",
+            externalInterestedParty1: "Acme Corp", externalInterestedParty2: "",
+            externalInterestedParty3: "", externalInterestedParty4: "",
+            externalInterestedParty5: ""
         )
         let cad = Cadence(id: "cad-q", kind: .quarterly, customIntervalDays: nil)
         let next = CadenceService.nextMatter(after: prev, cadence: cad)
@@ -64,6 +71,10 @@ final class CadenceServiceTests: XCTestCase {
         XCTAssertEqual(next.resolutionMd, "")
         XCTAssertEqual(next.lessonsMd, "")
         XCTAssertEqual(next.notesMd, "")
+        XCTAssertEqual(next.interestedParty1AssociateId, "AID-IP1",
+                       "Interested parties should carry forward to the cadence successor")
+        XCTAssertEqual(next.externalInterestedParty1, "Acme Corp",
+                       "External interested parties should carry forward")
         XCTAssertNotNil(next.dueAt)
     }
 }

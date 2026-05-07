@@ -68,35 +68,52 @@ The app is ad-hoc signed unless a Developer ID is present in the keychain.
    honours the PhantomLives standard from `../CLAUDE.md`. Default retention
    is **30 days** (overrides the standard's 14 per user spec); `0` = forever.
 
+6. **CSV parser iterates `Unicode.Scalar`, not `Character`.** Swift collapses
+   `\r\n` into one grapheme cluster — a `Character` equal to neither `"\r"`
+   nor `"\n"`. Iterating by scalar is the only way to detect CRLF
+   line endings reliably. `PeopleService.parseCSV` also strips a leading BOM
+   and tolerates lone-`\r` (classic Mac) endings. Regression-tested in
+   `PeopleImportRealFileTests`.
+
+7. **People auto-import dedupes by filename, not contents.** The ADP feed
+   rotates by date in the filename, so storing
+   `lastImportedAdpFilename` in settings is sufficient and avoids re-hashing
+   a multi-MB CSV every launch. Manual imports also update the marker.
+
 ## Important files (where to look first)
 
 | Concern                       | File                                                    |
 |-------------------------------|---------------------------------------------------------|
 | Schema & migrations           | `Sources/PurpleTracker/Services/DatabaseService.swift`  |
 | Matter ID allocator           | `Sources/PurpleTracker/Services/MatterIDService.swift`  |
-| App-state root + auto-backup  | `Sources/PurpleTracker/App/AppState.swift`              |
+| App-state root + auto-backup + people auto-import | `Sources/PurpleTracker/App/AppState.swift`              |
 | Type/status seeds             | `DatabaseService.seedDefaults`                          |
 | Backup format & retention     | `Sources/PurpleTracker/Services/BackupService.swift`    |
 | Cadence factory               | `Sources/PurpleTracker/Services/CadenceService.swift`   |
 | Spell-checked editor          | `Sources/PurpleTracker/Views/Shared/SpellCheckTextEditor.swift` |
 | DOCX/PDF/MD export            | `Sources/PurpleTracker/Services/ExportService.swift`    |
 | Matter ID badge (large + copy)| `Sources/PurpleTracker/Views/MatterDetail/Components/MatterIDBadge.swift` |
+| People CSV parser & importer  | `Sources/PurpleTracker/Services/PeopleService.swift`    |
+| People-roster picker (one component drives Requestor + 5 IPs) | `Sources/PurpleTracker/Views/MatterDetail/Components/RequestorPicker.swift` |
+| App icon generator (Pillow)   | `Resources/make_icon.py`                                |
 
 ## Test suite
 
-8 XCTest classes, 22 tests, all `@MainActor` (services that touch
-`AppSettings`/UI state are `@MainActor`-isolated).
+Tests are XCTest, all `@MainActor` (services that touch `AppSettings`/UI
+state are `@MainActor`-isolated). The suite grew with 1.1.0; key files now:
 
 | File                          | What it covers                                           |
 |-------------------------------|----------------------------------------------------------|
-| `MigrationTests`              | v1 creates all tables; second `applyMigrations` is a no-op |
+| `MigrationTests`              | v1/v2/v3 create all tables; second `applyMigrations` is a no-op |
 | `MatterIDServiceTests`        | padding, sequential, daily reset, rollback releases seq  |
 | `AttachmentHashTests`         | RFC vectors for MD5/SHA1/SHA256 (empty + "abc"); verify mismatch |
-| `CadenceServiceTests`         | each cadence kind + custom; copy/reset rules             |
+| `CadenceServiceTests`         | each cadence kind + custom; copy/reset rules; IP carry-forward |
 | `BackupServiceTests`          | dir auto-create, retention trim, retention=0, list newest-first |
 | `FileStoreServiceTests`       | template render, sanitisation                             |
-| `ExportServiceTests`          | md/pdf/docx/clipboard smoke + brief format               |
+| `ExportServiceTests`          | md/pdf/docx/clipboard smoke + brief format + IP rendering |
 | `StatusLifecycleTests`        | first time entry on "New" → "In-Progress"                |
+| `PeopleServiceTests`          | parser quoting, escapes, display-name title-casing       |
+| `PeopleImportRealFileTests`   | CRLF parser regression (real file + synthetic CRLF/BOM)  |
 
 ## Why GRDB is vendored
 
@@ -109,11 +126,14 @@ shallow clone at the desired tag and re-run `xcodegen generate`.
 
 ## Known follow-ups & non-goals
 
-- **Icon** — `Resources/Assets.xcassets/AppIcon.appiconset` ships with the
-  generator script's purple "PT" placeholder. Run
-  `swift Scripts/generate-icon.swift` to regenerate, or swap in a designed icon.
-- **Notarisation** — out of scope for 1.0.0 (ad-hoc signed). To notarise,
-  set up a Developer ID in the keychain; `build-app.sh` will pick it up.
+- **Icon** — a generated purple "PT" squircle ships in
+  `Sources/PurpleTracker/Resources/Assets.xcassets/AppIcon.appiconset`. Run
+  `python3 Resources/make_icon.py` to regenerate or edit the generator to
+  swap glyphs/colours. To use a designed icon, replace the PNGs in the
+  appiconset and rerun `./build-app.sh`.
+- **Notarisation** — out of scope for current releases (ad-hoc signed). To
+  notarise, set up a Developer ID in the keychain; `build-app.sh` will pick
+  it up.
 - **iCloud/sync** — not implemented; everything lives in the local SQLite.
   Backups go to `~/Downloads/` so they're naturally swept up by Time Machine.
 - **Attachment streaming** — attachments are read fully into memory for

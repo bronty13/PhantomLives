@@ -12,6 +12,8 @@ final class AppState: ObservableObject {
     @Published var types: [MatterType] = []
     @Published var statusValues: [(name: String, sortOrder: Int)] = []
     @Published var totalSecondsByMatter: [String: Int] = [:]
+    @Published var people: [Person] = []
+    @Published var lastPeopleImportDate: Date?
 
     // Selection
     @Published var selectedMatterId: String?
@@ -32,12 +34,15 @@ final class AppState: ObservableObject {
     // The timer is initialized after self so it can hold a weak ref back.
     var timer: TimerService!
 
+    private var cancellables = Set<AnyCancellable>()
+
     enum SidebarSection: Hashable {
         case all
         case status(String)
         case type(String)         // matter_type.id
         case dueSoon
         case overdue
+        case weeklyTimesheet
 
         var title: String {
             switch self {
@@ -46,6 +51,7 @@ final class AppState: ObservableObject {
             case .type(let id): return "Type: \(id)"
             case .dueSoon: return "Due Soon"
             case .overdue: return "Overdue"
+            case .weeklyTimesheet: return "Weekly Timesheet"
             }
         }
     }
@@ -55,6 +61,35 @@ final class AppState: ObservableObject {
         reloadAll()
         // Attach the timer last so it can drive status auto-transitions.
         timer = TimerService(settingsStore: settingsStore, appState: self)
+        // Forward the timer's per-second tick (and start/stop transitions) to
+        // any view observing AppState, so the global banner and per-Matter
+        // Time tab redraw live without each view having to subscribe to the
+        // TimerService directly.
+        timer.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+
+        // Auto-import the latest ADP UserFeed if the user hasn't disabled it
+        // and the most recent file in Downloads hasn't been imported before.
+        autoImportPeopleIfDue()
+    }
+
+    /// Settings → People → "Auto-import on launch" controls this. Skips when
+    /// the latest matching file in Downloads has already been imported (we
+    /// dedupe by filename, since ADP rotates by date).
+    func autoImportPeopleIfDue() {
+        guard settingsStore.settings.peopleAutoImportOnLaunchEnabled else { return }
+        guard let url = PeopleService.latestADPFileInDownloads() else { return }
+        let fname = url.lastPathComponent
+        if settingsStore.settings.lastImportedAdpFilename == fname { return }
+        do {
+            _ = try importPeopleCSV(at: url)
+            settingsStore.settings.lastImportedAdpFilename = fname
+            settingsStore.save()
+        } catch {
+            errorMessage = "ADP auto-import failed: \(error.localizedDescription)"
+        }
     }
 
     // MARK: - Reload
@@ -65,6 +100,7 @@ final class AppState: ObservableObject {
             statusValues = try DatabaseService.shared.fetchStatusValues()
             matters = try DatabaseService.shared.fetchAllMatters()
             try recomputeTotals()
+            reloadPeople()
             if let sid = selectedMatterId {
                 try loadSelected(sid)
             } else if let first = matters.first {
@@ -81,6 +117,24 @@ final class AppState: ObservableObject {
             matters = try DatabaseService.shared.fetchAllMatters()
             try recomputeTotals()
         } catch { errorMessage = error.localizedDescription }
+    }
+
+    func reloadPeople() {
+        do {
+            people = try PeopleService.fetchAll()
+            lastPeopleImportDate = try PeopleService.lastImportDate()
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    /// O(1) lookup for the Matter detail view's Requestor display.
+    var peopleById: [String: Person] {
+        Dictionary(uniqueKeysWithValues: people.map { ($0.id, $0) })
+    }
+
+    func importPeopleCSV(at url: URL) throws -> PeopleService.ImportResult {
+        let result = try PeopleService.importCSV(at: url)
+        reloadPeople()
+        return result
     }
 
     func reloadTimeEntries() {
@@ -144,16 +198,42 @@ final class AppState: ObservableObject {
         case .overdue:
             let now = Date()
             rows = rows.filter { ($0.dueAt ?? .distantFuture) < now && $0.status != "Closed" }
+        case .weeklyTimesheet:
+            break  // handled by ContentView routing; matter list is hidden
         }
         if let t = sidebarTypeFilter   { rows = rows.filter { $0.typeId == t } }
         if let s = sidebarStatusFilter { rows = rows.filter { $0.status == s } }
         if !searchQuery.isEmpty {
             let q = searchQuery.lowercased()
-            rows = rows.filter {
-                $0.title.lowercased().contains(q)
-                    || $0.id.lowercased().contains(q)
-                    || $0.descriptionMd.lowercased().contains(q)
-                    || $0.notesMd.lowercased().contains(q)
+            // Capturing peopleById once avoids rebuilding the dictionary
+            // inside the per-row closure (filteredMatters is a computed
+            // property that re-evaluates on every state change).
+            let lookup = peopleById
+            // Resolve a matter's internal-people slots to their searchable
+            // display strings (name + title + email) so name searches hit.
+            func partyText(_ aid: String) -> String {
+                guard !aid.isEmpty, let p = lookup[aid] else { return "" }
+                return "\(p.displayName) \(p.jobTitle) \(p.workEmail)".lowercased()
+            }
+            rows = rows.filter { m in
+                if m.title.lowercased().contains(q) { return true }
+                if m.id.lowercased().contains(q) { return true }
+                if m.descriptionMd.lowercased().contains(q) { return true }
+                if m.notesMd.lowercased().contains(q) { return true }
+                if partyText(m.requestorAssociateId).contains(q) { return true }
+                let ips = [
+                    m.interestedParty1AssociateId, m.interestedParty2AssociateId,
+                    m.interestedParty3AssociateId, m.interestedParty4AssociateId,
+                    m.interestedParty5AssociateId
+                ]
+                if ips.contains(where: { partyText($0).contains(q) }) { return true }
+                let externals = [
+                    m.externalInterestedParty1, m.externalInterestedParty2,
+                    m.externalInterestedParty3, m.externalInterestedParty4,
+                    m.externalInterestedParty5
+                ]
+                if externals.contains(where: { $0.lowercased().contains(q) }) { return true }
+                return false
             }
         }
         return rows
@@ -186,11 +266,28 @@ final class AppState: ObservableObject {
     }
 
     func updateMatter(_ m: Matter) throws {
-        try DatabaseService.shared.updateMatter(m)
+        var next = m
+        // If the title changed AND the file-store paths still match what we'd
+        // template from the *previous* title (i.e. the user hasn't manually
+        // edited them), retemplate with the new title. This makes the common
+        // case "click New Matter → type a title" do the right thing, while
+        // preserving any manual customisation the user has made to the paths.
+        if let prior = matters.first(where: { $0.id == m.id }),
+           prior.title != m.title {
+            let priorResolved = resolveDefaultPaths(title: prior.title, matterId: m.id)
+            let newResolved = resolveDefaultPaths(title: m.title, matterId: m.id)
+            if next.fileStorePrimary == priorResolved.primary {
+                next.fileStorePrimary = newResolved.primary
+            }
+            if next.fileStoreSecondary == priorResolved.secondary {
+                next.fileStoreSecondary = newResolved.secondary
+            }
+        }
+        try DatabaseService.shared.updateMatter(next)
         reloadMatters()
-        if m.id == selectedMatterId,
-           let updated = try DatabaseService.shared.fetchMatter(id: m.id),
-           let idx = matters.firstIndex(where: { $0.id == m.id }) {
+        if next.id == selectedMatterId,
+           let updated = try DatabaseService.shared.fetchMatter(id: next.id),
+           let idx = matters.firstIndex(where: { $0.id == next.id }) {
             matters[idx] = updated
         }
     }

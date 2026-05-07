@@ -135,11 +135,42 @@ final class DatabaseService {
             try db.create(index: "idx_attachment_matter", on: "attachment", columns: ["matter_id"])
         }
 
+        migrator.registerMigration("v2_people_and_requestor") { db in
+            try db.create(table: "person") { t in
+                t.column("id", .text).primaryKey()        // Associate ID
+                t.column("first_name", .text).notNull().defaults(to: "")
+                t.column("last_name", .text).notNull().defaults(to: "")
+                t.column("preferred_name", .text).notNull().defaults(to: "")
+                t.column("job_title", .text).notNull().defaults(to: "")
+                t.column("work_email", .text).notNull().defaults(to: "")
+                t.column("department", .text).notNull().defaults(to: "")
+                t.column("location", .text).notNull().defaults(to: "")
+                t.column("position_status", .text).notNull().defaults(to: "")
+                t.column("manager_associate_id", .text).notNull().defaults(to: "")
+                t.column("updated_at", .datetime).notNull()
+            }
+            try db.create(index: "idx_person_last_first",
+                          on: "person", columns: ["last_name", "first_name"])
+            try db.create(index: "idx_person_status",
+                          on: "person", columns: ["position_status"])
+
+            try db.alter(table: "matter") { t in
+                t.add(column: "requestor_associate_id", .text).defaults(to: "")
+            }
+        }
+
+        migrator.registerMigration("v3_interested_parties") { db in
+            try db.alter(table: "matter") { t in
+                for i in 1...5 {
+                    t.add(column: "interested_party\(i)_associate_id", .text).defaults(to: "")
+                    t.add(column: "external_interested_party\(i)", .text).defaults(to: "")
+                }
+            }
+        }
+
         try migrator.migrate(writer)
     }
 
-    /// Seed defaults only when each table is empty so user edits survive
-    /// every relaunch.
     private func seedDefaults() throws {
         try dbPool.write { db in
             let typeCount = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM matter_type") ?? 0
