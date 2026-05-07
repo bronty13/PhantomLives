@@ -56,6 +56,15 @@ export, anniversary reminders, theme builder, font slots).
   prefix `timeliner.anniversary.<event-id>` so we wipe-and-replace on
   any data/settings change without disturbing other apps' notifications.
   Authorization is requested only when the user toggles the feature on.
+- **`SampleDataService`** (`@MainActor` enum) — installs / restores
+  the curated true-crime sample cases shipped as JSON resources under
+  `Sources/Timeliner/Resources/SampleData/`. Sample cases use a stable
+  `sample-` prefixed `Case.id` so the restore path can detect prior
+  installs and replace them without disturbing user-authored cases.
+  `installIfFirstRunCompleted` runs from `AppState.init` once per
+  install (gated by `AppSettings.sampleDataEverInstalled`); the
+  Settings → General **Restore Sample Data…** button is the explicit
+  re-add path.
 
 ## Data model
 
@@ -145,6 +154,11 @@ deleting the parent row.
   parent (and for cases, also iterate children) before deleting the
   parent row. See `AppState.deleteCase` / `deleteEvent` /
   `deletePerson` for the pattern.
+- **Sample data is one-shot.** First-run install fires only when the
+  cases table is empty *and* `AppSettings.sampleDataEverInstalled` is
+  false. After running it always sets the flag, so deleting the sample
+  doesn't cause a silent re-install on next launch — the user pulls
+  it back via **Settings → General → Restore Sample Data…** instead.
 
 ## Phase 3 hooks
 

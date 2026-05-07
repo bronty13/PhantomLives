@@ -198,6 +198,25 @@ The theme builder previews changes live: gradient top + bottom, accent
 color, card / sidebar / track colors all editable, with a sample card
 rendered above so you see the result before saving.
 
+## Sample data
+
+Timeliner ships with one curated true-crime sample case — the
+*Murder of Madeline Soto* (150 events, 43 people, sourced from public
+reporting and court records). On a brand-new install (when the database
+is empty), it's seeded automatically so the app isn't empty for new
+users.
+
+You can delete the sample case the same way you'd delete any case
+(right-click in the sidebar → **Delete…**). Once deleted, Timeliner
+*won't* silently re-add it on the next launch — instead, an explicit
+**Settings → General → Restore Sample Data…** button puts the canonical
+version back. Confirming the alert wipes any existing sample case (so
+edits to it are lost) and reinstalls the original.
+
+The sample case has a stable `Case.id` prefixed with `sample-`, which
+is how Timeliner tells "shipped sample" from "user authored" — your own
+cases are never touched by the restore flow.
+
 ## Default file locations
 
 | Kind | Location |

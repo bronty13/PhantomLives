@@ -41,6 +41,9 @@ struct SettingsView: View {
 
 struct GeneralSettingsTab: View {
     @EnvironmentObject private var appState: AppState
+    @State private var confirmRestoreSamples: Bool = false
+    @State private var restoreError: String?
+    @State private var restoreSuccessCount: Int?
 
     var body: some View {
         Form {
@@ -84,11 +87,57 @@ struct GeneralSettingsTab: View {
                     set: { var s = appState.settings; s.includeNotesInSearch = $0; appState.settings = s }
                 ))
             }
+            Section("Sample data") {
+                Text("Timeliner ships with curated true-crime sample timelines so you can explore the app with real data. You can delete a sample case at any time; clicking **Restore Sample Data** below brings the canonical version back.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                ForEach(SampleDataService.allSamples, id: \.caseId) { spec in
+                    LabeledContent(spec.displayTitle) {
+                        Text(appState.cases.contains { $0.id == spec.caseId } ? "Installed" : "Not installed")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Button {
+                    confirmRestoreSamples = true
+                } label: {
+                    Label("Restore Sample Data…", systemImage: "arrow.clockwise.circle")
+                }
+            }
             Section("About") {
                 LabeledContent("Version", value: AppVersion.display)
             }
         }
         .formStyle(.grouped)
+        .alert("Restore sample data?", isPresented: $confirmRestoreSamples) {
+            Button("Cancel", role: .cancel) {}
+            Button("Restore", role: .destructive) {
+                do {
+                    let n = try SampleDataService.restoreAllSamples()
+                    appState.reloadAll()
+                    restoreSuccessCount = n
+                } catch {
+                    restoreError = error.localizedDescription
+                }
+            }
+        } message: {
+            Text("Any existing sample case will be replaced with its original content. Your other cases are unaffected.")
+        }
+        .alert("Restore failed", isPresented: Binding(
+            get: { restoreError != nil },
+            set: { if !$0 { restoreError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(restoreError ?? "")
+        }
+        .alert("Sample data restored", isPresented: Binding(
+            get: { restoreSuccessCount != nil },
+            set: { if !$0 { restoreSuccessCount = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Restored \(restoreSuccessCount ?? 0) sample case\((restoreSuccessCount ?? 0) == 1 ? "" : "s").")
+        }
     }
 }
 

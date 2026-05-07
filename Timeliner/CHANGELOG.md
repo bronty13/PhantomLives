@@ -12,6 +12,14 @@ build.
 
 ### Added
 
+- **Sample data** — Timeliner now ships with a curated true-crime
+  sample case (*Murder of Madeline Soto*, 150 events, 43 people)
+  bundled as a JSON resource. On first launch (empty database, never-
+  seen-samples flag false) the sample is auto-installed so the app
+  isn't empty. Deleting the sample doesn't trigger a silent re-install;
+  **Settings → General → Restore Sample Data…** is the explicit re-add
+  path. Sample case IDs are prefixed `sample-` so the restore flow
+  never touches user-authored cases.
 - **Polymorphic attachments** — first-class attachments on cases,
   events, and people. File bytes stored as BLOBs in the SQLite database
   (so they're carried by every backup zip). 25 MB per-file cap; image
@@ -58,6 +66,12 @@ build.
 - Added migration test asserting the polymorphic attachments table
   has the expected columns + BLOB type and accepts insertion against
   all three parent kinds.
+- Added `SampleDataServiceTests` (5 tests): bundled JSON resource
+  loads + decodes to the documented counts, role-category → PersonRole
+  mapping is exhaustive, category → Importance mapping is correct,
+  lenient date parser handles year-only / year-month / full-date /
+  with-time inputs, and the case-status string heuristic maps
+  conviction wording to `closed`.
 
 ## 1.0.0 — Phase 1 MVP
 

@@ -44,6 +44,12 @@ struct AppSettings: Codable {
     var anniversaryLookaheadDays: Int = 30
     var anniversaryNotificationHour: Int = 9
     var anniversaryMinImportance: String = Importance.medium.rawValue
+
+    // Sample data — one-shot flag so the first launch installs the shipped
+    // sample cases, but a subsequent delete isn't silently undone next time
+    // the app starts. The "Restore Sample Data" button in Settings → General
+    // is the explicit re-add path.
+    var sampleDataEverInstalled: Bool = false
 }
 
 @MainActor

@@ -113,6 +113,15 @@ final class AppState: ObservableObject {
         // races a partial DB read. Errors are logged, not thrown.
         BackupService.runOnLaunchIfDue(settingsStore: settingsStore)
         reloadAll()
+        // First-launch: seed the shipped sample cases if the DB is brand new
+        // and the user has never seen samples. The flag persists, so a later
+        // delete is not silently undone — explicit restore lives in
+        // Settings → General. If anything was actually inserted, we reload
+        // again so the published slices reflect the seeded rows.
+        let didInstall = SampleDataService.installIfFirstRunCompleted(
+            cases: cases, settingsStore: settingsStore
+        )
+        if didInstall { reloadAll() }
     }
 
     // MARK: - Reload

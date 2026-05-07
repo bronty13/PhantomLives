@@ -44,6 +44,11 @@ local SQLite database and a polished customizable UI.
   Sunset, Rose) plus a full custom-theme builder with live preview
 - **Font customization** — per-slot (event title, event body, date
   column, sidebar) family / size / weight overrides
+- **Sample case shipped with the app** — the *Murder of Madeline Soto*
+  case (150 events, 43 people, sourced from public reporting and court
+  records) is seeded on first launch so the app isn't empty for new
+  users. Delete it any time; **Settings → General → Restore Sample
+  Data** brings the canonical version back.
 
 ## Build
 
