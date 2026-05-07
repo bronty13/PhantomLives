@@ -12,12 +12,14 @@ build.
 
 ### Added
 
-- **Sample data** — Timeliner now ships with two curated true-crime
+- **Sample data** — Timeliner now ships with three curated true-crime
   sample cases bundled as JSON resources: *Murder of Madeline Soto*
-  (150 events, 43 people) and *Murder of Harmony Montgomery* (42
-  events, 28 people, body never recovered). On first launch (empty
-  database, never-seen-samples flag false) all samples are auto-
-  installed so the app isn't empty. Deleting a sample doesn't trigger
+  (150 events, 43 people), *Murder of Harmony Montgomery* (42 events,
+  28 people, body never recovered), and *Murder of Athena Strand* (22
+  events, 26 people, per-event source URLs, three parallel tracks
+  including the Texas "Athena Alert" legislation). On first launch
+  (empty database, never-seen-samples flag false) all samples are
+  auto-installed so the app isn't empty. Deleting a sample doesn't trigger
   a silent re-install; **Settings → General → Restore Sample Data…**
   is the explicit re-add path. Sample case IDs are prefixed `sample-`
   so the restore flow never touches user-authored cases.

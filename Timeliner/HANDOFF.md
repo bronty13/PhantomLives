@@ -69,8 +69,10 @@ export, anniversary reminders, theme builder, font slots).
   `people_involved`/`people`, `description`/`notes`, etc.) via
   per-field aliasing so a new sample doesn't usually require a
   conversion step. Currently shipped: Madeline Soto (Florida, plea
-  deal, body recovered) and Harmony Montgomery (NH, jury conviction,
-  body never recovered, civil + appeal still active).
+  deal, body recovered), Harmony Montgomery (NH, jury conviction,
+  body never recovered, civil + appeal still active), and Athena
+  Strand (Texas, guilty plea + death sentence, parallel criminal /
+  civil / legislative tracks, per-event source URLs).
 
 ## Data model
 

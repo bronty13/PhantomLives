@@ -36,6 +36,25 @@ final class SampleDataServiceTests: XCTestCase {
                        "Homicide event should carry linked person IDs from the `people` field")
     }
 
+    /// Athena Strand JSON shares Harmony's shape (`title` / `events` /
+    /// `people`) and additionally introduces a few new event categories
+    /// ("Day of crime", "Public response"). We just verify the bundle
+    /// loads + decodes cleanly here; importance-mapping coverage for the
+    /// new categories lives in the dedicated mapping test below.
+    @MainActor
+    func testBundledAthenaStrandSamplePayloadParses() throws {
+        let payload = try loadSample(named: "athena_strand_case_data")
+        XCTAssertEqual(payload.case_.name, "Murder of Athena Strand")
+        XCTAssertGreaterThan(payload.people.count, 20)
+        XCTAssertGreaterThan(payload.timeline_events.count, 15)
+        XCTAssertTrue(payload.case_.summary.contains("Outcome:"),
+                      "Athena summary should include the merged outcome footer")
+        // The verdict event should have a per-event timestamp folded in
+        // — confirms the time field round-trips.
+        let verdict = payload.timeline_events.first { $0.category == "Verdict" }
+        XCTAssertEqual(verdict?.time, "14:25")
+    }
+
     // MARK: - Helpers
 
     @MainActor
@@ -87,6 +106,9 @@ final class SampleDataServiceTests: XCTestCase {
         XCTAssertEqual(SampleDataService.mapImportance("Background"),          .low)
         XCTAssertEqual(SampleDataService.mapImportance("Tangential"),          .low)
         XCTAssertEqual(SampleDataService.mapImportance(nil),                   .low)
+        // Athena Strand additions
+        XCTAssertEqual(SampleDataService.mapImportance("Day of crime"),        .critical)
+        XCTAssertEqual(SampleDataService.mapImportance("Public response"),     .medium)
     }
 
     /// Verifies the date-padding shortcuts: year-only, year-month, full date,

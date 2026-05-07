@@ -200,7 +200,7 @@ rendered above so you see the result before saving.
 
 ## Sample data
 
-Timeliner ships with two curated true-crime sample cases drawn from
+Timeliner ships with three curated true-crime sample cases drawn from
 public reporting and court records:
 
 - ***Murder of Madeline Soto*** — 150 events, 43 people. Florida case;
@@ -211,6 +211,14 @@ public reporting and court records:
   February 2024 with appeal pending. Demonstrates a no-body timeline
   spanning ~36 years (the suspect's birth in 1990 through the 2025
   civil settlement).
+- ***Murder of Athena Strand*** — 22 events, 26 people. Texas case
+  (Wise County → Tarrant County trial venue); 7-year-old victim
+  abducted by a contract FedEx driver in 2022; pleaded guilty April
+  2026; death sentence May 2026. Each event carries a per-event
+  `source` URL pointing at the public report it was drawn from, and
+  the timeline runs three parallel tracks (criminal case, civil
+  wrongful-death suit, the legislative track for the "Athena Alert"
+  HB 3556).
 
 On a brand-new install (when the database is empty), both are seeded
 automatically so the app isn't empty for new users.

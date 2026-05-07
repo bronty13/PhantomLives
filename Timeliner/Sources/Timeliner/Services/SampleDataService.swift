@@ -42,6 +42,11 @@ enum SampleDataService {
             resourceName: "harmony_montgomery_case_data",
             displayTitle: "Murder of Harmony Montgomery"
         ),
+        SampleSpec(
+            caseId: "sample-athena-strand",
+            resourceName: "athena_strand_case_data",
+            displayTitle: "Murder of Athena Strand"
+        ),
     ]
 
     static func isSampleCaseId(_ id: String) -> Bool {
@@ -252,8 +257,8 @@ enum SampleDataService {
     internal static func mapImportance(_ category: String?) -> Importance {
         switch category ?? "" {
         // Critical — the act, the discovery, the verdict / sentencing
-        case "Day of Disappearance", "Body Recovery", "Resolution",
-             "Homicide", "Verdict", "Sentencing":
+        case "Day of Disappearance", "Day of crime", "Body Recovery",
+             "Resolution", "Homicide", "Verdict", "Sentencing":
             return .critical
         // High — abuse pattern, body movement, charges, arrests, court
         // proceedings, last-known sightings of the victim
@@ -263,11 +268,13 @@ enum SampleDataService {
              "Court / Custody":
             return .high
         // Medium — investigation, civil/probate proceedings, witness statements,
-        // government reports, child welfare touchpoints
+        // government reports, child welfare touchpoints, public-facing
+        // response (vigils, donations, advocacy)
         case "Pre-Disappearance", "Investigation", "Forensics", "Custody",
              "Legal Action", "Court / Pretrial", "Civil", "Civil / Probate",
              "Government Report", "Witness Account", "Child Welfare",
-             "Concern Raised", "Welfare Fraud", "Conviction (Other)":
+             "Concern Raised", "Welfare Fraud", "Conviction (Other)",
+             "Public response":
             return .medium
         default:
             // Background, Tangential, missing — and any future category we

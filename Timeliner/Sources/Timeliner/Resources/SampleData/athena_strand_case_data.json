@@ -1,0 +1,415 @@
+{
+  "case": {
+    "id": "case-athena-strand",
+    "title": "Murder of Athena Strand",
+    "victim": "Athena Presley Monroe Strand",
+    "status": "Closed - Convicted",
+    "case_type": "Capital Murder / Aggravated Kidnapping",
+    "jurisdictions": ["Wise County, TX", "Tarrant County, TX (trial venue)"],
+    "summary": "On November 30, 2022, 7-year-old Athena Strand was abducted from her family's home in rural Paradise, Wise County, Texas, by Tanner Lynn Horner, a contract FedEx delivery driver employed by Big Topspin who had just delivered a Christmas package containing 'You Can Be Anything' Barbie dolls to the home. Horner struck Athena with his delivery van, took her into the vehicle, and strangled and smothered her. He was arrested on December 2, 2022; her body was recovered the same evening at Bobo Crossing on the Trinity River, about nine miles southeast of Boyd. The case prompted Texas's 'Athena Alert' law (HB 3556), expanding the state's missing-child notification system. After a venue change to Tarrant County, Horner pleaded guilty on April 7, 2026, and a Tarrant County jury sentenced him to death on May 5, 2026.",
+    "outcome": "Tanner Horner pleaded guilty to capital murder and aggravated kidnapping on April 7, 2026. After a punishment-phase trial in Tarrant County, the jury returned a death sentence on May 5, 2026, after fewer than three hours of deliberation. Horner was transported to the Polunsky Unit in Livingston, Texas to begin death-row confinement."
+  },
+
+  "people": [
+    {
+      "id": "p-001",
+      "name": "Athena Presley Monroe Strand",
+      "role": "Victim",
+      "dob": "2015-05-23",
+      "dod": "2022-11-30",
+      "notes": "Seven-year-old victim, abducted and murdered on Nov 30, 2022 outside her father's home in Paradise, Wise County, TX. Former patient at Cook Children's Medical Center."
+    },
+    {
+      "id": "p-002",
+      "name": "Tanner Lynn Horner",
+      "role": "Suspect / Convicted Defendant",
+      "dob": "1991-08-08",
+      "notes": "Contract FedEx delivery driver employed by Big Topspin, Inc. Pleaded guilty Apr 7, 2026 to capital murder + aggravated kidnapping; sentenced to death May 5, 2026 by a Tarrant County jury. Also charged Dec 22, 2022 with three counts of sexual assault of a minor for unrelated 2013 incidents."
+    },
+    {
+      "id": "p-003",
+      "name": "Maitlyn Gandy",
+      "role": "Family - Mother / Civil Plaintiff",
+      "notes": "Athena's biological mother. Joined the wrongful-death civil suit as intervening plaintiff and became the public advocate for the 'Athena Alert' law (Texas HB 3556)."
+    },
+    {
+      "id": "p-004",
+      "name": "Jacob Strand",
+      "role": "Family - Father / Civil Plaintiff",
+      "notes": "Athena's father. Filed the original wrongful-death suit against Tanner Horner, FedEx, and Big Topspin on Dec 14, 2022 in Tarrant County district court."
+    },
+    {
+      "id": "p-005",
+      "name": "Elizabeth \"Ashley\" Strand",
+      "role": "Family - Stepmother / Witness",
+      "notes": "Athena's stepmother (legal first name Elizabeth; goes by Ashley). Placed the 911 call shortly before 7 PM on Nov 30, 2022 after she could not find Athena."
+    },
+    {
+      "id": "p-006",
+      "name": "Elijah Strand",
+      "role": "Family - Uncle / Witness",
+      "notes": "Athena's paternal uncle (Jacob Strand's brother). Delivered a victim impact statement at sentencing on May 5, 2026."
+    },
+    {
+      "id": "p-007",
+      "name": "Mark Strand",
+      "role": "Family - Paternal Grandfather",
+      "notes": "Athena's paternal grandfather. Publicly forgave Horner on Dec 3, 2022."
+    },
+    {
+      "id": "p-008",
+      "name": "Melissa Horner",
+      "role": "Family - Defendant's Mother / Mitigation Witness",
+      "notes": "Tanner Horner's mother. Testified during the punishment phase about prenatal exposure, neurodevelopmental factors, and bullying; apologized to the Strand family."
+    },
+    {
+      "id": "p-009",
+      "name": "Sheriff Lane Akin",
+      "role": "Law Enforcement",
+      "agency": "Wise County Sheriff's Office",
+      "notes": "Wise County Sheriff. Coordinated the search and arrest with FBI and Texas Rangers."
+    },
+    {
+      "id": "p-010",
+      "name": "Sgt. Job Espinoza",
+      "role": "Law Enforcement",
+      "agency": "Texas Rangers",
+      "notes": "Texas Ranger. Conducted the custodial interrogation in which Horner confessed; participated in the body recovery."
+    },
+    {
+      "id": "p-011",
+      "name": "SA Patrick McGuire",
+      "role": "Law Enforcement",
+      "agency": "FBI Fort Worth",
+      "notes": "FBI Special Agent assigned as lead federal investigator. Frequently referred to in coverage simply as 'Det. McGuire'."
+    },
+    {
+      "id": "p-012",
+      "name": "James Stainton",
+      "role": "Prosecution - District Attorney",
+      "agency": "Wise County District Attorney's Office",
+      "notes": "Wise County District Attorney; lead prosecutor. Announced intent to seek the death penalty on Feb 17, 2023."
+    },
+    {
+      "id": "p-013",
+      "name": "Steven Goble",
+      "role": "Defense Attorney",
+      "notes": "Lead defense counsel. Filed the venue-change motion granted Sept 20, 2024."
+    },
+    {
+      "id": "p-014",
+      "name": "Judge George Gallagher",
+      "role": "Court Personnel - Judicial",
+      "notes": "Presiding judge, 297th District Court, Tarrant County. Took the guilty plea and presided over the punishment-phase trial and sentencing."
+    },
+    {
+      "id": "p-015",
+      "name": "Judge David Hagerman",
+      "role": "Court Personnel - Judicial",
+      "notes": "Tarrant County judge initially assigned to the case post-venue change."
+    },
+    {
+      "id": "p-016",
+      "name": "Dr. Jessica Dwyer",
+      "role": "Forensics - Medical Examiner",
+      "agency": "Dallas County Medical Examiner's Office",
+      "notes": "Chief Medical Examiner. Determined cause of death as blunt force injuries with smothering and strangulation."
+    },
+    {
+      "id": "p-017",
+      "name": "Benson Varghese",
+      "role": "Civil Attorney - Plaintiffs",
+      "agency": "Varghese Summersett PLLC",
+      "notes": "Lead plaintiffs' attorney in the wrongful-death suit against FedEx and Big Topspin."
+    },
+    {
+      "id": "p-018",
+      "name": "Ty Stimpson",
+      "role": "Civil Attorney - Plaintiffs",
+      "agency": "Varghese Summersett PLLC",
+      "notes": "Co-counsel for plaintiffs in the wrongful-death suit."
+    },
+    {
+      "id": "p-019",
+      "name": "Rep. Lynn Stucky",
+      "role": "Public Official - Legislator",
+      "agency": "Texas House of Representatives (R)",
+      "notes": "Lead author of HB 3556 (the 'Athena Alert'), filed Mar 6, 2023."
+    },
+    {
+      "id": "p-020",
+      "name": "Rep. Sam Harless",
+      "role": "Public Official - Legislator",
+      "agency": "Texas House of Representatives (R)",
+      "notes": "Co-author of HB 3556."
+    },
+    {
+      "id": "p-021",
+      "name": "Rep. Morgan Meyer",
+      "role": "Public Official - Legislator",
+      "agency": "Texas House of Representatives (R)",
+      "notes": "Co-author of HB 3556."
+    },
+    {
+      "id": "p-022",
+      "name": "Sen. Tan Parker",
+      "role": "Public Official - Legislator",
+      "agency": "Texas Senate (R-Flower Mound)",
+      "notes": "Senate sponsor of HB 3556."
+    },
+    {
+      "id": "p-023",
+      "name": "Gov. Greg Abbott",
+      "role": "Public Official - Governor",
+      "agency": "State of Texas",
+      "notes": "Signed HB 3556 ('Athena Alert') into law on June 13, 2023, effective immediately."
+    },
+    {
+      "id": "p-024",
+      "name": "FedEx Ground",
+      "role": "Corporate Entity - Defendant",
+      "notes": "Co-defendant in the wrongful-death civil suit. Horner was operating a FedEx-branded vehicle at the time of the abduction."
+    },
+    {
+      "id": "p-025",
+      "name": "Big Topspin, Inc.",
+      "role": "Corporate Entity - Defendant",
+      "notes": "FedEx Ground delivery contractor that directly employed Tanner Horner. Co-defendant in the wrongful-death civil suit."
+    },
+    {
+      "id": "p-026",
+      "name": "Mattel",
+      "role": "Corporate Entity - Donor",
+      "notes": "Donated 2,000 Barbies plus additional toys to Cook Children's Medical Center in Athena's memory in January 2023."
+    }
+  ],
+
+  "events": [
+    {
+      "id": "e-001",
+      "date": "2022-11-30",
+      "time": "17:15",
+      "category": "Day of crime",
+      "title": "Horner delivers Barbie package to Strand home",
+      "location": "200 block of CR 3573, Paradise, Wise County, TX",
+      "description": "Tanner Horner, driving a Big Topspin / FedEx Ground delivery van, delivered a Christmas package containing 'You Can Be Anything' Barbie dolls to the Strand residence. Athena had argued briefly with her stepmother just before the delivery.",
+      "people": ["p-002", "p-001", "p-005"],
+      "source": "https://www.cbsnews.com/texas/news/tanner-horner-trial-sentenced-death-penalty-kidnapping-murder-athena-strand/"
+    },
+    {
+      "id": "e-002",
+      "date": "2022-11-30",
+      "time": "17:30",
+      "category": "Homicide",
+      "title": "Abduction and killing",
+      "location": "Outside Strand residence, Paradise, TX",
+      "description": "Horner struck Athena with his delivery van, took her into the vehicle, and strangled and smothered her. He later disposed of her body at Bobo Crossing on the Trinity River.",
+      "people": ["p-002", "p-001"],
+      "source": "https://www.foxnews.com/us/athena-strand-killer-fedex-driver-told-police-kind-tossed-7-year-olds-body-woods-video-shows"
+    },
+    {
+      "id": "e-003",
+      "date": "2022-11-30",
+      "time": "18:40",
+      "category": "Last Contact",
+      "title": "Stepmother calls 911",
+      "location": "Paradise, Wise County, TX",
+      "description": "Ashley Strand placed a 911 call just before 7 PM after she was unable to find Athena outside the home. Wise County deputies responded and began the search.",
+      "people": ["p-005"],
+      "source": "https://www.kens5.com/article/news/local/missing-child-girld-paradise-wise-county-tx-texas-november-30-december1-2022/287-fadb8f8d-5c8a-472f-8e9e-77b6318c2ed2"
+    },
+    {
+      "id": "e-004",
+      "date": "2022-12-01",
+      "time": "14:00",
+      "category": "Investigation",
+      "title": "Statewide AMBER Alert issued",
+      "location": "Statewide, Texas",
+      "description": "Texas DPS issued a statewide AMBER Alert for Athena Strand approximately 24 hours after she disappeared, once investigators developed evidence of an abduction.",
+      "people": ["p-009"],
+      "source": "https://www.wfaa.com/article/news/local/missing-child-girld-paradise-wise-county-tx-texas-november-30-december1-2022/287-fadb8f8d-5c8a-472f-8e9e-77b6318c2ed2"
+    },
+    {
+      "id": "e-005",
+      "date": "2022-12-02",
+      "category": "Arrest",
+      "title": "Horner arrested",
+      "location": "Wise County, TX",
+      "description": "Wise County investigators, working with the FBI and Texas Rangers, arrested Tanner Horner after digital evidence and a witness sighting of his green delivery van placed him at the scene. Horner confessed during custodial interrogation.",
+      "people": ["p-002", "p-009", "p-010", "p-011"],
+      "source": "https://www.cbsnews.com/texas/news/tanner-horner-athena-strand-green-van-video-arrest/"
+    },
+    {
+      "id": "e-006",
+      "date": "2022-12-02",
+      "time": "20:00",
+      "category": "Body Recovery",
+      "title": "Athena's body recovered",
+      "location": "Bobo Crossing, Trinity River, ~9 mi SE of Boyd, Wise County, TX",
+      "description": "Investigators recovered Athena's body at Bobo Crossing on the Trinity River, approximately nine miles southeast of Boyd, after Horner directed officers to two false locations before disclosing the actual site.",
+      "people": ["p-002", "p-010"],
+      "source": "https://www.wcmessenger.com/articles/live-updates-from-the-horner-capital-murder-trial/"
+    },
+    {
+      "id": "e-007",
+      "date": "2022-12-03",
+      "category": "Public response",
+      "title": "Paternal grandfather publicly forgives Horner",
+      "location": "Wise County, TX",
+      "description": "Mark Strand, Athena's paternal grandfather, publicly stated that he forgave Tanner Horner — a moment widely covered in regional and national media.",
+      "people": ["p-007", "p-002"],
+      "source": "https://en.wikipedia.org/wiki/Murder_of_Athena_Strand"
+    },
+    {
+      "id": "e-008",
+      "date": "2022-12-05",
+      "category": "Charge",
+      "title": "Initial charges filed",
+      "location": "Wise County Jail, TX",
+      "description": "Tanner Horner was formally charged with capital murder and aggravated kidnapping. Bond was set at $1.5 million.",
+      "people": ["p-002"],
+      "source": "https://www.cbsnews.com/texas/news/athena-strand-missing-7-year-old-girl-found-in-wise-county/"
+    },
+    {
+      "id": "e-009",
+      "date": "2022-12-14",
+      "category": "Civil",
+      "title": "Wrongful-death civil suit filed",
+      "location": "Tarrant County District Court, Fort Worth, TX",
+      "description": "Jacob Strand filed a wrongful-death lawsuit seeking more than $1 million against Tanner Horner, FedEx Ground, and Big Topspin, alleging negligent hiring and supervision.",
+      "people": ["p-004", "p-017", "p-002", "p-024", "p-025"],
+      "source": "https://www.fox4news.com/news/athena-strand-mother-lawsuit-tanner-horner-fedex"
+    },
+    {
+      "id": "e-010",
+      "date": "2022-12-22",
+      "category": "Charge",
+      "title": "Additional sexual-assault charges",
+      "location": "Wise County, TX",
+      "description": "Horner was charged with three counts of sexual assault of a minor stemming from unrelated 2013 incidents, identified during the broader investigation.",
+      "people": ["p-002"],
+      "source": "https://en.wikipedia.org/wiki/Murder_of_Athena_Strand"
+    },
+    {
+      "id": "e-011",
+      "date": "2023-01-19",
+      "category": "Public response",
+      "title": "Mattel donates 2,000 Barbies in Athena's memory",
+      "location": "Cook Children's Medical Center, Fort Worth, TX",
+      "description": "Mattel donated 2,000 Barbies and additional toys to Cook Children's Medical Center, where Athena had been a former patient. Maitlyn Gandy attended the event.",
+      "people": ["p-026", "p-003"],
+      "source": "https://fortworthreport.org/2023/01/20/mattel-donates-2000-barbies-to-cook-childrens-medical-center-in-memory-of-athena-strand/"
+    },
+    {
+      "id": "e-012",
+      "date": "2023-02-16",
+      "category": "Charge",
+      "title": "Grand jury indictment",
+      "location": "Wise County, TX",
+      "description": "A Wise County grand jury indicted Tanner Horner on capital murder and aggravated kidnapping.",
+      "people": ["p-002", "p-012"],
+      "source": "https://www.oxygen.com/crime-news/tanner-horner-trial-full-timeline-of-athena-strand-murder"
+    },
+    {
+      "id": "e-013",
+      "date": "2023-02-17",
+      "category": "Charge",
+      "title": "DA announces death-penalty intent",
+      "location": "Wise County, TX",
+      "description": "Wise County District Attorney James Stainton publicly announced his office's intent to seek the death penalty against Horner.",
+      "people": ["p-012", "p-002"],
+      "source": "https://www.oxygen.com/crime-news/tanner-horner-trial-full-timeline-of-athena-strand-murder"
+    },
+    {
+      "id": "e-014",
+      "date": "2023-03-06",
+      "category": "Court / Pretrial",
+      "title": "Not-guilty plea / 'Athena Alert' bill filed",
+      "location": "Wise County, TX  ·  Texas Capitol, Austin, TX",
+      "description": "Horner entered a not-guilty plea. The same day, Rep. Lynn Stucky filed HB 3556 — the 'Athena Alert' — to expand Texas's missing-child notification system for cases where AMBER criteria are not yet met.",
+      "people": ["p-002", "p-019"],
+      "source": "https://capitol.texas.gov/tlodocs/88R/billtext/pdf/HB03556I.pdf"
+    },
+    {
+      "id": "e-015",
+      "date": "2023-05-09",
+      "category": "Government Report",
+      "title": "Texas House passes HB 3556",
+      "location": "Texas House of Representatives, Austin, TX",
+      "description": "The Texas House passed HB 3556, the 'Athena Alert,' with co-authors Rep. Sam Harless and Rep. Morgan Meyer.",
+      "people": ["p-019", "p-020", "p-021"],
+      "source": "https://myparistexas.com/texas-house-passes-athena-strand-inspired-bill-athena-alert/"
+    },
+    {
+      "id": "e-016",
+      "date": "2023-05-24",
+      "category": "Government Report",
+      "title": "Texas Senate passes HB 3556",
+      "location": "Texas Senate, Austin, TX",
+      "description": "The Texas Senate passed HB 3556 with Sen. Tan Parker as Senate sponsor.",
+      "people": ["p-022"],
+      "source": "https://fastdemocracy.com/bill-search/tx/88/bills/TXB00063869/"
+    },
+    {
+      "id": "e-017",
+      "date": "2023-06-13",
+      "category": "Government Report",
+      "title": "'Athena Alert' signed into law",
+      "location": "Austin, TX",
+      "description": "Governor Greg Abbott signed HB 3556 into law, effective immediately. The new statute creates an alert pathway for missing children when full AMBER criteria are not yet established.",
+      "people": ["p-023", "p-019", "p-003"],
+      "source": "https://www.dps.texas.gov/news/new-law-makes-changes-amber-alert-system"
+    },
+    {
+      "id": "e-018",
+      "date": "2024-09-20",
+      "category": "Court / Pretrial",
+      "title": "Trial venue moved to Tarrant County",
+      "location": "Wise County, TX → Tarrant County, TX",
+      "description": "The Wise County court granted a defense motion to move the trial to Tarrant County, citing pretrial publicity in Wise County.",
+      "people": ["p-013", "p-015"],
+      "source": "https://www.wfaa.com/article/news/crime/tanner-horner-murder-trial-athena-strand-venue-tarrant-county/287-7e598837-0e47-47d9-bbd4-33f5f0698e47"
+    },
+    {
+      "id": "e-019",
+      "date": "2026-04-07",
+      "category": "Trial",
+      "title": "Guilty plea / punishment phase begins",
+      "location": "Tarrant County Courthouse, Fort Worth, TX",
+      "description": "At the start of the trial, Horner pleaded guilty to capital murder and aggravated kidnapping. Proceedings advanced directly into the punishment phase before Judge George Gallagher.",
+      "people": ["p-002", "p-012", "p-013", "p-014"],
+      "source": "https://www.cbsnews.com/texas/news/tanner-horner-guilty-plea-athena-strand/"
+    },
+    {
+      "id": "e-020",
+      "date": "2026-04-22",
+      "category": "Trial",
+      "title": "Melissa Horner testifies in mitigation",
+      "location": "Tarrant County Courthouse, Fort Worth, TX",
+      "description": "Tanner Horner's mother Melissa testified during the punishment phase about prenatal exposure, neurodevelopmental factors, and bullying in his upbringing, and offered an apology to the Strand family.",
+      "people": ["p-008", "p-013"],
+      "source": "https://www.cbsnews.com/texas/news/tanner-horners-mother-testifies-at-his-murder-trial/"
+    },
+    {
+      "id": "e-021",
+      "date": "2026-05-05",
+      "time": "14:25",
+      "category": "Verdict",
+      "title": "Death sentence returned",
+      "location": "Tarrant County Courthouse, Fort Worth, TX",
+      "description": "After fewer than three hours of deliberation, the Tarrant County jury sentenced Tanner Horner to death. Athena's uncle Elijah Strand delivered a victim impact statement on behalf of the family.",
+      "people": ["p-002", "p-014", "p-003", "p-006"],
+      "source": "https://www.cnn.com/2026/05/05/us/fedex-driver-death-sentence-texas"
+    },
+    {
+      "id": "e-022",
+      "date": "2026-05-05",
+      "category": "Sentencing",
+      "title": "Booked to death row",
+      "location": "Allan B. Polunsky Unit, Livingston, TX",
+      "description": "Following sentencing, Tanner Horner was transported to the Allan B. Polunsky Unit to begin death-row confinement.",
+      "people": ["p-002"],
+      "source": "https://www.fox4news.com/news/athena-strand-remembered-tanner-horner-booked-death-row"
+    }
+  ]
+}

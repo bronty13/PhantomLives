@@ -44,13 +44,14 @@ local SQLite database and a polished customizable UI.
   Sunset, Rose) plus a full custom-theme builder with live preview
 - **Font customization** — per-slot (event title, event body, date
   column, sidebar) family / size / weight overrides
-- **Sample cases shipped with the app** — two curated true-crime
+- **Sample cases shipped with the app** — three curated true-crime
   timelines drawn from public reporting and court records:
-  *Murder of Madeline Soto* (150 events, 43 people) and
+  *Murder of Madeline Soto* (150 events, 43 people),
   *Murder of Harmony Montgomery* (42 events, 28 people, body never
-  recovered). Both seed on first launch so the app isn't empty for new
-  users. Delete them any time; **Settings → General → Restore Sample
-  Data** brings the canonical versions back.
+  recovered), and *Murder of Athena Strand* (22 events, 26 people,
+  per-event source URLs). All seed on first launch so the app isn't
+  empty for new users. Delete them any time; **Settings → General →
+  Restore Sample Data** brings the canonical versions back.
 
 ## Build
 
