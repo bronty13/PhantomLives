@@ -4,10 +4,66 @@ All notable changes to Timeliner are documented here. The version number is
 auto-derived from git's commit count (`1.0.<count>`), so this log groups
 changes by feature rather than by exact bundle version.
 
+## 1.1.x — Phase 2 (post-MVP, on the same `main` branch)
+
+The MVP shipped at commit `20017c6`; everything below was added on top
+of it as part of the Phase 2 work plan, and is included in the current
+build.
+
+### Added
+
+- **Polymorphic attachments** — first-class attachments on cases,
+  events, and people. File bytes stored as BLOBs in the SQLite database
+  (so they're carried by every backup zip). 25 MB per-file cap; image
+  files automatically get a 256-pt JPEG thumbnail.
+- **Horizontal pan/zoom timeline** — Canvas-rendered alternate timeline
+  view per case. Drag to pan, scroll/magnify to zoom, click an event
+  dot to edit, double-click empty space to add an event at that
+  in-time position.
+- **Cross-case combined timeline** — sidebar section that merges any
+  selected subset of cases onto a single horizontal axis with
+  deterministic per-case color coding.
+- **PDF export** (⌘⇧P) — renders the same HTML pipeline used by the
+  HTML exporter through `WKWebView`, paginated to US-letter portrait.
+- **Anniversary reminders** — opt-in `UNUserNotificationCenter`
+  calendar-anniversary reminders for important events. Configurable
+  importance floor, lookahead window, and notification hour. Asks for
+  authorization only when the user enables the feature and points to
+  System Settings if the user previously denied.
+- **Custom theme builder** — new sheet under Settings → Themes lets
+  users clone a built-in theme and edit gradient stops, accent, card,
+  sidebar, and track colors with a live preview card.
+- **Per-slot font customization** — Settings → Fonts. Override family
+  (system / system-mono / system-serif / system-rounded / custom
+  PostScript name), size, and weight independently for event title,
+  event body, date column, and sidebar slots.
+
+### Changed
+
+- **Schema bumped to v2** (`v2_attachments_blob`). The v1 attachments
+  table (created but never user-facing) is dropped and replaced with a
+  polymorphic shape — `parent_type` ('case' / 'event' / 'person') +
+  `parent_id`, `data` BLOB, optional `thumbnail_data` BLOB, `position`
+  for user-controlled ordering. Safe drop because the v1 UI never
+  shipped.
+- **Sidebar grew from 5 sections to 6** — added "Cross-case Timeline".
+- **Settings grew from 7 tabs to 9** — added "Fonts" and
+  "Notifications" tabs.
+- `AppState.deleteCase` now manually cascades attachment rows, since
+  the polymorphic `attachments` table can't enforce a real FK against
+  three different parent tables.
+
+### Tests
+
+- Added migration test asserting the polymorphic attachments table
+  has the expected columns + BLOB type and accepts insertion against
+  all three parent kinds.
+
 ## 1.0.0 — Phase 1 MVP
 
-Initial public build. Establishes the core domain model, the on-disk
-database, the timeline UI, and the auto-backup-on-launch convention.
+Initial public build at commit `20017c6`. Establishes the core domain
+model, the on-disk database, the timeline UI, and the auto-backup-on-
+launch convention.
 
 ### Added
 
@@ -34,8 +90,8 @@ database, the timeline UI, and the auto-backup-on-launch convention.
   default 14-day retention. Verify-and-restore UI in Settings → Backup.
 - **Custom app icon** — programmatically generated clock-and-pins icon via
   `Scripts/generate-icon.swift` at build time.
-- **Settings scene** — seven tabs: General, Appearance, Themes, Tags,
-  People Roles, Export, Backup.
+- **Settings scene** — seven tabs at MVP: General, Appearance, Themes,
+  Tags, People Roles, Export, Backup. (Two more added in 1.1.x.)
 - **Tests** — migration round-trips, Codable round-trips, search ranking,
   HTML export self-containment + XSS escaping, BackupService retention
   trim + auto-mkdir + sort order.

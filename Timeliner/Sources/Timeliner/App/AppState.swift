@@ -1,6 +1,11 @@
 import SwiftUI
 import Combine
 
+/// Top-level observable store. Single source of truth for cases, events, tags,
+/// people, the per-event join lookup tables, and the current sidebar / filter
+/// selection. All view mutations flow through methods on this type — the
+/// canonical pattern is `View → appState.method() → DatabaseService →
+/// reload<Slice>()`. See `HANDOFF.md` for the rest of the architecture.
 @MainActor
 final class AppState: ObservableObject {
     // MARK: - Published slices

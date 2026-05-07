@@ -1,6 +1,11 @@
 import Foundation
 import GRDB
 
+/// Sole owner of the GRDB `DatabasePool` for `timeliner.sqlite`. Runs the
+/// append-only migrator at init and exposes thin per-record CRUD wrappers.
+/// Migration logic is in `static applyMigrations(to:)` so the test suite
+/// applies the *real* migrator instead of a duplicated fixture — drift
+/// between production schema and tests would defeat the migration tests.
 @MainActor
 final class DatabaseService {
     static let shared = DatabaseService()

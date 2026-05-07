@@ -1,6 +1,10 @@
 import SwiftUI
 import AppKit
 
+/// `App` entry point. Constructs the singleton `AppState` (which fires the
+/// launch-time backup before any UI reads the DB), wires the main
+/// `WindowGroup` and the separate `Settings` scene, and applies the one-shot
+/// window-state reset described in `applyWindowResetIfNeeded` below.
 @main
 struct TimelinerApp: App {
     @StateObject private var appState = AppState()

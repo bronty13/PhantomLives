@@ -1,5 +1,10 @@
 import SwiftUI
 
+/// Visual theme: gradient stops + accent + card / sidebar / track colors.
+/// Built-ins are static lets on this type; user-authored themes live in
+/// `AppSettings.userThemes` as `UserTheme` records and resolve to a `Theme`
+/// via `UserTheme.asTheme()`. `named(_:userThemes:)` accepts either the
+/// canonical `"user:<uuid>"` form or a plain name (built-in or user theme).
 struct Theme: Identifiable, Hashable {
     let id: String
     let name: String

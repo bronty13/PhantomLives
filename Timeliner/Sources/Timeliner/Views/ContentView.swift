@@ -1,6 +1,12 @@
 import SwiftUI
 import AppKit
 
+/// Root window content. Hosts the `NavigationSplitView` (sidebar +
+/// `DetailRouterView`) and the global toolbar / alert chrome. Listens for
+/// menu-driven `NotificationCenter` events (new case, new event, export,
+/// backup, window reset) so the App-level menu commands stay decoupled from
+/// the view tree. Export and backup results surface as success / error
+/// alerts here.
 struct ContentView: View {
     @EnvironmentObject private var appState: AppState
     @State private var showingResetConfirm: Bool = false

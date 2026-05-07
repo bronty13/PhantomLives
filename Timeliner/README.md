@@ -8,22 +8,42 @@ local SQLite database and a polished customizable UI.
 ## At a glance
 
 - **Cases** with status (active / cold / closed) and pinning
-- **Events** per case with date, markdown description, source URL, and a
-  four-level importance indicator
-- **Tags** with custom colors and per-event tagging
-- **People / persons of interest** with role-based chips (suspect, victim,
-  witness, attorney, detective, other) and per-event linking
+- **Events** per case with date (or date range), markdown description,
+  source URL, and a four-level importance indicator
+- **Tags** with custom colors and per-event tagging (six built-in tags
+  seeded on first launch)
+- **People / persons of interest** with six built-in role chips
+  (suspect, victim, witness, attorney, detective, other) and per-event
+  linking
 - **Vertical chronological timeline** grouped by year and month with
-  date/tag/importance filters
-- **Cross-case search** ranked by title-prefix > title-substring >
-  body match
+  date / tag / importance / text filters
+- **Horizontal pan/zoom timeline** — Canvas-rendered, drag-to-pan,
+  scroll/magnify-to-zoom, click a dot to edit, double-click empty
+  space to add an event at that point in time
+- **Cross-case combined timeline** — pick any subset of cases, see their
+  events merged on one horizontal axis, color-coded per case
+- **Cross-case search** ranked title-prefix > title-substring > body
+  match across cases, events, people, and tags
+- **Attachments** — image / PDF / arbitrary files attached to cases,
+  events, or people. Stored as BLOBs in the database so they're carried
+  by every backup. 25 MB per-file cap, image thumbnails generated
+  automatically.
 - **Standalone HTML export** — one self-contained file per case (CSS + JS
   inlined, no external dependencies) dropped at `~/Downloads/Timeliner/`
-- **Auto-backup at every launch** — zips the database and settings into
-  `~/Downloads/Timeliner backup/` with retention trimming. Verify and
-  restore from the Settings → Backup tab.
+- **PDF export** — same HTML pipeline rendered through `WKWebView` and
+  paginated to US-letter
+- **Auto-backup at every launch** — zips the entire support directory
+  (database, settings, attachments) into `~/Downloads/Timeliner backup/`
+  with retention trimming. Verify and restore from the Settings →
+  Backup tab.
+- **Anniversary reminders** — opt-in `UNUserNotificationCenter` calendar
+  reminders fired on the date-anniversary of important events. Floor
+  by importance, lookahead window, and notification hour are all
+  configurable.
 - **Themes** — six built-in themes (Default, Midnight, Ocean, Forest,
-  Sunset, Rose). Custom theme builder lands in Phase 2.
+  Sunset, Rose) plus a full custom-theme builder with live preview
+- **Font customization** — per-slot (event title, event body, date
+  column, sidebar) family / size / weight overrides
 
 ## Build
 
@@ -48,12 +68,13 @@ Version is auto-derived from git: `1.0.<commit-count>` for
 ./run-tests.sh   # xcodebuild test → TimelinerTests
 ```
 
-Test suite covers:
-- GRDB v1 migration round-trip + cascade-delete behavior
+Test suite (~19 tests) covers:
+- GRDB v1 + v2 migration round-trip, cascade-delete behavior, and
+  polymorphic-attachments shape (including BLOB column type)
 - Codable round-trips for Case / Event / Importance / HexColor
 - Cross-case search ranking determinism
 - HTML export self-containment + XSS escaping
-- BackupService retention trim + auto-mkdir + sort order
+- BackupService debounce + retention trim + auto-mkdir + sort order
 
 ## Default output locations
 
@@ -61,9 +82,9 @@ Test suite covers:
 |---|---|
 | Database | `~/Library/Application Support/Timeliner/timeliner.sqlite` |
 | Settings | `~/Library/Application Support/Timeliner/settings.json` |
-| Attachments (Phase 2) | `~/Library/Application Support/Timeliner/attachments/<sha256>` |
+| Attachments | inside `timeliner.sqlite` as BLOBs (carried by the database backup) |
 | Backups | `~/Downloads/Timeliner backup/Timeliner-yyyy-MM-dd-HHmmss.zip` |
-| HTML exports | `~/Downloads/Timeliner/<CaseTitle>-<timestamp>.html` |
+| HTML / PDF exports | `~/Downloads/Timeliner/<CaseTitle>-<timestamp>.{html,pdf}` |
 
 All output paths are user-overridable in Settings, but the override is
 persisted so it sticks across launches. Backup and export directories are
@@ -71,10 +92,10 @@ created on demand if they don't exist.
 
 ## Roadmap
 
-**Phase 1 (MVP)** — shipped.
-**Phase 2** — attachments (images/PDFs, content-addressed), horizontal
-pan/zoom timeline (Canvas + GeometryReader), theme builder with live
-preview, font customization (per-element `FontStyle` slots), PDF export,
-date-anniversary reminders.
+**Phase 1 (MVP)** — shipped at commit `20017c6`.
+**Phase 2** — shipped on top of MVP: attachments (polymorphic, BLOB,
+backup-carried), horizontal pan/zoom timeline, cross-case combined
+timeline, custom theme builder with live preview, per-slot font
+customization, PDF export, anniversary reminders.
 **Phase 3** — iOS companion via CloudKit sync, multi-case index export,
-case templates.
+case templates, full block-level markdown rendering.
