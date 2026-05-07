@@ -175,8 +175,12 @@ deleting the parent row.
 - Multi-case index export — `ExportService.render(...)` is pure on its
   inputs, so a new entry point that loops over multiple cases is
   straightforward.
-- Case templates — would seed `Case.newDraft` from a JSON template; no
-  template store exists yet.
+- Case templates — `SampleDataService.SamplePayload` is already a
+  workable template format (case + people + events + per-event
+  category / location / source URL). Phase 3 case templates would
+  reuse this Codable shape, keyed by user-authored JSON in a
+  `templates/` subdirectory next to the bundled samples, with a "New
+  Case from Template…" entry in the toolbar / `New` menu.
 - Full block-level markdown rendering — currently both inline-only.
 
 ## Reference projects

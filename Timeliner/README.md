@@ -76,13 +76,16 @@ Version is auto-derived from git: `1.0.<commit-count>` for
 ./run-tests.sh   # xcodebuild test → TimelinerTests
 ```
 
-Test suite (~19 tests) covers:
+Test suite (~26 tests) covers:
 - GRDB v1 + v2 migration round-trip, cascade-delete behavior, and
   polymorphic-attachments shape (including BLOB column type)
 - Codable round-trips for Case / Event / Importance / HexColor
 - Cross-case search ranking determinism
 - HTML export self-containment + XSS escaping
 - BackupService debounce + retention trim + auto-mkdir + sort order
+- `SampleDataService` JSON parsing for both shape variants
+  (Madeline-style and Harmony/Athena-style), role/importance/date
+  mapping coverage, case-status heuristic
 
 ## Default output locations
 
