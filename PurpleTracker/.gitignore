@@ -1,0 +1,7 @@
+.DS_Store
+*.xcodeproj
+PurpleTracker.app
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserstate
