@@ -13,7 +13,7 @@ and a SwiftUI + `NavigationSplitView` UI.
 ```sh
 ./build-app.sh            # builds PurpleIRC.app
 open PurpleIRC.app           # launch
-./run-tests.sh            # 258 tests via swift-testing
+./run-tests.sh            # 267 tests via swift-testing
 ```
 
 The script produces a release build by default; set `CONFIG=debug` for a
@@ -160,12 +160,22 @@ The biggest tabs:
 The sidebar exposes a **Saved** section (quick-join) and a **Contacts**
 section (click to open a `/msg` draft; bell icon + dot show watch + presence).
 
-The five sidebar groups — **Networks**, **Channels**, **Private**, **Saved**,
-**Contacts** — can be **reordered by drag-and-drop** on their headers. Pick up a
-header (the small `≡` glyph is the affordance), drop it on another header, and
-the dragged section lands immediately above the drop target. The order
-persists across launches in `AppSettings.sidebarSectionOrder`; right-click any
-section header → "Reset sidebar order" restores the factory order.
+**Drag-to-reorder individual rows** is wired into every sidebar group:
+networks, channels, private queries, saved channels, and contacts. Each
+section's `ForEach` is `.onMove`-enabled, so picking up a row and dragging
+it to a new position within the same section reorders the underlying
+list. Reorders within a kind (e.g. channel buffers) preserve the
+positions of other kinds in the underlying array, so a channel reorder
+doesn't disturb queries or server-console rows.
+
+**Per-buffer message-kind filter.** The funnel icon in any buffer header
+opens a checkbox grid for system info, errors, MOTD, notices, joins,
+parts, quits, nick changes, and topic changes. Toggles write a per-buffer
+override into `AppSettings.messageFiltersByBuffer`; "Use defaults" drops
+the override, "Save as default" promotes it into the app-wide defaults
+edited in Setup → Behavior → "Default message filter". PRIVMSG / ACTION
+lines always render — the popover footer flags this so the user doesn't
+go looking for a toggle that would silently swallow the conversation.
 
 The per-network `*server*` console row under **Private** is **purged at app
 launch** so each session starts clean. The buffer is in-memory only — the

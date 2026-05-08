@@ -5,9 +5,80 @@ All notable changes to PurpleIRC are recorded here. The bundle's
 count (`1.0.<count>`); CHANGELOG entries use the same scheme so the
 version on the About panel matches the entry that introduced it.
 
+## [1.0.130] — 2026-05-07
+
+### Added (per-channel + app-wide message-kind filters)
+
+- **Funnel button in every buffer header** opens a popover with a
+  checkbox grid: System / info, Errors, MOTD, Notices, Joins, Parts,
+  Quits, Nick changes, Topic changes. Toggling a checkbox writes a
+  per-buffer override into `AppSettings.messageFiltersByBuffer`,
+  keyed by `<network-slug>/<buffer-name-lower>` (case-insensitive),
+  and `BufferView.renderedRows` re-runs through
+  `MessageKindFilter.includes(_:)` so the suppressed kind disappears
+  immediately. The funnel icon switches to its filled variant when
+  the active buffer has an override, so the user can see at a glance
+  whether they're looking at customized rendering.
+- **"Use defaults" / "Save as default"** buttons in the popover.
+  The first drops the per-buffer override (back to the app-wide
+  defaults); the second promotes the current toggles into
+  `AppSettings.messageFilterDefaults` so other un-overridden buffers
+  pick them up immediately.
+- **Setup → Behavior → "Default message filter"** mirrors the same
+  checkbox grid for editing the app-wide defaults directly. A
+  "Reset to show everything" button restores the permissive
+  baseline; "Clear every per-buffer override" wipes the
+  `messageFiltersByBuffer` map in one click.
+- **PRIVMSG, ACTION, and RAW always render**, regardless of any
+  filter — those are the user's actual chat. Suppressing them
+  would feel like data loss; the popover footer flags this so
+  nobody goes looking for the missing toggle.
+- Forward-compatible decode: a payload missing
+  `messageFilterDefaults` / `messageFiltersByBuffer` falls back to
+  the permissive baseline, and a `MessageKindFilter` payload missing
+  any field defaults each missing toggle to `true` so a category we
+  add later doesn't accidentally hide existing lines.
+
+## [1.0.129] — 2026-05-07
+
+### Changed (sidebar reorder is item-level, not section-level)
+
+- **Drag-to-reorder individual rows in every sidebar section.**
+  Replaces the section-header reorder shipped in 1.0.128 — that
+  was the wrong axis. Now each `ForEach` carries `.onMove`:
+  - **Networks**: drag a network row to reorder live connections
+    via `ChatModel.moveConnection(from:to:)`. In-memory only;
+    next launch re-seeds from the selected profile in
+    `settings.servers`.
+  - **Channels**: drag a channel buffer; routed through
+    `IRCConnection.moveBuffers(kind: .channel, from:to:)`. Other
+    buffer kinds (queries, server) keep their underlying
+    positions.
+  - **Private**: drag a query buffer; `kind: .query` variant of
+    the same `moveBuffers` call. Server-console rows below the
+    divider are unaffected.
+  - **Saved**: drag a saved channel; routed through
+    `SettingsStore.moveSavedChannels(from:to:selectedServerID:)`.
+    Saved channels scoped to a different server are left where
+    they were.
+  - **Contacts**: drag an address-book entry;
+    `SettingsStore.moveAddressBook(from:to:)`.
+- **`Array.moveFiltered(from:to:where:)`** is the shared
+  primitive: pull the predicate-matching subset out in order,
+  apply standard `Array.move(fromOffsets:toOffset:)`, write back
+  to the same underlying indices. Non-matching elements never
+  shift.
+- **The 1.0.128 section-header reorder is removed** —
+  `SidebarSection`, `AppSettings.sidebarSectionOrder`,
+  `SettingsStore.moveSidebarSection` and the related tests are
+  deleted. A 1.0.128 user upgrading sees their custom section
+  order revert to the factory default; the
+  `sidebarSectionOrder` key in their `settings.json` is simply
+  ignored on decode (Codable's `decodeIfPresent` shape).
+
 ## [1.0.128] — 2026-05-07
 
-### Added (sidebar section reordering)
+### Added (sidebar section reordering — superseded by 1.0.129)
 
 - **Drag-to-reorder sidebar sections.** Each of the five sidebar
   groups — Networks, Channels, Private, Saved, Contacts — now has a

@@ -475,20 +475,57 @@ theme rather than chronologically.
 - Contacts: double-click → `/query`, full right-click menu mirroring
   the query/channel-row menus.
 
-### Reorderable sidebar sections + launch-time server-buffer purge (1.0.128)
-- The five sidebar groups (Networks / Channels / Private / Saved /
-  Contacts) are rendered via `ForEach(SidebarSection.normalize(...))` so
-  each section's position is driven by `AppSettings.sidebarSectionOrder`.
-  Each section header is `.draggable(rawValue)` + a String
-  `.dropDestination`, with a small `≡` glyph as the affordance and a
-  faint accent-tinted background as the drop highlight. Dropping a
-  header inserts the dragged section immediately above the target via
-  `SettingsStore.moveSidebarSection(_:before:)`.
-- Decode tolerates unknown raw values (forward-compat for new sections)
-  and de-duplicates / appends-missing through `SidebarSection.normalize`,
-  so a partial / corrupt persisted list never blanks a group.
-  Right-click any header → "Reset sidebar order" reverts to
-  `SidebarSection.defaultOrder`.
+### Per-buffer message-kind filter (1.0.130)
+- `MessageKindFilter` (in `MessageKindFilter.swift`) is a Codable
+  struct of nine bool toggles — info, error, motd, notice, join, part,
+  quit, nickChange, topic. `includes(_:ChatLine.Kind)` is the gate
+  the buffer renderer consults; PRIVMSG / ACTION / RAW always return
+  true regardless of the toggles (the popover footer warns about
+  this). Forward-compat decode treats every missing field as `true`
+  so a future add doesn't accidentally hide an existing kind.
+- `AppSettings` carries two persisted fields: `messageFilterDefaults`
+  (the app-wide baseline) and
+  `messageFiltersByBuffer: [String: MessageKindFilter]` (per-buffer
+  overrides keyed by `MessageKindFilter.key(networkSlug:bufferName:)`,
+  which lowercases the buffer name so case-only differences fold).
+  `SettingsStore` exposes `messageFilter(...)`, `setMessageFilter(...)`,
+  `clearMessageFilter(...)`, and `hasMessageFilterOverride(...)`.
+- `BufferView.renderedRows` filters `buffer.lines` through the
+  effective filter (override or defaults) before passing to the
+  membership-collapse pass — so a suppressed kind never makes it
+  into a summary row either. `BufferView.filterButton` is the
+  funnel icon next to the find button; it opens
+  `MessageFilterPopover`, where each `MessageKindToggle` case
+  renders one labeled `Toggle` bound through `toggle.get(from:)` /
+  `toggle.set(_:on:)` so adding a new kind in `MessageKindFilter` is
+  a one-line addition in `MessageKindToggle` that automatically
+  surfaces in both the popover and Setup → Behavior.
+- Setup → Behavior → "Default message filter" reuses the same
+  toggle iteration to edit the app-wide defaults, plus a "Clear
+  every per-buffer override" button that empties
+  `messageFiltersByBuffer` in one shot.
+
+### Sidebar item reorder + launch-time server-buffer purge (1.0.129)
+- Every sidebar `ForEach` is wired to `.onMove`, so the user can drag
+  individual rows within a section to reorder them. Per-section
+  routing:
+  - Networks → `ChatModel.moveConnection(from:to:)` (in-memory).
+  - Channels / Private queries →
+    `IRCConnection.moveBuffers(kind:from:to:)`. The per-kind reorder
+    is implemented on top of the shared
+    `Array.moveFiltered(from:to:where:)` helper: it pulls the
+    predicate-matching subset out in order, runs standard
+    `Array.move(fromOffsets:toOffset:)`, and writes the values back
+    to the same underlying indices — so reordering channels never
+    disturbs query / server positions.
+  - Saved channels → `SettingsStore.moveSavedChannels(from:to:
+    selectedServerID:)`. The same `moveFiltered` helper scopes the
+    move to the visible (current-server-or-nil) subset.
+  - Contacts → `SettingsStore.moveAddressBook(from:to:)`.
+- The earlier 1.0.128 section-header reorder (and its
+  `SidebarSection` enum + persisted `sidebarSectionOrder`) was removed
+  in 1.0.129 — it answered the wrong axis. Section order is back to
+  the hard-coded Networks / Channels / Private / Saved / Contacts.
 - `ChatModel.purgeServerBuffersOnLaunch` runs once at boot (right after
   the launch-time log purge) and walks every `IRCConnection`, calling
   the new `purgeServerBuffer()` to drop the per-network `*server*`

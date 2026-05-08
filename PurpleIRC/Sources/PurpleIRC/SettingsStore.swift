@@ -1,5 +1,28 @@
 import Foundation
 
+extension Array {
+    /// Reorder the subset of elements matching `predicate`, leaving every
+    /// non-matching element at its original underlying index. `source` and
+    /// `destination` are expressed in *filtered* coordinates (i.e. as a
+    /// `ForEach` operating on `self.filter(predicate)` would supply them).
+    ///
+    /// The implementation pulls the filtered subset out in order, applies
+    /// the standard `Array.move(fromOffsets:toOffset:)`, then writes the
+    /// reordered values back into the same set of underlying indices —
+    /// so reordering, say, channel buffers doesn't disturb the position
+    /// of query / server buffers in the underlying mixed-kind array.
+    mutating func moveFiltered(from source: IndexSet, to destination: Int,
+                               where predicate: (Element) -> Bool) {
+        let filteredIndices = self.indices.filter { predicate(self[$0]) }
+        guard !filteredIndices.isEmpty else { return }
+        var filteredItems = filteredIndices.map { self[$0] }
+        filteredItems.move(fromOffsets: source, toOffset: destination)
+        for (i, underlyingIdx) in filteredIndices.enumerated() {
+            self[underlyingIdx] = filteredItems[i]
+        }
+    }
+}
+
 enum SASLMechanism: String, Codable, CaseIterable, Identifiable {
     case none = "NONE"
     case plain = "PLAIN"
@@ -11,49 +34,6 @@ enum SASLMechanism: String, Codable, CaseIterable, Identifiable {
         case .plain: return "PLAIN (account + password)"
         case .external: return "EXTERNAL (client cert)"
         }
-    }
-}
-
-/// User-orderable groups in the sidebar List. Stored in `AppSettings`
-/// so the order persists across launches and survives forward-compat
-/// schema changes (unknown raw values are filtered out at decode time
-/// and missing cases are appended in `defaultOrder` order).
-enum SidebarSection: String, Codable, CaseIterable, Identifiable, Hashable {
-    case networks
-    case channels
-    case privateBuffers = "private"
-    case saved
-    case contacts
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .networks:       return "Networks"
-        case .channels:       return "Channels"
-        case .privateBuffers: return "Private"
-        case .saved:          return "Saved"
-        case .contacts:       return "Contacts"
-        }
-    }
-
-    static let defaultOrder: [SidebarSection] = [
-        .networks, .channels, .privateBuffers, .saved, .contacts
-    ]
-
-    /// Drop unknown/duplicate entries and append any sections the saved
-    /// order is missing. Keeps the list stable when we add a new section
-    /// in a later release without forcing the user back to defaults.
-    static func normalize(_ order: [SidebarSection]) -> [SidebarSection] {
-        var seen = Set<SidebarSection>()
-        var result: [SidebarSection] = []
-        for s in order where seen.insert(s).inserted {
-            result.append(s)
-        }
-        for s in defaultOrder where !seen.contains(s) {
-            result.append(s)
-        }
-        return result
     }
 }
 
@@ -698,11 +678,17 @@ struct AppSettings: Codable {
     /// replacement.
     var requireBiometricsOnLaunch: Bool = false
 
-    /// Top-to-bottom order of the sidebar's section groups. Re-orderable via
-    /// drag-and-drop on the section headers; persisted here so the layout
-    /// survives relaunches. Read through `SidebarSection.normalize` before
-    /// rendering so a missing or duplicated entry can't blank a group.
-    var sidebarSectionOrder: [SidebarSection] = SidebarSection.defaultOrder
+    /// App-wide defaults for which `ChatLine.Kind` cases render. New
+    /// channel buffers inherit this set; the Setup → Behavior tab edits
+    /// it. Default is "show everything" — a sensible IRC baseline that
+    /// nobody is surprised by.
+    var messageFilterDefaults: MessageKindFilter = MessageKindFilter()
+
+    /// Per-buffer overrides keyed by `<network-slug>/<buffer-name-lower>`.
+    /// Absence of an entry means "use defaults"; the buffer's filter
+    /// popover writes here on edit and exposes a "Reset to defaults"
+    /// action that just removes the entry.
+    var messageFiltersByBuffer: [String: MessageKindFilter] = [:]
 
     init() {}
 
@@ -765,11 +751,10 @@ struct AppSettings: Codable {
         self.quitConfirmationEnabled = try c.decodeIfPresent(Bool.self, forKey: .quitConfirmationEnabled) ?? true
         self.identities = try c.decodeIfPresent([Identity].self, forKey: .identities) ?? []
         self.requireBiometricsOnLaunch = try c.decodeIfPresent(Bool.self, forKey: .requireBiometricsOnLaunch) ?? false
-        // Decode as raw strings so a future case the user has saved doesn't
-        // throw the whole settings load. Unknown values silently drop.
-        let savedRaw = try c.decodeIfPresent([String].self, forKey: .sidebarSectionOrder) ?? []
-        let saved = savedRaw.compactMap { SidebarSection(rawValue: $0) }
-        self.sidebarSectionOrder = SidebarSection.normalize(saved)
+        self.messageFilterDefaults = try c.decodeIfPresent(MessageKindFilter.self, forKey: .messageFilterDefaults)
+            ?? MessageKindFilter()
+        self.messageFiltersByBuffer = try c.decodeIfPresent([String: MessageKindFilter].self, forKey: .messageFiltersByBuffer)
+            ?? [:]
     }
 }
 
@@ -1124,25 +1109,61 @@ final class SettingsStore: ObservableObject {
         }
     }
 
-    // MARK: - Sidebar section ordering
+    // MARK: - Sidebar item reordering
 
-    /// Reorder the sidebar section list by inserting `dragged` immediately
-    /// before `target`. No-op when `dragged == target`. Always rewrites
-    /// through `normalize` so the saved list stays well-formed.
-    func moveSidebarSection(_ dragged: SidebarSection, before target: SidebarSection) {
-        guard dragged != target else { return }
-        var order = SidebarSection.normalize(settings.sidebarSectionOrder)
-        order.removeAll { $0 == dragged }
-        if let i = order.firstIndex(of: target) {
-            order.insert(dragged, at: i)
-        } else {
-            order.append(dragged)
-        }
-        settings.sidebarSectionOrder = SidebarSection.normalize(order)
+    /// Reorder the address book in place. The list is presented as the
+    /// "Contacts" sidebar section; mutation persists through the standard
+    /// `didSet → save()` path on `settings`.
+    func moveAddressBook(from source: IndexSet, to destination: Int) {
+        var book = settings.addressBook
+        book.move(fromOffsets: source, toOffset: destination)
+        settings.addressBook = book
     }
 
-    /// Restore the factory order of sidebar sections.
-    func resetSidebarSectionOrder() {
-        settings.sidebarSectionOrder = SidebarSection.defaultOrder
+    /// Reorder saved channels visible under the current server filter. The
+    /// "Saved" sidebar shows channels with `serverID == nil` (universal) or
+    /// `serverID == selectedServerID`; we translate filtered indices back
+    /// to the underlying `savedChannels` array so channels saved under a
+    /// different server stay where they were.
+    func moveSavedChannels(from source: IndexSet, to destination: Int,
+                           selectedServerID: UUID?) {
+        var channels = settings.savedChannels
+        channels.moveFiltered(from: source, to: destination) { ch in
+            ch.serverID == nil || ch.serverID == selectedServerID
+        }
+        settings.savedChannels = channels
+    }
+
+    // MARK: - Message-kind filter
+
+    /// Effective filter for a given buffer: the per-buffer override if
+    /// present, otherwise the app-wide defaults. Read-mostly path —
+    /// called once per `BufferView.renderedRows` recomputation.
+    func messageFilter(networkSlug: String, bufferName: String) -> MessageKindFilter {
+        let key = MessageKindFilter.key(networkSlug: networkSlug, bufferName: bufferName)
+        return settings.messageFiltersByBuffer[key] ?? settings.messageFilterDefaults
+    }
+
+    /// Persist a per-buffer filter override. Called from the header
+    /// popover whenever the user toggles a checkbox.
+    func setMessageFilter(_ filter: MessageKindFilter,
+                          networkSlug: String, bufferName: String) {
+        let key = MessageKindFilter.key(networkSlug: networkSlug, bufferName: bufferName)
+        settings.messageFiltersByBuffer[key] = filter
+    }
+
+    /// Drop the per-buffer override so the buffer falls back to the
+    /// app-wide defaults again. Wired to "Reset to defaults" in the
+    /// header popover.
+    func clearMessageFilter(networkSlug: String, bufferName: String) {
+        let key = MessageKindFilter.key(networkSlug: networkSlug, bufferName: bufferName)
+        settings.messageFiltersByBuffer.removeValue(forKey: key)
+    }
+
+    /// True when an override exists for this buffer. Drives the "this is
+    /// custom" badge on the filter button.
+    func hasMessageFilterOverride(networkSlug: String, bufferName: String) -> Bool {
+        let key = MessageKindFilter.key(networkSlug: networkSlug, bufferName: bufferName)
+        return settings.messageFiltersByBuffer[key] != nil
     }
 }

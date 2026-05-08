@@ -23,6 +23,11 @@ struct BufferView: View {
     @State private var editingTopic: Bool = false
     @State private var topicDraft: String = ""
 
+    /// Drives the message-kind filter popover anchored to the funnel
+    /// button in the header. Per-buffer; closes when the user picks a
+    /// different buffer or clicks elsewhere.
+    @State private var showingFilterPopover: Bool = false
+
     // Slash-command picker state.
     @State private var commandSuggestionIndex: Int = 0
     /// Input string at the moment the user pressed Esc — keeps the picker
@@ -80,14 +85,33 @@ struct BufferView: View {
         }
     }
 
+    /// Effective message-kind filter for the active buffer — per-buffer
+    /// override if one's set, else `AppSettings.messageFilterDefaults`.
+    /// Recomputed every body pass so a user toggle in the popover takes
+    /// effect immediately.
+    private var effectiveFilter: MessageKindFilter {
+        guard let conn = model.activeConnection else {
+            return model.settings.settings.messageFilterDefaults
+        }
+        return model.settings.messageFilter(
+            networkSlug: SeenStore.slug(for: conn.displayName),
+            bufferName: buffer.name)
+    }
+
     /// Walk `buffer.lines` once, coalescing runs of join/part/quit/nick into
     /// a single summary entry. The grouping resets when (a) a non-membership
     /// line breaks the run, (b) the user setting is off, or (c) only one
     /// membership line is in the run (rendering a summary for one event is
     /// noisy). A 5-minute window prevents two unrelated batches separated by
     /// hours of silence from being lumped together.
+    ///
+    /// Lines whose kind is filtered out (per the buffer's
+    /// `MessageKindFilter`) are skipped before either grouping or
+    /// emission, so the user sees neither the raw row nor a summary
+    /// containing only suppressed kinds.
     private var renderedRows: [RenderedRow] {
-        let lines = buffer.lines
+        let filter = effectiveFilter
+        let lines = buffer.lines.filter { filter.includes($0.kind) }
         guard model.settings.settings.collapseJoinPart else {
             return lines.map { .line($0) }
         }
@@ -235,6 +259,7 @@ struct BufferView: View {
                 }
             }
             Spacer()
+            filterButton
             Button(action: toggleFind) {
                 Image(systemName: "magnifyingglass")
             }
@@ -250,6 +275,31 @@ struct BufferView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    /// Funnel button that opens the per-buffer message-kind filter
+    /// popover. The icon switches to `line.3.horizontal.decrease.circle.fill`
+    /// when this buffer has its own override, so the user can see at a
+    /// glance whether they're looking at customized rendering.
+    @ViewBuilder
+    private var filterButton: some View {
+        let networkSlug = model.activeConnection.map { SeenStore.slug(for: $0.displayName) } ?? ""
+        let isOverridden = model.settings.hasMessageFilterOverride(
+            networkSlug: networkSlug, bufferName: buffer.name)
+        Button(action: { showingFilterPopover.toggle() }) {
+            Image(systemName: isOverridden
+                  ? "line.3.horizontal.decrease.circle.fill"
+                  : "line.3.horizontal.decrease.circle")
+                .foregroundStyle(isOverridden ? Color.accentColor : Color.secondary)
+        }
+        .buttonStyle(.borderless)
+        .help(isOverridden
+              ? "Filter messages (this buffer has a custom filter)"
+              : "Filter messages")
+        .popover(isPresented: $showingFilterPopover, arrowEdge: .bottom) {
+            MessageFilterPopover(networkSlug: networkSlug, bufferName: buffer.name)
+                .environmentObject(model)
+        }
     }
 
     private func beginTopicEdit() {
@@ -1486,5 +1536,94 @@ private struct BufferViewObservers: ViewModifier {
                 consumeClearRequest()
                 model.clearBufferRequest = nil
             }
+    }
+}
+
+/// Per-buffer message-kind filter popover. Anchored to the funnel button
+/// in the buffer header. Edits flow into
+/// `AppSettings.messageFiltersByBuffer`; "Use defaults" wipes the
+/// override; "Save as default" promotes the current toggles into
+/// `messageFilterDefaults` so other buffers without overrides pick them
+/// up immediately.
+struct MessageFilterPopover: View {
+    let networkSlug: String
+    let bufferName: String
+    @EnvironmentObject var model: ChatModel
+
+    private var hasOverride: Bool {
+        model.settings.hasMessageFilterOverride(
+            networkSlug: networkSlug, bufferName: bufferName)
+    }
+
+    /// Filter currently in effect — either the override or defaults.
+    /// Each toggle writes back through a per-Toggle binding so a flip
+    /// always produces an override even when starting from defaults.
+    private var current: MessageKindFilter {
+        model.settings.messageFilter(
+            networkSlug: networkSlug, bufferName: bufferName)
+    }
+
+    private func binding(for toggle: MessageKindToggle) -> Binding<Bool> {
+        Binding(
+            get: { toggle.get(from: current) },
+            set: { newValue in
+                var next = current
+                toggle.set(newValue, on: &next)
+                model.settings.setMessageFilter(
+                    next, networkSlug: networkSlug, bufferName: bufferName)
+            }
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                    .foregroundStyle(.secondary)
+                Text("Show in this buffer")
+                    .font(.headline)
+                Spacer()
+                if hasOverride {
+                    Text("Custom")
+                        .font(.caption)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(Color.accentColor.opacity(0.2)))
+                        .foregroundStyle(Color.accentColor)
+                } else {
+                    Text("Defaults")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Divider()
+            ForEach(MessageKindToggle.allCases) { toggle in
+                Toggle(isOn: binding(for: toggle)) {
+                    Text(toggle.label)
+                }
+                .toggleStyle(.checkbox)
+                .help(toggle.help)
+            }
+            Divider()
+            HStack {
+                Button("Use defaults") {
+                    model.settings.clearMessageFilter(
+                        networkSlug: networkSlug, bufferName: bufferName)
+                }
+                .disabled(!hasOverride)
+                .help("Drop this buffer's override and follow the app-wide defaults again")
+                Spacer()
+                Button("Save as default") {
+                    model.settings.settings.messageFilterDefaults = current
+                }
+                .help("Promote this buffer's current toggles into the app-wide defaults")
+            }
+            Text("PRIVMSG and ACTION lines always render — toggling them off is a footgun.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(width: 300)
     }
 }

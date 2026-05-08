@@ -1932,6 +1932,17 @@ final class IRCConnection: ObservableObject, Identifiable {
         return buf.id
     }
 
+    /// Reorder the buffers of a given kind (channels or queries) in place.
+    /// `source` / `destination` are indices into the *filtered* view that
+    /// the sidebar shows, so reordering channels doesn't disturb queries
+    /// or the server-console row, and vice versa. Called from the sidebar's
+    /// `.onMove` drag handler.
+    func moveBuffers(kind: Buffer.Kind, from source: IndexSet, to destination: Int) {
+        var next = buffers
+        next.moveFiltered(from: source, to: destination) { $0.kind == kind }
+        buffers = next
+    }
+
     /// Drop the per-network `*server*` console buffer. Called at app launch
     /// so the Private section starts clean every session — the buffer is
     /// re-created on demand the first time something needs to log to it.

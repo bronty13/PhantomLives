@@ -520,6 +520,15 @@ final class ChatModel: ObservableObject {
         }
     }
 
+    /// Reorder the live connections list. Drives the `.onMove` handler on
+    /// the Networks sidebar section so the user can rearrange networks
+    /// when more than one is connected. The change is in-memory only —
+    /// at next launch the seed connection comes from the selected profile
+    /// in `settings.servers` again — but it persists for the session.
+    func moveConnection(from source: IndexSet, to destination: Int) {
+        connections.move(fromOffsets: source, toOffset: destination)
+    }
+
     @discardableResult
     private func addConnection(for profile: ServerProfile) -> IRCConnection {
         let conn = IRCConnection(profile: profile, watchlist: watchlist)
