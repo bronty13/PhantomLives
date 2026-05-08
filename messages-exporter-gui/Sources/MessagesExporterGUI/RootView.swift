@@ -29,6 +29,7 @@ enum SettingsKeys {
 
 struct RootView: View {
     @EnvironmentObject private var runner: ExportRunner
+    @EnvironmentObject private var presets: PresetStore
 
     @State private var contact = ""
     @State private var start: Date = Self.todayAtStartOfDay()
@@ -37,6 +38,7 @@ struct RootView: View {
     @State private var showInstallSheet  = false
     @State private var showFDASheet      = false
     @State private var showCancelConfirm = false
+    @State private var showSavePreset    = false
 
     @AppStorage(SettingsKeys.outputDir) private var outputDirPath: String = defaultOutputDir().path
     @AppStorage(SettingsKeys.transcribeOn) private var transcribeEnabled: Bool = false
@@ -57,7 +59,11 @@ struct RootView: View {
                     .ignoresSafeArea()
 
                 HStack(spacing: 0) {
-                    Sidebar(showFDASheet: $showFDASheet)
+                    Sidebar(
+                        showFDASheet: $showFDASheet,
+                        applyRecent: applyRecent,
+                        applyPreset: applyPreset
+                    )
                     main(theme)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
@@ -68,6 +74,19 @@ struct RootView: View {
             }
             .sheet(isPresented: $showFDASheet) {
                 FullDiskAccessSheet(showSheet: $showFDASheet)
+            }
+            .sheet(isPresented: $showSavePreset) {
+                SavePresetSheet(
+                    isPresented: $showSavePreset,
+                    contact: contact.trimmingCharacters(in: .whitespacesAndNewlines),
+                    start: start,
+                    end: end,
+                    mode: mode,
+                    transcribe: transcribeEnabled,
+                    transcribeModel: WhisperModel(rawValue: transcribeModelRaw) ?? .turbo,
+                    emoji: EmojiMode(rawValue: emojiRaw) ?? .word
+                )
+                .environmentObject(presets)
             }
             .task {
                 if runner.fdaStatus == .unknown {
@@ -160,9 +179,10 @@ struct RootView: View {
                 }
                 .help("Appearance: \(themePreference.label). Click to cycle Auto → Light → Dark.")
                 ChipButton(label: "Save preset", icon: "star",
-                           disabled: true,
-                           action: { /* coming soon */ })
-                    .help("Saved presets ship in a later release.")
+                           disabled: contact.trimmingCharacters(in: .whitespaces).isEmpty) {
+                    showSavePreset = true
+                }
+                    .help("Save the current Contact + range + Mode + Transcribe + Emoji as a named preset.")
                 ChipButton(label: "Reveal output", icon: "folder",
                            disabled: runner.runFolder == nil
                                   && !FileManager.default.fileExists(atPath: outputDirPath)) {
@@ -199,6 +219,31 @@ struct RootView: View {
 
     private static func todayAtStartOfDay() -> Date {
         Calendar.current.startOfDay(for: Date())
+    }
+
+    /// Sidebar callback: load a past run's settings back into the form.
+    /// Dates default to "today 00:00 → now" if the entry didn't capture
+    /// them (open-ended range exports).
+    private func applyRecent(_ entry: RunHistoryEntry) {
+        contact = entry.contact
+        start = entry.start ?? Self.todayAtStartOfDay()
+        end   = entry.end ?? Date()
+        mode  = entry.mode
+        transcribeEnabled  = entry.transcribe
+        transcribeModelRaw = entry.transcribeModel.rawValue
+        emojiRaw           = entry.emoji.rawValue
+    }
+
+    /// Sidebar callback: apply a saved preset onto the form. Same shape
+    /// as `applyRecent` — different source.
+    private func applyPreset(_ preset: ExportPreset) {
+        contact = preset.contact
+        start = preset.start ?? Self.todayAtStartOfDay()
+        end   = preset.end ?? Date()
+        mode  = preset.mode
+        transcribeEnabled  = preset.transcribe
+        transcribeModelRaw = preset.transcribeModel.rawValue
+        emojiRaw           = preset.emoji.rawValue
     }
 }
 
@@ -659,8 +704,11 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            Section("Backup") {
+                BackupSettingsView()
+            }
         }
         .formStyle(.grouped)
-        .frame(width: 560, height: 520)
+        .frame(width: 600, height: 720)
     }
 }

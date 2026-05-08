@@ -2,6 +2,54 @@
 
 All notable changes to messages-exporter-gui will be documented in this file.
 
+## [1.0.14] — 2026-05-08
+
+### Added
+- **Run history** — every successful or failed export is recorded in
+  `~/Library/Application Support/MessagesExporterGUI/runs.json`. The
+  sidebar's **Recent runs** list shows the most recent five with a
+  status dot (green = success, amber = failed/cancelled), the
+  contact-and-span title, and a relative time. Clicking a row applies
+  the recorded contact + range + Mode + Transcribe + Emoji onto the
+  form. New `RunHistoryStore` (`Services/RunHistoryStore.swift`)
+  caps history at 50 entries and trims at write time.
+- **Saved presets** — the header **☆ Save preset** chip is now
+  functional: it opens a sheet that names the current configuration
+  and persists it to `presets.json`. The sidebar's **Saved presets**
+  list shows every preset with a one-line summary; click to apply,
+  right-click to delete. New `PresetStore`
+  (`Services/PresetStore.swift`) and `Views/SavePresetSheet.swift`.
+- **Launch-time auto-backup** per `PhantomLives/CLAUDE.md`. New
+  `Services/BackupService.swift` zips
+  `~/Library/Application Support/MessagesExporterGUI/` to
+  `~/Downloads/MessagesExporterGUI backup/MessagesExporterGUI-<stamp>.zip`
+  on every launch. 14-day retention default (`0` = keep forever),
+  5-minute debounce, NSLog-on-failure (never crashes launch). Override
+  any field in **Settings → Backup**.
+- **Settings → Backup** section. Toggle, target-folder picker,
+  retention stepper, **Run backup now** button, and a recent-backups
+  list with **Test** (verify counts), **Restore** (with mandatory
+  pre-restore safety backup), and **Reveal** actions per row.
+  `Views/BackupSettingsView.swift`.
+- **15 new tests** covering the stores and backup service:
+  `RunHistoryStore` ordering / trim / persistence / delete / clear,
+  `PresetStore` upsert / replace-in-place / rename / persistence,
+  and the four CLAUDE.md-mandated backup tests (target auto-create,
+  retention prefix-scoping, retention=0 keeps-forever, list ordering,
+  debounce). 50 tests total in 8 suites.
+
+### Changed
+- **Sidebar reorganised** — drops the "Soon" pills now that Recent
+  runs and Saved presets are real. Empty-state hints replace the
+  placeholder copy when either list is empty (e.g. fresh install).
+- **`ExportRunner.init`** now takes an optional `RunHistoryStore`;
+  callers default to a real on-disk store. Each call to `run(_:)`
+  appends a `RunHistoryEntry` to the store on completion regardless
+  of outcome — the sidebar surfaces failures so you can re-try with
+  adjusted settings without re-typing.
+- **`ExportMode` / `EmojiMode` / `WhisperModel`** now conform to
+  `Codable` so they can round-trip through the JSON stores.
+
 ## [1.0.13] — 2026-05-08
 
 ### Changed

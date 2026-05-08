@@ -89,7 +89,26 @@ final class ExportRunner: ObservableObject {
     /// folder for a byte total. Drives the four Mission Control stat tiles.
     @Published private(set) var runStats: RunStats = .empty
 
+    /// Persistent run-history sink. Injected so tests can use a
+    /// throw-away store. The `run(_:)` entry point appends a row here on
+    /// every completed run (success or failure) so the sidebar stays up
+    /// to date without each call site having to do it.
+    let history: RunHistoryStore
+
     private var runningProcess: Process?
+    /// Snapshot of the request currently in flight, retained so we can
+    /// build the RunHistoryEntry at completion without forcing every
+    /// caller to thread it through.
+    private var inflightRequest: ExportRequest?
+
+    init(history: RunHistoryStore? = nil) {
+        // Default to a real on-disk store. We construct it inside the
+        // body so the default-argument expression isn't evaluated in a
+        // nonisolated context (Swift 6 strict concurrency rejects that
+        // even though both types are @MainActor — the rule is about
+        // where the *default expression* is evaluated, not the type).
+        self.history = history ?? RunHistoryStore()
+    }
 
     /// Resolved path to the installed CLI. Computed once — if the user
     /// installs after launching the app, hit "Run" again and it'll be
@@ -256,6 +275,7 @@ final class ExportRunner: ObservableObject {
         runStats = RunStats()
         runStats.spanStart = request.start
         runStats.spanEnd   = request.end
+        inflightRequest = request
 
         appendLine("$ \(Self.cliPath) \(request.argumentList().joined(separator: " "))")
 
@@ -286,6 +306,11 @@ final class ExportRunner: ObservableObject {
             }
             runStats.outputBytes = RunStats.computeOutputBytes(folder: folder)
         }
+        // Record this run in the persistent history regardless of
+        // outcome — failures are useful breadcrumbs in the sidebar
+        // ("oh, that's why I tried it again with a wider date range").
+        recordHistoryEntry(success: ok)
+
         if ok && runFolder == nil {
             lastError = "Export finished with no output folder — likely no contact match or no messages in range."
         } else if !ok {
@@ -307,6 +332,30 @@ final class ExportRunner: ObservableObject {
                 lastError = "export_messages exited with status \(lastExitStatus ?? -1)."
             }
         }
+    }
+
+    /// Build a `RunHistoryEntry` from the snapshot of the request that
+    /// kicked off the current run plus whatever stats we've collected,
+    /// and append it to `history`. Called once per `run(_:)` invocation.
+    private func recordHistoryEntry(success: Bool) {
+        guard let req = inflightRequest else { return }
+        let entry = RunHistoryEntry(
+            contact: req.contact,
+            start: req.start,
+            end: req.end,
+            mode: req.mode,
+            transcribe: req.transcribe,
+            transcribeModel: req.transcribeModel,
+            emoji: req.emoji,
+            completedAt: Date(),
+            runFolderPath: runFolder?.path,
+            messageCount: runStats.messageCount,
+            attachmentCount: runStats.attachmentCount,
+            outputBytes: runStats.outputBytes,
+            exitOK: success && runFolder != nil
+        )
+        history.record(entry)
+        inflightRequest = nil
     }
 
     /// Terminate the running export. No-op if nothing is running.

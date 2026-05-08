@@ -1,6 +1,6 @@
 # messages-exporter-gui
 
-**Current release: 1.0.13**
+**Current release: 1.0.14**
 
 Native macOS SwiftUI front end for the [`messages-exporter`](../messages-exporter/) CLI. The 1.0.13 *Mission Control* redesign adopts a sidebar + main pane layout with a tinted gradient background, frosted-glass surfaces, and an oklch-derived blue accent. The main pane provides a contact text field, native date/time pickers, a four-tile run summary (Messages · Attachments · Span · Output size), a **Sanitized | Raw (forensic)** mode picker, an opt-in **Whisper transcription** of audio/video attachments via the sibling [`transcribe`](../transcribe/) project, a Full Disk Access preflight that detects missing permission on launch and offers to clean up stale TCC entries, and one-click chip buttons to open the resulting transcript / summary / manifest / metadata / chain-of-custody log or reveal the output folder.
 
@@ -50,23 +50,31 @@ The GUI is a thin wrapper: it formats arguments, spawns `~/.local/bin/export_mes
 
 ```
 Sources/MessagesExporterGUI/
-├── App.swift                    @main, WindowGroup + Settings, hidden title bar
+├── App.swift                    @main, WindowGroup + Settings, hidden title bar,
+│                                launch-time auto-backup
 ├── RootView.swift               Sidebar+main layout, FormCard, FDA banner+sheet,
-│                                Install sheet, SettingsView (Output, Emoji,
-│                                Whisper, Diagnostics)
+│                                Install sheet, SettingsView (Appearance,
+│                                Output, Emoji, Whisper, Diagnostics, Backup)
 ├── Theme/
 │   └── MissionTheme.swift       Light/dark color tokens, typography helpers,
-│                                GlassCard surface
+│                                GlassCard surface, ThemePreference
 ├── Model/
-│   ├── ExportRequest.swift      Argv builder
-│   ├── ExportRunner.swift       Process spawn + stdout streaming
+│   ├── ExportRequest.swift      Argv builder + Codable enums
+│   ├── ExportRunner.swift       Process spawn + stdout streaming, history sink
 │   └── RunStats.swift           Mid-stream + post-run stat parsing
-│                                (drives the four stat tiles)
+├── Services/
+│   ├── AppSupport.swift         ~/Library/Application Support paths,
+│   │                            short relative-time formatter
+│   ├── RunHistoryStore.swift    JSON-backed run history (max 50 entries)
+│   ├── PresetStore.swift        JSON-backed named presets
+│   └── BackupService.swift      Launch-time auto-backup, retention, restore
 └── Views/
-    ├── Sidebar.swift            Frosted nav + FDA pill
+    ├── Sidebar.swift            Recent runs + Saved presets + FDA pill
     ├── StatTiles.swift          Messages / Attachments / Span / Output size
     ├── RunStrip.swift           Blue gradient run+progress strip
-    └── LiveOutputCard.swift     Stdout card + ChipButton + FlowChips action row
+    ├── LiveOutputCard.swift     Stdout card + ChipButton + FlowChips
+    ├── SavePresetSheet.swift    Name + summary, persisted to PresetStore
+    └── BackupSettingsView.swift Toggle / path / retention / run-now / list
 ```
 
 See [HANDOFF.md](HANDOFF.md) for a deeper architecture snapshot.

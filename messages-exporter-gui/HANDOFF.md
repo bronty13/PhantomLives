@@ -1,7 +1,7 @@
 # messages-exporter-gui — Handoff
 
 Snapshot of where the project stands so a future session (human or AI) can pick up without re-deriving everything from the commit history.
-Last updated: 2026-05-08 (v1.0.13 — Mission Control redesign).
+Last updated: 2026-05-08 (v1.0.14 — run history, presets, auto-backup).
 
 ## What it is
 
@@ -32,6 +32,12 @@ The 1.0.13 *Mission Control* redesign reorganises the view layer into a sidebar 
 - `Views/StatTiles.swift` — four `GlassCard` tiles (Messages · Attachments · Span · Output size). Reads `runner.runStats`; takes pendingStart/End so the Span tile updates live as the user picks dates before any run.
 - `Views/RunStrip.swift` — blue-gradient run strip with inline white Run/Cancel button, stage caption, kbd hint (⌘⏎), and `ContinuousProgressBar` (smooth fill driven by `stage / 5`, with an indeterminate shimmer for stage 0). Replaces the old 5-segment `ProgressBar`.
 - `Views/LiveOutputCard.swift` — frosted card containing the stdout log + post-run actions. `ChipButton` is the reusable pill button used across the redesign (header chips, Copy/Open log, Reveal/Transcript/etc.). `FlowChips`/`FlowLayout` line-break the action row when the card is narrower than the chip total. Replaces the old `LogPane`.
+- `Services/AppSupport.swift` — single source of truth for `~/Library/Application Support/MessagesExporterGUI/` paths (`directory`, `runHistoryURL`, `presetsURL`); created on demand. Also `RelativeTime.short(_:)` for the sidebar's "now / 4h ago / yesterday / Apr 21" rendering.
+- `Services/RunHistoryStore.swift` — `@MainActor` `ObservableObject` over a JSON file. `record(entry)` inserts at index 0 and trims to `maxEntries` (50). The runner appends here on every `run(_:)` regardless of outcome — failures are useful breadcrumbs. Sidebar reads `entries.prefix(5)`.
+- `Services/PresetStore.swift` — `@MainActor` `ObservableObject` for named export configurations. `upsert(_:)` replaces in place when a preset with the same id exists (used by `Save preset` re-saves) and appends otherwise. Stored snapshot semantics — applying a preset later restores the dates that were on the form at save time, not a relative range.
+- `Services/BackupService.swift` — launch-time auto-backup per `PhantomLives/CLAUDE.md`. `runOnLaunchIfDue()` is called from `MessagesExporterGUIApp.init` before any UI; reads `autoBackupEnabled` / `backupPath` / `backupRetentionDays` / `lastBackupAt` from `UserDefaults`. 5-minute debounce, 14-day retention default, NSLog on failure (never throws). Verify-before-restore is non-destructive: extracts to a temp dir and counts JSON entries before any destructive action. Pre-restore writes a safety backup so the user can always undo.
+- `Views/SavePresetSheet.swift` — modal that snapshots the current Contact / range / Mode / Transcribe (+ model) / Emoji and persists to `PresetStore`. Empty/whitespace names are rejected.
+- `Views/BackupSettingsView.swift` — `Settings → Backup` content. Toggle + path picker + retention stepper + Run-now button + list of recent archives with Test (verify) / Restore (with safety pre-backup) / Reveal actions. Read-only `lastBackupAt` caption.
 
 ### Contract with the CLI
 

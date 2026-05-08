@@ -36,6 +36,14 @@ The Mission Control redesign (1.0.13+) splits the window into a frosted-glass si
 └──────────────────┴────────────────────────────────────────────────────────────┘
 ```
 
+## Sidebar
+
+The left sidebar carries three slots:
+
+- **Recent runs** — every successful or failed export is recorded automatically. The five most recent show here with a status dot (green = success, amber = failed/cancelled), the contact-and-span title, and a relative timestamp. **Click a row to apply** that run's contact + range + Mode + Transcribe + Emoji to the form — useful for "do that same export again with a wider date range." Stored at `~/Library/Application Support/MessagesExporterGUI/runs.json` (50-entry rolling cap).
+- **Saved presets** — named configurations you save with the **☆ Save preset** chip in the header. Click a preset to apply, right-click to delete. Stored at `~/Library/Application Support/MessagesExporterGUI/presets.json`.
+- **FDA pill** at the bottom: green when Full Disk Access is granted, amber + click-to-resolve when denied.
+
 ## Inputs
 
 ### Output folder
@@ -169,6 +177,27 @@ This only affects filenames, not the transcript or manifest. Ignored in Raw (for
 ```
 
 See `messages-exporter/README.md` for the full filename rules and sanitization details.
+
+## Backup
+
+Per the PhantomLives convention, the app runs a **launch-time auto-backup** of the small JSON stores under `~/Library/Application Support/MessagesExporterGUI/` (run history + presets). This is *not* a backup of your exports — those already sit in `~/Downloads/` and are big.
+
+- **Location**: `~/Downloads/MessagesExporterGUI backup/` (sibling of the regular output dir).
+- **Filename**: `MessagesExporterGUI-YYYY-MM-DD-HHmmss.zip`.
+- **Retention**: 14 days by default. `0` = keep forever. Trim only removes archives that match the `MessagesExporterGUI-` prefix; unrelated files in the folder are left alone.
+- **Debounce**: a launch within 5 minutes of the previous successful backup is a no-op. Prevents debugging-session relaunches from filling the folder.
+- **Failure mode**: NSLog only — the app must launch even if backup fails (volume unmounted, disk full, etc.).
+
+Override any setting under **Messages Exporter → Settings… → Backup** (⌘,):
+
+- **Auto-backup on launch** toggle (default on).
+- **Backup folder** — Choose / Reset to default.
+- **Retention** stepper — 0 to 365 days.
+- **Run backup now** button — useful before risky operations.
+- **Recent backups** list, with three actions per row:
+  - **Test** — extracts the archive to a temp directory, counts files, validates `runs.json` / `presets.json` parse cleanly. Non-destructive.
+  - **Restore** — replaces the current support directory contents with the unpacked archive. Always preceded by a safety pre-restore backup (so the running state is recoverable). Requires an app relaunch for the in-memory stores to reload.
+  - **Reveal** — Finder.
 
 ## Full Disk Access on launch
 
