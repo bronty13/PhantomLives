@@ -202,6 +202,46 @@ PurpleTracker follows the PhantomLives auto-backup-on-launch standard:
   Recent Backups list with Verify / Restore / Reveal.
 - **People** — import the ADP IMP UserFeed CSV, browse the roster, toggle
   auto-import on launch.
+- **Initiatives** — manage the strategic-initiative tag list.
+- **Goals** — manage the team/quarterly-goal tag list.
+
+---
+
+## Priority, Initiatives & Goals
+
+**Priority** is a fixed five-level pick:
+
+| Level | Color  |
+|------:|:-------|
+| P1 Critical | red    |
+| P2 High     | orange |
+| P3 Medium   | amber (default) |
+| P4 Low      | green  |
+| P5 Tech Debt | slate |
+
+It's shown as a prominent pill in the Matter detail header (next to the
+Status pill) and as a small `P#` badge on every list row. New Matters open
+at **P3 Medium**. Cadenced successors inherit the predecessor's priority.
+
+**Initiatives** are a configurable list of strategic initiatives a Matter
+can be tagged against. Defaults seeded on first run cover the team's
+current strategic themes (Meet all client commitments, Grow Originations
+ARR, Optimize operations, etc.). Manage the list under
+**Settings → Initiatives**.
+
+**Goals** are a parallel configurable list for team / quarterly goals
+(Checkmarx Onboarding, Optimize SentinelOne, etc.). Manage the list under
+**Settings → Goals**.
+
+Tag a Matter from the Overview tab using the **Tag** menus next to each
+section. Tags are many-to-many — a Matter can carry any number of
+Initiatives and Goals, and an Initiative or Goal can be applied to any
+number of Matters. Tags carry forward when a cadenced Matter spawns its
+successor, and are included in markdown / PDF / DOCX exports.
+
+---
+
+## Keyboard shortcuts
 
 ---
 
@@ -234,19 +274,6 @@ PurpleTracker keeps a local roster of company people sourced from the daily
   IP slot is populated. Search matches Requestor + IP names (resolved) and
   External IP free text.
 - Cadenced Matters carry every Requestor / IP slot forward to the successor.
-
----
-
-## Settings overview
-
----
-
-## Keyboard shortcuts
-
-- `⌘N` — new matter
-- `⌘C` (in the badge) — copy the Matter ID
-- `⌘F` — focus search in the sidebar
-- `⌘,` — open Settings
 
 ---
 

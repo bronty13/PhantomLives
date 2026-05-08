@@ -4,6 +4,48 @@ All notable changes to PurpleTracker are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] — Initiatives, Goals, Priority
+
+### Added
+- **Priority** — fixed five-level pick (P1 Critical, P2 High, P3 Medium,
+  P4 Low, P5 Tech Debt), prominently shown as a color-coded pill in the
+  Matter detail header and as a `P#` badge on every list row. New Matters
+  default to **P3 Medium**. Priority carries forward to the next instance
+  for cadenced Matters.
+- **Initiatives** — configurable many-to-many tagging. Manage the master
+  list under **Settings → Initiatives**. Tag any Matter with one or more
+  Initiatives from the Matter's Overview tab. Default seeds:
+  - Meet all client commitments
+  - Grow Originations ARR
+  - Optimize operations
+  - Develop plans for new sources of revenue
+  - Grow client base opportunistically
+  - Increase revenue per client
+  - Market expansion
+  - Acquisitions
+- **Goals** — configurable many-to-many tagging, parallel to Initiatives.
+  Manage under **Settings → Goals**. Default seeds:
+  - Checkmarx Onboarding
+  - Disaster Recovery Business Continuity Risk Goal
+  - Information Security Team Goal
+  - Mimecast Expansion
+  - Optimize Assurance
+  - Optimize SentinelOne
+  - Support All defi Initiatives
+- Markdown / PDF / DOCX exports now include the Matter's Priority,
+  Initiatives, and Goals.
+- Cadenced Matters carry their Priority and their Initiative + Goal tags
+  forward when spawning the next instance.
+
+### Schema (v4)
+- `matter` gains `priority TEXT NOT NULL DEFAULT 'P3 Medium'` plus an
+  `idx_matter_priority` index.
+- New tables `initiative(id, name, sort_order)` and
+  `goal(id, name, sort_order)`.
+- Join tables `matter_initiative(matter_id, initiative_id)` and
+  `matter_goal(matter_id, goal_id)` with composite PKs and `ON DELETE
+  CASCADE` from both sides.
+
 ## [1.1.0] — People, Interested Parties, app icon
 
 ### Added

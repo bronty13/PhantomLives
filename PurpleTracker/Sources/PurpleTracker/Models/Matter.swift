@@ -35,6 +35,7 @@ struct Matter: Codable, Hashable, Identifiable, FetchableRecord, MutablePersista
     var cadenceId: String?                  // FK cadence.id (nullable; only set for cadenced Matters)
     var parentMatterId: String?             // links a cadence-spawned Matter to its predecessor
     var requestorAssociateId: String        // FK person.id ("" = no requestor assigned)
+    var priority: String                    // MatterPriority.rawValue (e.g. "P3 Medium")
 
     // Interested Parties — internal company people (FK person.id, "" = unset).
     // Five fixed slots so we can address them with stable bindings in the UI.
@@ -75,6 +76,7 @@ struct Matter: Codable, Hashable, Identifiable, FetchableRecord, MutablePersista
         case cadenceId = "cadence_id"
         case parentMatterId = "parent_matter_id"
         case requestorAssociateId = "requestor_associate_id"
+        case priority
         case interestedParty1AssociateId = "interested_party1_associate_id"
         case interestedParty2AssociateId = "interested_party2_associate_id"
         case interestedParty3AssociateId = "interested_party3_associate_id"
@@ -114,6 +116,7 @@ struct Matter: Codable, Hashable, Identifiable, FetchableRecord, MutablePersista
             cadenceId: nil,
             parentMatterId: nil,
             requestorAssociateId: "",
+            priority: MatterPriority.defaultPriority.rawValue,
             interestedParty1AssociateId: "",
             interestedParty2AssociateId: "",
             interestedParty3AssociateId: "",

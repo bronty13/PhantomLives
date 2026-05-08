@@ -50,6 +50,7 @@ final class CadenceServiceTests: XCTestCase {
             cadenceId: "cad-q",
             parentMatterId: nil,
             requestorAssociateId: "",
+            priority: MatterPriority.p2High.rawValue,
             interestedParty1AssociateId: "AID-IP1", interestedParty2AssociateId: "",
             interestedParty3AssociateId: "", interestedParty4AssociateId: "",
             interestedParty5AssociateId: "",
@@ -75,6 +76,8 @@ final class CadenceServiceTests: XCTestCase {
                        "Interested parties should carry forward to the cadence successor")
         XCTAssertEqual(next.externalInterestedParty1, "Acme Corp",
                        "External interested parties should carry forward")
+        XCTAssertEqual(next.priority, MatterPriority.p2High.rawValue,
+                       "Priority should carry forward to the cadence successor")
         XCTAssertNotNil(next.dueAt)
     }
 }

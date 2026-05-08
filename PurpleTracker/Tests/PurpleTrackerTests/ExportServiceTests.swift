@@ -19,6 +19,7 @@ final class ExportServiceTests: XCTestCase {
             fileStorePrimary: "/tmp/p", fileStoreSecondary: "/tmp/s",
             cadenceId: nil, parentMatterId: nil,
             requestorAssociateId: "",
+            priority: MatterPriority.defaultPriority.rawValue,
             interestedParty1AssociateId: "", interestedParty2AssociateId: "",
             interestedParty3AssociateId: "", interestedParty4AssociateId: "",
             interestedParty5AssociateId: "",
@@ -47,6 +48,7 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertTrue(md.contains("**Matter ID:** `2026-05-07-00001`"))
         XCTAssertTrue(md.contains("**Type:** Client Request"))
         XCTAssertTrue(md.contains("**Status:** In-Progress"))
+        XCTAssertTrue(md.contains("**Priority:** P3 Medium"))
         XCTAssertTrue(md.contains("## Description"))
         XCTAssertTrue(md.contains("## Resolution"))
         XCTAssertTrue(md.contains("defi SUPPORT (SNOW)"))
@@ -77,5 +79,24 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertTrue(md.contains("Big Bank – auditor"),
                       "External IP 3 text must be exported")
         XCTAssertTrue(md.contains("**Status:**"))
+    }
+
+    @MainActor
+    func testMarkdownIncludesInitiativesAndGoals() {
+        var m = sampleMatter()
+        m.priority = MatterPriority.p1Critical.rawValue
+        let type = MatterType(id: "t1", name: "Client Request", colorHex: "#000",
+                              sortOrder: 0, isCadenced: false)
+        let inits = [Initiative(id: "i1", name: "Grow Originations ARR", sortOrder: 0)]
+        let goals = [Goal(id: "g1", name: "Optimize SentinelOne", sortOrder: 0)]
+        let md = ExportService.renderMarkdown(
+            matter: m, types: [type], notes: [], timeEntries: [], attachments: [],
+            settings: AppSettings(), initiatives: inits, goals: goals
+        )
+        XCTAssertTrue(md.contains("**Priority:** P1 Critical"))
+        XCTAssertTrue(md.contains("**Initiatives:**"))
+        XCTAssertTrue(md.contains("Grow Originations ARR"))
+        XCTAssertTrue(md.contains("**Goals:**"))
+        XCTAssertTrue(md.contains("Optimize SentinelOne"))
     }
 }

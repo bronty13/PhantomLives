@@ -38,6 +38,7 @@ enum CadenceService {
             cadenceId: previous.cadenceId,
             parentMatterId: previous.id,
             requestorAssociateId: previous.requestorAssociateId,
+            priority: previous.priority,
             interestedParty1AssociateId: previous.interestedParty1AssociateId,
             interestedParty2AssociateId: previous.interestedParty2AssociateId,
             interestedParty3AssociateId: previous.interestedParty3AssociateId,

@@ -10,7 +10,8 @@ final class MigrationTests: XCTestCase {
 
         try q.read { db in
             for table in ["matter_type","status_value","cadence","matter_id_counter",
-                          "matter","time_entry","note","attachment","person"] {
+                          "matter","time_entry","note","attachment","person",
+                          "initiative","goal","matter_initiative","matter_goal"] {
                 XCTAssertTrue(try db.tableExists(table), "Missing table: \(table)")
             }
         }
@@ -30,6 +31,20 @@ final class MigrationTests: XCTestCase {
                 XCTAssertTrue(cols.contains("external_interested_party\(i)"),
                               "Missing external_interested_party\(i)")
             }
+        }
+    }
+
+    /// v4 added `matter.priority` and the initiative/goal tables.
+    func testV4PriorityAndTagTables() throws {
+        let q = try DatabaseQueue()
+        try DatabaseService.applyMigrations(to: q)
+        try q.read { db in
+            let cols = try db.columns(in: "matter").map(\.name)
+            XCTAssertTrue(cols.contains("priority"))
+            XCTAssertTrue(try db.tableExists("initiative"))
+            XCTAssertTrue(try db.tableExists("goal"))
+            XCTAssertTrue(try db.tableExists("matter_initiative"))
+            XCTAssertTrue(try db.tableExists("matter_goal"))
         }
     }
 

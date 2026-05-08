@@ -44,8 +44,8 @@ enum ExportService {
         pb.setString(brief(m), forType: .string)
     }
 
-    static func copyMarkdown(_ m: Matter, types: [MatterType], notes: [Note], timeEntries: [TimeEntry], attachments: [Attachment], settings: AppSettings) {
-        let md = renderMarkdown(matter: m, types: types, notes: notes, timeEntries: timeEntries, attachments: attachments, settings: settings)
+    static func copyMarkdown(_ m: Matter, types: [MatterType], notes: [Note], timeEntries: [TimeEntry], attachments: [Attachment], settings: AppSettings, initiatives: [Initiative] = [], goals: [Goal] = []) {
+        let md = renderMarkdown(matter: m, types: types, notes: notes, timeEntries: timeEntries, attachments: attachments, settings: settings, initiatives: initiatives, goals: goals)
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(md, forType: .string)
@@ -53,7 +53,7 @@ enum ExportService {
 
     // MARK: - Markdown
 
-    static func renderMarkdown(matter m: Matter, types: [MatterType], notes: [Note], timeEntries: [TimeEntry], attachments: [Attachment], settings: AppSettings) -> String {
+    static func renderMarkdown(matter m: Matter, types: [MatterType], notes: [Note], timeEntries: [TimeEntry], attachments: [Attachment], settings: AppSettings, initiatives: [Initiative] = [], goals: [Goal] = []) -> String {
         let typeName = types.first { $0.id == m.typeId }?.name ?? "Unknown"
         let df = DateFormatter()
         df.dateStyle = .medium
@@ -61,6 +61,7 @@ enum ExportService {
 
         var out = "# \(m.title.isEmpty ? "(untitled)" : m.title)\n\n"
         out += "**Matter ID:** `\(m.id)`  \n"
+        out += "**Priority:** \(MatterPriority.parse(m.priority).rawValue)  \n"
         out += "**Type:** \(typeName)  \n"
         out += "**Status:** \(m.status)  \n"
         if !m.requestorAssociateId.isEmpty,
@@ -115,6 +116,19 @@ enum ExportService {
             out += externalIPs.joined(separator: "\n") + "\n"
         }
 
+        if !initiatives.isEmpty {
+            out += "- **Initiatives:**\n"
+            for (i, init_) in initiatives.enumerated() {
+                out += "  \(i + 1). \(init_.name)\n"
+            }
+        }
+        if !goals.isEmpty {
+            out += "- **Goals:**\n"
+            for (i, g) in goals.enumerated() {
+                out += "  \(i + 1). \(g.name)\n"
+            }
+        }
+
         if !m.descriptionMd.isEmpty { out += "\n## Description\n\n\(m.descriptionMd)\n" }
         if !m.notesMd.isEmpty       { out += "\n## Notes\n\n\(m.notesMd)\n" }
 
@@ -153,8 +167,8 @@ enum ExportService {
 
     /// Render the markdown into an attributed string and print it through
     /// AppKit to a PDF.
-    static func renderPDF(matter m: Matter, types: [MatterType], notes: [Note], timeEntries: [TimeEntry], attachments: [Attachment], settings: AppSettings, to url: URL) throws {
-        let md = renderMarkdown(matter: m, types: types, notes: notes, timeEntries: timeEntries, attachments: attachments, settings: settings)
+    static func renderPDF(matter m: Matter, types: [MatterType], notes: [Note], timeEntries: [TimeEntry], attachments: [Attachment], settings: AppSettings, initiatives: [Initiative] = [], goals: [Goal] = [], to url: URL) throws {
+        let md = renderMarkdown(matter: m, types: types, notes: notes, timeEntries: timeEntries, attachments: attachments, settings: settings, initiatives: initiatives, goals: goals)
         // Use AppKit's NSAttributedString markdown initializer (macOS 13+).
         var opts = AttributedString.MarkdownParsingOptions()
         opts.interpretedSyntax = .inlineOnlyPreservingWhitespace
@@ -196,8 +210,8 @@ enum ExportService {
     /// We escape XML chars and emit a paragraph per markdown line — this is
     /// not a full markdown-to-docx renderer, but it produces a Word-readable
     /// file that captures the report content.
-    static func renderDOCX(matter m: Matter, types: [MatterType], notes: [Note], timeEntries: [TimeEntry], attachments: [Attachment], settings: AppSettings, to url: URL) throws {
-        let md = renderMarkdown(matter: m, types: types, notes: notes, timeEntries: timeEntries, attachments: attachments, settings: settings)
+    static func renderDOCX(matter m: Matter, types: [MatterType], notes: [Note], timeEntries: [TimeEntry], attachments: [Attachment], settings: AppSettings, initiatives: [Initiative] = [], goals: [Goal] = [], to url: URL) throws {
+        let md = renderMarkdown(matter: m, types: types, notes: notes, timeEntries: timeEntries, attachments: attachments, settings: settings, initiatives: initiatives, goals: goals)
         let fm = FileManager.default
         let staging = fm.temporaryDirectory
             .appendingPathComponent("pt-docx-\(UUID().uuidString)", isDirectory: true)
@@ -283,19 +297,19 @@ enum ExportService {
     /// (or wherever the user has overridden the export directory). Returns the
     /// final URL. Auto-creates the directory.
     @discardableResult
-    static func exportToFile(format: Format, matter m: Matter, types: [MatterType], notes: [Note], timeEntries: [TimeEntry], attachments: [Attachment], settings: AppSettings, settingsStore: SettingsStore) throws -> URL {
+    static func exportToFile(format: Format, matter m: Matter, types: [MatterType], notes: [Note], timeEntries: [TimeEntry], attachments: [Attachment], settings: AppSettings, settingsStore: SettingsStore, initiatives: [Initiative] = [], goals: [Goal] = []) throws -> URL {
         let dir = settingsStore.resolvedExportDirectory
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let safeTitle = FileStoreService.sanitize(m.title)
         let url = dir.appendingPathComponent("\(m.id) \(safeTitle).\(format.fileExtension)")
         switch format {
         case .markdown:
-            let md = renderMarkdown(matter: m, types: types, notes: notes, timeEntries: timeEntries, attachments: attachments, settings: settings)
+            let md = renderMarkdown(matter: m, types: types, notes: notes, timeEntries: timeEntries, attachments: attachments, settings: settings, initiatives: initiatives, goals: goals)
             try md.write(to: url, atomically: true, encoding: .utf8)
         case .pdf:
-            try renderPDF(matter: m, types: types, notes: notes, timeEntries: timeEntries, attachments: attachments, settings: settings, to: url)
+            try renderPDF(matter: m, types: types, notes: notes, timeEntries: timeEntries, attachments: attachments, settings: settings, initiatives: initiatives, goals: goals, to: url)
         case .docx:
-            try renderDOCX(matter: m, types: types, notes: notes, timeEntries: timeEntries, attachments: attachments, settings: settings, to: url)
+            try renderDOCX(matter: m, types: types, notes: notes, timeEntries: timeEntries, attachments: attachments, settings: settings, initiatives: initiatives, goals: goals, to: url)
         }
         return url
     }

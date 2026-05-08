@@ -80,6 +80,19 @@ The app is ad-hoc signed unless a Developer ID is present in the keychain.
    `lastImportedAdpFilename` in settings is sufficient and avoids re-hashing
    a multi-MB CSV every launch. Manual imports also update the marker.
 
+8. **Priority is a fixed enum, not a configurable list.** The five levels
+   (`P1 Critical` … `P5 Tech Debt`) are deliberately not user-renamable so
+   cross-Matter reports stay comparable. `MatterPriority.parse(_:)` falls
+   back to the default (`P3 Medium`) if a stored raw value doesn't match
+   any case — defensive against legacy data and forward migrations.
+
+9. **Initiatives & Goals are many-to-many via join tables.** Both join
+   tables (`matter_initiative`, `matter_goal`) cascade-delete from both
+   sides, so deleting an Initiative or Goal also untags it from every
+   Matter — no orphan rows. Updating a Matter's tag set is a single
+   transaction (delete-all + insert-set) so a failed mid-write can't leave
+   a half-tagged row.
+
 ## Important files (where to look first)
 
 | Concern                       | File                                                    |
@@ -95,6 +108,10 @@ The app is ad-hoc signed unless a Developer ID is present in the keychain.
 | Matter ID badge (large + copy)| `Sources/PurpleTracker/Views/MatterDetail/Components/MatterIDBadge.swift` |
 | People CSV parser & importer  | `Sources/PurpleTracker/Services/PeopleService.swift`    |
 | People-roster picker (one component drives Requestor + 5 IPs) | `Sources/PurpleTracker/Views/MatterDetail/Components/RequestorPicker.swift` |
+| Priority enum + colors        | `Sources/PurpleTracker/Models/MatterPriority.swift`     |
+| Initiative / Goal records     | `Sources/PurpleTracker/Models/Initiative.swift`, `Goal.swift` |
+| Initiative / Goal settings UI | `Sources/PurpleTracker/Views/Settings/InitiativesSettingsView.swift`, `GoalsSettingsView.swift` |
+| Tag chip flow layout          | `Sources/PurpleTracker/Views/Shared/FlowLayout.swift`   |
 | App icon generator (Pillow)   | `Resources/make_icon.py`                                |
 
 ## Test suite
@@ -104,13 +121,13 @@ state are `@MainActor`-isolated). The suite grew with 1.1.0; key files now:
 
 | File                          | What it covers                                           |
 |-------------------------------|----------------------------------------------------------|
-| `MigrationTests`              | v1/v2/v3 create all tables; second `applyMigrations` is a no-op |
+| `MigrationTests`              | v1/v2/v3/v4 create all tables; idempotency; v2/v3/v4 columns present |
 | `MatterIDServiceTests`        | padding, sequential, daily reset, rollback releases seq  |
 | `AttachmentHashTests`         | RFC vectors for MD5/SHA1/SHA256 (empty + "abc"); verify mismatch |
-| `CadenceServiceTests`         | each cadence kind + custom; copy/reset rules; IP carry-forward |
+| `CadenceServiceTests`         | each cadence kind + custom; copy/reset rules; IP + priority carry-forward |
 | `BackupServiceTests`          | dir auto-create, retention trim, retention=0, list newest-first |
 | `FileStoreServiceTests`       | template render, sanitisation                             |
-| `ExportServiceTests`          | md/pdf/docx/clipboard smoke + brief format + IP rendering |
+| `ExportServiceTests`          | md/pdf/docx/clipboard smoke + brief format + IP rendering + priority/initiatives/goals |
 | `StatusLifecycleTests`        | first time entry on "New" → "In-Progress"                |
 | `PeopleServiceTests`          | parser quoting, escapes, display-name title-casing       |
 | `PeopleImportRealFileTests`   | CRLF parser regression (real file + synthetic CRLF/BOM)  |

@@ -168,6 +168,42 @@ final class DatabaseService {
             }
         }
 
+        migrator.registerMigration("v4_initiatives_goals_priority") { db in
+            try db.alter(table: "matter") { t in
+                t.add(column: "priority", .text).notNull().defaults(to: MatterPriority.defaultPriority.rawValue)
+            }
+            try db.create(index: "idx_matter_priority", on: "matter", columns: ["priority"])
+
+            try db.create(table: "initiative") { t in
+                t.column("id", .text).primaryKey()
+                t.column("name", .text).notNull()
+                t.column("sort_order", .integer).notNull().defaults(to: 0)
+            }
+            try db.create(table: "goal") { t in
+                t.column("id", .text).primaryKey()
+                t.column("name", .text).notNull()
+                t.column("sort_order", .integer).notNull().defaults(to: 0)
+            }
+            try db.create(table: "matter_initiative") { t in
+                t.column("matter_id", .text).notNull()
+                    .references("matter", column: "id", onDelete: .cascade)
+                t.column("initiative_id", .text).notNull()
+                    .references("initiative", column: "id", onDelete: .cascade)
+                t.primaryKey(["matter_id", "initiative_id"])
+            }
+            try db.create(index: "idx_matter_initiative_initiative",
+                          on: "matter_initiative", columns: ["initiative_id"])
+            try db.create(table: "matter_goal") { t in
+                t.column("matter_id", .text).notNull()
+                    .references("matter", column: "id", onDelete: .cascade)
+                t.column("goal_id", .text).notNull()
+                    .references("goal", column: "id", onDelete: .cascade)
+                t.primaryKey(["matter_id", "goal_id"])
+            }
+            try db.create(index: "idx_matter_goal_goal",
+                          on: "matter_goal", columns: ["goal_id"])
+        }
+
         try migrator.migrate(writer)
     }
 
@@ -193,6 +229,20 @@ final class DatabaseService {
                         sql: "INSERT INTO status_value (name, sort_order) VALUES (?, ?)",
                         arguments: [s.rawValue, i]
                     )
+                }
+            }
+            let initCount = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM initiative") ?? 0
+            if initCount == 0 {
+                for (i, name) in Initiative.seedNames.enumerated() {
+                    var row = Initiative(id: UUID().uuidString, name: name, sortOrder: i)
+                    try row.insert(db)
+                }
+            }
+            let goalCount = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM goal") ?? 0
+            if goalCount == 0 {
+                for (i, name) in Goal.seedNames.enumerated() {
+                    var row = Goal(id: UUID().uuidString, name: name, sortOrder: i)
+                    try row.insert(db)
                 }
             }
         }
@@ -428,5 +478,96 @@ final class DatabaseService {
 
     func deleteAttachment(id: String) throws {
         try dbPool.write { db in _ = try Attachment.deleteOne(db, key: id) }
+    }
+
+    // MARK: - Initiatives
+
+    func fetchAllInitiatives() throws -> [Initiative] {
+        try dbPool.read { db in
+            try Initiative.order(Column("sort_order").asc).fetchAll(db)
+        }
+    }
+
+    func saveInitiative(_ i: Initiative) throws {
+        try dbPool.write { db in var row = i; try row.save(db) }
+    }
+
+    func deleteInitiative(id: String) throws {
+        try dbPool.write { db in _ = try Initiative.deleteOne(db, key: id) }
+    }
+
+    // MARK: - Goals
+
+    func fetchAllGoals() throws -> [Goal] {
+        try dbPool.read { db in
+            try Goal.order(Column("sort_order").asc).fetchAll(db)
+        }
+    }
+
+    func saveGoal(_ g: Goal) throws {
+        try dbPool.write { db in var row = g; try row.save(db) }
+    }
+
+    func deleteGoal(id: String) throws {
+        try dbPool.write { db in _ = try Goal.deleteOne(db, key: id) }
+    }
+
+    // MARK: - Matter ↔ Initiative / Goal joins
+
+    /// All `(matter_id, initiative_id)` pairs — used to populate the in-memory
+    /// `matterInitiativeIds` map on AppState in a single read.
+    func fetchAllMatterInitiativeLinks() throws -> [(matterId: String, initiativeId: String)] {
+        try dbPool.read { db in
+            try Row.fetchAll(db, sql: "SELECT matter_id, initiative_id FROM matter_initiative")
+                .map { ($0["matter_id"], $0["initiative_id"]) }
+        }
+    }
+
+    func fetchAllMatterGoalLinks() throws -> [(matterId: String, goalId: String)] {
+        try dbPool.read { db in
+            try Row.fetchAll(db, sql: "SELECT matter_id, goal_id FROM matter_goal")
+                .map { ($0["matter_id"], $0["goal_id"]) }
+        }
+    }
+
+    /// Replace the full set of initiatives linked to `matterId`. Single
+    /// transaction so partial failures can't leave a half-tagged row.
+    func setInitiatives(matterId: String, initiativeIds: Set<String>) throws {
+        try dbPool.write { db in
+            try db.execute(sql: "DELETE FROM matter_initiative WHERE matter_id = ?", arguments: [matterId])
+            for iid in initiativeIds {
+                try db.execute(
+                    sql: "INSERT INTO matter_initiative (matter_id, initiative_id) VALUES (?, ?)",
+                    arguments: [matterId, iid]
+                )
+            }
+        }
+    }
+
+    func setGoals(matterId: String, goalIds: Set<String>) throws {
+        try dbPool.write { db in
+            try db.execute(sql: "DELETE FROM matter_goal WHERE matter_id = ?", arguments: [matterId])
+            for gid in goalIds {
+                try db.execute(
+                    sql: "INSERT INTO matter_goal (matter_id, goal_id) VALUES (?, ?)",
+                    arguments: [matterId, gid]
+                )
+            }
+        }
+    }
+
+    /// Copy initiative + goal tags from `sourceMatterId` to `destMatterId`.
+    /// Used by cadence spawn so the next instance carries the same tags.
+    func copyMatterTags(from sourceMatterId: String, to destMatterId: String) throws {
+        try dbPool.write { db in
+            try db.execute(sql: """
+                INSERT OR IGNORE INTO matter_initiative (matter_id, initiative_id)
+                SELECT ?, initiative_id FROM matter_initiative WHERE matter_id = ?
+                """, arguments: [destMatterId, sourceMatterId])
+            try db.execute(sql: """
+                INSERT OR IGNORE INTO matter_goal (matter_id, goal_id)
+                SELECT ?, goal_id FROM matter_goal WHERE matter_id = ?
+                """, arguments: [destMatterId, sourceMatterId])
+        }
     }
 }

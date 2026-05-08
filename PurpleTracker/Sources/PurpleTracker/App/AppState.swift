@@ -14,6 +14,12 @@ final class AppState: ObservableObject {
     @Published var totalSecondsByMatter: [String: Int] = [:]
     @Published var people: [Person] = []
     @Published var lastPeopleImportDate: Date?
+    @Published var initiatives: [Initiative] = []
+    @Published var goals: [Goal] = []
+    /// matterId → initiativeIds; rebuilt from the join table on every reloadAll.
+    @Published var matterInitiativeIds: [String: Set<String>] = [:]
+    /// matterId → goalIds.
+    @Published var matterGoalIds: [String: Set<String>] = [:]
 
     // Selection
     @Published var selectedMatterId: String?
@@ -98,8 +104,11 @@ final class AppState: ObservableObject {
         do {
             types = try DatabaseService.shared.fetchAllTypes()
             statusValues = try DatabaseService.shared.fetchStatusValues()
+            initiatives = try DatabaseService.shared.fetchAllInitiatives()
+            goals = try DatabaseService.shared.fetchAllGoals()
             matters = try DatabaseService.shared.fetchAllMatters()
             try recomputeTotals()
+            try reloadInitiativeAndGoalLinks()
             reloadPeople()
             if let sid = selectedMatterId {
                 try loadSelected(sid)
@@ -305,6 +314,7 @@ final class AppState: ObservableObject {
            let cadenceId = matter.cadenceId,
            let cadence = try DatabaseService.shared.fetchCadence(id: cadenceId) {
             let template = CadenceService.nextMatter(after: matter, cadence: cadence)
+            var newId: String = ""
             try MatterIDService.allocateAndInsert(in: DatabaseService.shared.dbPool) { db, mid in
                 var next = template
                 next.id = mid
@@ -312,8 +322,14 @@ final class AppState: ObservableObject {
                 next.fileStorePrimary = resolved.primary
                 next.fileStoreSecondary = resolved.secondary
                 try next.insert(db)
+                newId = mid
+            }
+            // Carry initiative + goal tags over to the spawned successor.
+            if !newId.isEmpty {
+                try DatabaseService.shared.copyMatterTags(from: matter.id, to: newId)
             }
             reloadMatters()
+            try reloadInitiativeAndGoalLinks()
         }
     }
 
@@ -421,6 +437,63 @@ final class AppState: ObservableObject {
 
     func saveCadence(_ c: Cadence) throws {
         try DatabaseService.shared.saveCadence(c)
+    }
+
+    // MARK: - Initiatives / Goals
+
+    /// Rebuilds the per-Matter sets of initiative and goal IDs from the
+    /// join tables. Called from `reloadAll` and after any link mutation.
+    func reloadInitiativeAndGoalLinks() throws {
+        var initMap: [String: Set<String>] = [:]
+        for link in try DatabaseService.shared.fetchAllMatterInitiativeLinks() {
+            initMap[link.matterId, default: []].insert(link.initiativeId)
+        }
+        var goalMap: [String: Set<String>] = [:]
+        for link in try DatabaseService.shared.fetchAllMatterGoalLinks() {
+            goalMap[link.matterId, default: []].insert(link.goalId)
+        }
+        matterInitiativeIds = initMap
+        matterGoalIds = goalMap
+    }
+
+    /// O(1) lookups used by detail views to render names from IDs.
+    var initiativesById: [String: Initiative] {
+        Dictionary(uniqueKeysWithValues: initiatives.map { ($0.id, $0) })
+    }
+    var goalsById: [String: Goal] {
+        Dictionary(uniqueKeysWithValues: goals.map { ($0.id, $0) })
+    }
+
+    func saveInitiative(_ i: Initiative) throws {
+        try DatabaseService.shared.saveInitiative(i)
+        initiatives = try DatabaseService.shared.fetchAllInitiatives()
+    }
+
+    func deleteInitiative(id: String) throws {
+        try DatabaseService.shared.deleteInitiative(id: id)
+        initiatives = try DatabaseService.shared.fetchAllInitiatives()
+        try reloadInitiativeAndGoalLinks()
+    }
+
+    func saveGoal(_ g: Goal) throws {
+        try DatabaseService.shared.saveGoal(g)
+        goals = try DatabaseService.shared.fetchAllGoals()
+    }
+
+    func deleteGoal(id: String) throws {
+        try DatabaseService.shared.deleteGoal(id: id)
+        goals = try DatabaseService.shared.fetchAllGoals()
+        try reloadInitiativeAndGoalLinks()
+    }
+
+    func setMatterInitiatives(matterId: String, ids: Set<String>) throws {
+        try DatabaseService.shared.setInitiatives(matterId: matterId, initiativeIds: ids)
+        matterInitiativeIds[matterId] = ids
+    }
+
+    func setMatterGoals(matterId: String, ids: Set<String>) throws {
+        try DatabaseService.shared.setGoals(matterId: matterId, goalIds: ids)
+        matterGoalIds[matterId] = ids
     }
 
     // MARK: - Backup actions

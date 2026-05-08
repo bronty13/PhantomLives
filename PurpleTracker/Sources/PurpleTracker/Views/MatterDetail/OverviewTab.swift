@@ -10,6 +10,8 @@ struct OverviewTab: View {
         VStack(alignment: .leading, spacing: 16) {
             datesAndCode
             Divider()
+            initiativesAndGoalsSection
+            Divider()
             requestorSection
             Divider()
             interestedPartiesSection
@@ -21,6 +23,95 @@ struct OverviewTab: View {
             externals
             Divider()
             cadenceSection
+        }
+    }
+
+    /// Multi-select chips for initiatives + goals. The user can tag a Matter
+    /// with any combination of pre-configured Initiatives (Settings →
+    /// Initiatives) and Goals (Settings → Goals).
+    private var initiativesAndGoalsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            tagPicker(
+                title: "Initiatives",
+                systemImage: "flag.fill",
+                options: app.initiatives.map { ($0.id, $0.name) },
+                selectedIds: app.matterInitiativeIds[matter.id] ?? [],
+                emptyHint: "Configure in Settings → Initiatives",
+                onChange: { ids in
+                    try? app.setMatterInitiatives(matterId: matter.id, ids: ids)
+                }
+            )
+            tagPicker(
+                title: "Goals",
+                systemImage: "target",
+                options: app.goals.map { ($0.id, $0.name) },
+                selectedIds: app.matterGoalIds[matter.id] ?? [],
+                emptyHint: "Configure in Settings → Goals",
+                onChange: { ids in
+                    try? app.setMatterGoals(matterId: matter.id, ids: ids)
+                }
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func tagPicker(
+        title: String,
+        systemImage: String,
+        options: [(id: String, name: String)],
+        selectedIds: Set<String>,
+        emptyHint: String,
+        onChange: @escaping (Set<String>) -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Label(title, systemImage: systemImage).font(.headline)
+                Spacer()
+                if !options.isEmpty {
+                    Menu {
+                        ForEach(options, id: \.id) { opt in
+                            let isSelected = selectedIds.contains(opt.id)
+                            Button {
+                                var next = selectedIds
+                                if isSelected { next.remove(opt.id) } else { next.insert(opt.id) }
+                                onChange(next)
+                            } label: {
+                                if isSelected { Label(opt.name, systemImage: "checkmark") }
+                                else          { Text(opt.name) }
+                            }
+                        }
+                    } label: { Label("Tag", systemImage: "plus.circle") }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                }
+            }
+            if options.isEmpty {
+                Text(emptyHint).font(.caption).foregroundStyle(.secondary)
+            } else if selectedIds.isEmpty {
+                Text("None selected").font(.caption).foregroundStyle(.secondary)
+            } else {
+                let chips = options.filter { selectedIds.contains($0.id) }
+                FlowLayout(spacing: 6) {
+                    ForEach(chips, id: \.id) { opt in
+                        HStack(spacing: 4) {
+                            Text(opt.name).font(.caption.weight(.medium))
+                            Button {
+                                var next = selectedIds
+                                next.remove(opt.id)
+                                onChange(next)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill").font(.caption2)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Color.purple.opacity(0.15))
+                        .foregroundStyle(.primary)
+                        .cornerRadius(10)
+                    }
+                }
+            }
         }
     }
 

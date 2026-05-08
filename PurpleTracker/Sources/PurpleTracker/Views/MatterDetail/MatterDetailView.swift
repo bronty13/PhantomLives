@@ -69,7 +69,9 @@ struct MatterDetailView: View {
                             notes: app.notes,
                             timeEntries: app.timeEntries,
                             attachments: [],   // metadata only — full BLOBs not needed for clipboard
-                            settings: settingsStore.settings)
+                            settings: settingsStore.settings,
+                            initiatives: tagsForMatter().initiatives,
+                            goals: tagsForMatter().goals)
                     }
                 } label: { Label("Export", systemImage: "square.and.arrow.up") }
             }
@@ -82,6 +84,7 @@ struct MatterDetailView: View {
             HStack(alignment: .top) {
                 MatterIDBadge(matterId: matter.id, color: typeColor)
                 Spacer()
+                priorityMenu
                 statusMenu(color: typeColor)
             }
             HStack(alignment: .center, spacing: 12) {
@@ -124,6 +127,33 @@ struct MatterDetailView: View {
                 }
             }
         }
+    }
+
+    /// Prominent priority pill in the detail header. Color-coded per
+    /// `MatterPriority.colorHex` so the level is visible at a glance.
+    private var priorityMenu: some View {
+        let current = MatterPriority.parse(matter.priority)
+        return Menu {
+            ForEach(MatterPriority.allCases) { p in
+                Button(p.rawValue) { changePriority(to: p) }
+            }
+        } label: {
+            Text(current.rawValue)
+                .font(.body.weight(.bold))
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(current.color.opacity(0.25))
+                .foregroundStyle(current.color)
+                .cornerRadius(8)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Priority — P1 Critical … P5 Tech Debt")
+    }
+
+    private func changePriority(to p: MatterPriority) {
+        var m = matter
+        m.priority = p.rawValue
+        try? app.updateMatter(m)
     }
 
     private func statusMenu(color: Color) -> some View {
@@ -169,6 +199,16 @@ struct MatterDetailView: View {
         if let d = draft { try? app.updateMatter(d) }
     }
 
+    /// Resolve this matter's currently-tagged Initiatives and Goals from the
+    /// in-memory join maps, in `sort_order` order so reports are stable.
+    private func tagsForMatter() -> (initiatives: [Initiative], goals: [Goal]) {
+        let iIds = app.matterInitiativeIds[matter.id] ?? []
+        let gIds = app.matterGoalIds[matter.id] ?? []
+        let inits = app.initiatives.filter { iIds.contains($0.id) }
+        let gls   = app.goals.filter { gIds.contains($0.id) }
+        return (inits, gls)
+    }
+
     private func exportFile(_ fmt: ExportService.Format) {
         do {
             // Pull the full attachment payloads for inclusion in the export.
@@ -176,6 +216,7 @@ struct MatterDetailView: View {
             let atts = try pool.read { db in
                 try Attachment.filter(Column("matter_id") == matter.id).fetchAll(db)
             }
+            let tags = tagsForMatter()
             let url = try ExportService.exportToFile(
                 format: fmt,
                 matter: matter,
@@ -184,7 +225,9 @@ struct MatterDetailView: View {
                 timeEntries: app.timeEntries,
                 attachments: atts,
                 settings: settingsStore.settings,
-                settingsStore: settingsStore
+                settingsStore: settingsStore,
+                initiatives: tags.initiatives,
+                goals: tags.goals
             )
             NSWorkspace.shared.activateFileViewerSelecting([url])
         } catch {

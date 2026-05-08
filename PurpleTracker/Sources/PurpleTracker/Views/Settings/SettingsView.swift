@@ -15,6 +15,10 @@ struct SettingsView: View {
                 .tabItem { Label("File Store", systemImage: "folder") }
             PeopleSettingsView()
                 .tabItem { Label("People", systemImage: "person.2") }
+            InitiativesSettingsView()
+                .tabItem { Label("Initiatives", systemImage: "flag") }
+            GoalsSettingsView()
+                .tabItem { Label("Goals", systemImage: "target") }
             BackupSettingsView()
                 .tabItem { Label("Backup", systemImage: "externaldrive.badge.timemachine") }
         }
