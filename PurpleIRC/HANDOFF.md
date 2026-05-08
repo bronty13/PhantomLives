@@ -475,6 +475,29 @@ theme rather than chronologically.
 - Contacts: double-click → `/query`, full right-click menu mirroring
   the query/channel-row menus.
 
+### Reorderable sidebar sections + launch-time server-buffer purge (1.0.128)
+- The five sidebar groups (Networks / Channels / Private / Saved /
+  Contacts) are rendered via `ForEach(SidebarSection.normalize(...))` so
+  each section's position is driven by `AppSettings.sidebarSectionOrder`.
+  Each section header is `.draggable(rawValue)` + a String
+  `.dropDestination`, with a small `≡` glyph as the affordance and a
+  faint accent-tinted background as the drop highlight. Dropping a
+  header inserts the dragged section immediately above the target via
+  `SettingsStore.moveSidebarSection(_:before:)`.
+- Decode tolerates unknown raw values (forward-compat for new sections)
+  and de-duplicates / appends-missing through `SidebarSection.normalize`,
+  so a partial / corrupt persisted list never blanks a group.
+  Right-click any header → "Reset sidebar order" reverts to
+  `SidebarSection.defaultOrder`.
+- `ChatModel.purgeServerBuffersOnLaunch` runs once at boot (right after
+  the launch-time log purge) and walks every `IRCConnection`, calling
+  the new `purgeServerBuffer()` to drop the per-network `*server*`
+  console row. The buffer is in-memory only and re-creates itself on
+  the next `appendInfo` / `appendError` / `appendToServer`, so the
+  Private section starts each session clean without losing any
+  persisted history (server buffers are already excluded from
+  `persistHistoryForConnection`).
+
 ### Touch ID UX fix (`567a7e7`)
 - `BiometricGate.isAvailable` keys on `biometryType != .none`. Old
   `canEvaluatePolicy` check returned false on ad-hoc-signed builds even

@@ -5,6 +5,35 @@ All notable changes to PurpleIRC are recorded here. The bundle's
 count (`1.0.<count>`); CHANGELOG entries use the same scheme so the
 version on the About panel matches the entry that introduced it.
 
+## [1.0.128] — 2026-05-07
+
+### Added (sidebar section reordering)
+
+- **Drag-to-reorder sidebar sections.** Each of the five sidebar
+  groups — Networks, Channels, Private, Saved, Contacts — now has a
+  drag-handle on its header (`line.3.horizontal` glyph). Pick up any
+  header, drop it on another section's header, and the dragged
+  section lands immediately before the drop target. The new order
+  persists in `AppSettings.sidebarSectionOrder` and survives
+  relaunches.
+- **Right-click → "Reset sidebar order"** on any section header
+  restores the factory order without having to drag five times.
+- **Forward-compatible decode**: an unknown raw value in
+  `sidebarSectionOrder` (saved by a future build) is silently
+  dropped at decode time; missing entries are appended in
+  `SidebarSection.defaultOrder` order. The user's working list
+  is never truncated by a partial / pathological payload.
+
+### Changed (Private section starts clean every launch)
+
+- **Server console rows purged at app launch.** The per-network
+  `*server*` buffer that accumulates MOTDs / NOTICEs / connection
+  diagnostics is removed from every connection at boot via
+  `ChatModel.purgeServerBuffersOnLaunch`. The buffer is in-memory
+  only — `IRCConnection.ensureServerBufferID` re-creates it the
+  moment something needs to log to it — so this is purely
+  cosmetic and does not lose any persisted state.
+
 ## [1.0.110] — 2026-05-02
 
 ### Added (Address Book + Tags — multi-select, auto-naming, duplicate guards)

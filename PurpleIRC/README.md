@@ -13,7 +13,7 @@ and a SwiftUI + `NavigationSplitView` UI.
 ```sh
 ./build-app.sh            # builds PurpleIRC.app
 open PurpleIRC.app           # launch
-./run-tests.sh            # 245 tests via swift-testing
+./run-tests.sh            # 258 tests via swift-testing
 ```
 
 The script produces a release build by default; set `CONFIG=debug` for a
@@ -159,6 +159,18 @@ The biggest tabs:
 
 The sidebar exposes a **Saved** section (quick-join) and a **Contacts**
 section (click to open a `/msg` draft; bell icon + dot show watch + presence).
+
+The five sidebar groups — **Networks**, **Channels**, **Private**, **Saved**,
+**Contacts** — can be **reordered by drag-and-drop** on their headers. Pick up a
+header (the small `≡` glyph is the affordance), drop it on another header, and
+the dragged section lands immediately above the drop target. The order
+persists across launches in `AppSettings.sidebarSectionOrder`; right-click any
+section header → "Reset sidebar order" restores the factory order.
+
+The per-network `*server*` console row under **Private** is **purged at app
+launch** so each session starts clean. The buffer is in-memory only — the
+connection re-creates it the moment something needs to log to it — so the
+purge never loses persisted state.
 
 ### Watchlist / online alerts
 - Who is watched comes from Setup → Address Book (entries with the bell

@@ -14,6 +14,49 @@ enum SASLMechanism: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// User-orderable groups in the sidebar List. Stored in `AppSettings`
+/// so the order persists across launches and survives forward-compat
+/// schema changes (unknown raw values are filtered out at decode time
+/// and missing cases are appended in `defaultOrder` order).
+enum SidebarSection: String, Codable, CaseIterable, Identifiable, Hashable {
+    case networks
+    case channels
+    case privateBuffers = "private"
+    case saved
+    case contacts
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .networks:       return "Networks"
+        case .channels:       return "Channels"
+        case .privateBuffers: return "Private"
+        case .saved:          return "Saved"
+        case .contacts:       return "Contacts"
+        }
+    }
+
+    static let defaultOrder: [SidebarSection] = [
+        .networks, .channels, .privateBuffers, .saved, .contacts
+    ]
+
+    /// Drop unknown/duplicate entries and append any sections the saved
+    /// order is missing. Keeps the list stable when we add a new section
+    /// in a later release without forcing the user back to defaults.
+    static func normalize(_ order: [SidebarSection]) -> [SidebarSection] {
+        var seen = Set<SidebarSection>()
+        var result: [SidebarSection] = []
+        for s in order where seen.insert(s).inserted {
+            result.append(s)
+        }
+        for s in defaultOrder where !seen.contains(s) {
+            result.append(s)
+        }
+        return result
+    }
+}
+
 /// A named set of identifying fields (nick/user/realName/SASL/NickServ) that
 /// can be shared across server profiles. Editing one identity updates every
 /// server profile that references it; users can flip between personas quickly
@@ -655,6 +698,12 @@ struct AppSettings: Codable {
     /// replacement.
     var requireBiometricsOnLaunch: Bool = false
 
+    /// Top-to-bottom order of the sidebar's section groups. Re-orderable via
+    /// drag-and-drop on the section headers; persisted here so the layout
+    /// survives relaunches. Read through `SidebarSection.normalize` before
+    /// rendering so a missing or duplicated entry can't blank a group.
+    var sidebarSectionOrder: [SidebarSection] = SidebarSection.defaultOrder
+
     init() {}
 
     init(from decoder: Decoder) throws {
@@ -716,6 +765,11 @@ struct AppSettings: Codable {
         self.quitConfirmationEnabled = try c.decodeIfPresent(Bool.self, forKey: .quitConfirmationEnabled) ?? true
         self.identities = try c.decodeIfPresent([Identity].self, forKey: .identities) ?? []
         self.requireBiometricsOnLaunch = try c.decodeIfPresent(Bool.self, forKey: .requireBiometricsOnLaunch) ?? false
+        // Decode as raw strings so a future case the user has saved doesn't
+        // throw the whole settings load. Unknown values silently drop.
+        let savedRaw = try c.decodeIfPresent([String].self, forKey: .sidebarSectionOrder) ?? []
+        let saved = savedRaw.compactMap { SidebarSection(rawValue: $0) }
+        self.sidebarSectionOrder = SidebarSection.normalize(saved)
     }
 }
 
@@ -1068,5 +1122,27 @@ final class SettingsStore: ObservableObject {
         for field in ["sasl", "nickserv"] {
             try? KeychainStore.delete(account: Self.account(identity: id, field: field))
         }
+    }
+
+    // MARK: - Sidebar section ordering
+
+    /// Reorder the sidebar section list by inserting `dragged` immediately
+    /// before `target`. No-op when `dragged == target`. Always rewrites
+    /// through `normalize` so the saved list stays well-formed.
+    func moveSidebarSection(_ dragged: SidebarSection, before target: SidebarSection) {
+        guard dragged != target else { return }
+        var order = SidebarSection.normalize(settings.sidebarSectionOrder)
+        order.removeAll { $0 == dragged }
+        if let i = order.firstIndex(of: target) {
+            order.insert(dragged, at: i)
+        } else {
+            order.append(dragged)
+        }
+        settings.sidebarSectionOrder = SidebarSection.normalize(order)
+    }
+
+    /// Restore the factory order of sidebar sections.
+    func resetSidebarSectionOrder() {
+        settings.sidebarSectionOrder = SidebarSection.defaultOrder
     }
 }

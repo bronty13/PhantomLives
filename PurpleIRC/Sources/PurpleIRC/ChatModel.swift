@@ -443,6 +443,12 @@ final class ChatModel: ObservableObject {
         dcc.chatModel = self
         // Age-based log purge runs once at launch when the user has it on.
         runLogPurgeIfEnabled()
+        // Drop any per-network *server* console buffers carried over from a
+        // prior session so the sidebar's Private group starts clean. Server
+        // buffers are an in-memory accumulator (server messages, MOTDs,
+        // notices); the connection re-creates them on demand the moment
+        // something needs to log to them, so this is purely cosmetic.
+        purgeServerBuffersOnLaunch()
         // Fan out bot-visible events to the sound player.
         events
             .sink { [weak self] tuple in
@@ -501,6 +507,17 @@ final class ChatModel: ObservableObject {
         guard let profile = settings.selectedServer() else { return }
         let conn = addConnection(for: profile)
         activeConnectionID = conn.id
+    }
+
+    /// Strip every connection's `*server*` console buffer at launch so the
+    /// Private sidebar group doesn't carry server-console rows over from a
+    /// prior run. The buffer is in-memory only — there's no on-disk state
+    /// to clear — so the next call into `appendInfo` / `appendError` /
+    /// `appendToServer` simply mints a fresh one via `ensureServerBufferID`.
+    private func purgeServerBuffersOnLaunch() {
+        for conn in connections {
+            conn.purgeServerBuffer()
+        }
     }
 
     @discardableResult

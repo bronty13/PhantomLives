@@ -433,97 +433,172 @@ struct ConnectionStatusView: View {
 struct SidebarView: View {
     @EnvironmentObject var model: ChatModel
 
+    /// The section currently being hovered as a drop target; drives the
+    /// highlight on the section header so the user can see where the
+    /// dragged section will land.
+    @State private var dropTargetSection: SidebarSection? = nil
+
     var body: some View {
         List(selection: Binding(
             get: { model.selectedBufferID },
             set: { if let v = $0 { model.selectBuffer(v) } }
         )) {
-            // Networks section — always visible so the same row appears
-            // whether the user kicked off the connection via the toolbar
-            // Connect button or the "+ Add network" affordance below.
-            // Earlier we hid this when only one connection existed, which
-            // made the toolbar-Connect path produce no row, then a second
-            // Connect (via Add) produced two — confusing.
-            Section("Networks") {
-                ForEach(model.connections) { conn in
-                    NetworkRow(connection: conn,
-                               isActive: conn.id == model.activeConnectionID)
-                }
-                AddNetworkRow()
-            }
-
-            let channels = model.buffers.filter { $0.kind == .channel }
-            if !channels.isEmpty {
-                Section("Channels") {
-                    ForEach(channels) { buf in
-                        BufferRow(buffer: buf, icon: "number")
-                    }
-                }
-            }
-
-            // Private grouping — direct queries with users plus the
-            // network/server console rows. The server rows live here so the
-            // sidebar reads as "channels above, anything addressed to *you*
-            // below". A subtle divider + dim styling on the server rows keeps
-            // them distinct from query rows above and saved/contacts below.
-            let queries  = model.buffers.filter { $0.kind == .query }
-            let servers  = model.buffers.filter { $0.kind == .server }
-            if !queries.isEmpty || !servers.isEmpty {
-                Section("Private") {
-                    ForEach(queries) { buf in
-                        BufferRow(buffer: buf, icon: "person.fill")
-                    }
-                    if !queries.isEmpty && !servers.isEmpty {
-                        // Visual separator between user queries and the
-                        // network console rows. Pulled in from the row edge
-                        // so it reads as a divider, not a real list row.
-                        Divider()
-                            .padding(.horizontal, 6)
-                            .listRowSeparator(.hidden)
-                    }
-                    ForEach(servers) { buf in
-                        ServerConsoleRow(buffer: buf)
-                    }
-                }
-            }
-
-            let saved = savedForCurrentServer
-            if !saved.isEmpty {
-                Section("Saved") {
-                    ForEach(saved) { ch in
-                        Button {
-                            model.quickJoin(ch.name)
-                        } label: {
-                            HStack {
-                                Image(systemName: "number.square")
-                                    .foregroundStyle(Color.accentColor)
-                                Text(ch.name)
-                                if !ch.note.isEmpty {
-                                    Text("— \(ch.note)")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                                Spacer()
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-
-            let addresses = model.settings.settings.addressBook
-            if !addresses.isEmpty {
-                Section("Contacts") {
-                    ForEach(addresses) { a in
-                        ContactRow(entry: a, presence: presence(for: a))
-                    }
-                }
+            ForEach(SidebarSection.normalize(model.settings.settings.sidebarSectionOrder),
+                    id: \.self) { section in
+                sectionView(for: section)
             }
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {
             SidebarFooterView()
+        }
+    }
+
+    @ViewBuilder
+    private func sectionView(for section: SidebarSection) -> some View {
+        switch section {
+        case .networks:       networksSection(section)
+        case .channels:       channelsSection(section)
+        case .privateBuffers: privateSection(section)
+        case .saved:          savedSection(section)
+        case .contacts:       contactsSection(section)
+        }
+    }
+
+    /// Section header view shared across all sidebar sections. Carries the
+    /// drag source + drop destination so the user can grab any header and
+    /// reorder it relative to the others.
+    private func sectionHeader(_ section: SidebarSection) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "line.3.horizontal")
+                .foregroundStyle(.tertiary)
+                .imageScale(.small)
+                .help("Drag to reorder section")
+            Text(section.title)
+            Spacer(minLength: 0)
+        }
+        .contentShape(Rectangle())
+        .background(
+            (dropTargetSection == section ? Color.accentColor.opacity(0.15) : Color.clear)
+                .cornerRadius(4)
+        )
+        .draggable(section.rawValue)
+        .dropDestination(for: String.self) { items, _ in
+            guard let raw = items.first,
+                  let dragged = SidebarSection(rawValue: raw) else { return false }
+            model.settings.moveSidebarSection(dragged, before: section)
+            return true
+        } isTargeted: { isTargeted in
+            if isTargeted {
+                dropTargetSection = section
+            } else if dropTargetSection == section {
+                dropTargetSection = nil
+            }
+        }
+        .contextMenu {
+            Button("Reset sidebar order") {
+                model.settings.resetSidebarSectionOrder()
+            }
+        }
+    }
+
+    // Networks section — always visible so the same row appears whether
+    // the user kicked off the connection via the toolbar Connect button
+    // or the "+ Add network" affordance below.
+    private func networksSection(_ section: SidebarSection) -> some View {
+        Section {
+            ForEach(model.connections) { conn in
+                NetworkRow(connection: conn,
+                           isActive: conn.id == model.activeConnectionID)
+            }
+            AddNetworkRow()
+        } header: {
+            sectionHeader(section)
+        }
+    }
+
+    @ViewBuilder
+    private func channelsSection(_ section: SidebarSection) -> some View {
+        let channels = model.buffers.filter { $0.kind == .channel }
+        if !channels.isEmpty {
+            Section {
+                ForEach(channels) { buf in
+                    BufferRow(buffer: buf, icon: "number")
+                }
+            } header: {
+                sectionHeader(section)
+            }
+        }
+    }
+
+    // Private grouping — direct queries with users plus the network /
+    // server console rows. The server rows live here so the sidebar reads
+    // as "channels above, anything addressed to *you* below". A subtle
+    // divider keeps them distinct from query rows above.
+    @ViewBuilder
+    private func privateSection(_ section: SidebarSection) -> some View {
+        let queries = model.buffers.filter { $0.kind == .query }
+        let servers = model.buffers.filter { $0.kind == .server }
+        if !queries.isEmpty || !servers.isEmpty {
+            Section {
+                ForEach(queries) { buf in
+                    BufferRow(buffer: buf, icon: "person.fill")
+                }
+                if !queries.isEmpty && !servers.isEmpty {
+                    Divider()
+                        .padding(.horizontal, 6)
+                        .listRowSeparator(.hidden)
+                }
+                ForEach(servers) { buf in
+                    ServerConsoleRow(buffer: buf)
+                }
+            } header: {
+                sectionHeader(section)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func savedSection(_ section: SidebarSection) -> some View {
+        let saved = savedForCurrentServer
+        if !saved.isEmpty {
+            Section {
+                ForEach(saved) { ch in
+                    Button {
+                        model.quickJoin(ch.name)
+                    } label: {
+                        HStack {
+                            Image(systemName: "number.square")
+                                .foregroundStyle(Color.accentColor)
+                            Text(ch.name)
+                            if !ch.note.isEmpty {
+                                Text("— \(ch.note)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            } header: {
+                sectionHeader(section)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func contactsSection(_ section: SidebarSection) -> some View {
+        let addresses = model.settings.settings.addressBook
+        if !addresses.isEmpty {
+            Section {
+                ForEach(addresses) { a in
+                    ContactRow(entry: a, presence: presence(for: a))
+                }
+            } header: {
+                sectionHeader(section)
+            }
         }
     }
 

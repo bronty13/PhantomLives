@@ -1932,6 +1932,27 @@ final class IRCConnection: ObservableObject, Identifiable {
         return buf.id
     }
 
+    /// Drop the per-network `*server*` console buffer. Called at app launch
+    /// so the Private section starts clean every session — the buffer is
+    /// re-created on demand the first time something needs to log to it.
+    /// If the dropped buffer was selected, focus falls back to the first
+    /// remaining buffer (or nil).
+    func purgeServerBuffer() {
+        guard let id = serverBufferID,
+              let i = buffers.firstIndex(where: { $0.id == id }) else {
+            // No tracked server buffer — also sweep any orphan that snuck
+            // in via a different code path so the launch invariant holds.
+            buffers.removeAll { $0.kind == .server }
+            return
+        }
+        let wasSelected = (selectedBufferID == id)
+        buffers.remove(at: i)
+        serverBufferID = nil
+        if wasSelected {
+            selectedBufferID = buffers.first?.id
+        }
+    }
+
     private func indexOfOrCreateBuffer(name: String, kind: Buffer.Kind) -> Int {
         if let i = buffers.firstIndex(where: { $0.name.lowercased() == name.lowercased() }) {
             applyPendingRestoreSelectionIfMatches(name: name, id: buffers[i].id)
