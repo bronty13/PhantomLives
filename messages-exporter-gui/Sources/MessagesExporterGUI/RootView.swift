@@ -8,7 +8,7 @@ import AppKit
 /// subfolder inside this, e.g.
 /// ~/Downloads/messages-exporter-gui/Sallie_20260427_172132/.
 /// Created on demand the first time it's read.
-private func defaultOutputDir() -> URL {
+func defaultOutputDir() -> URL {
     let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
         ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads")
     let dir = downloads.appendingPathComponent("messages-exporter-gui", isDirectory: true)
@@ -23,6 +23,8 @@ enum SettingsKeys {
     static let transcribeOn    = "transcribeEnabled"
     static let transcribeModel = "transcribeModel"
     static let debugLogging    = "debugLogging"
+    static let emojiMode       = "emojiMode"
+    static let themePreference = "themePreference"
 }
 
 struct RootView: View {
@@ -31,7 +33,6 @@ struct RootView: View {
     @State private var contact = ""
     @State private var start: Date = Self.todayAtStartOfDay()
     @State private var end:   Date = Date()
-    @State private var emoji: EmojiMode = .word
     @State private var mode:  ExportMode = .sanitized
     @State private var showInstallSheet  = false
     @State private var showFDASheet      = false
@@ -41,158 +42,140 @@ struct RootView: View {
     @AppStorage(SettingsKeys.transcribeOn) private var transcribeEnabled: Bool = false
     @AppStorage(SettingsKeys.transcribeModel) private var transcribeModelRaw: String = WhisperModel.turbo.rawValue
     @AppStorage(SettingsKeys.debugLogging) private var debugLogging: Bool = false
+    @AppStorage(SettingsKeys.emojiMode) private var emojiRaw: String = EmojiMode.word.rawValue
+    @AppStorage(SettingsKeys.themePreference) private var themeRaw: String = ThemePreference.system.rawValue
 
-    private static let labelWidth: CGFloat = 70
+    private var themePreference: ThemePreference {
+        ThemePreference(rawValue: themeRaw) ?? .system
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Persistent FDA-denied banner. Surfaces the issue inline once
-            // the modal sheet is dismissed so the user always knows why
-            // exports will fail. Disappears as soon as fdaStatus flips to
-            // .granted — re-probed on every Re-check click and on every
-            // app activation (NSApplication.didBecomeActiveNotification),
-            // so granting FDA in System Settings and switching back will
-            // clear the banner without quitting.
+        MissionThemeReader { theme in
+            ZStack {
+                LinearGradient(colors: [theme.bg1, theme.bg2],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+                    .ignoresSafeArea()
+
+                HStack(spacing: 0) {
+                    Sidebar(showFDASheet: $showFDASheet)
+                    main(theme)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .preferredColorScheme(themePreference.colorScheme)
+            .sheet(isPresented: $showInstallSheet) {
+                InstallSheet(showInstallSheet: $showInstallSheet)
+            }
+            .sheet(isPresented: $showFDASheet) {
+                FullDiskAccessSheet(showSheet: $showFDASheet)
+            }
+            .task {
+                if runner.fdaStatus == .unknown {
+                    runner.checkFullDiskAccess()
+                }
+                if runner.fdaStatus == .denied {
+                    showFDASheet = true
+                }
+            }
+            .onReceive(NotificationCenter.default
+                        .publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                if runner.fdaStatus != .granted {
+                    runner.checkFullDiskAccess()
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func main(_ t: MissionTheme) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
             if runner.fdaStatus == .denied {
                 FDABanner(showSheet: $showFDASheet)
-                    .padding(.horizontal, 14)
-                    .padding(.top, 12)
             }
-            // Inputs — tight grid using LabeledContent so all six fields
-            // fit above the fold without scrolling.
-            VStack(alignment: .leading, spacing: 6) {
-                LabeledRow("Output") {
-                    OutputFolderRow(path: $outputDirPath)
-                }
-                LabeledRow("Contact") {
-                    TextField("Contact name", text: $contact)
-                        .textFieldStyle(.roundedBorder)
-                        .help("Substring matched against AddressBook by the CLI.")
-                }
-                LabeledRow("From") {
-                    DatePicker("", selection: $start,
-                               displayedComponents: [.date, .hourAndMinute])
-                        .labelsHidden()
-                }
-                LabeledRow("To") {
-                    DatePicker("", selection: $end,
-                               displayedComponents: [.date, .hourAndMinute])
-                        .labelsHidden()
-                }
-                LabeledRow("Mode") {
-                    Picker("", selection: $mode) {
-                        ForEach(ExportMode.allCases) { Text($0.label).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(maxWidth: 280, alignment: .leading)
-                    .help("Sanitized: HEIC→JPG, EXIF stripped, caption-derived filenames. Raw (forensic): byte-identical copies, original filenames, sha256 + EXIF in metadata.json.")
-                }
-                LabeledRow("Emoji") {
-                    Picker("", selection: $emoji) {
-                        ForEach(EmojiMode.allCases) { Text($0.label).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(maxWidth: 280, alignment: .leading)
-                    .disabled(mode == .raw)
-                    .help(mode == .raw
-                          ? "Ignored in raw mode — original filenames are preserved."
-                          : "Emoji handling in derived filenames.")
-                }
-                LabeledRow("Transcribe") {
-                    HStack(spacing: 8) {
-                        Toggle(isOn: $transcribeEnabled) {
-                            Text("Audio / video → Whisper")
-                        }
-                        .toggleStyle(.checkbox)
-                        Text("(\(WhisperModel(rawValue: transcribeModelRaw)?.shortLabel ?? "turbo"))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .help("Change the Whisper model in Settings ⌘,. First run downloads the model (~1 GB for turbo) and bootstraps a venv — subsequent runs are fast.")
-                    }
-                }
+
+            header(t)
+
+            StatTiles(pendingStart: start, pendingEnd: end)
+
+            FormCard(
+                contact: $contact,
+                start: $start,
+                end: $end,
+                mode: $mode,
+                transcribeEnabled: $transcribeEnabled,
+                transcribeModelRaw: $transcribeModelRaw
+            )
+
+            RunStrip(
+                canRun: !runner.isRunning && !contact.trimmingCharacters(in: .whitespaces).isEmpty,
+                runAction: { Task { await runExport() } },
+                cancelAction: { showCancelConfirm = true }
+            )
+            .confirmationDialog("Cancel export?",
+                                isPresented: $showCancelConfirm,
+                                titleVisibility: .visible) {
+                Button("Stop export", role: .destructive) { runner.cancel() }
+                Button("Keep running", role: .cancel) { }
+            } message: {
+                Text("The export is still in progress. Any attachments already written will remain in the output folder.")
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 12)
 
-            Divider().padding(.horizontal, 14)
+            LiveOutputCard()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // Run row + progress, kept on a single horizontal line.
-            HStack(spacing: 12) {
-                Button {
-                    Task { await runExport() }
-                } label: {
-                    Label("Run export", systemImage: "play.fill")
-                        .frame(minWidth: 110)
-                }
-                .keyboardShortcut(.return, modifiers: [.command])
-                .controlSize(.large)
-                .disabled(runner.isRunning || contact.trimmingCharacters(in: .whitespaces).isEmpty)
-
-                if runner.isRunning {
-                    Button(role: .destructive) {
-                        showCancelConfirm = true
-                    } label: {
-                        Label(runner.isCancelling ? "Cancelling…" : "Cancel",
-                              systemImage: "stop.fill")
-                    }
-                    .controlSize(.large)
-                    .disabled(runner.isCancelling)
-                    .confirmationDialog("Cancel export?",
-                                        isPresented: $showCancelConfirm,
-                                        titleVisibility: .visible) {
-                        Button("Stop export", role: .destructive) { runner.cancel() }
-                        Button("Keep running", role: .cancel) { }
-                    } message: {
-                        Text("The export is still in progress. Any attachments already written will remain in the output folder.")
-                    }
-                }
-
-                ProgressBar(stage: runner.stage, isRunning: runner.isRunning)
-            }
-            .padding(.horizontal, 14)
-
-            LogPane(lines: runner.logLines,
-                    runFolder: runner.runFolder,
-                    lastError: runner.lastError)
-                .padding(.horizontal, 14)
-
-            VersionFooter()
-                .padding(.horizontal, 14)
-                .padding(.bottom, 8)
-        }
-        .sheet(isPresented: $showInstallSheet) {
-            InstallSheet(showInstallSheet: $showInstallSheet)
-        }
-        .sheet(isPresented: $showFDASheet) {
-            FullDiskAccessSheet(showSheet: $showFDASheet)
-        }
-        .task {
-            // Pre-flight Full Disk Access on first appearance so we can
-            // surface the issue before the user fills in a contact, sets
-            // a date range, and hits Run only to see an EPERM at stage 1.
-            // Skipped if we've already determined status earlier this run.
-            if runner.fdaStatus == .unknown {
-                runner.checkFullDiskAccess()
-            }
-            if runner.fdaStatus == .denied {
-                showFDASheet = true
+            HStack(spacing: 8) {
+                Spacer()
+                VersionFooter()
             }
         }
-        .onReceive(NotificationCenter.default
-                    .publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            // User probably switched away to System Settings to grant
-            // FDA, then switched back. Re-probe the chat.db readability
-            // — kernel TCC checks at every I/O so a mid-session grant
-            // can flip .denied -> .granted without a relaunch (despite
-            // some folklore that says otherwise; this is true at least
-            // for filesystem TCC). Skip while .granted to avoid pointless
-            // syscalls on every focus change.
-            if runner.fdaStatus != .granted {
-                runner.checkFullDiskAccess()
+        .padding(.horizontal, 22)
+        // Generous top inset so the contact-name h1 (display 26pt with
+        // negative tracking) breathes above the hidden-title-bar window
+        // edge. The macOS traffic lights still sit in the chrome above
+        // this; we only own the content area, so spacing here is what
+        // separates the heading from the window's top edge.
+        .padding(.top, 36)
+        .padding(.bottom, 14)
+    }
+
+    @ViewBuilder
+    private func header(_ t: MissionTheme) -> some View {
+        HStack(alignment: .bottom) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("NEW EXPORT")
+                    .font(MissionFont.kicker(11))
+                    .tracking(1.6)
+                    .foregroundStyle(t.inkMute)
+                Text(displayContact)
+                    .font(MissionFont.display(26, weight: .semibold))
+                    .foregroundStyle(t.ink)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            Spacer()
+            HStack(spacing: 8) {
+                ChipButton(label: themePreference.label,
+                           icon: themePreference.icon) {
+                    themeRaw = themePreference.next.rawValue
+                }
+                .help("Appearance: \(themePreference.label). Click to cycle Auto → Light → Dark.")
+                ChipButton(label: "Save preset", icon: "star",
+                           disabled: true,
+                           action: { /* coming soon */ })
+                    .help("Saved presets ship in a later release.")
+                ChipButton(label: "Reveal output", icon: "folder",
+                           disabled: runner.runFolder == nil
+                                  && !FileManager.default.fileExists(atPath: outputDirPath)) {
+                    let url = runner.runFolder ?? URL(fileURLWithPath: outputDirPath)
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                }
             }
         }
+    }
+
+    private var displayContact: String {
+        let s = contact.trimmingCharacters(in: .whitespacesAndNewlines)
+        return s.isEmpty ? "Untitled export" : s
     }
 
     private func runExport() async {
@@ -205,7 +188,7 @@ struct RootView: View {
             start: start,
             end: end,
             outputDir: URL(fileURLWithPath: outputDirPath),
-            emoji: emoji,
+            emoji: EmojiMode(rawValue: emojiRaw) ?? .word,
             mode: mode,
             transcribe: transcribeEnabled,
             transcribeModel: WhisperModel(rawValue: transcribeModelRaw) ?? .turbo,
@@ -219,85 +202,170 @@ struct RootView: View {
     }
 }
 
-/// Aligned label + control row. Keeps every input aligned on the same
-/// vertical guideline without the vertical bloat of `.formStyle(.grouped)`.
-struct LabeledRow<Content: View>: View {
-    let label: String
-    @ViewBuilder var content: () -> Content
+// MARK: - Form card
 
-    init(_ label: String, @ViewBuilder content: @escaping () -> Content) {
-        self.label = label
-        self.content = content
-    }
+/// The grid card containing Contact / From / To / Mode / Transcribe.
+/// Output folder and Emoji moved to Settings — they're rarely changed,
+/// and the redesign trades visible chrome for focus on the run inputs.
+struct FormCard: View {
+    @Environment(\.missionTheme) private var t
+
+    @Binding var contact: String
+    @Binding var start: Date
+    @Binding var end:   Date
+    @Binding var mode:  ExportMode
+    @Binding var transcribeEnabled: Bool
+    @Binding var transcribeModelRaw: String
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(label)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .frame(width: 60, alignment: .trailing)
-            content()
-                .frame(maxWidth: .infinity, alignment: .leading)
+        GlassCard(cornerRadius: 12) {
+            Grid(alignment: .leading, horizontalSpacing: 22, verticalSpacing: 14) {
+                GridRow {
+                    fieldLabel("Contact").gridCellColumns(1)
+                    contactField.gridCellColumns(3)
+                }
+                GridRow {
+                    fieldLabel("From")
+                    DatePicker("", selection: $start,
+                               displayedComponents: [.date, .hourAndMinute])
+                        .labelsHidden()
+                        .datePickerStyle(.compact)
+                    fieldLabel("To")
+                    DatePicker("", selection: $end,
+                               displayedComponents: [.date, .hourAndMinute])
+                        .labelsHidden()
+                        .datePickerStyle(.compact)
+                }
+                GridRow {
+                    fieldLabel("Mode")
+                    modePicker.gridCellColumns(3)
+                }
+                GridRow {
+                    fieldLabel("Transcribe")
+                    transcribeRow.gridCellColumns(3)
+                }
+            }
+            .padding(18)
         }
     }
-}
 
-/// Inline output-folder picker. Single horizontal row with the path,
-/// optional Default badge, Choose, and Reset. No caption (the implicit
-/// behavior is documented in the README and Settings tooltip).
-struct OutputFolderRow: View {
-    @Binding var path: String
-
-    private var isDefault: Bool {
-        URL(fileURLWithPath: path).standardizedFileURL ==
-            defaultOutputDir().standardizedFileURL
+    @ViewBuilder
+    private func fieldLabel(_ s: String) -> some View {
+        Text(s.uppercased())
+            .font(MissionFont.kicker(10))
+            .tracking(1.0)
+            .foregroundStyle(t.inkMute)
     }
 
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "folder.fill")
-                .foregroundStyle(.secondary)
-            Text(path)
-                .font(.system(.body, design: .monospaced))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .textSelection(.enabled)
-                .help(path)
-            if isDefault {
-                Text("Default")
-                    .font(.caption2)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.accentColor.opacity(0.15))
-                    .clipShape(Capsule())
-            }
+    private var contactField: some View {
+        HStack(spacing: 10) {
+            avatarBubble
+            TextField("Search AddressBook…", text: $contact)
+                .textFieldStyle(.plain)
+                .font(MissionFont.sans(14, weight: .medium))
+                .foregroundStyle(t.ink)
+            Spacer(minLength: 0)
+            Text(matchHint)
+                .font(MissionFont.mono(11))
+                .foregroundStyle(t.inkMute)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(t.cardFillStrong)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .strokeBorder(t.rule, lineWidth: 1)
+        )
+    }
+
+    private var avatarBubble: some View {
+        let trimmed = contact.trimmingCharacters(in: .whitespacesAndNewlines)
+        let initials = trimmed.split(separator: " ")
+            .prefix(2)
+            .compactMap { $0.first.map(String.init) }
+            .joined()
+            .uppercased()
+        return ZStack {
+            Circle()
+                .fill(LinearGradient(
+                    colors: [
+                        Color(red: 0.42, green: 0.55, blue: 0.95),
+                        Color(red: 0.74, green: 0.36, blue: 0.78)
+                    ],
+                    startPoint: .topLeading, endPoint: .bottomTrailing))
+            Text(initials.isEmpty ? "?" : initials)
+                .font(MissionFont.sans(11, weight: .semibold))
+                .foregroundStyle(.white)
+        }
+        .frame(width: 26, height: 26)
+    }
+
+    private var matchHint: String {
+        contact.trimmingCharacters(in: .whitespaces).isEmpty
+            ? "type to begin"
+            : "match via AddressBook"
+    }
+
+    private var modePicker: some View {
+        Picker("", selection: $mode) {
+            ForEach(ExportMode.allCases) { m in Text(m.label).tag(m) }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(maxWidth: 320, alignment: .leading)
+        .help("Sanitized: HEIC→JPG, EXIF stripped, caption-derived filenames. Raw (forensic): byte-identical copies, original filenames, sha256 + EXIF in metadata.json.")
+    }
+
+    private var transcribeRow: some View {
+        HStack(spacing: 10) {
+            Toggle("", isOn: $transcribeEnabled)
+                .toggleStyle(.switch)
+                .labelsHidden()
+            Text(transcribeEnabled ? "Audio & video" : "Skip audio & video")
+                .font(MissionFont.sans(13))
+                .foregroundStyle(t.ink)
             Spacer()
-            Button("Choose…") { choose() }
-                .controlSize(.small)
-            if !isDefault {
-                Button("Reset") { path = defaultOutputDir().path }
-                    .controlSize(.small)
-            }
+            modelTag
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(t.cardFillStrong)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .strokeBorder(t.rule, lineWidth: 1)
+        )
     }
 
-    private func choose() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.directoryURL = URL(fileURLWithPath: path)
-        if panel.runModal() == .OK, let url = panel.url {
-            path = url.path
-        }
+    private var modelTag: some View {
+        let model = WhisperModel(rawValue: transcribeModelRaw)?.shortLabel ?? "turbo"
+        return Text(model)
+            .font(MissionFont.mono(10, weight: .medium))
+            .foregroundStyle(t.accent)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(t.accentSoft)
+            )
+            .opacity(transcribeEnabled ? 1 : 0.5)
+            .help("Change the Whisper model in Settings ⌘,. First run downloads the model and bootstraps a venv.")
     }
 }
+
+// MARK: - Footer + banners
 
 /// Footer that surfaces the app version (CFBundleShortVersionString +
 /// CFBundleVersion) so the user knows what build is running. Useful for
 /// bug reports — version derives from git commit count via build-app.sh.
 struct VersionFooter: View {
+    @Environment(\.missionTheme) private var t
+
     private var version: String {
         let info = Bundle.main.infoDictionary
         let short = info?["CFBundleShortVersionString"] as? String ?? "dev"
@@ -306,46 +374,48 @@ struct VersionFooter: View {
     }
 
     var body: some View {
-        HStack {
-            Spacer()
-            Text(version)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-        }
+        Text(version)
+            .font(MissionFont.mono(10))
+            .foregroundStyle(t.inkMute)
+            .textSelection(.enabled)
     }
 }
 
-/// Inline orange banner shown beneath the title bar whenever the runner
+/// Inline orange banner shown above the main heading whenever the runner
 /// has confirmed FDA is denied. **Re-check** re-probes chat.db without
 /// re-opening the sheet (covers the "I just granted access in another
 /// window" case); **Resolve…** re-opens the modal sheet for the full
 /// guidance + tccutil reset action.
 struct FDABanner: View {
+    @Environment(\.missionTheme) private var t
     @EnvironmentObject private var runner: ExportRunner
     @Binding var showSheet: Bool
+
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "lock.shield.fill")
-                .foregroundStyle(.orange)
+                .foregroundStyle(t.amber)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Full Disk Access required")
-                    .font(.callout).bold()
+                    .font(MissionFont.sans(13, weight: .semibold))
+                    .foregroundStyle(t.ink)
                 Text("Exports will fail until access is granted. Click Re-check after granting.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(MissionFont.sans(11))
+                    .foregroundStyle(t.inkDim)
             }
             Spacer()
-            Button("Re-check") { runner.checkFullDiskAccess() }
-                .controlSize(.small)
-            Button("Resolve…") { showSheet = true }
-                .controlSize(.small)
-                .keyboardShortcut(.defaultAction)
+            ChipButton(label: "Re-check") { runner.checkFullDiskAccess() }
+            ChipButton(label: "Resolve…") { showSheet = true }
         }
-        .padding(10)
-        .background(Color.orange.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.orange.opacity(0.4), lineWidth: 1))
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(t.amber.opacity(0.15))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(t.amber.opacity(0.4), lineWidth: 1)
+        )
     }
 }
 
@@ -423,10 +493,6 @@ struct FullDiskAccessSheet: View {
                 .disabled(resetting)
                 Spacer()
                 Button("Continue anyway") {
-                    // Re-probe before dismissing. If the user granted FDA
-                    // while the sheet was open, this catches it and the
-                    // banner won't appear. If still denied, dismiss the
-                    // sheet and fall back to the persistent banner.
                     runner.checkFullDiskAccess()
                     showSheet = false
                 }
@@ -511,13 +577,29 @@ private struct InstallSheet: View {
     }
 }
 
+// MARK: - Settings (Output + Emoji moved here)
+
 struct SettingsView: View {
     @AppStorage(SettingsKeys.outputDir) private var outputDirPath: String = defaultOutputDir().path
     @AppStorage(SettingsKeys.transcribeModel) private var transcribeModelRaw: String = WhisperModel.turbo.rawValue
     @AppStorage(SettingsKeys.debugLogging) private var debugLogging: Bool = false
+    @AppStorage(SettingsKeys.emojiMode) private var emojiRaw: String = EmojiMode.word.rawValue
+    @AppStorage(SettingsKeys.themePreference) private var themeRaw: String = ThemePreference.system.rawValue
 
     var body: some View {
         Form {
+            Section("Appearance") {
+                Picker("Theme", selection: $themeRaw) {
+                    ForEach(ThemePreference.allCases) { p in
+                        Text(p.label).tag(p.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+                Text("**Auto** follows System Settings → Appearance. **Light** and **Dark** force the chosen scheme regardless of system. The header has a quick-toggle chip that cycles through the same three options.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Section("Default output folder") {
                 HStack {
                     Text(outputDirPath)
@@ -544,13 +626,24 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            Section("Emoji handling") {
+                Picker("In derived filenames", selection: $emojiRaw) {
+                    ForEach(EmojiMode.allCases) { e in
+                        Text(e.label).tag(e.rawValue)
+                    }
+                }
+                Text("How emoji are treated when the CLI builds attachment filenames from message captions. Ignored in Raw (forensic) mode — original filenames are preserved verbatim.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Section("Whisper transcription") {
                 Picker("Model", selection: $transcribeModelRaw) {
                     ForEach(WhisperModel.allCases) { m in
                         Text(m.label).tag(m.rawValue)
                     }
                 }
-                Text("Used when the inline **Transcribe** checkbox is on. First run for a given model downloads it (~150 MB for tiny up to ~3 GB for large) and self-bootstraps a venv at PhantomLives/transcribe/.venv via mlx-whisper. Subsequent runs reuse the cached model. Apple Silicon Metal-accelerated; no server.")
+                Text("Used when the inline **Transcribe** toggle is on. First run for a given model downloads it (~150 MB for tiny up to ~3 GB for large) and self-bootstraps a venv at PhantomLives/transcribe/.venv via mlx-whisper. Subsequent runs reuse the cached model. Apple Silicon Metal-accelerated; no server.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -568,6 +661,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 560, height: 440)
+        .frame(width: 560, height: 520)
     }
 }

@@ -1,8 +1,8 @@
 # messages-exporter-gui
 
-**Current release: 1.0.12**
+**Current release: 1.0.13**
 
-Native macOS SwiftUI front end for the [`messages-exporter`](../messages-exporter/) CLI. Provides a contact text field, native date/time pickers, a streamed copyable log of the export run, a **Sanitized | Raw (forensic)** mode picker, an opt-in **Whisper transcription** of audio/video attachments via the sibling [`transcribe`](../transcribe/) project, a Full Disk Access preflight that detects missing permission on launch and offers to clean up stale TCC entries, and one-click buttons to open the resulting transcript / summary / manifest / metadata / chain-of-custody log or reveal the output folder.
+Native macOS SwiftUI front end for the [`messages-exporter`](../messages-exporter/) CLI. The 1.0.13 *Mission Control* redesign adopts a sidebar + main pane layout with a tinted gradient background, frosted-glass surfaces, and an oklch-derived blue accent. The main pane provides a contact text field, native date/time pickers, a four-tile run summary (Messages · Attachments · Span · Output size), a **Sanitized | Raw (forensic)** mode picker, an opt-in **Whisper transcription** of audio/video attachments via the sibling [`transcribe`](../transcribe/) project, a Full Disk Access preflight that detects missing permission on launch and offers to clean up stale TCC entries, and one-click chip buttons to open the resulting transcript / summary / manifest / metadata / chain-of-custody log or reveal the output folder.
 
 ## Quick start
 
@@ -28,12 +28,12 @@ See [INSTALL.md](INSTALL.md) for the full install / Full Disk Access walk-throug
 
 ## Defaults
 
-- **Output folder**: `~/Downloads/messages-exporter-gui/` (each run creates `<contact>_<YYYYMMDD_HHMMSS>/` inside). Created on demand if it doesn't exist. Change inline in the main window or in **Messages Exporter → Settings…**.
+- **Output folder**: `~/Downloads/messages-exporter-gui/` (each run creates `<contact>_<YYYYMMDD_HHMMSS>/` inside). Created on demand if it doesn't exist. Change in **Messages Exporter → Settings… → Default output folder**.
 - **Start date/time**: today, 00:00 local
 - **End date/time**: today, current local time
 - **Mode**: `Sanitized` (HEIC→JPG, EXIF stripped, caption-derived filenames). Switch to `Raw (forensic)` for byte-identical attachment copies, original filenames, sha256 + EXIF in `metadata.json`, and an append-only `chain_of_custody.log`. Emoji handling is ignored in raw mode.
 - **Transcribe**: off. When on, audio/video attachments are run through the local Whisper model (default `turbo`, configurable in **Messages Exporter → Settings…**). Sidecars `<attachment>.transcript.json` and `<attachment>.transcript.txt` land next to each AV file; raw-mode sidecars are hashed and logged.
-- **Emoji handling**: `word` (e.g., 🔥 → `(fire)` in filenames)
+- **Emoji handling**: `word` (e.g., 🔥 → `(fire)` in filenames). Configured in **Messages Exporter → Settings… → Emoji handling**.
 
 ## Build / test
 
@@ -50,14 +50,23 @@ The GUI is a thin wrapper: it formats arguments, spawns `~/.local/bin/export_mes
 
 ```
 Sources/MessagesExporterGUI/
-├── App.swift                    @main, WindowGroup + Settings scene
-├── RootView.swift               Form, run controls, settings, install sheet
+├── App.swift                    @main, WindowGroup + Settings, hidden title bar
+├── RootView.swift               Sidebar+main layout, FormCard, FDA banner+sheet,
+│                                Install sheet, SettingsView (Output, Emoji,
+│                                Whisper, Diagnostics)
+├── Theme/
+│   └── MissionTheme.swift       Light/dark color tokens, typography helpers,
+│                                GlassCard surface
 ├── Model/
 │   ├── ExportRequest.swift      Argv builder
-│   └── ExportRunner.swift       Process spawn + stdout streaming
+│   ├── ExportRunner.swift       Process spawn + stdout streaming
+│   └── RunStats.swift           Mid-stream + post-run stat parsing
+│                                (drives the four stat tiles)
 └── Views/
-    ├── ProgressBar.swift        5-stage indicator
-    └── LogPane.swift            Scrolling stdout + Reveal/Transcript/Summary/Manifest buttons
+    ├── Sidebar.swift            Frosted nav + FDA pill
+    ├── StatTiles.swift          Messages / Attachments / Span / Output size
+    ├── RunStrip.swift           Blue gradient run+progress strip
+    └── LiveOutputCard.swift     Stdout card + ChipButton + FlowChips action row
 ```
 
 See [HANDOFF.md](HANDOFF.md) for a deeper architecture snapshot.

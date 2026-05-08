@@ -4,38 +4,60 @@ Day-to-day reference for the SwiftUI front end. For first-time setup see [INSTAL
 
 ## The main window
 
+The Mission Control redesign (1.0.13+) splits the window into a frosted-glass sidebar and a main pane. The sidebar carries navigation slots (Overview, **New export** — the only currently active destination, Recent runs · *Soon*, Saved presets · *Soon*) and an FDA status pill at the bottom. The main pane runs top-to-bottom: kicker → contact-name h1 → chip buttons → four stat tiles → form card → run strip → live-output card.
+
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│      Output │  📁 ~/Downloads/messages-exporter-gui  [Default]   │
-│     Contact │  Sallie                                             │
-│        From │  📅 2026-04-26  🕒 00:00                            │
-│          To │  📅 2026-04-26  🕒 17:00                            │
-│        Mode │  [Sanitized] [Raw (forensic)]                       │
-│       Emoji │  [Strip] [Word] [Keep]                              │
-│  Transcribe │  ☐ Audio / video → Whisper (turbo)                  │
-│ ─────────────────────────────────────────────────────────────── │
-│  ▶ Run export   ░░░░░░░░░░░░░░░░░░░  Stage 0/5 — Idle           │
-│                                                                  │
-│  Output                                          [Copy log]      │
-│  ┌─────────────────────────────────────────────────────────────┐ │
-│  │ $ ~/.local/bin/export_messages Sallie --start ...           │ │
-│  │ [1/5] Handles for "Sallie"...                               │ │
-│  │ ...                                                          │ │
-│  └─────────────────────────────────────────────────────────────┘ │
-│  [📁 Reveal] [📄 Transcript] [📄 Summary] [{} Manifest]          │
-│                                                       v1.0.83    │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────┬────────────────────────────────────────────────────────────┐
+│ ◾ Overview       │  NEW EXPORT                  [☆ Save preset] [📁 Reveal]   │
+│ 📝 New export ●  │  Sallie                                                     │
+│ 🕒 Recent  Soon  │  ┌──────────┬──────────────┬──────────┬──────────────────┐ │
+│ ★  Presets Soon  │  │ MESSAGES │ ATTACHMENTS  │ SPAN     │ OUTPUT SIZE      │ │
+│                  │  │ 4,812    │ 1,206        │ 16d      │ 2.4 GB           │ │
+│ Recent           │  │ in range │ 912 photos…  │ Apr 26→  │ on disk          │ │
+│ (placeholder)    │  └──────────┴──────────────┴──────────┴──────────────────┘ │
+│                  │  ┌──────────────────────────────────────────────────────┐ │
+│                  │  │ CONTACT   ┃ [SW] Sallie                  match…      │ │
+│                  │  │ FROM      ┃ 2026-04-26 · 00:00                       │ │
+│                  │  │ TO        ┃ 2026-05-08 · 14:22                       │ │
+│                  │  │ MODE      ┃ [Sanitized] [Raw (forensic)]             │ │
+│                  │  │ TRANSCRIBE┃ ☑ Audio & video                  turbo   │ │
+│                  │  └──────────────────────────────────────────────────────┘ │
+│                  │  ┌──────────────────────────────────────────────────────┐ │
+│                  │  │ ▶ Run export ⌘⏎    Stage 0 of 5 · Ready    ░░░░░░░░  │ │
+│                  │  └──────────────────────────────────────────────────────┘ │
+│                  │  ┌──────────────────────────────────────────────────────┐ │
+│                  │  │ ● Live output                  [Copy] [Open log]      │ │
+│                  │  │ $ ~/.local/bin/export_messages Sallie --start ...     │ │
+│                  │  │ [1/5] Handles for "Sallie"...                         │ │
+│                  │  │ ...                                                    │ │
+│                  │  │ [📁 Reveal] [📄 Transcript] [📄 Summary] [{} Manifest] │ │
+│                  │  └──────────────────────────────────────────────────────┘ │
+│ FDA · granted    │                                              v1.0.13      │
+└──────────────────┴────────────────────────────────────────────────────────────┘
 ```
 
 ## Inputs
 
 ### Output folder
 
-- Defaults to `~/Downloads/messages-exporter-gui/` (created on demand). The "Default" badge appears whenever the current path matches this default.
+- Defaults to `~/Downloads/messages-exporter-gui/` (created on demand).
+- Configure it under **Messages Exporter → Settings… → Default output folder** (⌘,).
 - **Choose…** opens a folder picker; pick any directory you have write access to.
-- **Reset** appears when the path is non-default; restores `~/Downloads/messages-exporter-gui/`.
-- The path persists across launches (stored in user defaults). The Settings scene (**Messages Exporter → Settings…** or ⌘,) shows the same value.
+- **Reset to Downloads** restores `~/Downloads/messages-exporter-gui/`.
+- The path persists across launches (stored in user defaults).
 - Each export creates a `<Contact>_<YYYYMMDD_HHMMSS>/` subfolder inside the chosen path — the path itself is the *parent* of every run.
+- The header's **Reveal output** chip opens the most recent run folder, or falls back to the parent if no run has finished yet.
+
+### Stat tiles
+
+Below the contact-name heading is a four-tile strip that summarises the active or most-recent run:
+
+- **Messages** — populated mid-run from `[3/5] N messages in range`, refined post-run from `metadata.json`.
+- **Attachments** — populated post-run; secondary line shows photo / video / voice breakdown when available.
+- **Span** — derived from your **From** / **To** dates; updates live as you change them.
+- **Output size** — computed post-run by walking the run folder. Tinted with the accent color since it's the most useful "did the export work" tile.
+
+Tiles render an em-dash (`—`) for any value that hasn't been measured yet — they don't fall back to zero, which would be ambiguous (zero is a valid result of a real export).
 
 ### Contact
 
@@ -82,7 +104,7 @@ Choose the Whisper model in **Messages Exporter → Settings… → Whisper tran
 
 ### Emoji handling
 
-Affects how emoji in message captions are rendered in the saved attachment filenames (Sanitized mode only):
+Configured under **Messages Exporter → Settings… → Emoji handling** (⌘,). Affects how emoji in message captions are rendered in the saved attachment filenames (Sanitized mode only):
 
 | Mode  | 🔥 in caption becomes…           |
 | ----- | -------------------------------- |
@@ -90,7 +112,7 @@ Affects how emoji in message captions are rendered in the saved attachment filen
 | Word  | `(fire)` — default               |
 | Keep  | `🔥` — literal emoji in filename |
 
-This only affects filenames, not the transcript or manifest.
+This only affects filenames, not the transcript or manifest. Ignored in Raw (forensic) mode — original filenames are preserved verbatim there.
 
 ## Running an export
 
