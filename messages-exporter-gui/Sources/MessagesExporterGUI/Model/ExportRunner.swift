@@ -84,6 +84,10 @@ final class ExportRunner: ObservableObject {
     @Published private(set) var lastError: String?
     @Published private(set) var lastExitStatus: Int32?
     @Published private(set) var fdaStatus: FullDiskAccessStatus = .unknown
+    /// Numeric summary populated piecewise as the CLI emits markers and
+    /// finalised after the run by reading metadata.json + walking the run
+    /// folder for a byte total. Drives the four Mission Control stat tiles.
+    @Published private(set) var runStats: RunStats = .empty
 
     private var runningProcess: Process?
 
@@ -249,6 +253,9 @@ final class ExportRunner: ObservableObject {
         runFolder = nil
         lastError = nil
         lastExitStatus = nil
+        runStats = RunStats()
+        runStats.spanStart = request.start
+        runStats.spanEnd   = request.end
 
         appendLine("$ \(Self.cliPath) \(request.argumentList().joined(separator: " "))")
 
@@ -264,6 +271,20 @@ final class ExportRunner: ObservableObject {
             isCancelling = false
             appendLine("[export] Cancelled.")
             return
+        }
+        // Finalise stats from the run folder once the CLI has finished.
+        // metadata.json is the authoritative source for per-attachment
+        // counts the mid-stream parser can't see.
+        if ok, let folder = runFolder {
+            let metaURL = folder.appendingPathComponent("metadata.json")
+            if let stats = RunStats.decodeMetadata(at: metaURL) {
+                if let n = stats.messageCount    { runStats.messageCount = n }
+                if let n = stats.attachmentCount { runStats.attachmentCount = n }
+                runStats.photoCount = stats.photoCount
+                runStats.videoCount = stats.videoCount
+                runStats.voiceCount = stats.voiceCount
+            }
+            runStats.outputBytes = RunStats.computeOutputBytes(folder: folder)
         }
         if ok && runFolder == nil {
             lastError = "Export finished with no output folder — likely no contact match or no messages in range."
@@ -374,6 +395,7 @@ final class ExportRunner: ObservableObject {
         }
         if let s = Self.stageNumber(in: line) { stage = s }
         if let folder = Self.runFolderPath(in: line) { runFolder = URL(fileURLWithPath: folder) }
+        if let n = RunStats.messageCount(in: line) { runStats.messageCount = n }
     }
 
     private func appendLine(_ line: String) {

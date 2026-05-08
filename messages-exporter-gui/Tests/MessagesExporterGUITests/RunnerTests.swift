@@ -267,6 +267,144 @@ struct ProcessLineTests {
     }
 }
 
+@Suite("RunStats parsers")
+struct RunStatsTests {
+
+    @Test("messageCount captures the integer after [3/5]")
+    func messageCountStandard() {
+        #expect(RunStats.messageCount(in: "[3/5] 4812 messages in range") == 4812)
+        #expect(RunStats.messageCount(in: "[3/5] 0 messages in range") == 0)
+    }
+
+    @Test("messageCount returns nil for non-stage-3 lines")
+    func messageCountWrongStage() {
+        #expect(RunStats.messageCount(in: "[2/5] Chats: [150]") == nil)
+        #expect(RunStats.messageCount(in: "      [000] cap='hello'") == nil)
+        #expect(RunStats.messageCount(in: "Output    : /tmp/somewhere") == nil)
+    }
+
+    @Test("formatBytes renders nil as em-dash")
+    func bytesNil() {
+        #expect(RunStats.formatBytes(nil) == "—")
+    }
+
+    @Test("formatBytes renders sizes via ByteCountFormatter")
+    func bytesPositive() {
+        // ByteCountFormatter's exact spacing varies by macOS version
+        // (regular vs. NBSP) but both contain the unit + value.
+        let s = RunStats.formatBytes(1_500_000_000)
+        #expect(s.contains("GB"))
+        #expect(s.contains("1"))
+    }
+
+    @Test("formatSpan picks the largest unit that's >= 1")
+    func spanUnits() {
+        let cal = Calendar.current
+        let start = cal.date(from: DateComponents(year: 2026, month: 1, day: 1))!
+        let plus16d = cal.date(byAdding: .day,    value: 16, to: start)!
+        let plus3h  = cal.date(byAdding: .hour,   value: 3,  to: start)!
+        let plus5m  = cal.date(byAdding: .minute, value: 5,  to: start)!
+        #expect(RunStats.formatSpan(start: start, end: plus16d) == "16d")
+        #expect(RunStats.formatSpan(start: start, end: plus3h)  == "3h")
+        #expect(RunStats.formatSpan(start: start, end: plus5m)  == "5m")
+    }
+
+    @Test("formatSpan returns em-dash for missing or inverted ranges")
+    func spanInvalid() {
+        #expect(RunStats.formatSpan(start: nil, end: Date()) == "—")
+        let d = Date()
+        #expect(RunStats.formatSpan(start: d, end: d) == "—")
+    }
+
+    @Test("formatInt groups thousands; nil → em-dash")
+    func intFormat() {
+        #expect(RunStats.formatInt(nil) == "—")
+        // Locale-dependent — but the digits show up.
+        let s = RunStats.formatInt(4812)
+        #expect(s.contains("4"))
+        #expect(s.contains("812"))
+    }
+
+    @Test("decodeMetadata reads counts from a CLI-style payload")
+    func decodeMetadata() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("medexp-meta-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let payload: [String: Any] = [
+            "summary": [
+                "messages": 18,
+                "photos": 4,
+                "videos": 1,
+                "voice":  2
+            ],
+            "messages": [
+                ["attachments": [["x": 1], ["x": 2]]],
+                ["attachments": [["x": 3]]],
+                ["attachments": []]
+            ]
+        ]
+        let url = dir.appendingPathComponent("metadata.json")
+        try JSONSerialization.data(withJSONObject: payload).write(to: url)
+
+        let stats = RunStats.decodeMetadata(at: url)
+        #expect(stats?.messageCount    == 18)
+        #expect(stats?.attachmentCount == 3)
+        #expect(stats?.photoCount      == 4)
+        #expect(stats?.videoCount      == 1)
+        #expect(stats?.voiceCount      == 2)
+    }
+
+    @Test("decodeMetadata falls back to messages array length when summary absent")
+    func decodeMetadataNoSummary() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("medexp-meta-nosum-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let url = dir.appendingPathComponent("metadata.json")
+        let payload: [String: Any] = [
+            "messages": [
+                ["attachments": []],
+                ["attachments": [["x": 1]]]
+            ]
+        ]
+        try JSONSerialization.data(withJSONObject: payload).write(to: url)
+
+        let stats = RunStats.decodeMetadata(at: url)
+        #expect(stats?.messageCount == 2)
+        #expect(stats?.attachmentCount == 1)
+    }
+
+    @Test("decodeMetadata returns nil for missing or junk files")
+    func decodeMetadataMissing() {
+        let bogus = FileManager.default.temporaryDirectory
+            .appendingPathComponent("nope-\(UUID().uuidString).json")
+        #expect(RunStats.decodeMetadata(at: bogus) == nil)
+    }
+
+    @Test("computeOutputBytes sums regular file sizes under a folder")
+    func outputBytes() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("medexp-bytes-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let nested = dir.appendingPathComponent("attachments")
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        try Data(repeating: 0xAB, count: 1024)
+            .write(to: dir.appendingPathComponent("a.bin"))
+        try Data(repeating: 0xCD, count: 2048)
+            .write(to: nested.appendingPathComponent("b.bin"))
+
+        let total = RunStats.computeOutputBytes(folder: dir)
+        // Allocated size rounds up to filesystem block size, so we assert
+        // a lower bound rather than equality.
+        #expect(total >= 3072)
+    }
+}
+
 @Suite("Full Disk Access probe")
 struct FullDiskAccessProbeTests {
 

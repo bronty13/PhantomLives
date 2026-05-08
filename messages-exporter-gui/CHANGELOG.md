@@ -2,6 +2,65 @@
 
 All notable changes to messages-exporter-gui will be documented in this file.
 
+## [1.0.13] — 2026-05-08
+
+### Changed
+- **Mission Control redesign.** Complete UI re-skin to the
+  Tahoe-glass / oklch direction handed off in
+  `Message Exporter UI-handoff.zip`. The single-form RootView is
+  replaced with a sidebar + main pane layout.
+  - **Sidebar** (220 px, `.thinMaterial`): nav rows for Overview /
+    New export (active) / Recent runs (Soon) / Saved presets (Soon),
+    a Recent header with a placeholder until the history store
+    ships, and an FDA status pill at the bottom (green when granted,
+    amber + click-to-resolve when denied).
+  - **Main pane**: NEW EXPORT kicker → contact-name h1 → chip
+    buttons (Save preset · stub, Reveal output · functional) → four
+    glass stat tiles (Messages · Attachments · Span · Output size,
+    accent-tinted) → form card (Contact / From / To / Mode /
+    Transcribe) → blue-gradient run strip with inline white Run
+    button + continuous progress → live-output card with
+    Copy / Open log / file chips.
+  - **Tinted gradient window background** + `.regularMaterial`
+    surfaces approximating the design's frosted-glass aesthetic;
+    light/dark themes follow system appearance.
+  - **Window chrome**: `.hiddenTitleBar` style, min size 920 × 640,
+    ideal 1100 × 780 to match the design's artboard.
+- **Output folder + Emoji handling moved to Settings.** Both
+  controls were on the main form previously; the redesign trades
+  visible chrome for focus, and these are rarely changed once set.
+- **Continuous progress bar.** Replaces the 5-segment bar with a
+  smooth percentage-fill (still stage-driven; same `[N/5]` parser).
+  Stage 0 plays an indeterminate shimmer while waiting for the
+  first marker.
+
+### Added
+- **Stat tiles populated from the run.** New `RunStats` struct
+  parses `[3/5] N messages in range` mid-stream, then refines from
+  `metadata.json` after stage 5 (photos / videos / voice counts).
+  Output size is computed by walking the run folder. Span is
+  derived from the configured From/To dates and shows live as the
+  user picks them.
+- **`MissionTheme`** environment value with light/dark token
+  pairs (background gradient, inks, rules, accent, run-strip
+  gradient, status colors). Resolved by a `MissionThemeReader`
+  wrapper on the root view.
+- **Reusable `GlassCard`, `ChipButton`, `FlowChips`** in
+  `Views/LiveOutputCard.swift`, used by tiles, the form card,
+  the live-output card, and the post-run action row.
+- **Tests for `RunStats`** (11 new): mid-stream message-count
+  parser, ByteCountFormatter rendering, span unit selection,
+  metadata.json decoding (with + without summary block), output-
+  bytes folder walk. 35 tests total in 5 suites.
+
+### Removed
+- `Views/ProgressBar.swift` (replaced by `ContinuousProgressBar`
+  inside `RunStrip.swift`).
+- `Views/LogPane.swift` (replaced by `LiveOutputCard.swift`; same
+  data, same actions, new aesthetic).
+- The fake macOS title bar from the design mock — real macOS
+  provides one, no need to redraw it.
+
 ## [1.0.12] — 2026-05-01
 
 ### Added
