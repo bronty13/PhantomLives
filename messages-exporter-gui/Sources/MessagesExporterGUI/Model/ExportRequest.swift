@@ -1,6 +1,6 @@
 import Foundation
 
-enum EmojiMode: String, CaseIterable, Identifiable {
+enum EmojiMode: String, CaseIterable, Identifiable, Codable {
     case strip
     case word
     case keep
@@ -21,7 +21,7 @@ enum EmojiMode: String, CaseIterable, Identifiable {
 /// flat directory layout, sha256 + EXIF dumped into metadata.json, and a
 /// chain_of_custody.log alongside the transcript. The CLI ignores
 /// `--emoji` when `--raw` is set, so the GUI greys the emoji picker out.
-enum ExportMode: String, CaseIterable, Identifiable {
+enum ExportMode: String, CaseIterable, Identifiable, Codable {
     case sanitized
     case raw
 
@@ -38,7 +38,7 @@ enum ExportMode: String, CaseIterable, Identifiable {
 /// (`choices=WHISPER_MODELS`) — this enum just keeps the GUI's picker
 /// honest about which values are accepted. `turbo` is the default
 /// because it lands at near-large quality with ~8x the throughput.
-enum WhisperModel: String, CaseIterable, Identifiable {
+enum WhisperModel: String, CaseIterable, Identifiable, Codable {
     case tiny, base, small, medium, large, turbo
 
     var id: String { rawValue }

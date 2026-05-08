@@ -1,41 +1,40 @@
 import SwiftUI
 
-/// Frosted-glass sidebar from the Mission Control redesign. The redesign
-/// reserves slots for "Recent runs" and "Saved presets" which are not yet
-/// backed by persistence — they render disabled with a `Soon` chip until
-/// the underlying stores ship. The "New export" item is the only active
-/// destination today, so the sidebar is currently single-state.
+/// Frosted-glass sidebar from the Mission Control redesign. Shows the
+/// run history (most recent N) and the saved-preset list, both
+/// click-to-apply onto the form. Clicking a recent run repopulates the
+/// inputs with what was used; clicking a preset applies the saved
+/// configuration.
 ///
 /// The bottom slot is the Full Disk Access status pill — green when the
-/// process can read `chat.db`, orange when denied (with a Resolve action
+/// process can read `chat.db`, amber when denied (with a Resolve action
 /// that re-opens the FDA sheet).
 struct Sidebar: View {
     @Environment(\.missionTheme) private var t
     @EnvironmentObject private var runner: ExportRunner
+    @EnvironmentObject private var presets: PresetStore
     @Binding var showFDASheet: Bool
+    /// Caller-provided callback that takes a recent-run row and pushes
+    /// its values back into the form @State. Lives in RootView.
+    var applyRecent: (RunHistoryEntry) -> Void
+    /// Apply a saved preset onto the form.
+    var applyPreset: (ExportPreset) -> Void
+
+    private static let recentLimit = 5
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            // Match the main pane's top inset so the first sidebar nav
-            // row aligns with the kicker on the right; the hidden title
-            // bar leaves the entire content area to us.
             Spacer().frame(height: 28)
 
-            SidebarItem(label: "Overview",       icon: "square.grid.2x2",         active: false, disabled: true)
-            SidebarItem(label: "New export",     icon: "square.and.pencil",       active: true)
-            SidebarItem(label: "Recent runs",    icon: "clock",                   active: false, disabled: true, trailing: "Soon")
-            SidebarItem(label: "Saved presets",  icon: "star",                    active: false, disabled: true, trailing: "Soon")
+            SidebarItem(label: "Overview",      icon: "square.grid.2x2",   active: false, disabled: true)
+            SidebarItem(label: "New export",    icon: "square.and.pencil", active: true)
 
             Spacer().frame(height: 16)
-            SidebarKicker(label: "Recent")
-            // No history store yet — show a flat empty hint rather than
-            // fake rows. The placeholder gives the sidebar visual mass and
-            // signals where the upcoming feature will live.
-            Text("Run history will appear here once the\u{00a0}history store ships.")
-                .font(MissionFont.sans(11))
-                .foregroundStyle(t.inkMute)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+            SidebarKicker(label: "Recent runs")
+            recentList
+            Spacer().frame(height: 12)
+            SidebarKicker(label: "Saved presets")
+            presetList
 
             Spacer()
 
@@ -50,6 +49,97 @@ struct Sidebar: View {
             Rectangle().fill(t.ruleSoft).frame(width: 1)
         }
     }
+
+    // MARK: - Recent runs
+
+    @ViewBuilder
+    private var recentList: some View {
+        let entries = Array(runner.history.entries.prefix(Self.recentLimit))
+        if entries.isEmpty {
+            EmptyHint(text: "No runs yet. Press Run export to make the first.")
+        } else {
+            ForEach(entries) { entry in
+                Button {
+                    applyRecent(entry)
+                } label: {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(entry.exitOK ? t.green : t.amber)
+                            .frame(width: 6, height: 6)
+                            .shadow(color: (entry.exitOK ? t.green : t.amber).opacity(0.55), radius: 4)
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(entry.sidebarTitle)
+                                .font(MissionFont.sans(12, weight: .medium))
+                                .foregroundStyle(t.ink)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Text(RelativeTime.short(entry.completedAt))
+                                .font(MissionFont.sans(10))
+                                .foregroundStyle(t.inkMute)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Apply this run's contact + range to the form.")
+            }
+        }
+    }
+
+    // MARK: - Saved presets
+
+    @ViewBuilder
+    private var presetList: some View {
+        if presets.presets.isEmpty {
+            EmptyHint(text: "Save your current setup with the ☆ chip in the header.")
+        } else {
+            ForEach(presets.presets) { p in
+                Button {
+                    applyPreset(p)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(t.accent)
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(p.name)
+                                .font(MissionFont.sans(12, weight: .medium))
+                                .foregroundStyle(t.ink)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Text(presetDetail(p))
+                                .font(MissionFont.sans(10))
+                                .foregroundStyle(t.inkMute)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Apply this preset to the form.")
+                .contextMenu {
+                    Button("Delete preset", role: .destructive) {
+                        presets.delete(id: p.id)
+                    }
+                }
+            }
+        }
+    }
+
+    private func presetDetail(_ p: ExportPreset) -> String {
+        var parts: [String] = [p.contact.isEmpty ? "—" : p.contact]
+        let span = RunStats.formatSpan(start: p.start, end: p.end)
+        if span != "—" { parts.append(span) }
+        if p.mode == .raw { parts.append("raw") }
+        return parts.joined(separator: " · ")
+    }
 }
 
 private struct SidebarItem: View {
@@ -58,7 +148,6 @@ private struct SidebarItem: View {
     let icon: String
     var active: Bool = false
     var disabled: Bool = false
-    var trailing: String? = nil
 
     var body: some View {
         HStack(spacing: 10) {
@@ -70,16 +159,6 @@ private struct SidebarItem: View {
                 .font(MissionFont.sans(13, weight: active ? .semibold : .medium))
                 .foregroundStyle(active ? t.accent : (disabled ? t.inkMute : t.ink))
             Spacer(minLength: 4)
-            if let trailing {
-                Text(trailing)
-                    .font(MissionFont.sans(10, weight: .semibold))
-                    .foregroundStyle(t.inkMute)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(
-                        Capsule().fill(Color.primary.opacity(0.06))
-                    )
-            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
@@ -102,6 +181,19 @@ private struct SidebarKicker: View {
             .foregroundStyle(t.inkMute)
             .padding(.horizontal, 12)
             .padding(.vertical, 4)
+    }
+}
+
+private struct EmptyHint: View {
+    @Environment(\.missionTheme) private var t
+    let text: String
+    var body: some View {
+        Text(text)
+            .font(MissionFont.sans(11))
+            .foregroundStyle(t.inkMute)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
