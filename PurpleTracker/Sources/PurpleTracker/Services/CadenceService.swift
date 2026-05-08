@@ -48,7 +48,8 @@ enum CadenceService {
             externalInterestedParty2: previous.externalInterestedParty2,
             externalInterestedParty3: previous.externalInterestedParty3,
             externalInterestedParty4: previous.externalInterestedParty4,
-            externalInterestedParty5: previous.externalInterestedParty5
+            externalInterestedParty5: previous.externalInterestedParty5,
+            deletedAt: nil
         )
     }
 }

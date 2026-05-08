@@ -10,11 +10,15 @@ struct ContentView: View {
                 SidebarView()
                     .frame(minWidth: 220)
             } content: {
-                if app.sidebarSection == .weeklyTimesheet {
-                    // Tools sections take over the middle column with their own
-                    // content; the detail pane shows a contextual placeholder.
+                switch app.sidebarSection {
+                case .weeklyTimesheet, .today, .timeDashboard, .analytics, .capacity:
+                    // Tools / dashboards take over both columns; the middle
+                    // column collapses to nothing so they get full width.
                     Color.clear.frame(width: 0)
-                } else {
+                case .trash:
+                    TrashListView()
+                        .frame(minWidth: 320)
+                default:
                     MatterListView()
                         .frame(minWidth: 320)
                 }
@@ -22,6 +26,16 @@ struct ContentView: View {
                 switch app.sidebarSection {
                 case .weeklyTimesheet:
                     WeeklyTimesheetView()
+                case .today:
+                    TodayDashboardView()
+                case .timeDashboard:
+                    TimeDashboardView()
+                case .analytics:
+                    AnalyticsDashboardView()
+                case .capacity:
+                    CapacityDashboardView()
+                case .trash:
+                    TrashView()
                 default:
                     if let m = app.selectedMatter {
                         MatterDetailView(matter: m)

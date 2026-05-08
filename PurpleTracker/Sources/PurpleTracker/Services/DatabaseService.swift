@@ -204,6 +204,55 @@ final class DatabaseService {
                           on: "matter_goal", columns: ["goal_id"])
         }
 
+        migrator.registerMigration("v5_subtasks_links_audit_trash_savedsearches") { db in
+            // Soft-delete: set `deleted_at` to put a Matter in the Trash;
+            // null = live. The 30-day purge sweep (AppState.purgeExpiredTrash)
+            // hard-deletes anything older than that on launch.
+            try db.alter(table: "matter") { t in
+                t.add(column: "deleted_at", .datetime)
+            }
+            try db.create(index: "idx_matter_deleted_at", on: "matter", columns: ["deleted_at"])
+
+            try db.create(table: "subtask") { t in
+                t.column("id", .text).primaryKey()
+                t.column("matter_id", .text).notNull()
+                    .references("matter", column: "id", onDelete: .cascade)
+                t.column("body", .text).notNull().defaults(to: "")
+                t.column("done", .integer).notNull().defaults(to: 0)
+                t.column("sort_order", .integer).notNull().defaults(to: 0)
+                t.column("created_at", .datetime).notNull()
+            }
+            try db.create(index: "idx_subtask_matter", on: "subtask", columns: ["matter_id"])
+
+            try db.create(table: "matter_link") { t in
+                t.column("matter_id", .text).notNull()
+                    .references("matter", column: "id", onDelete: .cascade)
+                t.column("related_matter_id", .text).notNull()
+                    .references("matter", column: "id", onDelete: .cascade)
+                t.column("kind", .text).notNull().defaults(to: "related")  // 'related' | 'depends_on'
+                t.primaryKey(["matter_id", "related_matter_id", "kind"])
+            }
+
+            try db.create(table: "audit_event") { t in
+                t.column("id", .text).primaryKey()
+                t.column("matter_id", .text).notNull()
+                    .references("matter", column: "id", onDelete: .cascade)
+                t.column("ts", .datetime).notNull()
+                t.column("kind", .text).notNull()       // 'status', 'priority', 'type', 'title', 'tag', 'created', 'restored', 'deleted'
+                t.column("before_value", .text).notNull().defaults(to: "")
+                t.column("after_value", .text).notNull().defaults(to: "")
+            }
+            try db.create(index: "idx_audit_matter_ts",
+                          on: "audit_event", columns: ["matter_id", "ts"])
+
+            try db.create(table: "saved_search") { t in
+                t.column("id", .text).primaryKey()
+                t.column("name", .text).notNull()
+                t.column("query_json", .text).notNull().defaults(to: "{}")
+                t.column("sort_order", .integer).notNull().defaults(to: 0)
+            }
+        }
+
         try migrator.migrate(writer)
     }
 
@@ -252,7 +301,35 @@ final class DatabaseService {
 
     func fetchAllMatters() throws -> [Matter] {
         try dbPool.read { db in
-            try Matter.order(Column("modified_at").desc).fetchAll(db)
+            // Live (non-trashed) Matters only. Trash is fetched separately
+            // via `fetchTrashedMatters` so it never leaks into the main list.
+            try Matter
+                .filter(Column("deleted_at") == nil)
+                .order(Column("modified_at").desc)
+                .fetchAll(db)
+        }
+    }
+
+    /// Trash bin contents — Matters with `deleted_at` set, newest first.
+    func fetchTrashedMatters() throws -> [Matter] {
+        try dbPool.read { db in
+            try Matter
+                .filter(Column("deleted_at") != nil)
+                .order(Column("deleted_at").desc)
+                .fetchAll(db)
+        }
+    }
+
+    /// Hard-delete every Matter whose `deleted_at` is older than `cutoff`.
+    /// Cascades clear all owned rows (subtasks, time entries, attachments…).
+    @discardableResult
+    func purgeTrashOlderThan(_ cutoff: Date) throws -> Int {
+        try dbPool.write { db in
+            try db.execute(
+                sql: "DELETE FROM matter WHERE deleted_at IS NOT NULL AND deleted_at < ?",
+                arguments: [cutoff]
+            )
+            return db.changesCount
         }
     }
 
@@ -569,5 +646,86 @@ final class DatabaseService {
                 SELECT ?, goal_id FROM matter_goal WHERE matter_id = ?
                 """, arguments: [destMatterId, sourceMatterId])
         }
+    }
+
+    // MARK: - Subtasks
+
+    func fetchSubtasks(matterId: String) throws -> [Subtask] {
+        try dbPool.read { db in
+            try Subtask
+                .filter(Column("matter_id") == matterId)
+                .order(Column("sort_order").asc, Column("created_at").asc)
+                .fetchAll(db)
+        }
+    }
+    func upsertSubtask(_ s: Subtask) throws {
+        try dbPool.write { db in var x = s; try x.save(db) }
+    }
+    func deleteSubtask(id: String) throws {
+        try dbPool.write { db in _ = try Subtask.deleteOne(db, key: id) }
+    }
+    /// Aggregate (done, total) counts per matter for the list-row badge.
+    func fetchSubtaskCounts() throws -> [String: (done: Int, total: Int)] {
+        try dbPool.read { db in
+            var out: [String: (done: Int, total: Int)] = [:]
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT matter_id,
+                       SUM(done)  AS d,
+                       COUNT(*)   AS t
+                FROM subtask GROUP BY matter_id
+                """)
+            for r in rows {
+                let m: String = r["matter_id"]
+                let d: Int    = r["d"] ?? 0
+                let t: Int    = r["t"] ?? 0
+                out[m] = (d, t)
+            }
+            return out
+        }
+    }
+
+    // MARK: - Matter links
+
+    func fetchAllLinks() throws -> [MatterLink] {
+        try dbPool.read { db in try MatterLink.fetchAll(db) }
+    }
+    func upsertLink(_ l: MatterLink) throws {
+        try dbPool.write { db in var x = l; try x.save(db) }
+    }
+    func deleteLink(matterId: String, related: String, kind: String) throws {
+        try dbPool.write { db in
+            try db.execute(
+                sql: "DELETE FROM matter_link WHERE matter_id = ? AND related_matter_id = ? AND kind = ?",
+                arguments: [matterId, related, kind]
+            )
+        }
+    }
+
+    // MARK: - Audit events
+
+    func fetchAuditEvents(matterId: String) throws -> [AuditEvent] {
+        try dbPool.read { db in
+            try AuditEvent
+                .filter(Column("matter_id") == matterId)
+                .order(Column("ts").desc)
+                .fetchAll(db)
+        }
+    }
+    func appendAuditEvent(_ e: AuditEvent) throws {
+        try dbPool.write { db in var x = e; try x.insert(db) }
+    }
+
+    // MARK: - Saved searches
+
+    func fetchAllSavedSearches() throws -> [SavedSearch] {
+        try dbPool.read { db in
+            try SavedSearch.order(Column("sort_order").asc, Column("name").asc).fetchAll(db)
+        }
+    }
+    func upsertSavedSearch(_ s: SavedSearch) throws {
+        try dbPool.write { db in var x = s; try x.save(db) }
+    }
+    func deleteSavedSearch(id: String) throws {
+        try dbPool.write { db in _ = try SavedSearch.deleteOne(db, key: id) }
     }
 }

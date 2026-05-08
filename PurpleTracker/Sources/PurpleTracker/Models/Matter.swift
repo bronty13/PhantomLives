@@ -53,6 +53,10 @@ struct Matter: Codable, Hashable, Identifiable, FetchableRecord, MutablePersista
     var externalInterestedParty4: String
     var externalInterestedParty5: String
 
+    /// Soft-delete tombstone. nil → live Matter. Set → in Trash; the
+    /// 30-day purge sweep on launch hard-deletes anything older than that.
+    var deletedAt: Date?
+
     enum CodingKeys: String, CodingKey {
         case id, title, status
         case typeId = "type_id"
@@ -87,6 +91,7 @@ struct Matter: Codable, Hashable, Identifiable, FetchableRecord, MutablePersista
         case externalInterestedParty3 = "external_interested_party3"
         case externalInterestedParty4 = "external_interested_party4"
         case externalInterestedParty5 = "external_interested_party5"
+        case deletedAt = "deleted_at"
     }
 
     static func newDraft(id: String, typeId: String, title: String = "") -> Matter {
@@ -126,7 +131,8 @@ struct Matter: Codable, Hashable, Identifiable, FetchableRecord, MutablePersista
             externalInterestedParty2: "",
             externalInterestedParty3: "",
             externalInterestedParty4: "",
-            externalInterestedParty5: ""
+            externalInterestedParty5: "",
+            deletedAt: nil
         )
     }
 }

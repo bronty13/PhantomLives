@@ -5,6 +5,8 @@ import SwiftUI
 /// Click the title to jump to the running Matter; click Stop to log the entry.
 struct RunningTimerBanner: View {
     @EnvironmentObject var app: AppState
+    @State private var noteDraft: String = ""
+    @State private var showNotePrompt: Bool = false
 
     var body: some View {
         if let mid = app.timer.activeMatterId,
@@ -52,7 +54,8 @@ struct RunningTimerBanner: View {
                     .monospacedDigit()
 
                 Button {
-                    _ = app.timer.stop()
+                    noteDraft = ""
+                    showNotePrompt = true
                 } label: {
                     Label("Stop", systemImage: "stop.fill")
                         .labelStyle(.titleAndIcon)
@@ -60,6 +63,13 @@ struct RunningTimerBanner: View {
                 .controlSize(.regular)
                 .tint(.red)
                 .buttonStyle(.borderedProminent)
+                .alert("Add a note (optional)", isPresented: $showNotePrompt) {
+                    TextField("What did you work on?", text: $noteDraft)
+                    Button("Save") { _ = app.timer.stop(note: noteDraft) }
+                    Button("Stop without note", role: .cancel) { _ = app.timer.stop() }
+                } message: {
+                    Text("Annotate this time entry so the Time tab shows what was done.")
+                }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)

@@ -56,7 +56,8 @@ final class CadenceServiceTests: XCTestCase {
             interestedParty5AssociateId: "",
             externalInterestedParty1: "Acme Corp", externalInterestedParty2: "",
             externalInterestedParty3: "", externalInterestedParty4: "",
-            externalInterestedParty5: ""
+            externalInterestedParty5: "",
+            deletedAt: nil
         )
         let cad = Cadence(id: "cad-q", kind: .quarterly, customIntervalDays: nil)
         let next = CadenceService.nextMatter(after: prev, cadence: cad)

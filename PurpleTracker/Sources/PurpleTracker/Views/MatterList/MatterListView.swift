@@ -2,6 +2,9 @@ import SwiftUI
 
 struct MatterListView: View {
     @EnvironmentObject var app: AppState
+    @State private var multiSelection: Set<String> = []
+    @State private var showBulkPriority: Bool = false
+    @State private var bulkPriority: MatterPriority = .p3Medium
 
     var body: some View {
         VStack(spacing: 0) {
@@ -20,18 +23,75 @@ struct MatterListView: View {
             .padding(8)
             .background(Color.secondary.opacity(0.10))
 
-            List(selection: Binding(
-                get: { app.selectedMatterId },
-                set: { if let id = $0 { app.selectMatter(id: id) } }
-            )) {
+            List(selection: $multiSelection) {
                 ForEach(app.filteredMatters) { m in
                     MatterRow(matter: m)
                         .tag(m.id)
+                        .contextMenu {
+                            if multiSelection.count > 1, multiSelection.contains(m.id) {
+                                Section("\(multiSelection.count) selected") {
+                                    Menu("Set Priority") {
+                                        ForEach(MatterPriority.allCases) { p in
+                                            Button(p.rawValue) { bulkSetPriority(p) }
+                                        }
+                                    }
+                                    Menu("Set Status") {
+                                        ForEach(app.statusValues, id: \.name) { sv in
+                                            Button(sv.name) { bulkSetStatus(sv.name) }
+                                        }
+                                    }
+                                    Button(role: .destructive) {
+                                        bulkSoftDelete()
+                                    } label: { Label("Move to Trash", systemImage: "trash") }
+                                }
+                            } else {
+                                Menu("Set Priority") {
+                                    ForEach(MatterPriority.allCases) { p in
+                                        Button(p.rawValue) { setPriority(matter: m, p) }
+                                    }
+                                }
+                                Button(role: .destructive) {
+                                    try? app.deleteMatter(id: m.id)
+                                } label: { Label("Move to Trash", systemImage: "trash") }
+                            }
+                        }
                 }
             }
             .listStyle(.inset)
+            .onChange(of: multiSelection) { _, newSel in
+                // Single-tap behavior preserved: when exactly one is selected,
+                // update the active Matter so the detail pane follows.
+                if newSel.count == 1, let id = newSel.first {
+                    app.selectMatter(id: id)
+                }
+            }
         }
         .navigationTitle(navigationTitle)
+    }
+
+    private func setPriority(matter: Matter, _ p: MatterPriority) {
+        var x = matter; x.priority = p.rawValue
+        try? app.updateMatter(x)
+    }
+
+    private func bulkSetPriority(_ p: MatterPriority) {
+        for id in multiSelection {
+            if var m = app.matters.first(where: { $0.id == id }) {
+                m.priority = p.rawValue
+                try? app.updateMatter(m)
+            }
+        }
+    }
+    private func bulkSetStatus(_ s: String) {
+        for id in multiSelection {
+            if let m = app.matters.first(where: { $0.id == id }) {
+                try? app.updateMatterStatus(m, to: s)
+            }
+        }
+    }
+    private func bulkSoftDelete() {
+        for id in multiSelection { try? app.deleteMatter(id: id) }
+        multiSelection.removeAll()
     }
 
     private var navigationTitle: String {
@@ -42,6 +102,14 @@ struct MatterListView: View {
         case .dueSoon: return "Due Soon (\(app.filteredMatters.count))"
         case .overdue: return "Overdue (\(app.filteredMatters.count))"
         case .weeklyTimesheet: return "Weekly Timesheet"
+        case .today: return "Today"
+        case .timeDashboard: return "Time Dashboard"
+        case .analytics: return "Analytics"
+        case .capacity: return "Capacity"
+        case .trash: return "Trash (\(app.trashedMatters.count))"
+        case .savedSearch(let id):
+            let name = app.savedSearches.first(where: { $0.id == id })?.name ?? "Saved Search"
+            return "\(name) (\(app.filteredMatters.count))"
         }
     }
 }
@@ -132,6 +200,15 @@ struct MatterRow: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .help("\(partyCount) interested part\(partyCount == 1 ? "y" : "ies")")
+                    }
+                    // Subtask progress, only when there are any. The aggregate
+                    // counts are precomputed in AppState.subtaskCounts to keep
+                    // the per-row render cheap.
+                    if let counts = app.subtaskCounts[matter.id], counts.total > 0 {
+                        Label("\(counts.done)/\(counts.total)", systemImage: "checklist")
+                            .font(.caption2)
+                            .foregroundStyle(counts.done == counts.total ? .green : .secondary)
+                            .help("Subtasks completed")
                     }
                 }
             }

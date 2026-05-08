@@ -21,6 +21,20 @@ final class AppState: ObservableObject {
     /// matterId → goalIds.
     @Published var matterGoalIds: [String: Set<String>] = [:]
 
+    // 1.3.0 — Subtasks, links, audit, saved searches, trash
+    @Published var trashedMatters: [Matter] = []
+    @Published var subtasksByMatter: [String: [Subtask]] = [:]
+    @Published var subtaskCounts: [String: (done: Int, total: Int)] = [:]
+    @Published var linksByMatter: [String: [MatterLink]] = [:]
+    @Published var auditEvents: [AuditEvent] = []
+    @Published var savedSearches: [SavedSearch] = []
+    @Published var activeSavedSearchId: String? = nil
+    /// One-shot toast hint shown after a soft-delete so the user can undo.
+    @Published var lastDeletedMatterId: String? = nil
+    /// ⌘K command palette is shown when this is true; flipped from
+    /// `PurpleTrackerApp` menu commands.
+    @Published var commandPaletteVisible: Bool = false
+
     // Selection
     @Published var selectedMatterId: String?
     @Published var sidebarSection: SidebarSection = .all
@@ -49,6 +63,12 @@ final class AppState: ObservableObject {
         case dueSoon
         case overdue
         case weeklyTimesheet
+        case today                // 1.3.0 — Today / Up Next dashboard
+        case timeDashboard        // 1.3.0 — Time charts
+        case analytics            // 1.3.0 — Matter analytics
+        case capacity             // 1.3.0 — Per-person capacity
+        case trash                // 1.3.0 — Soft-deleted Matters
+        case savedSearch(String)  // 1.3.0 — Saved-search id
 
         var title: String {
             switch self {
@@ -58,6 +78,12 @@ final class AppState: ObservableObject {
             case .dueSoon: return "Due Soon"
             case .overdue: return "Overdue"
             case .weeklyTimesheet: return "Weekly Timesheet"
+            case .today: return "Today"
+            case .timeDashboard: return "Time Dashboard"
+            case .analytics: return "Analytics"
+            case .capacity: return "Capacity"
+            case .trash: return "Trash"
+            case .savedSearch(let id): return "Saved: \(id)"
             }
         }
     }
@@ -110,6 +136,10 @@ final class AppState: ObservableObject {
             try recomputeTotals()
             try reloadInitiativeAndGoalLinks()
             reloadPeople()
+            try reloadSubtaskCounts()
+            try reloadLinks()
+            try reloadSavedSearches()
+            try reloadTrash()
             if let sid = selectedMatterId {
                 try loadSelected(sid)
             } else if let first = matters.first {
@@ -125,6 +155,7 @@ final class AppState: ObservableObject {
         do {
             matters = try DatabaseService.shared.fetchAllMatters()
             try recomputeTotals()
+            try reloadSubtaskCounts()
         } catch { errorMessage = error.localizedDescription }
     }
 
@@ -171,6 +202,8 @@ final class AppState: ObservableObject {
         notes = try DatabaseService.shared.fetchNotes(matterId: id)
         timeEntries = try DatabaseService.shared.fetchTimeEntries(matterId: id)
         attachmentsMeta = try DatabaseService.shared.fetchAttachmentMetadata(matterId: id)
+        subtasksByMatter[id] = try DatabaseService.shared.fetchSubtasks(matterId: id)
+        auditEvents = try DatabaseService.shared.fetchAuditEvents(matterId: id)
     }
 
     private func recomputeTotals() throws {
@@ -209,6 +242,16 @@ final class AppState: ObservableObject {
             rows = rows.filter { ($0.dueAt ?? .distantFuture) < now && $0.status != "Closed" }
         case .weeklyTimesheet:
             break  // handled by ContentView routing; matter list is hidden
+        case .today, .timeDashboard, .analytics, .capacity:
+            break  // dedicated dashboards take over the detail pane
+        case .trash:
+            // Trash bin uses its own data slice (`trashedMatters`); the
+            // main list shows nothing while in this section.
+            return []
+        case .savedSearch(let id):
+            if let s = savedSearches.first(where: { $0.id == id }) {
+                rows = applySavedSearch(s.criteria, to: rows)
+            }
         }
         if let t = sidebarTypeFilter   { rows = rows.filter { $0.typeId == t } }
         if let s = sidebarStatusFilter { rows = rows.filter { $0.status == s } }
@@ -260,6 +303,11 @@ final class AppState: ObservableObject {
             m.fileStorePrimary = resolved.primary
             m.fileStoreSecondary = resolved.secondary
             try m.insert(db)
+            // Seed an audit "created" event so the History tab always has
+            // a starting point.
+            var ev = AuditEvent(id: UUID().uuidString, matterId: mid, ts: now,
+                                kind: "created", beforeValue: "", afterValue: title)
+            try ev.insert(db)
             inserted = m
         }
         reloadMatters()
@@ -276,14 +324,17 @@ final class AppState: ObservableObject {
 
     func updateMatter(_ m: Matter) throws {
         var next = m
+        // Capture audit deltas vs. the in-memory prior copy. A handful of
+        // user-facing field changes (status, priority, type, title) are
+        // recorded as audit events so the History tab can show a timeline.
+        let prior = matters.first(where: { $0.id == m.id })
         // If the title changed AND the file-store paths still match what we'd
         // template from the *previous* title (i.e. the user hasn't manually
         // edited them), retemplate with the new title. This makes the common
         // case "click New Matter → type a title" do the right thing, while
         // preserving any manual customisation the user has made to the paths.
-        if let prior = matters.first(where: { $0.id == m.id }),
-           prior.title != m.title {
-            let priorResolved = resolveDefaultPaths(title: prior.title, matterId: m.id)
+        if let p = prior, p.title != m.title {
+            let priorResolved = resolveDefaultPaths(title: p.title, matterId: m.id)
             let newResolved = resolveDefaultPaths(title: m.title, matterId: m.id)
             if next.fileStorePrimary == priorResolved.primary {
                 next.fileStorePrimary = newResolved.primary
@@ -293,11 +344,16 @@ final class AppState: ObservableObject {
             }
         }
         try DatabaseService.shared.updateMatter(next)
+        if let p = prior {
+            emitAuditDeltas(for: m.id, before: p, after: next)
+        }
         reloadMatters()
         if next.id == selectedMatterId,
            let updated = try DatabaseService.shared.fetchMatter(id: next.id),
            let idx = matters.firstIndex(where: { $0.id == next.id }) {
             matters[idx] = updated
+            // Refresh the audit feed so the new event appears immediately.
+            auditEvents = (try? DatabaseService.shared.fetchAuditEvents(matterId: next.id)) ?? auditEvents
         }
     }
 
@@ -346,10 +402,50 @@ final class AppState: ObservableObject {
         try? updateMatter(m)
     }
 
+    /// Soft-delete: move to Trash. The Matter remains in the DB so links and
+    /// time entries are preserved; the 30-day purge sweep on launch hard-
+    /// deletes anything older than that. Use `restoreMatter` to recover.
     func deleteMatter(id: String) throws {
+        guard var m = matters.first(where: { $0.id == id })
+            ?? (try? DatabaseService.shared.fetchMatter(id: id)) else {
+            return
+        }
+        m.deletedAt = Date()
+        try DatabaseService.shared.updateMatter(m)
+        try DatabaseService.shared.appendAuditEvent(AuditEvent(
+            id: UUID().uuidString, matterId: id, ts: Date(),
+            kind: "deleted", beforeValue: "", afterValue: ""
+        ))
+        if selectedMatterId == id { selectedMatterId = nil }
+        lastDeletedMatterId = id
+        reloadMatters()
+        try? reloadTrash()
+    }
+
+    /// Permanently delete a Matter from the Trash bin (cascades).
+    func purgeMatter(id: String) throws {
         try DatabaseService.shared.deleteMatter(id: id)
         if selectedMatterId == id { selectedMatterId = nil }
-        reloadAll()
+        try? reloadTrash()
+        reloadMatters()
+    }
+
+    func restoreMatter(id: String) throws {
+        guard var m = try DatabaseService.shared.fetchMatter(id: id) else { return }
+        m.deletedAt = nil
+        try DatabaseService.shared.updateMatter(m)
+        try DatabaseService.shared.appendAuditEvent(AuditEvent(
+            id: UUID().uuidString, matterId: id, ts: Date(),
+            kind: "restored", beforeValue: "", afterValue: ""
+        ))
+        try? reloadTrash()
+        reloadMatters()
+    }
+
+    /// Hard-delete trashed matters older than 30 days. Run on launch.
+    func purgeExpiredTrash(olderThanDays days: Int = 30) {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+        _ = try? DatabaseService.shared.purgeTrashOlderThan(cutoff)
     }
 
     // MARK: - Note mutations
@@ -510,5 +606,151 @@ final class AppState: ObservableObject {
         try DatabaseService.shared.reopenDatabase()
         settingsStore.load()
         reloadAll()
+    }
+
+    // MARK: - 1.3.0 Subtasks
+
+    func reloadSubtaskCounts() throws {
+        subtaskCounts = try DatabaseService.shared.fetchSubtaskCounts()
+    }
+
+    func addSubtask(matterId: String, body: String) throws {
+        let next = (subtasksByMatter[matterId]?.count ?? 0)
+        let s = Subtask(id: UUID().uuidString, matterId: matterId, body: body,
+                        done: false, sortOrder: next, createdAt: Date())
+        try DatabaseService.shared.upsertSubtask(s)
+        subtasksByMatter[matterId] = try DatabaseService.shared.fetchSubtasks(matterId: matterId)
+        try reloadSubtaskCounts()
+    }
+
+    func toggleSubtask(_ s: Subtask) throws {
+        var x = s; x.done.toggle()
+        try DatabaseService.shared.upsertSubtask(x)
+        subtasksByMatter[s.matterId] = try DatabaseService.shared.fetchSubtasks(matterId: s.matterId)
+        try reloadSubtaskCounts()
+    }
+
+    func updateSubtask(_ s: Subtask) throws {
+        try DatabaseService.shared.upsertSubtask(s)
+        subtasksByMatter[s.matterId] = try DatabaseService.shared.fetchSubtasks(matterId: s.matterId)
+    }
+
+    func deleteSubtask(_ s: Subtask) throws {
+        try DatabaseService.shared.deleteSubtask(id: s.id)
+        subtasksByMatter[s.matterId] = try DatabaseService.shared.fetchSubtasks(matterId: s.matterId)
+        try reloadSubtaskCounts()
+    }
+
+    // MARK: - 1.3.0 Linked Matters
+
+    func reloadLinks() throws {
+        var byMatter: [String: [MatterLink]] = [:]
+        for l in try DatabaseService.shared.fetchAllLinks() {
+            byMatter[l.matterId, default: []].append(l)
+        }
+        linksByMatter = byMatter
+    }
+
+    func addLink(from: String, to: String, kind: MatterLink.Kind) throws {
+        guard from != to else { return }
+        let l = MatterLink(matterId: from, relatedMatterId: to, kind: kind.rawValue)
+        try DatabaseService.shared.upsertLink(l)
+        try reloadLinks()
+    }
+
+    func deleteLink(_ l: MatterLink) throws {
+        try DatabaseService.shared.deleteLink(matterId: l.matterId, related: l.relatedMatterId, kind: l.kind)
+        try reloadLinks()
+    }
+
+    // MARK: - 1.3.0 Trash
+
+    func reloadTrash() throws {
+        trashedMatters = try DatabaseService.shared.fetchTrashedMatters()
+    }
+
+    // MARK: - 1.3.0 Saved searches
+
+    func reloadSavedSearches() throws {
+        savedSearches = try DatabaseService.shared.fetchAllSavedSearches()
+    }
+
+    func saveSearch(_ s: SavedSearch) throws {
+        try DatabaseService.shared.upsertSavedSearch(s)
+        try reloadSavedSearches()
+    }
+
+    func deleteSavedSearch(id: String) throws {
+        try DatabaseService.shared.deleteSavedSearch(id: id)
+        if activeSavedSearchId == id { activeSavedSearchId = nil }
+        try reloadSavedSearches()
+    }
+
+    // MARK: - 1.3.0 Audit
+
+    /// Apply a SavedSearch criteria block to a Matter list (AND semantics).
+    func applySavedSearch(_ c: SearchCriteria, to rows: [Matter]) -> [Matter] {
+        var out = rows
+        if c.openOnly {
+            let terminal = statusValues.last?.name ?? "Closed"
+            out = out.filter { $0.status != terminal }
+        }
+        if !c.typeIds.isEmpty {
+            let s = Set(c.typeIds); out = out.filter { s.contains($0.typeId) }
+        }
+        if !c.statuses.isEmpty {
+            let s = Set(c.statuses); out = out.filter { s.contains($0.status) }
+        }
+        if !c.priorities.isEmpty {
+            let s = Set(c.priorities); out = out.filter { s.contains($0.priority) }
+        }
+        if !c.requestorAssociateIds.isEmpty {
+            let s = Set(c.requestorAssociateIds)
+            out = out.filter { s.contains($0.requestorAssociateId) }
+        }
+        if !c.initiativeIds.isEmpty {
+            let want = Set(c.initiativeIds)
+            out = out.filter { (matterInitiativeIds[$0.id] ?? []).intersection(want).isEmpty == false }
+        }
+        if !c.goalIds.isEmpty {
+            let want = Set(c.goalIds)
+            out = out.filter { (matterGoalIds[$0.id] ?? []).intersection(want).isEmpty == false }
+        }
+        if let n = c.dueWithinDays {
+            let cutoff = Calendar.current.date(byAdding: .day, value: n, to: Date()) ?? Date()
+            out = out.filter { ($0.dueAt ?? .distantFuture) <= cutoff }
+        }
+        if let q = c.text, !q.isEmpty {
+            let needle = q.lowercased()
+            out = out.filter {
+                $0.title.lowercased().contains(needle) ||
+                $0.id.lowercased().contains(needle)
+            }
+        }
+        return out
+    }
+
+    private func emitAuditDeltas(for matterId: String, before: Matter, after: Matter) {
+        var events: [AuditEvent] = []
+        let now = Date()
+        if before.status != after.status {
+            events.append(AuditEvent(id: UUID().uuidString, matterId: matterId, ts: now,
+                                     kind: "status", beforeValue: before.status, afterValue: after.status))
+        }
+        if before.priority != after.priority {
+            events.append(AuditEvent(id: UUID().uuidString, matterId: matterId, ts: now,
+                                     kind: "priority", beforeValue: before.priority, afterValue: after.priority))
+        }
+        if before.typeId != after.typeId {
+            events.append(AuditEvent(id: UUID().uuidString, matterId: matterId, ts: now,
+                                     kind: "type", beforeValue: before.typeId, afterValue: after.typeId))
+        }
+        if before.title != after.title {
+            events.append(AuditEvent(id: UUID().uuidString, matterId: matterId, ts: now,
+                                     kind: "title", beforeValue: before.title, afterValue: after.title))
+        }
+        for e in events {
+            try? DatabaseService.shared.appendAuditEvent(e)
+        }
     }
 }

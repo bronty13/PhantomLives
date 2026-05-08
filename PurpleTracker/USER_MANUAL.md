@@ -243,6 +243,68 @@ successor, and are included in markdown / PDF / DOCX exports.
 
 ## Keyboard shortcuts
 
+- **⌘N** — new Matter
+- **⌘K** — Command Palette (fuzzy search Matters, people, actions)
+- **⌘⇧1** — Today dashboard
+- **⌘⇧2** — All Matters
+- **⌘⇧3** — Time Dashboard
+- **⌘⇧4** — Analytics
+- **⌘⇧Space** — toggle the active timer
+
+---
+
+## Dashboards & sidebar tools (1.3.0)
+
+- **Today** — Overdue / Due Today / Due This Week / In-Progress (no due
+  date) at a glance.
+- **Time Dashboard** — Swift Charts of hours per day and per Type for
+  the last 7 / 14 / 30 / 90 days.
+- **Analytics** — open vs. closed counts plus charts by Type, Priority,
+  and Initiative.
+- **Capacity** — open Matter counts per Requestor.
+- **Trash** — soft-deleted Matters (purged after 30 days). Restore or
+  permanently delete from this view.
+- **Saved Searches** — save the current search bar query as a sidebar
+  pin via Tools → "Save Current Search…".
+
+## Subtasks, Linked Matters, History
+
+- **Subtasks tab** — lightweight checklist on each Matter; row badge
+  shows `done/total`.
+- **Links tab** — `depends_on` (directional) or `related` (informational).
+- **History tab** — append-only audit log of every status / priority /
+  type / title change, plus delete and restore events.
+
+## Tools menu (sidebar toolbar)
+
+- **Save Current Search** — pin the current search bar text to the
+  sidebar.
+- **Export Calendar (.ics)** — writes `PurpleTracker-Due.ics` into your
+  exports directory; subscribe in Calendar.app.
+- **Run Integrity Check** — re-hashes every attachment (SHA1) and
+  reports any mismatches plus dangling person FKs.
+- **Copy Time by Initiative / Goal (Markdown)** — clipboard-ready
+  table of hours per tag (time evenly split across multi-tagged Matters).
+
+## Other 1.3.0 niceties
+
+- **Stop-with-note** — clicking Stop on the global timer banner asks
+  for an optional one-line note that gets stored on the time entry.
+- **Open primary store in editor** — Overview tab "Open in" menu:
+  Finder, VS Code (`vscode://`), Obsidian (`obsidian://`).
+- **OneDrive / file-store status** — the path row shows whether the
+  folder exists, file count, and last-modified time.
+- **URL autofill** — paste a SNOW or ADO URL into an external link
+  field; the corresponding Number field is populated automatically
+  (only when the Number field is empty).
+- **Email intake** — drag a `.eml` onto the sidebar to create a new
+  Matter with the email's Subject as the Title and From + body as the
+  description.
+- **Bulk actions** — multi-select Matters in the list, right-click for
+  Set Priority / Set Status / Move to Trash.
+- **Menu-bar mini timer** — `⏱ HH:MM — Title` in the menu bar while
+  the timer runs; click to stop or start.
+
 ---
 
 ## People, Requestor & Interested Parties

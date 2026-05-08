@@ -4,6 +4,67 @@ All notable changes to PurpleTracker are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] — Mega-release: dashboards, palette, trash, and more
+
+### Added
+- **Today dashboard** — sun icon at the top of the sidebar. Shows Overdue,
+  Due Today, Due This Week, and In-Progress (no due date) at a glance.
+- **Time Dashboard** — Swift Charts of hours per day and per Type for the
+  last 7 / 14 / 30 / 90 days.
+- **Analytics dashboard** — open vs. closed counts plus charts by Type,
+  Priority, and Initiative.
+- **Capacity dashboard** — open Matter counts per Requestor; spot
+  bottlenecks across the team in seconds.
+- **⌘K Command Palette** — fuzzy search across Matters, people, and
+  quick actions. Use ↑/↓ then return.
+- **Saved Searches** — save the current search bar query as a sidebar
+  pin via Tools → "Save Current Search…".
+- **Bulk actions on the Matter list** — select multiple rows (⌘-click /
+  shift-click), right-click for Set Priority, Set Status, Move to Trash.
+- **Soft-delete with Trash** — deletes are now reversible. Trashed Matters
+  live in a new sidebar bin and are permanently purged 30 days later.
+- **Per-Matter audit log (History tab)** — every status, priority, type, or
+  title change, plus delete / restore, is recorded with a timestamp.
+- **Subtasks tab** — lightweight checklist on each Matter; the row badge
+  shows `done/total` progress.
+- **Linked Matters tab** — relate Matters with `depends_on` (directional)
+  or `related` (informational); click a chip to jump to that Matter.
+- **Menu-bar mini timer** — `⏱ HH:MM — Title` always visible while the
+  timer runs; click the menu-bar item to stop or start.
+- **Stop-with-note prompt** — clicking Stop on the global timer banner now
+  asks for an optional one-line note that gets stored on the time entry.
+- **Open primary store in editor** — Overview tab now has an "Open in"
+  menu next to Reveal: Finder, VS Code (`vscode://`), Obsidian (`obsidian://`).
+- **OneDrive / file-store status indicator** — shows whether the primary or
+  secondary path exists, how many files it contains, and last-modified time.
+- **Calendar (.ics) export** — Tools → "Export Calendar (.ics)…" writes a
+  one-VEVENT-per-open-due-Matter file you can subscribe to from Calendar.
+- **URL autofill** — paste a SNOW or ADO URL into an external link field
+  and the corresponding Number field is populated automatically (only when
+  the Number field is empty).
+- **Email intake** — drag a `.eml` onto the sidebar to create a Matter with
+  the email's Subject as the Title and From + body as the description.
+- **Integrity check** — Tools → "Run Integrity Check…" re-hashes every
+  attachment BLOB (SHA1) and reports any mismatches plus dangling person
+  FKs and orphaned subtasks.
+- **Time-by-tag Markdown reports** — Tools menu can copy a Markdown table
+  of hours per Initiative or per Goal (time evenly split across tags).
+- **Keyboard shortcuts** — ⌘K Command Palette · ⌘⇧1..4 jump to dashboards ·
+  ⌘⇧Space toggle the active timer.
+- **Created audit event seeded** for every new Matter so the History tab
+  always has a starting point.
+- **Dark-mode tuned palette** — pill backgrounds use a higher opacity in
+  dark mode for better contrast.
+
+### Schema
+- Migration v5 adds: `matter.deleted_at`, plus tables `subtask`,
+  `matter_link`, `audit_event`, `saved_search`. All foreign keys cascade
+  on Matter deletion.
+
+### Notes
+- The 30-day Trash purge runs once on launch (after `BackupService`).
+- Touch Bar support is intentionally not provided (deprecated on M-series).
+
 ## [1.2.1] — Tidy `~/Downloads/` layout
 
 ### Changed

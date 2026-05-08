@@ -201,20 +201,58 @@ struct OverviewTab: View {
     }
 
     private func pathRow(label: String, binding: Binding<String>, isPrimary: Bool) -> some View {
-        HStack {
-            Text(label).frame(width: 80, alignment: .trailing).foregroundStyle(.secondary)
-            TextField("", text: binding)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(.body, design: .monospaced))
-            Button("Create") {
-                _ = try? FileStoreService.createDirectory(at: binding.wrappedValue)
-                FileStoreService.reveal(path: binding.wrappedValue)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(label).frame(width: 80, alignment: .trailing).foregroundStyle(.secondary)
+                TextField("", text: binding)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                Button("Create") {
+                    _ = try? FileStoreService.createDirectory(at: binding.wrappedValue)
+                    FileStoreService.reveal(path: binding.wrappedValue)
+                }
+                Button("Reveal") { FileStoreService.reveal(path: binding.wrappedValue) }
+                // Open-in editor menu — Finder, VS Code, Obsidian. URL schemes
+                // are no-ops if the editor isn't installed; that's harmless.
+                Menu {
+                    Button("Open in Finder") { FileStoreService.reveal(path: binding.wrappedValue) }
+                    Button("Open in VS Code") {
+                        let p = (binding.wrappedValue as NSString).expandingTildeInPath
+                        let escaped = p.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? p
+                        if let u = URL(string: "vscode://file\(escaped)") { NSWorkspace.shared.open(u) }
+                    }
+                    Button("Open in Obsidian") {
+                        let p = (binding.wrappedValue as NSString).expandingTildeInPath
+                        let escaped = p.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? p
+                        if let u = URL(string: "obsidian://open?path=\(escaped)") { NSWorkspace.shared.open(u) }
+                    }
+                } label: { Image(systemName: "arrow.up.forward.app") }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(binding.wrappedValue, forType: .string)
+                } label: { Image(systemName: "doc.on.doc") }
             }
-            Button("Reveal") { FileStoreService.reveal(path: binding.wrappedValue) }
-            Button {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(binding.wrappedValue, forType: .string)
-            } label: { Image(systemName: "doc.on.doc") }
+            // Lightweight existence/freshness indicator. Calls FileManager
+            // synchronously — fine for the small folders the app deals with.
+            let s = FileStoreStatusService.status(forPath: binding.wrappedValue)
+            HStack(spacing: 6) {
+                Spacer().frame(width: 88)
+                Image(systemName: s.exists ? "checkmark.circle.fill" : "questionmark.circle")
+                    .foregroundStyle(s.exists ? .green : .secondary)
+                if s.exists {
+                    Text("\(s.fileCount) item\(s.fileCount == 1 ? "" : "s")")
+                        .font(.caption2).foregroundStyle(.secondary)
+                    if let m = s.lastModified {
+                        Text("• modified \(m.formatted(date: .abbreviated, time: .shortened))")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text("not yet created")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+            }
         }
     }
 
@@ -236,6 +274,18 @@ struct OverviewTab: View {
                 .frame(maxWidth: 160)
             TextField("URL", text: url)
                 .textFieldStyle(.roundedBorder)
+                .onChange(of: url.wrappedValue) { _, newValue in
+                    // Autofill the Number field when a SNOW or ADO URL is
+                    // pasted in and Number is currently empty (or matches
+                    // a previous detection — never overwrites manual values).
+                    if number.wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty,
+                       let m = URLAutofillService.detect(newValue) {
+                        switch m {
+                        case .snow(let n), .ado(let n):
+                            number.wrappedValue = n
+                        }
+                    }
+                }
             Button {
                 if let u = URL(string: url.wrappedValue), !url.wrappedValue.isEmpty {
                     NSWorkspace.shared.open(u)

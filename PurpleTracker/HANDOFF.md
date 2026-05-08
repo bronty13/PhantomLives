@@ -26,9 +26,9 @@ PurpleTracker/
     Services/                     # Database, MatterID, Backup, Attachment,
                                   # FileStore, Timer, Cadence, Export
     Views/
-      Sidebar/  MatterList/  MatterDetail/  Time/  Settings/  Shared/
+      Sidebar/  MatterList/  MatterDetail/  Time/  Settings/  Shared/  Dashboards/
     Resources/Assets.xcassets/    # AppIcon + AccentColor
-  Tests/PurpleTrackerTests/       # 8 XCTest classes, 22 tests
+  Tests/PurpleTrackerTests/       # 9 XCTest classes, 50 tests
   README.md  USER_MANUAL.md  INSTALL.md  CHANGELOG.md  HANDOFF.md
 ```
 
@@ -36,7 +36,7 @@ PurpleTracker/
 
 ```sh
 xcodegen generate
-./run-tests.sh        # 22 tests, ~1 s
+./run-tests.sh        # 50 tests, ~1 s
 ./build-app.sh        # produces ./PurpleTracker.app
 open ./PurpleTracker.app
 ```
@@ -93,13 +93,41 @@ The app is ad-hoc signed unless a Developer ID is present in the keychain.
    transaction (delete-all + insert-set) so a failed mid-write can't leave
    a half-tagged row.
 
+10. **Soft-delete invariant (1.3.0).** All Matter list reads filter
+    `deleted_at IS NULL`. `AppState.deleteMatter` is now a soft-delete that
+    sets `deleted_at`; `purgeMatter` is the only hard delete.
+    `purgeExpiredTrash(olderThanDays: 30)` runs once on launch right after
+    `BackupService`. The Trash sidebar section is the **only** place
+    trashed Matters surface.
+
+11. **Audit log is append-only.** `AppState.updateMatter` diffs the prior
+    in-memory copy and emits an `AuditEvent` for every change to status,
+    priority, type, or title. `created`, `deleted`, and `restored` are
+    also recorded. Never `UPDATE` or `DELETE` from `audit_event`; cascade
+    on Matter purge is the only removal path.
+
+12. **Saved searches store JSON.** `saved_search.query_json` holds a
+    `SearchCriteria` Codable struct (text/types/priorities/statuses/
+    initiatives/goals/requestor/openOnly). `AppState.applySavedSearch`
+    ANDs every populated field; `openOnly` defaults to true.
+
+13. **Single global TimerService.** `TimerService.shared` is the only
+    place a running timer lives. The menu-bar item, the running-timer
+    banner, and ⌘⇧Space all subscribe to it via Combine. Don't
+    instantiate a second TimerService anywhere.
+
+14. **TimeByTagReport even-split.** A TimeEntry's seconds are split
+    **evenly** across all tagged Initiatives (or Goals) on the parent
+    Matter — documented in `TimeByTagReport.swift`. If you change to a
+    weighted split, also update `USER_MANUAL.md`.
+
 ## Important files (where to look first)
 
 | Concern                       | File                                                    |
 |-------------------------------|---------------------------------------------------------|
 | Schema & migrations           | `Sources/PurpleTracker/Services/DatabaseService.swift`  |
 | Matter ID allocator           | `Sources/PurpleTracker/Services/MatterIDService.swift`  |
-| App-state root + auto-backup + people auto-import | `Sources/PurpleTracker/App/AppState.swift`              |
+| App-state root + auto-backup + people auto-import + audit emit + soft-delete + trash purge | `Sources/PurpleTracker/App/AppState.swift`              |
 | Type/status seeds             | `DatabaseService.seedDefaults`                          |
 | Backup format & retention     | `Sources/PurpleTracker/Services/BackupService.swift`    |
 | Cadence factory               | `Sources/PurpleTracker/Services/CadenceService.swift`   |
@@ -113,15 +141,20 @@ The app is ad-hoc signed unless a Developer ID is present in the keychain.
 | Initiative / Goal settings UI | `Sources/PurpleTracker/Views/Settings/InitiativesSettingsView.swift`, `GoalsSettingsView.swift` |
 | Tag chip flow layout          | `Sources/PurpleTracker/Views/Shared/FlowLayout.swift`   |
 | App icon generator (Pillow)   | `Resources/make_icon.py`                                |
+| Subtask / link / audit / saved-search models | `Sources/PurpleTracker/Models/Subtask.swift`, `MatterLink.swift`, `AuditEvent.swift`, `SavedSearch.swift` |
+| Menu-bar timer item           | `Sources/PurpleTracker/App/AppDelegate.swift`           |
+| Command Palette (⌘K)          | `Sources/PurpleTracker/Views/CommandPaletteView.swift`  |
+| Dashboards                    | `Sources/PurpleTracker/Views/Dashboards/*.swift`        |
+| URL autofill / .ics / email / integrity / time-by-tag / file-store status | `Sources/PurpleTracker/Services/URLAutofillService.swift`, `ICSExporter.swift`, `EmailParser.swift`, `IntegrityCheckService.swift`, `TimeByTagReport.swift`, `FileStoreStatusService.swift` |
 
 ## Test suite
 
 Tests are XCTest, all `@MainActor` (services that touch `AppSettings`/UI
-state are `@MainActor`-isolated). The suite grew with 1.1.0; key files now:
+state are `@MainActor`-isolated). 50 tests across 9 files:
 
 | File                          | What it covers                                           |
 |-------------------------------|----------------------------------------------------------|
-| `MigrationTests`              | v1/v2/v3/v4 create all tables; idempotency; v2/v3/v4 columns present |
+| `MigrationTests`              | v1–v5 create all tables; idempotency; new-column presence |
 | `MatterIDServiceTests`        | padding, sequential, daily reset, rollback releases seq  |
 | `AttachmentHashTests`         | RFC vectors for MD5/SHA1/SHA256 (empty + "abc"); verify mismatch |
 | `CadenceServiceTests`         | each cadence kind + custom; copy/reset rules; IP + priority carry-forward |
@@ -131,6 +164,7 @@ state are `@MainActor`-isolated). The suite grew with 1.1.0; key files now:
 | `StatusLifecycleTests`        | first time entry on "New" → "In-Progress"                |
 | `PeopleServiceTests`          | parser quoting, escapes, display-name title-casing       |
 | `PeopleImportRealFileTests`   | CRLF parser regression (real file + synthetic CRLF/BOM)  |
+| `NewServicesTests`            | URL autofill (SNOW INC/REQ/RITM/CHG/TASK + ADO), `.eml` parser, ICS round-trip, time-by-tag MD |
 
 ## Why GRDB is vendored
 

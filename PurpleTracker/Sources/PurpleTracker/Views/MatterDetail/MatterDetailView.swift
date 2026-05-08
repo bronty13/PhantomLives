@@ -13,11 +13,14 @@ struct MatterDetailView: View {
     enum Tab: String, CaseIterable, Identifiable {
         case overview = "Overview"
         case description = "Description"
+        case subtasks = "Subtasks"
+        case links = "Links"
         case notes = "Notes"
         case time = "Time"
         case attachments = "Attachments"
         case resolution = "Resolution"
         case lessons = "Lessons"
+        case history = "History"
         var id: String { rawValue }
     }
 
@@ -41,11 +44,14 @@ struct MatterDetailView: View {
                     switch tab {
                     case .overview:    OverviewTab(matter: bindingMatter)
                     case .description: MarkdownTab(field: \.descriptionMd, matter: bindingMatter, label: "Description")
+                    case .subtasks:    SubtasksTab(matter: matter)
+                    case .links:       LinksTab(matter: matter)
                     case .notes:       NotesTab()
                     case .time:        TimeTab(matter: matter)
                     case .attachments: AttachmentsTab()
                     case .resolution:  MarkdownTab(field: \.resolutionMd, matter: bindingMatter, label: "Resolution")
                     case .lessons:     MarkdownTab(field: \.lessonsMd,   matter: bindingMatter, label: "Lessons Learned")
+                    case .history:     HistoryTab(matter: matter)
                     }
                 }
                 .padding()

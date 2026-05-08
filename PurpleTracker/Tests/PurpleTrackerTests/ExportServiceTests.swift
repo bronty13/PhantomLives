@@ -25,7 +25,8 @@ final class ExportServiceTests: XCTestCase {
             interestedParty5AssociateId: "",
             externalInterestedParty1: "", externalInterestedParty2: "",
             externalInterestedParty3: "", externalInterestedParty4: "",
-            externalInterestedParty5: ""
+            externalInterestedParty5: "",
+            deletedAt: nil
         )
     }
 
