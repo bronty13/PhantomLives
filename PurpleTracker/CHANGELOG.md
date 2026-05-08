@@ -4,6 +4,23 @@ All notable changes to PurpleTracker are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] — Tidy `~/Downloads/` layout
+
+### Changed
+- Everything PurpleTracker writes to `~/Downloads/` is now under a single
+  `~/Downloads/PurpleTracker/` umbrella. New defaults:
+  - **Backups:** `~/Downloads/PurpleTracker/Backup/`
+    (was `~/Downloads/PurpleTracker backup/`)
+  - **Exports:** `~/Downloads/PurpleTracker/Exports/`
+    (was `~/Downloads/PurpleTracker/`)
+  - **Secondary file store template:**
+    `~/Downloads/PurpleTracker/Files/{title}`
+    (was `~/Downloads/PurpleTracker/{title}`)
+- One-shot migration on launch: any zips under the legacy
+  `~/Downloads/PurpleTracker backup/` folder are moved into the new
+  `Backup/` sub-folder; the empty legacy folder is then removed. Customised
+  paths are left alone.
+
 ## [1.2.0] — Initiatives, Goals, Priority
 
 ### Added

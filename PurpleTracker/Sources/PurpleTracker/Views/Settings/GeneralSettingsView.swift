@@ -17,7 +17,7 @@ struct GeneralSettingsView: View {
                    ))
             HStack {
                 Text("Default export directory")
-                TextField("(default: ~/Downloads/PurpleTracker)", text: Binding(
+                TextField("(default: ~/Downloads/PurpleTracker/Exports)", text: Binding(
                     get: { settingsStore.settings.defaultExportDirectory },
                     set: {
                         var s = settingsStore.settings

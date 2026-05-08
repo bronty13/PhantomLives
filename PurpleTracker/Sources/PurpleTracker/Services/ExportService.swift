@@ -293,7 +293,7 @@ enum ExportService {
 
     // MARK: - File output
 
-    /// Render the requested format to `~/Downloads/PurpleTracker/<MatterID>.<ext>`
+    /// Render the requested format to `~/Downloads/PurpleTracker/Exports/<MatterID>.<ext>`
     /// (or wherever the user has overridden the export directory). Returns the
     /// final URL. Auto-creates the directory.
     @discardableResult

@@ -5,7 +5,7 @@ import GRDB
 /// auto-backup-on-launch convention from CLAUDE.md, with a 30-day default
 /// retention (per the PurpleTracker spec).
 ///
-///   • Default location: `~/Downloads/PurpleTracker backup/`
+///   • Default location: `~/Downloads/PurpleTracker/Backup/`
 ///   • Filename: `PurpleTracker-YYYY-MM-DD-HHmmss.zip`
 ///   • Contents: zip of the entire Application Support/PurpleTracker directory
 ///   • Retention: 30 days by default; `0` keeps forever

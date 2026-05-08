@@ -31,9 +31,9 @@ Requires Xcode 16, macOS 14 (Sonoma) or later.
 - **External references** — three configurable label / number / URL slots (defaults: `defi SUPPORT (SNOW)`, `Azure DevOps (ADO)`, `Client Reference`) with launch buttons.
 - **People roster** — daily ADP IMP UserFeed (`~/Downloads/ADP_IMP_UserFeed_YYYY-MM-DD.csv`) imported into a `person` table keyed on Associate ID. Auto-imports the newest file on launch (toggle in Settings → People); re-imports are filename-deduped.
 - **Requestor + Interested Parties** — every Matter has a Requestor and five Interested Party slots (lookup over the People roster) plus five External Interested Party slots (free text for non-employees). The matter list shows a `person.2` badge with a count when any slot is set; the search box matches Requestor / IP names too.
-- **File-store paths** — primary defaults to `~/Library/CloudStorage/OneDrive-defiSOLUTIONS/{year}/{YYYY-MM-DD} {Title}`, secondary to `~/Downloads/PurpleTracker/{Title}`. "Create" mkdir-p's; "Reveal" opens in Finder.
+- **File-store paths** — primary defaults to `~/Library/CloudStorage/OneDrive-defiSOLUTIONS/{year}/{YYYY-MM-DD} {Title}`, secondary to `~/Downloads/PurpleTracker/Files/{Title}`. "Create" mkdir-p's; "Reveal" opens in Finder.
 - **Exports** — Markdown, PDF, and Word `.docx`, plus copy-to-clipboard. The exported brief includes the Requestor and both IP lists. "Copy Brief" puts `Matter ID • Title • Date Opened • Status` on the pasteboard.
-- **Auto-backup-on-launch** — PhantomLives standard. Default `~/Downloads/PurpleTracker backup/`, 30-day retention, debounced, with verify and restore. Settings → Backup is the control panel.
+- **Auto-backup-on-launch** — PhantomLives standard. Default `~/Downloads/PurpleTracker/Backup/`, 30-day retention, debounced, with verify and restore. Settings → Backup is the control panel.
 
 ## Where things live
 
@@ -41,8 +41,8 @@ Requires Xcode 16, macOS 14 (Sonoma) or later.
 |---|---|
 | Database, attachments BLOBs | `~/Library/Application Support/PurpleTracker/purpletracker.sqlite` |
 | Settings | `~/Library/Application Support/PurpleTracker/settings.json` |
-| Backups | `~/Downloads/PurpleTracker backup/PurpleTracker-YYYY-MM-DD-HHmmss.zip` |
-| Exports | `~/Downloads/PurpleTracker/<MatterID> <Title>.<ext>` |
+| Backups | `~/Downloads/PurpleTracker/Backup/PurpleTracker-YYYY-MM-DD-HHmmss.zip` |
+| Exports | `~/Downloads/PurpleTracker/Exports/<MatterID> <Title>.<ext>` |
 
 All defaults are user-overridable in Settings.
 

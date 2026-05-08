@@ -15,7 +15,7 @@ struct BackupSettingsView: View {
                        isOn: bind(\.autoBackupEnabled))
                 HStack {
                     Text("Backup folder")
-                    TextField("(default: ~/Downloads/PurpleTracker backup)", text: bind(\.backupPath))
+                    TextField("(default: ~/Downloads/PurpleTracker/Backup)", text: bind(\.backupPath))
                         .textFieldStyle(.roundedBorder)
                     Button("Choose…") { pickDir() }
                 }

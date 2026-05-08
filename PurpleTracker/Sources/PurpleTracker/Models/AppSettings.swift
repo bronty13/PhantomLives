@@ -21,11 +21,13 @@ struct AppSettings: Codable {
     var external2Label: String = "Azure DevOps (ADO)"
     var external3Label: String = "Client Reference"
 
-    // File-store templates (`{year}` and `{title}` are the only substitutions)
+    // File-store templates (`{year}` and `{title}` are the only substitutions).
+    // Secondary-store default lives under the per-app `~/Downloads/PurpleTracker/`
+    // umbrella so we never sprinkle multiple folders into Downloads.
     var fileStorePrimaryTemplate: String =
         "~/Library/CloudStorage/OneDrive-defiSOLUTIONS/{year}/{date} {title}"
     var fileStoreSecondaryTemplate: String =
-        "~/Downloads/PurpleTracker/{title}"
+        "~/Downloads/PurpleTracker/Files/{title}"
 
     // Spell-check
     var autocorrectEnabled: Bool = false    // continuous spellcheck always on; correction off by default
@@ -60,14 +62,57 @@ final class SettingsStore: ObservableObject {
 
     func load() {
         guard let data = try? Data(contentsOf: fileURL),
-              var decoded = try? JSONDecoder().decode(AppSettings.self, from: data) else { return }
-        // One-shot migration: bump the legacy secondary-store default
-        // (`~/Downloads/{title}`) to the new default (`~/Downloads/PurpleTracker/{title}`).
-        // Only touches users who never customised it.
-        if decoded.fileStoreSecondaryTemplate == "~/Downloads/{title}" {
-            decoded.fileStoreSecondaryTemplate = "~/Downloads/PurpleTracker/{title}"
+              var decoded = try? JSONDecoder().decode(AppSettings.self, from: data) else {
+            // No prior settings — still try the on-disk Downloads cleanup.
+            Self.migrateLegacyDownloadsLayout()
+            return
+        }
+        // One-shot template migrations. Only touch users who never customised
+        // the field (string equality with the prior default).
+        if decoded.fileStoreSecondaryTemplate == "~/Downloads/{title}" ||
+           decoded.fileStoreSecondaryTemplate == "~/Downloads/PurpleTracker/{title}" {
+            decoded.fileStoreSecondaryTemplate = "~/Downloads/PurpleTracker/Files/{title}"
+        }
+        // Old explicit backup path → new sub-folder default (clearing the
+        // override lets `resolvedBackupPath` use the new computed default).
+        let legacyBackup = Self.downloadsDir.appendingPathComponent("PurpleTracker backup", isDirectory: true).path
+        let expandedBackup = (decoded.backupPath as NSString).expandingTildeInPath
+        if expandedBackup == legacyBackup || decoded.backupPath == "~/Downloads/PurpleTracker backup" {
+            decoded.backupPath = ""
         }
         settings = decoded
+        // Physically migrate the legacy `~/Downloads/PurpleTracker backup` folder
+        // into the new `~/Downloads/PurpleTracker/Backup` location.
+        Self.migrateLegacyDownloadsLayout()
+        save()
+    }
+
+    /// Move any legacy `~/Downloads/PurpleTracker backup/` zips into the new
+    /// `~/Downloads/PurpleTracker/Backup/` sub-folder so there's only ever one
+    /// PurpleTracker folder in Downloads. Idempotent and safe — only moves
+    /// files when the destination doesn't already have a same-named entry.
+    static func migrateLegacyDownloadsLayout() {
+        let fm = FileManager.default
+        let legacy = downloadsDir.appendingPathComponent("PurpleTracker backup", isDirectory: true)
+        let newRoot = downloadsDir.appendingPathComponent("PurpleTracker", isDirectory: true)
+        let newBackup = newRoot.appendingPathComponent("Backup", isDirectory: true)
+
+        guard fm.fileExists(atPath: legacy.path) else { return }
+        try? fm.createDirectory(at: newBackup, withIntermediateDirectories: true)
+        if let kids = try? fm.contentsOfDirectory(at: legacy, includingPropertiesForKeys: nil) {
+            for kid in kids {
+                let dest = newBackup.appendingPathComponent(kid.lastPathComponent)
+                if !fm.fileExists(atPath: dest.path) {
+                    try? fm.moveItem(at: kid, to: dest)
+                }
+            }
+        }
+        // If the legacy folder is now empty, remove it. If anything was left
+        // behind (e.g. duplicates), leave the folder for the user to inspect.
+        if let remaining = try? fm.contentsOfDirectory(at: legacy, includingPropertiesForKeys: nil),
+           remaining.isEmpty {
+            try? fm.removeItem(at: legacy)
+        }
     }
 
     func save() {
@@ -79,19 +124,26 @@ final class SettingsStore: ObservableObject {
 
     var resolvedBackupPath: URL {
         if settings.backupPath.isEmpty {
-            return Self.downloadsDir.appendingPathComponent("PurpleTracker backup", isDirectory: true)
+            // Single per-app folder under Downloads with a Backup sub-folder
+            // — keeps Downloads tidy (no sibling "PurpleTracker backup").
+            return Self.downloadsDir
+                .appendingPathComponent("PurpleTracker", isDirectory: true)
+                .appendingPathComponent("Backup", isDirectory: true)
         }
         return URL(fileURLWithPath: (settings.backupPath as NSString).expandingTildeInPath)
     }
 
     var resolvedExportDirectory: URL {
         if settings.defaultExportDirectory.isEmpty {
-            return Self.downloadsDir.appendingPathComponent("PurpleTracker", isDirectory: true)
+            // Same umbrella — exports live under PurpleTracker/Exports/.
+            return Self.downloadsDir
+                .appendingPathComponent("PurpleTracker", isDirectory: true)
+                .appendingPathComponent("Exports", isDirectory: true)
         }
         return URL(fileURLWithPath: (settings.defaultExportDirectory as NSString).expandingTildeInPath)
     }
 
-    private static var downloadsDir: URL {
+    static var downloadsDir: URL {
         FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads")
     }

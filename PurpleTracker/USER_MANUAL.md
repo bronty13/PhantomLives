@@ -166,7 +166,7 @@ Each matter detail has an **Export** menu:
 - **Copy report to clipboard** — the markdown form, on the pasteboard.
 - **Copy brief to clipboard** — `MatterID • Title • Date Opened • Status`.
 
-Default export folder: `~/Downloads/PurpleTracker/` (configurable in Settings).
+Default export folder: `~/Downloads/PurpleTracker/Exports/` (configurable in Settings).
 
 ---
 
@@ -177,7 +177,7 @@ PurpleTracker follows the PhantomLives auto-backup-on-launch standard:
 - A backup runs **on every launch** (debounced: at most one per 5 minutes).
 - Backups are zips of the database file plus settings, named
   `PurpleTracker-YYYY-MM-DD-HHmmss.zip`.
-- Default location: `~/Downloads/PurpleTracker backup/`.
+- Default location: `~/Downloads/PurpleTracker/Backup/`.
 - Default retention: **30 days**. Set retention to `0` to keep forever.
 
 **Settings → Backup** exposes:
