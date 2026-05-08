@@ -18,10 +18,17 @@
 	<string>Timeliner</string>
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<!--
+	  Placeholder values. The real CFBundleShortVersionString /
+	  CFBundleVersion are stamped into the BUILT bundle's Info.plist by
+	  build-app.sh post-ditto, so this source file stays pristine in git.
+	  Anyone running xcodebuild without build-app.sh sees these values —
+	  intentionally low so it's obvious the wrapper was bypassed.
+	-->
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.117</string>
+	<string>0.0.0</string>
 	<key>CFBundleVersion</key>
-	<string>117.3c3c371</string>
+	<string>0.unknown</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSHumanReadableCopyright</key>

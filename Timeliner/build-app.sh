@@ -30,20 +30,12 @@ swift Scripts/generate-icon.swift "$ICONSET_DIR" >/dev/null
 ICNS_PATH="$(mktemp -d)/AppIcon.icns"
 iconutil -c icns "$ICONSET_DIR" -o "$ICNS_PATH"
 
-# Update Info.plist version strings
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SHORT_VERSION" \
-    Sources/Timeliner/App/Info.plist
-/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" \
-    Sources/Timeliner/App/Info.plist
-
-# Update Version.swift
-cat > Sources/Timeliner/App/Version.swift << EOF
-enum AppVersion {
-    static let marketing = "$SHORT_VERSION"
-    static let build = "$BUILD_NUMBER"
-    static let display = "v\(AppVersion.marketing) (\(AppVersion.build))"
-}
-EOF
+# Version strings: NOT written to source files. The source Info.plist
+# carries placeholders (0.0.0 / 0.unknown) and Version.swift reads from
+# Bundle.main at runtime. The real values are stamped into the BUILT
+# bundle's Info.plist after ditto, below — that way `git status` stays
+# clean across builds and the monorepo's commit count never pollutes
+# tracked Timeliner files.
 
 # Build in /tmp to avoid iCloud Drive xattr issues that can corrupt code signatures
 BUILD_DIR="$(mktemp -d)"
@@ -67,6 +59,15 @@ fi
 DEST_APP="./$PRODUCT_NAME.app"
 rm -rf "$DEST_APP"
 ditto --noextattr "$SRC_APP" "$DEST_APP"
+
+# Stamp the real version strings into the BUILT bundle's Info.plist.
+# Source Info.plist carries 0.0.0 / 0.unknown placeholders; xcodebuild
+# bakes those into the .app, and we overwrite them here. Keeps the
+# tracked source plist pristine across builds.
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SHORT_VERSION" \
+    "$DEST_APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" \
+    "$DEST_APP/Contents/Info.plist"
 
 # Install icon. Use ditto --noextattr so macOS doesn't carry a FinderInfo xattr
 # from the source ICNS into the bundle — codesign --verify --strict will reject

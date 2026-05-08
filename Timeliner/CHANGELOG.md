@@ -4,6 +4,26 @@ All notable changes to Timeliner are documented here. The version number is
 auto-derived from git's commit count (`1.0.<count>`), so this log groups
 changes by feature rather than by exact bundle version.
 
+## 1.0.125 — Build-pipeline cleanup (2026-05-07)
+
+### Fixed
+
+- **Build no longer pollutes the working tree with phantom version
+  diffs.** Previously, `build-app.sh` wrote the current
+  `git rev-list --count HEAD` into `Sources/Timeliner/App/Info.plist`
+  *and* `Sources/Timeliner/App/Version.swift`, so every build left two
+  source files dirty in `git status` until manually reverted —
+  particularly painful in the PhantomLives monorepo where unrelated
+  commits in other subprojects move the count and the Timeliner
+  files silently follow. Now the source `Info.plist` carries
+  `0.0.0` / `0.unknown` placeholders that stay pristine, `Version.swift`
+  reads `marketing` / `build` from `Bundle.main` at runtime, and
+  `build-app.sh` post-stamps `CFBundleShortVersionString` /
+  `CFBundleVersion` into the **built** bundle's Info.plist (after
+  `ditto`), never the source. Mirrors PurpleIRC's pattern. If the UI
+  reads `v0.0.0 (0.unknown)` it means xcodebuild was run directly
+  without the `build-app.sh` wrapper.
+
 ## 1.1.x — Phase 2 (post-MVP, on the same `main` branch)
 
 The MVP shipped at commit `20017c6`; everything below was added on top
