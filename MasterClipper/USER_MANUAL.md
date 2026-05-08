@@ -42,7 +42,9 @@ All paths are user-overridable in **Settings → Backup** and **Settings → Imp
 new → editing → to_post → posting → production
 ```
 
-Status is **auto-derived** from data + posting state — there's no manual status picker. The badge on each clip reflects the current state, and a hint under it explains what's needed to advance.
+Status is **auto-derived** from data + posting state. The badge on each clip reflects the current state, and a hint under it explains what's needed to advance.
+
+You can **manually override** the status from the badge in the clip editor (both the sticky header and the Workflow-status form section are clickable menus). Picking a status opens an *Are you sure?* confirmation alert; on confirm, the clip is pinned to that status and the auto-derivation is suspended. While an override is active a small `manual` chip appears next to the in-form badge. Open the menu again and pick **Clear manual override (return to auto)** to release the pin. Both transitions are logged: a `[Status YYYY-MM-DD: old → new (manual)]` (or `cleared override`) line is appended to the clip's notes and a row is written to the change history.
 
 | Status | Trigger |
 |---|---|

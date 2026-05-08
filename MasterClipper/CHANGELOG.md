@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-05-07 — Manual status override + clip-ID copy button
+
+- **Manual status override.** New v13 migration adds a nullable `clips.status_override` column. When set, `DatabaseService.computeStatus` returns it verbatim, bypassing the editing/posting heuristic. Clearing the override returns the clip to auto-derivation. `setStatusOverride(clipId:override:)` writes the column, recomputes `clip.status` from it, stamps a `[Status YYYY-MM-DD: old → new (manual)]` (or `cleared override`) marker into `notes`, and records two `clip_history` rows so the change is auditable. Mirrored on `AppState.setClipStatusOverride`.
+- **Status picker in `ClipEditView`.** The status badge in both the sticky header and the Workflow-status form section is now a `Menu` of all five pipeline statuses (plus a *Clear manual override* item when one is set). Picking any value other than the current state opens an *Are you sure?* alert that names the from/to labels and explains the override semantics; only **Change status** / **Clear override** applies the write. A `manual` chip appears next to the in-form badge while the override is active.
+- **Copy clip-ID button.** Explicit `doc.on.doc` button next to `ClipIDLabel` in the editor's sticky header, mirroring the title's existing copy button. The clip-ID label itself remains click-to-copy.
+
 ## 2026-05-06 — Window-state reset (one-shot + manual)
 
 - **Auto reset on launch.** SwiftUI persists window frame, split-view widths, and sidebar collapse state in `UserDefaults`. Frames can drift off-screen (window saved at coordinates that no longer correspond to a connected display) and stick across relaunches — close + reopen doesn't help. `MasterClipperApp.init` now compares a stored `MasterClipper.windowResetVersion` against a hardcoded constant; when the stored value is lower, every key matching `NSWindow Frame*`, `NSSplitView*`, `NSWindow *`, `SwiftUI.SidebarSeparation*`, and anything containing `SidebarSplitView` is removed, the AppKit `~/Library/Saved Application State/<bundleId>.savedState` directory is deleted, and the leftover sandbox-era container plist (`~/Library/Containers/<bundleId>/Data/Library/Preferences/<bundleId>.plist`) is removed too. Bumped to v2 to ship one more reset for users on v1.

@@ -7,7 +7,7 @@
 - **`AppState`** (`@MainActor` `ObservableObject`) is the single source of truth surfaced to views. It owns `SettingsStore`, holds `@Published` arrays for clips / personas / sites / categories / calendar rules, and exposes mutation methods that always go through `DatabaseService` and re-read the affected slice.
 - **`DatabaseService`** is a singleton owning a GRDB `DatabasePool` at `~/Library/Application Support/MasterClipper/masterclipper.sqlite`. It runs append-only migrations, owns the seed data, and is the only place that talks to SQLite.
 - **`SettingsStore`** owns a Codable `AppSettings` value, persists it as JSON at `~/Library/Application Support/MasterClipper/settings.json`, and exposes `resolvedBackupPath` / `resolvedExportDirectory` computed properties that fall back to the `~/Downloads/MasterClipper{,-backup}/` defaults when the user hasn't overridden them.
-- **Status is auto-derived.** `clip.status` is recomputed by `DatabaseService.computeStatus(for:in:)` on every `insertClip` / `updateClip` / `upsertPosting`. There is no manual status picker — the badge in the editor is read-only.
+- **Status is auto-derived, but overridable.** `clip.status` is recomputed by `DatabaseService.computeStatus(for:in:)` on every `insertClip` / `updateClip` / `upsertPosting`. The status badge in `ClipEditView` is a `Menu` — picking a status opens a confirmation alert, then `AppState.setClipStatusOverride` writes a non-null `clips.status_override` (v13). When the override is set, `computeStatus` returns it verbatim and the heuristic is bypassed; the menu's *Clear manual override* item nulls the column to return to auto-derivation.
 
 Mutation flow: View → `appState.someMutation(...)` → `DatabaseService.shared.<method>` (single GRDB transaction) → `appState.reloadX()` → `@Published` slice changes → SwiftUI re-renders.
 
@@ -144,7 +144,7 @@ Sources/MasterClipper/
 
 ## Database schema
 
-13 tables, eleven migrations (`v1_initial` … `v11_c4s_historical`). `grdb_migrations` is the GRDB-managed bookkeeping table.
+13 tables, thirteen migrations (`v1_initial` … `v13_status_override`). `grdb_migrations` is the GRDB-managed bookkeeping table.
 
 ```
 personas        (id, code UNIQUE, display_name, color_hex, sort_order, archived)
@@ -163,6 +163,7 @@ clips           (id PK TEXT "YYYY-MM-DD-#####", external_clip_id, tracking_tag,
                  reduced_md5, reduced_sha1, reduced_sha256, reduced_size_bytes,
                  hashes_computed_at,
                  posting_excluded, exclusion_reason, exclusion_notes, -- v8 (do-not-post flag)
+                 status_override,                                     -- v13 (manual status pin)
                  created_at, updated_at)
 clip_categories (clip_id, category_id, position, PK)            -- position added in v5
 clip_postings   (clip_id, site_id, posted_date, status, notes, created_at, updated_at, PK)
@@ -198,6 +199,7 @@ Migration log:
 - **v10_status_for_excluded_and_no_scope** — second data sweep after `computeStatus` learned two new shortcuts: `postingExcluded == true` → `production`, and "no scoped sites + editing complete" → `production`. Same per-flip history-row pattern.
 - **v11_c4s_historical** — `c4s_historical` table (one row per C4S storefront clip per store) plus indexes on `store` and `clip_id`. Driven by `C4SHistoricalImportService` which parses both the `.xlsx` export and the pipe-delimited `.csv` export (C4S misnames it CSV — fields are `|`-separated with quoted multi-line descriptions). `DatabaseService.replaceC4SHistorical(store:with:)` does a single-transaction `DELETE WHERE store = ?` + insert.
 - **v12_clip_segments** — `clip_segments` table for per-`.mov` source-file metadata captured at New-Clip workflow time. One row per file (1.mov, 2.mov, …) with microsecond-precision ctime + MD5/SHA-1/SHA-256 + size. FK references `clips(id) ON DELETE CASCADE`; `UNIQUE(clip_id, position)` blocks duplicate positions. Replaced wholesale per clip via `replaceSegments(forClip:with:)` (single transaction, DELETE + INSERT). Computed off the main thread by `ClipSegmentService` via `HashService` streaming.
+- **v13_status_override** — nullable `clips.status_override` column. When set, `computeStatus` returns it verbatim and the editing/posting heuristic is bypassed. Written via `setStatusOverride(clipId:override:)` which also stamps a `[Status YYYY-MM-DD: old → new (manual)]` marker into `clip.notes` and records `status` + `status_override` rows in `clip_history`. The editor's status `Menu` exposes the picker with an *Are you sure?* confirmation alert; clearing nulls the column.
 
 Migrations are append-only — never edit a previously-shipped one. To change the schema, register a new `vN_…` migration in `DatabaseService.migrate()` after all the existing ones.
 
@@ -225,6 +227,7 @@ Migrations are append-only — never edit a previously-shipped one. To change th
 In `DatabaseService.computeStatus(for:in:)`:
 
 ```
+if clip.statusOverride is non-nil                                  → statusOverride (v13)
 if clip.postingExcluded                                            → "production"  (v10)
 
 let scopedSites = active sites where appliesTo(personaCode)

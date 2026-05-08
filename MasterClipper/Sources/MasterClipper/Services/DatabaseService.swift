@@ -420,6 +420,16 @@ final class DatabaseService {
             try db.create(index: "idx_clip_segments_clip", on: "clip_segments", columns: ["clip_id"])
         }
 
+        migrator.registerMigration("v13_status_override") { db in
+            // Optional manual override for the auto-derived pipeline status.
+            // When NULL, `computeStatus` runs as usual. When set, it returns the
+            // override verbatim — used to pin a clip back to a stage even when
+            // the editing/posting heuristics would otherwise move it forward.
+            try db.alter(table: "clips") { t in
+                t.add(column: "status_override", .text)
+            }
+        }
+
         try migrator.migrate(dbPool)
     }
 
@@ -764,6 +774,14 @@ final class DatabaseService {
     /// state. Called from every insert/update path. Does not modify the clip's
     /// `archived` flag (that's a separate column).
     private static func computeStatus(for clip: Clip, in db: Database) throws -> String {
+        // Manual override pins the status — bypasses the heuristic entirely.
+        // Clearing the override (setStatusOverride(..., to: nil)) restores the
+        // auto-derivation on the next write.
+        if let override = clip.statusOverride,
+           !override.trimmingCharacters(in: .whitespaces).isEmpty {
+            return override
+        }
+
         // Excluded-from-posting clips are "done" from the pipeline POV
         // — there's nothing to post, so promote straight to production
         // so they don't sit forever in `to_post` / `posting`.
@@ -848,6 +866,7 @@ final class DatabaseService {
         try record("content_date",        old.contentDate,        new.contentDate)
         try record("go_live_date",        old.goLiveDate,         new.goLiveDate)
         try record("status",              old.status,             new.status)
+        try record("status_override",     old.statusOverride,     new.statusOverride)
         try record("archived",            old.archived ? "1" : "0", new.archived ? "1" : "0")
         try record("notes",               old.notes,              new.notes)
     }
@@ -875,6 +894,49 @@ final class DatabaseService {
 
     func deleteClip(id: String) throws {
         _ = try dbPool.write { db in try Clip.deleteOne(db, key: id) }
+    }
+
+    /// Pin (`override` = some status) or unpin (`override` = nil) a clip's
+    /// pipeline status. Writes the column directly, recomputes `status` from
+    /// the override, stamps a `[Status YYYY-MM-DD: old → new (manual)]`
+    /// marker into `notes`, and records two `clip_history` rows so the
+    /// transition shows up in the per-clip change log.
+    func setStatusOverride(clipId: String, override: String?) throws {
+        try dbPool.write { db in
+            guard var clip = try Clip.fetchOne(db, key: clipId) else { return }
+            let oldStatus = clip.status
+            let oldOverride = clip.statusOverride
+            let now = Self.isoNow()
+
+            clip.statusOverride = (override?.trimmingCharacters(in: .whitespaces).isEmpty == true) ? nil : override
+            clip.status = try Self.computeStatus(for: clip, in: db)
+            clip.updatedAt = now
+
+            let label: String = {
+                if let o = clip.statusOverride, let s = ClipStatus(rawValue: o) {
+                    return s.label
+                }
+                return clip.statusOverride ?? "auto"
+            }()
+            let oldLabel = ClipStatus(rawValue: oldStatus)?.label ?? oldStatus
+            let marker: String = override == nil
+                ? "[Status \(Self.isoDate(Date())): cleared override (was \(oldLabel))]"
+                : "[Status \(Self.isoDate(Date())): \(oldLabel) → \(label) (manual)]"
+            clip.notes = clip.notes.isEmpty ? marker : clip.notes + "\n" + marker
+
+            try clip.update(db)
+
+            try db.execute(sql: """
+                INSERT INTO clip_history (clip_id, field, old_value, new_value, changed_at)
+                VALUES (?, ?, ?, ?, ?)
+                """, arguments: [clipId, "status_override", oldOverride, clip.statusOverride, now])
+            if oldStatus != clip.status {
+                try db.execute(sql: """
+                    INSERT INTO clip_history (clip_id, field, old_value, new_value, changed_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """, arguments: [clipId, "status", oldStatus, clip.status, now])
+            }
+        }
     }
 
     func clipCount() throws -> Int {

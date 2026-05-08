@@ -14,6 +14,7 @@ struct ClipEditView: View {
     @State private var refineError: String?
     @State private var showingDeleteConfirm: Bool = false
     @State private var showingAuditSheet: Bool = false
+    @State private var pendingStatusChange: PendingStatusChange?
     @State private var transcribing: Bool = false
     @State private var transcribeMessage: String?
     @State private var hashing: Bool = false
@@ -104,7 +105,15 @@ struct ClipEditView: View {
                     Section("Workflow status") {
                         HStack(spacing: 10) {
                             Text("Status").frame(width: 90, alignment: .leading)
-                            statusBadge
+                            statusMenu
+                            if draft.statusOverride != nil {
+                                Text("manual")
+                                    .font(.caption2.weight(.semibold))
+                                    .padding(.horizontal, 6).padding(.vertical, 2)
+                                    .background(.indigo.opacity(0.18), in: Capsule())
+                                    .foregroundStyle(.indigo)
+                                    .help("Status is manually pinned. Clear the override to return to auto-derivation.")
+                            }
                             Spacer()
                             Toggle("Archived", isOn: $draft.archived)
                                 .toggleStyle(.switch)
@@ -235,6 +244,23 @@ struct ClipEditView: View {
         // Catch-all: any time this view leaves the hierarchy — different clip,
         // different sidebar section, window close — flush pending edits.
         .onDisappear { autoSaveIfChanged() }
+        .alert(
+            pendingStatusChange?.confirmTitle ?? "",
+            isPresented: Binding(
+                get: { pendingStatusChange != nil },
+                set: { if !$0 { pendingStatusChange = nil } }
+            ),
+            presenting: pendingStatusChange
+        ) { change in
+            Button("Cancel", role: .cancel) {
+                pendingStatusChange = nil
+            }
+            Button(change.confirmButton) {
+                applyPendingStatusChange()
+            }
+        } message: { change in
+            Text(change.message)
+        }
         .alert("Delete this clip?", isPresented: $showingDeleteConfirm) {
             Button("Cancel", role: .cancel) {}
             Button("Delete", role: .destructive) {
@@ -315,8 +341,16 @@ struct ClipEditView: View {
                 HStack(spacing: 8) {
                     ClipIDLabel(id: draft.id, style: .body)
                         .foregroundStyle(.secondary)
+                    Button {
+                        copyClipID()
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .help("Copy clip ID to clipboard")
                     Text("·").foregroundStyle(.tertiary)
-                    statusBadge
+                    statusMenu
                 }
             }
 
@@ -397,10 +431,42 @@ struct ClipEditView: View {
         return HStack(spacing: 4) {
             Image(systemName: s.systemImage).font(.caption)
             Text(s.label).font(.caption.weight(.semibold))
+            Image(systemName: "chevron.down").font(.caption2)
         }
         .padding(.horizontal, 8).padding(.vertical, 3)
         .background(statusColor.opacity(0.22), in: Capsule())
         .foregroundStyle(statusColor)
+    }
+
+    /// Status badge wrapped in a Menu so the user can manually override the
+    /// auto-derived value. Picking a status enqueues a confirmation alert
+    /// (`pendingStatusChange`) before the override is applied — see
+    /// `applyPendingStatusChange()`.
+    private var statusMenu: some View {
+        Menu {
+            ForEach(ClipStatus.allCases.filter { $0 != .archived }, id: \.rawValue) { s in
+                Button {
+                    queueStatusChange(to: s.rawValue)
+                } label: {
+                    Label(s.label, systemImage: s.systemImage)
+                }
+                .disabled(draft.statusEnum == s && draft.statusOverride != nil)
+            }
+            if draft.statusOverride != nil {
+                Divider()
+                Button {
+                    queueStatusChange(to: nil)
+                } label: {
+                    Label("Clear manual override (return to auto)", systemImage: "arrow.uturn.backward")
+                }
+            }
+        } label: {
+            statusBadge
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Change the workflow status manually. You'll be asked to confirm.")
     }
 
     private var statusColor: Color {
@@ -1110,6 +1176,73 @@ struct ClipEditView: View {
         guard !value.isEmpty else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(value, forType: .string)
+    }
+
+    private func copyClipID() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(draft.id, forType: .string)
+    }
+
+    // MARK: - Manual status override
+
+    /// Pending change captured when the user picks a new status from the
+    /// menu. Storing this state triggers the confirmation alert; the user
+    /// then confirms / cancels in `applyPendingStatusChange()`.
+    private struct PendingStatusChange: Identifiable {
+        let id = UUID()
+        let newOverride: String?   // nil = clear override, return to auto
+        let fromLabel: String
+        let toLabel: String
+
+        var confirmTitle: String {
+            newOverride == nil ? "Clear manual status override?" : "Change status manually?"
+        }
+        var confirmButton: String {
+            newOverride == nil ? "Clear override" : "Change status"
+        }
+        var message: String {
+            if newOverride == nil {
+                return "Status will return to auto-derivation from posting state and editing fields. Currently pinned to “\(fromLabel)”."
+            }
+            return "Pin this clip's status to “\(toLabel)” (currently “\(fromLabel)”). The override sticks until you clear it — auto-derivation is suspended while it's set."
+        }
+    }
+
+    private func queueStatusChange(to newOverrideRaw: String?) {
+        let from = ClipStatus(rawValue: draft.status)?.label ?? draft.status
+        let to: String
+        if let raw = newOverrideRaw, let s = ClipStatus(rawValue: raw) {
+            to = s.label
+        } else {
+            to = "auto"
+        }
+        // Don't prompt when the picked value matches the current override
+        // exactly — nothing to confirm.
+        if newOverrideRaw == draft.statusOverride { return }
+        pendingStatusChange = PendingStatusChange(
+            newOverride: newOverrideRaw,
+            fromLabel: from,
+            toLabel: to
+        )
+    }
+
+    private func applyPendingStatusChange() {
+        guard let change = pendingStatusChange else { return }
+        defer { pendingStatusChange = nil }
+        // Flush in-flight edits first so the override write doesn't race
+        // against an autosave that would re-run computeStatus.
+        autoSaveIfChanged()
+        do {
+            try appState.setClipStatusOverride(clipId: clip.id, override: change.newOverride)
+            // Re-pull so the editor reflects the persisted status + notes marker.
+            if let refreshed = try DatabaseService.shared.fetchClip(id: clip.id) {
+                draft = refreshed
+            }
+            saveError = nil
+            lastSavedAt = Date()
+        } catch {
+            saveError = error.localizedDescription
+        }
     }
 
     private func revealThumbnail() {

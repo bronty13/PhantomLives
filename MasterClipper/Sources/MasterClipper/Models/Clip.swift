@@ -76,6 +76,7 @@ struct Clip: Codable, FetchableRecord, PersistableRecord, Identifiable, Hashable
     var fcpProjectFolder: String?               // post-production: path to FCP project
     var productionFolder: String?               // post-production: path to render/output folder
     var status: String                          // ClipStatus.rawValue (auto-derived)
+    var statusOverride: String?                 // when non-nil, pins status; bypasses computeStatus
     var archived: Bool
     var notes: String
     var transcript: String                      // whisper-generated; empty when not yet run
@@ -125,6 +126,7 @@ struct Clip: Codable, FetchableRecord, PersistableRecord, Identifiable, Hashable
         case fcpProjectFolder = "fcp_project_folder"
         case productionFolder = "production_folder"
         case status
+        case statusOverride = "status_override"
         case archived
         case notes
         case transcript

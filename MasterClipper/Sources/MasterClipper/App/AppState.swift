@@ -276,6 +276,14 @@ final class AppState: ObservableObject {
         reloadClips()
     }
 
+    /// Manually pin a clip's status (`override` non-nil) or release it back
+    /// to auto-derivation (`override` nil). See `DatabaseService.setStatusOverride`
+    /// for what's persisted.
+    func setClipStatusOverride(clipId: String, override: String?) throws {
+        try DatabaseService.shared.setStatusOverride(clipId: clipId, override: override)
+        reloadClips()
+    }
+
     // MARK: - Settings table mutations (CRUD on personas / sites / categories)
 
     func savePersona(_ p: Persona) throws {
