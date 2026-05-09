@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Claude XRay</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/theme/dracula.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/javascript/javascript.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/markdown/markdown.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/yaml/yaml.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/shell/shell.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/python/python.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Claude <span class="x">X</span>Ray</h1>
+    <div class="root-tabs" id="rootTabs"></div>
+    <input type="search" id="search" placeholder="Filter files…" />
+  </header>
+
+  <main>
+    <aside id="treePane">
+      <div id="tree" class="loading">Loading…</div>
+    </aside>
+
+    <section id="editorPane">
+      <div id="emptyState" class="empty">
+        <h2>Pick a file on the left</h2>
+        <p>Hover any file or folder to read what Claude Code uses it for.</p>
+      </div>
+
+      <div id="fileView" hidden>
+        <div class="file-header">
+          <div>
+            <div class="path" id="filePath"></div>
+            <div class="meta" id="fileMeta"></div>
+          </div>
+          <div class="actions">
+            <button id="saveBtn" disabled>Save</button>
+            <button id="revertBtn" disabled>Revert</button>
+            <span id="status" class="status"></span>
+          </div>
+        </div>
+        <div id="editor"></div>
+        <div class="about" id="aboutPanel"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

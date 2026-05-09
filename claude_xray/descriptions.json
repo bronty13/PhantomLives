@@ -1,0 +1,41 @@
+{
+  "_about": "Path-keyed descriptions for Claude XRay. Keys are relative to the root (~/.claude/ or <cwd>/.claude/). Use trailing slash for directories. Order doesn't matter; longest-match wins.",
+
+  "settings.json": "User-level settings: model, permissions, hooks, env vars, plugins. Auto-backups kept as settings.json.backup-<timestamp> (last 5).",
+  "settings.local.json": "Personal project overrides — gitignored, 0600 perms. Takes priority over .claude/settings.json (project) and ~/.claude/settings.json (user).",
+  "CLAUDE.md": "Instructions loaded into every session. At ~/.claude/ this is global; inside a project it's project-specific. They layer.",
+  "CLAUDE.local.md": "Personal project instructions — gitignored. Merged with CLAUDE.md.",
+  "keybindings.json": "Custom CLI keyboard shortcuts.",
+
+  "projects/": "Session transcripts. One subdirectory per unique working directory (slashes in the path replaced with dashes). Default 30-day retention via cleanupPeriodDays.",
+  "memory/": "Auto-memory store (per-project subdirs). Survives across sessions when autoMemoryEnabled is true.",
+  "agents/": "Subagent definitions. At ~/.claude/ they're user-scoped; under .claude/ they're project-scoped and shared via git.",
+  "commands/": "Custom slash commands. User-scoped under ~/.claude/, project-scoped (and committed) under .claude/.",
+  "skills/": "Custom skills, callable as /skill-name. Same scoping rules as agents/commands.",
+  "plugins/": "Installed plugins and marketplace state.",
+  "hooks/": "Hook scripts referenced from settings.json. Executed on lifecycle events (PreToolUse, Stop, etc.).",
+  "ide/": "VS Code extension lock files and ephemeral auth tokens (0600). Bridges the CLI and the IDE extension.",
+  "shell-snapshots/": "Saved shell state for the Bash tool — lets it maintain state across calls.",
+  "statsig/": "Telemetry / feature-flag data.",
+  "history": "CLI input history (like .bash_history).",
+  "history.jsonl": "Structured prompt history (line-delimited JSON).",
+
+  "backups/": "General-purpose backup storage Claude Code uses internally.",
+  "cache/": "Generic on-disk cache. Safe to delete; will be re-populated.",
+  "downloads/": "Files Claude Code downloaded on your behalf (e.g. via WebFetch).",
+  "file-history/": "Auto-saved snapshots of files Claude edited, used for diffing/undo across sessions.",
+  "image-cache/": "Cached image content (e.g. screenshots and pasted images).",
+  "paste-cache/": "Cache of large clipboard pastes.",
+  "plans/": "Saved Plan-mode plans and related state.",
+  "sessions/": "Active/recent session metadata (separate from the projects/ transcripts).",
+  "session-env/": "Per-session environment variables snapshot.",
+  "tasks/": "TaskCreate persistence — the task list survives across sessions.",
+  "mcp-needs-auth-cache.json": "Tracks which MCP servers still need an OAuth flow completed.",
+  "stats-cache.json": "Cached telemetry / usage stats.",
+
+  ".mcp.json": "Project-scoped MCP server configuration. Overrides/extends the global ~/.claude.json for this repo.",
+  ".worktreeinclude": "Files to copy into git worktrees created via `claude --worktree`.",
+
+  "settings.json.backup-": "Timestamped auto-backup of settings.json. The five most recent are kept. Restore by copying back over settings.json.",
+  "projects/*.jsonl": "Session transcript: line-delimited JSON. Each line is a message, tool use, or metadata event. Read-only by default in XRay."
+}

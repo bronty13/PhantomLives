@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+*.xraybak-*
+*.xraytmp
+.DS_Store
