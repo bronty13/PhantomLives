@@ -65,7 +65,12 @@ enum VideoFolderService {
         do {
             urls = try fm.contentsOfDirectory(
                 at: folder,
-                includingPropertiesForKeys: [.creationDateKey, .isRegularFileKey],
+                includingPropertiesForKeys: [
+                    .creationDateKey,
+                    .contentModificationDateKey,
+                    .fileSizeKey,
+                    .isRegularFileKey,
+                ],
                 options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]
             )
         } catch {
@@ -77,37 +82,69 @@ enum VideoFolderService {
         // the algorithm simple and predictable.
         let movs = urls.filter { $0.pathExtension.lowercased() == "mov" }
 
-        // Read creation dates in one pass; missing dates fall back to
-        // distantPast so the file sorts to the front and visibly stands out
-        // in the table (the formatted string shows "—").
-        let withDates: [(URL, Date?)] = movs.map { url in
-            let values = try? url.resourceValues(forKeys: [.creationDateKey])
-            return (url, values?.creationDate)
-        }
-
-        let sorted = withDates.sorted { lhs, rhs in
-            let l = lhs.1 ?? .distantPast
-            let r = rhs.1 ?? .distantPast
-            if l == r {
-                // Stable secondary key — filename — so two files with
-                // identical ctime don't reshuffle on every refresh.
-                return lhs.0.lastPathComponent
-                    .localizedStandardCompare(rhs.0.lastPathComponent) == .orderedAscending
+        // For each file we capture three pieces of data and derive an
+        // "effective recording time":
+        //
+        //   - btime (URLResourceKey.creationDateKey) — APFS file birthtime.
+        //   - mtime (contentModificationDateKey) — last write to the contents.
+        //   - effective = min(btime, mtime) when both exist.
+        //
+        // Why min: the natural recording event sets btime ≈ mtime. After
+        // that, copies / cloud sync / unzipping etc. tend to update btime to
+        // "now" while preserving mtime (rsync, `cp -p`, Dropbox, AirDrop all
+        // keep mtime). So min(btime, mtime) is a closer approximation of
+        // "when the recording happened" than btime alone — and it agrees
+        // with btime on never-touched files. File size is the secondary
+        // tiebreaker (back-to-back recordings of different lengths sort
+        // deterministically); filename is the final fallback.
+        struct Row {
+            let url: URL
+            let btime: Date?
+            let mtime: Date?
+            let size: Int
+            var effective: Date {
+                switch (btime, mtime) {
+                case let (b?, m?): return min(b, m)
+                case let (b?, nil): return b
+                case let (nil, m?): return m
+                case (nil, nil):    return .distantPast
+                }
             }
-            return l < r
+        }
+        let rows: [Row] = movs.map { url in
+            let v = try? url.resourceValues(forKeys: [
+                .creationDateKey, .contentModificationDateKey, .fileSizeKey
+            ])
+            return Row(
+                url: url,
+                btime: v?.creationDate,
+                mtime: v?.contentModificationDate,
+                size: v?.fileSize ?? 0
+            )
         }
 
-        return sorted.enumerated().map { (idx, pair) in
-            let (url, date) = pair
+        let sorted = rows.sorted { lhs, rhs in
+            if lhs.effective != rhs.effective { return lhs.effective < rhs.effective }
+            if lhs.size != rhs.size           { return lhs.size < rhs.size }
+            return lhs.url.lastPathComponent
+                .localizedStandardCompare(rhs.url.lastPathComponent) == .orderedAscending
+        }
+
+        return sorted.enumerated().map { (idx, row) in
             let pos = idx + 1
             let expected = "\(pos).mov"
-            let currentName = url.lastPathComponent
-            let dateStr = date.map(formatPrecise) ?? "—"
+            let currentName = row.url.lastPathComponent
+            // Display the effective time (the value we actually sort on) so
+            // the rename UI matches the rename order. Fall back to btime then
+            // mtime then "—" if the file has neither.
+            let displayDate = row.btime.map { min($0, row.mtime ?? $0) }
+                ?? row.mtime
+            let dateStr = displayDate.map(formatPrecise) ?? "—"
             return Item(
-                id: url,
-                url: url,
+                id: row.url,
+                url: row.url,
                 currentName: currentName,
-                creationDate: date ?? .distantPast,
+                creationDate: displayDate ?? .distantPast,
                 creationDateString: dateStr,
                 expectedPosition: pos,
                 expectedName: expected,

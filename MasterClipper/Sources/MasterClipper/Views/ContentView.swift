@@ -6,14 +6,20 @@ struct ContentView: View {
     @State private var showingResetConfirm: Bool = false
 
     var body: some View {
-        NavigationSplitView {
-            SidebarView()
-        } detail: {
+        VStack(spacing: 0) {
+            TopTabBarView()
             DetailRouterView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .navigationSplitViewStyle(.balanced)
+        .editorialChrome()
         .onReceive(NotificationCenter.default.publisher(for: .windowResetRequested)) { _ in
             showingResetConfirm = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .importRequested)) { _ in
+            // The Import wizard is a discrete section now (no longer in the
+            // tab bar). The menu shortcut ⌘⇧I navigates into it; the wizard
+            // resets itself onAppear of its own publisher.
+            appState.selectedSection = .importView
         }
         .alert("Reset window state?", isPresented: $showingResetConfirm) {
             Button("Cancel", role: .cancel) {}

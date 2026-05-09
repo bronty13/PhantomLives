@@ -267,8 +267,19 @@ final class AppState: ObservableObject {
     }
 
     func updateClip(_ clip: Clip) throws {
-        try DatabaseService.shared.updateClip(clip)
+        try DatabaseService.shared.updateClip(clip, operatorName: settings.operatorName)
         reloadClips()
+    }
+
+    /// Replace the category set for a clip. Threaded through AppState rather
+    /// than calling the DB directly so the operator-name attribution on the
+    /// auto-stamped note is consistent with everything else the editor saves.
+    func setClipCategories(clipId: String, categoryIds: [Int64]) throws {
+        try DatabaseService.shared.setCategories(
+            forClip: clipId,
+            categoryIds: categoryIds,
+            operatorName: settings.operatorName
+        )
     }
 
     func deleteClip(id: String) throws {
@@ -282,6 +293,29 @@ final class AppState: ObservableObject {
     func setClipStatusOverride(clipId: String, override: String?) throws {
         try DatabaseService.shared.setStatusOverride(clipId: clipId, override: override)
         reloadClips()
+    }
+
+    // MARK: - Clip notes (structured)
+
+    func fetchClipNotes(clipId: String) -> [ClipNote] {
+        (try? DatabaseService.shared.fetchClipNotes(clipId: clipId)) ?? []
+    }
+
+    @discardableResult
+    func addClipNote(clipId: String, body: String) throws -> ClipNote {
+        try DatabaseService.shared.insertClipNote(
+            clipId: clipId,
+            body: body,
+            operatorName: settings.operatorName
+        )
+    }
+
+    func updateClipNote(_ note: ClipNote) throws {
+        try DatabaseService.shared.updateClipNote(note)
+    }
+
+    func deleteClipNote(id: Int64) throws {
+        try DatabaseService.shared.deleteClipNote(id: id)
     }
 
     // MARK: - Settings table mutations (CRUD on personas / sites / categories)

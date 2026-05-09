@@ -37,6 +37,7 @@ struct SettingsView: View {
         }
         .padding(20)
         .frame(minWidth: 720, minHeight: 520)
+        .editorialChrome()
     }
 }
 
@@ -102,6 +103,16 @@ struct GeneralSettingsTab: View {
                         Text("\(p.code) — \(p.displayName)").tag(p.code)
                     }
                 }
+            }
+
+            Section("Advanced") {
+                Toggle("Debug mode", isOn: Binding(
+                    get: { appState.settings.debugMode },
+                    set: { var s = appState.settings; s.debugMode = $0; appState.settings = s }
+                ))
+                Text("Reveals diagnostic columns and fields throughout the app — sort_order numbers, raw IDs, internal counters. Off by default to keep the UI clean.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

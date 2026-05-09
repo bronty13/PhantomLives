@@ -22,19 +22,22 @@ open MasterClipper.app
 
 All paths are user-overridable in **Settings → Backup** and **Settings → Import / Export**.
 
-## Sidebar tour
+## Top tab bar tour
 
-| Section | Purpose |
+The eight tabs across the top of the window are the primary navigation. Each one shows a count badge when there's work to do (mono-typeface, two-digit padded so the bar doesn't reflow). The **⌘ N · NEW** ink-on-acid pill on the right is always available.
+
+| Tab | Purpose |
 |---|---|
-| **Dashboard** | Top stats (clickable filters), per-target posting progress bars, full clip × site posting matrix |
-| **Editing Queue** | Master/detail of clips in `new` / `editing` / `to_post`. Toolbar: **Run File Verification**. Count badge in sidebar. |
-| **Posting Queue** | Master/detail of clips in `to_post` / `posting`, with per-site posting-progress pills. Toolbar: **Run File Verification**. Count badge in sidebar. |
-| **Clips** | Master/detail of every clip. Sortable Table, filters, search |
-| **Calendar** | Year / Quarter / Month / Week / Day. Auto-pops from clip go-live dates |
-| **Posting Batch** | Drill-down site × persona posting wizard with focused per-clip windows |
+| **Dashboard** | Editorial dashboard: meta column with persona scope + auto-derived pipeline counts; content column with the Total / Fully posted / Partial / Not posted number strip and a side-by-side Clip × site table + Per-target progress list. Clicking any number cell jumps to Clips with the matching filter pre-applied. |
+| **Editing** | Master/detail of clips in `new` / `editing` / `to_post`. Trailing pill: **Run File Verification**. |
+| **Posting** | Master/detail of clips in `to_post` / `posting` with per-site progress pills. Trailing pill: **Run File Verification**. |
+| **Clips** | Master/detail of every clip. Sortable Table, filters, search. Trailing pills: **⌘N New**, **Workflow**, **Export**, **Delete**. |
+| **Calendar** | Year / Quarter / Month / Week / Day. Auto-pops from clip go-live dates. |
+| **Batch** | Drill-down site × persona posting wizard with focused per-clip windows. |
 | **Reports** | Full Clip / Weekly / Posting Status / Category Usage / Calendar Rollup / Clip Audit. Each report has its own MD / PDF / CSV export menu with auto-reveal. |
-| **C4S Historical** | Snapshot of the most recent Clips4Sale on-demand storefront export per store (CoC + PoA). Sortable grid + per-row detail. Each import wholly replaces the chosen store's rows. |
-| **Import** | 5-step smart-import wizard for xlsx / csv / tsv / pasted text |
+| **C4S Hist.** | Snapshot of the most recent Clips4Sale on-demand storefront export per store (CoC + PoA). Sortable grid + per-row detail. Each import wholly replaces the chosen store's rows. Trailing pills: **Backfill categories**, **⌘I Import**. |
+
+**Import** is no longer a tab. Trigger it with **⌘⇧I** or **File → Import…** — the wizard opens in place and resets every time. Internally it remains a routable section (so the menu shortcut works) but it's not in the tab bar's visible set.
 
 ## The workflow pipeline
 

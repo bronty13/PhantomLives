@@ -20,27 +20,32 @@ struct EditingQueueView: View {
     @State private var showingVerificationWorkflow: Bool = false
 
     var body: some View {
-        HSplitView {
-            VStack(spacing: 0) {
-                filterBar
-                Divider()
-                queueTable
-            }
-            .frame(minWidth: 540)
-
-            ClipDetailView(clipId: selection)
-                .frame(minWidth: 480)
-        }
-        .navigationTitle("Editing Queue")
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
+        EdPageShell(
+            eyebrow: "Section · Editing",
+            headline: "Editing queue.",
+            emphasized: "queue",
+            deck: deckText,
+            trailing: AnyView(
                 Button {
                     showingVerificationWorkflow = true
                 } label: {
-                    Label("Run File Verification", systemImage: "checkmark.shield")
+                    Text("RUN FILE VERIFICATION")
                 }
+                .buttonStyle(EdGhostButtonStyle())
                 .disabled(filteredClips.isEmpty)
                 .help("Walk through the visible queue one clip at a time, auditing files for each.")
+            )
+        ) {
+            HSplitView {
+                VStack(spacing: 0) {
+                    filterBar
+                    EdHairline(color: EdColor.ink(0.18))
+                    queueTable
+                }
+                .frame(minWidth: 540)
+
+                ClipDetailView(clipId: selection)
+                    .frame(minWidth: 480)
             }
         }
         .sheet(isPresented: $showingVerificationWorkflow) {
@@ -57,6 +62,14 @@ struct EditingQueueView: View {
         }
     }
 
+    // MARK: - Deck
+
+    private var deckText: String {
+        let n = filteredClips.count
+        if n == 0 { return "Nothing in scope. Adjust filters or check Clips." }
+        return "\(n) clip\(n == 1 ? "" : "s") in flight. Pick one and the editor opens to the right."
+    }
+
     // MARK: - Filter bar
 
     private var filterBar: some View {
@@ -65,7 +78,7 @@ struct EditingQueueView: View {
                 statusToggle(status)
             }
 
-            Divider().frame(height: 18)
+            Rectangle().fill(EdColor.ink(0.18)).frame(width: 1, height: 18)
 
             Picker("Persona", selection: $personaFilter) {
                 Text("All personas").tag("")
@@ -77,12 +90,14 @@ struct EditingQueueView: View {
             .frame(width: 160)
 
             Spacer()
-            Text("\(filteredClips.count) clips")
-                .font(.caption).foregroundStyle(.secondary)
-                .monospacedDigit()
+            Text("\(filteredClips.count) CLIPS")
+                .font(EdFont.mono(10.5))
+                .tracking(0.84)
+                .foregroundStyle(EdColor.ink(0.55))
         }
-        .padding(10)
-        .background(.background.secondary)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(EdColor.bone)
     }
 
     private func statusToggle(_ status: ClipStatus) -> some View {
@@ -93,17 +108,18 @@ struct EditingQueueView: View {
             else      { statusFilter.insert(status) }
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: status.systemImage).font(.caption)
-                Text(status.label)
-                Text("(\(count))")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                Text(status.label.uppercased())
+                    .font(EdFont.mono(10.5, weight: .semibold))
+                    .tracking(0.84)
+                Text(String(format: "%02d", count))
+                    .font(EdFont.mono(10.5))
+                    .foregroundStyle(active ? EdColor.acid.opacity(0.9) : EdColor.ink(0.55))
             }
-            .padding(.horizontal, 10).padding(.vertical, 5)
-            .background(
-                active ? Color.accentColor.opacity(0.25) : Color.gray.opacity(0.15),
-                in: Capsule()
-            )
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .foregroundStyle(active ? EdColor.acid : EdColor.ink)
+            .background(active ? EdColor.ink : Color.clear)
+            .overlay(Rectangle().strokeBorder(EdColor.ink, lineWidth: 1))
         }
         .buttonStyle(.plain)
     }

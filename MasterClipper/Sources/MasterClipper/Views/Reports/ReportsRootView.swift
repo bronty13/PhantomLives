@@ -33,30 +33,32 @@ struct ReportsRootView: View {
     @State private var selection: Kind = .fullClip
 
     var body: some View {
-        HSplitView {
-            List(Kind.allCases, id: \.self, selection: $selection) { k in
-                Label(k.label, systemImage: k.icon).tag(k)
-            }
-            .listStyle(.sidebar)
-            .frame(minWidth: 200, idealWidth: 220, maxWidth: 280)
-
-            Group {
-                switch selection {
-                case .fullClip:       FullClipReportView()
-                case .weekly:         WeeklyReportView()
-                case .postingStatus:  PostingStatusReportView()
-                case .categoryUsage:  CategoryUsageReportView()
-                case .calendar:       CalendarReportView()
-                case .audit:              ClipAuditReportView()
-                case .informationNeeded:  InformationNeededReportView()
+        EdPageShell(
+            eyebrow: "Section · Reports",
+            headline: "Pull a report.",
+            emphasized: "report",
+            deck: "Read-only views over your clip data, ready to export as Markdown, CSV, or PDF.",
+            trailing: AnyView(ExportMenu(reportKind: selection))
+        ) {
+            HSplitView {
+                List(Kind.allCases, id: \.self, selection: $selection) { k in
+                    Label(k.label, systemImage: k.icon).tag(k)
                 }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .navigationTitle("Reports")
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                ExportMenu(reportKind: selection)
+                .listStyle(.sidebar)
+                .frame(minWidth: 200, idealWidth: 220, maxWidth: 280)
+
+                Group {
+                    switch selection {
+                    case .fullClip:       FullClipReportView()
+                    case .weekly:         WeeklyReportView()
+                    case .postingStatus:  PostingStatusReportView()
+                    case .categoryUsage:  CategoryUsageReportView()
+                    case .calendar:       CalendarReportView()
+                    case .audit:              ClipAuditReportView()
+                    case .informationNeeded:  InformationNeededReportView()
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
     }

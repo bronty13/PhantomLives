@@ -22,14 +22,34 @@ struct C4SHistoricalView: View {
     @State private var statusMessage: String? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
-            Divider()
-            HSplitView {
-                table
-                    .frame(minWidth: 520)
-                detail
-                    .frame(minWidth: 320, idealWidth: 420)
+        EdPageShell(
+            eyebrow: "Section · C4S Historical",
+            headline: "Clips4Sale snapshots.",
+            emphasized: "snapshots",
+            deck: "Imported storefront exports — read-only catalog of past activity.",
+            trailing: AnyView(
+                HStack(spacing: 8) {
+                    Button { showingBackfill = true } label: { Text("BACKFILL CATEGORIES") }
+                        .buttonStyle(EdGhostButtonStyle())
+                        .disabled(rows.isEmpty)
+                        .help(rows.isEmpty ? "Import a C4S export first"
+                              : "Apply categories from the imported snapshot to production clips with no categories")
+                    Button { showingImport = true } label: { Text("⌘ I · IMPORT") }
+                        .buttonStyle(EdInkPillButtonStyle())
+                        .keyboardShortcut("i", modifiers: [.command])
+                        .help("Import a Clips4Sale storefront export (XLSX or pipe-CSV)")
+                }
+            )
+        ) {
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                EdHairline(color: EdColor.ink(0.18))
+                HSplitView {
+                    table
+                        .frame(minWidth: 520)
+                    detail
+                        .frame(minWidth: 320, idealWidth: 420)
+                }
             }
         }
         .onAppear { reload() }
@@ -58,12 +78,6 @@ struct C4SHistoricalView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            Text("Clips4Sale Historical")
-                .font(.largeTitle.weight(.semibold))
-
-            Spacer()
-
-            // Store filter
             Picker("", selection: $storeFilter) {
                 Text("All (\(rows.count))").tag("")
                 Text("CoC (\(rows.filter { $0.store == "CoC" }.count))").tag("CoC")
@@ -76,35 +90,17 @@ struct C4SHistoricalView: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 280)
 
-            Button {
-                showingBackfill = true
-            } label: {
-                Label("Backfill categories…", systemImage: "tag.fill")
-            }
-            .disabled(rows.isEmpty)
-            .help(rows.isEmpty
-                  ? "Import a C4S export first"
-                  : "Apply categories from the imported snapshot to production clips with no categories")
+            Spacer()
 
-            Button {
-                showingImport = true
-            } label: {
-                Label("Import…", systemImage: "square.and.arrow.down")
-            }
-            .keyboardShortcut("i", modifiers: [.command])
-            .help("Import a Clips4Sale storefront export (XLSX or pipe-CSV)")
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
-        .padding(.bottom, 8)
-        .overlay(alignment: .bottom) {
             if let msg = statusMessage {
                 Text(msg)
-                    .font(.caption)
-                    .foregroundStyle(.green)
-                    .padding(.bottom, 2)
+                    .font(EdFont.mono(10.5))
+                    .foregroundStyle(EdColor.ink(0.7))
             }
         }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 10)
+        .background(EdColor.bone)
     }
 
     // MARK: - Table

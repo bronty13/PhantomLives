@@ -38,13 +38,23 @@ struct ImportWizardView: View {
     @State private var markAsHistorical: Bool = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            stepIndicator
-            Divider()
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        EdPageShell(
+            eyebrow: "Section · Import",
+            headline: "Pull a sheet in.",
+            emphasized: "in",
+            deck: "Five steps: source → sheets → mapping → preview → commit.",
+            trailing: AnyView(
+                Button { reset() } label: { Text("RESET") }
+                    .buttonStyle(EdGhostButtonStyle())
+            )
+        ) {
+            VStack(spacing: 0) {
+                stepIndicator
+                EdHairline(color: EdColor.ink(0.18))
+                content
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
-        .navigationTitle("Import")
         .onReceive(NotificationCenter.default.publisher(for: .importRequested)) { _ in
             reset()
         }
@@ -53,7 +63,7 @@ struct ImportWizardView: View {
     // MARK: - Step indicator
 
     private var stepIndicator: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 14) {
             stepLabel("1. Source",   active: stage == .source)
             chevron
             stepLabel("2. Sheets",   active: stage == .sheets,
@@ -66,28 +76,29 @@ struct ImportWizardView: View {
                       enabled: !mapping.isEmpty)
             chevron
             stepLabel("5. Commit",   active: stage == .done)
-
             Spacer()
-            Button("Reset") { reset() }
         }
-        .padding(14)
-        .background(.background.secondary)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 12)
+        .background(EdColor.bone)
     }
 
     @ViewBuilder
     private func stepLabel(_ title: String, active: Bool, enabled: Bool = true) -> some View {
-        let label = Text(title).font(active ? .headline : .body)
-        if active {
-            label.foregroundStyle(.primary)
-        } else if enabled {
-            label.foregroundStyle(.secondary)
-        } else {
-            label.foregroundStyle(.tertiary)
-        }
+        let foreground: Color = active ? EdColor.ink : (enabled ? EdColor.ink(0.6) : EdColor.ink(0.35))
+        Text(title.uppercased())
+            .font(EdFont.mono(11, weight: active ? .semibold : .regular))
+            .tracking(0.84)
+            .foregroundStyle(foreground)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(active ? EdColor.acid : Color.clear)
     }
 
     private var chevron: some View {
-        Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+        Image(systemName: "chevron.right")
+            .font(EdFont.mono(11))
+            .foregroundStyle(EdColor.ink(0.35))
     }
 
     // MARK: - Content router
@@ -264,7 +275,7 @@ struct ImportWizardView: View {
                     Divider()
                 }
             }
-            .background(.background.secondary)
+            .background(EdColor.bone)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(.separator, lineWidth: 1))
 
@@ -372,7 +383,7 @@ struct ImportWizardView: View {
                 }
             }
         }
-        .background(.background.secondary)
+        .background(EdColor.bone)
         .border(.separator)
     }
 
@@ -487,7 +498,7 @@ struct ImportWizardView: View {
             .padding(8)
         }
         .frame(maxHeight: .infinity)
-        .background(.background.secondary)
+        .background(EdColor.bone)
         .border(.separator)
     }
 

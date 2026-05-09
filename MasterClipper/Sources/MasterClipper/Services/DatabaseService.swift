@@ -430,6 +430,26 @@ final class DatabaseService {
             }
         }
 
+        migrator.registerMigration("v14_clip_notes") { db in
+            // Structured notes table — replaces the single `clips.notes` blob
+            // for hand-written entries. Each note is timestamped and stamped
+            // with the operator name from settings at write time. The legacy
+            // blob stays put: status / posting / editing markers still write
+            // there, and the editor renders both timelines.
+            try db.create(table: "clip_notes") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("clip_id",       .text).notNull()
+                    .references("clips", onDelete: .cascade)
+                t.column("body",          .text).notNull()
+                t.column("operator_name", .text).notNull().defaults(to: "")
+                t.column("created_at",    .text).notNull()
+                t.column("updated_at",    .text).notNull()
+            }
+            try db.create(index: "idx_clip_notes_clip",
+                          on: "clip_notes",
+                          columns: ["clip_id", "created_at"])
+        }
+
         try migrator.migrate(dbPool)
     }
 
@@ -519,6 +539,82 @@ final class DatabaseService {
 
     func deleteSite(id: Int64) throws {
         _ = try dbPool.write { db in try Site.deleteOne(db, key: id) }
+    }
+
+    // MARK: - Clip notes (structured)
+
+    func fetchClipNotes(clipId: String) throws -> [ClipNote] {
+        try dbPool.read { db in
+            try ClipNote
+                .filter(Column("clip_id") == clipId)
+                .order(Column("created_at").asc, Column("id").asc)
+                .fetchAll(db)
+        }
+    }
+
+    /// Insert a fresh note. `createdAt` and `updatedAt` are stamped with
+    /// `isoNow()`. `operatorName` is echoed as the author of record.
+    @discardableResult
+    func insertClipNote(clipId: String, body: String, operatorName: String) throws -> ClipNote {
+        let now = Self.isoNow()
+        var n = ClipNote(
+            id: nil,
+            clipId: clipId,
+            body: body,
+            operatorName: operatorName,
+            createdAt: now,
+            updatedAt: now
+        )
+        try dbPool.write { db in try n.insert(db) }
+        return n
+    }
+
+    /// Persist edits to an existing note. Bumps `updatedAt`; leaves
+    /// `createdAt` and `operatorName` alone — the original author / time
+    /// stays intact even if a different operator runs the edit.
+    func updateClipNote(_ note: ClipNote) throws {
+        var copy = note
+        copy.updatedAt = Self.isoNow()
+        try dbPool.write { db in try copy.update(db) }
+    }
+
+    func deleteClipNote(id: Int64) throws {
+        _ = try dbPool.write { db in try ClipNote.deleteOne(db, key: id) }
+    }
+
+    /// In-transaction variant for auto-stamping a note alongside another DB
+    /// mutation (status change, category swap, save). The caller already
+    /// holds a `dbPool.write` so we can't open another. Body is the
+    /// rendered diff text; operator is whoever's signed in (or
+    /// `"system"` for unattended import / migration paths).
+    private static func insertAutoClipNote(
+        clipId: String,
+        body: String,
+        operatorName: String,
+        in db: GRDB.Database
+    ) throws {
+        let now = Self.isoNow()
+        var note = ClipNote(
+            id: nil,
+            clipId: clipId,
+            body: body,
+            operatorName: operatorName.trimmingCharacters(in: .whitespaces).isEmpty
+                ? "system"
+                : operatorName,
+            createdAt: now,
+            updatedAt: now
+        )
+        try note.insert(db)
+    }
+
+    /// Render an old → new diff line. Empty values → `<empty>` so a note like
+    /// `Title: <empty> → "Foo"` reads cleanly when a field gets populated for
+    /// the first time.
+    private static func diffLine(_ field: String, _ old: String, _ new: String) -> String? {
+        guard old != new else { return nil }
+        let o = old.isEmpty ? "<empty>" : "\"\(old)\""
+        let n = new.isEmpty ? "<empty>" : "\"\(new)\""
+        return "\(field): \(o) → \(n)"
     }
 
     // MARK: - Categories
@@ -746,11 +842,12 @@ final class DatabaseService {
         }
     }
 
-    func updateClip(_ newClip: Clip) throws {
+    func updateClip(_ newClip: Clip, operatorName: String = "") throws {
         try dbPool.write { db in
             let now = Self.isoNow()
             var mutated = newClip
-            if let old = try Clip.fetchOne(db, key: newClip.id) {
+            let old = try Clip.fetchOne(db, key: newClip.id)
+            if let old {
                 // Title rename: keep the legacy notes-marker behaviour.
                 if old.title != newClip.title,
                    !old.title.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -763,8 +860,26 @@ final class DatabaseService {
             mutated.updatedAt = now
             // Record per-field history *after* status has been recomputed so the
             // history captures the auto-transition too.
-            if let old = try Clip.fetchOne(db, key: newClip.id) {
+            if let old {
                 try Self.recordClipHistoryDiff(old: old, new: mutated, in: db, at: now)
+
+                // Auto-stamp a structured note for the user-visible fields the
+                // editor exposes (title, raw description, go-live date, status).
+                // Bundled into one note so a save doesn't spam the timeline.
+                let lines = [
+                    Self.diffLine("Title",        old.title,           mutated.title),
+                    Self.diffLine("Description",  old.descriptionRaw,  mutated.descriptionRaw),
+                    Self.diffLine("Go-Live",      old.goLiveDate ?? "", mutated.goLiveDate ?? ""),
+                    Self.diffLine("Status",       old.status,          mutated.status),
+                ].compactMap { $0 }
+                if !lines.isEmpty {
+                    try Self.insertAutoClipNote(
+                        clipId: mutated.id,
+                        body: lines.joined(separator: "\n"),
+                        operatorName: operatorName,
+                        in: db
+                    )
+                }
             }
             try mutated.update(db)
         }
@@ -964,8 +1079,8 @@ final class DatabaseService {
     /// Replace the category set for a clip, preserving the input order. Each
     /// row gets a sequential `position` (0, 1, 2…) so the next read returns
     /// IDs in the same order the caller passed in. Any change — including a
-    /// pure reorder — appends a `clip_history` row.
-    func setCategories(forClip clipId: String, categoryIds: [Int64]) throws {
+    /// pure reorder — appends a `clip_history` row and a structured note.
+    func setCategories(forClip clipId: String, categoryIds: [Int64], operatorName: String = "") throws {
         try dbPool.write { db in
             let oldIds = try Int64.fetchAll(db,
                 sql: """
@@ -991,6 +1106,28 @@ final class DatabaseService {
                     INSERT INTO clip_history (clip_id, field, old_value, new_value, changed_at)
                     VALUES (?, 'categories', ?, ?, ?)
                     """, arguments: [clipId, oldStr, newStr, Self.isoNow()])
+
+                // Resolve names for the structured note. Look up *all* ids in
+                // one shot — covers both old and new sets.
+                let allIds = Array(Set(oldIds + categoryIds))
+                var nameById: [Int64: String] = [:]
+                if !allIds.isEmpty {
+                    let placeholders = Array(repeating: "?", count: allIds.count).joined(separator: ",")
+                    let rows = try Row.fetchAll(db,
+                        sql: "SELECT id, name FROM categories WHERE id IN (\(placeholders))",
+                        arguments: StatementArguments(allIds))
+                    for r in rows { nameById[r["id"]] = r["name"] }
+                }
+                func render(_ ids: [Int64]) -> String {
+                    if ids.isEmpty { return "<none>" }
+                    return ids.map { nameById[$0] ?? "id:\($0)" }.joined(separator: ", ")
+                }
+                try Self.insertAutoClipNote(
+                    clipId: clipId,
+                    body: "Categories: \(render(oldIds)) → \(render(categoryIds))",
+                    operatorName: operatorName,
+                    in: db
+                )
             }
         }
     }

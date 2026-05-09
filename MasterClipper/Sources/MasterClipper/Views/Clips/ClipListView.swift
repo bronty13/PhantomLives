@@ -10,68 +10,56 @@ struct ClipListView: View {
     @State private var includeArchived: Bool = false
     @State private var selection: Clip.ID?
     @State private var showingNewSheet: Bool = false
-    @State private var showingExportSheet: Bool = false
     @State private var showingDeleteConfirm: Bool = false
-    @State private var showingEditingSheet: Bool = false
-    @State private var editingWorkflowClipId: String? = nil
+    /// Sheet bindings driven by the *clip itself* — using `.sheet(item:)`
+    /// instead of a separate Bool + id state pair so SwiftUI can never
+    /// open a sheet without the data it's about to render.
+    @State private var workflowClip: Clip? = nil
+    @State private var exportingClip: Clip? = nil
     @State private var postedSitesByClip: [String: Set<Int64>] = [:]
     @State private var sortOrder: [KeyPathComparator<Clip>] = [
         KeyPathComparator(\Clip.createdAt, order: .reverse)
     ]
 
     var body: some View {
-        HSplitView {
-            VStack(spacing: 0) {
-                filterBar
-                Divider()
-                clipTable
-            }
-            .frame(minWidth: 540)
-
-            ClipDetailView(clipId: selection)
-                .frame(minWidth: 480)
-        }
-        .navigationTitle("Clips")
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    showingNewSheet = true
-                } label: {
-                    Label("New Clip", systemImage: "plus")
+        EdPageShell(
+            eyebrow: "Section · Clips",
+            headline: "The full catalog.",
+            emphasized: "catalog",
+            deck: "\(appState.clips.filter { !$0.archived }.count) clips. Filter, sort, edit. Selection opens to the right.",
+            trailing: AnyView(
+                HStack(spacing: 8) {
+                    Button { showingNewSheet = true } label: { Text("⌘ N · NEW") }
+                        .buttonStyle(EdInkPillButtonStyle())
+                    Button {
+                        if let clip = selectedClip { workflowClip = clip }
+                    } label: { Text("WORKFLOW") }
+                        .buttonStyle(EdGhostButtonStyle())
+                        .disabled(selectedClip == nil)
+                        .help("Run the file audit and capture editing notes (appended to clip notes)")
+                    Button {
+                        if let clip = selectedClip { exportingClip = clip }
+                    } label: { Text("EXPORT") }
+                        .buttonStyle(EdGhostButtonStyle())
+                        .disabled(selectedClip == nil)
+                    Button(role: .destructive) { showingDeleteConfirm = true } label: { Text("DELETE") }
+                        .buttonStyle(EdGhostButtonStyle())
+                        .disabled(selectedClip == nil)
+                        .keyboardShortcut(.delete, modifiers: .command)
+                        .help("Delete the selected clip (⌘⌫)")
                 }
-
-                Button {
-                    if let id = selection {
-                        editingWorkflowClipId = id
-                        showingEditingSheet = true
-                    }
-                } label: {
-                    Label("Editing Workflow", systemImage: "wand.and.stars")
+            )
+        ) {
+            HSplitView {
+                VStack(spacing: 0) {
+                    filterBar
+                    EdHairline(color: EdColor.ink(0.18))
+                    clipTable
                 }
-                .disabled(selection == nil)
-                .help("Run the file audit and capture editing notes (appended to clip notes)")
+                .frame(minWidth: 540)
 
-                Button {
-                    showingExportSheet = true
-                } label: {
-                    Label("Export Clip…", systemImage: "square.and.arrow.up")
-                }
-                .disabled(selection == nil)
-
-                Button(role: .destructive) {
-                    showingDeleteConfirm = true
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-                .disabled(selection == nil)
-                .keyboardShortcut(.delete, modifiers: .command)
-                .help("Delete the selected clip (⌘⌫)")
-
-                Button {
-                    appState.reloadClips()
-                } label: {
-                    Label("Refresh", systemImage: "arrow.clockwise")
-                }
+                ClipDetailView(clipId: selection)
+                    .frame(minWidth: 480)
             }
         }
         .alert("Delete this clip?", isPresented: $showingDeleteConfirm) {
@@ -88,13 +76,9 @@ struct ClipListView: View {
                 Text("This clip and all its associated data will be permanently deleted. This cannot be undone.")
             }
         }
-        .sheet(isPresented: $showingExportSheet) {
-            if let id = selection, let clip = appState.clips.first(where: { $0.id == id }) {
-                ClipExportSheet(clip: clip) { showingExportSheet = false }
-                    .environmentObject(appState)
-            } else {
-                Text("No clip selected").padding()
-            }
+        .sheet(item: $exportingClip) { clip in
+            ClipExportSheet(clip: clip) { exportingClip = nil }
+                .environmentObject(appState)
         }
         .sheet(isPresented: $showingNewSheet) {
             ClipWorkflowView(
@@ -103,13 +87,15 @@ struct ClipListView: View {
                     showingNewSheet = false
                 },
                 onContinueToEditing: { newClip in
-                    // Hand off to the editing workflow. SwiftUI dismisses
-                    // sheets sequentially, so set the next-sheet state and
-                    // dismiss this one — the dismiss-completion .onChange
-                    // below opens the editing sheet once SwiftUI is ready.
+                    // Chain into the editing workflow. Dismiss the new-clip
+                    // sheet first, then trip the workflowClip binding once
+                    // SwiftUI is past the dismiss transition — `.sheet(item:)`
+                    // can't show a new sheet while another is dismissing.
                     selection = newClip.id
-                    editingWorkflowClipId = newClip.id
                     showingNewSheet = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        workflowClip = newClip
+                    }
                 },
                 onCancel: {
                     showingNewSheet = false
@@ -117,27 +103,11 @@ struct ClipListView: View {
             )
             .environmentObject(appState)
         }
-        .onChange(of: showingNewSheet) { _, presenting in
-            // After the new-clip sheet dismisses, if we recorded a clip id
-            // for the editing workflow chain, open it now. Two-step gate
-            // (presenting=false + non-nil id) avoids the race where SwiftUI
-            // collapses two .sheet bindings that flip in the same render.
-            if !presenting, editingWorkflowClipId != nil, !showingEditingSheet {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                    showingEditingSheet = true
-                }
+        .sheet(item: $workflowClip) { clip in
+            EditingWorkflowView(clipId: clip.id) {
+                workflowClip = nil
             }
-        }
-        .sheet(isPresented: $showingEditingSheet) {
-            if let id = editingWorkflowClipId {
-                EditingWorkflowView(clipId: id) {
-                    showingEditingSheet = false
-                    editingWorkflowClipId = nil
-                }
-                .environmentObject(appState)
-            } else {
-                Text("No clip selected").padding()
-            }
+            .environmentObject(appState)
         }
         .onReceive(NotificationCenter.default.publisher(for: .newClipRequested)) { _ in
             showingNewSheet = true
@@ -220,8 +190,9 @@ struct ClipListView: View {
                 .toggleStyle(.switch)
                 .controlSize(.small)
         }
-        .padding(10)
-        .background(.background.secondary)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(EdColor.bone)
     }
 
     private var clipTable: some View {
@@ -285,6 +256,13 @@ struct ClipListView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Selection helpers
+
+    private var selectedClip: Clip? {
+        guard let id = selection else { return nil }
+        return appState.clips.first { $0.id == id }
     }
 
     // MARK: - Filtering

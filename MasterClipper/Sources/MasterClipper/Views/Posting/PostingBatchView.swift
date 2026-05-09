@@ -24,13 +24,20 @@ struct PostingBatchView: View {
     @State private var showingQueueList: Bool = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            breadcrumbs
-            Divider()
-            stageContent
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        EdPageShell(
+            eyebrow: "Section · Batch",
+            headline: "Posting batch.",
+            emphasized: "batch",
+            deck: "Walk a single (persona × site) target end-to-end. Mark posted, skip, exclude.",
+            trailing: AnyView(EmptyView())
+        ) {
+            VStack(spacing: 0) {
+                breadcrumbs
+                EdHairline(color: EdColor.ink(0.18))
+                stageContent
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
-        .navigationTitle("Posting Batch")
         .onAppear { reloadCounts() }
         .onChange(of: appState.clips.count) { _, _ in reloadCounts() }
         .sheet(isPresented: $showingQueueList) {
@@ -107,7 +114,7 @@ struct PostingBatchView: View {
             }
         }
         .padding(14)
-        .background(.background.secondary)
+        .background(EdColor.bone)
     }
 
     @ViewBuilder

@@ -40,10 +40,14 @@ struct CategoriesSettingsTab: View {
                     Text(c.name)
                 }
 
+                // The Order column exposes raw `sort_order` values — useful
+                // for debugging chip-picker ordering, noise for everyday
+                // use. Only shown when debugMode is on.
                 TableColumn("Order") { c in
                     Text("\(c.sortOrder)").font(.caption.monospacedDigit())
                 }
                 .width(min: 60, ideal: 70)
+                .defaultVisibility(appState.settings.debugMode ? .automatic : .hidden)
 
                 TableColumn("Archived") { c in
                     Toggle("", isOn: Binding(

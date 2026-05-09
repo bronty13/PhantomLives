@@ -19,16 +19,17 @@ struct ClipDetailView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "film.stack")
-                .font(.system(size: 48, weight: .light))
-                .foregroundStyle(.tint)
-            Text("No clip selected")
-                .font(.headline)
-            Text("Pick a clip on the left, or use ⌘N to create a new one.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+        VStack(spacing: 14) {
+            EdEyebrow(text: "Editor", withRule: false)
+            Text("Pick a clip.")
+                .font(EdFont.serif(28, weight: .bold))
+            Text("Select a clip on the left or press ⌘N to create a new one.")
+                .font(EdFont.serif(15, weight: .light, italic: true))
+                .foregroundStyle(EdColor.ink(0.7))
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 340)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(EdColor.bone)
     }
 }

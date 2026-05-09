@@ -201,6 +201,12 @@ struct AppSettings: Codable {
     var includeNotesInGlobalSearch: Bool = true
 
     var debugLogging: Bool = false
+
+    // When on, the UI exposes diagnostic columns / fields / buttons that are
+    // useful for debugging but clutter the everyday view (e.g. the Order
+    // column in Categories settings, raw IDs, sort_order numbers, etc.).
+    // Default off so the app stays clean.
+    var debugMode: Bool = false
 }
 
 @MainActor

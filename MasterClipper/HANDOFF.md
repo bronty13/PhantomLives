@@ -81,10 +81,11 @@ Sources/MasterClipper/
 │   ├── C4SHistoricalImportService.swift  XLSX + pipe-CSV parser; ZIP-magic content sniff
 │   └── HistoricalCategoryBackfillService.swift  title-match planner — exact / strong / maybe / unmatched buckets
 ├── Views/
-│   ├── ContentView.swift                 NavigationSplitView root
+│   ├── ContentView.swift                 VStack { TopTabBarView; DetailRouterView } — Editorial chrome root
 │   ├── Sidebar/
-│   │   ├── SidebarView.swift
-│   │   └── DashboardView.swift           top stats (clickable → Clips with filter), per-target progress, clip×site matrix
+│   │   ├── TopTabBarView.swift           Editorial top tab bar (brand mark + 8 tabs + clock + ⌘N pill)
+│   │   ├── SidebarView.swift             (legacy NavigationSplitView sidebar — no longer routed; kept for reference)
+│   │   └── DashboardView.swift           Editorial dashboard: meta column (eyebrow/headline/deck/personas/pipeline) + content column (number strip + clip×site table + per-target list)
 │   ├── Clips/
 │   │   ├── ClipListView.swift            master Table; persona/status/posting/archived filters; AND-token search
 │   │   ├── ClipDetailView.swift          right pane router
@@ -137,10 +138,16 @@ Sources/MasterClipper/
 │       ├── HexColor.swift                Color(hex:) + Color.toHex()
 │       ├── PersonaPill.swift             gradient capsule with heart icon
 │       ├── DurationFormatter.swift       mm:ss / hh:mm:ss
+│       ├── EditorialTheme.swift          Editorial design system: palette (bone/ink/acid), typography (EdFont serif/sans/mono), reusable views (EdEyebrow/EdHeadline/EdDeck/EdSectionHeading/EdStatusPill/EdSiteCell/EdNumberCell/EdPersonaSwatch/EdHairline/EdPanel/EdPageShell), button styles (EdAcidPillButtonStyle/EdInkPillButtonStyle/EdGhostButtonStyle), `.editorialChrome()` root modifier
 │       └── ComingSoonView.swift
 └── Resources/
-    └── Assets.xcassets/AppIcon.appiconset/...
+    ├── Assets.xcassets/AppIcon.appiconset/...
+    └── Fonts/                             Source Serif 4 (Light/Regular/Semibold/Bold + italics), Inter Tight (variable, regular + italic), JetBrains Mono (Regular/Medium/SemiBold) — auto-registered via ATSApplicationFontsPath = "."
 ```
+
+## Editorial UI
+
+The whole app uses a custom Editorial design language (bone canvas, ink ruling, single acid-yellow accent, magazine typography). The chrome is a top tab bar — `TopTabBarView` over a flat `DetailRouterView` — *not* a `NavigationSplitView`. Every section view starts with an `EdPageShell` masthead (mono eyebrow → serif headline with optional acid-highlighted em word → italic deck → hairline rule). All shared visual primitives live in `Views/Shared/EditorialTheme.swift`. When you reach for a SwiftUI default (`.background.secondary`, `Capsule()`, `RoundedRectangle`), prefer the Editorial equivalents (`EdColor.bone`, `Rectangle().strokeBorder(EdColor.ink, lineWidth: 1)`, `EdHairline`).
 
 ## Database schema
 

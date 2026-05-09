@@ -508,7 +508,7 @@ struct PostingClipWindow: View {
     private func persistCategoriesIfChanged(_ new: [Int64]) {
         guard new != initialCategoryIds else { return }
         do {
-            try DatabaseService.shared.setCategories(forClip: clip.id, categoryIds: new)
+            try appState.setClipCategories(clipId: clip.id, categoryIds: new)
             initialCategoryIds = new
         } catch {
             // Silent — the next reload will surface any persistence issue.

@@ -2,7 +2,10 @@ import SwiftUI
 
 struct AppMenuCommands: Commands {
     var body: some Commands {
-        CommandGroup(after: .newItem) {
+        // Replace SwiftUI's default File → New (which would open a brand-new
+        // window via WindowGroup) so ⌘N triggers the New Clip flow inside
+        // the existing window instead.
+        CommandGroup(replacing: .newItem) {
             Button("New Clip") {
                 NotificationCenter.default.post(name: .newClipRequested, object: nil)
             }

@@ -14,8 +14,12 @@ struct MasterClipperApp: App {
             ContentView()
                 .environmentObject(appState)
                 .frame(minWidth: 1100, minHeight: 700)
-                .tint(appState.effectiveAccentColor)
-                .preferredColorScheme(appState.preferredColorScheme)
+                .tint(EdColor.ink)
+                // Editorial is intrinsically a light design (bone canvas, ink ruling).
+                // Force `.light` so SwiftUI's Table / TextField / TextEditor system
+                // materials resolve to light variants — otherwise on a Mac running
+                // dark mode they render near-black against our bone background.
+                .preferredColorScheme(.light)
         }
         .defaultSize(width: 1400, height: 900)
         .windowToolbarStyle(.unified(showsTitle: true))
@@ -27,6 +31,7 @@ struct MasterClipperApp: App {
             SettingsView()
                 .environmentObject(appState)
                 .frame(minWidth: 720, minHeight: 520)
+                .preferredColorScheme(.light)
         }
     }
 
@@ -35,7 +40,7 @@ struct MasterClipperApp: App {
     /// Bumped whenever a future release needs to force a one-shot wipe of
     /// SwiftUI's auto-persisted window frame / split-view / sidebar state.
     /// Increment to ship another reset.
-    static let windowResetVersion = 2
+    static let windowResetVersion = 3
     static let windowResetVersionKey = "MasterClipper.windowResetVersion"
 
     /// SwiftUI persists window frames and sidebar collapse state via

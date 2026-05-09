@@ -32,12 +32,19 @@ struct CalendarRootView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            toolbar
-            Divider()
-            content
+        EdPageShell(
+            eyebrow: "Section · Calendar",
+            headline: "Production calendar.",
+            emphasized: "calendar",
+            deck: "Per-day go-live targets across personas and sites.",
+            trailing: AnyView(EmptyView())
+        ) {
+            VStack(spacing: 0) {
+                toolbar
+                EdHairline(color: EdColor.ink(0.18))
+                content
+            }
         }
-        .navigationTitle("Calendar")
         .onAppear {
             mode = CalendarMode(rawValue: appState.settings.calendarDefaultView) ?? .month
             reload()
@@ -87,7 +94,7 @@ struct CalendarRootView: View {
             }
         }
         .padding(12)
-        .background(.background.secondary)
+        .background(EdColor.bone)
     }
 
     // MARK: - Content router
@@ -150,7 +157,7 @@ struct CalendarRootView: View {
             }
         }
         .padding(8)
-        .background(.background.secondary)
+        .background(EdColor.bone)
         .cornerRadius(6)
     }
 
@@ -210,7 +217,7 @@ struct CalendarRootView: View {
         .padding(6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .frame(minHeight: 80, alignment: .topLeading)
-        .background(.background.secondary)
+        .background(EdColor.bone)
         .cornerRadius(4)
         .onTapGesture {
             anchorDate = date
@@ -264,7 +271,7 @@ struct CalendarRootView: View {
         }
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background.secondary)
+        .background(EdColor.bone)
         .cornerRadius(6)
     }
 
@@ -301,7 +308,7 @@ struct CalendarRootView: View {
             Spacer()
         }
         .padding(8)
-        .background(.background.secondary)
+        .background(EdColor.bone)
         .cornerRadius(6)
     }
 

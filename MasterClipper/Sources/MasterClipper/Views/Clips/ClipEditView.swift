@@ -191,10 +191,23 @@ struct ClipEditView: View {
                     }
 
                     Section("Notes") {
-                        TextEditor(text: $draft.notes)
-                            .frame(minHeight: 80)
-                            .border(.separator)
-                            .help("Searchable notes — title-rename markers and refine timestamps land here automatically.")
+                        ClipNotesPanel(clipId: draft.id)
+                            .environmentObject(appState)
+                    }
+
+                    if !draft.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Section("Activity log (auto-generated markers)") {
+                            DisclosureGroup("Show \(draft.notes.split(separator: "\n").count) line\(draft.notes.split(separator: "\n").count == 1 ? "" : "s")") {
+                                Text(draft.notes)
+                                    .font(EdFont.mono(11))
+                                    .foregroundStyle(EdColor.ink(0.75))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(8)
+                                    .overlay(Rectangle().strokeBorder(EdColor.ink(0.18), lineWidth: 1))
+                                    .textSelection(.enabled)
+                            }
+                            .help("Auto-stamped markers like [Status …], [Posted …], [Editing …] live here — separate from hand-written notes above.")
+                        }
                     }
 
                     Section("Video Transcription (auto-generated)") {
@@ -442,31 +455,41 @@ struct ClipEditView: View {
     /// auto-derived value. Picking a status enqueues a confirmation alert
     /// (`pendingStatusChange`) before the override is applied — see
     /// `applyPendingStatusChange()`.
+    ///
+    /// Manual override is a power-user / debugging surface: the auto-derivation
+    /// is correct in normal use and pinning a status by hand can mask real
+    /// pipeline issues. Hidden unless `debugMode` is on; off-mode users see a
+    /// plain non-interactive badge.
+    @ViewBuilder
     private var statusMenu: some View {
-        Menu {
-            ForEach(ClipStatus.allCases.filter { $0 != .archived }, id: \.rawValue) { s in
-                Button {
-                    queueStatusChange(to: s.rawValue)
-                } label: {
-                    Label(s.label, systemImage: s.systemImage)
+        if appState.settings.debugMode {
+            Menu {
+                ForEach(ClipStatus.allCases.filter { $0 != .archived }, id: \.rawValue) { s in
+                    Button {
+                        queueStatusChange(to: s.rawValue)
+                    } label: {
+                        Label(s.label, systemImage: s.systemImage)
+                    }
+                    .disabled(draft.statusEnum == s && draft.statusOverride != nil)
                 }
-                .disabled(draft.statusEnum == s && draft.statusOverride != nil)
-            }
-            if draft.statusOverride != nil {
-                Divider()
-                Button {
-                    queueStatusChange(to: nil)
-                } label: {
-                    Label("Clear manual override (return to auto)", systemImage: "arrow.uturn.backward")
+                if draft.statusOverride != nil {
+                    Divider()
+                    Button {
+                        queueStatusChange(to: nil)
+                    } label: {
+                        Label("Clear manual override (return to auto)", systemImage: "arrow.uturn.backward")
+                    }
                 }
+            } label: {
+                statusBadge
             }
-        } label: {
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Change the workflow status manually. You'll be asked to confirm.")
+        } else {
             statusBadge
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help("Change the workflow status manually. You'll be asked to confirm.")
     }
 
     private var statusColor: Color {
@@ -904,7 +927,7 @@ struct ClipEditView: View {
     private func save() {
         do {
             try appState.updateClip(draft)
-            try DatabaseService.shared.setCategories(forClip: draft.id, categoryIds: selectedCategoryIds)
+            try appState.setClipCategories(clipId: draft.id, categoryIds: selectedCategoryIds)
             // Re-pull the saved row (server-side may have appended notes)
             if let refreshed = try DatabaseService.shared.fetchClip(id: draft.id) {
                 draft = refreshed
