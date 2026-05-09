@@ -3,3 +3,8 @@
 PurpleIRC.app/
 *.xcodeproj/
 Package.resolved
+.DS_Store
+
+# Claude Code: personal/per-machine overrides — never commit
+.claude/settings.local.json
+.claude/CLAUDE.local.md
