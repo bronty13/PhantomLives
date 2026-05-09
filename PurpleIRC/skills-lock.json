@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "character-design-sheet": {
+      "source": "inference-sh-skills/skills",
+      "sourceType": "github",
+      "skillPath": "guides/design/character-design-sheet/SKILL.md",
+      "computedHash": "7d0730391b37d7d6a9215d2d0f90a404f66b80f9b36ea238119af051920cb208"
+    }
+  }
+}
