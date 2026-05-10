@@ -2,6 +2,19 @@
 
 Newest at the top. Follows the PhantomLives convention: every behavior-changing commit lands an entry here, USER_MANUAL.md updates if user-visible, and the version bumps automatically via `build-app.sh` + git commit count.
 
+## Unreleased — Phase 2 starter (0.1.x)
+
+### 2026-05-10 — Phase 2 data layer + sidebar + table
+
+- Design handoff (`~/Downloads/PurpleLife-handoff.zip`) unpacked into `Design/`; `Design/MANIFEST.md` maps the 10 prototype screens to the SwiftUI files that will implement them. The JSX/HTML source is gitignored (large), the manifest is committed.
+- Attachments storage decided in `HANDOFF.md`: content-addressed files at `~/Library/Application Support/PurpleLife/attachments/<sha256>.<ext>`, `attachments` table for metadata, CloudKit sync via `CKAsset` deferred to Phase 4.
+- Models: `FieldDef` (12 field kinds incl. text, select, link, attachment, rating), `ObjectType` (with primary/kanban/calendar/gallery key hints), `Attachment` row.
+- `SchemaSeed`: built-in types Person, Book, Camera, Photo Shoot, WoW Character, Photo. Each carries the example fields shown in the design's table/kanban/calendar/gallery screens.
+- `SchemaRegistry` service: persists to `schema.json`, loads on launch, merges in newly-added built-ins on upgrade, supports user-add / user-edit / user-delete + hide-built-in.
+- DB migration `v2_attachments`: id / parent_object_id / field_key / sha256 / filename / mime_type / size_bytes / created_at, indexed on parent + sha256.
+- Views: replaced the Phase 1 placeholder `ContentView` with a `NavigationSplitView`. New `Sidebar` lists visible types with per-type record counts; new `TableViewScreen` renders any type's records as a horizontally-scrollable column grid (`Table` couldn't take dynamic columns at runtime).
+- Tests: 6 new `SchemaRegistryTests` (seed, hide-not-delete-built-ins, refuse-delete-built-ins, upsert, field mutations, reload-from-disk). Total: **15/15 green**.
+
 ## Unreleased — Phase 1 scaffold (0.1.x)
 
 ### 2026-05-10 — CloudKit spike PASS

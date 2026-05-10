@@ -7,9 +7,11 @@ import SwiftUI
 @MainActor
 final class AppState: ObservableObject {
     @Published var settingsStore = SettingsStore()
+    @Published var schema = SchemaRegistry()
     let database = DatabaseService.shared
 
     @Published var objectCount: Int = 0
+    @Published var selectedTypeId: String?
 
     /// Pass-through to the underlying SettingsStore — saves on every set.
     /// Lets views write `appState.settings.foo = …` without thinking about
@@ -27,6 +29,9 @@ final class AppState: ObservableObject {
         // the archive captures a clean copy of the on-disk state from the
         // last session. BackupService swallows its own errors.
         BackupService.runOnLaunchIfDue(settingsStore: settingsStore)
+
+        // Default sidebar selection — first visible built-in.
+        selectedTypeId = schema.visibleTypes.first?.id
 
         reloadAll()
     }

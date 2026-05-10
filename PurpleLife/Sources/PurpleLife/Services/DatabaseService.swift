@@ -75,6 +75,31 @@ final class DatabaseService {
             try db.create(index: "idx_objects_updated_at", on: "objects", columns: ["updated_at"])
         }
 
+        // v2 — attachments metadata table. Per the attachments decision in
+        // HANDOFF.md (2026-05-10), file content lives at
+        // ~/Library/Application Support/PurpleLife/attachments/<sha256>.<ext>;
+        // this table is metadata only. Content-addressing means the same
+        // file referenced by multiple objects de-duplicates on disk.
+        migrator.registerMigration("v2_attachments") { db in
+            try db.create(table: "attachments") { t in
+                t.column("id", .text).primaryKey()
+                t.column("parent_object_id", .text).notNull()
+                    .references("objects", column: "id", onDelete: .cascade)
+                t.column("field_key", .text).notNull()
+                t.column("sha256", .text).notNull()
+                t.column("filename", .text).notNull()
+                t.column("mime_type", .text).notNull().defaults(to: "application/octet-stream")
+                t.column("size_bytes", .integer).notNull().defaults(to: 0)
+                t.column("created_at", .text).notNull()
+            }
+            try db.create(index: "idx_attachments_parent",
+                          on: "attachments",
+                          columns: ["parent_object_id"])
+            try db.create(index: "idx_attachments_sha256",
+                          on: "attachments",
+                          columns: ["sha256"])
+        }
+
         try migrator.migrate(writer)
     }
 

@@ -12,6 +12,15 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-10 — Attachments storage: content-addressed files in Application Support; CloudKit sync deferred to Phase 4
+
+`PLAN.md` § Open questions calls for the attachments decision before Phase 2. Decided.
+
+- **Phase 2** stores attachments as files at `~/Library/Application Support/PurpleLife/attachments/<sha256>.<ext>`. `fields_json` references them by sha256. Files travel inside backup zips automatically because they're under the Application Support tree the auto-backup already captures.
+- **Phase 4** mirrors attachments to CloudKit as `CKAsset` (the only realistic shape for >50 KB binary data over CloudKit). `CKAsset`s are not E2E encrypted by `encryptedValues` — Apple has the keys for assets even though they don't for the JSON `fields` blob. That's a known and accepted trade-off: file content has lower confidentiality requirements than the structured fields, and the alternative (chunking + client-side encryption of media) costs weeks for a personal-scale app.
+- **What's rejected**: BLOBs in SQLite (Timeliner's pattern) — fine for the small case-file attachments Timeliner deals with, but a Life OS will have photo libraries in the hundreds of MB and SQLite-as-a-blob-store stops being the right shape there. CKAsset-only with no local copy — defeats backups, breaks offline use.
+- **Schema implication**: a single `attachments` table created in Phase 2 with `id`, `parent_object_id`, `sha256`, `filename`, `mime_type`, `size_bytes`, `created_at`. The on-disk file is the source of truth for content; the row is metadata only. Cascade deletes when the parent object is deleted.
+
 ### 2026-05-10 — CloudKit spike PASS; encryption decision locked
 
 The spike `Spike/CloudKit/CloudKitSpike.app` ran successfully against the production Apple Developer setup:

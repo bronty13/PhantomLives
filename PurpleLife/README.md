@@ -13,7 +13,7 @@ Phase 1 (Foundation) — scaffold complete.
 | 0 — Tap Forms trial | Skipped 2026-05-10 — see [HANDOFF.md](HANDOFF.md) |
 | CloudKit spike | **PASS 2026-05-10** ([Spike/CloudKit/SPIKE.md](Spike/CloudKit/SPIKE.md)) — `encryptedValues` round-trip confirmed against `iCloud.com.bronty13.PurpleLife` |
 | 1 — Foundation | Complete — round-trip + 4 backup tests green; Settings → Backup pane wired |
-| 2 — Object engine + 4 views | Not started |
+| 2 — Object engine + 4 views | In progress — schema registry + sidebar + table view in; kanban/calendar/gallery + schema editor + FTS5 next |
 | 3 — Today / Planner | Not started |
 | 4 — CloudKit E2E sync | Not started |
 | 5 — First real use cases | Not started |
