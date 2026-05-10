@@ -509,8 +509,15 @@ struct ContentView: View {
             }
         }
         .padding(8)
-        .background(Color.purple.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        // Vibrancy material + a subtle purple-tinted stroke. Plain
+        // Color.purple.opacity(0.08) was nearly invisible in dark mode and
+        // pure-flat in light mode; .thinMaterial picks up the desktop and
+        // the accent overlay tints it without going saturated.
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 6))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color.purple.opacity(0.35), lineWidth: 0.5)
+        )
         .padding(.top, 4)
         .onAppear { photosAuthStatus = PhotoKitDeletionService.shared.currentStatus() }
     }

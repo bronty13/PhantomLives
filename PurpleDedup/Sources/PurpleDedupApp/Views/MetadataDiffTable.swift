@@ -50,7 +50,7 @@ struct MetadataDiffTable: View {
                                 .lineLimit(2)
                                 .truncationMode(.middle)
                                 .padding(.horizontal, 4)
-                                .background(Color.orange.opacity(0.18))
+                                .background(Color.orange.opacity(0.25))
                                 .clipShape(RoundedRectangle(cornerRadius: 3))
                                 .help(f.url.path)
                                 .frame(minWidth: 200, alignment: .leading)
@@ -68,7 +68,7 @@ struct MetadataDiffTable: View {
                             Text(formatBytes(f.sizeBytes))
                                 .font(.callout.monospaced())
                                 .padding(.horizontal, 4)
-                                .background(sizesDiffer ? Color.orange.opacity(0.18) : Color.clear)
+                                .background(sizesDiffer ? Color.orange.opacity(0.25) : Color.clear)
                                 .clipShape(RoundedRectangle(cornerRadius: 3))
                         }
                     }
@@ -92,7 +92,7 @@ struct MetadataDiffTable: View {
                                     Text(valuesByURL[f.url] ?? "—")
                                         .font(.callout.monospaced())
                                         .padding(.horizontal, 4)
-                                        .background(differs ? Color.orange.opacity(0.18) : Color.clear)
+                                        .background(differs ? Color.orange.opacity(0.25) : Color.clear)
                                         .clipShape(RoundedRectangle(cornerRadius: 3))
                                 }
                             }
