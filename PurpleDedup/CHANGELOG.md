@@ -3,6 +3,33 @@
 Versions follow `1.0.<commit-count>` derived from git in `build-app.sh`. This file
 narrates *what* changed and *why*; bundle versions just label the moment.
 
+## 0.22.1 — Cancel reliability fix (2026-05-10)
+
+User report: "scan frozen and won't cancel." Two fixes:
+
+1. **`ScanCoordinator.resolveSources` now honours cancellation.** It
+   was running the per-source PhotoKit `matchingBasenamesDetailed`
+   call without `Task.checkCancellation()` between sources, so a
+   pending cancel signal sat un-checked until the entire library
+   resolved. Added checkpoints before and after each source's
+   PhotoKit call. PhotoKit itself can't be interrupted mid-fetch,
+   but the worst case is now bounded at one library's resolution
+   time after the user clicks Cancel, not the entire source list.
+
+2. **Force Quit button now appears reliably at 4 s.** The toolbar's
+   "show Force Quit when 4+ seconds since cancel click" check is a
+   `Date().timeIntervalSince(...)` calculation evaluated during
+   body render. SwiftUI only re-evaluates body when @State changes,
+   and during a stuck phase that emits no progress events (a single
+   big PhotoKit fetch, a slow SQLite read), nothing was changing —
+   so Force Quit never appeared even after >4 s.
+
+   New `cancelTick` @State counter that the cancel handler bumps
+   once a second while `cancelRequestedAt != nil && isScanning`.
+   Body reads it inside the toolbar branch so SwiftUI tracks the
+   dependency. Force Quit appears reliably whether or not the
+   engine is emitting progress.
+
 ## 0.22.0 — Cluster-row redesign + Smith-Waterman video alignment (2026-05-10)
 
 Two visible improvements + a long internal refactor pass.

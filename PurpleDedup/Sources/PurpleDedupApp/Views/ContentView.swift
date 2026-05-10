@@ -33,6 +33,16 @@ struct ContentView: View {
     /// already in flight) can take longer than the user is willing to
     /// wait, so we offer a brutal exit() escape hatch.
     @State private var cancelRequestedAt: Date? = nil
+
+    /// Counter the cancel handler bumps every second after the user clicks
+    /// Cancel. SwiftUI re-evaluates `body` when @State changes; without this
+    /// nudge the toolbar's "more than 4 s elapsed → show Force Quit" check
+    /// only fires when some other @State value (like `progressLine`) updates.
+    /// If the scan is stuck inside a non-cancellable phase that emits no
+    /// progress (a slow SQLite read, a single PhotoKit fetch on a huge
+    /// library), the body never re-evaluates and Force Quit never appears.
+    /// The tick keeps the toolbar honest.
+    @State private var cancelTick: Int = 0
     @State private var progressLine: String = ""
     @State private var cacheLine: String = ""
     @State private var stageTiming: String = ""
@@ -156,6 +166,12 @@ struct ContentView: View {
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
                 if isScanning {
+                    // Reading `cancelTick` here registers it as a
+                    // body-level dependency. The cancel handler bumps it
+                    // once a second so this branch re-evaluates and the
+                    // Force Quit button appears at the 4-second mark even
+                    // when no other @State writes are happening.
+                    let _ = cancelTick
                     if let requestedAt = cancelRequestedAt,
                        Date().timeIntervalSince(requestedAt) > 4 {
                         // Soft cancel didn't take effect within 4 s.
@@ -176,6 +192,19 @@ struct ContentView: View {
                             scanTask = nil
                             cancelRequestedAt = Date()
                             statusMessage = "Cancelling…"
+                            // Bump the tick once per second until the scan
+                            // actually unwinds. Forces the toolbar to
+                            // re-evaluate so the Force Quit button appears
+                            // at the 4-second mark even when no progress
+                            // events are firing (engine stuck inside a
+                            // non-cancellable phase like a single big
+                            // PhotoKit fetch).
+                            Task { @MainActor [self] in
+                                while self.isScanning, self.cancelRequestedAt != nil {
+                                    try? await Task.sleep(for: .seconds(1))
+                                    self.cancelTick &+= 1
+                                }
+                            }
                         } label: {
                             Label("Cancel", systemImage: "stop.circle.fill")
                                 .labelStyle(.titleAndIcon)
@@ -1012,7 +1041,7 @@ struct ContentView: View {
         let coordinator = ScanCoordinator(settings: settingsStore.settings)
 
         do {
-            let resolution = await coordinator.resolveSources(
+            let resolution = try await coordinator.resolveSources(
                 sources,
                 filters: settingsStore.settings.photoLibraryFilters
             ) { [self] url in

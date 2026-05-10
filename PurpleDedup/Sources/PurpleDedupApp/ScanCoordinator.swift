@@ -42,19 +42,28 @@ struct ScanCoordinator {
     /// `filters` keys on `ScanSource.url.path`; missing entries fall
     /// back to a fresh `PhotoLibraryFilter()` (which produces "exclude
     /// hidden by default").
+    ///
+    /// Throws `CancellationError` if the host's `Task` is cancelled
+    /// between sources. Cancellation can NOT interrupt an in-flight
+    /// `PhotoKitDeletionService.matchingBasenamesDetailed` call (PhotoKit
+    /// + the SQLite reader don't honour `Task.isCancelled`), but checking
+    /// at each source boundary at least caps the worst case at one
+    /// library's resolution time after the user hits Cancel.
     func resolveSources(
         _ sources: [ScanSource],
         filters: [String: PhotoLibraryFilter],
         onSourceResolving: @MainActor (URL) -> Void = { _ in }
-    ) async -> Resolution {
+    ) async throws -> Resolution {
         var resolved: [ScanSource] = []
         var lastSummary: String = ""
         for src in sources {
+            try Task.checkCancellation()
             if src.isPhotosLibrary {
                 let f = filters[src.url.path] ?? PhotoLibraryFilter()
                 await MainActor.run { onSourceResolving(src.url) }
                 let r = await PhotoKitDeletionService.shared
                     .matchingBasenamesDetailed(filter: f, libraryURL: src.url)
+                try Task.checkCancellation()
                 lastSummary = f.isActive
                     ? "Photos filter: \(r.summary)"
                     : "Photos library: \(r.basenames.count) non-hidden assets (default — hidden excluded)"
