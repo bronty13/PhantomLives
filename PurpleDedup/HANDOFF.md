@@ -2,7 +2,7 @@
 
 The canonical mental model for the codebase, kept current as the project ships.
 The big spec is `~/Downloads/Dedupr-Requirements.md`; this file is the
-*implementation* snapshot at version `0.19.0`.
+*implementation* snapshot at version `0.20.0`.
 
 ## Mental model
 
@@ -79,6 +79,7 @@ non-cached opt-out.
 | `Sources/PurpleDedupApp/SettingsStore.swift` | `AppSettings` (data type renamed from `Settings` to dodge SwiftUI `Settings` scene clash). Persists `photoLibraryFilters` as JSON. |
 | `Sources/PurpleDedupApp/SessionState.swift` | Per-cluster decisions + manual overrides JSON — survives launches |
 | `Sources/PurpleDedupApp/Backup/BackupRunner.swift` | Launch-time auto-backup glue |
+| `Sources/PurpleDedupApp/UpdaterController.swift` | `@MainActor` wrapper around `SPUStandardUpdaterController`. Drives the **Check for Updates…** menu and the Settings → Updates tab. Configuration in Info.plist (`SUFeedURL`, `SUPublicEDKey`); see `RELEASING.md` for one-time key setup. |
 | `Sources/PurpleDedupApp/Views/ContentView.swift` | NavigationSplitView shell. Layered body (`bodyTopLayer` → `bodyMiddleLayer` → `bodyBottomLayer`) to fit Tahoe type-check budget. `GeometryReader`-wrapped cluster column. Inline filter editor takes over the column when active. Cancel button + Force Quit watchdog. |
 | `Sources/PurpleDedupApp/Views/ComparisonView.swift` | Right-pane: thumbnail grid + diff-highlighted metadata table. Per-thumbnail KEEP/DELETE chip, "In Photos" capsule, orange "Hidden" badge. |
 | `Sources/PurpleDedupApp/Views/PhotoLibraryFilterSheet.swift` | The filter editor. Renders inline (NOT as `.sheet` — see Tahoe gotchas below). Albums + People + Subtypes + toggles. |
@@ -250,10 +251,7 @@ of value:
 2. **Notarization automation in CI** — direct-download apps still need a
    notarization ticket to avoid the Gatekeeper warning. The `NOTARIZE_PROFILE`
    path is in `build-app.sh` but no automated runner.
-3. **Sparkle for in-app updates.** The direct-download distribution model
-   means users have no way to learn a new build is out. Sparkle's appcast
-   + auto-update is the standard fix.
-4. **Smith-Waterman frame-sequence alignment for video.** Today's ±5-frame
+3. **Smith-Waterman frame-sequence alignment for video.** Today's ±5-frame
    window misses videos with substantially different leaders (clipped intros,
    different first 30 s). Full DP alignment + per-frame BK-tree pruning would
    make the video stage robust to those cases.

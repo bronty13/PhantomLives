@@ -35,6 +35,12 @@ struct PurpleDedupAppMain: App {
         .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .newItem) {} // No documents.
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    UpdaterController.shared.checkForUpdates()
+                }
+                .disabled(!UpdaterController.shared.canCheckForUpdates)
+            }
         }
 
         Settings {

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+    <channel>
+        <title>PurpleDedup</title>
+        <description>PurpleDedup release feed. Each &lt;item&gt; describes one shipped build; Sparkle compares the &lt;sparkle:shortVersionString&gt; against the running app and offers the newest one.</description>
+        <link>https://github.com/bronty13/PhantomLives/tree/main/PurpleDedup</link>
+        <language>en</language>
+        <!--
+          To publish a new release:
+            1. Run `./build-app.sh` (then ./Scripts/release.sh) — see RELEASING.md.
+            2. The release script produces PurpleDedup-<version>.zip + a signed
+               EdDSA signature, prepends an <item> below, and uploads the zip
+               to a GitHub Release.
+            3. Commit + push appcast.xml.
+
+          Sparkle reads this file via raw.githubusercontent.com, so the moment
+          the push lands users on the previous version see an update prompt
+          on next launch (or up to 24h later if they have automatic checks
+          enabled).
+
+          DO NOT hand-edit existing <item> entries — once shipped, an entry's
+          version + signature pair is part of the trust chain. Add new entries
+          above old ones; keep the last few historical entries for users who
+          skip versions.
+        -->
+    </channel>
+</rss>

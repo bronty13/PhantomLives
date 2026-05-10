@@ -6,6 +6,7 @@ import PurpleDedupCore
 /// thumbnail-cache controls land in later phases.
 struct SettingsView: View {
     @ObservedObject var settingsStore: SettingsStore
+    @ObservedObject private var updaterController = UpdaterController.shared
     @State private var lastRunStatus: String?
 
     var body: some View {
@@ -16,6 +17,8 @@ struct SettingsView: View {
                 .tabItem { Label("Engine", systemImage: "gauge.with.dots.needle.bottom.50percent") }
             rulesTab
                 .tabItem { Label("Rules", systemImage: "list.number") }
+            updatesTab
+                .tabItem { Label("Updates", systemImage: "arrow.down.circle") }
         }
         // Bumped from 600×460. The Rules tab has 11 rules + folder-priority
         // editor below; the previous size truncated descriptions and let the
@@ -353,5 +356,56 @@ struct SettingsView: View {
         } catch {
             lastRunStatus = "Failed: \(error.localizedDescription)"
         }
+    }
+
+    // MARK: - Updates tab
+
+    private var updatesTab: some View {
+        Form {
+            Section {
+                Toggle(isOn: $updaterController.automaticallyChecksForUpdates) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Check for updates automatically")
+                        Text("Sparkle polls the appcast every 24 hours when this is on. Even off, you can run **Check for Updates…** from the PurpleDedup menu.")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("Automatic checks").font(.headline)
+            }
+
+            Section {
+                HStack {
+                    Button("Check now") {
+                        updaterController.checkForUpdates()
+                    }
+                    .disabled(!updaterController.canCheckForUpdates)
+                    Spacer()
+                    if let last = updaterController.lastUpdateCheckDate {
+                        Text("Last checked: \(last.formatted(date: .abbreviated, time: .shortened))")
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Text("Never checked")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("Manual check").font(.headline)
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("This build trusts updates signed with the developer's EdDSA key. Updates without a valid signature are refused — Sparkle won't run an unsigned binary even if the appcast points at one.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text("Feed: \(Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String ?? "(missing)")")
+                        .font(.caption.monospaced()).foregroundStyle(.secondary)
+                        .lineLimit(2).truncationMode(.middle)
+                }
+            } header: {
+                Text("Security").font(.headline)
+            }
+        }
+        .padding(20)
+        .formStyle(.grouped)
     }
 }

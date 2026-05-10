@@ -19,6 +19,10 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift", from: "6.0.0"),
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
+        // Sparkle 2.x for in-app auto-updates. SPM ships an xcframework binary target;
+        // build-app.sh copies the macOS slice into Contents/Frameworks/ and codesigns
+        // each XPC service + framework alongside the main bundle.
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
     ],
     targets: [
         .target(
@@ -30,7 +34,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "PurpleDedupApp",
-            dependencies: ["PurpleDedupCore"],
+            dependencies: [
+                "PurpleDedupCore",
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
             path: "Sources/PurpleDedupApp"
         ),
         .executableTarget(

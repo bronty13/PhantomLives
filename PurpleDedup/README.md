@@ -6,7 +6,7 @@ the App Store.
 
 ## Status
 
-**0.19.0 — People filter + reverse-geocoded GPS + dHash OR-merge + cross-cluster Photos crossref + CLI Photos filter.** All seven
+**0.20.0 — Sparkle in-app auto-updates.** All seven
 phases of the requirements doc plus a long list of user-driven additions are
 shipped. See `CHANGELOG.md` for the per-version detail.
 
@@ -39,6 +39,9 @@ What works today:
 - **Cancel + force-quit** mid-scan. ⌘. unwinds in <1 second; if a
   non-cancellable phase is stuck, the toolbar offers a brutal `exit(0)`
   after 4 seconds of waiting.
+- **In-app auto-updates via Sparkle 2.** Future versions delivered
+  through the app menu; toggle automatic checks in Settings → Updates.
+  See `RELEASING.md` for one-time EdDSA setup before the first release.
 - **GRDB-backed cache.** First run on a 5 600-file folder: ~19 s. Second
   run: <1 s.
 - **Save plan as JSON** (FR-5.9 dry-run) — every cluster + decision out

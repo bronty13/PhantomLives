@@ -3,6 +3,61 @@
 Versions follow `1.0.<commit-count>` derived from git in `build-app.sh`. This file
 narrates *what* changed and *why*; bundle versions just label the moment.
 
+## 0.20.0 — Sparkle in-app auto-updates (2026-05-09)
+
+PurpleDedup now ships future versions to itself. Direct-download
+distribution always meant existing users had to remember to revisit
+GitHub for new builds; Sparkle 2.9 closes that gap end-to-end.
+
+### What changed
+
+- New `Sparkle` SwiftPM dependency (binary xcframework target).
+- New `Sources/PurpleDedupApp/UpdaterController.swift` wraps
+  `SPUStandardUpdaterController` so the rest of the app can trigger a
+  manual check or read the auto-check toggle without importing Sparkle.
+- New **Check for Updates…** item in the application menu (after About).
+- New **Settings → Updates** tab — auto-check toggle, "Check now" button,
+  last-checked readout, feed URL display.
+- `build-app.sh` extended:
+  - Copies Sparkle's macOS xcframework slice into
+    `Contents/Frameworks/Sparkle.framework`.
+  - Adds the `@executable_path/../Frameworks` rpath so dyld can find it
+    (SwiftPM's default rpath is `@loader_path` which only sees
+    `Contents/MacOS/`).
+  - Embeds `SUFeedURL`, `SUPublicEDKey`, `SUEnableAutomaticChecks`,
+    `SUScheduledCheckInterval`, `SUEnableInstallerLauncherService` in
+    Info.plist. The public key reads from the `SPARKLE_PUBLIC_KEY` env
+    var; routine personal builds keep the placeholder so Sparkle refuses
+    to install untrusted updates.
+  - Inside-out codesign chain for Sparkle's nested executables (XPC
+    services → `Updater.app` → `Autoupdate` → framework → `.app`).
+- New `Scripts/release.sh` packages a release: builds, zips via
+  `ditto -c -k`, signs with `sign_update`, generates an appcast snippet,
+  and prints next-step instructions for `gh release create` + appcast
+  commit.
+- New `appcast.xml` stub at the repo root, served via
+  `raw.githubusercontent.com/bronty13/PhantomLives/main/PurpleDedup/appcast.xml`.
+- New `RELEASING.md` documents the one-time EdDSA keypair setup
+  (`generate_keys` → Keychain, public key in shell rc) and the
+  per-release flow.
+
+### What you have to do once before the first release
+
+1. `generate_keys` (using Sparkle's bundled tool) → keypair into Keychain.
+2. `export SPARKLE_PUBLIC_KEY=…` in your shell rc.
+3. (Optional) `gh auth login` so `Scripts/release.sh` can upload zips.
+
+Until step 2 is done, `build-app.sh` keeps the Info.plist placeholder,
+which means Sparkle in shipped builds refuses to install ANY update — the
+correct safe default. After setup, every shipped build trusts only updates
+signed with your private key.
+
+### Known gap
+
+The first shipped build (this one) goes out the door under the old "no
+auto-update" world. Existing users will need to download 0.20.0 manually
+via GitHub Releases. Every release **after** this one auto-updates.
+
 ## 0.19.0 — People filter + reverse-geocoded GPS + dHash OR-merge + cross-cluster Photos crossref + CLI Photos filter (2026-05-09)
 
 A consolidation release that closes the small-but-irritating items the

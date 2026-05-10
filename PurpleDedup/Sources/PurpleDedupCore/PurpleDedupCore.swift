@@ -5,7 +5,7 @@ import Foundation
 public enum PurpleDedup {
     public static let appName = "PurpleDedup"
     public static let bundleIdentifier = "com.bronty13.PurpleDedup"
-    public static let coreVersion = "0.19.0"
+    public static let coreVersion = "0.20.0"
 
     /// The folder under `~/Library/Application Support` where we stash the SQLite cache,
     /// scan sessions, and any other internal state.
