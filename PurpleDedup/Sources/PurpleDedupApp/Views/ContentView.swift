@@ -754,8 +754,8 @@ struct ContentView: View {
     }
 
     private var statusStrip: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Duplicates").font(.headline)
+        VStack(alignment: .leading, spacing: 6) {
+            reclaimMetricCard
             Text(statusMessage).font(.callout).foregroundStyle(.secondary)
             if !progressLine.isEmpty {
                 Text(progressLine).font(.caption.monospaced()).foregroundStyle(.secondary)
@@ -769,6 +769,51 @@ struct ContentView: View {
             if !photosFilterLine.isEmpty {
                 Text(photosFilterLine).font(.caption.monospaced()).foregroundStyle(.purple)
             }
+        }
+    }
+
+    /// Prominent "Reclaimable" metric card adapted from the redesign's left-
+    /// rail footer. Shows only after a scan has produced clusters; before
+    /// then we fall back to the static "Duplicates" header so the column
+    /// doesn't feel empty.
+    @ViewBuilder
+    private var reclaimMetricCard: some View {
+        let totalClusters = exactClusters.count
+            + similarClusters.count
+            + similarVideoClusters.count
+            + burstClusters.count
+            + rotatedClusters.count
+        if totalClusters > 0 {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("RECLAIMABLE")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.8)
+                    .foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(formatBytes(reclaimable))
+                        .font(.system(.title, design: .rounded, weight: .semibold))
+                        .foregroundStyle(.purple)
+                        .monospacedDigit()
+                    Spacer(minLength: 0)
+                    if let pending = pendingDeleteCount, pending > 0 {
+                        Text("\(pending) marked")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Text("\(totalClusters) \(totalClusters == 1 ? "group" : "groups")")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.purple.opacity(0.25), lineWidth: 0.5)
+            )
+        } else {
+            Text("Duplicates").font(.headline)
         }
     }
 
