@@ -24,34 +24,37 @@ if command -v xcodegen >/dev/null 2>&1; then
     xcodegen generate >/dev/null
 fi
 
-# Generate icon (PL° purple gradient — see Scripts/generate-icon.swift)
-ICONSET_DIR="$(mktemp -d)/AppIcon.iconset"
-swift Scripts/generate-icon.swift "$ICONSET_DIR" >/dev/null
-ICNS_PATH="$(mktemp -d)/AppIcon.icns"
-iconutil -c icns "$ICONSET_DIR" -o "$ICNS_PATH"
-
-# Version strings: NOT written to source files. The source Info.plist
-# carries placeholders (0.0.0 / 0.unknown) and Version.swift reads from
-# Bundle.main at runtime. The real values are stamped into the BUILT
-# bundle's Info.plist after ditto, below — that way `git status` stays
-# clean across builds and the monorepo's commit count never pollutes
-# tracked PurpleLife files.
-
 # Build in /tmp to avoid iCloud Drive xattr issues that can corrupt
 # code signatures.
 BUILD_DIR="$(mktemp -d)"
 
 echo "Compiling..."
+# Phase 4: build Debug + Automatic dev signing so the iCloud entitlement
+# in PurpleLife.entitlements can be honored. Developer ID signing (which
+# the script used pre-Phase-4) doesn't carry CloudKit entitlements; for
+# personal multi-Mac use we want Apple Development with the development
+# provisioning profile that includes iCloud + the container assignment
+# (provisioned at developer.apple.com under team SRKV8T38CD).
+#
+# MARKETING_VERSION / CURRENT_PROJECT_VERSION are passed in here so they
+# end up in Info.plist BEFORE codesign — modifying Info.plist post-build
+# would invalidate the iCloud-bearing signature.
+#
+# The asset catalog handles AppIcon, so we no longer overwrite
+# Resources/AppIcon.icns post-build.
 xcodebuild -project $PRODUCT_NAME.xcodeproj \
     -scheme $PRODUCT_NAME \
-    -configuration Release \
+    -configuration Debug \
     -derivedDataPath "$BUILD_DIR/DerivedData" \
+    -allowProvisioningUpdates \
     build \
     PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
+    MARKETING_VERSION="$SHORT_VERSION" \
+    CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
     ONLY_ACTIVE_ARCH=YES \
     | grep -E "error:|warning:|Build succeeded|Build FAILED" || true
 
-SRC_APP="$BUILD_DIR/DerivedData/Build/Products/Release/$PRODUCT_NAME.app"
+SRC_APP="$BUILD_DIR/DerivedData/Build/Products/Debug/$PRODUCT_NAME.app"
 if [ ! -d "$SRC_APP" ]; then
     echo "ERROR: Build failed — $SRC_APP not found"
     exit 1
@@ -61,30 +64,13 @@ DEST_APP="./$PRODUCT_NAME.app"
 rm -rf "$DEST_APP"
 ditto --noextattr "$SRC_APP" "$DEST_APP"
 
-# Stamp the real version strings into the BUILT bundle's Info.plist.
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SHORT_VERSION" \
-    "$DEST_APP/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" \
-    "$DEST_APP/Contents/Info.plist"
-
-# Install icon. ditto --noextattr keeps macOS from carrying a FinderInfo
-# xattr from the source ICNS into the bundle — codesign --verify --strict
-# rejects bundles with com.apple.FinderInfo even with hardened runtime +
-# Developer ID signing.
-ditto --noextattr "$ICNS_PATH" "$DEST_APP/Contents/Resources/AppIcon.icns"
-/usr/libexec/PlistBuddy -c "Set :CFBundleIconFile AppIcon.icns" \
-    "$DEST_APP/Contents/Info.plist" 2>/dev/null || true
-
-# Code sign
-CERT="$(security find-identity -v -p codesigning 2>/dev/null | grep "Developer ID Application" | head -1 | awk '{print $2}' || echo "")"
-if [ -n "$CERT" ]; then
-    echo "Signing with Developer ID: $CERT"
-    xattr -cr "$DEST_APP"
-    codesign --sign "$CERT" --options runtime --timestamp --deep --force "$DEST_APP"
-else
-    echo "No Developer ID found — using ad-hoc signing"
-    xattr -cr "$DEST_APP"
-    codesign --sign - --deep --force "$DEST_APP"
+# No post-build mods here — xcodebuild already produced a signed bundle
+# with the right version (passed in via MARKETING_VERSION) and AppIcon
+# (from the asset catalog). Modifying Info.plist or Resources after
+# this point would invalidate the iCloud-bearing signature.
+xattr -cr "$DEST_APP" || true
+if ! codesign --verify "$DEST_APP" 2>/dev/null; then
+    echo "WARNING: bundle signature is invalid; CloudKit may refuse to start."
 fi
 
 echo ""

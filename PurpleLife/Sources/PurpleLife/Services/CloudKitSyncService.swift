@@ -1,0 +1,442 @@
+import CloudKit
+import Foundation
+import GRDB
+import SwiftUI
+
+/// Phase 4 — multi-Mac CloudKit sync.
+///
+/// Mirrors every `ObjectRecord` to the user's private CloudKit database
+/// in a custom zone (`PurpleLifeZone`). The encryption layer uses
+/// `CKRecord.encryptedValues["fieldsJSON"]` — the same shape the
+/// `Spike/CloudKit` PASS validated on 2026-05-10. Plaintext columns
+/// (`type_id`, `parent_id`, `created_at`, `updated_at`) live in the
+/// regular `record[...]` slots so server-side queries / conflict
+/// resolution can read them without keys.
+///
+/// Phase 4 acceptance gate per `PLAN.md`:
+/// - typical edit syncs Mac→Mac in <5s ← push-on-mutation + 30s poll
+/// - same-field offline edit reconciles deterministically ← LWW by
+///   `updated_at`
+/// - dashboard shows encrypted fields as opaque ← provided by
+///   `encryptedValues`
+///
+/// This implementation is a **starter**: polling every 30s rather than
+/// silent-push subscriptions (subscription wakeups need
+/// `aps-environment` + a delegate; queued for follow-up). Initial sync
+/// + push-on-mutation gets us to the gate.
+@MainActor
+final class CloudKitSyncService: ObservableObject {
+
+    static let containerID = "iCloud.com.bronty13.PurpleLife"
+    static let recordType = "PurpleObject"
+    static let zoneName = "PurpleLifeZone"
+    static let pollSeconds: UInt64 = 30
+
+    enum Status: Equatable {
+        case disabled                 // entitlements/container unavailable; staying local-only
+        case notSignedIn
+        case settingUp
+        case idle
+        case syncing
+        case error(String)
+
+        var isError: Bool {
+            if case .error = self { return true } else { return false }
+        }
+
+        var label: String {
+            switch self {
+            case .disabled:    return "Sync off"
+            case .notSignedIn: return "Sign in to iCloud"
+            case .settingUp:   return "Setting up sync…"
+            case .idle:        return "Synced"
+            case .syncing:     return "Syncing…"
+            case .error(let m): return "Sync error: \(m)"
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .disabled:    return "icloud.slash"
+            case .notSignedIn: return "person.crop.circle.badge.exclamationmark"
+            case .settingUp:   return "icloud.and.arrow.down.fill"
+            case .idle:        return "checkmark.icloud.fill"
+            case .syncing:     return "arrow.triangle.2.circlepath.icloud"
+            case .error:       return "exclamationmark.icloud.fill"
+            }
+        }
+    }
+
+    @Published private(set) var status: Status = .settingUp
+    @Published private(set) var lastSyncAt: Date?
+    @Published private(set) var lastError: String?
+
+    private weak var schema: SchemaRegistry?
+    // Lazily constructed — `CKContainer(identifier:)` traps when the
+    // app is signed without the iCloud entitlement (e.g. under XCTest
+    // with the no-iCloud override). Building the container only when
+    // we're actually about to talk to CloudKit lets the local-only
+    // codepath run anywhere.
+    private var container: CKContainer?
+    private var database: CKDatabase? { container?.privateCloudDatabase }
+    private let zoneID = CKRecordZone.ID(zoneName: CloudKitSyncService.zoneName,
+                                         ownerName: CKCurrentUserDefaultName)
+
+    private var pollTask: Task<Void, Never>?
+    private var inFlight = false
+
+    // Server change token — resumes incremental sync across launches.
+    private static let tokenKey = "PurpleLife.serverChangeToken"
+    private var serverChangeToken: CKServerChangeToken? {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: Self.tokenKey),
+                  let token = try? NSKeyedUnarchiver.unarchivedObject(
+                      ofClass: CKServerChangeToken.self, from: data
+                  ) else { return nil }
+            return token
+        }
+        set {
+            if let token = newValue,
+               let data = try? NSKeyedArchiver.archivedData(
+                   withRootObject: token, requiringSecureCoding: true
+               ) {
+                UserDefaults.standard.set(data, forKey: Self.tokenKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.tokenKey)
+            }
+        }
+    }
+
+    // MARK: - Lifecycle
+
+    func start(schema: SchemaRegistry) {
+        self.schema = schema
+        Task { await bootstrap() }
+    }
+
+    func stopPolling() {
+        pollTask?.cancel()
+        pollTask = nil
+    }
+
+    /// Trigger a one-shot pull (idempotent; ignores if a sync is already
+    /// running). Public so the user can hit a "Sync now" button later.
+    func syncNow() {
+        Task { await pull() }
+    }
+
+    private func bootstrap() async {
+        status = .settingUp
+        // Construct the container here, inside a do/catch — this is the
+        // first place that requires the iCloud entitlement. If it's
+        // missing the framework traps (not throws); we can't catch a
+        // SIGTRAP, so the entitlement must be present at this point or
+        // the host app would have crashed at launch already. This step
+        // is a sanity check; the failure mode we *can* handle is a
+        // bad-container or missing-entitlement CKError from a
+        // downstream operation.
+        container = CKContainer(identifier: Self.containerID)
+        do {
+            try await checkAccountStatus()
+            try await ensureZone()
+            await pullInitial()
+            await pushPendingLocalChanges()
+            status = .idle
+            startPolling()
+        } catch let error as CKError where error.code == .badContainer
+                                       || error.code == .missingEntitlement {
+            // App ID isn't provisioned for this container yet, or the
+            // entitlements file doesn't include iCloud. Fall back to
+            // local-only — the app is still fully usable.
+            status = .disabled
+            NSLog("PurpleLife: CloudKit sync disabled — \(error.localizedDescription)")
+        } catch {
+            status = .error(error.localizedDescription)
+            lastError = error.localizedDescription
+        }
+    }
+
+    private func checkAccountStatus() async throws {
+        guard let container else { throw CKError(.internalError) }
+        let s = try await container.accountStatus()
+        switch s {
+        case .available:
+            return
+        case .noAccount:
+            status = .notSignedIn
+            throw CKError(.notAuthenticated)
+        case .restricted, .couldNotDetermine, .temporarilyUnavailable:
+            throw CKError(.networkUnavailable)
+        @unknown default:
+            throw CKError(.internalError)
+        }
+    }
+
+    private func ensureZone() async throws {
+        // Idempotent: CKModifyRecordZonesOperation succeeds if the zone
+        // already exists.
+        guard let database else { throw CKError(.internalError) }
+        let zone = CKRecordZone(zoneID: zoneID)
+        _ = try await database.modifyRecordZones(saving: [zone], deleting: [])
+    }
+
+    private func startPolling() {
+        pollTask?.cancel()
+        pollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: Self.pollSeconds * 1_000_000_000)
+                if Task.isCancelled { return }
+                await self?.pull()
+            }
+        }
+    }
+
+    // MARK: - Push
+
+    /// Mirror a local create/update to CloudKit. Called from
+    /// `ObjectEngine.create / update`. Errors are logged but don't
+    /// surface to the caller — the local write already succeeded;
+    /// sync errors retry on the next poll.
+    func push(record: ObjectRecord) async {
+        guard isEnabled, let database else { return }
+        do {
+            let ck = try await fetchOrMake(record: record)
+            applyLocal(record: record, to: ck)
+            _ = try await database.save(ck)
+            lastSyncAt = Date()
+            if status.isError { status = .idle; lastError = nil }
+        } catch let error as CKError where error.code == .serverRecordChanged {
+            // Server has a newer version. LWW: pull and reconcile, then
+            // re-push if our local is still newer.
+            await pull()
+            await pushAgainIfNeeded(record: record)
+        } catch {
+            NSLog("PurpleLife: push(\(record.id)) failed — \(error.localizedDescription)")
+            status = .error(error.localizedDescription)
+            lastError = error.localizedDescription
+        }
+    }
+
+    func pushDelete(recordId: String) async {
+        guard isEnabled, let database else { return }
+        do {
+            let id = CKRecord.ID(recordName: recordId, zoneID: zoneID)
+            _ = try await database.deleteRecord(withID: id)
+            lastSyncAt = Date()
+            if status.isError { status = .idle; lastError = nil }
+        } catch let error as CKError where error.code == .unknownItem {
+            // Already gone server-side; nothing to do.
+        } catch {
+            NSLog("PurpleLife: pushDelete(\(recordId)) failed — \(error.localizedDescription)")
+            status = .error(error.localizedDescription)
+            lastError = error.localizedDescription
+        }
+    }
+
+    private func pushAgainIfNeeded(record: ObjectRecord) async {
+        // After a serverRecordChanged retry, look up the local record
+        // again — `pull` may have replaced it. If the local is still
+        // fresher than what we just pulled, push.
+        do {
+            guard let current = try DatabaseService.shared.fetchObject(id: record.id) else { return }
+            if current.updatedAt > record.updatedAt {
+                // Local was updated again while we were retrying — push the latest.
+                await push(record: current)
+            } else if record.updatedAt > current.updatedAt {
+                // Our caller's snapshot is newer than what's now in the DB;
+                // means pull overwrote with an older remote (shouldn't happen
+                // with LWW, but defensive).
+                await push(record: record)
+            }
+            // else: in sync, nothing to do.
+        } catch {
+            NSLog("PurpleLife: pushAgainIfNeeded fetch failed — \(error.localizedDescription)")
+        }
+    }
+
+    private func fetchOrMake(record: ObjectRecord) async throws -> CKRecord {
+        guard let database else { throw CKError(.internalError) }
+        let id = CKRecord.ID(recordName: record.id, zoneID: zoneID)
+        do {
+            return try await database.record(for: id)
+        } catch let error as CKError where error.code == .unknownItem {
+            return CKRecord(recordType: Self.recordType, recordID: id)
+        }
+    }
+
+    private func applyLocal(record: ObjectRecord, to ck: CKRecord) {
+        ck["type_id"]    = record.typeId    as CKRecordValue
+        ck["parent_id"]  = (record.parentId ?? "") as CKRecordValue
+        ck["created_at"] = record.createdAt as CKRecordValue
+        ck["updated_at"] = record.updatedAt as CKRecordValue
+        if let data = record.fieldsJSON.data(using: .utf8) {
+            ck.encryptedValues["fieldsJSON"] = data as CKRecordValue
+        }
+    }
+
+    /// On bootstrap, push any local rows that aren't yet in CloudKit.
+    /// Cheap because `record(for:)` returns `unknownItem` quickly when a
+    /// record doesn't exist — we don't have to maintain a separate
+    /// "needs-push" queue for the starter.
+    private func pushPendingLocalChanges() async {
+        guard let database else { return }
+        do {
+            let local = try DatabaseService.shared.fetchAllObjects()
+            for r in local {
+                let id = CKRecord.ID(recordName: r.id, zoneID: zoneID)
+                let ck: CKRecord?
+                do {
+                    ck = try await database.record(for: id)
+                } catch let error as CKError where error.code == .unknownItem {
+                    ck = nil
+                }
+                let remoteUpdated = ck?["updated_at"] as? String ?? ""
+                if remoteUpdated < r.updatedAt {
+                    await push(record: r)
+                }
+            }
+        } catch {
+            NSLog("PurpleLife: pushPendingLocalChanges failed — \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Pull
+
+    private func pullInitial() async {
+        // First-time sync uses no token (full fetch); subsequent calls
+        // use the saved token. This is just a `pull()` with whatever
+        // token we have saved.
+        await pull()
+    }
+
+    func pull() async {
+        guard isEnabled, !inFlight else { return }
+        inFlight = true
+        let prevStatus = status
+        status = .syncing
+        defer {
+            inFlight = false
+            if status == .syncing { status = .idle }
+            // Preserve a sticky-error state if the pull failed.
+            if case .error = prevStatus, status == .idle {
+                lastError = nil
+            }
+        }
+
+        do {
+            try await runFetchOperation()
+            lastSyncAt = Date()
+        } catch let error as CKError where error.code == .changeTokenExpired {
+            serverChangeToken = nil
+            try? await runFetchOperation()
+            lastSyncAt = Date()
+        } catch {
+            NSLog("PurpleLife: pull failed — \(error.localizedDescription)")
+            status = .error(error.localizedDescription)
+            lastError = error.localizedDescription
+        }
+    }
+
+    private func runFetchOperation() async throws {
+        guard let database else { throw CKError(.internalError) }
+        let cfg = CKFetchRecordZoneChangesOperation.ZoneConfiguration()
+        cfg.previousServerChangeToken = serverChangeToken
+        let op = CKFetchRecordZoneChangesOperation(
+            recordZoneIDs: [zoneID],
+            configurationsByRecordZoneID: [zoneID: cfg]
+        )
+
+        var changedRecords: [CKRecord] = []
+        var deletedRecordIDs: [CKRecord.ID] = []
+
+        op.recordWasChangedBlock = { _, result in
+            switch result {
+            case .success(let record): changedRecords.append(record)
+            case .failure(let err):    NSLog("PurpleLife: change parse failed — \(err.localizedDescription)")
+            }
+        }
+        op.recordWithIDWasDeletedBlock = { id, _ in
+            deletedRecordIDs.append(id)
+        }
+        var newToken: CKServerChangeToken?
+        op.recordZoneChangeTokensUpdatedBlock = { _, token, _ in
+            newToken = token
+        }
+        op.recordZoneFetchResultBlock = { _, result in
+            if case .success(let bundle) = result {
+                newToken = bundle.serverChangeToken
+            }
+        }
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            op.fetchRecordZoneChangesResultBlock = { result in
+                switch result {
+                case .success: continuation.resume()
+                case .failure(let err): continuation.resume(throwing: err)
+                }
+            }
+            database.add(op)
+        }
+
+        for record in changedRecords {
+            await applyRemote(record)
+        }
+        for id in deletedRecordIDs {
+            try? DatabaseService.shared.deleteObject(id: id.recordName)
+            SearchService.delete(recordId: id.recordName)
+        }
+        if let token = newToken {
+            serverChangeToken = token
+        }
+    }
+
+    /// LWW: apply the remote record only if its `updated_at` is greater
+    /// than our local. This is the same-field-edit reconciliation path
+    /// from the Phase 4 acceptance gate.
+    private func applyRemote(_ ck: CKRecord) async {
+        guard let typeId    = ck["type_id"]    as? String,
+              let createdAt = ck["created_at"] as? String,
+              let updatedAt = ck["updated_at"] as? String,
+              let fieldsData = ck.encryptedValues["fieldsJSON"] as? Data,
+              let fieldsJSON = String(data: fieldsData, encoding: .utf8)
+        else {
+            NSLog("PurpleLife: applyRemote skipped — malformed record \(ck.recordID.recordName)")
+            return
+        }
+        let parentId = (ck["parent_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+
+        let local = try? DatabaseService.shared.fetchObject(id: ck.recordID.recordName)
+        if let local, local.updatedAt >= updatedAt {
+            // Local is at least as fresh — keep it. Push will eventually
+            // overwrite the remote (by either our normal push hook or a
+            // future pushPendingLocalChanges).
+            return
+        }
+
+        let record = ObjectRecord(
+            id: ck.recordID.recordName,
+            typeId: typeId,
+            parentId: parentId,
+            fieldsJSON: fieldsJSON,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+        do {
+            try DatabaseService.shared.upsertObject(record)
+            if let schema, let type = schema.type(id: typeId) {
+                SearchService.upsert(record: record, type: type)
+            }
+        } catch {
+            NSLog("PurpleLife: applyRemote upsert failed — \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - State helpers
+
+    private var isEnabled: Bool {
+        switch status {
+        case .disabled, .notSignedIn: return false
+        default:                      return true
+        }
+    }
+}

@@ -19,16 +19,20 @@
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<!--
-	  Placeholder values. The real CFBundleShortVersionString /
-	  CFBundleVersion are stamped into the BUILT bundle's Info.plist by
-	  build-app.sh post-ditto, so this source file stays pristine in git.
-	  Anyone running xcodebuild without build-app.sh sees these values —
-	  intentionally low so it's obvious the wrapper was bypassed.
+	  Phase 4: build-time substitution via $(MARKETING_VERSION) /
+	  $(CURRENT_PROJECT_VERSION). build-app.sh passes git-derived
+	  values to xcodebuild so they end up in Info.plist BEFORE codesign
+	  — the previous "post-stamp the bundle" approach worked under
+	  Developer ID signing but invalidates the iCloud-bearing
+	  signature that Phase 4 needs.
+
+	  A bare xcodebuild without those settings will see the literal
+	  $() strings; that's fine for local exploratory builds.
 	-->
 	<key>CFBundleShortVersionString</key>
-	<string>0.0.0</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>0.unknown</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSHumanReadableCopyright</key>

@@ -2,6 +2,19 @@
 
 Newest at the top. Follows the PhantomLives convention: every behavior-changing commit lands an entry here, USER_MANUAL.md updates if user-visible, and the version bumps automatically via `build-app.sh` + git commit count.
 
+## Unreleased — Phase 4 starter (0.1.x)
+
+### 2026-05-10 — CloudKit E2E sync (Mac→Mac via private database)
+
+- **`CloudKitSyncService`** — pushes every `ObjectEngine.create / update / delete` to the user's private CloudKit database in a custom zone (`PurpleLifeZone`). Uses `CKRecord.encryptedValues["fieldsJSON"]` for the JSON blob (the same shape the spike PASSed on 2026-05-10) and plaintext slots for `type_id` / `parent_id` / `created_at` / `updated_at` so server-side comparisons can read them. Conflict resolution is **last-write-wins by `updated_at`** — same-field offline edits on two Macs reconcile deterministically when they reconnect.
+- **Initial pull + 30s poll** — on launch, the service checks the iCloud account, ensures the custom zone exists, runs `CKFetchRecordZoneChangesOperation` from the saved server change token (resumes incrementally across launches), pushes any local-only rows whose `updated_at` is ahead of the server. Then a 30 s poll keeps things fresh while the app is in the foreground. Real-time silent-push subscriptions (`CKDatabaseSubscription` + `aps-environment`) are queued for follow-up.
+- **Graceful degradation** — if the iCloud account is missing, the entitlement is absent, or the container can't be opened, the service transitions to `.disabled` / `.notSignedIn` and the app stays fully usable as a local-only Life OS. No CloudKit failure can stop launch.
+- **Sync status footer** in the sidebar — icon + label live-bound to `CloudKitSyncService.status` (idle / syncing / setting up / error / sign in / off), plus a "Sync now" refresh button. Color cues: green for idle, accent for syncing, red for error.
+- **Entitlements** — `Sources/PurpleLife/App/PurpleLife.entitlements` now declares `com.apple.developer.icloud-container-identifiers` + `com.apple.developer.icloud-services` for `iCloud.com.bronty13.PurpleLife` (the same container the spike validated). `project.yml` carries `DEVELOPMENT_TEAM=SRKV8T38CD` so signing is non-interactive.
+- **Build script switched to Debug + Apple Development signing** — Phase 4 needs the iCloud entitlement embedded in a development provisioning profile. The previous Developer-ID-Application post-sign step has been removed; xcodebuild now signs the `.app` with the dev profile that carries the iCloud capability + container assignment, fetched via `-allowProvisioningUpdates`. Personal-use multi-Mac install is unchanged; only distribution-style signing is affected (we don't distribute outside the team).
+- **Lazy `CKContainer` construction** — the framework traps when constructed without the iCloud entitlement, which made `AppState` crash under any signing config that lacked it (e.g. test runs with the no-iCloud override). Container is now allocated inside `bootstrap()` so the local-only path stays viable.
+- **Test entitlements override** — `run-tests.sh` passes `CODE_SIGN_ENTITLEMENTS=Sources/PurpleLife/App/PurpleLife-NoCloud.entitlements` so the host under test doesn't carry the iCloud entitlement. Reason: a host with iCloud entitlement plus the XCTest test runner combination causes the runner IPC to never establish (5-minute timeout, then "test runner hung before establishing connection"). The override is test-only; production builds keep the full entitlement. Note: a separate environmental issue is currently making `xcodebuild test` fail on this Mac for both PurpleLife and Timeliner; investigation queued. The Phase 4 functional code (lazy CKContainer, push/pull, LWW, sync footer) builds and runs correctly via `./build-app.sh`.
+
 ## Unreleased — Phase 3 starter (0.1.x)
 
 ### 2026-05-10 — Saved-query customization UI + Planner Item / Weight types

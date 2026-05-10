@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Test-only entitlements override. The main `PurpleLife.entitlements`
+      file declares the iCloud + CloudKit container that Phase 4 needs;
+      under XCTest that combination causes the XCTest test runner IPC
+      to never establish (the test runner hangs at the connection
+      timeout). For unit tests we override `CODE_SIGN_ENTITLEMENTS` to
+      this empty file at xcodebuild-invocation time — the host app
+      under tests has no CloudKit entitlement, the test bundle injects
+      cleanly, and no test depends on CloudKit anyway.
+    -->
+</dict>
+</plist>

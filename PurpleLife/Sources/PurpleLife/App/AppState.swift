@@ -8,6 +8,7 @@ import SwiftUI
 final class AppState: ObservableObject {
     @Published var settingsStore = SettingsStore()
     @Published var schema = SchemaRegistry()
+    @Published var sync = CloudKitSyncService()
     let database = DatabaseService.shared
 
     @Published var objectCount: Int = 0
@@ -43,10 +44,22 @@ final class AppState: ObservableObject {
         // Wire ObjectEngine → SchemaRegistry so search-index updates have
         // the type definitions they need.
         ObjectEngine.currentSchema = schema
+        ObjectEngine.sync = sync
 
         // Rebuild the FTS5 index on every launch — cheap for our row
         // counts and immune to a missed write or a restored backup.
         SearchService.reindexAll(schema: schema)
+
+        // Phase 4: kick off CloudKit sync. Runs async; the rest of the
+        // app launches normally regardless of sync state. If iCloud
+        // / entitlement / container isn't available, sync transitions to
+        // `.disabled` and the app stays fully usable locally.
+        // Skipped under XCTest — CloudKit's account check stalls the
+        // test runner connection (we hit the XCTest timeout because the
+        // host app's startup tasks block on iCloud auth).
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            sync.start(schema: schema)
+        }
 
         // Default detail pane is Today; type selection is left nil so the
         // sidebar's Today row reads as selected.

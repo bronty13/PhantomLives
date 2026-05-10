@@ -11,12 +11,20 @@ enum ObjectEngine {
     /// just skip the FTS hook.
     static var currentSchema: SchemaRegistry?
 
+    /// Set by `AppState` at launch — engine fans every mutation out to
+    /// CloudKit. Optional so tests can run without a sync service wired.
+    /// The push is fire-and-forget Task; local writes complete first.
+    static var sync: CloudKitSyncService?
+
     @discardableResult
     static func create(typeId: String, parentId: String? = nil, fields: [String: Any] = [:]) throws -> ObjectRecord {
         let record = ObjectRecord.make(typeId: typeId, parentId: parentId, fields: fields)
         try DatabaseService.shared.insertObject(record)
         if let type = currentSchema?.type(id: typeId) {
             SearchService.upsert(record: record, type: type)
+        }
+        if let sync {
+            Task { await sync.push(record: record) }
         }
         return record
     }
@@ -30,12 +38,21 @@ enum ObjectEngine {
         if let type = currentSchema?.type(id: next.typeId) {
             SearchService.upsert(record: next, type: type)
         }
-        return next
+        // Re-fetch to capture the bumped updated_at that DatabaseService.update
+        // stamped — push() compares timestamps for LWW.
+        let pushable = (try? DatabaseService.shared.fetchObject(id: next.id)) ?? next
+        if let sync {
+            Task { await sync.push(record: pushable) }
+        }
+        return pushable
     }
 
     static func delete(id: String) throws {
         try DatabaseService.shared.deleteObject(id: id)
         SearchService.delete(recordId: id)
+        if let sync {
+            Task { await sync.pushDelete(recordId: id) }
+        }
     }
 
     static func fetch(id: String) throws -> ObjectRecord? {

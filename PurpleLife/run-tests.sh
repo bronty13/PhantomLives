@@ -23,14 +23,22 @@ BUILD_DIR="$(mktemp -d)"
 trap 'rm -rf "$BUILD_DIR"' EXIT
 
 set +e
+# Phase 4: override CODE_SIGN_ENTITLEMENTS to a no-iCloud variant for
+# tests. Reason: CKContainer(identifier:) traps when the host doesn't
+# carry the iCloud entitlement, AND the live iCloud entitlement makes
+# the XCTest test runner hang at the connect-to-host phase. The
+# no-iCloud override lets the test bundle inject cleanly; production
+# builds via build-app.sh keep the full entitlement.
 xcodebuild \
     -project PurpleLife.xcodeproj \
     -scheme PurpleLife \
     -configuration Debug \
     -derivedDataPath "$BUILD_DIR" \
     -destination 'platform=macOS' \
+    -allowProvisioningUpdates \
     test \
-    ONLY_ACTIVE_ARCH=YES 2>&1 \
+    ONLY_ACTIVE_ARCH=YES \
+    CODE_SIGN_ENTITLEMENTS=Sources/PurpleLife/App/PurpleLife-NoCloud.entitlements 2>&1 \
   | grep -E "Test Case|error:|warning:.*\.swift|Executed|\*\* TEST" \
   | tail -80
 status=${PIPESTATUS[0]}

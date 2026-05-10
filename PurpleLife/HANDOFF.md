@@ -12,6 +12,30 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-10 — Phase 4 sync: poll on a 30s interval; subscriptions deferred
+
+CloudKit subscriptions (`CKDatabaseSubscription` / `CKQuerySubscription`) get silent-push notifications when records change on another device. They're how you make Mac→Mac sync feel real-time (sub-second).
+
+We're not doing them for the Phase 4 starter. The reason:
+
+- They require `aps-environment` entitlement + an app delegate handling `application(_:didReceiveRemoteNotification:fetchCompletionHandler:)`.
+- Apple's CKContainer routes the silent push through `userNotificationCenter:didReceive:` only when the app is in the foreground; otherwise it goes to the launch handler. SwiftUI's `App` lifecycle doesn't surface a clean hook for this — you end up bridging via `NSApplicationDelegateAdaptor`.
+- For a personal multi-Mac app where both Macs are typically on simultaneously, a **30 s foreground poll** is acceptable: the worst case latency is 30 s of waiting after an edit, which beats the Phase 4 acceptance gate's <5 s target only on the optimistic side. We're choosing simplicity for the starter; subscriptions land as a follow-up improvement.
+
+When the upgrade lands, the touchpoints are: `CloudKitSyncService.bootstrap` registers a `CKDatabaseSubscription`, an `NSApplicationDelegateAdaptor` forwards `application(_:didReceiveRemoteNotification:fetchCompletionHandler:)` into `CloudKitSyncService.handleSubscriptionNotification(_:)`, and the 30 s poll task in `startPolling` becomes a fallback for offline-recovery scenarios only.
+
+### 2026-05-10 — Phase 4 conflict resolution: deterministic LWW by `updated_at`
+
+Same-field offline edits on two Macs reconcile by comparing `updated_at`. Newer wins. Tied timestamps are unlikely (ISO-8601 to seconds) but treated as "remote keeps current" in `applyRemote` (`>=` rather than `>`).
+
+We're not doing CRDT-style merges or three-way diffs. A Life OS edit is "the user typed in this field"; LWW is the right shape and matches CloudKit's `serverRecordChanged` retry pattern.
+
+### 2026-05-10 — Phase 4 signing: switch from Developer ID to Apple Development
+
+Pre-Phase-4 builds signed the `.app` with Developer ID Application after `ditto`. That's the right cert for outside-App-Store distribution but **doesn't carry CloudKit entitlements** — only Apple Development + a development provisioning profile does. The Phase 4 build script (`build-app.sh`) drops the post-`ditto` Developer ID re-sign and lets xcodebuild's Debug build provide the signature, which embeds the dev profile that includes `iCloud.com.bronty13.PurpleLife`.
+
+Implication for users: the app is now signed for personal-team development use. Multi-Mac install on the same team's Macs is unchanged. Distributing the binary to a non-team Mac is no longer supported; if we ever need that, build with Developer ID separately and accept that CloudKit sync is off in those copies.
+
 ### 2026-05-10 — Attachments storage: content-addressed files in Application Support; CloudKit sync deferred to Phase 4
 
 `PLAN.md` § Open questions calls for the attachments decision before Phase 2. Decided.

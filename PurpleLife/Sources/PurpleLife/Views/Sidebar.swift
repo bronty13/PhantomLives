@@ -47,6 +47,45 @@ struct Sidebar: View {
         .navigationTitle("PurpleLife")
         .onAppear { reloadCounts() }
         .onChange(of: appState.objectCount) { _, _ in reloadCounts() }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            syncStatusFooter
+        }
+    }
+
+    @ViewBuilder
+    private var syncStatusFooter: some View {
+        let sync = appState.sync
+        HStack(spacing: 6) {
+            Image(systemName: sync.status.systemImage)
+                .foregroundStyle(footerColor(for: sync.status))
+                .imageScale(.small)
+            Text(sync.status.label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Button {
+                sync.syncNow()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .imageScale(.small)
+            }
+            .buttonStyle(.plain)
+            .help("Sync now")
+            .disabled(sync.status == .disabled || sync.status == .notSignedIn)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(.regularMaterial)
+        .overlay(alignment: .top) { Divider() }
+    }
+
+    private func footerColor(for status: CloudKitSyncService.Status) -> Color {
+        switch status {
+        case .idle:                       return .green
+        case .syncing, .settingUp:        return .accentColor
+        case .error:                      return .red
+        case .notSignedIn, .disabled:     return .secondary
+        }
     }
 
     @ViewBuilder

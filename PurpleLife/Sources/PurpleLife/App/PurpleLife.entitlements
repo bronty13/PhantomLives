@@ -11,9 +11,18 @@
       security-scoped URL bookmarks, so the file API needs whatever the
       logged-in user can see.
 
-      iCloud + CloudKit entitlements are NOT added in Phase 1 — they get
-      wired in for Phase 4 (CloudKit E2E sync) once the spike at
-      Spike/CloudKit/SPIKE.md PASSes.
+      Phase 4 — iCloud + CloudKit. The container `iCloud.com.bronty13.PurpleLife`
+      is shared with the spike app at Spike/CloudKit; the App ID
+      com.bronty13.PurpleLife at developer.apple.com must have iCloud
+      capability enabled with the container assigned via Configure.
     -->
+    <key>com.apple.developer.icloud-container-identifiers</key>
+    <array>
+        <string>iCloud.com.bronty13.PurpleLife</string>
+    </array>
+    <key>com.apple.developer.icloud-services</key>
+    <array>
+        <string>CloudKit</string>
+    </array>
 </dict>
 </plist>
