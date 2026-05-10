@@ -1214,7 +1214,7 @@ struct ContentView: View {
                 ) { p in
                     if !lastUpdate.shouldFire(interval: throttleInterval) { return }
                     Task { @MainActor in
-                        self.progressLine = "[\(p.phase.rawValue)] seen=\(p.filesSeen) hashed=\(p.filesHashed)/\(p.totalCandidates) clusters=\(p.clustersSoFar)"
+                        self.progressLine = Self.formatProgress(p)
                     }
                 }
                 self.exactClusters = pair.result.exactClusters
@@ -1243,7 +1243,7 @@ struct ContentView: View {
                 ) { p in
                     if !lastUpdate.shouldFire(interval: throttleInterval) { return }
                     Task { @MainActor in
-                        self.progressLine = "[\(p.phase.rawValue)] seen=\(p.filesSeen) hashed=\(p.filesHashed)/\(p.totalCandidates) clusters=\(p.clustersSoFar)"
+                        self.progressLine = Self.formatProgress(p)
                     }
                 }
                 self.exactClusters = result.exactClusters
@@ -1879,6 +1879,34 @@ struct ContentView: View {
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd-HHmmss"
         return f.string(from: Date())
+    }
+
+    /// Render `ScanProgress` to a one-line status string for the sidebar.
+    /// Phrasing varies by phase so the user can tell what's actually
+    /// happening — `indexing` (Photos lookup hash on cold cache) used to
+    /// look like a hang because progress was emitted only after it
+    /// finished.
+    static func formatProgress(_ p: ScanProgress) -> String {
+        switch p.phase {
+        case .walking:
+            return "Walking… \(p.filesSeen) file(s) discovered"
+        case .indexing:
+            if p.totalCandidates > 0 && p.filesHashed > 0 {
+                return "Indexing Photos library… \(p.filesHashed)/\(p.totalCandidates) hashed"
+            } else if p.filesSeen > 0 {
+                return "Indexing Photos library… \(p.filesSeen) file(s) found"
+            } else {
+                return "Indexing Photos library…"
+            }
+        case .hashing:
+            if p.totalCandidates > 0 {
+                return "Hashing… \(p.filesHashed)/\(p.totalCandidates) · clusters \(p.clustersSoFar)"
+            } else {
+                return "Hashing… \(p.filesHashed) file(s)"
+            }
+        case .done:
+            return "Done · clusters \(p.clustersSoFar)"
+        }
     }
 
     private func undoLastTrash() async {

@@ -124,6 +124,7 @@ public struct ExactClusterer: Sendable {
 public struct ScanProgress: Sendable, Hashable {
     public enum Phase: String, Sendable, Hashable {
         case walking
+        case indexing       // building the Photos lookup index (cold-cache hash of every lookup-source file)
         case hashing
         case done
     }

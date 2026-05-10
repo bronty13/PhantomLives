@@ -90,7 +90,8 @@ public actor CachedScanEngine {
                 sources: lookupSources,
                 options: options,
                 cachedRows: cachedRows,
-                stats: &stats
+                stats: &stats,
+                progress: progress
             )
             lookupHashes = h
             lookupCount = c
@@ -286,13 +287,33 @@ public actor CachedScanEngine {
         sources: [ScanSource],
         options: ScanOptions,
         cachedRows: [String: Database.CachedRow],
-        stats: inout CacheStats
+        stats: inout CacheStats,
+        progress: (@Sendable (ScanProgress) -> Void)?
     ) async throws -> (hashes: Set<String>, count: Int) {
+        // Initial ping so the UI status line flips from blank/stale to
+        // "Indexing Photos library…" the moment the lookup phase starts.
+        // Otherwise the entire walk + hash pass on a cold 50k-photo
+        // library looks like a hang.
+        progress?(ScanProgress(
+            phase: .indexing, filesSeen: 0, filesHashed: 0,
+            totalCandidates: 0, clustersSoFar: 0
+        ))
+
         var files: [DiscoveredFile] = []
         for try await f in walker.walk(sources: sources, options: options) {
             files.append(f)
+            if files.count % 256 == 0 {
+                progress?(ScanProgress(
+                    phase: .indexing, filesSeen: files.count, filesHashed: 0,
+                    totalCandidates: 0, clustersSoFar: 0
+                ))
+            }
         }
         guard !files.isEmpty else { return ([], 0) }
+        progress?(ScanProgress(
+            phase: .indexing, filesSeen: files.count, filesHashed: 0,
+            totalCandidates: files.count, clustersSoFar: 0
+        ))
 
         var hashes: Set<String> = []
         var staleFiles: [DiscoveredFile] = []
@@ -334,13 +355,24 @@ public actor CachedScanEngine {
                 }
             }
             for _ in 0..<limit { submit() }
+            var done = 0
+            let cachedHits = stats.contentHashHits
             while inFlight > 0 {
                 if Task.isCancelled { group.cancelAll(); throw CancellationError() }
                 if let r = try await group.next() {
-                    inFlight -= 1
+                    inFlight -= 1; done += 1
                     if let entry = r {
                         freshHashes.append(entry)
                         hashes.insert(entry.1.hexEncodedString())
+                    }
+                    if done % 64 == 0 {
+                        progress?(ScanProgress(
+                            phase: .indexing,
+                            filesSeen: files.count,
+                            filesHashed: cachedHits + done,
+                            totalCandidates: files.count,
+                            clustersSoFar: 0
+                        ))
                     }
                     submit()
                 } else { break }
