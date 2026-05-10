@@ -12,6 +12,25 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-10 — End-of-session snapshot
+
+Initial build session executed all five plan phases through a working state. Snapshot for whoever picks this up next:
+
+- **Latest tagged build**: `v0.1.185` (commit `1f8bd0d`), Apple-Development-signed with the iCloud entitlement for container `iCloud.com.bronty13.PurpleLife`.
+- **Acceptance gates fully met**: Phase 1, Phase 2, Phase 3. Phase 0 skipped by decision. CloudKit spike PASSed.
+- **Acceptance gates with starters but unverified**:
+  - **Phase 4** — push on mutation, 30 s poll, LWW conflict resolution are all wired. The "<5 s Mac→Mac" timing claim is unverified — needs a second Mac on the same iCloud account.
+  - **Phase 5** — real attachments, gallery image loading, WeightTracker CSV import. The "≥2 weeks daily use without falling back" gate is real-world only.
+
+**Known follow-up work** (rough priority order):
+
+1. **Real-time CloudKit subscriptions** — replace 30 s poll with silent-push wakeups (`CKDatabaseSubscription` + `aps-environment` + an `NSApplicationDelegateAdaptor`). The touchpoints are sketched in the "Phase 4 sync" decision below.
+2. **Test infrastructure regression** — `xcodebuild test` currently hangs on this Mac for both PurpleLife and Timeliner. Environmental, not code. 24 unit tests committed this session were green at commit `47bbb98` (Phase 3); the infrastructure broke later in the session. `run-tests.sh` carries a `CODE_SIGN_ENTITLEMENTS` override that handles the iCloud-entitlement-induces-test-hang case but not the environmental hang.
+3. **Export pipeline** — `PLAN.md` § Reuse from siblings points to `Timeliner/Sources/Timeliner/Services/ExportService.swift`. Never copied.
+4. **Schema versioning across synced peers** — open question in `PLAN.md` flagged as "sketch before Phase 4." Never sketched. Running different schema versions on two Macs can create drift today.
+5. **Polish toward the prototype** — Today timeline + linked-from rail, two-pane object detail, drag-and-drop schema editor.
+6. **Daily-use ergonomics** — quick-capture menu bar item, keyboard shortcuts per type, undo.
+
 ### 2026-05-10 — Phase 4 sync: poll on a 30s interval; subscriptions deferred
 
 CloudKit subscriptions (`CKDatabaseSubscription` / `CKQuerySubscription`) get silent-push notifications when records change on another device. They're how you make Mac→Mac sync feel real-time (sub-second).
