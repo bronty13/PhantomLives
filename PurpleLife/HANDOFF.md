@@ -12,6 +12,19 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-10 — Scope: PurpleLife will subsume WeightTracker; PurpleTracker stays separate
+
+Closes the `PLAN.md` § Open question that was previously deferred ("Scope vs `WeightTracker` and `PurpleTracker`").
+
+- **WeightTracker** — option (a). PurpleLife will eventually carry 100% of WeightTracker's functionality (charts, Smart Import, themes, etc.) under the Weight object type. The CSV importer already shipped (Phase 5 starter) is the bridge during the transition; it's not the end state.
+- **PurpleTracker** — out of scope. Different use case (work-tracking lifecycle vs. life OS). OK to borrow design concepts and shared services, but PurpleLife will not subsume it.
+
+**Effect on plan**:
+
+- The `PLAN.md` open question is resolved; defer to this entry.
+- New WeightTracker features should also be evaluated for the PurpleLife Weight type, with the long-term goal of feature parity. Concrete backlog items (charts panel for Weight in Today/Detail; theme picker; Smart Import) will be raised separately when prioritized.
+- No backlog items added against PurpleTracker — it stays where it is.
+
 ### 2026-05-10 — Per-type export pipeline shipped; PDF via WKWebView matches Timeliner
 
 The follow-up the prior snapshot queued as #2 ("export pipeline — copy Timeliner's `ExportService.swift`") is in. The literal "copy" wasn't appropriate — Timeliner's exporter is HTML/PDF for `Case`/`Event`/`Person`/`Tag`, very domain-specific. PurpleLife's data is generic typed objects, so the implementation is structurally similar (pure HTML formatter → WKWebView PDF) but the formatters are written from scratch around `ObjectType` + `FieldDef` + `[String: Any]` field values.

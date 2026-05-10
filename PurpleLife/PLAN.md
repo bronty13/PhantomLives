@@ -144,7 +144,7 @@ Realistic budget to "real use": ~3 months of personal-project time. The CloudKit
 
 ## Open questions that genuinely need a decision
 
-- **Scope vs `WeightTracker` and `PurpleTracker`** — `WeightTracker` already owns weight tracking (charts, Smart Import, themes); `PurpleTracker` owns work-tracking. The PurpleLife "Weight" object type can: (a) supersede WeightTracker, (b) coexist and import its CSV, or (c) leave Weight to WeightTracker and only carry an aggregate. Decide before Phase 5. Default if undecided: (b) coexist + CSV import.
+- **Scope vs `WeightTracker` and `PurpleTracker`** — **DECIDED 2026-05-10**: PurpleLife will subsume WeightTracker (option a). PurpleTracker stays separate (different use case). See `HANDOFF.md` § "Scope: PurpleLife will subsume WeightTracker; PurpleTracker stays separate".
 - **Search** — SQLite FTS5 over decrypted fields at index time, or skip incremental search for v1? Recommendation: FTS5 from Phase 2; cost is small and Timeliner already uses it.
 - **Attachments** — `CKAsset` vs external file refs. Matters for photo libraries (potentially hundreds of MB). Decide before Phase 2 so the object model accommodates either.
 - **Schema versioning across synced peers** — user-driven type/field changes need a migration story when peers are on different schema versions. Sketch before Phase 4.
