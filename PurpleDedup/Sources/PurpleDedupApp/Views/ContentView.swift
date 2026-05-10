@@ -667,89 +667,23 @@ struct ContentView: View {
               : "Show \(kind.chipLabel.lowercased()) clusters")
     }
 
-    /// Bulk-action buttons that operate over EVERY cluster in the current
-    /// scan. "Apply" runs the rule chain on every cluster (lazy — already-
-    /// decided clusters short-circuit). "Clear overrides" wipes manual
-    /// decisions everywhere. "Find bursts" extracts capture dates and
-    /// runs the burst-series clusterer on photos not already in another
-    /// cluster.
+    /// View-builder shim that wires ContentView's bulk-action helpers into
+    /// the extracted `BulkActionsStrip`. The button row + cross-source
+    /// toggle layout lives in `Views/BulkActionsStrip.swift`.
     private var bulkActionsStrip: some View {
-        HStack(spacing: 6) {
-            Button {
-                Task { await applyRecommendationToAllClusters() }
-            } label: {
-                Label("Apply to all", systemImage: "wand.and.stars")
-                    .labelStyle(.titleAndIcon)
-                    .font(.caption)
-            }
-            .buttonStyle(.bordered).controlSize(.small)
-            .help("Run the rule chain on every cluster (\(allClusterIDs.count) groups). Manual overrides are preserved.")
-
-            Button {
-                manualOverrides.removeAll()
-            } label: {
-                Label("Clear overrides", systemImage: "arrow.uturn.backward")
-                    .labelStyle(.titleAndIcon)
-                    .font(.caption)
-            }
-            .buttonStyle(.bordered).controlSize(.small)
-            .disabled(manualOverrides.isEmpty)
-            .help("Reset every manual KEEP/DELETE override back to the engine's recommendation")
-
-            Button {
-                Task { await runBurstDetection() }
-            } label: {
-                if burstScanInProgress {
-                    HStack(spacing: 4) {
-                        ProgressView().controlSize(.mini)
-                        Text("Finding…")
-                    }
-                    .font(.caption)
-                } else {
-                    Label("Find bursts", systemImage: "rectangle.stack")
-                        .labelStyle(.titleAndIcon)
-                        .font(.caption)
-                }
-            }
-            .buttonStyle(.bordered).controlSize(.small)
-            .disabled(burstScanInProgress || photosInScan.isEmpty)
-            .help("Find rapid-fire photo series the perceptual matcher misses. Reads EXIF capture dates lazily — only runs when you click.")
-
-            Button {
-                Task { await runRotatedDetection() }
-            } label: {
-                if rotatedScanInProgress {
-                    HStack(spacing: 4) {
-                        ProgressView().controlSize(.mini)
-                        Text("Finding…")
-                    }
-                    .font(.caption)
-                } else {
-                    Label("Find rotated", systemImage: "rotate.right")
-                        .labelStyle(.titleAndIcon)
-                        .font(.caption)
-                }
-            }
-            .buttonStyle(.bordered).controlSize(.small)
-            .disabled(rotatedScanInProgress || photosInScan.isEmpty)
-            .help("Find photos that are exact-content duplicates of each other under 90/180/270° rotation. Re-hashes photos with all four rotations.")
-
-            // Cross-source filter — only matters when there are 2+ scan
-            // sources. Off by default; flips the cluster list to show only
-            // clusters whose files live in multiple sources (Photos library
-            // + folder, or two folders).
-            if sources.count >= 2 {
-                Toggle(isOn: $crossSourceFilterOn) {
-                    Label("Cross-source only", systemImage: "link")
-                        .labelStyle(.titleAndIcon)
-                        .font(.caption)
-                }
-                .toggleStyle(.button)
-                .controlSize(.small)
-                .help("Show only clusters whose files come from 2+ different scan sources — files duplicated between e.g. your Photos library and a folder.")
-            }
-            Spacer()
-        }
+        BulkActionsStrip(
+            allClusterCount: allClusterIDs.count,
+            manualOverrides: $manualOverrides,
+            burstScanInProgress: burstScanInProgress,
+            rotatedScanInProgress: rotatedScanInProgress,
+            canRunBurstDetection: !photosInScan.isEmpty,
+            canRunRotatedDetection: !photosInScan.isEmpty,
+            sourcesCount: sources.count,
+            crossSourceFilterOn: $crossSourceFilterOn,
+            onApplyToAll: { await applyRecommendationToAllClusters() },
+            onRunBurstDetection: { await runBurstDetection() },
+            onRunRotatedDetection: { await runRotatedDetection() }
+        )
     }
 
     private func applyRecommendationToAllClusters() async {
@@ -784,45 +718,20 @@ struct ContentView: View {
         .padding(.vertical, 40)
     }
 
-    /// Single row in the middle column. Tag-based selection drives `selectedClusterID`
-    /// directly via `List(selection:)` — we don't manage expansion state any more
-    /// because the comparison pane on the right shows the full file list.
+    /// Bridges ContentView's per-cluster bookkeeping (cross-source check,
+    /// in-Photos lookup, decision storage) into the standalone `ClusterRow`
+    /// view. The view itself takes precomputed booleans so it doesn't need a
+    /// back-channel into ContentView's state.
     private func clusterRow(id: String, title: String, subtitle: String, accentColor: Color) -> some View {
-        let crossSource = isClusterCrossSource(id: id)
-        let archivedInPhotos = isClusterArchivedInPhotos(id: id)
-        return HStack(spacing: 8) {
-            Circle().fill(accentColor.opacity(0.7)).frame(width: 6, height: 6)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Text(title).font(.body)
-                    if crossSource {
-                        Image(systemName: "link")
-                            .font(.caption2)
-                            .foregroundStyle(.indigo)
-                            .help("Files in this cluster span multiple scan sources")
-                    }
-                    if archivedInPhotos {
-                        Image(systemName: "photo.on.rectangle.angled")
-                            .font(.caption2)
-                            .foregroundStyle(.purple)
-                            .help("At least one file in this cluster is also archived in your Photos library — safe to delete the folder copy.")
-                    }
-                }
-                Text(subtitle).font(.caption.monospaced()).foregroundStyle(.secondary)
-            }
-            Spacer()
-            if decisionsByCluster[id] != nil {
-                // The cluster has a recommendation; checkmark colour mirrors
-                // whether the user has manually overridden anything in it
-                // (orange = touched, green = engine-default).
-                let touched = manualOverrides[id]?.isEmpty == false
-                Image(systemName: touched ? "checkmark.circle.fill" : "checkmark.circle")
-                    .foregroundStyle(touched ? .orange : .green)
-                    .font(.caption)
-                    .help(touched ? "Reviewed (with manual override)" : "Reviewed (engine recommendation)")
-            }
-        }
-        .padding(.vertical, 2)
+        ClusterRow(
+            title: title,
+            subtitle: subtitle,
+            accentColor: accentColor,
+            isCrossSource: isClusterCrossSource(id: id),
+            isArchivedInPhotos: isClusterArchivedInPhotos(id: id),
+            isReviewed: decisionsByCluster[id] != nil,
+            hasManualOverride: manualOverrides[id]?.isEmpty == false
+        )
     }
 
     // MARK: - selection bridging
