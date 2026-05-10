@@ -24,6 +24,18 @@
           skip versions.
         -->
         <item>
+            <title>PurpleDedup 0.21.1 (1.0.148)</title>
+            <pubDate>Sun, 10 May 2026 03:57:16 +0000</pubDate>
+            <sparkle:version>148.f0075cb</sparkle:version>
+            <sparkle:shortVersionString>1.0.148</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[Bug fix: drops SUEnableInstallerLauncherService from Info.plist. Setting it true on a non-sandboxed app triggered "Unable to Check For Updates" in 1.0.143/1.0.145. Existing installs of those versions need a manual download once; Sparkle works normally from 1.0.148 onward. ComparisonView decomposed into focused components (no behavior change).]]></description>
+            <enclosure
+                url="https://github.com/bronty13/PhantomLives/releases/download/purplededup-v1.0.148/PurpleDedup-1.0.148.zip"
+                sparkle:edSignature="+Fjd3zvbwkB9NvQJSavaNSKgQDualRLgTeetZeBS8xNqc6cde0QCTSrNtXcfPObg3hC/EHbHx+6W02s6hBRHDA==" length="6712516"
+                type="application/octet-stream" />
+        </item>
+        <item>
             <title>PurpleDedup 0.21.0 (1.0.145)</title>
             <pubDate>Sun, 10 May 2026 03:30:30 +0000</pubDate>
             <sparkle:version>145.5e5dd92</sparkle:version>
