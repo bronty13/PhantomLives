@@ -24,6 +24,18 @@
           skip versions.
         -->
         <item>
+            <title>PurpleDedup 0.22.1 (1.0.167)</title>
+            <pubDate>Sun, 10 May 2026 05:36:04 +0000</pubDate>
+            <sparkle:version>167.b3cedd2</sparkle:version>
+            <sparkle:shortVersionString>1.0.167</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[Cancel reliability hotfix. Cancel during PhotoKit filter resolution now takes effect at the next source boundary instead of waiting for the whole library to resolve. Force Quit button appears reliably at 4 s after Cancel even when no progress events are firing. See CHANGELOG.md.]]></description>
+            <enclosure
+                url="https://github.com/bronty13/PhantomLives/releases/download/purplededup-v1.0.167/PurpleDedup-1.0.167.zip"
+                sparkle:edSignature="bhKf89+DYz8xlw1ZAtdesEsI+Lm5hep84zP+D5hqJRrIeICn91CoejgmJEPDJ+c96yBtZnqTNXBA77Dfmiq2Aw==" length="6743458"
+                type="application/octet-stream" />
+        </item>
+        <item>
             <title>PurpleDedup 0.22.0 (1.0.165)</title>
             <pubDate>Sun, 10 May 2026 05:26:28 +0000</pubDate>
             <sparkle:version>165.56ae280</sparkle:version>
