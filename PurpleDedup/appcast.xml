@@ -24,6 +24,18 @@
           skip versions.
         -->
         <item>
+            <title>PurpleDedup 0.22.2 (1.0.169)</title>
+            <pubDate>Sun, 10 May 2026 05:40:51 +0000</pubDate>
+            <sparkle:version>169.0a3a629</sparkle:version>
+            <sparkle:shortVersionString>1.0.169</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[Fixes a hang on cluster click for Photos library scans on large libraries. PhotoKit metadata cache used the file's parent directory as the cache key, but Photos shards `originals/` into 16 subdirectories — every cluster click switched shards and forced a full re-enumeration of the asset list (potentially 50k+ assets through Photos.sqlite XPC). Now keyed on the .photoslibrary bundle path; one index build per library.]]></description>
+            <enclosure
+                url="https://github.com/bronty13/PhantomLives/releases/download/purplededup-v1.0.169/PurpleDedup-1.0.169.zip"
+                sparkle:edSignature="sEs3yotIISDP4qytwLc0JxaQQzR0czVJkrpy8i4ihUW6OkYehiJUKWk9C7JwXPHuSXMFiUJdG0WmMCM5z2JYAw==" length="6742422"
+                type="application/octet-stream" />
+        </item>
+        <item>
             <title>PurpleDedup 0.22.1 (1.0.167)</title>
             <pubDate>Sun, 10 May 2026 05:36:04 +0000</pubDate>
             <sparkle:version>167.b3cedd2</sparkle:version>
