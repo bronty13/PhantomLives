@@ -4,6 +4,12 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 2 starter (0.1.x)
 
+### 2026-05-10 — Object detail + schema editor + table polish
+
+- **Object detail sheet** — double-click any row opens a `Form`-style editor with one input per `FieldKind`. `text` / `url` / `email` / `link` use `TextField`; `longText` uses `TextEditor`; `number` is a numeric `TextField`; `date` and `dateTime` are native `DatePicker`s; `boolean` is a `Toggle`; `select` is a `Picker`; `multiSelect` is a wrapping chip cluster (custom `Layout`); `rating` is 5 toggleable stars; `attachment` is a placeholder until `AttachmentService` lands. Saves on Done. Right-click a row gives Open / Delete.
+- **Schema editor** (⇧⌘S, also in the Window menu) — split view with a types rail (built-in/custom badge, hidden indicator, hide-from-sidebar / delete-custom-type context menu), the selected type's field list (rename / mark required / delete per field), and a field-type palette at the bottom — click any of the 12 kinds to add a field of that kind to the current type. Auto-renames duplicates (`New text 2`, `New text 3`, …).
+- **Table view polish** — table body anchored at the top of its ScrollView (was bottom-pinned because of the missing maxHeight on the inner VStack); empty primary fields render "*Untitled*" in italic tertiary text, all other empty cells render "—" in tertiary text; column headers are uppercased + tracked; alternating row backgrounds at 4% secondary; row dividers bumped from 0.4 → 0.6 opacity; row creation now opens the detail sheet for the new record so the user fills in fields immediately rather than landing on a blank row.
+
 ### 2026-05-10 — Phase 2 data layer + sidebar + table
 
 - Design handoff (`~/Downloads/PurpleLife-handoff.zip`) unpacked into `Design/`; `Design/MANIFEST.md` maps the 10 prototype screens to the SwiftUI files that will implement them. The JSX/HTML source is gitignored (large), the manifest is committed.

@@ -11,6 +11,7 @@ struct TableViewScreen: View {
 
     @State private var rows: [ObjectRecord] = []
     @State private var error: String?
+    @State private var editingRecordId: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -36,6 +37,15 @@ struct TableViewScreen: View {
         }
         .onAppear { reload() }
         .onChange(of: typeId) { _, _ in reload() }
+        .sheet(isPresented: Binding(
+            get: { editingRecordId != nil },
+            set: { if !$0 { editingRecordId = nil } }
+        )) {
+            if let id = editingRecordId {
+                ObjectDetailSheet(recordId: id, onChange: { reload(); appState.reloadAll() })
+                    .environmentObject(appState)
+            }
+        }
     }
 
     private var type: ObjectType? {
@@ -81,12 +91,11 @@ struct TableViewScreen: View {
             ScrollView([.horizontal, .vertical]) {
                 VStack(alignment: .leading, spacing: 0) {
                     headerRow(fields: fields)
-                    ForEach(rows) { row in
-                        dataRow(fields: fields, row: row)
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                        dataRow(fields: fields, row: row, even: index.isMultiple(of: 2))
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
     }
@@ -96,24 +105,38 @@ struct TableViewScreen: View {
             ForEach(fields, id: \.id) { field in
                 Text(field.name)
                     .font(.caption.weight(.semibold))
+                    .textCase(.uppercase)
+                    .tracking(0.5)
                     .foregroundStyle(.secondary)
                     .frame(width: columnWidth(for: field), alignment: .leading)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
             }
         }
-        .background(Color.secondary.opacity(0.06))
+        .background(Color.secondary.opacity(0.08))
         .overlay(alignment: .bottom) { Divider() }
     }
 
-    private func dataRow(fields: [FieldDef], row: ObjectRecord) -> some View {
+    private func dataRow(fields: [FieldDef], row: ObjectRecord, even: Bool) -> some View {
         HStack(spacing: 0) {
             ForEach(fields, id: \.id) { field in
                 cell(field: field, row: row)
                     .frame(width: columnWidth(for: field), alignment: .leading)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 12)
             }
         }
-        .overlay(alignment: .bottom) { Divider().opacity(0.4) }
+        .contentShape(Rectangle())
+        .background(even ? Color.clear : Color.secondary.opacity(0.04))
+        .overlay(alignment: .bottom) {
+            Divider().opacity(0.6)
+        }
+        .onTapGesture(count: 2) { editingRecordId = row.id }
+        .contextMenu {
+            Button("Open") { editingRecordId = row.id }
+            Divider()
+            Button("Delete", role: .destructive) { deleteRow(row) }
+        }
     }
 
     private func columnWidth(for field: FieldDef) -> CGFloat {
@@ -143,14 +166,36 @@ struct TableViewScreen: View {
     @ViewBuilder
     private func cell(field: FieldDef, row: ObjectRecord) -> some View {
         let value = row.fields()[field.key]
+        let isPrimary = field.key == type?.primaryFieldKey
+        let raw = stringValue(value)
+
         switch field.kind {
         case .text, .longText, .url, .email:
-            Text(stringValue(value)).lineLimit(1)
+            if raw.isEmpty {
+                if isPrimary {
+                    Text("Untitled")
+                        .italic()
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                } else {
+                    Text("—")
+                        .foregroundStyle(.tertiary)
+                }
+            } else {
+                Text(raw).lineLimit(1)
+            }
         case .number:
-            Text(numberValue(value)).monospacedDigit()
+            if let s = numberValueOrNil(value) {
+                Text(s).monospacedDigit()
+            } else {
+                Text("—").foregroundStyle(.tertiary)
+            }
         case .date, .dateTime:
-            Text(dateValue(value, includeTime: field.kind == .dateTime))
-                .foregroundStyle(.secondary)
+            if let s = dateValueOrNil(value, includeTime: field.kind == .dateTime) {
+                Text(s).foregroundStyle(.secondary)
+            } else {
+                Text("—").foregroundStyle(.tertiary)
+            }
         case .boolean:
             Image(systemName: (value as? Bool) == true ? "checkmark.square.fill" : "square")
                 .foregroundStyle((value as? Bool) == true ? Color.green : .secondary)
@@ -159,11 +204,19 @@ struct TableViewScreen: View {
         case .multiSelect:
             multiSelectChips(value: value, options: field.options)
         case .link:
-            Text(stringValue(value)).foregroundStyle(.tint).underline()
+            if raw.isEmpty {
+                Text("—").foregroundStyle(.tertiary)
+            } else {
+                Text(raw).foregroundStyle(.tint).underline()
+            }
         case .rating:
             ratingView(value: value)
         case .attachment:
-            Image(systemName: "paperclip").foregroundStyle(.secondary)
+            if raw.isEmpty {
+                Text("—").foregroundStyle(.tertiary)
+            } else {
+                Image(systemName: "paperclip").foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -174,15 +227,16 @@ struct TableViewScreen: View {
         return ""
     }
 
-    private func numberValue(_ v: Any?) -> String {
+    private func numberValueOrNil(_ v: Any?) -> String? {
         if let d = v as? Double { return d.formatted() }
         if let i = v as? Int    { return "\(i)" }
-        return ""
+        return nil
     }
 
-    private func dateValue(_ v: Any?, includeTime: Bool) -> String {
-        guard let s = v as? String, let date = ISO8601DateFormatter().date(from: s) else {
-            return stringValue(v)
+    private func dateValueOrNil(_ v: Any?, includeTime: Bool) -> String? {
+        guard let s = v as? String, !s.isEmpty,
+              let date = ISO8601DateFormatter().date(from: s) else {
+            return nil
         }
         return date.formatted(date: .abbreviated, time: includeTime ? .shortened : .omitted)
     }
@@ -247,7 +301,18 @@ struct TableViewScreen: View {
     private func addEmpty() {
         guard let t = type else { return }
         do {
-            _ = try ObjectEngine.create(typeId: t.id)
+            let created = try ObjectEngine.create(typeId: t.id)
+            appState.reloadAll()
+            reload()
+            editingRecordId = created.id
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func deleteRow(_ row: ObjectRecord) {
+        do {
+            try ObjectEngine.delete(id: row.id)
             appState.reloadAll()
             reload()
         } catch {
