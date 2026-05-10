@@ -81,13 +81,34 @@ public struct FileWalker: Sendable {
         var enumOptions: FileManager.DirectoryEnumerationOptions = [.skipsPackageDescendants]
         if source.isPhotosLibrary {
             walkRoot = source.url.appendingPathComponent("originals", isDirectory: true)
-            // Inside `originals/` is a regular folder tree, no nested bundles, so
-            // we don't need .skipsPackageDescendants — and removing it lets us
-            // descend through the per-letter-prefix subdirs Photos.app uses to
-            // shard files (originals/A/, originals/B/, etc.).
             enumOptions = []
             guard fm.fileExists(atPath: walkRoot.path) else {
                 Log.scan.warning("Photos library missing originals/ — skipping: \(source.url.path, privacy: .public)")
+                return
+            }
+
+            // Fast path: when a whitelist is set on a Photos library
+            // source, only walk the shard subdirectories that could
+            // possibly contain a whitelisted UUID. Photos shards
+            // `originals/` by the first hex char of the asset UUID
+            // (`originals/A/...`, `originals/0/...`), so a 100-asset
+            // hidden filter typically maps to 1–4 shards instead of
+            // all 16 — the difference between scanning 4K and 62K
+            // files on a real library.
+            if let allowed = source.allowedBasenames, !allowed.isEmpty {
+                let shardChars = Set(allowed.compactMap { $0.first.map(String.init) })
+                Log.scan.info("Photos library fast-path: \(allowed.count) UUIDs across \(shardChars.count) shard(s)")
+                for shardChar in shardChars {
+                    try Task.checkCancellation()
+                    let shardURL = walkRoot.appendingPathComponent(shardChar, isDirectory: true)
+                    guard fm.fileExists(atPath: shardURL.path) else { continue }
+                    try Self.enumerateShard(
+                        shardURL: shardURL,
+                        source: source,
+                        options: options,
+                        continuation: continuation
+                    )
+                }
                 return
             }
             Log.scan.info("Walking Photos library at \(walkRoot.path, privacy: .public)")
@@ -120,9 +141,55 @@ public struct FileWalker: Sendable {
             // anything outside the set; the walker never visits files the
             // user said they don't care about, so hashing / clustering /
             // metadata extraction all benefit from the early cut.
-            if let allowed = source.allowedBasenames,
-               !allowed.contains(url.lastPathComponent) {
-                continue
+            //
+            // Photos libraries store files as `<UUID>.<ext>` where the
+            // UUID is the leading segment of `PHAsset.localIdentifier`.
+            // The whitelist for those sources is a set of UUIDs (no
+            // extension), so we match against the URL stem. For regular
+            // folder sources the whitelist (if used) holds full
+            // basenames including extension, so we match those too.
+            if let allowed = source.allowedBasenames {
+                let basename = url.lastPathComponent
+                let stem = url.deletingPathExtension().lastPathComponent
+                if !allowed.contains(basename) && !allowed.contains(stem) {
+                    continue
+                }
+            }
+            if let f = try makeDiscoveredFile(at: url, source: source, options: options) {
+                continuation.yield(f)
+            }
+        }
+    }
+
+    /// Walk a single Photos-library shard (`originals/X/`). Used by the
+    /// fast path that avoids descending into shards whose UUIDs aren't
+    /// in the whitelist.
+    private static func enumerateShard(
+        shardURL: URL,
+        source: ScanSource,
+        options: ScanOptions,
+        continuation: AsyncThrowingStream<DiscoveredFile, Error>.Continuation
+    ) throws {
+        let fm = FileManager.default
+        let resourceKeys: [URLResourceKey] = [
+            .isRegularFileKey, .fileSizeKey, .contentModificationDateKey,
+            .isHiddenKey, .isSymbolicLinkKey,
+        ]
+        var enumOptions: FileManager.DirectoryEnumerationOptions = []
+        if !options.includeHidden { enumOptions.insert(.skipsHiddenFiles) }
+        guard let enumerator = fm.enumerator(
+            at: shardURL,
+            includingPropertiesForKeys: resourceKeys,
+            options: enumOptions
+        ) else { return }
+        for case let url as URL in enumerator {
+            try Task.checkCancellation()
+            if let allowed = source.allowedBasenames {
+                let basename = url.lastPathComponent
+                let stem = url.deletingPathExtension().lastPathComponent
+                if !allowed.contains(basename) && !allowed.contains(stem) {
+                    continue
+                }
             }
             if let f = try makeDiscoveredFile(at: url, source: source, options: options) {
                 continuation.yield(f)

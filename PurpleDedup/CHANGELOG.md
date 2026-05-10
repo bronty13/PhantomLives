@@ -3,6 +3,64 @@
 Versions follow `1.0.<commit-count>` derived from git in `build-app.sh`. This file
 narrates *what* changed and *why*; bundle versions just label the moment.
 
+## 0.18.3 — "Only hidden" filter via direct Photos.sqlite read + UUID basename matching (2026-05-09)
+
+### Two stacked bugs killed the hidden-only filter
+
+**Bug 1 — wrong basename:** the Photos filter resolver was returning
+PHAsset's user-visible original filename (e.g. `IMG_1234.HEIC`), but
+the on-disk files in `<library>/originals/` are UUID-named
+(`A00DFFD3-C68D-4884-B03C-14F380EF19CA.jpeg`). The walker's basename
+whitelist matched zero files for any active filter. Fixed by extracting
+the UUID stem from `PHAsset.localIdentifier`
+(`<UUID>/L0/001` → `<UUID>`) — that DOES match the on-disk filename
+without extension. `FileWalker` now checks both the full basename AND
+the stem against the whitelist.
+
+**Bug 2 — Locked Hidden Album privacy gate:** even with full Photos
+access granted, PhotoKit on macOS 14+ refuses to surface
+`asset.isHidden == true` to third-party apps. The Locked Hidden
+feature gates hidden assets behind biometric auth and PhotoKit
+silently returns `isHidden = false` for all of them. Confirmed via
+the in-app diagnostic: a 62 215-asset library walked completely with
+zero `isHidden = true` results.
+
+### Fix: read Photos.sqlite directly
+
+The library's `database/Photos.sqlite` carries the truth in
+`ZASSET.ZHIDDEN` and `ZASSET.ZUUID`. Same TCC grant that lets us walk
+`originals/` lets us open the SQLite read-only — bypasses the
+PhotoKit privacy gate entirely.
+
+`PhotoKitDeletionService.readHiddenUUIDsFromPhotosSQLite(libraryURL:)`
+opens the DB via `sqlite3_open_v2(...?mode=ro&immutable=1)` so locking
+isn't a problem when Photos.app has the file open. The SQLite path is
+PRIMARY for "Only hidden"; PhotoKit smart album + full walk remain as
+fallbacks if the schema shifts in a future macOS update.
+
+### In-app diagnostic line
+
+Status strip now shows a purple `Photos filter: filter[…] → N basenames
+· …` line whenever a Photos filter resolves. Lets the user see at a
+glance whether the filter is matching anything and which fetch path
+won (Photos.sqlite / smart-album / phk-walk). Saves a trip to
+Console.app.
+
+### Per-thumbnail "Hidden" badge
+
+When a file in the comparison pane has `photosIsHidden == true`, an
+orange `eye.slash` capsule renders at the top-leading corner of the
+thumbnail. Pairs with the existing top-trailing KEEP/DELETE chip and
+bottom-leading "In Photos" capsule — three visual signals that don't
+fight for the same corner.
+
+### `PhotoLibraryFilter.onlyHidden`
+
+New mutually-exclusive-with-`includeHidden` flag on the filter struct.
+Backward-compat decoder so older saved filters (without the field) load
+cleanly. Surfaced in the inline filter editor as a third toggle in the
+"Other" section.
+
 ## 0.18.2 — Tahoe layout recovery + faster filter resolution + inline filter editor (2026-05-09)
 
 A big round of fixes for issues that surfaced once a real user tried 0.18:

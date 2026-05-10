@@ -1,5 +1,10 @@
 import Foundation
 import Photos
+// SQLite C API for reading the Photos library's internal SQLite
+// directly. We deliberately do NOT use GRDB here — GRDB tries to
+// run integrity / WAL setup that fails on a read-only Photos.sqlite
+// being held open by Photos.app.
+import SQLite3
 
 /// Bridges PurpleDedup's path-based deletion model to PhotoKit's asset-based one.
 ///
@@ -294,6 +299,47 @@ public actor PhotoKitDeletionService {
         "Streamed Video", "High Frame Rate", "Time-lapse",
     ]
 
+    /// Open `<library>/database/Photos.sqlite` read-only and return the
+    /// set of asset UUIDs (matching the on-disk basename stem in
+    /// `originals/<x>/<UUID>.<ext>`) where `ZHIDDEN = 1`. Bypasses
+    /// PhotoKit's Locked-Hidden-Album privacy gate — third-party apps
+    /// with library access can read the SQLite directly even when
+    /// PhotoKit refuses to expose hidden state.
+    ///
+    /// Returns the set + a short diagnostic suitable for the status
+    /// line. Best-effort: if the file can't be opened or the schema
+    /// has shifted, returns an empty set with the failure reason.
+    public static func readHiddenUUIDsFromPhotosSQLite(libraryURL: URL) -> (uuids: Set<String>, diagnostic: String) {
+        let dbURL = libraryURL
+            .appendingPathComponent("database", isDirectory: true)
+            .appendingPathComponent("Photos.sqlite")
+        guard FileManager.default.fileExists(atPath: dbURL.path) else {
+            return ([], "Photos.sqlite missing at \(dbURL.lastPathComponent)")
+        }
+        var db: OpaquePointer? = nil
+        // SQLite URI with `mode=ro&immutable=1` — forces read-only and
+        // skips locking, so Photos.app holding the DB doesn't block us.
+        let uri = "file:" + (dbURL.path as NSString).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)! + "?mode=ro&immutable=1"
+        let openResult = sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil)
+        guard openResult == SQLITE_OK, let db else {
+            return ([], "Photos.sqlite open failed (\(openResult))")
+        }
+        defer { sqlite3_close(db) }
+        var stmt: OpaquePointer? = nil
+        let sql = "SELECT ZUUID FROM ZASSET WHERE ZHIDDEN = 1"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else {
+            return ([], "Photos.sqlite prepare failed (\(String(cString: sqlite3_errmsg(db))))")
+        }
+        defer { sqlite3_finalize(stmt) }
+        var out: Set<String> = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            if let cstr = sqlite3_column_text(stmt, 0) {
+                out.insert(String(cString: cstr))
+            }
+        }
+        return (out, "Photos.sqlite hidden=\(out.count)")
+    }
+
     /// All user-curated album names (excludes smart albums like Recents,
     /// Favorites, Hidden). Used by the filter sheet to populate a multi-
     /// select. Sorted alphabetically. Returns an empty array when auth is
@@ -322,9 +368,33 @@ public actor PhotoKitDeletionService {
     /// (album union → favorite/hidden constraint via PHFetchOptions →
     /// subtype filter via post-fetch check), then map each match to its
     /// primary resource's `originalFilename`.
+    /// Diagnostic shape returned alongside the matching basename set.
+    /// The GUI surfaces this in the status line when the user runs a
+    /// scan with an active Photos filter — saves a trip to Console.app
+    /// when something doesn't match.
+    public struct FilterResolution: Sendable {
+        public var basenames: Set<String>
+        public var summary: String
+        public init(basenames: Set<String>, summary: String) {
+            self.basenames = basenames
+            self.summary = summary
+        }
+    }
+
+    /// Convenience kept for tests / earlier callers — discards the
+    /// diagnostic.
     public func matchingBasenames(filter: PhotoLibraryFilter) async -> Set<String> {
+        await matchingBasenamesDetailed(filter: filter, libraryURL: nil).basenames
+    }
+
+    public func matchingBasenamesDetailed(
+        filter: PhotoLibraryFilter,
+        libraryURL: URL? = nil
+    ) async -> FilterResolution {
         let status = currentStatus()
-        guard status == .authorized || status == .limited else { return [] }
+        guard status == .authorized || status == .limited else {
+            return FilterResolution(basenames: [], summary: "auth not granted (status=\(status))")
+        }
 
         // Use PHAsset's private `filename` KVC accessor instead of
         // `PHAssetResource.assetResources(for:)` per asset. The latter
@@ -332,9 +402,20 @@ public actor PhotoKitDeletionService {
         // that's tens of thousands of round-trips and the scan stalls
         // for minutes. `valueForKey: "filename"` reads from the asset
         // row directly — orders of magnitude faster.
-        func filename(of asset: PHAsset) -> String? {
-            (asset.value(forKey: "filename") as? String)
-                .flatMap { $0.isEmpty ? nil : $0 }
+        // Match the on-disk filename in `originals/` — Photos library
+        // stores files as `<UUID>.<ext>` where `<UUID>` is the leading
+        // segment of `PHAsset.localIdentifier` (e.g. `A00DFFD3-…/L0/001`
+        // → `A00DFFD3-…`). The asset's `filename` property is the
+        // user-visible original filename ("IMG_1234.HEIC") which does
+        // NOT match anything on disk. Using the UUID extracted from the
+        // localIdentifier is the only reliable way to whitelist files
+        // by their on-disk basename.
+        func filenameStem(of asset: PHAsset) -> String? {
+            let id = asset.localIdentifier
+            if let slash = id.firstIndex(of: "/") {
+                return String(id[..<slash])
+            }
+            return id.isEmpty ? nil : id
         }
 
         let baseOptions = PHFetchOptions()
@@ -342,17 +423,9 @@ public actor PhotoKitDeletionService {
         if filter.requireFavorite {
             predicates.append(NSPredicate(format: "favorite == YES"))
         }
-        if filter.onlyHidden {
-            // Predicate-level filter — `hidden == YES` makes PhotoKit
-            // skip non-hidden assets at the database level.
-            predicates.append(NSPredicate(format: "hidden == YES"))
-        }
         if !predicates.isEmpty {
             baseOptions.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: predicates)
         }
-        // `onlyHidden` implies we want hidden assets in the result set,
-        // so flip the include flag on too. Without it, PhotoKit would
-        // drop hidden assets before applying our predicate.
         baseOptions.includeHiddenAssets = filter.includeHidden || filter.onlyHidden
 
         let subtypeFilter = filter.includedSubtypes
@@ -366,10 +439,59 @@ public actor PhotoKitDeletionService {
                 let names = Set(Self.subtypeNames(asset.mediaSubtypes))
                 if names.isDisjoint(with: subs) { return }
             }
-            if let name = filename(of: asset) { out.insert(name) }
+            if let name = filenameStem(of: asset) { out.insert(name) }
         }
 
-        if let albumNames = filter.albumNames, !albumNames.isEmpty {
+        var diag = ""
+        if filter.onlyHidden {
+            // PRIMARY: read Photos.sqlite directly. PhotoKit on macOS
+            // 14+ refuses to surface `isHidden == true` to third-party
+            // apps even with full Photos access (Locked Hidden Album
+            // privacy gate). The library's own SQLite isn't subject to
+            // that gate — same bundle, same TCC grant we already use to
+            // walk `originals/`. ZASSET.ZUUID is the on-disk filename
+            // stem, ZHIDDEN is the boolean flag.
+            if let libURL = libraryURL {
+                let r = Self.readHiddenUUIDsFromPhotosSQLite(libraryURL: libURL)
+                out.formUnion(r.uuids)
+                diag = r.diagnostic
+            }
+            // FALLBACK: PhotoKit smart album + full walk. Kept so the
+            // feature works on libraries / OS combos where SQLite read
+            // is blocked or the schema differs.
+            if out.isEmpty {
+                let hiddenAlbums = PHAssetCollection.fetchAssetCollections(
+                    with: .smartAlbum,
+                    subtype: .smartAlbumAllHidden,
+                    options: nil
+                )
+                var smartAlbumCount = 0
+                hiddenAlbums.enumerateObjects { coll, _, _ in
+                    let assetsInColl = PHAsset.fetchAssets(in: coll, options: baseOptions)
+                    assetsInColl.enumerateObjects { asset, _, _ in
+                        smartAlbumCount += 1
+                        consume(asset: asset)
+                    }
+                }
+                diag += " · smart-album=\(smartAlbumCount)"
+                if out.isEmpty {
+                    let allOptions = PHFetchOptions()
+                    allOptions.includeHiddenAssets = true
+                    let everything = PHAsset.fetchAssets(with: allOptions)
+                    var totalSeen = 0
+                    var hiddenSeen = 0
+                    everything.enumerateObjects { asset, _, _ in
+                        totalSeen += 1
+                        if asset.isHidden {
+                            hiddenSeen += 1
+                            if filter.requireFavorite && !asset.isFavorite { return }
+                            consume(asset: asset)
+                        }
+                    }
+                    diag += " · phk-walk=\(totalSeen)/\(hiddenSeen)"
+                }
+            }
+        } else if let albumNames = filter.albumNames, !albumNames.isEmpty {
             let allAlbums = PHAssetCollection.fetchAssetCollections(
                 with: .album, subtype: .albumRegular, options: nil
             )
@@ -391,7 +513,9 @@ public actor PhotoKitDeletionService {
                 consume(asset: asset)
             }
         }
-        return out
+        let summary = "filter[\(filter.summary)] → \(out.count) basenames" + (diag.isEmpty ? "" : " · \(diag)")
+        Log.scan.info("\(summary, privacy: .public)")
+        return FilterResolution(basenames: out, summary: summary)
     }
 
     private func getOrCreateAlbum(named name: String) async -> PHAssetCollection? {

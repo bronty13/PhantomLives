@@ -22,9 +22,19 @@ struct ContentView: View {
     @State private var totalScanned: Int = 0
     @State private var statusMessage: String = "Drop folders into the sidebar, then click Scan."
     @State private var isScanning: Bool = false
+    /// Handle to the currently-running scan task so the user can cancel
+    /// from the toolbar. The engine respects `Task.checkCancellation()`
+    /// in the walker; cancellation propagates through the async chain.
+    @State private var scanTask: Task<Void, Never>? = nil
     @State private var progressLine: String = ""
     @State private var cacheLine: String = ""
     @State private var stageTiming: String = ""
+    /// Photos-filter resolution diagnostic. Set right before the scan
+    /// runs so the user can see how many basenames the filter produced
+    /// and which fetch path won (smart album vs full-walk fallback).
+    /// Persists in the status strip alongside the cache stats so the
+    /// engine's cacheLine update doesn't clobber it.
+    @State private var photosFilterLine: String = ""
     @State private var includeSimilar: Bool = true
     @State private var includeSimilarVideos: Bool = true
     @State private var threshold: Int = PerceptualClusterer.defaultThreshold
@@ -134,17 +144,29 @@ struct ContentView: View {
         .navigationSplitViewStyle(.balanced)
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
-                Button {
-                    Task { await runScan() }
-                } label: {
-                    Label(isScanning ? "Scanning…" : "Scan", systemImage: "magnifyingglass")
-                        .labelStyle(.titleAndIcon)
+                if isScanning {
+                    Button(role: .destructive) {
+                        scanTask?.cancel()
+                        scanTask = nil
+                        statusMessage = "Cancelling…"
+                    } label: {
+                        Label("Cancel scan", systemImage: "stop.circle")
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .help("Stop the running scan. Whatever's already cached stays cached, so re-running picks up where this left off.")
+                } else {
+                    Button {
+                        scanTask = Task { await runScan() }
+                    } label: {
+                        Label("Scan", systemImage: "magnifyingglass")
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .disabled(sources.isEmpty)
+                    .keyboardShortcut("s", modifiers: .command)
+                    .help(sources.isEmpty
+                          ? "Add at least one source folder before scanning"
+                          : "Scan all sources for duplicates (⌘S)")
                 }
-                .disabled(isScanning || sources.isEmpty)
-                .keyboardShortcut("s", modifiers: .command)
-                .help(sources.isEmpty
-                      ? "Add at least one source folder before scanning"
-                      : "Scan all sources for duplicates (⌘S)")
             }
             ToolbarItemGroup(placement: .principal) {
                 // Each kind has a labeled Menu (named presets) AND a Stepper
@@ -703,6 +725,9 @@ struct ContentView: View {
             if !cacheLine.isEmpty {
                 Text(cacheLine).font(.caption.monospaced()).foregroundStyle(.secondary)
             }
+            if !photosFilterLine.isEmpty {
+                Text(photosFilterLine).font(.caption.monospaced()).foregroundStyle(.purple)
+            }
         }
     }
 
@@ -1050,7 +1075,7 @@ struct ContentView: View {
             // and the persisted decisions visibly re-attach. The cache makes
             // this near-instant when nothing's changed; if files have been
             // added/removed, the user sees the delta on screen.
-            Task { await runScan() }
+            scanTask = Task { await runScan() }
         }
     }
 
@@ -1126,11 +1151,12 @@ struct ContentView: View {
                    let f = filters[src.url.path],
                    f.isActive {
                     statusMessage = "Resolving Photos filter for \(src.url.lastPathComponent)…"
-                    let names = await PhotoKitDeletionService.shared.matchingBasenames(filter: f)
+                    let resolution = await PhotoKitDeletionService.shared.matchingBasenamesDetailed(filter: f, libraryURL: src.url)
+                    self.photosFilterLine = "Photos filter: \(resolution.summary)"
                     resolved.append(ScanSource(
                         url: src.url,
                         isLocked: src.isLocked,
-                        allowedBasenames: names,
+                        allowedBasenames: resolution.basenames,
                         isLookupOnly: src.isLookupOnly
                     ))
                 } else {
@@ -1192,10 +1218,14 @@ struct ContentView: View {
                 self.photosLookupCount = result.photosLookupCount
                 self.statusMessage = "Scanned \(result.filesScanned) file(s) · \(result.exactClusters.count) exact + \(result.similarClusters.count) similar photos + \(result.similarVideoClusters.count) similar videos."
             }
+        } catch is CancellationError {
+            statusMessage = "Scan cancelled"
+            progressLine = ""
         } catch {
             statusMessage = "Scan failed: \(error.localizedDescription)"
             Log.app.error("Scan failed: \(error.localizedDescription, privacy: .public)")
         }
+        scanTask = nil
     }
 
     // MARK: - status helpers

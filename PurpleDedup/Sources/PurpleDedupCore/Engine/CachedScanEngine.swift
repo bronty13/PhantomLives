@@ -106,6 +106,7 @@ public actor CachedScanEngine {
         let walkStart = Date()
         var files: [DiscoveredFile] = []
         for try await f in walker.walk(sources: scanSources, options: options) {
+            try Task.checkCancellation()
             files.append(f)
             if files.count % 256 == 0 {
                 progress?(ScanProgress(
@@ -122,6 +123,7 @@ public actor CachedScanEngine {
         // is fresh. We compute the size buckets first so we only consult the cache
         // for files that have ≥1 same-size sibling (Stage 1 short-circuit).
         timing.walkSeconds = walkStart.distance(to: Date()) - 0  // rough; full walk above
+        try Task.checkCancellation()
         let exactStart = Date()
         let exactClusters = try await runExactStage(files: files, cachedRows: cachedRows, stats: &stats, progress: progress)
         timing.exactSeconds = Date().timeIntervalSince(exactStart)
@@ -281,6 +283,7 @@ public actor CachedScanEngine {
             var inFlight = 0
 
             func submit() {
+                if Task.isCancelled { return }
                 guard let next = iterator.next() else { return }
                 inFlight += 1
                 group.addTask {
@@ -367,6 +370,7 @@ public actor CachedScanEngine {
             var inFlight = 0
 
             func submit() {
+                if Task.isCancelled { return }
                 guard let next = iterator.next() else { return }
                 inFlight += 1
                 group.addTask {
@@ -504,6 +508,7 @@ public actor CachedScanEngine {
             var inFlight = 0
 
             func submit() {
+                if Task.isCancelled { return }
                 guard let next = iterator.next() else { return }
                 inFlight += 1
                 group.addTask {
@@ -612,6 +617,7 @@ public actor CachedScanEngine {
             var inFlight = 0
 
             func submit() {
+                if Task.isCancelled { return }
                 guard let next = iterator.next() else { return }
                 inFlight += 1
                 group.addTask {

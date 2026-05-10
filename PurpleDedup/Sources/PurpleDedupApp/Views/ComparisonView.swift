@@ -175,6 +175,27 @@ struct ComparisonView: View {
                                 }
                                 .padding(6)
                             }
+                            // "Hidden" badge — shown when the asset lives
+                            // in Photos.app's Hidden album. Top-leading so
+                            // it stays visible alongside the KEEP/DELETE
+                            // decision chip (top-right) and the "In
+                            // Photos" capsule (bottom-leading).
+                            if metadata[f.url]?.photosIsHidden == true {
+                                VStack {
+                                    HStack {
+                                        Label("Hidden", systemImage: "eye.slash.fill")
+                                            .labelStyle(.titleAndIcon)
+                                            .font(.caption2.bold())
+                                            .padding(.horizontal, 6).padding(.vertical, 3)
+                                            .background(Color.orange.opacity(0.9))
+                                            .foregroundStyle(.white)
+                                            .clipShape(Capsule())
+                                        Spacer()
+                                    }
+                                    Spacer()
+                                }
+                                .padding(6)
+                            }
                         }
                         .contextMenu {
                             Button("Mark KEEP")  { setManual(.keep(reason: "manual"), for: f.url, in: s) }
