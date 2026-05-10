@@ -164,24 +164,29 @@ struct Scan: AsyncParsableCommand {
         let rawSources = paths.map { ScanSource(url: URL(fileURLWithPath: $0)) }
         let photosFilter = try buildPhotosFilter()
         let sources: [ScanSource]
-        if let f = photosFilter, f.isActive,
-           rawSources.contains(where: { $0.isPhotosLibrary }) {
-            // Resolve the filter once per .photoslibrary source. Folder
-            // sources (no Photos package) pass through unmodified — the
-            // filter is meaningless there.
+        if rawSources.contains(where: { $0.isPhotosLibrary }) {
+            // ALWAYS resolve for `.photoslibrary` sources, even when no
+            // filter dimension is set. Without a basename whitelist the
+            // walker would walk every UUID under originals/ — including
+            // the on-disk files for hidden Photos assets, since the
+            // filesystem doesn't carry Photos.app's hidden flag. The
+            // unconstrained PhotoKit resolution returns only non-hidden
+            // assets by default, which is the behaviour users expect.
+            let f = photosFilter ?? PhotoLibraryFilter()
             var resolved: [ScanSource] = []
             for src in rawSources {
                 if src.isPhotosLibrary {
                     if !quiet {
-                        FileHandle.standardError.write(Data(
-                            "Resolving Photos filter for \(src.url.lastPathComponent) (\(f.summary))…\n".utf8
-                        ))
+                        let summary = f.isActive
+                            ? "Photos filter for \(src.url.lastPathComponent) (\(f.summary))"
+                            : "Photos library default for \(src.url.lastPathComponent) (excludes hidden)"
+                        FileHandle.standardError.write(Data("Resolving \(summary)…\n".utf8))
                     }
                     let resolution = await PhotoKitDeletionService.shared
                         .matchingBasenamesDetailed(filter: f, libraryURL: src.url)
                     if !quiet {
                         FileHandle.standardError.write(Data(
-                            "Photos filter → \(resolution.basenames.count) basename(s) · \(resolution.summary)\n".utf8
+                            "Photos library → \(resolution.basenames.count) basename(s) · \(resolution.summary)\n".utf8
                         ))
                     }
                     resolved.append(ScanSource(

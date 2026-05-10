@@ -1182,19 +1182,27 @@ struct ContentView: View {
         let lastUpdate = ProgressThrottle()
 
         do {
-            // Materialise per-Photos-library filters before scanning. For each
-            // .photoslibrary source with an active filter, ask PhotoKit which
-            // basenames pass — the walker then uses that set as a whitelist.
-            // Sources without filters pass through unchanged.
+            // Materialise per-Photos-library filters before scanning. ALWAYS
+            // resolve for `.photoslibrary` sources — even when the user
+            // hasn't checked any filter dimension. The walker can't see
+            // Photos.app's hidden flag (it's a Photos.sqlite concern, not a
+            // filesystem attribute), so without a basename whitelist the
+            // walk happily includes every UUID in originals/, including
+            // hidden assets. The unconstrained PhotoKit resolution path
+            // returns only non-hidden assets by default, which is the
+            // behaviour the user expects when "Include hidden" / "Only
+            // hidden" are both off. When a filter IS configured, the
+            // user's constraints flow through normally.
             let filters = settingsStore.settings.photoLibraryFilters
             var resolved: [ScanSource] = []
             for src in sources {
-                if src.isPhotosLibrary,
-                   let f = filters[src.url.path],
-                   f.isActive {
+                if src.isPhotosLibrary {
+                    let f = filters[src.url.path] ?? PhotoLibraryFilter()
                     statusMessage = "Resolving Photos filter for \(src.url.lastPathComponent)…"
                     let resolution = await PhotoKitDeletionService.shared.matchingBasenamesDetailed(filter: f, libraryURL: src.url)
-                    self.photosFilterLine = "Photos filter: \(resolution.summary)"
+                    self.photosFilterLine = f.isActive
+                        ? "Photos filter: \(resolution.summary)"
+                        : "Photos library: \(resolution.basenames.count) non-hidden assets (default — hidden excluded)"
                     resolved.append(ScanSource(
                         url: src.url,
                         isLocked: src.isLocked,
