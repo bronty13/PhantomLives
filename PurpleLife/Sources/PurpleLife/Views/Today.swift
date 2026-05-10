@@ -10,6 +10,7 @@ struct TodayScreen: View {
     @EnvironmentObject private var appState: AppState
 
     @State private var openingRecordId: String?
+    @State private var showingEditor = false
 
     var body: some View {
         ScrollView {
@@ -27,6 +28,19 @@ struct TodayScreen: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .navigationTitle("Today")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showingEditor = true
+                } label: {
+                    Label("Edit panels", systemImage: "slider.horizontal.3")
+                }
+            }
+        }
+        .sheet(isPresented: $showingEditor) {
+            SavedQueriesEditor()
+                .environmentObject(appState)
+        }
         .sheet(isPresented: Binding(
             get: { openingRecordId != nil },
             set: { if !$0 { openingRecordId = nil } }

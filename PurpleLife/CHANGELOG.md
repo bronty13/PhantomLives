@@ -4,6 +4,14 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 3 starter (0.1.x)
 
+### 2026-05-10 — Saved-query customization UI + Planner Item / Weight types
+
+- **`Planner Item`** + **`Weight`** added to `SchemaSeed.allTypes` so the Phase 3 acceptance gate (planner items + weight + currently-reading book) has real types to query against. Planner Item: title / date / status (Pending/Doing/Done/Cancelled) / project / notes. Weight: date / pounds / body-fat % / source / notes.
+- **`SavedQuerySeed.allDefaults`** updated: "Today's planner" (PlannerItem where Status=Pending, sort by date asc) and "Latest weight" (Weight, sort by date desc, limit 1) added at the top of the Today panel list.
+- **`SavedQueriesEditor`** sheet — accessed from the Today toolbar's "Edit panels" button. Lists every panel with reorder (drag handles), inline edit / delete buttons, an Add panel CTA, and a "Restore defaults" button that re-adds any built-in defaults the user has previously deleted (without duplicating ones still present).
+- **`SavedQueryEditor`** sheet — schema-aware form: type picker (All / each visible type), filter picker (No filter / Field equals / Updated within N days / Field is set), field pickers scoped to the selected type's fields, sort field + descending toggle, limit stepper (1–100), icon picker from a curated SF Symbols set. Edits are live-validated (field-equals filter without a type warns inline; Save disabled when name is empty).
+- **`QueryRunnerTests`** — 5 tests covering type filter + limit, field-equals filter, withinDays cutoff against `updated_at`, sort asc / desc by field, cross-type cross-everything. **24/24 tests green**.
+
 ### 2026-05-10 — Today screen + saved-queries pattern
 
 - **`SavedQuery`** model — serializable filter spec (typeId / field-equals / withinDays / nonEmpty / sort / limit). Persisted in `AppSettings.todayQueries`. `todayQueriesSeeded` is a one-shot flag so a deleted default never gets re-added.

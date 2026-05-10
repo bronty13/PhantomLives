@@ -11,8 +11,66 @@ import Foundation
 enum SchemaSeed {
 
     static let allTypes: [ObjectType] = [
-        person, book, camera, photoShoot, wowCharacter, photo
+        plannerItem, person, book, camera, photoShoot, wowCharacter, photo, weight
     ]
+
+    // MARK: Planner Item
+
+    static let plannerItem: ObjectType = {
+        let title = FieldDef.make(name: "Title", kind: .text, required: true)
+        let date  = FieldDef.make(name: "Date",  kind: .date)
+        let status = FieldDef.make(
+            name: "Status",
+            kind: .select,
+            options: [
+                .make("Pending",   colorHex: "#3FA9F5"),
+                .make("Doing",     colorHex: "#9D4DCC"),
+                .make("Done",      colorHex: "#3FB950"),
+                .make("Cancelled", colorHex: "#888888"),
+            ]
+        )
+        let project = FieldDef.make(name: "Project", kind: .text)
+        let notes   = FieldDef.make(name: "Notes",   kind: .longText)
+        return .builtIn(
+            id: "PlannerItem",
+            name: "Planner Item",
+            pluralName: "Planner",
+            systemImage: "checkmark.circle",
+            colorHex: "#3FA9F5",
+            fields: [title, date, status, project, notes],
+            primaryFieldKey: title.key,
+            kanbanGroupKey: status.key,
+            calendarDateKey: date.key
+        )
+    }()
+
+    // MARK: Weight
+
+    static let weight: ObjectType = {
+        let date    = FieldDef.make(name: "Date",   kind: .date, required: true)
+        let pounds  = FieldDef.make(name: "Pounds", kind: .number)
+        let bodyFat = FieldDef.make(name: "Body fat %", kind: .number)
+        let source = FieldDef.make(
+            name: "Source",
+            kind: .select,
+            options: [
+                .make("Manual",     colorHex: "#888888"),
+                .make("Smart scale", colorHex: "#3FA9F5"),
+                .make("Imported",    colorHex: "#9D4DCC"),
+            ]
+        )
+        let notes = FieldDef.make(name: "Notes", kind: .longText)
+        return .builtIn(
+            id: "Weight",
+            name: "Weight",
+            pluralName: "Weight",
+            systemImage: "scalemass",
+            colorHex: "#E8A93B",
+            fields: [date, pounds, bodyFat, source, notes],
+            primaryFieldKey: pounds.key,
+            calendarDateKey: date.key
+        )
+    }()
 
     // MARK: Person
 

@@ -85,6 +85,33 @@ struct SavedQuery: Codable, Identifiable, Hashable {
 /// the (forthcoming) Today customization UI.
 enum SavedQuerySeed {
     static let allDefaults: [SavedQuery] = [
+        // The plan calls out these three explicitly in the Phase 3
+        // acceptance gate ("planner items + current weight +
+        // currently-reading book"). They sit at the top of Today.
+        SavedQuery(
+            id: "default.todays-planner",
+            name: "Today's planner",
+            systemImage: "calendar.day.timeline.left",
+            typeId: "PlannerItem",
+            filterFieldKey: "status",
+            filterValue: .string("Pending"),
+            sortFieldKey: "date",
+            descending: false,
+            limit: 8,
+            builtIn: true
+        ),
+        SavedQuery(
+            id: "default.latest-weight",
+            name: "Latest weight",
+            systemImage: "scalemass",
+            typeId: "Weight",
+            filterFieldKey: nil,
+            filterValue: nil,
+            sortFieldKey: "date",
+            descending: true,
+            limit: 1,
+            builtIn: true
+        ),
         SavedQuery(
             id: "default.currently-reading",
             name: "Currently reading",
@@ -92,7 +119,7 @@ enum SavedQuerySeed {
             typeId: "Book",
             filterFieldKey: "status",
             filterValue: .string("Reading"),
-            sortFieldKey: nil,      // updated_at
+            sortFieldKey: nil,
             descending: true,
             limit: 5,
             builtIn: true
@@ -110,21 +137,9 @@ enum SavedQuerySeed {
             builtIn: true
         ),
         SavedQuery(
-            id: "default.recent-everything",
-            name: "Recent across everything",
-            systemImage: "sparkles",
-            typeId: nil,
-            filterFieldKey: nil,
-            filterValue: nil,
-            sortFieldKey: nil,
-            descending: true,
-            limit: 8,
-            builtIn: true
-        ),
-        SavedQuery(
             id: "default.this-week",
             name: "Updated in the last 7 days",
-            systemImage: "calendar.day.timeline.left",
+            systemImage: "sparkles",
             typeId: nil,
             filterFieldKey: nil,
             filterValue: .withinDays(7),

@@ -14,7 +14,7 @@ Phase 1 (Foundation) — scaffold complete.
 | CloudKit spike | **PASS 2026-05-10** ([Spike/CloudKit/SPIKE.md](Spike/CloudKit/SPIKE.md)) — `encryptedValues` round-trip confirmed against `iCloud.com.bronty13.PurpleLife` |
 | 1 — Foundation | Complete — round-trip + 4 backup tests green; Settings → Backup pane wired |
 | 2 — Object engine + 4 views | Acceptance gate met — schema registry, four list views (table/kanban/calendar/gallery), schema editor, object detail, FTS5 + ⌘K, cross-type link picker. Visual review against the design handoff is the remaining gate item. |
-| 3 — Today / Planner | Starter — saved-queries pattern + Today screen + sidebar entry; customization UI next |
+| 3 — Today / Planner | Acceptance gate met — saved-queries pattern, Today screen, customization UI, Planner Item + Weight built-in types. |
 | 4 — CloudKit E2E sync | Not started |
 | 5 — First real use cases | Not started |
 
