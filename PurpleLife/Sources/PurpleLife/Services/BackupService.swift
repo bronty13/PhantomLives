@@ -164,7 +164,13 @@ enum BackupService {
     /// Non-destructive: extract the archive to a temp directory, validate it
     /// contains a working `purplelife.sqlite`, count rows, return a summary
     /// the UI can show before the user commits to a real restore.
-    static func verifyArchive(at archiveURL: URL) throws -> VerifyResult {
+    ///
+    /// `nonisolated` — pure file I/O + grdb reads, no UI state. The enum
+    /// is `@MainActor` for the rest of its surface (mutates settings,
+    /// touches the singleton DB pool); verify runs from
+    /// `Task.detached` in the Settings → Backup tab so a long extract
+    /// doesn't freeze the UI.
+    nonisolated static func verifyArchive(at archiveURL: URL) throws -> VerifyResult {
         let fm = FileManager.default
         let staging = fm.temporaryDirectory
             .appendingPathComponent("pl-verify-\(UUID().uuidString)", isDirectory: true)
@@ -252,7 +258,9 @@ enum BackupService {
         }
     }
 
-    private static func unzip(archiveURL: URL, to dest: URL) throws {
+    /// `nonisolated` — pure subprocess invocation, callable from
+    /// `verifyArchive`'s background path.
+    nonisolated private static func unzip(archiveURL: URL, to dest: URL) throws {
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
         proc.arguments = ["-q", "-o", archiveURL.path, "-d", dest.path]

@@ -4,6 +4,19 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-10 — Bug: Settings → Backup → Test gives no visible feedback
+
+The Test button on each backup row called `BackupService.verifyArchive` synchronously and wrote the result into a `Section("Last test result")` rendered _below_ the "Recent backups" list. Two failure modes:
+
+- The verify call blocked the main thread for the duration of the zip extract + sqlite open, so the spinner never got a chance to animate and the UI froze briefly with no indication anything was happening.
+- When the Recent backups list was long enough to push the result section below the visible area, the section appeared but the user couldn't see it without scrolling — looked exactly like the button did nothing.
+
+Fix:
+
+- Per-row inline feedback. While verify is running, a `ProgressView` appears next to the row's Test button (and Test/Restore are disabled to prevent double-clicks). When verify completes, a green `Verified — N objects · M files · Z bytes · K migrations` line appears under the row; on failure, a red `Test failed: …` line in the same place.
+- Verify call moved off the main thread via `Task.detached(priority: .userInitiated)`. Result lands back on the main actor.
+- Removed the bottom "Last test result" / "Test failed" sections — the per-row inline feedback supersedes them; no need for two sources of truth.
+
 ### 2026-05-10 — Per-type export pipeline (CSV / Markdown / HTML / PDF + clipboard)
 
 Closes follow-up #2. The Records screen now has an Export menu next to "New X"; clicking it writes a stamped file to the resolved export directory or copies the formatted text to the clipboard.

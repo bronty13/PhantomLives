@@ -10,10 +10,18 @@ struct BackupSettingsTab: View {
     @State private var backups: [(url: URL, modified: Date, size: Int)] = []
     @State private var error: String?
     @State private var lastRunMessage: String?
-    @State private var verifyResult: BackupService.VerifyResult?
-    @State private var verifyError: String?
     @State private var pendingRestore: URL?
     @State private var restoreMessage: String?
+
+    /// Per-row test state. The "Last test result" section used to be
+    /// the only feedback for the Test button, but it landed below the
+    /// "Recent backups" list — when that list was long, the section
+    /// rendered below the visible area and it looked like clicking
+    /// Test did nothing. Per-row state shows the result inline next to
+    /// the button that triggered it.
+    @State private var testingURL: URL?
+    @State private var testResults: [URL: BackupService.VerifyResult] = [:]
+    @State private var testErrors: [URL: String] = [:]
 
     var body: some View {
         Form {
@@ -69,24 +77,6 @@ struct BackupSettingsTab: View {
                 }
             }
 
-            if let v = verifyResult {
-                Section("Last test result") {
-                    Text(v.archiveURL.lastPathComponent)
-                        .font(.body.monospaced())
-                    Text("\(v.objectCount) objects · \(v.fileCount) files · \(format(bytes: Int(v.totalBytes)))")
-                        .font(.caption).foregroundStyle(.secondary)
-                    if !v.migrations.isEmpty {
-                        Text("Migrations: \(v.migrations.joined(separator: ", "))")
-                            .font(.caption.monospaced()).foregroundStyle(.tertiary)
-                    }
-                }
-            }
-            if let verifyError {
-                Section {
-                    Text("Test failed: \(verifyError)")
-                        .font(.caption).foregroundStyle(.red)
-                }
-            }
         }
         .formStyle(.grouped)
         .padding(20)
@@ -107,19 +97,41 @@ struct BackupSettingsTab: View {
     }
 
     private func backupRow(_ entry: (url: URL, modified: Date, size: Int)) -> some View {
-        HStack {
-            VStack(alignment: .leading) {
-                Text(entry.url.lastPathComponent).font(.body.monospaced())
-                Text("\(entry.modified.formatted(date: .abbreviated, time: .standard)) · \(format(bytes: entry.size))")
-                    .font(.caption).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                VStack(alignment: .leading) {
+                    Text(entry.url.lastPathComponent).font(.body.monospaced())
+                    Text("\(entry.modified.formatted(date: .abbreviated, time: .standard)) · \(format(bytes: entry.size))")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if testingURL == entry.url {
+                    ProgressView().controlSize(.small)
+                }
+                Button("Test") { test(url: entry.url) }
+                    .disabled(testingURL == entry.url)
+                    .help("Extract to a temp dir and check the database is valid. Non-destructive.")
+                Button("Restore") { pendingRestore = entry.url }
+                    .disabled(testingURL == entry.url)
+                    .help("Replace the current database with this backup. A safety backup of the current state will run first.")
+                Button("Reveal") {
+                    NSWorkspace.shared.activateFileViewerSelecting([entry.url])
+                }
             }
-            Spacer()
-            Button("Test") { test(url: entry.url) }
-                .help("Extract to a temp dir and check the database is valid. Non-destructive.")
-            Button("Restore") { pendingRestore = entry.url }
-                .help("Replace the current database with this backup. A safety backup of the current state will run first.")
-            Button("Reveal") {
-                NSWorkspace.shared.activateFileViewerSelecting([entry.url])
+            if let result = testResults[entry.url] {
+                let migrations = result.migrations.isEmpty
+                    ? ""
+                    : " · \(result.migrations.count) migration\(result.migrations.count == 1 ? "" : "s")"
+                Label(
+                    "Verified — \(result.objectCount) objects · \(result.fileCount) files · \(format(bytes: Int(result.totalBytes)))\(migrations)",
+                    systemImage: "checkmark.seal.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(.green)
+            } else if let err = testErrors[entry.url] {
+                Label("Test failed: \(err)", systemImage: "xmark.octagon.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
             }
         }
     }
@@ -153,12 +165,28 @@ struct BackupSettingsTab: View {
     }
 
     private func test(url: URL) {
-        do {
-            verifyError = nil
-            verifyResult = try BackupService.verifyArchive(at: url)
-        } catch {
-            verifyError = error.localizedDescription
-            verifyResult = nil
+        // Verify can take noticeable time on large backups (zip extract +
+        // sqlite open + count). Run on a background thread so the spinner
+        // animates and the rest of the UI stays responsive. Result lands
+        // back on the main actor via the explicit await hop.
+        testErrors[url] = nil
+        testResults[url] = nil
+        testingURL = url
+        Task.detached(priority: .userInitiated) {
+            let outcome: Result<BackupService.VerifyResult, Error>
+            do {
+                let r = try BackupService.verifyArchive(at: url)
+                outcome = .success(r)
+            } catch {
+                outcome = .failure(error)
+            }
+            await MainActor.run {
+                switch outcome {
+                case .success(let r):    testResults[url] = r
+                case .failure(let err):  testErrors[url] = err.localizedDescription
+                }
+                if testingURL == url { testingURL = nil }
+            }
         }
     }
 
