@@ -37,6 +37,7 @@ final class CloudKitSyncService: ObservableObject {
 
     static let containerID = "iCloud.com.bronty13.PurpleLife"
     static let recordType = "PurpleObject"
+    static let typeRecordType = "PurpleType"
     static let zoneName = "PurpleLifeZone"
     static let subscriptionID = "PurpleLife.databaseSubscription"
     /// Recovery poll. The primary sync trigger is the
@@ -324,6 +325,66 @@ final class CloudKitSyncService: ObservableObject {
         }
     }
 
+    // MARK: - Schema push (PurpleType)
+
+    /// Mirror a local schema mutation (`SchemaRegistry.upsertType`)
+    /// to CloudKit. Mirror of `push(record:)`. Errors are logged
+    /// but don't surface — the local schema write already succeeded.
+    func pushType(_ type: ObjectType) async {
+        guard isEnabled, let database else { return }
+        do {
+            let ck = try await fetchOrMakeType(typeId: type.id)
+            applyLocal(type: type, to: ck)
+            _ = try await database.save(ck)
+            lastSyncAt = Date()
+            if status.isError { status = .idle; lastError = nil }
+        } catch let error as CKError where error.code == .serverRecordChanged {
+            // Server has a newer version — pull and reconcile.
+            await pull()
+        } catch {
+            NSLog("PurpleLife: pushType(\(type.id)) failed — \(error.localizedDescription)")
+            status = .error(error.localizedDescription)
+            lastError = error.localizedDescription
+        }
+    }
+
+    func pushDeleteType(id: String) async {
+        guard isEnabled, let database else { return }
+        do {
+            let ckID = CKRecord.ID(recordName: id, zoneID: zoneID)
+            _ = try await database.deleteRecord(withID: ckID)
+            lastSyncAt = Date()
+            if status.isError { status = .idle; lastError = nil }
+        } catch let error as CKError where error.code == .unknownItem {
+            // Already gone server-side; nothing to do.
+        } catch {
+            NSLog("PurpleLife: pushDeleteType(\(id)) failed — \(error.localizedDescription)")
+            status = .error(error.localizedDescription)
+            lastError = error.localizedDescription
+        }
+    }
+
+    private func fetchOrMakeType(typeId: String) async throws -> CKRecord {
+        guard let database else { throw CKError(.internalError) }
+        let id = CKRecord.ID(recordName: typeId, zoneID: zoneID)
+        do {
+            return try await database.record(for: id)
+        } catch let error as CKError where error.code == .unknownItem {
+            return CKRecord(recordType: Self.typeRecordType, recordID: id)
+        }
+    }
+
+    private func applyLocal(type: ObjectType, to ck: CKRecord) {
+        // Plaintext updated_at for server-side LWW comparison; full
+        // serialized type goes through encryptedValues so the schema's
+        // field names + options aren't visible to Apple. Same shape
+        // as the object record path.
+        ck["updated_at"] = (type.updatedAt ?? ObjectType.epochTimestamp) as CKRecordValue
+        if let data = try? JSONEncoder().encode(type) {
+            ck.encryptedValues["typeJSON"] = data as CKRecordValue
+        }
+    }
+
     private func pushAgainIfNeeded(record: ObjectRecord) async {
         // After a serverRecordChanged retry, look up the local record
         // again — `pull` may have replaced it. If the local is still
@@ -371,6 +432,11 @@ final class CloudKitSyncService: ObservableObject {
     /// "needs-push" queue for the starter.
     private func pushPendingLocalChanges() async {
         guard let database else { return }
+        // Schemas first — a record arriving on the peer should find
+        // its type definition already there, otherwise the FTS reindex
+        // and `applyRemote` (which looks up the type to build
+        // searchable text) skip the search-index update.
+        await pushPendingLocalSchemas()
         do {
             let local = try DatabaseService.shared.fetchAllObjects()
             for r in local {
@@ -388,6 +454,33 @@ final class CloudKitSyncService: ObservableObject {
             }
         } catch {
             NSLog("PurpleLife: pushPendingLocalChanges failed — \(error.localizedDescription)")
+        }
+    }
+
+    /// Mirror of `pushPendingLocalChanges` for the schema. On
+    /// bootstrap, push any local types whose `updatedAt` is ahead of
+    /// (or absent from) the server. Newly-seeded built-ins carry the
+    /// epoch timestamp, so a fresh-install peer doesn't push its
+    /// untouched built-ins over a peer that's already customized
+    /// them.
+    private func pushPendingLocalSchemas() async {
+        guard let database, let schema else { return }
+        for type in schema.types {
+            let id = CKRecord.ID(recordName: type.id, zoneID: zoneID)
+            let ck: CKRecord?
+            do {
+                ck = try await database.record(for: id)
+            } catch let error as CKError where error.code == .unknownItem {
+                ck = nil
+            } catch {
+                NSLog("PurpleLife: pushPendingLocalSchemas fetch \(type.id) failed — \(error.localizedDescription)")
+                continue
+            }
+            let remoteUpdated = ck?["updated_at"] as? String ?? ""
+            let localUpdated = type.updatedAt ?? ObjectType.epochTimestamp
+            if remoteUpdated < localUpdated {
+                await pushType(type)
+            }
         }
     }
 
@@ -469,16 +562,72 @@ final class CloudKitSyncService: ObservableObject {
             database.add(op)
         }
 
-        for record in changedRecords {
+        // Apply schema changes BEFORE object changes — an arriving
+        // object record needs its type already present so the FTS
+        // search-index update in `applyRemote` can resolve fields.
+        // Same logic in reverse for deletions: schema deletions go
+        // last so any object records still living on the local DB
+        // when the schema disappears don't lose their type lookup
+        // mid-apply. CKFetchRecordZoneChangesOperation doesn't
+        // guarantee record-type ordering inside a single fetch, so
+        // we partition the buffered results and order them here.
+        let typeChanges   = changedRecords.filter { $0.recordType == Self.typeRecordType }
+        let objectChanges = changedRecords.filter { $0.recordType == Self.recordType }
+        let objectDeletes = deletedRecordIDs.filter { id in
+            // A deletion only tells us the record name + zone id, not
+            // the type. Object record-ids match a UUID format that
+            // is the same shape as type ids (UUID strings), so we
+            // can't distinguish by name alone. Use a heuristic: if
+            // the id matches a known local type, it's a type
+            // deletion; otherwise treat as object. This is safe
+            // because both apply* paths are idempotent — deleting a
+            // missing local row is a no-op.
+            schema?.type(id: id.recordName) == nil
+        }
+        let typeDeletes = deletedRecordIDs.filter { id in
+            schema?.type(id: id.recordName) != nil
+        }
+
+        for record in typeChanges {
+            await applyRemoteType(record)
+        }
+        for record in objectChanges {
             await applyRemote(record)
         }
-        for id in deletedRecordIDs {
+        for id in objectDeletes {
             try? DatabaseService.shared.deleteObject(id: id.recordName)
             SearchService.delete(recordId: id.recordName)
+        }
+        for id in typeDeletes {
+            schema?.applyRemoteDelete(typeId: id.recordName)
         }
         if let token = newToken {
             serverChangeToken = token
         }
+    }
+
+    /// LWW: apply a remote `PurpleType` record only if its
+    /// `updated_at` beats the local. Same shape as `applyRemote`
+    /// for object records.
+    private func applyRemoteType(_ ck: CKRecord) async {
+        guard let updatedAt = ck["updated_at"] as? String,
+              let typeData  = ck.encryptedValues["typeJSON"] as? Data
+        else {
+            NSLog("PurpleLife: applyRemoteType skipped — malformed type \(ck.recordID.recordName)")
+            return
+        }
+        var type: ObjectType
+        do {
+            type = try JSONDecoder().decode(ObjectType.self, from: typeData)
+        } catch {
+            NSLog("PurpleLife: applyRemoteType decode failed — \(error.localizedDescription)")
+            return
+        }
+        // Ensure the timestamp the server stored wins — the encoded
+        // JSON may carry an older one if a write race happened on the
+        // remote side.
+        type.updatedAt = updatedAt
+        schema?.applyRemote(type)
     }
 
     /// LWW: apply the remote record only if its `updated_at` is greater

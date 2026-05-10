@@ -18,8 +18,18 @@ struct ObjectType: Codable, Identifiable, Hashable {
     var calendarDateKey: String?     // a date / dateTime field key
     var galleryAttachmentKey: String?// an attachment field key (used by gallery for thumbnails)
 
+    /// ISO-8601 timestamp of the last mutation. CloudKit schema sync
+    /// reconciles peers by LWW on this — the more recent of two
+    /// versions wins. Optional so old `schema.json` files (pre
+    /// schema-sync) decode cleanly; `SchemaRegistry.load()` backfills
+    /// a stable epoch value for any type missing it, which sorts
+    /// "older than anything" so the first remote update overwrites.
+    var updatedAt: String?
+
     /// Creates a built-in type. Built-ins have a stable id so user customizations
-    /// keyed by id (e.g. hidden flags) survive across upgrades.
+    /// keyed by id (e.g. hidden flags) survive across upgrades. The
+    /// timestamp is the stable epoch — every real mutation overrides
+    /// it via `updatedAt` stamping in `SchemaRegistry`.
     static func builtIn(
         id: String,
         name: String,
@@ -43,9 +53,16 @@ struct ObjectType: Codable, Identifiable, Hashable {
             primaryFieldKey: primaryFieldKey,
             kanbanGroupKey: kanbanGroupKey,
             calendarDateKey: calendarDateKey,
-            galleryAttachmentKey: galleryAttachmentKey
+            galleryAttachmentKey: galleryAttachmentKey,
+            updatedAt: epochTimestamp
         )
     }
+
+    /// Stable "older than anything" timestamp used as the default for
+    /// types that haven't been touched since schema sync was added.
+    /// Picked as 1970-01-01 so any real edit naturally beats it under
+    /// LWW comparison.
+    static let epochTimestamp = "1970-01-01T00:00:00Z"
 
     /// Returns the field for a given key, if any.
     func field(forKey key: String) -> FieldDef? {

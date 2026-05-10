@@ -24,7 +24,7 @@ See [PLAN.md](PLAN.md) for the build plan, [HANDOFF.md](HANDOFF.md) for the deci
 
 ```sh
 ./build-app.sh        # produces ./PurpleLife.app, Apple-Development-signed with iCloud entitlement
-./run-tests.sh        # runs the PurpleLifeTests bundle (46 tests, ~17 s end-to-end)
+./run-tests.sh        # runs the PurpleLifeTests bundle (51 tests, ~17 s end-to-end)
 ```
 
 Both scripts require **full Xcode** (not just Command Line Tools), `xcodegen` (`brew install xcodegen`), and an Apple Developer account signed in to Xcode. Phase 4's CloudKit entitlement makes Apple Development signing mandatory; the build-script's prior Developer ID Application path was retired.
@@ -51,7 +51,7 @@ Prerequisites + PASS log are in [Spike/CloudKit/SPIKE.md](Spike/CloudKit/SPIKE.m
 
 In rough priority order:
 
-1. **Verify <5 s Mac→Mac latency** — subscriptions infrastructure shipped 2026-05-10; needs a second Mac signed into the same iCloud account to exercise the silent-push round-trip and close the Phase 4 acceptance gate.
-2. **Schema versioning across synced peers** — sketched as a `HANDOFF.md` open item; pre-Phase-4 work that never landed.
-3. **Daily-use ergonomics** — quick-capture menu bar item, keyboard shortcuts, undo.
-4. **Polish toward the prototype** — Today timeline + linked-from rail, two-pane object detail, drag-and-drop schema editor.
+1. **Verify <5 s Mac→Mac latency** — subscriptions infrastructure shipped 2026-05-10; needs a second Mac signed into the same iCloud account to exercise the silent-push round-trip and close the Phase 4 acceptance gate. Also exercises the new `PurpleType` schema-sync path under real APNS delivery.
+2. **Daily-use ergonomics** — quick-capture menu bar item, keyboard shortcuts, undo.
+3. **Polish toward the prototype** — Today timeline + linked-from rail, two-pane object detail, drag-and-drop schema editor.
+4. **WeightTracker subsumption** — new (per scope decision 2026-05-10): port WeightTracker's charts, Smart Import, and themes into the PurpleLife Weight type so WeightTracker can eventually be retired. The CSV importer (Phase 5 starter) is the bridge during the transition.

@@ -45,6 +45,10 @@ final class AppState: ObservableObject {
         // the type definitions they need.
         ObjectEngine.currentSchema = schema
         ObjectEngine.sync = sync
+        // Wire SchemaRegistry → sync so user schema mutations
+        // (add/rename/delete types and fields) push to CloudKit and
+        // peers learn about them. Same mirror pattern as ObjectEngine.
+        schema.sync = sync
 
         // Rebuild the FTS5 index on every launch — cheap for our row
         // counts and immune to a missed write or a restored backup.

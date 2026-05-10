@@ -19,6 +19,13 @@ final class SchemaRegistry: ObservableObject {
 
     private let fileURL: URL
 
+    /// Set by `AppState` at launch — fans schema mutations out to
+    /// CloudKit (`pushType` / `pushDeleteType`). Optional so tests
+    /// that operate on a SchemaRegistry without sync still work; the
+    /// schema-sync hook is fire-and-forget Task and never blocks
+    /// local writes.
+    weak var sync: CloudKitSyncService?
+
     init(fileURL: URL? = nil) {
         let supportDir = DatabaseService.supportDirectory
         try? FileManager.default.createDirectory(at: supportDir, withIntermediateDirectories: true)
@@ -51,6 +58,16 @@ final class SchemaRegistry: ObservableObject {
             diskTypes.append(seed)
         }
 
+        // Backfill the per-type updatedAt for any pre-schema-sync
+        // type that's missing it. The epoch default sorts "older
+        // than anything," so the first remote update via CloudKit
+        // wins LWW and the local copy gets overwritten — exactly
+        // the right thing when an unsynced peer starts following a
+        // synced one.
+        for i in diskTypes.indices where diskTypes[i].updatedAt == nil {
+            diskTypes[i].updatedAt = ObjectType.epochTimestamp
+        }
+
         types = diskTypes
         hiddenBuiltInIds = Set(decoded.hiddenBuiltInIds)
     }
@@ -81,13 +98,20 @@ final class SchemaRegistry: ObservableObject {
 
     /// Add or replace a type (matched by `id`). Use for user-created or
     /// edited types; for hiding a built-in use `setHidden(_:hidden:)`.
+    /// Stamps `updatedAt = now` so peers' LWW reconciliation picks up
+    /// the change.
     func upsertType(_ type: ObjectType) {
-        if let idx = types.firstIndex(where: { $0.id == type.id }) {
-            types[idx] = type
+        var stamped = type
+        stamped.updatedAt = isoNow()
+        if let idx = types.firstIndex(where: { $0.id == stamped.id }) {
+            types[idx] = stamped
         } else {
-            types.append(type)
+            types.append(stamped)
         }
         save()
+        if let sync {
+            Task { await sync.pushType(stamped) }
+        }
     }
 
     /// Delete a user-defined type. Built-ins can't be deleted — call
@@ -99,6 +123,9 @@ final class SchemaRegistry: ObservableObject {
               !types[idx].builtIn else { return false }
         types.remove(at: idx)
         save()
+        if let sync {
+            Task { await sync.pushDeleteType(id: id) }
+        }
         return true
     }
 
@@ -131,11 +158,51 @@ final class SchemaRegistry: ObservableObject {
     /// `ObjectRecord.fieldsJSON` blobs is left in place — old keys are
     /// just unreferenced. A future "compact" pass could prune them, but
     /// keeping them means a re-add of the same field name doesn't lose
-    /// history if the user intended a rename.
+    /// history if the user intended a rename. Same intent as the
+    /// schema-versioning safety net in `ObjectEngine.update` — peers
+    /// running different schema versions don't drop each other's data.
     func removeField(fieldId: String, fromTypeId typeId: String) {
         guard var t = type(id: typeId),
               let idx = t.fields.firstIndex(where: { $0.id == fieldId }) else { return }
         t.fields.remove(at: idx)
         upsertType(t)
+    }
+
+    // MARK: - CloudKit-applied changes
+
+    /// Apply a remote type definition. LWW: only overrides the local
+    /// copy if the remote `updatedAt` is greater. Called by
+    /// `CloudKitSyncService.applyRemoteType` during pull. The hidden
+    /// flag is per-device (`hiddenBuiltInIds`) — not touched by sync.
+    /// No `sync.pushType` echo since the change came FROM the remote.
+    func applyRemote(_ type: ObjectType) {
+        let local = self.type(id: type.id)
+        let localStamp = local?.updatedAt ?? ObjectType.epochTimestamp
+        let remoteStamp = type.updatedAt ?? ObjectType.epochTimestamp
+        if let _ = local, localStamp >= remoteStamp {
+            return
+        }
+        if let idx = types.firstIndex(where: { $0.id == type.id }) {
+            types[idx] = type
+        } else {
+            types.append(type)
+        }
+        save()
+    }
+
+    /// Apply a remote deletion. Built-ins can't be deleted — defensive
+    /// against a remote that might somehow attempt it (shouldn't
+    /// happen since `deleteType` rejects built-ins locally too).
+    func applyRemoteDelete(typeId: String) {
+        guard let idx = types.firstIndex(where: { $0.id == typeId }),
+              !types[idx].builtIn else { return }
+        types.remove(at: idx)
+        save()
+    }
+
+    // MARK: - Helpers
+
+    private func isoNow() -> String {
+        ISO8601DateFormatter().string(from: Date())
     }
 }

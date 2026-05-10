@@ -4,6 +4,28 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-10 — Schema versioning across synced peers
+
+Closes follow-up #3. Two prongs of fix so multi-Mac sync doesn't lose data when peers run different schema versions:
+
+**Schema mirroring through CloudKit.** New `PurpleType` record type in the same custom zone. Same shape as `PurpleObject` records: plaintext `updated_at` for server-side LWW, full serialized `ObjectType` (including fields, view defaults, the lot) in `encryptedValues.typeJSON`. `SchemaRegistry.upsertType` / `deleteType` now push to CloudKit; `CloudKitSyncService.runFetchOperation` partitions buffered changes by record type and applies **schemas before objects**, so an arriving record always finds its type already there. `CKDatabaseSubscription` was already a database-level subscription, so silent push wakes both halves with no new APNS plumbing.
+
+- **`ObjectType.updatedAt`** — new optional ISO-8601 stamp. `SchemaRegistry.load` backfills the epoch (`1970-01-01T00:00:00Z`) for pre-schema-sync types so they sort "older than anything" and the first remote update wins LWW. Built-ins also carry the epoch on construction; `SchemaRegistry.upsertType` stamps `now` on every mutation.
+- **`SchemaRegistry.applyRemote(_:)`** — LWW per-type. Only overrides the local copy if the remote stamp beats it. `applyRemoteDelete(typeId:)` mirrors `pushDeleteType`; refuses to remove built-ins defensively.
+- **`pushPendingLocalSchemas()`** — bootstrap analog of `pushPendingLocalChanges()`. Pushes any local types whose `updatedAt` is ahead of the server. Runs first in the bootstrap sequence so peers' types arrive before their records.
+- **Hidden-flag stays per-device.** `SchemaRegistry.hiddenBuiltInIds` is not synced — different Macs may want different types visible in the sidebar.
+
+**Defensive merge in `ObjectEngine.update`.** Even with schema sync, there's a window between a record arriving on a peer and that peer learning about the new field. If the user edits the same record locally during that window, the form only knows about the local schema's keys — the unknown remote field would have been silently dropped. The fix: `update` now reads the existing JSON, then overlays the incoming fields. Keys absent from the incoming dict are preserved. Same intent as `SchemaRegistry.removeField` leaving orphan data in records ("the field's data is left in place — old keys are just unreferenced").
+
+**5 new `SchemaVersioningTests`**:
+- `testUpdatePreservesUnknownFieldsFromExistingRecord` — defensive merge keeps the "field a peer added later" intact across a local update.
+- `testUpdateAllowsExplicitlyClearingKnownFields` — empty-string values in the incoming dict still replace prior values; merge doesn't accidentally resurrect cleared fields.
+- `testBuiltInTypesCarryEpochUpdatedAt` — backfill default.
+- `testUpsertStampsUpdatedAt` — every mutation bumps past the epoch.
+- `testApplyRemoteWinsOnlyWhenStampIsNewer` — older remote ignored, newer remote replaces local.
+
+**51/51 tests green** (was 46, +5). Build clean.
+
 ### 2026-05-10 — Bug: Settings → Backup → Test gives no visible feedback
 
 The Test button on each backup row called `BackupService.verifyArchive` synchronously and wrote the result into a `Section("Last test result")` rendered _below_ the "Recent backups" list. Two failure modes:

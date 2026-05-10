@@ -12,6 +12,29 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-10 — Schema versioning: mirror schema through CloudKit + defensive merge
+
+Closes follow-up #3 ("schema versioning across synced peers"). The original `PLAN.md` § Open question called for a sketch before Phase 4; that never landed and the gap created two real failure modes:
+
+1. **Invisible field.** Mac A adds a field to Person, writes a record using it. Mac B receives the record but doesn't know the field exists, so the cell renders blank.
+2. **Silent data loss.** Mac B then edits the same record locally. The form only shows the local schema's fields, so `ObjectEngine.update` writes back a JSON blob that omits Mac A's new field — the data is gone before the schema update arrives.
+
+Two prongs of fix; both shipped together because either alone leaves a hole.
+
+**Schema sync via CloudKit.** Same shape as object sync — one CKRecord per `ObjectType`, plaintext `updated_at` for LWW, full serialized type in `encryptedValues.typeJSON`. New record type `PurpleType` in the same `PurpleLifeZone`. The existing `CKDatabaseSubscription` is database-scoped, so silent push wakes both record-type changes and schema-type changes without new APNS plumbing.
+
+Bootstrap order matters: `pushPendingLocalSchemas()` runs before `pushPendingLocalChanges()`, and `runFetchOperation` partitions inbound changes into "type" vs "object" buckets and applies types first. The reason: an arriving object record needs its type already present so `applyRemote` can hand the right `ObjectType` to `SearchService.upsert(record:type:)` for FTS reindexing. Without ordering, the FTS reindex would silently skip records whose type hasn't arrived yet.
+
+`hiddenBuiltInIds` (per-device sidebar visibility) is **not** synced. Different Macs may want different types in the sidebar — that's user preference, not data.
+
+**Defensive merge in `ObjectEngine.update`.** Even with sync running, there's a window between record-arriving-on-peer and schema-arriving-on-peer. The merge closes that window: `update` reads the existing JSON, then overlays the incoming fields. Keys absent from the incoming dict are preserved verbatim. Same intent as the existing `SchemaRegistry.removeField` decision ("the field's data is left in place — old keys are just unreferenced") — additive, never destructive.
+
+**Per-type `updatedAt`.** New optional field on `ObjectType`. `SchemaRegistry.load` backfills the epoch timestamp for pre-schema-sync types so they sort "older than anything" — first remote update wins LWW. `upsertType` stamps `now` on every mutation. `applyRemote` only overrides the local copy when the remote stamp beats it.
+
+**Test coverage**: 5 new `SchemaVersioningTests` cover the deterministic surface (defensive merge in both directions, epoch backfill, upsert stamping, applyRemote LWW). The CloudKit push/pull plumbing isn't unit-testable for the same reason silent push isn't — covered by the Mac→Mac trial that's still queued as item #1.
+
+**Effect on follow-up list**: item #3 closed.
+
 ### 2026-05-10 — Scope: PurpleLife will subsume WeightTracker; PurpleTracker stays separate
 
 Closes the `PLAN.md` § Open question that was previously deferred ("Scope vs `WeightTracker` and `PurpleTracker`").
@@ -92,7 +115,7 @@ Initial build session executed all five plan phases through a working state. Sna
 1. ~~**Real-time CloudKit subscriptions**~~ — resolved 2026-05-10; see "Phase 4 sync: subscriptions landed" entry above. CKDatabaseSubscription is registered in `bootstrap()`; AppDelegate forwards pushes via NotificationCenter; poll is a 5 min recovery sweep now.
 2. ~~**Test infrastructure regression**~~ — resolved 2026-05-10; see entry above. `./run-tests.sh` runs the full bundle (now 46 tests) green in ~17 s.
 3. ~~**Export pipeline**~~ — resolved 2026-05-10; see "Per-type export pipeline shipped" entry above. Records → Export menu writes CSV / Markdown / HTML / PDF or copies CSV / Markdown to clipboard.
-4. **Schema versioning across synced peers** — open question in `PLAN.md` flagged as "sketch before Phase 4." Never sketched. Running different schema versions on two Macs can create drift today.
+4. ~~**Schema versioning across synced peers**~~ — resolved 2026-05-10; see "Schema versioning: mirror schema through CloudKit + defensive merge" entry above. PurpleType records sync the schema; ObjectEngine.update preserves unknown JSON keys.
 5. **Polish toward the prototype** — Today timeline + linked-from rail, two-pane object detail, drag-and-drop schema editor.
 6. **Daily-use ergonomics** — quick-capture menu bar item, keyboard shortcuts per type, undo.
 

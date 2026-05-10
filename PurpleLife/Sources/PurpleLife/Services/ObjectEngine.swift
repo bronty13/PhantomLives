@@ -30,7 +30,22 @@ enum ObjectEngine {
     }
 
     static func update(_ record: ObjectRecord, fields: [String: Any]) throws -> ObjectRecord {
-        let json = (try? JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys]))
+        // Defensive merge — preserve any keys present in the existing
+        // JSON that the caller didn't include. This is the
+        // schema-versioning safety net: if a peer running a stale
+        // schema receives a record carrying a field it doesn't know
+        // about, then the user edits that record locally, the form
+        // only sends back the fields the local schema defines. Without
+        // this merge, the unknown field would be silently dropped.
+        // The same intent is documented in
+        // `SchemaRegistry.removeField` — schema deletions leave their
+        // field data in records untouched. Schema additions sync via
+        // CloudKit so eventually the peer learns about the field, but
+        // the merge closes the window between record-arriving and
+        // schema-arriving.
+        var merged = record.fields()
+        for (k, v) in fields { merged[k] = v }
+        let json = (try? JSONSerialization.data(withJSONObject: merged, options: [.sortedKeys]))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
         var next = record
         next.fieldsJSON = json
