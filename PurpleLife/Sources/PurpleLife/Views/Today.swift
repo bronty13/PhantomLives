@@ -120,8 +120,8 @@ private struct QueryPanel: View {
             }
         }
         .padding(16)
-        .background(Color.secondary.opacity(0.05))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.15)))
+        .background(Theme.card)
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.cardBorder, lineWidth: 0.5))
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
@@ -165,8 +165,8 @@ private struct QueryPanel: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.04))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.18)))
+        .background(Theme.bg.opacity(0.6))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.hairline, lineWidth: 0.5))
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }

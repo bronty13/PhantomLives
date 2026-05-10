@@ -235,13 +235,13 @@ struct RecordsTableBody: View {
                 Text(field.name)
                     .font(.caption.weight(.semibold))
                     .textCase(.uppercase).tracking(0.5)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.textFaint)
                     .frame(width: columnWidth(for: field), alignment: .leading)
                     .padding(.vertical, 8).padding(.horizontal, 12)
             }
         }
-        .background(Color.secondary.opacity(0.08))
-        .overlay(alignment: .bottom) { Divider() }
+        .background(Theme.bg.opacity(0.6))
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 0.5) }
     }
 
     private func dataRow(fields: [FieldDef], row: ObjectRecord, even: Bool) -> some View {
@@ -257,8 +257,8 @@ struct RecordsTableBody: View {
             }
         }
         .contentShape(Rectangle())
-        .background(even ? Color.clear : Color.secondary.opacity(0.04))
-        .overlay(alignment: .bottom) { Divider().opacity(0.6) }
+        .background(even ? Color.clear : Theme.rowHover)
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 0.5) }
         .onTapGesture(count: 2) { onOpen(row.id) }
         .contextMenu {
             Button("Open") { onOpen(row.id) }
@@ -367,8 +367,8 @@ struct RecordsKanbanBody: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.06))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.18)))
+        .background(Theme.card)
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.cardBorder, lineWidth: 0.5))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { onOpen(record.id) }

@@ -4,6 +4,14 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-10 — Theme + visual pass against the design handoff
+
+- **`Theme.swift`** — palette pulled out of `Design/purplelife/project/chrome.jsx` (`PE_LIGHT` / `PE_DARK`). Surfaces (`bg`, `card`, `sidebarOpaque`), text tiers (`text` / `textDim` / `textFaint`), lines (`cardBorder` 6 % black/white, `hairline` 7 %, `rowHover` 4–5 %), accent (`oklch(0.56 0.14 295)` → sRGB ~#8B65C1 light, brighter in dark). All values are sRGB approximations of the prototype's oklch — SwiftUI's `Color` doesn't take oklch directly.
+- **Today panels** now sit on `Theme.card` with a `0.5px Theme.cardBorder` stroke — matches the design's white-card-on-cream / dark-card-on-warm-near-black surfaces. Inner result cards switch from `Color.primary.opacity(0.04)` to `Theme.bg.opacity(0.6)` so they read clearly against the panel.
+- **Kanban cards** use the same card chrome.
+- **Table view** column headers swap `secondary` for `Theme.textFaint` (no opacity tricks), alternating rows use `Theme.rowHover`, dividers are explicit 0.5 px `Theme.hairline` rectangles instead of system dividers.
+- **Schema editor** field-type palette tiles switch to `Theme.card` with `Theme.cardBorder`; field-row separators use `Theme.hairline`; bottom palette tray uses `Theme.bg.opacity(0.6)` so it reads as a distinct surface.
+
 ### 2026-05-10 — Real attachments + WeightTracker CSV import
 
 - **`AttachmentService`** — content-addressed local file storage. Adds files from any source URL into `~/Library/Application Support/PurpleLife/attachments/<sha256>.<ext>`. Same content referenced by multiple object/field pairs de-duplicates on disk; deleting a row only prunes the file when the last ref is gone. Cascading FK deletes on the `objects` table drop attachment rows automatically.

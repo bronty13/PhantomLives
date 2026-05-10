@@ -206,7 +206,7 @@ struct SchemaEditorScreen: View {
         }
         .padding(.horizontal, 20).padding(.vertical, 10)
         .overlay(alignment: .bottom) {
-            Divider().opacity(0.5)
+            Rectangle().fill(Theme.hairline).frame(height: 0.5)
         }
     }
 
@@ -233,9 +233,9 @@ struct SchemaEditorScreen: View {
                                     .font(.caption)
                             }
                             .frame(width: 92, height: 56)
-                            .background(Color.secondary.opacity(0.06))
+                            .background(Theme.card)
                             .overlay(RoundedRectangle(cornerRadius: 8)
-                                        .stroke(Color.secondary.opacity(0.18)))
+                                        .strokeBorder(Theme.cardBorder, lineWidth: 0.5))
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
                         .buttonStyle(.plain)
@@ -245,7 +245,7 @@ struct SchemaEditorScreen: View {
                 .padding(.horizontal, 20).padding(.bottom, 12)
             }
         }
-        .background(Color.secondary.opacity(0.05))
+        .background(Theme.bg.opacity(0.6))
     }
 
     // MARK: - Actions
