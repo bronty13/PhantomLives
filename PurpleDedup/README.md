@@ -6,7 +6,7 @@ the App Store.
 
 ## Status
 
-**0.21.0 — FFmpeg sidecar for MKV / AVI / WMV / WebM (opt-in).** All seven
+**0.21.2 — Hidden-asset bug fix + reclaimable metric + UI polish.** All seven
 phases of the requirements doc plus a long list of user-driven additions are
 shipped. See `CHANGELOG.md` for the per-version detail.
 

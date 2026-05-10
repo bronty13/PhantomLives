@@ -3,6 +3,56 @@
 Versions follow `1.0.<commit-count>` derived from git in `build-app.sh`. This file
 narrates *what* changed and *why*; bundle versions just label the moment.
 
+## 0.21.2 — Hidden Photos fix + reclaimable metric + UI polish (2026-05-10)
+
+Patch release rolling up the user-visible fixes and visual refinements
+that landed after 0.21.1.
+
+### Bug fix: hidden Photos assets always scanned
+
+User reported "the apple photos integration always shows hidden files
+no matter what was checked." Root cause: `PhotoLibraryFilter.isActive`
+returned false when no constraint was configured (or only
+`includeHidden=false`), so both the GUI's `runScan` and the CLI skipped
+PhotoKit resolution and handed the raw `.photoslibrary` source to the
+walker. The walker can't see Photos.app's hidden flag — it's a
+`Photos.sqlite` concern, not a filesystem attribute — so without a
+basename whitelist it walked every UUID under `originals/`, hidden
+assets included.
+
+Fix: ALWAYS resolve the filter for `.photoslibrary` sources, even when
+the filter is inactive. The unconstrained PhotoKit path
+(`PHAsset.fetchAssets` with `includeHiddenAssets=false`) returns only
+non-hidden assets, which is the correct default. Sidebar status now
+shows "Photos library: N non-hidden assets (default — hidden
+excluded)" so the user can see the resolution happened.
+
+### Polish
+
+- **Reclaimable metric** in the left sidebar — large purple rounded
+  display of the total reclaimable byte count, with a small-caps
+  "RECLAIMABLE" label, group count, and "N marked" indicator. Replaces
+  the generic "Duplicates" header once a scan has results. Adapted
+  from the design handoff's left-rail footer.
+- **"Suggested keep" pill** on the engine's recommendation, "KEEP"
+  pill (with hand icon) on manual overrides. Different fill alphas
+  + shadow weights so engine recommendations read as advisory and
+  user overrides read as assertive. Border colours track the same
+  hierarchy.
+- **Photos hint banner** in the sidebar now uses macOS vibrancy
+  material (`.thinMaterial`) plus a 0.5pt purple stroke instead of a
+  flat 8%-alpha purple wash. Adapts cleanly between light and dark
+  schemes.
+- **Diff highlight** in the metadata table bumped from 18% → 25%
+  alpha so differing cells stay legible on darker backgrounds.
+
+### Internal
+
+- `ComparisonView.swift` decomposed from 698 → 95 lines across
+  `ClusterSelection`, `DecisionStore`, `MetadataLoader`,
+  `ClusterHeader`, `FileCard`, `MetadataDiffTable`. No behaviour
+  change; sets up further redesign work.
+
 ## 0.21.0 — FFmpeg sidecar for MKV / AVI / WMV / WebM (2026-05-09)
 
 AVFoundation can decode MP4 / MOV / M4V / MPG / ProRes / HEVC / H.264, but
