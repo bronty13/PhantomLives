@@ -1,176 +1,157 @@
-# Personal ERP — Refined Plan
+# PurpleLife — Build Plan
 
 ## Context
 
-Refinement of `~/Downloads/personal-erp-plan.md` — a native macOS "Life OS" for tracking planner, hobbies (WoW, photography), contacts, health, and reading. This document keeps the original's good bones (native + CloudKit + object model + Tap Forms trial) and addresses the gaps that would bite in week 2–3.
+PurpleLife is a native macOS "Life OS": one app for planner, hobbies (WoW, photography), extended contacts, reading log, and weight, organized as configurable object types with relations. Data lives in CloudKit, end-to-end encrypted with keys the user controls, and is mirrored across the user's Macs. Daily restorable backups land in the standard PhantomLives location.
 
-Two locked decisions going into this refinement:
-- **E2E encryption with a key the user controls is required** (not Apple-managed-only)
-- A design exercise in claude.ai/design runs in parallel with build planning
+This document supersedes both `PLAN-original.md` (kept as historical context) and the prior diff-style refinement of this file. It is written as a standalone build plan: name reconciled to the directory and Purple* family, conventions from `CLAUDE.md` wired in, encryption locked, layout matched to existing siblings (`Timeliner`, `PurpleTracker`, `WeightTracker`).
 
-## What carries over unchanged
+## Locked decisions
 
-- Tap Forms-first trial before committing code
-- Native macOS, Swift / SwiftUI, SQLite, CloudKit for sync
-- Object-based data model: configurable types, custom fields, relations, multiple views (table, kanban, calendar, gallery)
-- Daily timestamped backups in restorable format
-- No Obsidian (with one caveat — see "tools to revisit")
+- **Name** — `PurpleLife`. Matches the directory and the Purple* family naming (PurpleIRC, PurpleDedup, PurpleTracker).
+- **Stack** — Swift / SwiftUI, GRDB for SQLite, XcodeGen-managed `project.yml`, `build-app.sh` deriving `CFBundleShortVersionString` from git commit count. Same stack as `Timeliner` and `PurpleTracker`.
+- **Sync** — CloudKit. First subproject in PhantomLives to use it (confirmed by grep; budget a spike, see Phases).
+- **Encryption** — `CKRecord.encryptedValues`. Apple cannot decrypt; keys live in the user's iCloud Keychain trust circle, not on Apple servers. Custom AES-GCM is rejected for v1: it costs 2–3 weeks for migration custody / rotation / multi-device recovery, breaks CloudKit indexes, and buys little against any realistic threat model. The JSON-blob storage shape (below) keeps a future migration to client-held keys mechanical.
+- **Storage shape** — single `objects` table:
+  - typed columns: `id`, `type_id`, `parent_id`, `created_at`, `updated_at`
+  - encrypted JSON `fields` blob carrying everything else
+  - lift specific fields out of JSON to typed columns only when a query is provably slow
+  - no SQLCipher: CloudKit's `encryptedValues` covers field encryption in the cloud; on-disk encryption is FileVault's job
+  - EAV (entity-attribute-value) is rejected: it punishes both sync and queries
+- **Single target** — no `Core` Swift package split. No sibling app uses one, and the iOS app is genuinely a separate project. The JSON-blob storage shape is portable on its own when iOS happens.
+- **GRDB, not SwiftData** — SwiftData's compile-time-modeled assumption is the wrong shape for runtime-defined types. Both Timeliner and PurpleTracker already use GRDB.
 
-## Refinements
+## Reuse from siblings
 
-### 1. E2E encryption — the original plan undercounts the work
+Every system service has a sibling implementation to copy from. Default to copy-then-adapt; only diverge with reason.
 
-The original implies "SQLCipher locally + CloudKit sync" gives end-to-end encryption. It doesn't. Standard `CKRecord` fields are encrypted by Apple in transit and at rest, but **Apple holds the keys**. For E2E with keys you control, three options:
+| Concern | Source file |
+|---|---|
+| Auto-backup-on-launch (debounce, retention trim, restore-with-safety-backup, listBackups newest-first) | `Timeliner/Sources/Timeliner/Services/BackupService.swift` and `Timeliner/Tests/TimelinerTests/BackupServiceTests*` |
+| GRDB pool, support directory layout, schema migrations | `Timeliner/Sources/Timeliner/Services/DatabaseService.swift` |
+| Export pipeline (CSV / Markdown / PDF / clipboard) | `Timeliner/Sources/Timeliner/Services/ExportService.swift` |
+| `build-app.sh` (git-derived version, /tmp build dir, signing) | `Timeliner/build-app.sh` |
+| `project.yml` (XcodeGen, GRDB SPM dep, deployment target macOS 14) | `Timeliner/project.yml` |
+| `Sources/<Name>/{App,Models,Services,Views,Resources}` source layout | `PurpleTracker/Sources/PurpleTracker/` |
+| Doc set (`README.md`, `CHANGELOG.md`, `USER_MANUAL.md`, `INSTALL.md`, `HANDOFF.md`) | any sibling |
 
-| Approach | Trust model | Cost |
-|---|---|---|
-| CloudKit `encryptedValues` (per-field) | True E2E. Apple cannot decrypt. Key custody anchored in iCloud Keychain trust circle, not Apple's servers. | Low. Native API since macOS 12. |
-| Client-side AES-GCM with your own key | You physically hold the key in Keychain. Maximum control. Apple has zero access even theoretically. | High. You re-implement key custody, rotation, escrow, multi-device recovery. CloudKit indexes unusable on encrypted fields → all queries become local. +2–3 weeks. |
-| Hybrid (queryable fields plaintext, sensitive fields client-encrypted) | Mixed | Most complexity; classify every field |
+## PhantomLives conventions checklist
 
-**Recommendation given "user controls the key" requirement:**
+All mandated by `CLAUDE.md`. Calling them out explicitly so they don't slip during build phases.
 
-Start with **`encryptedValues`**. Its trust model genuinely matches "Apple can't read my data" — the keys exist only inside the user's iCloud Keychain trust circle, not on Apple's servers. The literal interpretation of "key I physically hold" (option 2) buys very little additional security against any realistic threat model and costs weeks. If after a real evaluation you still want option 2, the JSON-blob storage shape (next section) makes the migration mechanical.
+- **Default user-visible output dir** — `~/Downloads/PurpleLife/`. Created on demand. Exports, generated reports, and any other user-facing output land here. User overrides persist (UserDefaults).
+- **Auto-backup-on-launch**:
+  - Path: `~/Downloads/PurpleLife backup/PurpleLife-YYYY-MM-DD-HHmmss.zip`
+  - Contents: zip of `~/Library/Application Support/PurpleLife/` (DB + settings + attachments)
+  - Retention: 14 days default (`0` means keep forever)
+  - Debounce: skip launch run if previous successful backup is < 5 minutes old
+  - Failure mode: `NSLog`, never throw — the app must launch even if backup fails
+  - Settings keys: `autoBackupEnabled`, `backupPath`, `backupRetentionDays`, `lastBackupAt`
+- **Settings → Backup UI** — toggle for `autoBackupEnabled` (default on), text field + "Choose…" picker for backup directory with resolved path in monospaced caption, retention stepper, "Run backup now" button, "Recent backups" list with Test / Restore (with mandatory pre-restore safety backup) / Reveal in Finder, last-backup timestamp readout.
+- **Required backup tests**:
+  - `debounce` — second call within 5 min is a no-op
+  - `retention trim` — only files matching the `PurpleLife-` prefix in the backup dir are removed when older than the retention window; unrelated files are left alone
+  - `target-directory auto-create` — `runBackup` succeeds when the destination directory doesn't exist yet
+  - `list ordering` — `listBackups` returns newest-first
+- **Internal data still under** `~/Library/Application Support/PurpleLife/` — DB, settings, attachments, logs.
+- **Release hygiene every change** — bump version (auto via `build-app.sh` + git commit count), CHANGELOG entry, README + USER_MANUAL update where affected, in-code constants/comments updated, tests added/updated for bug fixes and new behavior, operational files (`project.yml`, `build-app.sh`) updated where relevant.
 
-**Action before week 1:** Decide `encryptedValues` vs. custom AES. They produce different schemas and sync code.
-
-### 2. Dynamic schema is the hardest part — and it was hidden in "weeks 3–4"
-
-"Add fields anytime to any type" = runtime schema. SwiftData and Core Data are compile-time-modeled and don't fit this cleanly.
-
-**Recommended storage shape:** single `Object` table with a JSON `fields` column.
-- Plays well with `encryptedValues` (one encrypted blob per object)
-- Indexed metadata columns: `type_id`, `created_at`, `updated_at`, `parent_id`
-- Use **GRDB** rather than SwiftData (SwiftData's compile-time model assumption is the wrong shape for this app)
-- Lift specific fields out of JSON to typed columns only when a query becomes slow
-
-EAV (entity-attribute-value) is more "pure" but punishes sync and queries; skip it.
-
-### 3. iOS from day one, even if you don't ship it for a year
-
-CloudKit container ID, schema, and module boundaries are painful to retrofit. Mitigation:
-- All non-UI code lives in a Swift Package called `Core` (storage, sync, crypto, object engine, backup)
-- Mac app and (eventual) iOS app both import `Core`
-- No `AppKit` / `UIKit` imports inside `Core`
-
-Cost: ~2 days in week 1. Savings: weeks later.
-
-### 4. Backup-restore moves to phase 1
-
-The original plan acknowledges "test restore before trusting data" but lands restore in week 6. Flip it: implement export + automated restore round-trip *as the phase 1 acceptance test*. No data goes in until restore is proven.
-
-### 5. Tools to revisit before writing code
-
-Original list: Tap Forms, Ninox, Trilium, Anytype. Add:
-- **Capacities** — Notion-like with first-class object types; the closest philosophical match
-- **Obsidian Bases** (shipped late 2025) — gives Obsidian a database layer; mildly reopens the "no Obsidian" call
-- **NotePlan** — same daily-planner-as-front-door hypothesis
-
-30 minutes each. Cheap insurance.
-
-## Revised build phases
-
-| Phase | Original | Revised | Notes |
-|---|---|---|---|
-| 1. Foundation | weeks 1–2 | **weeks 1–3** | + `Core` package, CloudKit container, encryption decision, backup-restore loop |
-| 2. Object engine + 4 views | weeks 3–4 | **weeks 4–7** | Dynamic schema + 4 view types is its own subproject |
-| 3. Planner | week 5 | **weeks 8–9** | |
-| 4. CloudKit E2E sync + conflict resolution | week 6 | **weeks 10–11** | |
-| 5. First real use cases | week 7+ | **week 12+** | |
-
-Realistic budget to "real use": ~3 months of personal-project time, not ~7 weeks.
-
-## Sketch of repo structure
+## Repo structure
 
 ```
-PersonalERP/
-  Core/                            # Swift package, platform-agnostic
-    Sources/Core/
-      Storage/                     # GRDB, schema, migrations
-      Object/                      # types, fields, relations
-      Sync/                        # CloudKit mirror
-      Crypto/                      # encryptedValues wrapper
-      Backup/                      # export + restore
-  Mac/                             # macOS app target
-    Views/
-      Today.swift, Sidebar.swift, TableView.swift,
-      KanbanView.swift, CalendarView.swift, GalleryView.swift,
-      Detail.swift, SchemaEditor.swift, QuickSwitcher.swift, Settings.swift
-  Tests/CoreTests/
-    BackupRestoreRoundtripTests.swift   # phase 1 gate
-    SyncRoundtripTests.swift            # phase 4 gate
+PurpleLife/
+├── README.md
+├── CHANGELOG.md
+├── USER_MANUAL.md
+├── INSTALL.md
+├── HANDOFF.md
+├── PLAN.md                         # this file
+├── PLAN-original.md                # historical context
+├── project.yml                     # XcodeGen, GRDB dep, macOS 14
+├── build-app.sh                    # cloned from Timeliner
+├── run-tests.sh                    # cloned from Timeliner
+├── Sources/PurpleLife/
+│   ├── App/                        # AppMain, Info.plist, .entitlements (CloudKit)
+│   ├── Models/                     # ObjectRecord, ObjectType, FieldDef, Relation, AppSettings
+│   ├── Services/
+│   │   ├── DatabaseService.swift           # GRDB pool + migrations
+│   │   ├── BackupService.swift             # auto-on-launch (Timeliner pattern)
+│   │   ├── CloudKitSyncService.swift       # NEW — first in family
+│   │   ├── ObjectEngine.swift              # CRUD over the objects table
+│   │   ├── SchemaRegistry.swift            # type & field definitions
+│   │   ├── ExportService.swift
+│   │   └── SearchService.swift             # FTS5 over decrypted blobs
+│   ├── Views/
+│   │   ├── Today.swift
+│   │   ├── Sidebar.swift
+│   │   ├── TableView.swift
+│   │   ├── KanbanView.swift
+│   │   ├── CalendarView.swift
+│   │   ├── GalleryView.swift
+│   │   ├── Detail.swift
+│   │   ├── SchemaEditor.swift
+│   │   ├── QuickSwitcher.swift             # ⌘K
+│   │   └── Settings/                       # Backup pane lives here
+│   └── Resources/
+└── Tests/PurpleLifeTests/
+    ├── BackupServiceTests.swift            # mirrors Timeliner's
+    ├── BackupRoundtripTests.swift          # phase-1 gate
+    ├── ObjectEngineTests.swift             # phase-2 gate
+    ├── SchemaMigrationTests.swift
+    └── CloudKitSyncTests.swift             # phase-4 gate (recorded fixtures)
 ```
+
+## Design source of truth
+
+The visual design is delivered as `~/Downloads/PurpleLife-handoff.zip` on the user's local machine. Every screen built — Today, Sidebar, TableView, KanbanView, CalendarView, GalleryView, Detail, SchemaEditor, QuickSwitcher, Settings — is implemented from that handoff. Treat it as the spec for layout, typography, color, spacing, and component shape.
+
+Process:
+
+1. Unpack the zip into `PurpleLife/Design/` locally (gitignored if it contains large binaries; commit a manifest of screen names if not committing the assets themselves).
+2. Each Views/*.swift implementation references its source screen by filename.
+3. Any deliberate deviation from the handoff is recorded in `HANDOFF.md` with a one-line reason.
+4. The Phase 2 acceptance gate includes a visual-review check against the handoff.
+
+## Build phases
+
+```mermaid
+flowchart TD
+    P0[Phase 0<br/>Tap Forms trial · 1 week<br/>model 3 real use cases<br/>decision: build or stop]
+    P1[Phase 1: Foundation · ~3 weeks<br/>Sources skeleton · GRDB · objects table<br/>BackupService cloned from Timeliner<br/>Backup → wipe → restore round-trip green]
+    P2[Phase 2: Object engine + 4 views · ~4 weeks<br/>SchemaRegistry · type/field editor<br/>table · kanban · calendar · gallery<br/>FTS5 search · cross-type links]
+    SP[CloudKit spike · 2-day timebox<br/>encryptedValues round-trip on a toy schema]
+    P3[Phase 3: Today / Planner · ~2 weeks<br/>queries object engine · no hard-coded modules]
+    P4[Phase 4: CloudKit E2E sync · ~3 weeks<br/>encryptedValues mirror · conflict resolution]
+    P5[Phase 5: First real use cases<br/>Person · WoW Char · Camera · Book · Weight<br/>migrate ≥1 workflow off its current home]
+
+    P0 --> P1 --> P2 --> P3 --> P4 --> P5
+    P1 --> SP --> P4
+```
+
+Realistic budget to "real use": ~3 months of personal-project time. The CloudKit spike runs in parallel with Phase 2 to de-risk Phase 4, since no sibling has used CloudKit before and we have no internal pattern to copy.
 
 ## Phase acceptance tests
 
-- **Phase 1:** create 100 random objects → force-quit → restart, all present. Backup → wipe → restore, identical. Sync to second Mac, identical.
-- **Phase 2:** define Person, Book, Camera; instances render in table, kanban, calendar, gallery; cross-type links work; search returns across all three.
-- **Phase 3:** Today view pulls planner items, current weight entry, currently-reading book from the object engine (no hard-coded modules).
-- **Phase 4:** typical edit syncs Mac→Mac in <5s. Conflict test: edit same field offline on both Macs, reconnect, deterministic resolution.
-- **Phase 5:** migrate at least one real life-tracking workflow off its current home.
+| Phase | Gate |
+|---|---|
+| 0 | Tap Forms tried for 1 week against ≥3 real use cases (WoW characters, contacts, weight log). Documented gaps. Decision recorded: build or stop. |
+| 1 | Create 100 random objects → force-quit → restart, all present. Backup written to `~/Downloads/PurpleLife backup/`, archive opens, restore into a fresh support dir matches row counts. The four required backup tests (`debounce`, `retention trim` on `PurpleLife-` prefix, `target-directory auto-create`, `list ordering` newest-first) pass. |
+| 2 | Define Person, Book, Camera in the schema editor; instances render in table, kanban, calendar, and gallery views; cross-type links work; FTS5 search returns hits across all three types. **Visual review**: each of the four list views and the schema editor matches the corresponding screen in `~/Downloads/PurpleLife-handoff.zip`. |
+| 3 | Today view assembles planner items + current weight + currently-reading book by querying the object engine — no hard-coded modules in the view. |
+| 4 | A typical edit syncs Mac→Mac in <5 s. Same-field offline edit on both Macs reconciles deterministically on reconnect. CloudKit dashboard shows encrypted fields as opaque blobs. |
+| 5 | At least one real life-tracking workflow migrated off its current home and used continuously for ≥2 weeks without falling back. |
 
-## Design exercise (parallel track)
+## Open questions that genuinely need a decision
 
-**Approach:** mood board first, then generation.
+- **Scope vs `WeightTracker` and `PurpleTracker`** — `WeightTracker` already owns weight tracking (charts, Smart Import, themes); `PurpleTracker` owns work-tracking. The PurpleLife "Weight" object type can: (a) supersede WeightTracker, (b) coexist and import its CSV, or (c) leave Weight to WeightTracker and only carry an aggregate. Decide before Phase 5. Default if undecided: (b) coexist + CSV import.
+- **Search** — SQLite FTS5 over decrypted fields at index time, or skip incremental search for v1? Recommendation: FTS5 from Phase 2; cost is small and Timeliner already uses it.
+- **Attachments** — `CKAsset` vs external file refs. Matters for photo libraries (potentially hundreds of MB). Decide before Phase 2 so the object model accommodates either.
+- **Schema versioning across synced peers** — user-driven type/field changes need a migration story when peers are on different schema versions. Sketch before Phase 4.
 
-1. Pull screenshots from Things 3, Bear, Reeder, Anytype, Tap Forms, Capacities. For each, write one line: "I want to steal X from this." (Sidebar from Things, density from Reeder, type editor from Anytype, etc.)
-2. Then run the prompt below in claude.ai/design. Iterate on the Today / Planner screen first — it sets the tone for everything else.
+## Out of scope (explicitly)
 
-### claude.ai/design prompt
-
-```
-Design a native macOS app called "Personal ERP" — a single-user "Life OS"
-for tracking everything personal: contacts, hobbies (WoW characters,
-photography gear), reading log, weight, and a daily planner that pulls
-from all of it.
-
-The defining feature: object-based, fully configurable. The user defines
-types (Person, Camera, Book, Game Character, Photo Shoot) with custom
-fields. The app renders table, kanban, calendar, and gallery views over
-any type. Think Anytype + Tap Forms + Things 3, native to macOS.
-
-Visual language:
-- macOS Sequoia/Tahoe-native: translucent sidebar, SF Symbols, native
-  toolbar with traffic lights, real macOS controls
-- Calm, structured, generous whitespace — not a busy enterprise tool
-- Light and dark themes
-- References: Things 3 (sidebar + clarity), Bear (typography),
-  Reeder (density), Anytype (type system), Capacities (object UI)
-
-Design these screens, in this order:
-1. Today / Planner — central home. Timeline, today's linked objects
-   (current book, today's weight, today's photo shoot), quick capture.
-2. Sidebar — object types grouped, saved views, search at top.
-3. Type table view — generic spreadsheet for any object type
-   (Contacts shown as the example).
-4. Type kanban view — WoW characters by status as the example.
-5. Type calendar view — Photo Shoots as the example.
-6. Type gallery view — Photos as the example.
-7. Object detail — fields, linked objects, attachments, notes, history.
-8. Schema builder — how a user adds a field or defines a new type.
-   This is the most distinctive screen; spend extra design effort here.
-9. Quick switcher (Cmd+K) — global search across all object types.
-10. Settings — sync status, encryption, backup, type management.
-
-Constraints:
-- Single-window, sidebar + main content layout
-- Keyboard-first; show key shortcuts inline where natural
-- Native macOS chrome and behavior (no custom title bars, no web-app feel)
-- Designed for one user with potentially thousands of objects
-
-Show light mode for screens 1–5 and dark mode for 6–10 so I can see both.
-```
-
-## Still-open questions
-
-- [ ] Trial Tap Forms for a week before any code?
-- [ ] `encryptedValues` vs. custom AES — final call before week 1
-- [ ] Search: SQLite FTS5 over locally-decrypted fields, or skip incremental search for v1?
-- [ ] Attachments: CloudKit `CKAsset` vs. external file refs (matters for big photo libraries)
-- [ ] Schema versioning — user-driven type changes need a migration story
-
-## What this plan deliberately does NOT include
-
-- A decision on whether to build at all. Tap Forms might cover 80% — that's still the right gate.
-- An iOS UI plan. The `Core` split makes it possible later, but the iOS app is genuinely a separate project.
-- Any code. This is planning + design preparation only.
+- iOS app — the JSON-blob storage shape keeps it possible later without a `Core` package split, but the iOS app is a separate project.
+- Notarization / public distribution — personal multi-Mac install only; signed local build is sufficient.
+- Subsuming `PurpleTracker` — different domain (work matters), different lifecycle.
+- Importers from Tap Forms / Anytype / Capacities — manual entry only for v1.
+- A decision on whether to build at all — that lives in Phase 0.
