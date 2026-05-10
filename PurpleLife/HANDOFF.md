@@ -12,6 +12,22 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-10 — Daily-use ergonomics: menu-bar quick capture + ⌘N / ⌘1–⌘9; undo split out
+
+Closes the menu-bar + shortcuts halves of follow-up #2. Real `NSUndoManager` integration is split off into its own follow-up — it touches every mutation path in `ObjectEngine` and `SchemaRegistry` and rushing it alongside UI work invites subtle bugs.
+
+**Quick-capture popover** uses SwiftUI's `MenuBarExtra` (macOS 13+ — fine for our 14+ floor). The popover is a single small view (`Sources/PurpleLife/Views/QuickCaptureMenu.swift`) that picks the type's `primaryFieldKey` (or first text-bearing field as fallback), creates the record via `ObjectEngine.create`, and clears for repeat capture. The last-used type id is persisted in UserDefaults (`PurpleLife.quickCapture.lastTypeId`) so subsequent invocations default to whatever the user picked last.
+
+**Keyboard shortcuts** route through `NotificationCenter` rather than via direct AppState references inside the App-scope `Commands` block. Reason: SwiftUI Commands don't see `@EnvironmentObject` injected into individual scenes — the natural way to access AppState from a Commands block would be to thread it through a parent observable, which is more refactor than the affordance is worth. Notification names are static constants on `AppState` so views and the App scope share a single source of truth (`AppState.newRecordRequestedNotification`, `AppState.jumpToTypeIndexNotification`).
+
+- **⌘N** is bound via `CommandGroup(replacing: .newItem)` so it overwrites SwiftUI's default "New Window" command (we use a single `WindowGroup`; a second window would just be another copy of the same UI).
+- **⌘1…⌘9** are nine fixed menu items with generic labels ("Jump to type N"). The label is a fallback for menu-browsing; the shortcut is the affordance. Making labels reactive to `schema.visibleTypes` requires plumbing AppState into the App-scope Commands block — deferred.
+- Notification listeners are scoped: `RecordsScreen` only acts on ⌘N when `appState.selectedTypeId == typeId` (multiple `RecordsScreen` instances can briefly co-exist in the SwiftUI hierarchy after a type switch); `AppState.init` resolves the jump-to-type index against the current `schema.visibleTypes` (out-of-range = no-op).
+
+**Tests**: 51/51 still green; no new tests. The new code is App-scene wiring + a SwiftUI popover view — neither testable without a UI test host. The notification-routing logic could in principle be unit-tested with a fixture observer, but the surface is small enough that it's cheaper to verify by hand than to scaffold.
+
+**Effect on follow-up list**: item #2's first two halves are closed. Undo is split out as a new item.
+
 ### 2026-05-10 — Schema versioning: mirror schema through CloudKit + defensive merge
 
 Closes follow-up #3 ("schema versioning across synced peers"). The original `PLAN.md` § Open question called for a sketch before Phase 4; that never landed and the gap created two real failure modes:
@@ -117,7 +133,8 @@ Initial build session executed all five plan phases through a working state. Sna
 3. ~~**Export pipeline**~~ — resolved 2026-05-10; see "Per-type export pipeline shipped" entry above. Records → Export menu writes CSV / Markdown / HTML / PDF or copies CSV / Markdown to clipboard.
 4. ~~**Schema versioning across synced peers**~~ — resolved 2026-05-10; see "Schema versioning: mirror schema through CloudKit + defensive merge" entry above. PurpleType records sync the schema; ObjectEngine.update preserves unknown JSON keys.
 5. **Polish toward the prototype** — Today timeline + linked-from rail, two-pane object detail, drag-and-drop schema editor.
-6. **Daily-use ergonomics** — quick-capture menu bar item, keyboard shortcuts per type, undo.
+6. ~~**Daily-use ergonomics**~~ — partially resolved 2026-05-10 (menu-bar quick capture + ⌘N + ⌘1–⌘9 shortcuts); undo split out into its own follow-up item.
+7. **Undo across mutations** — NSUndoManager integration for ObjectEngine.create/update/delete and SchemaRegistry mutations. Touches every mutation path; deserves a focused commit. New 2026-05-10.
 
 ### 2026-05-10 — Phase 4 sync: poll on a 30s interval; subscriptions deferred
 

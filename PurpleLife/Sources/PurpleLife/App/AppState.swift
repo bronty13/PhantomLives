@@ -6,6 +6,16 @@ import SwiftUI
 /// DB, and exposes the singleton `DatabaseService` to views.
 @MainActor
 final class AppState: ObservableObject {
+
+    /// Notification posted when the user invokes the ⌘N "New record"
+    /// menu command. `RecordsScreen` observes and creates a new record
+    /// of its currently-displayed type.
+    static let newRecordRequestedNotification = Notification.Name("PurpleLife.newRecordRequested")
+
+    /// Notification posted when the user invokes a ⌘1…⌘9 "Jump to
+    /// type" command. `userInfo["index"]` carries the 1-based position
+    /// in `SchemaRegistry.visibleTypes`.
+    static let jumpToTypeIndexNotification = Notification.Name("PurpleLife.jumpToTypeIndex")
     @Published var settingsStore = SettingsStore()
     @Published var schema = SchemaRegistry()
     @Published var sync = CloudKitSyncService()
@@ -71,6 +81,26 @@ final class AppState: ObservableObject {
         showTodayInDetail = true
 
         reloadAll()
+
+        // ⌘1…⌘9 menu commands post a notification with a 1-based
+        // index; resolve here against `schema.visibleTypes` and route
+        // to the existing `selectedTypeId` binding so the sidebar
+        // reflects the change naturally.
+        NotificationCenter.default.addObserver(
+            forName: AppState.jumpToTypeIndexNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let self,
+                  let index = note.userInfo?["index"] as? Int else { return }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let visible = self.schema.visibleTypes
+                guard index >= 1, index <= visible.count else { return }
+                self.selectedTypeId = visible[index - 1].id
+                self.showTodayInDetail = false
+            }
+        }
     }
 
     /// Refresh derived UI state from the database. Called on launch and

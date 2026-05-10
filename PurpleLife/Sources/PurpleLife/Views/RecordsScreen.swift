@@ -88,6 +88,17 @@ struct RecordsScreen: View {
                 appState.openRecordRequest = nil
             }
         }
+        .onReceive(NotificationCenter.default.publisher(
+            for: AppState.newRecordRequestedNotification
+        )) { _ in
+            // ⌘N menu command. Only act if this RecordsScreen is the
+            // one currently shown — multiple types can have a stale
+            // RecordsScreen in the SwiftUI hierarchy when the user
+            // recently switched types.
+            if appState.selectedTypeId == typeId, type != nil {
+                addEmpty()
+            }
+        }
     }
 
     var type: ObjectType? { appState.schema.type(id: typeId) }

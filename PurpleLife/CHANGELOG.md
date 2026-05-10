@@ -4,6 +4,16 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-10 — Daily-use ergonomics: menu-bar quick capture + ⌘N / ⌘1–⌘9 shortcuts
+
+Closes the menu-bar + shortcuts halves of follow-up #2 (formerly "daily-use ergonomics — quick-capture menu bar item, keyboard shortcuts, undo"). Real `NSUndoManager` integration is still queued as a focused follow-up — it touches every mutation path in `ObjectEngine` and `SchemaRegistry` and merits its own commit.
+
+- **`MenuBarExtra` quick capture** — small SF Symbol (`wand.and.sparkles`) in the system menu bar opens a compact popover (`QuickCaptureMenu.swift`): type picker, title field, ⌘↩ to save, Esc to close. Saves into the type's `primaryFieldKey` (or the first text-bearing field for types without a primary). Defaults the type picker to the last one used (`UserDefaults: PurpleLife.quickCapture.lastTypeId`); falls back to the first visible type. After save, shows a brief green "Saved to <type>" status under the field and clears the title for the next entry — supports rapid repeat capture.
+- **⌘N — File → New record** — replaces SwiftUI's default "New Window" command (we use a single `WindowGroup`; a second window isn't useful). Posts `AppState.newRecordRequestedNotification`; `RecordsScreen` observes and creates a new record of its currently-displayed type, opening the detail sheet so the user can fill in fields immediately. No-op when the Today panel is selected (no type to create against).
+- **⌘1 … ⌘9 — Window → Jump to type N** — bound to a fixed set of 9 menu commands. Each posts `AppState.jumpToTypeIndexNotification` with a 1-based index; `AppState` resolves the index against `schema.visibleTypes` and flips `selectedTypeId`. Out-of-range indices (fewer than N visible types) are no-ops. Labels in the Window menu are intentionally generic ("Jump to type 1" etc.) — making them reactive to the actual type names would have required threading AppState into the App-scope Commands block, which is more refactor than the affordance is worth. The shortcut itself is the value.
+
+51/51 tests still green — no test changes (the new code is App-scene wiring + a SwiftUI popover view, neither testable without a UI test host). Build clean.
+
 ### 2026-05-10 — Schema versioning across synced peers
 
 Closes follow-up #3. Two prongs of fix so multi-Mac sync doesn't lose data when peers run different schema versions:

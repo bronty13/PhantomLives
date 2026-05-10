@@ -99,6 +99,20 @@ Field deletes leave the data in `fields_json` blobs in place; a re-add of the sa
 
 `⌘K` opens a floating window with live FTS5 search across every record of every type. Title and all text-bearing field values are indexed (porter tokenizer, prefix-matched). Arrow keys to navigate, Enter to open, Escape to dismiss. The index is rebuilt on every launch (cheap) and maintained incrementally on every mutation.
 
+## Quick capture (menu bar)
+
+A small wand icon (`✨`) in the system menu bar opens a compact capture popover. Pick a type, type the title (or whatever the type's primary field is — Person uses "Name", Book uses "Title", etc.), and hit ⌘↩. The record lands in the database, the popover clears the title field for repeat capture, and a brief green "Saved to <type>" status confirms it. Esc closes the popover.
+
+The type picker remembers your last choice and defaults there next time, so dropping in a string of planner items or weight entries is one keystroke per record.
+
+## Keyboard shortcuts
+
+- **⌘N** — New record of the currently-selected type. (No-op when Today is selected — Today doesn't have a type.)
+- **⌘1 … ⌘9** — Jump to the Nth visible type in the sidebar.
+- **⌘K** — Quick switcher (search every record across every type).
+- **⇧⌘S** — Schema editor.
+- **⌘,** — Settings.
+
 ## Export (Records → toolbar)
 
 Every type's records list has an Export menu in the toolbar (next to **New X**). Two groups of actions:
