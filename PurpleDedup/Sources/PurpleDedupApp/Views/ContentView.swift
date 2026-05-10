@@ -67,6 +67,12 @@ struct ContentView: View {
     /// my Photos library AND on disk somewhere else?" questions.
     @State private var crossSourceFilterOn: Bool = false
 
+    /// Cluster-kind chips in the sidebar. Empty set = all kinds visible
+    /// (the default). Tapping a chip toggles that kind in/out of the
+    /// excluded set so the user can drill down to e.g. just "similar
+    /// photos" on a multi-thousand-cluster scan.
+    @State private var hiddenClusterKinds: Set<String> = []
+
     /// Filter sheet state. Single Identifiable state value drives
     /// `.sheet(item:)` — assignment is atomic so the sheet content
     /// always sees a non-nil URL when it renders. (An earlier paired
@@ -675,12 +681,18 @@ struct ContentView: View {
             if exactClusters.isEmpty && similarClusters.isEmpty && similarVideoClusters.isEmpty {
                 emptyClusterState
             } else {
+                clusterKindChips
                 List(selection: $selectedClusterID) {
-                    let visibleExact = exactClusters.filter { shouldShow(clusterID: "exact:\($0.contentHashHex)") }
-                    let visibleSimilar = similarClusters.filter { shouldShow(clusterID: "photo:\($0.stableID)") }
-                    let visibleVideos = similarVideoClusters.filter { shouldShow(clusterID: "video:\($0.stableID)") }
-                    let visibleBursts = burstClusters.filter { shouldShow(clusterID: "burst:\($0.stableID)") }
-                    let visibleRotated = rotatedClusters.filter { shouldShow(clusterID: "rotated:\($0.stableID)") }
+                    let visibleExact = isKindHidden("exact") ? [] :
+                        exactClusters.filter { shouldShow(clusterID: "exact:\($0.contentHashHex)") }
+                    let visibleSimilar = isKindHidden("photo") ? [] :
+                        similarClusters.filter { shouldShow(clusterID: "photo:\($0.stableID)") }
+                    let visibleVideos = isKindHidden("video") ? [] :
+                        similarVideoClusters.filter { shouldShow(clusterID: "video:\($0.stableID)") }
+                    let visibleBursts = isKindHidden("burst") ? [] :
+                        burstClusters.filter { shouldShow(clusterID: "burst:\($0.stableID)") }
+                    let visibleRotated = isKindHidden("rotated") ? [] :
+                        rotatedClusters.filter { shouldShow(clusterID: "rotated:\($0.stableID)") }
                     if !visibleExact.isEmpty {
                         Section("Exact duplicates (\(visibleExact.count))") {
                             ForEach(visibleExact, id: \.contentHashHex) { cluster in
@@ -815,6 +827,62 @@ struct ContentView: View {
         } else {
             Text("Duplicates").font(.headline)
         }
+    }
+
+    /// Cluster-kind chip row above the cluster list. Each chip shows the
+    /// kind icon + name + count and toggles whether that section appears.
+    /// Kinds with zero clusters are hidden entirely so the row stays
+    /// compact on common scans (most don't have burst or rotated
+    /// clusters unless the user explicitly ran detection).
+    @ViewBuilder
+    private var clusterKindChips: some View {
+        let entries: [(kind: String, label: String, icon: String, count: Int, accent: Color)] = [
+            ("exact",   "Exact",    "equal.circle.fill",          exactClusters.count,          .green),
+            ("photo",   "Photos",   "photo.on.rectangle",         similarClusters.count,        .blue),
+            ("video",   "Videos",   "play.rectangle",             similarVideoClusters.count,   .purple),
+            ("burst",   "Bursts",   "square.stack.3d.up",         burstClusters.count,          .orange),
+            ("rotated", "Rotated",  "rotate.right",               rotatedClusters.count,        .pink),
+        ].filter { $0.count > 0 }
+
+        if entries.count > 1 {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(entries, id: \.kind) { e in
+                        kindChip(kind: e.kind, label: e.label, icon: e.icon, count: e.count, accent: e.accent)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+            }
+        }
+    }
+
+    private func kindChip(kind: String, label: String, icon: String, count: Int, accent: Color) -> some View {
+        let active = !isKindHidden(kind)
+        return Button {
+            toggleKind(kind)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: icon).font(.caption2)
+                Text(label).font(.caption.weight(.medium))
+                Text("\(count)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .foregroundStyle(active ? accent : Color.secondary)
+            .background(
+                Capsule().fill(active ? accent.opacity(0.15) : Color.clear)
+            )
+            .overlay(
+                Capsule().stroke(active ? accent.opacity(0.5) : Color.secondary.opacity(0.35), lineWidth: 0.5)
+            )
+            .opacity(active ? 1.0 : 0.55)
+        }
+        .buttonStyle(.plain)
+        .help(active
+              ? "Hide \(label.lowercased()) clusters from the list"
+              : "Show \(label.lowercased()) clusters")
     }
 
     /// Bulk-action buttons that operate over EVERY cluster in the current
@@ -1509,10 +1577,27 @@ struct ContentView: View {
     }
 
     /// Predicate used by every cluster section: with the cross-source filter
-    /// on, hide non-cross-source clusters entirely.
+    /// on, hide non-cross-source clusters entirely. The kind filter lives in
+    /// the cluster-section construction below — this predicate only handles
+    /// the cross-source toggle.
     private func shouldShow(clusterID: String) -> Bool {
         if !crossSourceFilterOn { return true }
         return isClusterCrossSource(id: clusterID)
+    }
+
+    /// True when the user has hidden this cluster kind via the sidebar chip
+    /// row. Kind is the prefix on `clusterID` ("exact" / "photo" / "video"
+    /// / "burst" / "rotated").
+    private func isKindHidden(_ kind: String) -> Bool {
+        hiddenClusterKinds.contains(kind)
+    }
+
+    private func toggleKind(_ kind: String) {
+        if hiddenClusterKinds.contains(kind) {
+            hiddenClusterKinds.remove(kind)
+        } else {
+            hiddenClusterKinds.insert(kind)
+        }
     }
 
     /// Move the selection forward (1) or backward (-1) through the cluster list,

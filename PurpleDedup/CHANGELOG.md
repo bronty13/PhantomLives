@@ -3,6 +3,28 @@
 Versions follow `1.0.<commit-count>` derived from git in `build-app.sh`. This file
 narrates *what* changed and *why*; bundle versions just label the moment.
 
+## 0.21.3 — Cluster-kind chip filters in the sidebar (2026-05-10)
+
+The sidebar always rendered every cluster section (Exact / Similar
+photos / Similar videos / Bursts / Rotated) regardless of how dense the
+scan was. On a 200-cluster mixed scan you'd scroll past 50 exact
+clusters to reach a similar-photo group. Adopted the design handoff's
+chip pattern as a per-section visibility toggle.
+
+A horizontally-scrollable chip row sits above the cluster list. Each
+chip shows the kind icon + name + count and only renders when at least
+one cluster of that kind exists (so a typical scan only shows two or
+three chips). Tapping a chip toggles whether that section is visible —
+active chips render with the section's accent colour fill, inactive
+chips dim out and lose the fill.
+
+Empty kinds are filtered out of the row before render, so the chip row
+stays compact when the user hasn't run burst / rotated detection.
+
+State lives in a single `hiddenClusterKinds: Set<String>` (empty =
+default = all visible) and threads through the existing
+`shouldShow(clusterID:)` / per-section visibility computation.
+
 ## 0.21.2 — Hidden Photos fix + reclaimable metric + UI polish (2026-05-10)
 
 Patch release rolling up the user-visible fixes and visual refinements
