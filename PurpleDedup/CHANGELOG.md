@@ -3,6 +3,88 @@
 Versions follow `1.0.<commit-count>` derived from git in `build-app.sh`. This file
 narrates *what* changed and *why*; bundle versions just label the moment.
 
+## 0.19.0 — People filter + reverse-geocoded GPS + dHash OR-merge + cross-cluster Photos crossref + CLI Photos filter (2026-05-09)
+
+A consolidation release that closes the small-but-irritating items the
+0.18.x deferred list had been carrying. Five wins, none of them
+individually huge, but together they remove most of the remaining "wait,
+why doesn't that work?" friction.
+
+### People-based filter (Photos library sources)
+
+Add a new **People** section to the inline filter editor — multi-select
+list of named people (the "Add Name" labels in Photos → People). Reads
+`<library>/database/Photos.sqlite` directly via the same TCC grant that
+already lets us walk `originals/`; PhotoKit on macOS exposes no People
+enumeration API (`PHAssetCollectionSubtype.smartAlbumPeople` is
+iOS-only), so this is the only path. New `PhotoLibraryFilter.personNames:
+Set<String>?` with backward-compat decode.
+
+Schema reads tolerate both `ZPERSON.ZFULLNAME` (older) and
+`ZPERSON.ZDISPLAYNAME` (newer) and dedupe across them. Asset → people
+join goes through `ZDETECTEDFACE.ZASSETFORFACE` /
+`ZDETECTEDFACE.ZPERSONFORFACE`. Empty/blank names are excluded so the
+"Person 1, Person 2" placeholders don't pollute the picker.
+
+Fast path when People is the only filter axis: skip PHAsset enumeration
+entirely and return the SQL UUID set directly. Otherwise the people-UUID
+set acts as a predicate on top of the album/subtype/favorite path.
+
+CLI: `--photos-person "Ada Lovelace"` (repeatable). GUI: lazy
+`Task.detached` SQL load on filter sheet open with a "loading…" affordance.
+
+### Reverse-geocoded GPS in metadata table
+
+EXIF lat/lon now decorate as "San Francisco, CA · 37.78332, -122.41746"
+in the comparison pane. New `GeoCache` actor: in-memory dictionary keyed
+by lat/lon rounded to 3 decimals (~110 m), in-flight task coalescing so
+duplicate concurrent loads share one CLGeocoder call. Failures fall back
+to raw coords. Decoration runs as a background `Task` after metadata
+resolves so the table renders immediately and place names fill in async.
+
+### pHash + dHash OR-of-distances clustering
+
+`PerceptualClusterer` now builds two BK-trees (one keyed on pHash, one
+on dHash) and union-finds neighbors from either, rather than querying
+pHash alone. Two photos cluster together if EITHER hash distance is
+within threshold — pHash and dHash catch different transformation
+classes, so OR-merging tightens recall on real-world libraries
+(recompressions, slight rotations, mild edits) without false-positive
+risk. Cluster `maxPairwiseDistance` reports `min(pHash diameter, dHash
+diameter)` — the tighter bound under either family.
+
+### "In Photos" cluster-row badge for non-exact clusters
+
+Previously the sidebar's cluster-row "In Photos" capsule fired only on
+exact clusters (those share one content hash by construction). For
+perceptual / video / burst / rotated clusters, the badge stayed dark
+even when one of the members was clearly archived in the user's Photos
+library. Now `CachedScanEngine.scan` returns a
+`Result.clusterMembersInLookup: Set<String>` populated from cached
+content hashes and the Photos lookup index, capturing every walked file
+with a known hash. The GUI uses this set for non-exact cluster-row
+badges. Files the exact stage skipped (no same-size sibling) silently
+miss the badge — best-effort by design.
+
+### CLI Photos library filter
+
+`pdedup scan` now accepts the same per-source Photos filter the GUI
+exposes. Flags: `--photos-album <NAME>` (repeatable), `--photos-person
+<NAME>` (repeatable), `--photos-subtype <NAME>` (repeatable),
+`--photos-favorites-only`, `--photos-include-hidden`,
+`--photos-only-hidden`, `--photos-filter-json <PATH>`. The JSON variant
+loads a saved `PhotoLibraryFilter` and merges with flag values (JSON
+wins on per-dimension conflicts). Filter only applies to
+`.photoslibrary` sources; folder sources pass through unmodified.
+
+### Tests
+
+92 → 95 tests. Added: pHash/dHash OR-merge (dHash-only path merges,
+pure-noise stays separate); `clusterMembersInLookup` covers exact
++ non-exact + non-cluster-but-still-hashed members; `personNames`
+activates the filter and round-trips through Codable; pre-`personNames`
+filter JSON decodes cleanly.
+
 ## 0.18.4 — Cancel scan + force-quit fallback + docs refresh (2026-05-09)
 
 ### Cancel scan, properly

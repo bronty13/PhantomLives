@@ -2,7 +2,7 @@
 
 The canonical mental model for the codebase, kept current as the project ships.
 The big spec is `~/Downloads/Dedupr-Requirements.md`; this file is the
-*implementation* snapshot at version `0.18.4`.
+*implementation* snapshot at version `0.19.0`.
 
 ## Mental model
 
@@ -72,8 +72,8 @@ non-cached opt-out.
 | `Sources/PurpleDedupCore/Operations/TrashManager.swift` | `Destination.trash` / `.folder(URL)` + op log; refuses `.photoslibrary` paths |
 | `Sources/PurpleDedupCore/Backup/BackupService.swift` | zip-based backup + retention trim |
 | `Sources/PurpleDedupCore/Metadata/MetadataExtractor.swift` | ImageIO EXIF + IPTC keywords + TIFF software + ICC color profile + star rating + caption + Photos-app fields |
-| `Sources/PurpleDedupCore/PhotoKit/PhotoKitDeletionService.swift` | `actor`. Auth, basename↔localIdentifier index, "Marked for Deletion" album, `fetchMetadata`, `matchingBasenamesDetailed` (with `Photos.sqlite` direct-read fallback), `requestAuthorization`. |
-| `Sources/PurpleDedupCore/PhotoKit/PhotoLibraryFilter.swift` | `albumNames`, `includedSubtypes`, `requireFavorite`, `includeHidden`, `onlyHidden`. Backward-compat custom decoder. |
+| `Sources/PurpleDedupCore/PhotoKit/PhotoKitDeletionService.swift` | `actor`. Auth, basename↔localIdentifier index, "Marked for Deletion" album, `fetchMetadata`, `matchingBasenamesDetailed` (with `Photos.sqlite` direct-read fallback for hidden + people), `readPeopleFromPhotosSQLite`, `readUUIDsForPeopleFromPhotosSQLite`, `requestAuthorization`. |
+| `Sources/PurpleDedupCore/PhotoKit/PhotoLibraryFilter.swift` | `albumNames`, `personNames`, `includedSubtypes`, `requireFavorite`, `includeHidden`, `onlyHidden`. Backward-compat custom decoder. |
 | `Sources/PurpleDedupCore/Selection/SelectionEngine.swift` | `Decision`, `Rule` enum, `RuleChain`, `SelectionContext` — engine recommendation per cluster |
 | `Sources/PurpleDedupApp/PurpleDedupApp.swift` | `@main` SwiftUI scene + Settings scene + UserDefaults split-view-frame purge in `init` |
 | `Sources/PurpleDedupApp/SettingsStore.swift` | `AppSettings` (data type renamed from `Settings` to dodge SwiftUI `Settings` scene clash). Persists `photoLibraryFilters` as JSON. |
@@ -81,7 +81,8 @@ non-cached opt-out.
 | `Sources/PurpleDedupApp/Backup/BackupRunner.swift` | Launch-time auto-backup glue |
 | `Sources/PurpleDedupApp/Views/ContentView.swift` | NavigationSplitView shell. Layered body (`bodyTopLayer` → `bodyMiddleLayer` → `bodyBottomLayer`) to fit Tahoe type-check budget. `GeometryReader`-wrapped cluster column. Inline filter editor takes over the column when active. Cancel button + Force Quit watchdog. |
 | `Sources/PurpleDedupApp/Views/ComparisonView.swift` | Right-pane: thumbnail grid + diff-highlighted metadata table. Per-thumbnail KEEP/DELETE chip, "In Photos" capsule, orange "Hidden" badge. |
-| `Sources/PurpleDedupApp/Views/PhotoLibraryFilterSheet.swift` | The filter editor. Renders inline (NOT as `.sheet` — see Tahoe gotchas below). |
+| `Sources/PurpleDedupApp/Views/PhotoLibraryFilterSheet.swift` | The filter editor. Renders inline (NOT as `.sheet` — see Tahoe gotchas below). Albums + People + Subtypes + toggles. |
+| `Sources/PurpleDedupApp/GeoCache.swift` | Reverse-geocodes EXIF lat/lon → "City, State". In-memory cache + in-flight coalesce; rounded to 3 decimals (~110 m) so a 12-photo burst is one CLGeocoder call. |
 | `Sources/PurpleDedupApp/Views/SettingsView.swift` | Backup / Engine / Rules tabs |
 | `Sources/PurpleDedupApp/Views/PreflightView.swift` | Trash confirmation modal |
 | `Sources/PurpleDedupApp/Views/ThumbnailView.swift` | ImageIO thumbnail loader; uses `kCGImageSourceCreateThumbnailFromImageIfAbsent` so HEIC embedded thumbs hit the fast path |
@@ -170,9 +171,6 @@ the sidebar layout, the filter UI, or the build script.
 - **Stage 2 partial-hash filter.** Skipped. With photo/video sizes the win is
   small and the extra path is one more thing to keep correct. Reconsider in
   Phase 7 if a real library shows the size-bucket short-circuit isn't enough.
-- **Perceptual matching uses pHash only.** `PerceptualClusterer` queries on
-  pHash and stores dHash for future use. Combining both via OR-of-distances
-  remains TODO; revisit with real-world false-negative data.
 - **Stage-3 video matching limits.** Alignment window is ±5 frames — we miss
   matches where the same video has had its first 30 seconds clipped, etc.
   Full sequence-DP alignment (Smith-Waterman over per-frame Hamming) is the
@@ -190,30 +188,22 @@ the sidebar layout, the filter UI, or the build script.
   `.photoslibrary/originals/` files are placeholder stubs without actual
   bytes — ImageIO/AVFoundation fail per file. We log + continue; user must
   flip "Download originals to this Mac" in Photos.app for full coverage.
-- **People / face detection.** Surfacing PHAssetCollection people albums per
-  asset would help "delete the one without my kid in it" decisions. Skipped
-  for now because per-asset enumeration through every people album is O(N×P)
-  and slow on large libraries — needs a cached inverted index.
-- **Reverse-geocoding GPS.** PHAsset gives `CLLocation`; turning that into a
-  human-readable place ("San Francisco") would need CLGeocoder calls (online,
-  rate-limited). EXIF lat/lon is shown raw in the metadata table.
-- **CLI dedup doesn't honour the per-source Photos filter.** The filter is
-  GUI-only; CLI scans the full library. Trivial to wire through but not
-  requested for v1.
-- **Cluster-row "In Photos" badge is exact-only.** Perceptual / video / burst
-  / rotated clusters don't share a single content hash, so the per-cluster
-  badge in the sidebar covers exact clusters only. The per-thumbnail "In
-  Photos" capsule in the comparison pane works for all cluster kinds.
+- **People / face detection — UNNAMED faces.** The People filter (added in
+  0.19.0) reads `ZPERSON.ZFULLNAME` / `ZDISPLAYNAME` from `Photos.sqlite`,
+  so unnamed face groups ("Person 1, Person 2") aren't surfaced. Letting
+  the user pick "any face that resembles X" without naming would need
+  `ZASSETFACEFEATURE` embedding lookups, which is a larger project.
 
 ## Tests
 
-90 tests in `Tests/PurpleDedupCoreTests/`, all hitting real fixtures (no
+95 tests in `Tests/PurpleDedupCoreTests/`, all hitting real fixtures (no
 FileManager mocking). Highlights:
 
 - `CachedScanEngineTests` — cache hit/miss invariants, lookup-only mode
   splits sources correctly, threshold-without-rescan cache discipline.
 - `PhotoLibraryFilterTests` — Codable round-trip including the
-  backward-compat path for old saved filters that lack `onlyHidden`.
+  backward-compat path for old saved filters that lack `onlyHidden` /
+  `personNames`.
 - `FileWalkerTests` — `allowedBasenames` whitelist semantics including
   the basename-OR-stem matching used by the Photos library UUID scheme.
 - `BackupServiceTests` — debounce, retention trim, prefix isolation,
@@ -221,7 +211,11 @@ FileManager mocking). Highlights:
 - `BKTreeTests` — random correctness check of BK-tree against linear
   scan.
 - `PerceptualClustererTests` — exact-cluster files don't double-report
-  as similar; threshold sensitivity.
+  as similar; threshold sensitivity; OR-of-distances merge via dHash
+  alone; pure-noise pairs stay separate under both hashes.
+- `CachedScanEngineTests.testClusterMembersInLookupCoversAllMatchingFiles`
+  — cluster members + non-cluster files with cached hashes both surface
+  in the lookup-crossref set.
 - `VideoClustererTests` — ±5-frame alignment window pinned;
   duration-ratio gate enforced.
 
@@ -250,18 +244,19 @@ The current shipped feature set covers the original requirements doc end-to-
 end plus a long list of user-driven additions. Practical next steps in order
 of value:
 
-1. **People-based filter** for Photos library sources. Build the inverted
-   asset → people index lazily and cache it; treat people albums as
-   high-cardinality filter axes alongside regular albums.
-2. **MKV / AVI / WMV via FFmpeg sidecar**, behind a Settings opt-in. Avoids
+1. **MKV / AVI / WMV via FFmpeg sidecar**, behind a Settings opt-in. Avoids
    the GPL-vs-distribution issue by leaving the binary out of the bundle and
    probing for a system `ffmpeg` at runtime.
-3. **Notarization automation in CI** — direct-download apps still need a
+2. **Notarization automation in CI** — direct-download apps still need a
    notarization ticket to avoid the Gatekeeper warning. The `NOTARIZE_PROFILE`
    path is in `build-app.sh` but no automated runner.
-4. **Sparkle for in-app updates.** The direct-download distribution model
+3. **Sparkle for in-app updates.** The direct-download distribution model
    means users have no way to learn a new build is out. Sparkle's appcast
    + auto-update is the standard fix.
+4. **Smith-Waterman frame-sequence alignment for video.** Today's ±5-frame
+   window misses videos with substantially different leaders (clipped intros,
+   different first 30 s). Full DP alignment + per-frame BK-tree pruning would
+   make the video stage robust to those cases.
 
 The existing exclusion logic in `runPerceptualStage` / `runVideoStage` (skip
 files already in earlier clusters) is the template for any new stage that

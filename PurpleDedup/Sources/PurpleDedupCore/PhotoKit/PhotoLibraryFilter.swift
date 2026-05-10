@@ -16,6 +16,18 @@ public struct PhotoLibraryFilter: Sendable, Hashable, Codable {
     /// you see in `My Albums` is what you write here.
     public var albumNames: Set<String>?
 
+    /// When non-nil, only include assets where Photos has detected a face
+    /// matching at least one of these named people. Names match the
+    /// "Add Name" labels in Photos → People.
+    ///
+    /// Resolved by reading `<library>/database/Photos.sqlite` directly
+    /// (PhotoKit's `smartAlbumPeople` is iOS-only). Same TCC grant that
+    /// lets us walk `originals/` opens this file read-only, so no extra
+    /// permission prompt is required. People without an "Add Name"
+    /// label aren't selectable — Photos exposes them as "Person 1" /
+    /// "Person 2" placeholders that wouldn't be useful as filter axes.
+    public var personNames: Set<String>?
+
     /// When non-nil, only include assets whose `mediaSubtypes` contain at
     /// least one of these strings. Strings match the canonical
     /// `PhotoKitDeletionService.subtypeNames` output: "Live Photo", "HDR",
@@ -38,12 +50,14 @@ public struct PhotoLibraryFilter: Sendable, Hashable, Codable {
 
     public init(
         albumNames: Set<String>? = nil,
+        personNames: Set<String>? = nil,
         includedSubtypes: Set<String>? = nil,
         requireFavorite: Bool = false,
         includeHidden: Bool = false,
         onlyHidden: Bool = false
     ) {
         self.albumNames = albumNames
+        self.personNames = personNames
         self.includedSubtypes = includedSubtypes
         self.requireFavorite = requireFavorite
         self.includeHidden = includeHidden
@@ -56,6 +70,7 @@ public struct PhotoLibraryFilter: Sendable, Hashable, Codable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.albumNames = try c.decodeIfPresent(Set<String>.self, forKey: .albumNames)
+        self.personNames = try c.decodeIfPresent(Set<String>.self, forKey: .personNames)
         self.includedSubtypes = try c.decodeIfPresent(Set<String>.self, forKey: .includedSubtypes)
         self.requireFavorite = try c.decodeIfPresent(Bool.self, forKey: .requireFavorite) ?? false
         self.includeHidden = try c.decodeIfPresent(Bool.self, forKey: .includeHidden) ?? false
@@ -66,7 +81,8 @@ public struct PhotoLibraryFilter: Sendable, Hashable, Codable {
     /// inactive filter take the unconstrained walk path — saves a PhotoKit
     /// fetch round-trip on every scan.
     public var isActive: Bool {
-        albumNames != nil || includedSubtypes != nil || requireFavorite || includeHidden || onlyHidden
+        albumNames != nil || personNames != nil || includedSubtypes != nil
+            || requireFavorite || includeHidden || onlyHidden
     }
 
     /// Short human-readable summary for the sources strip ("Photos albums:
@@ -75,6 +91,9 @@ public struct PhotoLibraryFilter: Sendable, Hashable, Codable {
         var bits: [String] = []
         if let albums = albumNames, !albums.isEmpty {
             bits.append("albums: \(albums.sorted().joined(separator: ", "))")
+        }
+        if let people = personNames, !people.isEmpty {
+            bits.append("people: \(people.sorted().joined(separator: ", "))")
         }
         if let subs = includedSubtypes, !subs.isEmpty {
             bits.append("subtypes: \(subs.sorted().joined(separator: ", "))")

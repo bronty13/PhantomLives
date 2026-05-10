@@ -125,7 +125,11 @@ public actor CachedScanEngine {
         timing.walkSeconds = walkStart.distance(to: Date()) - 0  // rough; full walk above
         try Task.checkCancellation()
         let exactStart = Date()
-        let exactClusters = try await runExactStage(files: files, cachedRows: cachedRows, stats: &stats, progress: progress)
+        var exactStageHashes: [String: String] = [:]
+        let exactClusters = try await runExactStage(
+            files: files, cachedRows: cachedRows, stats: &stats,
+            progress: progress, hashesOut: &exactStageHashes
+        )
         timing.exactSeconds = Date().timeIntervalSince(exactStart)
         FileHandle.standardError.write(Data("[STAGE exact] \(String(format: "%.2f", timing.exactSeconds))s\n".utf8))
 
@@ -218,6 +222,38 @@ public actor CachedScanEngine {
 
         Log.scan.info("CachedScanEngine: cache content=\(stats.contentHashHits)/\(stats.contentHashHits + stats.contentHashMisses) perceptual=\(stats.perceptualHits)/\(stats.perceptualHits + stats.perceptualMisses) video=\(stats.videoHits)/\(stats.videoHits + stats.videoMisses)")
 
+        // Cross-reference walked files against the Photos lookup index.
+        // We test EVERY walked file (not just cluster members) so the
+        // GUI's UI-side clusterers (burst, rotated) can use the same set
+        // when they produce their cluster lists later. Files the exact
+        // stage skipped (no same-size sibling) lack a cached content hash
+        // and silently miss this set — best-effort by design; the badge
+        // is purely advisory.
+        let clusterMembersInLookup: Set<String>
+        if lookupHashes.isEmpty {
+            clusterMembersInLookup = []
+        } else {
+            var hits: Set<String> = []
+            // Files with cached hashes from prior scans.
+            for f in files {
+                if let row = cachedRows[f.url.path],
+                   let blob = row.file.contentHash,
+                   lookupHashes.contains(blob.hexEncodedString()) {
+                    hits.insert(f.url.path)
+                }
+            }
+            // Files freshly hashed during *this* scan's exact stage —
+            // these aren't in `cachedRows` (loaded pre-scan) but the
+            // exact stage threaded them out via `hashesOut`. This catches
+            // scan-source files that share a Photos-library hash but
+            // didn't form a same-source exact cluster.
+            for (path, hex) in exactStageHashes
+                where lookupHashes.contains(hex) {
+                hits.insert(path)
+            }
+            clusterMembersInLookup = hits
+        }
+
         timing.totalSeconds = Date().timeIntervalSince(scanStart)
         let result = ScanEngine.Result(
             sources: sources,
@@ -230,7 +266,8 @@ public actor CachedScanEngine {
             videoSimilarityThreshold: video.enabled ? video.threshold : 0,
             timing: timing,
             photosLookupHashes: lookupHashes,
-            photosLookupCount: lookupCount
+            photosLookupCount: lookupCount,
+            clusterMembersInLookup: clusterMembersInLookup
         )
         return (result, stats)
     }
@@ -335,7 +372,8 @@ public actor CachedScanEngine {
         files: [DiscoveredFile],
         cachedRows: [String: Database.CachedRow],
         stats: inout CacheStats,
-        progress: (@Sendable (ScanProgress) -> Void)?
+        progress: (@Sendable (ScanProgress) -> Void)?,
+        hashesOut: inout [String: String]
     ) async throws -> [ExactClusterer.Cluster] {
 
         // Stage 1: size bucket.
@@ -430,10 +468,13 @@ public actor CachedScanEngine {
         for f in candidates {
             if let hex = cachedHashes[f.url] {
                 byHash[hex, default: []].append(f)
+                hashesOut[f.url.path] = hex
             }
         }
         for (f, blob) in freshResults {
-            byHash[blob.hexEncodedString(), default: []].append(f)
+            let hex = blob.hexEncodedString()
+            byHash[hex, default: []].append(f)
+            hashesOut[f.url.path] = hex
         }
 
         var clusters: [ExactClusterer.Cluster] = []

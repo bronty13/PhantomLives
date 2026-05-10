@@ -73,6 +73,14 @@ public actor ScanEngine {
         /// Counts of files that participated in the lookup index — only
         /// used for the status string ("indexed N Photos assets").
         public let photosLookupCount: Int
+        /// Paths of cluster members whose cached content hash is in
+        /// `photosLookupHashes`. Lets the GUI light the "In Photos" badge
+        /// on perceptual / video / burst / rotated clusters too — for
+        /// every file the engine had a content hash for. Files that the
+        /// exact stage skipped (no same-size sibling) miss the badge;
+        /// the common case where a folder copy and a Photos library copy
+        /// are byte-identical is covered.
+        public let clusterMembersInLookup: Set<String>
 
         public init(
             sources: [ScanSource],
@@ -85,7 +93,8 @@ public actor ScanEngine {
             videoSimilarityThreshold: Int,
             timing: StageTiming = StageTiming(),
             photosLookupHashes: Set<String> = [],
-            photosLookupCount: Int = 0
+            photosLookupCount: Int = 0,
+            clusterMembersInLookup: Set<String> = []
         ) {
             self.sources = sources
             self.filesScanned = filesScanned
@@ -98,6 +107,7 @@ public actor ScanEngine {
             self.timing = timing
             self.photosLookupHashes = photosLookupHashes
             self.photosLookupCount = photosLookupCount
+            self.clusterMembersInLookup = clusterMembersInLookup
         }
 
         public func report() -> ScanReport {

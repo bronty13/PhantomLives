@@ -49,9 +49,18 @@ final class PhotoLibraryFilterTests: XCTestCase {
         XCTAssertTrue(f.summary.contains("Screenshot"))
     }
 
+    func testPersonNamesActivatesFilter() {
+        var f = PhotoLibraryFilter()
+        f.personNames = ["Ada Lovelace", "Grace Hopper"]
+        XCTAssertTrue(f.isActive)
+        XCTAssertTrue(f.summary.contains("Ada Lovelace"))
+        XCTAssertTrue(f.summary.contains("Grace Hopper"))
+    }
+
     func testCodableRoundTrip() throws {
         var f = PhotoLibraryFilter()
         f.albumNames = ["Family", "Vacation 2024"]
+        f.personNames = ["Ada Lovelace"]
         f.includedSubtypes = ["Live Photo"]
         f.requireFavorite = true
         f.includeHidden = false
@@ -59,6 +68,21 @@ final class PhotoLibraryFilterTests: XCTestCase {
         let data = try JSONEncoder().encode(f)
         let decoded = try JSONDecoder().decode(PhotoLibraryFilter.self, from: data)
         XCTAssertEqual(f, decoded)
+    }
+
+    /// Older saved filters (pre-personNames) must decode cleanly with
+    /// `personNames == nil`. Mirrors the existing tolerant-decoder pattern
+    /// for `onlyHidden`.
+    func testCodableBackwardCompatNoPersonNames() throws {
+        let legacy = #"""
+        {"requireFavorite":true,"includeHidden":false,"onlyHidden":false}
+        """#
+        let decoded = try JSONDecoder().decode(
+            PhotoLibraryFilter.self,
+            from: Data(legacy.utf8)
+        )
+        XCTAssertNil(decoded.personNames)
+        XCTAssertTrue(decoded.requireFavorite)
     }
 
     func testCodableRoundTripDictionary() throws {

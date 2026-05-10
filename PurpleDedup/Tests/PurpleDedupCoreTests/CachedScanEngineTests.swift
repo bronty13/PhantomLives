@@ -192,6 +192,56 @@ final class CachedScanEngineTests: XCTestCase {
                       "Shared content hash must be present in the lookup index")
     }
 
+    /// `clusterMembersInLookup` must include every scan-source file whose cached
+    /// content hash matches the lookup index, regardless of whether the file is
+    /// in an exact cluster. Drives the "In Photos" badge on non-exact clusters
+    /// in the GUI.
+    func testClusterMembersInLookupCoversAllMatchingFiles() async throws {
+        let scanDir = try TestFixtures.makeTempDir("memlookup-scan")
+        let lookupDir = try TestFixtures.makeTempDir("memlookup-ref")
+        defer { TestFixtures.cleanup(scanDir); TestFixtures.cleanup(lookupDir) }
+
+        // Two byte-identical files in the scan source (forms an exact
+        // cluster); one byte-identical copy in the lookup source.
+        let sharedBytes = Data(repeating: 0x42, count: 1024)
+        let a = try TestFixtures.write(sharedBytes, to: scanDir.appendingPathComponent("a.jpg"))
+        let b = try TestFixtures.write(sharedBytes, to: scanDir.appendingPathComponent("b.jpg"))
+        try TestFixtures.write(sharedBytes, to: lookupDir.appendingPathComponent("ref.jpg"))
+
+        // A unique scan-source file with a same-size sibling so the exact
+        // stage hashes it; the same bytes also exist in the lookup source.
+        // Result: this file should land in `clusterMembersInLookup` even
+        // though it's NOT in an exact cluster (no scan-source duplicate).
+        let uniqueBytes = Data(repeating: 0x99, count: 1024) // matches sharedBytes length → same size
+        let c = try TestFixtures.write(uniqueBytes, to: scanDir.appendingPathComponent("c.jpg"))
+        try TestFixtures.write(uniqueBytes, to: lookupDir.appendingPathComponent("ref2.jpg"))
+
+        let db = try Database.inMemory()
+        let engine = CachedScanEngine(database: db)
+        let pair = try await engine.scan(
+            sources: [
+                ScanSource(url: scanDir),
+                ScanSource(url: lookupDir, isLocked: true, isLookupOnly: true),
+            ],
+            options: ScanOptions(kinds: [.photo]),
+            perceptual: ScanEngine.PerceptualOptions(enabled: false),
+            video: ScanEngine.VideoOptions(enabled: false)
+        )
+
+        // Compare by basename — temp paths may differ between /var/... and
+        // /private/var/... after the walker canonicalises symlinks.
+        let basenames = Set(pair.result.clusterMembersInLookup.map {
+            ($0 as NSString).lastPathComponent
+        })
+        XCTAssertTrue(basenames.contains("a.jpg"),
+                      "Exact-cluster member must be flagged as in lookup")
+        XCTAssertTrue(basenames.contains("b.jpg"),
+                      "Exact-cluster member must be flagged as in lookup")
+        XCTAssertTrue(basenames.contains("c.jpg"),
+                      "Non-cluster scan-source file with cached hash matching lookup must be flagged too")
+        _ = (a, b, c) // silence unused warnings
+    }
+
     func testOnlyLookupSourceProducesEmptyClustersAndPopulatedIndex() async throws {
         let lookupDir = try TestFixtures.makeTempDir("lookup-only")
         defer { TestFixtures.cleanup(lookupDir) }

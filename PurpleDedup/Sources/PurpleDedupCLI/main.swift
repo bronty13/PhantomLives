@@ -83,6 +83,53 @@ struct Scan: AsyncParsableCommand {
     @Flag(name: [.customLong("no-cache")], help: "Skip the on-disk cache (uses in-memory ScanEngine instead of CachedScanEngine).")
     var noCache: Bool = false
 
+    // MARK: - Photos library filter (applied only to `.photoslibrary` sources)
+
+    @Option(
+        name: [.customLong("photos-album")],
+        parsing: .singleValue,
+        help: "Restrict a `.photoslibrary` source to assets in this album (by name). Repeat for OR-of-albums."
+    )
+    var photosAlbums: [String] = []
+
+    @Option(
+        name: [.customLong("photos-person")],
+        parsing: .singleValue,
+        help: "Restrict to assets where the named person was detected by Photos (Add Name). Repeatable for OR-of-people. Reads `Photos.sqlite` directly so it works on macOS where PhotoKit's People APIs are unavailable."
+    )
+    var photosPeople: [String] = []
+
+    @Option(
+        name: [.customLong("photos-subtype")],
+        parsing: .singleValue,
+        help: "Restrict to assets with this media subtype: \"Live Photo\", \"HDR\", \"Panorama\", \"Screenshot\", \"Streamed Video\", \"High Frame Rate\", \"Time-lapse\". Repeatable."
+    )
+    var photosSubtypes: [String] = []
+
+    @Flag(
+        name: [.customLong("photos-favorites-only")],
+        help: "Restrict to assets where Favorite (heart) is set."
+    )
+    var photosFavoritesOnly: Bool = false
+
+    @Flag(
+        name: [.customLong("photos-include-hidden")],
+        help: "Include hidden Photos assets alongside non-hidden ones (default: excluded)."
+    )
+    var photosIncludeHidden: Bool = false
+
+    @Flag(
+        name: [.customLong("photos-only-hidden")],
+        help: "Restrict to hidden Photos assets only (mutually exclusive with --photos-include-hidden)."
+    )
+    var photosOnlyHidden: Bool = false
+
+    @Option(
+        name: [.customLong("photos-filter-json")],
+        help: "Path to a saved PhotoLibraryFilter JSON file. Combined with --photos-* flags via union; the JSON wins on conflicts."
+    )
+    var photosFilterJSON: String?
+
     mutating func run() async throws {
         guard !paths.isEmpty else {
             throw ValidationError("At least one path is required.")
@@ -108,7 +155,43 @@ struct Scan: AsyncParsableCommand {
             kinds = [.photo, .video]
         }
 
-        let sources = paths.map { ScanSource(url: URL(fileURLWithPath: $0)) }
+        let rawSources = paths.map { ScanSource(url: URL(fileURLWithPath: $0)) }
+        let photosFilter = try buildPhotosFilter()
+        let sources: [ScanSource]
+        if let f = photosFilter, f.isActive,
+           rawSources.contains(where: { $0.isPhotosLibrary }) {
+            // Resolve the filter once per .photoslibrary source. Folder
+            // sources (no Photos package) pass through unmodified — the
+            // filter is meaningless there.
+            var resolved: [ScanSource] = []
+            for src in rawSources {
+                if src.isPhotosLibrary {
+                    if !quiet {
+                        FileHandle.standardError.write(Data(
+                            "Resolving Photos filter for \(src.url.lastPathComponent) (\(f.summary))…\n".utf8
+                        ))
+                    }
+                    let resolution = await PhotoKitDeletionService.shared
+                        .matchingBasenamesDetailed(filter: f, libraryURL: src.url)
+                    if !quiet {
+                        FileHandle.standardError.write(Data(
+                            "Photos filter → \(resolution.basenames.count) basename(s) · \(resolution.summary)\n".utf8
+                        ))
+                    }
+                    resolved.append(ScanSource(
+                        url: src.url,
+                        isLocked: src.isLocked,
+                        allowedBasenames: resolution.basenames,
+                        isLookupOnly: src.isLookupOnly
+                    ))
+                } else {
+                    resolved.append(src)
+                }
+            }
+            sources = resolved
+        } else {
+            sources = rawSources
+        }
         let options = ScanOptions(kinds: kinds, includeHidden: includeHidden)
         let perceptual = ScanEngine.PerceptualOptions(
             enabled: !noSimilar,
@@ -198,6 +281,46 @@ struct Scan: AsyncParsableCommand {
         bcf.allowedUnits = [.useAll]
         bcf.countStyle = .file
         return bcf.string(fromByteCount: n)
+    }
+
+    /// Combine `--photos-*` flags and an optional `--photos-filter-json` file into
+    /// a single `PhotoLibraryFilter`. Returns nil when no filter dimension is set
+    /// (callers fall back to the unfiltered scan path).
+    private func buildPhotosFilter() throws -> PhotoLibraryFilter? {
+        var filter = PhotoLibraryFilter()
+
+        if !photosAlbums.isEmpty {
+            filter.albumNames = Set(photosAlbums)
+        }
+        if !photosPeople.isEmpty {
+            filter.personNames = Set(photosPeople)
+        }
+        if !photosSubtypes.isEmpty {
+            filter.includedSubtypes = Set(photosSubtypes)
+        }
+        if photosFavoritesOnly { filter.requireFavorite = true }
+        if photosIncludeHidden { filter.includeHidden = true }
+        if photosOnlyHidden    { filter.onlyHidden = true }
+
+        if photosIncludeHidden && photosOnlyHidden {
+            throw ValidationError("--photos-include-hidden and --photos-only-hidden are mutually exclusive")
+        }
+
+        if let jsonPath = photosFilterJSON {
+            let url = URL(fileURLWithPath: jsonPath)
+            let data = try Data(contentsOf: url)
+            let loaded = try JSONDecoder().decode(PhotoLibraryFilter.self, from: data)
+            // JSON wins on conflicts; flag values fill in only the dimensions
+            // the JSON didn't set.
+            if loaded.albumNames != nil       { filter.albumNames = loaded.albumNames }
+            if loaded.personNames != nil      { filter.personNames = loaded.personNames }
+            if loaded.includedSubtypes != nil { filter.includedSubtypes = loaded.includedSubtypes }
+            if loaded.requireFavorite         { filter.requireFavorite = true }
+            if loaded.includeHidden           { filter.includeHidden = true }
+            if loaded.onlyHidden              { filter.onlyHidden = true }
+        }
+
+        return filter.isActive ? filter : nil
     }
 }
 

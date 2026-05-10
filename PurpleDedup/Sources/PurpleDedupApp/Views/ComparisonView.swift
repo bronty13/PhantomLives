@@ -46,6 +46,10 @@ struct ComparisonView: View {
     /// `photosLookupHashes`. Populated during `loadMetadata` via a per-
     /// file DB lookup (cheap when the cache already has the file).
     @State private var lookupHits: Set<URL> = []
+    /// Reverse-geocoded place names per file URL. Populated async after
+    /// `loadMetadata` for any file with a GPS coord; nil/missing entries
+    /// fall back to raw lat/lon in the metadata table.
+    @State private var placeNames: [URL: String] = [:]
 
     var body: some View {
         if let selection = selection {
@@ -546,6 +550,28 @@ struct ComparisonView: View {
         if Task.isCancelled { return }
         metadata = results
 
+        // Reverse-geocode any GPS coords. Cache-coalesced through
+        // `GeoCache` so the same neighborhood doesn't burn N requests on
+        // a 12-photo burst. Best-effort: failures leave the row showing
+        // raw lat/lon. Runs in the background so the metadata table
+        // appears immediately and place names fill in as they resolve.
+        Task { [urls, results] in
+            for url in urls {
+                if Task.isCancelled { return }
+                guard let m = results[url],
+                      let lat = m.gpsLatitude, let lon = m.gpsLongitude else { continue }
+                if let name = await GeoCache.shared.placeName(latitude: lat, longitude: lon) {
+                    await MainActor.run {
+                        // Only commit if the user is still on this cluster.
+                        // Otherwise placeNames pollutes future sessions.
+                        if metadata[url] != nil {
+                            placeNames[url] = name
+                        }
+                    }
+                }
+            }
+        }
+
         // Lookup-mode badge population. For each file, read its content
         // hash from the cache and check against `photosLookupHashes`. Done
         // here so the per-thumbnail badge appears as soon as metadata
@@ -590,7 +616,13 @@ struct ComparisonView: View {
         for f in s.files {
             guard let m = metadata[f.url] else { continue }
             if let row = m.rows().first(where: { $0.id == id }) {
-                out[f.url] = row.value
+                if id == "gps", let place = placeNames[f.url] {
+                    // Decorate with the reverse-geocoded place when available;
+                    // raw coords stay visible for precision-sensitive use cases.
+                    out[f.url] = "\(place)  ·  \(row.value)"
+                } else {
+                    out[f.url] = row.value
+                }
             }
         }
         return out

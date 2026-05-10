@@ -6,22 +6,27 @@ the App Store.
 
 ## Status
 
-**0.18.4 — Photos library lookup mode + filters + Tahoe-tuned UI.** All seven
+**0.19.0 — People filter + reverse-geocoded GPS + dHash OR-merge + cross-cluster Photos crossref + CLI Photos filter.** All seven
 phases of the requirements doc plus a long list of user-driven additions are
 shipped. See `CHANGELOG.md` for the per-version detail.
 
 What works today:
 
 - **Three pipeline stages.** Byte-exact (SHA-1, parallel), visually-similar
-  photos (pHash + dHash, BK-tree, capped at 6 concurrent because the
-  hardware HEVC decoder serializes), visually-similar videos (1-fps frames
-  capped at 12 per video, mean Hamming over aligned sequences).
+  photos (pHash + dHash, BK-tree, **OR-of-distances** so dHash catches
+  what pHash misses, capped at 6 concurrent because the hardware HEVC
+  decoder serializes), visually-similar videos (1-fps frames capped at
+  12 per video, mean Hamming over aligned sequences).
 - **Apple Photos library integration.** Add your `.photoslibrary` as a
   scan source — files marked DELETE queue in a "Marked for Deletion in
   PurpleDedup" album that you finalise inside Photos.app. Per-library
-  filter (albums / subtypes / favorites / **only hidden**). Lookup-only
-  mode treats the library as a read-only reference index and badges
-  folder duplicates that already live in Photos.
+  filter (albums / **people** / subtypes / favorites / **only hidden**).
+  Lookup-only mode treats the library as a read-only reference index and
+  badges folder duplicates that already live in Photos — for any cluster
+  kind, not just exact ones.
+- **Reverse-geocoded GPS.** EXIF lat/lon turn into "San Francisco, CA"
+  in the metadata table; cache-coalesced so a 12-photo burst at the same
+  spot makes one geocoder call.
 - **Hidden-album dedup.** Bypasses the macOS 14+ Locked Hidden Album
   privacy gate by reading `Photos.sqlite` directly; works even when
   PhotoKit refuses to surface `isHidden`.
@@ -83,6 +88,12 @@ PurpleDedup.app/Contents/MacOS/pdedup scan ~/Pictures -o ~/Downloads/PurpleDedup
 PurpleDedup.app/Contents/MacOS/pdedup scan ~/Pictures --photos-only --quiet
 PurpleDedup.app/Contents/MacOS/pdedup scan ~/Pictures --similar-threshold 12   # looser
 PurpleDedup.app/Contents/MacOS/pdedup scan ~/Pictures --no-similar             # exact only
+# Photos library filters — only meaningful when one of the paths is a `.photoslibrary`:
+PurpleDedup.app/Contents/MacOS/pdedup scan ~/Pictures.photoslibrary \
+    --photos-album Family --photos-album "Vacation 2024" --photos-favorites-only
+PurpleDedup.app/Contents/MacOS/pdedup scan ~/Pictures.photoslibrary --photos-only-hidden
+PurpleDedup.app/Contents/MacOS/pdedup scan ~/Pictures.photoslibrary \
+    --photos-person "Ada Lovelace" --photos-subtype "Live Photo"
 PurpleDedup.app/Contents/MacOS/pdedup version
 ```
 

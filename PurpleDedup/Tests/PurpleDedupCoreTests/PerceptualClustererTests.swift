@@ -67,6 +67,66 @@ final class PerceptualClustererTests: XCTestCase {
             "PerceptualOptions(enabled: false) must skip the similar pass entirely")
     }
 
+    /// OR-of-distances: photos whose pHash distance is *above* the threshold should
+    /// still cluster together when their dHash distance is *under* it. Built by
+    /// constructing PerceptualHashes directly so we can pin the bit pattern.
+    func testORofDistances_dHashAloneMergesCluster() {
+        let nowURL = URL(fileURLWithPath: "/tmp/x")
+        func file(_ name: String) -> DiscoveredFile {
+            DiscoveredFile(
+                url: nowURL.appendingPathComponent(name),
+                sizeBytes: 1024,
+                modificationTime: Date(timeIntervalSince1970: 0),
+                isLocked: false
+            )
+        }
+        // Two photos: dHash differs in 2 bits, pHash differs in 30 bits.
+        // Threshold = 6 → pHash alone would NOT merge; dHash alone DOES.
+        let a = PerceptualHash(phash: 0x0000_0000_0000_0000,
+                               dhash: 0xAAAA_AAAA_AAAA_AAAA, width: 1, height: 1)
+        let b = PerceptualHash(phash: 0xFFFF_FFFF_C000_0000,  // ~30 bits set
+                               dhash: 0xAAAA_AAAA_AAAA_AAA8, // 2 bits flipped
+                               width: 1, height: 1)
+        XCTAssertGreaterThan(PerceptualHash.hammingDistance(a.phash, b.phash), 6)
+        XCTAssertLessThanOrEqual(PerceptualHash.hammingDistance(a.dhash, b.dhash), 6)
+
+        let clusters = PerceptualClusterer().clusterSimilar(
+            entries: [(file("a.png"), a), (file("b.png"), b)],
+            threshold: 6
+        )
+        XCTAssertEqual(clusters.count, 1, "OR-of-distances should merge a/b via dHash")
+        XCTAssertEqual(clusters.first?.files.count, 2)
+        // Diameter is min(pHash diameter, dHash diameter) — should be the small one.
+        XCTAssertLessThanOrEqual(clusters.first?.maxPairwiseDistance ?? 999, 6)
+    }
+
+    /// Sanity check: when both hashes differ widely, the photos must NOT cluster.
+    func testORofDistances_independentNoiseDoesNotCluster() {
+        let nowURL = URL(fileURLWithPath: "/tmp/x")
+        func file(_ name: String) -> DiscoveredFile {
+            DiscoveredFile(
+                url: nowURL.appendingPathComponent(name),
+                sizeBytes: 1024,
+                modificationTime: Date(timeIntervalSince1970: 0),
+                isLocked: false
+            )
+        }
+        let a = PerceptualHash(phash: 0x0000_0000_0000_0000,
+                               dhash: 0x0000_0000_0000_0000,
+                               width: 1, height: 1)
+        let b = PerceptualHash(phash: 0xFFFF_FFFF_FFFF_FFFF,
+                               dhash: 0xFFFF_FFFF_FFFF_FFFF,
+                               width: 1, height: 1)
+        XCTAssertEqual(PerceptualHash.hammingDistance(a.phash, b.phash), 64)
+        XCTAssertEqual(PerceptualHash.hammingDistance(a.dhash, b.dhash), 64)
+
+        let clusters = PerceptualClusterer().clusterSimilar(
+            entries: [(file("a.png"), a), (file("b.png"), b)],
+            threshold: 6
+        )
+        XCTAssertEqual(clusters.count, 0)
+    }
+
     func testReportSerializesSimilarClusters() async throws {
         let dir = try TestFixtures.makeTempDir("perc-report")
         defer { TestFixtures.cleanup(dir) }

@@ -90,6 +90,12 @@ struct ContentView: View {
     @State private var photosLookupHashes: Set<String> = []
     @State private var photosLookupCount: Int = 0
 
+    /// Paths of cluster members whose content hash is in `photosLookupHashes`.
+    /// Engine-populated. Lets the sidebar "In Photos" badge fire on non-exact
+    /// clusters when at least one member is byte-identical to a Photos library
+    /// asset. Empty when no lookup source is configured.
+    @State private var clusterMembersInLookup: Set<String> = []
+
     /// Current PhotoKit auth status, refreshed on appear and after the user
     /// requests access. Drives the "Grant access" button vs "Open Privacy
     /// Settings" button in the Photos hint banner.
@@ -528,6 +534,7 @@ struct ContentView: View {
         if !old.isLookupOnly {
             photosLookupHashes = []
             photosLookupCount = 0
+            clusterMembersInLookup = []
         }
     }
 
@@ -1156,6 +1163,7 @@ struct ContentView: View {
         exactClusters = []
         similarClusters = []
         similarVideoClusters = []
+        clusterMembersInLookup = []
         selectedClusterID = nil
         totalScanned = 0
         progressLine = ""
@@ -1215,6 +1223,7 @@ struct ContentView: View {
                 self.totalScanned = pair.result.filesScanned
                 self.photosLookupHashes = pair.result.photosLookupHashes
                 self.photosLookupCount = pair.result.photosLookupCount
+                self.clusterMembersInLookup = pair.result.clusterMembersInLookup
                 let s = pair.cache
                 self.cacheLine = "cache: content \(s.contentHashHits)/\(s.contentHashHits + s.contentHashMisses) · perceptual \(s.perceptualHits)/\(s.perceptualHits + s.perceptualMisses) · video \(s.videoHits)/\(s.videoHits + s.videoMisses)"
                 self.stageTiming = pair.result.timing.summary()
@@ -1396,17 +1405,41 @@ struct ContentView: View {
     /// in the lookup-mode Photos library's reference index. Used by the
     /// cluster-row badge so the user can see at a glance "this folder
     /// duplicate is also archived in my Photos library — safe to trash
-    /// the folder copy." Exact clusters share one content hash so the
-    /// check is cheap; for perceptual / video / burst / rotated clusters
-    /// we'd need per-file hashes from the cache, which we skip here for
-    /// performance — those don't get the badge in the row.
+    /// the folder copy."
+    ///
+    /// Exact clusters share one content hash so the check is cheap. For
+    /// perceptual / video / burst / rotated clusters we use the engine's
+    /// per-cluster-member crossref set (`clusterMembersInLookup`), which
+    /// is populated only for files the exact stage hashed (i.e., files
+    /// with at least one same-size sibling). Files lacking a cached
+    /// content hash silently miss the badge — acceptable: the badge is
+    /// purely advisory.
     private func isClusterArchivedInPhotos(id: String) -> Bool {
         guard !photosLookupHashes.isEmpty else { return false }
         if id.hasPrefix("exact:") {
             let hex = String(id.dropFirst("exact:".count))
             return photosLookupHashes.contains(hex)
         }
-        return false
+        guard !clusterMembersInLookup.isEmpty else { return false }
+
+        let files: [DiscoveredFile]?
+        if id.hasPrefix("photo:") {
+            let key = String(id.dropFirst("photo:".count))
+            files = similarClusters.first(where: { $0.stableID == key })?.files
+        } else if id.hasPrefix("video:") {
+            let key = String(id.dropFirst("video:".count))
+            files = similarVideoClusters.first(where: { $0.stableID == key })?.files
+        } else if id.hasPrefix("burst:") {
+            let key = String(id.dropFirst("burst:".count))
+            files = burstClusters.first(where: { $0.stableID == key })?.files
+        } else if id.hasPrefix("rotated:") {
+            let key = String(id.dropFirst("rotated:".count))
+            files = rotatedClusters.first(where: { $0.stableID == key })?.files
+        } else {
+            files = nil
+        }
+        guard let members = files else { return false }
+        return members.contains { clusterMembersInLookup.contains($0.url.path) }
     }
 
     /// Predicate used by every cluster section: with the cross-source filter

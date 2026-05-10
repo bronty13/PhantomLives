@@ -5,10 +5,11 @@ import PurpleDedupCore
 /// list from PhotoKit on appear (one fetch, cached for the life of the sheet)
 /// so the user can pick from real album titles rather than typing them in.
 ///
-/// Three sections (top to bottom):
+/// Sections (top to bottom):
 ///   1. Albums — multi-select checkbox list
-///   2. Subtypes — Live Photo / HDR / Panorama / Screenshot / etc.
-///   3. Toggles — favorites only, include hidden
+///   2. People — named persons from Photos.sqlite, multi-select
+///   3. Subtypes — Live Photo / HDR / Panorama / Screenshot / etc.
+///   4. Toggles — favorites only, include hidden
 ///
 /// Closes via Apply (commits filter back to the binding) or Cancel (discards).
 /// The Reset button blanks the filter to "no constraint" — same as removing
@@ -25,6 +26,9 @@ struct PhotoLibraryFilterSheet: View {
     @State private var working: PhotoLibraryFilter
     @State private var albumNames: [String] = []
     @State private var loadingAlbums = true
+    @State private var peopleNames: [String] = []
+    @State private var loadingPeople = true
+    @State private var peopleDiagnostic: String = ""
 
     init(libraryURL: URL, filter: Binding<PhotoLibraryFilter>, onClose: @escaping () -> Void) {
         self.libraryURL = libraryURL
@@ -52,13 +56,15 @@ struct PhotoLibraryFilterSheet: View {
                 VStack(alignment: .leading, spacing: 14) {
                     albumsSection
                     Divider()
+                    peopleSection
+                    Divider()
                     subtypesSection
                     Divider()
                     togglesSection
                 }
                 .padding(12)
             }
-            .frame(minHeight: 220, maxHeight: 360)
+            .frame(minHeight: 260, maxHeight: 400)
             Divider()
             footer
         }
@@ -68,7 +74,10 @@ struct PhotoLibraryFilterSheet: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
         )
-        .task { await loadAlbums() }
+        .task {
+            await loadAlbums()
+            await loadPeople()
+        }
     }
 
     // MARK: - sections
@@ -142,6 +151,59 @@ struct PhotoLibraryFilterSheet: View {
                         .toggleStyle(.checkbox)
                     }
                 }
+            }
+        }
+    }
+
+    private var peopleSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("People").font(.subheadline.bold())
+                Spacer()
+                if let names = working.personNames, !names.isEmpty {
+                    Text("\(names.count) selected")
+                        .font(.caption2).foregroundStyle(.purple)
+                }
+                Button("Clear") {
+                    working.personNames = nil
+                }
+                .buttonStyle(.borderless)
+                .disabled(working.personNames?.isEmpty ?? true)
+                .font(.caption)
+            }
+            if loadingPeople {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Loading people from Photos.sqlite…")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            } else if peopleNames.isEmpty {
+                Text(peopleDiagnostic.isEmpty
+                     ? "No named people found. Add names in Photos → People to make people available as a filter axis."
+                     : peopleDiagnostic)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 4)
+            } else {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 4) {
+                    ForEach(peopleNames, id: \.self) { name in
+                        Toggle(isOn: Binding(
+                            get: { working.personNames?.contains(name) ?? false },
+                            set: { isOn in
+                                var s = working.personNames ?? []
+                                if isOn { s.insert(name) } else { s.remove(name) }
+                                working.personNames = s.isEmpty ? nil : s
+                            }
+                        )) {
+                            Text(name)
+                                .font(.caption)
+                                .lineLimit(1).truncationMode(.tail)
+                        }
+                        .toggleStyle(.checkbox)
+                    }
+                }
+                Text("Names come from Photos → People (the \"Add Name\" labels). Unnamed face groups are excluded.")
+                    .font(.caption2).foregroundStyle(.secondary)
             }
         }
     }
@@ -257,5 +319,18 @@ struct PhotoLibraryFilterSheet: View {
         defer { loadingAlbums = false }
         let names = await PhotoKitDeletionService.shared.allUserAlbumNames()
         await MainActor.run { self.albumNames = names }
+    }
+
+    private func loadPeople() async {
+        loadingPeople = true
+        defer { loadingPeople = false }
+        // Off the main actor: SQLite open + scan; tens of ms typical.
+        let r = await Task.detached {
+            PhotoKitDeletionService.readPeopleFromPhotosSQLite(libraryURL: self.libraryURL)
+        }.value
+        await MainActor.run {
+            self.peopleNames = r.names
+            self.peopleDiagnostic = r.names.isEmpty ? r.diagnostic : ""
+        }
     }
 }

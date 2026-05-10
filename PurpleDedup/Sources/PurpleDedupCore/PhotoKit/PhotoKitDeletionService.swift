@@ -340,6 +340,109 @@ public actor PhotoKitDeletionService {
         return (out, "Photos.sqlite hidden=\(out.count)")
     }
 
+    /// All named people (ZPERSON rows with ZFULLNAME set) in the Photos
+    /// library at `libraryURL`. PhotoKit on macOS exposes no People
+    /// enumeration API (`smartAlbumPeople` is iOS-only); we read
+    /// `Photos.sqlite` directly using the same TCC grant that lets us
+    /// walk `originals/`. Same precedent as the Locked Hidden Album
+    /// bypass in `readHiddenUUIDsFromPhotosSQLite`.
+    ///
+    /// Returns names sorted alphabetically + a short diagnostic. Best-
+    /// effort: any SQLite open / schema failure yields an empty list and
+    /// a reason in the diagnostic so the GUI can show the user
+    /// "couldn't read People" without bricking the filter sheet.
+    public static func readPeopleFromPhotosSQLite(libraryURL: URL) -> (names: [String], diagnostic: String) {
+        let dbURL = libraryURL
+            .appendingPathComponent("database", isDirectory: true)
+            .appendingPathComponent("Photos.sqlite")
+        guard FileManager.default.fileExists(atPath: dbURL.path) else {
+            return ([], "Photos.sqlite missing at \(dbURL.lastPathComponent)")
+        }
+        var db: OpaquePointer? = nil
+        let uri = "file:" + (dbURL.path as NSString).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)! + "?mode=ro&immutable=1"
+        guard sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK,
+              let db else {
+            return ([], "Photos.sqlite open failed")
+        }
+        defer { sqlite3_close(db) }
+        var stmt: OpaquePointer? = nil
+        // Some libraries store the user-typed name in ZFULLNAME, others
+        // in ZDISPLAYNAME (newer schema). Read both and dedupe.
+        let sql = """
+            SELECT DISTINCT
+                COALESCE(NULLIF(TRIM(ZFULLNAME), ''),
+                         NULLIF(TRIM(ZDISPLAYNAME), ''))
+                AS name
+            FROM ZPERSON
+            WHERE name IS NOT NULL
+            """
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else {
+            return ([], "ZPERSON prepare failed (\(String(cString: sqlite3_errmsg(db))))")
+        }
+        defer { sqlite3_finalize(stmt) }
+        var names: Set<String> = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            if let cstr = sqlite3_column_text(stmt, 0) {
+                names.insert(String(cString: cstr))
+            }
+        }
+        let sorted = names.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        return (sorted, "ZPERSON count=\(sorted.count)")
+    }
+
+    /// Resolve a set of people names to the UUID stems of every asset
+    /// that has a detected face matching one of those people. UUIDs
+    /// match the on-disk basename in `originals/<x>/<UUID>.<ext>`.
+    /// Returns an empty set when the names list is empty or the
+    /// schema can't be read.
+    public static func readUUIDsForPeopleFromPhotosSQLite(
+        libraryURL: URL,
+        peopleNames: Set<String>
+    ) -> (uuids: Set<String>, diagnostic: String) {
+        guard !peopleNames.isEmpty else { return ([], "no people names") }
+        let dbURL = libraryURL
+            .appendingPathComponent("database", isDirectory: true)
+            .appendingPathComponent("Photos.sqlite")
+        var db: OpaquePointer? = nil
+        let uri = "file:" + (dbURL.path as NSString).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)! + "?mode=ro&immutable=1"
+        guard sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK,
+              let db else {
+            return ([], "Photos.sqlite open failed")
+        }
+        defer { sqlite3_close(db) }
+        // Build the IN-list with bound parameters. Comma-joining names
+        // into the SQL string would be a SQL-injection risk against a
+        // user-typed person name.
+        let placeholders = Array(repeating: "?", count: peopleNames.count).joined(separator: ", ")
+        // Two name columns to match `readPeopleFromPhotosSQLite`.
+        let sql = """
+            SELECT DISTINCT ZASSET.ZUUID
+            FROM ZASSET
+            INNER JOIN ZDETECTEDFACE ON ZDETECTEDFACE.ZASSETFORFACE = ZASSET.Z_PK
+            INNER JOIN ZPERSON       ON ZDETECTEDFACE.ZPERSONFORFACE = ZPERSON.Z_PK
+            WHERE COALESCE(NULLIF(TRIM(ZPERSON.ZFULLNAME), ''),
+                           NULLIF(TRIM(ZPERSON.ZDISPLAYNAME), ''))
+                  IN (\(placeholders))
+            """
+        var stmt: OpaquePointer? = nil
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else {
+            return ([], "people-UUID prepare failed (\(String(cString: sqlite3_errmsg(db))))")
+        }
+        defer { sqlite3_finalize(stmt) }
+        // SQLITE_TRANSIENT (-1 cast) so SQLite copies the bytes.
+        let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        for (idx, name) in peopleNames.enumerated() {
+            sqlite3_bind_text(stmt, Int32(idx + 1), name, -1, SQLITE_TRANSIENT)
+        }
+        var out: Set<String> = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            if let cstr = sqlite3_column_text(stmt, 0) {
+                out.insert(String(cString: cstr))
+            }
+        }
+        return (out, "people-UUIDs count=\(out.count)")
+    }
+
     /// All user-curated album names (excludes smart albums like Recents,
     /// Favorites, Hidden). Used by the filter sheet to populate a multi-
     /// select. Sorted alphabetically. Returns an empty array when auth is
@@ -429,6 +532,19 @@ public actor PhotoKitDeletionService {
         baseOptions.includeHiddenAssets = filter.includeHidden || filter.onlyHidden
 
         let subtypeFilter = filter.includedSubtypes
+
+        // Resolve people → asset-UUID stems via the Photos.sqlite
+        // direct-read. PhotoKit on macOS exposes no People enumeration
+        // (`smartAlbumPeople` is iOS-only) so this is the only path.
+        // Done once up front; consume() then applies it as a predicate.
+        var peopleStems: Set<String>? = nil
+        var peopleDiag = ""
+        if let names = filter.personNames, !names.isEmpty, let libURL = libraryURL {
+            let r = Self.readUUIDsForPeopleFromPhotosSQLite(libraryURL: libURL, peopleNames: names)
+            peopleStems = r.uuids
+            peopleDiag = r.diagnostic
+        }
+
         var out: Set<String> = []
 
         // Pull-and-filter loop. Synchronous because PhotoKit's
@@ -439,10 +555,30 @@ public actor PhotoKitDeletionService {
                 let names = Set(Self.subtypeNames(asset.mediaSubtypes))
                 if names.isDisjoint(with: subs) { return }
             }
-            if let name = filenameStem(of: asset) { out.insert(name) }
+            guard let name = filenameStem(of: asset) else { return }
+            if let pStems = peopleStems, !pStems.contains(name) { return }
+            out.insert(name)
         }
 
         var diag = ""
+
+        // Fast path: when people is the ONLY filter dimension (or also
+        // includeHidden, which doesn't constrain UUIDs), return the
+        // people-UUID set directly without enumerating PHAsset. Saves a
+        // full library walk on libraries where People is the only axis
+        // the user cares about.
+        let onlyPeopleFilter =
+            filter.personNames != nil
+            && filter.albumNames == nil
+            && (filter.includedSubtypes?.isEmpty ?? true)
+            && !filter.requireFavorite
+            && !filter.onlyHidden
+        if onlyPeopleFilter, let stems = peopleStems {
+            let summary = "filter[\(filter.summary)] → \(stems.count) basenames · \(peopleDiag)"
+            Log.scan.info("\(summary, privacy: .public)")
+            return FilterResolution(basenames: stems, summary: summary)
+        }
+
         if filter.onlyHidden {
             // PRIMARY: read Photos.sqlite directly. PhotoKit on macOS
             // 14+ refuses to surface `isHidden == true` to third-party
@@ -513,7 +649,8 @@ public actor PhotoKitDeletionService {
                 consume(asset: asset)
             }
         }
-        let summary = "filter[\(filter.summary)] → \(out.count) basenames" + (diag.isEmpty ? "" : " · \(diag)")
+        var summary = "filter[\(filter.summary)] → \(out.count) basenames" + (diag.isEmpty ? "" : " · \(diag)")
+        if !peopleDiag.isEmpty { summary += " · \(peopleDiag)" }
         Log.scan.info("\(summary, privacy: .public)")
         return FilterResolution(basenames: out, summary: summary)
     }
