@@ -473,9 +473,12 @@ struct ContentView: View {
                                 let id = ClusterID(kind: .exact, raw: cluster.contentHashHex).encoded
                                 clusterRow(
                                     id: id,
-                                    title: "\(cluster.files.count) copies · \(formatBytes(cluster.sizeBytes))",
-                                    subtitle: "hash \(cluster.contentHashHex.prefix(12))…",
-                                    accentColor: ClusterKind.exact.accent
+                                    kind: .exact,
+                                    firstFile: cluster.files.first,
+                                    count: cluster.files.count,
+                                    primaryName: cluster.files.first?.url.lastPathComponent ?? "?",
+                                    metaLine: "\(formatBytes(cluster.sizeBytes)) each",
+                                    reclaimableLabel: "~\(formatBytes(cluster.totalReclaimableBytes)) free"
                                 )
                                 .tag(id)
                             }
@@ -487,9 +490,12 @@ struct ContentView: View {
                                 let id = ClusterID(kind: .photo, raw: cluster.stableID).encoded
                                 clusterRow(
                                     id: id,
-                                    title: "\(cluster.files.count) variants · ~\(formatBytes(cluster.totalReclaimableBytes))",
-                                    subtitle: "diameter \(cluster.maxPairwiseDistance)/64",
-                                    accentColor: ClusterKind.photo.accent
+                                    kind: .photo,
+                                    firstFile: cluster.files.first,
+                                    count: cluster.files.count,
+                                    primaryName: cluster.files.first?.url.lastPathComponent ?? "?",
+                                    metaLine: "diameter \(cluster.maxPairwiseDistance)/64",
+                                    reclaimableLabel: "~\(formatBytes(cluster.totalReclaimableBytes)) free"
                                 )
                                 .tag(id)
                             }
@@ -501,9 +507,12 @@ struct ContentView: View {
                                 let id = ClusterID(kind: .video, raw: cluster.stableID).encoded
                                 clusterRow(
                                     id: id,
-                                    title: "\(cluster.files.count) variants · ~\(formatBytes(cluster.totalReclaimableBytes))",
-                                    subtitle: "mean dist \(cluster.maxPairwiseMeanDistance)/64",
-                                    accentColor: ClusterKind.video.accent
+                                    kind: .video,
+                                    firstFile: cluster.files.first,
+                                    count: cluster.files.count,
+                                    primaryName: cluster.files.first?.url.lastPathComponent ?? "?",
+                                    metaLine: "mean dist \(cluster.maxPairwiseMeanDistance)/64",
+                                    reclaimableLabel: "~\(formatBytes(cluster.totalReclaimableBytes)) free"
                                 )
                                 .tag(id)
                             }
@@ -515,9 +524,12 @@ struct ContentView: View {
                                 let id = ClusterID(kind: .burst, raw: cluster.stableID).encoded
                                 clusterRow(
                                     id: id,
-                                    title: "\(cluster.files.count) shots · ~\(formatBytes(cluster.totalReclaimableBytes))",
-                                    subtitle: "\(String(format: "%.1f", cluster.durationSeconds))s window · diameter \(cluster.maxPairwiseDistance)/64",
-                                    accentColor: ClusterKind.burst.accent
+                                    kind: .burst,
+                                    firstFile: cluster.files.first,
+                                    count: cluster.files.count,
+                                    primaryName: cluster.files.first?.url.lastPathComponent ?? "?",
+                                    metaLine: "\(String(format: "%.1f", cluster.durationSeconds))s · d=\(cluster.maxPairwiseDistance)/64",
+                                    reclaimableLabel: "~\(formatBytes(cluster.totalReclaimableBytes)) free"
                                 )
                                 .tag(id)
                             }
@@ -527,11 +539,16 @@ struct ContentView: View {
                         Section("Rotated duplicates (\(visibleRotated.count))") {
                             ForEach(visibleRotated, id: \.stableID) { cluster in
                                 let id = ClusterID(kind: .rotated, raw: cluster.stableID).encoded
+                                let rotations = cluster.rotationsRelativeToFirst
+                                    .dropFirst().map { "\($0)°" }.joined(separator: "/")
                                 clusterRow(
                                     id: id,
-                                    title: "\(cluster.files.count) copies · ~\(formatBytes(cluster.totalReclaimableBytes))",
-                                    subtitle: "rotated " + cluster.rotationsRelativeToFirst.dropFirst().map { "\($0)°" }.joined(separator: " / "),
-                                    accentColor: ClusterKind.rotated.accent
+                                    kind: .rotated,
+                                    firstFile: cluster.files.first,
+                                    count: cluster.files.count,
+                                    primaryName: cluster.files.first?.url.lastPathComponent ?? "?",
+                                    metaLine: rotations.isEmpty ? "" : "rotated \(rotations)",
+                                    reclaimableLabel: "~\(formatBytes(cluster.totalReclaimableBytes)) free"
                                 )
                                 .tag(id)
                             }
@@ -720,13 +737,25 @@ struct ContentView: View {
 
     /// Bridges ContentView's per-cluster bookkeeping (cross-source check,
     /// in-Photos lookup, decision storage) into the standalone `ClusterRow`
-    /// view. The view itself takes precomputed booleans so it doesn't need a
-    /// back-channel into ContentView's state.
-    private func clusterRow(id: String, title: String, subtitle: String, accentColor: Color) -> some View {
+    /// view. Caller supplies kind-specific copy (the `metaLine` /
+    /// `reclaimableLabel` differ per cluster type — diameter, mean
+    /// distance, rotation list, etc.).
+    private func clusterRow(
+        id: String,
+        kind: ClusterKind,
+        firstFile: DiscoveredFile?,
+        count: Int,
+        primaryName: String,
+        metaLine: String,
+        reclaimableLabel: String
+    ) -> some View {
         ClusterRow(
-            title: title,
-            subtitle: subtitle,
-            accentColor: accentColor,
+            kind: kind,
+            firstFile: firstFile,
+            count: count,
+            primaryName: primaryName,
+            metaLine: metaLine,
+            reclaimableLabel: reclaimableLabel,
             isCrossSource: isClusterCrossSource(id: id),
             isArchivedInPhotos: isClusterArchivedInPhotos(id: id),
             isReviewed: decisionsByCluster[id] != nil,

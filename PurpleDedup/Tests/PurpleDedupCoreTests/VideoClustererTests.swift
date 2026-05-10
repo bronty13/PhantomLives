@@ -42,6 +42,31 @@ final class VideoClustererTests: XCTestCase {
         XCTAssertEqual(dist, 0, "A perfect 2-frame offset must be discovered by the alignment window")
     }
 
+    /// The bounded sliding window only goes ±5; a 30-second clipped intro
+    /// (≈8 frames at 1 fps capped at 12) is beyond it. Smith-Waterman picks
+    /// up the alignment because it isn't bounded by a window — the matrix
+    /// finds the best contiguous run wherever it lies.
+    func testSmithWatermanRecoversFarOffset() {
+        // B has 8 frames of unrelated content prepended before the shared
+        // run — well outside the ±5 sliding window.
+        let common: [UInt64] = [0x100, 0x200, 0x300, 0x400, 0x500, 0x600, 0x700, 0x800]
+        let prefix: [UInt64] = [
+            0xFFFF_0001, 0xFFFF_0002, 0xFFFF_0003, 0xFFFF_0004,
+            0xFFFF_0005, 0xFFFF_0006, 0xFFFF_0007, 0xFFFF_0008,
+        ]
+        let a = VideoFingerprint(
+            frameHashes: common,
+            durationSeconds: 8, width: 320, height: 240, sampleRate: 1.0
+        )
+        let b = VideoFingerprint(
+            frameHashes: prefix + common,
+            durationSeconds: 16, width: 320, height: 240, sampleRate: 1.0
+        )
+        let dist = VideoClusterer().bestAlignedMeanDistance(a, b)
+        XCTAssertEqual(dist, 0,
+            "Smith-Waterman must recover an 8-frame offset that lies outside the sliding window")
+    }
+
     func testDurationGateExcludesVeryDifferentLengths() {
         // Identical bytes but durations 1:5 → outside the 0.5..2.0 ratio band.
         let a_files = [makeFile(named: "a.mov", size: 1000)]

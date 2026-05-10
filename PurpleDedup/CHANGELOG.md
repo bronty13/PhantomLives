@@ -3,6 +3,61 @@
 Versions follow `1.0.<commit-count>` derived from git in `build-app.sh`. This file
 narrates *what* changed and *why*; bundle versions just label the moment.
 
+## 0.22.0 — Cluster-row redesign + Smith-Waterman video alignment (2026-05-10)
+
+Two visible improvements + a long internal refactor pass.
+
+### Cluster-row redesign
+
+Adopted the design handoff's `GroupRow` layout for the sidebar
+cluster list. Each row now shows a 36 × 36 thumbnail of the
+cluster's first file with a count badge in the corner, then a
+two-line title/meta stack:
+
+- **Top line**: filename of the first file (truncated middle)
+  + "+N more" muted count + cross-source / In-Photos icons.
+- **Bottom line**: kind label (in accent color: green/blue/purple/
+  orange/pink) + technical detail (diameter / mean dist / rotation
+  list) + reclaimable bytes inline in the accent.
+
+Previous rows were "3 copies · 4.2 MB" / "hash f1a3b…" — readable
+but uniform across kinds. The new layout gives each kind a visible
+identity (the accent + thumbnail combo) and surfaces the
+reclaimable metric inline rather than tucking it in the subtitle.
+
+### Smith-Waterman video alignment
+
+`VideoClusterer.bestAlignedMeanDistance` previously only tried
+offsets within a ±5-frame window. Videos with substantially-clipped
+intros (e.g. a 30-second leader removed) had their matching content
+starting beyond the window and never aligned. Added a Smith-Waterman
+local alignment pass that runs alongside the bounded sliding
+window; the lower mean-distance wins.
+
+SW builds the standard 2D DP matrix with `(neutralPoint - hamming)`
+substitution scoring + constant gap penalty, finds the highest cell,
+traces back through the matched-pair list, and returns mean Hamming
+distance over the matched pairs. `O(M·N)` over frame counts —
+fingerprints are capped at 12 frames per video so the matrix is at
+most 12×12, comparable cost to the existing sliding window.
+
+Existing tests pass unchanged (sliding window dominates the easy
+cases). New `testSmithWatermanRecoversFarOffset` confirms an 8-frame
+offset (outside the sliding window) now aligns to mean distance 0.
+
+### ContentView decomposition (internal)
+
+Multi-hour refactor pass extracted the giant `ContentView.swift`
+file into focused per-concern files. ContentView 2150 → ~1640 lines
+(-24%), 11 new files: `ClusterKind`, `ClusterID`, `SourcesStrip`,
+`PhotosLibraryHint`, `PhotoFilterSheetItem`, `BulkActionsStrip`,
+`ClusterRow`, `PlanReport`, `ScanCoordinator`, `TrashCoordinator`,
+`DetectionCoordinator`. Plus the earlier `ComparisonView`
+decomposition (6 files). Every cluster-related code path is now
+type-safe via `ClusterKind` instead of string-prefix parsing.
+
+No behaviour change. 99 tests pass.
+
 ## 0.21.3 — Cluster-kind chip filters in the sidebar (2026-05-10)
 
 The sidebar always rendered every cluster section (Exact / Similar

@@ -2,7 +2,7 @@
 
 The canonical mental model for the codebase, kept current as the project ships.
 The big spec is `~/Downloads/Dedupr-Requirements.md`; this file is the
-*implementation* snapshot at version `0.21.3`.
+*implementation* snapshot at version `0.22.0`.
 
 ## Mental model
 

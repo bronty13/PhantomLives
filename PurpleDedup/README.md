@@ -6,7 +6,7 @@ the App Store.
 
 ## Status
 
-**0.21.3 — Cluster-kind chip filters in the sidebar.** All seven
+**0.22.0 — Cluster-row redesign + Smith-Waterman video alignment.** All seven
 phases of the requirements doc plus a long list of user-driven additions are
 shipped. See `CHANGELOG.md` for the per-version detail.
 
