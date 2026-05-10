@@ -3,6 +3,39 @@
 Versions follow `1.0.<commit-count>` derived from git in `build-app.sh`. This file
 narrates *what* changed and *why*; bundle versions just label the moment.
 
+## 0.22.2 — PhotoKit metadata cache thrashing fix (2026-05-10)
+
+User report: "scanning not finishing." Sampled the running process —
+the main thread was looping in
+`MetadataLoader.load → PhotoKitDeletionService.fetchMetadata` against
+PhotoKit's `Photos.sqlite` XPC, on every cluster click.
+
+### Root cause
+
+`fetchMetadata(forPath:)` cached its `[basename: localIdentifier]`
+asset index keyed on a "library fingerprint", invalidating the cache
+when the fingerprint changed. The fingerprint was computed as
+`path.deletingLastPathComponent().path` — i.e. the *parent directory*
+of the file. But Photos shards `originals/` into 16 subdirectories by
+the first hex character of each asset's UUID (`originals/0/…`,
+`originals/A/…`, etc.), so files in one library are spread across 16
+distinct parent directories.
+
+Result: clicking files from cluster A (in shard `4/`) and cluster B
+(in shard `B/`) triggered TWO full PHAsset enumerations on a possibly-
+50k-asset library. Every shard switch did it again. The work was
+serialised through `Photos.sqlite`'s XPC connection, so the UI froze
+between clicks for as long as the fetch took (which on a large
+library could be tens of seconds to minutes).
+
+### Fix
+
+Cache fingerprint is now the `.photoslibrary` bundle path returned by
+`photosLibraryURL(containing:)` — already computed in the early-return
+guard at the top of `fetchMetadata`. Stable across shard changes; one
+build per library, regardless of how many cluster files the user
+clicks.
+
 ## 0.22.1 — Cancel reliability fix (2026-05-10)
 
 User report: "scan frozen and won't cancel." Two fixes:

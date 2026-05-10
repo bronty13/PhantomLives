@@ -228,7 +228,7 @@ public actor PhotoKitDeletionService {
     }
 
     public func fetchMetadata(forPath path: URL) async -> PhotosMetadata? {
-        guard PhotoKitDeletionService.photosLibraryURL(containing: path) != nil else {
+        guard let libraryURL = PhotoKitDeletionService.photosLibraryURL(containing: path) else {
             return nil
         }
         // Only proceed if PhotoKit auth is granted; otherwise PHAsset.fetchAssets
@@ -236,7 +236,16 @@ public actor PhotoKitDeletionService {
         let status = currentStatus()
         guard status == .authorized || status == .limited else { return nil }
 
-        let libraryFingerprint = path.deletingLastPathComponent().path
+        // Cache fingerprint MUST be the .photoslibrary bundle path, not the
+        // parent directory. Photos shards `originals/` by the first hex char
+        // of each asset's UUID, so files for one library live across 16
+        // shard subdirectories (0–9, A–F). Earlier code used
+        // `path.deletingLastPathComponent().path`, which made the fingerprint
+        // cycle through 16 different values as the user clicked files in
+        // different clusters — every shard change re-enumerated the full
+        // PHAsset list (potentially 50k+ assets). On a large library, every
+        // cluster click felt like a hang.
+        let libraryFingerprint = libraryURL.path
         if assetsByBasename == nil || indexedLibraryFingerprint != libraryFingerprint {
             assetsByBasename = await buildBasenameIndex()
             indexedLibraryFingerprint = libraryFingerprint
