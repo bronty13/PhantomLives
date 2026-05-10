@@ -14,6 +14,12 @@ struct AppSettings: Codable {
 
     // Default user-visible output directory for exports etc.
     var defaultExportDirectory: String = ""    // empty → resolvedExportDirectory default
+
+    // Today / Planner saved queries — Phase 3. Empty on first run; the
+    // SettingsStore seeds the defaults from `SavedQuerySeed.allDefaults`
+    // so the Today view has content out of the box.
+    var todayQueries: [SavedQuery] = []
+    var todayQueriesSeeded: Bool = false       // one-shot — re-adding a deleted default doesn't fight the user
 }
 
 @MainActor
@@ -30,9 +36,24 @@ final class SettingsStore: ObservableObject {
     }
 
     func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let decoded = try? JSONDecoder().decode(AppSettings.self, from: data) else { return }
-        settings = decoded
+        if let data = try? Data(contentsOf: fileURL),
+           let decoded = try? JSONDecoder().decode(AppSettings.self, from: data) {
+            settings = decoded
+        }
+        seedTodayQueriesIfNeeded()
+    }
+
+    /// One-shot: install the default saved queries on first launch (or
+    /// when the user is upgrading from a pre-Phase-3 build). Once seeded
+    /// we don't re-add any, even if the user later deletes them — the
+    /// `todayQueriesSeeded` flag is the gate.
+    private func seedTodayQueriesIfNeeded() {
+        guard !settings.todayQueriesSeeded else { return }
+        if settings.todayQueries.isEmpty {
+            settings.todayQueries = SavedQuerySeed.allDefaults
+        }
+        settings.todayQueriesSeeded = true
+        save()
     }
 
     func save() {

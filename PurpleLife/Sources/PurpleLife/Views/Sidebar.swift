@@ -6,15 +6,36 @@ import SwiftUI
 struct Sidebar: View {
     @EnvironmentObject private var appState: AppState
 
+    /// "today" sentinel for selection — String? doesn't let us tell apart
+    /// "no selection" from "Today is selected", so we use a magic value.
+    private static let todaySelection = "__purplelife.today"
+
     private var selectionBinding: Binding<String?> {
         Binding(
-            get: { appState.selectedTypeId },
-            set: { appState.selectedTypeId = $0 }
+            get: { appState.showTodayInDetail ? Self.todaySelection : appState.selectedTypeId },
+            set: { newValue in
+                if newValue == Self.todaySelection {
+                    appState.showTodayInDetail = true
+                    appState.selectedTypeId = nil
+                } else {
+                    appState.showTodayInDetail = false
+                    appState.selectedTypeId = newValue
+                }
+            }
         )
     }
 
     var body: some View {
         List(selection: selectionBinding) {
+            Section {
+                Label {
+                    Text("Today")
+                } icon: {
+                    Image(systemName: "sun.max")
+                        .foregroundStyle(.tint)
+                }
+                .tag(Self.todaySelection)
+            }
             Section("Types") {
                 ForEach(appState.schema.visibleTypes) { type in
                     typeRow(type)

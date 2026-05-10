@@ -11,7 +11,12 @@ final class AppState: ObservableObject {
     let database = DatabaseService.shared
 
     @Published var objectCount: Int = 0
+
+    /// Sidebar selection. The special value `nil` means "Today" (the
+    /// home panel that doesn't belong to any type). Real type ids
+    /// select that type's records pane.
     @Published var selectedTypeId: String?
+    @Published var showTodayInDetail: Bool = true
 
     /// Set by the Quick Switcher to ask the main window to open a
     /// specific record. The `RecordsScreen` watches this and routes it
@@ -43,8 +48,10 @@ final class AppState: ObservableObject {
         // counts and immune to a missed write or a restored backup.
         SearchService.reindexAll(schema: schema)
 
-        // Default sidebar selection — first visible built-in.
-        selectedTypeId = schema.visibleTypes.first?.id
+        // Default detail pane is Today; type selection is left nil so the
+        // sidebar's Today row reads as selected.
+        selectedTypeId = nil
+        showTodayInDetail = true
 
         reloadAll()
     }

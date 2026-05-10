@@ -2,6 +2,17 @@
 
 Newest at the top. Follows the PhantomLives convention: every behavior-changing commit lands an entry here, USER_MANUAL.md updates if user-visible, and the version bumps automatically via `build-app.sh` + git commit count.
 
+## Unreleased — Phase 3 starter (0.1.x)
+
+### 2026-05-10 — Today screen + saved-queries pattern
+
+- **`SavedQuery`** model — serializable filter spec (typeId / field-equals / withinDays / nonEmpty / sort / limit). Persisted in `AppSettings.todayQueries`. `todayQueriesSeeded` is a one-shot flag so a deleted default never gets re-added.
+- **`QueryRunner`** — single-pass executor. Fetches the candidate set (per-type or across all), filters in Swift, sorts by the requested field key (defaults to `updated_at` desc), trims to the limit. Pairs each row with its resolved `ObjectType` so the renderer doesn't have to look it up.
+- **`SavedQuerySeed.allDefaults`** — installed on first launch: "Currently reading" (Book where status=Reading), "Recent people", "Recent across everything" (cross-type), "Updated in the last 7 days" (cross-type, 7-day rolling window).
+- **`TodayScreen`** — one generic `QueryPanel` repeated over the saved-query list. Phase 3 acceptance gate satisfied: no hard-coded modules in the view, all panels are data-driven. Each panel header shows the count + a "See all" shortcut to the type's detail pane when scoped. Cards render the type icon/badge, primary title, and up to 2 supporting fields via shared `FieldDisplay` renderers. Double-click opens the detail sheet.
+- **Sidebar** — new "Today" section above Types; selecting it routes the detail pane to `TodayScreen`. Default selection on first launch is Today (was the first type).
+- Customization UI for saved queries (add / edit / delete / reorder) is the next chunk; the underlying model and persistence are in.
+
 ## Unreleased — Phase 2 starter (0.1.x)
 
 ### 2026-05-10 — Cross-type link picker + linked-title resolution

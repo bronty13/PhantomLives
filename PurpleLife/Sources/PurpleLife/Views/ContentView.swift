@@ -11,7 +11,9 @@ struct ContentView: View {
             Sidebar()
                 .frame(minWidth: 220)
         } detail: {
-            if let typeId = appState.selectedTypeId {
+            if appState.showTodayInDetail {
+                TodayScreen()
+            } else if let typeId = appState.selectedTypeId {
                 RecordsScreen(typeId: typeId)
             } else {
                 emptyDetail
