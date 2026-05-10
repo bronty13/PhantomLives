@@ -81,14 +81,6 @@ struct ContentView: View {
     /// empty white sheet.)
     @State private var photoFilterSheetItem: PhotoFilterSheetItem? = nil
 
-    /// Identifiable wrapper for the filter sheet's URL. Lives at the
-    /// instance level (not nested) so SwiftUI's diffing has a stable
-    /// type identity across body evaluations.
-    struct PhotoFilterSheetItem: Identifiable, Hashable {
-        let url: URL
-        var id: String { url.path }
-    }
-
     /// Reference index of content hashes from any lookup-mode Photos library
     /// sources. Populated by the scan; ComparisonView reads from this to
     /// render the "Also in Photos library" badge per file. Empty when no
@@ -301,232 +293,28 @@ struct ContentView: View {
 
     // MARK: - sources strip (top of cluster column)
 
-    /// Always-visible sources control. Sits at the top of the cluster column so
-    /// the user can never wonder where to add a folder. Compact when there are
-    /// sources (one chip per source); promotes the empty state with a clear CTA
-    /// when there aren't any.
-    ///
-    /// `.onDrop` lives on the dashed-rectangle empty state and on the populated
-    /// list view so drag-drop hits the same surface the user is looking at.
-    /// Putting it on the parent NavigationSplitView wasn't reliable — SwiftUI's
-    /// split-view columns each have their own drop region and intercept events
-    /// before the parent sees them.
+    /// View-builder shim that wires ContentView's bindings + closures into
+    /// the extracted `SourcesStrip`. The detailed layout lives in
+    /// `Views/SourcesStrip.swift`; this property keeps the existing call
+    /// sites in `clusterListColumnContent` intact.
     private var sourcesStrip: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Sources").font(.subheadline.bold())
-                if isDropTargeted {
-                    Text("· drop to add")
-                        .font(.caption).foregroundStyle(.blue)
-                }
-                Spacer()
-                Menu {
-                    Button {
-                        pickFolder()
-                    } label: {
-                        Label("Add folder…", systemImage: "folder")
-                    }
-                    Button {
-                        pickPhotosLibrary()
-                    } label: {
-                        Label("Add Photos library…", systemImage: "photo.on.rectangle.angled")
-                    }
-                } label: {
-                    Label("Add…", systemImage: "plus")
-                        .labelStyle(.titleAndIcon)
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .help("Add a regular folder or your Apple Photos library (.photoslibrary)")
-            }
-            if sources.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(isDropTargeted ? "Release to add" : "Drag folders or a Photos library here")
-                        .font(.callout)
-                        .foregroundStyle(isDropTargeted ? .blue : .secondary)
-                    Text("…or click Add… above. Photos libraries (.photoslibrary) live in ~/Pictures by default.")
-                        .font(.caption2).foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 10)
-                .padding(.horizontal, 8)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(isDropTargeted ? Color.blue : Color.secondary.opacity(0.4),
-                                style: StrokeStyle(lineWidth: isDropTargeted ? 2 : 1, dash: [4]))
-                )
-                .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
-                    handleDrop(providers: providers)
-                }
-            } else {
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(sources, id: \.url) { src in
-                        HStack(spacing: 6) {
-                            Image(systemName: src.isPhotosLibrary
-                                  ? "photo.on.rectangle.angled"
-                                  : (src.isLocked ? "lock.fill" : "folder"))
-                                .foregroundStyle(src.isPhotosLibrary
-                                                 ? .purple
-                                                 : (src.isLocked ? .orange : .primary))
-                            VStack(alignment: .leading, spacing: 1) {
-                                HStack(spacing: 4) {
-                                    Text(src.url.path)
-                                        .font(.caption.monospaced())
-                                        .lineLimit(1).truncationMode(.middle)
-                                        .foregroundStyle(.secondary)
-                                    if src.isLookupOnly {
-                                        Text("(lookup only)")
-                                            .font(.caption2.bold())
-                                            .foregroundStyle(.purple)
-                                    }
-                                }
-                                if src.isPhotosLibrary,
-                                   let f = settingsStore.settings.photoLibraryFilters[src.url.path],
-                                   f.isActive {
-                                    Text(f.summary)
-                                        .font(.caption2)
-                                        .foregroundStyle(.purple)
-                                        .lineLimit(1).truncationMode(.tail)
-                                }
-                            }
-                            Spacer()
-                            // Lookup-only mode toggle for Photos libraries.
-                            // When ON: library acts as a reference index;
-                            // folder duplicates that also live in Photos
-                            // get an "In Photos" badge. Files in the
-                            // library never appear in clusters / DELETE.
-                            if src.isPhotosLibrary {
-                                Button {
-                                    toggleLookupOnly(for: src.url)
-                                } label: {
-                                    Image(systemName: src.isLookupOnly
-                                          ? "magnifyingglass.circle.fill"
-                                          : "magnifyingglass.circle")
-                                        .foregroundStyle(src.isLookupOnly ? .purple : .secondary)
-                                }
-                                .buttonStyle(.borderless)
-                                .help(src.isLookupOnly
-                                      ? "Lookup-only mode: this library tags folder duplicates that already live in Photos. Click to make it a regular scan source."
-                                      : "Treat this library as a lookup reference: scan folders for duplicates and tag any that already live in Photos.")
-                            }
-                            // Filter funnel for Photos libraries — opens
-                            // the sheet to pick albums / subtypes /
-                            // favorites / hidden.
-                            if src.isPhotosLibrary {
-                                let active = settingsStore.settings.photoLibraryFilters[src.url.path]?.isActive == true
-                                Button {
-                                    if photoFilterSheetItem?.url == src.url {
-                                        photoFilterSheetItem = nil
-                                    } else {
-                                        photoFilterSheetItem = PhotoFilterSheetItem(url: src.url)
-                                    }
-                                } label: {
-                                    Image(systemName: active
-                                          ? "line.3.horizontal.decrease.circle.fill"
-                                          : "line.3.horizontal.decrease.circle")
-                                        .foregroundStyle(active ? .purple : .secondary)
-                                }
-                                .buttonStyle(.borderless)
-                                .help("Filter this Photos library by album, subtype, favorites, or hidden state")
-                            }
-                            Button {
-                                sources.removeAll { $0.url == src.url }
-                            } label: { Image(systemName: "minus.circle") }
-                            .buttonStyle(.borderless)
-                            .help("Remove this source")
-                        }
-                    }
-                }
-                if sources.contains(where: \.isPhotosLibrary) {
-                    photosLibraryHint
-                }
-                // Filter editor lives at the cluster column level now —
-                // when open it replaces the sources strip + cluster list
-                // entirely so its sticky footer is always reachable. See
-                // `clusterListColumn` for the conditional swap.
-            }
-        }
-        .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 4)
-        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
-            // Wrapping the populated-state too: when there are already sources,
-            // the user can still drop more folders on the strip and they'll be
-            // appended to the list.
-            handleDrop(providers: providers)
-        }
-    }
-
-    /// Shown when at least one Apple Photos library is in the scan sources.
-    /// Adapts to whichever mode the source was added in: locked (PhotoKit
-    /// auth was denied / not requested → read-only display) vs unlocked
-    /// (auth granted → marked-DELETE files queue in Photos.app's album).
-    /// When auth is missing, surfaces an inline button that either prompts
-    /// (notDetermined) or jumps to System Settings (denied/restricted) so
-    /// the user doesn't have to leave the app to navigate menus.
-    private var photosLibraryHint: some View {
-        let anyUnlocked = sources.contains { $0.isPhotosLibrary && !$0.isLocked }
-        return HStack(alignment: .top, spacing: 6) {
-            Image(systemName: "info.circle")
-                .foregroundStyle(.purple)
-            VStack(alignment: .leading, spacing: 4) {
-                if anyUnlocked {
-                    Text("Photos library: action queued in Photos.app.")
-                        .font(.caption.bold())
-                    Text("Files you mark DELETE will land in the \"Marked for Deletion in PurpleDedup\" album. Open Photos.app and delete from that album to finalise.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("PurpleDedup needs Photos access.")
-                        .font(.caption.bold())
-                    Text(authHintMessage)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 8) {
-                        Button {
-                            Task { await requestPhotosAccess() }
-                        } label: {
-                            Label("Grant Photos access", systemImage: "checkmark.shield")
-                                .font(.caption.bold())
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .tint(.purple)
-                        if photosAuthStatus == .denied || photosAuthStatus == .restricted {
-                            Button {
-                                Task { await resetPhotosPermission() }
-                            } label: {
-                                Label("Reset", systemImage: "arrow.counterclockwise")
-                                    .font(.caption.bold())
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .help("Run tccutil reset Photos to clear any stale denial — needed when the app doesn't appear in Privacy Settings.")
-                            Button {
-                                openPhotosPrivacySettings()
-                            } label: {
-                                Label("Settings", systemImage: "gear")
-                                    .font(.caption.bold())
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                        }
-                    }
-                }
-            }
-        }
-        .padding(8)
-        // Vibrancy material + a subtle purple-tinted stroke. Plain
-        // Color.purple.opacity(0.08) was nearly invisible in dark mode and
-        // pure-flat in light mode; .thinMaterial picks up the desktop and
-        // the accent overlay tints it without going saturated.
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 6))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(Color.purple.opacity(0.35), lineWidth: 0.5)
+        SourcesStrip(
+            sources: $sources,
+            isDropTargeted: $isDropTargeted,
+            photoFilterSheetItem: $photoFilterSheetItem,
+            settingsStore: settingsStore,
+            photosAuthStatus: photosAuthStatus,
+            onPickFolder: { pickFolder() },
+            onPickPhotosLibrary: { pickPhotosLibrary() },
+            onToggleLookupOnly: { toggleLookupOnly(for: $0) },
+            onHandleDrop: { handleDrop(providers: $0) },
+            onRequestPhotosAccess: { await requestPhotosAccess() },
+            onResetPhotosPermission: { await resetPhotosPermission() },
+            onOpenPhotosPrivacySettings: { openPhotosPrivacySettings() }
         )
-        .padding(.top, 4)
         .onAppear { photosAuthStatus = PhotoKitDeletionService.shared.currentStatus() }
     }
+
 
     /// Toggle a source's `isLookupOnly` mode. Replaces the source in the
     /// list (since `ScanSource` is immutable) preserving its other fields.
@@ -548,20 +336,6 @@ struct ContentView: View {
             photosLookupHashes = []
             photosLookupCount = 0
             clusterMembersInLookup = []
-        }
-    }
-
-    /// Body copy for the auth-denied banner. Computed instead of inline
-    /// switch-in-Group to keep the SwiftUI body size small — the bigger
-    /// `photosLibraryHint` body was making layout misbehave on Tahoe.
-    private var authHintMessage: String {
-        switch photosAuthStatus {
-        case .notDetermined:
-            return "Click Grant Photos access — macOS will show its prompt. Without it, your Photos library is treated as read-only."
-        case .denied, .restricted:
-            return "Photos access was denied — and PurpleDedup may not even appear in System Settings → Privacy → Photos yet (the OS records a deny before the entry is created). Click Reset below to clear the stale record, then Grant to get the system prompt."
-        case .authorized, .limited:
-            return "Granted — re-scan to populate clusters with Photos library data."
         }
     }
 
