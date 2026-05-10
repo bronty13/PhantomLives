@@ -24,6 +24,18 @@
           skip versions.
         -->
         <item>
+            <title>PurpleDedup 0.21.2 (1.0.154)</title>
+            <pubDate>Sun, 10 May 2026 04:28:13 +0000</pubDate>
+            <sparkle:version>154.06e052a</sparkle:version>
+            <sparkle:shortVersionString>1.0.154</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[Bug fix: hidden Photos assets no longer leak into scans when no filter is set (the walker can't see Photos.app's hidden flag). Plus: prominent reclaimable-bytes metric in the sidebar, "Suggested keep" vs "KEEP" pill distinction for engine recommendations vs manual overrides, .thinMaterial vibrancy on the Photos hint banner, brighter metadata diff highlight. See CHANGELOG.md.]]></description>
+            <enclosure
+                url="https://github.com/bronty13/PhantomLives/releases/download/purplededup-v1.0.154/PurpleDedup-1.0.154.zip"
+                sparkle:edSignature="uplWvnNpnxAYMcnQrfwAPPsFXmUB2R9wLF1C5b6WlVyKWGbG/TdJS9rTTi7Q7cHxaFX8ksUd6x1j0c2dxEFeCg==" length="6722875"
+                type="application/octet-stream" />
+        </item>
+        <item>
             <title>PurpleDedup 0.21.1 (1.0.148)</title>
             <pubDate>Sun, 10 May 2026 03:57:16 +0000</pubDate>
             <sparkle:version>148.f0075cb</sparkle:version>
