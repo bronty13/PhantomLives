@@ -81,37 +81,43 @@ struct FileCard: View {
     @ViewBuilder
     private var decisionBadge: some View {
         if let d = decisions.decision(for: file.url, in: selection) {
+            let manual = decisions.isManualOverride(url: file.url, in: selection)
             switch d {
             case .keep:
-                Text("KEEP")
-                    .font(.caption2.bold())
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Color.green.opacity(0.85))
-                    .foregroundStyle(.white)
-                    .clipShape(Capsule())
-                    .overlay(manualMark)
+                decisionPill(
+                    label: manual ? "KEEP" : "Suggested keep",
+                    color: .green,
+                    strong: manual
+                )
             case .delete:
-                Text("DELETE")
-                    .font(.caption2.bold())
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Color.red.opacity(0.85))
-                    .foregroundStyle(.white)
-                    .clipShape(Capsule())
-                    .overlay(manualMark)
+                decisionPill(
+                    label: manual ? "DELETE" : "Suggested delete",
+                    color: .red,
+                    strong: manual
+                )
             }
         }
     }
 
+    /// Pill that distinguishes the engine's recommendation ("Suggested keep")
+    /// from the user's manual override ("KEEP"). Recommendations render with
+    /// softer fill + sentence case — advisory, not assertive. Overrides render
+    /// with strong fill + uppercase + a small hand icon so the user can see at
+    /// a glance which decisions they own versus which came from the engine.
     @ViewBuilder
-    private var manualMark: some View {
-        if decisions.isManualOverride(url: file.url, in: selection) {
-            // Tiny dot in the corner so the user can tell at a glance which
-            // decisions they overrode versus which the engine made.
-            Image(systemName: "hand.raised.fill")
-                .font(.system(size: 8))
-                .foregroundStyle(.white)
-                .offset(x: 14, y: -8)
+    private func decisionPill(label: String, color: Color, strong: Bool) -> some View {
+        HStack(spacing: 3) {
+            if strong {
+                Image(systemName: "hand.raised.fill")
+                    .font(.system(size: 8, weight: .bold))
+            }
+            Text(label).font(.caption2.bold())
         }
+        .padding(.horizontal, 7).padding(.vertical, 3)
+        .background(color.opacity(strong ? 0.95 : 0.65))
+        .foregroundStyle(.white)
+        .clipShape(Capsule())
+        .shadow(color: .black.opacity(strong ? 0.22 : 0.12), radius: strong ? 3 : 1, y: 1)
     }
 
     /// "Also in Photos library" badge — bottom-leading so it doesn't fight the
@@ -223,10 +229,15 @@ struct FileCard: View {
 
     // MARK: - helpers
 
+    /// Thumbnail border picks up the decision colour, with engine
+    /// recommendations rendering at a softer alpha than manual overrides.
+    /// Mirrors the pill treatment so border + pill always read consistently.
     private var borderColor: Color {
-        switch decisions.decision(for: file.url, in: selection) {
-        case .keep:   return .green.opacity(0.7)
-        case .delete: return .red.opacity(0.7)
+        let decision = decisions.decision(for: file.url, in: selection)
+        let manual = decisions.isManualOverride(url: file.url, in: selection)
+        switch decision {
+        case .keep:   return .green.opacity(manual ? 0.75 : 0.40)
+        case .delete: return .red.opacity(manual ? 0.75 : 0.40)
         case nil:     return .secondary.opacity(0.3)
         }
     }
