@@ -4,6 +4,26 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-10 — Undo across mutations (NSUndoManager wired through ObjectEngine + SchemaRegistry)
+
+Closes the undo half of the daily-use ergonomics work. ⌘Z and ⇧⌘Z now round-trip through every record and schema mutation.
+
+- **`ObjectEngine.undoManager`** — static `UndoManager?` fed from SwiftUI's `@Environment(\.undoManager)`. `create` / `update` / `delete` each register an inverse handler. Undo of a `delete` goes through the new `restore(_:)` helper, which re-inserts at the original id (so any inbound `link` field references from other records survive).
+- **`SchemaRegistry.undoManager`** — instance-level. Snapshot-based: each mutation captures the full `types` array + `hiddenBuiltInIds` set before applying the change; undo restores the snapshot. Coarse but bulletproof — the schema is small (a handful of types each ~KB), and snapshot/restore avoids per-mutation invariants we'd otherwise have to think about (renames vs adds vs option edits).
+- **Action names** are set on every undo registration: "Create record" / "Edit record" / "Delete record" / "Edit schema" / "Delete type" / "Hide type" / "Show type" / "Restore schema". macOS surfaces these in the Edit menu as "Undo X".
+- **Hidden-flag undo doesn't fan out to CloudKit.** `hiddenBuiltInIds` is per-device by design, so undoing a hide/show only flips the local set.
+- **Schema undo bumps `updatedAt`** when fanning out — the user's undo wins LWW on this device's next push, which is the right semantics for "the user just took an explicit action."
+- **Env undoManager wired in three places**: `ContentView.onAppear` (covers Today), `RecordsScreen.onAppear` (the type list windows), `SchemaEditorScreen.onAppear` (its own window). All three set both `ObjectEngine.undoManager` and `appState.schema.undoManager` so ⌘Z works regardless of which surface is focused.
+
+**6 new `UndoTests`** covering the deterministic part:
+- Create + undo removes the record; redo restores it at the original id with original fields.
+- Update + undo restores prior fields.
+- Delete + undo recreates at the original id with original fields.
+- Schema upsert + undo restores the prior types array.
+- Schema setHidden + undo restores visibility.
+
+The cross-device behavior (an undo on Mac A propagating via the same sync paths to Mac B) is not unit-testable here — covered by the same Mac→Mac trial that's still queued for the Phase 4 acceptance gate. **57/57 tests green** (was 51, +6).
+
 ### 2026-05-10 — Daily-use ergonomics: menu-bar quick capture + ⌘N / ⌘1–⌘9 shortcuts
 
 Closes the menu-bar + shortcuts halves of follow-up #2 (formerly "daily-use ergonomics — quick-capture menu bar item, keyboard shortcuts, undo"). Real `NSUndoManager` integration is still queued as a focused follow-up — it touches every mutation path in `ObjectEngine` and `SchemaRegistry` and merits its own commit.

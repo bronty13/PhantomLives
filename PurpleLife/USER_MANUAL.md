@@ -111,6 +111,7 @@ The type picker remembers your last choice and defaults there next time, so drop
 - **⌘1 … ⌘9** — Jump to the Nth visible type in the sidebar.
 - **⌘K** — Quick switcher (search every record across every type).
 - **⇧⌘S** — Schema editor.
+- **⌘Z** / **⇧⌘Z** — Undo / redo. Covers record creates, edits, deletes, and schema mutations (add/edit/delete a type, add/rename/delete a field, hide/show a built-in). Multiple steps are undone in order. Cross-Mac: an undo on this Mac propagates to your other Macs the same way any other change does.
 - **⌘,** — Settings.
 
 ## Export (Records → toolbar)

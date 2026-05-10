@@ -26,6 +26,18 @@ final class SchemaRegistry: ObservableObject {
     /// local writes.
     weak var sync: CloudKitSyncService?
 
+    /// Set by Schema Editor / sidebar views as they appear, threaded
+    /// from SwiftUI's `@Environment(\.undoManager)`. Each mutation
+    /// registers a snapshot-based inverse so ⌘Z restores the prior
+    /// schema state.
+    var undoManager: UndoManager?
+
+    /// Sentinel target for NSUndoManager's `withTarget:` parameter.
+    /// `self` would work too, but pinning to a private object lets a
+    /// future `removeAllActions(withTarget:)` scope cleanup without
+    /// touching unrelated managers.
+    private let undoTarget = NSObject()
+
     init(fileURL: URL? = nil) {
         let supportDir = DatabaseService.supportDirectory
         try? FileManager.default.createDirectory(at: supportDir, withIntermediateDirectories: true)
@@ -101,6 +113,7 @@ final class SchemaRegistry: ObservableObject {
     /// Stamps `updatedAt = now` so peers' LWW reconciliation picks up
     /// the change.
     func upsertType(_ type: ObjectType) {
+        let snapshot = self.snapshot()
         var stamped = type
         stamped.updatedAt = isoNow()
         if let idx = types.firstIndex(where: { $0.id == stamped.id }) {
@@ -112,6 +125,9 @@ final class SchemaRegistry: ObservableObject {
         if let sync {
             Task { await sync.pushType(stamped) }
         }
+        registerUndo(name: "Edit schema") { [weak self] in
+            self?.restore(snapshot: snapshot, fanOut: true)
+        }
     }
 
     /// Delete a user-defined type. Built-ins can't be deleted — call
@@ -121,22 +137,100 @@ final class SchemaRegistry: ObservableObject {
     func deleteType(id: String) -> Bool {
         guard let idx = types.firstIndex(where: { $0.id == id }),
               !types[idx].builtIn else { return false }
+        let snapshot = self.snapshot()
         types.remove(at: idx)
         save()
         if let sync {
             Task { await sync.pushDeleteType(id: id) }
+        }
+        registerUndo(name: "Delete type") { [weak self] in
+            self?.restore(snapshot: snapshot, fanOut: true)
         }
         return true
     }
 
     func setHidden(_ id: String, hidden: Bool) {
         guard let t = type(id: id), t.builtIn else { return }
+        let snapshot = self.snapshot()
         if hidden {
             hiddenBuiltInIds.insert(id)
         } else {
             hiddenBuiltInIds.remove(id)
         }
         save()
+        registerUndo(name: hidden ? "Hide type" : "Show type") { [weak self] in
+            // hiddenBuiltInIds is per-device, never synced — undo
+            // doesn't need to fan out to CloudKit.
+            self?.restore(snapshot: snapshot, fanOut: false)
+        }
+    }
+
+    // MARK: - Undo helpers
+
+    /// Coarse snapshot — capture the full types array + hidden set
+    /// before each mutation. The schema is small (handful of types
+    /// each ~KB serialized) so duplicating it for every undoable
+    /// action is cheap, and snapshot-restore is bulletproof against
+    /// per-mutation invariants we'd otherwise need to think about
+    /// (renames vs adds vs option edits, etc.).
+    private struct Snapshot {
+        let types: [ObjectType]
+        let hiddenBuiltInIds: Set<String>
+    }
+
+    private func snapshot() -> Snapshot {
+        Snapshot(types: types, hiddenBuiltInIds: hiddenBuiltInIds)
+    }
+
+    private func restore(snapshot: Snapshot, fanOut: Bool) {
+        // Snapshot the *current* state for the redo path before
+        // we replace it.
+        let inverse = self.snapshot()
+        types = snapshot.types
+        hiddenBuiltInIds = snapshot.hiddenBuiltInIds
+        save()
+
+        if fanOut, let sync {
+            // Push the restored types so peers reconcile via LWW.
+            // Each restored type carries its prior `updatedAt`; if
+            // the user is re-introducing an older state, the LWW on
+            // peers might keep the newer remote — that's the right
+            // behavior, undo is local intent. We bump the timestamp
+            // so the user's undo wins on this device's next push.
+            for var type in snapshot.types {
+                type.updatedAt = isoNow()
+                if let idx = types.firstIndex(where: { $0.id == type.id }) {
+                    types[idx] = type
+                }
+                Task { [type, weak sync] in await sync?.pushType(type) }
+            }
+            // Types removed by the snapshot restore (i.e. present in
+            // `inverse` but not in `snapshot`) should be deleted
+            // remotely too.
+            let restoredIds = Set(snapshot.types.map(\.id))
+            for removed in inverse.types where !restoredIds.contains(removed.id) {
+                let id = removed.id
+                Task { [weak sync] in await sync?.pushDeleteType(id: id) }
+            }
+            save()
+        }
+
+        registerUndo(name: "Restore schema") { [weak self] in
+            self?.restore(snapshot: inverse, fanOut: fanOut)
+        }
+    }
+
+    /// Synchronous main-actor dispatch — see the same comment on
+    /// `ObjectEngine.registerUndo`. NSUndoManager calls the handler
+    /// on the calling thread; for the env-injected manager that's
+    /// always main, and a `Task` hop would defer past the caller's
+    /// next statement.
+    private func registerUndo(name: String, _ handler: @escaping @MainActor () -> Void) {
+        guard let undoManager else { return }
+        undoManager.registerUndo(withTarget: undoTarget) { _ in
+            MainActor.assumeIsolated { handler() }
+        }
+        undoManager.setActionName(name)
     }
 
     // MARK: - Field mutation

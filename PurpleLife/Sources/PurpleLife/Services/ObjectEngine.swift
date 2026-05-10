@@ -16,6 +16,19 @@ enum ObjectEngine {
     /// The push is fire-and-forget Task; local writes complete first.
     static var sync: CloudKitSyncService?
 
+    /// Set by Records / Detail views as they appear, threaded through
+    /// from SwiftUI's `@Environment(\.undoManager)`. Each mutation
+    /// registers its inverse so ⌘Z (and ⇧⌘Z) round-trip naturally
+    /// through the macOS Edit menu. Optional — tests / non-UI callers
+    /// just skip the registration.
+    static var undoManager: UndoManager?
+
+    /// Sentinel target for undo registration. NSUndoManager keys
+    /// undoables by an `AnyObject` target; an enum can't be a target,
+    /// so we use a shared NSObject. Lets a future call to
+    /// `removeAllActions(withTarget:)` scope cleanup if needed.
+    private static let undoTarget = NSObject()
+
     @discardableResult
     static func create(typeId: String, parentId: String? = nil, fields: [String: Any] = [:]) throws -> ObjectRecord {
         let record = ObjectRecord.make(typeId: typeId, parentId: parentId, fields: fields)
@@ -26,10 +39,23 @@ enum ObjectEngine {
         if let sync {
             Task { await sync.push(record: record) }
         }
+        // Undo for a create is a delete by id. When the user invokes
+        // undo, `delete()` will register its own inverse (a restore
+        // from snapshot), which NSUndoManager promotes to redo while
+        // an undo is in flight.
+        registerUndo(name: "Create record") {
+            try? delete(id: record.id)
+        }
         return record
     }
 
     static func update(_ record: ObjectRecord, fields: [String: Any]) throws -> ObjectRecord {
+        // Snapshot the prior fields BEFORE applying the merge so undo
+        // can restore them. Use the on-disk record (not the parameter
+        // — the caller's `record` may already reflect optimistic UI
+        // state) for the snapshot.
+        let snapshot = (try? DatabaseService.shared.fetchObject(id: record.id))?.fields() ?? record.fields()
+
         // Defensive merge — preserve any keys present in the existing
         // JSON that the caller didn't include. This is the
         // schema-versioning safety net: if a peer running a stale
@@ -59,15 +85,73 @@ enum ObjectEngine {
         if let sync {
             Task { await sync.push(record: pushable) }
         }
+        // Undo for an update restores the pre-update fields. Going
+        // back through `update()` re-fans-out FTS + sync and registers
+        // the inverse (which becomes redo while undo is running).
+        let recordId = next.id
+        registerUndo(name: "Edit record") {
+            guard let current = try? DatabaseService.shared.fetchObject(id: recordId) else { return }
+            _ = try? update(current, fields: snapshot)
+        }
         return pushable
     }
 
     static func delete(id: String) throws {
+        // Snapshot before deletion so undo can restore the row at its
+        // original id (preserving any link references from other
+        // records that point to it).
+        let snapshot = try? DatabaseService.shared.fetchObject(id: id)
         try DatabaseService.shared.deleteObject(id: id)
         SearchService.delete(recordId: id)
         if let sync {
             Task { await sync.pushDelete(recordId: id) }
         }
+        if let snapshot {
+            registerUndo(name: "Delete record") {
+                _ = try? restore(snapshot)
+            }
+        }
+    }
+
+    /// Re-insert a record snapshot at its original id, fanning out to
+    /// FTS + sync the same way `create` does. Public so undo of a
+    /// delete preserves the id (and therefore inbound `link` field
+    /// references from other records).
+    @discardableResult
+    static func restore(_ record: ObjectRecord) throws -> ObjectRecord {
+        try DatabaseService.shared.insertObject(record)
+        if let type = currentSchema?.type(id: record.typeId) {
+            SearchService.upsert(record: record, type: type)
+        }
+        if let sync {
+            Task { await sync.push(record: record) }
+        }
+        // Inverse of restore is delete — registers the redo path when
+        // we're called from an undo handler.
+        registerUndo(name: "Delete record") {
+            try? delete(id: record.id)
+        }
+        return record
+    }
+
+    // MARK: - Undo helpers
+
+    /// Wrap NSUndoManager's `registerUndo(withTarget:handler:)` so the
+    /// mutation methods don't have to repeat the guard / target /
+    /// action-name boilerplate. `handler` runs synchronously on the
+    /// main actor — NSUndoManager dispatches on the calling thread,
+    /// which is always the main thread for the SwiftUI
+    /// environment-injected manager (and for our tests, which call
+    /// `undo()` from the test method's MainActor context). A `Task`
+    /// hop here would defer execution past the caller's next
+    /// statement, which breaks the synchronous "undo, then assert"
+    /// pattern tests rely on.
+    private static func registerUndo(name: String, _ handler: @escaping @MainActor () -> Void) {
+        guard let undoManager else { return }
+        undoManager.registerUndo(withTarget: undoTarget) { _ in
+            MainActor.assumeIsolated { handler() }
+        }
+        undoManager.setActionName(name)
     }
 
     static func fetch(id: String) throws -> ObjectRecord? {

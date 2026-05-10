@@ -9,6 +9,7 @@ import SwiftUI
 /// is in.
 struct SchemaEditorScreen: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.undoManager) private var undoManager
 
     @State private var selectedTypeId: String?
     @State private var editingFieldId: String?
@@ -27,6 +28,12 @@ struct SchemaEditorScreen: View {
         }
         .navigationTitle("Schema editor")
         .onAppear {
+            // Schema Editor is its own window — its undo manager is
+            // separate from the main window's. Wire it before any
+            // type / field mutation so ⌘Z in this window restores
+            // the prior schema state.
+            appState.schema.undoManager = undoManager
+            ObjectEngine.undoManager = undoManager
             if selectedTypeId == nil {
                 selectedTypeId = appState.schema.visibleTypes.first?.id
             }

@@ -6,6 +6,7 @@ import SwiftUI
 /// switcher and the create / detail-sheet flows that are common to them.
 struct RecordsScreen: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.undoManager) private var undoManager
     let typeId: String
 
     enum ViewKind: String, CaseIterable, Identifiable {
@@ -63,7 +64,14 @@ struct RecordsScreen: View {
                 .disabled(type == nil)
             }
         }
-        .onAppear { reload() }
+        .onAppear {
+            // Wire SwiftUI's window-scoped undo manager into the
+            // engines so ⌘Z routes to the same instance that the
+            // mutation methods just registered against.
+            ObjectEngine.undoManager = undoManager
+            appState.schema.undoManager = undoManager
+            reload()
+        }
         .onChange(of: typeId) { _, _ in
             // Re-pick a sensible default view when switching types — calendar
             // / gallery / kanban require certain field kinds and may not be

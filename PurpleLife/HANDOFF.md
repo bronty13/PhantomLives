@@ -12,6 +12,22 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-10 — Undo: NSUndoManager wired through ObjectEngine + SchemaRegistry
+
+Closes the undo half of the daily-use ergonomics work that was split out earlier today.
+
+- `ObjectEngine` gained a static `undoManager: UndoManager?`. Each of `create` / `update` / `delete` registers an inverse handler. Delete's inverse uses the new `restore(_:)` helper that re-inserts at the original id — preserving inbound `link` field references from other records, which would have broken if undo created a fresh-UUID copy.
+- `SchemaRegistry` gained an instance `undoManager: UndoManager?` and uses **snapshot-based** undo: each mutation captures the full `types` array + `hiddenBuiltInIds` set before applying the change; undo restores the snapshot. Coarse on purpose — the schema is small (a handful of types each ~KB) and snapshot/restore is bulletproof against per-mutation invariants we'd otherwise have to reason through (renames vs adds vs option edits vs partial field edits).
+- **Synchronous main-actor dispatch** in the `registerUndo` helpers: `MainActor.assumeIsolated { handler() }` rather than `Task { @MainActor in handler() }`. The Task hop defers execution past the caller's next statement, which broke the unit tests' synchronous "undo, then assert" pattern. NSUndoManager dispatches the handler on the calling thread; for the env-injected manager that's always main, and for tests the call site is also MainActor — so `assumeIsolated` is safe in both contexts and gives synchronous semantics.
+- **Env undoManager is wired in three places**: `ContentView.onAppear` (covers Today and the empty-detail screen), `RecordsScreen.onAppear` (the type list), `SchemaEditorScreen.onAppear` (its own window with its own UndoManager). All three set both `ObjectEngine.undoManager` and `appState.schema.undoManager` so ⌘Z works regardless of which surface is focused.
+- **Undo of a hide/show doesn't fan out to CloudKit**. `hiddenBuiltInIds` is per-device by design, so the undo restores only the local set.
+- **Undo of a schema change bumps `updatedAt`** when fanning out — the user's explicit undo wins LWW on this device's next push, which is the right semantics ("the user just took an action, that should propagate"). An undo can't roll the clock back on the cross-device LWW front; it can only express new local intent.
+- **Cross-device undo behavior**: an undo on Mac A fans out via the same sync paths as a normal mutation. Mac B sees the inverse change as a new write. There's no special "undo over the wire" semantic — that would require a multi-peer redo log, which is far beyond what a personal multi-Mac app needs.
+
+**Test coverage**: 6 new `UndoTests` cover create/update/delete + redo + schema upsert + setHidden. The cross-device behavior isn't unit-testable here (same constraint as the silent-push positive case); the Mac→Mac trial that's still queued for the Phase 4 acceptance gate will exercise it.
+
+**Effect on follow-up list**: undo is closed.
+
 ### 2026-05-10 — Daily-use ergonomics: menu-bar quick capture + ⌘N / ⌘1–⌘9; undo split out
 
 Closes the menu-bar + shortcuts halves of follow-up #2. Real `NSUndoManager` integration is split off into its own follow-up — it touches every mutation path in `ObjectEngine` and `SchemaRegistry` and rushing it alongside UI work invites subtle bugs.
@@ -134,7 +150,7 @@ Initial build session executed all five plan phases through a working state. Sna
 4. ~~**Schema versioning across synced peers**~~ — resolved 2026-05-10; see "Schema versioning: mirror schema through CloudKit + defensive merge" entry above. PurpleType records sync the schema; ObjectEngine.update preserves unknown JSON keys.
 5. **Polish toward the prototype** — Today timeline + linked-from rail, two-pane object detail, drag-and-drop schema editor.
 6. ~~**Daily-use ergonomics**~~ — partially resolved 2026-05-10 (menu-bar quick capture + ⌘N + ⌘1–⌘9 shortcuts); undo split out into its own follow-up item.
-7. **Undo across mutations** — NSUndoManager integration for ObjectEngine.create/update/delete and SchemaRegistry mutations. Touches every mutation path; deserves a focused commit. New 2026-05-10.
+7. ~~**Undo across mutations**~~ — resolved 2026-05-10; see "Undo: NSUndoManager wired through ObjectEngine + SchemaRegistry" entry above. ⌘Z / ⇧⌘Z route through every mutation path; tests cover create/update/delete + schema operations.
 
 ### 2026-05-10 — Phase 4 sync: poll on a 30s interval; subscriptions deferred
 

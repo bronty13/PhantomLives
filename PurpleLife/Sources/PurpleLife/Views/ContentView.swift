@@ -5,6 +5,7 @@ import SwiftUI
 /// (Phase 3) takes over the detail-pane default once it lands.
 struct ContentView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.undoManager) private var undoManager
 
     var body: some View {
         NavigationSplitView {
@@ -20,6 +21,17 @@ struct ContentView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .onAppear {
+            // Wire SwiftUI's main-window undo manager into the engines
+            // so ⌘Z routes to the same instance the mutation methods
+            // register against. RecordsScreen and SchemaEditorScreen
+            // re-do the same wiring on their own appear hooks (their
+            // window may have a different env value), but doing it
+            // here covers the Today screen and any other root-level
+            // surface that mutates indirectly.
+            ObjectEngine.undoManager = undoManager
+            appState.schema.undoManager = undoManager
+        }
     }
 
     private var emptyDetail: some View {
