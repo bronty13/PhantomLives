@@ -211,6 +211,10 @@ if [ "$CODESIGN_ID" = "-" ]; then
         fi
         sign_helper "$CONTENTS/Frameworks/Sparkle.framework"
     fi
+    # Bundled CLI binary alongside the GUI binary in MacOS/. codesign on
+    # the .app only auto-signs the main CFBundleExecutable (PurpleDedup);
+    # the sibling pdedup needs an explicit pass.
+    sign_helper "$MACOS/pdedup"
     codesign --force --sign - "${ENTITLEMENTS_FLAGS[@]}" "$APP_DIR" 2>/dev/null || true
 else
     echo "Signing with: $CODESIGN_ID"
@@ -233,6 +237,14 @@ else
         echo "  Signing Sparkle.framework"
         sign_helper "$CONTENTS/Frameworks/Sparkle.framework"
     fi
+    # Bundled CLI binary alongside the GUI binary in MacOS/. codesign on
+    # the .app only auto-signs the main CFBundleExecutable (PurpleDedup);
+    # the sibling pdedup needs its own pass with --options runtime +
+    # --timestamp or notarization rejects with "binary is not signed
+    # with a valid Developer ID certificate" + "executable does not
+    # have the hardened runtime enabled."
+    echo "  Signing CLI: pdedup"
+    sign_helper "$MACOS/pdedup"
     codesign --force \
              --sign "$CODESIGN_ID" \
              --options runtime \
@@ -277,19 +289,31 @@ if [ -n "${NOTARIZE_PROFILE:-}" ]; then
         # the embedded signature is preserved bit-for-bit.
         NOTARIZE_ZIP="$WORK_DIR.zip"
         ditto -c -k --keepParent "$FINAL_APP_DIR" "$NOTARIZE_ZIP"
-        if xcrun notarytool submit "$NOTARIZE_ZIP" \
+        # `notarytool submit --wait` exits 0 whether Apple accepted or
+        # rejected the submission — the wait completed either way.
+        # Parse the plist's <status> field to detect Invalid/Rejected
+        # verdicts; only "Accepted" gets stapled. On rejection, fetch
+        # the detailed log so the failure cause is in /tmp/notarize.log.
+        xcrun notarytool submit "$NOTARIZE_ZIP" \
                 --keychain-profile "$NOTARIZE_PROFILE" \
                 --wait \
-                --output-format plist > /tmp/notarize.plist 2>&1; then
-            echo "Notarization accepted."
-            rm -f "$NOTARIZE_ZIP"
-            echo "Stapling ticket to $FINAL_APP_DIR…"
+                --output-format plist > /tmp/notarize.plist 2>&1
+        NOTARIZE_STATUS="$(/usr/libexec/PlistBuddy -c 'Print :status' /tmp/notarize.plist 2>/dev/null || echo Unknown)"
+        NOTARIZE_ID="$(/usr/libexec/PlistBuddy -c 'Print :id' /tmp/notarize.plist 2>/dev/null || echo '')"
+        rm -f "$NOTARIZE_ZIP"
+        if [ "$NOTARIZE_STATUS" = "Accepted" ]; then
+            echo "Notarization accepted (id $NOTARIZE_ID)."
+            echo "Stapling ticket to ${FINAL_APP_DIR}…"
             xcrun stapler staple "$FINAL_APP_DIR" || \
-                echo "WARNING: stapler failed — bundle is notarized but ticket isn't embedded. Re-run staple after the next build."
+                echo "WARNING: stapler failed — bundle is notarized but ticket isn't embedded."
         else
-            echo "WARNING: notarization failed. See /tmp/notarize.plist for the verdict."
-            cat /tmp/notarize.plist | head -40
-            rm -f "$NOTARIZE_ZIP"
+            echo "WARNING: notarization status: $NOTARIZE_STATUS (id $NOTARIZE_ID)."
+            echo "         Fetching detailed log to /tmp/notarize.log…"
+            xcrun notarytool log "$NOTARIZE_ID" \
+                --keychain-profile "$NOTARIZE_PROFILE" \
+                /tmp/notarize.log 2>&1 || true
+            echo "         Common cause: nested executable not signed with"
+            echo "         --options runtime + --timestamp. See /tmp/notarize.log."
         fi
     fi
 fi

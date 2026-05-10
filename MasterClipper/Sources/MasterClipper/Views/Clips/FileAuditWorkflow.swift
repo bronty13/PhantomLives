@@ -292,16 +292,25 @@ struct FileAuditWorkflow: View {
     // MARK: - Per-clip panel
 
     private func clipPanel(_ clip: Clip) -> some View {
-        ScrollView {
+        // Always render off the live AppState clip rather than the workflow's
+        // input snapshot. The audit itself uses live state via runAudit, but
+        // the row's pill conditions (canPushFromFCP, canShowCapture, prod path
+        // for the capture pill, etc.) read fields like productionFolder /
+        // clipFilename — if a parent passed in a stale draft (e.g. ClipEditView
+        // opens with [draft] before its first save), the snapshot's empty
+        // productionFolder kept the pills hidden even after the audit said
+        // production was OK.
+        let live = appState.clips.first(where: { $0.id == clip.id }) ?? clip
+        return ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                clipBanner(clip)
-                if let r = auditCache[clip.id] {
+                clipBanner(live)
+                if let r = auditCache[live.id] {
                     summaryStats(r)
                     if !r.hasIssues {
                         allClearBanner(in: r)
                     }
                     ForEach(r.allChecks) { check in
-                        rowView(check, for: clip, in: r)
+                        rowView(check, for: live, in: r)
                     }
                 } else {
                     ProgressView("Auditing…")
@@ -383,7 +392,7 @@ struct FileAuditWorkflow: View {
         .font(.caption)
     }
 
-    // MARK: - Row + actions (mirrors FileAuditSheet)
+    // MARK: - Row + actions
 
     private func rowView(_ check: FileAuditService.Check, for clip: Clip, in result: FileAuditService.Result) -> some View {
         let canReduce = check.id == result.reduced.id

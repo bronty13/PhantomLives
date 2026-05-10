@@ -217,9 +217,8 @@ The clip editor also shows a **live audit banner** at the top of the form. Orang
 When the **Production folder** row in the file audit shows a missing/warn status — typically right after a New Clip workflow that didn't pre-set the path — a one-click pill stamps the folder for you.
 
 **Where it appears**
-- Per-clip: in **Verify files** (`FileAuditSheet`) on the *Production folder* row.
-- Per-clip mid-walkthrough: same pill inside the bulk **File-Verification Workflow** (`FileAuditWorkflow`).
-- Bulk: header button **Stamp N missing production folders** in the file-verification workflow walks every queued clip with no folder set.
+- Per-clip: **Verify files** in the clip editor opens `FileAuditWorkflow` with just that clip — pill shows on the *Production folder* row.
+- Bulk: same workflow opened from the Posting / Editing queues with the queue's filtered list — header button **Stamp N missing production folders** walks every queued clip with no folder set, and the per-clip pill is also offered mid-walkthrough on every clip.
 
 **What it does**
 1. Resolves the path as `<settings.defaultProductionBase>/<contentDate>/` — no title in the folder name. The title goes into the *file* inside the folder, not the folder itself.

@@ -6,7 +6,7 @@ import AppKit
 /// demand from the Clips toolbar for any existing clip.
 ///
 /// Surfaces the file-audit summary (read-only, with a one-click hand-off to
-/// the existing `FileAuditSheet` for the action pills) and a notes textarea
+/// `FileAuditWorkflow` for the action pills) and a notes textarea
 /// whose contents are appended to `clip.notes` with an `[Editing YYYY-MM-DD]`
 /// marker. Mirrors the convention already used by the posting workflow
 /// (`[Posted <site> YYYY-MM-DD]`) and the new-clip workflow (`[New clip
@@ -41,15 +41,10 @@ struct EditingWorkflowView: View {
         }
         .frame(minWidth: 720, minHeight: 620)
         .onAppear(perform: loadClip)
-        .sheet(isPresented: $showingAuditSheet) {
+        .sheet(isPresented: $showingAuditSheet, onDismiss: refresh) {
             if let live = clip {
-                FileAuditSheet(clip: live) { _ in
-                    // After the audit sheet's actions (rename / push / hash /
-                    // capture), re-pull the clip and re-run the local audit
-                    // so the inline summary reflects the changes.
-                    refresh()
-                }
-                .environmentObject(appState)
+                FileAuditWorkflow(clips: [live])
+                    .environmentObject(appState)
             }
         }
     }

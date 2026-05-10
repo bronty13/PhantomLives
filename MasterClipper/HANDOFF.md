@@ -98,8 +98,7 @@ Sources/MasterClipper/
 │   │   ├── CategoryChipPicker.swift      + FlowLayout
 │   │   ├── LengthField.swift
 │   │   ├── ClipWorkflowView.swift        new-clip sheet: identity + metadata + source-folder browser + Copy Status
-│   │   ├── FileAuditSheet.swift          per-clip Verify files sheet (rows + inline action pills)
-│   │   ├── FileAuditWorkflow.swift       bulk audit walkthrough; All / Issues-only filter; Skip / Previous / Next
+│   │   ├── FileAuditWorkflow.swift       single source of truth for Verify Files — per-clip from ClipEditView (passes [draft]) and bulk from PostingQueueView / EditingQueueView; All / Issues-only filter; Skip / Previous / Next
 │   │   └── ThumbnailFramePicker.swift    LazyVGrid of frame previews, parent-owned `picked` Binding
 │   ├── Editing/
 │   │   ├── EditingQueueView.swift        new / editing / to_post filter chips, Run File Verification toolbar
@@ -225,7 +224,7 @@ Migrations are append-only — never edit a previously-shipped one. To change th
   - `[Editing YYYY-MM-DD] <text>` — `EditingWorkflowView.appendNotesAndClose`
   - `[Posted <siteCode> YYYY-MM-DD] <text>` — `PostingClipWindow.postWithNotes` (also writes to `clip_postings.notes`)
   - `[Renamed YYYY-MM-DD: "old" → "new"]` — `DatabaseService.updateClip` (auto, on title change)
-  - `[Refined YYYY-MM-DD]` — `ClipEditView.refine` / `FileAuditSheet` refine pill (auto, on first refine)
+  - `[Refined YYYY-MM-DD]` — `ClipEditView.refine` / `FileAuditWorkflow` refine pill (auto, on first refine)
 - **`ensureCategory` un-archives on re-use.** The Categories cleanup (`archiveUnusedCategories`) flips `archived = 1` on every category not currently referenced by `clip_categories`. Any subsequent attach (inline picker, import wizard, historical backfill) calls `ensureCategory(named:)`, which un-archives the row in the same write transaction so the cleanup is fully reversible without manual flag-flipping.
 - **No `is_historical` flag on clips.** "Historical-import" clips look identical to clips that worked through the pipeline normally (status = `production`, every scoped site marked posted) — `Mark as historical` just calls `markAllScopedSitesPosted`. The category-backfill operational filter (`status = 'production' AND zero clip_categories rows`) is a proxy, not a hard gate.
 

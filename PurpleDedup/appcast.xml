@@ -24,6 +24,18 @@
           skip versions.
         -->
         <item>
+            <title>PurpleDedup 0.22.3 (1.0.172)</title>
+            <pubDate>Sun, 10 May 2026 07:19:40 +0000</pubDate>
+            <sparkle:version>172.8db9404</sparkle:version>
+            <sparkle:shortVersionString>1.0.172</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[First fully-notarized release. Future releases ship Gatekeeper-clean — opening the .zip on a fresh Mac no longer triggers the "developer cannot be verified" dialog. Pipeline change only; no app code changes.]]></description>
+            <enclosure
+                url="https://github.com/bronty13/PhantomLives/releases/download/purplededup-v1.0.172/PurpleDedup-1.0.172.zip"
+                sparkle:edSignature="KIBdUHsSBYoS4Nb6MPL2MwDSDTSHF2L6D8OL7tkZ4tZsX8a2q8yVbh1pfkjkTcJQTAURYV2+y5JJdoOjdROMBA==" length="6710719"
+                type="application/octet-stream" />
+        </item>
+        <item>
             <title>PurpleDedup 0.22.2 (1.0.169)</title>
             <pubDate>Sun, 10 May 2026 05:40:51 +0000</pubDate>
             <sparkle:version>169.0a3a629</sparkle:version>
