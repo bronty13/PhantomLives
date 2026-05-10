@@ -24,6 +24,18 @@
           skip versions.
         -->
         <item>
+            <title>PurpleDedup 0.21.0 (1.0.145)</title>
+            <pubDate>Sun, 10 May 2026 03:30:30 +0000</pubDate>
+            <sparkle:version>145.5e5dd92</sparkle:version>
+            <sparkle:shortVersionString>1.0.145</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[FFmpeg sidecar for MKV / AVI / WMV / WebM (opt-in). Settings → Engine → "Use system FFmpeg for unsupported video formats". Requires `brew install ffmpeg`. See CHANGELOG.md.]]></description>
+            <enclosure
+                url="https://github.com/bronty13/PhantomLives/releases/download/purplededup-v1.0.145/PurpleDedup-1.0.145.zip"
+                sparkle:edSignature="x8CAyNmQBzw/LCvJRsM94dJa87nvxWk0U4fg/4ian4dy7ehd+smlcH35waieBoXP/tA2XjQcPjpDdGbegbsmAg==" length="6723068"
+                type="application/octet-stream" />
+        </item>
+        <item>
             <title>PurpleDedup 0.20.0 (1.0.143)</title>
             <pubDate>Sun, 10 May 2026 03:16:09 +0000</pubDate>
             <sparkle:version>143.282f762</sparkle:version>
