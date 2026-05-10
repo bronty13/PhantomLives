@@ -65,6 +65,7 @@ Before clicking "cleanup" — comment that line out for one run — open the [Cl
 |---|---|---|
 | `account: NO ACCOUNT` | Mac not signed into iCloud | System Settings → Apple ID |
 | `CKError.code = 9` (notAuthenticated) | Account exists but iCloud Drive off, or container not provisioned | Step 1 + step 2 above |
+| `CKError.code = 5` (badContainer) | Container exists but isn't attached to the App ID. Click into the App ID at developer.apple.com → iCloud → Configure → check the container → Save. Re-run `build-spike.sh` (it passes `-allowProvisioningUpdates` so the new profile is fetched on the next build). | — |
 | `CKError.code = 11` (badContainer) | App entitlement points at a container the team doesn't own | Step 3 above |
 | `CKError.code = 25` (zoneNotFound) | First-ever write to the private DB; usually self-heals on retry | Click "Run round-trip" again |
 | `verify: byte-for-byte match: NO` | This would invalidate the spike. Do NOT proceed to Phase 1; reopen the encryption decision in `PLAN.md`. | — |
@@ -75,8 +76,27 @@ When the run is done, append the actual log block under "## Run log" below, plus
 
 ## Run log
 
-_(unfilled — append after first successful run)_
+### 2026-05-10 — first PASS
+
+```
+11:53:01.579 account: iCloud available
+11:53:01.581 save: posting record spike-14B67F41-ED41-4E09-94BB-1A718934CCFF
+11:53:01.581 save: payload 157 bytes, sha256=822b5b86b4900b3f…
+11:53:05.678 save: ok — modificationDate 2026-05-10 15:53:04 +0000
+11:53:05.679 fetch: requesting record by ID
+11:53:05.791 fetch: ok — recordChangeTag mozycc4j
+11:53:05.791 verify: plaintext type column round-tripped: yes
+11:53:05.791 verify: returned 157 bytes, sha256=822b5b86b4900b3f…
+11:53:05.791 verify: byte-for-byte match: yes
+11:53:05.791 cleanup: deleting test record
+11:53:06.146 cleanup: ok
+11:53:06.147 RESULT: PASS
+```
+
+The bytes-out matched bytes-in exactly (sha256 prefix `822b5b86…` on both sides), the plaintext columns round-tripped, and cleanup succeeded. Save → fetch round-trip took ~4.2 s end-to-end against the development environment (a brand-new container — first-write latency dominates; subsequent writes are sub-second).
+
+A prior run on the same day failed with `CKError.code = 5 (badContainer)` because the container hadn't been attached to the App ID yet via developer.apple.com → Identifiers → App ID → iCloud → Configure. Re-running `build-spike.sh` after attaching (with `-allowProvisioningUpdates`) fetched a fresh profile and the next run PASSed.
 
 ## Decision
 
-_(unfilled — fill in after run)_
+**Spike PASS on 2026-05-10 against container `iCloud.com.bronty13.PurpleLife`. Encryption decision stands** — `CKRecord.encryptedValues` is the layer Phase 4 will use; the JSON-blob `fields_json` column on the `objects` table travels through it. No reopening of the locked decision in `PLAN.md` is needed.

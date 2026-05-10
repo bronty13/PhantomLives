@@ -24,6 +24,7 @@ xcodebuild -project "$PRODUCT_NAME.xcodeproj" \
     -scheme "$PRODUCT_NAME" \
     -configuration Debug \
     -derivedDataPath "$BUILD_DIR/DerivedData" \
+    -allowProvisioningUpdates \
     build \
     PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
     ONLY_ACTIVE_ARCH=YES \

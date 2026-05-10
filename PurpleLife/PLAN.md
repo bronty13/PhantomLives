@@ -11,7 +11,7 @@ This document supersedes both `PLAN-original.md` (kept as historical context) an
 - **Name** — `PurpleLife`. Matches the directory and the Purple* family naming (PurpleIRC, PurpleDedup, PurpleTracker).
 - **Stack** — Swift / SwiftUI, GRDB for SQLite, XcodeGen-managed `project.yml`, `build-app.sh` deriving `CFBundleShortVersionString` from git commit count. Same stack as `Timeliner` and `PurpleTracker`.
 - **Sync** — CloudKit. First subproject in PhantomLives to use it (confirmed by grep; budget a spike, see Phases).
-- **Encryption** — `CKRecord.encryptedValues`. Apple cannot decrypt; keys live in the user's iCloud Keychain trust circle, not on Apple servers. Custom AES-GCM is rejected for v1: it costs 2–3 weeks for migration custody / rotation / multi-device recovery, breaks CloudKit indexes, and buys little against any realistic threat model. The JSON-blob storage shape (below) keeps a future migration to client-held keys mechanical.
+- **Encryption** — `CKRecord.encryptedValues`. Apple cannot decrypt; keys live in the user's iCloud Keychain trust circle, not on Apple servers. Custom AES-GCM is rejected for v1: it costs 2–3 weeks for migration custody / rotation / multi-device recovery, breaks CloudKit indexes, and buys little against any realistic threat model. The JSON-blob storage shape (below) keeps a future migration to client-held keys mechanical. **Confirmed by spike PASS on 2026-05-10** against `iCloud.com.bronty13.PurpleLife` — see `Spike/CloudKit/SPIKE.md` and `HANDOFF.md`.
 - **Storage shape** — single `objects` table:
   - typed columns: `id`, `type_id`, `parent_id`, `created_at`, `updated_at`
   - encrypted JSON `fields` blob carrying everything else

@@ -4,6 +4,12 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 1 scaffold (0.1.x)
 
+### 2026-05-10 — CloudKit spike PASS
+
+- Spike ran successfully against `iCloud.com.bronty13.PurpleLife` after attaching the container to the App ID via Configure (the registration-time iCloud capability tick is not enough — a separate save is needed).
+- `Spike/CloudKit/build-spike.sh` now passes `-allowProvisioningUpdates`; `Spike/CloudKit/project.yml` carries `DEVELOPMENT_TEAM=SRKV8T38CD` so subsequent builds are non-interactive.
+- `Spike/CloudKit/SPIKE.md` § Run log + Decision filled in; `HANDOFF.md` flipped from "scaffolded, run pending" to PASS; `PLAN.md` § Locked decisions encryption row annotated with the confirmation pointer.
+
 ### Added
 
 - Refined `PLAN.md` synced from the planning branch, with Phase 0 marked **skipped** and the CloudKit spike moved ahead of Phase 1.

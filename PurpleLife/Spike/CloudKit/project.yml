@@ -17,6 +17,7 @@ targets:
         SWIFT_VERSION: "5.10"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: SRKV8T38CD
         INFOPLIST_FILE: Sources/CloudKitSpike/Info.plist
         CODE_SIGN_ENTITLEMENTS: Sources/CloudKitSpike/CloudKitSpike.entitlements
         ENABLE_USER_SCRIPT_SANDBOXING: NO

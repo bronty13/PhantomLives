@@ -12,17 +12,20 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
-### 2026-05-10 — CloudKit spike scaffolded; run pending user setup
+### 2026-05-10 — CloudKit spike PASS; encryption decision locked
 
-The spike app lives at `Spike/CloudKit/`. It compiles clean against Xcode 26.4.1 (verified). The actual `encryptedValues` round-trip run requires:
+The spike `Spike/CloudKit/CloudKitSpike.app` ran successfully against the production Apple Developer setup:
 
-- iCloud signed in on the build Mac.
-- The container `iCloud.com.bronty13.PurpleLife` provisioned at <https://developer.apple.com/account>.
-- The team set in Xcode Signing & Capabilities on the generated project.
+- Container `iCloud.com.bronty13.PurpleLife` provisioned.
+- App ID `com.bronty13.PurpleLife.CloudKitSpike` created with iCloud capability + container attached.
+- Mac registered as a development device on team `SRKV8T38CD`.
+- `build-spike.sh` updated with `-allowProvisioningUpdates` and `DEVELOPMENT_TEAM=SRKV8T38CD` baked into `Spike/CloudKit/project.yml` so future runs are turnkey.
 
-Procedure and PASS/FAIL criteria are in `Spike/CloudKit/SPIKE.md`. The spike PASS is the gate that locks the encryption decision before Phase 4 (CloudKit sync). It does **not** gate Phase 1 (Foundation), since Phase 1 only touches the local GRDB layer; on-disk encryption is FileVault's job per `PLAN.md` § Locked decisions. Phase 1 scaffolding therefore proceeds in parallel.
+**Result**: PASS — bytes-out matched bytes-in (sha256 `822b5b86…`), plaintext columns round-tripped, 4.2 s end-to-end on a brand-new container's first write. Full log + decision in `Spike/CloudKit/SPIKE.md` § Run log / Decision.
 
-If the spike comes back FAIL, the encryption row in `PLAN.md` § Locked decisions reopens and we revisit before Phase 4 begins.
+**Effect on plan**: the encryption row in `PLAN.md` § Locked decisions stands as written. `CKRecord.encryptedValues` is confirmed as the layer Phase 4 will mirror through. No follow-up spike needed before Phase 4 starts.
+
+**Gotcha for future reference**: a fresh App ID's iCloud row on developer.apple.com requires a separate "Configure → check container → Save" step *after* registration to actually attach the container — the Capability Requests during initial registration only enable the capability, not the container assignment. Skip this and CloudKit returns `CKError.code = 5 (badContainer)` even though everything else looks correct.
 
 ### 2026-05-10 — Phase 0 (Tap Forms trial) skipped; decision: build
 
