@@ -3,6 +3,43 @@
 Versions follow `1.0.<commit-count>` derived from git in `build-app.sh`. This file
 narrates *what* changed and *why*; bundle versions just label the moment.
 
+## 0.18.4 — Cancel scan + force-quit fallback + docs refresh (2026-05-09)
+
+### Cancel scan, properly
+
+The toolbar Scan button now flips to a prominent red **Cancel** while
+a scan is running, bound to **⌘.** so it's reachable even when other
+toolbar items push it into the overflow menu. Click it (or hit ⌘.)
+and the engine unwinds within ~1 second:
+
+- Every drain loop in the engine (exact + perceptual + video + lookup-
+  index) now checks `Task.isCancelled` between each task completion
+  and calls `group.cancelAll() + throw CancellationError()` to
+  short-circuit instead of waiting for the rest of the in-flight work.
+- The walker's `Task.checkCancellation()` calls bail out of the
+  `for-try-await` loop. The walker's detached task gets cancelled via
+  `continuation.onTermination`.
+- `runScan` catches `CancellationError` separately and writes "Scan
+  cancelled" to the status line. The on-disk SQLite cache is flushed
+  per batch, so cancelling mid-scan doesn't lose work.
+
+### Force-quit watchdog
+
+Some non-cancellable phases (a slow SQLite read against a 100k-row
+cache, a very large file already in flight) can outlast the user's
+patience. After 4 seconds of "Cancelling…", the toolbar button morphs
+into **Force Quit**, which calls `exit(0)`. Brutal but immediate, and
+the cache survives.
+
+### Docs refresh
+
+- `HANDOFF.md` rewritten to reflect the actual shipped state through
+  0.18.x — Photos lookup mode, inline filter editor, PhotoKit auth +
+  Locked-Hidden bypass via direct Photos.sqlite read, Tahoe-specific
+  layout fixes (GeometryReader, sheet/popover empty-box bug), 90+
+  tests, build-script hardening.
+- `README.md` features list now matches reality.
+
 ## 0.18.3 — "Only hidden" filter via direct Photos.sqlite read + UUID basename matching (2026-05-09)
 
 ### Two stacked bugs killed the hidden-only filter

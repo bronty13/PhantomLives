@@ -26,6 +26,13 @@ struct ContentView: View {
     /// from the toolbar. The engine respects `Task.checkCancellation()`
     /// in the walker; cancellation propagates through the async chain.
     @State private var scanTask: Task<Void, Never>? = nil
+    /// Set when the user clicks Cancel — used by the toolbar to switch
+    /// the button to a Force Quit option after a few seconds if the
+    /// scan hasn't responded. Some non-cancellable phases (a slow
+    /// SQLite read against a 100k+-row cache, a large-file hash that's
+    /// already in flight) can take longer than the user is willing to
+    /// wait, so we offer a brutal exit() escape hatch.
+    @State private var cancelRequestedAt: Date? = nil
     @State private var progressLine: String = ""
     @State private var cacheLine: String = ""
     @State private var stageTiming: String = ""
@@ -145,15 +152,35 @@ struct ContentView: View {
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
                 if isScanning {
-                    Button(role: .destructive) {
-                        scanTask?.cancel()
-                        scanTask = nil
-                        statusMessage = "Cancelling…"
-                    } label: {
-                        Label("Cancel scan", systemImage: "stop.circle")
-                            .labelStyle(.titleAndIcon)
+                    if let requestedAt = cancelRequestedAt,
+                       Date().timeIntervalSince(requestedAt) > 4 {
+                        // Soft cancel didn't take effect within 4 s.
+                        // Offer a hard exit — the cache flushes on every
+                        // batch, so killing mid-scan is safe.
+                        Button {
+                            exit(0)
+                        } label: {
+                            Label("Force quit", systemImage: "xmark.octagon.fill")
+                                .labelStyle(.titleAndIcon)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.red)
+                        .help("The scan didn't respond to Cancel — terminate the process. The on-disk SQLite cache is flushed per batch, so the next launch picks up cleanly.")
+                    } else {
+                        Button {
+                            scanTask?.cancel()
+                            scanTask = nil
+                            cancelRequestedAt = Date()
+                            statusMessage = "Cancelling…"
+                        } label: {
+                            Label("Cancel", systemImage: "stop.circle.fill")
+                                .labelStyle(.titleAndIcon)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.red)
+                        .keyboardShortcut(".", modifiers: .command)
+                        .help("Stop the running scan (⌘.). The cache keeps whatever's already been hashed, so re-running picks up where this left off.")
                     }
-                    .help("Stop the running scan. Whatever's already cached stays cached, so re-running picks up where this left off.")
                 } else {
                     Button {
                         scanTask = Task { await runScan() }
@@ -1226,6 +1253,7 @@ struct ContentView: View {
             Log.app.error("Scan failed: \(error.localizedDescription, privacy: .public)")
         }
         scanTask = nil
+        cancelRequestedAt = nil
     }
 
     // MARK: - status helpers

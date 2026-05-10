@@ -298,6 +298,7 @@ public actor CachedScanEngine {
             }
             for _ in 0..<limit { submit() }
             while inFlight > 0 {
+                if Task.isCancelled { group.cancelAll(); throw CancellationError() }
                 if let r = try await group.next() {
                     inFlight -= 1
                     if let entry = r {
@@ -387,6 +388,7 @@ public actor CachedScanEngine {
             for _ in 0..<limit { submit() }
             var done = 0
             while inFlight > 0 {
+                if Task.isCancelled { group.cancelAll(); throw CancellationError() }
                 if let r = try await group.next() {
                     inFlight -= 1; done += 1
                     if let entry = r { freshResults.append(entry) }
@@ -525,6 +527,7 @@ public actor CachedScanEngine {
             for _ in 0..<limit { submit() }
             var done = 0
             while inFlight > 0 {
+                if Task.isCancelled { group.cancelAll(); throw CancellationError() }
                 if let r = try await group.next() {
                     inFlight -= 1; done += 1
                     if let entry = r { freshEntries.append(entry) }
@@ -634,6 +637,7 @@ public actor CachedScanEngine {
             for _ in 0..<limit { submit() }
             var done = 0
             while inFlight > 0 {
+                if Task.isCancelled { group.cancelAll(); throw CancellationError() }
                 if let r = try await group.next() {
                     inFlight -= 1; done += 1
                     if let entry = r { freshEntries.append(entry) }
