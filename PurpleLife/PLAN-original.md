@@ -1,5 +1,7 @@
 # Personal ERP — Planning Doc
 
+> **Historical context only.** This is the original planning document, written before the project was named PurpleLife. The "Personal ERP" working title is preserved in this file solely as a record of the project's origin. The active build plan is `PLAN.md`; superseding decisions live there and in `HANDOFF.md`.
+
 A planning document for building a structured, encrypted, multi-Mac personal life management application.
 
 ## Background

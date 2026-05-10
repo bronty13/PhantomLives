@@ -1,0 +1,53 @@
+name: PurpleLife
+options:
+  bundleIdPrefix: com.bronty13
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16"
+
+packages:
+  GRDB:
+    url: https://github.com/groue/GRDB.swift
+    from: "6.0.0"
+
+targets:
+  PurpleLife:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/PurpleLife
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bronty13.PurpleLife
+        SWIFT_VERSION: "5.10"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: SRKV8T38CD
+        INFOPLIST_FILE: Sources/PurpleLife/App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/PurpleLife/App/PurpleLife.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    dependencies:
+      - package: GRDB
+    scheme:
+      testTargets:
+        - PurpleLifeTests
+
+  PurpleLifeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/PurpleLifeTests
+    dependencies:
+      - target: PurpleLife
+      - package: GRDB
+    settings:
+      base:
+        SWIFT_VERSION: "5.10"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.bronty13.PurpleLifeTests
+        # Same team as the host so the .xctest bundle is properly signed —
+        # the Phase-4 host has Hardened Runtime via Apple Development
+        # signing, which refuses to load ad-hoc-signed test bundles.
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: SRKV8T38CD

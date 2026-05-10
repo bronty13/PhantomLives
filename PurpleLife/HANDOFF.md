@@ -1,0 +1,104 @@
+# PurpleLife — HANDOFF
+
+The durable log of decisions and design-handoff deviations for PurpleLife. Append-only; do not rewrite history. Newest entries at the top.
+
+## How to use this file
+
+- **Decisions**: every locked decision that overrides or amends `PLAN.md` is recorded here with a date and one-line rationale.
+- **Design deviations**: any deliberate divergence from `~/Downloads/PurpleLife-handoff.zip` (the visual design source of truth) is recorded here with a one-line reason, per the process in `PLAN.md` § Design source of truth.
+- **Format**: `### YYYY-MM-DD — Title` heading, then a short paragraph or bullet list. Reference the relevant section of `PLAN.md` when applicable.
+
+---
+
+## Decisions
+
+### 2026-05-10 — End-of-session snapshot
+
+Initial build session executed all five plan phases through a working state. Snapshot for whoever picks this up next:
+
+- **Latest tagged build**: `v0.1.185` (commit `1f8bd0d`), Apple-Development-signed with the iCloud entitlement for container `iCloud.com.bronty13.PurpleLife`.
+- **Acceptance gates fully met**: Phase 1, Phase 2, Phase 3. Phase 0 skipped by decision. CloudKit spike PASSed.
+- **Acceptance gates with starters but unverified**:
+  - **Phase 4** — push on mutation, 30 s poll, LWW conflict resolution are all wired. The "<5 s Mac→Mac" timing claim is unverified — needs a second Mac on the same iCloud account.
+  - **Phase 5** — real attachments, gallery image loading, WeightTracker CSV import. The "≥2 weeks daily use without falling back" gate is real-world only.
+
+**Known follow-up work** (rough priority order):
+
+1. **Real-time CloudKit subscriptions** — replace 30 s poll with silent-push wakeups (`CKDatabaseSubscription` + `aps-environment` + an `NSApplicationDelegateAdaptor`). The touchpoints are sketched in the "Phase 4 sync" decision below.
+2. **Test infrastructure regression** — `xcodebuild test` currently hangs on this Mac for both PurpleLife and Timeliner. Environmental, not code. 24 unit tests committed this session were green at commit `47bbb98` (Phase 3); the infrastructure broke later in the session. `run-tests.sh` carries a `CODE_SIGN_ENTITLEMENTS` override that handles the iCloud-entitlement-induces-test-hang case but not the environmental hang.
+3. **Export pipeline** — `PLAN.md` § Reuse from siblings points to `Timeliner/Sources/Timeliner/Services/ExportService.swift`. Never copied.
+4. **Schema versioning across synced peers** — open question in `PLAN.md` flagged as "sketch before Phase 4." Never sketched. Running different schema versions on two Macs can create drift today.
+5. **Polish toward the prototype** — Today timeline + linked-from rail, two-pane object detail, drag-and-drop schema editor.
+6. **Daily-use ergonomics** — quick-capture menu bar item, keyboard shortcuts per type, undo.
+
+### 2026-05-10 — Phase 4 sync: poll on a 30s interval; subscriptions deferred
+
+CloudKit subscriptions (`CKDatabaseSubscription` / `CKQuerySubscription`) get silent-push notifications when records change on another device. They're how you make Mac→Mac sync feel real-time (sub-second).
+
+We're not doing them for the Phase 4 starter. The reason:
+
+- They require `aps-environment` entitlement + an app delegate handling `application(_:didReceiveRemoteNotification:fetchCompletionHandler:)`.
+- Apple's CKContainer routes the silent push through `userNotificationCenter:didReceive:` only when the app is in the foreground; otherwise it goes to the launch handler. SwiftUI's `App` lifecycle doesn't surface a clean hook for this — you end up bridging via `NSApplicationDelegateAdaptor`.
+- For a personal multi-Mac app where both Macs are typically on simultaneously, a **30 s foreground poll** is acceptable: the worst case latency is 30 s of waiting after an edit, which beats the Phase 4 acceptance gate's <5 s target only on the optimistic side. We're choosing simplicity for the starter; subscriptions land as a follow-up improvement.
+
+When the upgrade lands, the touchpoints are: `CloudKitSyncService.bootstrap` registers a `CKDatabaseSubscription`, an `NSApplicationDelegateAdaptor` forwards `application(_:didReceiveRemoteNotification:fetchCompletionHandler:)` into `CloudKitSyncService.handleSubscriptionNotification(_:)`, and the 30 s poll task in `startPolling` becomes a fallback for offline-recovery scenarios only.
+
+### 2026-05-10 — Phase 4 conflict resolution: deterministic LWW by `updated_at`
+
+Same-field offline edits on two Macs reconcile by comparing `updated_at`. Newer wins. Tied timestamps are unlikely (ISO-8601 to seconds) but treated as "remote keeps current" in `applyRemote` (`>=` rather than `>`).
+
+We're not doing CRDT-style merges or three-way diffs. A Life OS edit is "the user typed in this field"; LWW is the right shape and matches CloudKit's `serverRecordChanged` retry pattern.
+
+### 2026-05-10 — Phase 4 signing: switch from Developer ID to Apple Development
+
+Pre-Phase-4 builds signed the `.app` with Developer ID Application after `ditto`. That's the right cert for outside-App-Store distribution but **doesn't carry CloudKit entitlements** — only Apple Development + a development provisioning profile does. The Phase 4 build script (`build-app.sh`) drops the post-`ditto` Developer ID re-sign and lets xcodebuild's Debug build provide the signature, which embeds the dev profile that includes `iCloud.com.bronty13.PurpleLife`.
+
+Implication for users: the app is now signed for personal-team development use. Multi-Mac install on the same team's Macs is unchanged. Distributing the binary to a non-team Mac is no longer supported; if we ever need that, build with Developer ID separately and accept that CloudKit sync is off in those copies.
+
+### 2026-05-10 — Attachments storage: content-addressed files in Application Support; CloudKit sync deferred to Phase 4
+
+`PLAN.md` § Open questions calls for the attachments decision before Phase 2. Decided.
+
+- **Phase 2** stores attachments as files at `~/Library/Application Support/PurpleLife/attachments/<sha256>.<ext>`. `fields_json` references them by sha256. Files travel inside backup zips automatically because they're under the Application Support tree the auto-backup already captures.
+- **Phase 4** mirrors attachments to CloudKit as `CKAsset` (the only realistic shape for >50 KB binary data over CloudKit). `CKAsset`s are not E2E encrypted by `encryptedValues` — Apple has the keys for assets even though they don't for the JSON `fields` blob. That's a known and accepted trade-off: file content has lower confidentiality requirements than the structured fields, and the alternative (chunking + client-side encryption of media) costs weeks for a personal-scale app.
+- **What's rejected**: BLOBs in SQLite (Timeliner's pattern) — fine for the small case-file attachments Timeliner deals with, but a Life OS will have photo libraries in the hundreds of MB and SQLite-as-a-blob-store stops being the right shape there. CKAsset-only with no local copy — defeats backups, breaks offline use.
+- **Schema implication**: a single `attachments` table created in Phase 2 with `id`, `parent_object_id`, `sha256`, `filename`, `mime_type`, `size_bytes`, `created_at`. The on-disk file is the source of truth for content; the row is metadata only. Cascade deletes when the parent object is deleted.
+
+### 2026-05-10 — CloudKit spike PASS; encryption decision locked
+
+The spike `Spike/CloudKit/CloudKitSpike.app` ran successfully against the production Apple Developer setup:
+
+- Container `iCloud.com.bronty13.PurpleLife` provisioned.
+- App ID `com.bronty13.PurpleLife.CloudKitSpike` created with iCloud capability + container attached.
+- Mac registered as a development device on team `SRKV8T38CD`.
+- `build-spike.sh` updated with `-allowProvisioningUpdates` and `DEVELOPMENT_TEAM=SRKV8T38CD` baked into `Spike/CloudKit/project.yml` so future runs are turnkey.
+
+**Result**: PASS — bytes-out matched bytes-in (sha256 `822b5b86…`), plaintext columns round-tripped, 4.2 s end-to-end on a brand-new container's first write. Full log + decision in `Spike/CloudKit/SPIKE.md` § Run log / Decision.
+
+**Effect on plan**: the encryption row in `PLAN.md` § Locked decisions stands as written. `CKRecord.encryptedValues` is confirmed as the layer Phase 4 will mirror through. No follow-up spike needed before Phase 4 starts.
+
+**Gotcha for future reference**: a fresh App ID's iCloud row on developer.apple.com requires a separate "Configure → check container → Save" step *after* registration to actually attach the container — the Capability Requests during initial registration only enable the capability, not the container assignment. Skip this and CloudKit returns `CKError.code = 5 (badContainer)` even though everything else looks correct.
+
+### 2026-05-10 — Phase 0 (Tap Forms trial) skipped; decision: build
+
+The plan reserves Phase 0 as a one-week Tap Forms trial against ≥3 real use cases, with a "build or stop" gate at the end. That gate is now closed without running the trial.
+
+- **Decision**: build PurpleLife. Skip Phase 0.
+- **Rationale**:
+  - The user has already evaluated the off-the-shelf options surveyed in `PLAN-original.md` (Tap Forms, Ninox, Trilium, Anytype) and concluded the gap on the planner side and on configurable cross-type relations would not be closed by any of them.
+  - The PhantomLives family (`Timeliner`, `PurpleTracker`, `WeightTracker`, `PurpleIRC`, `PurpleDedup`) provides nearly every system service PurpleLife needs as copy-then-adapt source material; the build cost is meaningfully lower than the plan's original estimate assumes.
+  - End-to-end encryption with keys the user controls is a hard requirement that no off-the-shelf candidate satisfies in the way `CKRecord.encryptedValues` does. Even a successful Tap Forms trial would not have changed this.
+- **Effect on plan**:
+  - `PLAN.md` § Build phases shows P0 as skipped, dashed-line, with the rationale pointer to this file.
+  - `PLAN.md` § Phase acceptance tests row for Phase 0 reads "Skipped" with the same pointer.
+  - The CloudKit spike is moved ahead of Phase 1 (rather than running parallel with Phase 2 as the original plan suggested), to surface any `encryptedValues` blockers before the Foundation phase commits to the storage shape.
+
+### 2026-05-10 — Project name locked: PurpleLife
+
+The project is named **PurpleLife**, matching the directory and the Purple* family naming convention (PurpleIRC, PurpleDedup, PurpleTracker). Any references to the prior working title ("Personal ERP") are removed from active documentation. `PLAN-original.md` retains the prior name in its content as a historical record only and is annotated accordingly at the top of the file.
+
+---
+
+## Design deviations from `~/Downloads/PurpleLife-handoff.zip`
+
+_None yet._ Phase 2 has not begun. Add entries here as `### YYYY-MM-DD — <Screen> — <one-line reason>` as deviations are made.
