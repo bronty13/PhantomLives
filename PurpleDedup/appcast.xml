@@ -23,5 +23,17 @@
           above old ones; keep the last few historical entries for users who
           skip versions.
         -->
+        <item>
+            <title>PurpleDedup 0.20.0 (1.0.143)</title>
+            <pubDate>Sun, 10 May 2026 03:16:09 +0000</pubDate>
+            <sparkle:version>143.282f762</sparkle:version>
+            <sparkle:shortVersionString>1.0.143</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[Sparkle in-app auto-updates. People filter for Photos library sources. Reverse-geocoded GPS in metadata. pHash + dHash OR-of-distances clustering. "In Photos" badge for non-exact clusters. CLI Photos filter. See CHANGELOG.md for the full list.]]></description>
+            <enclosure
+                url="https://github.com/bronty13/PhantomLives/releases/download/purplededup-v1.0.143/PurpleDedup-1.0.143.zip"
+                sparkle:edSignature="hOD6Lz2jAiFet7PWggZcfPCcS7rHGuQFA6ZLKCT06vkyUKYAAfLXUOB2bRgBiItwuOpoHveE7NMd2fcp5WCDDQ==" length="6673364"
+                type="application/octet-stream" />
+        </item>
     </channel>
 </rss>
