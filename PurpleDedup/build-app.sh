@@ -129,7 +129,12 @@ cat > "$CONTENTS/Info.plist" <<PLIST
     <key>SUPublicEDKey</key><string>${SPARKLE_PUBLIC_KEY}</string>
     <key>SUEnableAutomaticChecks</key><true/>
     <key>SUScheduledCheckInterval</key><integer>86400</integer>
-    <key>SUEnableInstallerLauncherService</key><true/>
+    <!-- SUEnableInstallerLauncherService is INTENTIONALLY OMITTED. That key
+         opts into the XPC-installer mode required for sandboxed apps; setting
+         it true on a non-sandboxed app triggers a launchd lookup against
+         SMAppService that we don't have configured, and the user sees
+         "Unable to Check For Updates · The updater failed to start." Sparkle
+         on non-sandboxed apps launches Versions/B/Updater.app directly. -->
 </dict>
 </plist>
 PLIST
