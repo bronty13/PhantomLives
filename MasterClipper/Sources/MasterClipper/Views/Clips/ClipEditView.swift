@@ -287,15 +287,8 @@ struct ClipEditView: View {
             let titleText = clip.title.isEmpty ? clip.id : "\"\(clip.title)\""
             Text("\(titleText) and all its postings, category links, and history will be permanently deleted. This cannot be undone — restore from a backup if you change your mind.")
         }
-        .sheet(isPresented: $showingAuditSheet) {
-            FileAuditSheet(clip: draft) { result in
-                if let f = result.detectedClipFilename, draft.clipFilename != f {
-                    draft.clipFilename = f
-                }
-                if let f = result.detectedPreviewFilename, draft.previewFilename != f {
-                    draft.previewFilename = f
-                }
-            }
+        .sheet(isPresented: $showingAuditSheet, onDismiss: syncDraftFilesFromAppState) {
+            FileAuditWorkflow(clips: [draft])
         }
     }
 
@@ -1279,6 +1272,31 @@ struct ClipEditView: View {
         } else {
             NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: expanded)])
         }
+    }
+
+    /// Pull file/path fields back into `draft` after the audit workflow
+    /// dismisses. The workflow writes its mutations (push from FCP,
+    /// provision production folder, capture thumbnail, transcribe, hash)
+    /// straight to AppState — so without this, ClipEditView's local draft
+    /// would still show the pre-audit values and would clobber them on
+    /// next save. Title / description / etc. that the user may be editing
+    /// in the form are deliberately NOT touched.
+    private func syncDraftFilesFromAppState() {
+        guard let live = appState.clips.first(where: { $0.id == clip.id }) else { return }
+        draft.clipFilename = live.clipFilename
+        draft.previewFilename = live.previewFilename
+        draft.thumbnailFilename = live.thumbnailFilename
+        draft.productionFolder = live.productionFolder
+        draft.transcript = live.transcript
+        draft.mp4Md5 = live.mp4Md5
+        draft.mp4Sha1 = live.mp4Sha1
+        draft.mp4Sha256 = live.mp4Sha256
+        draft.mp4SizeBytes = live.mp4SizeBytes
+        draft.reducedMd5 = live.reducedMd5
+        draft.reducedSha1 = live.reducedSha1
+        draft.reducedSha256 = live.reducedSha256
+        draft.reducedSizeBytes = live.reducedSizeBytes
+        draft.hashesComputedAt = live.hashesComputedAt
     }
 
     private func runTranscribe() {
