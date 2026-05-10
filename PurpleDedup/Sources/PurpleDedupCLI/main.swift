@@ -83,6 +83,12 @@ struct Scan: AsyncParsableCommand {
     @Flag(name: [.customLong("no-cache")], help: "Skip the on-disk cache (uses in-memory ScanEngine instead of CachedScanEngine).")
     var noCache: Bool = false
 
+    @Flag(
+        name: [.customLong("ffmpeg")],
+        help: "Use a system-installed FFmpeg as a fallback for video formats AVFoundation can't decode (MKV, AVI, WMV, WebM). Probes /opt/homebrew, /usr/local, /opt/local, $PATH, and the FFMPEG_PATH env var."
+    )
+    var useFFmpeg: Bool = false
+
     // MARK: - Photos library filter (applied only to `.photoslibrary` sources)
 
     @Option(
@@ -215,13 +221,36 @@ struct Scan: AsyncParsableCommand {
             }
         }
 
+        // FFmpeg fallback probe — only when --ffmpeg is set. Bail loudly if
+        // the user opted in but no FFmpeg is on this machine; silent
+        // skipping for the GUI is fine, but a CLI flag should match the
+        // user's stated intent.
+        let ffmpegProbe: FFmpegProbe.Probe?
+        if useFFmpeg {
+            guard let probe = FFmpegProbe.find() else {
+                throw ValidationError("--ffmpeg is set but no FFmpeg installation was found. Install via `brew install ffmpeg` (or set FFMPEG_PATH).")
+            }
+            if !isQuiet {
+                FileHandle.standardError.write(Data(
+                    "Using FFmpeg fallback: \(probe.versionLine) (\(probe.ffmpegURL.path))\n".utf8
+                ))
+            }
+            ffmpegProbe = probe
+        } else {
+            ffmpegProbe = nil
+        }
+        let videoFingerprinter = VideoFingerprinter(ffmpegFallback: ffmpegProbe)
+
         // Default path: CachedScanEngine. Persists hashes to ~/Library/Application
         // Support/PurpleDedup/purplededup.sqlite so second runs skip re-hashing
         // unchanged files. Pass --no-cache to fall back to the in-memory ScanEngine
         // (e.g. for benchmarking the hash pipeline without I/O-cache effects).
         let result: ScanEngine.Result
         if noCache {
-            let engine = ScanEngine(hasher: ContentHasher(algorithm: hashAlgorithm))
+            let engine = ScanEngine(
+                hasher: ContentHasher(algorithm: hashAlgorithm),
+                videoFingerprinter: videoFingerprinter
+            )
             result = try await engine.scan(
                 sources: sources,
                 options: options,
@@ -233,7 +262,8 @@ struct Scan: AsyncParsableCommand {
             let database = try Database.openDefault()
             let engine = CachedScanEngine(
                 database: database,
-                contentHasher: ContentHasher(algorithm: hashAlgorithm)
+                contentHasher: ContentHasher(algorithm: hashAlgorithm),
+                videoFingerprinter: videoFingerprinter
             )
             let pair = try await engine.scan(
                 sources: sources,

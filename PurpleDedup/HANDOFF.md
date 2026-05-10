@@ -2,7 +2,7 @@
 
 The canonical mental model for the codebase, kept current as the project ships.
 The big spec is `~/Downloads/Dedupr-Requirements.md`; this file is the
-*implementation* snapshot at version `0.20.0`.
+*implementation* snapshot at version `0.21.0`.
 
 ## Mental model
 
@@ -56,7 +56,9 @@ non-cached opt-out.
 | `Sources/PurpleDedupCore/Indexing/FileWalker.swift` | Async streaming enumeration. Photos library shard fast-path when whitelist is set. UUID-stem matching alongside basename matching. |
 | `Sources/PurpleDedupCore/Hashing/ContentHasher.swift` | Pluggable content hashing — defaults to SHA-1; SHA-256/384/512 + MD5 also available |
 | `Sources/PurpleDedupCore/Hashing/PerceptualHasher.swift` | pHash (32×32 → 8×8 DCT) + dHash + 4-rotation hash family |
-| `Sources/PurpleDedupCore/Hashing/VideoFingerprinter.swift` | AVFoundation 1-fps frame extraction, capped at 12 frames per video |
+| `Sources/PurpleDedupCore/Hashing/VideoFingerprinter.swift` | AVFoundation 1-fps frame extraction, capped at 12 frames per video. Optional `ffmpegFallback: FFmpegProbe.Probe?` retries via `FFmpegFingerprinter` on AVFoundation decode failure (MKV/AVI/WMV/WebM). |
+| `Sources/PurpleDedupCore/Hashing/FFmpegProbe.swift` | Locates a system `ffmpeg`+`ffprobe` pair (env var → Homebrew/MacPorts → PATH). |
+| `Sources/PurpleDedupCore/Hashing/FFmpegFingerprinter.swift` | FFmpeg-driven fingerprinter for unsupported formats; `ffprobe` for metadata, `ffmpeg -ss …` per frame, then the same `PerceptualHasher` photo path. |
 | `Sources/PurpleDedupCore/Clustering/ExactClusterer.swift` | Stage 1 (size) + 3 (content hash) pipeline |
 | `Sources/PurpleDedupCore/Clustering/BKTree.swift` | Hamming-distance metric tree |
 | `Sources/PurpleDedupCore/Clustering/UnionFind.swift` | Disjoint-set for transitive merging |
@@ -177,10 +179,12 @@ the sidebar layout, the filter UI, or the build script.
   Full sequence-DP alignment (Smith-Waterman over per-frame Hamming) is the
   Phase-7 fix. Pairwise is also O(n²) on candidate count; for libraries with
   thousands of videos we'd want a per-frame BK-tree to prune.
-- **Video format coverage.** AVFoundation only — MKV / AVI / WMV / WebM
-  produce `unsupportedFormat` per-file. FFmpeg fallback rejected for now
-  (binary size, GPL licensing, App-Store-friendliness even though we're
-  direct-download for personal use).
+- **Video format coverage.** AVFoundation natively decodes MP4 / MOV /
+  M4V / MPG / ProRes / HEVC / H.264. As of 0.21.0 there's an opt-in
+  FFmpeg sidecar fallback for MKV / AVI / WMV / WebM — Settings → Engine
+  toggle, or `pdedup --ffmpeg`. Probes for a user-installed FFmpeg
+  (Homebrew / MacPorts / PATH); we deliberately don't bundle the binary
+  to avoid GPL contamination.
 - **Debug-build hashing is slow.** SHA / DCT in unoptimised Swift takes ~50×
   longer than release. Always test against `swift build -c release` or
   `./build-app.sh` for realistic timing. (Memorialized in
@@ -197,7 +201,7 @@ the sidebar layout, the filter UI, or the build script.
 
 ## Tests
 
-95 tests in `Tests/PurpleDedupCoreTests/`, all hitting real fixtures (no
+98 tests in `Tests/PurpleDedupCoreTests/`, all hitting real fixtures (no
 FileManager mocking). Highlights:
 
 - `CachedScanEngineTests` — cache hit/miss invariants, lookup-only mode
@@ -245,13 +249,10 @@ The current shipped feature set covers the original requirements doc end-to-
 end plus a long list of user-driven additions. Practical next steps in order
 of value:
 
-1. **MKV / AVI / WMV via FFmpeg sidecar**, behind a Settings opt-in. Avoids
-   the GPL-vs-distribution issue by leaving the binary out of the bundle and
-   probing for a system `ffmpeg` at runtime.
-2. **Notarization automation in CI** — direct-download apps still need a
+1. **Notarization automation in CI** — direct-download apps still need a
    notarization ticket to avoid the Gatekeeper warning. The `NOTARIZE_PROFILE`
    path is in `build-app.sh` but no automated runner.
-3. **Smith-Waterman frame-sequence alignment for video.** Today's ±5-frame
+2. **Smith-Waterman frame-sequence alignment for video.** Today's ±5-frame
    window misses videos with substantially different leaders (clipped intros,
    different first 30 s). Full DP alignment + per-frame BK-tree pruning would
    make the video stage robust to those cases.

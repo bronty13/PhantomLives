@@ -67,12 +67,21 @@ public enum VideoFingerprinterError: Error, LocalizedError {
 }
 
 /// Builds a `VideoFingerprint` from a video URL via AVFoundation. AVAsset handles every
-/// format AVFoundation natively decodes (MP4, MOV, M4V, MPG, ProRes, HEVC, H.264). MKV,
-/// AVI, WMV, WebM are *not* supported in Phase 3 — bundling FFmpeg adds binary size,
-/// licensing complexity, and (per the App-Store-friendly design we're echoing) it's
-/// the deliberate trade-off. Files that fail to decode produce
-/// `VideoFingerprinterError.unsupportedFormat` and the scan continues without them.
+/// format AVFoundation natively decodes (MP4, MOV, M4V, MPG, ProRes, HEVC, H.264).
+///
+/// **MKV / AVI / WMV / WebM**: when an `FFmpegProbe.Probe` is supplied via the
+/// `ffmpegFallback` initializer parameter, AVFoundation failures
+/// (`unreadableAsset`, `unsupportedFormat`) trigger a retry through
+/// `FFmpegFingerprinter`. We deliberately don't bundle FFmpeg (GPL) — the user
+/// installs it themselves (Homebrew etc.) and the engine probes for it at
+/// startup. With no probe set, those formats fail with
+/// `VideoFingerprinterError.unsupportedFormat` exactly as before.
 public struct VideoFingerprinter: Sendable {
+
+    /// Optional FFmpeg fallback. Configure via `init(ffmpegFallback:)`. When
+    /// non-nil, AVFoundation failures retry through this fingerprinter instead
+    /// of throwing immediately.
+    public let ffmpegFallback: FFmpegProbe.Probe?
 
     /// Frame sampling rate in Hz. 1 frame/second is the requirements-doc default — long
     /// enough to capture meaningful structure, short enough to keep fingerprint sizes
@@ -98,9 +107,33 @@ public struct VideoFingerprinter: Sendable {
     /// these regardless.
     public static let minDurationSeconds: Double = 2.0
 
-    public init() {}
+    public init(ffmpegFallback: FFmpegProbe.Probe? = nil) {
+        self.ffmpegFallback = ffmpegFallback
+    }
 
     public func fingerprint(videoAt url: URL) async throws -> VideoFingerprint {
+        do {
+            return try await fingerprintViaAVFoundation(url: url)
+        } catch let avError as VideoFingerprinterError {
+            // Retry via FFmpeg only when configured AND only for failure modes
+            // FFmpeg might actually fix. `tooShort` and `noVideoTrack` aren't
+            // codec issues; falling back wouldn't help and would just burn CPU
+            // re-confirming the same conclusion.
+            guard let probe = ffmpegFallback else { throw avError }
+            switch avError {
+            case .unreadableAsset, .unsupportedFormat, .noFramesExtracted:
+                Log.hash.info("AVFoundation failed for \(url.path, privacy: .public) — retrying via FFmpeg \(probe.versionLine, privacy: .public)")
+                let ffmpeg = FFmpegFingerprinter(probe: probe)
+                return try await ffmpeg.fingerprint(videoAt: url)
+            case .noVideoTrack, .tooShort:
+                throw avError
+            }
+        }
+    }
+
+    /// Original AVFoundation path. Extracted so the fallback wrapper above
+    /// can call it without recursing.
+    private func fingerprintViaAVFoundation(url: URL) async throws -> VideoFingerprint {
         let asset = AVURLAsset(url: url)
 
         // Probe the asset before extracting frames. Failing here is much cheaper than

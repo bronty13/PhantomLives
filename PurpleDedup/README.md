@@ -6,7 +6,7 @@ the App Store.
 
 ## Status
 
-**0.20.0 — Sparkle in-app auto-updates.** All seven
+**0.21.0 — FFmpeg sidecar for MKV / AVI / WMV / WebM (opt-in).** All seven
 phases of the requirements doc plus a long list of user-driven additions are
 shipped. See `CHANGELOG.md` for the per-version detail.
 
@@ -42,6 +42,11 @@ What works today:
 - **In-app auto-updates via Sparkle 2.** Future versions delivered
   through the app menu; toggle automatic checks in Settings → Updates.
   See `RELEASING.md` for one-time EdDSA setup before the first release.
+- **FFmpeg fallback** for Matroska, AVI, Windows Media, and WebM.
+  Off by default; enable in Settings → Engine, or `pdedup --ffmpeg`.
+  Requires a system-installed FFmpeg (`brew install ffmpeg` or MacPorts)
+  — we don't bundle the binary because its GPL licensing would
+  contaminate PurpleDedup's distribution.
 - **GRDB-backed cache.** First run on a 5 600-file folder: ~19 s. Second
   run: <1 s.
 - **Save plan as JSON** (FR-5.9 dry-run) — every cluster + decision out

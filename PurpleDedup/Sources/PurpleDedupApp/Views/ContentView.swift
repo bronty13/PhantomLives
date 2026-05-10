@@ -1205,7 +1205,13 @@ struct ContentView: View {
 
             if settingsStore.settings.useCachedEngine {
                 let database = try Database.openDefault()
-                let engine = CachedScanEngine(database: database)
+                // FFmpeg sidecar: only probe when the user has opted in.
+                // Probe is a process spawn; not free, so skip when disabled.
+                let ffmpegProbe: FFmpegProbe.Probe? = settingsStore.settings.ffmpegFallbackEnabled ? FFmpegProbe.find() : nil
+                let engine = CachedScanEngine(
+                    database: database,
+                    videoFingerprinter: VideoFingerprinter(ffmpegFallback: ffmpegProbe)
+                )
                 let pair = try await engine.scan(
                     sources: captured,
                     options: ScanOptions(kinds: [.photo, .video]),

@@ -3,6 +3,63 @@
 Versions follow `1.0.<commit-count>` derived from git in `build-app.sh`. This file
 narrates *what* changed and *why*; bundle versions just label the moment.
 
+## 0.21.0 — FFmpeg sidecar for MKV / AVI / WMV / WebM (2026-05-09)
+
+AVFoundation can decode MP4 / MOV / M4V / MPG / ProRes / HEVC / H.264, but
+not Matroska, AVI, Windows Media, or WebM. Until now those formats logged
+as `unsupportedFormat` per-file and the scan continued without them. New
+opt-in fallback uses a system-installed FFmpeg.
+
+### Why a sidecar (not bundled)
+
+FFmpeg is GPL-licensed; bundling it would force PurpleDedup under GPL
+too. Probing for a user-installed copy keeps the trade-off the user's:
+no FFmpeg → no support for those formats; install FFmpeg → support
+appears next launch.
+
+### What's new
+
+- `Sources/PurpleDedupCore/Hashing/FFmpegProbe.swift` — locates a working
+  ffmpeg+ffprobe pair. Search order: `FFMPEG_PATH` env var → known
+  Homebrew/MacPorts paths → `which` via `/usr/bin/env`. Reads the version
+  line via `ffmpeg -version` to confirm the binary actually runs.
+- `Sources/PurpleDedupCore/Hashing/FFmpegFingerprinter.swift` — produces
+  a `VideoFingerprint` for files AVFoundation can't decode. Uses
+  `ffprobe -of json` for metadata (duration, dimensions), then per-frame
+  `ffmpeg -ss <t> -i <file> -frames:v 1 -vf scale=…` extractions into a
+  temp directory, hashed via the same `PerceptualHasher` the AVFoundation
+  path uses. Same sample-time math as `VideoFingerprinter` so AV-decoded
+  and FFmpeg-decoded fingerprints of the same content cluster together.
+- `VideoFingerprinter` gains an optional `ffmpegFallback: FFmpegProbe.Probe?`
+  initializer parameter. When set, AVFoundation failures
+  (`unreadableAsset` / `unsupportedFormat` / `noFramesExtracted`) retry
+  through `FFmpegFingerprinter`. `noVideoTrack` and `tooShort` failures
+  don't retry — they aren't codec issues, retry would just burn CPU.
+- New **AppSettings.ffmpegFallbackEnabled** (default off, persisted in
+  UserDefaults). Settings → Engine exposes the toggle plus probe status
+  ("FFmpeg detected: ffmpeg version 8.1.1 / /opt/homebrew/bin/ffmpeg" or
+  "FFmpeg not found — install via brew install ffmpeg").
+- New CLI flag `pdedup scan --ffmpeg`. Validates that FFmpeg is present
+  at startup and exits with a clear error if not — CLI flags should
+  match user intent rather than silently skipping (the GUI's
+  silent-skip is fine; toggle in Settings is informational).
+
+### Tests
+
+95 → 98 tests. Three new in `FFmpegFingerprinterTests`, all gated on
+`FFmpegProbe.find()` (skip cleanly when ffmpeg isn't installed):
+
+- `testProbeFindsFFmpeg` — probe finds a working pair, reads a non-empty
+  version line.
+- `testFingerprintsAStandardMP4` — FFmpeg path produces a valid
+  fingerprint for a video AVFoundation can also decode (proves the
+  pipeline works end-to-end without depending on a Matroska fixture).
+- `testFallbackTriggersOnAVFoundationFailure` — transcodes a fixture to
+  Matroska via the local ffmpeg, confirms `VideoFingerprinter()` (no
+  fallback) throws, then `VideoFingerprinter(ffmpegFallback: probe)`
+  succeeds. Skips if the local ffmpeg can't write Matroska, or if
+  AVFoundation surprises us by decoding it directly on this OS.
+
 ## 0.20.0 — Sparkle in-app auto-updates (2026-05-09)
 
 PurpleDedup now ships future versions to itself. Direct-download

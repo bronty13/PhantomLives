@@ -280,6 +280,38 @@ struct SettingsView: View {
                     .font(.callout)
             }
 
+            Section("FFmpeg fallback (MKV / AVI / WMV / WebM)") {
+                Toggle("Use system FFmpeg for unsupported video formats", isOn: Binding(
+                    get: { settingsStore.settings.ffmpegFallbackEnabled },
+                    set: { settingsStore.settings.ffmpegFallbackEnabled = $0 }
+                ))
+                .help("AVFoundation can't decode Matroska, AVI, etc. When enabled, scans probe for a system-installed FFmpeg and use it as a fingerprinting fallback.")
+
+                if settingsStore.settings.ffmpegFallbackEnabled {
+                    if let probe = FFmpegProbe.find() {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Label("FFmpeg detected", systemImage: "checkmark.seal.fill")
+                                .foregroundStyle(.green)
+                            Text(probe.versionLine)
+                                .font(.caption.monospaced()).foregroundStyle(.secondary)
+                            Text(probe.ffmpegURL.path)
+                                .font(.caption.monospaced()).foregroundStyle(.secondary)
+                                .lineLimit(1).truncationMode(.middle)
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Label("FFmpeg not found", systemImage: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            Text("Install via `brew install ffmpeg` or MacPorts. The toggle is harmless without FFmpeg installed — fallback is silently skipped at scan time.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                } else {
+                    Text("Off: scans skip MKV / AVI / WMV / WebM (logged per-file as `unsupportedFormat`).")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+
             Section("Deletion destination") {
                 let stage = settingsStore.settings.stageFolderPath ?? ""
                 if stage.isEmpty {

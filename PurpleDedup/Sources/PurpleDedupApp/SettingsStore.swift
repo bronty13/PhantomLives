@@ -34,6 +34,7 @@ final class SettingsStore: ObservableObject {
         d.set(settings.backupRetentionDays, forKey: Self.key("backupRetentionDays"))
         d.set(settings.lastBackupAt, forKey: Self.key("lastBackupAt"))
         d.set(settings.useCachedEngine, forKey: Self.key("useCachedEngine"))
+        d.set(settings.ffmpegFallbackEnabled, forKey: Self.key("ffmpegFallbackEnabled"))
         d.set(settings.lastSourcePaths, forKey: Self.key("lastSourcePaths"))
         d.set(settings.photoThreshold, forKey: Self.key("photoThreshold"))
         d.set(settings.videoThreshold, forKey: Self.key("videoThreshold"))
@@ -65,6 +66,9 @@ final class SettingsStore: ObservableObject {
         s.lastBackupAt = d.string(forKey: key("lastBackupAt"))
         if d.object(forKey: key("useCachedEngine")) != nil {
             s.useCachedEngine = d.bool(forKey: key("useCachedEngine"))
+        }
+        if d.object(forKey: key("ffmpegFallbackEnabled")) != nil {
+            s.ffmpegFallbackEnabled = d.bool(forKey: key("ffmpegFallbackEnabled"))
         }
         s.lastSourcePaths = (d.array(forKey: key("lastSourcePaths")) as? [String]) ?? []
         if d.object(forKey: key("photoThreshold")) != nil {
@@ -105,6 +109,13 @@ struct AppSettings: Equatable {
     /// re-hashing unchanged files. The plain `ScanEngine` is kept as an opt-out for
     /// debugging — toggle it off if cached results look stale during development.
     var useCachedEngine: Bool = true
+
+    /// When true, the engine falls back to a system-installed `ffmpeg` to
+    /// fingerprint videos AVFoundation can't decode (MKV, AVI, WMV, WebM).
+    /// Default false — the user has to install FFmpeg themselves (Homebrew /
+    /// MacPorts) and explicitly opt in. When ffmpeg isn't found at scan time,
+    /// the toggle is silently a no-op.
+    var ffmpegFallbackEnabled: Bool = false
 
     /// Persisted across app launches so the user doesn't reconfigure every time.
     /// Restored on first appearance of the main window; the user can re-scan with
