@@ -2,7 +2,10 @@ import SwiftUI
 
 /// Read-only field renderers shared by the four list views (table /
 /// kanban / calendar / gallery) and the detail header. Edit-mode
-/// renderers live in `Detail.swift`.
+/// renderers live in `Detail.swift`. Marked `@MainActor` because the
+/// `.link` branch resolves linked record titles via `ObjectEngine`,
+/// which is itself main-actor isolated.
+@MainActor
 enum FieldDisplay {
 
     @ViewBuilder
@@ -41,8 +44,16 @@ enum FieldDisplay {
         case .link:
             if raw.isEmpty {
                 Text("—").foregroundStyle(.tertiary)
+            } else if let title = ObjectEngine.resolveLinkedTitle(recordId: raw) {
+                // Resolved id → linked record's title.
+                HStack(spacing: 4) {
+                    Image(systemName: "link")
+                        .foregroundStyle(.tint).imageScale(.small)
+                    Text(title).foregroundStyle(.tint).lineLimit(1)
+                }
             } else {
-                Text(raw).foregroundStyle(.tint).underline()
+                // Unresolvable id (legacy free-text or deleted record).
+                Text(raw).foregroundStyle(.tint).italic().lineLimit(1)
             }
         case .rating:
             ratingView(value: value)

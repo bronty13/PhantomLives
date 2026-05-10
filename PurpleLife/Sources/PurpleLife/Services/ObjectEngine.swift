@@ -53,4 +53,28 @@ enum ObjectEngine {
     static func count() throws -> Int {
         try DatabaseService.shared.objectCount()
     }
+
+    // MARK: - Link resolution
+
+    /// Returns the title (primary-field value or "Untitled") of the
+    /// record referenced by a `.link` field's stored id, or `nil` if
+    /// the id doesn't resolve. Used by both `FieldDisplay` (read-only
+    /// rendering) and `LinkFieldEditor` (the popover picker label).
+    static func resolveLinkedTitle(recordId: String) -> String? {
+        guard !recordId.isEmpty,
+              let schema = currentSchema,
+              let r = try? DatabaseService.shared.fetchObject(id: recordId),
+              let type = schema.type(id: r.typeId) else { return nil }
+        return FieldDisplay.title(of: r, in: type)
+    }
+
+    /// All records across every type, with their resolved type — used
+    /// by the cross-type link picker. Sorted by `updated_at` desc so
+    /// recent things bubble to the top.
+    static func allWithTypes(schema: SchemaRegistry) throws -> [(record: ObjectRecord, type: ObjectType)] {
+        try DatabaseService.shared.fetchAllObjects().compactMap { r in
+            guard let type = schema.type(id: r.typeId) else { return nil }
+            return (r, type)
+        }
+    }
 }

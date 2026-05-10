@@ -4,6 +4,13 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 2 starter (0.1.x)
 
+### 2026-05-10 — Cross-type link picker + linked-title resolution
+
+- **`LinkFieldEditor`** — popover record picker for `.link` fields. Replaces the plain TextField that the starter shipped. Lists every record across every type, grouped by type with sticky type headers, search-as-you-type filter on title or type name, click to select, "Clear link" footer when a value is set. Keeps the field's stored value as the linked record's id (UUID string), so cross-references survive renames.
+- **`ObjectEngine.resolveLinkedTitle(recordId:)`** + **`allWithTypes(schema:)`** helpers used by the picker and the read-only renderers.
+- **`FieldDisplay.cell`** for `.link` now resolves the id to the linked record's title with a chain icon. Unresolvable values (legacy free-text or deleted records) render in italic with a fallback `link.badge.questionmark` glyph instead of silently looking like real titles.
+- Phase 2 acceptance gate now fully met for cross-type links: a Photo Shoot can pick a Camera; a Photo can pick its Shoot. Both render the linked record's title in the table / kanban / detail views.
+
 ### 2026-05-10 — Four list views + FTS5 search + Quick Switcher
 
 - **View-kind picker** in the records-screen toolbar — switches between Table / Kanban / Calendar / Gallery for the selected type. Hidden views auto-omit per-type when the type's schema can't support them (no select field → no Kanban tab; no date field → no Calendar tab; no attachment field → no Gallery tab).

@@ -95,9 +95,11 @@ struct ObjectDetailSheet: View {
     @ViewBuilder
     private func editorBody(for field: FieldDef) -> some View {
         switch field.kind {
-        case .text, .url, .email, .link:
+        case .text, .url, .email:
             TextField(field.name, text: stringBinding(field.key))
                 .textFieldStyle(.roundedBorder)
+        case .link:
+            LinkFieldEditor(value: stringBinding(field.key))
         case .longText:
             TextEditor(text: stringBinding(field.key))
                 .frame(minHeight: 80, maxHeight: 200)
