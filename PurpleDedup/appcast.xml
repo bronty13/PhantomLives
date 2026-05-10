@@ -24,6 +24,18 @@
           skip versions.
         -->
         <item>
+            <title>PurpleDedup 0.21.3 (1.0.156)</title>
+            <pubDate>Sun, 10 May 2026 04:33:19 +0000</pubDate>
+            <sparkle:version>156.aea1092</sparkle:version>
+            <sparkle:shortVersionString>1.0.156</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[Cluster-kind chip filters in the sidebar — toggle Exact / Photos / Videos / Bursts / Rotated visibility with a tap. Empty kinds auto-hidden so the chip row stays compact. See CHANGELOG.md.]]></description>
+            <enclosure
+                url="https://github.com/bronty13/PhantomLives/releases/download/purplededup-v1.0.156/PurpleDedup-1.0.156.zip"
+                sparkle:edSignature="ZQLQkJFiOeOUmZ8IAd+65aLqt90lSOlXDDPkqrcV7/rho0o8PQmWRFKxXZjtTqQpnlY/x0pxqnjT4wqFT8TPDQ==" length="6741338"
+                type="application/octet-stream" />
+        </item>
+        <item>
             <title>PurpleDedup 0.21.2 (1.0.154)</title>
             <pubDate>Sun, 10 May 2026 04:28:13 +0000</pubDate>
             <sparkle:version>154.06e052a</sparkle:version>
