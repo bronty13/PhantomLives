@@ -3,6 +3,13 @@
 Versions follow `1.0.<commit-count>` derived from git in `build-app.sh`. This file
 narrates *what* changed and *why*; bundle versions just label the moment.
 
+## 0.22.3 — First notarized release (2026-05-10)
+
+Pipeline change only — no code changes. Notarytool keychain profile
+is now set up; `Scripts/release.sh` notarizes + staples the bundle as
+part of every release. New downloads on clean Macs no longer trigger
+the "developer cannot be verified" Gatekeeper dialog on first launch.
+
 ## 0.22.2 — PhotoKit metadata cache thrashing fix (2026-05-10)
 
 User report: "scanning not finishing." Sampled the running process —

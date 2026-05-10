@@ -6,7 +6,7 @@ the App Store.
 
 ## Status
 
-**0.22.2 — PhotoKit metadata cache thrashing fix.** All seven
+**0.22.3 — First notarized release.** All seven
 phases of the requirements doc plus a long list of user-driven additions are
 shipped. See `CHANGELOG.md` for the per-version detail.
 
