@@ -4,6 +4,18 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-10 — Real-time CloudKit sync via silent-push subscriptions
+
+Closes the Phase 4 follow-up "real-time CloudKit subscriptions": Mac→Mac sync no longer waits for the foreground poll, it wakes immediately when another device writes. Demotes the poll to a 5 min recovery sweep.
+
+- **`AppDelegate.swift`** — new minimal `NSApplicationDelegate` attached via `@NSApplicationDelegateAdaptor` in `PurpleLifeApp`. Calls `NSApplication.shared.registerForRemoteNotifications()` on launch, parses incoming `application(_:didReceiveRemoteNotification:)` payloads through `CKNotification(fromRemoteNotificationDictionary:)`, and posts a `NotificationCenter` event so the sync service can react without a direct reference (init-ordering safe).
+- **`CloudKitSyncService.ensureSubscription()`** — registers a single `CKDatabaseSubscription` (id `PurpleLife.databaseSubscription`) in `bootstrap()` after `ensureZone()`. `notificationInfo.shouldSendContentAvailable = true` keeps it silent (no UI, no user permission needed). A UserDefaults flag prevents the save round-trip on subsequent launches; `serverRejectedRequest` (already exists) is treated as success and remembered. Failures fall back to the recovery poll without blocking bootstrap.
+- **`CloudKitSyncService.handleSubscriptionNotification(userInfo:)`** — observes the AppDelegate's NotificationCenter event, validates the payload is a CK push for our subscription id (defensive guard against unrelated APNS noise lighting up the container), and triggers an immediate `pull()`.
+- **Recovery poll bumped from 30 s to 5 min** — subscriptions are the primary trigger now; the poll only catches up if a silent push was dropped (offline, sleep, APNS hiccup). 5 min keeps the worst-case lag bounded without burning cycles when push is doing its job.
+- **Entitlements** — `PurpleLife.entitlements` adds `com.apple.developer.aps-environment` = `development`. Note: macOS uses the long key form; the iOS short form `aps-environment` is silently stripped by Xcode's `ProcessProductPackaging` step on macOS targets. The `PurpleLife-NoCloud.entitlements` test override stays empty (tests don't need push).
+- **Apple-side setup** required once per developer account: enable Push Notifications capability on App ID `com.bronty13.PurpleLife` at developer.apple.com → Identifiers. Signing fails with a misleading "device isn't registered" error until this is done. Documented in `HANDOFF.md` § "Phase 4 sync: subscriptions landed".
+- **2 new `CloudKitSubscriptionTests`** covering the deterministic part of the parser (empty / non-CK payloads are rejected). The positive path — a real APNS push triggers `pull()` — needs a real Mac→Mac round-trip to verify and is part of the Phase 4 acceptance gate. **36/36 tests green**.
+
 ### 2026-05-10 — Test infrastructure regression resolved
 
 - `./run-tests.sh` runs end-to-end again. Full bundle (now **34 tests**) green in ~19 s; Timeliner's bundle (26 tests) likewise. No code or script change — the host appears to have recovered between sessions (reboot or Xcode/macOS update).

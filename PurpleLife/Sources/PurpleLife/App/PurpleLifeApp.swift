@@ -2,6 +2,12 @@ import SwiftUI
 
 @main
 struct PurpleLifeApp: App {
+    // The adaptor must come BEFORE @StateObject so SwiftUI installs the
+    // delegate before `AppState`'s init kicks off CloudKit work — the
+    // delegate registers for remote notifications on
+    // `applicationDidFinishLaunching`, which the sync service depends on
+    // for its silent-push wakeups.
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var appState = AppState()
 
     var body: some Scene {

@@ -15,6 +15,18 @@
       is shared with the spike app at Spike/CloudKit; the App ID
       com.bronty13.PurpleLife at developer.apple.com must have iCloud
       capability enabled with the container assigned via Configure.
+
+      `com.apple.developer.aps-environment` enables silent-push
+      delivery for the CKDatabaseSubscription that CloudKitSyncService
+      registers — wakes the app when another Mac on the same iCloud
+      account writes a record, replacing the 30 s foreground poll with
+      sub-second sync. Value is `development` because the app is signed
+      with an Apple Development cert (the iCloud entitlement requires
+      it); if we ever ship a Developer-ID-signed copy for distribution,
+      change this to `production` for that build. Note: macOS uses the
+      long `com.apple.developer.aps-environment` key, NOT the iOS short
+      form `aps-environment` — the short form is silently stripped by
+      Xcode's ProcessProductPackaging step on macOS targets.
     -->
     <key>com.apple.developer.icloud-container-identifiers</key>
     <array>
@@ -24,5 +36,7 @@
     <array>
         <string>CloudKit</string>
     </array>
+    <key>com.apple.developer.aps-environment</key>
+    <string>development</string>
 </dict>
 </plist>

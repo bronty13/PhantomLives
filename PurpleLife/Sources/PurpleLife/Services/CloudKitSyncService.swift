@@ -20,17 +20,31 @@ import SwiftUI
 /// - dashboard shows encrypted fields as opaque ← provided by
 ///   `encryptedValues`
 ///
-/// This implementation is a **starter**: polling every 30s rather than
-/// silent-push subscriptions (subscription wakeups need
-/// `aps-environment` + a delegate; queued for follow-up). Initial sync
-/// + push-on-mutation gets us to the gate.
+/// Sync arrives via two paths:
+///
+/// 1. **Silent-push wakeups** (primary). A `CKDatabaseSubscription`
+///    registered on bootstrap fires whenever any record in the private
+///    database changes on another device. APNS delivers a content-only
+///    push to `AppDelegate`, which posts a `NotificationCenter` event;
+///    this service observes it and triggers a `pull()` immediately.
+///    Sub-second Mac→Mac in the typical case.
+///
+/// 2. **Recovery poll** (fallback). A 5-min foreground task runs `pull()`
+///    in case a silent push was missed (offline, sleep, dropped APNS),
+///    keeping the gap bounded even when push delivery isn't reliable.
 @MainActor
 final class CloudKitSyncService: ObservableObject {
 
     static let containerID = "iCloud.com.bronty13.PurpleLife"
     static let recordType = "PurpleObject"
     static let zoneName = "PurpleLifeZone"
-    static let pollSeconds: UInt64 = 30
+    static let subscriptionID = "PurpleLife.databaseSubscription"
+    /// Recovery poll. The primary sync trigger is the
+    /// CKDatabaseSubscription silent push; this only catches up if a
+    /// push was dropped (offline, APNS hiccup, app slept through it).
+    static let pollSeconds: UInt64 = 300
+
+    private static let subscriptionRegisteredKey = "PurpleLife.subscriptionRegistered"
 
     enum Status: Equatable {
         case disabled                 // entitlements/container unavailable; staying local-only
@@ -84,6 +98,7 @@ final class CloudKitSyncService: ObservableObject {
 
     private var pollTask: Task<Void, Never>?
     private var inFlight = false
+    private var pushObserver: NSObjectProtocol?
 
     // Server change token — resumes incremental sync across launches.
     private static let tokenKey = "PurpleLife.serverChangeToken"
@@ -111,12 +126,56 @@ final class CloudKitSyncService: ObservableObject {
 
     func start(schema: SchemaRegistry) {
         self.schema = schema
+        observePushNotifications()
         Task { await bootstrap() }
     }
 
     func stopPolling() {
         pollTask?.cancel()
         pollTask = nil
+    }
+
+    deinit {
+        if let pushObserver {
+            NotificationCenter.default.removeObserver(pushObserver)
+        }
+    }
+
+    /// Subscribe to the silent-push event posted by `AppDelegate`. The
+    /// observer lives for the service's lifetime; cleaned up in `deinit`.
+    private func observePushNotifications() {
+        guard pushObserver == nil else { return }
+        pushObserver = NotificationCenter.default.addObserver(
+            forName: AppDelegate.didReceiveCloudKitPushNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            let userInfo = (note.userInfo as? [String: Any]) ?? [:]
+            Task { @MainActor [weak self] in
+                self?.handleSubscriptionNotification(userInfo: userInfo)
+            }
+        }
+    }
+
+    /// Called when AppDelegate forwards a CloudKit silent push.
+    /// Returns whether the userInfo was recognized as a CK notification —
+    /// the bool is for the unit tests; the side effect (a `pull()`) is
+    /// what the running app cares about.
+    @discardableResult
+    func handleSubscriptionNotification(userInfo: [String: Any]) -> Bool {
+        guard let cloudKitNote = CKNotification(fromRemoteNotificationDictionary: userInfo) else {
+            return false
+        }
+        // We only registered one subscription, so the subscription ID
+        // check is more of a sanity guard than a router. Kept defensive
+        // — if Apple ever lights up additional subscriptions for the
+        // container (shared DB, file provider, etc.), an unrelated push
+        // shouldn't trigger a pull on every wakeup.
+        if let subID = cloudKitNote.subscriptionID, subID != Self.subscriptionID {
+            return false
+        }
+        Task { await pull() }
+        return true
     }
 
     /// Trigger a one-shot pull (idempotent; ignores if a sync is already
@@ -139,6 +198,7 @@ final class CloudKitSyncService: ObservableObject {
         do {
             try await checkAccountStatus()
             try await ensureZone()
+            await ensureSubscription()
             await pullInitial()
             await pushPendingLocalChanges()
             status = .idle
@@ -178,6 +238,37 @@ final class CloudKitSyncService: ObservableObject {
         guard let database else { throw CKError(.internalError) }
         let zone = CKRecordZone(zoneID: zoneID)
         _ = try await database.modifyRecordZones(saving: [zone], deleting: [])
+    }
+
+    /// Register a `CKDatabaseSubscription` so APNS wakes us when another
+    /// device writes a record to the private database. UserDefaults
+    /// flag prevents re-saving on every launch (CloudKit accepts the
+    /// duplicate save, but it's a wasted round-trip).
+    ///
+    /// Failures are non-fatal: the recovery poll keeps sync working
+    /// without push. We log and continue rather than blocking bootstrap.
+    private func ensureSubscription() async {
+        guard let database else { return }
+        if UserDefaults.standard.bool(forKey: Self.subscriptionRegisteredKey) { return }
+
+        let subscription = CKDatabaseSubscription(subscriptionID: Self.subscriptionID)
+        let info = CKSubscription.NotificationInfo()
+        // Silent push: no UI, no user permission needed. The whole point
+        // is to wake the app and let it pull — the user's reaction comes
+        // from seeing the synced record appear, not from a notification.
+        info.shouldSendContentAvailable = true
+        subscription.notificationInfo = info
+
+        do {
+            _ = try await database.save(subscription)
+            UserDefaults.standard.set(true, forKey: Self.subscriptionRegisteredKey)
+        } catch let error as CKError where error.code == .serverRejectedRequest {
+            // Already exists — accept it as success and remember that.
+            UserDefaults.standard.set(true, forKey: Self.subscriptionRegisteredKey)
+        } catch {
+            NSLog("PurpleLife: subscription registration failed — \(error.localizedDescription). "
+                  + "Falling back to recovery poll only.")
+        }
     }
 
     private func startPolling() {

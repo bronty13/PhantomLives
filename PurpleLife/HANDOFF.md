@@ -12,6 +12,27 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-10 — Phase 4 sync: subscriptions landed; poll demoted to recovery sweep
+
+The follow-up the prior end-of-session snapshot queued as #1 ("real-time CloudKit subscriptions") is in. Mac→Mac sync now wakes on a silent push from APNS rather than waiting for a 30 s poll tick.
+
+**Shape of the change**:
+
+- A single `CKDatabaseSubscription` (id `PurpleLife.databaseSubscription`) is registered in `CloudKitSyncService.bootstrap()` after `ensureZone()`. Idempotent via a UserDefaults flag; `serverRejectedRequest` (already exists) is treated as success.
+- A minimal `AppDelegate` (`Sources/PurpleLife/App/AppDelegate.swift`) is attached via `@NSApplicationDelegateAdaptor` in `PurpleLifeApp.swift`. It calls `NSApplication.shared.registerForRemoteNotifications()` on launch and forwards CK pushes through `NotificationCenter` (decoupled from `AppState` init ordering — the delegate is constructed by SwiftUI before `AppState` is).
+- `CloudKitSyncService.handleSubscriptionNotification(userInfo:)` observes the NotificationCenter event, validates the push is ours (defensive guard against unrelated APNS noise lighting up the container), and triggers an immediate `pull()`.
+- The 30 s poll became a 5 min recovery sweep — subscriptions are the primary trigger; the poll only catches up if a push is dropped (offline, sleep, APNS hiccup).
+
+**Apple-side gotchas worth recording**:
+
+- The Push Notifications capability has to be enabled on the App ID at developer.apple.com → Identifiers → `com.bronty13.PurpleLife` → Capabilities. Without it, the auto-provisioning step can't generate a profile carrying `aps-environment`, and `xcodebuild -allowProvisioningUpdates` reports a misleading "device isn't registered in your developer account" error rather than naming the missing capability.
+- After enabling the capability, the existing dev profile may need to be regenerated. Easiest path: open `PurpleLife.xcodeproj` once in Xcode → Signing & Capabilities tab → Xcode silently re-fetches a fresh profile that includes Push Notifications. After that, `./build-app.sh` works again from CLI.
+- macOS uses the **long form** entitlement key `com.apple.developer.aps-environment`. The iOS short form `aps-environment` is silently stripped by Xcode's `ProcessProductPackaging` step on macOS targets — the build succeeds, codesign runs, but the embedded entitlements in the `.app` won't include the push entitlement and silent pushes never arrive. Verify with `codesign -d --entitlements - ./PurpleLife.app | grep aps`.
+
+**Effect on follow-up list**: item #1 ("real-time CloudKit subscriptions") is closed.
+
+What's still open against Phase 4: the actual <5 s Mac→Mac timing claim. The infrastructure is in place; verification requires a second Mac on the same iCloud account, which hasn't been done in this session.
+
 ### 2026-05-10 — Test infrastructure regression: no longer reproduces
 
 The "environmental hang" flagged in the end-of-session snapshot below has cleared. `./run-tests.sh` runs end-to-end in ~19 s for both projects on this Mac:
@@ -35,8 +56,8 @@ Initial build session executed all five plan phases through a working state. Sna
 
 **Known follow-up work** (rough priority order):
 
-1. **Real-time CloudKit subscriptions** — replace 30 s poll with silent-push wakeups (`CKDatabaseSubscription` + `aps-environment` + an `NSApplicationDelegateAdaptor`). The touchpoints are sketched in the "Phase 4 sync" decision below.
-2. ~~**Test infrastructure regression**~~ — resolved 2026-05-10; see entry above. `./run-tests.sh` runs the full bundle (now 34 tests) green in ~19 s.
+1. ~~**Real-time CloudKit subscriptions**~~ — resolved 2026-05-10; see "Phase 4 sync: subscriptions landed" entry above. CKDatabaseSubscription is registered in `bootstrap()`; AppDelegate forwards pushes via NotificationCenter; poll is a 5 min recovery sweep now.
+2. ~~**Test infrastructure regression**~~ — resolved 2026-05-10; see entry above. `./run-tests.sh` runs the full bundle (now 36 tests) green in ~16 s.
 3. **Export pipeline** — `PLAN.md` § Reuse from siblings points to `Timeliner/Sources/Timeliner/Services/ExportService.swift`. Never copied.
 4. **Schema versioning across synced peers** — open question in `PLAN.md` flagged as "sketch before Phase 4." Never sketched. Running different schema versions on two Macs can create drift today.
 5. **Polish toward the prototype** — Today timeline + linked-from rail, two-pane object detail, drag-and-drop schema editor.
