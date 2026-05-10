@@ -50,7 +50,47 @@ plutil -p PurpleDedup.app/Contents/Info.plist | grep SUPublicEDKey
 
 The output should show your public key, NOT `PLACEHOLDER_RUN_generate_keys_AND_SET_SPARKLE_PUBLIC_KEY`. If it's still the placeholder, your env var isn't being read — re-source your shell rc and rebuild.
 
-### 4. (Optional) GitHub Releases auth
+### 4. Set up notarization (strongly recommended)
+
+Without notarization, Gatekeeper shows users on a clean Mac a "developer cannot be verified" dialog the first time they try to open the app. They have to right-click → Open to bypass it. With notarization, every release just works on first launch.
+
+**Step 1.** Create an app-specific password at https://appleid.apple.com → Sign-In and Security → App-Specific Passwords. Label it something like "PurpleDedup notarization." Save the long generated password.
+
+**Step 2.** Store it in the keychain as a notarytool profile:
+
+```bash
+xcrun notarytool store-credentials "PurpleDedup-Notary" \
+    --apple-id you@example.com \
+    --team-id SRKV8T38CD \
+    --password <the app-specific password from step 1>
+```
+
+The `team-id` should match your Developer ID Application certificate's team ID — `security find-identity -v -p codesigning` will show it. The profile name (`PurpleDedup-Notary`) is arbitrary; just match it in step 3.
+
+**Step 3.** Add to your shell rc (`~/.zshrc`):
+
+```bash
+export NOTARIZE_PROFILE="PurpleDedup-Notary"
+```
+
+Then `source ~/.zshrc`.
+
+**Step 4.** Verify the next release notarizes. `./Scripts/release.sh` should now print:
+
+```
+Notarizing with profile: PurpleDedup-Notary
+…
+Notarization accepted.
+Stapling ticket to PurpleDedup.app…
+…
+Notarization ticket verified (stapler validate ✓)
+Notarized: yes
+  ↳ Gatekeeper-clean — first launch on any Mac just works
+```
+
+If the verdict is `Notarized: no` even with `NOTARIZE_PROFILE` set, check `/tmp/notarize.plist` for the notarytool error message — common causes are an expired Developer ID cert (`security find-identity -v -p codesigning` shows expiration) or an app-specific password that's been revoked from the Apple ID page.
+
+### 5. (Optional) GitHub Releases auth
 
 The release script uses `gh` (GitHub CLI) to upload the zip to a tagged release. Authenticate once:
 
@@ -68,11 +108,12 @@ If you'd rather host the zip elsewhere (Pages, S3, etc.), edit the `DOWNLOAD_URL
 
 Does the following:
 
-1. Builds `PurpleDedup.app` via `build-app.sh` (with your `SPARKLE_PUBLIC_KEY` baked in).
-2. Zips the bundle as `~/Downloads/PurpleDedup release/PurpleDedup-<version>.zip`.
-3. Signs the zip with `sign_update` (reads the private key from Keychain).
-4. Generates an appcast `<item>` snippet at `~/Downloads/PurpleDedup release/appcast-snippet.xml`.
-5. Prints next-step instructions:
+1. Warns if `NOTARIZE_PROFILE` is unset and gives you 5 seconds to abort. Otherwise builds with notarization on.
+2. Builds `PurpleDedup.app` via `build-app.sh` (with your `SPARKLE_PUBLIC_KEY` baked in and notarization on if `NOTARIZE_PROFILE` is set).
+3. Zips the bundle as `~/Downloads/PurpleDedup release/PurpleDedup-<version>.zip`.
+4. Signs the zip with `sign_update` (reads the EdDSA private key from Keychain).
+5. Generates an appcast `<item>` snippet at `~/Downloads/PurpleDedup release/appcast-snippet.xml`.
+6. Prints next-step instructions:
    - Paste the snippet into `PurpleDedup/appcast.xml` as the FIRST `<item>`.
    - `gh release create purplededup-v<version> --title "…" "<zip>"`.
    - `git add PurpleDedup/appcast.xml && git commit && git push origin main`.
