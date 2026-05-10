@@ -1,0 +1,8 @@
+*.xcuserstate
+xcuserdata/
+DerivedData/
+.DS_Store
+PurpleLife.app
+PurpleLife.xcodeproj
+Spike/CloudKit/CloudKitSpike.app
+Spike/CloudKit/CloudKitSpike.xcodeproj
