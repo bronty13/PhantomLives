@@ -958,6 +958,11 @@ struct ContentView: View {
         }
     }
 
+    /// Run a scan via `ScanCoordinator`. ContentView resets state, drives
+    /// the resolution + engine stages through the coordinator, and projects
+    /// the typed `Outcome` back onto `@State`. The coordinator carries no
+    /// SwiftUI dependency — progress + status updates flow through the
+    /// callbacks below.
     private func runScan() async {
         isScanning = true
         defer { isScanning = false }
@@ -975,101 +980,39 @@ struct ContentView: View {
 
         let throttleInterval: TimeInterval = 0.2
         let lastUpdate = ProgressThrottle()
+        let coordinator = ScanCoordinator(settings: settingsStore.settings)
 
         do {
-            // Materialise per-Photos-library filters before scanning. ALWAYS
-            // resolve for `.photoslibrary` sources — even when the user
-            // hasn't checked any filter dimension. The walker can't see
-            // Photos.app's hidden flag (it's a Photos.sqlite concern, not a
-            // filesystem attribute), so without a basename whitelist the
-            // walk happily includes every UUID in originals/, including
-            // hidden assets. The unconstrained PhotoKit resolution path
-            // returns only non-hidden assets by default, which is the
-            // behaviour the user expects when "Include hidden" / "Only
-            // hidden" are both off. When a filter IS configured, the
-            // user's constraints flow through normally.
-            let filters = settingsStore.settings.photoLibraryFilters
-            var resolved: [ScanSource] = []
-            for src in sources {
-                if src.isPhotosLibrary {
-                    let f = filters[src.url.path] ?? PhotoLibraryFilter()
-                    statusMessage = "Resolving Photos filter for \(src.url.lastPathComponent)…"
-                    let resolution = await PhotoKitDeletionService.shared.matchingBasenamesDetailed(filter: f, libraryURL: src.url)
-                    self.photosFilterLine = f.isActive
-                        ? "Photos filter: \(resolution.summary)"
-                        : "Photos library: \(resolution.basenames.count) non-hidden assets (default — hidden excluded)"
-                    resolved.append(ScanSource(
-                        url: src.url,
-                        isLocked: src.isLocked,
-                        allowedBasenames: resolution.basenames,
-                        isLookupOnly: src.isLookupOnly
-                    ))
-                } else {
-                    resolved.append(src)
-                }
+            let resolution = await coordinator.resolveSources(
+                sources,
+                filters: settingsStore.settings.photoLibraryFilters
+            ) { [self] url in
+                statusMessage = "Resolving Photos filter for \(url.lastPathComponent)…"
             }
-            let captured = resolved
+            photosFilterLine = resolution.photosFilterLine
             statusMessage = "Scanning…"
-            let perceptual = ScanEngine.PerceptualOptions(enabled: includeSimilar, threshold: threshold)
-            let videoOpts = ScanEngine.VideoOptions(enabled: includeSimilarVideos, threshold: videoThreshold)
 
-            if settingsStore.settings.useCachedEngine {
-                let database = try Database.openDefault()
-                // FFmpeg sidecar: only probe when the user has opted in.
-                // Probe is a process spawn; not free, so skip when disabled.
-                let ffmpegProbe: FFmpegProbe.Probe? = settingsStore.settings.ffmpegFallbackEnabled ? FFmpegProbe.find() : nil
-                let engine = CachedScanEngine(
-                    database: database,
-                    videoFingerprinter: VideoFingerprinter(ffmpegFallback: ffmpegProbe)
-                )
-                let pair = try await engine.scan(
-                    sources: captured,
-                    options: ScanOptions(kinds: [.photo, .video]),
-                    perceptual: perceptual,
-                    video: videoOpts
-                ) { p in
-                    if !lastUpdate.shouldFire(interval: throttleInterval) { return }
-                    Task { @MainActor in
-                        self.progressLine = Self.formatProgress(p)
-                    }
+            let outcome = try await coordinator.runEngine(
+                sources: resolution.sources,
+                perceptual: ScanEngine.PerceptualOptions(enabled: includeSimilar, threshold: threshold),
+                video: ScanEngine.VideoOptions(enabled: includeSimilarVideos, threshold: videoThreshold)
+            ) { p in
+                if !lastUpdate.shouldFire(interval: throttleInterval) { return }
+                Task { @MainActor in
+                    self.progressLine = Self.formatProgress(p)
                 }
-                self.exactClusters = pair.result.exactClusters
-                self.similarClusters = pair.result.similarClusters
-                self.similarVideoClusters = pair.result.similarVideoClusters
-                self.totalScanned = pair.result.filesScanned
-                self.photosLookupHashes = pair.result.photosLookupHashes
-                self.photosLookupCount = pair.result.photosLookupCount
-                self.clusterMembersInLookup = pair.result.clusterMembersInLookup
-                let s = pair.cache
-                self.cacheLine = "cache: content \(s.contentHashHits)/\(s.contentHashHits + s.contentHashMisses) · perceptual \(s.perceptualHits)/\(s.perceptualHits + s.perceptualMisses) · video \(s.videoHits)/\(s.videoHits + s.videoMisses)"
-                self.stageTiming = pair.result.timing.summary()
-                self.statusMessage = "Scanned \(pair.result.filesScanned) file(s) · \(pair.result.exactClusters.count) exact + \(pair.result.similarClusters.count) similar photos + \(pair.result.similarVideoClusters.count) similar videos."
-            } else {
-                // Plain (non-cached) engine doesn't know about lookup mode.
-                // Filter the lookup sources out so they don't accidentally
-                // appear in clusters; the lookup index stays empty in this
-                // path. Use the cached engine to get full lookup support.
-                let engine = ScanEngine()
-                let scanOnly = captured.filter { !$0.isLookupOnly }
-                let result = try await engine.scan(
-                    sources: scanOnly,
-                    options: ScanOptions(kinds: [.photo, .video]),
-                    perceptual: perceptual,
-                    video: videoOpts
-                ) { p in
-                    if !lastUpdate.shouldFire(interval: throttleInterval) { return }
-                    Task { @MainActor in
-                        self.progressLine = Self.formatProgress(p)
-                    }
-                }
-                self.exactClusters = result.exactClusters
-                self.similarClusters = result.similarClusters
-                self.similarVideoClusters = result.similarVideoClusters
-                self.totalScanned = result.filesScanned
-                self.photosLookupHashes = result.photosLookupHashes
-                self.photosLookupCount = result.photosLookupCount
-                self.statusMessage = "Scanned \(result.filesScanned) file(s) · \(result.exactClusters.count) exact + \(result.similarClusters.count) similar photos + \(result.similarVideoClusters.count) similar videos."
             }
+
+            self.exactClusters = outcome.exactClusters
+            self.similarClusters = outcome.similarClusters
+            self.similarVideoClusters = outcome.similarVideoClusters
+            self.totalScanned = outcome.totalScanned
+            self.photosLookupHashes = outcome.photosLookupHashes
+            self.photosLookupCount = outcome.photosLookupCount
+            self.clusterMembersInLookup = outcome.clusterMembersInLookup
+            self.cacheLine = outcome.cacheLine
+            self.stageTiming = outcome.stageTiming
+            self.statusMessage = outcome.summaryMessage
         } catch is CancellationError {
             statusMessage = "Scan cancelled"
             progressLine = ""
