@@ -4,6 +4,17 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 2 starter (0.1.x)
 
+### 2026-05-10 — Four list views + FTS5 search + Quick Switcher
+
+- **View-kind picker** in the records-screen toolbar — switches between Table / Kanban / Calendar / Gallery for the selected type. Hidden views auto-omit per-type when the type's schema can't support them (no select field → no Kanban tab; no date field → no Calendar tab; no attachment field → no Gallery tab).
+- **Kanban** — columns derived from a select field (defaults to `type.kanbanGroupKey` and falls back to the first select field). Each column is colored by the option's `colorHex`. Cards show the primary field + up to 3 supporting fields. Records whose value isn't one of the defined options collect into an "—" column.
+- **Calendar** — month grid with prev/next/today controls; records placed by `type.calendarDateKey` (falls back to the first date / dateTime field). Cells show up to 3 record titles + an overflow count, double-click opens detail.
+- **Gallery** — adaptive `LazyVGrid` of cards with a placeholder gradient keyed to the type's accent color (the real attachment loader is queued for the AttachmentService work; the layout is fully exercised). Rating badge overlays when the type has a rating field.
+- **`FieldDisplay`** — read-only field renderers extracted out of the table body so kanban / calendar / gallery share them, keeps cell rendering uniform across views.
+- **FTS5 search** — `objects_fts` virtual table (porter tokenizer) added in `v3_fts5` migration. `SearchService.reindexAll(schema:)` rebuilds from `objects` on every launch. `ObjectEngine.create / update / delete` keep the index incrementally up to date. Title is the primary field's value; body concatenates all text-bearing field values.
+- **⌘K Quick Switcher** — floating window with live FTS5 results across every type. Arrow-key navigation, Enter opens the picked record (sets `selectedTypeId` and routes through the main window's detail sheet via `appState.openRecordRequest`), Esc dismisses.
+- 4 new `SearchServiceTests` (cross-type query, reindex from disk, empty query → empty, delete-removes-from-index). Total: **19/19 green**.
+
 ### 2026-05-10 — Object detail + schema editor + table polish
 
 - **Object detail sheet** — double-click any row opens a `Form`-style editor with one input per `FieldKind`. `text` / `url` / `email` / `link` use `TextField`; `longText` uses `TextEditor`; `number` is a numeric `TextField`; `date` and `dateTime` are native `DatePicker`s; `boolean` is a `Toggle`; `select` is a `Picker`; `multiSelect` is a wrapping chip cluster (custom `Layout`); `rating` is 5 toggleable stars; `attachment` is a placeholder until `AttachmentService` lands. Saves on Done. Right-click a row gives Open / Delete.

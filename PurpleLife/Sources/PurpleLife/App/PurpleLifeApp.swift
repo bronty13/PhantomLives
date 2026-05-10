@@ -15,6 +15,7 @@ struct PurpleLifeApp: App {
         .commands {
             CommandGroup(after: .toolbar) {
                 SchemaEditorMenuItem()
+                QuickSwitcherMenuItem()
             }
         }
 
@@ -27,6 +28,14 @@ struct PurpleLifeApp: App {
                 .frame(minWidth: 900, minHeight: 560)
         }
         .defaultSize(width: 1100, height: 700)
+
+        // ⌘K Quick Switcher — small floating window for global search.
+        Window("Quick switcher", id: "quick-switcher") {
+            QuickSwitcher()
+                .environmentObject(appState)
+        }
+        .defaultSize(width: 640, height: 440)
+        .windowResizability(.contentSize)
 
         Settings {
             SettingsView()
@@ -43,5 +52,16 @@ private struct SchemaEditorMenuItem: View {
             openWindow(id: "schema-editor")
         }
         .keyboardShortcut("s", modifiers: [.command, .shift])
+    }
+}
+
+private struct QuickSwitcherMenuItem: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Quick switcher…") {
+            openWindow(id: "quick-switcher")
+        }
+        .keyboardShortcut("k", modifiers: [.command])
     }
 }

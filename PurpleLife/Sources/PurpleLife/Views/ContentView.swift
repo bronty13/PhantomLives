@@ -12,7 +12,7 @@ struct ContentView: View {
                 .frame(minWidth: 220)
         } detail: {
             if let typeId = appState.selectedTypeId {
-                TableViewScreen(typeId: typeId)
+                RecordsScreen(typeId: typeId)
             } else {
                 emptyDetail
             }

@@ -100,6 +100,23 @@ final class DatabaseService {
                           columns: ["sha256"])
         }
 
+        // v3 — FTS5 virtual table for `SearchService`. Phase 2 search runs
+        // over decrypted fields at index time; the FTS table is rebuilt
+        // from scratch on launch (cheap for the row counts we'll see) and
+        // maintained incrementally on each ObjectEngine mutation. The
+        // recommended `objects_fts` shape: typed `object_id` + `type_id`
+        // (UNINDEXED so `MATCH` doesn't consider them), plus `title` and
+        // `body` text content.
+        migrator.registerMigration("v3_fts5") { db in
+            try db.create(virtualTable: "objects_fts", using: FTS5()) { t in
+                t.tokenizer = .porter()
+                t.column("object_id").notIndexed()
+                t.column("type_id").notIndexed()
+                t.column("title")
+                t.column("body")
+            }
+        }
+
         try migrator.migrate(writer)
     }
 
