@@ -1439,71 +1439,36 @@ struct ContentView: View {
         decisionsByCluster[clusterID] = decisions
     }
 
-    /// Move files to Trash. With `subset == nil`, processes the full
-    /// `filesToDelete` set (every cluster's pending DELETE). With a non-nil
-    /// `subset`, processes only those — used by the per-cluster and per-file
-    /// trash actions so the user can act on one group or even one file at a
-    /// time without committing the rest of their review.
+    /// Move files to Trash via `TrashCoordinator`. With `subset == nil`,
+    /// processes the full `filesToDelete` set (every cluster's pending
+    /// DELETE). With a non-nil `subset`, processes only those — used by
+    /// the per-cluster and per-file trash actions so the user can act on
+    /// one group or even one file at a time without committing the rest
+    /// of their review.
+    ///
+    /// The coordinator handles file movement + PhotoKit album queueing
+    /// + status-message formatting; this method projects the resulting
+    /// outcome onto @State (clean up cluster lists, prune decisions,
+    /// surface the status message, set up undo).
     private func runTrash(subset: [DiscoveredFile]? = nil) async {
         let toDelete = subset ?? filesToDelete
         guard !toDelete.isEmpty else { return }
 
-        // Split into regular files (Trash via FileManager) and Photos library
-        // files (queue in PhotoKit album). Photos files inside `.photoslibrary/`
-        // can't go to Trash directly without leaving Photos.app's database in
-        // a broken state — they round-trip through the "Marked for Deletion
-        // in PurpleDedup" album where the user finalises inside Photos.app.
-        let regularFiles = toDelete.filter { !$0.url.path.contains(".photoslibrary/") }
-        let photosFiles = toDelete.filter { $0.url.path.contains(".photoslibrary/") }
+        let coordinator = TrashCoordinator(
+            stageFolderPath: settingsStore.settings.stageFolderPath ?? ""
+        )
+        let outcome = await coordinator.run(toDelete)
 
-        let database = (try? Database.openDefault())
-        let manager = TrashManager(database: database)
-        var trashed: [TrashedFile] = []
-        var failures: [String] = []
-        // FR-5.5: route to a user-chosen stage folder when configured,
-        // otherwise the Finder Trash. The TrashManager records both
-        // destinations in the operation log so Cmd+Z can restore from
-        // either kind.
-        let stageFolderPath = settingsStore.settings.stageFolderPath ?? ""
-        let destination: TrashManager.Destination =
-            stageFolderPath.isEmpty
-            ? .trash
-            : .folder(URL(fileURLWithPath: stageFolderPath))
-        for f in regularFiles {
-            do {
-                if let resultURL = try manager.move(f, to: destination) {
-                    trashed.append(TrashedFile(originalPath: f.url.path, trashURL: resultURL, sizeBytes: f.sizeBytes))
-                }
-            } catch {
-                failures.append("\(f.url.lastPathComponent): \(error.localizedDescription)")
-            }
-        }
-
-        // Photos library round-trip. The service builds (or reuses) the
-        // album, looks up each path's PHAsset by basename, and bulk-adds
-        // them via PHAssetCollectionChangeRequest. The user opens Photos.app
-        // afterwards to actually delete the queued assets.
-        var photoKitSummary: String = ""
-        if !photosFiles.isEmpty {
-            let result = await PhotoKitDeletionService.shared.markForDeletion(
-                paths: photosFiles.map(\.url)
-            )
-            photoKitSummary = result.summary
-            // Photos files queued for album-level deletion don't go into
-            // `lastTrashOperation` because Cmd+Z can't undo a PhotoKit
-            // album add (the user has to remove from the album inside
-            // Photos.app). Surface this difference in the status message
-            // so users don't expect undo to work for the Photos batch.
-        }
-        // Files that successfully moved are gone from disk — drop them from the
-        // in-memory cluster lists so the UI doesn't show stale ghost rows.
-        let trashedSet = Set(trashed.map { $0.originalPath })
+        // Files that successfully moved are gone from disk — drop them
+        // from the in-memory cluster lists so the UI doesn't show stale
+        // ghost rows.
+        let trashedSet = outcome.trashedPaths
         exactClusters = removeMembers(in: exactClusters, where: { trashedSet.contains($0.url.path) })
         similarClusters = removeMembers(in: similarClusters, where: { trashedSet.contains($0.url.path) })
         similarVideoClusters = removeMembers(in: similarVideoClusters, where: { trashedSet.contains($0.url.path) })
 
-        // Clear decisions for files that no longer exist; preserve overrides for
-        // remaining cluster members (which might still be visible).
+        // Clear decisions for files that no longer exist; preserve
+        // overrides for remaining cluster members.
         for clusterID in decisionsByCluster.keys {
             if var perFile = decisionsByCluster[clusterID]?.perFile {
                 for url in perFile.keys where trashedSet.contains(url.path) {
@@ -1519,25 +1484,8 @@ struct ContentView: View {
         }
         manualOverrides = [:]
 
-        lastTrashOperation = trashed
-        var msg: [String] = []
-        if !trashed.isEmpty {
-            let dest = stageFolderPath.isEmpty
-                ? "Trash"
-                : "stage folder (\(URL(fileURLWithPath: stageFolderPath).lastPathComponent))"
-            msg.append("Moved \(trashed.count) file(s) to \(dest)")
-        }
-        if !photoKitSummary.isEmpty {
-            msg.append(photoKitSummary)
-        }
-        if !failures.isEmpty {
-            msg.append("\(failures.count) failed")
-        }
-        if trashed.isEmpty && !photosFiles.isEmpty {
-            statusMessage = msg.joined(separator: " · ") + ". Open Photos.app to finalise."
-        } else {
-            statusMessage = msg.joined(separator: " · ") + (lastTrashOperation.isEmpty ? "." : ". Cmd+Z to undo the Trash batch.")
-        }
+        lastTrashOperation = outcome.trashed
+        statusMessage = outcome.statusMessage
     }
 
     /// FR-5.9 dry-run: serialise every cluster + per-file decision to JSON
