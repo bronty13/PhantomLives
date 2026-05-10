@@ -683,78 +683,83 @@ struct ContentView: View {
             } else {
                 clusterKindChips
                 List(selection: $selectedClusterID) {
-                    let visibleExact = isKindHidden("exact") ? [] :
-                        exactClusters.filter { shouldShow(clusterID: "exact:\($0.contentHashHex)") }
-                    let visibleSimilar = isKindHidden("photo") ? [] :
-                        similarClusters.filter { shouldShow(clusterID: "photo:\($0.stableID)") }
-                    let visibleVideos = isKindHidden("video") ? [] :
-                        similarVideoClusters.filter { shouldShow(clusterID: "video:\($0.stableID)") }
-                    let visibleBursts = isKindHidden("burst") ? [] :
-                        burstClusters.filter { shouldShow(clusterID: "burst:\($0.stableID)") }
-                    let visibleRotated = isKindHidden("rotated") ? [] :
-                        rotatedClusters.filter { shouldShow(clusterID: "rotated:\($0.stableID)") }
+                    let visibleExact = isKindHidden(.exact) ? [] :
+                        exactClusters.filter { shouldShow(clusterID: ClusterID(kind: .exact, raw: $0.contentHashHex).encoded) }
+                    let visibleSimilar = isKindHidden(.photo) ? [] :
+                        similarClusters.filter { shouldShow(clusterID: ClusterID(kind: .photo, raw: $0.stableID).encoded) }
+                    let visibleVideos = isKindHidden(.video) ? [] :
+                        similarVideoClusters.filter { shouldShow(clusterID: ClusterID(kind: .video, raw: $0.stableID).encoded) }
+                    let visibleBursts = isKindHidden(.burst) ? [] :
+                        burstClusters.filter { shouldShow(clusterID: ClusterID(kind: .burst, raw: $0.stableID).encoded) }
+                    let visibleRotated = isKindHidden(.rotated) ? [] :
+                        rotatedClusters.filter { shouldShow(clusterID: ClusterID(kind: .rotated, raw: $0.stableID).encoded) }
                     if !visibleExact.isEmpty {
                         Section("Exact duplicates (\(visibleExact.count))") {
                             ForEach(visibleExact, id: \.contentHashHex) { cluster in
+                                let id = ClusterID(kind: .exact, raw: cluster.contentHashHex).encoded
                                 clusterRow(
-                                    id: "exact:\(cluster.contentHashHex)",
+                                    id: id,
                                     title: "\(cluster.files.count) copies · \(formatBytes(cluster.sizeBytes))",
                                     subtitle: "hash \(cluster.contentHashHex.prefix(12))…",
-                                    accentColor: .green
+                                    accentColor: ClusterKind.exact.accent
                                 )
-                                .tag("exact:\(cluster.contentHashHex)")
+                                .tag(id)
                             }
                         }
                     }
                     if !visibleSimilar.isEmpty {
                         Section("Similar photos (\(visibleSimilar.count))") {
                             ForEach(visibleSimilar, id: \.stableID) { cluster in
+                                let id = ClusterID(kind: .photo, raw: cluster.stableID).encoded
                                 clusterRow(
-                                    id: "photo:\(cluster.stableID)",
+                                    id: id,
                                     title: "\(cluster.files.count) variants · ~\(formatBytes(cluster.totalReclaimableBytes))",
                                     subtitle: "diameter \(cluster.maxPairwiseDistance)/64",
-                                    accentColor: .blue
+                                    accentColor: ClusterKind.photo.accent
                                 )
-                                .tag("photo:\(cluster.stableID)")
+                                .tag(id)
                             }
                         }
                     }
                     if !visibleVideos.isEmpty {
                         Section("Similar videos (\(visibleVideos.count))") {
                             ForEach(visibleVideos, id: \.stableID) { cluster in
+                                let id = ClusterID(kind: .video, raw: cluster.stableID).encoded
                                 clusterRow(
-                                    id: "video:\(cluster.stableID)",
+                                    id: id,
                                     title: "\(cluster.files.count) variants · ~\(formatBytes(cluster.totalReclaimableBytes))",
                                     subtitle: "mean dist \(cluster.maxPairwiseMeanDistance)/64",
-                                    accentColor: .purple
+                                    accentColor: ClusterKind.video.accent
                                 )
-                                .tag("video:\(cluster.stableID)")
+                                .tag(id)
                             }
                         }
                     }
                     if !visibleBursts.isEmpty {
                         Section("Burst series (\(visibleBursts.count))") {
                             ForEach(visibleBursts, id: \.stableID) { cluster in
+                                let id = ClusterID(kind: .burst, raw: cluster.stableID).encoded
                                 clusterRow(
-                                    id: "burst:\(cluster.stableID)",
+                                    id: id,
                                     title: "\(cluster.files.count) shots · ~\(formatBytes(cluster.totalReclaimableBytes))",
                                     subtitle: "\(String(format: "%.1f", cluster.durationSeconds))s window · diameter \(cluster.maxPairwiseDistance)/64",
-                                    accentColor: .orange
+                                    accentColor: ClusterKind.burst.accent
                                 )
-                                .tag("burst:\(cluster.stableID)")
+                                .tag(id)
                             }
                         }
                     }
                     if !visibleRotated.isEmpty {
                         Section("Rotated duplicates (\(visibleRotated.count))") {
                             ForEach(visibleRotated, id: \.stableID) { cluster in
+                                let id = ClusterID(kind: .rotated, raw: cluster.stableID).encoded
                                 clusterRow(
-                                    id: "rotated:\(cluster.stableID)",
+                                    id: id,
                                     title: "\(cluster.files.count) copies · ~\(formatBytes(cluster.totalReclaimableBytes))",
                                     subtitle: "rotated " + cluster.rotationsRelativeToFirst.dropFirst().map { "\($0)°" }.joined(separator: " / "),
-                                    accentColor: .pink
+                                    accentColor: ClusterKind.rotated.accent
                                 )
-                                .tag("rotated:\(cluster.stableID)")
+                                .tag(id)
                             }
                         }
                     }
@@ -831,24 +836,17 @@ struct ContentView: View {
 
     /// Cluster-kind chip row above the cluster list. Each chip shows the
     /// kind icon + name + count and toggles whether that section appears.
-    /// Kinds with zero clusters are hidden entirely so the row stays
-    /// compact on common scans (most don't have burst or rotated
+    /// Kinds with zero clusters are filtered out before render so the row
+    /// stays compact on common scans (most don't have burst or rotated
     /// clusters unless the user explicitly ran detection).
     @ViewBuilder
     private var clusterKindChips: some View {
-        let entries: [(kind: String, label: String, icon: String, count: Int, accent: Color)] = [
-            ("exact",   "Exact",    "equal.circle.fill",          exactClusters.count,          .green),
-            ("photo",   "Photos",   "photo.on.rectangle",         similarClusters.count,        .blue),
-            ("video",   "Videos",   "play.rectangle",             similarVideoClusters.count,   .purple),
-            ("burst",   "Bursts",   "square.stack.3d.up",         burstClusters.count,          .orange),
-            ("rotated", "Rotated",  "rotate.right",               rotatedClusters.count,        .pink),
-        ].filter { $0.count > 0 }
-
-        if entries.count > 1 {
+        let nonEmpty = ClusterKind.allCases.filter { count(of: $0) > 0 }
+        if nonEmpty.count > 1 {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    ForEach(entries, id: \.kind) { e in
-                        kindChip(kind: e.kind, label: e.label, icon: e.icon, count: e.count, accent: e.accent)
+                    ForEach(nonEmpty, id: \.self) { kind in
+                        kindChip(kind: kind, count: count(of: kind))
                     }
                 }
                 .padding(.horizontal, 12)
@@ -857,32 +855,42 @@ struct ContentView: View {
         }
     }
 
-    private func kindChip(kind: String, label: String, icon: String, count: Int, accent: Color) -> some View {
+    private func count(of kind: ClusterKind) -> Int {
+        switch kind {
+        case .exact:   return exactClusters.count
+        case .photo:   return similarClusters.count
+        case .video:   return similarVideoClusters.count
+        case .burst:   return burstClusters.count
+        case .rotated: return rotatedClusters.count
+        }
+    }
+
+    private func kindChip(kind: ClusterKind, count: Int) -> some View {
         let active = !isKindHidden(kind)
         return Button {
             toggleKind(kind)
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: icon).font(.caption2)
-                Text(label).font(.caption.weight(.medium))
+                Image(systemName: kind.iconName).font(.caption2)
+                Text(kind.chipLabel).font(.caption.weight(.medium))
                 Text("\(count)")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 8).padding(.vertical, 4)
-            .foregroundStyle(active ? accent : Color.secondary)
+            .foregroundStyle(active ? kind.accent : Color.secondary)
             .background(
-                Capsule().fill(active ? accent.opacity(0.15) : Color.clear)
+                Capsule().fill(active ? kind.accent.opacity(0.15) : Color.clear)
             )
             .overlay(
-                Capsule().stroke(active ? accent.opacity(0.5) : Color.secondary.opacity(0.35), lineWidth: 0.5)
+                Capsule().stroke(active ? kind.accent.opacity(0.5) : Color.secondary.opacity(0.35), lineWidth: 0.5)
             )
             .opacity(active ? 1.0 : 0.55)
         }
         .buttonStyle(.plain)
         .help(active
-              ? "Hide \(label.lowercased()) clusters from the list"
-              : "Show \(label.lowercased()) clusters")
+              ? "Hide \(kind.chipLabel.lowercased()) clusters from the list"
+              : "Show \(kind.chipLabel.lowercased()) clusters")
     }
 
     /// Bulk-action buttons that operate over EVERY cluster in the current
@@ -1049,40 +1057,34 @@ struct ContentView: View {
     /// `ComparisonView`. The IDs encode the cluster kind as a prefix so we don't
     /// need to maintain a parallel index.
     private var currentSelection: ClusterSelection? {
-        guard let id = selectedClusterID else { return nil }
-        if id.hasPrefix("exact:") {
-            let hash = String(id.dropFirst("exact:".count))
-            guard let c = exactClusters.first(where: { $0.contentHashHex == hash }) else { return nil }
+        guard let id = selectedClusterID, let parsed = ClusterID(id) else { return nil }
+        switch parsed.kind {
+        case .exact:
+            guard let c = exactClusters.first(where: { $0.contentHashHex == parsed.raw }) else { return nil }
             return ClusterSelection(
                 id: id, kind: .exact,
                 title: "\(c.files.count) byte-identical copies",
                 subtitle: "\(formatBytes(c.sizeBytes)) each · sha:\(c.contentHashHex.prefix(12))…",
                 files: c.files
             )
-        }
-        if id.hasPrefix("photo:") {
-            let key = String(id.dropFirst("photo:".count))
-            guard let c = similarClusters.first(where: { $0.stableID == key }) else { return nil }
+        case .photo:
+            guard let c = similarClusters.first(where: { $0.stableID == parsed.raw }) else { return nil }
             return ClusterSelection(
                 id: id, kind: .similarPhoto,
                 title: "\(c.files.count) visually similar photos",
                 subtitle: "pHash diameter \(c.maxPairwiseDistance)/64 · ~\(formatBytes(c.totalReclaimableBytes)) reclaimable",
                 files: c.files
             )
-        }
-        if id.hasPrefix("video:") {
-            let key = String(id.dropFirst("video:".count))
-            guard let c = similarVideoClusters.first(where: { $0.stableID == key }) else { return nil }
+        case .video:
+            guard let c = similarVideoClusters.first(where: { $0.stableID == parsed.raw }) else { return nil }
             return ClusterSelection(
                 id: id, kind: .similarVideo,
                 title: "\(c.files.count) visually similar videos",
                 subtitle: "mean frame distance \(c.maxPairwiseMeanDistance)/64 · ~\(formatBytes(c.totalReclaimableBytes)) reclaimable",
                 files: c.files
             )
-        }
-        if id.hasPrefix("burst:") {
-            let key = String(id.dropFirst("burst:".count))
-            guard let c = burstClusters.first(where: { $0.stableID == key }) else { return nil }
+        case .burst:
+            guard let c = burstClusters.first(where: { $0.stableID == parsed.raw }) else { return nil }
             let dur = String(format: "%.1f", c.durationSeconds)
             return ClusterSelection(
                 id: id, kind: .similarPhoto,   // reuse photo styling/behaviour
@@ -1090,10 +1092,8 @@ struct ContentView: View {
                 subtitle: "pHash diameter \(c.maxPairwiseDistance)/64 · ~\(formatBytes(c.totalReclaimableBytes)) reclaimable",
                 files: c.files
             )
-        }
-        if id.hasPrefix("rotated:") {
-            let key = String(id.dropFirst("rotated:".count))
-            guard let c = rotatedClusters.first(where: { $0.stableID == key }) else { return nil }
+        case .rotated:
+            guard let c = rotatedClusters.first(where: { $0.stableID == parsed.raw }) else { return nil }
             let rotations = c.rotationsRelativeToFirst
                 .enumerated()
                 .map { "\($0.element)°" }
@@ -1105,7 +1105,6 @@ struct ContentView: View {
                 files: c.files
             )
         }
-        return nil
     }
 
     // MARK: - actions
@@ -1550,27 +1549,23 @@ struct ContentView: View {
     /// purely advisory.
     private func isClusterArchivedInPhotos(id: String) -> Bool {
         guard !photosLookupHashes.isEmpty else { return false }
-        if id.hasPrefix("exact:") {
-            let hex = String(id.dropFirst("exact:".count))
-            return photosLookupHashes.contains(hex)
+        guard let parsed = ClusterID(id) else { return false }
+        if parsed.kind == .exact {
+            return photosLookupHashes.contains(parsed.raw)
         }
         guard !clusterMembersInLookup.isEmpty else { return false }
-
         let files: [DiscoveredFile]?
-        if id.hasPrefix("photo:") {
-            let key = String(id.dropFirst("photo:".count))
-            files = similarClusters.first(where: { $0.stableID == key })?.files
-        } else if id.hasPrefix("video:") {
-            let key = String(id.dropFirst("video:".count))
-            files = similarVideoClusters.first(where: { $0.stableID == key })?.files
-        } else if id.hasPrefix("burst:") {
-            let key = String(id.dropFirst("burst:".count))
-            files = burstClusters.first(where: { $0.stableID == key })?.files
-        } else if id.hasPrefix("rotated:") {
-            let key = String(id.dropFirst("rotated:".count))
-            files = rotatedClusters.first(where: { $0.stableID == key })?.files
-        } else {
-            files = nil
+        switch parsed.kind {
+        case .exact:
+            files = nil // handled above
+        case .photo:
+            files = similarClusters.first(where: { $0.stableID == parsed.raw })?.files
+        case .video:
+            files = similarVideoClusters.first(where: { $0.stableID == parsed.raw })?.files
+        case .burst:
+            files = burstClusters.first(where: { $0.stableID == parsed.raw })?.files
+        case .rotated:
+            files = rotatedClusters.first(where: { $0.stableID == parsed.raw })?.files
         }
         guard let members = files else { return false }
         return members.contains { clusterMembersInLookup.contains($0.url.path) }
@@ -1586,17 +1581,17 @@ struct ContentView: View {
     }
 
     /// True when the user has hidden this cluster kind via the sidebar chip
-    /// row. Kind is the prefix on `clusterID` ("exact" / "photo" / "video"
-    /// / "burst" / "rotated").
-    private func isKindHidden(_ kind: String) -> Bool {
-        hiddenClusterKinds.contains(kind)
+    /// row. The set is keyed on `ClusterKind.rawValue` for cheap on-the-wire
+    /// equality with the string-encoded cluster IDs the List uses.
+    private func isKindHidden(_ kind: ClusterKind) -> Bool {
+        hiddenClusterKinds.contains(kind.rawValue)
     }
 
-    private func toggleKind(_ kind: String) {
-        if hiddenClusterKinds.contains(kind) {
-            hiddenClusterKinds.remove(kind)
+    private func toggleKind(_ kind: ClusterKind) {
+        if hiddenClusterKinds.contains(kind.rawValue) {
+            hiddenClusterKinds.remove(kind.rawValue)
         } else {
-            hiddenClusterKinds.insert(kind)
+            hiddenClusterKinds.insert(kind.rawValue)
         }
     }
 
@@ -1651,13 +1646,15 @@ struct ContentView: View {
     }
 
     /// Map of cluster ID → DiscoveredFile list, regardless of cluster type.
+    /// IDs use `ClusterID.encoded` (the `kind:raw` string form the List
+    /// selection binding already speaks).
     private func currentClusterFileMap() -> [(String, [DiscoveredFile])] {
         var out: [(String, [DiscoveredFile])] = []
-        for c in exactClusters { out.append(("exact:\(c.contentHashHex)", c.files)) }
-        for c in similarClusters { out.append(("photo:\(c.stableID)", c.files)) }
-        for c in similarVideoClusters { out.append(("video:\(c.stableID)", c.files)) }
-        for c in burstClusters { out.append(("burst:\(c.stableID)", c.files)) }
-        for c in rotatedClusters { out.append(("rotated:\(c.stableID)", c.files)) }
+        for c in exactClusters         { out.append((ClusterID(kind: .exact,   raw: c.contentHashHex).encoded, c.files)) }
+        for c in similarClusters       { out.append((ClusterID(kind: .photo,   raw: c.stableID).encoded,        c.files)) }
+        for c in similarVideoClusters  { out.append((ClusterID(kind: .video,   raw: c.stableID).encoded,        c.files)) }
+        for c in burstClusters         { out.append((ClusterID(kind: .burst,   raw: c.stableID).encoded,        c.files)) }
+        for c in rotatedClusters       { out.append((ClusterID(kind: .rotated, raw: c.stableID).encoded,        c.files)) }
         return out
     }
 
@@ -1957,12 +1954,14 @@ struct ContentView: View {
             let decisions = decisionsByCluster[id]?.perFile ?? [:]
             let manual = manualOverrides[id] ?? [:]
             let kind: String
-            if id.hasPrefix("exact:")        { kind = "exact" }
-            else if id.hasPrefix("photo:")   { kind = "similar_photo" }
-            else if id.hasPrefix("video:")   { kind = "similar_video" }
-            else if id.hasPrefix("burst:")   { kind = "similar_burst" }
-            else if id.hasPrefix("rotated:") { kind = "similar_rotated" }
-            else { kind = "unknown" }
+            switch ClusterID(id)?.kind {
+            case .exact:   kind = "exact"
+            case .photo:   kind = "similar_photo"
+            case .video:   kind = "similar_video"
+            case .burst:   kind = "similar_burst"
+            case .rotated: kind = "similar_rotated"
+            case nil:      kind = "unknown"
+            }
 
             let planFiles: [PlanFile] = files.map { f in
                 let effective = manual[f.url] ?? decisions[f.url]
