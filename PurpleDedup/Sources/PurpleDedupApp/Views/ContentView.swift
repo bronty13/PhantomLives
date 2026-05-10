@@ -1599,87 +1599,16 @@ struct ContentView: View {
 
     /// FR-5.9 dry-run: serialise every cluster + per-file decision to JSON
     /// and let the user pick where to save it. Nothing on disk changes.
-    /// The output is shaped like a `ScanReport` augmented with the user's
-    /// decisions so it's diffable (week-over-week deduping reviews) and
-    /// audit-friendly.
+    /// The data shape lives in `PlanReport.swift` (`Plan.build`); this
+    /// method is just the AppKit save-panel + encode + write glue.
     private func savePlanJSON() {
-        struct PlanFile: Codable {
-            let path: String
-            let decision: String   // "keep" | "delete" | "(no decision)"
-            let reason: String?
-            let isManualOverride: Bool
-            let sizeBytes: Int64
-        }
-        struct PlanCluster: Codable {
-            let id: String
-            let kind: String
-            let fileCount: Int
-            let reclaimableBytes: Int64
-            let files: [PlanFile]
-        }
-        struct Plan: Codable {
-            let appName: String
-            let appVersion: String
-            let generatedAtISO: String
-            let totalFiles: Int
-            let totalMarkedDelete: Int
-            let totalReclaimableBytes: Int64
-            let stageFolder: String?
-            let clusters: [PlanCluster]
-        }
-
-        let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime]
-
-        var planClusters: [PlanCluster] = []
-        let allMap = currentClusterFileMap()
-        var totalMarked = 0
-        for (id, files) in allMap {
-            let decisions = decisionsByCluster[id]?.perFile ?? [:]
-            let manual = manualOverrides[id] ?? [:]
-            let kind: String
-            switch ClusterID(id)?.kind {
-            case .exact:   kind = "exact"
-            case .photo:   kind = "similar_photo"
-            case .video:   kind = "similar_video"
-            case .burst:   kind = "similar_burst"
-            case .rotated: kind = "similar_rotated"
-            case nil:      kind = "unknown"
-            }
-
-            let planFiles: [PlanFile] = files.map { f in
-                let effective = manual[f.url] ?? decisions[f.url]
-                let isManual = manual[f.url] != nil
-                let (decisionStr, reason): (String, String?)
-                switch effective {
-                case .keep(let r):   decisionStr = "keep";   reason = r
-                case .delete(let r): decisionStr = "delete"; reason = r; totalMarked += 1
-                case nil:            decisionStr = "(no decision)"; reason = nil
-                }
-                return PlanFile(
-                    path: f.url.path, decision: decisionStr, reason: reason,
-                    isManualOverride: isManual, sizeBytes: f.sizeBytes
-                )
-            }
-
-            let reclaim = filesToDelete
-                .filter { f in files.contains(where: { $0.url == f.url }) }
-                .reduce(Int64(0)) { $0 + $1.sizeBytes }
-
-            planClusters.append(PlanCluster(
-                id: id, kind: kind, fileCount: files.count,
-                reclaimableBytes: reclaim, files: planFiles
-            ))
-        }
-
-        let plan = Plan(
-            appName: PurpleDedup.appName,
-            appVersion: PurpleDedup.coreVersion,
-            generatedAtISO: iso.string(from: Date()),
-            totalFiles: allMap.reduce(0) { $0 + $1.1.count },
-            totalMarkedDelete: totalMarked,
+        let plan = Plan.build(
+            clusterFileMap: currentClusterFileMap(),
+            decisionsByCluster: decisionsByCluster,
+            manualOverrides: manualOverrides,
+            filesToDelete: filesToDelete,
             totalReclaimableBytes: reclaimable,
-            stageFolder: settingsStore.settings.stageFolderPath,
-            clusters: planClusters
+            stageFolder: settingsStore.settings.stageFolderPath
         )
 
         let panel = NSSavePanel()
