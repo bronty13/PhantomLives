@@ -24,7 +24,7 @@ See [PLAN.md](PLAN.md) for the build plan, [HANDOFF.md](HANDOFF.md) for the deci
 
 ```sh
 ./build-app.sh        # produces ./PurpleLife.app, Apple-Development-signed with iCloud entitlement
-./run-tests.sh        # runs the PurpleLifeTests bundle (36 tests, ~16 s end-to-end)
+./run-tests.sh        # runs the PurpleLifeTests bundle (46 tests, ~17 s end-to-end)
 ```
 
 Both scripts require **full Xcode** (not just Command Line Tools), `xcodegen` (`brew install xcodegen`), and an Apple Developer account signed in to Xcode. Phase 4's CloudKit entitlement makes Apple Development signing mandatory; the build-script's prior Developer ID Application path was retired.
@@ -45,14 +45,13 @@ Prerequisites + PASS log are in [Spike/CloudKit/SPIKE.md](Spike/CloudKit/SPIKE.m
 |---|---|
 | `~/Library/Application Support/PurpleLife/` | DB (`purplelife.sqlite`), `settings.json`, `schema.json`, `attachments/` |
 | `~/Downloads/PurpleLife backup/` | Auto-backup zips (default; user-overridable) |
-| `~/Downloads/PurpleLife/` | User-visible exports and reports (default; user-overridable — exporter queued) |
+| `~/Downloads/PurpleLife/` | Per-type exports — CSV / Markdown / HTML / PDF (default; user-overridable in Settings → Export) |
 
 ## Follow-up work
 
 In rough priority order:
 
 1. **Verify <5 s Mac→Mac latency** — subscriptions infrastructure shipped 2026-05-10; needs a second Mac signed into the same iCloud account to exercise the silent-push round-trip and close the Phase 4 acceptance gate.
-2. **Export pipeline** — copy Timeliner's `ExportService.swift` (CSV / Markdown / PDF / clipboard).
-3. **Schema versioning across synced peers** — sketched as a `HANDOFF.md` open item; pre-Phase-4 work that never landed.
-4. **Daily-use ergonomics** — quick-capture menu bar item, keyboard shortcuts, undo.
-5. **Polish toward the prototype** — Today timeline + linked-from rail, two-pane object detail, drag-and-drop schema editor.
+2. **Schema versioning across synced peers** — sketched as a `HANDOFF.md` open item; pre-Phase-4 work that never landed.
+3. **Daily-use ergonomics** — quick-capture menu bar item, keyboard shortcuts, undo.
+4. **Polish toward the prototype** — Today timeline + linked-from rail, two-pane object detail, drag-and-drop schema editor.

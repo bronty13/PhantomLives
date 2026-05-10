@@ -26,6 +26,8 @@ struct RecordsScreen: View {
     @State private var rows: [ObjectRecord] = []
     @State private var error: String?
     @State private var editingRecordId: String?
+    @State private var exportMessage: String?
+    @State private var exporting: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -48,6 +50,9 @@ struct RecordsScreen: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+            }
+            ToolbarItem(placement: .primaryAction) {
+                exportMenu
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -182,6 +187,62 @@ struct RecordsScreen: View {
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    // MARK: - Export
+
+    private var exportMenu: some View {
+        Menu {
+            Section("Save to file") {
+                Button("CSV") { runExport(.csv) }
+                Button("Markdown") { runExport(.markdown) }
+                Button("HTML") { runExport(.html) }
+                Button("PDF") { runExport(.pdf) }
+            }
+            Section("Copy to clipboard") {
+                Button("CSV") { runCopy(.csv) }
+                Button("Markdown") { runCopy(.markdown) }
+            }
+        } label: {
+            Label("Export", systemImage: "square.and.arrow.up")
+        }
+        .disabled(type == nil || rows.isEmpty || exporting)
+        .help(exportMessage ?? "Export the records of this type")
+    }
+
+    private func runExport(_ format: ExportService.Format) {
+        guard let t = type else { return }
+        let dir = appState.settingsStore.resolvedExportDirectory
+        let snapshotRows = rows
+        exporting = true
+        Task {
+            do {
+                let url = try await ExportService.export(
+                    records: snapshotRows,
+                    type: t,
+                    format: format,
+                    exportDir: dir,
+                    linkTitle: { ObjectEngine.resolveLinkedTitle(recordId: $0) }
+                )
+                exporting = false
+                exportMessage = "Exported \(url.lastPathComponent)"
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            } catch {
+                exporting = false
+                self.error = "Export failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func runCopy(_ format: ExportService.Format) {
+        guard let t = type else { return }
+        ExportService.copyToClipboard(
+            records: rows,
+            type: t,
+            format: format,
+            linkTitle: { ObjectEngine.resolveLinkedTitle(recordId: $0) }
+        )
+        exportMessage = "Copied \(format.menuLabel) for \(t.pluralName) to the clipboard"
     }
 }
 

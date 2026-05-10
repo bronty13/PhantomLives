@@ -4,6 +4,17 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-10 — Per-type export pipeline (CSV / Markdown / HTML / PDF + clipboard)
+
+Closes follow-up #2. The Records screen now has an Export menu next to "New X"; clicking it writes a stamped file to the resolved export directory or copies the formatted text to the clipboard.
+
+- **`ExportService.swift`** — pure formatters for CSV, Markdown, and HTML (no `@MainActor`, deterministic, take resolver closures for link titles + attachment labels). PDF uses the same WKWebView-based `HTML → pdf()` pipeline as `Timeliner.ExportService.exportCaseAsPDF`. CSV is RFC-4180 (commas / quotes / newlines escaped); Markdown escapes pipes and newlines; HTML escapes the standard entity set.
+- **Cell rendering** handles every `FieldKind`: text/longText/url/email pass through; number trims trailing `.0` for whole values and avoids scientific notation; date/dateTime emit the stored ISO-8601; boolean → `true`/`false`; select/multi-select resolve option ids to display names (multi-select joined by `|`); link resolves the target id to the linked record's title (falls back to the raw id); rating to integer string; attachment to the resolver-provided filename (falls back to sha256). Missing fields render as empty cells.
+- **`RecordsScreen` toolbar** — new `Menu` with "Save to file" submenu (CSV / Markdown / HTML / PDF) and "Copy to clipboard" submenu (CSV / Markdown). Disabled when the type has no records or an export is already in flight. After a file save, `NSWorkspace.activateFileViewerSelecting` opens the destination folder with the new file selected.
+- **Settings → Export tab** (new) — text field + Choose… picker for the default export directory, "Reveal" button (creates the dir on demand), resolved-path readout. Default: `~/Downloads/PurpleLife/` per the PhantomLives convention. Override persists in `settings.json` via the existing `defaultExportDirectory` key (which was already declared in `AppSettings` but had no UI).
+- **10 new `ExportServiceTests`** — header shape, RFC-4180 escaping (commas / quotes / newlines), link-title resolution, multi-select pipe-join, attachment-label fallback, rating + boolean cell rendering, missing-field handling, Markdown table shape + pipe-escape, HTML entity escape + table presence, helper-level `csvEscape` cases. **46/46 tests green** (was 36, +10).
+- **Deferred**: per-record export (today only per-type lists), and `Today` panel exports.
+
 ### 2026-05-10 — Real-time CloudKit sync via silent-push subscriptions
 
 Closes the Phase 4 follow-up "real-time CloudKit subscriptions": Mac→Mac sync no longer waits for the foreground poll, it wakes immediately when another device writes. Demotes the poll to a 5 min recovery sweep.

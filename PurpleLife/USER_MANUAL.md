@@ -99,9 +99,22 @@ Field deletes leave the data in `fields_json` blobs in place; a re-add of the sa
 
 `⌘K` opens a floating window with live FTS5 search across every record of every type. Title and all text-bearing field values are indexed (porter tokenizer, prefix-matched). Arrow keys to navigate, Enter to open, Escape to dismiss. The index is rebuilt on every launch (cheap) and maintained incrementally on every mutation.
 
+## Export (Records → toolbar)
+
+Every type's records list has an Export menu in the toolbar (next to **New X**). Two groups of actions:
+
+- **Save to file** — writes a single timestamped file to your export directory. **CSV** is RFC-4180 (commas / quotes / newlines escaped); columns are `id`, every field on the type, then `created_at` / `updated_at`. **Markdown** is the same data shaped as a Markdown table, with pipes and embedded newlines escaped. **HTML** is a styled standalone table that opens in any browser. **PDF** renders the HTML through WebKit (US-letter portrait).
+- **Copy to clipboard** — same CSV or Markdown text, into the system clipboard. Useful for dropping a slice of your data into a spreadsheet or a chat without ever touching disk.
+
+After a file save, Finder pops to the export directory with the new file selected.
+
+Cell rendering follows the field type: select / multi-select resolve option ids to display names (multi-select joined by `|`); link fields resolve to the linked record's title; attachment fields render the original filename when known and the sha256 otherwise; missing fields render as empty cells.
+
+The default export directory is `~/Downloads/PurpleLife/`. Override it in **Settings → Export**.
+
 ## Settings (`⌘,`)
 
-Two tabs:
+Three tabs:
 
 ### Backup
 
@@ -113,6 +126,10 @@ Backups run automatically on every launch, **debounced** to skip if the last suc
 ### Import
 
 - **WeightTracker CSV** — file picker that ingests a WeightTracker export. Header auto-detects lb vs kg; kg → pounds conversion is applied. Per-row errors collect into a report; the run never aborts on a single bad row.
+
+### Export
+
+- **Default export directory** — text field + Choose…, Reveal button. Files saved by the Records → Export menu land here. Default `~/Downloads/PurpleLife/`. Empty value reverts to the default.
 
 ## CloudKit sync
 

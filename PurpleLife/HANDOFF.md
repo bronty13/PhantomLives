@@ -12,6 +12,26 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-10 — Per-type export pipeline shipped; PDF via WKWebView matches Timeliner
+
+The follow-up the prior snapshot queued as #2 ("export pipeline — copy Timeliner's `ExportService.swift`") is in. The literal "copy" wasn't appropriate — Timeliner's exporter is HTML/PDF for `Case`/`Event`/`Person`/`Tag`, very domain-specific. PurpleLife's data is generic typed objects, so the implementation is structurally similar (pure HTML formatter → WKWebView PDF) but the formatters are written from scratch around `ObjectType` + `FieldDef` + `[String: Any]` field values.
+
+**Shape**:
+
+- `Sources/PurpleLife/Services/ExportService.swift` — four `Format` cases (csv, markdown, html, pdf). The CSV / Markdown / HTML formatters are `nonisolated` pure functions taking resolver closures (`linkTitle`, `attachmentLabel`) — no `@MainActor`, no DB access, fully unit-testable. The PDF render is the single `@MainActor` operation: load HTML into an off-screen `WKWebView`, await the `didFinish` navigation, ask `webView.pdf(configuration:)` for the data. Same `LoadCoordinator` bridge pattern as `Timeliner.ExportService.exportCaseAsPDF`.
+- `RecordsScreen` toolbar gained an Export `Menu` (next to "New X"). After a file save, `NSWorkspace.activateFileViewerSelecting([url])` opens Finder with the new file selected.
+- New Settings → Export tab. Uses the existing `AppSettings.defaultExportDirectory` key (which had been declared since Phase 1 with no UI). Default resolves to `~/Downloads/PurpleLife/`.
+- 10 new `ExportServiceTests` cover the deterministic surface. The PDF render isn't unit-tested — it needs WKWebView + a UI test host — but the HTML it consumes is fully covered, so the failure surface is reduced to "did WebKit accept this HTML?".
+
+**Shape decisions worth knowing**:
+
+- **Resolver closures, not direct service calls.** The formatter doesn't reach into `ObjectEngine.resolveLinkedTitle` or `AttachmentService` itself; the caller passes closures. This keeps the formatter `nonisolated` and trivially testable, and means a future per-record / batch / Today-panel exporter can plug in different lookup behavior without touching the formatter.
+- **Multi-select join character is `|`.** Matches what most spreadsheet workflows expect; the WeightTracker CSV roundtrip never has multi-selects so there's no compatibility constraint.
+- **Attachment cells use the resolver's filename or fall back to the sha256.** A re-importer can find the file at `~/Library/Application Support/PurpleLife/attachments/<sha256>.<ext>` even when the resolver wasn't passed; resolver-with-filename is a UX nicety.
+- **Per-type only for v1.** Per-record exports, Today-panel exports, and "everything across types" exports are obvious follow-ups — the formatter is reusable, the UI surface isn't built. Deferred to keep this commit focused.
+
+**Effect on follow-up list**: item #2 ("export pipeline") is closed.
+
 ### 2026-05-10 — Phase 4 sync: subscriptions landed; poll demoted to recovery sweep
 
 The follow-up the prior end-of-session snapshot queued as #1 ("real-time CloudKit subscriptions") is in. Mac→Mac sync now wakes on a silent push from APNS rather than waiting for a 30 s poll tick.
@@ -57,8 +77,8 @@ Initial build session executed all five plan phases through a working state. Sna
 **Known follow-up work** (rough priority order):
 
 1. ~~**Real-time CloudKit subscriptions**~~ — resolved 2026-05-10; see "Phase 4 sync: subscriptions landed" entry above. CKDatabaseSubscription is registered in `bootstrap()`; AppDelegate forwards pushes via NotificationCenter; poll is a 5 min recovery sweep now.
-2. ~~**Test infrastructure regression**~~ — resolved 2026-05-10; see entry above. `./run-tests.sh` runs the full bundle (now 36 tests) green in ~16 s.
-3. **Export pipeline** — `PLAN.md` § Reuse from siblings points to `Timeliner/Sources/Timeliner/Services/ExportService.swift`. Never copied.
+2. ~~**Test infrastructure regression**~~ — resolved 2026-05-10; see entry above. `./run-tests.sh` runs the full bundle (now 46 tests) green in ~17 s.
+3. ~~**Export pipeline**~~ — resolved 2026-05-10; see "Per-type export pipeline shipped" entry above. Records → Export menu writes CSV / Markdown / HTML / PDF or copies CSV / Markdown to clipboard.
 4. **Schema versioning across synced peers** — open question in `PLAN.md` flagged as "sketch before Phase 4." Never sketched. Running different schema versions on two Macs can create drift today.
 5. **Polish toward the prototype** — Today timeline + linked-from rail, two-pane object detail, drag-and-drop schema editor.
 6. **Daily-use ergonomics** — quick-capture menu bar item, keyboard shortcuts per type, undo.
