@@ -550,11 +550,8 @@ struct RecordsGalleryBody: View {
     private func galleryCard(record: ObjectRecord) -> some View {
         let supportingField = type.fields.first { $0.kind == .select || $0.kind == .rating }
         return VStack(alignment: .leading, spacing: 6) {
-            // Phase 2 starter: no real attachment loader yet. Render a
-            // gradient stand-in keyed by the type's accent color so the
-            // layout is intelligible even before AttachmentService lands.
             ZStack(alignment: .topTrailing) {
-                placeholderImage
+                imageOrPlaceholder(for: record)
                 if let f = supportingField, f.kind == .rating {
                     FieldDisplay.ratingView(value: record.fields()[f.key])
                         .padding(6)
@@ -570,6 +567,28 @@ struct RecordsGalleryBody: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Renders the real attachment image when the type's
+    /// `galleryAttachmentKey` field has a sha256 ref that resolves to a
+    /// readable image. Falls back to the type-tinted gradient stand-in
+    /// otherwise.
+    @ViewBuilder
+    private func imageOrPlaceholder(for record: ObjectRecord) -> some View {
+        if let key = type.galleryAttachmentKey,
+           let sha = record.fields()[key] as? String, !sha.isEmpty,
+           let url = AttachmentService.fileURL(forSha256: sha),
+           let nsImage = NSImage(contentsOf: url) {
+            Image(nsImage: nsImage)
+                .resizable()
+                .aspectRatio(4/3, contentMode: .fill)
+                .frame(maxWidth: .infinity)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.15)))
+        } else {
+            placeholderImage
+        }
     }
 
     private var placeholderImage: some View {

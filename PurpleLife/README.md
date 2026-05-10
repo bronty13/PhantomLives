@@ -16,7 +16,7 @@ Phase 1 (Foundation) — scaffold complete.
 | 2 — Object engine + 4 views | Acceptance gate met — schema registry, four list views (table/kanban/calendar/gallery), schema editor, object detail, FTS5 + ⌘K, cross-type link picker. Visual review against the design handoff is the remaining gate item. |
 | 3 — Today / Planner | Acceptance gate met — saved-queries pattern, Today screen, customization UI, Planner Item + Weight built-in types. |
 | 4 — CloudKit E2E sync | Starter — push-on-mutation + 30s poll, LWW reconciliation, sidebar status footer. Real-time push subscriptions deferred. |
-| 5 — First real use cases | Not started |
+| 5 — First real use cases | Starter — real attachments, gallery loads images, WeightTracker CSV import. Daily-use 2-week trial pending. |
 
 See [PLAN.md](PLAN.md) for the build plan and [HANDOFF.md](HANDOFF.md) for the decision log.
 

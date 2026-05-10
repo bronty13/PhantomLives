@@ -132,15 +132,11 @@ struct ObjectDetailSheet: View {
         case .rating:
             ratingEditor(field: field)
         case .attachment:
-            // Phase 2 starter — actual picker lands when AttachmentService
-            // is wired. For now we show what's in the blob.
-            if let sha = fieldsBuffer[field.key] as? String, !sha.isEmpty {
-                Label(sha.prefix(12) + "…", systemImage: "paperclip")
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("No attachment").foregroundStyle(.tertiary)
-            }
+            AttachmentFieldEditor(
+                value: stringBinding(field.key),
+                parentObjectId: recordId,
+                fieldKey: field.key
+            )
         }
     }
 

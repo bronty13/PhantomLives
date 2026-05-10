@@ -2,6 +2,17 @@
 
 Newest at the top. Follows the PhantomLives convention: every behavior-changing commit lands an entry here, USER_MANUAL.md updates if user-visible, and the version bumps automatically via `build-app.sh` + git commit count.
 
+## Unreleased — Phase 5 starter (0.1.x)
+
+### 2026-05-10 — Real attachments + WeightTracker CSV import
+
+- **`AttachmentService`** — content-addressed local file storage. Adds files from any source URL into `~/Library/Application Support/PurpleLife/attachments/<sha256>.<ext>`. Same content referenced by multiple object/field pairs de-duplicates on disk; deleting a row only prunes the file when the last ref is gone. Cascading FK deletes on the `objects` table drop attachment rows automatically.
+- **`AttachmentFieldEditor`** — `Detail.swift` `.attachment` editor is no longer a placeholder. Pick file → file copied into the store, the field's value becomes the sha256, real thumbnail renders inline with dimensions / size / Reveal button.
+- **Gallery view** loads real images — `imageOrPlaceholder(for:)` reads the type's `galleryAttachmentKey` field, resolves the sha256 to a file URL via `AttachmentService`, displays the actual image. Falls back to the type-tinted gradient stand-in for records without an attachment (or whose attachment hasn't been downloaded yet — placeholder for the future CKAsset sync).
+- **`WeightCSVImporter`** — Settings → Import tab. Parses WeightTracker's CSV export (header autodetects lb vs kg, converts kg → pounds), creates Weight records with `source = Imported`. Quoted fields with embedded commas and doubled-quote escapes parse correctly. Per-row errors are listed in the import report without aborting the run.
+- **5 new `AttachmentServiceTests`** + **5 new `WeightCSVImporterTests`** covering hash determinism, dedup on add, ref-counted delete, cascade-on-parent-delete, lb/kg conversion, embedded-comma row parsing, error tolerance.
+- Phase 5 acceptance gate ("real workflow migrated for ≥2 weeks") is yours to run — the migration infrastructure (CSV import + working attachments + the full Phase 2/3 UI) is in place. The remaining work is daily use.
+
 ## Unreleased — Phase 4 starter (0.1.x)
 
 ### 2026-05-10 — CloudKit E2E sync (Mac→Mac via private database)

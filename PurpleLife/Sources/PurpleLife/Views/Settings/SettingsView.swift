@@ -8,6 +8,8 @@ struct SettingsView: View {
         TabView {
             BackupSettingsTab()
                 .tabItem { Label("Backup", systemImage: "externaldrive.fill.badge.timemachine") }
+            ImportSettingsTab()
+                .tabItem { Label("Import", systemImage: "square.and.arrow.down.on.square") }
         }
         .frame(minWidth: 720, minHeight: 520)
     }
