@@ -4,6 +4,12 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-10 — Test infrastructure regression resolved
+
+- `./run-tests.sh` runs end-to-end again. Full bundle (now **34 tests**) green in ~19 s; Timeliner's bundle (26 tests) likewise. No code or script change — the host appears to have recovered between sessions (reboot or Xcode/macOS update).
+- The iCloud-entitlement-induces-test-hang workaround in `run-tests.sh` (`CODE_SIGN_ENTITLEMENTS=Sources/PurpleLife/App/PurpleLife-NoCloud.entitlements`) stays in place; whether it's still load-bearing wasn't tested. See `HANDOFF.md` § "Test infrastructure regression: no longer reproduces" for the full note.
+- README and HANDOFF updated to drop the "blocked by an environmental hang" caveat next to the test command and close item #2 on the follow-up list.
+
 ### 2026-05-10 — Theme + visual pass against the design handoff
 
 - **`Theme.swift`** — palette pulled out of `Design/purplelife/project/chrome.jsx` (`PE_LIGHT` / `PE_DARK`). Surfaces (`bg`, `card`, `sidebarOpaque`), text tiers (`text` / `textDim` / `textFaint`), lines (`cardBorder` 6 % black/white, `hairline` 7 %, `rowHover` 4–5 %), accent (`oklch(0.56 0.14 295)` → sRGB ~#8B65C1 light, brighter in dark). All values are sRGB approximations of the prototype's oklch — SwiftUI's `Color` doesn't take oklch directly.

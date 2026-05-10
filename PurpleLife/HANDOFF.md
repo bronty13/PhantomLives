@@ -12,6 +12,17 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-10 — Test infrastructure regression: no longer reproduces
+
+The "environmental hang" flagged in the end-of-session snapshot below has cleared. `./run-tests.sh` runs end-to-end in ~19 s for both projects on this Mac:
+
+- **PurpleLife**: 34/34 tests pass (the count grew from the snapshot's 24 because of test additions in later phases that landed before the hang surfaced).
+- **Timeliner**: 26/26 tests pass.
+
+Reproduced with the existing scripts unchanged — no fix was applied; the host appears to have recovered on its own (most likely a reboot or Xcode/macOS update between sessions). The iCloud-entitlement-induces-test-hang workaround in `run-tests.sh` (`CODE_SIGN_ENTITLEMENTS=Sources/PurpleLife/App/PurpleLife-NoCloud.entitlements`) is still in place; whether it's still load-bearing on the current host wasn't tested — leaving it alone since it's free and the hang it guards against is a real Apple-bug class.
+
+Effect on follow-up list: item #2 ("Test infrastructure regression") is closed. Tests are usable for the next round of changes.
+
 ### 2026-05-10 — End-of-session snapshot
 
 Initial build session executed all five plan phases through a working state. Snapshot for whoever picks this up next:
@@ -25,7 +36,7 @@ Initial build session executed all five plan phases through a working state. Sna
 **Known follow-up work** (rough priority order):
 
 1. **Real-time CloudKit subscriptions** — replace 30 s poll with silent-push wakeups (`CKDatabaseSubscription` + `aps-environment` + an `NSApplicationDelegateAdaptor`). The touchpoints are sketched in the "Phase 4 sync" decision below.
-2. **Test infrastructure regression** — `xcodebuild test` currently hangs on this Mac for both PurpleLife and Timeliner. Environmental, not code. 24 unit tests committed this session were green at commit `47bbb98` (Phase 3); the infrastructure broke later in the session. `run-tests.sh` carries a `CODE_SIGN_ENTITLEMENTS` override that handles the iCloud-entitlement-induces-test-hang case but not the environmental hang.
+2. ~~**Test infrastructure regression**~~ — resolved 2026-05-10; see entry above. `./run-tests.sh` runs the full bundle (now 34 tests) green in ~19 s.
 3. **Export pipeline** — `PLAN.md` § Reuse from siblings points to `Timeliner/Sources/Timeliner/Services/ExportService.swift`. Never copied.
 4. **Schema versioning across synced peers** — open question in `PLAN.md` flagged as "sketch before Phase 4." Never sketched. Running different schema versions on two Macs can create drift today.
 5. **Polish toward the prototype** — Today timeline + linked-from rail, two-pane object detail, drag-and-drop schema editor.

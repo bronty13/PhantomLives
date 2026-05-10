@@ -24,7 +24,7 @@ See [PLAN.md](PLAN.md) for the build plan, [HANDOFF.md](HANDOFF.md) for the deci
 
 ```sh
 ./build-app.sh        # produces ./PurpleLife.app, Apple-Development-signed with iCloud entitlement
-./run-tests.sh        # runs the PurpleLifeTests bundle (currently blocked by an environmental hang — see HANDOFF.md)
+./run-tests.sh        # runs the PurpleLifeTests bundle (34 tests, ~19 s end-to-end)
 ```
 
 Both scripts require **full Xcode** (not just Command Line Tools), `xcodegen` (`brew install xcodegen`), and an Apple Developer account signed in to Xcode. Phase 4's CloudKit entitlement makes Apple Development signing mandatory; the build-script's prior Developer ID Application path was retired.
@@ -52,8 +52,7 @@ Prerequisites + PASS log are in [Spike/CloudKit/SPIKE.md](Spike/CloudKit/SPIKE.m
 In rough priority order:
 
 1. **Real-time CloudKit subscriptions** — replace the 30 s poll with silent-push wakeups (needs `aps-environment` + an `NSApplicationDelegateAdaptor`). Clears the Phase 4 <5 s gate functionally.
-2. **Test infrastructure regression** — `xcodebuild test` currently hangs on this Mac for both PurpleLife and Timeliner. Environmental, not code. 24+ unit tests are committed but blocked from running locally.
-3. **Export pipeline** — copy Timeliner's `ExportService.swift` (CSV / Markdown / PDF / clipboard).
-4. **Schema versioning across synced peers** — sketched as a `HANDOFF.md` open item; pre-Phase-4 work that never landed.
-5. **Daily-use ergonomics** — quick-capture menu bar item, keyboard shortcuts, undo.
-6. **Polish toward the prototype** — Today timeline + linked-from rail, two-pane object detail, drag-and-drop schema editor.
+2. **Export pipeline** — copy Timeliner's `ExportService.swift` (CSV / Markdown / PDF / clipboard).
+3. **Schema versioning across synced peers** — sketched as a `HANDOFF.md` open item; pre-Phase-4 work that never landed.
+4. **Daily-use ergonomics** — quick-capture menu bar item, keyboard shortcuts, undo.
+5. **Polish toward the prototype** — Today timeline + linked-from rail, two-pane object detail, drag-and-drop schema editor.
