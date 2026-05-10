@@ -1317,37 +1317,13 @@ struct ContentView: View {
         guard !burstScanInProgress else { return }
         burstScanInProgress = true
         defer { burstScanInProgress = false }
-
         let photos = photosInScan
         guard !photos.isEmpty else { return }
-
-        let exactURLs = Set(exactClusters.flatMap { $0.files.map(\.url) })
-        let candidates = photos.filter { !exactURLs.contains($0.url) }
-
-        // Extract capture dates + pHashes in parallel. Both are cheap on the
-        // embedded-thumbnail path; total runtime is dominated by the HEVC
-        // decoder serialisation we capped at 6 in PerceptualHasher's stage.
-        let extractor = MetadataExtractor()
-        let hasher = PerceptualHasher()
-
-        var entries: [BurstClusterer.Entry] = []
-        await withTaskGroup(of: BurstClusterer.Entry?.self) { group in
-            for f in candidates {
-                group.addTask {
-                    let m = await extractor.extract(url: f.url)
-                    guard let date = m.captureDate else { return nil }
-                    guard let h = try? hasher.hash(imageAt: f.url) else { return nil }
-                    return BurstClusterer.Entry(
-                        file: f, captureDate: date, phash: h.phash
-                    )
-                }
-            }
-            for await e in group { if let e = e { entries.append(e) } }
-        }
-
-        let result = BurstClusterer().clusterBursts(entries: entries)
-        burstClusters = result
-        statusMessage = "Found \(result.count) burst series across \(entries.count) dated photos."
+        let outcome = await DetectionCoordinator().detectBursts(
+            photos: photos, exactClusters: exactClusters
+        )
+        burstClusters = outcome.clusters
+        statusMessage = "Found \(outcome.clusters.count) burst series across \(outcome.datedCandidatesCount) dated photos."
     }
 
     /// Run rotated-copy detection on demand. Re-hashes every photo with all
@@ -1360,44 +1336,13 @@ struct ContentView: View {
         guard !rotatedScanInProgress else { return }
         rotatedScanInProgress = true
         defer { rotatedScanInProgress = false }
-
         let photos = photosInScan
         guard !photos.isEmpty else { return }
-        let exactURLs = Set(exactClusters.flatMap { $0.files.map(\.url) })
-        let candidates = photos.filter { !exactURLs.contains($0.url) }
-
-        let hasher = PerceptualHasher()
-        var entries: [RotatedClusterer.Entry] = []
-        await withTaskGroup(of: RotatedClusterer.Entry?.self) { group in
-            // Bound concurrency for the same VideoToolbox-HEVC reason as the
-            // perceptual stage — HEIC decode goes through a serialised
-            // hardware decoder that punishes high concurrency.
-            let limit = max(2, min(6, ProcessInfo.processInfo.activeProcessorCount))
-            var iterator = candidates.makeIterator()
-            var inFlight = 0
-            func submit() {
-                guard let next = iterator.next() else { return }
-                inFlight += 1
-                group.addTask {
-                    guard let h = try? hasher.hashWithRotations(imageAt: next.url) else { return nil }
-                    return RotatedClusterer.Entry(file: next, rotationHashes: h)
-                }
-            }
-            for _ in 0..<limit { submit() }
-            while inFlight > 0 {
-                if let r = try? await group.next() {
-                    inFlight -= 1
-                    if let e = r { entries.append(e) }
-                    submit()
-                } else {
-                    break
-                }
-            }
-        }
-
-        let result = RotatedClusterer().clusterRotated(entries: entries)
-        rotatedClusters = result
-        statusMessage = "Found \(result.count) rotated-copy group(s) across \(entries.count) photos."
+        let outcome = await DetectionCoordinator().detectRotated(
+            photos: photos, exactClusters: exactClusters
+        )
+        rotatedClusters = outcome.clusters
+        statusMessage = "Found \(outcome.clusters.count) rotated-copy group(s) across \(outcome.candidatesCount) photos."
     }
 
     /// Run the rule chain on a cluster the first time the user selects it.
