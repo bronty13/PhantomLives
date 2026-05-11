@@ -32,7 +32,7 @@ The Mission Control redesign (1.0.13+) splits the window into a frosted-glass si
 │                  │  │ ...                                                    │ │
 │                  │  │ [📁 Reveal] [📄 Transcript] [📄 Summary] [{} Manifest] │ │
 │                  │  └──────────────────────────────────────────────────────┘ │
-│ FDA · granted    │                                              v1.0.13      │
+│ FDA · granted    │                                              v1.0.<count>  │
 └──────────────────┴────────────────────────────────────────────────────────────┘
 ```
 
@@ -247,3 +247,7 @@ Settings persist via `@AppStorage` (UserDefaults). Wipe with `defaults delete co
 - The CLI's Python venv lives at `~/.venvs/messages-exporter/`.
 - Exports default to `~/Downloads/messages-exporter-gui/` (configurable per the section above).
 - User defaults live under bundle ID `com.bronty13.MessagesExporterGUI`.
+
+## Version
+
+The bottom-right of the main window shows `v1.0.<count>`. The `<count>` is the outer PhantomLives commit count at build time, so every committed change gets a unique number — include it when reporting a bug. The same number labels the matching CHANGELOG entry (1.0.203 onwards). Pre-2026-05-11 releases used a separate sequential numbering (1.0.0 through 1.0.14); see CHANGELOG for the transition note.

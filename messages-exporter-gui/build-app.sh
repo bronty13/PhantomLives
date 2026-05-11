@@ -18,25 +18,21 @@ echo "Building (configuration=$CONFIG, version=$SHORT_VERSION build $BUILD_NUMBE
 swift build -c "$CONFIG"
 
 BIN_PATH="$(swift build -c "$CONFIG" --show-bin-path)"
-APP_DIR="MessagesExporterGUI.app"
+
+# Assemble + sign the .app outside the iCloud-synced project tree, then ditto
+# --noextattr the result back. iCloud's File Provider re-attaches FinderInfo /
+# fileprovider.fpfs#P xattrs at arbitrary moments — including in the window
+# between `xattr -cr` and `codesign`, which makes codesign fail with "resource
+# fork, Finder information, or similar detritus not allowed". Doing the whole
+# strip + sign + verify in /tmp sidesteps the race; same pattern as
+# PurpleIRC/PurpleDedup/PurpleLife.
+WORK_DIR="$(mktemp -d -t messages-exporter-gui-build)"
+trap 'rm -rf "$WORK_DIR"' EXIT
+
+APP_DIR="$WORK_DIR/MessagesExporterGUI.app"
 CONTENTS="$APP_DIR/Contents"
 MACOS="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
-
-rm -rf "$APP_DIR"
-
-# Wipe Finder-created "MessagesExporterGUI 2.app" / "MessagesExporterGUI 3.app"
-# duplicates. macOS auto-renames .app bundles when an old copy is pinned (e.g.
-# previously launched and still listed in TCC); the duplicates accumulate
-# distinct cdhashes and pollute System Settings → Privacy & Security → Full
-# Disk Access with stale entries that no longer match the live binary.
-shopt -s nullglob 2>/dev/null || true
-for dup in MessagesExporterGUI\ [0-9]*.app; do
-    if [ -d "$dup" ]; then
-        echo "Removing duplicate bundle: $dup"
-        rm -rf "$dup"
-    fi
-done
 
 mkdir -p "$MACOS" "$RESOURCES"
 
@@ -71,9 +67,7 @@ cat > "$CONTENTS/Info.plist" <<PLIST
 PLIST
 
 # Strip Finder xattrs codesign rejects. `xattr -cr` skips the bundle dir
-# itself on some macOS versions, so explicitly clear the root too — a
-# leftover com.apple.FinderInfo on the .app dir will fail strict verify
-# with "Disallowed xattr ... found".
+# itself on some macOS versions, so explicitly clear the root too.
 xattr -cr "$APP_DIR" 2>/dev/null || true
 xattr -c  "$APP_DIR" 2>/dev/null || true
 
@@ -92,25 +86,13 @@ if [ "$DEVELOPER_ID" != "-" ] && \
    security find-identity -p codesigning -v 2>/dev/null \
         | grep -q "$DEVELOPER_ID"; then
     echo "Signing with Developer ID: $DEVELOPER_ID"
-    # Strip again immediately before signing: iCloud File Provider (active when
-    # the project lives under ~/Documents) re-adds com.apple.FinderInfo between
-    # the earlier xattr -c and this point, causing "detritus not allowed".
-    xattr -cr "$APP_DIR" 2>/dev/null || true
-    xattr -c  "$APP_DIR" 2>/dev/null || true
     # --options runtime enables Hardened Runtime, required for notarization
     # and a no-op outside it. --timestamp embeds a trusted timestamp so the
     # signature stays verifiable after the cert eventually expires.
     codesign --force --options runtime --timestamp \
              --sign "$DEVELOPER_ID" "$APP_DIR"
-    # Verify without --strict. iCloud File Provider (active when the
-    # build directory lives under ~/Documents) re-adds a directory-level
-    # com.apple.FinderInfo xattr immediately after signing, which strict
-    # mode rejects as "detritus" — but the embedded signature itself
-    # remains valid and launch / TCC don't use strict either. Use
-    # codesign's exit code directly rather than grepping its output;
-    # piping into grep -q under `set -o pipefail` triggers SIGPIPE on
-    # codesign and produces a confusing false negative.
-    if codesign --verify --verbose=2 "$APP_DIR" >/dev/null 2>&1; then
+    # Strict verify is safe here because we're still in /tmp, not iCloud.
+    if codesign --verify --strict --verbose=2 "$APP_DIR" >/dev/null 2>&1; then
         TEAM_ID=$(codesign -dv "$APP_DIR" 2>&1 | sed -n 's/^TeamIdentifier=//p')
         echo "✓ Signature verified (TeamIdentifier=${TEAM_ID:-unknown})"
     else
@@ -122,5 +104,26 @@ else
     codesign --force --sign - "$APP_DIR" 2>/dev/null || true
 fi
 
-echo "Built $APP_DIR"
-echo "Run with:  open $APP_DIR"
+# Wipe Finder-created "MessagesExporterGUI 2.app" / "MessagesExporterGUI 3.app"
+# duplicates. macOS auto-renames .app bundles when an old copy is pinned (e.g.
+# previously launched and still listed in TCC); the duplicates accumulate
+# distinct cdhashes and pollute System Settings → Privacy & Security → Full
+# Disk Access with stale entries that no longer match the live binary.
+shopt -s nullglob 2>/dev/null || true
+for dup in MessagesExporterGUI\ [0-9]*.app; do
+    if [ -d "$dup" ]; then
+        echo "Removing duplicate bundle: $dup"
+        rm -rf "$dup"
+    fi
+done
+
+# Move the signed bundle back into the project dir. `ditto --noextattr` strips
+# any xattrs the copy would otherwise pick up; iCloud may still re-attach
+# FinderInfo to the destination later, but the embedded signature is what
+# launch / TCC validate against, and that was sealed in /tmp.
+FINAL_APP_DIR="MessagesExporterGUI.app"
+rm -rf "$FINAL_APP_DIR"
+ditto --noextattr "$APP_DIR" "$FINAL_APP_DIR"
+
+echo "Built $FINAL_APP_DIR"
+echo "Run with:  open $FINAL_APP_DIR"

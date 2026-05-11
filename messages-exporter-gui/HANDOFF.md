@@ -1,7 +1,7 @@
 # messages-exporter-gui — Handoff
 
 Snapshot of where the project stands so a future session (human or AI) can pick up without re-deriving everything from the commit history.
-Last updated: 2026-05-08 (v1.0.14 — run history, presets, auto-backup).
+Last updated: 2026-05-11. Build-script refactor (assemble + sign in `mktemp -d` to dodge the iCloud File Provider xattr race) and CHANGELOG renumbering to match the auto-derived bundle version (1.0.203 onwards). For a per-feature timeline read CHANGELOG; this file does not pin a version because the bundle version increments on every commit.
 
 ## What it is
 
@@ -10,7 +10,7 @@ A small SwiftUI macOS front end for the sibling `messages-exporter` Python CLI. 
 ```
 swift build                        # debug build
 ./build-app.sh                     # release build → MessagesExporterGUI.app
-./run-tests.sh                     # 24 tests via swift-testing
+./run-tests.sh                     # 50 tests in 8 suites via swift-testing
 open MessagesExporterGUI.app
 ```
 
@@ -57,14 +57,27 @@ If the CLI's stdout format ever changes, those parsers and the unit tests around
 
 ## Build / release
 
-`build-app.sh` derives the version from git: `CFBundleShortVersionString = 1.0.<commit-count>`, `CFBundleVersion = <count>.<short-sha>`. So every commit is uniquely identifiable in the running app's `Bundle.main.infoDictionary`. Override with `SHORT_VERSION=` / `BUILD_NUMBER=` env vars if needed.
+### Versioning
+
+`build-app.sh` derives the version from git:
+
+- `CFBundleShortVersionString = 1.0.<outer-repo-commit-count>` — the canonical release identifier.
+- `CFBundleVersion = <count>.<short-sha>` — disambiguates rebuilds against the same commit.
+
+Every commit is therefore uniquely identifiable in the running app's `Bundle.main.infoDictionary`, and the user-visible short version maps 1:1 to a CHANGELOG entry (from 1.0.203 onwards — pre-2026-05-11 entries 1.0.0–1.0.14 used a separate sequential scheme and are kept as historical labels). Override with `SHORT_VERSION=` / `BUILD_NUMBER=` env vars if you need to pin a build.
+
+When you write a new CHANGELOG entry, label it with the outer-repo commit count *that the commit introducing the entry will produce*. Concretely: `git rev-list --count HEAD` + 1, assuming you collapse all the work into one commit. PurpleIRC's CHANGELOG follows the same convention.
+
+### Build pipeline
 
 The `Info.plist` is generated inline in the build script. Notable keys:
 
 - `LSMinimumSystemVersion` = 14.0 — matches the SwiftUI deployment target in `Package.swift`.
-- `CFBundleIdentifier` = `com.bronty13.MessagesExporterGUI`. Avoid `com.example.*` — modern macOS treats it with extra TCC suspicion; we hit this in 1.0.4 troubleshooting.
+- `CFBundleIdentifier` = `com.bronty13.MessagesExporterGUI`. Avoid `com.example.*` — modern macOS treats it with extra TCC suspicion; we hit this in early-1.0 troubleshooting.
 
-Code-signed with the maintainer's **Developer ID Application** certificate when present in the keychain (env var `DEVELOPER_ID`, default `Developer ID Application: Robert Olen (SRKV8T38CD)`), with `--options runtime` (Hardened Runtime) and `--timestamp` (trusted timestamp). Falls back to ad-hoc (`codesign --sign -`) when the cert isn't installed — the app still launches, but FDA grants rotate on every rebuild because TCC keys ad-hoc grants on cdhash.
+The bundle is **assembled, signed, and verified inside a `mktemp -d` directory outside iCloud Drive**, then `ditto --noextattr`'d back into the project root as `MessagesExporterGUI.app`. The project lives under `~/Documents`, which is iCloud-synced; the File Provider re-attaches `com.apple.FinderInfo` / `com.apple.fileprovider.fpfs#P` at arbitrary moments, including in the window between `xattr -cr` and `codesign`, which intermittently failed with "resource fork, Finder information, or similar detritus not allowed". Building in /tmp sidesteps the race entirely. Same pattern as `PurpleIRC/build-app.sh`, `PurpleDedup/build-app.sh`, and `PurpleLife/build-app.sh`.
+
+Code-signed with the maintainer's **Developer ID Application** certificate when present in the keychain (env var `DEVELOPER_ID`, default `Developer ID Application: Robert Olen (SRKV8T38CD)`), with `--options runtime` (Hardened Runtime) and `--timestamp` (trusted timestamp). Falls back to ad-hoc (`codesign --sign -`) when the cert isn't installed — the app still launches, but FDA grants rotate on every rebuild because TCC keys ad-hoc grants on cdhash. With Developer ID, TCC keys grants on `(team ID, bundle ID)` — rebuilds preserve the user's FDA grant.
 
 The app icon is regenerated each build via `Scripts/generate-icon.swift` + `iconutil`.
 

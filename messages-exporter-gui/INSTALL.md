@@ -27,7 +27,7 @@ Verify:
 
 ```bash
 ~/.local/bin/export_messages --version
-# messages-exporter 1.3.0
+# messages-exporter 1.3.2
 ```
 
 ### Optional: Whisper transcription (`transcribe/` subproject)
@@ -40,12 +40,14 @@ The CLI looks for the script at `~/Documents/GitHub/PhantomLives/transcribe/tran
 
 ```bash
 cd PhantomLives/messages-exporter-gui
-./run-tests.sh               # 18 tests, ~5 seconds
+./run-tests.sh               # 50 tests in 8 suites, ~5 seconds
 ./build-app.sh               # ~30 seconds first time; produces MessagesExporterGUI.app
 open MessagesExporterGUI.app
 ```
 
-`build-app.sh` derives the version from git (`CFBundleShortVersionString = 1.0.<commit-count>`). Override with `SHORT_VERSION=...` if you need a specific value.
+`build-app.sh` derives the version from git (`CFBundleShortVersionString = 1.0.<outer-repo-commit-count>`); the same number labels each CHANGELOG entry from 1.0.203 onwards, so a user-reported bundle version maps directly to a release note. Override with `SHORT_VERSION=...` if you need a specific value.
+
+The script assembles, signs, and verifies the bundle inside a `mktemp -d` directory outside iCloud Drive, then `ditto --noextattr`'s the signed bundle back into the project — the project tree lives under `~/Documents` and iCloud's File Provider intermittently re-attaches `com.apple.FinderInfo` / `com.apple.fileprovider.fpfs#P` between `xattr -cr` and `codesign`, which would otherwise fail with "resource fork, Finder information, or similar detritus not allowed".
 
 ### Code signing
 
@@ -84,25 +86,35 @@ Full Disk Access denied. Open System Settings → Privacy & Security → Full Di
 
 ### Duplicate "MessagesExporterGUI" / "MessagesExporterGUI 2" entries
 
-Because the `.app` is **ad-hoc code-signed**, every rebuild produces a fresh
-code-signature hash (`cdhash`). TCC keys its grants on `(bundle ID, cdhash)`,
-so a TCC entry created against last week's build no longer matches today's
-binary — and macOS may add a new entry rather than reusing the old one. Over
-many rebuilds this accumulates as multiple "MessagesExporterGUI" rows in the
-Privacy list, often disambiguated as "MessagesExporterGUI 2", "… 3", etc.
+Only an issue when the bundle is **ad-hoc code-signed** — the
+maintainer's default build uses a real Developer ID Application
+certificate, and TCC keys those grants on `(team ID, bundle ID)` so
+rebuilds preserve the user's grant.
 
-The in-app FDA sheet has a **Reset Privacy entries** button that wipes them
-all in one shot, so the next grant produces a single clean row. Or run the
-equivalent from a terminal:
+If you're building ad-hoc (`DEVELOPER_ID=- ./build-app.sh`, or no
+codesigning identity in the keychain), every rebuild produces a fresh
+code-signature hash (`cdhash`). TCC keys ad-hoc grants on
+`(bundle ID, cdhash)`, so a TCC entry created against last week's
+build no longer matches today's binary — macOS adds a new entry rather
+than reusing the old one. Over many rebuilds this accumulates as
+multiple "MessagesExporterGUI" rows in the Privacy list, often
+disambiguated as "MessagesExporterGUI 2", "… 3", etc.
+
+The in-app FDA sheet has a **Reset Privacy entries** button that wipes
+them all in one shot, so the next grant produces a single clean row.
+Or run the equivalent from a terminal:
 
 ```bash
 tccutil reset SystemPolicyAllFiles com.bronty13.MessagesExporterGUI
 ```
 
-After the reset, quit the app, re-grant Full Disk Access in System Settings,
-and relaunch.
+After the reset, quit the app, re-grant Full Disk Access in System
+Settings, and relaunch.
 
-`build-app.sh` also wipes any `MessagesExporterGUI 2.app` / `MessagesExporterGUI 3.app` Finder copies it finds in the project directory before each release build, which prevents the duplicates from accumulating in the first place.
+`build-app.sh` also wipes any `MessagesExporterGUI 2.app` /
+`MessagesExporterGUI 3.app` Finder copies it finds in the project
+directory before each release build, which prevents the duplicates
+from accumulating in the first place.
 
 ## Updating
 

@@ -2,6 +2,43 @@
 
 All notable changes to messages-exporter-gui will be documented in this file.
 
+## [1.0.203] — 2026-05-11
+
+> Numbering note: starting with this entry, CHANGELOG release numbers
+> match the bundle version stamped by `build-app.sh`
+> (`1.0.<outer-repo-commit-count>`), aligning with the PurpleIRC
+> convention. Pre-2026-05-11 entries (1.0.0–1.0.14) used a separate
+> sequential scheme; they are kept as-is for historical accuracy.
+
+### Fixed
+- **`build-app.sh` codesign race against iCloud File Provider.** The
+  bundle was assembled and signed in the project root, which lives
+  under `~/Documents` and therefore inside iCloud Drive. The File
+  Provider re-attached `com.apple.FinderInfo` /
+  `com.apple.fileprovider.fpfs#P` between the `xattr -cr` strip and
+  the `codesign` call, which intermittently failed with "resource
+  fork, Finder information, or similar detritus not allowed".
+  Refactored to assemble + sign + verify in a `mktemp -d` directory
+  outside iCloud, then `ditto --noextattr` the signed bundle back
+  into the project root — same pattern used by
+  `PurpleIRC/build-app.sh`, `PurpleDedup/build-app.sh`, and
+  `PurpleLife/build-app.sh`. `codesign --verify` can now use
+  `--strict` because the verify runs against the in-/tmp bundle
+  before iCloud has any chance to re-stamp it.
+
+### Docs
+- Aligned the GUI's release numbering with the auto-derived bundle
+  version (see numbering note above) so a user's About-pane version
+  string maps directly to a CHANGELOG entry.
+- Removed pinned "Current release: ..." from README and the version
+  callout from HANDOFF's "Last updated" line — both go stale on every
+  commit under the new scheme. CHANGELOG is the source of truth.
+- Refreshed test counts in HANDOFF and INSTALL (now 50 tests in 8
+  suites, was 24 / 18).
+- Clarified in INSTALL that the cdhash-rotation / duplicate-Privacy-
+  entry problem only affects ad-hoc builds — Developer-ID-signed
+  builds key TCC on `(team ID, bundle ID)` and survive rebuilds.
+
 ## [1.0.14] — 2026-05-08
 
 ### Added

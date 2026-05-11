@@ -1,7 +1,5 @@
 # messages-exporter-gui
 
-**Current release: 1.0.14**
-
 Native macOS SwiftUI front end for the [`messages-exporter`](../messages-exporter/) CLI. The 1.0.13 *Mission Control* redesign adopts a sidebar + main pane layout with a tinted gradient background, frosted-glass surfaces, and an oklch-derived blue accent. The main pane provides a contact text field, native date/time pickers, a four-tile run summary (Messages · Attachments · Span · Output size), a **Sanitized | Raw (forensic)** mode picker, an opt-in **Whisper transcription** of audio/video attachments via the sibling [`transcribe`](../transcribe/) project, a Full Disk Access preflight that detects missing permission on launch and offers to clean up stale TCC entries, and one-click chip buttons to open the resulting transcript / summary / manifest / metadata / chain-of-custody log or reveal the output folder.
 
 ## Quick start
@@ -42,7 +40,9 @@ See [INSTALL.md](INSTALL.md) for the full install / Full Disk Access walk-throug
 ./run-tests.sh        # runs the Swift Testing suite
 ```
 
-`build-app.sh` derives the version from git: `CFBundleShortVersionString = 1.0.<commit-count>`, `CFBundleVersion = <count>.<sha>`. Override with `SHORT_VERSION=` / `BUILD_NUMBER=` env vars.
+`build-app.sh` derives the version from git: `CFBundleShortVersionString = 1.0.<outer-repo-commit-count>`, `CFBundleVersion = <count>.<sha>`. Override with `SHORT_VERSION=` / `BUILD_NUMBER=` env vars.
+
+The `1.0.<count>` short version is the canonical release identifier — every CHANGELOG entry (from 1.0.203 onwards) uses the same number that `build-app.sh` stamps into the bundle, so a user reporting "I'm on 1.0.207" maps directly to a CHANGELOG entry. Pre-2026-05-11 entries (1.0.0–1.0.14) used a separate sequential scheme; see CHANGELOG for the transition note.
 
 ## Architecture
 
