@@ -4,6 +4,18 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-10 — Detail polish: two-pane object detail with "Linked from" inspector rail
+
+Second slice of the prototype-polish follow-up. Object detail sheet now has a two-pane layout matching `Design/purplelife/project/screens-dark.jsx ScreenDetail`:
+
+- **Hero block** at the top of the main pane — large rounded square with the type's icon tinted to its accent color, type name above the record's title (bold, larger). Replaces the old icon + type-name header.
+- **Two-pane layout**: main pane (flex) + 320 px right inspector rail, separated by a divider. Both panes scroll independently inside the existing fixed-size sheet. Sheet minimum size bumped to 880 × 560.
+- **"Linked from" rail** — the killer feature. Shows every record across every type whose `.link` fields point at the record being viewed. Grouped by source type, with a colored bullet keyed to the type's accent. Clicking a row dismisses the sheet and routes through `appState.openRecordRequest` so the main window's `RecordsScreen` opens the picked record. Empty-state copy when nothing links.
+- **Created / updated stamps** at the bottom of the rail — the prototype shows a richer per-mutation history; PurpleLife doesn't keep that log yet, so we surface the stamps we have without inventing new persistence.
+- **`ObjectEngine.recordsLinkingTo(recordId:schema:)`** — new helper. Cross-type scan: walks every record, checks every `.link` field, returns matches with their resolved type. O(N · F) over records and link fields. Personal-scale; an index can come later if it ever becomes slow.
+
+**2 new `InboundLinksTests`** — finds-the-linker and empty-for-unreferenced. **59/59 tests green** (was 57, +2). Build clean.
+
 ### 2026-05-10 — Today polish: timeline + linked-from-today rail (matches prototype)
 
 First slice of follow-up #2 (polish toward the prototype). The Today screen layout now matches `Design/purplelife/project/screens-light.jsx ScreenToday` more closely:

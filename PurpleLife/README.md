@@ -24,7 +24,7 @@ See [PLAN.md](PLAN.md) for the build plan, [HANDOFF.md](HANDOFF.md) for the deci
 
 ```sh
 ./build-app.sh        # produces ./PurpleLife.app, Apple-Development-signed with iCloud entitlement
-./run-tests.sh        # runs the PurpleLifeTests bundle (57 tests, ~17 s end-to-end)
+./run-tests.sh        # runs the PurpleLifeTests bundle (59 tests, ~17 s end-to-end)
 ```
 
 Both scripts require **full Xcode** (not just Command Line Tools), `xcodegen` (`brew install xcodegen`), and an Apple Developer account signed in to Xcode. Phase 4's CloudKit entitlement makes Apple Development signing mandatory; the build-script's prior Developer ID Application path was retired.

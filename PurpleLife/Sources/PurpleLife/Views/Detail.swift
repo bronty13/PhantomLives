@@ -1,9 +1,14 @@
 import SwiftUI
 
-/// Object detail — the sheet that opens when a row is clicked. Renders
-/// every field on the type with an editor appropriate for its kind, saves
-/// on dismiss. Phase 2 starting point — the full design's two-pane detail
-/// (fields on the left, linked-from rail on the right) lands later.
+/// Object detail — the sheet that opens when a row is clicked. Two-
+/// pane layout matching the prototype's `ScreenDetail` (`Design/
+/// purplelife/project/screens-dark.jsx`):
+///
+/// - **Main**: hero block (large icon + record title) followed by
+///   each field with a kind-appropriate editor, saved on dismiss.
+/// - **Right rail (320 px)**: "Linked from" — every record across
+///   every type whose `.link` fields point at this record. Grouped by
+///   type, click navigates by setting `appState.openRecordRequest`.
 struct ObjectDetailSheet: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
@@ -27,7 +32,7 @@ struct ObjectDetailSheet: View {
                 ProgressView().controlSize(.small).padding()
             }
         }
-        .frame(minWidth: 560, minHeight: 520)
+        .frame(minWidth: 880, minHeight: 560)
         .onAppear { load() }
     }
 
@@ -45,22 +50,155 @@ struct ObjectDetailSheet: View {
             .padding(20)
             Divider()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(orderedFields(for: type), id: \.id) { field in
-                        fieldEditor(field: field)
-                    }
-                }
-                .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 0) {
+                mainPane(record: record, type: type)
+                    .frame(maxWidth: .infinity)
+                Divider()
+                inspectorRail(record: record, type: type)
+                    .frame(width: 320)
             }
-            .background(Color(NSColor.textBackgroundColor).opacity(0.4))
+            .frame(maxHeight: .infinity)
 
             if let error {
                 Divider()
                 Text(error).font(.caption).foregroundStyle(.red).padding(.horizontal, 20).padding(.vertical, 8)
             }
         }
+    }
+
+    // MARK: - Main pane
+
+    private func mainPane(record: ObjectRecord, type: ObjectType) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                hero(record: record, type: type)
+                Divider()
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(orderedFields(for: type), id: \.id) { field in
+                        fieldEditor(field: field)
+                    }
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(Color(NSColor.textBackgroundColor).opacity(0.4))
+    }
+
+    private func hero(record: ObjectRecord, type: ObjectType) -> some View {
+        let tone = Color(hex: type.colorHex) ?? .accentColor
+        let title = FieldDisplay.title(of: record, in: type)
+        return HStack(alignment: .top, spacing: 16) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(tone.opacity(0.18))
+                    .frame(width: 72, height: 72)
+                Image(systemName: type.systemImage)
+                    .font(.system(size: 32, weight: .light))
+                    .foregroundStyle(tone)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(type.name)
+                    .font(.caption2).fontWeight(.semibold).tracking(0.5)
+                    .textCase(.uppercase).foregroundStyle(.tertiary)
+                Text(title.isEmpty ? "Untitled" : title)
+                    .font(.system(size: 26, weight: .bold))
+                    .lineLimit(2)
+                    .foregroundStyle(title.isEmpty ? Color.secondary : Color.primary)
+            }
+            Spacer()
+        }
+    }
+
+    // MARK: - Inspector rail
+
+    private func inspectorRail(record: ObjectRecord, type: ObjectType) -> some View {
+        let inbound = (try? ObjectEngine.recordsLinkingTo(recordId: record.id, schema: appState.schema)) ?? []
+        let groupedByType = Dictionary(grouping: inbound, by: { $0.type.id })
+        let typeOrder = inbound.map(\.type.id).reduce(into: [String]()) { acc, id in
+            if !acc.contains(id) { acc.append(id) }
+        }
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Linked from")
+                    .font(.caption2).fontWeight(.semibold).tracking(0.5)
+                    .textCase(.uppercase).foregroundStyle(.tertiary)
+                if inbound.isEmpty {
+                    Text("Nothing yet links here.")
+                        .font(.caption).foregroundStyle(.tertiary)
+                } else {
+                    ForEach(typeOrder, id: \.self) { typeId in
+                        if let group = groupedByType[typeId], let groupType = group.first?.type {
+                            inboundGroup(type: groupType, items: group)
+                        }
+                    }
+                }
+                Spacer(minLength: 0)
+                metadata(record: record)
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(Theme.sidebarOpaque.opacity(0.4))
+    }
+
+    private func inboundGroup(type: ObjectType, items: [(record: ObjectRecord, type: ObjectType)]) -> some View {
+        let tone = Color(hex: type.colorHex) ?? .accentColor
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: type.systemImage)
+                    .foregroundStyle(tone)
+                    .imageScale(.small)
+                Text(type.pluralName)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text("\(items.count)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+            }
+            ForEach(items, id: \.record.id) { item in
+                Button {
+                    appState.openRecordRequest = item.record.id
+                    dismiss()
+                } label: {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(tone.opacity(0.5))
+                            .frame(width: 6, height: 6)
+                        Text(FieldDisplay.title(of: item.record, in: item.type))
+                            .font(.caption)
+                            .lineLimit(1)
+                            .foregroundStyle(.primary)
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
+                    .padding(.vertical, 3)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    /// Tiny created/updated stamps at the bottom of the rail. The
+    /// prototype shows a richer history timeline; PurpleLife doesn't
+    /// keep a per-mutation log yet, so this is what we have to show
+    /// without adding new persistence.
+    private func metadata(record: ObjectRecord) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Divider().padding(.vertical, 4)
+            Text("Created \(humanize(record.createdAt))")
+                .font(.caption2).foregroundStyle(.tertiary)
+            Text("Updated \(humanize(record.updatedAt))")
+                .font(.caption2).foregroundStyle(.tertiary)
+        }
+    }
+
+    private func humanize(_ iso: String) -> String {
+        guard let d = ISO8601DateFormatter().date(from: iso) else { return iso }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd HH:mm"
+        return f.string(from: d)
     }
 
     private func orderedFields(for type: ObjectType) -> [FieldDef] {

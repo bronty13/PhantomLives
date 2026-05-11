@@ -12,6 +12,18 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-10 — Detail polish: two-pane with "Linked from" rail
+
+Second slice of the prototype-polish follow-up. The detail sheet now matches `Design/purplelife/project/screens-dark.jsx ScreenDetail` shape-wise.
+
+- **Two-pane layout** (`HStack` + `Divider` + 320 px right rail). Min sheet size bumped to 880 × 560 — the right rail isn't useful below ~700 px main width.
+- **"Linked from" rail** is the meaningful win. Powered by a new `ObjectEngine.recordsLinkingTo(recordId:schema:)` cross-type scan that walks every record, checks every `.link` field, returns matches with resolved type. O(N · F) per open — fine at personal scale, an index can land later if it bites.
+- **Hero block** at the top of the main pane: large rounded square with the type's icon tinted to its accent color, type name above the record's title in bigger bold type. Replaces the old icon-and-name header.
+- **Click-through navigation**: tapping an inbound row sets `appState.openRecordRequest` and dismisses the sheet. `RecordsScreen` already observes this (used by Quick Switcher), so navigation flows the same way as ⌘K. No new plumbing.
+- **Created / updated stamps at the bottom of the rail** — the prototype shows a richer per-mutation history. We don't keep that log yet; surfacing the stamps we already have avoids inventing new persistence just to fill the section.
+
+**Why this matters**: before this commit there was no way for a user to see "what other records link here?" — they could follow links forward via picker, never backward. For a Life OS that's a structural problem (e.g., open a Camera record, you couldn't see which Photo Shoots use it). The rail closes that loop.
+
 ### 2026-05-10 — Today polish (timeline + linked-from rail)
 
 First slice of the prototype-polish follow-up. The Today screen visually approaches `Design/purplelife/project/screens-light.jsx ScreenToday` while staying within the data-driven model.

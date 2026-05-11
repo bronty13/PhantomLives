@@ -193,4 +193,30 @@ enum ObjectEngine {
             return (r, type)
         }
     }
+
+    /// Reverse of a `.link` field — find every record that points TO
+    /// the given `recordId` via any of its type's `.link` fields.
+    /// Powers the "Linked from" inspector rail in the detail view.
+    ///
+    /// O(N · F) over all records and their link fields. Fine for a
+    /// personal-scale Life OS (hundreds to low-thousands of records);
+    /// if it ever becomes slow, a dedicated `links` index table or
+    /// an in-memory cache built from the FTS reindex pass would close
+    /// the gap. Not worth the complexity until a real user feels it.
+    static func recordsLinkingTo(recordId: String, schema: SchemaRegistry) throws -> [(record: ObjectRecord, type: ObjectType)] {
+        guard !recordId.isEmpty else { return [] }
+        var results: [(record: ObjectRecord, type: ObjectType)] = []
+        for record in try DatabaseService.shared.fetchAllObjects() {
+            guard record.id != recordId,
+                  let type = schema.type(id: record.typeId) else { continue }
+            let fields = record.fields()
+            for fieldDef in type.fields where fieldDef.kind == .link {
+                if let linked = fields[fieldDef.key] as? String, linked == recordId {
+                    results.append((record, type))
+                    break
+                }
+            }
+        }
+        return results
+    }
 }
