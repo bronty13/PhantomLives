@@ -83,6 +83,7 @@ final class AppState: ObservableObject {
         case trash                // 1.3.0 — Soft-deleted Matters
         case savedSearch(String)  // 1.3.0 — Saved-search id
         case thirdPartiesAll      // 1.4.0 — All Third Parties list
+        case noteType(String)     // 1.5.0 — Notes workspace, by type id
 
         var title: String {
             switch self {
@@ -99,6 +100,7 @@ final class AppState: ObservableObject {
             case .trash: return "Trash"
             case .savedSearch(let id): return "Saved: \(id)"
             case .thirdPartiesAll: return "Third Parties"
+            case .noteType(let id): return "Notes: \(id)"
             }
         }
     }
@@ -156,6 +158,7 @@ final class AppState: ObservableObject {
             try reloadSavedSearches()
             try reloadTrash()
             try reloadVendors()
+            try reloadNoteTypes()
             if let sid = selectedMatterId {
                 try loadSelected(sid)
             } else if let first = matters.first {
@@ -262,6 +265,8 @@ final class AppState: ObservableObject {
             break  // dedicated dashboards take over the detail pane
         case .thirdPartiesAll:
             return []  // Third Parties UI replaces the matter list
+        case .noteType:
+            return []  // Notes workspace replaces the matter list
         case .trash:
             // Trash bin uses its own data slice (`trashedMatters`); the
             // main list shows nothing while in this section.
@@ -991,5 +996,93 @@ final class AppState: ObservableObject {
 
     func deleteVendorAttachment(id: String) throws {
         try VendorService.deleteAttachment(id: id)
+    }
+
+    // MARK: - Notes workspace (1.5.0)
+
+    @Published var noteTypes: [NoteType] = []
+    @Published var selectedNoteTypeId: String?
+    @Published var notesForType: [GenericNote] = []
+    @Published var selectedNoteId: String?
+
+    func reloadNoteTypes() throws {
+        noteTypes = try NoteTypeService.fetchAll()
+        if let id = selectedNoteTypeId, noteTypes.contains(where: { $0.id == id }) == false {
+            selectedNoteTypeId = noteTypes.first?.id
+        }
+        try reloadNotesForSelectedType()
+    }
+
+    func reloadNotesForSelectedType() throws {
+        guard let id = selectedNoteTypeId else {
+            notesForType = []
+            selectedNoteId = nil
+            return
+        }
+        notesForType = try GenericNoteService.fetchLive(typeId: id)
+        if let sid = selectedNoteId, notesForType.contains(where: { $0.id == sid }) == false {
+            selectedNoteId = notesForType.first?.id
+        } else if selectedNoteId == nil {
+            selectedNoteId = notesForType.first?.id
+        }
+    }
+
+    func selectNoteType(_ id: String) {
+        selectedNoteTypeId = id
+        selectedNoteId = nil
+        try? reloadNotesForSelectedType()
+    }
+
+    // -- Note Type CRUD --
+
+    func addNoteType(name: String) throws -> NoteType {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { throw NSError(domain: "NoteType", code: 1, userInfo: [NSLocalizedDescriptionKey: "Name required"]) }
+        let next = (noteTypes.map { $0.sortOrder }.max() ?? -1) + 1
+        let t = NoteType.newDraft(name: trimmed, sortOrder: next)
+        try NoteTypeService.insert(t)
+        try reloadNoteTypes()
+        return t
+    }
+
+    func renameNoteType(id: String, to name: String) throws {
+        guard var t = noteTypes.first(where: { $0.id == id }) else { return }
+        t.name = name.trimmingCharacters(in: .whitespaces)
+        try NoteTypeService.update(t)
+        try reloadNoteTypes()
+    }
+
+    func deleteNoteType(id: String) throws {
+        try NoteTypeService.delete(id: id)
+        if selectedNoteTypeId == id { selectedNoteTypeId = nil }
+        try reloadNoteTypes()
+    }
+
+    func reorderNoteTypes(_ ordered: [NoteType]) throws {
+        try NoteTypeService.reorder(ordered)
+        try reloadNoteTypes()
+    }
+
+    // -- Generic Note CRUD --
+
+    @discardableResult
+    func addGenericNote(typeId: String, date: Date = Date(), title: String = "") throws -> GenericNote {
+        var n = GenericNote.newDraft(typeId: typeId, date: date)
+        n.title = title
+        try GenericNoteService.insert(n)
+        try reloadNotesForSelectedType()
+        selectedNoteId = n.id
+        return n
+    }
+
+    func updateGenericNote(_ n: GenericNote) throws {
+        try GenericNoteService.update(n)
+        try reloadNotesForSelectedType()
+    }
+
+    func deleteGenericNote(id: String) throws {
+        try GenericNoteService.softDelete(id: id)
+        if selectedNoteId == id { selectedNoteId = nil }
+        try reloadNotesForSelectedType()
     }
 }

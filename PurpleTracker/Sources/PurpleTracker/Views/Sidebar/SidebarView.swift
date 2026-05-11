@@ -55,6 +55,11 @@ struct SidebarView: View {
             Section("Third Parties") {
                 row("All Third Parties", "building.2", section: .thirdPartiesAll)
             }
+            Section("Notes") {
+                ForEach(app.noteTypes) { t in
+                    row(t.name, "note.text", section: .noteType(t.id))
+                }
+            }
             Section {
                 row("Trash (\(app.trashedMatters.count))", "trash", section: .trash)
             }

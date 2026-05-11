@@ -21,6 +21,9 @@ struct ContentView: View {
                 case .thirdPartiesAll:
                     VendorListView()
                         .frame(minWidth: 360)
+                case .noteType(let typeId):
+                    NotesListView(typeId: typeId)
+                        .frame(minWidth: 280)
                 default:
                     MatterListView()
                         .frame(minWidth: 320)
@@ -47,6 +50,17 @@ struct ContentView: View {
                             "No Third Party Selected",
                             systemImage: "building.2",
                             description: Text("Choose a vendor from the list, or press the + button to add one.")
+                        )
+                    }
+                case .noteType:
+                    if let nid = app.selectedNoteId,
+                       let n = app.notesForType.first(where: { $0.id == nid }) {
+                        NoteEditorView(note: n)
+                    } else {
+                        ContentUnavailableView(
+                            "No Note Selected",
+                            systemImage: "note.text",
+                            description: Text("Pick a note from the list or press + to start a new one.")
                         )
                     }
                 default:

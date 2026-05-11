@@ -21,6 +21,8 @@ struct SettingsView: View {
                 .tabItem { Label("Goals", systemImage: "target") }
             ThirdPartiesSettingsView()
                 .tabItem { Label("Third Parties", systemImage: "building.2") }
+            NoteTypesSettingsView()
+                .tabItem { Label("Note Types", systemImage: "note.text") }
             BackupSettingsView()
                 .tabItem { Label("Backup", systemImage: "externaldrive.badge.timemachine") }
         }

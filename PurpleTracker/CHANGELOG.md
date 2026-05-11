@@ -4,6 +4,20 @@ All notable changes to PurpleTracker are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] — Notes Workspace (WYSIWYG)
+
+### Added
+- **Notes** sidebar section with user-configurable Note Types. Seeds with
+  defaults: Staff, Architecture, Team, SCRUM, Third Party.
+- **WYSIWYG rich-text editor** (NSTextView-backed) with bold / italic /
+  underline / strikethrough, H1–H3 + Body styles, bullet & numbered lists,
+  hyperlinks, text color, and clear-formatting. Bodies are persisted as RTF.
+- **Per-type note lists** grouped by date with search across title and body.
+- **Settings → Note Types** tab to add, rename, reorder, and delete types.
+  Deletion is blocked when notes still reference the type.
+- Migration `v8_notes_workspace` adds `note_type` + `generic_note` tables and
+  seeds the five default types.
+
 ## [1.4.0] — Third Parties (Vendors)
 
 ### Added

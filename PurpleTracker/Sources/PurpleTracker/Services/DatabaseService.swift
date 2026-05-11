@@ -377,6 +377,44 @@ final class DatabaseService {
             }
         }
 
+        migrator.registerMigration("v8_notes_workspace") { db in
+            try db.create(table: "note_type") { t in
+                t.column("id", .text).primaryKey()
+                t.column("name", .text).notNull()
+                t.column("sort_order", .integer).notNull().defaults(to: 0)
+                t.column("created_at", .datetime).notNull()
+                t.uniqueKey(["name"])
+            }
+            try db.create(table: "generic_note") { t in
+                t.column("id", .text).primaryKey()
+                t.column("type_id", .text).notNull()
+                    .references("note_type", column: "id", onDelete: .restrict)
+                t.column("note_date", .date).notNull()
+                t.column("title", .text).notNull().defaults(to: "")
+                t.column("body_rtf", .blob)
+                t.column("body_plain", .text).notNull().defaults(to: "")
+                t.column("created_at", .datetime).notNull()
+                t.column("updated_at", .datetime).notNull()
+                t.column("deleted_at", .datetime)
+            }
+            try db.create(index: "idx_generic_note_type_date",
+                          on: "generic_note", columns: ["type_id", "note_date"])
+            try db.create(index: "idx_generic_note_deleted_at",
+                          on: "generic_note", columns: ["deleted_at"])
+
+            // Seed default types — the user can rename/delete/add via Settings.
+            let defaults = ["Staff", "Architecture", "Team", "SCRUM", "Third Party"]
+            for (i, name) in defaults.enumerated() {
+                try db.execute(
+                    sql: """
+                    INSERT INTO note_type (id, name, sort_order, created_at)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    arguments: [UUID().uuidString, name, i, Date()]
+                )
+            }
+        }
+
         try migrator.migrate(writer)
     }
 
