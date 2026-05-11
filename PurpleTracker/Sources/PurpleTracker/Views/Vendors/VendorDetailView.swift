@@ -678,22 +678,46 @@ struct VendorNotesTab: View {
     @EnvironmentObject var app: AppState
     let vendor: Vendor
     @State private var draft: String = ""
+    @State private var pendingFiles: [URL] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Notes").font(.headline)
             HStack(alignment: .top) {
-                TextEditor(text: $draft)
-                    .frame(minHeight: 60)
-                    .border(Color.secondary.opacity(0.2))
-                VStack {
-                    Button("Add") {
-                        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !trimmed.isEmpty else { return }
-                        _ = try? app.addVendorNote(vendorId: vendor.id, body: trimmed)
-                        draft = ""
+                VStack(alignment: .leading, spacing: 6) {
+                    TextEditor(text: $draft)
+                        .frame(minHeight: 60)
+                        .border(Color.secondary.opacity(0.2))
+                    HStack(spacing: 8) {
+                        Button {
+                            stageFiles()
+                        } label: {
+                            Label("Attach…", systemImage: "paperclip")
+                        }
+                        .buttonStyle(.borderless)
+                        if !pendingFiles.isEmpty {
+                            ForEach(pendingFiles, id: \.self) { url in
+                                HStack(spacing: 4) {
+                                    Image(systemName: "doc")
+                                    Text(url.lastPathComponent).font(.caption)
+                                    Button {
+                                        pendingFiles.removeAll(where: { $0 == url })
+                                    } label: { Image(systemName: "xmark.circle.fill") }
+                                        .buttonStyle(.plain)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(Color.secondary.opacity(0.1))
+                                .cornerRadius(4)
+                            }
+                        }
+                        Spacer()
                     }
-                    .keyboardShortcut(.return, modifiers: .command)
+                }
+                VStack {
+                    Button("Add", action: addNote)
+                        .keyboardShortcut(.return, modifiers: .command)
+                        .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     Spacer()
                 }
             }
@@ -702,6 +726,32 @@ struct VendorNotesTab: View {
                 VendorNoteRow(note: n)
             }
         }
+    }
+
+    private func stageFiles() {
+        let p = NSOpenPanel()
+        p.allowsMultipleSelection = true
+        p.canChooseDirectories = false
+        if p.runModal() == .OK {
+            for url in p.urls where !pendingFiles.contains(url) {
+                pendingFiles.append(url)
+            }
+        }
+    }
+
+    private func addNote() {
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard let note = try? app.addVendorNote(vendorId: vendor.id, body: trimmed) else { return }
+        // Attach any staged files to the new note so users don't have to add
+        // them via the per-note paperclip after the fact.
+        for url in pendingFiles {
+            _ = try? app.addVendorAttachment(
+                vendorId: vendor.id, fileURL: url, kind: .note, parentId: note.id
+            )
+        }
+        draft = ""
+        pendingFiles = []
     }
 }
 
