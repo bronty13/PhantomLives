@@ -52,6 +52,9 @@ struct SidebarView: View {
                 row("Analytics",        "chart.pie",            section: .analytics)
                 row("Capacity",         "person.3",             section: .capacity)
             }
+            Section("Third Parties") {
+                row("All Third Parties", "building.2", section: .thirdPartiesAll)
+            }
             Section {
                 row("Trash (\(app.trashedMatters.count))", "trash", section: .trash)
             }

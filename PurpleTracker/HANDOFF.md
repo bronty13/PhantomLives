@@ -121,6 +121,43 @@ The app is ad-hoc signed unless a Developer ID is present in the keychain.
     Matter — documented in `TimeByTagReport.swift`. If you change to a
     weighted split, also update `USER_MANUAL.md`.
 
+15. **Third Parties — effective actual rule (1.4.0).**
+    `vendor_year_amount.actual_cents` is `Int64?` (nullable).
+    `VendorInvoiceService.effectiveActuals` returns
+    `override ?? SUM(vendor_invoice.amount_cents) for the year`. An
+    *explicit zero override* therefore wins over a non-zero invoice
+    sum — clearing the override (setting it back to NULL) is the only
+    way to fall back to the rollup. Tested in `VendorInvoiceRollupTests`.
+
+16. **Third Parties — invoice year is mirrored from date.**
+    `VendorInvoiceService.insert/update` recomputes
+    `vendor_invoice.year` from `invoice_date` on every write so that
+    callers can backdate an invoice and it lands in the correct yearly
+    bucket without extra ceremony. Tested:
+    `testBackdatedInvoiceLandsInCorrectYear`.
+
+17. **Third Parties — year range is a single global setting.**
+    `AppSettings.thirdPartyYearStart` / `thirdPartyYearEnd` (defaults
+    2026 / 2035) drive every Budget & Actuals matrix and every report
+    column header. Per-vendor year ranges are deliberately *not* a
+    thing — keeping reports comparable across vendors is the reason.
+    Configurable under Settings → Third Parties.
+
+18. **Third Parties — vendor attachments are a separate table.**
+    `vendor_attachment` (BLOB, SHA1) is parallel to `attachment` but
+    has a `kind` column (`contract` / `invoice` / `note` / `other`) and
+    a nullable `parent_id` discriminator (vendor_invoice.id for invoice
+    files, vendor_note.id for note files). The existing `attachment`
+    table's `matter_id NOT NULL` made reuse impossible.
+
+19. **Third Parties — vendor hard-delete is safe for matters.**
+    `matter.vendor_id` was added with `ON DELETE SET NULL` in migration
+    `v6_third_parties`, so purging a vendor unlinks every matter
+    instead of cascade-deleting them. Tested:
+    `testHardDeletingVendorSetsMatterVendorIdNull`. Note that the
+    application currently exposes only soft-delete for vendors via
+    `VendorService.softDelete`.
+
 ## Important files (where to look first)
 
 | Concern                       | File                                                    |

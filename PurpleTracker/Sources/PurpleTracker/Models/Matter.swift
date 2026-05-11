@@ -57,6 +57,10 @@ struct Matter: Codable, Hashable, Identifiable, FetchableRecord, MutablePersista
     /// 30-day purge sweep on launch hard-deletes anything older than that.
     var deletedAt: Date?
 
+    /// Optional Third Party link. NULL when the Matter isn't tied to a vendor.
+    /// `ON DELETE SET NULL` at the DB level so vendor hard-delete is safe.
+    var vendorId: String?
+
     enum CodingKeys: String, CodingKey {
         case id, title, status
         case typeId = "type_id"
@@ -92,6 +96,7 @@ struct Matter: Codable, Hashable, Identifiable, FetchableRecord, MutablePersista
         case externalInterestedParty4 = "external_interested_party4"
         case externalInterestedParty5 = "external_interested_party5"
         case deletedAt = "deleted_at"
+        case vendorId = "vendor_id"
     }
 
     static func newDraft(id: String, typeId: String, title: String = "") -> Matter {
@@ -132,7 +137,8 @@ struct Matter: Codable, Hashable, Identifiable, FetchableRecord, MutablePersista
             externalInterestedParty3: "",
             externalInterestedParty4: "",
             externalInterestedParty5: "",
-            deletedAt: nil
+            deletedAt: nil,
+            vendorId: nil
         )
     }
 }

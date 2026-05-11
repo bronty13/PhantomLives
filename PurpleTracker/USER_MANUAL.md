@@ -339,6 +339,100 @@ PurpleTracker keeps a local roster of company people sourced from the daily
 
 ---
 
+## Third Parties (Vendors) — 1.4.0
+
+The **Third Parties** section in the sidebar is a self-contained roster of
+vendors / 3rd-party suppliers, parallel to Matters but independent. It tracks
+demographics, contacts, products, contracts, invoices, budget vs actuals, and
+free-form notes — and links back to whichever Matters relate to a vendor.
+
+### Creating a vendor
+
+1. Click **Third Parties** in the sidebar.
+2. Click **+ New Vendor** in the list header.
+3. Fill in **Name** and pick a **Reseller** (Cyber One / CDW / Other). For
+   "Other" a free-text box appears.
+4. The 12 tabs are filled in incrementally — nothing else is required.
+
+### The 12 detail tabs
+
+- **Overview** — name, website, phone, address, reseller, 1–5 star rating with
+  optional rating note, description, data center.
+- **Contacts** — three slots: **Sales**, **Escalation**, **Technical**. Each
+  holds name, phone, mobile, and email.
+- **Products** — repeatable list of products purchased from the vendor.
+- **Budget & Actuals** — one row per year (range from Settings, default
+  2026–2035). For each year:
+  - **Budget** — what you planned.
+  - **Actual (override)** — optional manual override; leave blank for the
+    invoice rollup, type `0` to assert "no spend this year" and win over a
+    non-zero invoice sum.
+  - **Effective Actual** — computed: `override ?? SUM(invoices in year)`.
+- **Contracts** — drop contract PDFs/DOCX/etc. as BLOB attachments.
+- **Invoices** — log each invoice (date, vendor invoice number, amount, memo,
+  optional file). The amount feeds the **Effective Actual** for the year of
+  the invoice date — backdated invoices land in the correct year.
+- **Other Files** — anything that isn't a contract, invoice, or note.
+- **Contract Summary** — Markdown editor for high-level contract terms.
+- **Costing Summary** — Markdown editor for pricing notes / break-glass costs.
+- **Exit Strategy** — Markdown editor for off-ramp planning.
+- **Notes** — add / edit / delete timestamped notes; each note can carry one
+  or more BLOB attachments of its own.
+- **Linked Matters** — read-only view of Matters whose **Third Party** field
+  points at this vendor. Click to jump.
+
+### Linking a Matter to a Vendor
+
+Open any Matter and look at the **Overview** tab — there is a **Third Party**
+selector. Pick a vendor (or "None"). The Matter then appears under the
+vendor's **Linked Matters** tab. Vendor hard-delete is safe: it sets every
+linked matter's vendor reference to NULL rather than cascading.
+
+### Effective Actual — the override rule
+
+Per year, the actuals shown in reports and the matrix follow this rule:
+
+```
+Effective Actual = manual override (if set, even if 0)
+                  else SUM(vendor_invoice.amount_cents WHERE year matches)
+```
+
+So:
+
+- Don't set the override → actual = sum of invoices.
+- Set override to `12,000.00` → actual = `12,000.00` (sum ignored).
+- Set override to `0.00` → actual = `0.00` (sum ignored).
+- Clear the override → actual = sum of invoices again.
+
+This lets you (a) drive actuals automatically from invoices in steady state,
+or (b) assert a known figure when invoices aren't yet entered.
+
+### Settings → Third Parties
+
+Configure the **Budget / Actuals year range** (default 2026–2035). The range
+is global — every vendor's Budget & Actuals matrix and every report use it.
+Widen the range whenever you start planning for a new year.
+
+### Reports
+
+- **Single-vendor report** — from a vendor's detail header, choose
+  **Report → Summary (MD / PDF)** or **Full (MD / PDF)**. Summary is a single
+  page with demographics, contacts, rating, products, and the Budget vs
+  Actuals matrix. Full adds notes, contract / costing / exit-strategy
+  sections, invoices, and an attachments index.
+- **All-vendors report** — from the vendor list, **All Vendors Report →
+  Basic / Detailed (MD / PDF)**. Basic is a table (name, contact, rating,
+  reseller, products, total budget, total actual). Detailed is every vendor's
+  Full sheet concatenated.
+
+### Attachments are BLOBs
+
+Vendor attachments are stored *inside* the SQLite DB (same model as Matter
+attachments — MD5 / SHA1 / SHA256 on ingest, SHA1 verified on every open).
+That means backups carry everything; no separate file store to keep in sync.
+
+---
+
 ## Troubleshooting
 
 - **"App can't be opened because it is from an unidentified developer."** —

@@ -253,6 +253,124 @@ final class DatabaseService {
             }
         }
 
+        migrator.registerMigration("v6_third_parties") { db in
+            // Top-level Third Party (vendor) row.
+            try db.create(table: "vendor") { t in
+                t.column("id", .text).primaryKey()
+                t.column("name", .text).notNull().defaults(to: "")
+                t.column("address", .text).notNull().defaults(to: "")
+                t.column("website", .text).notNull().defaults(to: "")
+                t.column("phone", .text).notNull().defaults(to: "")
+                t.column("reseller", .text).notNull().defaults(to: "Cyber One")
+                t.column("reseller_other", .text).notNull().defaults(to: "")
+                t.column("rating", .integer)
+                t.column("rating_note", .text).notNull().defaults(to: "")
+                t.column("description_md", .text).notNull().defaults(to: "")
+                t.column("data_center", .text).notNull().defaults(to: "")
+                t.column("exit_strategy_md", .text).notNull().defaults(to: "")
+                t.column("contract_summary_md", .text).notNull().defaults(to: "")
+                t.column("costing_summary_md", .text).notNull().defaults(to: "")
+                t.column("created_at", .datetime).notNull()
+                t.column("updated_at", .datetime).notNull()
+                t.column("deleted_at", .datetime)
+            }
+            try db.create(index: "idx_vendor_name", on: "vendor", columns: ["name"])
+            try db.create(index: "idx_vendor_deleted_at", on: "vendor", columns: ["deleted_at"])
+
+            try db.create(table: "vendor_contact") { t in
+                t.column("id", .text).primaryKey()
+                t.column("vendor_id", .text).notNull()
+                    .references("vendor", column: "id", onDelete: .cascade)
+                t.column("kind", .text).notNull()
+                t.column("name", .text).notNull().defaults(to: "")
+                t.column("phone", .text).notNull().defaults(to: "")
+                t.column("mobile", .text).notNull().defaults(to: "")
+                t.column("email", .text).notNull().defaults(to: "")
+            }
+            try db.create(index: "idx_vendor_contact_vendor",
+                          on: "vendor_contact", columns: ["vendor_id"])
+
+            try db.create(table: "vendor_product") { t in
+                t.column("id", .text).primaryKey()
+                t.column("vendor_id", .text).notNull()
+                    .references("vendor", column: "id", onDelete: .cascade)
+                t.column("sort_order", .integer).notNull().defaults(to: 0)
+                t.column("name", .text).notNull().defaults(to: "")
+                t.column("notes", .text).notNull().defaults(to: "")
+            }
+            try db.create(index: "idx_vendor_product_vendor",
+                          on: "vendor_product", columns: ["vendor_id"])
+
+            try db.create(table: "vendor_year_amount") { t in
+                t.column("vendor_id", .text).notNull()
+                    .references("vendor", column: "id", onDelete: .cascade)
+                t.column("year", .integer).notNull()
+                t.column("budget_cents", .integer).notNull().defaults(to: 0)
+                t.column("actual_override_cents", .integer)
+                t.primaryKey(["vendor_id", "year"])
+            }
+
+            try db.create(table: "vendor_invoice") { t in
+                t.column("id", .text).primaryKey()
+                t.column("vendor_id", .text).notNull()
+                    .references("vendor", column: "id", onDelete: .cascade)
+                t.column("invoice_date", .datetime).notNull()
+                t.column("year", .integer).notNull()
+                t.column("amount_cents", .integer).notNull().defaults(to: 0)
+                t.column("vendor_invoice_number", .text).notNull().defaults(to: "")
+                t.column("memo", .text).notNull().defaults(to: "")
+                t.column("created_at", .datetime).notNull()
+            }
+            try db.create(index: "idx_vendor_invoice_vendor_year",
+                          on: "vendor_invoice", columns: ["vendor_id", "year"])
+
+            try db.create(table: "vendor_note") { t in
+                t.column("id", .text).primaryKey()
+                t.column("vendor_id", .text).notNull()
+                    .references("vendor", column: "id", onDelete: .cascade)
+                t.column("body_md", .text).notNull().defaults(to: "")
+                t.column("created_at", .datetime).notNull()
+                t.column("updated_at", .datetime).notNull()
+            }
+            try db.create(index: "idx_vendor_note_vendor",
+                          on: "vendor_note", columns: ["vendor_id"])
+
+            // Vendor attachments live in their own table (separate from the
+            // matter-keyed `attachment` table) — keeps cascades and schemas
+            // tidy. `parent_id` links invoice / note attachments back to their
+            // owning row so deleting the row also drops the file.
+            try db.create(table: "vendor_attachment") { t in
+                t.column("id", .text).primaryKey()
+                t.column("vendor_id", .text).notNull()
+                    .references("vendor", column: "id", onDelete: .cascade)
+                t.column("kind", .text).notNull()       // contract|invoice|note|other
+                t.column("parent_id", .text)            // FK to vendor_invoice.id / vendor_note.id
+                t.column("filename", .text).notNull()
+                t.column("size_bytes", .integer).notNull().defaults(to: 0)
+                t.column("mime_type", .text).notNull().defaults(to: "application/octet-stream")
+                t.column("data", .blob).notNull()
+                t.column("md5", .text).notNull()
+                t.column("sha1", .text).notNull()
+                t.column("sha256", .text).notNull()
+                t.column("added_at", .datetime).notNull()
+                t.column("last_verified_at", .datetime)
+                t.column("last_verify_ok", .integer).notNull().defaults(to: 1)
+            }
+            try db.create(index: "idx_vendor_attachment_vendor_kind",
+                          on: "vendor_attachment", columns: ["vendor_id", "kind"])
+            try db.create(index: "idx_vendor_attachment_parent",
+                          on: "vendor_attachment", columns: ["parent_id"])
+
+            // Optional FK from Matter → Vendor. `ON DELETE SET NULL` so
+            // hard-deleting a vendor doesn't take its linked matters with it
+            // (we only soft-delete in normal use anyway).
+            try db.alter(table: "matter") { t in
+                t.add(column: "vendor_id", .text)
+                    .references("vendor", column: "id", onDelete: .setNull)
+            }
+            try db.create(index: "idx_matter_vendor", on: "matter", columns: ["vendor_id"])
+        }
+
         try migrator.migrate(writer)
     }
 

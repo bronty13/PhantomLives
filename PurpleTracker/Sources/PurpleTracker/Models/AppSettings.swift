@@ -41,6 +41,11 @@ struct AppSettings: Codable {
     // hasn't been imported before. Filename (not contents) is the dedupe key.
     var peopleAutoImportOnLaunchEnabled: Bool = true
     var lastImportedAdpFilename: String = ""
+
+    // Third Parties — inclusive year range driving the Budget & Actuals
+    // matrix on every vendor's detail. Single global setting (per user spec).
+    var thirdPartyYearStart: Int = 2026
+    var thirdPartyYearEnd: Int = 2035
 }
 
 @MainActor

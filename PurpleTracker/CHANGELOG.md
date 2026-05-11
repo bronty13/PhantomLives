@@ -4,6 +4,40 @@ All notable changes to PurpleTracker are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] — Third Parties (Vendors)
+
+### Added
+- **Third Parties sidebar section** — manages a roster of vendors / 3rd-party
+  suppliers separate from Matters. Click "+ New Vendor" or use the All-Vendors
+  Report menu for cross-vendor exports.
+- **Vendor detail tabs:** Overview · Contacts (Sales / Escalation / Technical)
+  · Products (repeatable list) · Budget & Actuals (per-year matrix) · Contracts
+  · Invoices · Other Files · Contract Summary · Costing Summary · Exit Strategy
+  · Notes · Linked Matters.
+- **1–5 star rating** with optional rating note.
+- **Reseller picker** — Cyber One / CDW / Other (free-text when "Other").
+- **Budget & Actuals matrix** — year range is a single global setting in
+  Settings → Third Parties (defaults to 2026–2035). Each row shows Budget,
+  optional manual Actual override, and the computed Effective Actual.
+- **Invoices** are first-class rows. Adding one with backdated date drops
+  into the correct year automatically. Optional file attachment per invoice.
+  Effective Actual = manual override if set, otherwise sum of invoices.
+- **Notes** with add/edit/delete and per-note file attachments. Timestamped.
+- **BLOB attachments** (contracts / invoices / notes / other) stored inside the
+  SQLite DB with SHA1 integrity, matching the existing Matter attachment model.
+- **Matter ↔ Vendor link** — Matter Overview tab now has a "Third Party"
+  selector. Vendor detail shows the linked Matters and lets you jump to them.
+- **Single-vendor reports** — Markdown or PDF, Summary or Full.
+- **All-vendors reports** — Markdown or PDF, Basic (name/contact/rating/reseller
+  table) or Detailed (full sheets concatenated).
+- **Settings → Third Parties** — configure the budget/actuals year range.
+
+### Schema
+- Migration `v6_third_parties` adds `vendor`, `vendor_contact`,
+  `vendor_product`, `vendor_year_amount`, `vendor_invoice`, `vendor_note`, and
+  `vendor_attachment` tables. `matter.vendor_id` is added with
+  `ON DELETE SET NULL` so vendor hard-delete is safe.
+
 ## [1.3.0] — Mega-release: dashboards, palette, trash, and more
 
 ### Added

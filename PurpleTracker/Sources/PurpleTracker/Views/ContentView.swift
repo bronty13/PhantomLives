@@ -18,6 +18,9 @@ struct ContentView: View {
                 case .trash:
                     TrashListView()
                         .frame(minWidth: 320)
+                case .thirdPartiesAll:
+                    VendorListView()
+                        .frame(minWidth: 360)
                 default:
                     MatterListView()
                         .frame(minWidth: 320)
@@ -36,6 +39,16 @@ struct ContentView: View {
                     CapacityDashboardView()
                 case .trash:
                     TrashView()
+                case .thirdPartiesAll:
+                    if let v = app.selectedVendor {
+                        VendorDetailView(vendor: v)
+                    } else {
+                        ContentUnavailableView(
+                            "No Third Party Selected",
+                            systemImage: "building.2",
+                            description: Text("Choose a vendor from the list, or press the + button to add one.")
+                        )
+                    }
                 default:
                     if let m = app.selectedMatter {
                         MatterDetailView(matter: m)

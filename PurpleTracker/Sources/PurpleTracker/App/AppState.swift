@@ -35,6 +35,19 @@ final class AppState: ObservableObject {
     /// `PurpleTrackerApp` menu commands.
     @Published var commandPaletteVisible: Bool = false
 
+    // 1.4.0 — Third Parties (vendors)
+    @Published var vendors: [Vendor] = []
+    @Published var selectedVendorId: String?
+    @Published var vendorContacts: [VendorContact] = []
+    @Published var vendorProducts: [VendorProduct] = []
+    @Published var vendorYearAmounts: [VendorYearAmount] = []
+    @Published var vendorInvoices: [VendorInvoice] = []
+    @Published var vendorNotes: [VendorNote] = []
+    /// Cached effective-actuals (override ?? sum-of-invoices) keyed by year
+    /// for the currently selected vendor. Recomputed on any invoice or
+    /// override change so the matrix updates without manual refresh.
+    @Published var vendorEffectiveActuals: [Int: Int64] = [:]
+
     // Selection
     @Published var selectedMatterId: String?
     @Published var sidebarSection: SidebarSection = .all
@@ -69,6 +82,7 @@ final class AppState: ObservableObject {
         case capacity             // 1.3.0 — Per-person capacity
         case trash                // 1.3.0 — Soft-deleted Matters
         case savedSearch(String)  // 1.3.0 — Saved-search id
+        case thirdPartiesAll      // 1.4.0 — All Third Parties list
 
         var title: String {
             switch self {
@@ -84,6 +98,7 @@ final class AppState: ObservableObject {
             case .capacity: return "Capacity"
             case .trash: return "Trash"
             case .savedSearch(let id): return "Saved: \(id)"
+            case .thirdPartiesAll: return "Third Parties"
             }
         }
     }
@@ -140,6 +155,7 @@ final class AppState: ObservableObject {
             try reloadLinks()
             try reloadSavedSearches()
             try reloadTrash()
+            try reloadVendors()
             if let sid = selectedMatterId {
                 try loadSelected(sid)
             } else if let first = matters.first {
@@ -244,6 +260,8 @@ final class AppState: ObservableObject {
             break  // handled by ContentView routing; matter list is hidden
         case .today, .timeDashboard, .analytics, .capacity:
             break  // dedicated dashboards take over the detail pane
+        case .thirdPartiesAll:
+            return []  // Third Parties UI replaces the matter list
         case .trash:
             // Trash bin uses its own data slice (`trashedMatters`); the
             // main list shows nothing while in this section.
@@ -752,5 +770,226 @@ final class AppState: ObservableObject {
         for e in events {
             try? DatabaseService.shared.appendAuditEvent(e)
         }
+    }
+
+    // MARK: - 1.4.0 Third Parties (Vendors)
+
+    /// Inclusive year range to render on the Budget & Actuals matrix.
+    /// Driven by `AppSettings.thirdPartyYearStart`/`End`. Falls back to a
+    /// sensible single-year if the user inverts the range.
+    var thirdPartyYearRange: [Int] {
+        let s = settingsStore.settings
+        let lo = min(s.thirdPartyYearStart, s.thirdPartyYearEnd)
+        let hi = max(s.thirdPartyYearStart, s.thirdPartyYearEnd)
+        return Array(lo...hi)
+    }
+
+    func reloadVendors() throws {
+        vendors = try VendorService.fetchAllLive()
+        // Drop stale selection if the vendor has been deleted/purged.
+        if let sid = selectedVendorId, !vendors.contains(where: { $0.id == sid }) {
+            selectedVendorId = nil
+            clearVendorSelection()
+        }
+        if let sid = selectedVendorId {
+            try loadSelectedVendor(sid)
+        }
+    }
+
+    private func clearVendorSelection() {
+        vendorContacts = []
+        vendorProducts = []
+        vendorYearAmounts = []
+        vendorInvoices = []
+        vendorNotes = []
+        vendorEffectiveActuals = [:]
+    }
+
+    func selectVendor(id: String?) {
+        selectedVendorId = id
+        if let id {
+            do { try loadSelectedVendor(id) }
+            catch { errorMessage = error.localizedDescription }
+        } else {
+            clearVendorSelection()
+        }
+    }
+
+    private func loadSelectedVendor(_ id: String) throws {
+        vendorContacts = try VendorService.fetchContacts(vendorId: id)
+        vendorProducts = try VendorService.fetchProducts(vendorId: id)
+        vendorYearAmounts = try VendorService.fetchYearAmounts(vendorId: id)
+        vendorInvoices = try VendorInvoiceService.fetchInvoices(vendorId: id)
+        vendorNotes = try VendorService.fetchNotes(vendorId: id)
+        try recomputeEffectiveActuals(vendorId: id)
+    }
+
+    private func recomputeEffectiveActuals(vendorId: String) throws {
+        vendorEffectiveActuals = try VendorInvoiceService.effectiveActuals(
+            vendorId: vendorId, years: thirdPartyYearRange
+        )
+    }
+
+    var selectedVendor: Vendor? {
+        guard let id = selectedVendorId else { return nil }
+        return vendors.first { $0.id == id }
+    }
+
+    /// Quick O(1) lookup of vendor-id → vendor for the Matter detail chip.
+    var vendorsById: [String: Vendor] {
+        Dictionary(uniqueKeysWithValues: vendors.map { ($0.id, $0) })
+    }
+
+    @discardableResult
+    func createVendor(name: String = "New Vendor") throws -> Vendor {
+        let v = Vendor.newDraft(name: name)
+        try VendorService.insert(v)
+        try reloadVendors()
+        selectVendor(id: v.id)
+        return v
+    }
+
+    func updateVendor(_ v: Vendor) throws {
+        try VendorService.update(v)
+        try reloadVendors()
+    }
+
+    func softDeleteVendor(id: String) throws {
+        try VendorService.softDelete(id: id)
+        if selectedVendorId == id { selectVendor(id: nil) }
+        try reloadVendors()
+    }
+
+    // Contacts
+    func upsertVendorContact(_ c: VendorContact) throws {
+        try VendorService.upsertContact(c)
+        if let vid = selectedVendorId {
+            vendorContacts = try VendorService.fetchContacts(vendorId: vid)
+        }
+    }
+    func deleteVendorContact(id: String) throws {
+        try VendorService.deleteContact(id: id)
+        if let vid = selectedVendorId {
+            vendorContacts = try VendorService.fetchContacts(vendorId: vid)
+        }
+    }
+
+    // Products
+    func upsertVendorProduct(_ p: VendorProduct) throws {
+        try VendorService.upsertProduct(p)
+        if let vid = selectedVendorId {
+            vendorProducts = try VendorService.fetchProducts(vendorId: vid)
+        }
+    }
+    func deleteVendorProduct(id: String) throws {
+        try VendorService.deleteProduct(id: id)
+        if let vid = selectedVendorId {
+            vendorProducts = try VendorService.fetchProducts(vendorId: vid)
+        }
+    }
+
+    // Year amounts
+    func upsertVendorYearAmount(_ y: VendorYearAmount) throws {
+        try VendorService.upsertYearAmount(y)
+        if let vid = selectedVendorId {
+            vendorYearAmounts = try VendorService.fetchYearAmounts(vendorId: vid)
+            try recomputeEffectiveActuals(vendorId: vid)
+        }
+    }
+
+    // Invoices
+    @discardableResult
+    func addVendorInvoice(vendorId: String, date: Date, amountCents: Int64,
+                          vendorInvoiceNumber: String = "", memo: String = "",
+                          fileURL: URL? = nil) throws -> VendorInvoice {
+        let inv = try VendorInvoiceService.insert(
+            vendorId: vendorId, date: date, amountCents: amountCents,
+            vendorInvoiceNumber: vendorInvoiceNumber, memo: memo
+        )
+        if let fileURL {
+            _ = try VendorService.ingestAttachment(
+                fileURL: fileURL, vendorId: vendorId,
+                kind: .invoice, parentId: inv.id
+            )
+        }
+        if vendorId == selectedVendorId {
+            vendorInvoices = try VendorInvoiceService.fetchInvoices(vendorId: vendorId)
+            try recomputeEffectiveActuals(vendorId: vendorId)
+        }
+        return inv
+    }
+
+    func updateVendorInvoice(_ inv: VendorInvoice) throws {
+        try VendorInvoiceService.update(inv)
+        if inv.vendorId == selectedVendorId {
+            vendorInvoices = try VendorInvoiceService.fetchInvoices(vendorId: inv.vendorId)
+            try recomputeEffectiveActuals(vendorId: inv.vendorId)
+        }
+    }
+
+    func deleteVendorInvoice(id: String) throws {
+        // Capture the vendor first so we can refresh totals; the row is then
+        // gone after the cascade.
+        let pool = DatabaseService.shared.dbPool
+        let vid: String? = try pool.read { db in
+            try String.fetchOne(db, sql: "SELECT vendor_id FROM vendor_invoice WHERE id = ?",
+                                arguments: [id])
+        }
+        try VendorInvoiceService.delete(id: id)
+        if let vid, vid == selectedVendorId {
+            vendorInvoices = try VendorInvoiceService.fetchInvoices(vendorId: vid)
+            try recomputeEffectiveActuals(vendorId: vid)
+        }
+    }
+
+    // Vendor notes
+    @discardableResult
+    func addVendorNote(vendorId: String, body: String) throws -> VendorNote {
+        let now = Date()
+        let n = VendorNote(id: UUID().uuidString, vendorId: vendorId,
+                           bodyMd: body, createdAt: now, updatedAt: now)
+        try VendorService.upsertNote(n)
+        if vendorId == selectedVendorId {
+            vendorNotes = try VendorService.fetchNotes(vendorId: vendorId)
+        }
+        return n
+    }
+
+    func updateVendorNote(_ n: VendorNote) throws {
+        var x = n; x.updatedAt = Date()
+        try VendorService.upsertNote(x)
+        if x.vendorId == selectedVendorId {
+            vendorNotes = try VendorService.fetchNotes(vendorId: x.vendorId)
+        }
+    }
+
+    func deleteVendorNote(id: String) throws {
+        let pool = DatabaseService.shared.dbPool
+        let vid: String? = try pool.read { db in
+            try String.fetchOne(db, sql: "SELECT vendor_id FROM vendor_note WHERE id = ?",
+                                arguments: [id])
+        }
+        try VendorService.deleteNote(id: id)
+        if let vid, vid == selectedVendorId {
+            vendorNotes = try VendorService.fetchNotes(vendorId: vid)
+        }
+    }
+
+    // Vendor attachments
+    @discardableResult
+    func addVendorAttachment(vendorId: String, fileURL: URL,
+                             kind: VendorAttachmentKind,
+                             parentId: String? = nil) throws -> VendorAttachment {
+        try VendorService.ingestAttachment(
+            fileURL: fileURL, vendorId: vendorId, kind: kind, parentId: parentId
+        )
+    }
+
+    func openVendorAttachment(id: String) throws -> (url: URL, verified: Bool) {
+        try VendorService.openAttachment(id: id)
+    }
+
+    func deleteVendorAttachment(id: String) throws {
+        try VendorService.deleteAttachment(id: id)
     }
 }

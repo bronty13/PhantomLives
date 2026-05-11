@@ -12,6 +12,8 @@ struct OverviewTab: View {
             Divider()
             initiativesAndGoalsSection
             Divider()
+            vendorSection
+            Divider()
             requestorSection
             Divider()
             interestedPartiesSection
@@ -340,5 +342,41 @@ private struct CadenceEditor: View {
             customDays = c.customIntervalDays ?? 7
             loaded = true
         }
+    }
+}
+
+extension OverviewTab {
+    /// Vendor (Third Party) selector — single-select. Lets the user link a
+    /// Matter to a row in the Third Parties section. Clearing the menu
+    /// removes the link.
+    fileprivate var vendorSection: some View {
+        let selectedName = matter.vendorId.flatMap { app.vendorsById[$0]?.name }
+        return HStack(alignment: .firstTextBaseline) {
+            Label("Third Party", systemImage: "building.2")
+                .frame(width: 140, alignment: .leading)
+                .foregroundStyle(.secondary)
+            Menu {
+                Button("— None —") { setVendor(nil) }
+                Divider()
+                ForEach(app.vendors) { v in
+                    Button(v.name.isEmpty ? "(unnamed)" : v.name) { setVendor(v.id) }
+                }
+            } label: {
+                Text(selectedName ?? "—")
+                    .foregroundStyle(selectedName == nil ? .secondary : .primary)
+            }
+            if let vid = matter.vendorId {
+                Button("Open") {
+                    app.sidebarSection = .thirdPartiesAll
+                    app.selectVendor(id: vid)
+                }
+                .buttonStyle(.borderless)
+            }
+            Spacer()
+        }
+    }
+
+    private func setVendor(_ id: String?) {
+        matter.vendorId = id
     }
 }

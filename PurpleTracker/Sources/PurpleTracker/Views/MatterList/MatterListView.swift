@@ -110,6 +110,7 @@ struct MatterListView: View {
         case .savedSearch(let id):
             let name = app.savedSearches.first(where: { $0.id == id })?.name ?? "Saved Search"
             return "\(name) (\(app.filteredMatters.count))"
+        case .thirdPartiesAll: return "Third Parties"
         }
     }
 }
