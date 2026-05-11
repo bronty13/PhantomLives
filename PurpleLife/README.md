@@ -15,7 +15,7 @@ All five planned phases shipped through a working state. Real-world daily-use tr
 | 1 — Foundation | **Complete** — backup-on-launch + restore round-trip green; Settings → Backup pane wired. |
 | 2 — Object engine + 4 views | **Acceptance gate met** — schema registry, table/kanban/calendar/gallery, schema editor, object detail, FTS5 + ⌘K, cross-type link picker. |
 | 3 — Today / Planner | **Acceptance gate met** — saved-queries pattern, Today screen, customization UI, Planner Item + Weight built-in types. |
-| 4 — CloudKit E2E sync | **Acceptance infrastructure met** — push on mutation, real-time `CKDatabaseSubscription` silent-push wakeups, 5 min recovery poll, LWW reconciliation, sidebar status footer. The <5 s Mac→Mac latency claim is unverified pending a second-Mac trial. |
+| 4 — CloudKit E2E sync | **Acceptance gate met** — push on mutation, real-time `CKDatabaseSubscription` silent-push wakeups, 5 min recovery poll, LWW reconciliation, sidebar status footer. **<5 s Mac→Mac latency verified PASS 2026-05-10** (changes were near-instant in both directions during the trial; see [HANDOFF.md](HANDOFF.md)). |
 | 5 — First real use cases | **Starter shipped** — real attachments, gallery loads images, WeightTracker CSV import. Daily-use 2-week trial pending. |
 
 See [PLAN.md](PLAN.md) for the build plan, [HANDOFF.md](HANDOFF.md) for the decision log, and [USER_MANUAL.md](USER_MANUAL.md) for what each screen does.
@@ -51,5 +51,5 @@ Prerequisites + PASS log are in [Spike/CloudKit/SPIKE.md](Spike/CloudKit/SPIKE.m
 
 In rough priority order:
 
-1. **Verify <5 s Mac→Mac latency** — subscriptions infrastructure shipped 2026-05-10; needs a second Mac signed into the same iCloud account to exercise the silent-push round-trip and close the Phase 4 acceptance gate. Also exercises the `PurpleType` schema-sync path and cross-device undo behavior under real APNS delivery.
+1. **First-launch sync bootstrap UX** — Mac B's first sign-in hung at "Setting up sync…" for ~5 min silently before resolving (during the 2026-05-10 verification trial). Either add per-step timeout-and-retry with surfaced progress, or break out the status badge sub-states ("Checking iCloud…" / "Creating zone…" / "Pulling…") so a user can tell whether to wait or kill it.
 2. **WeightTracker subsumption** — port WeightTracker's charts, Smart Import, and themes into the PurpleLife Weight type so WeightTracker can eventually be retired. The CSV importer (Phase 5 starter) is the bridge during the transition.

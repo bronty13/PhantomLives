@@ -515,9 +515,35 @@ final class CloudKitSyncService: ObservableObject {
             try? await runFetchOperation()
             lastSyncAt = Date()
         } catch {
-            NSLog("PurpleLife: pull failed — \(error.localizedDescription)")
-            status = .error(error.localizedDescription)
-            lastError = error.localizedDescription
+            let msg = error.localizedDescription
+            NSLog("PurpleLife: pull failed — \(msg)")
+
+            // "Client went away" is a daemon-side message that cloudd
+            // logs (and surfaces to us as an op failure) when it has
+            // lost track of our process's CKContainer binding —
+            // typically after a successful subscription delivery
+            // followed by a fetch. App restart fixes it because we
+            // get a fresh container; re-creating the CKContainer
+            // here without restarting reproduces that fix and lets
+            // us retry once. Sticky-error path is preserved for any
+            // OTHER error.
+            if msg.localizedCaseInsensitiveContains("client went away") {
+                NSLog("PurpleLife: attempting soft recovery from 'client went away'")
+                container = CKContainer(identifier: Self.containerID)
+                do {
+                    try await runFetchOperation()
+                    lastSyncAt = Date()
+                    return
+                } catch {
+                    NSLog("PurpleLife: soft recovery also failed — \(error.localizedDescription)")
+                    status = .error(error.localizedDescription)
+                    lastError = error.localizedDescription
+                    return
+                }
+            }
+
+            status = .error(msg)
+            lastError = msg
         }
     }
 

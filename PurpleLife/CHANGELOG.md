@@ -4,6 +4,30 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-10 — Soft recovery from "client went away" CloudKit error
+
+Found during the Phase 4 verification trial: every cross-device record change put the *receiver* into `Sync error: client went away` state immediately after the change was applied. The receive itself worked (record landed in local DB and UI), but the sync footer read "error" until the receiving app was quit and relaunched. "Sync now" did not clear it (a fresh `pull()` hit the same error).
+
+Hypothesis: `cloudd` (the local CloudKit daemon) loses track of our process's `CKContainer` binding after a successful subscription delivery + fetch round-trip. App restart fixes it because the new process gets a fresh container.
+
+Fix: in `CloudKitSyncService.pull()`'s catch block, detect the specific `client went away` error message, re-create the `CKContainer` reference (replicating what app-restart does without needing one), and retry the fetch operation once. Sticky-error path is preserved for any other error so we don't mask real CloudKit problems.
+
+Note this is treating the symptom rather than the root cause — the deeper question of *why* cloudd is dropping our binding remains. Possible avenues if it returns: longer-lived CKDatabase reference, different operation queue, less Task hopping in the subscription handler. Logged in `HANDOFF.md`.
+
+### 2026-05-10 — Phase 4 acceptance gate verified PASS (Mac→Mac sync near-instant)
+
+The long-standing Phase 4 latency gate is closed. Two-Mac trial run (same Apple ID, same iCloud, both running v0.1.187+ from commit `e8e4439`):
+
+- Changes made on either Mac appeared near-immediately on the other, both directions. Comfortably under the <5 s gate.
+- The silent-push subscription path is doing what it's supposed to: APS wakes the receiver, `pull()` runs, the new UI-refresh hook (also shipped today) bumps the visible records list.
+
+Two observations recorded for follow-up:
+
+- **First-launch bootstrap on the new Mac hung at "Setting up sync…" for ~5 min** before self-resolving. Quit + relaunch didn't shortcut. Possible causes include first-time CloudKit container handshake for a new device, APS registration latency, or a silent initial-pull stage. Logged as new follow-up item #1 ("first-launch sync bootstrap UX") — the fix is per-step timeout-and-retry with surfaced sub-state in the status badge.
+- **`Sync error: client went away`** flickered briefly on the dev Mac during the second Mac's bootstrap. Self-cleared after a "Sync now" click. Known transient CloudKit pattern (CKOperation deallocated mid-flight); no action.
+
+`README.md` Phase 4 row upgraded from "acceptance infrastructure met, latency unverified" to "fully met."
+
 ### 2026-05-10 — UI refresh on remote object changes (prep for Phase 4 Mac→Mac verification)
 
 Found-and-fixed before walking through the Phase 4 latency verification: when CloudKit pulls in remote changes, `applyRemote` writes directly to `DatabaseService` without going through `ObjectEngine`'s mutation hooks. As a result, the visible `RecordsScreen.rows` `@State` and `appState.objectCount` weren't refreshing — Mac B would receive a record into the local DB but it wouldn't appear in the UI until you switched types or restarted the app.

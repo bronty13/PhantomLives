@@ -12,6 +12,23 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-10 — Phase 4 acceptance gate verified PASS — Mac→Mac sync is near-instant
+
+Closes the long-standing Phase 4 gate that's been queued as follow-up #1 since the original build session.
+
+**Test setup**: two Macs (the dev Mac and a second one), same Apple ID, same iCloud account, both running `PurpleLife.app` v0.1.187+ from the same commit (`e8e4439`). Both signed with Apple Development + the iCloud + APS entitlement, both on the same dev team `SRKV8T38CD`.
+
+**Result**: changes made on either Mac appear near-immediately on the other, both directions. The Phase 4 acceptance gate ("a typical edit syncs Mac→Mac in <5 s") is met with comfortable margin — the silent-push subscription path is working as designed.
+
+**Observations worth recording**:
+
+- **First-launch bootstrap on a fresh Mac (Mac B) hung at "Setting up sync…" for ~5 minutes** before transitioning to `Synced`. Quit + relaunch did not shortcut the wait. Eventually self-resolved. Possible causes: first-time CloudKit container handshake for a new device, APS registration latency on a fresh install, or the initial pull doing something silent that the status badge doesn't surface. **This is a real follow-up** — the status badge should at minimum show progress (e.g. "Initial pull…" with a progress count), or the bootstrap steps should each have a timeout-and-retry so they're observable.
+- **`Sync error: client went away` is reproducible, not transient.** Every cross-device change drops the *receiver* into `.error` state immediately after the change is applied. "Sync now" does **not** clear it (a fresh `pull()` hits the same error). Only quitting the app and relaunching restores `.idle`. The receive itself works — the new record arrives in the local DB and the UI reflects it — but the sync footer reads "error" until restart. This is a real follow-up bug; logged as new follow-up item. Possible causes worth investigating: stale `CKDatabase` reference after the first successful fetch, the `CKFetchRecordZoneChangesOperation`'s lifecycle going out of scope while still pending, or our `runFetchOperation` continuation being resumed by a daemon-side timeout we don't notice. Mitigation worth trying first: catch the specific error in `pull()`'s catch and re-run `bootstrap()` (rebuild the container reference, re-register the subscription) automatically; if that succeeds, swallow the error.
+- **The UI-refresh-on-remote-changes fix in this same session** (`e8e4439`) was load-bearing — without it, the new records would have arrived in the local DB but not appeared in the records list, making the verification visually deceptive. Glad we fixed it before testing.
+- **Schema sync** wasn't separately exercised in this session but the same APS subscription wakes both halves, so a parity-class result is expected. Worth a follow-up trial.
+
+**Effect on follow-up list**: item #1 closed. Phase 4 row in `README.md` upgraded from "acceptance infrastructure met, latency unverified" to "fully met."
+
 ### 2026-05-10 — Schema editor polish: drag-from-palette + reorder via menu
 
 Last slice of the prototype-polish follow-up. Two changes worth noting:
@@ -175,13 +192,14 @@ Initial build session executed all five plan phases through a working state. Sna
 
 **Known follow-up work** (rough priority order):
 
-1. ~~**Real-time CloudKit subscriptions**~~ — resolved 2026-05-10; see "Phase 4 sync: subscriptions landed" entry above. CKDatabaseSubscription is registered in `bootstrap()`; AppDelegate forwards pushes via NotificationCenter; poll is a 5 min recovery sweep now.
+1. ~~**Real-time CloudKit subscriptions**~~ — resolved 2026-05-10; see "Phase 4 sync: subscriptions landed" entry above. CKDatabaseSubscription is registered in `bootstrap()`; AppDelegate forwards pushes via NotificationCenter; poll is a 5 min recovery sweep now. **Latency verified PASS** — see "Phase 4 acceptance gate verified PASS" entry above.
 2. ~~**Test infrastructure regression**~~ — resolved 2026-05-10; see entry above. `./run-tests.sh` runs the full bundle (now 46 tests) green in ~17 s.
 3. ~~**Export pipeline**~~ — resolved 2026-05-10; see "Per-type export pipeline shipped" entry above. Records → Export menu writes CSV / Markdown / HTML / PDF or copies CSV / Markdown to clipboard.
 4. ~~**Schema versioning across synced peers**~~ — resolved 2026-05-10; see "Schema versioning: mirror schema through CloudKit + defensive merge" entry above. PurpleType records sync the schema; ObjectEngine.update preserves unknown JSON keys.
 5. ~~**Polish toward the prototype**~~ — resolved 2026-05-10 across three commits (Today polish, Detail polish, Schema editor polish). All three sub-items shipped.
 6. ~~**Daily-use ergonomics**~~ — partially resolved 2026-05-10 (menu-bar quick capture + ⌘N + ⌘1–⌘9 shortcuts); undo split out into its own follow-up item.
 7. ~~**Undo across mutations**~~ — resolved 2026-05-10; see "Undo: NSUndoManager wired through ObjectEngine + SchemaRegistry" entry above. ⌘Z / ⇧⌘Z route through every mutation path; tests cover create/update/delete + schema operations.
+8. **First-launch sync bootstrap UX** — new 2026-05-10. Mac B's first sign-in hung at "Setting up sync…" for ~5 minutes silently before resolving. Either the bootstrap steps need per-step timeout-and-retry with surfaced progress (e.g. "Initial pull: N records / M total"), or the status badge needs to break out the sub-states ("Checking iCloud…" / "Creating zone…" / "Pulling…") so a user knows whether to wait or kill it.
 
 ### 2026-05-10 — Phase 4 sync: poll on a 30s interval; subscriptions deferred
 
