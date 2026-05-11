@@ -118,17 +118,7 @@ struct Sidebar: View {
     }
 }
 
-extension Color {
-    /// Lenient hex parser for the schema's `colorHex` strings.
-    /// Accepts `#RRGGBB` or `RRGGBB`. Returns `nil` on bad input rather
-    /// than substituting a fallback — callers decide what default to use.
-    init?(hex: String) {
-        var s = hex
-        if s.hasPrefix("#") { s.removeFirst() }
-        guard s.count == 6, let v = UInt32(s, radix: 16) else { return nil }
-        let r = Double((v >> 16) & 0xFF) / 255
-        let g = Double((v >>  8) & 0xFF) / 255
-        let b = Double( v        & 0xFF) / 255
-        self = Color(red: r, green: g, blue: b)
-    }
-}
+// `Color(hex:)` lives in `Models/PurpleTheme.swift` — that parser handles
+// `#RGB`, `#RRGGBB`, and `#AARRGGBB` (the 8-digit form is needed by
+// UserTheme to round-trip alpha-on-base slot colors). The schema's
+// `colorHex` strings remain 6-digit; the same initializer handles both.

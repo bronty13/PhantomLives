@@ -131,7 +131,49 @@ The default export directory is `~/Downloads/PurpleLife/`. Override it in **Sett
 
 ## Settings (`⌘,`)
 
-Four tabs:
+Five tabs:
+
+### Appearance
+
+- **Appearance** — segmented picker: **Auto** (sync with macOS system setting — default), **Light**, **Dark**. Setting overrides the system appearance for PurpleLife only.
+- **Theme** — grid of palette cards. Each card shows a miniature preview of the theme's chrome (sidebar / window background / card surface / accent). Selected theme gets an accent-colored ring + checkmark.
+
+Built-in themes (all purple-rooted, so the brand voice carries regardless of choice):
+
+- **Royal Purple** (default) — flagship oklch palette from the design handoff.
+- **Lavender** — softer pastel; cooler surfaces, easier on the eyes for long sessions.
+- **Plum** — deeper, more saturated; higher-chroma accents.
+- **Heather** — warm mauve-leaning; pairs warm cream with rose-tinted accents.
+- **High Contrast** — accessibility-focused; pure white/black surfaces with bold strokes and a saturated purple accent. Designed for low-vision users and bright environments.
+
+Switching theme or appearance takes effect immediately across every open window — no relaunch needed.
+
+#### Custom themes
+
+Click **+ New theme** in the Custom themes section to open the **theme builder**. The new draft starts as a duplicate of whichever theme is currently selected, so you're tweaking from a sane base rather than from scratch.
+
+The builder is a sheet split into two panes:
+
+- **Editor (left)** — sections grouped by purpose: Surfaces (window background, sidebar, card), Text (primary / secondary / faint), Lines (card border, hairline, row hover), Accent (primary, soft). Each row has **two color pickers** side-by-side — Light then Dark — so you tune both halves of a slot in one place.
+- **Preview (right)** — miniature rendering of PurpleLife's chrome (sidebar with mock type rows, main area with a header, two list rows, and a card). The preview has its own **Light / Dark toggle** at the top — independent of your actual appearance setting — so you can audit both halves of every slot before committing.
+
+Actions in the footer:
+
+- **Cancel** — close without saving.
+- **Save** — write the draft back into your themes and switch to it immediately. If you're editing an existing theme, the entry is updated in place (the picker grid doesn't reorder).
+- **Save as…** — clone the draft as a new theme with a fresh UUID and a name you supply. The original is unchanged. The new theme becomes active.
+- **Delete** (only shown when editing an existing theme) — remove the theme. If it was active, the app falls back to the built-in it was based on (or Royal Purple if the base is unknown).
+
+To **edit** an existing custom theme later, click the pencil icon on its card in the theme picker.
+
+`settings.json` continues to accept hand-edited `userThemes` entries (each with `#AARRGGBB` hex strings per slot for both light and dark) if you'd rather author themes outside the app.
+
+#### Sharing themes between Macs
+
+Themes can travel as `.purplelifetheme.json` files.
+
+- **Export** — right-click any theme card (built-in or custom) and choose **Export theme…**. A Save panel writes a single JSON file (defaults to `~/Downloads/PurpleLife/` or your configured export directory). The builder sheet has its own **Export…** button so you can ship a draft mid-edit without saving it locally first.
+- **Import** — in the Custom themes section, click **Import…** and pick a `.purplelifetheme.json` file. The theme is added to your custom themes and immediately becomes active. Re-importing the same file produces a new entry (with a fresh internal id), so you can keep multiple copies for further tweaking.
 
 ### Backup
 

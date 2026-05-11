@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import Combine
 
 /// Top-level observable state. Phase 1 keeps it deliberately thin: it owns
 /// the SettingsStore, fires the launch-time backup before any UI reads the
@@ -43,6 +44,14 @@ final class AppState: ObservableObject {
     /// into its detail sheet, then clears it.
     @Published var openRecordRequest: String?
 
+    /// Combine subscriptions held for the lifetime of the AppState.
+    /// Currently bridges `SettingsStore.objectWillChange` into our own
+    /// `objectWillChange` so a settings mutation (theme switch,
+    /// appearance change, etc.) re-renders every view observing
+    /// AppState. Without this, mutating a nested `@Published` on a
+    /// nested ObservableObject doesn't propagate up.
+    private var cancellables: Set<AnyCancellable> = []
+
     /// Pass-through to the underlying SettingsStore — saves on every set.
     /// Lets views write `appState.settings.foo = …` without thinking about
     /// the store. Mirrors the Timeliner pattern.
@@ -59,6 +68,30 @@ final class AppState: ObservableObject {
         // the archive captures a clean copy of the on-disk state from the
         // last session. BackupService swallows its own errors.
         BackupService.runOnLaunchIfDue(settingsStore: settingsStore)
+
+        // Push the persisted theme into the static facade BEFORE any view
+        // body runs. SwiftUI evaluates @StateObject inits eagerly, so by
+        // the time WindowGroup renders the active palette is already in
+        // place — no first-frame flash of the default.
+        Theme.current = settingsStore.currentTheme
+
+        // Bridge SettingsStore's @Published changes up to AppState's
+        // observers. The pass-through `appState.settings = …` setter
+        // mutates settingsStore.settings, which fires SettingsStore's
+        // objectWillChange but NOT AppState's; without this Combine
+        // hop, views observing AppState wouldn't re-render after a
+        // theme switch or appearance change.
+        settingsStore.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in
+                guard let self else { return }
+                // Re-resolve the active theme on every settings change
+                // so views reading `Theme.bg` see the new palette on
+                // their next body evaluation.
+                Theme.current = self.settingsStore.currentTheme
+                self.objectWillChange.send()
+            }
+            .store(in: &cancellables)
 
         // Wire ObjectEngine → SchemaRegistry so search-index updates have
         // the type definitions they need.

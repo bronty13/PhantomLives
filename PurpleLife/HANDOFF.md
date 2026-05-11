@@ -12,6 +12,87 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-11 — Appearance theming · slice 3: JSON import/export shipped
+
+Closes the stretch goal queued in slice 1's entry. Themes ship between Macs as `.purplelifetheme.json` files now — no settings.json hand-editing required.
+
+**Shape**:
+
+- **`Services/ThemeIO.swift`** is pure functions only (encode / decode / sanitize / write / read). NSSavePanel + NSOpenPanel usage stays in the views that call them — keeps the service unit-testable without AppKit and concentrates the AppKit surface where it has to live anyway.
+- **File format = the existing `UserTheme` Codable shape verbatim.** No envelope, no version field, no migration plumbing. The lenient `init(from:)` on `UserTheme` (synthesized, with Optional fields) handles future format drift; the defensive `materialised` accessor handles corrupt hex strings without crashing the renderer. Adding a format version is the kind of thing that *feels* responsible but creates an actual migration debt — when we genuinely need it we can add it without breaking existing files (just look for a `version` key, default to 1).
+- **Fresh UUID on import** is the key correctness call. Without it, exporting a theme then importing it back gets you a no-op (existing entry overwritten in place); importing on a second Mac where the same theme already exists silently destroys the recipient's copy. Treating the file as palette data + provenance metadata, not as identity, is the cleaner contract.
+- **Right-click Export on every theme card** (including built-ins) — built-ins are synthesized to a `UserTheme` via `duplicate(of:)` on demand so the export path doesn't need to branch on theme type. Recipient gets a "Custom from Lavender" entry they can rename.
+- **Three entry points for Export, all going through the same code**: right-click on any theme card, the builder footer (exports the draft mid-edit without committing), and indirectly via the import flow (a user can edit, export, then import again to get a second copy).
+- **Filename sanitization** strips `/`, `\`, `:`, `*`, `?`, `"`, `<`, `>`, `|`, control characters, and leading dots; falls back to `"theme"` if the result is empty. The leading-dot strip is the load-bearing one — without it a theme named `.bashrc` would write a hidden file the user couldn't find in Finder.
+- **Pretty-printed + sorted keys** for the encode. Diff-friendly when iterating; tiny size penalty (themes are ~3 KB).
+
+**Deliberate omissions**:
+
+- **No custom UTType registration** for `.purplelifetheme.json`. That would mean a `CFBundleDocumentTypes` entry in Info.plist, an icon asset, an LSItemContentTypes declaration, and probably a custom UTI. The `.json` suffix is fine — any JSON tool can open these files, the system's NSSavePanel doesn't fight us, and Finder shows them as JSON documents. If someone later wants a custom Finder icon for `.purplelifetheme.json`, that's a self-contained chore.
+- **No batch export of all user themes.** One-at-a-time covers the realistic sharing case ("send me your Lavender variant"); a `.zip` of all themes is more affordance than the use case warrants.
+- **No "import everything from a folder" affordance.** Same reasoning — one-at-a-time covers it; the user picks the file they want.
+- **No JSON validation beyond Codable decode.** The format IS UserTheme; `materialised`'s defensive parser handles bad hex strings; missing required slot keys throw on decode and surface as the inline import-error message. No need for a schema-validation layer.
+- **No CloudKit sync of theme preferences.** This stays a per-Mac preference per the slice-1 policy. Users with multiple Macs can ship their themes via JSON export/import — which is arguably better than auto-sync (you decide what to share and when).
+
+**Test coverage**: 10 new `ThemeIOTests` — sanitization (path separators, control chars, leading dots, empty fallback), default-filename construction, encode produces pretty-sorted JSON, decode assigns fresh UUID, full write→read roundtrip through `/tmp`, corrupt-JSON / missing-key / missing-file failure modes. **119/119 green** (was 109, +10). NSSavePanel / NSOpenPanel paths aren't unit-tested (same constraint as every AppKit panel in the suite); the routing layer is small enough to verify by hand.
+
+**What's still open**:
+
+- **CloudKit-synced theme preference** — deferred by policy in slice 1; the export/import path covers the multi-Mac case now.
+- **Theme builder on iOS** — when the iOS app happens, UserTheme + ThemeIO port directly; only the SwiftUI views need touch-first rewrites.
+
+### 2026-05-11 — Appearance theming · slice 2: WYSIWYG builder shipped
+
+Closes the queued slice from the morning's slice-1 entry below. Users can now author and edit custom themes in-app rather than hand-editing settings.json.
+
+**Shape**:
+
+- **HSplitView sheet** — editor on the left (Form grouped by Surfaces / Text / Lines / Accent), preview on the right (mini chrome with its own Light/Dark toggle). Each editor row exposes two `ColorPicker`s side-by-side (Light then Dark) so a slot is tuned for both modes in one place — different from PurpleIRC's builder where each theme is single-mode and the dialog has only one picker per slot.
+- **Preview reads hex strings directly off the draft** rather than going through `PurpleTheme.Slot.color` / `Color(light:dark:)`. The preview-pane Light/Dark toggle is a local `@State`, not the SwiftUI `\.colorScheme` environment, so the preview honors the toggle reliably without depending on whether NSColor's dynamic-provider resolver picks up SwiftUI's preferred-scheme propagation. Cleaner contract, easier to reason about.
+- **Commit paths are pure functions** on the model layer — `UserTheme.upsert(_:in:)` and `PurpleTheme.resolveAfterDelete(currentID:removedID:basedOn:)`. Pulled out specifically so they're unit-testable without instantiating SwiftUI views. The builder view's `commitSave`/`commitSaveAs`/`commitDelete` are now ~5 lines each, all delegating to these helpers + the AppState pass-through.
+- **Delete fallback** lands in `resolveAfterDelete`: deleting an active theme falls back to its `basedOn` built-in (when valid), else Royal Purple. Deleting an inactive theme leaves the active selection alone — a user clicking Delete on a theme they aren't using shouldn't have their current selection flipped.
+- **Sheet state managed via a single `BuilderTarget` enum** carrying `draft: UserTheme` + `isNew: Bool`, presented via `.sheet(item:)`. Same modifier handles both "New theme" (fresh duplicate of currently-selected) and "Edit" (existing theme) — `isNew` only controls whether the Delete button is rendered.
+
+**Deliberate omissions**:
+
+- **No per-slot reset-to-base-theme button.** The user can already do this by clicking the slot's ColorPicker and entering a new hex; or by deleting and starting fresh from the same base. Adding the affordance would mean tracking `basedOn`'s slot values, which is more bookkeeping than the value warrants for a first cut.
+- **No JSON import/export of themes.** Mentioned as a stretch goal in the slice-1 entry; deferred because (a) settings.json hand-edit already covers the import case for power users, (b) the export case wants a sensible file naming + Finder integration UX, which is a separate small task, and (c) CloudKit sync of theme preferences would conflict with the per-Mac local-preference policy in the slice-1 entry. If the request comes up later, the natural shape is a single-theme `.json` writer/reader that round-trips a UserTheme verbatim — three or four new lines on top of the existing Codable shape.
+- **No multi-window builder.** The sheet is modal over the Settings window. Could be a `Window` for users who want to compare against the live app, but that's a separate refactor (`@Environment(\.openWindow)` plumbing, window restoration, etc.) and the sheet covers the common case.
+
+**Test coverage**: 6 new `ThemeTests` cover the persistence helpers — upsert appends, upsert replaces preserving order, delete-fallback uses `basedOn` when valid, delete-fallback uses Royal Purple when `basedOn` is unknown/nil, delete preserves current selection when deleting an inactive theme. **109/109 green** (was 103, +6).
+
+**What's still open** (none of these block):
+
+- **JSON import/export of themes** (stretch from slice 1; see deliberate omission above).
+- **CloudKit-synced theme preference** (deferred by the per-Mac policy in slice 1).
+- **Theme builder on iOS** when the iOS app happens — the UserTheme persistence shape ports directly; only the sheet UI needs a touch-first rewrite.
+
+### 2026-05-11 — Appearance theming · slice 1 shipped; prior "themes deferred" decision reversed on accessibility grounds
+
+The 2026-05-10 WeightTracker-subsumption entry below records the prior call: **defer themes, keep the oklch design language pure**, on the reasoning that layering arbitrary themes (WeightTracker's six named palettes specifically) would muddy a coherent brand voice. That call held while the work was framed as cosmetic polish.
+
+The user reopened the question this session framing it as **accessibility, not cosmetics**: contrast, surface tone, and appearance override (light/dark/auto regardless of macOS setting) are how some users *can* use the app at all. That changes the trade — customization power now outweighs the design-coherence concern.
+
+The compromise that resolves both: defaults stay the design-handoff oklch palette (now named **Royal Purple**), every built-in is **purple-rooted** so the brand voice carries, and custom themes are an additive surface — picking one is a deliberate act, not a default.
+
+**Shape shipped this slice**:
+
+- **Theme + appearance are orthogonal axes.** PurpleIRC's design bakes light/dark into the theme (Solarized Light / Solarized Dark as separate themes). PurpleLife splits them: every `PurpleTheme` has paired `Slot(light:, dark:)` per chrome token, and `AppearanceMode` (`system` / `light` / `dark`) selects which slot resolves at render time. So "Auto" stays available no matter which theme you pick — which is what the user asked for explicitly.
+- **5 built-ins, purple-led.** Royal Purple (default — the existing oklch palette), Lavender (soft pastel), Plum (deep saturated), Heather (warm mauve), High Contrast (accessibility-focused — pure white/black surfaces, bold purple accent, strong strokes). High Contrast is the entry point for users who need maximum separation; the rest are voice-of-purple variations.
+- **Static facade pattern for the renderer.** `Views/Theme.swift` was an `enum` of static design tokens accessed as `Theme.bg`, `Theme.accent`, etc. — used 32 times across 7 files. Converting all call sites to `@Environment(\.purpleTheme)` would have touched dozens of subviews. Instead, the enum became a thin facade reading from `Theme.current: PurpleTheme` (mutable, `@MainActor`-isolated); SettingsStore writes through it, AppState's Combine bridge republishes on every change, and views observing AppState re-render and pick up the new colors on next body evaluation. **Zero call-site changes.** Trade-off acknowledged: the static-state shape means previewing a non-current theme (e.g. theme-card swatches in the picker) reads the slot Colors directly off the `PurpleTheme` value rather than through `Theme`. That's the right seam — slice 2's WYSIWYG builder will use the same pattern.
+- **UserTheme persistence shipped now, builder UI deferred to slice 2.** Hex-pair Codable mirror of `PurpleTheme` lives in the same file; `duplicate(of:name:)` snapshots a built-in, `materialised` produces the runtime value. Users can hand-edit `userThemes` in settings.json today and the theme appears in the picker with a "Custom" badge. Slice 2 brings the WYSIWYG editor (ColorPicker per slot × light/dark, live preview, Save / Save As / Delete). Splitting this way de-risks slice 1: the storage format is locked, so the builder is pure UI work.
+- **Latent settings.json regression fixed in passing.** `AppSettings` was using synthesized Codable with property defaults — which Swift does *not* honor on decode. Missing-key tolerance was effectively non-existent; any field added by a later phase would throw on decode of an older settings.json, `SettingsStore.load`'s `try?` would swallow it, and the user would silently lose every prior setting. New custom `init(from:)` uses `decodeIfPresent` for every key, so upgrades preserve user state. The original PLAN comment claiming "Codable's missing-key tolerance keeps reads of older settings.json files compatible without a migration" was always wrong; the comment + the behavior are now both correct.
+- **`.preferredColorScheme` at all five scene roots** — main window, schema editor window, quick switcher, Settings, menu-bar extra. `.system` maps to `nil` (let the OS decide). Switching appearance applies live; no relaunch.
+
+**Test coverage**: 15 new `ThemeTests` covering built-in resolution + collision policy, UserTheme roundtrip, hex parser surface, AppearanceMode → ColorScheme mapping, and crucially **backward-compatible decode of a pre-theme settings.json**. **103/103 tests green** (was 88).
+
+**What's open for slice 2**:
+
+1. **WYSIWYG ThemeBuilderView** — sheet with HSplitView (editor / live preview), ColorPicker per slot × light/dark, Save / Save As / Delete. Pattern lifted from `PurpleIRC/Sources/PurpleIRC/ThemeBuilderView.swift` (482 LOC).
+2. **Picker entry points** — "New theme…" button in the Appearance tab (duplicates the currently-selected theme as the editor's starting point) and "Edit theme…" on each user theme card.
+3. **Delete fallback** — when deleting an active user theme, restore to its `basedOn` built-in (or Royal Purple if `basedOn` is nil / not found).
+4. *(stretch)* import/export themes as a JSON file so users can share palettes between Macs without setting up CloudKit sync for the preference.
+
 ### 2026-05-10 — App Nap likely cause of "client went away"; assertion held while sync is enabled
 
 Follow-up #2 from earlier today. The soft-recovery patch (`68b1bba`) treats the symptom — re-create the `CKContainer` on the specific error string and retry once. The deeper question of why `cloudd` was dropping our binding remained.

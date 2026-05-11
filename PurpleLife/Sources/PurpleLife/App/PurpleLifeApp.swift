@@ -14,6 +14,7 @@ struct PurpleLifeApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(appState)
+                .preferredColorScheme(appState.settings.appearance.colorScheme)
                 .frame(minWidth: 900, minHeight: 600)
         }
         .defaultSize(width: 1200, height: 800)
@@ -36,6 +37,7 @@ struct PurpleLifeApp: App {
         Window("Schema editor", id: "schema-editor") {
             SchemaEditorScreen()
                 .environmentObject(appState)
+                .preferredColorScheme(appState.settings.appearance.colorScheme)
                 .frame(minWidth: 900, minHeight: 560)
         }
         .defaultSize(width: 1100, height: 700)
@@ -44,6 +46,7 @@ struct PurpleLifeApp: App {
         Window("Quick switcher", id: "quick-switcher") {
             QuickSwitcher()
                 .environmentObject(appState)
+                .preferredColorScheme(appState.settings.appearance.colorScheme)
         }
         .defaultSize(width: 640, height: 440)
         .windowResizability(.contentSize)
@@ -51,6 +54,7 @@ struct PurpleLifeApp: App {
         Settings {
             SettingsView()
                 .environmentObject(appState)
+                .preferredColorScheme(appState.settings.appearance.colorScheme)
         }
 
         // Menu-bar quick-capture. A small SF Symbol in the system menu
@@ -60,6 +64,7 @@ struct PurpleLifeApp: App {
         MenuBarExtra("PurpleLife quick capture", systemImage: "wand.and.sparkles") {
             QuickCaptureMenu()
                 .environmentObject(appState)
+                .preferredColorScheme(appState.settings.appearance.colorScheme)
         }
         .menuBarExtraStyle(.window)
     }

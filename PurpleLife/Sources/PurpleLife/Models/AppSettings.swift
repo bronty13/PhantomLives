@@ -1,10 +1,12 @@
 import Foundation
 
 /// Persisted to `~/Library/Application Support/PurpleLife/settings.json`.
-/// Phase 1 only carries the four backup-related keys mandated by
-/// `CLAUDE.md` plus the export-directory override; later phases extend
-/// this struct in place — Codable's missing-key tolerance keeps reads of
-/// older settings.json files compatible without a migration.
+/// Phase 1 only carried the four backup-related keys mandated by
+/// `CLAUDE.md`; later phases extend this struct in place. The custom
+/// `init(from:)` below uses `decodeIfPresent` for every key so older
+/// settings.json files (missing whatever the latest phase added) decode
+/// successfully — preserving existing user settings on upgrade rather
+/// than silently resetting to defaults.
 struct AppSettings: Codable {
     // Backup (auto-runs at every launch by default — PhantomLives convention).
     var autoBackupEnabled: Bool = true
@@ -31,6 +33,45 @@ struct AppSettings: Codable {
     var startingWeightPounds: Double? = nil    // optional override; defaults to the first Weight record's value
     var heightInches: Double? = nil            // required for BMI
     var forecastDays: Int = 30                 // projection horizon for the forecast section
+
+    // Appearance — Settings → Appearance tab. Local per-Mac preference;
+    // not synced via CloudKit (different Macs may want different looks).
+    // `themeID` resolves first against `PurpleTheme.allBuiltIns`, then
+    // against `userThemes` (where the id is the UUID string).
+    var themeID: String = "royalPurple"
+    var appearance: AppearanceMode = .system
+    /// User-built themes — `UserTheme` snapshots with light/dark hex
+    /// slot pairs. Slice 1 ships persistence + resolution; slice 2 adds
+    /// the WYSIWYG builder UI. Empty until the user creates one.
+    var userThemes: [UserTheme] = []
+
+    init() {}
+
+    /// Lenient decoder: every key is read via `decodeIfPresent` so a
+    /// settings.json from a pre-Phase-N build, missing keys added by
+    /// later phases, still decodes — falling back to each property's
+    /// declared default. Without this, the synthesized decoder throws
+    /// on the first missing non-Optional key, `SettingsStore.load`'s
+    /// `try?` swallows the error, and the user silently loses every
+    /// previously-saved setting. Encoding uses Swift's synthesized
+    /// `encode(to:)` so we always write the full current shape.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        autoBackupEnabled       = try c.decodeIfPresent(Bool.self,            forKey: .autoBackupEnabled)       ?? autoBackupEnabled
+        backupPath              = try c.decodeIfPresent(String.self,          forKey: .backupPath)              ?? backupPath
+        backupRetentionDays     = try c.decodeIfPresent(Int.self,             forKey: .backupRetentionDays)     ?? backupRetentionDays
+        lastBackupAt            = try c.decodeIfPresent(String.self,          forKey: .lastBackupAt)            ?? lastBackupAt
+        defaultExportDirectory  = try c.decodeIfPresent(String.self,          forKey: .defaultExportDirectory)  ?? defaultExportDirectory
+        todayQueries            = try c.decodeIfPresent([SavedQuery].self,    forKey: .todayQueries)            ?? todayQueries
+        todayQueriesSeeded      = try c.decodeIfPresent(Bool.self,            forKey: .todayQueriesSeeded)      ?? todayQueriesSeeded
+        goalWeightPounds        = try c.decodeIfPresent(Double.self,          forKey: .goalWeightPounds)        ?? goalWeightPounds
+        startingWeightPounds    = try c.decodeIfPresent(Double.self,          forKey: .startingWeightPounds)    ?? startingWeightPounds
+        heightInches            = try c.decodeIfPresent(Double.self,          forKey: .heightInches)            ?? heightInches
+        forecastDays            = try c.decodeIfPresent(Int.self,             forKey: .forecastDays)            ?? forecastDays
+        themeID                 = try c.decodeIfPresent(String.self,          forKey: .themeID)                 ?? themeID
+        appearance              = try c.decodeIfPresent(AppearanceMode.self,  forKey: .appearance)              ?? appearance
+        userThemes              = try c.decodeIfPresent([UserTheme].self,     forKey: .userThemes)              ?? userThemes
+    }
 }
 
 @MainActor
@@ -72,6 +113,13 @@ final class SettingsStore: ObservableObject {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? encoder.encode(settings) else { return }
         try? data.write(to: fileURL, options: .atomic)
+    }
+
+    /// Active theme value, resolved against built-ins + user themes.
+    /// Falls back to `.royalPurple` when the stored id isn't found
+    /// (e.g. a deleted user theme that's still selected in settings).
+    var currentTheme: PurpleTheme {
+        PurpleTheme.resolve(id: settings.themeID, userThemes: settings.userThemes)
     }
 
     var resolvedBackupPath: URL {

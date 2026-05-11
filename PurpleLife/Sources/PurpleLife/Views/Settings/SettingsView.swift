@@ -6,6 +6,8 @@ import SwiftUI
 struct SettingsView: View {
     var body: some View {
         TabView {
+            AppearanceSettingsTab()
+                .tabItem { Label("Appearance", systemImage: "paintpalette") }
             BackupSettingsTab()
                 .tabItem { Label("Backup", systemImage: "externaldrive.fill.badge.timemachine") }
             ImportSettingsTab()

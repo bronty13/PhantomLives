@@ -49,10 +49,13 @@ Prerequisites + PASS log are in [Spike/CloudKit/SPIKE.md](Spike/CloudKit/SPIKE.m
 
 ## Follow-up work
 
-_All queued follow-ups are closed as of 2026-05-10._ See HANDOFF.md for per-item rationale and what was skipped on purpose (themes, XLSX/DOCX exports, additional chart styles).
+_All queued follow-ups are closed as of 2026-05-11._ See HANDOFF.md for per-item rationale and what was skipped on purpose (XLSX/DOCX exports, additional chart styles, CloudKit-synced theme preferences).
 
 Recently closed:
 
+- ~~**Appearance theming · slice 3**~~ — JSON theme import/export (`.purplelifetheme.json` files via NSSavePanel/NSOpenPanel; right-click Export on every theme card, Import in the Custom themes section, Export in the builder footer). Shipped 2026-05-11.
+- ~~**Appearance theming · slice 2**~~ — WYSIWYG theme builder (Light/Dark ColorPickers side-by-side per slot, live preview pane with its own appearance toggle, Save / Save As / Delete with `basedOn` fallback when deleting an active theme). Shipped 2026-05-11.
+- ~~**Appearance theming · slice 1**~~ — 5 purple-rooted built-in themes (Royal Purple default, Lavender, Plum, Heather, High Contrast) + Light/Dark/Auto appearance picker. Reverses the prior "themes deferred" decision on accessibility grounds; see HANDOFF entry from 2026-05-11.
 - ~~**WeightTracker subsumption**~~ — 5 slices shipped 2026-05-10. PurpleLife now covers Weight tracking end-to-end: rail sparkline matching the prototype, dedicated Charts view kind with Trend/7d-avg/Goal overlays, full Statistics panel (BMI / regression / forecast / days-to-goal), Smart Import wizard (free-form text parser), and the existing CSV importer + multi-format export. WeightTracker can be retired.
 - ~~**First-launch sync bootstrap UX**~~ — bootstrap sub-states surfaced in the sync footer 2026-05-10 (commit `8c2adb8`). The footer now reads "Checking iCloud account…" / "Setting up CloudKit zone…" / "Registering for push notifications…" / "Pulling existing data…" / "Pushing local changes…" / "Synced" so a user can tell which step is in flight.
 - ~~**Deeper "client went away" investigation**~~ — App Nap is the most likely root cause (the symptoms match exactly). `CloudKitSyncService.start` now holds a `ProcessInfo.beginActivity` assertion for the lifetime of the service. If "client went away" still surfaces over real use, longer-lived `CKDatabase` references / less Task hopping in the subscription handler / a custom operation queue are the next investigation rungs.

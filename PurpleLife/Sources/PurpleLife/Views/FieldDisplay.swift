@@ -137,13 +137,24 @@ enum FieldDisplay {
     }
 
     /// The display title for a record — its primary field value if present,
-    /// otherwise "Untitled".
+    /// otherwise "Untitled". Branches on the field's `kind` so non-text
+    /// primaries (notably Weight's numeric `pounds` and any date-keyed
+    /// type) render as the formatted value rather than falling through
+    /// to "Untitled" because an `as? String` cast fails on a `Double`.
     static func title(of record: ObjectRecord, in type: ObjectType) -> String {
-        if let key = type.primaryFieldKey,
-           let s = record.fields()[key] as? String,
-           !s.isEmpty {
-            return s
+        guard let key = type.primaryFieldKey else { return "Untitled" }
+        let raw = record.fields()[key]
+        if let field = type.field(forKey: key) {
+            switch field.kind {
+            case .number:
+                if let s = numberValueOrNil(raw) { return s }
+            case .date, .dateTime:
+                if let s = dateValueOrNil(raw, includeTime: field.kind == .dateTime) { return s }
+            default:
+                break
+            }
         }
+        if let s = raw as? String, !s.isEmpty { return s }
         return "Untitled"
     }
 }
