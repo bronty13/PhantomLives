@@ -4,6 +4,16 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-10 — WeightTracker subsumption · slice 2: Charts view kind in RecordsScreen
+
+Second slice of the WeightTracker port. Adds a `Charts` view kind alongside Table / Kanban / Calendar / Gallery. Surfaces for any type whose primary field is numeric AND whose schema has at least one date-bearing field — Weight satisfies both; types like Person don't and the Charts tab won't appear in the picker.
+
+- **`Views/RecordsChartBody.swift`** — new file. SwiftUI Charts framework (built-in, no new dep), `LineMark` + `AreaMark` with Catmull-Rom interpolation, accent color tinted to the type's `colorHex`. Time-range picker (7D / 30D / 90D / 1Y / All) at the top. Y-axis auto-scales with 12% padding (and a floor that prevents flat data from rendering as a degenerate domain). Empty state ("No data in this range") when the picker selection has no points.
+- **Same-day dedup**: PurpleLife has no unique-per-day constraint (unlike WeightTracker's date-keyed schema). When the user has multiple records on the same calendar day, the chart keeps the most-recently-updated record per day. Last-write-wins, matches WeightTracker's effective semantics.
+- **Pure extraction**: `RecordsChartBody.extractPoints(rows:dateKey:valueKey:)` is `nonisolated static` so tests can drive it without a MainActor host. Defensive against missing fields, empty keys, malformed dates.
+- **5 new `RecordsChartBodyTests`**: empty input, sort order, same-day dedup, missing-field skipping, empty-keys guard. **64/64 tests green** (was 59, +5).
+- **No overlays yet** — Trend / 7-day-avg / Goal-line overlays land in slice 3b once `StatisticsService` is in.
+
 ### 2026-05-10 — WeightTracker subsumption · slice 1: Today right-rail Weight sparkline
 
 First slice of the WeightTracker → PurpleLife port (HANDOFF.md plan committed earlier today). Replaces the generic "Latest weight" rail card with a Weight-specific card matching `Design/purplelife/project/screens-light.jsx ScreenToday`'s right-rail weight section.

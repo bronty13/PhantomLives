@@ -10,7 +10,7 @@ struct RecordsScreen: View {
     let typeId: String
 
     enum ViewKind: String, CaseIterable, Identifiable {
-        case table, kanban, calendar, gallery
+        case table, kanban, calendar, gallery, charts
         var id: String { rawValue }
         var label: String { rawValue.capitalized }
         var systemImage: String {
@@ -19,6 +19,7 @@ struct RecordsScreen: View {
             case .kanban:   return "rectangle.split.3x1"
             case .calendar: return "calendar"
             case .gallery:  return "square.grid.3x2"
+            case .charts:   return "chart.xyaxis.line"
             }
         }
     }
@@ -121,15 +122,24 @@ struct RecordsScreen: View {
 
     private var defaultViewKind: ViewKind { .table }
 
-    /// Hide kanban / calendar / gallery for types whose schema can't
-    /// support them — there's no point showing a calendar tab if the
-    /// type has no date field.
+    /// Hide kanban / calendar / gallery / charts for types whose
+    /// schema can't support them — there's no point showing a
+    /// calendar tab if the type has no date field, or a charts tab
+    /// if there's no numeric primary field to plot.
     private var viewKindsForCurrentType: [ViewKind] {
         var kinds: [ViewKind] = [.table]
         guard let t = type else { return kinds }
         if t.fields.contains(where: { $0.kind == .select })            { kinds.append(.kanban) }
         if t.fields.contains(where: { $0.kind.canDateForCalendar })    { kinds.append(.calendar) }
         if t.fields.contains(where: { $0.kind == .attachment })        { kinds.append(.gallery) }
+        // Charts: the type's primary field must be a number AND the
+        // type must have at least one date-bearing field. The Weight
+        // type satisfies both (pounds + date); types like Person
+        // don't (string primary) and Charts won't appear in the
+        // picker.
+        let hasDate = t.fields.contains(where: { $0.kind.canDateForCalendar })
+        let primaryIsNumeric = t.field(forKey: t.primaryFieldKey ?? "")?.kind == .number
+        if hasDate && primaryIsNumeric { kinds.append(.charts) }
         return kinds
     }
 
@@ -176,6 +186,8 @@ struct RecordsScreen: View {
                 RecordsCalendarBody(type: t, rows: rows, onOpen: openRecord)
             case .gallery:
                 RecordsGalleryBody(type: t, rows: rows, onOpen: openRecord)
+            case .charts:
+                RecordsChartBody(type: t, rows: rows)
             }
         }
     }
