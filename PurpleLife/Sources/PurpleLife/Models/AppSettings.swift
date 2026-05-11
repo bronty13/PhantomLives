@@ -20,6 +20,17 @@ struct AppSettings: Codable {
     // so the Today view has content out of the box.
     var todayQueries: [SavedQuery] = []
     var todayQueriesSeeded: Bool = false       // one-shot — re-adding a deleted default doesn't fight the user
+
+    // Weight-type profile values — used by the Charts view kind's
+    // future Goal-line overlay (slice 3b) and the Statistics panel
+    // (BMI, days-to-goal, forecast). Optional Doubles so an unset
+    // value doesn't render a misleading 0 on the chart. All in the
+    // base unit (pounds / inches) — display units (kg, cm) are a UI
+    // concern handled where shown.
+    var goalWeightPounds: Double? = nil
+    var startingWeightPounds: Double? = nil    // optional override; defaults to the first Weight record's value
+    var heightInches: Double? = nil            // required for BMI
+    var forecastDays: Int = 30                 // projection horizon for the forecast section
 }
 
 @MainActor

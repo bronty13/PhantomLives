@@ -4,6 +4,16 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-10 — WeightTracker subsumption · slice 3a: Weight settings (goal / starting / height / forecast)
+
+Tiny prep slice — adds the four user profile values that slice 3b's chart overlays and Statistics panel need, with a Settings UI surfacing them. Lands on its own (rather than bundled with 3b) so each diff stays focused; AppSettings additions are 5 lines and the UI is one new tab.
+
+- **`AppSettings`** gains four fields: `goalWeightPounds: Double?`, `startingWeightPounds: Double?`, `heightInches: Double?`, `forecastDays: Int = 30`. Optional Doubles so an unset value doesn't render a misleading 0 on the chart. Codable's missing-key tolerance handles existing `settings.json` files transparently — no migration.
+- **`Views/Settings/WeightSettingsTab.swift`** (new) — fourth Settings tab. `LabeledContent` rows for goal / starting / height (text fields with `lb` / `in` units) plus a stepper for forecast horizon (1-365 days, default 30). Each field optional; placeholder copy explains what unset means ("(none)" / "(first record)" / "(no BMI)").
+- All four values persist via the existing `SettingsStore.save()` path on each set.
+
+64/64 tests still green (no test changes — pure data + UI plumbing).
+
 ### 2026-05-10 — WeightTracker subsumption · slice 2: Charts view kind in RecordsScreen
 
 Second slice of the WeightTracker port. Adds a `Charts` view kind alongside Table / Kanban / Calendar / Gallery. Surfaces for any type whose primary field is numeric AND whose schema has at least one date-bearing field — Weight satisfies both; types like Person don't and the Charts tab won't appear in the picker.

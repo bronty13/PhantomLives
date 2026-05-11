@@ -12,6 +12,8 @@ struct SettingsView: View {
                 .tabItem { Label("Import", systemImage: "square.and.arrow.down.on.square") }
             ExportSettingsTab()
                 .tabItem { Label("Export", systemImage: "square.and.arrow.up.on.square") }
+            WeightSettingsTab()
+                .tabItem { Label("Weight", systemImage: "scalemass") }
         }
         .frame(minWidth: 720, minHeight: 520)
     }
