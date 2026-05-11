@@ -1,12 +1,12 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Schema editor — the distinctive screen from the design (per
 /// `Design/MANIFEST.md`). Shows the visible types in a left rail and the
 /// selected type's field list on the right, with a field-type palette
-/// at the bottom for adding new fields. Phase 2 starting point — the
-/// drag-from-palette interaction in the prototype is approximated here
-/// as click-to-add; full drag-and-drop lands once the rest of Phase 2
-/// is in.
+/// at the bottom for adding new fields. Both click-to-add and
+/// drag-from-palette work; the field list is also a drop destination
+/// for the palette.
 struct SchemaEditorScreen: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.undoManager) private var undoManager
@@ -134,9 +134,27 @@ struct SchemaEditorScreen: View {
                         ForEach(type.fields) { field in
                             fieldRow(field: field, on: type)
                         }
+                        // Drop zone hint when the list is short — gives
+                        // users an obvious target to drop a palette
+                        // tile onto. Hidden once the list grows past
+                        // two fields (the row chrome itself becomes the
+                        // visual target).
+                        if type.fields.count < 3 {
+                            dropZoneHint
+                        }
                     }
                     .padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .dropDestination(for: FieldKindTransfer.self) { items, _ in
+                    var added = false
+                    for item in items {
+                        if let kind = FieldKind(rawValue: item.rawKind) {
+                            addField(kind: kind)
+                            added = true
+                        }
+                    }
+                    return added
                 }
             }
         } else {
@@ -200,6 +218,15 @@ struct SchemaEditorScreen: View {
                     appState.schema.updateField(f, onTypeId: type.id)
                 }
                 Divider()
+                Button("Move up") {
+                    appState.schema.moveField(fieldId: field.id, onTypeId: type.id, by: -1)
+                }
+                .disabled(type.fields.first?.id == field.id)
+                Button("Move down") {
+                    appState.schema.moveField(fieldId: field.id, onTypeId: type.id, by: +1)
+                }
+                .disabled(type.fields.last?.id == field.id)
+                Divider()
                 Button("Delete field", role: .destructive) {
                     appState.schema.removeField(fieldId: field.id, fromTypeId: type.id)
                 }
@@ -215,6 +242,26 @@ struct SchemaEditorScreen: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.hairline).frame(height: 0.5)
         }
+    }
+
+    /// Dashed drop-target hint shown under a short field list. Once
+    /// the user has three or more fields, the list itself is large
+    /// enough to be an obvious drop target without the prompt.
+    private var dropZoneHint: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "plus.rectangle.on.rectangle")
+                .foregroundStyle(.tertiary)
+            Text("Drag a field type here")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 56)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(Theme.cardBorder, style: StrokeStyle(lineWidth: 0.5, dash: [4, 4]))
+        )
+        .padding(.horizontal, 20)
+        .padding(.top, 6)
     }
 
     // MARK: - Field palette
@@ -247,6 +294,22 @@ struct SchemaEditorScreen: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(selectedTypeId == nil)
+                        // Drag affordance — payload is the FieldKind's
+                        // raw value; the field list above accepts it
+                        // and calls addField. Click-to-add still works
+                        // for users who don't reach for drag.
+                        .draggable(FieldKindTransfer(rawKind: kind.rawValue)) {
+                            // Drag preview — same tile, slightly tinted.
+                            VStack(spacing: 4) {
+                                Image(systemName: kind.systemImage).imageScale(.medium)
+                                Text(kind.displayName).font(.caption)
+                            }
+                            .frame(width: 92, height: 56)
+                            .background(Theme.accent.opacity(0.18))
+                            .overlay(RoundedRectangle(cornerRadius: 8)
+                                        .strokeBorder(Theme.accent, lineWidth: 1))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
                     }
                 }
                 .padding(.horizontal, 20).padding(.bottom, 12)
@@ -298,5 +361,19 @@ struct SchemaEditorScreen: View {
         let field = FieldDef.make(name: name, kind: kind)
         appState.schema.addField(field, toTypeId: typeId)
         renamingFieldId = field.id
+    }
+}
+
+/// Transferable payload for dragging a field-type tile from the
+/// palette onto the field list. Carries just the `FieldKind.rawValue`
+/// — the editor maps it back to a real `FieldKind` and calls
+/// `addField(kind:)`. Codable + a single `.data` representation is
+/// enough for an in-process drag; we never serialize this across
+/// process boundaries.
+struct FieldKindTransfer: Codable, Transferable {
+    let rawKind: String
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .data)
     }
 }

@@ -85,13 +85,14 @@ Double-click a row → editor sheet with one input per field kind:
 
 Click **Done** to save.
 
-## Schema editor
+## Schema editor (⇧⌘S)
 
 `⇧⌘S` (or Window → Schema editor…). Split layout:
 
 - **Types rail** — built-in vs custom badges, hidden indicator. Right-click a built-in to hide/show; right-click a custom type to delete.
 - **Field list** — rename / mark required / delete per field. The current primary-field is badged.
-- **Field-type palette** — 12 kinds (text, long text, number, date, date+time, yes/no, select, multi-select, link, rating, URL, email, attachment). Click to add a field of that kind. Duplicate-name protection (`New text`, `New text 2`, …).
+- **Field-type palette** — 12 kinds (text, long text, number, date, date+time, yes/no, select, multi-select, link, rating, URL, email, attachment). Click a tile to add a field, or drag it onto the field list. The drag preview tints the tile in the accent color so you can tell it's "active." A short field list shows a dashed drop-zone hint.
+- **Reorder fields** via the per-row menu (`Move up` / `Move down`). The buttons are disabled at the array bounds.
 
 Field deletes leave the data in `fields_json` blobs in place; a re-add of the same name doesn't lose history.
 

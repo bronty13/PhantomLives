@@ -12,6 +12,15 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-10 — Schema editor polish: drag-from-palette + reorder via menu
+
+Last slice of the prototype-polish follow-up. Two changes worth noting:
+
+- **Drag-from-palette to add a field.** `FieldKindTransfer` is the in-process Transferable; palette tiles are `.draggable`, the field list is `.dropDestination`. Drag and click both call `addField(kind:)`. Drag preview tints the tile with the accent color so it reads as active. A dashed dropzone hint appears under short field lists to telegraph the affordance — auto-hidden once the list grows past two rows.
+- **Move up / Move down** in each field row's menu. Backed by a new `SchemaRegistry.moveField(fieldId:onTypeId:by:)` that operates by relative offset and routes through `upsertType` — same undo + sync semantics as any schema mutation. **Full row-drag-to-reorder is deferred**: doable but requires per-row drop-position math and a custom drag preview, which is more surface than the affordance is worth right now. Menu reorder covers the actual use case.
+
+**Why this finishes the polish sprint**: the palette → field-list drag is the most distinctive gesture in the prototype's `ScreenSchema`. It shipped here. The full multi-tab schema canvas (Default views / Permissions / Templates / Automations) is part of the prototype but not part of the v1 product — those are pure conceptual surfaces with no current backing functionality.
+
 ### 2026-05-10 — Detail polish: two-pane with "Linked from" rail
 
 Second slice of the prototype-polish follow-up. The detail sheet now matches `Design/purplelife/project/screens-dark.jsx ScreenDetail` shape-wise.
@@ -170,7 +179,7 @@ Initial build session executed all five plan phases through a working state. Sna
 2. ~~**Test infrastructure regression**~~ — resolved 2026-05-10; see entry above. `./run-tests.sh` runs the full bundle (now 46 tests) green in ~17 s.
 3. ~~**Export pipeline**~~ — resolved 2026-05-10; see "Per-type export pipeline shipped" entry above. Records → Export menu writes CSV / Markdown / HTML / PDF or copies CSV / Markdown to clipboard.
 4. ~~**Schema versioning across synced peers**~~ — resolved 2026-05-10; see "Schema versioning: mirror schema through CloudKit + defensive merge" entry above. PurpleType records sync the schema; ObjectEngine.update preserves unknown JSON keys.
-5. **Polish toward the prototype** — Today timeline + linked-from rail, two-pane object detail, drag-and-drop schema editor.
+5. ~~**Polish toward the prototype**~~ — resolved 2026-05-10 across three commits (Today polish, Detail polish, Schema editor polish). All three sub-items shipped.
 6. ~~**Daily-use ergonomics**~~ — partially resolved 2026-05-10 (menu-bar quick capture + ⌘N + ⌘1–⌘9 shortcuts); undo split out into its own follow-up item.
 7. ~~**Undo across mutations**~~ — resolved 2026-05-10; see "Undo: NSUndoManager wired through ObjectEngine + SchemaRegistry" entry above. ⌘Z / ⇧⌘Z route through every mutation path; tests cover create/update/delete + schema operations.
 

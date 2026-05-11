@@ -262,6 +262,21 @@ final class SchemaRegistry: ObservableObject {
         upsertType(t)
     }
 
+    /// Reorder a single field by relative offset (`delta = -1` moves
+    /// up, `+1` moves down). No-ops at the array bounds. Used by the
+    /// Schema Editor's row context menu; goes through `upsertType` so
+    /// it gets the same undo + sync treatment as any other schema
+    /// mutation.
+    func moveField(fieldId: String, onTypeId typeId: String, by delta: Int) {
+        guard var t = type(id: typeId),
+              let idx = t.fields.firstIndex(where: { $0.id == fieldId }) else { return }
+        let newIdx = idx + delta
+        guard newIdx >= 0, newIdx < t.fields.count, newIdx != idx else { return }
+        let field = t.fields.remove(at: idx)
+        t.fields.insert(field, at: newIdx)
+        upsertType(t)
+    }
+
     // MARK: - CloudKit-applied changes
 
     /// Apply a remote type definition. LWW: only overrides the local

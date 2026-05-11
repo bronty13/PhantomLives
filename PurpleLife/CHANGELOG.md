@@ -4,6 +4,18 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-10 — Schema editor polish: drag-from-palette + reorder fields
+
+Final slice of the prototype-polish follow-up. The schema editor now matches `Design/purplelife/project/screens-dark.jsx ScreenSchema`'s drag-and-drop affordance, plus a missing reorder primitive.
+
+- **Drag-from-palette → drop on field list**. Field-type tiles in the bottom palette are now `.draggable`; the field list is a `.dropDestination`. Dragging a tile onto the list calls the same `addField(kind:)` path that click-to-add does. Click-to-add still works for users who prefer it.
+- **Tinted drag preview**. While dragging, the tile renders with the accent color and a 1 pt accent stroke so it reads as "active" — matches the prototype's drag-handle treatment.
+- **Drop-zone hint** under short field lists (< 3 fields). Dashed-border placeholder with "Drag a field type here" disappears once the list is large enough to be an obvious drop target on its own.
+- **Move up / Move down** menu items on each field row, backed by a new `SchemaRegistry.moveField(fieldId:onTypeId:by:)` helper. Goes through `upsertType` so it gets the same undo + sync treatment as any other schema mutation. Items are disabled at the array bounds. Full row-drag-to-reorder lands later — the menu items cover the immediate need without inventing per-row drop math.
+- **`FieldKindTransfer`** — small `Transferable` payload carrying the `FieldKind.rawValue` as the drag content. In-process only; never serialized across process boundaries.
+
+59/59 tests still green (no test changes — drag/drop is `View` modifier behavior, not testable without a UI test host; the new `moveField` helper is exercised indirectly through the existing schema undo tests since it goes through `upsertType`). Build clean.
+
 ### 2026-05-10 — Detail polish: two-pane object detail with "Linked from" inspector rail
 
 Second slice of the prototype-polish follow-up. Object detail sheet now has a two-pane layout matching `Design/purplelife/project/screens-dark.jsx ScreenDetail`:

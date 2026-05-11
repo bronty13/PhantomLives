@@ -52,5 +52,4 @@ Prerequisites + PASS log are in [Spike/CloudKit/SPIKE.md](Spike/CloudKit/SPIKE.m
 In rough priority order:
 
 1. **Verify <5 s Mac→Mac latency** — subscriptions infrastructure shipped 2026-05-10; needs a second Mac signed into the same iCloud account to exercise the silent-push round-trip and close the Phase 4 acceptance gate. Also exercises the `PurpleType` schema-sync path and cross-device undo behavior under real APNS delivery.
-2. **Polish toward the prototype** — Today timeline + linked-from rail, two-pane object detail, drag-and-drop schema editor.
-3. **WeightTracker subsumption** — port WeightTracker's charts, Smart Import, and themes into the PurpleLife Weight type so WeightTracker can eventually be retired. The CSV importer (Phase 5 starter) is the bridge during the transition.
+2. **WeightTracker subsumption** — port WeightTracker's charts, Smart Import, and themes into the PurpleLife Weight type so WeightTracker can eventually be retired. The CSV importer (Phase 5 starter) is the bridge during the transition.
