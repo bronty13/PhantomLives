@@ -1,0 +1,19 @@
+# Build artifacts
+ElectronicDetective.app/
+ElectronicDetective.xcodeproj/
+.build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# User-supplied scanned/recorded assets (personal copies; not for git)
+Sources/ElectronicDetective/Resources/UserAssets/suspects/*
+Sources/ElectronicDetective/Resources/UserAssets/manual/*
+Sources/ElectronicDetective/Resources/UserAssets/box/*
+Sources/ElectronicDetective/Resources/UserAssets/audio/*
+Sources/ElectronicDetective/Resources/UserAssets/notepad/*
+!Sources/ElectronicDetective/Resources/UserAssets/**/.gitkeep
+!Sources/ElectronicDetective/Resources/UserAssets/README.md
+
+# macOS noise
+.DS_Store
