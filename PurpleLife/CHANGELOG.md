@@ -4,6 +4,15 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-10 — Bootstrap sub-states surfaced in the sync status footer
+
+Closes follow-up #1. The 2026-05-10 verification trial saw a fresh Mac sit on a generic "Setting up sync…" badge for ~5 minutes silently before resolving — users couldn't tell whether to wait or kill the app. Now each step of the CloudKit bootstrap stamps a distinct sub-state.
+
+- `Status.settingUp` carries a new `SetupStep` payload — one of `.checkingAccount`, `.ensuringZone`, `.ensuringSubscription`, `.pullingInitial`, `.pushingLocalChanges`. The footer label updates accordingly: "Checking iCloud account…" → "Setting up CloudKit zone…" → "Registering for push notifications…" → "Pulling existing data…" → "Pushing local changes…" → "Synced".
+- A user looking at a hung "Pulling existing data…" knows it's the initial fetch (probably big the first time on a fresh Mac, just wait); a hung "Registering for push notifications…" suggests an APS issue.
+
+No behavior change beyond the label. 59/59 tests still green.
+
 ### 2026-05-10 — Soft recovery from "client went away" CloudKit error
 
 Found during the Phase 4 verification trial: every cross-device record change put the *receiver* into `Sync error: client went away` state immediately after the change was applied. The receive itself worked (record landed in local DB and UI), but the sync footer read "error" until the receiving app was quit and relaunched. "Sync now" did not clear it (a fresh `pull()` hit the same error).

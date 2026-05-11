@@ -50,10 +50,34 @@ final class CloudKitSyncService: ObservableObject {
     enum Status: Equatable {
         case disabled                 // entitlements/container unavailable; staying local-only
         case notSignedIn
-        case settingUp
+        case settingUp(SetupStep)
         case idle
         case syncing
         case error(String)
+
+        /// Sub-state of `.settingUp`. Bootstrap stamps each one as it
+        /// progresses so the sidebar footer surfaces *which* step is
+        /// in flight rather than a silent multi-minute "Setting up
+        /// sync…" hang. The 2026-05-10 verification trial saw a fresh
+        /// Mac sit on the generic message for ~5 min before resolving;
+        /// users couldn't tell whether to wait or kill it.
+        enum SetupStep: Equatable {
+            case checkingAccount
+            case ensuringZone
+            case ensuringSubscription
+            case pullingInitial
+            case pushingLocalChanges
+
+            var label: String {
+                switch self {
+                case .checkingAccount:      return "Checking iCloud account…"
+                case .ensuringZone:         return "Setting up CloudKit zone…"
+                case .ensuringSubscription: return "Registering for push notifications…"
+                case .pullingInitial:       return "Pulling existing data…"
+                case .pushingLocalChanges:  return "Pushing local changes…"
+                }
+            }
+        }
 
         var isError: Bool {
             if case .error = self { return true } else { return false }
@@ -61,12 +85,12 @@ final class CloudKitSyncService: ObservableObject {
 
         var label: String {
             switch self {
-            case .disabled:    return "Sync off"
-            case .notSignedIn: return "Sign in to iCloud"
-            case .settingUp:   return "Setting up sync…"
-            case .idle:        return "Synced"
-            case .syncing:     return "Syncing…"
-            case .error(let m): return "Sync error: \(m)"
+            case .disabled:           return "Sync off"
+            case .notSignedIn:        return "Sign in to iCloud"
+            case .settingUp(let s):   return s.label
+            case .idle:               return "Synced"
+            case .syncing:            return "Syncing…"
+            case .error(let m):       return "Sync error: \(m)"
             }
         }
 
@@ -82,7 +106,7 @@ final class CloudKitSyncService: ObservableObject {
         }
     }
 
-    @Published private(set) var status: Status = .settingUp
+    @Published private(set) var status: Status = .settingUp(.checkingAccount)
     @Published private(set) var lastSyncAt: Date?
     @Published private(set) var lastError: String?
 
@@ -186,7 +210,6 @@ final class CloudKitSyncService: ObservableObject {
     }
 
     private func bootstrap() async {
-        status = .settingUp
         // Construct the container here, inside a do/catch — this is the
         // first place that requires the iCloud entitlement. If it's
         // missing the framework traps (not throws); we can't catch a
@@ -197,10 +220,15 @@ final class CloudKitSyncService: ObservableObject {
         // downstream operation.
         container = CKContainer(identifier: Self.containerID)
         do {
+            status = .settingUp(.checkingAccount)
             try await checkAccountStatus()
+            status = .settingUp(.ensuringZone)
             try await ensureZone()
+            status = .settingUp(.ensuringSubscription)
             await ensureSubscription()
+            status = .settingUp(.pullingInitial)
             await pullInitial()
+            status = .settingUp(.pushingLocalChanges)
             await pushPendingLocalChanges()
             status = .idle
             startPolling()
