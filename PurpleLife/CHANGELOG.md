@@ -4,6 +4,16 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-10 — UI refresh on remote object changes (prep for Phase 4 Mac→Mac verification)
+
+Found-and-fixed before walking through the Phase 4 latency verification: when CloudKit pulls in remote changes, `applyRemote` writes directly to `DatabaseService` without going through `ObjectEngine`'s mutation hooks. As a result, the visible `RecordsScreen.rows` `@State` and `appState.objectCount` weren't refreshing — Mac B would receive a record into the local DB but it wouldn't appear in the UI until you switched types or restarted the app.
+
+- New `AppState.objectsChangedRemotelyNotification`. Posted from `CloudKitSyncService.runFetchOperation` once per fetch batch (skipped on no-op pulls so we don't spin views for nothing).
+- `AppState.init` observes → calls `reloadAll()` (bumps `objectCount`, propagates through `@Published` to Today's panels).
+- `RecordsScreen` observes → calls `reload()` to re-fetch rows from the database.
+
+Without this fix, the Phase 4 acceptance verification would have been deceptive (records sync, UI doesn't reflect it). 59/59 tests still green; build clean.
+
 ### 2026-05-10 — Schema editor polish: drag-from-palette + reorder fields
 
 Final slice of the prototype-polish follow-up. The schema editor now matches `Design/purplelife/project/screens-dark.jsx ScreenSchema`'s drag-and-drop affordance, plus a missing reorder primitive.

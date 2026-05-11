@@ -107,6 +107,14 @@ struct RecordsScreen: View {
                 addEmpty()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(
+            for: AppState.objectsChangedRemotelyNotification
+        )) { _ in
+            // CloudKit pulled in remote changes — refresh the visible
+            // rows so a record created on another Mac actually
+            // appears here without a type-switch or restart.
+            reload()
+        }
     }
 
     var type: ObjectType? { appState.schema.type(id: typeId) }

@@ -16,6 +16,15 @@ final class AppState: ObservableObject {
     /// type" command. `userInfo["index"]` carries the 1-based position
     /// in `SchemaRegistry.visibleTypes`.
     static let jumpToTypeIndexNotification = Notification.Name("PurpleLife.jumpToTypeIndex")
+
+    /// Posted when CloudKit pulls in remote object changes so the UI
+    /// can refresh its `@State`-cached row lists. Without this, Mac B
+    /// receives a record into the local DB but the visible
+    /// `RecordsScreen` doesn't reload until the user switches types
+    /// or restarts the app — defeats the point of real-time sync.
+    /// `AppState` listens and calls `reloadAll()`; `RecordsScreen`
+    /// listens and calls its own `reload()`.
+    static let objectsChangedRemotelyNotification = Notification.Name("PurpleLife.objectsChangedRemotely")
     @Published var settingsStore = SettingsStore()
     @Published var schema = SchemaRegistry()
     @Published var sync = CloudKitSyncService()
@@ -99,6 +108,21 @@ final class AppState: ObservableObject {
                 guard index >= 1, index <= visible.count else { return }
                 self.selectedTypeId = visible[index - 1].id
                 self.showTodayInDetail = false
+            }
+        }
+
+        // Remote pulls land into DatabaseService directly via
+        // CloudKitSyncService.applyRemote, bypassing ObjectEngine's
+        // hooks. Without this observer, the sidebar count and the
+        // Today panels (driven off appState.objectCount + the schema)
+        // wouldn't refresh until the next type switch / restart.
+        NotificationCenter.default.addObserver(
+            forName: AppState.objectsChangedRemotelyNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.reloadAll()
             }
         }
     }

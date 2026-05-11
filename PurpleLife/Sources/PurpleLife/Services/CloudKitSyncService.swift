@@ -604,6 +604,18 @@ final class CloudKitSyncService: ObservableObject {
         if let token = newToken {
             serverChangeToken = token
         }
+        // Tell the UI something changed so @State-cached row lists
+        // (RecordsScreen.rows etc.) reload. Posted once per fetch
+        // batch rather than per-record so a 100-record sync triggers
+        // one UI reload, not 100. Skipped when the batch was empty
+        // (no need to spin views on a no-op pull).
+        if !objectChanges.isEmpty || !objectDeletes.isEmpty
+            || !typeChanges.isEmpty || !typeDeletes.isEmpty {
+            NotificationCenter.default.post(
+                name: AppState.objectsChangedRemotelyNotification,
+                object: nil
+            )
+        }
     }
 
     /// LWW: apply a remote `PurpleType` record only if its
