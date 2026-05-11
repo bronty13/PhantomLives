@@ -32,7 +32,7 @@ enum VendorReportService {
     ///                       invoices, summaries, notes, linked matters.
     static func renderMarkdown(vendor: Vendor, detailed: Bool, yearRange: [Int]) -> String {
         var out = ""
-        out += "# \(vendor.name.isEmpty ? "(unnamed vendor)" : vendor.name)\n\n"
+        out += "# \(vendor.name.isEmpty ? "(unnamed Third Party)" : vendor.name)\n\n"
         out += "**Reseller:** \(vendor.resellerDisplay)  \n"
         if let r = vendor.rating { out += "**Rating:** \(stars(r)) (\(r)/5)  \n" }
         if !vendor.ratingNote.isEmpty { out += "**Rating note:** \(vendor.ratingNote)  \n" }
@@ -139,7 +139,7 @@ enum VendorReportService {
         let df = DateFormatter()
         df.dateStyle = .medium
         out += "_Generated \(df.string(from: Date()))_\n\n"
-        out += "| Vendor | Reseller | Rating | Products | Sales Contact | Phone |\n"
+        out += "| Third Party | Reseller | Rating | Products | Sales Contact | Phone |\n"
         out += "|--------|----------|--------|----------|---------------|-------|\n"
         for v in vendors {
             let contacts = (try? VendorService.fetchContacts(vendorId: v.id)) ?? []
@@ -209,9 +209,9 @@ enum VendorReportService {
         let md = renderMarkdown(vendor: vendor, detailed: detailed, yearRange: yearRange)
         let dir = settingsStore.resolvedExportDirectory
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let safe = FileStoreService.sanitize(vendor.name.isEmpty ? "vendor" : vendor.name)
+        let safe = FileStoreService.sanitize(vendor.name.isEmpty ? "third-party" : vendor.name)
         let suffix = detailed ? "full" : "summary"
-        let url = dir.appendingPathComponent("Vendor-\(safe)-\(suffix).\(format.fileExtension)")
+        let url = dir.appendingPathComponent("ThirdParty-\(safe)-\(suffix).\(format.fileExtension)")
         switch format {
         case .markdown:
             try md.write(to: url, atomically: true, encoding: .utf8)

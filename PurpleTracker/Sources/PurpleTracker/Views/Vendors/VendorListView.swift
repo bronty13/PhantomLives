@@ -19,11 +19,11 @@ struct VendorListView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                TextField("Search vendors", text: $search)
+                TextField("Search Third Parties", text: $search)
                     .textFieldStyle(.roundedBorder)
                 Spacer()
                 Button { addVendor() } label: {
-                    Label("New Vendor", systemImage: "plus")
+                    Label("New Third Party", systemImage: "plus")
                 }
                 Menu {
                     Button("Export Basic (Markdown)…")    { exportAll(detailed: false, format: .markdown) }
@@ -31,7 +31,7 @@ struct VendorListView: View {
                     Divider()
                     Button("Export Basic (PDF)…")    { exportAll(detailed: false, format: .pdf) }
                     Button("Export Detailed (PDF)…") { exportAll(detailed: true,  format: .pdf) }
-                } label: { Label("All-Vendors Report", systemImage: "square.and.arrow.up") }
+                } label: { Label("All Third Parties Report", systemImage: "square.and.arrow.up") }
             }
             .padding(8)
             Divider()

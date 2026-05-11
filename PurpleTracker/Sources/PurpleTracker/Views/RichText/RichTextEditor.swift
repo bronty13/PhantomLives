@@ -320,7 +320,7 @@ extension NSAttributedString {
     /// to stay backward-compatible with existing notes.
     func toRTFData() -> Data? {
         let range = NSRange(location: 0, length: length)
-        if containsAttachments {
+        if attachmentCount > 0 {
             // NSTextView paste may stash images via `attachment.image`
             // without a `fileWrapper`. RTFD persistence reads bytes from
             // the file wrapper, so synthesize one when missing.
@@ -354,15 +354,15 @@ extension NSAttributedString {
         return NSAttributedString()
     }
 
-    /// True when the string contains at least one `NSTextAttachment`.
-    private var containsAttachments: Bool {
-        var found = false
+    /// Count of `NSTextAttachment` instances in the string.
+    var attachmentCount: Int {
+        var n = 0
         enumerateAttribute(.attachment,
                            in: NSRange(location: 0, length: length),
-                           options: []) { value, _, stop in
-            if value is NSTextAttachment { found = true; stop.pointee = true }
+                           options: []) { v, _, _ in
+            if v is NSTextAttachment { n += 1 }
         }
-        return found
+        return n
     }
 
     /// Returns a copy of `src` where every `NSTextAttachment` has a

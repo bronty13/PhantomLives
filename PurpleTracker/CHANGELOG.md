@@ -4,6 +4,27 @@ All notable changes to PurpleTracker are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.3] — Third Party terminology
+
+### Changed
+- Renamed every user-facing "Vendor" / "vendors" string in the Third Parties
+  section to "Third Party" / "Third Parties". Affects: list header,
+  search field, **+ New Third Party** button, **All Third Parties Report**
+  menu, detail-view name placeholder, "No Third Party Selected" empty
+  state, "No Matters reference this Third Party" notice, single-Third-Party
+  report header and table, default new-record name, and exported file names
+  (`ThirdParty-<name>-…`). Internal table/column names (`vendor`,
+  `vendor_id`) and Swift type names are unchanged.
+
+## [1.5.2] — Notes editor: image-paste persistence
+
+### Fixed
+- Pasted screenshots / images vanished from a note after navigating away
+  and back. The save path now reads attributed text directly from the live
+  `NSTextView` storage, so attachments inserted via paste are captured
+  even before the SwiftUI binding has propagated. Bodies continue to be
+  encoded as RTFD when attachments are present.
+
 ## [1.5.1] — Notes editor polish
 
 ### Fixed

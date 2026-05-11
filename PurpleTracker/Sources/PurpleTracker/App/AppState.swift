@@ -846,7 +846,7 @@ final class AppState: ObservableObject {
     }
 
     @discardableResult
-    func createVendor(name: String = "New Vendor") throws -> Vendor {
+    func createVendor(name: String = "New Third Party") throws -> Vendor {
         let v = Vendor.newDraft(name: name)
         try VendorService.insert(v)
         try reloadVendors()

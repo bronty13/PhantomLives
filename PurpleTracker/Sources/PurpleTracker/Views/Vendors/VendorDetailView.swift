@@ -85,7 +85,7 @@ struct VendorDetailView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
-                TextField("Vendor name", text: bindingName)
+                TextField("Third Party name", text: bindingName)
                     .textFieldStyle(.roundedBorder)
                     .font(.title2.weight(.semibold))
                 Spacer()
@@ -603,7 +603,7 @@ private struct AddInvoiceSheet: View {
             }
             HStack {
                 Text("Number").frame(width: 90, alignment: .leading)
-                TextField("Vendor invoice #", text: $number).textFieldStyle(.roundedBorder)
+                TextField("Invoice #", text: $number).textFieldStyle(.roundedBorder)
             }
             HStack {
                 Text("Memo").frame(width: 90, alignment: .leading)
@@ -845,7 +845,7 @@ struct VendorLinkedMattersTab: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Linked Matters").font(.headline)
             if matters.isEmpty {
-                Text("No Matters reference this vendor yet. Set the Vendor on a Matter to link it.")
+                Text("No Matters reference this Third Party yet. Set the Third Party on a Matter to link it.")
                     .foregroundStyle(.secondary)
             }
             ForEach(matters) { m in

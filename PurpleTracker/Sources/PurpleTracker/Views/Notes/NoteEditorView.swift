@@ -73,11 +73,20 @@ struct NoteEditorView: View {
 
     private func saveNow() {
         guard dirty, loadedId == note.id else { return }
+        // Prefer the live text storage so attachments inserted via paste are
+        // captured even if the @State binding hasn't propagated yet.
+        let live: NSAttributedString
+        if let tv = RichTextRegistry.shared.firstResponderTextView(),
+           let storage = tv.textStorage {
+            live = NSAttributedString(attributedString: storage)
+        } else {
+            live = body_
+        }
         var updated = note
         updated.noteDate = noteDate
         updated.title = title
-        updated.bodyRtf = body_.toRTFData()
-        updated.bodyPlain = body_.string
+        updated.bodyRtf = live.toRTFData()
+        updated.bodyPlain = live.string
         do {
             try app.updateGenericNote(updated)
             dirty = false

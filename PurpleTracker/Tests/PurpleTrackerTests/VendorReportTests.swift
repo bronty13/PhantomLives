@@ -61,7 +61,7 @@ final class VendorReportTests: XCTestCase {
         try VendorService.insert(Vendor.newDraft(name: "Bravo"))
         let vendors = try VendorService.fetchAllLive()
         let md = VendorReportService.renderAllVendorsBasic(vendors, yearRange: [2026])
-        XCTAssertTrue(md.contains("| Vendor |"))
+        XCTAssertTrue(md.contains("| Third Party |"))
         XCTAssertTrue(md.contains("| Alpha |"))
         XCTAssertTrue(md.contains("| Bravo |"))
     }

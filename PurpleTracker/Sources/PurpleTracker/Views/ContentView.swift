@@ -49,7 +49,7 @@ struct ContentView: View {
                         ContentUnavailableView(
                             "No Third Party Selected",
                             systemImage: "building.2",
-                            description: Text("Choose a vendor from the list, or press the + button to add one.")
+                            description: Text("Choose a Third Party from the list, or press the + button to add one.")
                         )
                     }
                 case .noteType:

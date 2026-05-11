@@ -225,7 +225,7 @@ enum VendorService {
             try VendorAttachment.fetchOne(db, key: id)
         }) else {
             throw NSError(domain: "PurpleTracker", code: 404,
-                          userInfo: [NSLocalizedDescriptionKey: "Vendor attachment not found"])
+                          userInfo: [NSLocalizedDescriptionKey: "Third Party attachment not found"])
         }
         let recomputed = AttachmentService.hashes(for: att.data).sha1
         let ok = recomputed.caseInsensitiveCompare(att.sha1) == .orderedSame
