@@ -57,14 +57,15 @@ Each type defines a set of **fields**, plus optional hints that drive the four v
 
 User-defined types are unrestricted. Built-ins can be hidden from the sidebar but not deleted.
 
-## The four list views
+## The five list views
 
-Each type's records can be rendered four ways. The toolbar segment auto-hides views that don't apply (no select field → no kanban tab, no date field → no calendar tab, no attachment field → no gallery tab).
+Each type's records can be rendered five ways. The toolbar segment auto-hides views that don't apply (no select field → no kanban tab, no date field → no calendar tab, no attachment field → no gallery tab, non-numeric primary field → no charts tab).
 
 - **Table** — generic spreadsheet over the type's fields. Empty primary fields show "Untitled" italic; other empty cells show "—". Double-click a row → object detail. Right-click → Open / Delete.
 - **Kanban** — columns grouped by a select field. Cards show the primary title plus up to three supporting fields. Records whose value isn't one of the defined options collect into an "—" column. Double-click a card → detail.
 - **Calendar** — month grid with prev/next/today nav. Records appear on the cell matching their `calendarDateKey` field. Up to 3 record titles per cell + overflow count.
 - **Gallery** — adaptive grid of cards. Real attachment images render when the type has a `galleryAttachmentKey` field with a stored image; placeholder gradient otherwise. Rating badges overlay when the type has a rating field.
+- **Charts** — line chart over time, available when the type's primary field is numeric AND the type has at least one date field. Time-range picker (7D / 30D / 90D / 1Y / All). Same-day duplicates collapse last-write-wins per calendar day. For Weight specifically, three overlay toggles appear in the toolbar: **Trend** (linear regression line), **7d avg** (moving-average dashed line), **Goal** (horizontal RuleMark at the goal weight set in Settings → Weight). Y-axis auto-scales with padding so the goal line stays in view.
 
 The toolbar **+** button creates a new record and opens it in the detail sheet immediately so you can fill in fields without landing on a blank row.
 
@@ -130,7 +131,7 @@ The default export directory is `~/Downloads/PurpleLife/`. Override it in **Sett
 
 ## Settings (`⌘,`)
 
-Three tabs:
+Four tabs:
 
 ### Backup
 
@@ -141,11 +142,30 @@ Backups run automatically on every launch, **debounced** to skip if the last suc
 
 ### Import
 
+- **Smart Import — Weight (free-form text)** — opens a wizard. Paste any text containing dates and weights — CSV / spreadsheet copy-paste / plain English (`On 3/5/2024 I weighed 182 pounds`) all work. Five date formats recognized: ISO-8601, `MM/DD/YYYY`, `MM-DD-YYYY`, `Jan 15 2024`, `January 15, 2024`. Weight extraction uses plausibility bounds (50-700 lb) and lookarounds so year digits aren't matched as weights. Preview table per parsed row; rows that match an existing Weight day are flagged "dup" and pre-deselected. Imports use `source: "Imported"` for filter consistency.
 - **WeightTracker CSV** — file picker that ingests a WeightTracker export. Header auto-detects lb vs kg; kg → pounds conversion is applied. Per-row errors collect into a report; the run never aborts on a single bad row.
 
 ### Export
 
 - **Default export directory** — text field + Choose…, Reveal button. Files saved by the Records → Export menu land here. Default `~/Downloads/PurpleLife/`. Empty value reverts to the default.
+
+### Weight
+
+User profile values used by the Charts view's Goal-line overlay and the Statistics panel. Each field is optional — leaving any blank just means the dependent feature won't show.
+
+- **Goal weight** (lb) — drives the Goal-line overlay on the Weight chart and the days-to-goal estimate in Statistics.
+- **Starting weight** (lb) — optional override of the first-record value when computing total change. Leave blank to use the first record.
+- **Height** (in) — required for BMI in the Statistics panel.
+- **Forecast horizon** — stepper (1-365 days, default 30). Controls the projection horizon in the Statistics panel.
+
+## Weight statistics (Records → Weight → toolbar)
+
+When viewing the **Weight** type's records, a **Statistics** button appears in the toolbar (next to Export). It opens a sheet with four sections:
+
+- **Overview** — starting / current / goal weight, total change, progress bar to goal.
+- **Trend analysis** — weekly rate (rolling 4-week), regression slope (lb/day), R² consistency score, best and worst week.
+- **BMI** (only if Height is set) — current / starting / goal BMI with category labels (underweight / healthy / overweight / obese).
+- **Forecast** — projections at 7 / 14 / 30 / 60 / 90 days; estimated days to reach goal (when slope is downward and a goal is set).
 
 ## CloudKit sync
 

@@ -2,41 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!--
-      Personal-use local app — sandbox dropped on purpose, mirroring Timeliner.
-
-      PurpleLife reads / writes user-chosen paths under ~/Downloads (backup
-      zips, exports) and the standard Application Support directory (sqlite,
-      settings.json, attachments). It uses FileManager string paths, not
-      security-scoped URL bookmarks, so the file API needs whatever the
-      logged-in user can see.
-
-      Phase 4 — iCloud + CloudKit. The container `iCloud.com.bronty13.PurpleLife`
-      is shared with the spike app at Spike/CloudKit; the App ID
-      com.bronty13.PurpleLife at developer.apple.com must have iCloud
-      capability enabled with the container assigned via Configure.
-
-      `com.apple.developer.aps-environment` enables silent-push
-      delivery for the CKDatabaseSubscription that CloudKitSyncService
-      registers — wakes the app when another Mac on the same iCloud
-      account writes a record, replacing the 30 s foreground poll with
-      sub-second sync. Value is `development` because the app is signed
-      with an Apple Development cert (the iCloud entitlement requires
-      it); if we ever ship a Developer-ID-signed copy for distribution,
-      change this to `production` for that build. Note: macOS uses the
-      long `com.apple.developer.aps-environment` key, NOT the iOS short
-      form `aps-environment` — the short form is silently stripped by
-      Xcode's ProcessProductPackaging step on macOS targets.
-    -->
-    <key>com.apple.developer.icloud-container-identifiers</key>
-    <array>
-        <string>iCloud.com.bronty13.PurpleLife</string>
-    </array>
-    <key>com.apple.developer.icloud-services</key>
-    <array>
-        <string>CloudKit</string>
-    </array>
-    <key>com.apple.developer.aps-environment</key>
-    <string>development</string>
+	<key>com.apple.developer.aps-environment</key>
+	<string>development</string>
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.com.bronty13.PurpleLife</string>
+	</array>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudKit</string>
+	</array>
 </dict>
 </plist>
