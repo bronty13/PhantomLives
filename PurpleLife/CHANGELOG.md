@@ -4,6 +4,18 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-10 — App Nap suppression while CloudKit sync is enabled
+
+Theory-driven prophylactic for the deeper "client went away" follow-up. macOS App Nap suspends background apps that don't have active UI; for an app that needs to stay live to receive silent-push CloudKit notifications, that's the wrong tradeoff. `cloudd` interpreting a napped process as "client went away" matches the symptom we saw — the receiver's CKContainer binding goes stale until the user brings the app back to the foreground (or restarts it).
+
+- `CloudKitSyncService.start` now opens a `ProcessInfo.beginActivity(options:reason:)` assertion with `.userInitiatedAllowingIdleSystemSleep + .suddenTerminationDisabled`. Released in `deinit`. The sync service is owned by `AppState`, which lives for the app's lifetime, so the assertion effectively spans process lifetime.
+- `latencyCritical` is **not** included — we don't need to be high-priority CPU-wise, just live.
+- `idleSystemSleepDisabled` is **not** included — the Mac going to sleep at night should still work; we want App Nap suppressed but full sleep allowed.
+
+This is a treats-the-symptom-but-correctly-this-time fix paired with the soft-recovery patch from earlier today. If "client went away" stops appearing across the next stretch of normal use, App Nap was the cause. If it still appears, the next investigation rung is longer-lived `CKDatabase` references, dedicated operation queues, or less Task hopping in the subscription handler.
+
+59/59 tests still green.
+
 ### 2026-05-10 — Bootstrap sub-states surfaced in the sync status footer
 
 Closes follow-up #1. The 2026-05-10 verification trial saw a fresh Mac sit on a generic "Setting up sync…" badge for ~5 minutes silently before resolving — users couldn't tell whether to wait or kill the app. Now each step of the CloudKit bootstrap stamps a distinct sub-state.

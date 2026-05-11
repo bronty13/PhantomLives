@@ -12,6 +12,24 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-10 — App Nap likely cause of "client went away"; assertion held while sync is enabled
+
+Follow-up #2 from earlier today. The soft-recovery patch (`68b1bba`) treats the symptom — re-create the `CKContainer` on the specific error string and retry once. The deeper question of why `cloudd` was dropping our binding remained.
+
+Best theory after more thought: **macOS App Nap was suspending the receiving app between subscription pushes.** Symptoms match exactly:
+
+- Receiver only sees the error after a cross-device push (when the daemon tries to deliver to a napped process)
+- App restart fixes it (new process has a fresh activity state, daemon re-binds)
+- "Sync now" doesn't fix it (the process is awake again because the user clicked, but cloudd's earlier attempt already marked us as "gone")
+
+Fix: `CloudKitSyncService.start` now opens a `ProcessInfo.beginActivity(options:reason:)` assertion with `[.userInitiatedAllowingIdleSystemSleep, .suddenTerminationDisabled]` for the lifetime of the service. Same pattern Apple recommends for media players and download managers — apps that need to stay live in the background for an external trigger.
+
+Deliberate omissions:
+- `.latencyCritical` — we don't need elevated CPU, just liveness.
+- `.idleSystemSleepDisabled` — the Mac going to sleep at night should still work. App Nap suppression ≠ system sleep prevention.
+
+This is theory + prophylactic. Verification is "does 'client went away' stop appearing across normal use?" — only the user can confirm over time. If it still appears, the next investigation rungs are longer-lived `CKDatabase` references (vs the current computed property), a dedicated `OperationQueue` for CK ops, or fewer Task hops in the subscription handler.
+
 ### 2026-05-10 — Phase 4 acceptance gate verified PASS — Mac→Mac sync is near-instant
 
 Closes the long-standing Phase 4 gate that's been queued as follow-up #1 since the original build session.

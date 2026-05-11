@@ -51,6 +51,9 @@ Prerequisites + PASS log are in [Spike/CloudKit/SPIKE.md](Spike/CloudKit/SPIKE.m
 
 In rough priority order:
 
-1. **First-launch sync bootstrap UX** — Mac B's first sign-in hung at "Setting up sync…" for ~5 min silently before resolving (during the 2026-05-10 verification trial). Either add per-step timeout-and-retry with surfaced progress, or break out the status badge sub-states ("Checking iCloud…" / "Creating zone…" / "Pulling…") so a user can tell whether to wait or kill it.
-2. **Deeper "client went away" investigation** — soft-recovery patch (commit `68b1bba`) treats the symptom by re-creating the `CKContainer` on the specific error string. The root cause (cloudd dropping our process binding after a successful subscription delivery + fetch round-trip) is unsolved. If the soft recovery proves insufficient over real use, longer-lived `CKDatabase` references / less Task hopping in the subscription handler / a custom operation queue are worth investigating.
-3. **WeightTracker subsumption (deferred)** — explicit decision 2026-05-10. WeightTracker still works as a standalone app; subsumption is additive polish. When picked up, the natural first slice is the right-rail weight sparkline + a basic line chart for the Weight type. See [HANDOFF.md](HANDOFF.md) for the full reasoning.
+1. **WeightTracker subsumption (deferred)** — explicit decision 2026-05-10. WeightTracker still works as a standalone app; subsumption is additive polish. When picked up, the natural first slice is the right-rail weight sparkline + a basic line chart for the Weight type. See [HANDOFF.md](HANDOFF.md) for the full reasoning.
+
+Earlier follow-ups now closed:
+
+- ~~**First-launch sync bootstrap UX**~~ — bootstrap sub-states surfaced in the sync footer 2026-05-10 (commit `8c2adb8`). The footer now reads "Checking iCloud account…" / "Setting up CloudKit zone…" / "Registering for push notifications…" / "Pulling existing data…" / "Pushing local changes…" / "Synced" so a user can tell which step is in flight.
+- ~~**Deeper "client went away" investigation**~~ — App Nap is the most likely root cause (the symptoms match exactly). `CloudKitSyncService.start` now holds a `ProcessInfo.beginActivity` assertion for the lifetime of the service. If "client went away" still surfaces over real use, longer-lived `CKDatabase` references / less Task hopping in the subscription handler / a custom operation queue are the next investigation rungs.

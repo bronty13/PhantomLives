@@ -125,6 +125,22 @@ final class CloudKitSyncService: ObservableObject {
     private var inFlight = false
     private var pushObserver: NSObjectProtocol?
 
+    /// `ProcessInfo` activity assertion held while sync is enabled.
+    /// Theory: macOS App Nap suspends background apps that don't have
+    /// active UI; `cloudd` then interprets the suspended process as
+    /// "client went away" when it tries to deliver the next
+    /// subscription push. App restart unwedges it because the new
+    /// process has a fresh activity state. Holding `.background`
+    /// activity tells the system this app needs to stay live to
+    /// receive pushes — same pattern as audio players or download
+    /// managers.
+    ///
+    /// `latencyCritical` is intentionally NOT included — we want to
+    /// be live, not high-priority. Explicit `userInitiatedAllowingIdleSystemSleep`
+    /// keeps the process awake without preventing system sleep
+    /// (Mac going to sleep at night should still work).
+    private var activityAssertion: NSObjectProtocol?
+
     // Server change token — resumes incremental sync across launches.
     private static let tokenKey = "PurpleLife.serverChangeToken"
     private var serverChangeToken: CKServerChangeToken? {
@@ -151,6 +167,7 @@ final class CloudKitSyncService: ObservableObject {
 
     func start(schema: SchemaRegistry) {
         self.schema = schema
+        beginActivity()
         observePushNotifications()
         Task { await bootstrap() }
     }
@@ -164,6 +181,25 @@ final class CloudKitSyncService: ObservableObject {
         if let pushObserver {
             NotificationCenter.default.removeObserver(pushObserver)
         }
+        if let activityAssertion {
+            ProcessInfo.processInfo.endActivity(activityAssertion)
+        }
+    }
+
+    /// Hold a `ProcessInfo` activity assertion for the lifetime of the
+    /// sync service so macOS App Nap doesn't suspend us between
+    /// subscription pushes. See the comment on `activityAssertion`
+    /// for the full reasoning.
+    private func beginActivity() {
+        guard activityAssertion == nil else { return }
+        let opts: ProcessInfo.ActivityOptions = [
+            .userInitiatedAllowingIdleSystemSleep,
+            .suddenTerminationDisabled,
+        ]
+        activityAssertion = ProcessInfo.processInfo.beginActivity(
+            options: opts,
+            reason: "PurpleLife CloudKit sync"
+        )
     }
 
     /// Subscribe to the silent-push event posted by `AppDelegate`. The
