@@ -4,6 +4,19 @@ All notable changes to PurpleTracker are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] — Notes editor polish
+
+### Fixed
+- Pasted screenshots / images in note editor were lost on save. Body is now
+  encoded as **RTFD** when attachments are present (RTF can't carry image
+  bytes). The encoder also synthesizes a `fileWrapper` from
+  `NSTextAttachment.image` when one isn't already present.
+
+### Added
+- Keyboard shortcuts in the rich-text editor: **⌘B** bold, **⌘I** italic,
+  **⌘U** underline, **⇧⌘X** strikethrough, **⇧⌘7 / ⇧⌘8** bullet / numbered
+  list, **⌘K** insert link, **⌥⌘1-3** headings, **⌥⌘0** body.
+
 ## [1.5.0] — Notes Workspace (WYSIWYG)
 
 ### Added

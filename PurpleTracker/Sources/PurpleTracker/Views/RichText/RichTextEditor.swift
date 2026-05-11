@@ -107,24 +107,35 @@ struct RichTextToolbar: View {
     var body: some View {
         HStack(spacing: 6) {
             Group {
-                tButton("Bold",          systemImage: "bold")      { applyTrait(.boldFontMask) }
-                tButton("Italic",        systemImage: "italic")    { applyTrait(.italicFontMask) }
-                tButton("Underline",     systemImage: "underline") { underline() }
-                tButton("Strikethrough", systemImage: "strikethrough") { strikethrough() }
+                tButton("Bold (⌘B)",          systemImage: "bold")      { applyTrait(.boldFontMask) }
+                    .keyboardShortcut("b", modifiers: .command)
+                tButton("Italic (⌘I)",        systemImage: "italic")    { applyTrait(.italicFontMask) }
+                    .keyboardShortcut("i", modifiers: .command)
+                tButton("Underline (⌘U)",     systemImage: "underline") { underline() }
+                    .keyboardShortcut("u", modifiers: .command)
+                tButton("Strikethrough (⇧⌘X)", systemImage: "strikethrough") { strikethrough() }
+                    .keyboardShortcut("x", modifiers: [.command, .shift])
             }
             Divider().frame(height: 18)
             Menu {
                 Button("Heading 1") { setHeading(size: 22, weight: .bold) }
+                    .keyboardShortcut("1", modifiers: [.command, .option])
                 Button("Heading 2") { setHeading(size: 18, weight: .semibold) }
+                    .keyboardShortcut("2", modifiers: [.command, .option])
                 Button("Heading 3") { setHeading(size: 15, weight: .semibold) }
+                    .keyboardShortcut("3", modifiers: [.command, .option])
                 Button("Body")      { setHeading(size: 13, weight: .regular) }
+                    .keyboardShortcut("0", modifiers: [.command, .option])
             } label: { Label("Style", systemImage: "textformat") }
                 .menuStyle(.borderlessButton).fixedSize()
             Divider().frame(height: 18)
-            tButton("Bullet list",   systemImage: "list.bullet") { makeList(numbered: false) }
-            tButton("Numbered list", systemImage: "list.number") { makeList(numbered: true) }
+            tButton("Bullet list (⇧⌘7)",   systemImage: "list.bullet") { makeList(numbered: false) }
+                .keyboardShortcut("7", modifiers: [.command, .shift])
+            tButton("Numbered list (⇧⌘8)", systemImage: "list.number") { makeList(numbered: true) }
+                .keyboardShortcut("8", modifiers: [.command, .shift])
             Divider().frame(height: 18)
-            tButton("Link", systemImage: "link") { addLink() }
+            tButton("Link (⌘K)", systemImage: "link") { addLink() }
+                .keyboardShortcut("k", modifiers: .command)
             ColorPicker("", selection: Binding(
                 get: { Color(currentColor()) },
                 set: { setColor(NSColor($0)) }
@@ -300,26 +311,96 @@ struct RichTextToolbar: View {
     }
 }
 
-// MARK: - RTF <-> NSAttributedString helpers
+// MARK: - RTF / RTFD <-> NSAttributedString helpers
 
 extension NSAttributedString {
-    /// Encode this attributed string as RTF data (no embedded files).
+    /// Encode this attributed string for persistence. Uses RTFD when the
+    /// string contains any attachments (pasted screenshots, images) so the
+    /// image bytes survive the round-trip; falls back to plain RTF otherwise
+    /// to stay backward-compatible with existing notes.
     func toRTFData() -> Data? {
-        try? data(
-            from: NSRange(location: 0, length: length),
+        let range = NSRange(location: 0, length: length)
+        if containsAttachments {
+            // NSTextView paste may stash images via `attachment.image`
+            // without a `fileWrapper`. RTFD persistence reads bytes from
+            // the file wrapper, so synthesize one when missing.
+            let prepared = NSAttributedString.ensureAttachmentFileWrappers(in: self)
+            if let rtfd = try? prepared.data(
+                from: NSRange(location: 0, length: prepared.length),
+                documentAttributes: [.documentType: NSAttributedString.DocumentType.rtfd]
+            ) { return rtfd }
+        }
+        return try? data(
+            from: range,
             documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
         )
     }
 
-    /// Decode an RTF payload back into an attributed string. Returns an empty
-    /// attributed string if `data` is nil or fails to parse.
+    /// Decode an RTF or RTFD payload back into an attributed string. Tries
+    /// RTFD first (it tolerates plain-RTF input on macOS) so embedded images
+    /// survive. Returns an empty attributed string if `data` is nil/empty.
     static func fromRTFData(_ data: Data?) -> NSAttributedString {
         guard let data, !data.isEmpty else { return NSAttributedString() }
+        if let s = try? NSAttributedString(
+            data: data,
+            options: [.documentType: NSAttributedString.DocumentType.rtfd],
+            documentAttributes: nil
+        ) { return s }
         if let s = try? NSAttributedString(
             data: data,
             options: [.documentType: NSAttributedString.DocumentType.rtf],
             documentAttributes: nil
         ) { return s }
         return NSAttributedString()
+    }
+
+    /// True when the string contains at least one `NSTextAttachment`.
+    private var containsAttachments: Bool {
+        var found = false
+        enumerateAttribute(.attachment,
+                           in: NSRange(location: 0, length: length),
+                           options: []) { value, _, stop in
+            if value is NSTextAttachment { found = true; stop.pointee = true }
+        }
+        return found
+    }
+
+    /// Returns a copy of `src` where every `NSTextAttachment` has a
+    /// non-nil `fileWrapper`. When only `attachment.image` is set (the case
+    /// after pasting a screenshot in NSTextView), a PNG `FileWrapper` is
+    /// synthesized so RTFD persistence can carry the bytes. When neither an
+    /// image nor a wrapper is available, falls back to `NSTextAttachmentCell`
+    /// rendering.
+    fileprivate static func ensureAttachmentFileWrappers(
+        in src: NSAttributedString
+    ) -> NSAttributedString {
+        let m = NSMutableAttributedString(attributedString: src)
+        let full = NSRange(location: 0, length: m.length)
+        m.enumerateAttribute(.attachment, in: full, options: []) { value, range, _ in
+            guard let att = value as? NSTextAttachment else { return }
+            if att.fileWrapper != nil { return }
+
+            // Try `.image` first (NSTextView paste path on 10.11+).
+            var image: NSImage? = att.image
+            if image == nil, let cell = att.attachmentCell as? NSTextAttachmentCell {
+                image = cell.image
+            }
+            guard let nsImage = image,
+                  let tiff = nsImage.tiffRepresentation,
+                  let rep  = NSBitmapImageRep(data: tiff),
+                  let png  = rep.representation(using: .png, properties: [:]) else {
+                return
+            }
+            let wrapper = FileWrapper(regularFileWithContents: png)
+            wrapper.preferredFilename = "image-\(UUID().uuidString.prefix(8)).png"
+            att.fileWrapper = wrapper
+            // Keep the visible cell consistent.
+            if att.attachmentCell == nil {
+                att.attachmentCell = NSTextAttachmentCell(imageCell: nsImage)
+            }
+            m.removeAttribute(.attachment, range: range)
+            m.addAttribute(.attachment, value: att, range: range)
+        }
+        return m
     }
 }
