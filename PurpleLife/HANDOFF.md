@@ -12,6 +12,16 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-10 — Today polish (timeline + linked-from rail)
+
+First slice of the prototype-polish follow-up. The Today screen visually approaches `Design/purplelife/project/screens-light.jsx ScreenToday` while staying within the data-driven model.
+
+- **Two-column layout** (`HStack` + `Divider` + fixed-width 320 right column). Both columns scroll independently. The right rail uses `Theme.sidebarOpaque.opacity(0.4)` for a distinct surface tone.
+- **Timeline is auto-generated, not a SavedQuery.** It walks every record across every type, picks the type's `calendarDateKey` (or first date-bearing field), keeps anything whose value lands on today's calendar day, sorts chronologically. Render uses time-on-left (h:mm a, "all day" for date-only), a 10pt colored dot keyed to the type's accent, a 1pt connector line drawn behind the dots, and the same card chrome as the existing QueryPanel result cards. Section is omitted entirely when nothing's scheduled — no "no events today" empty state, just clean main column.
+- **Right rail is named-SavedQuery lookup.** Currently shows two cards: first result of the seeded "Currently reading" SavedQuery and of "Latest weight". Cards collapse silently when the query is missing or empty. Adding a third card later is one line — `railCard(forSavedQueryNamed: <name>, subtitle: <heading>)` — no new data model.
+- **Why named lookup vs a separate `railQueries: [SavedQuery]` list**: chose simplicity for v1. The two cards we want are already saved queries we ship; bringing in a second collection plus customization UI is more work than the affordance is worth right now. If users want to customize the rail, a future commit can introduce the second list (and a corresponding tab in `SavedQueriesEditor`).
+- **Phase 3 acceptance gate still holds.** The view doesn't branch on hard-coded type ids — the timeline is one cross-type scan over engine data, and the rail is name-lookup over `appState.settingsStore.settings.todayQueries`.
+
 ### 2026-05-10 — Undo: NSUndoManager wired through ObjectEngine + SchemaRegistry
 
 Closes the undo half of the daily-use ergonomics work that was split out earlier today.

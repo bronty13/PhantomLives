@@ -4,6 +4,19 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-10 — Today polish: timeline + linked-from-today rail (matches prototype)
+
+First slice of follow-up #2 (polish toward the prototype). The Today screen layout now matches `Design/purplelife/project/screens-light.jsx ScreenToday` more closely:
+
+- **Two-column layout** — flexible main column + 320 px right rail, separated by a divider. Rail uses `Theme.sidebarOpaque.opacity(0.4)` as a background so it reads as a distinct surface against the main column.
+- **Today timeline** at the top of the main column. Walks every record across every type, picks the type's `calendarDateKey` (or first date-bearing field), keeps anything whose value falls on today's calendar day, sorts chronologically. Renders each as time-on-left + colored dot + card with the type's icon + record title — same time/dot/connector visual as the prototype. Date-only records show "all day"; dateTime records show `h:mm a`. The whole section is omitted when nothing's scheduled.
+- **Linked-from-today rail** — small cards driven by the existing seeded `SavedQuery` rows, looked up by name. Currently shows two cards: the first result of the "Currently reading" query and of the "Latest weight" query. Cards collapse silently if the query doesn't exist or returns nothing — no placeholder noise.
+- **Header bumped** to `.title.bold` (was `.title2.semibold`) to match the prototype's heavier visual weight.
+
+Phase 3 acceptance gate ("no hard-coded modules") still holds — the timeline is one cross-type scan over the data the engine already serves, and the rail looks up named saved queries. Adding a third rail card later is a one-line `railCard(forSavedQueryNamed:subtitle:)` call.
+
+57/57 tests still green (no test changes — the new code is SwiftUI layout). Build clean.
+
 ### 2026-05-10 — Undo across mutations (NSUndoManager wired through ObjectEngine + SchemaRegistry)
 
 Closes the undo half of the daily-use ergonomics work. ⌘Z and ⇧⌘Z now round-trip through every record and schema mutation.
