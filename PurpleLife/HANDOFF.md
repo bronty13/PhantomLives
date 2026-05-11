@@ -115,6 +115,18 @@ Bootstrap order matters: `pushPendingLocalSchemas()` runs before `pushPendingLoc
 
 **Effect on follow-up list**: item #3 closed.
 
+### 2026-05-10 — WeightTracker subsumption deferred (not blocking; revisit on retirement)
+
+The scope decision earlier today says PurpleLife eventually carries 100% of WeightTracker's functionality. The execution of that — porting WeightTracker's charts (Line / Bar / Area / Scatter / MovingAvg), themes (6 named palettes), Smart Import (free-form text parser), Statistics (BMI / Trend / Forecast), and Reports (PDF / DOCX / XLSX export) — is a multi-week project, not a single commit.
+
+Decision today: defer all of it. Reasoning:
+
+- **WeightTracker still works** as a standalone app. Daily weight capture, charting, exports — all available in WeightTracker.app. PurpleLife handles capture-via-quick-capture and CSV-import-from-WeightTracker for cross-platform unity.
+- **Not blocking anything in PurpleLife**. The Weight type in PurpleLife exists as a built-in seeded type; users can already create Weight records, sync them across Macs, export them via the per-type CSV exporter. The charts / themes / statistics work would be additive polish.
+- **Themes specifically would muddy the design language**. PurpleLife has its own oklch palette (`Theme.swift`) drawn from the design handoff. Layering WeightTracker's six themes on top would dilute that. If theming lands later, it should be a coherent first-class system, not a port.
+
+When this gets picked up, the natural first slice is the prototype's right-rail weight sparkline (big current number + 14-day spark + delta) plus a basic line-chart view for the Weight type in RecordsScreen. The CSV importer that already shipped covers the migration path.
+
 ### 2026-05-10 — Scope: PurpleLife will subsume WeightTracker; PurpleTracker stays separate
 
 Closes the `PLAN.md` § Open question that was previously deferred ("Scope vs `WeightTracker` and `PurpleTracker`").
