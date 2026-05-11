@@ -4,6 +4,15 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-10 — WeightTracker subsumption · slice 3b: StatisticsService + Statistics panel + chart overlays
+
+Ported WeightTracker's StatisticsService (~193 LOC of pure math) and surfaced the results both as a dedicated panel and as overlay layers on the existing Charts view kind.
+
+- **`Services/StatisticsService.swift`** (new) — pure-math port. Input rewritten from `[WeightEntry]` to type-agnostic `[(date: Date, value: Double)]`; uses `Date` arithmetic instead of `"yyyy-MM-dd"` ↔ `Date` round-trips (cleaner, less locale-fragile). Components are independently `static` and testable: `linearRegression`, `movingAverage`, `forecastData`, `computeAverageWeeklyChange`, `computeBestWorstWeek`, `computeDaysToGoal`. `compute(...)` returns the full `WeightStats` bundle. Adapter `computeForWeightRecords(_:settings:)` extracts `(date, pounds)` from `[ObjectRecord]` for the Weight type.
+- **`Views/WeightStatisticsPanel.swift`** (new) — sheet triggered from the Records → Weight toolbar. Four sections: Overview (start / current / goal / total change / progress bar), Trend (weekly rate / regression slope / R² / best+worst week), BMI (current / starting / goal with category labels — only when `heightInches` is set), Forecast (days-to-goal + projections at 7/14/30/60/90 days). Loss = green, gain = orange, same scheme as the rail card.
+- **Chart overlays** added to `RecordsChartBody`. Three checkbox toggles in the toolbar, surface only when viewing the Weight type. **Trend** = regression line drawn from first to last visible date. **7d avg** = 7-day moving average dashed line. **Goal** = horizontal `RuleMark` with a small "Goal · N" annotation; disabled when `goalWeightPounds` is unset (with a tooltip explaining where to set it). Y-axis domain expands to include the goal line so it's always visible.
+- **11 new `StatisticsServiceTests`** covering linear regression on known-slope data (recovers slope exactly + R² = 1), moving-average smoothing, BMI calculation, forecast extrapolation, days-to-goal at known slope, edge cases (positive slope → nil, already past goal → 0, fewer than 2 points → nil compute). **75/75 tests green** (was 64, +11).
+
 ### 2026-05-10 — WeightTracker subsumption · slice 3a: Weight settings (goal / starting / height / forecast)
 
 Tiny prep slice — adds the four user profile values that slice 3b's chart overlays and Statistics panel need, with a Settings UI surfacing them. Lands on its own (rather than bundled with 3b) so each diff stays focused; AppSettings additions are 5 lines and the UI is one new tab.

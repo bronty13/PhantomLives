@@ -30,6 +30,7 @@ struct RecordsScreen: View {
     @State private var editingRecordId: String?
     @State private var exportMessage: String?
     @State private var exporting: Bool = false
+    @State private var showingStatistics: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -52,6 +53,17 @@ struct RecordsScreen: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+            }
+            ToolbarItem(placement: .primaryAction) {
+                if typeId == "Weight" {
+                    Button {
+                        showingStatistics = true
+                    } label: {
+                        Label("Statistics", systemImage: "chart.bar.doc.horizontal")
+                    }
+                    .disabled(rows.count < 2)
+                    .help(rows.count < 2 ? "Need at least 2 records" : "Open the Weight statistics panel")
+                }
             }
             ToolbarItem(placement: .primaryAction) {
                 exportMenu
@@ -88,6 +100,10 @@ struct RecordsScreen: View {
                 ObjectDetailSheet(recordId: id, onChange: { reload(); appState.reloadAll() })
                     .environmentObject(appState)
             }
+        }
+        .sheet(isPresented: $showingStatistics) {
+            WeightStatisticsPanel(typeId: typeId)
+                .environmentObject(appState)
         }
         .onChange(of: appState.openRecordRequest) { _, requested in
             // Quick Switcher (or any other source) has asked us to open

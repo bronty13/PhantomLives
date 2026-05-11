@@ -17,10 +17,18 @@ import SwiftUI
 /// most-recently-updated record and drops the rest. Documented as
 /// last-write-wins per day in HANDOFF.
 struct RecordsChartBody: View {
+    @EnvironmentObject private var appState: AppState
     let type: ObjectType
     let rows: [ObjectRecord]
 
     @State private var range: TimeRange = .d30
+    // Overlay toggles. All three are applicable only to the Weight
+    // type (regression + 7-day MA need StatisticsService; Goal line
+    // needs AppSettings.goalWeightPounds). Hidden in the toolbar for
+    // other types.
+    @State private var showTrendLine: Bool = false
+    @State private var show7dAverage: Bool = false
+    @State private var showGoalLine: Bool = true
 
     enum TimeRange: String, CaseIterable, Identifiable {
         case d7   = "7D"
@@ -67,7 +75,7 @@ struct RecordsChartBody: View {
     // MARK: - Toolbar
 
     private var toolbar: some View {
-        HStack {
+        HStack(spacing: 14) {
             Picker("Range", selection: $range) {
                 ForEach(TimeRange.allCases) { r in
                     Text(r.rawValue).tag(r)
@@ -77,6 +85,18 @@ struct RecordsChartBody: View {
             .labelsHidden()
             .frame(maxWidth: 360)
             Spacer()
+            if type.id == "Weight" {
+                Toggle("Trend", isOn: $showTrendLine)
+                    .toggleStyle(.checkbox)
+                Toggle("7d avg", isOn: $show7dAverage)
+                    .toggleStyle(.checkbox)
+                Toggle("Goal", isOn: $showGoalLine)
+                    .toggleStyle(.checkbox)
+                    .disabled(appState.settings.goalWeightPounds == nil)
+                    .help(appState.settings.goalWeightPounds == nil
+                          ? "Set Goal weight in Settings → Weight"
+                          : "Show Goal line at \(appState.settings.goalWeightPounds!) lb")
+            }
         }
         .padding(.horizontal, 16).padding(.vertical, 10)
     }
@@ -100,7 +120,14 @@ struct RecordsChartBody: View {
 
     private func chart(points: [(date: Date, value: Double)]) -> some View {
         let tone = Color(hex: type.colorHex) ?? .accentColor
-        let (yMin, yMax) = paddedYDomain(values: points.map(\.value))
+        // Collect all the values that participate in the y-axis so a
+        // goal line outside the data range still fits in the chart's
+        // visible domain.
+        var yValues = points.map(\.value)
+        let overlays = computeOverlays(points: points)
+        if let trend = overlays.trend { yValues.append(contentsOf: trend.map(\.value)) }
+        if let goal = overlays.goal { yValues.append(goal) }
+        let (yMin, yMax) = paddedYDomain(values: yValues)
         let primaryName = type.field(forKey: type.primaryFieldKey ?? "")?.name ?? "Value"
         return Chart {
             ForEach(Array(points.enumerated()), id: \.offset) { _, p in
@@ -124,6 +151,46 @@ struct RecordsChartBody: View {
                 .foregroundStyle(tone)
                 .lineStyle(StrokeStyle(lineWidth: 2.5))
             }
+            // 7-day moving average overlay — secondary line, no area.
+            if let ma = overlays.movingAverage {
+                ForEach(Array(ma.enumerated()), id: \.offset) { _, p in
+                    LineMark(
+                        x: .value("Date", p.date),
+                        y: .value("7-day avg", p.value),
+                        series: .value("Series", "ma7")
+                    )
+                    .interpolationMethod(.catmullRom)
+                    .foregroundStyle(.blue)
+                    .lineStyle(StrokeStyle(lineWidth: 1.6, dash: [4, 3]))
+                }
+            }
+            // Trend (linear regression) — straight line from first to
+            // last predicted value.
+            if let trend = overlays.trend, trend.count >= 2 {
+                ForEach(Array(trend.enumerated()), id: \.offset) { _, p in
+                    LineMark(
+                        x: .value("Date", p.date),
+                        y: .value("Trend", p.value),
+                        series: .value("Series", "trend")
+                    )
+                    .foregroundStyle(.purple)
+                    .lineStyle(StrokeStyle(lineWidth: 1.4, dash: [2, 4]))
+                }
+            }
+            // Goal line — horizontal RuleMark at the goal weight.
+            if let goal = overlays.goal {
+                RuleMark(y: .value("Goal", goal))
+                    .foregroundStyle(.red)
+                    .lineStyle(StrokeStyle(lineWidth: 1.2, dash: [6, 4]))
+                    .annotation(position: .topTrailing, alignment: .trailing) {
+                        Text("Goal · \(String(format: "%.0f", goal))")
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, 6).padding(.vertical, 1)
+                            .background(Color.red.opacity(0.1))
+                            .clipShape(Capsule())
+                    }
+            }
         }
         .chartYScale(domain: yMin...yMax)
         .chartXAxis {
@@ -140,6 +207,40 @@ struct RecordsChartBody: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Overlays
+
+    private struct Overlays {
+        var trend: [(date: Date, value: Double)]?
+        var movingAverage: [(date: Date, value: Double)]?
+        var goal: Double?
+    }
+
+    private func computeOverlays(points: [(date: Date, value: Double)]) -> Overlays {
+        guard type.id == "Weight", points.count >= 2 else { return Overlays() }
+        var out = Overlays()
+        let (slope, _) = StatisticsService.linearRegression(sorted: points)
+        if showTrendLine, let slope, let first = points.first, let last = points.last {
+            // Two endpoints define the regression line within the
+            // visible date range. Intercept derived from the first
+            // point's residual so the line passes through the data
+            // cloud, not out of bounds.
+            let intercept = first.value - slope * 0
+            let lastDays = StatisticsService.daysBetween(first.date, last.date)
+            out.trend = [
+                (date: first.date, value: intercept),
+                (date: last.date, value: intercept + slope * Double(lastDays)),
+            ]
+        }
+        if show7dAverage {
+            let ma = StatisticsService.movingAverage(sorted: points, window: 7)
+            if !ma.isEmpty { out.movingAverage = ma }
+        }
+        if showGoalLine, let g = appState.settings.goalWeightPounds {
+            out.goal = g
+        }
+        return out
     }
 
     // MARK: - Range filter
