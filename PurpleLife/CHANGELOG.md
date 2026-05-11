@@ -4,6 +4,18 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-10 — WeightTracker subsumption · slice 1: Today right-rail Weight sparkline
+
+First slice of the WeightTracker → PurpleLife port (HANDOFF.md plan committed earlier today). Replaces the generic "Latest weight" rail card with a Weight-specific card matching `Design/purplelife/project/screens-light.jsx ScreenToday`'s right-rail weight section.
+
+- **Big bold pounds number** (the latest record's value, monospaced digits, 26 pt) with a small `lb` unit caption.
+- **14-day delta badge** in the upper right — green for loss, orange for gain, secondary for zero. No semantic claim about direction; users tracking weight gain can read the sign.
+- **Hand-rolled 14-day sparkline** — `Path` over normalized points, `Theme.accent` stroke. SwiftUI Charts deliberately not imported here to keep the rail card lightweight; full Charts comes in slice 2 for the dedicated Charts view.
+- **Pattern-match on `type.id == "Weight"`** in `Today.swift`'s `railCard(forSavedQueryNamed:)` — scoped exception, not a pattern for other types. Reading / Photos / etc. continue to render via the generic `RailCard`.
+- Card collapses silently when there are no Weight records (matches existing rail behavior).
+
+59/59 tests still green (no test changes — the new code is SwiftUI rendering of data the engine already serves).
+
 ### 2026-05-10 — App Nap suppression while CloudKit sync is enabled
 
 Theory-driven prophylactic for the deeper "client went away" follow-up. macOS App Nap suspends background apps that don't have active UI; for an app that needs to stay live to receive silent-push CloudKit notifications, that's the wrong tradeoff. `cloudd` interpreting a napped process as "client went away" matches the symptom we saw — the receiver's CKContainer binding goes stale until the user brings the app back to the foreground (or restarts it).

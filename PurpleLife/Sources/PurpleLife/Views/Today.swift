@@ -163,16 +163,31 @@ struct TodayScreen: View {
     /// Find the named saved query, run it, and render the first result
     /// as a small card. Returns nil if the query doesn't exist or
     /// returned no results — the rail then collapses that slot.
+    ///
+    /// Weight is a scoped exception — the prototype's right rail
+    /// shows weight as a sparkline + delta + headline number, not the
+    /// generic two-supporting-fields card. We pattern-match on
+    /// `type.id == "Weight"` here rather than dirtying the `SavedQuery`
+    /// model. This is NOT a pattern for other types — Reading, Photos,
+    /// etc. continue to use the generic `RailCard`.
     @ViewBuilder
     private func railCard(forSavedQueryNamed name: String, subtitle: String) -> some View {
         if let query = appState.settingsStore.settings.todayQueries.first(where: { $0.name == name }),
            let first = QueryRunner.run(query, schema: appState.schema).first {
-            RailCard(
-                subtitle: subtitle,
-                record: first.record,
-                type: first.type,
-                onOpen: { openingRecordId = first.record.id }
-            )
+            if first.type.id == "Weight" {
+                WeightRailCard(
+                    latest: first.record,
+                    type: first.type,
+                    onOpen: { openingRecordId = first.record.id }
+                )
+            } else {
+                RailCard(
+                    subtitle: subtitle,
+                    record: first.record,
+                    type: first.type,
+                    onOpen: { openingRecordId = first.record.id }
+                )
+            }
         }
     }
 }
@@ -335,6 +350,164 @@ private struct RailCard: View {
                    && $0.kind != .longText
                    && $0.kind != .attachment }
             .prefix(2))
+    }
+}
+
+// MARK: - Weight rail card (matches prototype's right-rail weight section)
+
+/// Specialized rail card for the Weight type. Shows the prototype's
+/// weight chrome: section header with a 14-day delta badge, big bold
+/// current pounds number, and a hand-rolled 14-day sparkline.
+///
+/// Queries its own data window (last 14 days of Weight records) rather
+/// than reusing the "Latest weight" SavedQuery's single result — the
+/// sparkline needs the full window. The headline number still comes
+/// from the latest record (passed in by the parent).
+private struct WeightRailCard: View {
+    @EnvironmentObject private var appState: AppState
+    let latest: ObjectRecord
+    let type: ObjectType
+    var onOpen: () -> Void
+
+    var body: some View {
+        let window = recentWindow()
+        let head = headlinePounds()
+        let delta = computeDelta(window: window)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Weight · 14d")
+                    .font(.caption2).fontWeight(.semibold).tracking(0.4)
+                    .textCase(.uppercase).foregroundStyle(.tertiary)
+                Spacer()
+                if let delta {
+                    Text(deltaLabel(delta))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(deltaColor(delta))
+                }
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                if let head {
+                    Text(formatted(head))
+                        .font(.system(size: 26, weight: .bold))
+                        .monospacedDigit()
+                        .foregroundStyle(.primary)
+                    Text("lb")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                } else {
+                    Text("—")
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if window.count >= 2 {
+                WeightSparkline(points: window)
+                    .frame(height: 36)
+                    .padding(.top, 4)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.card)
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.cardBorder, lineWidth: 0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { onOpen() }
+    }
+
+    // MARK: Data extraction
+
+    /// Last 14 days of Weight records sorted ascending by date. Each
+    /// element is `(date, pounds)`. Records missing either field are
+    /// skipped silently — the chart needs both to plot a point.
+    private func recentWindow() -> [(date: Date, value: Double)] {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? Date()
+        let records = (try? appState.database.fetchObjects(typeId: type.id)) ?? []
+        return records.compactMap { r -> (date: Date, value: Double)? in
+            let f = r.fields()
+            guard let parsed = FieldDisplay.parsedDate(f["date"]),
+                  parsed >= cutoff,
+                  let value = numericValue(f["pounds"]) else { return nil }
+            return (parsed, value)
+        }
+        .sorted { $0.date < $1.date }
+    }
+
+    /// Headline pounds — uses the `latest` record passed in by the
+    /// parent (which is the result of the "Latest weight" SavedQuery).
+    private func headlinePounds() -> Double? {
+        numericValue(latest.fields()["pounds"])
+    }
+
+    /// 14-day delta — last value minus first value within the window.
+    /// nil if fewer than two points.
+    private func computeDelta(window: [(date: Date, value: Double)]) -> Double? {
+        guard window.count >= 2,
+              let first = window.first?.value,
+              let last = window.last?.value else { return nil }
+        return last - first
+    }
+
+    private func numericValue(_ raw: Any?) -> Double? {
+        guard let raw, !(raw is NSNull) else { return nil }
+        if let d = raw as? Double { return d }
+        if let i = raw as? Int { return Double(i) }
+        if let s = raw as? String { return Double(s) }
+        return nil
+    }
+
+    private func formatted(_ value: Double) -> String {
+        // 1 decimal place, no trailing zeros for whole numbers
+        if value.rounded() == value { return String(Int64(value)) }
+        return String(format: "%.1f", value)
+    }
+
+    private func deltaLabel(_ delta: Double) -> String {
+        let abs = abs(delta)
+        let sign = delta >= 0 ? "+" : "−"
+        return String(format: "%@%.1f lb", sign, abs)
+    }
+
+    /// Loss = green (typical user goal); gain = orange. No semantic
+    /// claim — users tracking weight gain can read the sign and form
+    /// their own judgment.
+    private func deltaColor(_ delta: Double) -> Color {
+        delta < 0 ? .green : (delta > 0 ? .orange : .secondary)
+    }
+}
+
+/// Hand-rolled polyline. Avoids importing SwiftUI Charts in the rail
+/// (the rail card is small and a `Path` keeps the file count down).
+/// Points must be sorted ascending by date; degenerate inputs (single
+/// point or zero-range value) draw a flat line.
+private struct WeightSparkline: View {
+    let points: [(date: Date, value: Double)]
+
+    var body: some View {
+        GeometryReader { geo in
+            Path { path in
+                guard points.count >= 2 else { return }
+                let values = points.map(\.value)
+                let minVal = values.min() ?? 0
+                let maxVal = values.max() ?? 1
+                let valRange = max(maxVal - minVal, 0.001)
+                let firstDate = points.first!.date
+                let lastDate = points.last!.date
+                let dateRange = max(lastDate.timeIntervalSince(firstDate), 1)
+
+                func project(_ p: (date: Date, value: Double)) -> CGPoint {
+                    let x = CGFloat(p.date.timeIntervalSince(firstDate) / dateRange) * geo.size.width
+                    let y = CGFloat(1 - (p.value - minVal) / valRange) * geo.size.height
+                    return CGPoint(x: x, y: y)
+                }
+
+                path.move(to: project(points[0]))
+                for p in points.dropFirst() {
+                    path.addLine(to: project(p))
+                }
+            }
+            .stroke(Theme.accent, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+        }
     }
 }
 
