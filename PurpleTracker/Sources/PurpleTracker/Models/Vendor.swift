@@ -10,7 +10,12 @@ struct Vendor: Codable, Hashable, Identifiable, FetchableRecord, MutablePersista
 
     var id: String                          // UUID
     var name: String
-    var address: String
+    var address: String                     // legacy single-line; kept for backward compat
+    var address1: String
+    var address2: String
+    var city: String
+    var state: String
+    var postalCode: String                  // ZIP / ZIP+4
     var website: String
     var phone: String
     var budgetCode: String                  // SEC# / cost-center code
@@ -28,7 +33,8 @@ struct Vendor: Codable, Hashable, Identifiable, FetchableRecord, MutablePersista
     var deletedAt: Date?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, address, website, phone, reseller, rating
+        case id, name, address, address1, address2, city, state, website, phone, reseller, rating
+        case postalCode = "postal_code"
         case budgetCode = "budget_code"
         case resellerOther = "reseller_other"
         case ratingNote = "rating_note"
@@ -48,6 +54,11 @@ struct Vendor: Codable, Hashable, Identifiable, FetchableRecord, MutablePersista
             id: UUID().uuidString,
             name: name,
             address: "",
+            address1: "",
+            address2: "",
+            city: "",
+            state: "",
+            postalCode: "",
             website: "",
             phone: "",
             budgetCode: "",
@@ -72,6 +83,21 @@ struct Vendor: Codable, Hashable, Identifiable, FetchableRecord, MutablePersista
             return resellerOther
         }
         return reseller
+    }
+
+    /// Pretty multi-line address built from the structured fields, with the
+    /// legacy free-form `address` as a fallback for un-migrated rows.
+    var formattedAddress: String {
+        var lines: [String] = []
+        if !address1.isEmpty { lines.append(address1) }
+        if !address2.isEmpty { lines.append(address2) }
+        let cityStateZip = [
+            city,
+            [state, postalCode].filter { !$0.isEmpty }.joined(separator: " ")
+        ].filter { !$0.isEmpty }.joined(separator: ", ")
+        if !cityStateZip.isEmpty { lines.append(cityStateZip) }
+        if lines.isEmpty { return address }
+        return lines.joined(separator: "\n")
     }
 }
 

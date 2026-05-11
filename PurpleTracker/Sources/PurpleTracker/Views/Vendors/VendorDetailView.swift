@@ -149,7 +149,20 @@ struct VendorOverviewTab: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Group {
-                row("Address",       bind(\.address))
+                row("Address 1",     bind(\.address1),    placeholder: "Street")
+                row("Address 2",     bind(\.address2),    placeholder: "Suite / Apt (optional)")
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("City").frame(width: 110, alignment: .trailing).foregroundStyle(.secondary)
+                    TextField("City", text: bind(\.city)).textFieldStyle(.roundedBorder)
+                    Text("State").foregroundStyle(.secondary)
+                    TextField("ST", text: bind(\.state))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 60)
+                    Text("Zip+4").foregroundStyle(.secondary)
+                    TextField("00000-0000", text: bind(\.postalCode))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 110)
+                }
                 row("Website",       bind(\.website),     placeholder: "https://…")
                 row("Phone",         bind(\.phone))
                 row("Data Center",   bind(\.dataCenter))
@@ -236,6 +249,7 @@ struct VendorContactsTab: View {
         return VStack(alignment: .leading, spacing: 6) {
             Text(kind.displayName).font(.headline)
             field("Name",   text: bind(contact, \.name))
+            field("Title",  text: bind(contact, \.title))
             field("Phone",  text: bind(contact, \.phone))
             field("Mobile", text: bind(contact, \.mobile))
             field("Email",  text: bind(contact, \.email))

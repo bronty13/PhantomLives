@@ -415,6 +415,25 @@ final class DatabaseService {
             }
         }
 
+        migrator.registerMigration("v9_third_party_address_split_and_contact_title") { db in
+            // Split single `address` into address1/2/city/state/postal_code.
+            // Existing free-form `address` is migrated into `address1`.
+            try db.alter(table: "vendor") { t in
+                t.add(column: "address1",    .text).notNull().defaults(to: "")
+                t.add(column: "address2",    .text).notNull().defaults(to: "")
+                t.add(column: "city",        .text).notNull().defaults(to: "")
+                t.add(column: "state",       .text).notNull().defaults(to: "")
+                t.add(column: "postal_code", .text).notNull().defaults(to: "")
+            }
+            try db.execute(sql: """
+                UPDATE vendor SET address1 = address WHERE IFNULL(address,'') <> ''
+            """)
+            // Job title for each contact (Sales / Escalation / Technical).
+            try db.alter(table: "vendor_contact") { t in
+                t.add(column: "title", .text).notNull().defaults(to: "")
+            }
+        }
+
         try migrator.migrate(writer)
     }
 

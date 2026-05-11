@@ -4,6 +4,19 @@ All notable changes to PurpleTracker are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.4] — Third Party address split + contact title
+
+### Added
+- Third Party demographics now use **Address 1 / Address 2 / City / State /
+  Zip+4** instead of a single free-form line. Existing free-form addresses
+  are migrated into Address 1 (`v9` migration).
+- Each contact (Sales / Escalation / Technical) gains a **Title** field.
+  Surfaced in the Contacts tab and the detailed report.
+
+### Changed
+- Single-Third-Party report now renders the structured address as a
+  multi-line block. Contacts section adds a `Title:` line when present.
+
 ## [1.5.3] — Third Party terminology
 
 ### Changed

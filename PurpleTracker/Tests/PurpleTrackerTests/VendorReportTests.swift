@@ -43,7 +43,8 @@ final class VendorReportTests: XCTestCase {
         try VendorService.insert(v)
         try VendorService.upsertContact(VendorContact(
             id: "c1", vendorId: v.id, kind: "sales",
-            name: "Pat Buyer", phone: "555", mobile: "", email: "pat@example.com"
+            name: "Pat Buyer", title: "Account Exec",
+            phone: "555", mobile: "", email: "pat@example.com"
         ))
         let md = VendorReportService.renderMarkdown(
             vendor: v, detailed: true, yearRange: [2026]

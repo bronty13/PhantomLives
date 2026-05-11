@@ -36,7 +36,12 @@ enum VendorReportService {
         out += "**Reseller:** \(vendor.resellerDisplay)  \n"
         if let r = vendor.rating { out += "**Rating:** \(stars(r)) (\(r)/5)  \n" }
         if !vendor.ratingNote.isEmpty { out += "**Rating note:** \(vendor.ratingNote)  \n" }
-        if !vendor.address.isEmpty    { out += "**Address:** \(vendor.address)  \n" }
+        if !vendor.formattedAddress.isEmpty {
+            out += "**Address:**  \n"
+            for line in vendor.formattedAddress.components(separatedBy: "\n") {
+                out += "\(line)  \n"
+            }
+        }
         if !vendor.website.isEmpty    { out += "**Website:** \(vendor.website)  \n" }
         if !vendor.phone.isEmpty      { out += "**Phone:** \(vendor.phone)  \n" }
         if !vendor.dataCenter.isEmpty { out += "**Data Center:** \(vendor.dataCenter)  \n" }
@@ -78,9 +83,10 @@ enum VendorReportService {
             out += "\n## Contacts\n\n"
             for kind in VendorContactKind.allCases {
                 if let c = contacts.first(where: { $0.kind == kind.rawValue }),
-                   !c.name.isEmpty || !c.email.isEmpty || !c.phone.isEmpty || !c.mobile.isEmpty {
+                   !c.name.isEmpty || !c.title.isEmpty || !c.email.isEmpty || !c.phone.isEmpty || !c.mobile.isEmpty {
                     out += "### \(kind.displayName)\n"
                     if !c.name.isEmpty   { out += "- Name: \(c.name)\n" }
+                    if !c.title.isEmpty  { out += "- Title: \(c.title)\n" }
                     if !c.phone.isEmpty  { out += "- Phone: \(c.phone)\n" }
                     if !c.mobile.isEmpty { out += "- Mobile: \(c.mobile)\n" }
                     if !c.email.isEmpty  { out += "- Email: \(c.email)\n" }

@@ -12,12 +12,13 @@ struct VendorContact: Codable, Hashable, Identifiable, FetchableRecord, MutableP
     var vendorId: String            // FK vendor.id
     var kind: String                // ContactKind.rawValue
     var name: String
+    var title: String
     var phone: String
     var mobile: String
     var email: String
 
     enum CodingKeys: String, CodingKey {
-        case id, kind, name, phone, mobile, email
+        case id, kind, name, title, phone, mobile, email
         case vendorId = "vendor_id"
     }
 }
@@ -39,6 +40,7 @@ enum VendorContactKind: String, CaseIterable, Identifiable {
 extension VendorContact {
     static func empty(vendorId: String, kind: VendorContactKind) -> VendorContact {
         VendorContact(id: UUID().uuidString, vendorId: vendorId,
-                      kind: kind.rawValue, name: "", phone: "", mobile: "", email: "")
+                      kind: kind.rawValue, name: "", title: "",
+                      phone: "", mobile: "", email: "")
     }
 }
