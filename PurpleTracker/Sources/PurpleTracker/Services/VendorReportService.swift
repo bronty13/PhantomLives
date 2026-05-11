@@ -54,12 +54,19 @@ enum VendorReportService {
         out += "\n## Budget & Actuals\n\n"
         let amounts = (try? VendorService.fetchYearAmounts(vendorId: vendor.id)) ?? []
         let actuals = (try? VendorInvoiceService.effectiveActuals(vendorId: vendor.id, years: yearRange)) ?? [:]
-        out += "| Year | Budget | Actual (effective) |\n"
-        out += "|------|--------|--------------------|\n"
+        out += "| Year | Budget | Bud Y/Y | Actual (effective) | Act Y/Y | Variance |\n"
+        out += "|------|--------|---------|--------------------|---------|----------|\n"
+        var priorBudget: Int64? = nil
+        var priorActual: Int64? = nil
         for y in yearRange {
             let budget = amounts.first(where: { $0.year == y })?.budgetCents ?? 0
             let actual = actuals[y] ?? 0
-            out += "| \(y) | \(Money.format(cents: budget)) | \(Money.format(cents: actual)) |\n"
+            let variance = budget - actual
+            let budYoy = BudgetMath.yoyDisplay(current: budget, prior: priorBudget)
+            let actYoy = BudgetMath.yoyDisplay(current: actual, prior: priorActual)
+            out += "| \(y) | \(Money.format(cents: budget)) | \(budYoy) | \(Money.format(cents: actual)) | \(actYoy) | \(BudgetMath.varianceDisplay(cents: variance)) |\n"
+            priorBudget = budget
+            priorActual = actual
         }
 
         if !detailed { return out }

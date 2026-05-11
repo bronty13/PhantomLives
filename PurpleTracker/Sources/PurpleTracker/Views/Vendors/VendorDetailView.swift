@@ -328,19 +328,30 @@ struct VendorBudgetTab: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Budget & Actuals")
                 .font(.headline)
-            Text("Year range is set in Settings → Third Parties. **Effective Actual** = manual override if present, otherwise the sum of invoices in that year.")
+            Text("Year range is set in Settings → Third Parties. **Effective Actual** = manual override if present, otherwise the sum of invoices in that year. **Variance** = Budget − Effective Actual (positive = under budget). **Y/Y %** compares to the prior year in the matrix.")
                 .font(.caption).foregroundStyle(.secondary)
             // Header row.
             HStack {
                 Text("Year").frame(width: 60, alignment: .leading)
-                Text("Budget").frame(width: 140, alignment: .leading)
-                Text("Actual (override)").frame(width: 160, alignment: .leading)
-                Text("Effective Actual").frame(width: 140, alignment: .leading)
+                Text("Budget").frame(width: 130, alignment: .leading)
+                Text("Bud Y/Y").frame(width: 70, alignment: .trailing)
+                Text("Actual (override)").frame(width: 150, alignment: .leading)
+                Text("Effective Actual").frame(width: 130, alignment: .leading)
+                Text("Act Y/Y").frame(width: 70, alignment: .trailing)
+                Text("Variance").frame(width: 130, alignment: .trailing)
             }
             .font(.caption).foregroundStyle(.secondary)
             Divider()
-            ForEach(years, id: \.self) { year in
-                BudgetRow(vendor: vendor, year: year)
+            ForEach(Array(years.enumerated()), id: \.element) { idx, year in
+                let priorYear: Int? = idx > 0 ? years[idx - 1] : nil
+                BudgetRow(
+                    vendor: vendor,
+                    year: year,
+                    priorBudgetCents: priorYear.flatMap { y in
+                        app.vendorYearAmounts.first(where: { $0.year == y })?.budgetCents
+                    },
+                    priorActualCents: priorYear.flatMap { app.vendorEffectiveActuals[$0] }
+                )
             }
         }
     }
@@ -350,29 +361,53 @@ private struct BudgetRow: View {
     @EnvironmentObject var app: AppState
     let vendor: Vendor
     let year: Int
+    let priorBudgetCents: Int64?
+    let priorActualCents: Int64?
     @State private var budgetText: String = ""
     @State private var overrideText: String = ""
 
     var body: some View {
         let existing = app.vendorYearAmounts.first(where: { $0.year == year })
+        let budget = existing?.budgetCents ?? 0
         let effective = app.vendorEffectiveActuals[year] ?? 0
+        let variance = budget - effective
         HStack(alignment: .center) {
             Text(verbatim: "\(year)").frame(width: 60, alignment: .leading)
             TextField("$0.00", text: $budgetText, onCommit: commitBudget)
                 .textFieldStyle(.roundedBorder)
-                .frame(width: 140)
+                .frame(width: 130)
+            Text(BudgetMath.yoyDisplay(current: budget, prior: priorBudgetCents))
+                .frame(width: 70, alignment: .trailing)
+                .foregroundStyle(BudgetMath.yoyColor(current: budget, prior: priorBudgetCents))
+                .font(.callout.monospacedDigit())
             TextField("auto", text: $overrideText, onCommit: commitOverride)
                 .textFieldStyle(.roundedBorder)
-                .frame(width: 160)
+                .frame(width: 150)
             Text(Money.format(cents: effective))
-                .frame(width: 140, alignment: .leading)
+                .frame(width: 130, alignment: .leading)
                 .foregroundStyle(existing?.actualOverrideCents != nil ? .primary : .secondary)
+            Text(BudgetMath.yoyDisplay(current: effective, prior: priorActualCents))
+                .frame(width: 70, alignment: .trailing)
+                .foregroundStyle(BudgetMath.yoyColor(current: effective, prior: priorActualCents))
+                .font(.callout.monospacedDigit())
+            Text(BudgetMath.varianceDisplay(cents: variance))
+                .frame(width: 130, alignment: .trailing)
+                .foregroundStyle(variance >= 0 ? Color.green : Color.red)
+                .font(.callout.monospacedDigit())
         }
-        .onAppear {
-            if let e = existing {
-                budgetText = Money.format(cents: e.budgetCents)
-                overrideText = e.actualOverrideCents.map { Money.format(cents: $0) } ?? ""
-            }
+        .onAppear { syncFromStore() }
+        .onChange(of: vendor.id) { _, _ in syncFromStore() }
+        .onChange(of: existing?.budgetCents) { _, _ in syncFromStore() }
+        .onChange(of: existing?.actualOverrideCents) { _, _ in syncFromStore() }
+    }
+
+    private func syncFromStore() {
+        if let e = app.vendorYearAmounts.first(where: { $0.year == year }) {
+            budgetText = Money.format(cents: e.budgetCents)
+            overrideText = e.actualOverrideCents.map { Money.format(cents: $0) } ?? ""
+        } else {
+            budgetText = ""
+            overrideText = ""
         }
     }
 
