@@ -12,13 +12,13 @@ struct ThirdPartiesSettingsView: View {
                     get: { settingsStore.settings.thirdPartyYearStart },
                     set: { settingsStore.settings.thirdPartyYearStart = $0; settingsStore.save() }
                 ), in: 1990...2100) {
-                    Text("Start year: \(settingsStore.settings.thirdPartyYearStart)")
+                    Text(verbatim: "Start year: \(settingsStore.settings.thirdPartyYearStart)")
                 }
                 Stepper(value: Binding(
                     get: { settingsStore.settings.thirdPartyYearEnd },
                     set: { settingsStore.settings.thirdPartyYearEnd = $0; settingsStore.save() }
                 ), in: 1990...2100) {
-                    Text("End year: \(settingsStore.settings.thirdPartyYearEnd)")
+                    Text(verbatim: "End year: \(settingsStore.settings.thirdPartyYearEnd)")
                 }
                 Text("Years outside the range stay in the database — they're just hidden from the matrix.")
                     .font(.caption).foregroundStyle(.secondary)

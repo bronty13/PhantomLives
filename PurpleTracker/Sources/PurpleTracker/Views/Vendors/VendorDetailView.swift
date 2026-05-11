@@ -32,25 +32,7 @@ struct VendorDetailView: View {
                 .padding()
                 .background(Color.accentColor.opacity(0.08))
             Divider()
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
-                    ForEach(VTab.allCases) { t in
-                        Button {
-                            tab = t
-                        } label: {
-                            Text(t.rawValue)
-                                .font(.callout)
-                                .padding(.horizontal, 10).padding(.vertical, 6)
-                                .background(tab == t
-                                            ? Color.accentColor.opacity(0.25)
-                                            : Color.clear)
-                                .cornerRadius(6)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 12).padding(.vertical, 8)
-            }
+            VendorTabBar(tabs: VTab.allCases, selection: $tab) { t in t.rawValue }
             Divider()
             ScrollView {
                 Group {
@@ -171,6 +153,7 @@ struct VendorOverviewTab: View {
                 row("Website",       bind(\.website),     placeholder: "https://…")
                 row("Phone",         bind(\.phone))
                 row("Data Center",   bind(\.dataCenter))
+                row("Budget Code",   bind(\.budgetCode),  placeholder: "SEC# / cost-center")
             }
             HStack(alignment: .firstTextBaseline) {
                 Text("Reseller").frame(width: 110, alignment: .trailing).foregroundStyle(.secondary)
@@ -181,6 +164,7 @@ struct VendorOverviewTab: View {
                         try? app.updateVendor(v)
                     }
                 )) {
+                    Text("None").tag("")
                     ForEach(Reseller.allCases) { Text($0.rawValue).tag($0.rawValue) }
                 }
                 .pickerStyle(.menu)
@@ -373,7 +357,7 @@ private struct BudgetRow: View {
         let existing = app.vendorYearAmounts.first(where: { $0.year == year })
         let effective = app.vendorEffectiveActuals[year] ?? 0
         HStack(alignment: .center) {
-            Text("\(year)").frame(width: 60, alignment: .leading)
+            Text(verbatim: "\(year)").frame(width: 60, alignment: .leading)
             TextField("$0.00", text: $budgetText, onCommit: commitBudget)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 140)

@@ -40,6 +40,7 @@ enum VendorReportService {
         if !vendor.website.isEmpty    { out += "**Website:** \(vendor.website)  \n" }
         if !vendor.phone.isEmpty      { out += "**Phone:** \(vendor.phone)  \n" }
         if !vendor.dataCenter.isEmpty { out += "**Data Center:** \(vendor.dataCenter)  \n" }
+        if !vendor.budgetCode.isEmpty { out += "**Budget Code (SEC#):** \(vendor.budgetCode)  \n" }
 
         let products = (try? VendorService.fetchProducts(vendorId: vendor.id)) ?? []
         if !products.isEmpty {

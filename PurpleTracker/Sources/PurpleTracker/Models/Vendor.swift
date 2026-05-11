@@ -13,7 +13,8 @@ struct Vendor: Codable, Hashable, Identifiable, FetchableRecord, MutablePersista
     var address: String
     var website: String
     var phone: String
-    var reseller: String                    // "Cyber One" | "CDW" | "Other"
+    var budgetCode: String                  // SEC# / cost-center code
+    var reseller: String                    // "" | "Cyber One" | "CDW" | "Other"
     var resellerOther: String               // populated when reseller == "Other"
     var rating: Int?                        // 1..5, nullable
     var ratingNote: String
@@ -28,6 +29,7 @@ struct Vendor: Codable, Hashable, Identifiable, FetchableRecord, MutablePersista
 
     enum CodingKeys: String, CodingKey {
         case id, name, address, website, phone, reseller, rating
+        case budgetCode = "budget_code"
         case resellerOther = "reseller_other"
         case ratingNote = "rating_note"
         case descriptionMd = "description_md"
@@ -48,7 +50,8 @@ struct Vendor: Codable, Hashable, Identifiable, FetchableRecord, MutablePersista
             address: "",
             website: "",
             phone: "",
-            reseller: Reseller.cyberOne.rawValue,
+            budgetCode: "",
+            reseller: "",
             resellerOther: "",
             rating: nil,
             ratingNote: "",
@@ -63,7 +66,7 @@ struct Vendor: Codable, Hashable, Identifiable, FetchableRecord, MutablePersista
         )
     }
 
-    /// User-facing reseller label (free text when "Other").
+    /// User-facing reseller label (free text when "Other", empty string = none).
     var resellerDisplay: String {
         if reseller == Reseller.other.rawValue && !resellerOther.isEmpty {
             return resellerOther

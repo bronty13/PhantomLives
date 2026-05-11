@@ -261,7 +261,7 @@ final class DatabaseService {
                 t.column("address", .text).notNull().defaults(to: "")
                 t.column("website", .text).notNull().defaults(to: "")
                 t.column("phone", .text).notNull().defaults(to: "")
-                t.column("reseller", .text).notNull().defaults(to: "Cyber One")
+                t.column("reseller", .text).notNull().defaults(to: "")
                 t.column("reseller_other", .text).notNull().defaults(to: "")
                 t.column("rating", .integer)
                 t.column("rating_note", .text).notNull().defaults(to: "")
@@ -369,6 +369,12 @@ final class DatabaseService {
                     .references("vendor", column: "id", onDelete: .setNull)
             }
             try db.create(index: "idx_matter_vendor", on: "matter", columns: ["vendor_id"])
+        }
+
+        migrator.registerMigration("v7_vendor_budget_code") { db in
+            try db.alter(table: "vendor") { t in
+                t.add(column: "budget_code", .text).notNull().defaults(to: "")
+            }
         }
 
         try migrator.migrate(writer)
