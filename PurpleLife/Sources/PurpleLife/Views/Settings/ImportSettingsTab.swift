@@ -8,9 +8,24 @@ struct ImportSettingsTab: View {
 
     @State private var report: WeightCSVImporter.Report?
     @State private var error: String?
+    @State private var showingSmartImport: Bool = false
 
     var body: some View {
         Form {
+            Section("Smart Import — Weight (free-form text)") {
+                Text("Paste any text containing dates and weights — CSV / spreadsheet copy-paste / plain English (\"On 3/5/2024 I weighed 182 pounds\"). The wizard parses each line, deduplicates same-day entries and pre-deselects rows that would duplicate existing Weight records.")
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Button {
+                        showingSmartImport = true
+                    } label: {
+                        Label("Open Smart Import wizard…", systemImage: "wand.and.stars")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    Spacer()
+                }
+            }
+
             Section("WeightTracker CSV") {
                 Text("Imports weight entries from a `WeightTracker` CSV export (Date, Weight, Notes columns). Each row becomes a new Weight record with source = Imported. Duplicates aren't detected — the importer is additive.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -63,6 +78,10 @@ struct ImportSettingsTab: View {
         }
         .formStyle(.grouped)
         .padding(20)
+        .sheet(isPresented: $showingSmartImport) {
+            SmartImportWizard()
+                .environmentObject(appState)
+        }
     }
 
     private func runImport() {

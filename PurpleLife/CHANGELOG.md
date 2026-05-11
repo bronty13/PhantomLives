@@ -4,6 +4,15 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-10 — WeightTracker subsumption · slice 4: Smart Import wizard
+
+Final slice of the WeightTracker → PurpleLife port. Brings over the free-form text parser so users can paste arbitrary text (CSV / spreadsheet copy-paste / plain English like "On 3/5/2024 I weighed 182 pounds") and have it become Weight records.
+
+- **`Services/SmartWeightImporter.swift`** (new) — port of WeightTracker's `ImportService` regex parser. Five date formats: ISO-8601, MM/DD/YYYY (or M/D/YYYY), MM-DD-YYYY, abbreviated month name (`Jan 15 2024`), full month name (`January 15, 2024`). Weight extraction with lookarounds (so year digits like `2024` aren't matched as a 3-digit weight) and plausibility bounds (50-700 lb). Output is `[ParsedWeightEntry]` with `Date` (start of day in current TZ) rather than `"yyyy-MM-dd"` strings, plus `isDuplicate` / `isSelected` flags and the matched source line. Same-day duplicates within input collapse to first occurrence; pre-existing days flagged + pre-deselected.
+- **`Views/Settings/SmartImportWizard.swift`** (new) — three-state sheet: paste → preview → done. Preview table shows checkbox + date + pounds + source-line excerpt + "dup" badge for matching existing days. Imports go through `ObjectEngine.create` with `source: "Imported"` (matches existing CSV importer for filter consistency).
+- **`Views/Settings/ImportSettingsTab.swift`** — adds a "Smart Import" section above the existing CSV section. Examples in the explanatory copy ("CSV, spreadsheet copy-paste, plain English"); button opens the wizard sheet.
+- **13 new `SmartWeightImporterTests`** — each date-format pattern (ISO / slash / dash / abbreviated / full / plain English), plausibility bounds (12 lb rejected; year digits not matched), same-day dedup within input, existing-day flagging + pre-deselect, empty input, garbage lines. **88/88 tests green** (was 75, +13).
+
 ### 2026-05-10 — WeightTracker subsumption · slice 3b: StatisticsService + Statistics panel + chart overlays
 
 Ported WeightTracker's StatisticsService (~193 LOC of pure math) and surfaced the results both as a dedicated panel and as overlay layers on the existing Charts view kind.

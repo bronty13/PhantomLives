@@ -24,7 +24,7 @@ See [PLAN.md](PLAN.md) for the build plan, [HANDOFF.md](HANDOFF.md) for the deci
 
 ```sh
 ./build-app.sh        # produces ./PurpleLife.app, Apple-Development-signed with iCloud entitlement
-./run-tests.sh        # runs the PurpleLifeTests bundle (59 tests, ~17 s end-to-end)
+./run-tests.sh        # runs the PurpleLifeTests bundle (88 tests, ~17 s end-to-end)
 ```
 
 Both scripts require **full Xcode** (not just Command Line Tools), `xcodegen` (`brew install xcodegen`), and an Apple Developer account signed in to Xcode. Phase 4's CloudKit entitlement makes Apple Development signing mandatory; the build-script's prior Developer ID Application path was retired.
@@ -49,11 +49,10 @@ Prerequisites + PASS log are in [Spike/CloudKit/SPIKE.md](Spike/CloudKit/SPIKE.m
 
 ## Follow-up work
 
-In rough priority order:
+_All queued follow-ups are closed as of 2026-05-10._ See HANDOFF.md for per-item rationale and what was skipped on purpose (themes, XLSX/DOCX exports, additional chart styles).
 
-1. **WeightTracker subsumption (deferred)** — explicit decision 2026-05-10. WeightTracker still works as a standalone app; subsumption is additive polish. When picked up, the natural first slice is the right-rail weight sparkline + a basic line chart for the Weight type. See [HANDOFF.md](HANDOFF.md) for the full reasoning.
+Recently closed:
 
-Earlier follow-ups now closed:
-
+- ~~**WeightTracker subsumption**~~ — 5 slices shipped 2026-05-10. PurpleLife now covers Weight tracking end-to-end: rail sparkline matching the prototype, dedicated Charts view kind with Trend/7d-avg/Goal overlays, full Statistics panel (BMI / regression / forecast / days-to-goal), Smart Import wizard (free-form text parser), and the existing CSV importer + multi-format export. WeightTracker can be retired.
 - ~~**First-launch sync bootstrap UX**~~ — bootstrap sub-states surfaced in the sync footer 2026-05-10 (commit `8c2adb8`). The footer now reads "Checking iCloud account…" / "Setting up CloudKit zone…" / "Registering for push notifications…" / "Pulling existing data…" / "Pushing local changes…" / "Synced" so a user can tell which step is in flight.
 - ~~**Deeper "client went away" investigation**~~ — App Nap is the most likely root cause (the symptoms match exactly). `CloudKitSyncService.start` now holds a `ProcessInfo.beginActivity` assertion for the lifetime of the service. If "client went away" still surfaces over real use, longer-lived `CKDatabase` references / less Task hopping in the subscription handler / a custom operation queue are the next investigation rungs.

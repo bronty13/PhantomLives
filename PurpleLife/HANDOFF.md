@@ -133,6 +133,27 @@ Bootstrap order matters: `pushPendingLocalSchemas()` runs before `pushPendingLoc
 
 **Effect on follow-up list**: item #3 closed.
 
+### 2026-05-10 — WeightTracker subsumption complete (5 slices)
+
+The 5-slice plan written earlier today (`/Users/bronty/.claude/plans/buzzing-sniffing-twilight.md`, summarized in the prior "deferred" entry below) shipped in full this session:
+
+| Slice | Commit | LOC | What |
+|---|---|---|---|
+| 1 | `7141720` | ~150 | Today right-rail Weight sparkline (matches prototype) |
+| 2 | `e28a0e0` | ~340 | Charts view kind in RecordsScreen — generic for any number+date type, used today by Weight |
+| 3a | `a7641a6` | ~120 | AppSettings additions (goalWeightPounds / startingWeightPounds / heightInches / forecastDays) + Weight Settings tab |
+| 3b | `df21b65` | ~770 | StatisticsService port (BMI / regression / forecast / etc.) + WeightStatisticsPanel + chart Trend/7d-avg/Goal overlays |
+| 4 | (this commit) | ~340 | Smart Import wizard with regex-based free-form text parser |
+
+WeightTracker can now be retired. PurpleLife covers everything daily-use: capture (menu-bar wand + ⌘N), the table/kanban/calendar/gallery/charts views, the "Latest weight" rail card with sparkline, BMI/Trend/Forecast statistics, Goal-line overlay, Smart Import for paste-from-anywhere ingestion, CSV / Markdown / HTML / PDF export, and CloudKit-synced multi-Mac storage with subscription-driven near-instant cross-device updates.
+
+Skipped on purpose (with rationale already in HANDOFF):
+- **Themes** — design language conflict; could revisit font-size accessibility separately.
+- **XLSX / DOCX exports** — WeightTracker's hand-rolled OOXML is brittle; if needed, add natively to PurpleLife's existing ExportService.
+- **Bar / Area / Scatter / MovingAverage as separate chart styles** — single LineChart with toggleable Trend / 7d / Goal overlays covers it.
+
+Test count: 88/88 green at end of subsumption (was 59 at start of this session, +29 across the 5 slices and various supporting tests).
+
 ### 2026-05-10 — WeightTracker subsumption deferred (not blocking; revisit on retirement)
 
 The scope decision earlier today says PurpleLife eventually carries 100% of WeightTracker's functionality. The execution of that — porting WeightTracker's charts (Line / Bar / Area / Scatter / MovingAvg), themes (6 named palettes), Smart Import (free-form text parser), Statistics (BMI / Trend / Forecast), and Reports (PDF / DOCX / XLSX export) — is a multi-week project, not a single commit.
