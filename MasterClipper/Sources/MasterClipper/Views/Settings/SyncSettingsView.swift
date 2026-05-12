@@ -84,6 +84,10 @@ struct SyncSettingsView: View {
                     Spacer()
                 }
             }
+
+            Section {
+                ActiveSharesView()
+            }
         }
         .formStyle(.grouped)
     }

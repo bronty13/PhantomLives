@@ -8,6 +8,7 @@ import MasterClipperCore
 final class iOSAppState: ObservableObject {
     @Published var snapshotReader = SnapshotReader()
     @Published var outbox: IntentOutbox
+    @Published var sharedReader = SharedZoneReader()
 
     @Published private(set) var clips: [Clip] = []
     @Published private(set) var personas: [Persona] = []
@@ -51,6 +52,9 @@ final class iOSAppState: ObservableObject {
     func start() async {
         await snapshotReader.start()
         await reloadFromSnapshot()
+        // Pull any shared zones the recipient already accepted before this
+        // launch (e.g. from a previous install).
+        await sharedReader.refresh()
     }
 
     /// Re-run queries against the snapshot's GRDB queue. Called after

@@ -141,6 +141,10 @@ final class AppState: ObservableObject {
         // will arrive.
         IntentInbox.shared.start()
 
+        // Watch for CloudKit share expiries so we auto-revoke without
+        // requiring the user to remember.
+        ShareExpiryScheduler.shared.start()
+
         BackupService.runIfEnabled(settingsStore: settingsStore)
         Task { @MainActor in
             await OllamaSetup.shared.run(settings: settings)
