@@ -56,9 +56,38 @@ final class DatabaseService {
     nonisolated private static let plainSQLiteMagic: [UInt8] = Array("SQLite format 3\0".utf8)
 
     static var supportDirectory: URL {
+        // Under XCTest, route persistence to a fresh per-process temp
+        // directory instead of the user's real Application Support.
+        // The singleton's open path can't decrypt the user's SQLCipher
+        // DB at test-time (no key resolver, by design — AppState's
+        // keystore bootstrap is skipped under XCTest), and the previous
+        // behaviour of sharing the user's plaintext production DB
+        // disappeared the moment we shipped page-level encryption.
+        // A per-process path also means parallel test invocations and
+        // local dev runs can't stomp on each other.
+        if isUnderXCTest { return testSupportDirectoryCached }
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return support.appendingPathComponent("PurpleLife", isDirectory: true)
     }
+
+    nonisolated private static let isUnderXCTest: Bool =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+
+    /// Per-process Application-Support stand-in used when running under
+    /// XCTest. Created on first read; the directory is freshly emptied
+    /// so each test process starts with a clean DB + attachments dir +
+    /// no stale settings.json. Tests that need to share state between
+    /// methods rely on the same path, but each test invocation gets a
+    /// pristine directory.
+    nonisolated private static let testSupportDirectoryCached: URL = {
+        let url = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("PurpleLife-tests-\(ProcessInfo.processInfo.processIdentifier)",
+                                    isDirectory: true)
+        let fm = FileManager.default
+        try? fm.removeItem(at: url)
+        try? fm.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }()
 
     var databaseURL: URL {
         Self.supportDirectory.appendingPathComponent("purplelife.sqlite")
