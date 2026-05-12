@@ -4,6 +4,22 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-12 — Schema library expansion: 11 full categories from the proposals doc → 575 templates
+
+Third round of catalog growth. Implemented the entire Productivity, Home & Life Admin, Money & Finance, Food & Drink, Travel & Places (with a special 50-state License Plate Sighting tracker), Creative Work, Relationships, Pets & Animals, Nature Observation, Unusual & Truly Weird, and Long-tail Personal Reference sections from the community proposals doc. Long-tail items distribute to their natural categories (Food, Relationships, Unusual).
+
+- **`Models/SchemaLibrary+ExtendedCatalog2.swift`** — 324 new entries in a third extension file. `SchemaLibrary.entries` now computes `coreEntries + extendedEntries + extendedEntries2`, so all three files contribute to a single flat catalog the gallery shows.
+
+- **License Plate Sighting** — special schema with all 50 US states + DC as select-field options, suitable for kanban grouping (one column per state, perfect for road-trip "have we found them all?" play). Constructed inline with the full `ObjectType` initializer (rather than `makeType`) because the state list is too long for the helper's tuple shorthand. The new entry exemplifies how a deliberately complex single-purpose schema is no different to the gallery / IO than any other.
+
+- **Pets & Animals** — Pet weight log, medication, grooming, training sessions, behavior issues, food, toys, dog walks, boarding, adoption applications, fosters, microchips, allergies, and pet death. Treated as a Home category subset (`.home`) since pets are a household concern; the gallery search makes them easy to find under both "pet" and "home admin" keywords.
+
+- **Nature Observation** — Animal tracks, scat (yes, scat), skulls, antler sheds, feathers, pressed plants, preserved leaves, saved seeds, beach combing, sea glass, driftwood, shells, sand samples, crystals grown, lichen, moss. All filed under `.unusual` since they're naturalist hobbies rather than household tasks.
+
+- **Unusual / Truly Weird** — Sleep talking, sleepwalking, OBE, NDE, doppelgänger sightings, mistaken identity, wedding crashed, hitchhikers picked up, stranger conversations, wrong-number calls, mystery packages, letters to/from future and past selves, time capsules, pocket treasures, Mandela effects, misheard lyrics, spoonerisms, embarrassing memories, cringe messages, saved voicemails, rediscovered photos, unsent emails, unmailed letters, confessions, regrets, compliments given, apologies made, stranger kindness received, stranger quotes that stuck, pennies found, bumper stickers, strange signs, found typos, funny error messages, imaginary friends, stuffed animals, childhood obsessions, recurring dream themes, phobias, quirks, verbal tics, pet peeves, comfort things, lullabies, smell memories, songs that haunt, cool clouds, sticks collected, trash treasures, bizarre statues, murals, graffiti tags, ranked sunsets and sunrises, party stories, memorable phrases.
+
+- **Test invariants caught zero bugs across the third round** — the catalog-validation suite (33 tests across `SchemaLibraryTests`, `SchemaIOTests`, `SchemaRegistryImportTests`) ran green after each per-category batch. The pattern from rounds 1 and 2 (where invariant tests caught 5 real bugs) made it cheap to add 324 entries without reading every entry's view-default keys twice.
+
 ### 2026-05-12 — Schema library + JSON import/export + reset-to-defaults
 
 Three related capabilities added to the Schema Editor, in service of a single goal: make PurpleLife's flexibility tangible and let users move schema definitions between Macs / share them with anyone else.

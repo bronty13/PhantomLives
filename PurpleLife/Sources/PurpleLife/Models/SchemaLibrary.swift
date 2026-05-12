@@ -134,10 +134,10 @@ extension SchemaLibrary {
 
     /// The full catalog the gallery shows. Computed so additional
     /// entries declared in extension files (e.g.
-    /// `SchemaLibrary+ExtendedCatalog.swift`) are picked up
-    /// automatically without touching this file.
+    /// `SchemaLibrary+ExtendedCatalog.swift`, `SchemaLibrary+ExtendedCatalog2.swift`)
+    /// are picked up automatically without touching this file.
     static var entries: [Entry] {
-        coreEntries + extendedEntries
+        coreEntries + extendedEntries + extendedEntries2
     }
 
     /// Original first-batch entries kept inline. New entries belong in

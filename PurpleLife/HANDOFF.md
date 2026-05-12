@@ -12,6 +12,18 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-12 — Schema library round 3: 11 entire categories from the proposals doc → 575 templates
+
+Third round of catalog growth. The previous two rounds shipped 251 entries; this one adds 324 more by implementing nearly the full Productivity, Home, Finance, Food, Travel, Creative, Relationships, Pets, Nature Observation, Unusual, and Long-tail sections from `Docs/SchemaLibraryProposals.md`. Total catalog is now **575 templates**.
+
+**License Plate Sighting (the special case).** A 50-state + DC select field doesn't fit the `selectField(name, [(label, color)])` helper because each option needs a unique label string, and the helper signature already wraps `FieldOption.make` — it's just verbose-vs-terse. The license-plate entry uses the full `ObjectType` initializer inline rather than `makeType` so I could thread `required: true` into the select field cleanly. State colors cycle through a 6-color palette (no per-state colorimetric trivia), which is fine because the catalog-invariant test only requires that the kanban key resolve to a `.select` field — option count/colors are not validated. Kanban view on this type produces a "have we got 'em all?" board which is the whole point.
+
+**Three files, one catalog.** `SchemaLibrary.entries` is `coreEntries + extendedEntries + extendedEntries2` — the third file (`SchemaLibrary+ExtendedCatalog2.swift`) keeps each file under ~5000 lines and lets Swift compile the new batch without recompiling the prior two. Each round can land in its own extension file; the computed property hides the multi-file layout from every consumer.
+
+**Long-tail distributes to natural categories.** The proposals doc had a "Long-tail Personal Reference" section that's not a real `Category` enum value — entries like "outfits I wore for events" or "coffee orders for friends" or "sunsets ranked" land in their natural category (`.relationships`, `.food`, `.unusual`) rather than being grouped artificially. The gallery sidebar stays clean.
+
+**Invariant tests held; zero bugs across 324 new entries.** Rounds 1 and 2 caught 5 real bugs (kanban on text fields, calendar on number fields). Round 3 went green on the first batch test and stayed green through all 5 incremental validations. The test discipline scaled to 575 entries with near-zero per-entry cost.
+
 ### 2026-05-12 — Schema library + JSON import/export: showcase flexibility, make schemas portable
 
 Two outcomes the user asked for, tangled together at the design layer because they share the same surface (the Schema Editor).
