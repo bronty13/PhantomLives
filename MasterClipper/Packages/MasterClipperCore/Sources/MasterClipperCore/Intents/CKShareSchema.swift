@@ -102,6 +102,10 @@ public enum CKShareSchema {
         public static let createdAt   = "createdAt"   // Date
         public static let revoked     = "revoked"     // Int (0/1)
         public static let createdByDeviceId = "createdByDeviceId"
+        /// Cached count of SharedClip records in this zone, written at
+        /// create time so the UI doesn't need a separate (CKQuery-based,
+        /// schema-fragile) count fetch.
+        public static let clipCount   = "clipCount"   // Int
     }
 
     /// The singleton record name under each shared zone for the metadata

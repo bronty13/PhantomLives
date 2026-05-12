@@ -16,23 +16,14 @@ struct ClipListView: View {
         #if DEBUG
         let _ = print("[ClipListView] render — manifest=\(appState.snapshotReader.manifest != nil ? "present" : "nil") clips=\(appState.clips.count) filtered=\(appState.filteredClips.count) loading=\(appState.snapshotReader.isLoading) error=\(appState.snapshotReader.lastError ?? "—")")
         #endif
-        List(selection: $selection) {
-            if appState.snapshotReader.manifest == nil {
-                emptyState
-            } else if appState.filteredClips.isEmpty {
-                noResults
+        // Two different List constructions — a selection-bound List on
+        // iPad swaps the detail column, but on iPhone the selection
+        // binding intercepts taps and breaks NavigationLink push.
+        Group {
+            if horizontalSizeClass == .regular {
+                splitList
             } else {
-                ForEach(appState.filteredClips) { clip in
-                    if horizontalSizeClass == .regular {
-                        // iPad/regular: select to swap detail column.
-                        ClipRow(clip: clip).tag(clip.id)
-                    } else {
-                        // iPhone/compact: push detail via NavigationStack.
-                        NavigationLink(value: clip.id) {
-                            ClipRow(clip: clip)
-                        }
-                    }
-                }
+                stackList
             }
         }
         .listStyle(.plain)
@@ -82,6 +73,40 @@ struct ClipListView: View {
 
     private var hasActiveFilter: Bool {
         appState.personaFilter != nil || appState.statusFilter != nil
+    }
+
+    /// iPhone path: plain List, NavigationLink rows push the detail.
+    @ViewBuilder
+    private var stackList: some View {
+        List {
+            if appState.snapshotReader.manifest == nil {
+                emptyState
+            } else if appState.filteredClips.isEmpty {
+                noResults
+            } else {
+                ForEach(appState.filteredClips) { clip in
+                    NavigationLink(value: clip.id) {
+                        ClipRow(clip: clip)
+                    }
+                }
+            }
+        }
+    }
+
+    /// iPad path: selection-bound List drives the detail column.
+    @ViewBuilder
+    private var splitList: some View {
+        List(selection: $selection) {
+            if appState.snapshotReader.manifest == nil {
+                emptyState
+            } else if appState.filteredClips.isEmpty {
+                noResults
+            } else {
+                ForEach(appState.filteredClips) { clip in
+                    ClipRow(clip: clip).tag(clip.id)
+                }
+            }
+        }
     }
 
     private var emptyState: some View {

@@ -85,16 +85,17 @@ final class ShareManager: ObservableObject {
 
         // 2. Build SharedClip + ShareMetadata records and a CKShare. We save
         //    them together so the share lifecycle is atomic per zone.
+        let clipRecords = try makeSharedClipRecords(
+            clipIds: clipIds,
+            expiresAt: expiresAt,
+            zoneID: zoneID
+        )
         let metadataRecord = makeMetadataRecord(
             shareId: shareId,
             label: label,
             permission: permission,
             expiresAt: expiresAt,
-            zoneID: zoneID
-        )
-        let clipRecords = try makeSharedClipRecords(
-            clipIds: clipIds,
-            expiresAt: expiresAt,
+            clipCount: clipRecords.count,
             zoneID: zoneID
         )
 
@@ -123,8 +124,8 @@ final class ShareManager: ObservableObject {
         let zoneID = CKRecordZone.ID(zoneName: CKShareSchema.zoneName(forShareId: shareId),
                                      ownerName: CKCurrentUserDefaultName)
         do {
-            // Re-derive the record from the current live clip.
-            guard let metadata = try await fetchShareMetadata(zoneID: zoneID) else { return }
+            guard let metadataRecord = try await fetchMetadataRecord(zoneID: zoneID),
+                  let metadata = Self.decodeMetadata(metadataRecord) else { return }
             let records = try makeSharedClipRecords(
                 clipIds: [clipId],
                 expiresAt: metadata.expiresAt,
@@ -153,15 +154,18 @@ final class ShareManager: ObservableObject {
     }
 
     /// Load every share zone we own in the private database, decode the
-    /// metadata + count clips, and publish to `activeShares`.
+    /// metadata + cached clip count, and publish to `activeShares`. Uses
+    /// only direct record fetches (no CKQuery) so it works against
+    /// auto-created CK schemas where system fields aren't marked queryable.
     func refreshActiveShares() async {
         do {
             let zones = try await privateDB.allRecordZones()
             var summaries: [ShareSummary] = []
             for zone in zones where zone.zoneID.zoneName.hasPrefix(CKShareSchema.zoneNamePrefix) {
-                guard let metadata = try await fetchShareMetadata(zoneID: zone.zoneID) else { continue }
-                let clipCount = try await countSharedClips(zoneID: zone.zoneID)
-                let url = try await fetchShareURL(zoneID: zone.zoneID)
+                guard let metadataRecord = try await fetchMetadataRecord(zoneID: zone.zoneID),
+                      let metadata = Self.decodeMetadata(metadataRecord) else { continue }
+                let clipCount = (metadataRecord[CKShareSchema.ShareMetadataField.clipCount] as? Int) ?? 0
+                let url = await fetchShareURL(from: metadataRecord)
                 summaries.append(ShareSummary(
                     id: metadata.id,
                     label: metadata.label,
@@ -175,6 +179,7 @@ final class ShareManager: ObservableObject {
             }
             summaries.sort { $0.expiresAt < $1.expiresAt }
             self.activeShares = summaries
+            self.lastError = nil
         } catch {
             lastError = "refreshActiveShares failed: \(error.localizedDescription)"
         }
@@ -199,6 +204,7 @@ final class ShareManager: ObservableObject {
         label: String?,
         permission: SharePermission,
         expiresAt: Date,
+        clipCount: Int,
         zoneID: CKRecordZone.ID
     ) -> CKRecord {
         let recordID = CKRecord.ID(recordName: CKShareSchema.shareMetadataRecordName, zoneID: zoneID)
@@ -209,6 +215,7 @@ final class ShareManager: ObservableObject {
         r[CKShareSchema.ShareMetadataField.createdAt]         = Date() as CKRecordValue
         r[CKShareSchema.ShareMetadataField.revoked]           = 0 as CKRecordValue
         r[CKShareSchema.ShareMetadataField.createdByDeviceId] = Self.deviceId() as CKRecordValue
+        r[CKShareSchema.ShareMetadataField.clipCount]         = clipCount as CKRecordValue
         return r
     }
 
@@ -275,32 +282,22 @@ final class ShareManager: ObservableObject {
 
     // MARK: - CK reads
 
-    private func fetchShareMetadata(zoneID: CKRecordZone.ID) async throws -> ShareMetadata? {
+    private func fetchMetadataRecord(zoneID: CKRecordZone.ID) async throws -> CKRecord? {
         let recordID = CKRecord.ID(recordName: CKShareSchema.shareMetadataRecordName, zoneID: zoneID)
         do {
-            let record = try await privateDB.record(for: recordID)
-            return Self.decodeMetadata(record)
+            return try await privateDB.record(for: recordID)
         } catch let error as CKError where error.code == .unknownItem {
             return nil
         }
     }
 
-    private func fetchShareURL(zoneID: CKRecordZone.ID) async throws -> URL? {
-        // The CKShare for this zone is at the metadata record's share reference.
-        let metadataID = CKRecord.ID(recordName: CKShareSchema.shareMetadataRecordName, zoneID: zoneID)
-        guard let metadataRecord = try? await privateDB.record(for: metadataID) else { return nil }
+    /// Pull the CKShare anchored on the metadata record (we use the metadata
+    /// record as the share's rootRecord at creation time, so its `.share`
+    /// reference points at the CKShare for this zone).
+    private func fetchShareURL(from metadataRecord: CKRecord) async -> URL? {
         guard let shareRef = metadataRecord.share else { return nil }
-        let shareRecord = try await privateDB.record(for: shareRef.recordID)
+        guard let shareRecord = try? await privateDB.record(for: shareRef.recordID) else { return nil }
         return (shareRecord as? CKShare)?.url
-    }
-
-    private func countSharedClips(zoneID: CKRecordZone.ID) async throws -> Int {
-        let query = CKQuery(
-            recordType: CKShareSchema.sharedClipRecordType,
-            predicate: NSPredicate(value: true)
-        )
-        let result = try await privateDB.records(matching: query, inZoneWith: zoneID)
-        return result.matchResults.count
     }
 
     // MARK: - CK write helpers

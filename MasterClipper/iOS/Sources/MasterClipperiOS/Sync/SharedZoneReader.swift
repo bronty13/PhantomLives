@@ -119,15 +119,39 @@ final class SharedZoneReader: ObservableObject {
         }
     }
 
+    /// Enumerate every record in a shared zone via
+    /// `CKFetchRecordZoneChangesOperation`. We use this instead of `CKQuery`
+    /// because auto-created CK schemas don't mark system fields (recordName,
+    /// etc.) as Queryable, and CKQuery rejects predicates against them.
+    /// Filters to the SharedClip record type after fetching.
     private func fetchClipRecords(zoneID: CKRecordZone.ID) async throws -> [CKRecord] {
-        let query = CKQuery(
-            recordType: CKShareSchema.sharedClipRecordType,
-            predicate: NSPredicate(value: true)
-        )
-        let result = try await sharedDB.records(matching: query, inZoneWith: zoneID)
-        return result.matchResults.compactMap { _, recResult -> CKRecord? in
-            if case .success(let r) = recResult { return r }
-            return nil
+        let allRecords = try await Self.fetchAllRecords(in: zoneID, from: sharedDB)
+        return allRecords.filter { $0.recordType == CKShareSchema.sharedClipRecordType }
+    }
+
+    /// Shared helper that walks a zone's full record set without a CKQuery.
+    /// Returns every record in the zone, regardless of type.
+    static func fetchAllRecords(in zoneID: CKRecordZone.ID, from database: CKDatabase) async throws -> [CKRecord] {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<[CKRecord], Error>) in
+            var records: [CKRecord] = []
+            let configuration = CKFetchRecordZoneChangesOperation.ZoneConfiguration()
+            let op = CKFetchRecordZoneChangesOperation(
+                recordZoneIDs: [zoneID],
+                configurationsByRecordZoneID: [zoneID: configuration]
+            )
+            op.fetchAllChanges = true
+            op.recordWasChangedBlock = { _, result in
+                if case .success(let record) = result {
+                    records.append(record)
+                }
+            }
+            op.fetchRecordZoneChangesResultBlock = { result in
+                switch result {
+                case .success:        cont.resume(returning: records)
+                case .failure(let e): cont.resume(throwing: e)
+                }
+            }
+            database.add(op)
         }
     }
 

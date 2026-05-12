@@ -69,15 +69,15 @@ final class SharedZoneSync: ObservableObject {
     // MARK: - Per-zone processing
 
     private func processZone(zoneID: CKRecordZone.ID) async throws {
-        let query = CKQuery(
-            recordType: CKShareSchema.sharedClipEditRecordType,
-            predicate: NSPredicate(value: true)
-        )
-        let result = try await privateDB.records(matching: query, inZoneWith: zoneID)
+        // Use a zone-changes walk instead of CKQuery — auto-created CK
+        // schemas don't mark system fields as Queryable, so CKQuery
+        // against TRUEPREDICATE rejects with "Field 'recordName' is not
+        // marked queryable".
+        let allRecords = try await fetchAllRecords(in: zoneID, from: privateDB)
+        let editRecords = allRecords.filter { $0.recordType == CKShareSchema.sharedClipEditRecordType }
         var idsToDelete: [CKRecord.ID] = []
 
-        for (_, recResult) in result.matchResults {
-            guard case .success(let record) = recResult else { continue }
+        for record in editRecords {
             guard let envelope = decodeEnvelope(record) else {
                 // Malformed — leave it in place so the user can inspect, but
                 // don't fail the sweep.
@@ -101,6 +101,30 @@ final class SharedZoneSync: ObservableObject {
             // sees it quickly. The recipient's view updates automatically
             // because CK propagates record deletions.
             SnapshotPublisher.shared.schedulePublish()
+        }
+    }
+
+    private func fetchAllRecords(in zoneID: CKRecordZone.ID, from database: CKDatabase) async throws -> [CKRecord] {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<[CKRecord], Error>) in
+            var records: [CKRecord] = []
+            let configuration = CKFetchRecordZoneChangesOperation.ZoneConfiguration()
+            let op = CKFetchRecordZoneChangesOperation(
+                recordZoneIDs: [zoneID],
+                configurationsByRecordZoneID: [zoneID: configuration]
+            )
+            op.fetchAllChanges = true
+            op.recordWasChangedBlock = { _, result in
+                if case .success(let record) = result {
+                    records.append(record)
+                }
+            }
+            op.fetchRecordZoneChangesResultBlock = { result in
+                switch result {
+                case .success:        cont.resume(returning: records)
+                case .failure(let e): cont.resume(throwing: e)
+                }
+            }
+            database.add(op)
         }
     }
 
