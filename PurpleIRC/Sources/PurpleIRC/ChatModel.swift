@@ -428,7 +428,14 @@ final class ChatModel: ObservableObject {
         NotificationCenter.default
             .publisher(for: NSApplication.willTerminateNotification)
             .sink { [weak self] _ in
-                MainActor.assumeIsolated { self?.saveAllHistories() }
+                MainActor.assumeIsolated {
+                    // Settings.save() was made async on the didSet path so
+                    // per-keystroke edits don't churn disk. flushPendingSave
+                    // pulls any debounced write forward synchronously so a
+                    // mutation made seconds before quit still lands.
+                    self?.settings.flushPendingSave()
+                    self?.saveAllHistories()
+                }
             }
             .store(in: &cancellables)
         // Expose this model to AppleScript verbs (Resources/PurpleIRC.sdef).
@@ -486,6 +493,9 @@ final class ChatModel: ObservableObject {
         // (via @EnvironmentObject) re-renders when settings mutate. Without
         // this, the Picker in ConnectFormView silently snaps back because
         // SwiftUI never hears that the selection actually changed.
+        // SwiftUI re-render bump stays instant — debouncing it would make
+        // text fields lag visibly. Regex cache invalidation is also kept
+        // instant because clearing is O(1) and stale matches would be wrong.
         settings.objectWillChange
             .sink { [weak self] in
                 self?.objectWillChange.send()
@@ -494,7 +504,16 @@ final class ChatModel: ObservableObject {
                 self?.botEngine.clearRegexCache()
             }
             .store(in: &cancellables)
+        // Debounce the heavier consumer-side work — `onSettingsChanged()`
+        // walks every connection writing alert flags, log toggles, ignore
+        // matchers, identity bindings, etc. Doing that per-keystroke during
+        // a TextField edit (server name, highlight rule, away reply…) is
+        // wasted work; 300 ms of quiet is fine, the values are only read
+        // by the connection later. selectedServerID-change → seed-new-
+        // connection rides through this too, but that's a one-shot Picker
+        // event so the debounce never fires twice for it.
         settings.$settings
+            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 Task { @MainActor in self?.onSettingsChanged() }
             }

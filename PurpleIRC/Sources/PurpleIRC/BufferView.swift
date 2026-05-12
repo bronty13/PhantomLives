@@ -50,6 +50,20 @@ struct BufferView: View {
     @State private var showingMultilineEditor: Bool = false
     @State private var multilineEditorText: String = ""
 
+    /// Cached rendered-row list. Was a computed var that re-filtered +
+    /// re-collapsed `buffer.lines` (up to 5000 rows) on every body pass —
+    /// every keystroke in the input field, every hover, every theme tick.
+    /// Now recomputed only when the upstream inputs actually change:
+    /// buffer identity, line count, the effective filter, or the collapse
+    /// toggle. See `refreshRenderedRows()` / the `.onChange` cluster in
+    /// `messagesPane`.
+    @State private var renderedRows: [RenderedRow] = []
+    /// Debounces find-bar keystrokes. Was firing `recomputeFindMatches()`
+    /// (full buffer scan with mIRC-code-strip + lowercase + substring
+    /// search) on every character; now only the trailing edge runs after
+    /// the user stops typing for ~250 ms.
+    @State private var findDebounceTask: Task<Void, Never>? = nil
+
     struct TabCompletion {
         let typedPrefix: String   // text before the completed word (includes trailing space when non-empty)
         let partial: String       // original partial the user typed (before first tab)
@@ -109,11 +123,16 @@ struct BufferView: View {
     /// `MessageKindFilter`) are skipped before either grouping or
     /// emission, so the user sees neither the raw row nor a summary
     /// containing only suppressed kinds.
-    private var renderedRows: [RenderedRow] {
+    /// Recompute the cached `renderedRows` from the current buffer + filter
+    /// + collapse toggle. Idempotent; call from any of the `.onChange`
+    /// triggers in `messagesPane` and from `.onAppear`.
+    private func refreshRenderedRows() {
         let filter = effectiveFilter
+        let collapse = model.settings.settings.collapseJoinPart
         let lines = buffer.lines.filter { filter.includes($0.kind) }
-        guard model.settings.settings.collapseJoinPart else {
-            return lines.map { .line($0) }
+        guard collapse else {
+            renderedRows = lines.map { .line($0) }
+            return
         }
         var out: [RenderedRow] = []
         out.reserveCapacity(lines.count)
@@ -128,7 +147,7 @@ struct BufferView: View {
             out.append(.line(line))
         }
         flushRun(&run, into: &out)
-        return out
+        renderedRows = out
     }
 
     private func flushRun(_ run: inout [ChatLine], into out: inout [RenderedRow]) {
@@ -185,7 +204,21 @@ struct BufferView: View {
                 .textFieldStyle(.plain)
                 .focused($findFocused)
                 .onSubmit { cycleFind(forward: true) }
-                .onChange(of: findQuery) { _, _ in recomputeFindMatches() }
+                .onChange(of: findQuery) { _, newValue in
+                    // Debounce: cancel any pending recompute and reschedule.
+                    // Empty queries take the fast clear path immediately so
+                    // the highlight disappears without waiting on the timer.
+                    findDebounceTask?.cancel()
+                    if newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        recomputeFindMatches()
+                        return
+                    }
+                    findDebounceTask = Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 250_000_000)
+                        guard !Task.isCancelled else { return }
+                        recomputeFindMatches()
+                    }
+                }
                 .onKeyPress(.escape) {
                     closeFind(); return .handled
                 }
@@ -351,14 +384,35 @@ struct BufferView: View {
             .background(model.theme.chatBackground)
             .foregroundStyle(model.theme.chatForeground)
             .onChange(of: buffer.lines.count) { _, _ in
-                // New messages land during a find — recompute so the match
-                // count stays accurate.
-                if !findQuery.isEmpty { recomputeFindMatches() }
+                // Lines changed — refresh the cached row list. Was previously
+                // a computed var that recomputed on every body pass.
+                refreshRenderedRows()
+                // New messages land during a find — schedule a debounced
+                // recompute so a busy channel doesn't spawn a buffer scan
+                // per incoming line. Reuses the same debounce task as the
+                // keystroke path; either trigger cancels the other.
+                if !findQuery.isEmpty {
+                    findDebounceTask?.cancel()
+                    findDebounceTask = Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 250_000_000)
+                        guard !Task.isCancelled else { return }
+                        recomputeFindMatches()
+                    }
+                }
                 if !showFind {
                     withAnimation(.linear(duration: 0.1)) {
                         proxy.scrollTo("bottom", anchor: .bottom)
                     }
                 }
+            }
+            .onChange(of: bufferIndex) { _, _ in
+                refreshRenderedRows()
+            }
+            .onChange(of: effectiveFilter) { _, _ in
+                refreshRenderedRows()
+            }
+            .onChange(of: model.settings.settings.collapseJoinPart) { _, _ in
+                refreshRenderedRows()
             }
             .onChange(of: findMatchCursor) { _, _ in
                 guard !findMatchIDs.isEmpty,
@@ -369,6 +423,7 @@ struct BufferView: View {
                 }
             }
             .onAppear {
+                refreshRenderedRows()
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
         }
@@ -393,6 +448,8 @@ struct BufferView: View {
     }
 
     private func closeFind() {
+        findDebounceTask?.cancel()
+        findDebounceTask = nil
         showFind = false
         findQuery = ""
         findMatchIDs = []

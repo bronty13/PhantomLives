@@ -5,6 +5,62 @@ All notable changes to PurpleIRC are recorded here. The bundle's
 count (`1.0.<count>`); CHANGELOG entries use the same scheme so the
 version on the About panel matches the entry that introduced it.
 
+## [1.0.234] — 2026-05-12
+
+### Performance
+
+A four-part hot-path pass, surfaced by a code-review agent sweep. No
+user-visible feature changes; everything below is silent under normal
+use. Existing 267 tests still pass — no regression coverage added since
+the changes are wholly perf and the invariants (data lands on disk,
+filter and find still work) are already test-pinned.
+
+- **`SettingsStore.save()` no longer runs per keystroke.** Was: every
+  `didSet` on `settings` (so every TextField edit in Setup) fired a full
+  `JSONEncoder` + AES-GCM seal + atomic write on the MainActor. Now:
+  - `didSet` calls `scheduleSave()` which debounces 400 ms and hands
+    the encrypted-envelope write to a detached background `Task`.
+    `isEncryptedOnDisk` hops back to MainActor on completion so the
+    Security tab stays in sync.
+  - `withoutSaving { … }` batch helper folds back-to-back mutations
+    (e.g. `deleteTag` writing both `contactTags` and every
+    `addressBook[i].tagIDs`) into a single trailing save.
+  - `flushPendingSave()` is called from the existing
+    `willTerminateNotification` sink in `ChatModel.init`, so a
+    mutation made seconds before Cmd-Q still lands synchronously.
+  - The synchronous `save()` is preserved for the two explicit
+    callers (passphrase setup, keystore reset) that need the
+    envelope on disk before continuing — they observe sync write
+    behaviour unchanged.
+- **`BufferView.renderedRows` is now cached.** Was a computed var that
+  re-filtered + re-collapsed up to 5000 lines on *every* body recompute
+  — every keystroke in the input field, every hover, every theme tick.
+  Now `@State`, invalidated only by `.onChange` of `buffer.lines.count`,
+  `bufferIndex`, `effectiveFilter`, and `model.settings.settings
+  .collapseJoinPart`. `MessageKindFilter` was already `Equatable`, so
+  the filter `.onChange` works without further plumbing.
+- **Find bar is debounced.** Was: `recomputeFindMatches()` (a full
+  `buffer.lines` scan with mIRC-code strip + lowercase + substring
+  search) on every keystroke AND on every new line that arrived while
+  the bar was open. Now: a shared 250 ms `findDebounceTask` cancels
+  prior work and reschedules — the trailing edge runs once after the
+  user stops typing / the channel quiets down. Empty-query path
+  bypasses the debounce so clearing the highlight stays instant.
+  `closeFind()` cancels the task.
+- **`settings.$settings` consumer is debounced 300 ms.** Was:
+  `onSettingsChanged()` → `applySettingsToAll()` (which walks every
+  connection writing alert flags, log toggles, ignore matchers,
+  identity bindings, DCC params, watchlist sound) fired per keystroke.
+  Now: 300 ms of quiet before it runs. SwiftUI's `objectWillChange`
+  forwarding stays instant (debouncing it would make TextFields lag),
+  and the regex-cache invalidation also stays instant since clearing
+  is O(1) and stale matches would be wrong.
+
+Notable non-finding: an agent flagged `isFindMatch(_)` as O(n) per row.
+It's actually a single index compare against `findMatchIDs[findMatch
+Cursor]` — only the cursored match is highlighted, by design — so no
+change there.
+
 ## [1.0.130] — 2026-05-07
 
 ### Added (per-channel + app-wide message-kind filters)

@@ -761,7 +761,7 @@ struct AppSettings: Codable {
 @MainActor
 final class SettingsStore: ObservableObject {
     @Published var settings: AppSettings {
-        didSet { save() }
+        didSet { scheduleSave() }
     }
 
     private let fileURL: URL
@@ -789,6 +789,21 @@ final class SettingsStore: ObservableObject {
     /// real on-disk file with empty defaults. Same incident class as
     /// `d0cc021` and the assistant rollout's persona seed.
     private var hasLoadedFromDisk: Bool = false
+
+    /// Pending debounced save. `didSet → scheduleSave()` cancels and
+    /// reschedules so a stream of per-keystroke mutations only writes
+    /// the encrypted envelope once after the user stops editing.
+    private var pendingSaveTask: Task<Void, Never>?
+
+    /// `withoutSaving { … }` raises this; `scheduleSave()` short-circuits
+    /// while it's nonzero so bulk mutations don't churn disk. The outer
+    /// `withoutSaving` call runs one save once the depth returns to 0.
+    private var saveSuppressionDepth: Int = 0
+
+    /// Debounce window for didSet-driven saves. Long enough that a
+    /// fast-typed TextField only saves once, short enough that switching
+    /// windows / quitting normally still flushes via the running task.
+    private static let saveDebounceMillis: UInt64 = 400
 
     init() {
         let fm = FileManager.default
@@ -850,6 +865,88 @@ final class SettingsStore: ObservableObject {
         }
     }
 
+    /// Debounced replacement for `save()` on the `didSet` path. Cancels any
+    /// inflight save and reschedules; if nothing else fires for
+    /// `saveDebounceMillis`, runs the actual write off the MainActor.
+    /// Skipped entirely while a `withoutSaving { … }` batch is open —
+    /// the batch flushes on exit.
+    func scheduleSave() {
+        guard saveSuppressionDepth == 0 else { return }
+        pendingSaveTask?.cancel()
+        pendingSaveTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.saveDebounceMillis * 1_000_000)
+            guard !Task.isCancelled, let self else { return }
+            self.pendingSaveTask = nil
+            self.saveInBackground()
+        }
+    }
+
+    /// Group multiple mutations and run save() once at the end. Useful when
+    /// removing a tag (which back-to-back mutates contactTags AND every
+    /// addressBook entry) or when a settings sheet writes a dozen fields in
+    /// one user-visible action. Nested calls are fine; only the outermost
+    /// closure exits triggers the trailing save.
+    @discardableResult
+    func withoutSaving<T>(_ body: () -> T) -> T {
+        saveSuppressionDepth += 1
+        defer {
+            saveSuppressionDepth -= 1
+            if saveSuppressionDepth == 0 { scheduleSave() }
+        }
+        return body()
+    }
+
+    /// Cancel any pending debounced save and run one synchronously. Called
+    /// at app termination (willTerminate) so settings can never be lost to
+    /// a closing process.
+    func flushPendingSave() {
+        let hadPending = pendingSaveTask != nil
+        pendingSaveTask?.cancel()
+        pendingSaveTask = nil
+        if hadPending { save() }
+    }
+
+    /// Encode + persist credentials on MainActor, then hand the encrypt +
+    /// atomic write off to a detached Task. The MainActor only blocks for
+    /// the in-memory work; AES-GCM seal + file I/O happens off-thread.
+    /// Used by the debounced didSet path. Explicit callers should use
+    /// `save()` instead so they observe the write synchronously.
+    private func saveInBackground() {
+        guard hasLoadedFromDisk else {
+            NSLog("PurpleIRC: settings save skipped — file not yet loaded")
+            return
+        }
+        do {
+            let persistable = persistCredentials(in: settings)
+            let enc = JSONEncoder()
+            enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let jsonData = try enc.encode(persistable)
+            let key = (keyStore?.isUnlocked == true) ? keyStore?.currentKey : nil
+            let url = fileURL
+            Task.detached(priority: .utility) {
+                do {
+                    let result = try EncryptedJSON.safeWrite(jsonData, to: url, key: key)
+                    switch result {
+                    case .wrote:
+                        let encrypted = (key != nil)
+                        await MainActor.run { [weak self] in
+                            self?.isEncryptedOnDisk = encrypted
+                        }
+                    case .skippedLockedEncrypted:
+                        NSLog("PurpleIRC: skipped settings save (encrypted on disk, no key in hand)")
+                    }
+                } catch {
+                    NSLog("PurpleIRC: failed to save settings: \(error)")
+                }
+            }
+        } catch {
+            NSLog("PurpleIRC: failed to encode settings: \(error)")
+        }
+    }
+
+    /// Synchronous save. Stays available for callers that need the bytes on
+    /// disk before they continue (passphrase setup, keystore reset). The
+    /// debounced didSet path goes through `saveInBackground()` instead.
     func save() {
         guard hasLoadedFromDisk else {
             // Pre-load mutation tried to save. Refuse — the user's real
