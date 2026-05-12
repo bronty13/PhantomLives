@@ -145,34 +145,57 @@ private struct RichTextRepresentable: NSViewRepresentable {
                   request.charIndex < storage.length,
                   let attachment = storage.attribute(.attachment, at: request.charIndex, effectiveRange: nil) as? NSTextAttachment else { return }
 
-            // Natural size: prefer `attachment.image`, fall back to
-            // building an NSImage from the file wrapper's bytes. The
-            // wrapper path is what a reloaded RTFD note exercises.
-            let naturalSize: CGSize = {
-                if let img = attachment.image { return img.size }
+            // Always reload the image from the file wrapper bytes when
+            // possible. That preserves natural-size pixel data across
+            // repeated resizes — we set `image.size` (a render-time
+            // hint) without resampling the bitmap, so successive
+            // resizes don't progressively degrade quality. If no
+            // fileWrapper is in scope (shouldn't happen post-paste),
+            // fall back to the existing `attachment.image`.
+            let sourceImage: NSImage? = {
                 if let data = attachment.fileWrapper?.regularFileContents,
                    let img = NSImage(data: data) {
-                    return img.size
+                    return img
                 }
-                // Fallback: keep the current bounds proportions if we
-                // truly can't introspect.
-                return attachment.bounds.size == .zero
-                    ? CGSize(width: 800, height: 600)
-                    : attachment.bounds.size
+                return attachment.image
+            }()
+            guard let image = sourceImage else { return }
+
+            // Use the source's pixel-rep size as the natural reference,
+            // not whatever `image.size` happens to be after a prior
+            // resize. NSImage.size is mutable; the bitmap rep's size
+            // is the ground truth.
+            let naturalSize: CGSize = {
+                if let rep = image.representations.first {
+                    let pixelSize = CGSize(width: CGFloat(rep.pixelsWide),
+                                           height: CGFloat(rep.pixelsHigh))
+                    if pixelSize.width > 0 { return pixelSize }
+                }
+                return image.size
             }()
 
             let aspect = naturalSize.height / max(naturalSize.width, 1)
             let target = request.option.targetWidth(naturalWidth: naturalSize.width)
-            let newBounds: CGRect
+            let newSize: CGSize
             if target <= 0 {
-                newBounds = CGRect(origin: .zero, size: naturalSize)
+                newSize = naturalSize
             } else {
-                newBounds = CGRect(x: 0, y: 0, width: target, height: target * aspect)
+                newSize = CGSize(width: target, height: target * aspect)
             }
+
+            // The layout manager queries `attachment.image.size` for
+            // image attachments — NOT `attachment.bounds`. Setting
+            // image.size is the only thing that actually moves the
+            // rendered dimensions in the editor. We set bounds too as
+            // a belt-and-braces measure; some attachment subclasses
+            // do consult it.
+            image.size = newSize
+            attachment.image = image
+            attachment.bounds = CGRect(origin: .zero, size: newSize)
 
             let range = NSRange(location: request.charIndex, length: 1)
             storage.beginEditing()
-            attachment.bounds = newBounds
+            storage.removeAttribute(.attachment, range: range)
             storage.addAttribute(.attachment, value: attachment, range: range)
             storage.edited(.editedAttributes, range: range, changeInLength: 0)
             storage.endEditing()
