@@ -307,6 +307,123 @@ actor LogStore {
         enumerateAllLogs().named
     }
 
+    /// One hit from `search(query:caseSensitive:limit:)`. Carries the
+    /// raw line + the parsed ISO-8601 timestamp prefix so the UI can
+    /// render relative times, plus network/buffer display names AND
+    /// raw slugs so the click-to-jump path can route without
+    /// re-hashing.
+    struct SearchHit: Hashable, Identifiable {
+        var id: String {
+            "\(networkSlug)|\(bufferSlug)|\(lineNumber)"
+        }
+        let network: String
+        let buffer: String
+        let networkSlug: String
+        let bufferSlug: String
+        /// 1-based line number within the file. Useful for "result 1/N"
+        /// affordances in the UI.
+        let lineNumber: Int
+        /// The full log-line text (including the ISO-8601 prefix).
+        let line: String
+        /// Parsed from the line's prefix when possible; nil for
+        /// malformed lines (which shouldn't happen for files we wrote,
+        /// but parser shouldn't panic on imports).
+        let timestamp: Date?
+    }
+
+    /// Scan every known log file for `query`. Walks both named-index
+    /// entries and orphan slug files so freshly-restored backups (where
+    /// the index hasn't been backfilled yet) still surface hits.
+    ///
+    /// Substring match against the textual content of each line (the
+    /// ISO-8601 timestamp prefix is included in the scan — so a search
+    /// for "2026-05" will match every line written this month, which
+    /// is genuinely useful).
+    ///
+    /// `caseSensitive: false` lower-cases both needle and haystack via
+    /// `String.range(of:options:)`. `limit` caps the result list so a
+    /// pathologically broad query against a year of logs can't OOM the
+    /// app — the UI surfaces "Showing first N of M+" when reached.
+    ///
+    /// Synchronous from the actor's perspective; reads + decrypts each
+    /// log file in turn. Encrypted files go through `decodeFile` so
+    /// the search transparently handles both formats.
+    func search(query: String, caseSensitive: Bool = false, limit: Int = 500) -> [SearchHit] {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return [] }
+        let options: String.CompareOptions = caseSensitive ? [] : [.caseInsensitive]
+        var hits: [SearchHit] = []
+
+        let result = enumerateAllLogs()
+        // Named entries first — they have human display names for
+        // network + buffer, which the result UI prefers to show.
+        for entry in result.named {
+            guard let text = read(network: entry.network, buffer: entry.buffer) else { continue }
+            let netSlug = slug(entry.network)
+            let bufSlug = slug(entry.buffer)
+            scanText(text,
+                     network: entry.network, buffer: entry.buffer,
+                     networkSlug: netSlug, bufferSlug: bufSlug,
+                     needle: needle, options: options,
+                     hits: &hits, limit: limit)
+            if hits.count >= limit { return hits }
+        }
+        // Orphans — slugs only. Surface them so a freshly-restored
+        // backup that hasn't been backfilled still produces results.
+        for orphan in result.orphans {
+            guard let text = readBySlug(networkSlug: orphan.networkSlug,
+                                         bufferSlug: orphan.bufferSlug) else { continue }
+            scanText(text,
+                     network: orphan.networkSlug,    // slug stands in for name
+                     buffer: orphan.bufferSlug,
+                     networkSlug: orphan.networkSlug,
+                     bufferSlug: orphan.bufferSlug,
+                     needle: needle, options: options,
+                     hits: &hits, limit: limit)
+            if hits.count >= limit { return hits }
+        }
+        return hits
+    }
+
+    /// Per-file scan worker. Splits on newlines, runs the substring
+    /// check, and parses the ISO-8601 prefix on each hit. Pulled out
+    /// of `search` so the named+orphan paths share one definition.
+    private func scanText(_ text: String,
+                           network: String, buffer: String,
+                           networkSlug: String, bufferSlug: String,
+                           needle: String, options: String.CompareOptions,
+                           hits: inout [SearchHit], limit: Int) {
+        var lineNumber = 0
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            lineNumber += 1
+            let lineStr = String(line)
+            guard lineStr.range(of: needle, options: options) != nil else { continue }
+            hits.append(SearchHit(
+                network: network,
+                buffer: buffer,
+                networkSlug: networkSlug,
+                bufferSlug: bufferSlug,
+                lineNumber: lineNumber,
+                line: lineStr,
+                timestamp: Self.parseLogTimestamp(lineStr)
+            ))
+            if hits.count >= limit { return }
+        }
+    }
+
+    /// Pull the leading ISO-8601 timestamp off a log line. Format
+    /// matches what `LogStore.append` emits — see the `iso` formatter
+    /// at the top of this file. Returns nil for lines that don't lead
+    /// with a timestamp (shouldn't happen for files we wrote, but
+    /// imports / hand-edits might).
+    static func parseLogTimestamp(_ line: String) -> Date? {
+        // Timestamps look like "2026-05-12T14:33:21.123Z " — find the
+        // first space and parse everything before it.
+        guard let sp = line.firstIndex(of: " ") else { return nil }
+        let prefix = String(line[..<sp])
+        return iso.date(from: prefix)
+    }
+
     /// Add a (network, buffer) pair to the index if it isn't already there.
     /// Idempotent and cheap — only writes to disk when the in-memory set
     /// actually changed shape. Called from the `append` happy path.

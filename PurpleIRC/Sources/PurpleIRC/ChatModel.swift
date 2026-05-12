@@ -253,6 +253,15 @@ final class ChatModel: ObservableObject {
     @Published var pendingAddressBookSelection: UUID? = nil
     @Published var showChannelList: Bool = false
     @Published var showSeenList: Bool = false
+    /// Cross-network unified search sheet. ⌘⇧F opens it; the Edit menu's
+    /// "Find Across Networks…" entry routes here too. Searches every
+    /// log file via `LogStore.search` and lets the user click results
+    /// to jump to the relevant buffer.
+    @Published var showUnifiedSearch: Bool = false
+    /// One-shot directive for the search sheet to open with a query
+    /// pre-filled — useful from future deeplinks (right-click → "Find
+    /// this nick across networks"). Cleared once consumed.
+    @Published var pendingUnifiedSearchQuery: String? = nil
     @Published var showHelp: Bool = false
     @Published var showDCC: Bool = false
     /// Prefilled search text when /help is invoked with an argument.

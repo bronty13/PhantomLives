@@ -181,6 +181,10 @@ struct ContentView: View {
             ChatLogViewerView()
                 .environmentObject(model)
         }
+        .sheet(isPresented: $model.showUnifiedSearch) {
+            UnifiedSearchView()
+                .environmentObject(model)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .purpleShowAppLog)) { _ in
             model.showAppLog = true
         }

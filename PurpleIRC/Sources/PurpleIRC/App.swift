@@ -138,6 +138,10 @@ private struct EditMenuExtras: View {
             model.findRequest = ""
         }
         .keyboardShortcut("f", modifiers: [.command])
+        Button("Find Across Networks…") {
+            model.showUnifiedSearch = true
+        }
+        .keyboardShortcut("f", modifiers: [.command, .shift])
     }
 }
 

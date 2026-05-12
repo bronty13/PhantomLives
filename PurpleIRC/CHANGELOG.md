@@ -5,6 +5,71 @@ All notable changes to PurpleIRC are recorded here. The bundle's
 count (`1.0.<count>`); CHANGELOG entries use the same scheme so the
 version on the About panel matches the entry that introduced it.
 
+## [1.0.247] — 2026-05-12
+
+### Added (cross-network unified search)
+
+- **⌘⇧F opens the new Find Across Networks sheet.** Edit menu's
+  "Find Across Networks…" entry routes here too. Searches every
+  persisted chat-log file across every network in one pass and
+  surfaces the matches in a single list.
+- **`LogStore.search(query:caseSensitive:limit:)`** is the new actor
+  method. Walks `enumerateAllLogs()` first (named entries) then the
+  orphan slug files so a freshly-restored backup still produces
+  results before the index gets backfilled. Encrypted log files
+  transparently decode through the existing `decodeFile` path. Hits
+  cap at 500 per query so a pathologically broad search can't OOM
+  the app; the UI surfaces "Showing first N matches" when the cap
+  is hit.
+- **Each `SearchHit` carries**: network + buffer display names, the
+  raw slug pair for routing, 1-based line number, the full line
+  text, and a parsed ISO-8601 timestamp (when the prefix matches
+  what `LogStore.append` writes). The list view renders relative
+  times, network/buffer chips, and a snippet with the timestamp
+  stripped.
+- **Filter chips along the top** let the user pin the result list
+  to a subset of networks. "All networks" is the default.
+- **Click-to-jump**: double-click any result (or hit the inline
+  Jump button) and the workspace:
+  - Switches `activeConnectionID` to the connection matching the
+    hit's network slug.
+  - Selects an already-open buffer with that name (case-insensitive
+    compare).
+  - Otherwise routes through `/join` (channels) or `/query`
+    (nicks) so the connection's auto-create path materialises a
+    fresh buffer for the match.
+- **Debounced search execution**: keystrokes throttle the actor
+  call at 350 ms trailing — searching is a full disk walk + AES
+  decrypt + substring scan, so we don't want to redo it per
+  character. The result spinner shows when a search is in flight.
+
+### Data flow
+
+The feature is fully built on existing primitives:
+- `LogStore` already keeps a persistent index of (network, buffer)
+  pairs + orphan recovery for unindexed slug files (1.0.225 work).
+- AES-GCM transparent decryption was already in `decodeFile`.
+- `SeenStore.slug(for:)` is the canonical slug derivation reused
+  for the click-to-jump network match.
+- `ChatModel.sendInput("/join …")` / `("/query …")` provides the
+  auto-create routing for buffers that aren't currently open.
+- No new persistence path, no new encryption envelope.
+
+### Tests (9 new)
+
+In `LogStoreTests`:
+- `searchFindsLineByCaseInsensitiveSubstring`
+- `searchHonorsCaseSensitivity`
+- `searchFoldsAcrossNetworksAndBuffers`
+- `searchEmptyQueryReturnsEmpty`
+- `searchNoMatch`
+- `searchHonorsResultLimit`
+- `searchWorksUnderEncryption`
+- `searchParsesIso8601Timestamp`
+- `parseLogTimestampHandlesMalformedLines`
+
+Test count: 323 → 332.
+
 ## [1.0.243] — 2026-05-12
 
 ### Added (world-class Address Book workspace)

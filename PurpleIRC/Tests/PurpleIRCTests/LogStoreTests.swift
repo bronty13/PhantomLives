@@ -218,4 +218,120 @@ struct LogStoreTests {
         #expect(entries.count == 1)
         #expect(entries.first?.network == "EncNet")
     }
+
+    // MARK: - search() — cross-network unified search (1.0.247)
+    //
+    // These tests use native `@Test async` bodies rather than the
+    // `runAsync` sync-bridge pattern used elsewhere in this file.
+    // Mixing nine semaphore-bridged calls per test with swift-testing's
+    // parallel scheduler starved the cooperative pool and deadlocked
+    // the suite. Async-native tests sidestep the issue.
+
+    @Test func searchFindsLineByCaseInsensitiveSubstring() async {
+        let store = LogStore(baseURL: tempDir())
+        await store.append(network: "Libera", buffer: "#swift",
+                            line: "<alice> hello world")
+        await store.append(network: "Libera", buffer: "#swift",
+                            line: "<alice> nothing interesting")
+        let hits = await store.search(query: "HELLO")
+        #expect(hits.count == 1)
+        #expect(hits.first?.network == "Libera")
+        #expect(hits.first?.buffer == "#swift")
+        #expect(hits.first?.line.contains("hello world") == true)
+        #expect(hits.first?.lineNumber == 1)
+    }
+
+    @Test func searchHonorsCaseSensitivity() async {
+        let store = LogStore(baseURL: tempDir())
+        await store.append(network: "Libera", buffer: "#a",
+                            line: "alice said HELLO")
+        let csInsensitive = await store.search(query: "hello")
+        let csSensitive   = await store.search(query: "hello", caseSensitive: true)
+        #expect(csInsensitive.count == 1)
+        #expect(csSensitive.isEmpty)
+    }
+
+    @Test func searchFoldsAcrossNetworksAndBuffers() async {
+        let store = LogStore(baseURL: tempDir())
+        await store.append(network: "Libera", buffer: "#swift",
+                            line: "<alice> ship it")
+        await store.append(network: "OFTC",  buffer: "#kernel",
+                            line: "<bob> shipping now")
+        await store.append(network: "Libera", buffer: "#offtopic",
+                            line: "<carol> off-topic chat")
+        let hits = await store.search(query: "ship")
+        #expect(hits.count == 2)
+        let nets = Set(hits.map { $0.network })
+        #expect(nets == Set(["Libera", "OFTC"]))
+        let bufs = Set(hits.map { $0.buffer })
+        #expect(bufs == Set(["#swift", "#kernel"]))
+    }
+
+    @Test func searchEmptyQueryReturnsEmpty() async {
+        let store = LogStore(baseURL: tempDir())
+        await store.append(network: "Net", buffer: "#chan", line: "anything")
+        let empty1 = await store.search(query: "")
+        let empty2 = await store.search(query: "   ")
+        #expect(empty1.isEmpty)
+        #expect(empty2.isEmpty)
+    }
+
+    @Test func searchNoMatch() async {
+        let store = LogStore(baseURL: tempDir())
+        await store.append(network: "Net", buffer: "#chan",
+                            line: "completely unrelated content")
+        let hits = await store.search(query: "xyzzy")
+        #expect(hits.isEmpty)
+    }
+
+    @Test func searchHonorsResultLimit() async {
+        let store = LogStore(baseURL: tempDir())
+        for i in 0..<10 {
+            await store.append(network: "Net", buffer: "#chan",
+                                line: "match #\(i)")
+        }
+        let hits = await store.search(query: "match", limit: 3)
+        #expect(hits.count == 3)
+    }
+
+    @Test func searchWorksUnderEncryption() async {
+        let dir = tempDir()
+        let key = SymmetricKey(size: .bits256)
+        let store1 = LogStore(baseURL: dir)
+        await store1.setEncryptionKey(key)
+        await store1.append(network: "EncNet", buffer: "#chan",
+                             line: "<alice> secret message")
+        // Fresh actor, same key — should still find the line after
+        // transparent decryption.
+        let store2 = LogStore(baseURL: dir)
+        await store2.setEncryptionKey(key)
+        let hits = await store2.search(query: "secret")
+        #expect(hits.count == 1)
+        #expect(hits.first?.line.contains("secret message") == true)
+    }
+
+    @Test func searchParsesIso8601Timestamp() async {
+        let store = LogStore(baseURL: tempDir())
+        let before = Date()
+        await store.append(network: "Net", buffer: "#chan", line: "needle line")
+        let after = Date()
+        let hits = await store.search(query: "needle")
+        #expect(hits.count == 1)
+        let ts = hits.first?.timestamp
+        #expect(ts != nil)
+        if let ts {
+            #expect(ts >= before.addingTimeInterval(-1))
+            #expect(ts <= after.addingTimeInterval(1))
+        }
+    }
+
+    @Test func parseLogTimestampHandlesMalformedLines() {
+        // Direct unit test of the parser — defends against a stray
+        // hand-edited log line landing in the search results without
+        // a timestamp (resulting in nil instead of a crash).
+        #expect(LogStore.parseLogTimestamp("no-timestamp-here") == nil)
+        #expect(LogStore.parseLogTimestamp("") == nil)
+        let ok = LogStore.parseLogTimestamp("2026-05-12T12:00:00.000Z body")
+        #expect(ok != nil)
+    }
 }
