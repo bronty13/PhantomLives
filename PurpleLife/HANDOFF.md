@@ -12,6 +12,21 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-12 — Keychain DEK preservation: never overwrite an existing-but-unreadable slot
+
+Found while exercising the recovery UX: `KeychainStore.getData` collapsed every non-success `SecItemCopyMatching` status to `nil`. `KeyStore.refreshState` then treated transient query failures (`errSecAuthFailed`, locked Keychain, ACL issue) the same as `errSecItemNotFound`, AppState's bootstrap called `setupKeychainManaged()`, and the new DEK silently overwrote the existing slot. The encrypted DB became permanently unreadable. This had been the silent root cause behind tonight's repeated trips through the recovery flow.
+
+Two-layer defense:
+
+1. **`KeychainStore.entryStatus(for:)`** — metadata-only probe that distinguishes `.present` / `.absent` / `.unknown(OSStatus)`. Returns `.absent` only when SecItem definitively says the item isn't there; transient failures map to `.unknown` and are treated as "don't touch the slot."
+2. **`KeyStore.setupKeychainManaged`** — calls `entryStatus` *before* generating a DEK and throws `KeyStoreError.keychainEntryAlreadyExists` for anything other than `.absent`. The DEK survives transient Keychain hiccups intact.
+
+Belt-and-suspenders for the case where someone deletes the Keychain entry out-of-band (e.g. via `security delete-generic-password`): `DatabaseService.databaseFileLooksEncrypted()` probes the on-disk file; if encrypted data is sitting there with no key to open it, AppState surfaces the recovery sheet rather than letting the app run with a fresh-but-useless DEK.
+
+The recovery sheet from 2026-05-12 stays as the user-facing escape hatch. The new guards prevent the trap from being entered in the first place; the sheet handles the case where the trap got sprung before this fix landed (the on-disk DB encrypted with an unrecoverable DEK).
+
+Regression test in `KeyStoreTests.swift` locks the contract: `setupKeychainManaged` must throw `.keychainEntryAlreadyExists` when called against a populated slot, even if the in-memory `KeyStore` thinks the state is `.notSetup`. The test uses a `test_forceState(_:)` escape hatch to simulate the buggy in-memory state without faking out `SecItemCopyMatching` itself.
+
 ### 2026-05-12 — First-launch sync progress: counter for pull, "X / Y" for push
 
 Bootstrap sub-states were added 2026-05-10 to break up the previously-monolithic "Setting up sync…" label. That solved the "which step is in flight" question but left a second one open: *how far* through the slow steps are we? A fresh Mac joining a populated CloudKit zone can spend minutes inside `.pullingInitial`; users couldn't tell whether the app was stuck or just busy.

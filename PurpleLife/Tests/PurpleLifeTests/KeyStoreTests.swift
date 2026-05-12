@@ -205,6 +205,37 @@ final class KeyStoreTests: XCTestCase {
         XCTAssertEqual(try store2.decrypt(cipher), Data("kc-only".utf8))
     }
 
+    /// Regression test for the silent-data-loss bug:
+    /// `setupKeychainManaged` must refuse to run when there's already
+    /// a slot at our account, even if the data isn't readable. Without
+    /// this guard a transient Keychain miss could overwrite the DEK
+    /// and brick the on-disk database. See HANDOFF 2026-05-12 entry
+    /// "Keychain DEK preservation".
+    func test_setupKeychainManagedRefusesToOverwriteExistingSlot() throws {
+        let dir = tempDir()
+        // Seed the slot via a normal first-launch bootstrap.
+        let store1 = KeyStore(supportDirectoryURL: dir)
+        try store1.setupKeychainManaged()
+        XCTAssertEqual(store1.state, .unlocked)
+
+        // Simulate the buggy scenario: a fresh KeyStore that thinks it
+        // hasn't been set up yet (e.g. because `getData` returned nil
+        // for a transient reason). The pre-bug code would happily
+        // generate + write a fresh DEK over the existing slot.
+        let store2 = KeyStore(supportDirectoryURL: dir)
+        // Force state back to .notSetup so the guard inside
+        // setupKeychainManaged is the only thing in scope.
+        store2.test_forceState(.notSetup)
+        XCTAssertThrowsError(try store2.setupKeychainManaged()) { error in
+            guard case KeyStore.KeyStoreError.keychainEntryAlreadyExists = error else {
+                XCTFail("expected .keychainEntryAlreadyExists, got \(error)")
+                return
+            }
+        }
+        // Cleanup
+        store1.resetAndWipe()
+    }
+
     func test_keychainManagedLockIsNoOp() throws {
         let store = KeyStore(supportDirectoryURL: tempDir())
         defer { cleanup(store) }

@@ -43,6 +43,13 @@ final class KeyStore: ObservableObject {
         case passphraseMismatch
         case corrupt
         case noPassphraseSet
+        /// `setupKeychainManaged` aborted because a Keychain slot for our
+        /// DEK already exists — we can't read it (so we'd silently
+        /// overwrite it without this guard), but its presence means
+        /// there's encrypted data on disk somewhere that belongs to
+        /// it. Surface the situation to the user instead of destroying
+        /// the key.
+        case keychainEntryAlreadyExists
     }
 
     @Published private(set) var state: UnlockState = .notSetup
@@ -115,6 +122,17 @@ final class KeyStore: ObservableObject {
     /// via `addPassphrase(_:)`.
     func setupKeychainManaged() throws {
         guard state == .notSetup else { throw KeyStoreError.alreadySetup }
+        // Refuse to overwrite an existing slot. `KeychainStore.getData`
+        // returns nil for "item not found" AND for any transient query
+        // failure (locked Keychain, auth issue, …) — without this
+        // check we silently overwrite the existing DEK with a fresh
+        // one and the on-disk encrypted DB becomes unrecoverable.
+        // Real incident: 2026-05-12 saw repeat data-loss because
+        // refreshState misread a transient miss as "first launch".
+        let status = KeychainStore.entryStatus(for: keychainDEKAccount)
+        if status != .absent {
+            throw KeyStoreError.keychainEntryAlreadyExists
+        }
         let newDEK = SymmetricKey(size: .bits256)
         self.dek = newDEK
         self.state = .unlocked
@@ -268,6 +286,17 @@ final class KeyStore: ObservableObject {
         hasPassphrase = false
         try? FileManager.default.removeItem(at: fileURL)
         KeychainStore.deleteAll()
+    }
+
+    /// Test-only escape hatch to override `state` and `dek` so a test
+    /// can exercise the "looks like first launch even though the
+    /// Keychain entry still exists" scenario that `setupKeychainManaged`
+    /// guards against. Used by the regression test for the silent-
+    /// data-loss bug; not exposed to production callers because the
+    /// state machine wants to own its transitions.
+    func test_forceState(_ newState: UnlockState) {
+        state = newState
+        if newState != .unlocked { dek = nil }
     }
 
     // MARK: - Encrypt / decrypt passthroughs

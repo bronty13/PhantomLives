@@ -322,6 +322,22 @@ final class DatabaseService {
         data.map { String(format: "%02x", $0) }.joined()
     }
 
+    /// Quick probe: does the on-disk DB file look like it holds
+    /// SQLCipher-encrypted data we'd lose if we bootstrapped a fresh
+    /// DEK? "Looks encrypted" = exists, non-trivial size, and does NOT
+    /// start with the plain-SQLite magic header. Used by AppState's
+    /// bootstrap guard to refuse to generate a new DEK when there's
+    /// existing data on disk that the new key can't possibly decrypt.
+    func databaseFileLooksEncrypted() -> Bool {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: databaseURL.path),
+              let attrs = try? fm.attributesOfItem(atPath: databaseURL.path),
+              let size = (attrs[.size] as? NSNumber)?.intValue,
+              size > 4096
+        else { return false }
+        return !Self.isPlaintextSQLite(at: databaseURL)
+    }
+
     /// True when `url` points at an existing file whose first 16 bytes
     /// are the SQLite 3 magic header. Used to detect upgrade-time
     /// plaintext DBs that need the SQLCipher migration.

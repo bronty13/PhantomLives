@@ -96,8 +96,43 @@ final class AppState: ObservableObject {
         // per-test KeyStores via tempDir.
         if keyStore.state == .notSetup,
            ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            // Belt-and-suspenders: if the on-disk database file looks
+            // SQLCipher-encrypted (non-zero, no SQLite magic header),
+            // we have data that was written by a previous DEK. Even
+            // if `KeychainStore.entryStatus` says the slot is absent
+            // — e.g. someone ran `security delete-generic-password`
+            // directly — bootstrapping a fresh DEK here destroys the
+            // ability to ever decrypt that file. Surface the recovery
+            // UX instead.
+            let dbLooksEncrypted = database.databaseFileLooksEncrypted()
             do {
                 try keyStore.setupKeychainManaged()
+                if dbLooksEncrypted {
+                    // We bootstrapped successfully (no entry conflict),
+                    // but encrypted data exists on disk that was
+                    // written by some PRIOR DEK that's now gone. The
+                    // newly-generated DEK can't decrypt it. Recovery
+                    // UX takes over.
+                    dbHealth = .unrecoverable(
+                        "PurpleLife found encrypted data on disk but no Keychain entry to unlock it. " +
+                        "The Keychain entry may have been deleted directly (e.g. via " +
+                        "`security delete-generic-password -s com.purplelife`) or removed by another app or system tool."
+                    )
+                }
+            } catch KeyStore.KeyStoreError.keychainEntryAlreadyExists {
+                // A Keychain entry exists at our account but
+                // `getData` returned nil — almost always a transient
+                // unlock / auth issue. Refusing to overwrite is the
+                // load-bearing safety check that keeps the DEK alive
+                // for a future launch to read again. Surface the
+                // situation so the user can quit and retry, restore
+                // from Time Machine, or reset deliberately.
+                NSLog("PurpleLife: Keychain entry present but unreadable — refusing to overwrite.")
+                dbHealth = .unrecoverable(
+                    "PurpleLife's Keychain entry exists but can't be read right now. " +
+                    "This is usually a transient Keychain issue. Quit and try again; " +
+                    "if the problem persists, restore from Time Machine, or Reset to start fresh."
+                )
             } catch {
                 NSLog("PurpleLife: keystore setup failed — \(error.localizedDescription)")
             }

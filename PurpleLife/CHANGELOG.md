@@ -4,6 +4,18 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-12 — Fix: Keychain DEK preservation — refuse to overwrite an existing-but-unreadable slot
+
+Data-loss bug discovered while exercising the recovery UX. `KeychainStore.getData` returned `nil` for any non-success status from `SecItemCopyMatching` — `errSecItemNotFound`, `errSecAuthFailed`, transient unlock issues, all collapsed. `KeyStore.refreshState` then treated every nil as "no DEK exists yet", AppState called `setupKeychainManaged()`, and the new DEK silently **overwrote** the existing slot. The on-disk encrypted database became permanently unreadable, RecoveryScreen fired, the user lost data — for what may have been a momentary Keychain hiccup.
+
+Two new guards:
+
+- **`Services/KeychainStore.swift`** — new `entryStatus(for:) -> EntryStatus` metadata-only probe. Returns `.present` / `.absent` / `.unknown(OSStatus)` so callers can tell "definitively not there" apart from "couldn't tell."
+- **`Services/KeyStore.swift`** — `setupKeychainManaged` calls `entryStatus` before generating a DEK and throws the new `KeyStoreError.keychainEntryAlreadyExists` when the slot is anything other than `.absent`. The DEK never gets overwritten on a transient miss.
+- **`Services/DatabaseService.swift`** — new `databaseFileLooksEncrypted()` helper (probes file size + SQLite magic header). Belt-and-suspenders: if some external tool deletes the Keychain entry but the encrypted DB is still on disk, we surface `dbHealth = .unrecoverable` *after* the (now-successful) bootstrap so the user sees the recovery sheet instead of a silently broken app.
+- **`App/AppState.swift`** — bootstrap path catches `.keychainEntryAlreadyExists` and surfaces the recovery sheet with a transient-failure message; also surfaces it post-bootstrap when the DB file looks encrypted.
+- **`Tests/.../KeyStoreTests.swift`** — new regression test (175/175 → 175/175 green): `setupKeychainManaged` must throw `.keychainEntryAlreadyExists` rather than overwrite an existing slot. Includes a `KeyStore.test_forceState(_:)` escape hatch used only by tests to simulate the "looks like first launch even though the slot exists" scenario.
+
 ### 2026-05-12 — First-launch sync bootstrap: per-record progress in `pullingInitial` / `pushingLocalChanges`
 
 The sub-states added on 2026-05-10 already named *which* bootstrap step was in flight (checking account / ensuring zone / pulling / pushing) so the user wasn't staring at a generic 5-minute "Setting up sync…". This change adds finer-grained progress *within* the two long steps so the footer shows visible motion:

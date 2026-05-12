@@ -65,4 +65,31 @@ enum KeychainStore {
         ]
         _ = SecItemDelete(query as CFDictionary)
     }
+
+    /// Metadata-only probe — does an entry exist at this account?
+    /// Distinguishes "definitely not there" from "couldn't tell" so the
+    /// keystore bootstrap doesn't silently overwrite a slot whose
+    /// contents we transiently failed to read. `getData` collapses both
+    /// cases to nil, which is the load-bearing bug behind the recurring
+    /// data-loss trap.
+    static func entryStatus(for account: String) -> EntryStatus {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        let status = SecItemCopyMatching(query as CFDictionary, nil)
+        switch status {
+        case errSecSuccess:      return .present
+        case errSecItemNotFound: return .absent
+        default:                 return .unknown(status)
+        }
+    }
+
+    enum EntryStatus: Equatable {
+        case present
+        case absent
+        case unknown(OSStatus)
+    }
 }
