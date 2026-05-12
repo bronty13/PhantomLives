@@ -175,6 +175,22 @@ final class AppState: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // Same bridge for SchemaRegistry. Without it, `@Published var
+        // schema` only fires when the SchemaRegistry instance itself
+        // gets reassigned — internal `types` / `hiddenBuiltInIds`
+        // mutations bubble through `schema.objectWillChange` but never
+        // reach `AppState.objectWillChange`. Symptom: SchemaEditor's
+        // "Delete field" / "Move up" / "Move down" buttons mutate the
+        // model correctly but the rendered field list doesn't refresh
+        // until the user clicks away and back (which forces a new
+        // body evaluation).
+        schema.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+
         // Wire ObjectEngine → SchemaRegistry so search-index updates have
         // the type definitions they need.
         ObjectEngine.currentSchema = schema
