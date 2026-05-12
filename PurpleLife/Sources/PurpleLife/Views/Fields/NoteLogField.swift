@@ -64,8 +64,13 @@ struct NoteLogField: View {
 
     private var inputArea: some View {
         VStack(alignment: .leading, spacing: 6) {
-            RichTextEditor(attributed: $draftAttributed)
-                .frame(minHeight: 80, maxHeight: 180)
+            RichTextEditor(
+                attributed: $draftAttributed,
+                onAttachmentExtracted: { image, data, filename in
+                    handlePastedImage(image, data: data, filename: filename)
+                }
+            )
+            .frame(minHeight: 80, maxHeight: 180)
             HStack(spacing: 8) {
                 Button {
                     pickAttachments()
@@ -157,8 +162,13 @@ struct NoteLogField: View {
             }
 
             if editingEntryId == entry.id {
-                RichTextEditor(attributed: $editingAttributed)
-                    .frame(minHeight: 80, maxHeight: 180)
+                RichTextEditor(
+                    attributed: $editingAttributed,
+                    onAttachmentExtracted: { image, data, filename in
+                        handlePastedImage(image, data: data, filename: filename)
+                    }
+                )
+                .frame(minHeight: 80, maxHeight: 180)
                 HStack {
                     Spacer()
                     Button("Cancel") { editingEntryId = nil }
@@ -260,6 +270,75 @@ struct NoteLogField: View {
         current.entries.removeAll { $0.id == entry.id }
         fieldsBuffer[fieldKey] = current.jsonDictionary
         if editingEntryId == entry.id { editingEntryId = nil }
+    }
+
+    // MARK: - Paste-image extraction
+
+    /// Called when `RichTextEditor` reports a fresh image attachment in
+    /// its storage (typically a paste). Writes the bytes to a temp
+    /// file, then either:
+    ///   * Edit mode → upload immediately + attach to the entry being
+    ///     edited (the user's mental model is "I'm adding to THIS
+    ///     entry"; making it pending would be weirdly indirect).
+    ///   * Input area → join the pending-attachments queue for the
+    ///     next-posted entry. Same path as paperclip + drag-drop.
+    ///
+    /// The temp file is cleaned up after `AttachmentService.add` copies
+    /// the bytes into the content-addressed store (edit-mode path).
+    /// For the pending path it lingers until commit — when
+    /// `commitDraft` calls `AttachmentService.add` on each URL — and
+    /// would in any case eventually be reaped by macOS from
+    /// `NSTemporaryDirectory`.
+    private func handlePastedImage(_ image: NSImage, data: Data, filename: String?) {
+        // Pick a filename. Prefer what the source provided (paste from
+        // a real file carries the original name); fall back to a
+        // sensible default. Always add a UUID suffix so concurrent
+        // pastes can't collide on the same temp path.
+        let providedExt = filename.flatMap { ($0 as NSString).pathExtension }
+        let ext: String = (providedExt?.isEmpty == false) ? providedExt! : "png"
+        let providedBase = filename.flatMap { ($0 as NSString).deletingPathExtension }
+        let base: String = (providedBase?.isEmpty == false) ? providedBase! : "pasted-image"
+        let unique = "\(base)-\(UUID().uuidString.prefix(8)).\(ext)"
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(unique)
+        do {
+            try data.write(to: tempURL, options: .atomic)
+        } catch {
+            self.error = "Couldn't capture pasted image: \(error.localizedDescription)"
+            return
+        }
+
+        if let editingId = editingEntryId {
+            do {
+                let row = try AttachmentService.add(
+                    from: tempURL,
+                    parentObjectId: parentObjectId,
+                    fieldKey: fieldKey
+                )
+                var current = value
+                guard let idx = current.entries.firstIndex(where: { $0.id == editingId }) else {
+                    try? FileManager.default.removeItem(at: tempURL)
+                    return
+                }
+                current.entries[idx].attachments.append(NoteLogAttachmentRef(
+                    id: row.id,
+                    sha256: row.sha256,
+                    filename: row.filename,
+                    mimeType: row.mimeType,
+                    sizeBytes: row.sizeBytes
+                ))
+                current.entries[idx].updatedAt = ISO8601DateFormatter().string(from: Date())
+                fieldsBuffer[fieldKey] = current.jsonDictionary
+                try? FileManager.default.removeItem(at: tempURL)
+                error = nil
+            } catch {
+                self.error = "Attachment failed: \(error.localizedDescription)"
+            }
+        } else {
+            pendingAttachments.append(tempURL)
+            error = nil
+        }
     }
 
     // MARK: - Attachment pick / open / save

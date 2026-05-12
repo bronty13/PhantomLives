@@ -24,11 +24,20 @@ import AppKit
 ///   persist on autosave.
 struct RichTextEditor: View {
     @Binding var attributed: NSAttributedString
+    /// Optional callback fired when a NEW image attachment appears in
+    /// the storage (typically from a paste). When set, the editor
+    /// extracts the attachment out of the text flow and hands its
+    /// image + bytes + suggested filename to the caller. NoteLog uses
+    /// this to upload pasted images as proper attachments instead of
+    /// burning them into the RTF blob. RichTextField (the `.richText`
+    /// field renderer) leaves it nil so inline images stay inline.
+    var onAttachmentExtracted: ((NSImage, Data, String?) -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 0) {
             RichTextToolbar()
-            RichTextRepresentable(attributed: $attributed)
+            RichTextRepresentable(attributed: $attributed,
+                                  onAttachmentExtracted: onAttachmentExtracted)
                 .frame(minHeight: 240)
                 .background(Color(NSColor.textBackgroundColor))
                 .overlay(
@@ -47,8 +56,11 @@ struct RichTextEditor: View {
 /// check, link detection, attachment paste handling all apply.
 struct RichTextRepresentable: NSViewRepresentable {
     @Binding var attributed: NSAttributedString
+    var onAttachmentExtracted: ((NSImage, Data, String?) -> Void)? = nil
 
-    func makeCoordinator() -> Coordinator { Coordinator(binding: $attributed) }
+    func makeCoordinator() -> Coordinator {
+        Coordinator(binding: $attributed, onAttachmentExtracted: onAttachmentExtracted)
+    }
 
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSTextView.scrollableTextView()
@@ -77,6 +89,14 @@ struct RichTextRepresentable: NSViewRepresentable {
         tv.font = NSFont.systemFont(ofSize: 13)
         tv.textContainerInset = NSSize(width: 8, height: 8)
         tv.textStorage?.setAttributedString(attributed)
+        // Snapshot the attachments that were in the initial storage so
+        // the extractor (if wired) doesn't treat already-saved inline
+        // images as fresh pastes. For an empty input editor this is a
+        // no-op; for an edit-mode editor populated with an existing
+        // entry's RTFD, this captures whatever was already inline.
+        if let storage = tv.textStorage {
+            context.coordinator.snapshotKnownAttachments(in: storage)
+        }
         context.coordinator.textView = tv
         RichTextRegistry.shared.current = tv
         return scroll
@@ -90,18 +110,106 @@ struct RichTextRepresentable: NSViewRepresentable {
             let selection = tv.selectedRanges
             storage.setAttributedString(attributed)
             tv.selectedRanges = selection
+            // Re-snapshot — the storage was replaced wholesale, so the
+            // previously-tracked NSTextAttachment instances are gone.
+            // Mark the fresh set as "known" so we don't immediately
+            // extract them on the next textDidChange.
+            context.coordinator.snapshotKnownAttachments(in: storage)
         }
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         let binding: Binding<NSAttributedString>
+        var onAttachmentExtracted: ((NSImage, Data, String?) -> Void)?
         weak var textView: NSTextView?
-        init(binding: Binding<NSAttributedString>) { self.binding = binding }
+        /// Object identity of every `NSTextAttachment` we've already
+        /// seen — either present at load time, or extracted (and
+        /// removed) on a prior textDidChange. Used to distinguish a
+        /// fresh paste from previously-saved inline content. Without
+        /// this snapshot we'd strip existing inline images out of an
+        /// entry's body the first time the user types anything in
+        /// edit mode.
+        private var knownAttachmentIDs: Set<ObjectIdentifier> = []
+
+        init(binding: Binding<NSAttributedString>,
+             onAttachmentExtracted: ((NSImage, Data, String?) -> Void)? = nil) {
+            self.binding = binding
+            self.onAttachmentExtracted = onAttachmentExtracted
+        }
+
+        func snapshotKnownAttachments(in storage: NSTextStorage) {
+            knownAttachmentIDs.removeAll()
+            let range = NSRange(location: 0, length: storage.length)
+            storage.enumerateAttribute(.attachment, in: range, options: []) { value, _, _ in
+                if let att = value as? NSTextAttachment {
+                    knownAttachmentIDs.insert(ObjectIdentifier(att))
+                }
+            }
+        }
 
         func textDidChange(_ notification: Notification) {
             guard let tv = notification.object as? NSTextView,
                   let storage = tv.textStorage else { return }
+            if onAttachmentExtracted != nil {
+                extractFreshAttachments(from: storage)
+            }
             binding.wrappedValue = NSAttributedString(attributedString: storage)
+        }
+
+        /// Walk the storage; for any attachment whose identity isn't in
+        /// `knownAttachmentIDs`, hand its image + bytes + suggested
+        /// filename to the handler and remove it from the text flow.
+        /// Newly-extracted (and therefore newly-removed) attachments
+        /// don't need to be added to the known set — they're gone from
+        /// the storage entirely. We DO add ones we couldn't extract
+        /// (no image, no bytes) so we stop re-checking them.
+        private func extractFreshAttachments(from storage: NSTextStorage) {
+            guard let handler = onAttachmentExtracted else { return }
+            var rangesToDelete: [NSRange] = []
+            let full = NSRange(location: 0, length: storage.length)
+            storage.enumerateAttribute(.attachment, in: full, options: []) { value, range, _ in
+                guard let att = value as? NSTextAttachment else { return }
+                let id = ObjectIdentifier(att)
+                if knownAttachmentIDs.contains(id) { return }
+
+                var image: NSImage? = att.image
+                if image == nil,
+                   let fw = att.fileWrapper, fw.isRegularFile,
+                   let bytes = fw.regularFileContents {
+                    image = NSImage(data: bytes)
+                }
+                if image == nil, let cell = att.attachmentCell as? NSTextAttachmentCell {
+                    image = cell.image
+                }
+                guard let img = image else {
+                    knownAttachmentIDs.insert(id)
+                    return
+                }
+
+                let data: Data
+                var filename: String? = nil
+                if let fw = att.fileWrapper, let bytes = fw.regularFileContents {
+                    data = bytes
+                    filename = fw.preferredFilename
+                } else if let tiff = img.tiffRepresentation,
+                          let rep = NSBitmapImageRep(data: tiff),
+                          let png = rep.representation(using: .png, properties: [:]) {
+                    data = png
+                } else {
+                    knownAttachmentIDs.insert(id)
+                    return
+                }
+
+                handler(img, data, filename)
+                rangesToDelete.append(range)
+            }
+            if !rangesToDelete.isEmpty {
+                storage.beginEditing()
+                for range in rangesToDelete.sorted(by: { $0.location > $1.location }) {
+                    storage.deleteCharacters(in: range)
+                }
+                storage.endEditing()
+            }
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
