@@ -234,7 +234,14 @@ struct ObjectDetailSheet: View {
     @ViewBuilder
     private func editorBody(for field: FieldDef) -> some View {
         switch field.kind {
-        case .text, .url, .email:
+        case .text:
+            // Free-text user content — spell-checked. URLs and emails
+            // share the same shape but skip spell-check below: domain
+            // syntax (foo.bar, jdoe@…) lights up the dictionary in
+            // useless ways.
+            SpellCheckedTextField(field.name, text: stringBinding(field.key))
+                .frame(height: 22)
+        case .url, .email:
             TextField(field.name, text: stringBinding(field.key))
                 .textFieldStyle(.roundedBorder)
         case .link:

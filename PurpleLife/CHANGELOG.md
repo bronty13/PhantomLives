@@ -4,6 +4,13 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-12 — Spell-check on record-level `.text` fields
+
+SwiftUI's macOS `TextField` doesn't expose the continuous-spell-check / grammar flags that `NSTextField`'s field editor accepts, so single-line text inputs across the app had been silent (no red squiggles) while the longer rich-text editors got the flags via direct `NSTextView` config. New `SpellCheckedTextField` `NSViewRepresentable` wraps an `NSTextField`, configures the shared field editor on focus, and exposes a `TextField`-shaped initializer for drop-in swaps.
+
+- **`Views/SpellCheckedTextField.swift`** (new, ~90 LOC) — placeholder, binding, and optional `onSubmit` callback. Field editor configured with `isContinuousSpellCheckingEnabled = true`, `isGrammarCheckingEnabled = true`, `isAutomaticSpellingCorrectionEnabled = false` (autocorrect off — silent substitution on notes containing code / acronyms / brand names is more harmful than helpful).
+- **`Views/Detail.swift`** — `FieldKind.text` now renders through the wrapper. `.url` and `.email` keep the plain `TextField`; domain syntax lights the dictionary up uselessly in those cases. Other call sites (Schema Editor field names, NoteEditor title, Quick Capture, etc.) stay on `TextField` for now — extending the wrapper to support SwiftUI `.font` + `.focused()` is a follow-up if the asymmetry bites.
+
 ### 2026-05-12 — Recovery UX for "encrypted DB + Keychain DEK gone" trap
 
 When the on-disk SQLCipher database is encrypted with a key the app can't reach (most common cause: Keychain entry cleared while the file stayed encrypted), the launch path used to leave the user with a normal-looking sidebar but every query failing in the console — silent breakage with no recovery path. Now PurpleLife detects the mismatch and takes the window over with a clear orange-lock recovery screen.
