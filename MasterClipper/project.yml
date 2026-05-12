@@ -56,6 +56,7 @@ targets:
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: SRKV8T38CD
         INFOPLIST_FILE: iOS/Sources/MasterClipperiOS/App/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SUPPORTS_MACCATALYST: "NO"
     entitlements:
       path: iOS/Sources/MasterClipperiOS/App/MasterClipperiOS.entitlements
