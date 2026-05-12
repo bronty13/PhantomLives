@@ -17,7 +17,9 @@ struct NotificationsSetup: View {
                 Toggle("Bounce Dock icon", isOn: $settings.settings.bounceDockOnWatchHit)
                 Toggle("Show macOS notification banner",
                        isOn: $settings.settings.systemNotificationsOnWatchHit)
-                Text("A watch hit fires when a watched address-book contact comes online (via MONITOR or ISON polling) or speaks while you're connected.")
+                Toggle("Open query when a watched contact first messages me",
+                       isOn: $settings.settings.popQueryBufferOnWatch)
+                Text("A watch hit fires when a watched address-book contact comes online (via MONITOR or ISON polling) or speaks while you're connected. *Open query* additionally switches the active network and selects the new query buffer when a watched contact's PRIVMSG creates a fresh conversation — off by default so it doesn't yank you out of what you're doing.")
                     .font(.caption).foregroundStyle(.tertiary)
             }
             Section("Own-nick mention") {

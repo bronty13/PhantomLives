@@ -470,6 +470,22 @@ final class ChatModel: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+        // Pop-on-watch: a watched contact's first PRIVMSG of the session
+        // auto-switches focus to the freshly-created query buffer. The
+        // emit-side guard already covered the toggle, the watch-list
+        // membership check, and the "fresh buffer" condition; here we
+        // just route the activation to the right connection.
+        events
+            .sink { [weak self] tuple in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if case .watchedQueryAutoOpened(let bufferID, _) = tuple.1 {
+                        self.activatePoppedQuery(connectionID: tuple.0,
+                                                 bufferID: bufferID)
+                    }
+                }
+            }
+            .store(in: &cancellables)
         // React to KeyStore state flips (lock / unlock / setup / reset):
         // reload the settings envelope and refresh LogStore's DEK so writes
         // and reads stay in sync with the current encryption state.
@@ -877,6 +893,22 @@ final class ChatModel: ObservableObject {
         activityFeed.removeAll()
     }
 
+    /// Handle a `.watchedQueryAutoOpened` event by switching the active
+    /// connection (if needed) and selecting the newly-created query
+    /// buffer on that connection. Emit-side checks already filtered for
+    /// the opt-in toggle + watchlist membership + fresh-buffer; here we
+    /// just verify the named buffer still exists (it could have been
+    /// closed between emit and dispatch, though that's a very tight
+    /// race) and apply the activation.
+    private func activatePoppedQuery(connectionID: UUID, bufferID: UUID) {
+        guard let conn = connections.first(where: { $0.id == connectionID }),
+              conn.buffers.contains(where: { $0.id == bufferID }) else { return }
+        if activeConnectionID != connectionID {
+            activeConnectionID = connectionID
+        }
+        conn.selectedBufferID = bufferID
+    }
+
     private func playSoundFor(event: IRCConnectionEvent) {
         let s = settings.settings
         switch event {
@@ -919,6 +951,7 @@ final class ChatModel: ObservableObject {
             c.ctcpVersionString = s.ctcpVersionString
             c.autoReplyWhenAway = s.autoReplyWhenAway
             c.awayAutoReply = s.awayAutoReply
+            c.popQueryBufferOnWatch = s.popQueryBufferOnWatch
             c.highlightRules = s.highlightRules
             c.highlightSoundName = s.eventSounds["highlight"] ?? "Funk"
             // Resolve identity per connection, if any. Takes effect on the

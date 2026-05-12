@@ -24,6 +24,14 @@ enum IRCConnectionEvent: Sendable {
     case ctcpRequest(from: String, target: String, command: String, args: String)
     case awayChanged(isAway: Bool, reason: String?)
     case ignoredMessage(from: String, target: String)
+    /// Fired when a fresh query buffer is auto-created by an inbound
+    /// PRIVMSG from a watched contact AND the user has opted into the
+    /// pop-on-watch behavior. ChatModel consumes this by switching
+    /// the active connection (if needed) and selecting the new
+    /// buffer. The event always carries the connection's UUID via
+    /// the events publisher tuple, so the receiver knows which
+    /// network owns `bufferID`.
+    case watchedQueryAutoOpened(bufferID: UUID, from: String)
 }
 
 /// One IRC connection: owns its `IRCClient`, its buffers, its watchlist
@@ -94,6 +102,11 @@ final class IRCConnection: ObservableObject, Identifiable {
     var ctcpVersionString: String = "PurpleIRC"
     var autoReplyWhenAway: Bool = true
     var awayAutoReply: String = ""
+    /// When set, an inbound PRIVMSG from a watched contact that creates
+    /// a brand-new query buffer (first message of session) triggers a
+    /// `.watchedQueryAutoOpened` event so ChatModel can switch focus.
+    /// Pushed in from `AppSettings.popQueryBufferOnWatch`.
+    var popQueryBufferOnWatch: Bool = false
 
     // User-configured highlight rules (pushed in from settings). The matcher
     // caches compiled regex so busy channels don't recompile per message.
@@ -726,6 +739,23 @@ final class IRCConnection: ObservableObject, Identifiable {
         client.send("WHOIS \(nick)")
     }
 
+    /// Emit `.watchedQueryAutoOpened` when an inbound PRIVMSG just created
+    /// a fresh query buffer AND the sender is on our watchlist AND the
+    /// user has opted into the pop-on-watch behavior. ChatModel handles
+    /// the event by switching `activeConnectionID` (if needed) and
+    /// setting this connection's `selectedBufferID`. Scoped to direct
+    /// messages (`isToSelf`) so a watched contact talking in a shared
+    /// channel doesn't yank focus.
+    private func maybePopQueryOnWatch(from: String, isToSelf: Bool, bufferID: Buffer.ID) {
+        guard popQueryBufferOnWatch, isToSelf else { return }
+        let key = from.lowercased()
+        let isWatched = watchlist.watched.contains {
+            $0.caseInsensitiveCompare(from) == .orderedSame
+        }
+        guard isWatched else { return }
+        emit(.watchedQueryAutoOpened(bufferID: bufferID, from: key))
+    }
+
     /// Drop the whois-origin routing map when it crosses `whoisOriginCap`.
     /// Reached only when the server stops sending end-of-whois numerics
     /// (318/369/401/406) — those normally evict entries one-at-a-time.
@@ -1157,6 +1187,7 @@ final class IRCConnection: ObservableObject, Identifiable {
             let bIdx = r.index
             if r.created, kind == .query {
                 autoWhoisForQuery(bufferName, queryBufferID: buffers[bIdx].id)
+                maybePopQueryOnWatch(from: from, isToSelf: isToSelf, bufferID: buffers[bIdx].id)
             }
             appendTo(bufferIndex: bIdx, line: ChatLine(
                 timestamp: lineTime,
@@ -1183,6 +1214,7 @@ final class IRCConnection: ObservableObject, Identifiable {
         // routes back into this same query buffer via whoisOriginByNick.
         if r.created, kind == .query {
             autoWhoisForQuery(bufferName, queryBufferID: buffers[bIdx].id)
+            maybePopQueryOnWatch(from: from, isToSelf: isToSelf, bufferID: buffers[bIdx].id)
         }
         if isNotice {
             appendTo(bufferIndex: bIdx, line: ChatLine(

@@ -5,6 +5,65 @@ All notable changes to PurpleIRC are recorded here. The bundle's
 count (`1.0.<count>`); CHANGELOG entries use the same scheme so the
 version on the About panel matches the entry that introduced it.
 
+## [1.0.239] — 2026-05-12
+
+### Added (pop-on-watch)
+
+- **First-message pop-on-watch.** New toggle in Setup → Notifications →
+  "Open query when a watched contact first messages me". When enabled,
+  an inbound PRIVMSG from an address-book contact with the watch bell
+  on that creates a fresh query buffer (first message of session)
+  automatically:
+  - Switches `activeConnectionID` to the network the message arrived on.
+  - Selects the new query buffer.
+- Off by default — opt-in because it interrupts the user's current
+  focus. The watch-hit banner / sound / dock bounce still fire as
+  before; this just adds the optional focus-switch on top.
+- Plumbing: new `AppSettings.popQueryBufferOnWatch` (forward-compat
+  decode); pushed to each `IRCConnection` via `applySettingsToAll`;
+  emits new `IRCConnectionEvent.watchedQueryAutoOpened(bufferID:from:)`
+  from inside `handlePrivmsg` only when (a) `isToSelf` is true,
+  (b) the sender is on `watchlist.watched`, (c) the buffer was just
+  created. ChatModel's event sink does the activation. The PurpleBot
+  event dictifier also forwards the event so JS scripts can react.
+
+### Added (PurpleBot `irc.store` persistence)
+
+- **Per-script key/value store.** The PurpleBot JS surface gains
+  `irc.store.get(key)`, `.set(key, value)`, `.delete(key)`, and
+  `.keys()`. Each script's state lives in its own JSON file at
+  `<supportDir>/scripts/<scriptID>.store.json` — two scripts that
+  both use `count` see independent values.
+- Per-script isolation via IIFE wrap. Each script's source is now
+  wrapped in `(function() { 'use strict'; const __PURPLEBOT_SID =
+  '<uuid>'; const irc = Object.assign({}, globalThis.irc, { store:
+  {...} }); <user source> })();` before evaluation. The `irc` object
+  inside the script is a per-script shim whose `store` methods proxy
+  to internal `irc._storeGet/Set/Delete/Keys(scriptID, ...)` Swift
+  blocks with the baked-in script ID.
+- Behaviour change worth knowing: top-level `var x` declarations in
+  user scripts are now IIFE-local (no longer leak to globalThis).
+  This is the standard JS-module isolation pattern and shouldn't
+  affect scripts that don't rely on inter-script global sharing
+  (which was never a documented contract).
+- Storage envelope identical to every other store: plaintext when the
+  keystore is locked, AES-256-GCM-sealed under the per-install DEK
+  once unlocked. Reseals on key change via the same `setEncryptionKey`
+  path BotHost already uses for index.json + script sources.
+- `remove(script)` now also purges that script's `.store.json` so
+  deleting a script doesn't leave its persisted state behind on disk.
+- NukeService already wipes the `scripts/` subtree, so `/nuke` clears
+  these for free — no per-feature change needed.
+
+### Tests
+
+- `ScriptStoreTests` (9 tests): get-on-missing-key, set/get round-trip,
+  delete, keys snapshot, **script isolation invariant** (two scripts
+  hitting the same key see distinct values), plaintext persistence
+  across instances, **encrypted persistence across instances** with
+  matching DEK, purge wipes both cache and file, JS `null` write
+  semantics. Test count climbs to 303.
+
 ## [1.0.238] — 2026-05-12
 
 ### Changed (refactor — extract BufferInputState)

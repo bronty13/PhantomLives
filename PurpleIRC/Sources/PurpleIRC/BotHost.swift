@@ -64,11 +64,18 @@ final class BotHost: ObservableObject {
         enum Level { case info, error, script }
     }
 
+    /// Per-script persistent key/value store backing the `irc.store` JS
+    /// surface. Each script gets its own file at
+    /// `scripts/<scriptID>.store.json`, encrypted at rest under the
+    /// shared DEK once the keystore unlocks.
+    let scriptStore: ScriptStore
+
     init(supportDir: URL) {
         let dir = supportDir.appendingPathComponent("scripts", isDirectory: true)
         self.scriptsDir = dir
         self.indexURL = dir.appendingPathComponent("index.json")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        self.scriptStore = ScriptStore(directory: dir)
         loadIndex()
     }
 
@@ -95,10 +102,14 @@ final class BotHost: ObservableObject {
     func setEncryptionKey(_ key: SymmetricKey?) {
         let changed = (key != nil) != (currentKey != nil)
         currentKey = key
+        scriptStore.setEncryptionKey(key)
         if changed {
             // Newly-keyed: re-read so any encrypted index/script that was
-            // unreadable a moment ago decodes now.
+            // unreadable a moment ago decodes now. Reseal the script
+            // store too so a previously-plaintext write gets wrapped
+            // under the new key without waiting for the next mutation.
             loadIndex()
+            scriptStore.reseal()
             rebuildContext()
         }
     }
@@ -179,6 +190,10 @@ final class BotHost: ObservableObject {
         guard let i = scripts.firstIndex(where: { $0.id == script.id }) else { return }
         let url = scriptsDir.appendingPathComponent(scripts[i].filename)
         try? FileManager.default.removeItem(at: url)
+        // Wipe the script's persistent store too — leaving orphan files
+        // in scripts/ behind a removed script would leak both bytes and
+        // (potentially) sensitive state.
+        scriptStore.purge(scriptID: scripts[i].id)
         scripts.remove(at: i)
         saveIndex()
         rebuildContext()
@@ -218,7 +233,9 @@ final class BotHost: ObservableObject {
 
         for s in scripts where s.enabled {
             let src = scriptSource(s)
-            ctx.evaluateScript(src, withSourceURL: URL(string: "purple-bot:///\(s.filename)"))
+            guard !src.isEmpty else { continue }
+            let wrapped = wrapScriptSource(src, scriptID: s.id)
+            ctx.evaluateScript(wrapped, withSourceURL: URL(string: "purple-bot:///\(s.filename)"))
             appendLog(.info, "Loaded \(s.name)")
         }
         context = ctx
@@ -355,7 +372,66 @@ final class BotHost: ObservableObject {
         }
         irc.setObject(notifyBlock, forKeyedSubscript: "notify" as NSString)
 
+        // Per-script persistent store. Each script's source is wrapped in
+        // an IIFE that synthesises a script-local `irc.store` object whose
+        // four methods proxy to these underscore-prefixed Swift blocks
+        // with the script's UUID. The wrapper lives in `wrapScriptSource`.
+        // Scripts MUST NOT call these directly — they're private to the
+        // wrapper. Behaviour on a missing/malformed UUID is silent no-op.
+        let storeGetBlock: @convention(block) (String, String) -> Any? = { [weak self] sid, key in
+            guard let uuid = UUID(uuidString: sid), let self else { return nil }
+            return self.scriptStore.get(scriptID: uuid, key: key)
+        }
+        irc.setObject(storeGetBlock, forKeyedSubscript: "_storeGet" as NSString)
+
+        let storeSetBlock: @convention(block) (String, String, Any?) -> Void = { [weak self] sid, key, value in
+            guard let uuid = UUID(uuidString: sid), let self else { return }
+            self.scriptStore.set(scriptID: uuid, key: key, value: value)
+        }
+        irc.setObject(storeSetBlock, forKeyedSubscript: "_storeSet" as NSString)
+
+        let storeDeleteBlock: @convention(block) (String, String) -> Void = { [weak self] sid, key in
+            guard let uuid = UUID(uuidString: sid), let self else { return }
+            self.scriptStore.delete(scriptID: uuid, key: key)
+        }
+        irc.setObject(storeDeleteBlock, forKeyedSubscript: "_storeDelete" as NSString)
+
+        let storeKeysBlock: @convention(block) (String) -> [String] = { [weak self] sid in
+            guard let uuid = UUID(uuidString: sid), let self else { return [] }
+            return self.scriptStore.keys(scriptID: uuid)
+        }
+        irc.setObject(storeKeysBlock, forKeyedSubscript: "_storeKeys" as NSString)
+
         ctx.setObject(irc, forKeyedSubscript: "irc" as NSString)
+    }
+
+    /// Wrap a user script in an IIFE that hands it a per-script `irc`
+    /// object (script ID baked in via `__PURPLEBOT_SID`). The wrapper
+    /// makes `irc.store.get/set/delete/keys` route to the script's own
+    /// JSON file under `scripts/<id>.store.json` without the script
+    /// having to know its own ID. Top-level `var` declarations become
+    /// IIFE-local — a tiny behaviour change from the previous bare
+    /// `evaluateScript` path. Line numbers in exceptions shift by the
+    /// prelude line count; the exception handler logs that line offset
+    /// verbatim, so a stack trace at "line 3" inside a wrapped script
+    /// maps to "line 1" of the user-visible source.
+    private func wrapScriptSource(_ src: String, scriptID: UUID) -> String {
+        let sid = scriptID.uuidString
+        return """
+        (function() {
+          'use strict';
+          const __PURPLEBOT_SID = '\(sid)';
+          const irc = Object.assign({}, globalThis.irc, {
+            store: {
+              get: function(k) { return globalThis.irc._storeGet(__PURPLEBOT_SID, k); },
+              set: function(k, v) { globalThis.irc._storeSet(__PURPLEBOT_SID, k, v); },
+              delete: function(k) { globalThis.irc._storeDelete(__PURPLEBOT_SID, k); },
+              keys: function() { return globalThis.irc._storeKeys(__PURPLEBOT_SID); }
+            }
+          });
+        \(src)
+        })();
+        """
     }
 
     private static func stateString(_ s: IRCConnectionState) -> String {
@@ -435,6 +511,9 @@ final class BotHost: ObservableObject {
             return ("nick", merge(["nick": nick]))
         case .nickChanged(let old, let new, let isSelf):
             return ("nickchange", merge(["old": old, "new": new, "isSelf": isSelf]))
+        case .watchedQueryAutoOpened(let bufferID, let from):
+            return ("watchedQueryAutoOpened",
+                    merge(["bufferID": bufferID.uuidString, "from": from]))
         }
     }
 
