@@ -5,6 +5,30 @@ All notable changes to PurpleIRC are recorded here. The bundle's
 count (`1.0.<count>`); CHANGELOG entries use the same scheme so the
 version on the About panel matches the entry that introduced it.
 
+## [1.0.240] — 2026-05-12
+
+### Added (contact activity sparkline)
+
+- **Activity sparkline in the Setup → Address Book contact editor.**
+  Small 14-day bar chart of message volume from the selected contact,
+  folded across every connected network's `SeenStore`. Below the bars:
+  the total message count + a hint that the seen tracker has to be on
+  in Setup → Bot for the chart to show data.
+- Only `kind == "msg"` sightings count — joins / parts / quits are
+  activity but not conversation, and including them would make the
+  chart spike on every channel hop.
+- New `ChatModel.recentMessageDayBins(nick:days:)` is the data
+  helper; `ContactActivitySparkline` (in `Setup/`) is the view.
+  Both are public so future placements (sidebar row tooltip, contact
+  card pop-out) can reuse them.
+
+### Skipped
+
+- **Reciprocal-watch indicator** — turns out not implementable in any
+  general protocol-driven way (HANDOFF's `MONITOR L` reading was off;
+  that lists OUR targets, not who's watching us). Pulled from the
+  quick-wins list rather than ship something misleading.
+
 ## [1.0.239] — 2026-05-12
 
 ### Added (pop-on-watch)

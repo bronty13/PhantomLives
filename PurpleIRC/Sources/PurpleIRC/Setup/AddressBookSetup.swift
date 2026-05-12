@@ -401,6 +401,20 @@ struct AddressEntryEditor: View {
                 }
             }
 
+            if !entry.nick.isEmpty {
+                Section {
+                    ContactActivitySparkline(
+                        bins: model.recentMessageDayBins(nick: entry.nick, days: 14)
+                    )
+                } header: {
+                    Text("Activity")
+                } footer: {
+                    Text("Messages from \(entry.nick) on every connected network, binned by day. Drawn from the seen tracker — turn it on in Setup → Bot if these bars are flat.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
             Section {
                 ContactMatchesSection(
                     nick: entry.nick,

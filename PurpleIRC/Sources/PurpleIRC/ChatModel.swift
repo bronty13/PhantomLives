@@ -1857,6 +1857,33 @@ final class ChatModel: ObservableObject {
             .map { $0.name }
     }
 
+    /// Recent-message daily volume for the given nick, folded across
+    /// every live connection's `SeenStore`. Bin `i` is `i` days ago from
+    /// today (bin 0 = oldest in the returned window, bin `days-1` =
+    /// today). Powers `ContactActivitySparkline` in the Setup → Address
+    /// Book editor. Only `kind == "msg"` sightings count — joins / parts
+    /// / quits are activity but not conversation, and including them
+    /// would make the chart spike on every channel hop.
+    func recentMessageDayBins(nick: String, days: Int = 14) -> [Int] {
+        guard days > 0 else { return [] }
+        var bins = [Int](repeating: 0, count: days)
+        let cal = Calendar.current
+        let now = Date()
+        for conn in connections {
+            let slug = SeenStore.slug(for: conn.displayName)
+            guard let entry = botEngine.seenStore.lookup(
+                networkID: conn.id, networkSlug: slug, nick: nick) else { continue }
+            for sight in entry.history where sight.kind == "msg" {
+                let daysAgo = cal.dateComponents([.day],
+                                                  from: cal.startOfDay(for: sight.timestamp),
+                                                  to: cal.startOfDay(for: now)).day ?? 0
+                guard daysAgo >= 0, daysAgo < days else { continue }
+                bins[days - 1 - daysAgo] += 1
+            }
+        }
+        return bins
+    }
+
     /// `/identity` — no arg lists, one arg sets the active connection's
     /// linked identity by name. Change takes effect on next connect.
     private func handleIdentityCommand(rest: String, on conn: IRCConnection) {
