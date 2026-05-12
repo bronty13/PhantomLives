@@ -12,6 +12,19 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-12 — First-launch sync progress: counter for pull, "X / Y" for push
+
+Bootstrap sub-states were added 2026-05-10 to break up the previously-monolithic "Setting up sync…" label. That solved the "which step is in flight" question but left a second one open: *how far* through the slow steps are we? A fresh Mac joining a populated CloudKit zone can spend minutes inside `.pullingInitial`; users couldn't tell whether the app was stuck or just busy.
+
+Added running progress to the two slow sub-states:
+
+- `pullingInitial(received: Int)` — counter only, no total. CloudKit's `CKFetchRecordZoneChangesOperation` streams records via `recordWasChangedBlock` without exposing a total upfront, so reporting "(N received)" is what we can honestly say. Throttled to every 10 records to avoid 1000 main-actor updates on a large pull.
+- `pushingLocalChanges(processed: Int, total: Int)` — total is known because the push iterates a pre-fetched `fetchAllObjects()` result. Reported as "(12 / 85)". Updated per-record; the loop is sequential network round-trips, so the update rate is naturally throttled to a few per second.
+
+Progress only fires while bootstrap is on the corresponding sub-state. Background polls flip status to `.syncing` ("Syncing…"), then back to `.idle` ("Synced") — no per-record updates from those paths. Background sync should be invisible.
+
+Schema push (`pushPendingLocalSchemas`) is left without per-record progress — it's a fixed handful of types and finishes before the user can read the label.
+
 ### 2026-05-12 — Encrypted-DB key-mismatch recovery: visible UX, not silent breakage
 
 Symptom we used to ship: Keychain DEK gets cleared (manual `security delete-generic-password`, a system-account reset, a backup restore that doesn't include Keychain) while the SQLCipher DB on disk stays encrypted with the old key. Next launch generates a fresh DEK, the keyed reopen fails with "file is not a database", and `DatabaseService` falls back to the temp placeholder pool. The user sees a normal-looking sidebar where every operation fails silently — no path to recovery from inside the app.

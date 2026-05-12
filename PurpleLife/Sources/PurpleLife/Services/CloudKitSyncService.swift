@@ -65,15 +65,26 @@ final class CloudKitSyncService: ObservableObject {
             case checkingAccount
             case ensuringZone
             case ensuringSubscription
-            case pullingInitial
-            case pushingLocalChanges
+            /// `received` is the running count of records pulled so far.
+            /// 0 means "fetch started, no records yet" — we don't know
+            /// the total until the operation completes, so progress is
+            /// reported as "(N received)" rather than "(N / M)".
+            case pullingInitial(received: Int)
+            /// `processed` and `total` are both known up front because
+            /// the push iterates a pre-fetched local set. Progress is
+            /// reported as "(processed / total)".
+            case pushingLocalChanges(processed: Int, total: Int)
 
             var label: String {
                 switch self {
                 case .checkingAccount:      return "Checking iCloud account…"
                 case .ensuringZone:         return "Setting up CloudKit zone…"
                 case .ensuringSubscription: return "Registering for push notifications…"
+                case .pullingInitial(let n) where n > 0:
+                    return "Pulling existing data… (\(n) received)"
                 case .pullingInitial:       return "Pulling existing data…"
+                case .pushingLocalChanges(let p, let t) where t > 0:
+                    return "Pushing local changes… (\(p) / \(t))"
                 case .pushingLocalChanges:  return "Pushing local changes…"
                 }
             }
@@ -262,9 +273,9 @@ final class CloudKitSyncService: ObservableObject {
             try await ensureZone()
             status = .settingUp(.ensuringSubscription)
             await ensureSubscription()
-            status = .settingUp(.pullingInitial)
+            status = .settingUp(.pullingInitial(received: 0))
             await pullInitial()
-            status = .settingUp(.pushingLocalChanges)
+            status = .settingUp(.pushingLocalChanges(processed: 0, total: 0))
             await pushPendingLocalChanges()
             status = .idle
             startPolling()
@@ -503,7 +514,15 @@ final class CloudKitSyncService: ObservableObject {
         await pushPendingLocalSchemas()
         do {
             let local = try DatabaseService.shared.fetchAllObjects()
-            for r in local {
+            // Schemas already pushed by the call above; the push
+            // sub-state covers JUST the object loop so progress is
+            // legible (schemas are typically <10, objects can be many).
+            // Stamp the total now so the sidebar footer flips from
+            // "Pushing local changes…" to "(0 / N)" immediately.
+            if case .settingUp(.pushingLocalChanges) = status {
+                status = .settingUp(.pushingLocalChanges(processed: 0, total: local.count))
+            }
+            for (index, r) in local.enumerated() {
                 let id = CKRecord.ID(recordName: r.id, zoneID: zoneID)
                 let ck: CKRecord?
                 do {
@@ -514,6 +533,13 @@ final class CloudKitSyncService: ObservableObject {
                 let remoteUpdated = ck?["updated_at"] as? String ?? ""
                 if remoteUpdated < r.updatedAt {
                     await push(record: r)
+                }
+                // Push is sequential round-trips — per-record updates
+                // are cheap and let the user watch progress in real time.
+                if case .settingUp(.pushingLocalChanges) = status {
+                    status = .settingUp(
+                        .pushingLocalChanges(processed: index + 1, total: local.count)
+                    )
                 }
             }
         } catch {
@@ -623,10 +649,28 @@ final class CloudKitSyncService: ObservableObject {
         var changedRecords: [CKRecord] = []
         var deletedRecordIDs: [CKRecord.ID] = []
 
-        op.recordWasChangedBlock = { _, result in
+        op.recordWasChangedBlock = { [weak self] _, result in
             switch result {
-            case .success(let record): changedRecords.append(record)
-            case .failure(let err):    NSLog("PurpleLife: change parse failed — \(err.localizedDescription)")
+            case .success(let record):
+                changedRecords.append(record)
+                let count = changedRecords.count
+                // Only surface progress during the bootstrap's
+                // `.pullingInitial` phase — the running counter is
+                // valuable when the user is staring at the launch
+                // screen, noise during background polls / pushes that
+                // briefly flip status to `.syncing`. Throttle to every
+                // 10 records (plus the first) so a 1000-record initial
+                // pull doesn't fire 1000 main-actor updates.
+                if count == 1 || count % 10 == 0 {
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        if case .settingUp(.pullingInitial) = self.status {
+                            self.status = .settingUp(.pullingInitial(received: count))
+                        }
+                    }
+                }
+            case .failure(let err):
+                NSLog("PurpleLife: change parse failed — \(err.localizedDescription)")
             }
         }
         op.recordWithIDWasDeletedBlock = { id, _ in

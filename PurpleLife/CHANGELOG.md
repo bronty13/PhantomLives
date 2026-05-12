@@ -4,6 +4,14 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-12 — First-launch sync bootstrap: per-record progress in `pullingInitial` / `pushingLocalChanges`
+
+The sub-states added on 2026-05-10 already named *which* bootstrap step was in flight (checking account / ensuring zone / pulling / pushing) so the user wasn't staring at a generic 5-minute "Setting up sync…". This change adds finer-grained progress *within* the two long steps so the footer shows visible motion:
+
+- `SetupStep.pullingInitial(received: Int)` — running counter, no total (CloudKit doesn't tell us how many records to expect ahead of time). Label is `"Pulling existing data… (47 received)"`. Updated from `recordWasChangedBlock`, throttled to every 10 records so a thousand-record initial pull doesn't fire a thousand main-actor updates.
+- `SetupStep.pushingLocalChanges(processed: Int, total: Int)` — both known upfront because the push iterates a pre-fetched local set. Label is `"Pushing local changes… (12 / 85)"`. Updated per record; the push is a sequential round-trip-per-record loop, so per-record granularity is cheap and gives the user something to watch.
+- Only fires during the bootstrap's `.settingUp(.pullingInitial / .pushingLocalChanges)` state — background polls and post-push pulls briefly flip status to `.syncing`, which surfaces a plain "Syncing…" label without the counter. Background sync is supposed to be invisible; the counter is signal only when the user is staring at the launch screen.
+
 ### 2026-05-12 — Spell-check on record-level `.text` fields
 
 SwiftUI's macOS `TextField` doesn't expose the continuous-spell-check / grammar flags that `NSTextField`'s field editor accepts, so single-line text inputs across the app had been silent (no red squiggles) while the longer rich-text editors got the flags via direct `NSTextView` config. New `SpellCheckedTextField` `NSViewRepresentable` wraps an `NSTextField`, configures the shared field editor on focus, and exposes a `TextField`-shaped initializer for drop-in swaps.
