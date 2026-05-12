@@ -112,6 +112,7 @@ struct TopTabBarView: View {
         case .reports:       return "Reports"
         case .c4sHistorical: return "C4S Hist."
         case .importView:    return "Import"
+        case .creatorImport: return "Creator Import"
         }
     }
 

@@ -21,7 +21,7 @@ final class AppState: ObservableObject {
     @Published var pendingPostingFilter: PostingFilter? = nil
 
     enum Section: String, Hashable, CaseIterable {
-        case dashboard, editingQueue, postingQueue, clips, calendar, postingBatch, reports, c4sHistorical, importView
+        case dashboard, editingQueue, postingQueue, clips, calendar, postingBatch, reports, c4sHistorical, importView, creatorImport
 
         var title: String {
             switch self {
@@ -34,6 +34,7 @@ final class AppState: ObservableObject {
             case .reports:       return "Reports"
             case .c4sHistorical: return "C4S Historical"
             case .importView:    return "Import"
+            case .creatorImport: return "Creator Import"
             }
         }
 
@@ -48,6 +49,7 @@ final class AppState: ObservableObject {
             case .reports:       return "chart.bar.doc.horizontal"
             case .c4sHistorical: return "chart.line.uptrend.xyaxis"
             case .importView:    return "square.and.arrow.down"
+            case .creatorImport: return "person.text.rectangle"
             }
         }
     }

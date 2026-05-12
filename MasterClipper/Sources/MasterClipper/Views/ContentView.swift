@@ -21,6 +21,9 @@ struct ContentView: View {
             // resets itself onAppear of its own publisher.
             appState.selectedSection = .importView
         }
+        .onReceive(NotificationCenter.default.publisher(for: .creatorImportRequested)) { _ in
+            appState.selectedSection = .creatorImport
+        }
         .alert("Reset window state?", isPresented: $showingResetConfirm) {
             Button("Cancel", role: .cancel) {}
             Button("Reset & Quit", role: .destructive) {
@@ -48,6 +51,7 @@ private struct DetailRouterView: View {
             case .reports:       ReportsRootView()
             case .c4sHistorical: C4SHistoricalView()
             case .importView:    ImportWizardView()
+            case .creatorImport: ClipperInfoImportWizardView()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

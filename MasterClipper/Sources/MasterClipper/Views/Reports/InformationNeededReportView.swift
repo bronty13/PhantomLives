@@ -75,6 +75,13 @@ struct InformationNeededReportView: View {
             }
             .disabled(rows.isEmpty)
             .help("Copy a creator-friendly summary to the clipboard")
+
+            Button {
+                NotificationCenter.default.post(name: .creatorImportRequested, object: nil)
+            } label: {
+                Label("Import reply…", systemImage: "tray.and.arrow.down")
+            }
+            .help("Paste back the edited ClipperInfo output and review changes before applying")
         }
         .padding(12)
     }

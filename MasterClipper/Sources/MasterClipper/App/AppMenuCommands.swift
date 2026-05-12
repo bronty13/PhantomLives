@@ -15,6 +15,11 @@ struct AppMenuCommands: Commands {
                 NotificationCenter.default.post(name: .importRequested, object: nil)
             }
             .keyboardShortcut("i", modifiers: [.command, .shift])
+
+            Button("Import from Creator (ClipperInfo)…") {
+                NotificationCenter.default.post(name: .creatorImportRequested, object: nil)
+            }
+            .keyboardShortcut("k", modifiers: [.command, .shift])
         }
 
         CommandMenu("Export") {
@@ -67,6 +72,7 @@ struct AppMenuCommands: Commands {
 extension Notification.Name {
     static let newClipRequested  = Notification.Name("newClipRequested")
     static let importRequested   = Notification.Name("importRequested")
+    static let creatorImportRequested = Notification.Name("creatorImportRequested")
     static let exportRequested   = Notification.Name("exportRequested")
     static let backupRequested   = Notification.Name("backupRequested")
     static let refineRequested   = Notification.Name("refineRequested")
