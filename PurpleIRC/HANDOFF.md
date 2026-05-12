@@ -901,8 +901,12 @@ it). When you add a new tab:
 1. Add the case to the `Tab` enum + a `systemImage`.
 2. Add it to the `groups` array in the right section.
 3. Add the dispatch case in `content`.
-4. Implement the new `XxxSetup: View` struct (convention is to put
-   it after the existing tabs at the end of `SetupView.swift`).
+4. Implement the new `XxxSetup: View` struct in its own file at
+   `Sources/PurpleIRC/Setup/XxxSetup.swift`. As of 1.0.236 every
+   tab lives in its own sibling file under `Setup/`; `SetupView.swift`
+   stays a slim coordinator (Tab enum, sidebar groups, dispatch
+   switch). The earlier 3869-line monolithic SetupView.swift was
+   split in that release.
 
 The "Where to find moved settings" pointer blocks in Behavior and
 Appearance are how we handle discoverability after splits — keep

@@ -5,6 +5,43 @@ All notable changes to PurpleIRC are recorded here. The bundle's
 count (`1.0.<count>`); CHANGELOG entries use the same scheme so the
 version on the About panel matches the entry that introduced it.
 
+## [1.0.236] — 2026-05-12
+
+### Changed (refactor — Setup tab split)
+
+- **`SetupView.swift` is now a 170-line coordinator.** Was 3869 lines
+  with 22 view structs piled into one file (the Setup tabs plus their
+  editors and helper sheets). Split into 22 sibling files under a new
+  `Sources/PurpleIRC/Setup/` subdirectory, one per tab/helper:
+  - Tabs: `ServersSetup`, `AddressBookSetup`, `ChannelsSetup`,
+    `IgnoreSetup`, `BehaviorSetup`, `ScriptsSetup`, `HighlightsSetup`,
+    `BotSetup`, `IdentitiesSetup`, `SecuritySetup`, `AppearanceSetup`,
+    `ProxyDccSetup`, `NotificationsSetup`, `LoggingSetup`,
+    `ThemesSetup`, `FontsSetup`, `SoundsSetup`, `AssistantSetup`,
+    `ShortcutsAliasesSetup`, `BackupSetup`.
+  - Helpers split into companion files: `AttachmentRow.swift`,
+    `AddressBookTagViews.swift` (the chip / popover / manager set),
+    `ContactMatchesView.swift`.
+- **`SetupView.swift` keeps only the `Tab` enum, sidebar `groups`
+  list, and `content` dispatch switch.** That switch was already the
+  single point of routing — every case statement that adds a new tab
+  ends up there, and Swift's exhaustiveness check catches a missing
+  case at PR time. Nothing else changed about the dispatch contract.
+- **No behaviour change.** Every struct kept its name, properties,
+  initializer, and body. The only edits were file headers (added
+  `import SwiftUI` / `AppKit` / `UniformTypeIdentifiers` to each new
+  file) and the MARK comments that previously prefixed each section
+  now live at the top of their own file. The `private struct
+  FlowChips` retained its access modifier because Swift's top-level
+  `private` is file-local; FlowChips ships in the same file
+  (`AddressBookTagViews.swift`) as its only caller (`ContactTagChipRow`).
+- **HANDOFF updated** to note that new tabs live under `Setup/`
+  rather than at the end of `SetupView.swift`.
+
+All 293 tests still pass; the refactor is mechanical and has no
+data-format or behaviour implications. The release-signed `.app`
+bundle is identical in size + structure to 1.0.235.
+
 ## [1.0.235] — 2026-05-12
 
 ### Fixed (security)
