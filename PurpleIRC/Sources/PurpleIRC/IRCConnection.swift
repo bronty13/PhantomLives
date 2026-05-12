@@ -120,6 +120,11 @@ final class IRCConnection: ObservableObject, Identifiable {
     // Throttle for away auto-replies so a spammer can't DoS us.
     private var lastAwayReplyAt: [String: Date] = [:]
     private static let awayReplyInterval: TimeInterval = 120 // seconds per-nick
+    /// Bound for `lastAwayReplyAt` — entries older than the throttle window
+    /// are pruned once the dict crosses this size. Was 1024 before 1.0.235;
+    /// lowered to 256 so the eviction kicks in sooner during a long away
+    /// session against a busy network.
+    private static let awayReplyCacheCap = 256
 
     // MARK: - IRCv3 cap-derived state
 
@@ -587,7 +592,12 @@ final class IRCConnection: ObservableObject, Identifiable {
 
     // MARK: - State handling
 
-    private func handleState(_ s: IRCConnectionState) {
+    /// Apply a state transition the same way `IRCClient.onState` does in
+    /// production. Access lowered from `private` to internal in 1.0.235
+    /// so tests can drive `.disconnected` / `.failed` without standing
+    /// up a real socket. Every production caller is still
+    /// `IRCClient.onState` → this method.
+    func handleState(_ s: IRCConnectionState) {
         state = s
         let logCat = "IRC.\(displayName)"
         switch s {
@@ -606,8 +616,14 @@ final class IRCConnection: ObservableObject, Identifiable {
             watchlist.onDisconnected()
             // Drop any half-open BATCH/chathistory state so a reconnect
             // doesn't see ghosts left over from the previous session.
+            // Also drop the per-nick maps so a reconnect to the same
+            // network doesn't carry stale routing / hostmask / away-reply
+            // data from before the link dropped.
             openBatches.removeAll()
             chatHistoryFetched.removeAll()
+            whoisOriginByNick.removeAll(keepingCapacity: true)
+            lastUserHostByNick.removeAll(keepingCapacity: true)
+            lastAwayReplyAt.removeAll(keepingCapacity: true)
             scheduleReconnectIfNeeded()
         case .failed(let err):
             appendError("Connection failed: \(err)")
@@ -616,6 +632,9 @@ final class IRCConnection: ObservableObject, Identifiable {
             watchlist.onDisconnected()
             openBatches.removeAll()
             chatHistoryFetched.removeAll()
+            whoisOriginByNick.removeAll(keepingCapacity: true)
+            lastUserHostByNick.removeAll(keepingCapacity: true)
+            lastAwayReplyAt.removeAll(keepingCapacity: true)
             scheduleReconnectIfNeeded()
         }
         emit(.state(s))
@@ -660,7 +679,13 @@ final class IRCConnection: ObservableObject, Identifiable {
     /// Most-recent `user@host` per nick on this network. Captured from every
     /// inbound IRC message that carries a prefix; consumed by BotEngine when
     /// it stamps a SeenEntry so the seen audit can show host changes.
+    /// Bounded at `userHostCacheCap` so a long-lived session on a large
+    /// network can't accumulate one entry per unique sender forever.
+    /// Cleared on disconnect / failed; on overflow the dict is nuked
+    /// outright (repopulates organically from subsequent traffic — losing
+    /// a stale host record is harmless).
     private var lastUserHostByNick: [String: String] = [:]
+    private static let userHostCacheCap = 4096
 
     /// When a /whois (or /whowas) is issued from a channel context, we
     /// stash the originating buffer ID here keyed by the target nick so
@@ -668,8 +693,14 @@ final class IRCConnection: ObservableObject, Identifiable {
     /// user doesn't have to switch to the server buffer just to see the
     /// answer to a question they asked from a channel right-click.
     /// Cleared when RPL_ENDOFWHOIS (318) / RPL_ENDOFWHOWAS (369) /
-    /// ERR_NOSUCHNICK (401) / ERR_WASNOSUCHNICK (406) arrives.
+    /// ERR_NOSUCHNICK (401) / ERR_WASNOSUCHNICK (406) arrives. Also
+    /// cleared on disconnect / failed, and capped at `whoisOriginCap`
+    /// so a server that never sends the end-numerics can't accumulate
+    /// stale routes forever — overflow nukes the dict (worst case: a
+    /// pending reply lands in the server buffer instead of the
+    /// originating channel).
     private var whoisOriginByNick: [String: Buffer.ID] = [:]
+    private static let whoisOriginCap = 64
 
     /// Record the buffer the user issued /whois or /whowas from so the
     /// reply lands in the right place. Channel and query buffers are both
@@ -680,6 +711,7 @@ final class IRCConnection: ObservableObject, Identifiable {
               let buf = buffers.first(where: { $0.id == sel }),
               buf.kind == .channel || buf.kind == .query else { return }
         let key = target.split(separator: " ").first.map(String.init)?.lowercased() ?? target.lowercased()
+        capWhoisOriginIfNeeded()
         whoisOriginByNick[key] = sel
     }
 
@@ -689,8 +721,21 @@ final class IRCConnection: ObservableObject, Identifiable {
     /// free.
     private func autoWhoisForQuery(_ nick: String, queryBufferID: Buffer.ID) {
         let key = nick.lowercased()
+        capWhoisOriginIfNeeded()
         whoisOriginByNick[key] = queryBufferID
         client.send("WHOIS \(nick)")
+    }
+
+    /// Drop the whois-origin routing map when it crosses `whoisOriginCap`.
+    /// Reached only when the server stops sending end-of-whois numerics
+    /// (318/369/401/406) — those normally evict entries one-at-a-time.
+    /// Worst case after a nuke: a pending whois reply lands in the server
+    /// buffer rather than the originating channel; not a user-visible
+    /// regression. See the field declaration for the wider rationale.
+    private func capWhoisOriginIfNeeded() {
+        if whoisOriginByNick.count >= Self.whoisOriginCap {
+            whoisOriginByNick.removeAll(keepingCapacity: true)
+        }
     }
 
     /// Read-only accessor for the captured user@host map. Returns nil when
@@ -699,7 +744,13 @@ final class IRCConnection: ObservableObject, Identifiable {
         lastUserHostByNick[nick.lowercased()]
     }
 
-    private func handle(_ msg: IRCMessage) {
+    /// Dispatch one inbound parsed IRC line through every handler that
+    /// cares about it. Access lowered from `private` to internal in 1.0.235
+    /// so the test target can drive 433 / BATCH / numeric paths directly
+    /// — every other caller is still `IRCClient.onMessage` inside this
+    /// file. New production callers should NOT use this entry point;
+    /// route through the connection's public surface instead.
+    func handle(_ msg: IRCMessage) {
         emit(.inbound(msg))
         // Update the user@host map first so BotEngine sees the freshest
         // value when the same handle() call later emits a higher-level
@@ -708,6 +759,9 @@ final class IRCConnection: ObservableObject, Identifiable {
            let bang = prefix.firstIndex(of: "!"),
            let nick = msg.nickFromPrefix {
             let userHost = String(prefix[prefix.index(after: bang)...])
+            if lastUserHostByNick.count >= Self.userHostCacheCap {
+                lastUserHostByNick.removeAll(keepingCapacity: true)
+            }
             lastUserHostByNick[nick.lowercased()] = userHost
         }
         switch msg.command {
@@ -1272,7 +1326,7 @@ final class IRCConnection: ObservableObject, Identifiable {
         // Bound dictionary growth: a long session in a busy network would
         // otherwise accumulate one entry per unique sender forever. Drop
         // entries older than the throttle window when the dict gets large.
-        if lastAwayReplyAt.count > 1024 {
+        if lastAwayReplyAt.count > Self.awayReplyCacheCap {
             let cutoff = now.addingTimeInterval(-Self.awayReplyInterval)
             lastAwayReplyAt = lastAwayReplyAt.filter { $0.value > cutoff }
         }
@@ -1577,7 +1631,7 @@ final class IRCConnection: ObservableObject, Identifiable {
     }
 
     private func logNumeric(_ msg: IRCMessage) {
-        let i = idx(of: ensureServerBufferID())
+        guard let i = idx(of: ensureServerBufferID()) else { return }
         let text = msg.params.dropFirst().joined(separator: " ")
         let kind: ChatLine.Kind = (msg.command == "372" || msg.command == "375" || msg.command == "376") ? .motd : .info
         appendTo(bufferIndex: i, line: ChatLine(
@@ -2002,8 +2056,15 @@ final class IRCConnection: ObservableObject, Identifiable {
         pendingRestoreSelectName = nil
     }
 
-    private func idx(of id: Buffer.ID) -> Int {
-        buffers.firstIndex(where: { $0.id == id })!
+    /// Lookup a buffer index by ID. Returns nil when the buffer has been
+    /// removed (e.g. user picked "Leave channel" between an async event
+    /// firing and reaching this point). All callers that previously used
+    /// `idx(of:)` followed by an index subscript must now guard the
+    /// optional — the prior force-unwrap was structurally safe under
+    /// today's callers (every one passes `ensureServerBufferID()`), but
+    /// fragile to refactor and not worth the panic surface.
+    private func idx(of id: Buffer.ID) -> Int? {
+        buffers.firstIndex(where: { $0.id == id })
     }
 
     private func markUnread(at i: Int) {
@@ -2030,18 +2091,46 @@ final class IRCConnection: ObservableObject, Identifiable {
     }
 
     private func appendInfo(_ text: String) {
-        let i = idx(of: ensureServerBufferID())
+        guard let i = idx(of: ensureServerBufferID()) else { return }
         appendTo(bufferIndex: i, line: ChatLine(timestamp: Date(), kind: .info, text: text))
     }
 
     private func appendError(_ text: String) {
-        let i = idx(of: ensureServerBufferID())
+        guard let i = idx(of: ensureServerBufferID()) else { return }
         appendTo(bufferIndex: i, line: ChatLine(timestamp: Date(), kind: .error, text: text))
     }
 
     private func emit(_ event: IRCConnectionEvent) {
         events.send((id, event))
     }
+
+    // MARK: - Test seams (internal — see _Testing extension below)
+    //
+    // These narrow accessors exist so the test target can verify the
+    // robustness invariants (433 retry cap, BATCH cap + reset, away-reply
+    // cache cap) without granting blanket internal access to the private
+    // state they observe. Production code does NOT use them.
+
+    /// Current count of inbound 433s since the last reset (connect / 001).
+    /// Reset on `connect()` and on `001`. Capped at
+    /// `maxNickCollisionRetries` before the connection self-disconnects.
+    var _testNickCollisionRetryCount: Int { nickCollisionRetries }
+    /// Cap on simultaneously-tracked nick-collision retries before the
+    /// connection gives up and disconnects.
+    static var _testMaxNickCollisionRetries: Int { maxNickCollisionRetries }
+    /// Number of half-open BATCH ids currently tracked.
+    var _testOpenBatchCount: Int { openBatches.count }
+    /// Whether the BATCH dict carries a specific id (for "+id then -id
+    /// drops it" / "orphan -id is silent" tests).
+    func _testHasOpenBatch(_ id: String) -> Bool { openBatches[id] != nil }
+    /// Cap on simultaneously-open BATCH ids.
+    static var _testMaxOpenBatches: Int { maxOpenBatches }
+    /// Whether the connection has been told to stop reconnecting. Used by
+    /// the 433-cap test to assert the retry-exhaust path disconnects
+    /// instead of looping.
+    var _testUserInitiatedDisconnect: Bool { userInitiatedDisconnect }
+    /// Number of entries in the away-reply throttle map.
+    var _testLastAwayReplyCount: Int { lastAwayReplyAt.count }
 }
 
 extension IRCConnection {

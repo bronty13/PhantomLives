@@ -154,9 +154,18 @@ enum IRCSanitize {
     /// Use at API boundaries that take user/script input *before* assembling
     /// the IRC line. This collapses a multi-line `text` into a single line
     /// rather than silently truncating it at the first newline.
+    ///
+    /// Note: the fast-path check MUST scan unicode scalars, not characters.
+    /// Swift's `String.Character` collapses `\r\n` into a single extended
+    /// grapheme cluster that does not equal `Character("\r")` or
+    /// `Character("\n")` — using `s.contains(where:)` with character
+    /// literals here would let a clean CRLF slip through unsanitized,
+    /// and the wire-level `+ "\r\n"` terminator in `IRCClient.send`
+    /// would then smuggle the second half as a fresh IRC command.
+    /// Caught by `IRCSanitizeTests.fieldStripsCRLFNUL` in 1.0.235.
     static func field(_ s: String) -> String {
-        guard s.contains(where: { $0 == "\r" || $0 == "\n" || $0 == "\0" }) else { return s }
-        return String(s.unicodeScalars.filter { $0 != "\r" && $0 != "\n" && $0 != "\0" })
+        guard s.unicodeScalars.contains(where: { $0 == "\r" || $0 == "\n" || $0 == "\0" }) else { return s }
+        return String(String.UnicodeScalarView(s.unicodeScalars.filter { $0 != "\r" && $0 != "\n" && $0 != "\0" }))
     }
 
     /// Strip CR / LF / NUL from a fully-assembled IRC line. Defence-in-depth

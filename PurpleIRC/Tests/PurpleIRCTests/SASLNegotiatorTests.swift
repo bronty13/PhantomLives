@@ -280,4 +280,66 @@ struct SASLNegotiatorTests {
         #expect(out == ["CAP END"])
         #expect(n.phase == .done)
     }
+
+    // MARK: - chunkedAuthenticate (400-byte SASL payload splitter)
+    //
+    // The contract pinned here is the IRCv3 SASL chunking rule:
+    //   - empty payload  → `AUTHENTICATE +` (signals "no payload")
+    //   - 1..399 bytes   → single `AUTHENTICATE <b64>` line, no terminator
+    //   - >= 400 bytes   → N×400-byte chunks; if the total IS an exact
+    //                      multiple of 400 we MUST append a trailing
+    //                      `AUTHENTICATE +` so the server knows the
+    //                      message ended (otherwise it waits for more).
+    // Renaming, re-splitting, or dropping the terminator silently breaks
+    // SASL against strict servers; these tests catch each regression.
+
+    @Test func chunkerEmitsPlusForEmptyPayload() {
+        #expect(SASLNegotiator.chunkedAuthenticate("") == ["AUTHENTICATE +"])
+    }
+
+    @Test func chunkerFitsShortPayloadInOneLineWithNoTerminator() {
+        let payload = String(repeating: "a", count: 50)
+        #expect(SASLNegotiator.chunkedAuthenticate(payload)
+                == ["AUTHENTICATE \(payload)"])
+    }
+
+    @Test func chunkerHandlesExactly399BytesAsOneChunk() {
+        // 399 < 400 — single line, no terminator.
+        let payload = String(repeating: "x", count: 399)
+        let out = SASLNegotiator.chunkedAuthenticate(payload)
+        #expect(out.count == 1)
+        #expect(out[0] == "AUTHENTICATE \(payload)")
+    }
+
+    @Test func chunkerSplitsAtExactly400BytesAndAppendsTerminator() {
+        // Exact-400 must split into one 400-byte chunk PLUS a trailing
+        // `AUTHENTICATE +` so the server doesn't keep waiting on more
+        // chunks. This was the original RFC-correctness fix in 1.0.92.
+        let payload = String(repeating: "y", count: 400)
+        let out = SASLNegotiator.chunkedAuthenticate(payload)
+        #expect(out.count == 2)
+        #expect(out[0] == "AUTHENTICATE \(payload)")
+        #expect(out[1] == "AUTHENTICATE +")
+    }
+
+    @Test func chunkerSplitsLongPayloadAndOmitsTerminatorWhenLastChunkIsShort() {
+        // 401-byte payload: 400-byte chunk + 1-byte chunk. The last chunk
+        // is short, which itself signals end-of-message — no `+` needed.
+        let payload = String(repeating: "z", count: 401)
+        let out = SASLNegotiator.chunkedAuthenticate(payload)
+        #expect(out.count == 2)
+        #expect(out[0] == "AUTHENTICATE \(String(repeating: "z", count: 400))")
+        #expect(out[1] == "AUTHENTICATE z")
+    }
+
+    @Test func chunkerAppendsTerminatorWhenLengthIsExactMultipleOf400() {
+        // 1200 bytes = three 400-byte chunks, all "full"; needs trailing +.
+        let payload = String(repeating: "q", count: 1200)
+        let out = SASLNegotiator.chunkedAuthenticate(payload)
+        #expect(out.count == 4)
+        for i in 0..<3 {
+            #expect(out[i] == "AUTHENTICATE \(String(repeating: "q", count: 400))")
+        }
+        #expect(out[3] == "AUTHENTICATE +")
+    }
 }

@@ -61,6 +61,13 @@ final class WatchlistService: ObservableObject {
         requestAuth()
     }
 
+    /// Test-only init that skips `UNUserNotificationCenter` authorization,
+    /// which raises an NSException under xctest (no bundle). Production
+    /// code always calls the parameterless `init()`.
+    init(skipAuthRequest: Bool) {
+        if !skipAuthRequest { requestAuth() }
+    }
+
     func setDelegate(_ d: WatchlistDelegate) {
         self.delegate = d
     }

@@ -5,6 +5,82 @@ All notable changes to PurpleIRC are recorded here. The bundle's
 count (`1.0.<count>`); CHANGELOG entries use the same scheme so the
 version on the About panel matches the entry that introduced it.
 
+## [1.0.235] — 2026-05-12
+
+### Fixed (security)
+
+- **`IRCSanitize.field` no longer lets a clean `\r\n` slip through.** The
+  fast-path guard scanned `Character`s, and Swift's grapheme clustering
+  collapses `\r\n` into a single extended grapheme cluster that doesn't
+  equal `Character("\r")` or `Character("\n")` — so a body containing a
+  bare `"hello\r\nworld"` was returned unchanged, and the wire-level
+  `+ "\r\n"` terminator in `IRCClient.send` would then smuggle "world"
+  to the server as a fresh IRC command. The guard now scans
+  `unicodeScalars` (where `\r` and `\n` are distinct scalars regardless
+  of cluster context); the filter pass was already correct. Caught by
+  the new `IRCSanitizeTests.fieldStripsCRLFNUL` regression test below —
+  this would not have been found without the test gap fillers.
+
+### Changed (correctness)
+
+- **`IRCConnection.idx(of:)` returns `Int?` instead of force-unwrapping.**
+  Every call site (`logNumeric`, `appendInfo`, `appendError`) now
+  `guard let`s the result. Structurally safe under today's callers
+  (each passes `ensureServerBufferID()`), but the prior force-unwrap
+  was fragile to refactor and not worth the panic surface.
+- **Three per-nick maps in `IRCConnection` now bound and clear on
+  disconnect.**
+  - `lastUserHostByNick` (touched on every inbound prefix-bearing
+    message; consumed by BotEngine for seen-tracker host capture)
+    caps at 4096 entries; the dict is nuked on overflow and
+    repopulates organically.
+  - `whoisOriginByNick` (channel routing for `/whois` replies) caps
+    at 64 entries; previously relied solely on end-of-whois numerics
+    (318/369/401/406) to evict, so a server that swallowed those
+    accumulated routes forever. Cap-overflow nuke is safe: worst
+    case a pending reply lands in the server buffer rather than the
+    originating channel.
+  - `lastAwayReplyAt` eviction threshold lowered from 1024 → 256 so
+    the recency-based trim kicks in sooner.
+  - All three are explicitly cleared on `.disconnected` / `.failed`
+    alongside the existing `openBatches` / `chatHistoryFetched` reset,
+    so a reconnect to the same network doesn't carry stale routing /
+    hostmask / away-reply data from before the link dropped.
+
+### Added (tests — closing HANDOFF's flagged regression-coverage gaps)
+
+26 new tests across 3 files, raising the total from 267 → 293. These
+are the four regression suites HANDOFF has called out as "worth adding"
+since 1.0.92.
+
+- **`IRCSanitizeTests`** (11 tests) — pins `field(_:)` against bare CR /
+  LF / NUL, CRLF combinations, multi-line collapse, and unchanged
+  identity on clean input; pins `maskForDisplay(_:)` against PASS,
+  AUTHENTICATE (with `+` / `*` control-marker preservation), and
+  outbound + echo-message PRIVMSG-NickServ-IDENTIFY masking; pins
+  that unrelated lines (including `PRIVMSG <not-NickServ> :IDENTIFY ...`
+  song lyrics) pass through unchanged; pins that masking is pure
+  (input unchanged) so an inadvertent send of the input doesn't leak.
+- **`SASLNegotiatorTests` — chunkedAuthenticate suite** (+6 tests) —
+  pins empty → `AUTHENTICATE +`, 1..399 bytes → single line no
+  terminator, exactly 400 → split + trailing `+`, 401 → 400-byte + 1
+  byte (last short chunk implicitly terminates, no `+`), exact
+  multiples of 400 always append `+`. RFC-correctness regression.
+- **`IRCConnectionRobustnessTests`** (9 tests) — 433 retry cap
+  increments on each 433, caps at 4 and self-disconnects, resets on
+  001 (with 001 also picking up the authoritative nick); BATCH +id
+  open / -id close, orphan -id no-op, duplicate +id replaces, cap
+  evicts oldest at the 256 boundary, and dict clears on both
+  `.disconnected` and `.failed` state transitions. Required lowering
+  access on `IRCConnection.handle(_:)` and `handleState(_:)` from
+  `private` to internal, plus a narrow set of `_test*` read-only
+  accessors at the bottom of `IRCConnection.swift` so the new suite
+  can observe state without granting blanket internal access.
+- `WatchlistService` gained an `init(skipAuthRequest:)` overload so
+  the test harness can construct one without tripping
+  `UNUserNotificationCenter.requestAuthorization` (raises an
+  NSException under xctest — no bundle).
+
 ## [1.0.234] — 2026-05-12
 
 ### Performance
