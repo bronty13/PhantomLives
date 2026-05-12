@@ -45,6 +45,13 @@ final class WatchlistService: ObservableObject {
     /// Defaults to Glass to preserve prior behavior.
     var soundName: String = "Glass"
 
+    /// Per-nick `ContactAlertOverride` resolver. Set by ChatModel at
+    /// init so this service can consult per-contact overrides without
+    /// importing SettingsStore. Each `fireSystemAlert(...)` call passes
+    /// the nick through this closure first; nil result = fall back to
+    /// the four global toggles above.
+    var contactAlertOverrideResolver: ((String) -> ContactAlertOverride?)? = nil
+
     private weak var delegate: WatchlistDelegate?
     private var supportsMonitor = false
     private var serverMonitorLimit: Int = 0
@@ -246,6 +253,7 @@ final class WatchlistService: ObservableObject {
         delegate?.watchlistPostInfo("\u{2605}\u{2605}\u{2605} \(nick) is online  (via \(source))")
 
         fireSystemAlert(
+            forContactNick: nick,
             title: "\(nick) is online",
             subtitle: "PurpleIRC watchlist",
             body: "Spotted \(nick) via \(source)",
@@ -259,7 +267,11 @@ final class WatchlistService: ObservableObject {
         recentHighlights.insert(hit, at: 0)
         if recentHighlights.count > 50 { recentHighlights.removeLast(recentHighlights.count - 50) }
 
+        // Mention alerts also consult per-contact overrides — if the
+        // mentioner is in the address book with an alert override, it
+        // wins over the global watchlist toggles.
         fireSystemAlert(
+            forContactNick: nick,
             title: "\(nick) mentioned you",
             subtitle: channel,
             body: text,
@@ -298,18 +310,38 @@ final class WatchlistService: ObservableObject {
         }
     }
 
-    private func fireSystemAlert(title: String, subtitle: String, body: String, identifier: String) {
-        if bounceDock {
+    /// Fire the alert channels (banner / sound / dock bounce) for a
+    /// watchlist hit. Resolves the four channels by checking the
+    /// contact's `ContactAlertOverride` first (via
+    /// `contactAlertOverrideResolver`); fields the override doesn't set
+    /// fall back to the global toggles.
+    ///
+    /// `forContactNick` is the nick this alert is about — `nil` for
+    /// non-contact-scoped alerts (none today, but the parameter keeps
+    /// the API honest about the override boundary).
+    private func fireSystemAlert(forContactNick nick: String?,
+                                 title: String,
+                                 subtitle: String,
+                                 body: String,
+                                 identifier: String) {
+        let override = nick.flatMap { contactAlertOverrideResolver?($0) }
+        let effectiveBounce  = override?.bounceDock   ?? bounceDock
+        let effectiveSound   = override?.playSound    ?? playSound
+        let effectiveBanner  = override?.systemBanner ?? systemNotifications
+        let effectiveSound2  = override?.customSoundName ?? soundName
+        let effectiveBody    = override?.customBannerMessage ?? body
+
+        if effectiveBounce {
             NSApp.requestUserAttention(.criticalRequest)
         }
-        if playSound, !soundName.isEmpty {
-            NSSound(named: soundName)?.play()
+        if effectiveSound, !effectiveSound2.isEmpty {
+            NSSound(named: effectiveSound2)?.play()
         }
-        if systemNotifications {
+        if effectiveBanner {
             let content = UNMutableNotificationContent()
             content.title = title
             content.subtitle = subtitle
-            content.body = body
+            content.body = effectiveBody
             content.sound = .default
             let req = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
             UNUserNotificationCenter.current().add(req) { _ in }

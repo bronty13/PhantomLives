@@ -3,6 +3,7 @@ import SwiftUI
 struct WatchlistView: View {
     @EnvironmentObject var model: ChatModel
     @ObservedObject var watchlist: WatchlistService
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -11,15 +12,11 @@ struct WatchlistView: View {
                 Text("Recent watchlist hits").font(.headline)
                 Spacer()
                 Button("Open Address Book…") {
-                    // Watchlist + Address Book used to live in two places;
-                    // they're unified now, but this sheet stays as a
-                    // live "what just happened" feed. Hand off to the
-                    // Address Book tab where contacts + alerts live.
+                    // Bounce to the dedicated workspace window — the
+                    // address-book features live in their own Scene
+                    // (⇧⌘B) starting in 1.0.242.
                     model.showWatchlist = false
-                    model.pendingSetupTab = .addressBook
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                        model.showSetup = true
-                    }
+                    openWindow(id: "address-book")
                 }
                 Button("Done") { model.showWatchlist = false }
                     .keyboardShortcut(.cancelAction)
@@ -31,7 +28,7 @@ struct WatchlistView: View {
 
             Divider()
             VStack(alignment: .leading, spacing: 4) {
-                Text("Watched contacts and alert options live in Setup → Address Book.")
+                Text("Watched contacts, linked nicks, and per-contact alert overrides live in the Address Book workspace (⇧⌘B).")
                     .font(.caption).foregroundStyle(.secondary)
                 Text(watchlist.notificationsAuthorized
                      ? "macOS notifications: authorized ✓"

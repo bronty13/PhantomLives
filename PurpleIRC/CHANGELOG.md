@@ -5,6 +5,139 @@ All notable changes to PurpleIRC are recorded here. The bundle's
 count (`1.0.<count>`); CHANGELOG entries use the same scheme so the
 version on the About panel matches the entry that introduced it.
 
+## [1.0.243] — 2026-05-12
+
+### Added (world-class Address Book workspace)
+
+Big revamp landing in two commits on the `feat/person-model-workspace`
+branch. **Phase A** introduced the Person-model data layer; this entry
+covers **Phase B + C** — the workspace UI, deeplink rewiring, and the
+Setup-tab removal.
+
+#### New workspace window (⇧⌘B)
+
+- **`AddressBookView` is a non-modal `Window(id: "address-book")`** in
+  `App.swift`. Opens via the toolbar Address Book button or ⇧⌘B from
+  anywhere in the app. Stays open alongside chat — Mail's address-book
+  / Music's Library idiom, not the old modal sheet.
+- **Three-pane NavigationSplitView**:
+  - **Filters sidebar**: Presence (All / Online / Offline / Unknown),
+    Network coverage (Any / Single / Multi / Unlinked), Recency
+    (24h / 7d / 30d / Quiet 30d+), Tags (with usage counts +
+    chip-color dots), Recent hits (top 10 from
+    `WatchlistService.recentHits`).
+  - **Contact list** with multi-select, +/− buttons, bulk-tag menu,
+    bulk watch-on/off, **Suggest Links** affordance, and a Tags
+    button that opens the existing `ContactTagManagerView` sheet.
+    Rows show avatar + presence dot + nick + per-contact watch bell
+    + coverage badge (count of distinct linked networks) + inline
+    tag-color dots.
+  - **Sectioned detail pane**: Identity (photo, nick, note, watch
+    toggle), Linked Nicks, Alert Overrides, Tags, 14-day Activity
+    Sparkline, Activity Timeline (merged across networks), Channels
+    in Common, Hostmask History, Cross-store Matches, Attachments,
+    Markdown Notes.
+- **`pendingAddressBookSelection` deeplink** consumed on `.onAppear`
+  + `.onChange` so the sidebar's "Edit address book entry…" and the
+  user-list "Add to address book" entry points open the workspace
+  pre-selected to the right contact.
+- **`.searchable` field in the window toolbar** filters by nick /
+  linked-nick / note / rich-note substring.
+
+#### New per-contact UI sections
+
+- **`ContactLinkedNicksSection`** — every (network, nick) pair on
+  the contact with a per-row Unlink button (refuses on the last
+  binding) and a "Link another nick" form that picks from the live
+  connection list (or "All networks" for the legacy any-net
+  sentinel). Per-link source badge: manual / auto-migrated / host
+  match / account match.
+- **`ContactAlertOverridesSection`** — tri-state toggles for
+  system banner / play sound / dock bounce (Inherit / On / Off),
+  custom sound picker, and a custom banner-message field. Each
+  toggle shows what the global value resolves to in its
+  "Inherit" label so users know what they're inheriting.
+- **`ContactActivityTimelineSection`** — merged `SeenSighting`
+  timeline across every linked-nick on every connected network,
+  sorted newest-first, capped at 100 rows. Per-row icon by kind
+  (msg/join/part/quit/nick), network name, hostmask, channel,
+  detail snippet, relative time.
+- **`ContactSharedChannelsSection`** — channels you and the contact
+  currently share, grouped by network. Each chip jumps you to the
+  channel with one click.
+- **`ContactHostmaskHistorySection`** — distinct `user@host`
+  strings ever seen for this contact, with first/last-seen
+  relative timestamps. Spots reconnects from new ISPs / VPNs and
+  same-host coincidences that back the auto-link suggestions.
+
+#### Suggest Links
+
+- New **`SuggestLinksSheet`** runs `ContactLinker.suggestLinks` over
+  the current address book + every connected network's `SeenStore` +
+  IRCv3 `accountByNick` map. Shows candidate (network, nick) pairs
+  to link under existing contacts via shared-hostmask or
+  shared-services-account heuristics. **Nothing auto-applies** — the
+  user clicks Link per row to accept; the new binding is stamped
+  with `LinkedNick.Source.hostmask` or `.accountTag`.
+
+#### Surface migrations (Phase C)
+
+- **`Setup → Address Book` tab REMOVED entirely.** `SetupView.Tab.addressBook`
+  enum case + its slot in the People & places group + the
+  `case .addressBook:` arm of the `content` switch are all gone. The
+  People & places group collapses to `[.channels, .ignores, .highlights]`.
+- **`Sources/PurpleIRC/Setup/AddressBookSetup.swift` deleted.** Every
+  feature it surfaced lives in the workspace now.
+- **Helper files moved out of `Setup/` into `AddressBook/`**:
+  `AttachmentRow.swift`, `ContactActivitySparkline.swift`,
+  `ContactMatchesView.swift`, `AddressBookTagViews.swift` (the chip
+  popover / chip row / FlowChips / tag manager set). All four are
+  contact-rendering, not Setup-specific.
+- **Toolbar Address Book button** now `openWindow(id: "address-book")`
+  instead of `pendingSetupTab = .addressBook + showSetup = true`.
+  Same icon, same muscle memory.
+- **Sidebar ContactRow context menu** — "Edit address book entry…"
+  uses the workspace deeplink (one-line change per call site).
+- **`BufferRow` query context menu** — same rewiring.
+- **`WatchlistView` "Open Address Book…" button** — same rewiring.
+  The watchlist sheet stays as the "recent hits" dashboard; the
+  workspace is the editing surface.
+
+#### Reuse, not rewrite
+
+Every UI element in the detail pane is either lifted verbatim from
+the deleted `AddressEntryEditor` (photo picker / attachment row /
+markdown editor / cross-store matches) or composed from helpers
+that already existed in 1.0.240 (`ContactActivitySparkline`).
+`Contact.swift` from Phase A provides every cross-network read
+helper (matches / allSightings / allCurrentHostmasks /
+ContactLinker). No new persistence path; no new encryption envelope.
+
+#### Tests + verification
+
+323 tests still green (no regressions; the test surface for the
+Person-model layer landed in Phase A and remained intact across
+the UI work). Release-signed `.app` builds cleanly and launches.
+Smoke tests on the workspace: open via ⇧⌘B, switch contacts in
+the list, scroll detail sections, link a nick, unlink a nick,
+toggle a per-contact alert override, run Suggest Links, multi-
+select and bulk-tag.
+
+#### Risks / migration notes
+
+- Migration from pre-1.0.242 settings.json is idempotent (handled in
+  `AppSettings.init(from:)`). Wire format is byte-identical for any
+  user who hasn't started editing linked nicks or alert overrides —
+  see `AddressEntry.encode(to:)`'s default-omit logic. The
+  auto-backup-on-launch + restore flow keeps working with older
+  PurpleIRC builds.
+- The `networkSlug == ""` any-network sentinel still requires every
+  match site to funnel through `AddressEntry.matches(networkSlug:nick:)`
+  or `matchesAnyNetwork(nick:)`. Phase A retrofitted every known site
+  (PhotoUtilities, BufferView, ContentView). Future contributors:
+  do NOT do `entry.nick.caseInsensitiveCompare(target)` — use the
+  helpers.
+
 ## [1.0.241] — 2026-05-12
 
 ### Added (Shortcuts.app + Focus Filter)

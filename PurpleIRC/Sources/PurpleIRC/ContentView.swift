@@ -111,12 +111,12 @@ struct ContentView: View {
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    model.pendingSetupTab = .addressBook
-                    model.showSetup = true
+                    openWindow(id: "address-book")
                 } label: {
                     Label("Address Book", systemImage: "person.crop.rectangle.stack")
                 }
-                .help("Open the address book — contacts, tags, notes, and attachments")
+                .keyboardShortcut("b", modifiers: [.command, .shift])
+                .help("Open the Address Book workspace (⇧⌘B). Contacts, linked nicks across networks, activity timeline, hostmask history, alert overrides, attachments — everything in one place.")
             }
             ToolbarItem(placement: .primaryAction) {
                 IdentityMenu()
@@ -783,6 +783,7 @@ struct ContactRow: View {
     let presence: WatchPresence
 
     @EnvironmentObject var model: ChatModel
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         HStack(spacing: 8) {
@@ -823,11 +824,9 @@ struct ContactRow: View {
                 Button("Notify when online") { setWatch(true) }
             }
             Button("Edit address book entry…") {
-                // Pre-select this contact so Setup lands on the right
-                // row instead of the first one.
+                // Open the workspace deeplinked to this contact.
                 model.pendingAddressBookSelection = entry.id
-                model.pendingSetupTab = .addressBook
-                model.showSetup = true
+                openWindow(id: "address-book")
             }
             Button("Remove from address book", role: .destructive) {
                 model.settings.removeAddress(id: entry.id)
@@ -866,6 +865,7 @@ struct BufferRow: View {
     let icon: String
 
     @EnvironmentObject var model: ChatModel
+    @Environment(\.openWindow) private var openWindow
     @State private var isHovering: Bool = false
 
     private var isChannel: Bool { buffer.kind == .channel }
@@ -954,8 +954,7 @@ struct BufferRow: View {
                 if let entry = addressBookEntry(for: nick) {
                     model.pendingAddressBookSelection = entry.id
                 }
-                model.pendingSetupTab = .addressBook
-                model.showSetup = true
+                openWindow(id: "address-book")
             }
             if isWatchedInAddressBook(nick) {
                 Button("Stop notifying when online") { setAddressBookWatch(nick, on: false) }

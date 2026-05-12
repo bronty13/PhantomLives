@@ -198,4 +198,106 @@ struct SettingsRoundtripTests {
         let s = try JSONDecoder().decode(AppSettings.self, from: json.data(using: .utf8)!)
         #expect(s.lastSession.isEmpty)
     }
+
+    // MARK: - Person model (1.0.242)
+    //
+    // The Person-model refactor added LinkedNick + ContactAlertOverride
+    // to AddressEntry. These tests pin the on-disk wire format so:
+    //  • old PurpleIRC builds keep reading new settings.json files,
+    //  • the auto-backup-on-launch zip round-trips unchanged for any
+    //    user who hasn't touched the new feature,
+    //  • the migration "every old entry's nick becomes one LinkedNick"
+    //    runs idempotently inside the AppSettings decoder.
+
+    @Test func linkedNicksSurviveRoundtrip() throws {
+        var s = AppSettings()
+        var entry = AddressEntry(nick: "alice", watch: true)
+        entry.linkedNicks = [
+            LinkedNick(networkSlug: "libera",   nick: "alice",  source: .manual),
+            LinkedNick(networkSlug: "oftc",     nick: "alice_", source: .hostmask),
+            LinkedNick(networkSlug: "undernet", nick: "ali",    source: .accountTag),
+        ]
+        s.addressBook = [entry]
+        let r = roundtrip(s)
+        #expect(r?.addressBook.count == 1)
+        #expect(r?.addressBook.first?.linkedNicks.count == 3)
+        #expect(r?.addressBook.first?.linkedNicks[0].nick == "alice")
+        #expect(r?.addressBook.first?.linkedNicks[1].networkSlug == "oftc")
+        #expect(r?.addressBook.first?.linkedNicks[2].source == .accountTag)
+    }
+
+    @Test func legacyEntryMigratesToOneLinkedNick() throws {
+        // Pre-1.0.242 JSON: AddressEntry with no linkedNicks key.
+        let id = UUID().uuidString
+        let json = """
+        {"servers":[],"addressBook":[
+            {"id":"\(id)","nick":"alice","note":"","watch":true,
+             "richNotes":"","attachments":[],"tagIDs":[]}
+        ]}
+        """
+        let s = try JSONDecoder().decode(AppSettings.self, from: json.data(using: .utf8)!)
+        #expect(s.addressBook.count == 1)
+        let entry = s.addressBook[0]
+        #expect(entry.linkedNicks.count == 1)
+        #expect(entry.linkedNicks[0].networkSlug == "")  // any-network sentinel
+        #expect(entry.linkedNicks[0].nick == "alice")
+        #expect(entry.linkedNicks[0].source == .migrated)
+    }
+
+    @Test func migrationIsIdempotentAcrossDecodes() throws {
+        // After one decode, linkedNicks is populated. Encoding then
+        // re-decoding must NOT add a second migrated entry.
+        let id = UUID().uuidString
+        let originalJSON = """
+        {"servers":[],"addressBook":[
+            {"id":"\(id)","nick":"bob","note":"","watch":true,
+             "richNotes":"","attachments":[],"tagIDs":[]}
+        ]}
+        """
+        let first = try JSONDecoder().decode(AppSettings.self,
+                                              from: originalJSON.data(using: .utf8)!)
+        let reencoded = try JSONEncoder().encode(first)
+        let second = try JSONDecoder().decode(AppSettings.self, from: reencoded)
+        #expect(second.addressBook[0].linkedNicks.count == 1)
+        #expect(second.addressBook[0].linkedNicks[0].source == .migrated)
+    }
+
+    @Test func unlinkedEntryEncodesWithoutLinkedNicksKey() throws {
+        // Wire-format invariant: a default AddressEntry (no manual
+        // linked-nick edits) MUST encode without a "linkedNicks" key
+        // so settings.json round-tripped by the new build stays
+        // compatible with pre-1.0.242 PurpleIRC reading the same file.
+        let entry = AddressEntry(nick: "default", watch: true)
+        let data = try JSONEncoder().encode(entry)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        #expect(object != nil)
+        #expect(object?["linkedNicks"] == nil,
+                "Default AddressEntry must NOT serialize linkedNicks key")
+        #expect(object?["alertOverride"] == nil,
+                "Default AddressEntry must NOT serialize alertOverride key")
+    }
+
+    @Test func entryWithLinksDoesSerializeKey() throws {
+        // The inverse pin — once the user adds a link, the key emits.
+        var entry = AddressEntry(nick: "linked", watch: true)
+        entry.linkedNicks = [LinkedNick(networkSlug: "libera", nick: "linked")]
+        let data = try JSONEncoder().encode(entry)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        #expect(object?["linkedNicks"] != nil)
+    }
+
+    @Test func alertOverrideDefaultsDoNotSerialize() throws {
+        let entry = AddressEntry(nick: "x", watch: false)
+        let data = try JSONEncoder().encode(entry)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        #expect(object?["alertOverride"] == nil)
+    }
+
+    @Test func customAlertOverrideDoesSerialize() throws {
+        var entry = AddressEntry(nick: "y", watch: true)
+        entry.alertOverride = ContactAlertOverride(playSound: false)
+        let data = try JSONEncoder().encode(entry)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        #expect(object?["alertOverride"] != nil)
+    }
 }

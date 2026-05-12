@@ -59,6 +59,17 @@ struct PurpleIRCApp: App {
             WatchMonitorView()
                 .environmentObject(model)
         }
+
+        // Address Book workspace (1.0.242). Non-modal Window so users
+        // can keep it open alongside chat. ⇧⌘B opens / focuses it from
+        // anywhere in the app; the toolbar's Address Book button
+        // points at the same id.
+        Window("Address Book", id: "address-book") {
+            AddressBookView()
+                .environmentObject(model)
+        }
+        .keyboardShortcut("b", modifiers: [.command, .shift])
+        .defaultSize(width: 1100, height: 720)
     }
 }
 

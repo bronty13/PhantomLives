@@ -450,6 +450,16 @@ final class ChatModel: ObservableObject {
         // via Apple Events reach the live ChatModel.
         AppleScriptBridge.register(host: self)
         watchlist.setDelegate(self)
+        // Per-contact alert overrides (1.0.242): the watchlist consults
+        // this resolver before firing the global toggles. nil result =
+        // no override, fall back to globals. The contact lookup walks
+        // every linked-nick binding via `matchesAnyNetwork(nick:)`.
+        watchlist.contactAlertOverrideResolver = { [weak self] nick in
+            guard let self else { return nil }
+            return self.settings.settings.addressBook.first {
+                $0.matchesAnyNetwork(nick: nick)
+            }?.alertOverride
+        }
         seedFromSelectedProfile()
         applySettingsToAll()
         bot.attach(self)

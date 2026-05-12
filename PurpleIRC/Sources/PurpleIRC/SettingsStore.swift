@@ -225,7 +225,131 @@ struct ServerProfile: Codable, Identifiable, Hashable {
     }
 }
 
+/// One (network, nick) pair belonging to an `AddressEntry`. The Person
+/// model in 1.0.242 splits "this contact" from "the nick they use on a
+/// specific network" — alice on Libera + alice_ on OFTC are now two
+/// `LinkedNick` entries on the same `AddressEntry`, sharing notes,
+/// photo, tags, and per-contact alert overrides.
+///
+/// On-disk wire format detail: a freshly-imported `AddressEntry` with no
+/// linked-nick edits encodes with an EMPTY (i.e. omitted) `linkedNicks`
+/// key — so settings.json files round-tripped through the new build
+/// stay byte-for-byte compatible with older PurpleIRC releases that
+/// don't know about the field. See the custom `encode(to:)` on
+/// `AddressEntry` for the omission logic.
+struct LinkedNick: Codable, Hashable, Identifiable {
+    enum CodingKeys: String, CodingKey {
+        case id, networkSlug, nick, addedAt, source
+    }
+
+    var id: UUID = UUID()
+    /// `SeenStore.slug(for: conn.displayName)` for the binding's network.
+    /// The empty string is a sentinel for "any network" — used by the
+    /// auto-migration path so an old single-nick `AddressEntry` keeps
+    /// matching on every connected network the way it always did.
+    /// Every call site that compares (slug, nick) MUST funnel through
+    /// `AddressEntry.matches(networkSlug:nick:)` so the sentinel is
+    /// honored — see `Contact.swift`.
+    var networkSlug: String = ""
+    /// Case-preserved nick. Compare lowercased.
+    var nick: String = ""
+    var addedAt: Date = Date()
+    /// How this binding was added. `.migrated` is set once per
+    /// pre-1.0.242 `AddressEntry` when its `nick` field is folded into a
+    /// `LinkedNick` by the `AppSettings` decoder. `.accountTag` and
+    /// `.hostmask` are reserved for the on-demand `suggestLinks`
+    /// heuristics; the UI surfaces them as "auto-suggested" links the
+    /// user has to confirm.
+    var source: Source = .manual
+
+    enum Source: String, Codable, Hashable {
+        case manual, migrated, accountTag, hostmask
+    }
+
+    init(id: UUID = UUID(),
+         networkSlug: String = "",
+         nick: String = "",
+         addedAt: Date = Date(),
+         source: Source = .manual) {
+        self.id = id
+        self.networkSlug = networkSlug
+        self.nick = nick
+        self.addedAt = addedAt
+        self.source = source
+    }
+
+    /// Forward-compatible decoder so an extra field added later doesn't
+    /// break old payloads. Mirrors the pattern used by every other
+    /// persisted struct in this file.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id          = try c.decodeIfPresent(UUID.self,   forKey: .id)          ?? UUID()
+        self.networkSlug = try c.decodeIfPresent(String.self, forKey: .networkSlug) ?? ""
+        self.nick        = try c.decodeIfPresent(String.self, forKey: .nick)        ?? ""
+        self.addedAt     = try c.decodeIfPresent(Date.self,   forKey: .addedAt)     ?? Date()
+        let rawSource    = try c.decodeIfPresent(String.self, forKey: .source) ?? Source.manual.rawValue
+        self.source      = Source(rawValue: rawSource) ?? .manual
+    }
+}
+
+/// Per-contact override of the four global watchlist alert toggles
+/// (`AppSettings.playSoundOnWatchHit`, `bounceDockOnWatchHit`,
+/// `systemNotificationsOnWatchHit`, plus the per-event watchlist-hit
+/// sound). Every field is optional; nil means "inherit the global
+/// setting." The watchlist alert path (`WatchlistService.fireSystemAlert`)
+/// resolves these per-contact-then-fall-back at fire time.
+///
+/// Wire-format note: a default `ContactAlertOverride()` (every field nil)
+/// is omitted from the encoded `AddressEntry` so settings.json files
+/// that have never touched this feature stay identical to pre-1.0.242
+/// builds. See `AddressEntry.encode(to:)`.
+struct ContactAlertOverride: Codable, Hashable {
+    enum CodingKeys: String, CodingKey {
+        case systemBanner, playSound, bounceDock, customSoundName, customBannerMessage
+    }
+
+    var systemBanner: Bool? = nil
+    var playSound: Bool? = nil
+    var bounceDock: Bool? = nil
+    var customSoundName: String? = nil
+    var customBannerMessage: String? = nil
+
+    init(systemBanner: Bool? = nil,
+         playSound: Bool? = nil,
+         bounceDock: Bool? = nil,
+         customSoundName: String? = nil,
+         customBannerMessage: String? = nil) {
+        self.systemBanner = systemBanner
+        self.playSound = playSound
+        self.bounceDock = bounceDock
+        self.customSoundName = customSoundName
+        self.customBannerMessage = customBannerMessage
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.systemBanner        = try c.decodeIfPresent(Bool.self,   forKey: .systemBanner)
+        self.playSound           = try c.decodeIfPresent(Bool.self,   forKey: .playSound)
+        self.bounceDock          = try c.decodeIfPresent(Bool.self,   forKey: .bounceDock)
+        self.customSoundName     = try c.decodeIfPresent(String.self, forKey: .customSoundName)
+        self.customBannerMessage = try c.decodeIfPresent(String.self, forKey: .customBannerMessage)
+    }
+
+    /// True iff every field is at its default (nil). The custom
+    /// `AddressEntry.encode(to:)` consults this to skip emitting the
+    /// `alertOverride` key when defaults are in effect.
+    var isDefault: Bool {
+        systemBanner == nil && playSound == nil && bounceDock == nil
+            && customSoundName == nil && customBannerMessage == nil
+    }
+}
+
 struct AddressEntry: Codable, Identifiable, Hashable {
+    enum CodingKeys: String, CodingKey {
+        case id, nick, note, watch, richNotes, photoData
+        case attachments, tagIDs, linkedNicks, alertOverride
+    }
+
     var id: UUID = UUID()
     var nick: String = ""
     /// Short one-liner shown next to the nick in the sidebar / list views.
@@ -258,6 +382,19 @@ struct AddressEntry: Codable, Identifiable, Hashable {
     /// entry's `tagIDs`. Empty = no tags.
     var tagIDs: [UUID] = []
 
+    /// Person-model bindings: every (network, nick) pair this contact
+    /// answers to. Added in 1.0.242. The primary `nick` field above is
+    /// always also reflected here (the `AppSettings` decoder seeds the
+    /// first `LinkedNick` from the legacy nick on first launch). An
+    /// empty array is a transitional state that the SettingsStore mutators
+    /// auto-heal — every saved entry has `linkedNicks.count >= 1`.
+    var linkedNicks: [LinkedNick] = []
+
+    /// Per-contact override of the global watchlist alert toggles.
+    /// Default-initialized = inherit globals; mutating any field opts
+    /// this contact into a specific behavior. Added in 1.0.242.
+    var alertOverride: ContactAlertOverride = ContactAlertOverride()
+
     init(id: UUID = UUID(),
          nick: String = "",
          note: String = "",
@@ -265,7 +402,9 @@ struct AddressEntry: Codable, Identifiable, Hashable {
          richNotes: String = "",
          photoData: Data? = nil,
          attachments: [BlobStore.AttachmentRef] = [],
-         tagIDs: [UUID] = []) {
+         tagIDs: [UUID] = [],
+         linkedNicks: [LinkedNick] = [],
+         alertOverride: ContactAlertOverride = ContactAlertOverride()) {
         self.id = id
         self.nick = nick
         self.note = note
@@ -274,23 +413,60 @@ struct AddressEntry: Codable, Identifiable, Hashable {
         self.photoData = photoData
         self.attachments = attachments
         self.tagIDs = tagIDs
+        self.linkedNicks = linkedNicks
+        self.alertOverride = alertOverride
     }
 
-    /// Forward-compatible decoder so older settings.json files (without the
-    /// `richNotes` / `photoData` / `attachments` / `tagIDs` keys) keep loading.
-    /// Without this, a single missing key would fail decode of the
-    /// whole AddressBook array.
+    /// Forward-compatible decoder so older settings.json files (without
+    /// any combination of the later-added keys) keep loading. Without
+    /// this, a single missing key would fail decode of the whole
+    /// AddressBook array.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.id          = try c.decodeIfPresent(UUID.self,   forKey: .id)          ?? UUID()
-        self.nick        = try c.decodeIfPresent(String.self, forKey: .nick)        ?? ""
-        self.note        = try c.decodeIfPresent(String.self, forKey: .note)        ?? ""
-        self.watch       = try c.decodeIfPresent(Bool.self,   forKey: .watch)       ?? true
-        self.richNotes   = try c.decodeIfPresent(String.self, forKey: .richNotes)   ?? ""
-        self.photoData   = try c.decodeIfPresent(Data.self,   forKey: .photoData)
-        self.attachments = try c.decodeIfPresent([BlobStore.AttachmentRef].self,
-                                                 forKey: .attachments) ?? []
-        self.tagIDs      = try c.decodeIfPresent([UUID].self, forKey: .tagIDs)      ?? []
+        self.id            = try c.decodeIfPresent(UUID.self,   forKey: .id)          ?? UUID()
+        self.nick          = try c.decodeIfPresent(String.self, forKey: .nick)        ?? ""
+        self.note          = try c.decodeIfPresent(String.self, forKey: .note)        ?? ""
+        self.watch         = try c.decodeIfPresent(Bool.self,   forKey: .watch)       ?? true
+        self.richNotes     = try c.decodeIfPresent(String.self, forKey: .richNotes)   ?? ""
+        self.photoData     = try c.decodeIfPresent(Data.self,   forKey: .photoData)
+        self.attachments   = try c.decodeIfPresent([BlobStore.AttachmentRef].self,
+                                                   forKey: .attachments) ?? []
+        self.tagIDs        = try c.decodeIfPresent([UUID].self, forKey: .tagIDs)      ?? []
+        self.linkedNicks   = try c.decodeIfPresent([LinkedNick].self,
+                                                   forKey: .linkedNicks) ?? []
+        self.alertOverride = try c.decodeIfPresent(ContactAlertOverride.self,
+                                                   forKey: .alertOverride) ?? ContactAlertOverride()
+    }
+
+    /// Custom encoder that omits the new 1.0.242 keys when they're at
+    /// their defaults — so a settings.json round-tripped by the new
+    /// build is byte-for-byte identical to a settings.json written by
+    /// pre-1.0.242 PurpleIRC for any user who hasn't touched the Person
+    /// model. Critical for two reasons:
+    ///   1. Auto-backup-on-launch zips settings.json verbatim; a user
+    ///      restoring from a fresh backup must be able to open it with
+    ///      an older PurpleIRC build that doesn't know `linkedNicks`.
+    ///   2. The SettingsRoundtripTests "wire format is stable" pin
+    ///      keeps regressions from sneaking in.
+    /// When the user DOES link a nick or set an override, the keys
+    /// emit normally.
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id,          forKey: .id)
+        try c.encode(nick,        forKey: .nick)
+        try c.encode(note,        forKey: .note)
+        try c.encode(watch,       forKey: .watch)
+        try c.encode(richNotes,   forKey: .richNotes)
+        try c.encodeIfPresent(photoData, forKey: .photoData)
+        try c.encode(attachments, forKey: .attachments)
+        try c.encode(tagIDs,      forKey: .tagIDs)
+        // 1.0.242 additions — omit at defaults.
+        if !linkedNicks.isEmpty {
+            try c.encode(linkedNicks, forKey: .linkedNicks)
+        }
+        if !alertOverride.isDefault {
+            try c.encode(alertOverride, forKey: .alertOverride)
+        }
     }
 }
 
@@ -701,7 +877,21 @@ struct AppSettings: Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.servers      = try c.decodeIfPresent([ServerProfile].self, forKey: .servers)
             ?? ServerProfile.defaultServers()
-        self.addressBook  = try c.decodeIfPresent([AddressEntry].self, forKey: .addressBook) ?? []
+        // Person-model auto-migration (1.0.242): every pre-existing
+        // AddressEntry (no linkedNicks yet) gets one seeded LinkedNick
+        // with networkSlug == "" — the "any network" sentinel that
+        // preserves the legacy "this nick is watched on every
+        // connection" semantics WatchlistService.setWatchedList relies
+        // on. Idempotent (short-circuits when linkedNicks is already
+        // populated) so subsequent decodes are a no-op.
+        let decodedBook = try c.decodeIfPresent([AddressEntry].self, forKey: .addressBook) ?? []
+        self.addressBook = decodedBook.map { entry in
+            guard entry.linkedNicks.isEmpty, !entry.nick.isEmpty else { return entry }
+            var out = entry
+            out.linkedNicks = [LinkedNick(
+                networkSlug: "", nick: entry.nick, source: .migrated)]
+            return out
+        }
         self.contactTags  = try c.decodeIfPresent([ContactTag].self, forKey: .contactTags) ?? []
         self.savedChannels = try c.decodeIfPresent([SavedChannel].self, forKey: .savedChannels) ?? []
         self.ignoreList   = try c.decodeIfPresent([IgnoreEntry].self, forKey: .ignoreList) ?? []
@@ -1093,10 +1283,12 @@ final class SettingsStore: ObservableObject {
     // MARK: - Address book
 
     func upsertAddress(_ entry: AddressEntry) {
-        if let i = settings.addressBook.firstIndex(where: { $0.id == entry.id }) {
-            settings.addressBook[i] = entry
+        var normalized = entry
+        ensurePrimaryLinked(&normalized)
+        if let i = settings.addressBook.firstIndex(where: { $0.id == normalized.id }) {
+            settings.addressBook[i] = normalized
         } else {
-            settings.addressBook.append(entry)
+            settings.addressBook.append(normalized)
         }
     }
 
@@ -1104,8 +1296,70 @@ final class SettingsStore: ObservableObject {
         settings.addressBook.removeAll { $0.id == id }
     }
 
+    /// Backfill the Person-model invariant: every saved entry must carry
+    /// at least one `LinkedNick`. New entries created via
+    /// `AddressEntry(nick:...)` start with an empty `linkedNicks` array;
+    /// this method seeds one binding from the primary nick (using the
+    /// `""` any-network sentinel). Mutates in place; idempotent.
+    private func ensurePrimaryLinked(_ entry: inout AddressEntry) {
+        guard entry.linkedNicks.isEmpty, !entry.nick.isEmpty else { return }
+        entry.linkedNicks = [LinkedNick(
+            networkSlug: "", nick: entry.nick, source: .manual)]
+    }
+
+    /// Add a (network, nick) binding to an existing contact. Idempotent —
+    /// a binding with the same (lowercased nick, slug) pair is left in
+    /// place rather than duplicated. Called by the workspace's "Link
+    /// another nick" affordance and by the auto-suggest accept flow.
+    func linkNick(addressID: UUID,
+                  networkSlug: String,
+                  nick: String,
+                  source: LinkedNick.Source = .manual) {
+        guard let i = settings.addressBook.firstIndex(where: { $0.id == addressID }),
+              !nick.isEmpty else { return }
+        let lower = nick.lowercased()
+        let slug = networkSlug
+        let already = settings.addressBook[i].linkedNicks.contains {
+            $0.nick.lowercased() == lower && $0.networkSlug == slug
+        }
+        guard !already else { return }
+        settings.addressBook[i].linkedNicks.append(
+            LinkedNick(networkSlug: slug, nick: nick, source: source))
+    }
+
+    /// Remove a specific (network, nick) binding. Refuses to remove the
+    /// last binding — every entry must carry at least one so the
+    /// Person-model invariants hold. The caller can `removeAddress` to
+    /// delete the whole contact instead.
+    @discardableResult
+    func unlinkNick(addressID: UUID, linkedNickID: UUID) -> Bool {
+        guard let i = settings.addressBook.firstIndex(where: { $0.id == addressID }) else {
+            return false
+        }
+        guard settings.addressBook[i].linkedNicks.count > 1 else { return false }
+        settings.addressBook[i].linkedNicks.removeAll { $0.id == linkedNickID }
+        return true
+    }
+
+    /// Every nick on every `watch == true` contact, flattened across
+    /// linked-nick bindings. Lowercased + deduped so MONITOR / ISON
+    /// don't double-register the same target. Drives
+    /// `WatchlistService.setWatchedList` (called from `ChatModel
+    /// .applySettingsToAll`); the watchlist itself doesn't care about
+    /// the slug — it registers against every connected network — so a
+    /// `""` slug and a specific slug both flatten the same way here.
     var watchedFromAddressBook: [String] {
-        settings.addressBook.filter { $0.watch }.map { $0.nick }.filter { !$0.isEmpty }
+        var seen = Set<String>()
+        var out: [String] = []
+        for entry in settings.addressBook where entry.watch {
+            for ln in entry.linkedNicks where !ln.nick.isEmpty {
+                let key = ln.nick.lowercased()
+                if seen.insert(key).inserted {
+                    out.append(ln.nick)
+                }
+            }
+        }
+        return out
     }
 
     // MARK: - Contact tags

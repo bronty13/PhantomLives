@@ -152,9 +152,14 @@ struct ContactAvatarByNick: View {
     let size: CGFloat
 
     var body: some View {
-        let lower = nick.lowercased()
+        // Match against any linked-nick binding on any network — the
+        // avatar view doesn't get a network slug at call time, so we
+        // fall back to the permissive any-network match. The Person
+        // model in 1.0.242 means a contact with multiple linked nicks
+        // can be found by any of them (alice@libera + alice_@oftc
+        // resolve to the same avatar).
         if let entry = settings.settings.addressBook
-            .first(where: { $0.nick.lowercased() == lower }) {
+            .first(where: { $0.matchesAnyNetwork(nick: nick) }) {
             ContactAvatar(entry: entry, size: size)
         } else {
             // Synthesise an empty entry so the placeholder still

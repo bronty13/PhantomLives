@@ -596,17 +596,21 @@ struct BufferView: View {
         Button("Ignore") { model.sendInput("/ignore \(nick)!*@*") }
     }
 
-    /// Look up whether the nick already exists in the user's address book.
-    /// Case-insensitive match — IRC nicks are case-insensitive on the wire.
+    /// Look up whether any contact has the given nick as one of its
+    /// linked-nick bindings (any network, case-insensitive). The
+    /// Person-model search (1.0.242) walks `linkedNicks`, not just the
+    /// primary `nick`.
     private func isInAddressBook(_ nick: String) -> Bool {
         model.settings.settings.addressBook.contains {
-            $0.nick.caseInsensitiveCompare(nick) == .orderedSame
+            $0.matchesAnyNetwork(nick: nick)
         }
     }
 
     /// Add a nick to the address book with the given watch flag. If a
     /// matching entry already exists this is a no-op (callers gate on
-    /// `isInAddressBook` already).
+    /// `isInAddressBook` already). The new entry's `upsertAddress` call
+    /// auto-seeds its `linkedNicks` with the primary nick via
+    /// `ensurePrimaryLinked`.
     private func addToAddressBook(_ nick: String, watch: Bool) {
         guard !isInAddressBook(nick) else { return }
         var entry = AddressEntry()
@@ -615,10 +619,12 @@ struct BufferView: View {
         model.settings.upsertAddress(entry)
     }
 
-    /// Remove every address-book entry whose nick matches (case-insensitive).
+    /// Remove every address-book entry whose linked nicks include the
+    /// given nick (case-insensitive). Person-model aware — a contact
+    /// reached via an alt nick is still removed.
     private func removeFromAddressBook(_ nick: String) {
         let matches = model.settings.settings.addressBook.filter {
-            $0.nick.caseInsensitiveCompare(nick) == .orderedSame
+            $0.matchesAnyNetwork(nick: nick)
         }
         for entry in matches {
             model.settings.removeAddress(id: entry.id)

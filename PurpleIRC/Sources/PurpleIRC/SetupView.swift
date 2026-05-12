@@ -21,7 +21,6 @@ struct SetupView: View {
         case servers      = "Servers"
         case identities   = "Identities"
         case proxyDcc     = "Proxy & DCC"
-        case addressBook  = "Address Book"
         case channels     = "Channels"
         case ignores      = "Ignore"
         case highlights   = "Highlights"
@@ -44,7 +43,6 @@ struct SetupView: View {
             case .servers:       return "server.rack"
             case .identities:    return "person.2.wave.2"
             case .proxyDcc:      return "network"
-            case .addressBook:   return "person.crop.rectangle.stack"
             case .channels:      return "number"
             case .ignores:       return "nosign"
             case .highlights:    return "sparkles"
@@ -70,7 +68,7 @@ struct SetupView: View {
     /// unreadable; a sectioned sidebar scales indefinitely.
     private static let groups: [(String, [Tab])] = [
         ("Connections",     [.servers, .identities, .proxyDcc]),
-        ("People & places", [.addressBook, .channels, .ignores, .highlights]),
+        ("People & places", [.channels, .ignores, .highlights]),
         ("Behavior",        [.behavior, .notifications, .logging]),
         ("Personalization", [.appearance, .themes, .fonts, .sounds]),
         ("Power-user",      [.bot, .scripts, .assistant, .shortcuts, .backup]),
@@ -146,7 +144,6 @@ struct SetupView: View {
             case .identities:    IdentitiesSetup(settings: settings)
             case .proxyDcc:      ProxyDccSetup(settings: settings)
             case .security:      SecuritySetup(settings: settings, keyStore: model.keyStore)
-            case .addressBook:   AddressBookSetup(settings: settings)
             case .channels:      ChannelsSetup(settings: settings)
             case .ignores:       IgnoreSetup(settings: settings)
             case .highlights:    HighlightsSetup(settings: settings)
