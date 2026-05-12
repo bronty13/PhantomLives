@@ -14,6 +14,12 @@ struct NoteLogField: View {
     @State private var draftAttributed = NSAttributedString()
     @State private var pendingAttachments: [URL] = []
     @State private var dropTargeted = false
+    /// IDs of entries currently being hovered as a drop target. Set as
+    /// rows fire their `isTargeted` callbacks; consulted by the
+    /// field-level overlay so it suppresses itself when a child row is
+    /// also showing its own targeted state (avoids two blue borders
+    /// nested inside each other).
+    @State private var dropTargetedEntryIds: Set<String> = []
 
     @State private var editingEntryId: String?
     @State private var editingAttributed = NSAttributedString()
@@ -50,9 +56,14 @@ struct NoteLogField: View {
         // Drop destination spans the whole field surface (input + list).
         // URLs dropped here become pending attachments on the *next*
         // entry the user posts — same path as the paperclip picker, so
-        // the user can mix-and-match without surprise.
+        // the user can mix-and-match without surprise. Drops that land
+        // ON an existing entry are caught by that entry's own
+        // destination (defined inside `entryRow`); SwiftUI routes the
+        // drop to the innermost matching destination, so the
+        // pending-path here only fires for drops on the input area or
+        // the gaps between entries.
         .dropDestination(for: URL.self) { urls, _ in
-            pendingAttachments.append(contentsOf: urls)
+            attachFiles(urls, toEntryId: nil)
             return !urls.isEmpty
         } isTargeted: { targeted in
             dropTargeted = targeted
@@ -125,10 +136,24 @@ struct NoteLogField: View {
 
     @ViewBuilder
     private var dropOverlay: some View {
-        if dropTargeted {
+        // Field-level overlay only when the drag is over the field
+        // surface AND not currently over a specific entry row. The
+        // row-level overlay (see entryRow) handles the latter case
+        // with a tighter highlight.
+        if dropTargeted && dropTargetedEntryIds.isEmpty {
             RoundedRectangle(cornerRadius: 6)
                 .strokeBorder(Color.accentColor, lineWidth: 2)
                 .background(Color.accentColor.opacity(0.08))
+                .allowsHitTesting(false)
+        }
+    }
+
+    @ViewBuilder
+    private func entryDropOverlay(for entryId: String) -> some View {
+        if dropTargetedEntryIds.contains(entryId) {
+            RoundedRectangle(cornerRadius: 4)
+                .strokeBorder(Color.accentColor, lineWidth: 2)
+                .background(Color.accentColor.opacity(0.10))
                 .allowsHitTesting(false)
         }
     }
@@ -185,6 +210,25 @@ struct NoteLogField: View {
                 attachmentRow(entry.attachments)
             }
         }
+        // Per-entry drop destination — files dropped directly on this
+        // entry's bounding box upload immediately and append to THIS
+        // entry's attachments (rather than the pending pool for the
+        // next-posted entry). SwiftUI routes drops to the innermost
+        // matching destination, so this catches drops on the row body
+        // before the field-level destination above sees them.
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
+        .dropDestination(for: URL.self) { urls, _ in
+            attachFiles(urls, toEntryId: entry.id)
+            return !urls.isEmpty
+        } isTargeted: { targeted in
+            if targeted {
+                dropTargetedEntryIds.insert(entry.id)
+            } else {
+                dropTargetedEntryIds.remove(entry.id)
+            }
+        }
+        .overlay(entryDropOverlay(for: entry.id))
     }
 
     @ViewBuilder
@@ -270,6 +314,51 @@ struct NoteLogField: View {
         current.entries.removeAll { $0.id == entry.id }
         fieldsBuffer[fieldKey] = current.jsonDictionary
         if editingEntryId == entry.id { editingEntryId = nil }
+    }
+
+    // MARK: - Drop routing
+
+    /// Attach file URLs either to a specific entry (drag-drop on a row)
+    /// or to the pending-attachments queue for the next-posted entry
+    /// (drag-drop on the field area, paperclip picker, paste-image
+    /// extraction in the input editor). The per-entry path uploads
+    /// immediately and bumps `updatedAt`; the pending path just buffers
+    /// URLs and lets `commitDraft` do the upload on Post.
+    private func attachFiles(_ urls: [URL], toEntryId entryId: String?) {
+        guard !urls.isEmpty else { return }
+        guard let entryId else {
+            pendingAttachments.append(contentsOf: urls)
+            error = nil
+            return
+        }
+
+        var refs: [NoteLogAttachmentRef] = []
+        for url in urls {
+            do {
+                let row = try AttachmentService.add(
+                    from: url,
+                    parentObjectId: parentObjectId,
+                    fieldKey: fieldKey
+                )
+                refs.append(NoteLogAttachmentRef(
+                    id: row.id,
+                    sha256: row.sha256,
+                    filename: row.filename,
+                    mimeType: row.mimeType,
+                    sizeBytes: row.sizeBytes
+                ))
+            } catch {
+                self.error = "Attachment failed: \(error.localizedDescription)"
+                return
+            }
+        }
+
+        var current = value
+        guard let idx = current.entries.firstIndex(where: { $0.id == entryId }) else { return }
+        current.entries[idx].attachments.append(contentsOf: refs)
+        current.entries[idx].updatedAt = ISO8601DateFormatter().string(from: Date())
+        fieldsBuffer[fieldKey] = current.jsonDictionary
+        error = nil
     }
 
     // MARK: - Paste-image extraction
