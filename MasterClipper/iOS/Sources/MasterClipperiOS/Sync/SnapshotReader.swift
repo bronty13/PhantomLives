@@ -124,9 +124,19 @@ final class SnapshotReader: ObservableObject {
             )
         }
 
-        // 4. Copy snapshot.sqlite into our sandbox via NSFileCoordinator.
+        // 4. Drop the previous queue BEFORE touching the file. If we leave
+        //    `self.reader` pointing at the old file while we delete it, GRDB
+        //    keeps an open fd to an unlinked vnode → "BUG IN CLIENT OF
+        //    libsqlite3.dylib" warnings, and concurrent SwiftUI fetches may
+        //    hit invalid file descriptors.
+        self.reader = nil
+
+        // 5. Copy snapshot.sqlite into our sandbox via NSFileCoordinator.
+        //    Write to a tmp file then rename so the destination only ever
+        //    appears in a complete state.
         let dest = localSnapshotDbURL
-        try? fm.removeItem(at: dest)
+        let tmp  = dest.appendingPathExtension("tmp")
+        try? fm.removeItem(at: tmp)
         let coordinator = NSFileCoordinator(filePresenter: nil)
         var coordError: NSError?
         var copyError: Error?
@@ -134,7 +144,7 @@ final class SnapshotReader: ObservableObject {
                                options: .withoutChanges,
                                error: &coordError) { readURL in
             do {
-                try fm.copyItem(at: readURL, to: dest)
+                try fm.copyItem(at: readURL, to: tmp)
             } catch {
                 copyError = error
             }
@@ -142,8 +152,12 @@ final class SnapshotReader: ObservableObject {
         if let err = coordError ?? (copyError as NSError?) {
             throw SnapshotReaderError.openFailed(err.localizedDescription)
         }
+        if fm.fileExists(atPath: dest.path) {
+            try? fm.removeItem(at: dest)
+        }
+        try fm.moveItem(at: tmp, to: dest)
 
-        // 5. Open as read-only GRDB DatabaseQueue. WAL doesn't exist on a
+        // 6. Open as read-only GRDB DatabaseQueue. WAL doesn't exist on a
         //    VACUUM INTO-produced file, so a Queue (not a Pool) is correct.
         var config = Configuration()
         config.readonly = true
@@ -152,6 +166,7 @@ final class SnapshotReader: ObservableObject {
         // Publish.
         self.manifest = decoded
         self.reader = queue
+        print("[SnapshotReader] reload succeeded — manifest.clip_count=\(decoded.clipCount) generated_at=\(decoded.generatedAt)")
     }
 
     // MARK: - File coordination + waiting
@@ -211,6 +226,8 @@ final class SnapshotReader: ObservableObject {
 
     // MARK: - NSMetadataQuery — observe new snapshots
 
+    private var observerTokens: [NSObjectProtocol] = []
+
     private func installMetadataQuery() {
         guard metadataQuery == nil else { return }
         let q = NSMetadataQuery()
@@ -219,26 +236,27 @@ final class SnapshotReader: ObservableObject {
         // Mac publishes a new snapshot, manifest.json's update fires here.
         q.predicate = NSPredicate(format: "%K LIKE %@",
                                   NSMetadataItemFSNameKey, SnapshotLayout.manifestFile)
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(metadataQueryDidUpdate(_:)),
-            name: .NSMetadataQueryDidUpdate,
-            object: q
+
+        // Block-based observers — no @objc selector lookup needed, so this
+        // works regardless of whether SnapshotReader inherits from NSObject.
+        let handler: (Notification) -> Void = { [weak self] _ in
+            Task { @MainActor in await self?.reload() }
+        }
+        observerTokens.append(
+            NotificationCenter.default.addObserver(
+                forName: .NSMetadataQueryDidUpdate, object: q, queue: .main, using: handler)
         )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(metadataQueryDidUpdate(_:)),
-            name: .NSMetadataQueryDidFinishGathering,
-            object: q
+        observerTokens.append(
+            NotificationCenter.default.addObserver(
+                forName: .NSMetadataQueryDidFinishGathering, object: q, queue: .main, using: handler)
         )
         q.start()
         metadataQuery = q
     }
 
-    @objc private func metadataQueryDidUpdate(_ note: Notification) {
-        // Coalesce — reload on any change.
-        Task { @MainActor in
-            await self.reload()
+    deinit {
+        for token in observerTokens {
+            NotificationCenter.default.removeObserver(token)
         }
     }
 }

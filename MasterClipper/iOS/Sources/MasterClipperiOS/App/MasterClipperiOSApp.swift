@@ -18,11 +18,8 @@ struct RootView: View {
     @EnvironmentObject private var appState: iOSAppState
 
     var body: some View {
-        NavigationSplitView {
+        NavigationStack {
             ClipListView()
-        } detail: {
-            Text("Select a clip")
-                .foregroundStyle(.secondary)
         }
     }
 }

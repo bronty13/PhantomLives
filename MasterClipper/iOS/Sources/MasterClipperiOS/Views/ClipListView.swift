@@ -6,6 +6,7 @@ struct ClipListView: View {
     @State private var showingFilters = false
 
     var body: some View {
+        let _ = print("[ClipListView] render — manifest=\(appState.snapshotReader.manifest != nil ? "present" : "nil") clips=\(appState.clips.count) filtered=\(appState.filteredClips.count) loading=\(appState.snapshotReader.isLoading) error=\(appState.snapshotReader.lastError ?? "—")")
         List {
             if appState.snapshotReader.manifest == nil {
                 emptyState

@@ -34,6 +34,8 @@ final class IntentInbox: ObservableObject {
         installMetadataQuery()
     }
 
+    private var observerTokens: [NSObjectProtocol] = []
+
     private func installMetadataQuery() {
         guard metadataQuery == nil else { return }
         let q = NSMetadataQuery()
@@ -43,24 +45,26 @@ final class IntentInbox: ObservableObject {
         // and filter the path in the handler.
         q.predicate = NSPredicate(format: "%K LIKE %@",
                                   NSMetadataItemFSNameKey, "*.json")
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(metadataQueryDidUpdate(_:)),
-            name: .NSMetadataQueryDidUpdate,
-            object: q
+
+        let handler: (Notification) -> Void = { [weak self] _ in
+            Task { await self?.processPendingFolder() }
+        }
+        observerTokens.append(
+            NotificationCenter.default.addObserver(
+                forName: .NSMetadataQueryDidUpdate, object: q, queue: .main, using: handler)
         )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(metadataQueryDidUpdate(_:)),
-            name: .NSMetadataQueryDidFinishGathering,
-            object: q
+        observerTokens.append(
+            NotificationCenter.default.addObserver(
+                forName: .NSMetadataQueryDidFinishGathering, object: q, queue: .main, using: handler)
         )
         q.start()
         metadataQuery = q
     }
 
-    @objc private func metadataQueryDidUpdate(_ note: Notification) {
-        Task { await self.processPendingFolder() }
+    deinit {
+        for token in observerTokens {
+            NotificationCenter.default.removeObserver(token)
+        }
     }
 
     // MARK: - Processing
