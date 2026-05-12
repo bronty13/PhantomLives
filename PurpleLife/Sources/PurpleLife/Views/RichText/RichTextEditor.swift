@@ -41,7 +41,11 @@ struct RichTextEditor: View {
 
 // MARK: - NSTextView host
 
-private struct RichTextRepresentable: NSViewRepresentable {
+/// Exposed (non-private) so the NoteLog field can host the same
+/// NSTextView setup without inheriting the toolbar above it. Same
+/// configuration as the toolbar-wrapped `RichTextEditor` — spell
+/// check, link detection, attachment paste handling all apply.
+struct RichTextRepresentable: NSViewRepresentable {
     @Binding var attributed: NSAttributedString
 
     func makeCoordinator() -> Coordinator { Coordinator(binding: $attributed) }

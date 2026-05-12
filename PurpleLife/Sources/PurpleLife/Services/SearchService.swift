@@ -166,6 +166,25 @@ enum SearchService {
                    !plain.isEmpty {
                     body.append(plain)
                 }
+            case .noteLog:
+                // Aggregate each entry's plain mirror into the FTS body.
+                // Attachment filenames also get indexed — searching for a
+                // PDF name should find the entry that has it attached.
+                if let dict = v as? [String: Any],
+                   let entries = dict["entries"] as? [[String: Any]] {
+                    for entry in entries {
+                        if let plain = entry["plain"] as? String, !plain.isEmpty {
+                            body.append(plain)
+                        }
+                        if let atts = entry["attachments"] as? [[String: Any]] {
+                            for att in atts {
+                                if let name = att["filename"] as? String, !name.isEmpty {
+                                    body.append(name)
+                                }
+                            }
+                        }
+                    }
+                }
             case .multiSelect:
                 if let arr = v as? [String] { body.append(arr.joined(separator: " ")) }
             case .number:

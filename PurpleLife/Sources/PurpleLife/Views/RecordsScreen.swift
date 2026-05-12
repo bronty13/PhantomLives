@@ -334,6 +334,7 @@ struct RecordsTableBody: View {
     private func columnWidth(for field: FieldDef) -> CGFloat {
         switch field.kind {
         case .longText, .richText:       return 320
+        case .noteLog:                   return 280
         case .text, .url, .email, .link: return 200
         case .number:                    return 100
         case .date, .dateTime:           return 160

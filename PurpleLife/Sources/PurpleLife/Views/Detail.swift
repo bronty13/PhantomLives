@@ -256,6 +256,12 @@ struct ObjectDetailSheet: View {
                         .foregroundStyle(.red)
                 }
             }
+        case .noteLog:
+            NoteLogField(
+                fieldKey: field.key,
+                parentObjectId: recordId,
+                fieldsBuffer: $fieldsBuffer
+            )
         case .number:
             TextField(field.name, value: doubleBinding(field.key), format: .number)
                 .textFieldStyle(.roundedBorder)

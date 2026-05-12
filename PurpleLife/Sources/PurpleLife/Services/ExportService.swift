@@ -265,6 +265,28 @@ enum ExportService {
                 return plain
             }
             return stringValue(raw)
+        case .noteLog:
+            // Render each entry as "[timestamp] plain text" and trailing
+            // " [attachments: filename1, filename2]" when present.
+            // Newest first to match the editor order.
+            guard let dict = raw as? [String: Any],
+                  let entries = dict["entries"] as? [[String: Any]] else {
+                return ""
+            }
+            let sorted = entries.sorted { l, r in
+                ((l["createdAt"] as? String) ?? "") > ((r["createdAt"] as? String) ?? "")
+            }
+            return sorted.map { entry -> String in
+                let stamp = (entry["createdAt"] as? String) ?? ""
+                let plain = (entry["plain"] as? String) ?? ""
+                let atts = (entry["attachments"] as? [[String: Any]]) ?? []
+                let names = atts.compactMap { $0["filename"] as? String }
+                var line = "[\(stamp)] \(plain)"
+                if !names.isEmpty {
+                    line += " [attachments: \(names.joined(separator: ", "))]"
+                }
+                return line
+            }.joined(separator: "\n")
         case .number:
             if let d = raw as? Double {
                 return formatNumber(d)

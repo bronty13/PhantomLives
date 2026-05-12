@@ -36,6 +36,31 @@ enum FieldDisplay {
             } else {
                 Text(plain).lineLimit(2)
             }
+        case .noteLog:
+            // Cell summary: "N entries · last: <plain preview>"
+            let dict = value as? [String: Any]
+            let entries = (dict?["entries"] as? [[String: Any]]) ?? []
+            if entries.isEmpty {
+                Text("—").foregroundStyle(.tertiary)
+            } else {
+                let count = entries.count
+                let latestPlain = entries
+                    .max(by: { (l, r) in
+                        ((l["createdAt"] as? String) ?? "") < ((r["createdAt"] as? String) ?? "")
+                    })
+                    .flatMap { $0["plain"] as? String } ?? ""
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(count) \(count == 1 ? "entry" : "entries")")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    if !latestPlain.isEmpty {
+                        Text(latestPlain)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
+                }
+            }
         case .number:
             if let s = numberValueOrNil(value) {
                 Text(s).monospacedDigit()

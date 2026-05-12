@@ -56,6 +56,7 @@ enum FieldKind: String, Codable, CaseIterable, Hashable {
     case text          // single-line string
     case longText      // multi-line / markdown
     case richText      // WYSIWYG; stored as { rtf: <base64>, plain: <mirror> }
+    case noteLog       // timestamped rich-text log entries with per-entry attachments
     case number        // double
     case date          // calendar day, no time component
     case dateTime      // moment in time
@@ -73,6 +74,7 @@ enum FieldKind: String, Codable, CaseIterable, Hashable {
         case .text:        return "Text"
         case .longText:    return "Long text"
         case .richText:    return "Rich text"
+        case .noteLog:     return "Note log"
         case .number:      return "Number"
         case .date:        return "Date"
         case .dateTime:    return "Date & time"
@@ -93,6 +95,7 @@ enum FieldKind: String, Codable, CaseIterable, Hashable {
         case .text:        return "text.alignleft"
         case .longText:    return "text.justify"
         case .richText:    return "text.book.closed"
+        case .noteLog:     return "bubble.left.and.bubble.right"
         case .number:      return "number"
         case .date:        return "calendar"
         case .dateTime:    return "calendar.badge.clock"
