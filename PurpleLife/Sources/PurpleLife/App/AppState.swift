@@ -191,6 +191,28 @@ final class AppState: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // Same nested-ObservableObject bridge for KeyStore. Symptoms
+        // without it: Settings → Security tab doesn't reflect Lock /
+        // Unlock state transitions until you click another tab and
+        // come back. Same fix as the schema bridge above.
+        keyStore.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+
+        // Same for CloudKitSyncService. Symptoms: the sync footer
+        // stays at "Synced" even when the service transitions to
+        // .error or .syncing, since the surrounding view observes
+        // AppState rather than `sync` directly.
+        sync.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+
         // Wire ObjectEngine → SchemaRegistry so search-index updates have
         // the type definitions they need.
         ObjectEngine.currentSchema = schema

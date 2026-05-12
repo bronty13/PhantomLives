@@ -12,6 +12,84 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-12 — New `FieldKind.noteLog` — timestamped rich-text log with attachments
+
+A new field kind for activity-log / journal / case-notes workflows. Users add a "Note log" field to any object type via the Schema Editor; on a record's detail sheet they see a rich-text input at the top and a list of committed entries below. Each entry has a timestamp, rich-text body, and zero-or-more file attachments. Entries are individually editable and deletable.
+
+**Storage shape** inside `fields_json[fieldKey]`:
+```
+{ entries: [
+    { id, createdAt, updatedAt, rtf, plain,
+      attachments: [{ id, sha256, filename, mimeType, sizeBytes }] }
+  ] }
+```
+The attachment `id` is a row in the existing `attachments` table; storing it (rather than just the sha256) means entry-delete can ref-count-clean its rows via `AttachmentService.deleteRow`. Filename/mime/size are denormalized inline so chip rendering doesn't need a DB join per entry. `rtf` is base64-encoded RTFD bytes; `plain` is the mirror text feeding FTS and the compact preview.
+
+**UX**:
+
+- Top input: full `RichTextEditor` (toolbar, ⌘B/I/U, paste-images, spell-check). ⌘Return posts (visible "Post" button too — plain Return is reserved for line breaks).
+- Pending attachments: paperclip → `NSOpenPanel(allowsMultipleSelection: true)` OR drag-and-drop file URLs anywhere on the field surface. Chips above the entries list with × to remove pre-commit. **Files only upload on actual Post** — no orphan `attachments` rows if the user abandons the draft.
+- Drop-targeted overlay: blue accent border + 8 %-tinted background when a drag is hovering, so the drop affordance is unambiguous.
+- Each entry row: timestamp + `· edited` marker when `updatedAt > createdAt` + per-entry ⋯ menu (Edit / Delete). Body renders via a new read-only `RichTextDisplay` NSViewRepresentable (intrinsic-height NSTextView, content-driven sizing so the entries list grows organically rather than fighting a fixed row height).
+- Edit mode swaps the row body for a `RichTextEditor` with Cancel / Save buttons. Save stamps `updatedAt`.
+- Attachment chips per entry: filename + `Open` (decrypts via `AttachmentService.read`, writes to `~/tmp/PurpleLife-NoteLog/`, `NSWorkspace.shared.open`) + `Save…` (`NSSavePanel` → plaintext copy at user-chosen destination).
+
+**Per-entry size budget**: `NoteLogLimits.maxEntryRTFBytes = 200_000`. The whole field's serialized JSON still has to fit under CloudKit's ~1 MB record cap, so per-entry needs to be modest enough that a reasonable log doesn't push the parent over. Exceeded entries surface a non-destructive inline error; the editor keeps the in-flight content.
+
+**Integration with the rest of the field-kind system**:
+
+- `SearchService.searchableText`: aggregates every entry's `plain` AND attachment filenames into the FTS body. Searching for `"receipt.pdf"` surfaces the record containing the entry that has it attached.
+- `ExportService.renderCell`: each entry becomes a line `[timestamp] plain text [attachments: a.pdf, b.png]` (newest first). CSV / Markdown / HTML / PDF all use this representation.
+- `FieldDisplay.cell`: compact "N entries · latest preview" summary for table/kanban rows.
+- `RecordsScreen.columnWidth`: 280 pt (slightly narrower than the 320 pt `.longText` / `.richText` column).
+
+**Deliberate omissions**:
+
+- **No inline-image extraction** in the entry's rich text. If a user pastes an image into an entry's body editor, the bytes count against the 200 KB per-entry budget (same as `.richText`). The polished UX (Slack-style — intercept paste, upload as attachment, add to pending chips) is a follow-up.
+- **No drop-on-specific-entry**: a file dropped anywhere on the field area always becomes a pending attachment for the *next* posted entry. Adding per-entry drop targets is straightforward but the current "always pending" mental model is cleaner for v1.
+- **No threaded replies, no @-mentions, no wiki-links.** These are future scope.
+- **`RichTextRepresentable` exposed** (was `private`) so `RichTextDisplay` and `NoteLogField` could host the same NSTextView configuration without duplicating it. Same configuration block — spell-check, link detection, attachment paste handling all apply.
+
+**Test coverage**: 5 new `NoteLogValueTests` covering JSON round-trip (including the rtf-as-base64 / nested attachments), missing-keys tolerance, size-limit boundary, FTS integration (entry plain + attachment filenames in the body), and ExportService integration (newest-first ordering + attachments-line suffix when present). **174/174 tests green** (was 169, +5).
+
+### 2026-05-11 — Spell-check + grammar-check on rich-text and long-text bodies
+
+`NSTextView.isContinuousSpellCheckingEnabled` defaults to `false`; both the rich-text Note body editor and the SwiftUI `TextEditor` used for `.longText` fields inherit that default, so misspellings never got the standard red underlines.
+
+- `RichTextEditor`'s NSTextView now sets `isContinuousSpellCheckingEnabled` + `isGrammarCheckingEnabled`. `isAutomaticSpellingCorrectionEnabled` stays **off** — silent text substitution is hostile to note-taking workflows that include code, acronyms, brand names. The user opts in to corrections via right-click → Correct Spelling.
+- New `Views/Fields/SpellCheckedTextEditor.swift` — NSViewRepresentable wrapping NSTextView with the same flags, replacing the bare `TextEditor` in `Detail.swift`'s `.longText` field renderer.
+
+**Deliberate omission**: per-`TextField` override. SwiftUI's `TextField` on macOS uses the window's NSText field editor whose continuous spell-check is governed by the global Edit → Spelling and Grammar → Check Spelling While Typing toggle. There's no SwiftUI modifier to force it on per-field — would need to NSViewRepresentable-wrap NSTextField at every site. Not done; the global toggle covers most real cases and the cost-to-value is poor.
+
+### 2026-05-11 — Interactive image resize in rich-text editor
+
+`NSTextView.allowsImageEditing = true` is a head-fake — it enables drag-and-drop / paste-over image editing but **does not** include interactive corner-drag resize handles. Reviewed Apple's own apps: TextEdit has no resize at all; Apple Notes ships a right-click "Image Display" menu with discrete size options.
+
+Started with that pattern, then iterated based on first-use feedback:
+
+1. **Right-click → "Image size" → Small / Medium / Large / Original**. Initial implementation mutated `attachment.bounds`. Turned out `.bounds` is ignored on attachments that have an `image` set — `NSTextView`'s layout manager queries `attachment.image.size` instead. So nothing visibly changed.
+2. **Switched the resize to mutate `NSImage.size` directly** (a render-time hint AppKit honors; doesn't resample the bitmap). The bitmap rep stays at natural pixel dimensions — always reloaded from `attachment.fileWrapper.regularFileContents` so successive resizes don't progressively degrade quality. The bitmap rep's `pixelsWide`/`pixelsHigh` is the "natural size" reference (not `image.size`, which is mutable and reflects the last resize).
+3. **Detection bug** caught while iterating: the menu handler required `attachment.image != nil`, which is true on a fresh paste but often false when an attachment is restored from RTFD (the `fileWrapper` carries the bytes but `image` stays nil until something explicitly reads it). Detection now accepts either — and the size-reading path falls back to `NSImage(data: fileWrapper.regularFileContents)`. Also tolerates `charIndex - 1` for hit-tests that land one position past a trailing attachment.
+4. **Slider popover** ("Resize image…" entry at the top of the submenu) for fine-grained resize. SwiftUI content via `NSHostingController` inside an `NSPopover` anchored to the image's on-screen rect (computed via the layout manager's `boundingRect(forGlyphRange:in:)` + `textContainerOrigin`). Continuous slider fires on every drag tick so the image responds in real time. Range: 40 pt floor (so the image can't be dragged to invisibility) to the source bitmap's natural width (no upscaling — that would just blur). Small / Medium / Large / Original quick-jump buttons live below the slider for keyboard-friendly coarse changes.
+
+**Deliberate omission**: corner-handle drag resize. Would require a custom `NSTextAttachmentCell` subclass with mouse-tracking + handle drawing. Real implementation cost — ~250–400 LOC plus polish for the edge cases (handles clipped by line fragments, interaction with text-selection drag, keyboard nudging, undo integration). The popover slider achieves the same outcome with much less code; corner handles can land later if the popover proves insufficient.
+
+**Test coverage**: none added — image resize is an AppKit UI interaction that's hard to exercise without a UI test host. Verified by hand at each iteration; the underlying `NSImage.size` / `NSTextAttachment.bounds` plumbing is single-call-site and obvious from the menu/popover wiring.
+
+### 2026-05-11 — Bridge nested ObservableObjects up to `AppState.objectWillChange`
+
+Schema Editor's "Delete field" / "Move up" / "Move down" buttons mutated the model correctly but the rendered field list didn't refresh until the user navigated away and back. Classic SwiftUI nested-ObservableObject staleness: `@Published var schema` on `AppState` only fires when the SchemaRegistry *instance* gets reassigned — internal `types` / `hiddenBuiltInIds` mutations bubble through `schema.objectWillChange` but never reach `AppState.objectWillChange`. Views observing `appState` (most views in the app — they inject `@EnvironmentObject AppState`, not the inner stores directly) missed every schema change.
+
+The pattern was already in place for `SettingsStore` (Combine `sink` on `settingsStore.objectWillChange` → forward to `objectWillChange.send()`). Replicated for **all** nested ObservableObject children of AppState that mutate during normal use:
+
+- `schema` (`SchemaRegistry`) — fixes the originally-reported Schema Editor symptom.
+- `keyStore` (`KeyStore`) — defensive; pre-empts Settings → Security tab going stale after Lock / Unlock state transitions.
+- `sync` (`CloudKitSyncService`) — defensive; pre-empts the sync footer staying stale when service state transitions to `.error` or `.syncing`.
+
+**Deliberate omission**: `settingsStore` already has the bridge (predates this commit); not duplicated. `database` (`DatabaseService`) is not `ObservableObject` — its mutations are queried imperatively rather than observed.
+
+The Combine sink is one line per object plus the `.receive(on: RunLoop.main)` for thread safety. ~16 LOC total.
+
 ### 2026-05-11 — Encryption foundation · slice A2 (FINAL): SQLCipher 4.6.1 vendored + integrated
 
 Closes the at-rest encryption gap that's been carried since slice A1. The earlier slice A2′ (column-level wrap on `objects.fields_json`) was a defensive stand-in; this slice replaces it with the structural answer — the entire `purplelife.sqlite` file is now SQLCipher-encrypted at the page level. FTS5 index, sync-metadata columns, and attachment metadata are all inside that encrypted file, so the "FTS5 leakage" and "metadata columns" gaps documented in slice A2′ are now closed.

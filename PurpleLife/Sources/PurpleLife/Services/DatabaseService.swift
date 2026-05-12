@@ -47,7 +47,13 @@ final class DatabaseService {
     /// First 16 bytes of an unencrypted SQLite 3 file. SQLCipher encrypts
     /// these bytes too, so a magic-header match is a reliable test for
     /// "this file is plaintext SQLite and needs migration".
-    private static let plainSQLiteMagic: [UInt8] = Array("SQLite format 3\0".utf8)
+    ///
+    /// `nonisolated` because the constant is Sendable and gets read from
+    /// `isPlaintextSQLite(at:)` — a `nonisolated` static helper that
+    /// runs on whatever queue GRDB hands it. Without this, Swift 6's
+    /// strict-concurrency checking flags the access as an isolation
+    /// violation (already a warning in Swift 5 mode).
+    nonisolated private static let plainSQLiteMagic: [UInt8] = Array("SQLite format 3\0".utf8)
 
     static var supportDirectory: URL {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
