@@ -12,6 +12,20 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-12 — Rich-text image resize: direct-manipulation handles complement the menu
+
+Three image-resize paths now coexist in `RichTextEditor`:
+
+1. **Click image → drag corner** (new, `ResizableImageTextView` subclass). Fast, intuitive, aspect-locked. Best for casual resizing.
+2. **Right-click image → Resize image…** (slider popover, existing). Precision path — type a width, watch the image resize in real time as you drag the slider.
+3. **Right-click image → Small/Medium/Large/Original** (presets, existing). Quick-jumps for "I want 200/400/800 pt without thinking."
+
+All three call into the same write path — mutate `attachment.image.size` (the render-time hint AppKit honors), reload natural-size pixel data from the file wrapper to avoid progressive bitmap degradation across repeated resizes, then trigger `didChangeText()` so the SwiftUI binding picks up the new bytes and the autosave debounce fires.
+
+Aspect lock is unconditional in mode 1. No shift-modifier escape hatch — inline images always look wrong stretched, and the slider popover is right there for non-uniform cases if anyone ever needs them. Corner handles only (no edge handles); edge handles would only matter for non-uniform scaling, which we don't offer.
+
+Manual `NSScrollView` + `NSTextView` wiring replaced `NSTextView.scrollableTextView()` in `makeNSView` so we can substitute the `ResizableImageTextView` subclass for the document view. Same geometry the convenience built — vertical scroller, width-tracking container.
+
 ### 2026-05-12 — Splitter widths capped + UserDefaults wipe on launch
 
 AppKit's `NSSplitView` (which both `NavigationSplitView` and `HSplitView` wrap on macOS) persists subview frames in our UserDefaults under keys like `NSSplitView Subview Frames …, SidebarNavigationSplitView`. A user mousing around the sidebar splitter could drag it past the window edge and persist a width far larger than the window itself — on every subsequent launch the sidebar then takes the entire window and the detail pane is invisible. There's no UI affordance to recover.

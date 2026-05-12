@@ -4,6 +4,13 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-12 — Rich-text editor: direct-manipulation image resize
+
+Clicking an inline image in any rich-text or noteLog editor now selects it and draws a tinted border with four white corner handles. Drag a handle to live-resize with aspect ratio locked; release commits and fires the autosave debounce. Coexists with the right-click "Image size" submenu — direct manipulation is the fast path, the slider popover is the precision path, the presets are quick-jumps. Aspect lock is unconditional (no shift-to-unlock); inline images always look wrong when stretched.
+
+- **`Views/RichText/RichTextEditor.swift`** — new `ResizableImageTextView: NSTextView` subclass (~280 LOC). Overrides `mouseDown`/`mouseDragged`/`mouseUp` for handle hit-testing and live-resize math; overrides `draw(_:)` to render the selection border + handles on top of the text. Aspect locked at the natural pixel-rep ratio. Clamped at min 40 pt (matches slider popover floor) and max natural pixel width (no upscale blur). Reloads the source bytes from the file wrapper on every drag so successive resizes don't progressively degrade the bitmap (same trick `resizeImage(at:toWidth:)` already used for the slider). `setSelectedRange` overridden so arrow-key navigation off the image clears the handle display.
+- `makeNSView` now wires the `NSScrollView` + `NSTextView` manually (the `NSTextView.scrollableTextView()` convenience returns a base `NSTextView` and can't substitute a subclass). Same geometry the convenience built — vertical scroller, width-tracking container.
+
 ### 2026-05-12 — Fix: NavigationSplitView "blue stripe" trap
 
 A user dragging the main-window sidebar splitter past the window edge could persist a sidebar width (e.g. 3087 px in a 1147 px window) into AppKit's `NSSplitView Subview Frames …` key in `~/Library/Preferences/com.bronty13.PurpleLife.plist`, causing the sidebar to fill the entire window on every subsequent launch — detail pane pushed off-screen, no UI affordance to recover. Two-part defense:

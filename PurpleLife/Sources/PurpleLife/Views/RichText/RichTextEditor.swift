@@ -63,8 +63,36 @@ struct RichTextRepresentable: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSTextView.scrollableTextView()
-        guard let tv = scroll.documentView as? NSTextView else { return scroll }
+        // Manual NSScrollView + NSTextView wiring (NSTextView.scrollableTextView()
+        // doesn't let us substitute a custom NSTextView subclass for the document
+        // view). The geometry mirrors what the convenience builds — vertical
+        // scroller, content-tracking text container, width-tracking layout.
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = false
+        scroll.autohidesScrollers = true
+        scroll.borderType = .noBorder
+        scroll.drawsBackground = false
+
+        let contentSize = scroll.contentSize
+        let layoutManager = NSLayoutManager()
+        let textStorage = NSTextStorage()
+        textStorage.addLayoutManager(layoutManager)
+        let container = NSTextContainer(size: NSSize(width: contentSize.width,
+                                                     height: .greatestFiniteMagnitude))
+        container.widthTracksTextView = true
+        layoutManager.addTextContainer(container)
+
+        let tv = ResizableImageTextView(frame: NSRect(origin: .zero, size: contentSize),
+                                        textContainer: container)
+        tv.minSize = NSSize(width: 0, height: 0)
+        tv.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
+                            height: CGFloat.greatestFiniteMagnitude)
+        tv.isVerticallyResizable = true
+        tv.isHorizontallyResizable = false
+        tv.autoresizingMask = [.width]
+        scroll.documentView = tv
+
         tv.delegate = context.coordinator
         tv.isRichText = true
         tv.allowsImageEditing = true
@@ -471,6 +499,316 @@ struct RichTextRepresentable: NSViewRepresentable {
             }
             return nil
         }
+    }
+}
+
+// MARK: - Resizable image text view
+
+/// `NSTextView` subclass that adds direct-manipulation corner-handle
+/// resize for inline image attachments. Clicking an image selects it
+/// (single-char selection) and shows a tinted border + four square
+/// corner handles. Dragging a handle live-resizes the image with
+/// aspect-ratio locked; releasing commits and fires `didChangeText()`
+/// so the `RichTextEditor` binding picks up the new bytes.
+///
+/// Coexists with the right-click → Resize image… popover and the
+/// preset menu — direct manipulation is the fast path, the popover
+/// is the precision path, the presets are quick-jumps.
+private final class ResizableImageTextView: NSTextView {
+
+    fileprivate enum Corner {
+        case topLeft, topRight, bottomLeft, bottomRight
+    }
+
+    fileprivate struct ResizeState {
+        let charIndex: Int
+        let naturalSize: CGSize  // pixel-rep ground truth
+        let aspect: CGFloat      // height / width
+        let anchor: NSPoint      // view-space opposite corner; fixed during drag
+    }
+
+    /// Range of the inline image currently shown with selection handles.
+    /// Single-char; nil when nothing is image-selected.
+    fileprivate var selectedImageRange: NSRange? {
+        didSet {
+            if oldValue != selectedImageRange { needsDisplay = true }
+        }
+    }
+
+    /// Active drag state during a corner resize. Set on mouseDown over a
+    /// handle, mutated on mouseDragged, cleared on mouseUp.
+    private var activeResize: ResizeState?
+
+    /// Visual half-size of a corner handle (so 5 → 10×10 px square).
+    private let handleHalfSize: CGFloat = 5
+    /// Extra hit-test radius around each handle so users don't need
+    /// pixel-perfect aim.
+    private let handleHitSlop: CGFloat = 4
+    /// Minimum render width — same as the slider popover's floor.
+    private let minRenderWidth: CGFloat = 40
+
+    // MARK: Mouse handling
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+
+        // 1. Click on a handle of the currently-selected image → start resize.
+        if let range = selectedImageRange,
+           let imageRect = imageRect(forCharIndex: range.location),
+           let corner = handleHit(at: point, imageRect: imageRect) {
+            beginResize(charIndex: range.location, corner: corner, imageRect: imageRect)
+            return
+        }
+
+        // 2. Click landed on an image attachment → select it.
+        if let charIndex = imageCharIndex(at: point) {
+            selectedImageRange = NSRange(location: charIndex, length: 1)
+            super.setSelectedRange(NSRange(location: charIndex, length: 1))
+            return
+        }
+
+        // 3. Anywhere else → fall through to default behavior, clearing
+        //    the image selection.
+        selectedImageRange = nil
+        super.mouseDown(with: event)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let state = activeResize else {
+            super.mouseDragged(with: event)
+            return
+        }
+        let point = convert(event.locationInWindow, from: nil)
+        applyResize(state: state, currentPoint: point)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if activeResize != nil {
+            activeResize = nil
+            // Fire didChangeText so the coordinator's textDidChange
+            // hook propagates the new attachment.image.size into the
+            // SwiftUI binding and triggers the autosave debounce.
+            didChangeText()
+            needsDisplay = true
+            return
+        }
+        super.mouseUp(with: event)
+    }
+
+    // MARK: Selection / drawing
+
+    override func setSelectedRange(_ charRange: NSRange,
+                                   affinity: NSSelectionAffinity,
+                                   stillSelecting flag: Bool) {
+        super.setSelectedRange(charRange, affinity: affinity, stillSelecting: flag)
+        // Clear image selection whenever the cursor moves off the image.
+        // Without this, typing or arrow-key navigation leaves the
+        // handles drawn around a stale range.
+        if selectedImageRange != nil,
+           charRange.length != 1 || !rangeIsImage(charRange) {
+            selectedImageRange = nil
+        }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard let range = selectedImageRange,
+              let imageRect = imageRect(forCharIndex: range.location) else { return }
+
+        // Subtle inset so the border sits just inside the image,
+        // matching how Apple Notes draws image selection.
+        let border = NSBezierPath(rect: imageRect.insetBy(dx: 1, dy: 1))
+        border.lineWidth = 2
+        NSColor.controlAccentColor.setStroke()
+        border.stroke()
+
+        for corner in cornerPoints(of: imageRect) {
+            let rect = NSRect(x: corner.x - handleHalfSize,
+                              y: corner.y - handleHalfSize,
+                              width: handleHalfSize * 2,
+                              height: handleHalfSize * 2)
+            NSColor.white.setFill()
+            NSBezierPath(rect: rect).fill()
+            let stroke = NSBezierPath(rect: rect)
+            stroke.lineWidth = 1.5
+            NSColor.controlAccentColor.setStroke()
+            stroke.stroke()
+        }
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        // Diagonal-resize cursor over each corner handle. Use crosshair
+        // as a generic fallback — NSCursor doesn't ship a per-corner
+        // diagonal-resize variant in the public API.
+        guard let range = selectedImageRange,
+              let imageRect = imageRect(forCharIndex: range.location) else { return }
+        let pad = handleHalfSize + handleHitSlop
+        for corner in cornerPoints(of: imageRect) {
+            let rect = NSRect(x: corner.x - pad,
+                              y: corner.y - pad,
+                              width: pad * 2,
+                              height: pad * 2)
+            addCursorRect(rect, cursor: .crosshair)
+        }
+    }
+
+    // MARK: Resize math
+
+    private func beginResize(charIndex: Int, corner: Corner, imageRect: NSRect) {
+        guard let storage = textStorage,
+              let attachment = storage.attribute(.attachment, at: charIndex,
+                                                  effectiveRange: nil) as? NSTextAttachment
+        else { return }
+        let sourceImage = pristineImage(from: attachment)
+        guard let image = sourceImage else { return }
+        let naturalSize: CGSize = {
+            if let rep = image.representations.first, rep.pixelsWide > 0 {
+                return CGSize(width: CGFloat(rep.pixelsWide),
+                              height: CGFloat(rep.pixelsHigh))
+            }
+            return image.size
+        }()
+        let aspect = naturalSize.height / max(naturalSize.width, 1)
+        let anchor: NSPoint
+        switch corner {
+        case .topLeft:     anchor = NSPoint(x: imageRect.maxX, y: imageRect.maxY)
+        case .topRight:    anchor = NSPoint(x: imageRect.minX, y: imageRect.maxY)
+        case .bottomLeft:  anchor = NSPoint(x: imageRect.maxX, y: imageRect.minY)
+        case .bottomRight: anchor = NSPoint(x: imageRect.minX, y: imageRect.minY)
+        }
+        activeResize = ResizeState(charIndex: charIndex,
+                                   naturalSize: naturalSize,
+                                   aspect: aspect,
+                                   anchor: anchor)
+    }
+
+    private func applyResize(state: ResizeState, currentPoint: NSPoint) {
+        // Take the larger of the two implied widths so the cursor stays
+        // glued to the dragged corner regardless of which axis the user
+        // led with. Aspect is enforced — no shift-modifier escape hatch
+        // for now; inline images always benefit from locked aspect.
+        let dx = abs(currentPoint.x - state.anchor.x)
+        let dy = abs(currentPoint.y - state.anchor.y)
+        let widthFromY = dy / max(state.aspect, 0.0001)
+        var newWidth = max(dx, widthFromY)
+        newWidth = max(newWidth, minRenderWidth)
+        newWidth = min(newWidth, state.naturalSize.width)
+        let newHeight = newWidth * state.aspect
+
+        guard let storage = textStorage,
+              state.charIndex < storage.length,
+              let attachment = storage.attribute(.attachment, at: state.charIndex,
+                                                  effectiveRange: nil) as? NSTextAttachment
+        else { return }
+        // Always reload from the file wrapper so successive drags don't
+        // progressively degrade the bitmap. Only `image.size` is the
+        // render-time hint — `bounds` is set for belt-and-braces
+        // compatibility with subclasses that consult it.
+        guard let image = pristineImage(from: attachment) else { return }
+        image.size = CGSize(width: newWidth, height: newHeight)
+        attachment.image = image
+        attachment.bounds = CGRect(origin: .zero, size: image.size)
+        let range = NSRange(location: state.charIndex, length: 1)
+        storage.beginEditing()
+        storage.removeAttribute(.attachment, range: range)
+        storage.addAttribute(.attachment, value: attachment, range: range)
+        storage.edited(.editedAttributes, range: range, changeInLength: 0)
+        storage.endEditing()
+        layoutManager?.invalidateLayout(forCharacterRange: range, actualCharacterRange: nil)
+        needsDisplay = true
+    }
+
+    // MARK: Geometry helpers
+
+    private func cornerPoints(of rect: NSRect) -> [NSPoint] {
+        // NSTextView's coordinate system is flipped — minY is at the top.
+        [NSPoint(x: rect.minX, y: rect.minY),
+         NSPoint(x: rect.maxX, y: rect.minY),
+         NSPoint(x: rect.minX, y: rect.maxY),
+         NSPoint(x: rect.maxX, y: rect.maxY)]
+    }
+
+    private func handleHit(at point: NSPoint, imageRect: NSRect) -> Corner? {
+        let r = handleHalfSize + handleHitSlop
+        let tl = NSPoint(x: imageRect.minX, y: imageRect.minY)
+        let tr = NSPoint(x: imageRect.maxX, y: imageRect.minY)
+        let bl = NSPoint(x: imageRect.minX, y: imageRect.maxY)
+        let br = NSPoint(x: imageRect.maxX, y: imageRect.maxY)
+        if abs(point.x - tl.x) <= r && abs(point.y - tl.y) <= r { return .topLeft }
+        if abs(point.x - tr.x) <= r && abs(point.y - tr.y) <= r { return .topRight }
+        if abs(point.x - bl.x) <= r && abs(point.y - bl.y) <= r { return .bottomLeft }
+        if abs(point.x - br.x) <= r && abs(point.y - br.y) <= r { return .bottomRight }
+        return nil
+    }
+
+    private func imageRect(forCharIndex charIndex: Int) -> NSRect? {
+        guard let layoutManager = layoutManager,
+              let container = textContainer,
+              let storage = textStorage,
+              charIndex < storage.length,
+              storage.attribute(.attachment, at: charIndex, effectiveRange: nil) is NSTextAttachment
+        else { return nil }
+        let glyphRange = layoutManager.glyphRange(
+            forCharacterRange: NSRange(location: charIndex, length: 1),
+            actualCharacterRange: nil
+        )
+        let containerRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: container)
+        return containerRect.offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+    }
+
+    /// Returns the char index of the image attachment under `point`, or
+    /// nil if the point isn't inside an image's bounding rect. We can't
+    /// use `characterIndex(for:)` alone — it returns the nearest char
+    /// even when the point is past the end of the text, which would
+    /// false-positive on clicks below the last image.
+    private func imageCharIndex(at point: NSPoint) -> Int? {
+        guard let storage = textStorage,
+              let layoutManager = layoutManager,
+              let container = textContainer else { return nil }
+        let containerPoint = NSPoint(x: point.x - textContainerOrigin.x,
+                                     y: point.y - textContainerOrigin.y)
+        let glyphIndex = layoutManager.glyphIndex(for: containerPoint, in: container,
+                                                   fractionOfDistanceThroughGlyph: nil)
+        guard glyphIndex < layoutManager.numberOfGlyphs else { return nil }
+        let charIndex = layoutManager.characterIndexForGlyph(at: glyphIndex)
+        guard charIndex < storage.length else { return nil }
+        let glyphRange = layoutManager.glyphRange(
+            forCharacterRange: NSRange(location: charIndex, length: 1),
+            actualCharacterRange: nil
+        )
+        let bounds = layoutManager.boundingRect(forGlyphRange: glyphRange, in: container)
+        guard bounds.contains(containerPoint) else { return nil }
+        guard let att = storage.attribute(.attachment, at: charIndex,
+                                           effectiveRange: nil) as? NSTextAttachment
+        else { return nil }
+        if att.image != nil { return charIndex }
+        if let fw = att.fileWrapper, fw.isRegularFile, fw.regularFileContents != nil {
+            return charIndex
+        }
+        return nil
+    }
+
+    private func rangeIsImage(_ range: NSRange) -> Bool {
+        guard let storage = textStorage,
+              range.length == 1,
+              range.location < storage.length,
+              let att = storage.attribute(.attachment, at: range.location,
+                                           effectiveRange: nil) as? NSTextAttachment
+        else { return false }
+        if att.image != nil { return true }
+        if let fw = att.fileWrapper, fw.isRegularFile, fw.regularFileContents != nil {
+            return true
+        }
+        return false
+    }
+
+    private func pristineImage(from attachment: NSTextAttachment) -> NSImage? {
+        if let data = attachment.fileWrapper?.regularFileContents,
+           let img = NSImage(data: data) {
+            return img
+        }
+        return attachment.image
     }
 }
 
