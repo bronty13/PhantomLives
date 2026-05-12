@@ -1236,31 +1236,26 @@ final class SettingsStore: ObservableObject {
     /// Effective filter for a given buffer: the per-buffer override if
     /// present, otherwise the app-wide defaults. Read-mostly path —
     /// called once per `BufferView.renderedRows` recomputation.
-    func messageFilter(networkSlug: String, bufferName: String) -> MessageKindFilter {
-        let key = MessageKindFilter.key(networkSlug: networkSlug, bufferName: bufferName)
-        return settings.messageFiltersByBuffer[key] ?? settings.messageFilterDefaults
+    func messageFilter(for buffer: BufferKey) -> MessageKindFilter {
+        settings.messageFiltersByBuffer[buffer.description] ?? settings.messageFilterDefaults
     }
 
     /// Persist a per-buffer filter override. Called from the header
     /// popover whenever the user toggles a checkbox.
-    func setMessageFilter(_ filter: MessageKindFilter,
-                          networkSlug: String, bufferName: String) {
-        let key = MessageKindFilter.key(networkSlug: networkSlug, bufferName: bufferName)
-        settings.messageFiltersByBuffer[key] = filter
+    func setMessageFilter(_ filter: MessageKindFilter, for buffer: BufferKey) {
+        settings.messageFiltersByBuffer[buffer.description] = filter
     }
 
     /// Drop the per-buffer override so the buffer falls back to the
     /// app-wide defaults again. Wired to "Reset to defaults" in the
     /// header popover.
-    func clearMessageFilter(networkSlug: String, bufferName: String) {
-        let key = MessageKindFilter.key(networkSlug: networkSlug, bufferName: bufferName)
-        settings.messageFiltersByBuffer.removeValue(forKey: key)
+    func clearMessageFilter(for buffer: BufferKey) {
+        settings.messageFiltersByBuffer.removeValue(forKey: buffer.description)
     }
 
     /// True when an override exists for this buffer. Drives the "this is
     /// custom" badge on the filter button.
-    func hasMessageFilterOverride(networkSlug: String, bufferName: String) -> Bool {
-        let key = MessageKindFilter.key(networkSlug: networkSlug, bufferName: bufferName)
-        return settings.messageFiltersByBuffer[key] != nil
+    func hasMessageFilterOverride(for buffer: BufferKey) -> Bool {
+        settings.messageFiltersByBuffer[buffer.description] != nil
     }
 }

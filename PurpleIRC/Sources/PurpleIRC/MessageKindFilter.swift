@@ -1,5 +1,34 @@
 import Foundation
 
+/// Stable, case-normalised key for any per-buffer dictionary that needs
+/// to address a buffer on a specific network. Couples the network slug
+/// (the same one used in `SeenStore.slug(for:)` and the on-disk log
+/// directory layout) with the buffer's name folded to lowercase, so
+/// case-only differences (`#Swift` vs `#swift`) hash and compare equal.
+///
+/// On-disk wire format is the same string `"<slug>/<name-lower>"` that
+/// `AppSettings.messageFiltersByBuffer` has stored since 1.0.130 — the
+/// `description` property is the single source of truth for that
+/// representation and Codable round-trip is unchanged. The struct is
+/// purely a runtime API improvement: it eliminates the manual
+/// interpolation and lowercasing that every call site had to remember.
+struct BufferKey: Hashable, CustomStringConvertible {
+    let networkSlug: String
+    /// Stored lowercased — match the historical key format byte-for-byte.
+    let bufferName: String
+
+    init(networkSlug: String, bufferName: String) {
+        self.networkSlug = networkSlug
+        self.bufferName = bufferName.lowercased()
+    }
+
+    /// `<slug>/<name-lower>`. Identical to the legacy
+    /// `MessageKindFilter.key(networkSlug:bufferName:)` output so the
+    /// dictionary entries written to `settings.json` by earlier builds
+    /// continue to address the same logical buffer after the upgrade.
+    var description: String { "\(networkSlug)/\(bufferName)" }
+}
+
 /// Per-buffer + per-app toggle set for which `ChatLine.Kind` cases should
 /// be rendered. The buffer view consults `MessageKindFilter.includes(_:)`
 /// before adding a line to its rendered-rows pipeline; an `false` toggle
@@ -41,13 +70,6 @@ struct MessageKindFilter: Codable, Equatable {
         case .nick:    return nickChange
         case .topic:   return topic
         }
-    }
-
-    /// Stable per-buffer key for `messageFiltersByBuffer`. Couples the
-    /// network slug (used elsewhere in the persistence layer) with the
-    /// buffer's name lowercased so case-only differences fold together.
-    static func key(networkSlug: String, bufferName: String) -> String {
-        "\(networkSlug)/\(bufferName.lowercased())"
     }
 
     init(info: Bool = true,

@@ -5,6 +5,54 @@ All notable changes to PurpleIRC are recorded here. The bundle's
 count (`1.0.<count>`); CHANGELOG entries use the same scheme so the
 version on the About panel matches the entry that introduced it.
 
+## [1.0.237] — 2026-05-12
+
+### Changed (refactor — typed BufferKey)
+
+- **New `BufferKey` struct** in `MessageKindFilter.swift`. Wraps
+  `(networkSlug, bufferName)`, lowercases the buffer name at init, and
+  exposes the same `"<slug>/<name-lower>"` string via
+  `CustomStringConvertible` that `AppSettings.messageFiltersByBuffer`
+  has stored on disk since 1.0.130. The dictionary is still
+  `[String: MessageKindFilter]` — only the runtime API was retyped.
+  Settings.json round-trip is unchanged byte-for-byte.
+- **Four `SettingsStore` methods now take `BufferKey`.** Old shape:
+  `messageFilter(networkSlug:bufferName:)` /
+  `setMessageFilter(_:networkSlug:bufferName:)` /
+  `clearMessageFilter(networkSlug:bufferName:)` /
+  `hasMessageFilterOverride(networkSlug:bufferName:)`. New shape: each
+  takes `for buffer: BufferKey`. Eliminates the four call sites in
+  `BufferView.swift` (`effectiveFilter`, `filterButton`, the two
+  `MessageFilterPopover` methods, and the popover's "Use defaults"
+  button) that previously re-computed the
+  `SeenStore.slug(for:) + buffer.name` pair separately. They now
+  share a single `BufferView.currentBufferKey` computed property so
+  the popover, the effective filter, and the override badge can never
+  disagree about which buffer they're addressing.
+- **`MessageFilterPopover` takes one `bufferKey: BufferKey` instead of
+  two separate strings.** Same change, smaller surface.
+- **`MessageKindFilter.key(networkSlug:bufferName:)` static helper
+  removed.** Was the lone caller of the manual interpolation /
+  lowercase step; the wrapping `BufferKey.init` is now the single
+  source of truth for the format.
+
+### Tests
+
+- `MessageKindFilterTests`:
+  - `keyIsCaseInsensitiveOnBufferName` / `keySeparatesNetworks`
+    replaced with `bufferKeyFoldsCase` (also asserts `hashValue`
+    equality) and `bufferKeySeparatesNetworks`.
+  - New `bufferKeyDescriptionMatchesOnDiskFormat` pins
+    `BufferKey(networkSlug: "libera", bufferName: "#Swift")
+    .description == "libera/#swift"`. This is the wire-format
+    invariant — anyone changing it would silently drop every
+    existing user's per-buffer overrides on the next save.
+  - The four SettingsStore CRUD tests updated to construct
+    `BufferKey` values instead of passing the two strings.
+
+Test count holds at 294 (293 + new wire-format pin – 1 collapsed key
+test; net +1 from the previous round).
+
 ## [1.0.236] — 2026-05-12
 
 ### Changed (refactor — Setup tab split)

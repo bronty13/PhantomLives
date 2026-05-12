@@ -104,12 +104,20 @@ struct BufferView: View {
     /// Recomputed every body pass so a user toggle in the popover takes
     /// effect immediately.
     private var effectiveFilter: MessageKindFilter {
-        guard let conn = model.activeConnection else {
+        guard let key = currentBufferKey else {
             return model.settings.settings.messageFilterDefaults
         }
-        return model.settings.messageFilter(
-            networkSlug: SeenStore.slug(for: conn.displayName),
-            bufferName: buffer.name)
+        return model.settings.messageFilter(for: key)
+    }
+
+    /// BufferKey for the currently-active connection's currently-active
+    /// buffer, or nil when there is no live connection yet. Shared by
+    /// `effectiveFilter`, `filterButton`, and the popover so the three
+    /// can never disagree on which buffer they're addressing.
+    private var currentBufferKey: BufferKey? {
+        guard let conn = model.activeConnection else { return nil }
+        return BufferKey(networkSlug: SeenStore.slug(for: conn.displayName),
+                         bufferName: buffer.name)
     }
 
     /// Walk `buffer.lines` once, coalescing runs of join/part/quit/nick into
@@ -316,9 +324,9 @@ struct BufferView: View {
     /// glance whether they're looking at customized rendering.
     @ViewBuilder
     private var filterButton: some View {
-        let networkSlug = model.activeConnection.map { SeenStore.slug(for: $0.displayName) } ?? ""
-        let isOverridden = model.settings.hasMessageFilterOverride(
-            networkSlug: networkSlug, bufferName: buffer.name)
+        let isOverridden = currentBufferKey.map {
+            model.settings.hasMessageFilterOverride(for: $0)
+        } ?? false
         Button(action: { showingFilterPopover.toggle() }) {
             Image(systemName: isOverridden
                   ? "line.3.horizontal.decrease.circle.fill"
@@ -330,8 +338,10 @@ struct BufferView: View {
               ? "Filter messages (this buffer has a custom filter)"
               : "Filter messages")
         .popover(isPresented: $showingFilterPopover, arrowEdge: .bottom) {
-            MessageFilterPopover(networkSlug: networkSlug, bufferName: buffer.name)
-                .environmentObject(model)
+            if let key = currentBufferKey {
+                MessageFilterPopover(bufferKey: key)
+                    .environmentObject(model)
+            }
         }
     }
 
@@ -1603,21 +1613,18 @@ private struct BufferViewObservers: ViewModifier {
 /// `messageFilterDefaults` so other buffers without overrides pick them
 /// up immediately.
 struct MessageFilterPopover: View {
-    let networkSlug: String
-    let bufferName: String
+    let bufferKey: BufferKey
     @EnvironmentObject var model: ChatModel
 
     private var hasOverride: Bool {
-        model.settings.hasMessageFilterOverride(
-            networkSlug: networkSlug, bufferName: bufferName)
+        model.settings.hasMessageFilterOverride(for: bufferKey)
     }
 
     /// Filter currently in effect — either the override or defaults.
     /// Each toggle writes back through a per-Toggle binding so a flip
     /// always produces an override even when starting from defaults.
     private var current: MessageKindFilter {
-        model.settings.messageFilter(
-            networkSlug: networkSlug, bufferName: bufferName)
+        model.settings.messageFilter(for: bufferKey)
     }
 
     private func binding(for toggle: MessageKindToggle) -> Binding<Bool> {
@@ -1626,8 +1633,7 @@ struct MessageFilterPopover: View {
             set: { newValue in
                 var next = current
                 toggle.set(newValue, on: &next)
-                model.settings.setMessageFilter(
-                    next, networkSlug: networkSlug, bufferName: bufferName)
+                model.settings.setMessageFilter(next, for: bufferKey)
             }
         )
     }
@@ -1664,8 +1670,7 @@ struct MessageFilterPopover: View {
             Divider()
             HStack {
                 Button("Use defaults") {
-                    model.settings.clearMessageFilter(
-                        networkSlug: networkSlug, bufferName: bufferName)
+                    model.settings.clearMessageFilter(for: bufferKey)
                 }
                 .disabled(!hasOverride)
                 .help("Drop this buffer's override and follow the app-wide defaults again")

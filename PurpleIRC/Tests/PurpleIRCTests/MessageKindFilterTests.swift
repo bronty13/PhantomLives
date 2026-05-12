@@ -65,18 +65,28 @@ struct MessageKindFilterTests {
         #expect(r == original)
     }
 
-    // MARK: - Per-buffer key
+    // MARK: - BufferKey
 
-    @Test func keyIsCaseInsensitiveOnBufferName() {
-        let a = MessageKindFilter.key(networkSlug: "libera", bufferName: "#Swift")
-        let b = MessageKindFilter.key(networkSlug: "libera", bufferName: "#swift")
+    @Test func bufferKeyFoldsCase() {
+        let a = BufferKey(networkSlug: "libera", bufferName: "#Swift")
+        let b = BufferKey(networkSlug: "libera", bufferName: "#swift")
         #expect(a == b)
+        #expect(a.hashValue == b.hashValue)
     }
 
-    @Test func keySeparatesNetworks() {
-        let a = MessageKindFilter.key(networkSlug: "libera",   bufferName: "#swift")
-        let b = MessageKindFilter.key(networkSlug: "undernet", bufferName: "#swift")
+    @Test func bufferKeySeparatesNetworks() {
+        let a = BufferKey(networkSlug: "libera",   bufferName: "#swift")
+        let b = BufferKey(networkSlug: "undernet", bufferName: "#swift")
         #expect(a != b)
+    }
+
+    @Test func bufferKeyDescriptionMatchesOnDiskFormat() {
+        // On-disk wire format the dictionary stored under string keys in
+        // 1.0.130–1.0.236; settings.json from earlier builds MUST keep
+        // resolving to the same logical buffer after the BufferKey
+        // refactor in 1.0.237.
+        let key = BufferKey(networkSlug: "libera", bufferName: "#Swift")
+        #expect(key.description == "libera/#swift")
     }
 
     // MARK: - SettingsStore CRUD
@@ -94,7 +104,7 @@ struct MessageKindFilterTests {
         var defaults = MessageKindFilter()
         defaults.join = false
         store.settings.messageFilterDefaults = defaults
-        let f = store.messageFilter(networkSlug: "libera", bufferName: "#swift")
+        let f = store.messageFilter(for: BufferKey(networkSlug: "libera", bufferName: "#swift"))
         #expect(f.join == false)
     }
 
@@ -104,11 +114,12 @@ struct MessageKindFilterTests {
         // Defaults: show joins. Override #swift to hide them.
         var override = MessageKindFilter()
         override.join = false
-        store.setMessageFilter(override, networkSlug: "libera", bufferName: "#swift")
-        let f = store.messageFilter(networkSlug: "libera", bufferName: "#swift")
+        let swift = BufferKey(networkSlug: "libera", bufferName: "#swift")
+        store.setMessageFilter(override, for: swift)
+        let f = store.messageFilter(for: swift)
         #expect(f.join == false)
         // A different buffer still falls back to defaults.
-        let other = store.messageFilter(networkSlug: "libera", bufferName: "#other")
+        let other = store.messageFilter(for: BufferKey(networkSlug: "libera", bufferName: "#other"))
         #expect(other.join == true)
     }
 
@@ -117,12 +128,13 @@ struct MessageKindFilterTests {
         let store = makeStore()
         var override = MessageKindFilter()
         override.join = false
-        store.setMessageFilter(override, networkSlug: "libera", bufferName: "#swift")
-        #expect(store.hasMessageFilterOverride(networkSlug: "libera", bufferName: "#swift"))
-        store.clearMessageFilter(networkSlug: "libera", bufferName: "#swift")
-        #expect(!store.hasMessageFilterOverride(networkSlug: "libera", bufferName: "#swift"))
+        let swift = BufferKey(networkSlug: "libera", bufferName: "#swift")
+        store.setMessageFilter(override, for: swift)
+        #expect(store.hasMessageFilterOverride(for: swift))
+        store.clearMessageFilter(for: swift)
+        #expect(!store.hasMessageFilterOverride(for: swift))
         // Now resolves to defaults again.
-        let f = store.messageFilter(networkSlug: "libera", bufferName: "#swift")
+        let f = store.messageFilter(for: swift)
         #expect(f.join == true)
     }
 
@@ -131,9 +143,13 @@ struct MessageKindFilterTests {
         let store = makeStore()
         var override = MessageKindFilter()
         override.notice = false
-        store.setMessageFilter(override, networkSlug: "libera", bufferName: "#Swift")
-        // Read back with a different case — should still hit the override.
-        let f = store.messageFilter(networkSlug: "libera", bufferName: "#swift")
+        // Set under one case, read under another. The case fold lives
+        // inside `BufferKey.init`, so both call sites resolve to the
+        // same dictionary entry without the caller having to remember
+        // to lowercase the buffer name.
+        store.setMessageFilter(override,
+                               for: BufferKey(networkSlug: "libera", bufferName: "#Swift"))
+        let f = store.messageFilter(for: BufferKey(networkSlug: "libera", bufferName: "#swift"))
         #expect(f.notice == false)
     }
 
