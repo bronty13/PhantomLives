@@ -101,23 +101,34 @@ private struct RichTextRepresentable: NSViewRepresentable {
         /// click landed on an attachment. NSTextView doesn't ship with
         /// interactive corner-drag resize; this context menu is the
         /// standard macOS substitute (same pattern Apple Notes uses).
+        ///
+        /// `charIndex` can land one position past the attachment when the
+        /// user clicks at its trailing edge — check the position itself
+        /// AND `charIndex - 1` to be forgiving about hit-testing.
+        /// Detection accepts EITHER `attachment.image` (fresh paste path)
+        /// OR `attachment.fileWrapper` containing image bytes (the post-
+        /// RTFD-roundtrip path — when a note is reloaded from disk, the
+        /// `image` property is often nil even though the file wrapper
+        /// has the bytes).
         func textView(_ view: NSTextView,
                       menu: NSMenu,
                       for event: NSEvent,
                       at charIndex: Int) -> NSMenu? {
-            guard let storage = view.textStorage,
-                  charIndex < storage.length,
-                  let attachment = storage.attribute(.attachment, at: charIndex, effectiveRange: nil) as? NSTextAttachment,
-                  attachment.image != nil else {
+            guard let storage = view.textStorage else { return menu }
+            let candidate = Self.locateImageAttachment(in: storage, near: charIndex)
+            guard let hit = candidate else {
+                NSLog("PurpleLife: rich-text right-click at charIndex=\(charIndex) — no image attachment in scope")
                 return menu
             }
+            NSLog("PurpleLife: rich-text right-click on image at charIndex=\(hit.charIndex)")
+
             let imageMenu = NSMenu(title: "Image")
             for option in ImageResizeOption.allCases {
                 let item = NSMenuItem(title: option.title,
                                       action: #selector(handleImageResize(_:)),
                                       keyEquivalent: "")
                 item.target = self
-                item.representedObject = ImageResizeRequest(charIndex: charIndex, option: option)
+                item.representedObject = ImageResizeRequest(charIndex: hit.charIndex, option: option)
                 imageMenu.addItem(item)
             }
             let imageHeader = NSMenuItem(title: "Image size", action: nil, keyEquivalent: "")
@@ -132,14 +143,29 @@ private struct RichTextRepresentable: NSViewRepresentable {
                   let tv = textView,
                   let storage = tv.textStorage,
                   request.charIndex < storage.length,
-                  let attachment = storage.attribute(.attachment, at: request.charIndex, effectiveRange: nil) as? NSTextAttachment,
-                  let image = attachment.image else { return }
+                  let attachment = storage.attribute(.attachment, at: request.charIndex, effectiveRange: nil) as? NSTextAttachment else { return }
 
-            let aspect = image.size.height / max(image.size.width, 1)
-            let target = request.option.targetWidth(naturalWidth: image.size.width)
+            // Natural size: prefer `attachment.image`, fall back to
+            // building an NSImage from the file wrapper's bytes. The
+            // wrapper path is what a reloaded RTFD note exercises.
+            let naturalSize: CGSize = {
+                if let img = attachment.image { return img.size }
+                if let data = attachment.fileWrapper?.regularFileContents,
+                   let img = NSImage(data: data) {
+                    return img.size
+                }
+                // Fallback: keep the current bounds proportions if we
+                // truly can't introspect.
+                return attachment.bounds.size == .zero
+                    ? CGSize(width: 800, height: 600)
+                    : attachment.bounds.size
+            }()
+
+            let aspect = naturalSize.height / max(naturalSize.width, 1)
+            let target = request.option.targetWidth(naturalWidth: naturalSize.width)
             let newBounds: CGRect
             if target <= 0 {
-                newBounds = CGRect(origin: .zero, size: image.size)
+                newBounds = CGRect(origin: .zero, size: naturalSize)
             } else {
                 newBounds = CGRect(x: 0, y: 0, width: target, height: target * aspect)
             }
@@ -151,11 +177,24 @@ private struct RichTextRepresentable: NSViewRepresentable {
             storage.edited(.editedAttributes, range: range, changeInLength: 0)
             storage.endEditing()
             tv.didChangeText()
-            // Force a layout pass so the resized image redraws at its
-            // new bounds immediately.
             tv.layoutManager?.invalidateLayout(forCharacterRange: range,
                                                 actualCharacterRange: nil)
             tv.needsDisplay = true
+        }
+
+        /// Returns the attachment at `charIndex` or `charIndex - 1` when
+        /// either renders as an image (has `.image` or a non-empty
+        /// `fileWrapper`). nil when no image attachment is in scope.
+        private static func locateImageAttachment(in storage: NSTextStorage,
+                                                  near charIndex: Int) -> (charIndex: Int, attachment: NSTextAttachment)? {
+            for probe in [charIndex, charIndex - 1] where probe >= 0 && probe < storage.length {
+                guard let att = storage.attribute(.attachment, at: probe, effectiveRange: nil) as? NSTextAttachment else { continue }
+                if att.image != nil { return (probe, att) }
+                if let wrapper = att.fileWrapper, wrapper.isRegularFile {
+                    return (probe, att)
+                }
+            }
+            return nil
         }
     }
 }
