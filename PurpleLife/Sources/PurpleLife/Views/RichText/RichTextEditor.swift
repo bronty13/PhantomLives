@@ -96,7 +96,99 @@ private struct RichTextRepresentable: NSViewRepresentable {
                 RichTextRegistry.shared.current = tv
             }
         }
+
+        /// Augment the right-click menu with image-resize options when the
+        /// click landed on an attachment. NSTextView doesn't ship with
+        /// interactive corner-drag resize; this context menu is the
+        /// standard macOS substitute (same pattern Apple Notes uses).
+        func textView(_ view: NSTextView,
+                      menu: NSMenu,
+                      for event: NSEvent,
+                      at charIndex: Int) -> NSMenu? {
+            guard let storage = view.textStorage,
+                  charIndex < storage.length,
+                  let attachment = storage.attribute(.attachment, at: charIndex, effectiveRange: nil) as? NSTextAttachment,
+                  attachment.image != nil else {
+                return menu
+            }
+            let imageMenu = NSMenu(title: "Image")
+            for option in ImageResizeOption.allCases {
+                let item = NSMenuItem(title: option.title,
+                                      action: #selector(handleImageResize(_:)),
+                                      keyEquivalent: "")
+                item.target = self
+                item.representedObject = ImageResizeRequest(charIndex: charIndex, option: option)
+                imageMenu.addItem(item)
+            }
+            let imageHeader = NSMenuItem(title: "Image size", action: nil, keyEquivalent: "")
+            imageHeader.submenu = imageMenu
+            menu.insertItem(NSMenuItem.separator(), at: 0)
+            menu.insertItem(imageHeader, at: 0)
+            return menu
+        }
+
+        @objc private func handleImageResize(_ sender: NSMenuItem) {
+            guard let request = sender.representedObject as? ImageResizeRequest,
+                  let tv = textView,
+                  let storage = tv.textStorage,
+                  request.charIndex < storage.length,
+                  let attachment = storage.attribute(.attachment, at: request.charIndex, effectiveRange: nil) as? NSTextAttachment,
+                  let image = attachment.image else { return }
+
+            let aspect = image.size.height / max(image.size.width, 1)
+            let target = request.option.targetWidth(naturalWidth: image.size.width)
+            let newBounds: CGRect
+            if target <= 0 {
+                newBounds = CGRect(origin: .zero, size: image.size)
+            } else {
+                newBounds = CGRect(x: 0, y: 0, width: target, height: target * aspect)
+            }
+
+            let range = NSRange(location: request.charIndex, length: 1)
+            storage.beginEditing()
+            attachment.bounds = newBounds
+            storage.addAttribute(.attachment, value: attachment, range: range)
+            storage.edited(.editedAttributes, range: range, changeInLength: 0)
+            storage.endEditing()
+            tv.didChangeText()
+            // Force a layout pass so the resized image redraws at its
+            // new bounds immediately.
+            tv.layoutManager?.invalidateLayout(forCharacterRange: range,
+                                                actualCharacterRange: nil)
+            tv.needsDisplay = true
+        }
     }
+}
+
+// MARK: - Image resize options
+
+private enum ImageResizeOption: CaseIterable {
+    case small, medium, large, original
+
+    var title: String {
+        switch self {
+        case .small:    return "Small"
+        case .medium:   return "Medium"
+        case .large:    return "Large"
+        case .original: return "Original size"
+        }
+    }
+
+    /// Target render width in points. `.original` returns -1 to signal
+    /// "use the image's natural size as-pasted."
+    func targetWidth(naturalWidth: CGFloat) -> CGFloat {
+        switch self {
+        case .small:    return 200
+        case .medium:   return 400
+        case .large:    return 800
+        case .original: return -1
+        }
+    }
+}
+
+private struct ImageResizeRequest {
+    let charIndex: Int
+    let option: ImageResizeOption
 }
 
 // MARK: - Registry
