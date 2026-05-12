@@ -5,6 +5,45 @@ All notable changes to PurpleIRC are recorded here. The bundle's
 count (`1.0.<count>`); CHANGELOG entries use the same scheme so the
 version on the About panel matches the entry that introduced it.
 
+## [1.0.238] — 2026-05-12
+
+### Changed (refactor — extract BufferInputState)
+
+- **New `BufferInputState: ObservableObject`** in
+  `Sources/PurpleIRC/BufferInputState.swift`. Holds the input-bar
+  cluster that previously lived as four `@State` properties on
+  `BufferView`:
+  - `input: String` — live text in the TextField.
+  - `history: [String]` — rolling sent-lines history.
+  - `historyPos: Int` — cursor into `history` for ↑/↓ nav.
+  - `completion: TabCompletion?` — active tab-completion cycle.
+  - `pickerDismissedFor: String?` — Esc-dismiss flag for the
+    slash-command picker.
+- **`BufferView` now holds one `@StateObject`** instead of five
+  per-property `@State`s. SwiftUI preserves the object across
+  buffer switches (same shape as the prior `@State` cluster did —
+  BufferView identity is keyed by view position, not by
+  `bufferIndex`).
+- **`TabCompletion` lifted to top level.** Was nested inside
+  `BufferView` as `BufferView.TabCompletion`; now in
+  `BufferInputState.swift` since the state holder is the natural
+  home for its only owner. Shape unchanged.
+- **History-mutation invariants centralised.** `pushHistory(_:)`,
+  `historyPrev()`, `historyNext()` on `BufferInputState` replace
+  three inline triplets in `BufferView` (`sendDraft`, `sendDirect`,
+  `submit`) that each open-coded the cap-at-200 + reset-to-end
+  dance. The history nav handlers in `.onKeyPress(.upArrow)` /
+  `.downArrow` now read as `historyPrev()` / `historyNext()` rather
+  than the three-line conditional that was there before.
+- **`maxHistory` constant** (`= 200`) replaces a magic number
+  scattered across the prior three call sites.
+
+All 294 tests still pass. The input flow is the hottest UX path in
+the app and has no test coverage (it's a SwiftUI view), so this
+release was smoke-tested by exercising send / history nav (↑/↓) /
+slash picker + Esc / tab completion / multi-line paste in the
+release `.app` bundle before committing.
+
 ## [1.0.237] — 2026-05-12
 
 ### Changed (refactor — typed BufferKey)

@@ -7,10 +7,11 @@ struct BufferView: View {
     @EnvironmentObject var model: ChatModel
     let bufferIndex: Int
 
-    @State private var input: String = ""
-    @State private var history: [String] = []
-    @State private var historyPos: Int = 0
-    @State private var completion: TabCompletion? = nil
+    /// Input-bar state — input text, history, tab completion, slash
+    /// picker dismiss flag. Extracted in 1.0.238; was four `@State`
+    /// declarations here plus a nested `TabCompletion` struct. See
+    /// `BufferInputState.swift` for the new home.
+    @StateObject private var inputState = BufferInputState()
 
     // Find-in-buffer state. ⌘F opens the bar, ⌘G cycles matches, Esc closes.
     @State private var showFind: Bool = false
@@ -30,10 +31,6 @@ struct BufferView: View {
 
     // Slash-command picker state.
     @State private var commandSuggestionIndex: Int = 0
-    /// Input string at the moment the user pressed Esc — keeps the picker
-    /// dismissed until they edit the input again. Reset whenever the input
-    /// changes shape.
-    @State private var pickerDismissedFor: String? = nil
 
     /// Drives focus on the input field. Granted on appear, when the buffer
     /// changes, and when the app re-activates so the user can always start
@@ -63,14 +60,6 @@ struct BufferView: View {
     /// search) on every character; now only the trailing edge runs after
     /// the user stops typing for ~250 ms.
     @State private var findDebounceTask: Task<Void, Never>? = nil
-
-    struct TabCompletion {
-        let typedPrefix: String   // text before the completed word (includes trailing space when non-empty)
-        let partial: String       // original partial the user typed (before first tab)
-        let candidates: [String]  // sorted matching nicks
-        var index: Int
-        let suffix: String        // ": " when first word, " " otherwise
-    }
 
     /// Defensive bounds-check — when the active buffer is removed (e.g.
     /// the user picks "Leave channel" from the sidebar context menu),
@@ -651,7 +640,7 @@ struct BufferView: View {
             // is engaged with the local-LLM assistant. Sits above the
             // command-hints popover so the two never visually fight.
             AssistantSuggestionStrip(bufferIndex: bufferIndex,
-                                     onAccept: { text in input = text },
+                                     onAccept: { text in inputState.input = text },
                                      onSendDirect: { text in
                                          sendDirect(text)
                                      })
@@ -664,7 +653,7 @@ struct BufferView: View {
                 Text("\(model.nick):")
                     .foregroundStyle(.secondary)
                     .font(model.chatFont)
-                TextField(placeholder, text: $input)
+                TextField(placeholder, text: $inputState.input)
                     .textFieldStyle(.plain)
                     .font(model.chatFont)
                     .focused($inputFocused)
@@ -674,7 +663,7 @@ struct BufferView: View {
                     // the rest of the session.
                     .background(SpellCheckActivator())
                     .onSubmit(submit)
-                    .onChange(of: input) { oldValue, newValue in
+                    .onChange(of: inputState.input) { oldValue, newValue in
                         // Multi-line paste detection. SwiftUI TextField
                         // collapses pasted text into a single line on macOS
                         // 14+, but a paste of "a\nb\nc" arrives here intact.
@@ -682,19 +671,19 @@ struct BufferView: View {
                         // channel — present a confirmation with options.
                         if newValue.contains("\n") || newValue.contains("\r") {
                             pastedMultiline = newValue
-                            input = ""
+                            inputState.input = ""
                             return
                         }
                         // Tab-completion invalidation.
-                        if let c = completion, !input.hasSuffix(c.suffix)
-                            || !input.dropLast(c.suffix.count).hasSuffix(c.candidates[c.index]) {
-                            completion = nil
+                        if let c = inputState.completion, !inputState.input.hasSuffix(c.suffix)
+                            || !inputState.input.dropLast(c.suffix.count).hasSuffix(c.candidates[c.index]) {
+                            inputState.completion = nil
                         }
                         // Any edit re-engages the slash picker that the user
                         // might have dismissed earlier — only the *exact*
                         // dismissed string keeps it hidden.
-                        if newValue != pickerDismissedFor {
-                            pickerDismissedFor = nil
+                        if newValue != inputState.pickerDismissedFor {
+                            inputState.pickerDismissedFor = nil
                         }
                         // Reset highlight when the matching set changes.
                         if oldValue != newValue {
@@ -725,9 +714,8 @@ struct BufferView: View {
                             commandSuggestionIndex = max(0, commandSuggestionIndex - 1)
                             return .handled
                         }
-                        if !history.isEmpty, historyPos > 0 {
-                            historyPos -= 1
-                            input = history[historyPos]
+                        if let prev = inputState.historyPrev() {
+                            inputState.input = prev
                             return .handled
                         }
                         return .ignored
@@ -737,20 +725,14 @@ struct BufferView: View {
                             commandSuggestionIndex = min(commandHintMatches.count - 1, commandSuggestionIndex + 1)
                             return .handled
                         }
-                        if historyPos < history.count - 1 {
-                            historyPos += 1
-                            input = history[historyPos]
-                        } else {
-                            historyPos = history.count
-                            input = ""
-                        }
+                        inputState.input = inputState.historyNext()
                         return .handled
                     }
                     .onKeyPress(.escape) {
                         if showingCommandHints {
                             // Stash the current input string so the picker
                             // stays dismissed until the user types more.
-                            pickerDismissedFor = input
+                            inputState.pickerDismissedFor = inputState.input
                             return .handled
                         }
                         return .ignored
@@ -831,9 +813,7 @@ struct BufferView: View {
             guard !s.isEmpty else { continue }
             model.sendInput(s)
         }
-        history.append(text)
-        if history.count > 200 { history.removeFirst() }
-        historyPos = history.count
+        inputState.pushHistory(text)
     }
 
     /// Force focus into the input box. SwiftUI ignores `inputFocused = true`
@@ -857,15 +837,15 @@ struct BufferView: View {
     /// hasn't pressed Esc on the current input. Same shape as Claude's
     /// slash menu — arrow keys move highlight, Enter / Tab commit.
     private var showingCommandHints: Bool {
-        guard input.hasPrefix("/"), !input.contains(" ") else { return false }
-        guard pickerDismissedFor != input else { return false }
+        guard inputState.input.hasPrefix("/"), !inputState.input.contains(" ") else { return false }
+        guard inputState.pickerDismissedFor != inputState.input else { return false }
         return !commandHintMatches.isEmpty
     }
 
     /// Matches for the current /prefix. Cached via a computed property so
     /// SwiftUI's diffing doesn't recompute on unrelated state changes.
     private var commandHintMatches: [CommandCatalog.Entry] {
-        let typed = String(input.dropFirst())  // drop the leading "/"
+        let typed = String(inputState.input.dropFirst())  // drop the leading "/"
         return Array(CommandCatalog.matches(prefix: typed).prefix(8))
     }
 
@@ -880,9 +860,9 @@ struct BufferView: View {
     /// Replace the typed `/prefix` with `/cmd ` so the user can keep
     /// typing args. Resets every related state knob.
     private func commit(suggestion entry: CommandCatalog.Entry) {
-        input = "/\(entry.id) "
-        completion = nil
-        pickerDismissedFor = nil
+        inputState.input = "/\(entry.id) "
+        inputState.completion = nil
+        inputState.pickerDismissedFor = nil
         commandSuggestionIndex = 0
     }
 
@@ -968,22 +948,18 @@ struct BufferView: View {
     private func sendDirect(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        history.append(trimmed)
-        if history.count > 200 { history.removeFirst() }
-        historyPos = history.count
+        inputState.pushHistory(trimmed)
         model.sendInput(trimmed)
     }
 
     private func submit() {
-        let text = input
+        let text = inputState.input
         guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        history.append(text)
-        if history.count > 200 { history.removeFirst() }
-        historyPos = history.count
+        inputState.pushHistory(text)
         model.sendInput(text)
-        input = ""
-        completion = nil
-        pickerDismissedFor = nil
+        inputState.input = ""
+        inputState.completion = nil
+        inputState.pickerDismissedFor = nil
         // Keep focus after sending so the next message is one keystroke away.
         // refocusInput's false→true bounce makes sure we actually re-grant
         // first-responder even if the FocusState was already true.
@@ -992,13 +968,13 @@ struct BufferView: View {
 
     private func performTabComplete() {
         // Cycle through candidates if a completion is still active.
-        if let c = completion, !c.candidates.isEmpty {
+        if let c = inputState.completion, !c.candidates.isEmpty {
             let expected = c.typedPrefix + c.candidates[c.index] + c.suffix
-            if input == expected {
+            if inputState.input == expected {
                 var next = c
                 next.index = (c.index + 1) % c.candidates.count
-                input = c.typedPrefix + c.candidates[next.index] + c.suffix
-                completion = next
+                inputState.input = c.typedPrefix + c.candidates[next.index] + c.suffix
+                inputState.completion = next
                 return
             }
         }
@@ -1006,12 +982,12 @@ struct BufferView: View {
         // Slash-command completion path: when the line is just "/partial"
         // with no space yet, cycle through matching commands instead of
         // falling back to nick completion.
-        if input.hasPrefix("/"), !input.contains(" ") {
-            let typed = String(input.dropFirst())
+        if inputState.input.hasPrefix("/"), !inputState.input.contains(" ") {
+            let typed = String(inputState.input.dropFirst())
             let cmds = CommandCatalog.matches(prefix: typed).map { $0.id }
             guard let first = cmds.first else { return }
-            input = "/\(first) "
-            completion = TabCompletion(
+            inputState.input = "/\(first) "
+            inputState.completion = TabCompletion(
                 typedPrefix: "/",
                 partial: typed,
                 candidates: cmds,
@@ -1022,15 +998,15 @@ struct BufferView: View {
         }
 
         // Fresh completion: pull the trailing word (text after the last space).
-        let spaceIdx = input.lastIndex(of: " ")
+        let spaceIdx = inputState.input.lastIndex(of: " ")
         let typedPrefix: String
         let partial: String
         if let spaceIdx {
-            typedPrefix = String(input[...spaceIdx])
-            partial = String(input[input.index(after: spaceIdx)...])
+            typedPrefix = String(inputState.input[...spaceIdx])
+            partial = String(inputState.input[inputState.input.index(after: spaceIdx)...])
         } else {
             typedPrefix = ""
-            partial = input
+            partial = inputState.input
         }
         guard !partial.isEmpty else { return }
 
@@ -1048,8 +1024,8 @@ struct BufferView: View {
 
         guard let first = candidates.first else { return }
         let suffix = typedPrefix.isEmpty ? ": " : " "
-        input = typedPrefix + first + suffix
-        completion = TabCompletion(
+        inputState.input = typedPrefix + first + suffix
+        inputState.completion = TabCompletion(
             typedPrefix: typedPrefix,
             partial: partial,
             candidates: candidates,
