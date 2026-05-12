@@ -60,6 +60,15 @@ private struct RichTextRepresentable: NSViewRepresentable {
         tv.isAutomaticQuoteSubstitutionEnabled = true
         tv.isAutomaticDashSubstitutionEnabled  = true
         tv.isAutomaticTextReplacementEnabled   = true
+        // Continuous spell-check + grammar (red/green underlines as the
+        // user types). Autocorrect stays OFF — for note-taking
+        // workflows that include code, acronyms, brand names, etc.
+        // silent text substitution does more harm than good. The
+        // underlines are passive; the user opts in to corrections via
+        // right-click → Correct Spelling.
+        tv.isContinuousSpellCheckingEnabled = true
+        tv.isGrammarCheckingEnabled = true
+        tv.isAutomaticSpellingCorrectionEnabled = false
         tv.allowsUndo = true
         tv.font = NSFont.systemFont(ofSize: 13)
         tv.textContainerInset = NSSize(width: 8, height: 8)

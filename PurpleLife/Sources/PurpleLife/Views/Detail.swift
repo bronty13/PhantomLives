@@ -240,10 +240,8 @@ struct ObjectDetailSheet: View {
         case .link:
             LinkFieldEditor(value: stringBinding(field.key))
         case .longText:
-            TextEditor(text: stringBinding(field.key))
+            SpellCheckedTextEditor(text: stringBinding(field.key))
                 .frame(minHeight: 80, maxHeight: 200)
-                .font(.body)
-                .scrollContentBackground(.hidden)
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.25)))
         case .richText:
             VStack(alignment: .leading, spacing: 4) {
