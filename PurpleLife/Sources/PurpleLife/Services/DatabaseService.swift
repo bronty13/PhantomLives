@@ -90,13 +90,56 @@ final class DatabaseService {
     /// Re-open the underlying GRDB pool against the on-disk database. Used
     /// after a backup-restore so the running process picks up the swapped file.
     func reopenDatabase() throws {
-        // If the restored file is plaintext but we have a key, migrate
-        // before opening — same logic as init.
+        // If the file is plaintext + we have a key, migrate before opening.
+        //
+        // The migration is fragile in one specific way: if the existing
+        // `dbPool` is still holding the plaintext file open with an
+        // active WAL, two bad things can happen — (1) `sqlcipher_export`
+        // doesn't fully propagate WAL-only pages into the encrypted
+        // sibling, and (2) after the atomic rename, the leftover
+        // `purplelife.sqlite-wal` and `-shm` files from the old plain-
+        // text pool sit alongside the new SQLCipher main file. SQLite
+        // then tries to apply the plaintext WAL onto the SQLCipher main
+        // at read time and the connection bombs with "database disk
+        // image is malformed."
+        //
+        // Defence: drop the existing pool first (forces a throwaway
+        // reassignment so the old pool's ARC reaches zero and its file
+        // handles release), then checkpoint + delete any leftover
+        // journal files, THEN run the migration with no other handles
+        // open to the source file.
         if let key = Self.currentKey, Self.isPlaintextSQLite(at: databaseURL) {
+            dbPool = try DatabasePool(path: ":memory:")
+            Self.checkpointAndPruneJournalFiles(at: databaseURL)
             try Self.migratePlaintextToSQLCipher(at: databaseURL, key: key)
         }
         dbPool = try DatabasePool(path: databaseURL.path, configuration: Self.makeConfiguration())
         try migrate()
+    }
+
+    /// Force the plaintext source DB to checkpoint its WAL into the main
+    /// file, then close, then remove any leftover `-wal`, `-shm`, and
+    /// `-journal` files. After this returns there are no journal files
+    /// alongside `purplelife.sqlite` — the migration's fresh
+    /// `DatabaseQueue` will run against a clean single-file state.
+    nonisolated private static func checkpointAndPruneJournalFiles(at url: URL) {
+        do {
+            let queue = try DatabaseQueue(path: url.path)
+            try queue.writeWithoutTransaction { db in
+                // PRAGMA journal_mode = DELETE forces an immediate WAL
+                // checkpoint and switches journaling out of WAL mode, so
+                // the -wal and -shm files become eligible for removal.
+                try db.execute(sql: "PRAGMA journal_mode = DELETE")
+            }
+            _ = queue
+        } catch {
+            NSLog("PurpleLife: pre-migration WAL checkpoint failed — \(error.localizedDescription)")
+        }
+        let fm = FileManager.default
+        for suffix in ["-wal", "-shm", "-journal"] {
+            let aux = URL(fileURLWithPath: url.path + suffix)
+            try? fm.removeItem(at: aux)
+        }
     }
 
     // MARK: - SQLCipher configuration
