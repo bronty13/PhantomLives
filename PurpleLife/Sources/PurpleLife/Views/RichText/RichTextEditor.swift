@@ -408,11 +408,13 @@ extension NSAttributedString {
             let wrapper = FileWrapper(regularFileWithContents: data)
             wrapper.preferredFilename = "image-\(UUID().uuidString.prefix(8)).\(ext)"
             att.fileWrapper = wrapper
-            // Keep the visible cell consistent — use the downsized image
-            // for the cell so the editor renders the smaller version too.
-            if att.attachmentCell == nil {
-                att.attachmentCell = NSTextAttachmentCell(imageCell: downsized)
-            }
+            // Modern NSTextAttachment.image is the path NSTextView uses
+            // when `allowsImageEditing == true` to draw the interactive
+            // resize handles on click. Legacy `attachmentCell` would
+            // route through the cell renderer and disable handles, so
+            // clear it explicitly (the paste path may have set it).
+            att.image = downsized
+            att.attachmentCell = nil
             m.removeAttribute(.attachment, range: range)
             m.addAttribute(.attachment, value: att, range: range)
         }
