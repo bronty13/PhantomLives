@@ -42,9 +42,9 @@ struct ThemeBuilderView: View {
             Divider()
             HSplitView {
                 editor
-                    .frame(minWidth: 460, idealWidth: 500)
+                    .frame(minWidth: 460, idealWidth: 500, maxWidth: 720)
                 preview
-                    .frame(minWidth: 380, idealWidth: 440)
+                    .frame(minWidth: 380, idealWidth: 440, maxWidth: 640)
             }
             Divider()
             footer

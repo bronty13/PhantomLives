@@ -4,6 +4,23 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-12 — Fix: NavigationSplitView "blue stripe" trap
+
+A user dragging the main-window sidebar splitter past the window edge could persist a sidebar width (e.g. 3087 px in a 1147 px window) into AppKit's `NSSplitView Subview Frames …` key in `~/Library/Preferences/com.bronty13.PurpleLife.plist`, causing the sidebar to fill the entire window on every subsequent launch — detail pane pushed off-screen, no UI affordance to recover. Two-part defense:
+
+- **`Views/ContentView.swift`** — `.navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 400)` on the sidebar so future drags can't exceed the cap.
+- **`Views/Notes/NotesWorkspaceView.swift`** + **`Views/ThemeBuilderView.swift`** — added `maxWidth` to their `HSplitView` panes for the same reason.
+- **`App/AppDelegate.swift`** — `applicationWillFinishLaunching` strips every `NSSplitView Subview Frames …` key from UserDefaults *before* the window restores. Belt-and-suspenders for users already trapped; future widths re-derive from the SwiftUI modifiers.
+
+### 2026-05-12 — Fix: SQLCipher PRAGMA key form (split-key bug under `SQLITE_DQS=0`)
+
+Our SQLCipher is compiled with `SQLITE_DQS=0`, which makes double-quoted strings parse as identifiers rather than string literals. The original `PRAGMA key = "x'HEX'"` / `ATTACH … KEY "x'HEX'"` form silently resolved differently between the two call sites — encryption ran with one effective key, decryption read another, and every second launch failed with `SQLite error 26: file is not a database`. Migration produced files that couldn't be opened with the same DEK that wrote them.
+
+- **`Services/DatabaseService.swift`** — both PRAGMA key and ATTACH KEY now use the SQL single-quoted form with doubled inner quotes (`'x''HEX'''`), which produces the *string value* `x'HEX'` that SQLCipher recognizes as a raw 256-bit blob (no KDF) regardless of DQS. Comment in `makeConfiguration()` explains the gotcha so future-me doesn't "clean up" the awkward quoting.
+- Init's previously-`try!` open is now wrapped in do/catch — if the file is encrypted and the key isn't wired yet (the normal property-init ordering), substitute a temp-file placeholder pool so the property stays non-nil; `AppState.init` calls `reopenDatabase()` after wiring the resolver, which replaces it with the real keyed pool. Stops the migration from bricking the app between key-not-ready init and key-ready reopen.
+- Migration's throwaway pool moved from `:memory:` to a real temp file because GRDB's `DatabasePool` requires WAL mode, which isn't available on in-memory databases (`could not activate WAL Mode at path: :memory:`).
+- New `purgeMigrationThrowaways()` sweep removes lingering `purplelife-throwaway-*` files in `NSTemporaryDirectory()` after the keyed pool is in place.
+
 ### 2026-05-11 — Encryption foundation · slice A2 (FINAL): SQLCipher 4.6.1 vendored
 
 Closes the last at-rest encryption gap. The entire `purplelife.sqlite` is now SQLCipher-encrypted at the page level — objects table, FTS5 index, attachments metadata, schema, indexes, everything inside the file.

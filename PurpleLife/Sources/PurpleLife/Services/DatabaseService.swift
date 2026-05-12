@@ -89,8 +89,29 @@ final class DatabaseService {
             }
         }
 
-        dbPool = try! DatabasePool(path: dbURL.path, configuration: Self.makeConfiguration())
-        try! migrate()
+        // At property-init time `keyResolver` is almost always nil — the
+        // singleton is constructed when AppState reads `DatabaseService.shared`
+        // during its OWN property init, which runs BEFORE AppState wires
+        // the resolver in its init body. Result: `makeConfiguration()`
+        // returns a bare config (no PRAGMA key). Opening an already-
+        // SQLCipher-encrypted file with that config fails the page MAC
+        // check immediately and SQLite reports "file is not a database".
+        //
+        // Crashing here with `try!` would brick every launch after the
+        // first migration. Instead: try the open; on failure (encrypted
+        // file + no key in scope), substitute a temp-file placeholder
+        // pool so the property remains non-nil. `AppState.init` calls
+        // `reopenDatabase()` immediately after wiring the resolver,
+        // which replaces the placeholder with the real keyed pool.
+        do {
+            dbPool = try DatabasePool(path: dbURL.path, configuration: Self.makeConfiguration())
+            try migrate()
+        } catch {
+            NSLog("PurpleLife: DB open deferred to keyed reopen — \(error.localizedDescription)")
+            let placeholderPath = NSTemporaryDirectory()
+                + "purplelife-throwaway-\(UUID().uuidString).sqlite"
+            dbPool = try! DatabasePool(path: placeholderPath)
+        }
     }
 
     /// Re-open the underlying GRDB pool against the on-disk database. Used
@@ -115,12 +136,24 @@ final class DatabaseService {
         // journal files, THEN run the migration with no other handles
         // open to the source file.
         if let key = Self.currentKey, Self.isPlaintextSQLite(at: databaseURL) {
-            dbPool = try DatabasePool(path: ":memory:")
+            // Reassign dbPool to a transient pool on a TEMP FILE so the
+            // original pool's connections to the plaintext source get
+            // released via Swift ARC. A `:memory:` path WON'T work here
+            // — GRDB's DatabasePool requires WAL mode, which is not
+            // available for in-memory databases. ("could not activate
+            // WAL Mode at path: :memory:".) Use a real file on the
+            // local tmpfs instead.
+            let throwawayPath = NSTemporaryDirectory()
+                + "purplelife-throwaway-\(UUID().uuidString).sqlite"
+            dbPool = try DatabasePool(path: throwawayPath)
             Self.checkpointAndPruneJournalFiles(at: databaseURL)
             try Self.migratePlaintextToSQLCipher(at: databaseURL, key: key)
         }
         dbPool = try DatabasePool(path: databaseURL.path, configuration: Self.makeConfiguration())
         try migrate()
+        // Best-effort cleanup of any throwaway temp DBs left behind by
+        // prior migration runs in this process or earlier launches.
+        Self.purgeMigrationThrowaways()
     }
 
     /// Force the plaintext source DB to checkpoint its WAL into the main
@@ -148,6 +181,21 @@ final class DatabaseService {
         }
     }
 
+    /// Sweep `NSTemporaryDirectory()` for the throwaway SQLite files
+    /// `reopenDatabase` creates to drop the old pool's file handles
+    /// before running the SQLCipher migration. Called after the
+    /// final keyed pool open so the throwaway pool's connections
+    /// have been released. Idempotent — no-op when there's nothing
+    /// to remove. Includes `-wal` / `-shm` / `-journal` siblings.
+    nonisolated private static func purgeMigrationThrowaways() {
+        let fm = FileManager.default
+        let dir = NSTemporaryDirectory()
+        guard let entries = try? fm.contentsOfDirectory(atPath: dir) else { return }
+        for name in entries where name.hasPrefix("purplelife-throwaway-") {
+            try? fm.removeItem(atPath: dir + name)
+        }
+    }
+
     // MARK: - SQLCipher configuration
 
     /// Build a GRDB `Configuration` that sets `PRAGMA key` on every new
@@ -160,13 +208,16 @@ final class DatabaseService {
         guard let key = keyResolver?() else { return config }
         let hexKey = hexEncoded(key.rawData)
         config.prepareDatabase { db in
-            // SQLCipher's binary-key form: `x'HEXHEX...'` inside a SQL
-            // string. The outer quotes are SQL; the inner `x'...'` is
-            // SQLCipher's blob-literal syntax for a raw 256-bit key.
-            // Using the raw DEK directly (no further KDF) — the keystore
-            // already did PBKDF2 if the user has a passphrase set; the
-            // DEK in hand is the high-entropy result.
-            try db.execute(sql: "PRAGMA key = \"x'\(hexKey)'\"")
+            // SQLCipher's binary-key form is the *string value* `x'HEX'`
+            // (which the PRAGMA-key parser then recognizes as a raw blob,
+            // no KDF). We build it with single-quoted SQL and the inner
+            // `'` doubled (SQL's escape for a literal single-quote inside
+            // a single-quoted string). DO NOT switch to double quotes —
+            // our SQLCipher is built with SQLITE_DQS=0 so `"x'HEX'"` is
+            // parsed as an identifier, and ATTACH KEY vs PRAGMA key
+            // resolve that ambiguity differently, silently producing
+            // mismatched encryption / decryption keys.
+            try db.execute(sql: "PRAGMA key = 'x''\(hexKey)'''")
             // Recommended SQLCipher PRAGMA defaults — match Zetetic's
             // documented best practice. Setting these explicitly future-
             // proofs us against SQLCipher 5 changing internal defaults.
@@ -216,7 +267,7 @@ final class DatabaseService {
         // has an active reference.
         let plainQueue = try DatabaseQueue(path: url.path)
         try plainQueue.writeWithoutTransaction { db in
-            try db.execute(sql: "ATTACH DATABASE ? AS encrypted KEY \"x'\(hexKey)'\"",
+            try db.execute(sql: "ATTACH DATABASE ? AS encrypted KEY 'x''\(hexKey)'''",
                            arguments: [tempURL.path])
             try db.execute(sql: "SELECT sqlcipher_export('encrypted')")
             try db.execute(sql: "DETACH DATABASE encrypted")

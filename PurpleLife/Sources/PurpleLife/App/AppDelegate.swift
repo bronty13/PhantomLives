@@ -25,6 +25,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         "PurpleLife.didReceiveCloudKitPush"
     )
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // Wipe any AppKit-persisted NSSplitView subview frames before
+        // the window restores. AppKit stores split-view widths in our
+        // UserDefaults under keys like "NSSplitView Subview Frames
+        // <some SwiftUI view path>, SidebarNavigationSplitView". A user
+        // can accidentally drag the sidebar splitter past the window
+        // edge, persisting an absurd width (e.g. 3087 px in a 1147 px
+        // window) — the sidebar then fills the entire window on every
+        // subsequent launch, and the detail pane is invisible. There's
+        // no UI affordance to recover. The defensive
+        // `navigationSplitViewColumnWidth` cap in `ContentView` keeps
+        // FUTURE drags inside the window, but doesn't fix the persisted
+        // bad value. Stripping these keys on every launch costs the
+        // user nothing meaningful (column widths re-derive from the
+        // SwiftUI modifier) and guarantees the app always renders.
+        let defaults = UserDefaults.standard
+        for key in defaults.dictionaryRepresentation().keys
+            where key.hasPrefix("NSSplitView Subview Frames") {
+            defaults.removeObject(forKey: key)
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Silent pushes for CloudKit subscriptions don't need user
         // permission (no alert / sound / badge), but we still must

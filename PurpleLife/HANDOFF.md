@@ -12,6 +12,27 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-12 — Splitter widths capped + UserDefaults wipe on launch
+
+AppKit's `NSSplitView` (which both `NavigationSplitView` and `HSplitView` wrap on macOS) persists subview frames in our UserDefaults under keys like `NSSplitView Subview Frames …, SidebarNavigationSplitView`. A user mousing around the sidebar splitter could drag it past the window edge and persist a width far larger than the window itself — on every subsequent launch the sidebar then takes the entire window and the detail pane is invisible. There's no UI affordance to recover.
+
+Two-part defense (see CHANGELOG 2026-05-12 entry for code locations):
+
+1. Cap pane widths with `maxWidth` (`HSplitView`) or `.navigationSplitViewColumnWidth(min:ideal:max:)` (`NavigationSplitView`) on every splitter surface so future drags stay inside the window. Surfaces fixed: main `ContentView` sidebar (max 400), `NotesWorkspaceView` list pane (max 480), `ThemeBuilderView` editor + preview panes.
+2. `AppDelegate.applicationWillFinishLaunching` strips every `NSSplitView Subview Frames …` key from UserDefaults *before* the window restores. Belt-and-suspenders for users already trapped; the cap from (1) prevents recurrence after a session.
+
+Cost: a user's customized splitter widths don't persist across launches. Worth it — they re-derive from the SwiftUI `idealWidth` modifiers, which are themselves reasonable. The alternative (parse and clamp existing saved frames) is more code for less guarantee.
+
+### 2026-05-12 — SQLCipher PRAGMA key: single-quoted form is non-negotiable under `SQLITE_DQS=0`
+
+The vendored SQLCipher is built with `SQLITE_DQS=0` (per the security-hardening defaults in `Vendor/SQLCipher/Package.swift`). With DQS off, double-quoted strings parse as identifiers — and SQLCipher's `PRAGMA key` and `ATTACH … KEY` resolve the identifier-vs-string ambiguity *differently*, silently producing mismatched encryption and decryption keys. Symptom: every second launch failed with `SQLite error 26: file is not a database` after the first migration encrypted the DB, because the open path read the key with a different parse than the migration's write path.
+
+The correct form is the SQL single-quoted string with the inner `'` doubled — `PRAGMA key = 'x''HEX'''` — which produces the string value `x'HEX'`. SQLCipher's PRAGMA key handler then recognizes the `x'…'` blob notation in the string and uses the bytes directly as a raw 256-bit key (no KDF), regardless of DQS. Same form for ATTACH KEY.
+
+**Do not "clean up" the awkward quoting.** The bare blob-literal form (`PRAGMA key = x'HEX'`, no outer quotes) is a SQL syntax error — SQLite's PRAGMA grammar wants a string-valued right-hand side, not an expression. The double-quoted form silently breaks. The single-quoted form with doubled inner quotes is the only working option, and the comment in `DatabaseService.makeConfiguration` documents this so the next maintainer doesn't repeat the journey.
+
+Also landed in the same fix: `DatabaseService.init` no longer crashes when the on-disk file is encrypted and the key resolver isn't wired yet (substitutes a temp-file placeholder pool until `AppState.reopenDatabase()` swaps in the real keyed pool); migration's throwaway pool moved from `:memory:` to a real temp file because GRDB requires WAL mode; new `purgeMigrationThrowaways()` sweep cleans up after the keyed open succeeds.
+
 ### 2026-05-12 — New `FieldKind.noteLog` — timestamped rich-text log with attachments
 
 A new field kind for activity-log / journal / case-notes workflows. Users add a "Note log" field to any object type via the Schema Editor; on a record's detail sheet they see a rich-text input at the top and a list of committed entries below. Each entry has a timestamp, rich-text body, and zero-or-more file attachments. Entries are individually editable and deletable.

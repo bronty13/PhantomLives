@@ -51,7 +51,7 @@ struct NotesWorkspaceView: View {
                 onCreate: createNote,
                 onDelete: deleteNote
             )
-            .frame(minWidth: 280, idealWidth: 320)
+            .frame(minWidth: 280, idealWidth: 320, maxWidth: 480)
 
             Group {
                 if let id = selectedNoteId,

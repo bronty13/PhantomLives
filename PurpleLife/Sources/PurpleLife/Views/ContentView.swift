@@ -10,7 +10,17 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             Sidebar()
-                .frame(minWidth: 220)
+                // Clamp the sidebar column width so a user can never
+                // drag the splitter to absurdity. AppKit's NSSplitView
+                // (which SwiftUI's NavigationSplitView wraps on macOS)
+                // persists subview frames in the app's UserDefaults
+                // under the "NSSplitView Subview Frames …" key — if the
+                // saved value exceeds the window width, the sidebar
+                // takes the entire window and the detail pane is
+                // invisible until the prefs are wiped. The
+                // `navigationSplitViewColumnWidth` modifier caps the
+                // max so even a hostile drag stays inside the window.
+                .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 400)
         } detail: {
             if appState.showTodayInDetail {
                 TodayScreen()
