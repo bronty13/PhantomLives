@@ -140,8 +140,19 @@ final class DatabaseService {
             let placeholderPath = NSTemporaryDirectory()
                 + "purplelife-throwaway-\(UUID().uuidString).sqlite"
             dbPool = try! DatabasePool(path: placeholderPath)
+            isUsingPlaceholderPool = true
         }
     }
+
+    /// True when `dbPool` points at the temp placeholder instead of the
+    /// real on-disk database — either init couldn't open the file
+    /// (encrypted file + no key in scope yet, the normal property-init
+    /// ordering) or `reopenDatabase()` later threw. AppState reads this
+    /// after wiring the resolver: if still true after `reopenDatabase`,
+    /// the on-disk file is encrypted with a key we no longer have and
+    /// the app should surface the recovery UX instead of letting every
+    /// query fail with "no such table: objects".
+    private(set) var isUsingPlaceholderPool: Bool = false
 
     /// Re-open the underlying GRDB pool against the on-disk database. Used
     /// after a backup-restore so the running process picks up the swapped file.
@@ -180,9 +191,58 @@ final class DatabaseService {
         }
         dbPool = try DatabasePool(path: databaseURL.path, configuration: Self.makeConfiguration())
         try migrate()
+        // Reaching here means the keyed pool is live against the real
+        // on-disk file. Clear the placeholder flag so the recovery UX
+        // doesn't fire on a perfectly healthy launch.
+        isUsingPlaceholderPool = false
         // Best-effort cleanup of any throwaway temp DBs left behind by
         // prior migration runs in this process or earlier launches.
         Self.purgeMigrationThrowaways()
+    }
+
+    /// Quarantine the current on-disk DB + settings + attachments into a
+    /// timestamped `.unrecoverable-…/` sibling, then create a fresh
+    /// keyed DB at the original path. Called by AppState's recovery UX
+    /// when the user accepts "Reset and start fresh" after a key
+    /// mismatch. The quarantine isn't deleted — a user with a backup
+    /// of the matching Keychain entry can in theory recover later, and
+    /// at the very least the existence of the folder is a clear forensic
+    /// trail that something went wrong.
+    func resetUnrecoverableDataAndReopen() throws {
+        let fm = FileManager.default
+        let support = Self.supportDirectory
+        let stamp = ISO8601DateFormatter().string(from: Date())
+            .replacingOccurrences(of: ":", with: "-")
+        let quarantine = support.appendingPathComponent(".unrecoverable-\(stamp)", isDirectory: true)
+        try fm.createDirectory(at: quarantine, withIntermediateDirectories: true)
+
+        // Drop the existing pool first so the source files aren't held
+        // open when we move them. Throwaway temp file (NOT :memory: —
+        // GRDB needs WAL mode, which can't activate on in-memory DBs).
+        let throwawayPath = NSTemporaryDirectory()
+            + "purplelife-throwaway-\(UUID().uuidString).sqlite"
+        dbPool = try DatabasePool(path: throwawayPath)
+
+        for name in ["purplelife.sqlite", "purplelife.sqlite-wal",
+                     "purplelife.sqlite-shm", "settings.json"] {
+            let src = support.appendingPathComponent(name)
+            if fm.fileExists(atPath: src.path) {
+                try? fm.moveItem(at: src, to: quarantine.appendingPathComponent(name))
+            }
+        }
+        // Attachments are content-addressed by sha-256 of plaintext, so
+        // the file bytes inside the encrypted wrappers may be useful to
+        // a future recovery — preserve the whole directory.
+        let attSrc = support.appendingPathComponent("attachments", isDirectory: true)
+        if fm.fileExists(atPath: attSrc.path) {
+            try? fm.moveItem(at: attSrc, to: quarantine.appendingPathComponent("attachments"))
+        }
+        try? fm.createDirectory(at: attSrc, withIntermediateDirectories: true)
+
+        // Fresh keyed DB at the original path. GRDB creates the file
+        // when it doesn't exist; SQLCipher initializes it with the
+        // current key.
+        try reopenDatabase()
     }
 
     /// Force the plaintext source DB to checkpoint its WAL into the main

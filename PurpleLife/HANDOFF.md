@@ -12,6 +12,19 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-12 — Encrypted-DB key-mismatch recovery: visible UX, not silent breakage
+
+Symptom we used to ship: Keychain DEK gets cleared (manual `security delete-generic-password`, a system-account reset, a backup restore that doesn't include Keychain) while the SQLCipher DB on disk stays encrypted with the old key. Next launch generates a fresh DEK, the keyed reopen fails with "file is not a database", and `DatabaseService` falls back to the temp placeholder pool. The user sees a normal-looking sidebar where every operation fails silently — no path to recovery from inside the app.
+
+New behavior: `DatabaseService` exposes `isUsingPlaceholderPool` after the reopen attempt; AppState reads it and sets `dbHealth = .unrecoverable(detail)` when true. `ContentView` swaps the entire window for `RecoveryScreen`, which explains the situation and offers:
+
+1. **Quit** — for the user with a backup ZIP they can restore manually.
+2. **Reset and start fresh** — confirmation-gated, calls `DatabaseService.resetUnrecoverableDataAndReopen()` which moves the unreadable DB + settings + attachments into `.unrecoverable-<ISO8601>/` (preserved, not deleted) and creates a fresh keyed DB at the original path.
+
+Quarantine instead of delete because (a) a user with a backup of the matching Keychain entry could conceivably recover later, and (b) the folder itself is a clear forensic trail when investigating "wait, where did my data go?". The cost is a few stale-data folders accumulating after repeated trips through this path — acceptable, the user can manually delete from Finder once they've confirmed the data is truly unrecoverable.
+
+We deliberately don't auto-reset on first detection. Destructive operations need an affirmative user click. The recovery screen is a hard takeover with no escape hatch into the broken main UI — that's intentional; "let me click around the broken state to see if it's really broken" is a recipe for more damage.
+
 ### 2026-05-12 — Rich-text image resize: direct-manipulation handles complement the menu
 
 Three image-resize paths now coexist in `RichTextEditor`:

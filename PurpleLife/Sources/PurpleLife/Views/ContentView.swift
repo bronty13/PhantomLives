@@ -8,6 +8,20 @@ struct ContentView: View {
     @Environment(\.undoManager) private var undoManager
 
     var body: some View {
+        // Database health takeover. When the on-disk file is encrypted
+        // with a key we no longer have, `RecoveryScreen` replaces the
+        // entire window — there's no useful interaction to offer in the
+        // broken state, and clicking into a sidebar where every query
+        // fails is worse than a clear "this is what's wrong" screen.
+        if case .unrecoverable(let detail) = appState.dbHealth {
+            return AnyView(RecoveryScreen(detail: detail) {
+                appState.resetUnrecoverableData()
+            })
+        }
+        return AnyView(mainSplitView)
+    }
+
+    private var mainSplitView: some View {
         NavigationSplitView {
             Sidebar()
                 // Clamp the sidebar column width so a user can never
@@ -50,6 +64,10 @@ struct ContentView: View {
             appState.schema.undoManager = undoManager
         }
     }
+
+    fileprivate static let recoverySupportingLine =
+        "All readable data is preserved in a timestamped `.unrecoverable-…/` " +
+        "folder inside your Application Support directory; nothing is deleted."
 
     private var emptyDetail: some View {
         VStack(spacing: 8) {

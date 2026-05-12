@@ -4,6 +4,15 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-12 — Recovery UX for "encrypted DB + Keychain DEK gone" trap
+
+When the on-disk SQLCipher database is encrypted with a key the app can't reach (most common cause: Keychain entry cleared while the file stayed encrypted), the launch path used to leave the user with a normal-looking sidebar but every query failing in the console — silent breakage with no recovery path. Now PurpleLife detects the mismatch and takes the window over with a clear orange-lock recovery screen.
+
+- **`Views/RecoveryScreen.swift`** (new) — full-window takeover. Explains what happened, offers two paths: **Quit PurpleLife** (let the user restore from a `~/Downloads/PurpleLife backup/` ZIP) and **Reset and start fresh** (destructive, behind a confirmation dialog).
+- **`Services/DatabaseService.swift`** — new `isUsingPlaceholderPool: Bool` flag set when init's catch substitutes the temp placeholder; cleared on successful `reopenDatabase()`. New `resetUnrecoverableDataAndReopen()` quarantines the DB + settings + attachments into a timestamped `.unrecoverable-<ISO8601>/` sibling folder (nothing deleted) and creates a fresh keyed DB at the original path.
+- **`App/AppState.swift`** — new `dbHealth: DBHealth` published property (`.ok` / `.unrecoverable(String)`). Set after the launch-time `reopenDatabase()` attempt; the placeholder-flag check is what flips it. New `resetUnrecoverableData()` wraps the database call, reloads settings + UI on success.
+- **`Views/ContentView.swift`** — swaps to `RecoveryScreen` when `dbHealth` is `.unrecoverable`.
+
 ### 2026-05-12 — Rich-text editor: direct-manipulation image resize
 
 Clicking an inline image in any rich-text or noteLog editor now selects it and draws a tinted border with four white corner handles. Drag a handle to live-resize with aspect ratio locked; release commits and fires the autosave debounce. Coexists with the right-click "Image size" submenu — direct manipulation is the fast path, the slider popover is the precision path, the presets are quick-jumps. Aspect lock is unconditional (no shift-to-unlock); inline images always look wrong when stretched.

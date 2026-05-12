@@ -34,6 +34,23 @@ final class AppState: ObservableObject {
 
     @Published var objectCount: Int = 0
 
+    /// Health of the on-disk database. Set after the launch-time keyed
+    /// reopen attempt: `.ok` is the normal path, `.unrecoverable` means
+    /// the file is encrypted with a key we no longer have (Keychain
+    /// entry cleared while the file stayed encrypted — the symptom is
+    /// a string of "no such table: objects" errors against the
+    /// placeholder pool). `ContentView` swaps to `RecoveryScreen`
+    /// when `.unrecoverable`.
+    @Published var dbHealth: DBHealth = .ok
+
+    enum DBHealth: Equatable {
+        case ok
+        /// The string is the underlying error description, surfaced to
+        /// the user in the recovery sheet so they can decide whether to
+        /// reset or to copy the message and investigate first.
+        case unrecoverable(String)
+    }
+
     /// Sidebar selection. The special value `nil` means "Today" (the
     /// home panel that doesn't belong to any type). Real type ids
     /// select that type's records pane.
@@ -120,6 +137,18 @@ final class AppState: ObservableObject {
                 try database.reopenDatabase()
             } catch {
                 NSLog("PurpleLife: SQLCipher reopen failed — \(error.localizedDescription)")
+            }
+            // After the reopen attempt, the placeholder flag tells us
+            // whether the keyed pool is actually live or whether we're
+            // still on the temp placeholder. The latter means every
+            // query in the rest of the app will fail; surface the
+            // recovery UX instead of letting the user click into a
+            // broken sidebar.
+            if database.isUsingPlaceholderPool {
+                dbHealth = .unrecoverable(
+                    "The on-disk database is encrypted with a key that's no longer in the Keychain. " +
+                    "This usually means the Keychain entry was cleared while the file stayed encrypted."
+                )
             }
         }
         // Re-read settings.json once the resolver is live so a previously-
@@ -277,6 +306,25 @@ final class AppState: ObservableObject {
             Task { @MainActor [weak self] in
                 self?.reloadAll()
             }
+        }
+    }
+
+    /// Recovery path invoked from `RecoveryScreen` when the user accepts
+    /// "Reset and start fresh". Quarantines the unopenable DB +
+    /// settings + attachments into a timestamped sibling folder, then
+    /// creates a fresh keyed DB at the original path. On success,
+    /// flips `dbHealth` back to `.ok` and reloads the UI.
+    func resetUnrecoverableData() {
+        do {
+            try database.resetUnrecoverableDataAndReopen()
+            // Settings file is gone too — reload with the live keystore so
+            // the fresh defaults persist on next save.
+            settingsStore.load()
+            dbHealth = .ok
+            reloadAll()
+        } catch {
+            NSLog("PurpleLife: recovery reset failed — \(error.localizedDescription)")
+            dbHealth = .unrecoverable("Recovery failed: \(error.localizedDescription)")
         }
     }
 
