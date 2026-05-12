@@ -4,12 +4,25 @@ import MasterClipperCore
 @main
 struct MasterClipperiOSApp: App {
     @StateObject private var appState = iOSAppState()
+    @Environment(\.scenePhase) private var scenePhase
+
+    init() {
+        // Must be called before app finishes launching — iOS rejects late
+        // registrations. The registered handler triggers a fresh snapshot
+        // reload off-foreground.
+        BackgroundRefresh.register()
+    }
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(appState)
                 .task { await appState.start() }
+                .onChange(of: scenePhase) { _, newPhase in
+                    if newPhase == .background {
+                        BackgroundRefresh.scheduleNext()
+                    }
+                }
         }
     }
 }

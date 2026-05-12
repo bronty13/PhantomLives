@@ -47,5 +47,13 @@
             <string>Any</string>
         </dict>
     </dict>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>fetch</string>
+    </array>
+    <key>BGTaskSchedulerPermittedIdentifiers</key>
+    <array>
+        <string>com.bronty13.MasterClipper.refreshSnapshot</string>
+    </array>
 </dict>
 </plist>
