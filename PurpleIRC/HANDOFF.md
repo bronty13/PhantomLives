@@ -2,12 +2,14 @@
 
 Snapshot of where the project stands so a future session (human or AI)
 can pick up without re-deriving everything from the commit history.
-Last updated: 2026-05-02. Tier #9 closed; Tier #10 (UI build-out)
-**complete** — all 8 phases shipped through 1.0.101, plus a test
-catch-up pass (1.0.102), Developer ID signing (1.0.103), and the
-Address Book tags / multi-select / cross-store-match work
-(1.0.108–1.0.110). Bundle is notarisation-ready (hardened runtime
-+ Apple timestamp).
+Last updated: 2026-05-12. Tier #13 (perf + robustness sweep,
+1.0.234–235), Tier #14 (refactor pass — SetupView split, typed
+BufferKey, BufferInputState, 1.0.236–238), Tier #15 (quick-wins
+batch — pop-on-watch, irc.store, activity sparkline, Shortcuts.app
++ Focus Filter, 1.0.239–241), Tier #16 (Person model + world-class
+Address Book workspace, 1.0.243), and Tier #17 (cross-network
+unified search ⌘⇧F, 1.0.247) all closed. Test count 332.
+Bundle is notarisation-ready (hardened runtime + Apple timestamp).
 
 ## What it is
 
@@ -70,6 +72,11 @@ stream across every connection, UUID-tagged so listeners can scope.
 | 10 | UI build-out (commands, menus, settings, themes, fonts, photos, blobs, polish) | Done | `1.0.93–1.0.101` (Phases 1–8) |
 | 11 | Test catch-up (UserTheme / BlobStore / FontStyle / PhotoUtilities) | Done | `1.0.102` |
 | 12 | Developer ID signing + iCloud-safe build pipeline | Done | `1.0.103` |
+| 13 | Perf + robustness sweep (debounced settings save, cached renderedRows, find debounce, idx-of-Int?, bounded nick maps, CRLF-sanitizer security fix, +35 regression tests) | Done | `1.0.234–1.0.235` |
+| 14 | Refactor pass (SetupView 3869→170 lines into 22 files; typed BufferKey; BufferInputState ObservableObject) | Done | `1.0.236–1.0.238` |
+| 15 | Quick-wins (pop-on-watch toggle, PurpleBot `irc.store` API, contact activity sparkline, Shortcuts.app + Focus Filter App Intents; reciprocal-watch dropped as unimplementable) | Done | `1.0.239–1.0.241` |
+| 16 | Person model + world-class Address Book workspace (LinkedNick / ContactAlertOverride / migration; non-modal Window(id: "address-book") via ⇧⌘B; sectioned detail with linked nicks, alert overrides, activity timeline, hostmask history, shared channels; Suggest Links sheet; Setup → Address Book tab removed) | Done | `1.0.243` |
+| 17 | Cross-network unified search ⌘⇧F (`LogStore.search` + `UnifiedSearchView`; case-sensitivity + network filter chips + click-to-jump routing through existing `/join` / `/query` auto-create) | Done | `1.0.247` |
 
 ## Security & robustness pass (1.0.92, 2026-04-30)
 
@@ -652,7 +659,8 @@ All byte-handling is in `DCC.swift`; UI is `DCCView.swift`.
 ### IRCv3 — what we don't yet do
 - `labeled-response` — we request the cap but don't tag outbound
   commands or correlate replies. Would let us drop the
-  `whoisOriginByNick` map hack.
+  `whoisOriginByNick` map hack (which is now bounded but still
+  fragile in 1.0.235).
 - `draft/typing`, `+draft/reply`, `+draft/react` — drafty but a few
   servers (Soju, Ergo) ship them. None of the clients in the gap
   survey support these. Early adoption would actually differentiate.
@@ -664,10 +672,14 @@ URLs are detected and clickable, but no inline previews. Textual + The
 Lounge expand image URLs — perceived-quality lift, but real complexity
 (NSImage caching, sandboxed network access, GIF playback).
 
-### PurpleBot — script storage API
-`irc.store.get(key)` / `set(key, v)` backed by per-script JSON under
-`supportDir/scripts/<scriptID>.store.json`. Cheap to add; opens up a
-bunch of scripts that need state.
+### PurpleBot — script storage API ✓ shipped (1.0.239)
+`irc.store.get(key)` / `set(key, v)` / `delete(key)` / `keys()` backed
+by per-script JSON at `supportDir/scripts/<scriptID>.store.json`.
+Each script gets a per-`scriptID` namespace via an IIFE wrap of the
+script source (`Sources/PurpleIRC/BotHost.swift::wrapScriptSource`);
+two scripts using the same key see independent state. Sealed under
+the shared DEK when the keystore unlocks. Test coverage in
+`ScriptStoreTests` (9 tests).
 
 ### Lua / Python scripting
 JS-only today via JavaScriptCore. Embedding wren or lua-c would
@@ -698,14 +710,15 @@ triage without re-deriving the discussion.
   client does). Tradeoff: requires an out-of-band key-exchange UI,
   only works peer-to-peer when both sides run PurpleIRC, and is real
   cryptographic engineering that needs review.
-- **macOS Shortcuts.app actions + Focus Filter integration.** "Set
-  away when Focus = Sleep," "post next clipboard line to #standup,"
-  "hide non-work networks while in Work focus." Small effort,
-  high native-platform polish.
-- **Cross-network unified search (`⌘⇧F`).** Searches every connected
-  network's logs at once, plus a global Saved-Messages pinboard
-  reachable by right-click → "Pin to sidebar." Pure UX; no protocol
-  work.
+- ✓ **macOS Shortcuts.app actions + Focus Filter integration.**
+  Shipped 1.0.241. `Sources/PurpleIRC/AppIntents.swift` exposes
+  SetAway / BackFromAway / SendIRCMessage / SayInActiveBuffer as
+  AppIntents + a `SetFocusFilterIntent` (PurpleIRCFocusFilter) for
+  hiding selected networks during a Focus mode.
+- ✓ **Cross-network unified search (`⌘⇧F`).** Shipped 1.0.247.
+  `LogStore.search` + `UnifiedSearchView`; results route via the
+  existing slash-command dispatcher. Saved-Messages pinboard still
+  open.
 - **Smart highlight rules from natural language.** "Alert me when
   someone asks about Swift concurrency" → AssistantEngine compiles
   to a regex + scope rule. Rides the existing LLM integration.
@@ -733,60 +746,72 @@ The biggest single leap here is treating the unit of identity as a
 **Person**, not a per-network nick. Most other ideas in this section
 fall out cleanly once that exists.
 
-- **Cross-network identity unification ("Person" model).** Link
-  `alice` on Libera + `alice_` on OFTC + `alice@matrix` under one
-  Contact. Combined presence ("any nick online → person online"),
-  unified PM timeline, single notes / alert settings. Tradeoff: the
-  Person model ripples through buffers, sidebar grouping, watchlist
-  persistence, and the alert dedupe — meaningful refactor, but no
-  other macOS IRC client has this.
-- **Per-contact unified message timeline.** A "Person" buffer that
-  interleaves DMs across networks + this contact's lines from
-  shared channels, chronologically. Reuses LogStore + SeenStore;
-  the view is the new piece.
-- **"Usually online at" heatmap + next-online prediction.** Pure
-  SeenStore extension. Add an online/offline edge log, render a
-  7×24 heatmap on the contact card, surface "alice is usually
-  online weekdays 6–10 PM your time."
-- **Reciprocal watch detection.** Some servers expose `MONITOR L`
-  (or its equivalent) which lets you discover who has *you* on
-  their watch list. Show "alice is watching you back" on the
-  contact card. Trivial server-side, niche but novel.
-- **Per-contact quiet hours + escalation chain.** "Don't ping me
-  about bob between 9 PM–7 AM, but if he mentions <topic>
-  escalate to a banner regardless." Falls naturally out of the
-  existing per-contact alert overrides.
-- **Sidebar collapsing by tag.** Tags ship in 1.0.108; what's left
-  is grouping the Contacts section in the main sidebar by tag with
-  bulk operations, group-level mute, and dynamic groups like
-  "Recently active" and "Hasn't been seen in 30+ days."
-- **Auto-link nicks via `account-tag`.** When `alice` and `alice_`
-  authenticate to the same services account, suggest unifying
-  them. Cheap win that feeds the Person model.
-- **First-message pop-on-watch.** When a watched contact first
-  messages you in a session, auto-open the query buffer instead
-  of just alerting. Half there already; needs the toggle.
+- ✓ **Cross-network identity unification ("Person" model).** Shipped
+  1.0.243. `AddressEntry.linkedNicks: [LinkedNick]` with a
+  `networkSlug == ""` any-network sentinel for migrated entries.
+  Custom `encode(to:)` omits the new keys at defaults so settings.json
+  is byte-stable for users who haven't touched it. New
+  `Sources/PurpleIRC/Contact.swift` carries `matches(networkSlug:
+  nick:)`, `allSightings(across:store:)`, `allCurrentHostmasks(...)`,
+  and `ContactLinker.suggestLinks` (host + account-tag heuristics,
+  user-confirmed only).
+- ✓ **Per-contact alert overrides.** Shipped alongside Person model:
+  `ContactAlertOverride` (systemBanner / playSound / bounceDock /
+  customSoundName / customBannerMessage, all optional = inherit
+  global). `WatchlistService.fireSystemAlert` consults the per-
+  contact override via a resolver closure ChatModel installs at init.
+- ✓ **Per-contact unified message timeline.** Shipped 1.0.243 as
+  `ContactActivityTimelineSection` in the workspace. Folds every
+  linked-nick's SeenSighting history across every connected network.
+- **"Usually online at" heatmap + next-online prediction.** Still
+  open. Pure SeenStore extension — add online/offline edge log,
+  7×24 heatmap on the contact card.
+- ~~**Reciprocal watch detection.**~~ Dropped 1.0.240. `MONITOR L`
+  reading was incorrect (it lists OUR targets, not who watches us);
+  no standard IRC mechanism for the reverse query. Pulled rather
+  than ship a misleading indicator.
+- **Per-contact quiet hours + escalation chain.** Still open.
+  Natural extension of `ContactAlertOverride`.
+- **Sidebar collapsing by tag.** Still open. Tags + tag-color dots
+  already wired into the workspace.
+- ✓ **Auto-link nicks via `account-tag` + hostmask.** Shipped 1.0.243
+  as `ContactLinker.suggestLinks` + the workspace's Suggest Links
+  sheet. User must accept each suggestion; never auto-applied.
+- ✓ **First-message pop-on-watch.** Shipped 1.0.239. Setup →
+  Notifications → "Open query when a watched contact first messages
+  me". Off by default.
 - **Per-contact "catch-up" summary on reopening a quiet query.**
-  Uses the Ollama integration: "you haven't talked to bob in 6
-  weeks. Last topic was X. He's been active in #foo about Y."
-- **Address-book vCard export + import.** Round-trippable contact
-  backup; one-click "share contact card" via DCC.
-- **Watch-by-channel.** Alert when a watched contact joins a
-  *specific* channel (not just goes online). Useful for catching
-  someone in #help-channel without watching the whole network.
-- **Contact "mood" / activity sparkline.** Small per-row chart of
-  recent message volume; spot the people you've gone quiet with.
+  Still open. Reuses `OllamaClient` + `AssistantEngine`.
+- **Address-book vCard export + import.** Still open.
+- **Watch-by-channel.** Still open.
+- ✓ **Contact "mood" / activity sparkline.** Shipped 1.0.240 as
+  `ContactActivitySparkline` (14-day daily bin chart) — visible in
+  the workspace's contact detail.
 
-### Triage notes for the next pickup
+### Triage notes for the next pickup (refreshed 2026-05-12)
 
-- **Lowest-effort / highest-payoff:** activity heatmap, contact
-  tags, first-message pop-on-watch, Shortcuts.app actions.
-- **Medium-effort, big UX gain:** per-contact unified timeline,
-  cross-network unified search, Saved-Messages pinboard, "why
-  did this fire?" debugger.
-- **Big bets worth a roadmap discussion:** Person model (Contact
-  unification), OMEMO-on-IRC, bridge connectors, LLM-powered
-  backlog summarization promoted to a first-class feature.
+Updated after the 1.0.234 → 1.0.247 sweep cleared most of the
+prior shortlist.
+
+- **Lowest-effort / highest-payoff (open):** vCard export+import,
+  watch-by-channel, "why did this fire?" highlight debugger,
+  Saved-Messages pinboard, sidebar collapsing by tag.
+- **Medium-effort, big UX gain (open):** DCC passive mode + RESUME
+  + TLS-DCC (the biggest functional gap remaining — file transfer
+  behind NAT), IRCv3 `labeled-response` (drops the
+  `whoisOriginByNick` map hack), per-contact Ollama catch-up
+  summary, Quick Look + Spotlight indexing of chat logs, inline
+  image preview, "usually online at" heatmap.
+- **Big bets worth a roadmap discussion:** OMEMO-on-IRC, IRCv3
+  `+draft/react` + `+draft/reply` first-mover, bridge connectors
+  (Matrix → channel rendering), LLM "while you were away"
+  summarization, Lua/Python scripting alongside JS.
+- **Shipped this round (don't re-pick):** perf+robustness sweep,
+  CRLF-sanitizer security fix, SetupView split, BufferKey type,
+  BufferInputState extraction, pop-on-watch, `irc.store` API,
+  activity sparkline, Shortcuts.app + Focus Filter, Person model
+  + Address Book workspace (replaces Setup tab; ⇧⌘B), cross-
+  network unified search (⌘⇧F). Test count 332.
 
 If a future session picks one of these, the handoff convention is
 to file it as the next tier (#10 onward) in the Tier-status table
