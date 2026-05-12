@@ -156,6 +156,16 @@ enum SearchService {
             switch f.kind {
             case .text, .longText, .url, .email, .link, .select:
                 if let s = v as? String, !s.isEmpty { body.append(s) }
+            case .richText:
+                // richText stores `{ "rtf": "<base64>", "plain": "..." }`.
+                // FTS only ever sees the plain mirror — keeping the index
+                // unaware of the encoded RTF is what keeps the FTS body
+                // genuinely searchable without parsing RTF.
+                if let dict = v as? [String: Any],
+                   let plain = dict["plain"] as? String,
+                   !plain.isEmpty {
+                    body.append(plain)
+                }
             case .multiSelect:
                 if let arr = v as? [String] { body.append(arr.joined(separator: " ")) }
             case .number:

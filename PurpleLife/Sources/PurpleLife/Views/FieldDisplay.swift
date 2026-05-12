@@ -22,6 +22,20 @@ enum FieldDisplay {
             } else {
                 Text(raw).lineLimit(1)
             }
+        case .richText:
+            // List/table cells render the plain mirror, not RTF — the
+            // full WYSIWYG only appears in the detail editor.
+            let plain: String = {
+                if let dict = value as? [String: Any] {
+                    return (dict["plain"] as? String) ?? ""
+                }
+                return raw
+            }()
+            if plain.isEmpty {
+                Text("—").foregroundStyle(.tertiary)
+            } else {
+                Text(plain).lineLimit(2)
+            }
         case .number:
             if let s = numberValueOrNil(value) {
                 Text(s).monospacedDigit()

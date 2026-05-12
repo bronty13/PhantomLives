@@ -1,8 +1,20 @@
 # PurpleLife
 
-A native macOS "Life OS" — one app for planner, hobbies (WoW, photography), extended contacts, reading log, and weight, organized as configurable object types with relations. Data lives in CloudKit, end-to-end encrypted with keys the user controls (`CKRecord.encryptedValues`), mirrored across the user's Macs. Restorable backups land in `~/Downloads/PurpleLife backup/`.
+A native macOS "Life OS" — one app for planner, notes, hobbies (WoW, photography), extended contacts, reading log, and weight, organized as configurable object types with relations. Data lives in CloudKit, end-to-end encrypted with keys the user controls (`CKRecord.encryptedValues`), mirrored across the user's Macs. Restorable backups land in `~/Downloads/PurpleLife backup/`.
 
 Part of the **PhantomLives** family of personal macOS apps (Timeliner, PurpleTracker, PurpleIRC, PurpleDedup, WeightTracker).
+
+## Security & encryption
+
+PurpleLife is built for personal data that wants real privacy. Three layers of encryption:
+
+- **At rest, locally.** `settings.json`, every attachment file, and the entire SQLite database (via vendored SQLCipher 4.6.1) are encrypted under a 256-bit data-encryption key (DEK). First launch generates the DEK and stores it in the macOS Keychain. You can layer a passphrase on top via Settings → Security; without one, the Mac itself is the trust boundary (FileVault + login password).
+- **In transit.** TLS 1.2+ to CloudKit, certificate pinned by macOS.
+- **In iCloud (end-to-end).** Every record's structured data and every schema definition rides through `CKRecord.encryptedValues` — Apple's E2E layer. Apple operates the servers but cannot read the bytes. Rich-text note bodies, including inline pasted images, are stored inside the encrypted record blob (not as `CKAsset`s, which Apple holds keys for).
+
+Forgot your passphrase? There's no recovery. That's the trade-off for not handing keys to anyone. Multi-Mac sync works because each Mac has its own DEK; CloudKit's E2E layer brokers without us ferrying keys across devices.
+
+Full details in [Docs/SECURITY.md](Docs/SECURITY.md) — the customer-facing security whitepaper. Source-level audit: [`Sources/PurpleLife/Services/Crypto.swift`](Sources/PurpleLife/Services/Crypto.swift), [`KeyStore.swift`](Sources/PurpleLife/Services/KeyStore.swift), [`EncryptedJSON.swift`](Sources/PurpleLife/Services/EncryptedJSON.swift), [`AttachmentService.swift`](Sources/PurpleLife/Services/AttachmentService.swift), [`CloudKitSyncService.swift`](Sources/PurpleLife/Services/CloudKitSyncService.swift).
 
 ## Status — end of initial build session
 

@@ -15,7 +15,14 @@ struct ContentView: View {
             if appState.showTodayInDetail {
                 TodayScreen()
             } else if let typeId = appState.selectedTypeId {
-                RecordsScreen(typeId: typeId)
+                // The Note type swaps the standard RecordsScreen for the
+                // PurpleTracker-style two-pane Notes workspace. Same
+                // ObjectEngine + sync underneath; just a different UX.
+                if typeId == "Note" {
+                    NotesWorkspaceView(typeId: typeId)
+                } else {
+                    RecordsScreen(typeId: typeId)
+                }
             } else {
                 emptyDetail
             }

@@ -19,6 +19,7 @@ struct ObjectDetailSheet: View {
     @State private var record: ObjectRecord?
     @State private var fieldsBuffer: [String: Any] = [:]
     @State private var error: String?
+    @State private var richTextSizeError: String?
 
     var body: some View {
         Group {
@@ -244,6 +245,19 @@ struct ObjectDetailSheet: View {
                 .font(.body)
                 .scrollContentBackground(.hidden)
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.25)))
+        case .richText:
+            VStack(alignment: .leading, spacing: 4) {
+                RichTextField(
+                    fieldKey: field.key,
+                    fieldsBuffer: $fieldsBuffer,
+                    sizeError: $richTextSizeError
+                )
+                if let err = richTextSizeError {
+                    Text(err)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
         case .number:
             TextField(field.name, value: doubleBinding(field.key), format: .number)
                 .textFieldStyle(.roundedBorder)
@@ -329,6 +343,28 @@ struct ObjectDetailSheet: View {
         Binding(
             get: { fieldsBuffer[key] as? Double },
             set: { fieldsBuffer[key] = $0 }
+        )
+    }
+
+    /// Read-write binding for the `plain` mirror of a richText field's
+    /// JSON dictionary. Slice B1 uses this against a plain `TextEditor`;
+    /// slice B2 replaces the editor with the AppKit `RichTextEditor` host
+    /// and binds to the full `RichTextValue`.
+    private func richTextPlainBinding(_ key: String) -> Binding<String> {
+        Binding(
+            get: {
+                guard let dict = fieldsBuffer[key] as? [String: Any] else { return "" }
+                return (dict["plain"] as? String) ?? ""
+            },
+            set: {
+                var dict = (fieldsBuffer[key] as? [String: Any]) ?? [:]
+                dict["plain"] = $0
+                // Until the AppKit editor lands in B2, the RTF blob stays
+                // whatever it was; the plain-mirror text is the only
+                // user-edit surface. Leaving `rtf` unset is fine — the
+                // storage shape treats missing `rtf` as empty.
+                fieldsBuffer[key] = dict
+            }
         )
     }
 

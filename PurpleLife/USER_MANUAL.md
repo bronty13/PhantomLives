@@ -10,7 +10,39 @@ A native macOS Life OS for tracking everything personal — planner, hobbies, co
 | `~/Downloads/PurpleLife backup/` | Auto-backup zips named `PurpleLife-YYYY-MM-DD-HHmmss.zip` |
 | `~/Downloads/PurpleLife/` | User-visible exports (reserved; exporter is queued) |
 
-CloudKit holds the same data in your private database; on-disk files stay readable without iCloud.
+CloudKit holds the same data in your private database; on-disk files stay readable when iCloud's offline. **All on-disk files are encrypted at rest** — see "Your data is encrypted" below.
+
+## Your data is encrypted
+
+PurpleLife treats your data as private by default. Three layers:
+
+- **At rest on this Mac.** `settings.json`, every attachment file, and the entire SQLite database (via SQLCipher) are encrypted under a 256-bit key. The key lives in the macOS Keychain by default; you can layer a passphrase on top via Settings → Security.
+- **In transit.** Every byte that crosses the network goes over TLS to Apple's CloudKit servers.
+- **In iCloud.** Each record's fields ride through CloudKit's end-to-end encryption (`encryptedValues`). Apple stores the bytes but cannot read them. Rich-text note bodies, including inline pasted images, are inside this encrypted blob — never as separate `CKAsset` files, which Apple holds keys for.
+
+**Settings → Security** is where the lifecycle lives:
+
+- **Add passphrase…** wraps the encryption key under a passphrase you choose. After this, "Lock now" clears the key from the Keychain and the next access requires you to type the passphrase.
+- **Change passphrase…** re-wraps the key (millisecond operation; nothing is re-encrypted).
+- **Remove passphrase…** reverts to Keychain-only protection. Data stays encrypted on disk; the app just opens silently again.
+- **Lock now** clears the in-memory key + Keychain cache. Useful before walking away from the Mac.
+- **Reset (destroys all data)** wipes the keystore. Use only if you've forgotten your passphrase and accept that data encrypted with the lost key is unrecoverable.
+
+**There is no passphrase recovery.** If you forget the passphrase and the Keychain cache is gone (clean reinstall, new Mac without iCloud Keychain), the data on this Mac is permanently inaccessible. The other Macs syncing your iCloud account still hold the same data through their own keys; restore by signing in there.
+
+The full whitepaper — threat model, primitives, known limitations — is in [`Docs/SECURITY.md`](Docs/SECURITY.md) in the source tree.
+
+## Notes
+
+The **Notes** type is a WYSIWYG journaling space. Click "Notes" in the sidebar to open the two-pane workspace: search + date-grouped list on the left, full editor on the right.
+
+- **New note** — `+` in the toolbar or **⌘N**. The new note opens with today's date and an empty title.
+- **Title + date + body**. Date controls the section a note lands in on the list. The body editor is rich text: **⌘B** bold, **⌘I** italic, **⌘U** underline, **⇧⌘X** strikethrough, **⌘⌥1/2/3** heading levels, **⌘⌥0** body, **⇧⌘7/8** bullet / numbered list, **⌘K** link. Paste a screenshot — it appears inline.
+- **Autosave** — your edits flush 1.2 s after you stop typing, when you switch to another note, and when you leave the workspace. The footer shows **Saved** / **Unsaved…**.
+- **Search** filters on both title and body text.
+- **Right-click → Delete** removes a note. Undo (⌘Z) re-creates it with the same id and inbound links intact.
+
+**Image-size policy** — pasted images wider than 1920 pixels are scaled down to 1920 wide; non-transparent images encode as JPEG @ 0.7 quality for storage efficiency. Compression isn't a privacy compromise; the bytes still travel through `encryptedValues` end-to-end. If a note grows too large to sync (CloudKit caps a record at ~1 MB), the editor shows a red banner with the byte count and keeps your edits intact so you can trim and try again.
 
 ## The window
 

@@ -254,6 +254,17 @@ enum ExportService {
         switch kind {
         case .text, .longText, .url, .email:
             return stringValue(raw)
+        case .richText:
+            // Exports take the plain mirror — CSV / Markdown / HTML don't
+            // surface RTF natively, and the PDF path renders the same
+            // plain mirror via the existing HTML pipeline. If a future
+            // export format wants the rich content, it can branch here
+            // on the `rtf` blob.
+            if let dict = raw as? [String: Any],
+               let plain = dict["plain"] as? String {
+                return plain
+            }
+            return stringValue(raw)
         case .number:
             if let d = raw as? Double {
                 return formatNumber(d)

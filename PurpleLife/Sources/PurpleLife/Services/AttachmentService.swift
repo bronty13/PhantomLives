@@ -1,3 +1,4 @@
+import AppKit
 import CryptoKit
 import Foundation
 import GRDB
@@ -12,10 +13,28 @@ import UniformTypeIdentifiers
 /// refs). Deleting a ref leaves the file in place unless no other ref
 /// uses it.
 ///
+/// **Encryption-at-rest (slice A3)**: file content is wrapped with
+/// `EncryptedJSON` under the `KeyStore` DEK before being written to
+/// disk. The sha256 used for content-addressing is still computed over
+/// the *plaintext* so dedup keeps working; the on-disk bytes are AES-GCM
+/// ciphertext. `read(sha256:)` decrypts on demand; `image(forSha256:)`
+/// is the NSImage convenience. The legacy `fileURL(forSha256:)` is
+/// retained for callers that need a stable path identifier (it points
+/// at ciphertext now — never feed it to `NSImage(contentsOf:)`).
+///
 /// CloudKit `CKAsset` sync is deferred to a follow-up — Phase 4 only
 /// syncs the JSON `fields_json` blob.
 @MainActor
 enum AttachmentService {
+
+    /// Resolver wired by `AppState` at launch so this enum-of-statics
+    /// can fetch the current encryption key without taking a `KeyStore`
+    /// dependency at the call site. Returns nil when no key is set —
+    /// in that mode reads/writes operate on plaintext bytes, which is
+    /// the path that XCTest-mode tests exercise.
+    static var keyResolver: (() -> SymmetricKey?)?
+
+    private static var currentKey: SymmetricKey? { keyResolver?() }
 
     enum AttachError: Error, LocalizedError {
         case fileNotFound(URL)
@@ -41,20 +60,24 @@ enum AttachmentService {
     /// Returns the persisted `Attachment` row (including the new sha256
     /// ref) so callers can write `attachment.sha256` into a record's
     /// `.attachment` field via `ObjectEngine.update`.
+    ///
+    /// The sha256 is computed over the *plaintext* (so dedup spans the
+    /// encrypted-at-rest boundary cleanly). The on-disk file is wrapped
+    /// with `EncryptedJSON` when a DEK is available.
     @discardableResult
     static func add(from source: URL, parentObjectId: String, fieldKey: String) throws -> Attachment {
         let fm = FileManager.default
         guard fm.fileExists(atPath: source.path) else { throw AttachError.fileNotFound(source) }
 
-        let data = try Data(contentsOf: source)
-        let hash = sha256(data: data)
+        let plaintext = try Data(contentsOf: source)
+        let hash = sha256(data: plaintext)
         let ext = source.pathExtension.lowercased()
         let storedURL = directory.appendingPathComponent(filename(for: hash, ext: ext))
 
         try fm.createDirectory(at: directory, withIntermediateDirectories: true)
         if !fm.fileExists(atPath: storedURL.path) {
             do {
-                try data.write(to: storedURL, options: .atomic)
+                _ = try EncryptedJSON.safeWrite(plaintext, to: storedURL, key: currentKey)
             } catch {
                 throw AttachError.copyFailed(error.localizedDescription)
             }
@@ -68,7 +91,7 @@ enum AttachmentService {
             sha256: hash,
             filename: source.lastPathComponent,
             mimeType: mime,
-            sizeBytes: Int64(data.count),
+            sizeBytes: Int64(plaintext.count),
             createdAt: ISO8601DateFormatter().string(from: Date())
         )
         try DatabaseService.shared.dbPool.write { db in
@@ -80,8 +103,9 @@ enum AttachmentService {
     // MARK: - Lookup
 
     /// Returns the on-disk URL for a stored attachment, or `nil` if no
-    /// row for that sha256 exists or the file has been pruned. Callers
-    /// should treat `nil` as "rendering placeholder".
+    /// row for that sha256 exists or the file has been pruned. The URL
+    /// points at ciphertext when at-rest encryption is in force — use
+    /// `read(sha256:)` for content, `image(forSha256:)` for images.
     static func fileURL(forSha256 hash: String) -> URL? {
         do {
             let row = try DatabaseService.shared.dbPool.read { db in
@@ -94,6 +118,26 @@ enum AttachmentService {
             NSLog("PurpleLife: AttachmentService.fileURL failed — \(error.localizedDescription)")
             return nil
         }
+    }
+
+    /// Returns the **plaintext** content bytes for a stored attachment,
+    /// decrypting on the fly when the file is wrapped. Returns nil when
+    /// the file is missing or when it's wrapped and no DEK is available
+    /// (locked keystore). Throwing is reserved for tamper detection —
+    /// AES-GCM throws if the ciphertext was corrupted.
+    static func read(sha256 hash: String) throws -> Data? {
+        guard let url = fileURL(forSha256: hash) else { return nil }
+        let raw = try Data(contentsOf: url)
+        return try EncryptedJSON.unwrap(raw, key: currentKey)
+    }
+
+    /// Convenience: load an image-bearing attachment. Returns nil for
+    /// non-image content, missing files, or decrypt failures. Callers
+    /// that need to surface decrypt errors should use `read(sha256:)`
+    /// directly.
+    static func image(forSha256 hash: String) -> NSImage? {
+        guard let data = try? read(sha256: hash) else { return nil }
+        return NSImage(data: data)
     }
 
     /// All attachment rows for one object — sorted by field then created_at.
@@ -156,6 +200,50 @@ enum AttachmentService {
         for row in rows {
             try deleteRow(id: row.id)
         }
+    }
+
+    // MARK: - One-shot encrypt-existing-files sweep
+
+    /// Walks the attachments directory and wraps any file that doesn't
+    /// already have the `EncryptedJSON` magic header. Idempotent — files
+    /// already encrypted are skipped. Returns the (encrypted, skipped)
+    /// counts so the caller can log a one-line summary.
+    ///
+    /// Failure mode: per-file `try?` so one bad file doesn't abort the
+    /// sweep; failures land in `NSLog`. The user's data is never lost —
+    /// the original file is only removed after the encrypted version is
+    /// in place (atomic write via `EncryptedJSON.safeWrite`).
+    @discardableResult
+    static func encryptExistingFilesIfNeeded() -> (encrypted: Int, skipped: Int) {
+        guard let key = currentKey else { return (0, 0) }
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(at: directory,
+                                                        includingPropertiesForKeys: nil) else {
+            return (0, 0)
+        }
+        var encrypted = 0
+        var skipped = 0
+        for url in entries {
+            // Only touch regular files — skip subdirs / symlinks.
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: url.path, isDirectory: &isDir), !isDir.boolValue else { continue }
+            guard let data = try? Data(contentsOf: url) else { continue }
+            if EncryptedJSON.hasMagic(data) {
+                skipped += 1
+                continue
+            }
+            do {
+                let wrapped = try EncryptedJSON.wrap(data, key: key)
+                try wrapped.write(to: url, options: .atomic)
+                encrypted += 1
+            } catch {
+                NSLog("PurpleLife: failed to encrypt attachment \(url.lastPathComponent) — \(error.localizedDescription)")
+            }
+        }
+        if encrypted > 0 {
+            NSLog("PurpleLife: encrypted \(encrypted) attachment file(s) on launch; \(skipped) already encrypted")
+        }
+        return (encrypted, skipped)
     }
 
     // MARK: - Helpers

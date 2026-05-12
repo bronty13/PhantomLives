@@ -333,7 +333,7 @@ struct RecordsTableBody: View {
 
     private func columnWidth(for field: FieldDef) -> CGFloat {
         switch field.kind {
-        case .longText:                  return 320
+        case .longText, .richText:       return 320
         case .text, .url, .email, .link: return 200
         case .number:                    return 100
         case .date, .dateTime:           return 160
@@ -693,8 +693,7 @@ struct RecordsGalleryBody: View {
     private func imageOrPlaceholder(for record: ObjectRecord) -> some View {
         if let key = type.galleryAttachmentKey,
            let sha = record.fields()[key] as? String, !sha.isEmpty,
-           let url = AttachmentService.fileURL(forSha256: sha),
-           let nsImage = NSImage(contentsOf: url) {
+           let nsImage = AttachmentService.image(forSha256: sha) {
             Image(nsImage: nsImage)
                 .resizable()
                 .aspectRatio(4/3, contentMode: .fill)

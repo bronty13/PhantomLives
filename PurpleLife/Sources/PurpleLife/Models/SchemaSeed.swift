@@ -11,8 +11,43 @@ import Foundation
 enum SchemaSeed {
 
     static let allTypes: [ObjectType] = [
-        plannerItem, person, book, camera, photoShoot, wowCharacter, photo, weight
+        plannerItem, note, person, book, camera, photoShoot, wowCharacter, photo, weight
     ]
+
+    // MARK: Note
+
+    /// WYSIWYG notes — the home for free-form rich-text journaling.
+    /// Backs the dedicated three-pane Notes workspace (left: date-grouped
+    /// list, right: title + date + RichTextField editor). Routes through
+    /// `NotesWorkspaceView` from `ContentView` instead of the standard
+    /// `RecordsScreen` so the UX matches PurpleTracker's Notes feature.
+    static let note: ObjectType = {
+        let noteDate = FieldDef.make(name: "Date", kind: .date, required: true)
+        let title    = FieldDef.make(name: "Title", kind: .text, required: true)
+        let category = FieldDef.make(
+            name: "Category",
+            kind: .select,
+            options: [
+                .make("Personal",  colorHex: "#9D4DCC"),
+                .make("Work",      colorHex: "#3FA9F5"),
+                .make("Ideas",     colorHex: "#E8A93B"),
+                .make("Journal",   colorHex: "#3FB950"),
+                .make("Reference", colorHex: "#888888"),
+            ]
+        )
+        let body = FieldDef.make(name: "Body", kind: .richText)
+        return .builtIn(
+            id: "Note",
+            name: "Note",
+            pluralName: "Notes",
+            systemImage: "note.text",
+            colorHex: "#9D4DCC",
+            fields: [noteDate, title, category, body],
+            primaryFieldKey: title.key,
+            kanbanGroupKey: category.key,
+            calendarDateKey: noteDate.key
+        )
+    }()
 
     // MARK: Planner Item
 

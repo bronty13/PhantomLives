@@ -61,7 +61,12 @@ struct AttachmentFieldEditor: View {
             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.secondary.opacity(0.2), style: StrokeStyle(lineWidth: 1, dash: [4])))
             .clipShape(RoundedRectangle(cornerRadius: 6))
         } else if let url = AttachmentService.fileURL(forSha256: value) {
-            if let nsImage = NSImage(contentsOf: url) {
+            // `url` points at ciphertext post-A3; pull decrypted bytes via
+            // AttachmentService.image and decide the rendering branch off
+            // that. `fileFallback(url:)` still gets a URL so it can show
+            // the file metadata (size / modified date / "Open in Finder")
+            // without reading the contents.
+            if let nsImage = AttachmentService.image(forSha256: value) {
                 HStack(alignment: .top, spacing: 10) {
                     Image(nsImage: nsImage)
                         .resizable()

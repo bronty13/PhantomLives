@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 /// Persisted to `~/Library/Application Support/PurpleLife/settings.json`.
 /// Phase 1 only carried the four backup-related keys mandated by
@@ -80,17 +81,45 @@ final class SettingsStore: ObservableObject {
 
     private let fileURL: URL
 
-    init() {
+    /// Resolves the at-rest encryption key on demand. Lets the store stay
+    /// constructible without a KeyStore dependency (tests) while letting
+    /// the live app inject `keyStore.currentKey` so settings.json gets
+    /// wrapped via `EncryptedJSON`. A nil return value means "write
+    /// plaintext", which the safeWrite path refuses to silently apply if
+    /// the existing file is already ciphertext.
+    private var keyResolver: () -> SymmetricKey?
+
+    init(keyResolver: @escaping () -> SymmetricKey? = { nil }) {
         let dir = DatabaseService.supportDirectory
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         fileURL = dir.appendingPathComponent("settings.json")
+        self.keyResolver = keyResolver
         load()
     }
 
+    /// Re-point the resolver after construction. Needed because AppState
+    /// constructs the SettingsStore early (BackupService needs it) but
+    /// may not yet have a KeyStore in hand when running under test.
+    func setKeyResolver(_ resolver: @escaping () -> SymmetricKey?) {
+        self.keyResolver = resolver
+    }
+
     func load() {
-        if let data = try? Data(contentsOf: fileURL),
-           let decoded = try? JSONDecoder().decode(AppSettings.self, from: data) {
-            settings = decoded
+        guard let raw = try? Data(contentsOf: fileURL) else {
+            seedTodayQueriesIfNeeded()
+            return
+        }
+        do {
+            let plain = try EncryptedJSON.unwrap(raw, key: keyResolver())
+            if let decoded = try? JSONDecoder().decode(AppSettings.self, from: plain) {
+                settings = decoded
+            }
+        } catch {
+            // Encrypted on disk but no key in hand — leave defaults in
+            // memory rather than silently overwriting with them. The
+            // safeWrite guard in `save()` prevents an accidental
+            // plaintext clobber from this state.
+            NSLog("PurpleLife: settings.json read deferred — \(error.localizedDescription)")
         }
         seedTodayQueriesIfNeeded()
     }
@@ -112,7 +141,11 @@ final class SettingsStore: ObservableObject {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? encoder.encode(settings) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        do {
+            _ = try EncryptedJSON.safeWrite(data, to: fileURL, key: keyResolver())
+        } catch {
+            NSLog("PurpleLife: settings.json write failed — \(error.localizedDescription)")
+        }
     }
 
     /// Active theme value, resolved against built-ins + user themes.

@@ -55,6 +55,7 @@ struct FieldDef: Codable, Identifiable, Hashable {
 enum FieldKind: String, Codable, CaseIterable, Hashable {
     case text          // single-line string
     case longText      // multi-line / markdown
+    case richText      // WYSIWYG; stored as { rtf: <base64>, plain: <mirror> }
     case number        // double
     case date          // calendar day, no time component
     case dateTime      // moment in time
@@ -71,6 +72,7 @@ enum FieldKind: String, Codable, CaseIterable, Hashable {
         switch self {
         case .text:        return "Text"
         case .longText:    return "Long text"
+        case .richText:    return "Rich text"
         case .number:      return "Number"
         case .date:        return "Date"
         case .dateTime:    return "Date & time"
@@ -90,6 +92,7 @@ enum FieldKind: String, Codable, CaseIterable, Hashable {
         switch self {
         case .text:        return "text.alignleft"
         case .longText:    return "text.justify"
+        case .richText:    return "text.book.closed"
         case .number:      return "number"
         case .date:        return "calendar"
         case .dateTime:    return "calendar.badge.clock"

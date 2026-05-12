@@ -6,9 +6,20 @@ options:
   xcodeVersion: "16"
 
 packages:
+  # Vendored GRDB.swift. The only difference from upstream is
+  # `Vendor/GRDB/Sources/CSQLite/module.modulemap` — the `link "sqlite3"`
+  # directive was removed so the linker doesn't pull in the system
+  # libsqlite3.dylib. That cleared the way for our vendored SQLCipher's
+  # statically-linked `sqlite3_*` symbols to win at link time. See
+  # Vendor/GRDB/Sources/CSQLite/module.modulemap for the patch context.
   GRDB:
-    url: https://github.com/groue/GRDB.swift
-    from: "6.0.0"
+    path: Vendor/GRDB
+  # Vendored SQLCipher 4.6.1 amalgamation. Compiles a SQLCipher build of
+  # SQLite alongside the app; the patched GRDB CSQLite module map above
+  # lets GRDB's `sqlite3_*` calls resolve here. See Vendor/SQLCipher/
+  # PROVENANCE.md for the SHA-256 + build recipe.
+  SQLCipher:
+    path: Vendor/SQLCipher
 
 targets:
   PurpleLife:
@@ -27,6 +38,12 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Sources/PurpleLife/App/PurpleLife.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     dependencies:
+      # SQLCipher BEFORE GRDB so the linker sees our SQLCipher's `sqlite3_*`
+      # symbols (in the static archive from `Vendor/SQLCipher/`) before
+      # processing GRDB's CSQLite module map, which has an implicit
+      # `link "sqlite3"` that would otherwise pull in the system
+      # libsqlite3.dylib and shadow our static symbols.
+      - package: SQLCipher
       - package: GRDB
     scheme:
       testTargets:
@@ -39,6 +56,7 @@ targets:
       - path: Tests/PurpleLifeTests
     dependencies:
       - target: PurpleLife
+      - package: SQLCipher
       - package: GRDB
     settings:
       base:

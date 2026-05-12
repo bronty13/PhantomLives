@@ -29,6 +29,7 @@ final class AppState: ObservableObject {
     @Published var settingsStore = SettingsStore()
     @Published var schema = SchemaRegistry()
     @Published var sync = CloudKitSyncService()
+    @Published var keyStore = KeyStore(supportDirectoryURL: DatabaseService.supportDirectory)
     let database = DatabaseService.shared
 
     @Published var objectCount: Int = 0
@@ -64,6 +65,87 @@ final class AppState: ObservableObject {
     }
 
     init() {
+        // Force-load SQLCipher's static archive into the binary. Without
+        // this reference, the linker resolves `sqlite3_*` to the system
+        // libsqlite3.dylib and our vendored SQLCipher is dead weight.
+        _ = SQLCipherForceLink._force
+
+        // First-launch keystore bootstrap: if no DEK exists yet, generate
+        // one and stash it in the Keychain. The user can later add a
+        // passphrase via Settings → Security. Doing this before any
+        // persistence path runs means future slices (SQLCipher DB,
+        // encrypted attachments, encrypted settings) always have a DEK
+        // available. Skipped under XCTest so the unit tests use their own
+        // per-test KeyStores via tempDir.
+        if keyStore.state == .notSetup,
+           ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            do {
+                try keyStore.setupKeychainManaged()
+            } catch {
+                NSLog("PurpleLife: keystore setup failed — \(error.localizedDescription)")
+            }
+        }
+
+        // Wire the SettingsStore to the live keystore. The store was
+        // constructed without a key (property initializer can't reference
+        // self.keyStore), so any settings.json read above happened with
+        // `keyResolver: { nil }` — that's OK because (a) a freshly
+        // installed app has no settings.json yet, and (b) an upgrade
+        // install where settings.json is plaintext also reads fine with
+        // nil key. With the resolver pointed at the live keystore now,
+        // the next `save()` writes encrypted bytes.
+        settingsStore.setKeyResolver { [weak keyStore] in
+            keyStore?.currentKey
+        }
+        // Same wiring for the attachments enum-of-statics. Setting it
+        // here (and only here) keeps the dependency injection one-way:
+        // AppState owns the keystore, services read from it.
+        AttachmentService.keyResolver = { [weak keyStore] in
+            keyStore?.currentKey
+        }
+        // Whole-database SQLCipher encryption (slice A2). DatabaseService
+        // was constructed during property init with no key — so the
+        // initial pool is plaintext. Wiring the resolver here lets us
+        // (a) detect a plaintext file on disk and migrate it to
+        // SQLCipher via `sqlcipher_export()`, and (b) reopen the pool
+        // with `PRAGMA key` applied so every subsequent connection is
+        // keyed. Idempotent: after the first migration the file is no
+        // longer plaintext, the magic-header check skips, only the
+        // reopen-with-key step runs.
+        DatabaseService.keyResolver = { [weak keyStore] in
+            keyStore?.currentKey
+        }
+        if keyStore.currentKey != nil {
+            do {
+                try database.reopenDatabase()
+            } catch {
+                NSLog("PurpleLife: SQLCipher reopen failed — \(error.localizedDescription)")
+            }
+        }
+        // Re-read settings.json once the resolver is live so a previously-
+        // encrypted file (from a prior launch where slice A3 was active)
+        // decrypts correctly. No-op for plaintext / missing files.
+        settingsStore.load()
+        // Idempotent encrypt-on-upgrade: forces a save with the live key
+        // resolver so a plaintext settings.json written during the early
+        // (resolver-less) seedTodayQueriesIfNeeded call gets sealed before
+        // anything else runs. If the file is already encrypted, this is a
+        // no-cost re-encrypt-with-the-same-key.
+        if keyStore.currentKey != nil {
+            settingsStore.save()
+            // Same sweep for any plaintext attachment files lingering from
+            // a pre-A3 install. Idempotent — files already wrapped get
+            // skipped by the magic-header check.
+            AttachmentService.encryptExistingFilesIfNeeded()
+            // Note: per-row field_json encryption (the A2′ stand-in) is
+            // intentionally NOT swept here anymore. Slice A2's SQLCipher
+            // page-level encryption supersedes it; calling the column-
+            // level sweep on top of SQLCipher would double-wrap new
+            // writes for no benefit. Existing column-wrapped rows from
+            // the A2′-only window still read back correctly through
+            // `unsealFromStorage` in `DatabaseService.fetch*`.
+        }
+
         // Backup-on-launch must run BEFORE any code touches the DB pool, so
         // the archive captures a clean copy of the on-disk state from the
         // last session. BackupService swallows its own errors.
