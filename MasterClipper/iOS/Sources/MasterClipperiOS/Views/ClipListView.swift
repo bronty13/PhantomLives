@@ -131,6 +131,13 @@ private struct ClipRow: View {
 
                     StatusBadge(status: clip.statusEnum)
 
+                    if appState.outbox.hasPending(forClip: clip.id) {
+                        Image(systemName: "clock.arrow.2.circlepath")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                            .accessibilityLabel("Has pending sync")
+                    }
+
                     Spacer()
 
                     Text(clip.id)

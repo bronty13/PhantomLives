@@ -7,6 +7,7 @@ import MasterClipperCore
 @MainActor
 final class iOSAppState: ObservableObject {
     @Published var snapshotReader = SnapshotReader()
+    @Published var outbox: IntentOutbox
 
     @Published private(set) var clips: [Clip] = []
     @Published private(set) var personas: [Persona] = []
@@ -19,15 +20,28 @@ final class iOSAppState: ObservableObject {
 
     @Published private(set) var loadError: String?
 
+    /// Operator name written into addNote intents. iOS-side it just defaults
+    /// to "iPhone" until we surface a settings screen for it.
+    @Published var operatorName: String = "iPhone"
+
     private var cancellables: Set<AnyCancellable> = []
 
     init() {
+        let reader = SnapshotReader()
+        self.snapshotReader = reader
+        self.outbox = IntentOutbox(reader: reader)
+
         // Re-run our in-memory queries whenever SnapshotReader publishes a
         // new manifest (i.e. the Mac just dropped a new snapshot in iCloud).
+        // Also reconcile the outbox's pending list against the manifest's
+        // `generated_at` — anything older has been confirmed by the Mac.
         snapshotReader.$manifest
             .removeDuplicates()
-            .sink { [weak self] _ in
-                Task { @MainActor in await self?.reloadFromSnapshot() }
+            .sink { [weak self] manifest in
+                Task { @MainActor in
+                    await self?.reloadFromSnapshot()
+                    if let m = manifest { self?.outbox.reconcileWithManifest(m) }
+                }
             }
             .store(in: &cancellables)
     }

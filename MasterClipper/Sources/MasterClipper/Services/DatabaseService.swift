@@ -451,6 +451,20 @@ final class DatabaseService {
                           columns: ["clip_id", "created_at"])
         }
 
+        migrator.registerMigration("v15_intent_idempotency") { db in
+            // Records every iOS-originated intent the macOS app has applied,
+            // keyed by the envelope's UUID. Lets `apply(intent:)` no-op when
+            // a duplicate file lingers in the iCloud `intents/pending/`
+            // folder (e.g. metadata-query fires twice on the same UUID).
+            try db.create(table: "applied_intents") { t in
+                t.primaryKey("id", .text)
+                t.column("kind",       .text).notNull()
+                t.column("clip_id",    .text).notNull()
+                t.column("device_id",  .text).notNull().defaults(to: "")
+                t.column("applied_at", .text).notNull()
+            }
+        }
+
         try migrator.migrate(dbPool)
     }
 
@@ -1339,6 +1353,142 @@ final class DatabaseService {
             try db.execute(sql: "DELETE FROM clips")
             try db.execute(sql: "DELETE FROM id_sequences")
             try db.execute(sql: "DELETE FROM prices")
+        }
+    }
+
+    // MARK: - Intent application (iOS → macOS)
+
+    enum IntentApplyResult: Equatable {
+        case applied
+        case appliedWithConflict(detail: String)
+        case alreadyApplied
+        case failed(String)
+    }
+
+    /// Apply an `IntentEnvelope` from the iOS app. Idempotent — re-applying
+    /// the same UUID is a no-op. Records the envelope id in `applied_intents`
+    /// after a successful (or conflict-resolved) apply. The caller (typically
+    /// `IntentInbox`) is responsible for moving the iCloud file from
+    /// `intents/pending/` to `intents/applied/` (or `intents/conflicts/`).
+    func apply(intent: IntentEnvelope) -> IntentApplyResult {
+        do {
+            // Idempotency gate.
+            let alreadyApplied = try dbPool.read { db in
+                try Int.fetchOne(db,
+                    sql: "SELECT 1 FROM applied_intents WHERE id = ?",
+                    arguments: [intent.id.uuidString]) != nil
+            }
+            if alreadyApplied { return .alreadyApplied }
+
+            // Conflict probe — has the clip been touched since iOS read the
+            // snapshot? We still apply, but flag the result for the UI.
+            let conflictDetail: String? = try dbPool.read { db -> String? in
+                guard let clip = try Clip.fetchOne(db, key: intent.clipId) else { return nil }
+                if clip.updatedAt > intent.baseSnapshotGeneratedAt {
+                    return "Mac edited clip \(intent.clipId) at \(clip.updatedAt) after iOS snapshot at \(intent.baseSnapshotGeneratedAt)"
+                }
+                return nil
+            }
+
+            try performApply(intent)
+
+            // Record for idempotency.
+            try dbPool.write { db in
+                try db.execute(sql: """
+                    INSERT INTO applied_intents (id, kind, clip_id, device_id, applied_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """, arguments: [
+                        intent.id.uuidString,
+                        intent.kind.rawValue,
+                        intent.clipId,
+                        intent.deviceId,
+                        Self.isoNow()
+                    ])
+            }
+
+            if let detail = conflictDetail {
+                return .appliedWithConflict(detail: detail)
+            }
+            return .applied
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    private func performApply(_ intent: IntentEnvelope) throws {
+        switch intent.payload {
+        case .markPosted(let siteCode, let postedDate):
+            guard let site = try fetchSite(byCode: siteCode), let sid = site.id else {
+                throw NSError(domain: "MasterClipper.IntentApply",
+                              code: 1,
+                              userInfo: [NSLocalizedDescriptionKey: "Unknown site '\(siteCode)'"])
+            }
+            let now = Self.isoNow()
+            let existing = try dbPool.read { db in
+                try ClipPosting
+                    .filter(Column("clip_id") == intent.clipId && Column("site_id") == sid)
+                    .fetchOne(db)
+            }
+            let row = ClipPosting(
+                clipId: intent.clipId,
+                siteId: sid,
+                postedDate: postedDate,
+                status: PostingStatus.posted.rawValue,
+                notes: existing?.notes ?? "",
+                createdAt: existing?.createdAt ?? now,
+                updatedAt: now
+            )
+            try upsertPosting(row)
+
+        case .unmarkPosted(let siteCode):
+            guard let site = try fetchSite(byCode: siteCode), let sid = site.id else {
+                throw NSError(domain: "MasterClipper.IntentApply",
+                              code: 1,
+                              userInfo: [NSLocalizedDescriptionKey: "Unknown site '\(siteCode)'"])
+            }
+            let now = Self.isoNow()
+            let existing = try dbPool.read { db in
+                try ClipPosting
+                    .filter(Column("clip_id") == intent.clipId && Column("site_id") == sid)
+                    .fetchOne(db)
+            }
+            let row = ClipPosting(
+                clipId: intent.clipId,
+                siteId: sid,
+                postedDate: nil,
+                status: PostingStatus.pending.rawValue,
+                notes: existing?.notes ?? "",
+                createdAt: existing?.createdAt ?? now,
+                updatedAt: now
+            )
+            try upsertPosting(row)
+
+        case .addNote(let body, let operatorName):
+            _ = try insertClipNote(
+                clipId: intent.clipId,
+                body: body,
+                operatorName: operatorName
+            )
+
+        case .setStatus(let status):
+            try setStatusOverride(clipId: intent.clipId, override: status)
+
+        case .togglePostingExcluded(let excluded, let reason, let notes):
+            try dbPool.write { db in
+                guard var clip = try Clip.fetchOne(db, key: intent.clipId) else { return }
+                clip.postingExcluded = excluded
+                clip.exclusionReason = reason
+                clip.exclusionNotes = notes
+                clip.updatedAt = Self.isoNow()
+                clip.status = try Self.computeStatus(for: clip, in: db)
+                try clip.update(db)
+            }
+        }
+    }
+
+    private func fetchSite(byCode code: String) throws -> Site? {
+        try dbPool.read { db in
+            try Site.filter(Column("code") == code).fetchOne(db)
         }
     }
 

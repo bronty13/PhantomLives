@@ -135,6 +135,12 @@ final class AppState: ObservableObject {
             settingsStore.save()
         }
 
+        // Start watching iCloud for iOS-originated edit intents. Cheap to
+        // start unconditionally — the metadata query only fires when files
+        // appear; if the user hasn't enabled iCloud publishing yet, no files
+        // will arrive.
+        IntentInbox.shared.start()
+
         BackupService.runIfEnabled(settingsStore: settingsStore)
         Task { @MainActor in
             await OllamaSetup.shared.run(settings: settings)

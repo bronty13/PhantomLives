@@ -4,12 +4,14 @@ import MasterClipperCore
 struct ClipDetailView: View {
     let clipId: String
     @EnvironmentObject private var appState: iOSAppState
+    @State private var showingEdit = false
 
     var body: some View {
         ScrollView {
             if let clip = appState.clips.first(where: { $0.id == clipId }) {
                 VStack(alignment: .leading, spacing: 16) {
                     header(clip: clip)
+                    pendingBanner
                     descriptionSection(clip: clip)
                     metaSection(clip: clip)
                     categoriesSection
@@ -28,6 +30,45 @@ struct ClipDetailView: View {
         }
         .navigationTitle("Clip")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showingEdit = true
+                } label: {
+                    Label("Edit", systemImage: "square.and.pencil")
+                }
+                .disabled(appState.clips.first(where: { $0.id == clipId }) == nil)
+            }
+        }
+        .sheet(isPresented: $showingEdit) {
+            if let clip = appState.clips.first(where: { $0.id == clipId }) {
+                EditClipSheet(clip: clip)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var pendingBanner: some View {
+        let pending = appState.outbox.pendingDescriptions(forClip: clipId)
+        if !pending.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "clock.arrow.2.circlepath")
+                    Text("\(pending.count) change\(pending.count == 1 ? "" : "s") waiting for your Mac")
+                        .font(.callout.weight(.semibold))
+                }
+                ForEach(pending, id: \.self) { d in
+                    Text("• \(d)").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(.orange.opacity(0.4), lineWidth: 1)
+            )
+        }
     }
 
     private func header(clip: Clip) -> some View {
