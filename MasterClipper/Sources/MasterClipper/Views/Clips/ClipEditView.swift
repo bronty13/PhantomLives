@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import MasterClipperCore
 
 struct ClipEditView: View {
     @EnvironmentObject private var appState: AppState

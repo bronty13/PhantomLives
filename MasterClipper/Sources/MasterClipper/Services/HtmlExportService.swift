@@ -1,4 +1,5 @@
 import Foundation
+import MasterClipperCore
 
 @MainActor
 enum HtmlExportService {

@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import MasterClipperCore
 
 struct ImportWizardView: View {
     @EnvironmentObject private var appState: AppState

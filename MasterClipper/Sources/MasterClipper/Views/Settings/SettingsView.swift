@@ -34,6 +34,9 @@ struct SettingsView: View {
 
             BackupSettingsTab()
                 .tabItem { Label("Backup", systemImage: "externaldrive.fill.badge.timemachine") }
+
+            SyncSettingsView()
+                .tabItem { Label("Sync", systemImage: "icloud") }
         }
         .padding(20)
         .frame(minWidth: 720, minHeight: 520)

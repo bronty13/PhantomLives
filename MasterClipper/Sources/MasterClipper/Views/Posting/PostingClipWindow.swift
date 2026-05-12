@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import MasterClipperCore
 
 /// Per-clip posting view rendered while running a posting batch. The
 /// header is a persona-coloured banner with everything the user needs at

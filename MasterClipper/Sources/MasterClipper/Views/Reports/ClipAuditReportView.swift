@@ -1,4 +1,5 @@
 import SwiftUI
+import MasterClipperCore
 
 /// Bulk audit report. Lists every non-archived clip with its open audit
 /// issues. Filter chip to show only failing clips. Click a row to jump into

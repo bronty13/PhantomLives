@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
+import MasterClipperCore
 
 /// Single-screen browser for the `c4s_historical` table — a snapshot of
 /// the most recent on-demand Clips4Sale storefront export per store.

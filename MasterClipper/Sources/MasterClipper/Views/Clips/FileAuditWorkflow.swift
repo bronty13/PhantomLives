@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import MasterClipperCore
 
 /// Walks a list of clips through the file audit one at a time. Shows the
 /// same audit panel as the per-clip sheet (with rename suggestions, the

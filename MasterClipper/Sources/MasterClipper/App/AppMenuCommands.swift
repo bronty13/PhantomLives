@@ -1,4 +1,5 @@
 import SwiftUI
+import MasterClipperCore
 
 struct AppMenuCommands: Commands {
     var body: some Commands {

@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import MasterClipperCore
 
 @MainActor
 final class DatabaseService {
@@ -619,29 +620,29 @@ final class DatabaseService {
 
     // MARK: - Categories
 
-    func fetchCategories(includeArchived: Bool = false) throws -> [Category] {
+    func fetchCategories(includeArchived: Bool = false) throws -> [ClipCategory] {
         try dbPool.read { db in
-            var q = Category.order(Column("sort_order").asc, Column("name").asc)
+            var q = ClipCategory.order(Column("sort_order").asc, Column("name").asc)
             if !includeArchived { q = q.filter(Column("archived") == false) }
             return try q.fetchAll(db)
         }
     }
 
-    func saveCategory(_ c: inout Category) throws {
+    func saveCategory(_ c: inout ClipCategory) throws {
         try dbPool.write { db in try c.save(db) }
     }
 
     func deleteCategory(id: Int64) throws {
-        _ = try dbPool.write { db in try Category.deleteOne(db, key: id) }
+        _ = try dbPool.write { db in try ClipCategory.deleteOne(db, key: id) }
     }
 
-    func ensureCategory(named name: String) throws -> Category {
+    func ensureCategory(named name: String) throws -> ClipCategory {
         // Categories are stored uppercase as of v8 — normalise here so
         // every code path (inline picker, import, settings CRUD) lands
         // on the same row regardless of how the user typed it in.
         let upper = name.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
         return try dbPool.write { db in
-            if var existing = try Category.filter(Column("name") == upper).fetchOne(db) {
+            if var existing = try ClipCategory.filter(Column("name") == upper).fetchOne(db) {
                 // Un-archive on re-use. The "Archive unused" cleanup
                 // hides categories that aren't currently attached to a
                 // clip; re-attaching one (via import, backfill, or the
@@ -652,7 +653,7 @@ final class DatabaseService {
                 }
                 return existing
             }
-            var c = Category(id: nil, name: upper, sortOrder: 0, archived: false)
+            var c = ClipCategory(id: nil, name: upper, sortOrder: 0, archived: false)
             try c.insert(db)
             return c
         }
@@ -810,12 +811,12 @@ final class DatabaseService {
     /// In-transaction variant of `ensureCategory`. The public
     /// `ensureCategory(named:)` opens its own write block, which would
     /// deadlock if called from inside another `dbPool.write`.
-    private static func ensureCategoryInTransaction(named name: String, db: GRDB.Database) throws -> Category {
+    private static func ensureCategoryInTransaction(named name: String, db: GRDB.Database) throws -> ClipCategory {
         let upper = name.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        if let existing = try Category.filter(Column("name") == upper).fetchOne(db) {
+        if let existing = try ClipCategory.filter(Column("name") == upper).fetchOne(db) {
             return existing
         }
-        var c = Category(id: nil, name: upper, sortOrder: 0, archived: false)
+        var c = ClipCategory(id: nil, name: upper, sortOrder: 0, archived: false)
         try c.insert(db)
         return c
     }

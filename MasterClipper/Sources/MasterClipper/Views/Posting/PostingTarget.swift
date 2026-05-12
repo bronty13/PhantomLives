@@ -1,4 +1,5 @@
 import Foundation
+import MasterClipperCore
 
 /// A virtual posting target = a (site, persona) combination. Clips4Sale × CoC
 /// and Clips4Sale × PoA are run as separate posting batches because each has

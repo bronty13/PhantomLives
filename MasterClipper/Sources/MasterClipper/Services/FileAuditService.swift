@@ -1,4 +1,5 @@
 import Foundation
+import MasterClipperCore
 
 /// Per-clip file audit. Verifies that the FCP/Production folders exist and
 /// that the expected media files (`<Title>.mp4`, `<Title>_reduced.mp4`,

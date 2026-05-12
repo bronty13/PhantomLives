@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import MasterClipperCore
 
 @MainActor
 enum CalendarService {

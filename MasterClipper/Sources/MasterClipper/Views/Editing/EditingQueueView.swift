@@ -1,4 +1,5 @@
 import SwiftUI
+import MasterClipperCore
 
 /// Workflow queue for clips that aren't yet fully posted. Master/detail view:
 /// the table on the left lists clips by pipeline status, and the right pane

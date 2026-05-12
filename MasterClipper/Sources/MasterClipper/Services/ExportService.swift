@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import MasterClipperCore
 
 @MainActor
 enum ExportService {

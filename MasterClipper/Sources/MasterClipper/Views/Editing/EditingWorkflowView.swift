@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import MasterClipperCore
 
 /// Editing-stage workflow for a single clip. Designed to chain off the
 /// New Clip workflow ("Save & Continue to Editing →") but also reachable on

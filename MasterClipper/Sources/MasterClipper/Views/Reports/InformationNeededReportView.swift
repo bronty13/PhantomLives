@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import MasterClipperCore
 
 /// "Information Needed" report — every clip in `new` or `editing` status
 /// that's missing at least one of: raw description, categories, go-live

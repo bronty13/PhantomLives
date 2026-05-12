@@ -4,3 +4,4 @@ DerivedData/
 .DS_Store
 MasterClipper.app
 MasterClipper.xcodeproj
+build/

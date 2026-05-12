@@ -1,4 +1,5 @@
 import SwiftUI
+import MasterClipperCore
 
 /// Three-week go-live planning view + a list of every active clip not yet in
 /// `production` status. Week boundaries follow Settings → General →

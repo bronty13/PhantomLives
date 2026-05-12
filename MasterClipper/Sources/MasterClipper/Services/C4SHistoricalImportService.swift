@@ -1,4 +1,5 @@
 import Foundation
+import MasterClipperCore
 
 /// Parses a Clips4Sale on-demand storefront export (XLSX or pipe-delimited
 /// CSV — C4S labels the file `.csv` but uses `|` as the field separator)

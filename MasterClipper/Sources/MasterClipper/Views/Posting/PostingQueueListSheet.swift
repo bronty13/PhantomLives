@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import MasterClipperCore
 
 /// Bulk-upload helper sheet — shows every pending clip in the current
 /// posting batch in order with its ID, title, and the canonical

@@ -1,4 +1,5 @@
 import SwiftUI
+import MasterClipperCore
 
 /// Workflow queue for clips that are post-ready but not yet fully posted.
 /// Mirrors `EditingQueueView` — same master/detail layout, same editor on

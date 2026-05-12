@@ -1,4 +1,5 @@
 import SwiftUI
+import MasterClipperCore
 
 struct ClipExportSheet: View {
     @EnvironmentObject private var appState: AppState

@@ -1,4 +1,5 @@
 import SwiftUI
+import MasterClipperCore
 
 struct SitesSettingsTab: View {
     @EnvironmentObject private var appState: AppState

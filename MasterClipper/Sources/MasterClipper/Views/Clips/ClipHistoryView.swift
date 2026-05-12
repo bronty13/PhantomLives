@@ -1,4 +1,5 @@
 import SwiftUI
+import MasterClipperCore
 
 struct ClipHistoryView: View {
     let clipId: String

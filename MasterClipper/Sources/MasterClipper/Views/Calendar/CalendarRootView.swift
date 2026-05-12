@@ -1,4 +1,5 @@
 import SwiftUI
+import MasterClipperCore
 
 enum CalendarMode: String, CaseIterable, Hashable {
     case year, quarter, month, week, day

@@ -1,4 +1,5 @@
 import SwiftUI
+import MasterClipperCore
 
 /// Grid of (site × posted toggle) for a single clip. Sites are filtered to those
 /// scoped to the clip's persona. Tapping a checkbox upserts a `clip_postings` row.

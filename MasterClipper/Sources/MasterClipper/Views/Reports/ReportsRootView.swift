@@ -1,4 +1,5 @@
 import SwiftUI
+import MasterClipperCore
 
 struct ReportsRootView: View {
     enum Kind: String, CaseIterable, Hashable {

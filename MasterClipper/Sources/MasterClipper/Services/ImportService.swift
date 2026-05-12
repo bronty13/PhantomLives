@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import MasterClipperCore
 
 /// Routes for the import wizard. Each maps a source sheet/table to a destination
 /// in the database. Only `clips` is fully implemented in v1; the others are

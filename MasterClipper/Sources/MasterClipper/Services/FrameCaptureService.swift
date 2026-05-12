@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import AppKit
+import MasterClipperCore
 
 /// Pulls N still frames out of an MP4 using `AVAssetImageGenerator` and
 /// writes them as PNGs into the production folder as

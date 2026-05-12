@@ -1,4 +1,5 @@
 import Foundation
+import MasterClipperCore
 
 /// Parses the plain-text payload produced by the **ClipperInfo** companion
 /// web app and computes a per-field diff against the live clips so the

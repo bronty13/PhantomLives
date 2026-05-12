@@ -1,4 +1,5 @@
 import Foundation
+import MasterClipperCore
 
 /// Plans + executes a one-shot backfill: for every clip in `production`
 /// status with no categories assigned, look up a matching row in

@@ -1,4 +1,5 @@
 import SwiftUI
+import MasterClipperCore
 
 /// Right-hand pane that displays the editable form for the selected clip.
 /// Loads fresh from `appState.clips` on selection change so external edits

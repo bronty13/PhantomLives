@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import MasterClipperCore
 
 /// New-clip workflow. Replaces the small "New Clip" sheet with a single
 /// bigger sheet that captures everything the user has at clip-creation time:

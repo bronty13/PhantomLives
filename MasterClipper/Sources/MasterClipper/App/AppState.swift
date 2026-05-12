@@ -1,12 +1,13 @@
 import SwiftUI
 import Combine
+import MasterClipperCore
 
 @MainActor
 final class AppState: ObservableObject {
     @Published var clips: [Clip] = []
     @Published var personas: [Persona] = []
     @Published var sites: [Site] = []
-    @Published var categories: [Category] = []
+    @Published var categories: [ClipCategory] = []
     @Published var calendarRules: [CalendarRule] = []
     @Published var exclusionReasons: [ExclusionReason] = []
     @Published var isLoading: Bool = false
@@ -168,6 +169,7 @@ final class AppState: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+        triggerSnapshotPublishIfEnabled()
     }
 
     func reloadPersonas() {
@@ -176,6 +178,7 @@ final class AppState: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+        triggerSnapshotPublishIfEnabled()
     }
 
     func reloadSites() {
@@ -184,6 +187,7 @@ final class AppState: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+        triggerSnapshotPublishIfEnabled()
     }
 
     func reloadCategories() {
@@ -192,6 +196,7 @@ final class AppState: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+        triggerSnapshotPublishIfEnabled()
     }
 
     func reloadCalendarRules() {
@@ -200,6 +205,7 @@ final class AppState: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+        triggerSnapshotPublishIfEnabled()
     }
 
     func reloadExclusionReasons() {
@@ -208,6 +214,14 @@ final class AppState: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+        triggerSnapshotPublishIfEnabled()
+    }
+
+    /// Schedule a 30s-debounced iCloud snapshot publish. No-op when the user
+    /// hasn't enabled iCloud publishing.
+    private func triggerSnapshotPublishIfEnabled() {
+        guard settings.iCloudPublishEnabled else { return }
+        SnapshotPublisher.shared.schedulePublish()
     }
 
     func persona(forCode code: String) -> Persona? {
@@ -282,6 +296,7 @@ final class AppState: ObservableObject {
             categoryIds: categoryIds,
             operatorName: settings.operatorName
         )
+        triggerSnapshotPublishIfEnabled()
     }
 
     func deleteClip(id: String) throws {
@@ -305,19 +320,23 @@ final class AppState: ObservableObject {
 
     @discardableResult
     func addClipNote(clipId: String, body: String) throws -> ClipNote {
-        try DatabaseService.shared.insertClipNote(
+        let note = try DatabaseService.shared.insertClipNote(
             clipId: clipId,
             body: body,
             operatorName: settings.operatorName
         )
+        triggerSnapshotPublishIfEnabled()
+        return note
     }
 
     func updateClipNote(_ note: ClipNote) throws {
         try DatabaseService.shared.updateClipNote(note)
+        triggerSnapshotPublishIfEnabled()
     }
 
     func deleteClipNote(id: Int64) throws {
         try DatabaseService.shared.deleteClipNote(id: id)
+        triggerSnapshotPublishIfEnabled()
     }
 
     // MARK: - Settings table mutations (CRUD on personas / sites / categories)
@@ -344,7 +363,7 @@ final class AppState: ObservableObject {
         reloadSites()
     }
 
-    func saveCategory(_ c: Category) throws {
+    func saveCategory(_ c: ClipCategory) throws {
         var mutable = c
         try DatabaseService.shared.saveCategory(&mutable)
         reloadCategories()

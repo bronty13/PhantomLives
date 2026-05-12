@@ -1,4 +1,5 @@
 import Foundation
+import MasterClipperCore
 
 /// Captures `ClipSegment` rows for a clip's source folder. Walks the folder
 /// in chronological order via `VideoFolderService`, computes MD5/SHA-1/SHA-256

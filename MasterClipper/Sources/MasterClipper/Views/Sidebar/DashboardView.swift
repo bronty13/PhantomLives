@@ -1,4 +1,5 @@
 import SwiftUI
+import MasterClipperCore
 
 /// Editorial-style dashboard.
 ///

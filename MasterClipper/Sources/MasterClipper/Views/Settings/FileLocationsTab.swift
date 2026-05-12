@@ -1,4 +1,5 @@
 import SwiftUI
+import MasterClipperCore
 
 /// File-location defaults used by the path-helper buttons in the clip editor
 /// and the one-time backfill. Patterns accept `{date}` and `{title}`

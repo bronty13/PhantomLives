@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import MasterClipperCore
 
 /// Three-stage wizard that ingests the **ClipperInfo** companion-app
 /// payload, diffs it against the live clips, and lets the user accept

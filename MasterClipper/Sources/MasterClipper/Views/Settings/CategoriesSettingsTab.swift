@@ -1,4 +1,5 @@
 import SwiftUI
+import MasterClipperCore
 
 struct CategoriesSettingsTab: View {
     @EnvironmentObject private var appState: AppState
@@ -89,7 +90,7 @@ struct CategoriesSettingsTab: View {
                         .uppercased()
                     guard !trimmed.isEmpty else { return }
                     do {
-                        let cat = Category(id: nil, name: trimmed,
+                        let cat = ClipCategory(id: nil, name: trimmed,
                                            sortOrder: appState.categories.count, archived: false)
                         try appState.saveCategory(cat)
                         newName = ""

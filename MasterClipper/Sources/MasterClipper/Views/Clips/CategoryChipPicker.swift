@@ -1,4 +1,5 @@
 import SwiftUI
+import MasterClipperCore
 
 /// Ordered category chip picker. Categories are bound as an ordered array
 /// because every posting platform respects the creator's category order; the
@@ -83,7 +84,7 @@ struct CategoryChipPicker: View {
     // MARK: - Chip view (draggable + drop target)
 
     @ViewBuilder
-    private func draggableChip(category cat: Category, index: Int) -> some View {
+    private func draggableChip(category cat: ClipCategory, index: Int) -> some View {
         if let cid = cat.id {
             let isDropTarget = dragTargetId == cid
             HStack(spacing: 4) {

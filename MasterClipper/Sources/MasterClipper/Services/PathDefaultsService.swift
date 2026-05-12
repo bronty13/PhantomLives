@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import MasterClipperCore
 
 /// Computes default Production / FCP folder paths for clips and runs the
 /// one-time backfill that fills in those columns for every production clip

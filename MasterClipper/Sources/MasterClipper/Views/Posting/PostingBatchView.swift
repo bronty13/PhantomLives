@@ -1,4 +1,5 @@
 import SwiftUI
+import MasterClipperCore
 
 /// Drill-down posting wizard:
 /// 1. **Targets** — grid of (site, persona) cards. Each card shows pending count.

@@ -1,4 +1,5 @@
 import SwiftUI
+import MasterClipperCore
 
 /// CRUD for the **Posting exclusion reasons** dropdown — the labels
 /// shown when the user marks a clip as "do not post". Three defaults

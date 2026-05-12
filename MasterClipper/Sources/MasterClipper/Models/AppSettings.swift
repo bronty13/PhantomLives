@@ -200,6 +200,12 @@ struct AppSettings: Codable {
     // Search
     var includeNotesInGlobalSearch: Bool = true
 
+    // iCloud sync
+    /// Master switch for publishing the read-only snapshot into the iCloud
+    /// ubiquity container. Off by default so we never touch iCloud Drive
+    /// without explicit consent.
+    var iCloudPublishEnabled: Bool = false
+
     var debugLogging: Bool = false
 
     // When on, the UI exposes diagnostic columns / fields / buttons that are

@@ -1,4 +1,5 @@
 import SwiftUI
+import MasterClipperCore
 
 /// Structured-notes panel for a single clip.
 ///

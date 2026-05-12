@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
+import MasterClipperCore
 
 /// Modal that pairs a file (XLSX or pipe-CSV from the Clips4Sale
 /// "on demand" storefront export) with a store (CoC | PoA), then

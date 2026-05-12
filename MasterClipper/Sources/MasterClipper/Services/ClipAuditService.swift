@@ -1,4 +1,5 @@
 import Foundation
+import MasterClipperCore
 
 /// Validates a clip against the production-ready checklist:
 ///
