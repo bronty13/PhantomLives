@@ -9,6 +9,7 @@ final class iOSAppState: ObservableObject {
     @Published var snapshotReader = SnapshotReader()
     @Published var outbox: IntentOutbox
     @Published var sharedReader = SharedZoneReader()
+    @Published var sharedEditor: SharedZoneEditor
 
     @Published private(set) var clips: [Clip] = []
     @Published private(set) var personas: [Persona] = []
@@ -31,6 +32,9 @@ final class iOSAppState: ObservableObject {
         let reader = SnapshotReader()
         self.snapshotReader = reader
         self.outbox = IntentOutbox(reader: reader)
+        let sharedR = SharedZoneReader()
+        self.sharedReader = sharedR
+        self.sharedEditor = SharedZoneEditor(reader: sharedR)
 
         // Re-run our in-memory queries whenever SnapshotReader publishes a
         // new manifest (i.e. the Mac just dropped a new snapshot in iCloud).

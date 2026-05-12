@@ -24,6 +24,13 @@ final class SharedZoneReader: ObservableObject {
     @Published private(set) var isWorking: Bool = false
     @Published private(set) var lastError: String?
 
+    /// Map of share UUID → the actual CK zoneID enumerated from
+    /// `sharedCloudDatabase`. The zoneID's ownerName is the share owner's
+    /// CKUserRecordID name, which the recipient can't construct from
+    /// scratch — only fetched. SharedZoneEditor uses this to address the
+    /// right zone when writing edits.
+    private(set) var zoneIDByShare: [UUID: CKRecordZone.ID] = [:]
+
     private let container: CKContainer
     private var sharedDB: CKDatabase { container.sharedCloudDatabase }
 
@@ -74,9 +81,11 @@ final class SharedZoneReader: ObservableObject {
         do {
             let zones = try await sharedDB.allRecordZones()
             var built: [SharedShareSession] = []
+            var zoneMap: [UUID: CKRecordZone.ID] = [:]
             for zone in zones where zone.zoneID.zoneName.hasPrefix(CKShareSchema.zoneNamePrefix) {
                 if let session = try await loadSession(zoneID: zone.zoneID) {
                     built.append(session)
+                    zoneMap[session.id] = zone.zoneID
                 }
             }
             // Strip expired sessions client-side as belt-and-suspenders;
@@ -84,6 +93,7 @@ final class SharedZoneReader: ObservableObject {
             built = built.filter { !$0.isExpired }
             built.sort { $0.metadata.expiresAt < $1.metadata.expiresAt }
             self.sessions = built
+            self.zoneIDByShare = zoneMap
             self.lastError = nil
         } catch {
             self.lastError = "refresh failed: \(error.localizedDescription)"

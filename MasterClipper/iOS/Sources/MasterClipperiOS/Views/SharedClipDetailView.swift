@@ -7,6 +7,7 @@ import MasterClipperCore
 struct SharedClipDetailView: View {
     let target: SharedClipNavTarget
     @EnvironmentObject private var appState: iOSAppState
+    @State private var showingEdit = false
 
     var body: some View {
         ScrollView {
@@ -14,6 +15,7 @@ struct SharedClipDetailView: View {
                let clip = session.clips.first(where: { $0.id == target.clipId }) {
                 VStack(alignment: .leading, spacing: 16) {
                     header(clip: clip, session: session)
+                    pendingBanner(clipId: clip.id)
                     if !clip.descriptionRefined.isEmpty || !clip.descriptionRaw.isEmpty {
                         section("Description") {
                             Text(clip.descriptionRefined.isEmpty ? clip.descriptionRaw : clip.descriptionRefined)
@@ -34,6 +36,40 @@ struct SharedClipDetailView: View {
         }
         .navigationTitle("Shared clip")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if let session = appState.sharedReader.sessions.first(where: { $0.id == target.sessionId }),
+                   session.canEdit,
+                   let clip = session.clips.first(where: { $0.id == target.clipId }) {
+                    Button {
+                        showingEdit = true
+                    } label: {
+                        Label("Edit", systemImage: "square.and.pencil")
+                    }
+                    .sheet(isPresented: $showingEdit) {
+                        SharedEditSheet(session: session, clip: clip)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func pendingBanner(clipId: String) -> some View {
+        if appState.sharedEditor.hasPending(forClip: clipId) {
+            HStack(spacing: 6) {
+                Image(systemName: "clock.arrow.2.circlepath")
+                Text("Changes queued — applying on next Mac sync")
+                    .font(.callout.weight(.semibold))
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(.orange.opacity(0.4), lineWidth: 1)
+            )
+        }
     }
 
     private func header(clip: SharedClipRow, session: SharedShareSession) -> some View {

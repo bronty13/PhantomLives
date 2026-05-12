@@ -1487,7 +1487,19 @@ final class DatabaseService {
     }
 
     private func fetchSite(byCode code: String) throws -> Site? {
-        try dbPool.read { db in
+        // Shared-zone recipients can't see the user's full Site catalog, so
+        // they pass `id:N` as the site identifier from a SharedClipEdit
+        // intent. Resolve numeric ids here.
+        if code.hasPrefix("id:") {
+            let suffix = code.dropFirst(3)
+            if let id = Int64(suffix) {
+                return try dbPool.read { db in
+                    try Site.fetchOne(db, key: id)
+                }
+            }
+            return nil
+        }
+        return try dbPool.read { db in
             try Site.filter(Column("code") == code).fetchOne(db)
         }
     }

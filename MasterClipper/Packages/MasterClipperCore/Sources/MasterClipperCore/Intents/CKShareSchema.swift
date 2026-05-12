@@ -16,6 +16,13 @@ public enum CKShareSchema {
     /// permission, label). Sits in the same zone as the SharedClip records.
     public static let shareMetadataRecordType = "ShareMetadata"
 
+    /// One per recipient edit. Carries a JSON-encoded `IntentEnvelope` in
+    /// the `envelopeJson` field. The macOS owner polls for these, applies
+    /// them via `DatabaseService.apply(intent:)`, deletes on success.
+    /// Reuses the entire Phase 4 intent infrastructure — only the transport
+    /// is different (CKRecord vs iCloud Drive file).
+    public static let sharedClipEditRecordType = "SharedClipEdit"
+
     /// CKShare's per-zone CKRecordZoneID name is `share-<uuid>`.
     public static let zoneNamePrefix = "share-"
 
@@ -69,6 +76,21 @@ public enum CKShareSchema {
         /// so the iOS reader can locally enforce expiry even before fetching
         /// the metadata record.
         public static let expiresAt          = "expiresAt"
+    }
+
+    // MARK: - SharedClipEdit field keys
+
+    public enum SharedClipEditField {
+        /// JSON of `IntentEnvelope`. macOS decodes and applies.
+        public static let envelopeJson = "envelopeJson"
+        /// Mirror of the envelope's `id` so it can be queried without parsing
+        /// the JSON. Also used as the CKRecord's recordName so duplicate
+        /// submissions collapse.
+        public static let intentId = "intentId"
+        /// Mirror of `clipId` for filtered fetches.
+        public static let clipId = "clipId"
+        /// Mirror of `createdAt` for sort + idempotency cross-check.
+        public static let createdAt = "createdAt"
     }
 
     // MARK: - ShareMetadata field keys

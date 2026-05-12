@@ -145,6 +145,9 @@ final class AppState: ObservableObject {
         // requiring the user to remember.
         ShareExpiryScheduler.shared.start()
 
+        // Poll shared zones for recipient-originated edits.
+        SharedZoneSync.shared.start()
+
         BackupService.runIfEnabled(settingsStore: settingsStore)
         Task { @MainActor in
             await OllamaSetup.shared.run(settings: settings)
