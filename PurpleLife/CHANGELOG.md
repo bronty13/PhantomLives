@@ -4,6 +4,25 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-12 — Schema library + JSON import/export + reset-to-defaults
+
+Three related capabilities added to the Schema Editor, in service of a single goal: make PurpleLife's flexibility tangible and let users move schema definitions between Macs / share them with anyone else.
+
+- **`Models/SchemaLibrary.swift` + `Models/SchemaLibrary+ExtendedCatalog.swift`** — curated catalog of **251 ready-made schema templates** across 13 categories (Productivity, Home & Life Admin, Money, Health, Food, Hobbies, Media, Travel, Creative, Career, Learning, Relationships, and a deliberate "Unusual & Niche" bucket that includes a dream journal, cocktails, tarot readings, weather logs, fishing log, lefse-batch tracker, mushroom foraging, sleep paralysis episodes, lucid dreams, fortune cookies, synesthesia, mishaps, etc. — the "anything can be a schema" pitch). Each entry carries a category, blurb, search keywords, and a complete `ObjectType` template with primary / kanban / calendar / gallery defaults wired up. The catalog is split across two files (`coreEntries` + `extendedEntries`) and combined by a computed property so adding more entries doesn't risk one giant Swift file pushing past compiler limits.
+- **`Views/SchemaLibrarySheet.swift`** — three-pane gallery (categories → results → preview) reached from the Schema Editor toolbar's **Library** button (or the new "Browse library…" button under the types rail). Free-text search across names, fields, blurb, and keywords; preview shows the field list with view-defaults badges; **Import** clones the template via `Entry.materialize()` (fresh UUIDs on the type and every field) so repeated imports of the same template never collide.
+- **`Services/SchemaIO.swift`** — pure-function JSON encode/decode for `[ObjectType]` inside a `purplelife.schema.v1` envelope. Mirrors the `ThemeIO` shape (file extension `.purplelifeschema.json`, fresh ids on import, lenient decode that also accepts a bare `[ObjectType]` array). Decode throws `ImportError.unrecognizedFormat` / `.empty` for typed failure handling. Forces `builtIn = false` on every imported type — built-in status is reserved for ids the app ships with and can never be claimed by an imported file.
+- **`Views/MultiSchemaExportSheet.swift`** — multi-select sheet for "Export multiple…": select-all / none, per-type checklist, counts, then a final NSSavePanel.
+- **`Views/SchemaEditor.swift`** — toolbar gains a **Library** button and a **More** menu (Import from file…, Export <selected>…, Export multiple…, Export all…, Reset built-ins to defaults…). Per-type rail rows also pick up a context-menu "Export" entry. The reset action is alert-gated and undoable.
+- **`Services/SchemaRegistry.swift`** — two new methods:
+    - `importTypes(_:)` runs each incoming type through fresh-id stamping and renames colliding plurals with an "(imported)" suffix; routes through `upsertType` so each insertion participates in undo + CloudKit fan-out.
+    - `resetBuiltInsToDefaults()` rebuilds every built-in from `SchemaSeed.allTypes`, fans the rewritten types out to CloudKit via `pushType`, and registers an undo snapshot. User-defined types and per-device `hiddenBuiltInIds` are untouched. Record data survives because records key field values by `FieldDef.key` (derived from the field name and stable across resets), not by field id.
+- **`Tests/.../SchemaLibraryTests.swift`** — 14 new tests covering catalog invariants (every entry has a primary field, kanban keys point at select fields, calendar keys at date fields, gallery keys at attachment fields), search behavior (by name / category / keyword, case-insensitivity), and the materialize → registry handoff (fresh ids per import, two imports don't collide).
+- **`Tests/.../SchemaIOTests.swift`** — 13 new tests on the envelope round-trip, fresh-id discipline, `builtIn=false` enforcement, multi-type bundles, disk read/write, and the three failure modes (corrupt JSON, wrong format tag, empty envelope). Plus 3 tests on `SchemaRegistry.importTypes` (user-defined coercion, plural-name collision suffix) and `resetBuiltInsToDefaults` (built-ins restored, user types preserved).
+
+Doc updates: USER_MANUAL.md gains a Schema Library subsection and an Import/Export subsection under "Schema editor". HANDOFF.md gets a design decision entry.
+
+208/208 tests pass.
+
 ### 2026-05-12 — Fix: Keychain DEK preservation — refuse to overwrite an existing-but-unreadable slot
 
 Data-loss bug discovered while exercising the recovery UX. `KeychainStore.getData` returned `nil` for any non-success status from `SecItemCopyMatching` — `errSecItemNotFound`, `errSecAuthFailed`, transient unlock issues, all collapsed. `KeyStore.refreshState` then treated every nil as "no DEK exists yet", AppState called `setupKeychainManaged()`, and the new DEK silently **overwrote** the existing slot. The on-disk encrypted database became permanently unreadable, RecoveryScreen fired, the user lost data — for what may have been a momentary Keychain hiccup.

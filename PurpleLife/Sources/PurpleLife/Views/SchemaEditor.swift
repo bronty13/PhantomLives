@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import AppKit
 
 /// Schema editor — the distinctive screen from the design (per
 /// `Design/MANIFEST.md`). Shows the visible types in a left rail and the
@@ -16,6 +17,13 @@ struct SchemaEditorScreen: View {
     @State private var renamingFieldId: String?
     @State private var newTypeName: String = ""
 
+    // Library + import/export state
+    @State private var showLibrary = false
+    @State private var showResetConfirm = false
+    @State private var importError: String? = nil
+    @State private var showMultiExport = false
+    @State private var multiExportSelection: Set<String> = []
+
     var body: some View {
         HSplitView {
             typesRail
@@ -27,6 +35,39 @@ struct SchemaEditorScreen: View {
             }
         }
         .navigationTitle("Schema editor")
+        .toolbar { toolbarContent }
+        .sheet(isPresented: $showLibrary) {
+            SchemaLibrarySheet(onImported: { newId in
+                selectedTypeId = newId
+            })
+            .environmentObject(appState)
+        }
+        .sheet(isPresented: $showMultiExport) {
+            MultiSchemaExportSheet(
+                selection: $multiExportSelection,
+                onExport: { ids in
+                    exportTypes(ids: ids)
+                    showMultiExport = false
+                }
+            )
+            .environmentObject(appState)
+        }
+        .alert("Reset built-in schemas?", isPresented: $showResetConfirm) {
+            Button("Reset", role: .destructive) {
+                appState.schema.resetBuiltInsToDefaults()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This restores the built-in types (Planner, Notes, People, Books, etc.) to their default shape. Your records are kept — only the schema definitions change. Custom types you've created are not affected.")
+        }
+        .alert("Import failed", isPresented: Binding(
+            get: { importError != nil },
+            set: { if !$0 { importError = nil } }
+        )) {
+            Button("OK", role: .cancel) { importError = nil }
+        } message: {
+            Text(importError ?? "")
+        }
         .onAppear {
             // Schema Editor is its own window — its undo manager is
             // separate from the main window's. Wire it before any
@@ -62,11 +103,21 @@ struct SchemaEditorScreen: View {
             .listStyle(.sidebar)
 
             Divider()
-            HStack(spacing: 6) {
-                TextField("New type name", text: $newTypeName)
-                    .textFieldStyle(.roundedBorder)
-                Button("Add") { addType() }
-                    .disabled(newTypeName.trimmingCharacters(in: .whitespaces).isEmpty)
+            VStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    TextField("New type name", text: $newTypeName)
+                        .textFieldStyle(.roundedBorder)
+                    Button("Add") { addType() }
+                        .disabled(newTypeName.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                Button {
+                    showLibrary = true
+                } label: {
+                    Label("Browse library…", systemImage: "books.vertical")
+                        .frame(maxWidth: .infinity)
+                }
+                .controlSize(.small)
+                .help("Import a curated schema from the library")
             }
             .padding(12)
         }
@@ -94,6 +145,10 @@ struct SchemaEditorScreen: View {
                 .foregroundStyle(.secondary)
         }
         .contextMenu {
+            Button("Export \(type.pluralName)…") {
+                exportTypes(ids: [type.id])
+            }
+            Divider()
             if type.builtIn {
                 Button(appState.schema.hiddenBuiltInIds.contains(type.id) ? "Show in sidebar" : "Hide from sidebar") {
                     appState.schema.setHidden(type.id, hidden: !appState.schema.hiddenBuiltInIds.contains(type.id))
@@ -319,6 +374,106 @@ struct SchemaEditorScreen: View {
     }
 
     // MARK: - Actions
+
+    // MARK: - Toolbar
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            Button {
+                showLibrary = true
+            } label: {
+                Label("Library", systemImage: "books.vertical")
+            }
+            .help("Browse the schema library")
+
+            Menu {
+                Button("Import from file…") {
+                    importFromFile()
+                }
+                if let selected = selectedSelectableType {
+                    Divider()
+                    Button("Export \(selected.pluralName)…") {
+                        exportTypes(ids: [selected.id])
+                    }
+                }
+                Button("Export multiple…") {
+                    multiExportSelection = []
+                    showMultiExport = true
+                }
+                Button("Export all…") {
+                    exportTypes(ids: appState.schema.types.map(\.id))
+                }
+                Divider()
+                Button("Reset built-ins to defaults…", role: .destructive) {
+                    showResetConfirm = true
+                }
+            } label: {
+                Label("More", systemImage: "ellipsis.circle")
+            }
+            .help("Import, export, and reset")
+        }
+    }
+
+    /// Currently selected type if it can sensibly be exported as a
+    /// single item. Always non-nil when `selectedTypeId` resolves.
+    private var selectedSelectableType: ObjectType? {
+        guard let id = selectedTypeId else { return nil }
+        return appState.schema.type(id: id)
+    }
+
+    // MARK: - Import / export actions
+
+    private func exportTypes(ids: [String]) {
+        let types = ids.compactMap { appState.schema.type(id: $0) }
+        guard !types.isEmpty else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = SchemaIO.defaultFilenameForBundle(types)
+        panel.directoryURL = appState.settingsStore.resolvedExportDirectory
+        panel.canCreateDirectories = true
+        panel.allowedContentTypes = [.json]
+        panel.allowsOtherFileTypes = false
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                try SchemaIO.write(types, to: url)
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            } catch {
+                NSLog("PurpleLife: schema export failed — \(error.localizedDescription)")
+                Task { @MainActor in
+                    importError = "Couldn't export schema: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func importFromFile() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.directoryURL = appState.settingsStore.resolvedExportDirectory
+        panel.begin { response in
+            guard response == .OK else { return }
+            do {
+                var imported: [ObjectType] = []
+                for url in panel.urls {
+                    let types = try SchemaIO.read(from: url)
+                    imported.append(contentsOf: types)
+                }
+                Task { @MainActor in
+                    let ids = appState.schema.importTypes(imported)
+                    if let firstId = ids.first {
+                        selectedTypeId = firstId
+                    }
+                }
+            } catch {
+                Task { @MainActor in
+                    importError = "Couldn't import: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
 
     private func addType() {
         let name = newTypeName.trimmingCharacters(in: .whitespaces)

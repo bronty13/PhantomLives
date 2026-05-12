@@ -122,12 +122,28 @@ Click **Done** to save.
 
 `⇧⌘S` (or Window → Schema editor…). Split layout:
 
-- **Types rail** — built-in vs custom badges, hidden indicator. Right-click a built-in to hide/show; right-click a custom type to delete.
+- **Types rail** — built-in vs custom badges, hidden indicator. Right-click a built-in to hide/show; right-click a custom type to delete. Right-click any type to export it as a `.purplelifeschema.json` file.
 - **Field list** — rename / mark required / delete per field. The current primary-field is badged.
 - **Field-type palette** — 12 kinds (text, long text, number, date, date+time, yes/no, select, multi-select, link, rating, URL, email, attachment). Click a tile to add a field, or drag it onto the field list. The drag preview tints the tile in the accent color so you can tell it's "active." A short field list shows a dashed drop-zone hint.
 - **Reorder fields** via the per-row menu (`Move up` / `Move down`). The buttons are disabled at the array bounds.
 
 Field deletes leave the data in `fields_json` blobs in place; a re-add of the same name doesn't lose history.
+
+### Schema library
+
+The toolbar's **Library** button (or **Browse library…** below the types rail) opens a searchable gallery of **251 ready-made schemas** spanning planning, home admin, finance, health, food, hobbies, media, travel, creative work, career, learning, relationships, and a deliberate "Unusual & Niche" bucket (dream journal, cocktails, tarot readings, mushroom foraging, sleep paralysis episodes, fortune cookies, mishap log, lefse batches, and more). Pick a category in the sidebar, free-text search across names / fields / keywords, preview the field list with view-defaults (primary / kanban / calendar / gallery) called out, and click **Import** to drop a clean copy into your workspace. Each import gets fresh ids, so you can import the same template twice (or import-edit-import) without collisions. Library entries always land as user-defined types — they're not built-ins, so you can rename, delete, or hack them up freely.
+
+### Import / export
+
+The toolbar's **More** menu carries import + export actions:
+
+- **Import from file…** — pick one or more `.purplelifeschema.json` files. Every type in every file becomes a new user-defined type in your registry. Plural-name collisions get an "(imported)" suffix.
+- **Export <selected type>…** — single-type export, named after the type's plural form.
+- **Export multiple…** — opens a checklist sheet; pick the subset to bundle into one file.
+- **Export all…** — writes every type (built-in + custom) into one `schemas-N.purplelifeschema.json`.
+- **Reset built-ins to defaults…** — confirmation-gated. Restores Planner, Notes, People, Books, etc. to their bundled shape. Your records survive (record data keys by field key, not by field id, and field keys are stable). Custom types and hidden-flags are untouched. Undoable.
+
+The `.purplelifeschema.json` envelope is plain JSON — any tool can open it. A bare array of `ObjectType` objects also imports for forward-compat. Same files round-trip across Macs (each import gets fresh ids on read, so re-importing won't collide with the version already synced through CloudKit).
 
 ## ⌘K Quick Switcher
 

@@ -309,6 +309,77 @@ final class SchemaRegistry: ObservableObject {
         save()
     }
 
+    // MARK: - Bulk import
+
+    /// Import one or more types into the registry as user-defined
+    /// types. Each incoming type already carries fresh UUIDs from
+    /// `SchemaIO.freshenIds` (or `SchemaLibrary.Entry.materialize`).
+    /// Naming collisions on `pluralName` get an "(imported)" suffix —
+    /// the registry's primary key is `id` not name, so this is just a
+    /// UX touch so the new type doesn't visually duplicate the existing
+    /// one in the sidebar.
+    ///
+    /// Returns the ids actually inserted. Goes through `upsertType` so
+    /// each insertion participates in undo + CloudKit fan-out.
+    @discardableResult
+    func importTypes(_ incoming: [ObjectType]) -> [String] {
+        var insertedIds: [String] = []
+        let existingPlurals = Set(types.map(\.pluralName))
+        for type in incoming {
+            var fresh = type
+            // Force ids fresh as a belt-and-suspenders even if the
+            // caller already freshened them — duplicate ids in this
+            // method would silently overwrite existing types.
+            fresh.id = UUID().uuidString
+            fresh.builtIn = false
+            fresh.updatedAt = nil
+            fresh.fields = fresh.fields.map { field in
+                var f = field
+                f.id = UUID().uuidString
+                return f
+            }
+            if existingPlurals.contains(fresh.pluralName) {
+                fresh.pluralName = "\(fresh.pluralName) (imported)"
+            }
+            upsertType(fresh)
+            insertedIds.append(fresh.id)
+        }
+        return insertedIds
+    }
+
+    // MARK: - Reset to defaults
+
+    /// Reset all built-in types to their bundled `SchemaSeed`
+    /// definitions. User-defined types and hidden-flags are left
+    /// untouched. Existing record data survives because records key
+    /// their fields by `FieldDef.key`, which is derived from the field
+    /// name and stable across resets — old field ids may change but
+    /// stored values stay readable as long as the keys still appear in
+    /// the rebuilt schema.
+    ///
+    /// Goes through `upsertType` for each built-in so peers reconcile
+    /// the reset via the normal LWW path.
+    func resetBuiltInsToDefaults() {
+        let snapshot = self.snapshot()
+        for seed in SchemaSeed.allTypes {
+            var fresh = seed
+            fresh.updatedAt = isoNow()
+            if let idx = types.firstIndex(where: { $0.id == seed.id }) {
+                types[idx] = fresh
+            } else {
+                types.append(fresh)
+            }
+            // Fan out to CloudKit so peers pick up the reset shape.
+            if let sync {
+                Task { [fresh, weak sync] in await sync?.pushType(fresh) }
+            }
+        }
+        save()
+        registerUndo(name: "Reset built-in schemas") { [weak self] in
+            self?.restore(snapshot: snapshot, fanOut: true)
+        }
+    }
+
     // MARK: - Helpers
 
     private func isoNow() -> String {
