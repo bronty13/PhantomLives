@@ -445,12 +445,23 @@ struct SidebarView: View {
             // made the toolbar-Connect path produce no row, then a second
             // Connect (via Add) produced two — confusing.
             Section("Networks") {
-                ForEach(model.connections) { conn in
+                // Networks hidden by an active macOS Focus Filter are
+                // skipped at render — see `ChatModel.focusFilterHidden
+                // Networks` and `PurpleIRCFocusFilter` in AppIntents.
+                // The underlying connection stays live; only the
+                // sidebar row vanishes until the Focus turns off.
+                ForEach(model.connections.filter { !model.isHiddenByFocusFilter($0) }) { conn in
                     NetworkRow(connection: conn,
                                isActive: conn.id == model.activeConnectionID)
                 }
                 .onMove { source, destination in
                     model.moveConnection(from: source, to: destination)
+                }
+                if !model.focusFilterHiddenNetworks.isEmpty {
+                    Label("\(model.focusFilterHiddenNetworks.count) hidden by Focus",
+                          systemImage: "moon.zzz")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 AddNetworkRow()
             }

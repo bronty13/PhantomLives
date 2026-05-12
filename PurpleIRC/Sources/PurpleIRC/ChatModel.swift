@@ -229,6 +229,13 @@ extension Buffer {
 final class ChatModel: ObservableObject {
     @Published var connections: [IRCConnection] = []
     @Published var activeConnectionID: UUID?
+    /// Network display names (lowercased) currently hidden by a macOS
+    /// Focus Filter (see `PurpleIRCFocusFilter` in AppIntents.swift).
+    /// Empty when no Focus Filter is active. The sidebar's Networks
+    /// section filters its rows through this set, and BufferView falls
+    /// back to the server console when an active connection's name
+    /// resolves into the set.
+    @Published var focusFilterHiddenNetworks: Set<String> = []
 
     @Published var showRawLog: Bool = false
     @Published var showAppLog: Bool = false
@@ -1855,6 +1862,21 @@ final class ChatModel: ObservableObject {
             .filter { $0.kind == .channel }
             .filter { $0.users.contains { $0.lowercased() == lower } }
             .map { $0.name }
+    }
+
+    /// Apply a macOS Focus Filter assignment. Called by the
+    /// `PurpleIRCFocusFilter` intent in AppIntents.swift when the user
+    /// switches into / out of a Focus mode that has the filter attached.
+    /// An empty set clears the filter (the off-switch path); a non-empty
+    /// set replaces whatever was hidden previously.
+    func applyFocusFilter(hiddenNetworkNames: Set<String>) {
+        focusFilterHiddenNetworks = Set(hiddenNetworkNames.map { $0.lowercased() })
+    }
+
+    /// True iff `conn`'s display name matches any entry in the active
+    /// Focus Filter list. Sidebar consults this when drawing networks.
+    func isHiddenByFocusFilter(_ conn: IRCConnection) -> Bool {
+        focusFilterHiddenNetworks.contains(conn.displayName.lowercased())
     }
 
     /// Recent-message daily volume for the given nick, folded across

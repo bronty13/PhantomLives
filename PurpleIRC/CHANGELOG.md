@@ -5,6 +5,42 @@ All notable changes to PurpleIRC are recorded here. The bundle's
 count (`1.0.<count>`); CHANGELOG entries use the same scheme so the
 version on the About panel matches the entry that introduced it.
 
+## [1.0.241] — 2026-05-12
+
+### Added (Shortcuts.app + Focus Filter)
+
+- **Five App Intents** discoverable in Shortcuts.app + System Settings
+  → Focus → Focus Filters. All run on the main actor and reach the
+  live ChatModel via the same `AppleScriptBridge.host` weak ref the
+  AppleScript surface uses.
+  - **Set Away** — `/away <reason>` on the active network. Reason
+    parameter defaults to "Away".
+  - **Set Back from Away** — `/back` on the active network.
+  - **Send IRC Message** — PRIVMSG to a channel or nick. Both fields
+    sanitized through `IRCSanitize.field` so a Shortcuts-supplied
+    body can't smuggle a second IRC line.
+  - **Say in Active Buffer** — like the Shortcuts version of typing
+    in the input bar; no target needed.
+  - **PurpleIRC Focus Filter** — assignable to a macOS Focus mode.
+    Takes a newline-separated list of network names to hide. The
+    sidebar's Networks section filters its rows through
+    `ChatModel.focusFilterHiddenNetworks` while the Focus is active;
+    the underlying connections stay live, only the sidebar row
+    vanishes. When the Focus turns off, `perform()` fires again
+    with an empty list and the rows return.
+- New `AppShortcutsProvider` (`PurpleIRCShortcuts`) registers all
+  four basic intents with Siri / Spotlight invocation phrases ("Set
+  away in PurpleIRC", "Say something in PurpleIRC", etc.).
+- New `ChatModel.applyFocusFilter(hiddenNetworkNames:)` and
+  `.isHiddenByFocusFilter(_:)` helpers. The hidden-names set is
+  lowercased at the input boundary so case-only mismatches resolve
+  to the same connection.
+- Sidebar shows a `"N hidden by Focus"` caption under the Networks
+  section while a filter is active, so the user knows why a network
+  isn't appearing (and that closing the Focus will bring it back).
+- Requires macOS 14 — already the project's deployment target via
+  `Package.swift` (`.macOS(.v14)`), so no extra version gating.
+
 ## [1.0.240] — 2026-05-12
 
 ### Added (contact activity sparkline)
