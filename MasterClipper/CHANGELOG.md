@@ -1,5 +1,57 @@
 # Changelog
 
+## 2026-05-12 — iOS companion app + time-limited CloudKit sharing (1.1.0 → 1.4.3)
+
+Major capability landing: a universal iPhone/iPad companion app, and the ability to share a chosen subset of clips with someone who isn't you. Shipped as six phases over a single session.
+
+### Phase 1 (1.1.0) — Shared SPM package
+
+15 model files (`Clip`, `Persona`, `Site`, `ClipCategory` (renamed from `Category` to dodge the ObjC runtime `Category` typedef collision), `ClipPosting`, `ClipNote`, `ClipSegment`, `ClipHistoryEntry`, `CalendarEvent`, `CalendarRule`, `ExclusionReason`, `PriceEntry`, `PostingFilter`, `ImportModels`, `C4SHistoricalRecord`) plus `SearchService` and `FuzzyMatch` moved out of `Sources/MasterClipper/` into a new local SPM package at `Packages/MasterClipperCore/`. macOS app target now depends on the package (which re-exports GRDB). Every model gained an explicit `public init` with `= nil` defaults on optional params to mirror Swift's synthesized memberwise initializer.
+
+### Phase 2 (1.2.0 worth of plumbing) — macOS snapshot publisher
+
+`Sources/MasterClipper/Services/Sync/SnapshotPublisher.swift` runs `VACUUM INTO` against the live `DatabasePool`, mirrors thumbnails out of each clip's `production_folder`, writes a `manifest.json` (schema version, clip count, generated_at, publisher device id), and atomically swaps the result into the iCloud ubiquity container at `iCloud.com.bronty13.MasterClipper/Documents/snapshot/`. 30-second debounced trigger after any `clips`/`clip_postings`/`clip_notes` mutation; manual **Publish now** button in **Settings → Sync**. Opt-in via `AppSettings.iCloudPublishEnabled`. iCloud capability declared in `project.yml` so xcodegen regenerates entitlements consistently. Snapshot also gets a FTS5 `clips_fts` virtual table over `title / description_raw / description_refined / keywords / performers / transcript`; live macOS DB stays untouched.
+
+### Phase 3 (1.2.0) — iOS reader app
+
+New `MasterClipperiOS` Xcode target — universal iPhone/iPad, iOS 17+. Locates the ubiquity container, downloads + opens the snapshot read-only via GRDB `DatabaseQueue`, observes via `NSMetadataQuery` for new publishes. UI: `NavigationStack` on iPhone (compact), `NavigationSplitView` on iPad (regular). Searchable list with thumbnails, persona badges, status badges. Clip detail shows description, postings, notes, transcript — Mac-local paths (`fcp_project_folder`, `production_folder`, `clip_filename`) intentionally hidden. Search routes through FTS5 when available and falls back to the in-memory `SearchService.matches`. App icon shared with the Mac app.
+
+### Phase 4 (1.3.0) — Light edits from iOS back to Mac
+
+iOS gains a Compose Edit sheet on each clip: mark posted / unmark posted / add note / set status / toggle posting exclusion. Each edit composes an `IntentEnvelope` (UUID, kind, clip id, typed payload, `baseSnapshotGeneratedAt`, device id) and writes a JSON file into `iCloud/Documents/intents/pending/<uuid>.json` via `NSFileCoordinator`. The Mac's new `IntentInbox` watches that folder with `NSMetadataQuery`, decodes each envelope, calls `DatabaseService.apply(intent:)`, moves the file to `applied/` (or `conflicts/`) when done. Migration `v15_intent_idempotency` adds an `applied_intents` table so duplicate envelopes are no-ops. Conflict policy: last-writer-wins with an audit row + sidecar in `conflicts/`. iOS shows a pending-sync badge per clip and a banner in the detail until the next snapshot confirms.
+
+### Phase 5 (1.3.2 → 1.3.3) — Polish
+
+- FTS5 over the snapshot (Phase 2 detail).
+- iOS Settings screen (`SettingsView`) — snapshot freshness, clip count, publisher device id, manual reload, editable operator name, pending-sync count. Gear icon in the list toolbar.
+- iPad split view via size-class adaptive `RootView`.
+- `BGAppRefreshTask` background snapshot refresh: registered in `App.init`, submitted on `scenePhase → .background`, 15-minute earliest-begin, re-arms before doing work so a crash or kill doesn't break the chain.
+- `print()` diagnostics gated behind `#if DEBUG`.
+
+### Phase 6 (1.4.0 → 1.4.3) — Time-limited external shares via CloudKit
+
+`ShareManager` on macOS creates a CloudKit share per recipient bundle. Flow: each share lives in its own private-DB zone `share-<uuid>` containing one `SharedClip` CKRecord per clip (with a thumbnail CKAsset projected from the snapshot's thumbnails folder), a singleton `ShareMetadata` record (expiresAt, permission `readOnly`/`readWrite`, label, clipCount), and a `CKShare` anchored on the metadata record as its rootRecord. `createShare(clipIds:permission:expiresAt:label:) → URL` returns the participation URL. `revokeShare` deletes the zone. `ShareExpiryScheduler` arms a one-shot timer at the next-expiring share's `expiresAt`.
+
+macOS UI:
+- `Views/Share/CreateShareSheet.swift` — three-step wizard (pick clips → permission + expiry preset 24h/7d/30d/custom + label → confirm + copy/send the URL).
+- `Views/Share/ActiveSharesView.swift` — list of every active share with time-remaining, copy-link, revoke-with-confirmation.
+- Wired into the Sync settings tab.
+
+iOS recipient side:
+- `AppDelegate` (via `UIApplicationDelegateAdaptor`) catches `application(_:userDidAcceptCloudKitShareWith:)` and forwards to `SharedZoneReader` through a NotificationCenter event.
+- `SharedZoneReader` accepts the share metadata via `CKAcceptSharesOperation`, enumerates `sharedCloudDatabase` zones, decodes each zone's metadata + `SharedClip` records into `SharedShareSession`s.
+- `SharedTabView` surfaces only when at least one share is accepted (`RootView` swaps to a `TabView`); each session is a section, tap a clip → `SharedClipDetailView`.
+- Read-write recipients get a `SharedEditSheet` (mirrors `EditClipSheet`); each edit becomes a `SharedClipEdit` CKRecord that wraps a JSON-encoded `IntentEnvelope`.
+- `SharedZoneSync` on macOS polls every 60s, decodes each `SharedClipEdit`, routes through `DatabaseService.apply(intent:)`, deletes on success. Idempotency via `applied_intents` (reused from Phase 4). Site lookup bridges `id:<N>` payload form (recipients only see numeric site ids in the shared postings JSON) by primary key.
+
+### Phase 6 follow-up fixes that surfaced during real-device testing
+
+- **iPhone clip detail tap was a no-op**: Phase 5's `List(selection:)` was active in compact size too, eating `NavigationLink(value:)` row taps. Split into two `@ViewBuilder` paths gated on `horizontalSizeClass`.
+- **`CKQuery` against auto-created schema rejected with "Field 'recordName' is not marked queryable"**: replaced all three TRUEPREDICATE enumerations (`ShareManager.refreshActiveShares` count, `SharedZoneReader.fetchClipRecords`, `SharedZoneSync.processZone`) with `CKFetchRecordZoneChangesOperation`. Also added a cached `clipCount` field on `ShareMetadata` so listing shares doesn't need a per-zone count fetch.
+- **Snapshot-cache file race**: `SnapshotReader` was deleting the cached snapshot.sqlite while the previous GRDB queue still held a file descriptor (`BUG IN CLIENT OF libsqlite3.dylib: vnode unlinked while in use`). Now drops the queue, writes to a `.tmp` first, then atomic renames.
+- **`NavigationSplitView` blank screen on iPhone**: switched to size-class-adaptive `RootView` — `NavigationStack` on compact, `NavigationSplitView` on regular.
+- **`@objc` selector observers on non-`NSObject` Swift classes**: `SnapshotReader` and `IntentInbox` switched from `NSNotificationCenter.addObserver(_:selector:)` to the block-based `addObserver(forName:object:queue:using:)` API; tokens tracked for `deinit` cleanup.
+
 ## 2026-05-09 — Unify Verify Files: one workflow, snapshot-vs-live render fix
 
 The per-clip **Verify files** sheet (`FileAuditSheet`) and the bulk **File-Verification Workflow** (`FileAuditWorkflow`) had drifted into two near-mirror implementations of the same audit panel — same conditions, same pills, same service calls, but with subtle behavioural divergence between them. Collapsed to a single workflow and fixed a real bug that was hiding pills.

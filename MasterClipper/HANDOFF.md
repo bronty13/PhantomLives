@@ -1,6 +1,62 @@
 # MasterClipper — Handoff
 
-> Architecture snapshot. Read this before non-trivial changes. The original implementation plan lives in `~/.claude/plans/i-need-a-new-calm-grove.md`; this doc is the up-to-date "how it actually works".
+> Architecture snapshot. Read this before non-trivial changes. The original implementation plan lives in `~/.claude/plans/i-need-a-new-calm-grove.md`; the iOS-companion plan lives in `~/.claude/plans/i-would-like-to-playful-petal.md`. This doc is the up-to-date "how it actually works".
+
+## Multi-target architecture (added 2026-05-12)
+
+The project has grown from a single macOS app to three Xcode-visible targets:
+
+- **`MasterClipper`** — the macOS app. Same code path as before.
+- **`MasterClipperiOS`** — universal iPhone/iPad app, iOS 17+. Lives at `iOS/Sources/MasterClipperiOS/`. Reads a Mac-published snapshot from iCloud Drive; writes light edits back as JSON intent files. Same iCloud container ID as the Mac (`iCloud.com.bronty13.MasterClipper`) and the same `DEVELOPMENT_TEAM` (`SRKV8T38CD`).
+- **`MasterClipperCore`** — local SPM package at `Packages/MasterClipperCore/`. Shared models + search + intent envelope + CloudKit share schema. Re-exports GRDB. Both app targets depend on it.
+
+Both app targets are declared in the same `project.yml`; xcodegen produces a single `.xcodeproj` with both schemes. iCloud + CloudKit entitlements + the team ID are all declarative in `project.yml`, so a regen never blanks them.
+
+### Personal sync transport (Mac ↔ your own iPhone/iPad)
+
+- Mac publishes a read-only SQLite snapshot + thumbnails + manifest into `iCloud.com.bronty13.MasterClipper/Documents/snapshot/`. `Services/Sync/SnapshotPublisher.swift` runs `VACUUM INTO` against the live `DatabasePool`, copies thumbnails from each clip's `production_folder`, builds an FTS5 `clips_fts` index inside the snapshot DB, writes `manifest.json` (schema_version, generated_at, clip_count, publisher_device_id), and atomic-swaps the result into place via `NSFileCoordinator`. 30s debounced trigger after any mutation; **Settings → Sync → Publish now** for an immediate publish. Opt-in via `AppSettings.iCloudPublishEnabled`.
+- iOS reads the snapshot via `iOS/Sources/MasterClipperiOS/Sync/SnapshotReader.swift`: downloads via `startDownloadingUbiquitousItem`, copies into sandbox `Caches/snapshot.sqlite` (`NSFileCoordinator` read; old `DatabaseQueue` is dropped before the file is replaced to avoid SQLite vnode-unlinked warnings), opens as read-only `DatabaseQueue`. `NSMetadataQuery` reacts to new manifests and triggers a reload. `BGAppRefreshTask` (id `com.bronty13.MasterClipper.refreshSnapshot`) refreshes the cache in the background so the next launch is instant.
+- iOS edits flow back as JSON `IntentEnvelope` files in `iCloud.../Documents/intents/pending/<uuid>.json` via `Sync/IntentOutbox.swift`. The Mac's `Services/Sync/IntentInbox.swift` watches that folder with `NSMetadataQuery`, decodes each envelope, calls `DatabaseService.apply(intent:)`, moves the file to `applied/` (or `conflicts/`) on completion. Idempotency via the `applied_intents` SQLite table (migration `v15_intent_idempotency`).
+
+### External-share transport (Mac → someone else's iOS)
+
+- `Services/Sync/ShareManager.swift` creates one CloudKit zone per share, named `share-<uuid>`, in the user's private CK database. Each zone contains: one `SharedClip` CKRecord per shared clip (with thumbnail as `CKAsset`), one singleton `ShareMetadata` record (expiry / permission / label / clipCount), and a `CKShare` anchored on the metadata record as its rootRecord. `createShare(...)` returns the participation URL the user can text/email to a recipient.
+- `Services/Sync/ShareExpiryScheduler.swift` arms a one-shot timer at the next-expiring share's `expiresAt` and re-arms on every active-shares list change. Belt-and-suspenders sweep at launch.
+- Recipient flow (iOS): `App/AppDelegate.swift` (wired via `UIApplicationDelegateAdaptor`) catches `application(_:userDidAcceptCloudKitShareWith:)` and forwards to `Sync/SharedZoneReader.swift` through `NotificationCenter`. SharedZoneReader accepts via `CKAcceptSharesOperation`, enumerates `sharedCloudDatabase` zones, decodes `SharedShareSession`s. `Views/SharedTabView.swift` surfaces only when at least one share is accepted; `RootView` swaps to a `TabView` in that case.
+- Read-write recipients edit through `Views/SharedEditSheet.swift` and `Sync/SharedZoneEditor.swift`. Each edit becomes a `SharedClipEdit` CKRecord wrapping a JSON-encoded `IntentEnvelope`. The Mac's `Services/Sync/SharedZoneSync.swift` polls every 60s (no `aps-environment` entitlement needed; CK push subscriptions are out of scope), decodes each `SharedClipEdit`, hands it to the existing `DatabaseService.apply(intent:)`, deletes the record on success. Reuses the `applied_intents` idempotency table.
+- All CK enumeration uses `CKFetchRecordZoneChangesOperation`, not `CKQuery`. Auto-created CK schemas don't mark `recordName` as Queryable, so any `TRUEPREDICATE` `CKQuery` fails with "Field 'recordName' is not marked queryable". Zone-changes walks bypass the problem entirely.
+
+### Repository layout addendum
+
+```
+MasterClipper/
+├── Packages/MasterClipperCore/                 (new SPM package, both targets depend on it)
+│   └── Sources/MasterClipperCore/
+│       ├── Models/                             (15 model files, ClipCategory renamed from Category)
+│       ├── Database/{Snapshot,ClipQueries}.swift
+│       ├── Search/SearchService.swift
+│       ├── Util/FuzzyMatch.swift
+│       └── Intents/{IntentEnvelope, CKShareSchema, SharedClipRow}.swift
+├── Sources/MasterClipper/                       (unchanged)
+│   └── Services/Sync/                          (new)
+│       ├── SnapshotPublisher.swift
+│       ├── IntentInbox.swift
+│       ├── ShareManager.swift
+│       ├── ShareExpiryScheduler.swift
+│       └── SharedZoneSync.swift
+└── iOS/                                         (new)
+    └── Sources/MasterClipperiOS/
+        ├── App/{MasterClipperiOSApp, AppDelegate, Info.plist, .entitlements}
+        ├── Resources/Assets.xcassets/AppIcon.appiconset  (1024×1024 source; Xcode generates rest)
+        ├── State/iOSAppState.swift
+        ├── Sync/{SnapshotReader, IntentOutbox, BackgroundRefresh, SharedZoneReader, SharedZoneEditor}.swift
+        └── Views/{ClipListView, ClipDetailView, FilterSheet, SettingsView, EditClipSheet, SharedTabView, SharedClipDetailView, SharedEditSheet}.swift
+```
+
+---
+
+## Original handoff continues below
+
 
 ## Mental model
 
