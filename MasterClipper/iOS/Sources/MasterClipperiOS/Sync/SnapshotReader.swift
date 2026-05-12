@@ -166,7 +166,9 @@ final class SnapshotReader: ObservableObject {
         // Publish.
         self.manifest = decoded
         self.reader = queue
+        #if DEBUG
         print("[SnapshotReader] reload succeeded — manifest.clip_count=\(decoded.clipCount) generated_at=\(decoded.generatedAt)")
+        #endif
     }
 
     // MARK: - File coordination + waiting

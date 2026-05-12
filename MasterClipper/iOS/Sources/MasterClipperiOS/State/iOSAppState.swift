@@ -77,17 +77,30 @@ final class iOSAppState: ObservableObject {
 
     // MARK: - Derived data
 
-    /// Apply search + filters in memory. Mirrors SearchService.matches; small
-    /// libraries make this acceptable. Phase 5 swaps to FTS5.
+    /// Apply search + filters. When a search string is set and the snapshot
+    /// has a FTS5 index, we run a SQL search (BM25-ranked, supports prefix
+    /// matching). Otherwise we fall back to in-memory matching. Persona /
+    /// status filters always apply on top.
     var filteredClips: [Clip] {
-        clips.filter { clip in
+        var candidates: [Clip]
+
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty, let reader = snapshotReader.reader, ClipQueries.hasFTS(in: reader) {
+            candidates = (try? ClipQueries.searchFTS(query: trimmed, in: reader)) ?? []
+        } else {
+            candidates = clips.filter { clip in
+                SearchService.matches(clip: clip, query: searchText, includeNotes: true)
+            }
+        }
+
+        return candidates.filter { clip in
             if let p = personaFilter, clip.personaCode.caseInsensitiveCompare(p) != .orderedSame {
                 return false
             }
             if let s = statusFilter, clip.statusEnum != s {
                 return false
             }
-            return SearchService.matches(clip: clip, query: searchText, includeNotes: true)
+            return true
         }
     }
 

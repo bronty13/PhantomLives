@@ -3,19 +3,34 @@ import MasterClipperCore
 
 struct ClipListView: View {
     @EnvironmentObject private var appState: iOSAppState
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Binding var selection: String?
     @State private var showingFilters = false
+    @State private var showingSettings = false
+
+    init(selection: Binding<String?> = .constant(nil)) {
+        _selection = selection
+    }
 
     var body: some View {
+        #if DEBUG
         let _ = print("[ClipListView] render — manifest=\(appState.snapshotReader.manifest != nil ? "present" : "nil") clips=\(appState.clips.count) filtered=\(appState.filteredClips.count) loading=\(appState.snapshotReader.isLoading) error=\(appState.snapshotReader.lastError ?? "—")")
-        List {
+        #endif
+        List(selection: $selection) {
             if appState.snapshotReader.manifest == nil {
                 emptyState
             } else if appState.filteredClips.isEmpty {
                 noResults
             } else {
                 ForEach(appState.filteredClips) { clip in
-                    NavigationLink(value: clip.id) {
-                        ClipRow(clip: clip)
+                    if horizontalSizeClass == .regular {
+                        // iPad/regular: select to swap detail column.
+                        ClipRow(clip: clip).tag(clip.id)
+                    } else {
+                        // iPhone/compact: push detail via NavigationStack.
+                        NavigationLink(value: clip.id) {
+                            ClipRow(clip: clip)
+                        }
                     }
                 }
             }
@@ -33,15 +48,19 @@ struct ClipListView: View {
                 .accessibilityLabel("Filter")
             }
             ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    showingSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .accessibilityLabel("Settings")
+            }
+            ToolbarItem(placement: .principal) {
                 if appState.snapshotReader.isLoading {
-                    ProgressView()
-                } else {
-                    Button {
-                        Task { await appState.snapshotReader.reload() }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
+                    HStack(spacing: 4) {
+                        ProgressView().controlSize(.small)
+                        Text("Syncing…").font(.caption)
                     }
-                    .accessibilityLabel("Reload snapshot")
                 }
             }
         }
@@ -50,6 +69,9 @@ struct ClipListView: View {
         }
         .sheet(isPresented: $showingFilters) {
             FilterSheet()
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView()
         }
         .overlay(alignment: .bottom) {
             if let err = appState.snapshotReader.lastError ?? appState.loadError {

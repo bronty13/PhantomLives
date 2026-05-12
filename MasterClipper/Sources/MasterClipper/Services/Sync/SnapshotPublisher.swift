@@ -146,6 +146,12 @@ final class SnapshotPublisher: ObservableObject {
             try db.execute(sql: "VACUUM INTO ?", arguments: [dbDest.path])
         }
 
+        // 1b. Build a FTS5 search index over the snapshot's clips. Only the
+        //     snapshot DB gets this — the live macOS DB stays untouched. iOS
+        //     reads via this index for low-latency search across title /
+        //     description / keywords / performers / transcript.
+        try buildFTSIndex(at: dbDest)
+
         // 2. Copy thumbnails. Missing sources are skipped (not fatal).
         let thumbsDir = tmpDir.appendingPathComponent(SnapshotLayout.thumbnailsDir, isDirectory: true)
         try fm.createDirectory(at: thumbsDir, withIntermediateDirectories: true)
@@ -204,6 +210,31 @@ final class SnapshotPublisher: ObservableObject {
             // Best-effort cleanup of tmpDir if the swap failed.
             try? fm.removeItem(at: tmpDir)
             throw SnapshotPublisherError.publishFailed(err.localizedDescription)
+        }
+    }
+
+    nonisolated private static func buildFTSIndex(at dbURL: URL) throws {
+        var config = Configuration()
+        config.readonly = false
+        let queue = try DatabaseQueue(path: dbURL.path, configuration: config)
+        try queue.write { db in
+            // contentless-row FTS5 over selected clip columns. The
+            // content='clips' + content_rowid='rowid' link means the FTS5
+            // index references clip rows by rowid so we can join back.
+            try db.execute(sql: """
+                CREATE VIRTUAL TABLE IF NOT EXISTS clips_fts USING fts5(
+                    title,
+                    description_raw,
+                    description_refined,
+                    keywords,
+                    performers,
+                    transcript,
+                    content='clips',
+                    content_rowid='rowid'
+                );
+                """)
+            // Rebuild populates the index from the content table.
+            try db.execute(sql: "INSERT INTO clips_fts(clips_fts) VALUES('rebuild');")
         }
     }
 

@@ -72,4 +72,54 @@ public enum ClipQueries {
                 """, arguments: [clipId])
         }
     }
+
+    // MARK: - Full-text search
+
+    /// True if this database has the `clips_fts` virtual table populated by
+    /// SnapshotPublisher. Only snapshots have it; the live macOS DB does not.
+    public static func hasFTS(in reader: any DatabaseReader) -> Bool {
+        (try? reader.read { db in
+            try Bool.fetchOne(db,
+                sql: "SELECT 1 FROM sqlite_master WHERE type='table' AND name='clips_fts'") ?? false
+        }) ?? false
+    }
+
+    /// Tokenised FTS5 search across title / descriptions / keywords /
+    /// performers / transcript. Returns matched `Clip` rows in BM25 rank order
+    /// (best match first). Empty query returns []. Caller is responsible for
+    /// gating with `hasFTS(in:)`.
+    ///
+    /// User input is sanitised: punctuation that has special meaning in FTS5
+    /// (parens, quotes, asterisks) is stripped, then each token is suffixed
+    /// with `*` for prefix matching so typing "redhe" finds "redhead".
+    public static func searchFTS(query: String, in reader: any DatabaseReader) throws -> [Clip] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        let tokens = trimmed
+            .split(whereSeparator: { $0.isWhitespace })
+            .map { sanitiseFTSToken(String($0)) }
+            .filter { !$0.isEmpty }
+        guard !tokens.isEmpty else { return [] }
+
+        // AND across tokens; prefix-match each so partial words score.
+        let matchExpr = tokens.map { "\($0)*" }.joined(separator: " ")
+
+        return try reader.read { db in
+            try Clip.fetchAll(db, sql: """
+                SELECT c.* FROM clips c
+                JOIN clips_fts f ON f.rowid = c.rowid
+                WHERE clips_fts MATCH ?
+                ORDER BY bm25(clips_fts)
+                """, arguments: [matchExpr])
+        }
+    }
+
+    private static let ftsReservedCharacters = CharacterSet(charactersIn: "\"'*():-")
+
+    private static func sanitiseFTSToken(_ raw: String) -> String {
+        raw.unicodeScalars
+            .filter { !ftsReservedCharacters.contains($0) }
+            .reduce(into: "") { $0.unicodeScalars.append($1) }
+    }
 }
