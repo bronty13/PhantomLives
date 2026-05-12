@@ -123,6 +123,19 @@ private struct RichTextRepresentable: NSViewRepresentable {
             NSLog("PurpleLife: rich-text right-click on image at charIndex=\(hit.charIndex)")
 
             let imageMenu = NSMenu(title: "Image")
+
+            // The slider popover sits at the top of the submenu — it's
+            // the primary path for fine-grained resizing. Discrete
+            // presets stay below as quick-jumps for "I just want this
+            // image at exactly 400 pt without dragging anything."
+            let resizeItem = NSMenuItem(title: "Resize image…",
+                                        action: #selector(handleImageResizePopover(_:)),
+                                        keyEquivalent: "")
+            resizeItem.target = self
+            resizeItem.representedObject = ImageResizeContext(charIndex: hit.charIndex)
+            imageMenu.addItem(resizeItem)
+            imageMenu.addItem(NSMenuItem.separator())
+
             for option in ImageResizeOption.allCases {
                 let item = NSMenuItem(title: option.title,
                                       action: #selector(handleImageResize(_:)),
@@ -136,6 +149,124 @@ private struct RichTextRepresentable: NSViewRepresentable {
             menu.insertItem(NSMenuItem.separator(), at: 0)
             menu.insertItem(imageHeader, at: 0)
             return menu
+        }
+
+        @objc fileprivate func handleImageResizePopover(_ sender: NSMenuItem) {
+            guard let ctx = sender.representedObject as? ImageResizeContext,
+                  let tv = textView,
+                  let storage = tv.textStorage,
+                  ctx.charIndex < storage.length,
+                  let attachment = storage.attribute(.attachment, at: ctx.charIndex, effectiveRange: nil) as? NSTextAttachment else { return }
+
+            // Source image: prefer the file wrapper's natural bytes so
+            // the slider's max width matches the as-pasted natural width
+            // even after a prior resize (which mutated attachment.image.size).
+            let sourceImage: NSImage? = {
+                if let data = attachment.fileWrapper?.regularFileContents,
+                   let img = NSImage(data: data) {
+                    return img
+                }
+                return attachment.image
+            }()
+            guard let image = sourceImage else { return }
+
+            let naturalWidth: CGFloat = {
+                if let rep = image.representations.first, rep.pixelsWide > 0 {
+                    return CGFloat(rep.pixelsWide)
+                }
+                return image.size.width
+            }()
+            let currentWidth = attachment.image?.size.width ?? naturalWidth
+            // Clamp the upper bound to the natural width — upscaling
+            // past the source pixels just blurs. Clamp the lower bound
+            // to 40 so the user can't drag the image to invisibility.
+            let maxWidth = max(naturalWidth, currentWidth)
+            let minWidth: CGFloat = 40
+
+            // Compute the image's rect in the text view's coordinate
+            // space so the popover anchors to the actual image
+            // location, not somewhere generic.
+            let imageRect = Self.attachmentRect(in: tv, charIndex: ctx.charIndex)
+
+            let popover = NSPopover()
+            popover.behavior = .transient
+            popover.animates = true
+
+            let resizer = ImageResizeSliderView(
+                initialWidth: currentWidth,
+                minWidth: minWidth,
+                maxWidth: maxWidth,
+                naturalWidth: naturalWidth,
+                onChange: { [weak self] newWidth in
+                    self?.resizeImage(at: ctx.charIndex, toWidth: newWidth)
+                }
+            )
+            popover.contentViewController = NSHostingController(rootView: resizer)
+            popover.show(relativeTo: imageRect, of: tv, preferredEdge: .maxY)
+        }
+
+        /// Resize the attachment's image to the given width, preserving
+        /// aspect ratio. Same write path the preset menu items use —
+        /// mutates `attachment.image.size` (the render hint AppKit
+        /// honors) and re-attaches.
+        fileprivate func resizeImage(at charIndex: Int, toWidth width: CGFloat) {
+            guard let tv = textView, let storage = tv.textStorage,
+                  charIndex < storage.length,
+                  let attachment = storage.attribute(.attachment, at: charIndex, effectiveRange: nil) as? NSTextAttachment else { return }
+
+            let sourceImage: NSImage? = {
+                if let data = attachment.fileWrapper?.regularFileContents,
+                   let img = NSImage(data: data) {
+                    return img
+                }
+                return attachment.image
+            }()
+            guard let image = sourceImage else { return }
+
+            let naturalSize: CGSize = {
+                if let rep = image.representations.first, rep.pixelsWide > 0 {
+                    return CGSize(width: CGFloat(rep.pixelsWide),
+                                  height: CGFloat(rep.pixelsHigh))
+                }
+                return image.size
+            }()
+            let aspect = naturalSize.height / max(naturalSize.width, 1)
+            let newSize = CGSize(width: width, height: width * aspect)
+
+            image.size = newSize
+            attachment.image = image
+            attachment.bounds = CGRect(origin: .zero, size: newSize)
+
+            let range = NSRange(location: charIndex, length: 1)
+            storage.beginEditing()
+            storage.removeAttribute(.attachment, range: range)
+            storage.addAttribute(.attachment, value: attachment, range: range)
+            storage.edited(.editedAttributes, range: range, changeInLength: 0)
+            storage.endEditing()
+            tv.didChangeText()
+            tv.layoutManager?.invalidateLayout(forCharacterRange: range,
+                                                actualCharacterRange: nil)
+            tv.needsDisplay = true
+        }
+
+        /// Compute the on-screen rect of the attachment at `charIndex`
+        /// in the text view's coordinate space, suitable for anchoring
+        /// an `NSPopover`. Falls back to a small rect at the text
+        /// container origin if layout isn't available.
+        private static func attachmentRect(in tv: NSTextView, charIndex: Int) -> NSRect {
+            guard let layoutManager = tv.layoutManager,
+                  let container = tv.textContainer else {
+                return NSRect(origin: tv.textContainerOrigin, size: NSSize(width: 1, height: 1))
+            }
+            let glyphRange = layoutManager.glyphRange(
+                forCharacterRange: NSRange(location: charIndex, length: 1),
+                actualCharacterRange: nil
+            )
+            let containerRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: container)
+            return containerRect.offsetBy(
+                dx: tv.textContainerOrigin.x,
+                dy: tv.textContainerOrigin.y
+            )
         }
 
         @objc private func handleImageResize(_ sender: NSMenuItem) {
@@ -251,6 +382,77 @@ private enum ImageResizeOption: CaseIterable {
 private struct ImageResizeRequest {
     let charIndex: Int
     let option: ImageResizeOption
+}
+
+/// Carries just the attachment's character index to the popover-open
+/// handler. The handler does its own width lookup from the attachment.
+private struct ImageResizeContext {
+    let charIndex: Int
+}
+
+// MARK: - Slider popover
+
+/// SwiftUI content for the image-resize popover. A continuous slider
+/// fires `onChange` on every drag tick, so the image resizes in real
+/// time as the user drags. Discrete preset buttons below the slider
+/// jump to common widths without dragging.
+private struct ImageResizeSliderView: View {
+    @State var width: Double
+    let minWidth: Double
+    let maxWidth: Double
+    let naturalWidth: Double
+    let onChange: (CGFloat) -> Void
+
+    init(initialWidth: CGFloat,
+         minWidth: CGFloat,
+         maxWidth: CGFloat,
+         naturalWidth: CGFloat,
+         onChange: @escaping (CGFloat) -> Void) {
+        self._width = State(initialValue: Double(initialWidth))
+        self.minWidth = Double(minWidth)
+        self.maxWidth = Double(maxWidth)
+        self.naturalWidth = Double(naturalWidth)
+        self.onChange = onChange
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Width").font(.callout.weight(.semibold))
+                Spacer()
+                Text("\(Int(width)) pt")
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            Slider(value: $width, in: minWidth...maxWidth)
+                .onChange(of: width) { _, newValue in
+                    onChange(CGFloat(newValue))
+                }
+            HStack(spacing: 6) {
+                preset(label: "Small",    value: 200)
+                preset(label: "Medium",   value: 400)
+                preset(label: "Large",    value: 800)
+                preset(label: "Original", value: naturalWidth)
+            }
+            .font(.caption)
+        }
+        .padding(14)
+        .frame(width: 280)
+    }
+
+    @ViewBuilder
+    private func preset(label: String, value: Double) -> some View {
+        Button {
+            let clamped = min(max(value, minWidth), maxWidth)
+            width = clamped
+            onChange(CGFloat(clamped))
+        } label: {
+            Text(label)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+    }
 }
 
 // MARK: - Registry
