@@ -74,8 +74,9 @@ Tiles render an em-dash (`—`) for any value that hasn't been measured yet — 
 
 ### Date range
 
-- Both pickers show date and time in your local timezone.
-- Defaults: **From** = today 00:00; **To** = today, current time.
+- Both pickers show date and time (HH:MM) in your local timezone, with a small **seconds** field + stepper to the right of each for sub-minute precision. Defaults: **From** = today 00:00:00; **To** = today, current time with seconds defaulting to `:59` of the picked minute so a minute-precision range covers the whole minute.
+- A monospaced **Resolved** caption below the date row shows the exact bounds that will be sent to the CLI (with seconds). Always check this before a forensic export — it's the truth, not the picker.
+- **Messages.app rounds its swipe-to-reveal time** to the displayed minute, so a message stored at `10:11:45` can appear as "10:12". If you pick that displayed minute as your start, the actual `message.date` falls before the bound and the message is skipped. The default **Range precision → Expand start by 60 seconds** setting handles this by pulling the resolved start one full minute earlier than your picker — over-inclusive but safe. Turn it off in **Settings → Range precision** when you want the picker treated as strict.
 - The CLI accepts the range inclusively. To export everything from a date forward, set **To** to a far-future time.
 
 ### Mode
@@ -224,6 +225,7 @@ If FDA is fine, none of the above appears — you go straight to the main form.
 
 Open with **Messages Exporter → Settings…** (⌘,):
 
+- **Range precision → Expand start by 60 seconds** — on by default. Compensates for Messages.app's swipe-time display rounding so the first message of a forensic range isn't silently dropped. Turn off when you want the picker bounds treated as strict (e.g., reproducing a previously-run query exactly).
 - **Default output folder** — same control as the inline picker, plus a "Reset to Downloads" shortcut that restores `~/Downloads/messages-exporter-gui/`.
 - **Whisper transcription** — model picker for `--transcribe` runs (see the Transcribe section above).
 - **Diagnostics → Debug Logging** — when on, passes `--debug` to the CLI. This enables full verbose output from the transcription subprocess: HuggingFace file-fetch progress bars, pip install lines, and Whisper model-load bars. Off by default. Enable when a transcription run silently fails or hangs and you need to see what the child process is doing.

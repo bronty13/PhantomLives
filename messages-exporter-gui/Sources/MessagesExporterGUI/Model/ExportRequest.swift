@@ -80,11 +80,68 @@ struct ExportRequest: Equatable {
         return args
     }
 
+    /// Seconds precision is intentional — Messages.app's swipe-to-reveal
+    /// time display can round, so users picking the minute they see next
+    /// to a message could otherwise miss it on a tight forensic export.
+    /// The CLI's `parse()` accepts both `HH:MM` and `HH:MM:SS`; we always
+    /// emit `HH:MM:SS` so the GUI never silently drops the seconds the
+    /// user has dialed in (or the 60-second start buffer applied to handle
+    /// Messages.app's rounding).
     static let formatter: DateFormatter = {
         let f = DateFormatter()
         f.locale   = Locale(identifier: "en_US_POSIX")
         f.timeZone = TimeZone.current
-        f.dateFormat = "yyyy-MM-dd HH:mm"
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
         return f
     }()
+}
+
+/// Range-resolution helpers used by `RootView` (and the test suite) to
+/// translate the form's HH:MM picker + SS stepper + buffer toggle into
+/// the actual `Date` values handed to `ExportRequest`.
+///
+/// The picker is minute-precision because SwiftUI's `DatePicker` doesn't
+/// expose a seconds component; the stepper is the seconds knob. Keeping
+/// these as free functions (rather than methods on a view) lets the unit
+/// tests pin the exact resolution behavior without instantiating any UI.
+enum RangeResolver {
+    /// The 60-second cushion that handles Messages.app's display-time
+    /// rounding. If the user picks the minute they see in Messages as the
+    /// start of the range, the actual `message.date` may be up to ~30s
+    /// before that minute — extending one full minute earlier is a safe
+    /// over-include rather than risking a silent drop of the first message.
+    static let startBufferSeconds: TimeInterval = 60
+
+    /// Replace `date`'s second component without disturbing year/month/
+    /// day/hour/minute. `Calendar.date(bySetting:)` would advance to the
+    /// *next* date matching the value (which can roll the minute over);
+    /// we want a strict in-place replace so seconds 0…59 are valid.
+    static func setSeconds(_ s: Int, on date: Date,
+                           calendar: Calendar = .current) -> Date {
+        var c = calendar.dateComponents(
+            [.year, .month, .day, .hour, .minute], from: date)
+        c.second = max(0, min(59, s))
+        return calendar.date(from: c) ?? date
+    }
+
+    /// Pull the picker's HH:MM + the stepper's SS into a single `Date`,
+    /// then back off by one full minute when `expandStartByOneMinute` is
+    /// on to cover Messages.app display rounding.
+    static func resolvedStart(picker date: Date, seconds: Int,
+                              expandStartByOneMinute: Bool,
+                              calendar: Calendar = .current) -> Date {
+        let base = setSeconds(seconds, on: date, calendar: calendar)
+        return expandStartByOneMinute
+            ? base.addingTimeInterval(-startBufferSeconds)
+            : base
+    }
+
+    /// Same as `resolvedStart` minus the buffer. End-of-range gets only
+    /// the seconds stepper applied; no asymmetric forward cushion because
+    /// over-extending the end would pull in messages the user can plainly
+    /// see are after their chosen window.
+    static func resolvedEnd(picker date: Date, seconds: Int,
+                            calendar: Calendar = .current) -> Date {
+        setSeconds(seconds, on: date, calendar: calendar)
+    }
 }

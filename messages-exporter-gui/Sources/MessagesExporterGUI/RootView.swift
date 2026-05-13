@@ -25,6 +25,11 @@ enum SettingsKeys {
     static let debugLogging    = "debugLogging"
     static let emojiMode       = "emojiMode"
     static let themePreference = "themePreference"
+    /// When on, the resolved start is pulled 60s earlier than what the
+    /// user picked. Compensates for Messages.app's swipe-time display,
+    /// which rounds to the displayed minute and can leave the first
+    /// message a few seconds short of the user-chosen bound.
+    static let expandStart     = "expandStartByOneMinute"
 }
 
 struct RootView: View {
@@ -34,6 +39,12 @@ struct RootView: View {
     @State private var contact = ""
     @State private var start: Date = Self.todayAtStartOfDay()
     @State private var end:   Date = Date()
+    // Seconds steppers — SwiftUI's DatePicker is HH:MM only, so the
+    // seconds field lives next to it. Defaults model "the whole minute
+    // I picked": start at :00, end at :59. Loaded from a preset/history
+    // entry, both pull the saved Date's actual second component back in.
+    @State private var startSeconds: Int = 0
+    @State private var endSeconds:   Int = 59
     @State private var mode:  ExportMode = .sanitized
     @State private var showInstallSheet  = false
     @State private var showFDASheet      = false
@@ -46,6 +57,7 @@ struct RootView: View {
     @AppStorage(SettingsKeys.debugLogging) private var debugLogging: Bool = false
     @AppStorage(SettingsKeys.emojiMode) private var emojiRaw: String = EmojiMode.word.rawValue
     @AppStorage(SettingsKeys.themePreference) private var themeRaw: String = ThemePreference.system.rawValue
+    @AppStorage(SettingsKeys.expandStart) private var expandStartByOneMinute: Bool = true
 
     private var themePreference: ThemePreference {
         ThemePreference(rawValue: themeRaw) ?? .system
@@ -76,11 +88,15 @@ struct RootView: View {
                 FullDiskAccessSheet(showSheet: $showFDASheet)
             }
             .sheet(isPresented: $showSavePreset) {
+                // Presets snapshot the resolved range (picker + SS + buffer
+                // collapsed into a single Date pair) so reloading a preset
+                // restores exactly what was previously run, independent of
+                // the buffer toggle's current global state.
                 SavePresetSheet(
                     isPresented: $showSavePreset,
                     contact: contact.trimmingCharacters(in: .whitespacesAndNewlines),
-                    start: start,
-                    end: end,
+                    start: resolvedStart,
+                    end: resolvedEnd,
                     mode: mode,
                     transcribe: transcribeEnabled,
                     transcribeModel: WhisperModel(rawValue: transcribeModelRaw) ?? .turbo,
@@ -114,15 +130,23 @@ struct RootView: View {
 
             header(t)
 
-            StatTiles(pendingStart: start, pendingEnd: end)
+            // Span tile shows the resolved range so the user can see the
+            // 60s start buffer (and any non-zero seconds) accounted for
+            // before they hit Run.
+            StatTiles(pendingStart: resolvedStart, pendingEnd: resolvedEnd)
 
             FormCard(
                 contact: $contact,
                 start: $start,
                 end: $end,
+                startSeconds: $startSeconds,
+                endSeconds: $endSeconds,
                 mode: $mode,
                 transcribeEnabled: $transcribeEnabled,
-                transcribeModelRaw: $transcribeModelRaw
+                transcribeModelRaw: $transcribeModelRaw,
+                expandStartByOneMinute: expandStartByOneMinute,
+                resolvedStart: resolvedStart,
+                resolvedEnd: resolvedEnd
             )
 
             RunStrip(
@@ -205,8 +229,8 @@ struct RootView: View {
         }
         let request = ExportRequest(
             contact: contact.trimmingCharacters(in: .whitespacesAndNewlines),
-            start: start,
-            end: end,
+            start: resolvedStart,
+            end: resolvedEnd,
             outputDir: URL(fileURLWithPath: outputDirPath),
             emoji: EmojiMode(rawValue: emojiRaw) ?? .word,
             mode: mode,
@@ -217,17 +241,29 @@ struct RootView: View {
         await runner.run(request)
     }
 
+    private var resolvedStart: Date {
+        RangeResolver.resolvedStart(picker: start, seconds: startSeconds,
+                                    expandStartByOneMinute: expandStartByOneMinute)
+    }
+    private var resolvedEnd: Date {
+        RangeResolver.resolvedEnd(picker: end, seconds: endSeconds)
+    }
+
     private static func todayAtStartOfDay() -> Date {
         Calendar.current.startOfDay(for: Date())
     }
 
     /// Sidebar callback: load a past run's settings back into the form.
     /// Dates default to "today 00:00 → now" if the entry didn't capture
-    /// them (open-ended range exports).
+    /// them (open-ended range exports). The saved Date carries the full
+    /// resolved second, so we split it back into the HH:MM picker value
+    /// + the SS stepper rather than truncating to the minute.
     private func applyRecent(_ entry: RunHistoryEntry) {
         contact = entry.contact
-        start = entry.start ?? Self.todayAtStartOfDay()
-        end   = entry.end ?? Date()
+        Self.split(entry.start ?? Self.todayAtStartOfDay(),
+                   into: &start, seconds: &startSeconds)
+        Self.split(entry.end ?? Date(),
+                   into: &end, seconds: &endSeconds)
         mode  = entry.mode
         transcribeEnabled  = entry.transcribe
         transcribeModelRaw = entry.transcribeModel.rawValue
@@ -238,12 +274,25 @@ struct RootView: View {
     /// as `applyRecent` — different source.
     private func applyPreset(_ preset: ExportPreset) {
         contact = preset.contact
-        start = preset.start ?? Self.todayAtStartOfDay()
-        end   = preset.end ?? Date()
+        Self.split(preset.start ?? Self.todayAtStartOfDay(),
+                   into: &start, seconds: &startSeconds)
+        Self.split(preset.end ?? Date(),
+                   into: &end, seconds: &endSeconds)
         mode  = preset.mode
         transcribeEnabled  = preset.transcribe
         transcribeModelRaw = preset.transcribeModel.rawValue
         emojiRaw           = preset.emoji.rawValue
+    }
+
+    /// Decompose a saved/loaded `Date` into the picker's minute-precision
+    /// value + the seconds stepper's integer. The picker side has seconds
+    /// zeroed out so an HH:MM change later doesn't fight the SS stepper.
+    private static func split(_ d: Date,
+                              into picker: inout Date,
+                              seconds: inout Int) {
+        let cal = Calendar.current
+        seconds = cal.component(.second, from: d)
+        picker  = RangeResolver.setSeconds(0, on: d, calendar: cal)
     }
 }
 
@@ -258,9 +307,14 @@ struct FormCard: View {
     @Binding var contact: String
     @Binding var start: Date
     @Binding var end:   Date
+    @Binding var startSeconds: Int
+    @Binding var endSeconds:   Int
     @Binding var mode:  ExportMode
     @Binding var transcribeEnabled: Bool
     @Binding var transcribeModelRaw: String
+    var expandStartByOneMinute: Bool
+    var resolvedStart: Date
+    var resolvedEnd:   Date
 
     var body: some View {
         GlassCard(cornerRadius: 12) {
@@ -271,15 +325,13 @@ struct FormCard: View {
                 }
                 GridRow {
                     fieldLabel("From")
-                    DatePicker("", selection: $start,
-                               displayedComponents: [.date, .hourAndMinute])
-                        .labelsHidden()
-                        .datePickerStyle(.compact)
+                    dateAndSeconds(date: $start, seconds: $startSeconds)
                     fieldLabel("To")
-                    DatePicker("", selection: $end,
-                               displayedComponents: [.date, .hourAndMinute])
-                        .labelsHidden()
-                        .datePickerStyle(.compact)
+                    dateAndSeconds(date: $end, seconds: $endSeconds)
+                }
+                GridRow {
+                    Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                    resolvedHint.gridCellColumns(3)
                 }
                 GridRow {
                     fieldLabel("Mode")
@@ -293,6 +345,62 @@ struct FormCard: View {
             .padding(18)
         }
     }
+
+    @ViewBuilder
+    private func dateAndSeconds(date: Binding<Date>, seconds: Binding<Int>) -> some View {
+        HStack(spacing: 6) {
+            DatePicker("", selection: date,
+                       displayedComponents: [.date, .hourAndMinute])
+                .labelsHidden()
+                .datePickerStyle(.compact)
+            // Seconds field — the DatePicker is HH:MM only, so this is
+            // the user's knob for sub-minute precision. Kept tight (40pt)
+            // so the row still fits at the form's minimum width.
+            TextField("00",
+                      value: seconds,
+                      formatter: Self.secondsFormatter)
+                .textFieldStyle(.roundedBorder)
+                .multilineTextAlignment(.center)
+                .font(MissionFont.mono(12))
+                .frame(width: 40)
+                .help("Seconds (0–59). Pair with the HH:MM picker for forensic precision.")
+            Stepper("", value: seconds, in: 0...59)
+                .labelsHidden()
+                .controlSize(.small)
+        }
+    }
+
+    private static let secondsFormatter: NumberFormatter = {
+        let f = NumberFormatter()
+        f.minimum = 0
+        f.maximum = 59
+        f.allowsFloats = false
+        f.minimumIntegerDigits = 2
+        return f
+    }()
+
+    /// Caption that surfaces the actual range about to be sent to the
+    /// CLI — including the 60s start buffer when on. Without this the
+    /// buffer would be invisible and surprising the first time a run
+    /// returned messages from a minute earlier than the picker says.
+    @ViewBuilder
+    private var resolvedHint: some View {
+        let f = Self.hintFormatter
+        let bufferNote = expandStartByOneMinute
+            ? " (start expanded 60s for Messages.app rounding)"
+            : ""
+        Text("Resolved: \(f.string(from: resolvedStart)) → \(f.string(from: resolvedEnd))\(bufferNote)")
+            .font(MissionFont.mono(10))
+            .foregroundStyle(t.inkMute)
+            .help("The exact bounds sent to the CLI. Toggle the 60s buffer in Settings → Range precision.")
+    }
+
+    private static let hintFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return f
+    }()
 
     @ViewBuilder
     private func fieldLabel(_ s: String) -> some View {
@@ -630,6 +738,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKeys.debugLogging) private var debugLogging: Bool = false
     @AppStorage(SettingsKeys.emojiMode) private var emojiRaw: String = EmojiMode.word.rawValue
     @AppStorage(SettingsKeys.themePreference) private var themeRaw: String = ThemePreference.system.rawValue
+    @AppStorage(SettingsKeys.expandStart) private var expandStartByOneMinute: Bool = true
 
     var body: some View {
         Form {
@@ -641,6 +750,14 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.segmented)
                 Text("**Auto** follows System Settings → Appearance. **Light** and **Dark** force the chosen scheme regardless of system. The header has a quick-toggle chip that cycles through the same three options.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Section("Range precision") {
+                Toggle("Expand start by 60 seconds (Messages.app rounding)",
+                       isOn: $expandStartByOneMinute)
+                Text("Messages.app's swipe-to-reveal time rounds to the displayed minute, so the actual `message.date` for a message shown as 10:12 can be a few seconds before 10:12:00. With this on, the CLI is queried from one full minute earlier than your picker — over-inclusive but safe for forensic exports. The form's **Resolved** caption shows the exact bounds before you click Run.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

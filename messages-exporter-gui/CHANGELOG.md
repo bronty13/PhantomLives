@@ -2,6 +2,41 @@
 
 All notable changes to messages-exporter-gui will be documented in this file.
 
+## [1.0.260] — 2026-05-12
+
+### Fixed
+- **Date range silently dropped sub-minute precision.** The GUI's date
+  formatter was `yyyy-MM-dd HH:mm`, so the trailing seconds of the
+  end-of-range were quietly truncated to `:00` on the way to the CLI —
+  any message later than `HH:MM:00` within the picker's chosen minute
+  was excluded. The CLI's `parse()` already accepts `HH:MM:SS`; we now
+  always emit it.
+- **First message of the range could be skipped.** Messages.app's
+  swipe-to-reveal time rounds to the displayed minute — a message
+  stored at `10:11:45` can display as "10:12". Users picking the
+  displayed minute as the start of a forensic range therefore had the
+  first message fall a few seconds outside the bound. The new **Range
+  precision → Expand start by 60 seconds** setting (default on) pulls
+  the resolved start one full minute earlier so the rounded display
+  case is always captured. Disable it in **Messages Exporter →
+  Settings…** when you want the picker's bound treated as strict.
+
+### Added
+- **Seconds field next to each date picker.** The `HH:MM` picker is
+  unchanged; a small two-digit text field + stepper to its right is
+  the seconds knob, defaulting to `:00` on the From side and `:59` on
+  the To side so a minute-precision range naturally covers the whole
+  minute. Loading a preset or recent run pulls back the saved second.
+- **"Resolved" caption** below the date row showing the exact bounds
+  about to be sent to the CLI, including the 60s buffer when on. Pins
+  the new behavior to something visible so the buffer is never a
+  surprise.
+- **New `RangeResolver` helpers** (`Model/ExportRequest.swift`) — pure
+  functions for seconds-replace + buffer math, covered by 5 new tests
+  in a dedicated `RangeResolver` suite plus one new arg-list assertion
+  pinning the `HH:MM:SS` format. 56 tests total in 9 suites, was 50
+  in 8.
+
 ## [1.0.203] — 2026-05-11
 
 > Numbering note: starting with this entry, CHANGELOG release numbers

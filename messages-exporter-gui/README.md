@@ -27,8 +27,10 @@ See [INSTALL.md](INSTALL.md) for the full install / Full Disk Access walk-throug
 ## Defaults
 
 - **Output folder**: `~/Downloads/messages-exporter-gui/` (each run creates `<contact>_<YYYYMMDD_HHMMSS>/` inside). Created on demand if it doesn't exist. Change in **Messages Exporter → Settings… → Default output folder**.
-- **Start date/time**: today, 00:00 local
-- **End date/time**: today, current local time
+- **Start date/time**: today, 00:00:00 local
+- **End date/time**: today, current local time (seconds default to `:59` of the picked minute)
+- **Range precision**: `HH:MM` picker + a `SS` seconds field next to it. Defaults are `:00` on the From side and `:59` on the To side so a minute-precision range covers the full minute. The form's **Resolved** caption shows the exact bounds about to be sent to the CLI.
+- **Expand start by 60 seconds**: on. Messages.app's swipe-to-reveal time rounds to the displayed minute, so a message stored at `10:11:45` can show as "10:12". With this on, the resolved start is pulled one full minute earlier than the picker — over-inclusive but safe for forensic ranges. Toggle in **Messages Exporter → Settings… → Range precision**.
 - **Mode**: `Sanitized` (HEIC→JPG, EXIF stripped, caption-derived filenames). Switch to `Raw (forensic)` for byte-identical attachment copies, original filenames, sha256 + EXIF in `metadata.json`, and an append-only `chain_of_custody.log`. Emoji handling is ignored in raw mode.
 - **Transcribe**: off. When on, audio/video attachments are run through the local Whisper model (default `turbo`, configurable in **Messages Exporter → Settings…**). Sidecars `<attachment>.transcript.json` and `<attachment>.transcript.txt` land next to each AV file; raw-mode sidecars are hashed and logged.
 - **Emoji handling**: `word` (e.g., 🔥 → `(fire)` in filenames). Configured in **Messages Exporter → Settings… → Emoji handling**.

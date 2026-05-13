@@ -10,9 +10,11 @@ import Testing
 @Suite("ExportRequest")
 struct ExportRequestTests {
 
-    private func date(_ y: Int, _ mo: Int, _ d: Int, _ h: Int, _ m: Int) -> Date {
+    private func date(_ y: Int, _ mo: Int, _ d: Int,
+                      _ h: Int, _ m: Int, _ s: Int = 0) -> Date {
         var c = DateComponents()
-        c.year = y; c.month = mo; c.day = d; c.hour = h; c.minute = m
+        c.year = y; c.month = mo; c.day = d
+        c.hour = h; c.minute = m; c.second = s
         c.timeZone = TimeZone.current
         return Calendar.current.date(from: c)!
     }
@@ -31,11 +33,31 @@ struct ExportRequestTests {
         )
         #expect(req.argumentList() == [
             "Sallie",
-            "--start", "2026-04-26 15:55",
-            "--end",   "2026-04-26 17:00",
+            "--start", "2026-04-26 15:55:00",
+            "--end",   "2026-04-26 17:00:00",
             "--output", "/Users/me/Downloads",
             "--emoji", "word"
         ])
+    }
+
+    @Test("argumentList preserves seconds for forensic precision")
+    func secondsPreserved() {
+        let req = ExportRequest(
+            contact: "Sallie",
+            start: date(2026, 4, 26, 10, 11, 0),
+            end:   date(2026, 4, 26, 10, 26, 59),
+            outputDir: URL(fileURLWithPath: "/Users/me/Downloads"),
+            emoji: .word,
+            mode: .raw,
+            transcribe: false,
+            transcribeModel: .turbo
+        )
+        let args = req.argumentList()
+        // The CLI's parse() accepts HH:MM:SS; truncating these to HH:MM
+        // would silently drop ~59s on each end of the range — the exact
+        // bug this regression catches.
+        #expect(args.contains("2026-04-26 10:11:00"))
+        #expect(args.contains("2026-04-26 10:26:59"))
     }
 
     @Test("nil dates are omitted from the arg list")
@@ -187,6 +209,73 @@ struct ExportRequestTests {
             transcribeModel: .turbo
         )
         #expect(!req.argumentList().contains("--debug"))
+    }
+}
+
+@Suite("RangeResolver")
+struct RangeResolverTests {
+
+    private func date(_ y: Int, _ mo: Int, _ d: Int,
+                      _ h: Int, _ m: Int, _ s: Int = 0) -> Date {
+        var c = DateComponents()
+        c.year = y; c.month = mo; c.day = d
+        c.hour = h; c.minute = m; c.second = s
+        c.timeZone = TimeZone.current
+        return Calendar.current.date(from: c)!
+    }
+
+    private func seconds(of d: Date) -> Int {
+        Calendar.current.component(.second, from: d)
+    }
+
+    @Test("setSeconds replaces the second component without rolling minutes")
+    func setSecondsInPlace() {
+        let base = date(2026, 5, 12, 10, 12, 34)
+        let zeroed  = RangeResolver.setSeconds(0,  on: base)
+        let max     = RangeResolver.setSeconds(59, on: base)
+        #expect(seconds(of: zeroed) == 0)
+        #expect(seconds(of: max)    == 59)
+        // Minute must not advance — Calendar.date(bySetting:) would have
+        // jumped to the next 10:13:00 when asked for second=0; we use a
+        // dateComponents-based replace specifically to avoid that.
+        #expect(Calendar.current.component(.minute, from: zeroed) == 12)
+        #expect(Calendar.current.component(.minute, from: max)    == 12)
+    }
+
+    @Test("setSeconds clamps out-of-range values")
+    func setSecondsClamp() {
+        let base = date(2026, 5, 12, 10, 12, 0)
+        #expect(seconds(of: RangeResolver.setSeconds(-5,  on: base)) == 0)
+        #expect(seconds(of: RangeResolver.setSeconds(120, on: base)) == 59)
+    }
+
+    @Test("resolvedStart applies the SS stepper and subtracts 60s when buffer is on")
+    func resolvedStartBuffered() {
+        // User picked 10:12 in the HH:MM picker, left SS at 0.
+        let pick = date(2026, 5, 12, 10, 12, 0)
+        let buffered = RangeResolver.resolvedStart(
+            picker: pick, seconds: 0, expandStartByOneMinute: true)
+        // Buffer reaches one minute earlier so Messages.app's rounded
+        // display (10:11:45 → "10:12") still falls inside the window.
+        #expect(buffered == date(2026, 5, 12, 10, 11, 0))
+    }
+
+    @Test("resolvedStart leaves the picker alone when buffer is off")
+    func resolvedStartUnbuffered() {
+        let pick = date(2026, 5, 12, 10, 12, 0)
+        let raw = RangeResolver.resolvedStart(
+            picker: pick, seconds: 15, expandStartByOneMinute: false)
+        #expect(raw == date(2026, 5, 12, 10, 12, 15))
+    }
+
+    @Test("resolvedEnd applies the SS stepper without any forward cushion")
+    func resolvedEndNoCushion() {
+        let pick = date(2026, 5, 12, 10, 26, 0)
+        let end = RangeResolver.resolvedEnd(picker: pick, seconds: 59)
+        // No buffer on the trailing side — over-extending would pull in
+        // messages from after the user's chosen window, which the user
+        // can plainly see they didn't want.
+        #expect(end == date(2026, 5, 12, 10, 26, 59))
     }
 }
 
