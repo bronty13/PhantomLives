@@ -70,21 +70,22 @@ struct RootView: View {
 
     var body: some View {
         MissionThemeReader { theme in
-            ZStack {
-                LinearGradient(colors: [theme.bg1, theme.bg2],
-                               startPoint: .topLeading, endPoint: .bottomTrailing)
-                    .ignoresSafeArea()
-
-                HStack(spacing: 0) {
-                    Sidebar(
-                        showFDASheet: $showFDASheet,
-                        applyRecent: applyRecent,
-                        applyPreset: applyPreset
-                    )
-                    main(theme)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
+            HStack(spacing: 0) {
+                Sidebar(
+                    showFDASheet: $showFDASheet,
+                    applyRecent: applyRecent,
+                    applyPreset: applyPreset
+                )
+                main(theme)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(
+                LinearGradient(colors: [theme.bg1, theme.bg2],
+                               startPoint: .topLeading,
+                               endPoint: .bottomTrailing)
+                    .ignoresSafeArea()
+            )
             .preferredColorScheme(themePreference.colorScheme)
             .sheet(isPresented: $showInstallSheet) {
                 InstallSheet(showInstallSheet: $showInstallSheet)
@@ -178,12 +179,7 @@ struct RootView: View {
             }
         }
         .padding(.horizontal, 22)
-        // Generous top inset so the contact-name h1 (display 26pt with
-        // negative tracking) breathes above the hidden-title-bar window
-        // edge. The macOS traffic lights still sit in the chrome above
-        // this; we only own the content area, so spacing here is what
-        // separates the heading from the window's top edge.
-        .padding(.top, 36)
+        .padding(.top, 32)
         .padding(.bottom, 14)
     }
 

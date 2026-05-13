@@ -24,8 +24,6 @@ struct Sidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Spacer().frame(height: 28)
-
             SidebarItem(label: "Overview",      icon: "square.grid.2x2",   active: false, disabled: true)
             SidebarItem(label: "New export",    icon: "square.and.pencil", active: true)
 
@@ -42,7 +40,8 @@ struct Sidebar: View {
                 .padding(.top, 4)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 12)
+        .padding(.top, 32)
+        .padding(.bottom, 12)
         .frame(width: 220)
         .background(.thinMaterial)
         .overlay(alignment: .trailing) {

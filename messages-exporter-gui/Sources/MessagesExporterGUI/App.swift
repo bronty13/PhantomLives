@@ -24,14 +24,20 @@ struct MessagesExporterGUIApp: App {
             RootView()
                 .environmentObject(runner)
                 .environmentObject(presets)
-                // Min size keeps the four-tile row + form card on screen
-                // without horizontal scrolling. Ideal matches the design's
-                // 1100×780 artboard so a fresh launch hits the intended
-                // proportions.
-                .frame(minWidth: 920, idealWidth: 1100,
-                       minHeight: 640, idealHeight: 780)
+                // Min size keeps the four-tile row + form card on
+                // screen without horizontal scrolling. Only min — no
+                // ideal/max — so the window can grow freely. Matches
+                // the resizable PurpleIRC pattern verbatim.
+                .frame(minWidth: 920, minHeight: 640)
         }
-        .windowStyle(.hiddenTitleBar)
+        // NOTE: dropped `.windowStyle(.hiddenTitleBar)`. That style
+        // strips resize in combination with our HStack-sidebar layout
+        // on this macOS build (we tried `.windowResizability` with
+        // `.contentMinSize`, an explicit `maxWidth: .infinity` frame,
+        // and an AppKit bridge that re-inserts `.resizable` into the
+        // NSWindow styleMask — none restored edge-drag). The regular
+        // title bar costs ~28pt at the top but the window resizes
+        // freely and the traffic lights no longer overlap content.
         .commands {
             CommandGroup(replacing: .newItem) { }
         }

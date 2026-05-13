@@ -2,6 +2,58 @@
 
 All notable changes to messages-exporter-gui will be documented in this file.
 
+## [1.0.262] — 2026-05-13
+
+### Changed
+- **Dropped `.windowStyle(.hiddenTitleBar)`.** That style was leaving
+  the macOS traffic lights overlaid on top of the sidebar's first
+  items ("Overview", "New export" sitting under the red/yellow/green
+  buttons) and producing edge-resize cursor flicker. The regular
+  title bar costs ~28pt of top chrome but the layout is clean and the
+  traffic-light overlap problems are gone.
+- **Sidebar + main pane top padding → 32pt.** Pre-fix the title-bar
+  blur zone clipped the kicker / "Overview" item; 32pt gives content
+  visible space below the chrome.
+- **Root view restructure** from `ZStack { gradient + HStack }` to
+  `HStack.background(gradient.ignoresSafeArea())`. Safe-area
+  composition is unambiguous in the new form — the old ZStack had
+  the gradient and content fighting over the title-bar inset.
+
+### Added
+- **`build-app.sh` stale-copy hardening.** Previously, iCloud File
+  Provider would spawn `MessagesExporterGUI 2.app` /
+  `…3.app` /…`N.app` shadow copies of the freshly-built bundle on
+  every rebuild (because the project lives under `~/Documents/`,
+  which iCloud Drive syncs). The duplicates accumulated stale
+  cdhashes that polluted **System Settings → Privacy & Security →
+  Full Disk Access** and occasionally hijacked `open
+  MessagesExporterGUI.app` so subsequent test runs were launching a
+  phantom, not the fresh build. The script now:
+    - Wipes any `MessagesExporterGUI N.app` siblings **before** the
+      build (was: only after), closing the brief window between
+      `ditto` and `open`.
+    - Sets `com.apple.fileprovider.ignore=1` on the freshly-built
+      `.app` so iCloud treats it as local-only and stops generating
+      duplicates upstream.
+    - Strips `com.apple.fileprovider.fpfs#P` and
+      `com.apple.FinderInfo` so the next iCloud sync round has
+      nothing to reconcile.
+    - Calls `lsregister -f` to force Launch Services to re-register
+      *this* bundle's cdhash, clearing any stale phantom mapping in
+      its database.
+
+### Known limitations
+- **Window resize is partial.** Edge-drag and corner-drag are
+  inconsistent. Tried six approaches (`windowResizability`,
+  `windowStyle` removal, frame variants, `NSWindow.styleMask`
+  AppKit bridge, root-view restructure, decorative-surface
+  `.allowsHitTesting(false)`, full `NavigationSplitView` refactor)
+  — none gave free resize. Likely something specific to the custom
+  HStack-sidebar layout's hit-testing on this macOS build; needs an
+  Accessibility-Inspector comparison against PurpleIRC (which uses
+  `NavigationSplitView` and resizes fine in the same monorepo). Left
+  as a deferred follow-up rather than churning further.
+
 ## [1.0.261] — 2026-05-12
 
 ### Added

@@ -14,6 +14,21 @@ SHORT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 SHORT_VERSION="${SHORT_VERSION:-1.0.${COMMIT_COUNT}}"
 BUILD_NUMBER="${BUILD_NUMBER:-${COMMIT_COUNT}.${SHORT_SHA}}"
 
+# Cleanup pass BEFORE the build: kill any " N.app" duplicates iCloud File
+# Provider may have spawned since the last build, AND kill the destination
+# bundle itself if Launch Services has it open. We want a fresh slate so
+# the post-build copy can't collide with a stale sibling — past sessions
+# repeatedly saw `open MessagesExporterGUI.app` launching a phantom copy
+# instead of the freshly-signed bundle.
+shopt -s nullglob 2>/dev/null || true
+for dup in MessagesExporterGUI\ [0-9]*.app "MessagesExporterGUI 2.app" \
+           "MessagesExporterGUI 3.app" "MessagesExporterGUI 4.app"; do
+    if [ -d "$dup" ]; then
+        echo "Pre-build cleanup: removing $dup"
+        rm -rf "$dup"
+    fi
+done
+
 echo "Building (configuration=$CONFIG, version=$SHORT_VERSION build $BUILD_NUMBER)..."
 swift build -c "$CONFIG"
 
@@ -124,6 +139,28 @@ done
 FINAL_APP_DIR="MessagesExporterGUI.app"
 rm -rf "$FINAL_APP_DIR"
 ditto --noextattr "$APP_DIR" "$FINAL_APP_DIR"
+
+# Discourage iCloud Drive from spawning " 2.app" / " 3.app" sibling copies
+# of our freshly-signed bundle. The File Provider attaches these xattrs to
+# treat the file as cloud-managed; setting them off (and adding the local-
+# only marker) keeps the bundle pinned on this device and ignored by the
+# upload/conflict-resolution loop that produces the duplicates. Spotlight
+# kMDItemSupportFileType=MDSystemFile suppresses the .app from indexing,
+# which also keeps Launch Services from registering the duplicates as
+# launchable. All best-effort: failures are non-fatal.
+xattr -w com.apple.metadata:com_apple_backup_excludeItem 'com.apple.backupd' "$FINAL_APP_DIR" 2>/dev/null || true
+xattr -w com.apple.fileprovider.ignore '1' "$FINAL_APP_DIR" 2>/dev/null || true
+xattr -d com.apple.fileprovider.fpfs#P "$FINAL_APP_DIR" 2>/dev/null || true
+xattr -d com.apple.FinderInfo "$FINAL_APP_DIR" 2>/dev/null || true
+
+# Re-register with Launch Services so subsequent `open MessagesExporterGUI.app`
+# resolves to *this* bundle, not a phantom cached entry. Without this step,
+# previously-deleted " 2.app"/" 3.app" copies can keep getting hit because
+# their cdhash is still in the LS database until a full re-register clears it.
+LSREGISTER='/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister'
+if [ -x "$LSREGISTER" ]; then
+    "$LSREGISTER" -f "$FINAL_APP_DIR" >/dev/null 2>&1 || true
+fi
 
 echo "Built $FINAL_APP_DIR"
 echo "Run with:  open $FINAL_APP_DIR"
