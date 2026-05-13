@@ -48,7 +48,7 @@ import sqlite3, shutil, re, json, argparse, subprocess, sys, hashlib, os, time
 from datetime import datetime, timezone
 from pathlib import Path
 
-__version__ = '1.3.2'
+__version__ = '1.3.3'
 
 # Offset from Unix epoch (1970-01-01 UTC) to Mac absolute time epoch
 # (2001-01-01 UTC). chat.db stores `message.date` in Mac absolute time;
@@ -1155,8 +1155,24 @@ def build_arg_parser():
     ap = argparse.ArgumentParser(
         prog='export_messages',
         description='Export iMessage conversations by contact + date range.')
-    ap.add_argument('contact',
-                    help='contact name substring (matched against AddressBook)')
+    # `contact` is positional but becomes optional when --handle is set —
+    # the GUI's sender picker enumerates handles directly from chat.db
+    # and passes them via --handle, sidestepping the fuzzy AddressBook
+    # match entirely (the source of past false-positive exports). The
+    # positional arg still labels the output folder / metadata in that
+    # case; when omitted it falls back to a label derived from the
+    # handles themselves.
+    ap.add_argument('contact', nargs='?', default=None,
+                    help='contact name substring (matched against AddressBook). '
+                         'Optional when --handle is set; then used only as a '
+                         'label for the output folder and metadata.')
+    ap.add_argument('--handle', default=None,
+                    help='comma-separated chat.db handle ids (phone numbers '
+                         'or emails) to query directly. Skips AddressBook '
+                         'matching entirely — use this when you want the '
+                         'exact handle, no fuzzy resolution. Each value must '
+                         'match a row in chat.db.handle.id verbatim. '
+                         'Example: --handle "+15551234567,alice@example.com"')
     ap.add_argument('--start', default=None,
                     help='start datetime in LOCAL time (YYYY-MM-DD [HH:MM[:SS]])')
     ap.add_argument('--end', default=None,
@@ -1221,13 +1237,40 @@ def main():
     conn = sqlite3.connect(f'file:{db}?mode=ro', uri=True)
     conn.row_factory = sqlite3.Row
 
-    print(f'\n[1/5] Handles for "{a.contact}"...')
-    hh = get_handles(conn, a.contact)
-    if not hh:
-        print('None found')
-        conn.close()
-        return
-    print(f'      {hh}')
+    # Validate the contact/handle inputs once both are parsed. Either is
+    # acceptable on its own; passing neither is the one combination we
+    # have to reject. argparse can't express "at least one of A or B" cleanly.
+    if not a.contact and not a.handle:
+        ap.error('a contact name or --handle is required')
+
+    if a.handle:
+        # Direct-handle path: skip AddressBook entirely. We still verify
+        # each handle exists in chat.db so a typo'd id surfaces here
+        # rather than producing a silent zero-message export.
+        requested = [h.strip() for h in a.handle.split(',') if h.strip()]
+        known = {row[0] for row in conn.execute('SELECT id FROM handle')}
+        unknown = [h for h in requested if h not in known]
+        if unknown:
+            print(f'!! Unknown handle(s) — not present in chat.db.handle: {unknown}')
+            print('   (Continuing with the recognized handles, if any.)')
+        hh = [h for h in requested if h in known]
+        if not hh:
+            print('None found')
+            conn.close()
+            return
+        # The output-folder label falls back to a sanitized handle list
+        # when the user didn't supply a positional `contact`.
+        if not a.contact:
+            a.contact = ','.join(hh)
+        print(f'\n[1/5] Handles (direct): {hh}')
+    else:
+        print(f'\n[1/5] Handles for "{a.contact}"...')
+        hh = get_handles(conn, a.contact)
+        if not hh:
+            print('None found')
+            conn.close()
+            return
+        print(f'      {hh}')
 
     ph = ','.join('?' * len(hh))
     cids = [r[0] for r in conn.execute(

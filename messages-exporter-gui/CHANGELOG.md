@@ -2,6 +2,53 @@
 
 All notable changes to messages-exporter-gui will be documented in this file.
 
+## [1.0.261] — 2026-05-12
+
+### Added
+- **Sender picker (combobox)** on the Contact row, replacing the plain
+  AddressBook-substring TextField. Enumerates conversation partners
+  directly from `~/Library/Messages/chat.db` (no `Contacts.framework`,
+  no extra TCC prompt — the existing FDA grant covers it) and
+  cross-references the abcddb files under
+  `~/Library/Application Support/AddressBook/Sources/` for display
+  names. Each row shows the resolved name (or raw handle when the
+  number/email isn't in AddressBook), service badge (iMessage/SMS),
+  message count, and last-message date. Picking a row sends the exact
+  handle to the CLI via `--handle`, skipping fuzzy AddressBook
+  matching. Typing free-form text still works as the legacy positional
+  contact — the combobox is purely additive.
+- **`SendersService` + `AddressBookLookup`** (`Services/`). Pure
+  read-only SQLite walkers over chat.db and abcddb respectively,
+  opened with `mode=ro&immutable=1` so a live Messages.app doesn't
+  block the read. Same pattern as `PurpleDedup`'s direct
+  `Photos.sqlite` enumeration. No new SPM dependencies — uses the
+  system `sqlite3` library.
+- **CLI `--handle` flag** in sibling `messages-exporter 1.3.3`. The
+  GUI relies on it; the `ExportRequest.handles` field emits it when
+  populated, otherwise the legacy positional-contact path runs.
+- **7 new tests** — `SendersService` normalize (email lowercase, phone
+  last-10-digit, shortcode, missing-DB diagnostic) and `ExportRequest`
+  argv branches (handles=[] omits flag, single handle, comma-joined
+  multi-handle). 63 tests total in 10 suites, was 56 in 9.
+
+### Changed
+- **`Sender` model** (`Services/SendersService.swift`) is the new
+  carrier between the chat.db walker and the picker UI; `Sender.id`
+  uses the raw handle as its stable identifier.
+- **Recent-runs / Saved-presets restore** clears any picked-handle
+  latch on apply, so loading a past run drops the user into the
+  positional-contact path. Re-pick from the combobox if you want the
+  exact-handle form.
+
+### Notes
+- Group chats are excluded from v1 — the picker shows 1:1 senders only.
+  Group support needs different CLI semantics (multiple handles per
+  export, group-name handling) and is a separate follow-up.
+- The `1.0.5` "Why no Contacts.framework" rationale in `HANDOFF.md`
+  still applies — we didn't reintroduce `CNContactStore`. The new
+  picker reads SQLite files directly under FDA, the same way the
+  Python CLI has always done.
+
 ## [1.0.260] — 2026-05-12
 
 ### Fixed

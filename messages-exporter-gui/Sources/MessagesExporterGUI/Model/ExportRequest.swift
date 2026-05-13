@@ -57,6 +57,14 @@ enum WhisperModel: String, CaseIterable, Identifiable, Codable {
 
 struct ExportRequest: Equatable {
     var contact: String
+    /// Exact chat.db handle ids (phone numbers / emails) to query
+    /// directly via the CLI's `--handle` flag. When non-empty the CLI
+    /// skips `get_handles()` and the fuzzy AddressBook match entirely
+    /// — `contact` remains as the output-folder label only. Populated
+    /// by `SenderCombobox` when the user picks a row from the chat.db
+    /// enumeration; empty when they typed free-form text (legacy
+    /// behavior preserved).
+    var handles: [String] = []
     var start: Date?
     var end: Date?
     var outputDir: URL
@@ -68,6 +76,12 @@ struct ExportRequest: Equatable {
 
     func argumentList() -> [String] {
         var args: [String] = [contact]
+        if !handles.isEmpty {
+            // CLI accepts comma-separated handles. We avoid spaces in
+            // the joined value so a misbehaving shell can't split it
+            // into adjacent argv slots.
+            args += ["--handle", handles.joined(separator: ",")]
+        }
         if let start { args += ["--start", Self.formatter.string(from: start)] }
         if let end   { args += ["--end",   Self.formatter.string(from: end)] }
         args += ["--output", outputDir.path]

@@ -2,6 +2,27 @@
 
 All notable changes to `messages-exporter` are recorded here.
 
+## 1.3.3 — 2026-05-12
+
+### Added
+- `--handle` option for direct, unambiguous handle selection. Accepts
+  one or more comma-separated chat.db handle ids (phone numbers or
+  emails) and queries them verbatim, skipping the AddressBook fuzzy
+  match in `get_handles()`. Each value is validated against
+  `chat.db.handle.id` at startup — unknown ids are reported but
+  non-fatal (the recognized ones still export). Lets the GUI's new
+  sender picker (enumerated from chat.db itself, no Contacts.framework)
+  pass exact handles without round-tripping through name resolution.
+- The positional `contact` argument is now optional when `--handle` is
+  set. When omitted, the run folder + metadata labels fall back to a
+  sanitized join of the handles. Backward compatible: passing only
+  `contact` (no `--handle`) works exactly as before.
+
+### Tests
+- Four new argparse assertions pinning the contact/handle combinations:
+  handle-only, contact-only (legacy), contact+handle, and comma-separated
+  handle lists. Total 74 tests (was 70).
+
 ## 1.3.2 — 2026-05-01
 
 ### Added

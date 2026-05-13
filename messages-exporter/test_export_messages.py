@@ -900,6 +900,41 @@ class TestCapabilityFlags(unittest.TestCase):
         self.assertRegex(em.__version__, r'^\d+\.\d+\.\d+$')
 
 
+# ─── argparse: --handle path ────────────────────────────────────────────────
+#
+# The GUI's sender picker enumerates handles directly from chat.db and
+# passes them via --handle. These tests pin the argparse surface that
+# contract relies on.
+
+class TestArgparseHandleFlag(unittest.TestCase):
+    def test_contact_optional_when_handle_present(self):
+        ap = em.build_arg_parser()
+        ns = ap.parse_args(['--handle', '+15551234567'])
+        # `contact` is positional but nargs='?' — should be None here.
+        self.assertIsNone(ns.contact)
+        self.assertEqual(ns.handle, '+15551234567')
+
+    def test_handle_accepts_comma_separated(self):
+        ap = em.build_arg_parser()
+        ns = ap.parse_args(['--handle', '+15551234567,alice@example.com'])
+        self.assertEqual(ns.handle, '+15551234567,alice@example.com')
+
+    def test_contact_and_handle_can_coexist(self):
+        # The contact arg is preserved (used as the output-folder label)
+        # even when handles are supplied directly.
+        ap = em.build_arg_parser()
+        ns = ap.parse_args(['Sallie', '--handle', '+15551234567'])
+        self.assertEqual(ns.contact, 'Sallie')
+        self.assertEqual(ns.handle, '+15551234567')
+
+    def test_contact_alone_still_works(self):
+        # Backward compatibility — pre-1.3.3 invocations.
+        ap = em.build_arg_parser()
+        ns = ap.parse_args(['Sallie'])
+        self.assertEqual(ns.contact, 'Sallie')
+        self.assertIsNone(ns.handle)
+
+
 # ─── Runner ─────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':

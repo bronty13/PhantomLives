@@ -1,6 +1,6 @@
 # messages-exporter-gui
 
-Native macOS SwiftUI front end for the [`messages-exporter`](../messages-exporter/) CLI. The 1.0.13 *Mission Control* redesign adopts a sidebar + main pane layout with a tinted gradient background, frosted-glass surfaces, and an oklch-derived blue accent. The main pane provides a contact text field, native date/time pickers, a four-tile run summary (Messages · Attachments · Span · Output size), a **Sanitized | Raw (forensic)** mode picker, an opt-in **Whisper transcription** of audio/video attachments via the sibling [`transcribe`](../transcribe/) project, a Full Disk Access preflight that detects missing permission on launch and offers to clean up stale TCC entries, and one-click chip buttons to open the resulting transcript / summary / manifest / metadata / chain-of-custody log or reveal the output folder.
+Native macOS SwiftUI front end for the [`messages-exporter`](../messages-exporter/) CLI. The 1.0.13 *Mission Control* redesign adopts a sidebar + main pane layout with a tinted gradient background, frosted-glass surfaces, and an oklch-derived blue accent. The main pane provides a **sender combobox** that enumerates conversation partners directly from `chat.db` (with display names cross-referenced from the AddressBook source files — no `Contacts.framework`, no extra TCC prompt), native date/time pickers with seconds precision, a four-tile run summary (Messages · Attachments · Span · Output size), a **Sanitized | Raw (forensic)** mode picker, an opt-in **Whisper transcription** of audio/video attachments via the sibling [`transcribe`](../transcribe/) project, a Full Disk Access preflight that detects missing permission on launch and offers to clean up stale TCC entries, and one-click chip buttons to open the resulting transcript / summary / manifest / metadata / chain-of-custody log or reveal the output folder.
 
 ## Quick start
 
@@ -56,22 +56,28 @@ Sources/MessagesExporterGUI/
 │                                launch-time auto-backup
 ├── RootView.swift               Sidebar+main layout, FormCard, FDA banner+sheet,
 │                                Install sheet, SettingsView (Appearance,
-│                                Output, Emoji, Whisper, Diagnostics, Backup)
+│                                Range precision, Output, Emoji, Whisper,
+│                                Diagnostics, Backup)
 ├── Theme/
 │   └── MissionTheme.swift       Light/dark color tokens, typography helpers,
 │                                GlassCard surface, ThemePreference
 ├── Model/
-│   ├── ExportRequest.swift      Argv builder + Codable enums
+│   ├── ExportRequest.swift      Argv builder + Codable enums + RangeResolver
 │   ├── ExportRunner.swift       Process spawn + stdout streaming, history sink
 │   └── RunStats.swift           Mid-stream + post-run stat parsing
 ├── Services/
 │   ├── AppSupport.swift         ~/Library/Application Support paths,
 │   │                            short relative-time formatter
+│   ├── SendersService.swift     chat.db enumeration → [Sender] (handle,
+│   │                            service, count, last-message date)
+│   ├── AddressBookLookup.swift  abcddb walk → [normalized-handle: name]
 │   ├── RunHistoryStore.swift    JSON-backed run history (max 50 entries)
 │   ├── PresetStore.swift        JSON-backed named presets
 │   └── BackupService.swift      Launch-time auto-backup, retention, restore
 └── Views/
     ├── Sidebar.swift            Recent runs + Saved presets + FDA pill
+    ├── SenderCombobox.swift     Contact-row combobox over SendersService +
+    │                            AddressBookLookup, picks an exact --handle
     ├── StatTiles.swift          Messages / Attachments / Span / Output size
     ├── RunStrip.swift           Blue gradient run+progress strip
     ├── LiveOutputCard.swift     Stdout card + ChipButton + FlowChips

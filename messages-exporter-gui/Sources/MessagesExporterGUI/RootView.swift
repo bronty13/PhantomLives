@@ -37,6 +37,11 @@ struct RootView: View {
     @EnvironmentObject private var presets: PresetStore
 
     @State private var contact = ""
+    /// Set when the user picks a row from the SenderCombobox. Non-nil
+    /// means "send via --handle, skip CLI fuzzy match." Typing in the
+    /// field after a pick resets this to nil and falls back to the
+    /// positional-contact path.
+    @State private var pickedHandle: String?
     @State private var start: Date = Self.todayAtStartOfDay()
     @State private var end:   Date = Date()
     // Seconds steppers — SwiftUI's DatePicker is HH:MM only, so the
@@ -137,6 +142,7 @@ struct RootView: View {
 
             FormCard(
                 contact: $contact,
+                pickedHandle: $pickedHandle,
                 start: $start,
                 end: $end,
                 startSeconds: $startSeconds,
@@ -229,6 +235,7 @@ struct RootView: View {
         }
         let request = ExportRequest(
             contact: contact.trimmingCharacters(in: .whitespacesAndNewlines),
+            handles: pickedHandle.map { [$0] } ?? [],
             start: resolvedStart,
             end: resolvedEnd,
             outputDir: URL(fileURLWithPath: outputDirPath),
@@ -260,6 +267,11 @@ struct RootView: View {
     /// + the SS stepper rather than truncating to the minute.
     private func applyRecent(_ entry: RunHistoryEntry) {
         contact = entry.contact
+        // History entries don't (yet) capture the picked-handle latch —
+        // applying a recent run drops the user back into the legacy
+        // positional-contact path. They can re-pick from the combobox
+        // if they want the exact-handle form.
+        pickedHandle = nil
         Self.split(entry.start ?? Self.todayAtStartOfDay(),
                    into: &start, seconds: &startSeconds)
         Self.split(entry.end ?? Date(),
@@ -274,6 +286,7 @@ struct RootView: View {
     /// as `applyRecent` — different source.
     private func applyPreset(_ preset: ExportPreset) {
         contact = preset.contact
+        pickedHandle = nil
         Self.split(preset.start ?? Self.todayAtStartOfDay(),
                    into: &start, seconds: &startSeconds)
         Self.split(preset.end ?? Date(),
@@ -305,6 +318,7 @@ struct FormCard: View {
     @Environment(\.missionTheme) private var t
 
     @Binding var contact: String
+    @Binding var pickedHandle: String?
     @Binding var start: Date
     @Binding var end:   Date
     @Binding var startSeconds: Int
@@ -321,7 +335,9 @@ struct FormCard: View {
             Grid(alignment: .leading, horizontalSpacing: 22, verticalSpacing: 14) {
                 GridRow {
                     fieldLabel("Contact").gridCellColumns(1)
-                    contactField.gridCellColumns(3)
+                    SenderCombobox(contact: $contact,
+                                   pickedHandle: $pickedHandle)
+                        .gridCellColumns(3)
                 }
                 GridRow {
                     fieldLabel("From")
@@ -408,58 +424,6 @@ struct FormCard: View {
             .font(MissionFont.kicker(10))
             .tracking(1.0)
             .foregroundStyle(t.inkMute)
-    }
-
-    private var contactField: some View {
-        HStack(spacing: 10) {
-            avatarBubble
-            TextField("Search AddressBook…", text: $contact)
-                .textFieldStyle(.plain)
-                .font(MissionFont.sans(14, weight: .medium))
-                .foregroundStyle(t.ink)
-            Spacer(minLength: 0)
-            Text(matchHint)
-                .font(MissionFont.mono(11))
-                .foregroundStyle(t.inkMute)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(t.cardFillStrong)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder(t.rule, lineWidth: 1)
-        )
-    }
-
-    private var avatarBubble: some View {
-        let trimmed = contact.trimmingCharacters(in: .whitespacesAndNewlines)
-        let initials = trimmed.split(separator: " ")
-            .prefix(2)
-            .compactMap { $0.first.map(String.init) }
-            .joined()
-            .uppercased()
-        return ZStack {
-            Circle()
-                .fill(LinearGradient(
-                    colors: [
-                        Color(red: 0.42, green: 0.55, blue: 0.95),
-                        Color(red: 0.74, green: 0.36, blue: 0.78)
-                    ],
-                    startPoint: .topLeading, endPoint: .bottomTrailing))
-            Text(initials.isEmpty ? "?" : initials)
-                .font(MissionFont.sans(11, weight: .semibold))
-                .foregroundStyle(.white)
-        }
-        .frame(width: 26, height: 26)
-    }
-
-    private var matchHint: String {
-        contact.trimmingCharacters(in: .whitespaces).isEmpty
-            ? "type to begin"
-            : "match via AddressBook"
     }
 
     private var modePicker: some View {

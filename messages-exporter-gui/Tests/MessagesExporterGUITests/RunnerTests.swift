@@ -40,6 +40,69 @@ struct ExportRequestTests {
         ])
     }
 
+    @Test("handles=[] omits --handle (legacy positional path)")
+    func handlesEmpty() {
+        let req = ExportRequest(
+            contact: "Sallie",
+            handles: [],
+            start: nil, end: nil,
+            outputDir: URL(fileURLWithPath: "/tmp/out"),
+            emoji: .word,
+            mode: .sanitized,
+            transcribe: false,
+            transcribeModel: .turbo
+        )
+        let args = req.argumentList()
+        #expect(!args.contains("--handle"))
+        // Positional contact still goes through unchanged.
+        #expect(args.first == "Sallie")
+    }
+
+    @Test("single handle is emitted as --handle <value>")
+    func handlesSingle() {
+        let req = ExportRequest(
+            contact: "Sallie",
+            handles: ["+15551234567"],
+            start: nil, end: nil,
+            outputDir: URL(fileURLWithPath: "/tmp/out"),
+            emoji: .word,
+            mode: .raw,
+            transcribe: false,
+            transcribeModel: .turbo
+        )
+        let args = req.argumentList()
+        let idx = args.firstIndex(of: "--handle")
+        #expect(idx != nil)
+        if let idx { #expect(args[args.index(after: idx)] == "+15551234567") }
+        // Contact and --raw still pass through — the picker can run
+        // independently of every other flag.
+        #expect(args.first == "Sallie")
+        #expect(args.contains("--raw"))
+    }
+
+    @Test("multiple handles are comma-joined for the CLI")
+    func handlesMultiple() {
+        let req = ExportRequest(
+            contact: "Sallie",
+            handles: ["+15551234567", "alice@example.com"],
+            start: nil, end: nil,
+            outputDir: URL(fileURLWithPath: "/tmp/out"),
+            emoji: .word,
+            mode: .sanitized,
+            transcribe: false,
+            transcribeModel: .turbo
+        )
+        let args = req.argumentList()
+        if let idx = args.firstIndex(of: "--handle") {
+            // No spaces in the joined value — otherwise the shell could
+            // split it into adjacent argv slots and the CLI would
+            // misparse the second handle as an unknown option.
+            #expect(args[args.index(after: idx)] == "+15551234567,alice@example.com")
+        } else {
+            Issue.record("--handle missing")
+        }
+    }
+
     @Test("argumentList preserves seconds for forensic precision")
     func secondsPreserved() {
         let req = ExportRequest(
@@ -209,6 +272,40 @@ struct ExportRequestTests {
             transcribeModel: .turbo
         )
         #expect(!req.argumentList().contains("--debug"))
+    }
+}
+
+@Suite("SendersService")
+struct SendersServiceTests {
+
+    @Test("normalize email lowercases without stripping characters")
+    func emailLowercased() {
+        #expect(SendersService.normalize(handle: "Alice@Example.COM") == "alice@example.com")
+    }
+
+    @Test("normalize phone keeps last 10 digits, drops formatting")
+    func phoneTrailing10() {
+        // Matches the CLI's `norm()` so a US number stored as
+        // "+15551234567" lines up with an AddressBook entry written as
+        // "(555) 123-4567" → both normalize to "5551234567".
+        #expect(SendersService.normalize(handle: "+15551234567") == "5551234567")
+        #expect(SendersService.normalize(handle: "(555) 123-4567") == "5551234567")
+    }
+
+    @Test("normalize short numbers (shortcodes) returns the digits verbatim")
+    func phoneShort() {
+        // 5-digit business shortcodes don't get padded; they keep their
+        // length. The key won't collide with a real phone because of
+        // length, but it should be deterministic.
+        #expect(SendersService.normalize(handle: "62268") == "62268")
+    }
+
+    @Test("enumerate(chatDB:) returns a diagnostic when the file is missing")
+    func chatDBMissing() {
+        let bogus = URL(fileURLWithPath: "/tmp/medexp-nodb-\(UUID().uuidString)/chat.db")
+        let result = SendersService.enumerate(chatDB: bogus)
+        #expect(result.senders.isEmpty)
+        #expect(result.diagnostic?.contains("chat.db") == true)
     }
 }
 

@@ -72,16 +72,25 @@ from, because `~/Library/Messages/chat.db` is sandboxed by macOS:
 ## Usage
 
 ```
-export_messages <contact> [--start DATE] [--end DATE] [--output DIR]
-                          [--emoji {strip,word,keep}] [--raw]
-                          [--transcribe [--transcribe-model MODEL]]
-                          [--debug] [--version]
+export_messages [<contact>] [--handle ID[,ID...]]
+                [--start DATE] [--end DATE] [--output DIR]
+                [--emoji {strip,word,keep}] [--raw]
+                [--transcribe [--transcribe-model MODEL]]
+                [--debug] [--version]
 ```
 
 ### Arguments
 
 - `contact` — substring of a contact name (matched against first, last, full,
-  and nickname in AddressBook)
+  and nickname in AddressBook). Optional when `--handle` is set; then used
+  only as a label for the output folder and metadata.
+- `--handle` — comma-separated chat.db handle ids (phone numbers or emails)
+  to query directly, e.g. `--handle "+15551234567,alice@example.com"`. Skips
+  AddressBook fuzzy matching — use this when you want the exact handle, no
+  resolution step. Each value must match `chat.db.handle.id` verbatim;
+  unknown ids are reported and skipped. Designed for the GUI's sender
+  picker (which enumerates handles directly from chat.db) but works
+  standalone too.
 - `--start` / `--end` — `YYYY-MM-DD [HH:MM[:SS]]` in **local time**. Omit for
   open-ended range.
 - `--output` — parent directory for the run folder (default: `messages_export`).

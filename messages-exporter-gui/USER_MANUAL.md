@@ -69,8 +69,14 @@ Tiles render an em-dash (`—`) for any value that hasn't been measured yet — 
 
 ### Contact
 
-- Type any part of a contact's name (first, last, full, nickname). The CLI matches the string against AddressBook itself — full-name matches are most reliable, but a unique substring works too.
-- Misspellings or names with no AddressBook match cause the export to finish with no output folder; check the log if you don't see the post-run buttons.
+The contact row is a combobox with two ways in:
+
+- **Browse senders** (the chevron, or just clicking the field) — opens a dropdown of every 1:1 conversation partner enumerated directly from `~/Library/Messages/chat.db`, ranked most-recent-first. Each row shows the resolved display name (cross-referenced from AddressBook), the raw handle (phone/email), the service badge (iMessage/SMS), the total message count, and the last-message date. Click a row to lock that **exact** handle for the export — a small **via --handle** chip appears in the field to indicate the CLI will skip its AddressBook fuzzy match. This is the forensic-cleanest path: no name-collision risk, no missed match.
+- **Type free-form** — start typing anything to filter the dropdown by name *or* handle (a partial phone number like `555 1234` works). Typing also clears any previously-locked handle. If you leave the field with no row picked, the typed string is sent as the legacy positional `contact` argument; the CLI does its own AddressBook substring match.
+
+The picker reads chat.db under the same Full Disk Access grant the export already requires, so there is **no extra permission prompt**. If chat.db is missing or unreadable, a small amber diagnostic appears below the field and the typing fallback still works.
+
+**Group chats** are excluded from v1 — only 1:1 senders appear in the dropdown. Group exports still work if you type a group display name (legacy fallback).
 
 ### Date range
 
