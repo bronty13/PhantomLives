@@ -2,6 +2,26 @@
 
 All notable changes to messages-exporter-gui will be documented in this file.
 
+## [1.0.263] — 2026-05-13
+
+### Fixed
+- **Window resize "broken" — actually a too-aggressive minimum on a
+  small screen.** The "Known limitations" note in 1.0.262 was wrong:
+  resize was always working, but the 920×640 floor was so close to a
+  1280×800 laptop's usable area (after menu bar + dock) that the
+  practical drag range was a few pixels — visually indistinguishable
+  from "won't resize". User identified the root cause in retrospect.
+  Floor adjusted by hand to **910×632** — meaningful shrink headroom
+  on small laptops while keeping the four stat tiles + form card
+  legible. The six fix attempts in 1.0.262 (windowResizability,
+  hiddenTitleBar removal, frame variants, NSWindow styleMask bridge,
+  root-view restructure, NavigationSplitView refactor) were all
+  addressing the wrong question.
+
+### Removed
+- The "Window resize is partial" Known-limitation note from the
+  1.0.262 CHANGELOG entry is retracted — see Fixed above.
+
 ## [1.0.262] — 2026-05-13
 
 ### Changed

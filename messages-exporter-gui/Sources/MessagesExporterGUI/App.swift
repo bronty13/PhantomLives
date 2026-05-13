@@ -24,11 +24,15 @@ struct MessagesExporterGUIApp: App {
             RootView()
                 .environmentObject(runner)
                 .environmentObject(presets)
-                // Min size keeps the four-tile row + form card on
-                // screen without horizontal scrolling. Only min — no
-                // ideal/max — so the window can grow freely. Matches
-                // the resizable PurpleIRC pattern verbatim.
-                .frame(minWidth: 920, minHeight: 640)
+                // Window IS resizable; the floor just has to give a
+                // small-laptop screen enough headroom to actually drag.
+                // 920×640 (the original target) left no practical
+                // resize range on a 1280×800 laptop and looked like
+                // "won't resize". 910×632 keeps the four stat tiles +
+                // form card legible while still giving meaningful
+                // shrink room. Resize range opens up freely on bigger
+                // displays.
+                .frame(minWidth: 910, minHeight: 632)
         }
         // NOTE: dropped `.windowStyle(.hiddenTitleBar)`. That style
         // strips resize in combination with our HStack-sidebar layout
