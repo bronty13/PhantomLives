@@ -365,41 +365,43 @@ final class TranscriptionPreflightService: ObservableObject {
         "truststore",
     ]
 
-    /// One-button "fix transcription" workflow. Does the right thing
-    /// every time — no user choice required:
+    /// One-button "fix transcription" workflow. Clean slate every time:
     ///
     ///   1. Make sure ffmpeg is installed (best effort via Homebrew).
-    ///   2. Make sure the .venv exists and its bundled pip works.
-    ///      Corrupt pip (the canonical `_log` ImportError after a Python
-    ///      upgrade) is detected and triggers an automatic rebuild.
-    ///   3. Refresh pip via ensurepip --upgrade --default-pip.
-    ///   4. pip install mlx-whisper + truststore.
-    ///   5. **Verify by importing mlx_whisper.** This is the source of
-    ///      truth, not any individual subprocess exit code — pip can
-    ///      print "Successfully installed" and still return non-zero in
-    ///      edge cases, and our streamProcess can drop the exit value
-    ///      after a torrent of output. If the import works, transcription
-    ///      works; declare success.
+    ///   2. **Nuke the .venv if it exists, then recreate from scratch.**
+    ///   3. pip install REQUIRED_PACKAGES (matches transcribe.py exactly).
+    ///   4. Verify by importing every required module.
     ///
-    /// Both `runSetup` and the manual `rebuildVenv` action funnel through
-    /// here. The only difference: `rebuildVenv` always nukes the venv
-    /// first, where `runSetup` only rebuilds when pip is broken.
+    /// Both `runSetup` (called from the warm "Set up now" / "Try again"
+    /// buttons) and `rebuildVenv` (the manual escape hatch) funnel through
+    /// here. They're now the same function — the previous distinction
+    /// between "soft" runSetup and "hard" rebuildVenv was the source of
+    /// the corruption loop: runSetup ran `pip install --force-reinstall`
+    /// on top of a half-broken venv, which removes files then aborts re-
+    /// extraction when pip itself is among the broken packages, leaving
+    /// the venv worse off than before. Clean slate is the only reliable
+    /// recovery — and clean slate is fast enough (~2 min over a healthy
+    /// network) that we don't need a faster "patch in place" path.
     ///
-    /// Returns true iff the final verification probe confirms transcription
-    /// is live. Updates `setupPhase` continuously so the warm UI can show
-    /// plain-English progress without scraping pip's output.
+    /// We also dropped `ensurepip --upgrade --default-pip` — that step
+    /// was always a no-op on a freshly-created venv (whose pip is, by
+    /// definition, the one ensurepip would install), and on a corrupt
+    /// venv it was the wrong tool (rebuilding is correct).
+    ///
+    /// Returns true iff the final verification probe confirms every
+    /// required module imports cleanly. Updates `setupPhase` continuously
+    /// so the warm UI shows plain-English progress.
     func runSetup() async -> Bool {
-        await runSetupInternal(forceVenvRebuild: false)
+        await runSetupInternal()
     }
 
-    /// Manual escape hatch the wizard exposes when the user wants a
-    /// clean rebuild regardless of whether pip looks broken. Same
-    /// workflow as `runSetup` except the venv is always nuked first.
+    /// Legacy entry point — kept so the existing failure-panel button
+    /// ("Rebuild from scratch") doesn't need re-wiring. Same workflow.
     func rebuildVenv() async -> Bool {
-        await runSetupInternal(forceVenvRebuild: true)
+        await runSetupInternal()
     }
 
-    private func runSetupInternal(forceVenvRebuild: Bool) async -> Bool {
+    private func runSetupInternal() async -> Bool {
         guard !isInstalling else { return false }
         isInstalling = true
         installLog = []
@@ -410,8 +412,7 @@ final class TranscriptionPreflightService: ObservableObject {
         // install via Homebrew. brew install is a no-op on existing
         // installs, but it's slow, so skip when we know it's already there.
         setupPhase = .checkingFfmpeg
-        let ffmpegOK = await ffmpegIsOnPath()
-        if !ffmpegOK {
+        if !(await ffmpegIsOnPath()) {
             setupPhase = .installingFfmpeg
             installLog.append("[setup] Installing ffmpeg via Homebrew…")
             let ok = await streamProcess(
@@ -426,82 +427,51 @@ final class TranscriptionPreflightService: ObservableObject {
             }
         }
 
-        // Step 2: healthy venv. Three cases — missing, corrupt, healthy.
-        // The manual "Rebuild venv" path forces the corrupt branch.
-        setupPhase = .checkingVenv
-        let venvMissing = Self.venvPython() == nil
-        var venvCorrupt = false
-        if !venvMissing {
-            venvCorrupt = !(await venvPipIsHealthy())
-        }
-        if venvMissing || venvCorrupt || forceVenvRebuild {
-            if venvMissing {
-                setupPhase = .creatingVenv
-                installLog.append("[setup] Creating .venv at \(Self.venvDir())…")
-            } else {
-                setupPhase = .rebuildingVenv
-                installLog.append(
-                    forceVenvRebuild
-                    ? "[setup] Rebuilding .venv from scratch (user-initiated)…"
-                    : "[setup] Existing .venv's pip is broken — rebuilding from scratch…"
-                )
-                if !nukeVenv() {
-                    setupPhase = .finishedFailed(reason:
-                        "Couldn't delete the old Python environment. Check disk permissions and try again.")
-                    return false
-                }
-            }
-            if !(await createVenv()) {
+        // Step 2: clean-slate venv. If one exists, nuke it — we never
+        // pip install on top of an existing venv anymore. Then create
+        // fresh with the system Python.
+        if FileManager.default.fileExists(atPath: Self.venvDir()) {
+            setupPhase = .rebuildingVenv
+            installLog.append("[setup] Removing existing .venv at \(Self.venvDir())…")
+            if !nukeVenv() {
                 setupPhase = .finishedFailed(reason:
-                    "Couldn't create the Python environment. Make sure Python 3.10+ is installed (e.g. `brew install python@3.12`) and try again.")
+                    "Couldn't delete the old Python environment. Check disk permissions and try again.")
                 return false
             }
         }
+        setupPhase = .creatingVenv
+        installLog.append("[setup] Creating fresh .venv…")
+        if !(await createVenv()) {
+            setupPhase = .finishedFailed(reason:
+                "Couldn't create the Python environment. Make sure Python 3.10+ is installed (e.g. `brew install python@3.12`) and try again.")
+            return false
+        }
         guard let venvPython = Self.venvPython() else {
             setupPhase = .finishedFailed(reason:
-                "The Python environment is missing after setup — please try Rebuild venv from the menu.")
+                "The Python environment is missing after setup — please try again, or run `python3 -m venv ~/Documents/GitHub/PhantomLives/transcribe/.venv` from Terminal.")
             return false
         }
 
-        // Step 3: refresh pip. ensurepip overwrites the venv's site-packages
-        // pip with the host Python's bundled wheel. Non-zero exit isn't fatal
-        // (a freshly-rebuilt venv may already have a healthy pip).
-        setupPhase = .refreshingPip
-        installLog.append("[setup] Refreshing pip (ensurepip --upgrade)…")
-        _ = await streamProcess(
-            executable: venvPython,
-            arguments: ["-m", "ensurepip", "--upgrade", "--default-pip"])
-
-        // Step 4: install. Match transcribe.py's REQUIRED_PACKAGES list
-        // exactly so its bootstrap import-check passes on every subsequent
-        // invocation — installing only a subset would mean transcribe.py
-        // still falls back to its own `pip install` (and intermittently
-        // fails on PyPI flakiness) for the missing entries.
-        //
-        // --force-reinstall is the bulletproof option here. The user's
-        // venv repeatedly got into states where pip thought a package
-        // was installed but key files were missing (the "torch requires
-        // networkx, which is not installed" message from a half-broken
-        // mlx-whisper install is the canonical symptom). Forcing
-        // reinstall makes the workflow idempotent — clicking the button
-        // a second time after corruption fixes it instead of compounding it.
+        // Step 3: install. Match transcribe.py's REQUIRED_PACKAGES list
+        // exactly so its bootstrap's import-check passes on every
+        // subsequent invocation. No --force-reinstall — the venv is
+        // fresh, there's nothing to force over. No --upgrade — there's
+        // nothing to upgrade either. Just plain pip install, the way it
+        // was always meant to be used.
         setupPhase = .installingEngine
-        installLog.append("[setup] Installing transcription engine packages: \(Self.requiredPipPackages.joined(separator: ", "))…")
+        installLog.append("[setup] Installing transcription packages: \(Self.requiredPipPackages.joined(separator: ", "))…")
         _ = await streamProcess(
             executable: venvPython,
-            arguments: ["-m", "pip", "install", "--progress-bar", "off",
-                        "--upgrade", "--force-reinstall"]
+            arguments: ["-m", "pip", "install", "--progress-bar", "off"]
                        + Self.requiredPipPackages)
 
-        // Step 5: VERIFY. Single source of truth — does `python -c
-        // "import mlx, mlx_whisper, mlx_lm, truststore"` succeed?
-        // We deliberately don't read pip's exit code: pip's own
-        // "dependency conflicts" warning produces a non-zero exit in
-        // some pip versions even when the install physically worked,
-        // and our streamProcess can lose the tail bytes in others.
-        // The import probe is both stricter (catches missing-file
-        // half-installs) AND more forgiving (catches working installs
-        // pip mis-reported).
+        // Step 4: VERIFY. Source of truth — does importing every required
+        // module work? We deliberately ignore pip's exit code: pip's
+        // "dependency conflicts" warning can produce a non-zero exit
+        // even when the install physically worked, and our streamProcess
+        // can lose the tail bytes for long outputs. The import probe is
+        // both stricter (catches missing-file half-installs) and more
+        // forgiving (catches working installs pip mis-reported).
         setupPhase = .verifying
         installLog.append("[setup] Verifying installation (\(Self.requiredImports.joined(separator: ", ")))…")
         let importOK = await requiredImportsAllResolve(python: venvPython)
@@ -541,17 +511,6 @@ final class TranscriptionPreflightService: ObservableObject {
         do { try p.run() } catch { return false }
         p.waitUntilExit()
         return p.terminationStatus == 0
-    }
-
-    /// Quick liveness probe on the venv's pip. Any non-zero exit (or
-    /// missing binary) is treated as "broken" — corrupt-pip cases vary
-    /// (the `_log` ImportError is one of many) and rebuilding is cheap.
-    private func venvPipIsHealthy() async -> Bool {
-        guard let py = Self.venvPython() else { return false }
-        guard let (_, code) = await Self.runCapturing(
-            executable: py,
-            arguments: ["-m", "pip", "--version"]) else { return false }
-        return code == 0
     }
 
     /// Final acceptance test: can the venv import every module in

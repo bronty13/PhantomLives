@@ -6,7 +6,7 @@ Metal-accelerated speech-to-text using Whisper on Apple MLX.
 All processing is local — no data leaves your machine.
 """
 
-__version__ = "1.4.3"
+__version__ = "1.4.4"
 
 import os
 import subprocess
@@ -120,51 +120,77 @@ def _required_modules_importable() -> bool:
 
 
 def _bootstrap_venv() -> None:
-    """Create the venv, install packages, and re-exec this script."""
+    """Bring the venv to a working state, then re-exec this script inside it.
+
+    Three cases:
+
+      1. Venv is missing (or on an old Python) → create from scratch,
+         pip install REQUIRED_PACKAGES, re-exec.
+
+      2. Venv exists AND every entry in _REQUIRED_IMPORTS already imports
+         cleanly → skip pip install entirely (no PyPI round-trip), re-exec.
+         The steady-state happy path — important when N back-to-back
+         invocations (one per attachment in an iMessage export) would
+         otherwise hit PyPI N times and roll the dice on transient flakes.
+
+      3. Venv exists but a required module is broken — the canonical
+         "interrupted pip uninstall left empty package directories" state.
+         Source `.py` files gone from disk, dist-info / __pycache__ still
+         present, so pip thinks the package is installed and won't
+         re-fetch unless forced. We **nuke and recreate the venv** before
+         pip install rather than running pip install on top of the
+         broken state. Two reasons:
+           - pip itself is often among the half-deleted packages
+             (`from pip._internal.utils import _log` ImportError), so
+             `python -m pip install …` exits 1 immediately.
+           - Even `pip install --force-reinstall` from a working pip
+             can leave the venv worse off if the re-extract step is
+             interrupted: it removes files first, then re-extracts;
+             interrupted in the middle, you get exactly the empty-
+             directory state we're recovering from.
+         Clean slate is the only reliable recovery from this state.
+    """
     import venv
     import shutil as _shu
 
-    # Detect a stale .venv (e.g. left over from a CommandLineTools 3.9
-    # install from before this script needed 3.10+). Rebuilding is
-    # cheaper than asking the user to rm -rf manually — the new venv
-    # picks up the running interpreter, which the script-level guard
-    # has already validated as 3.10+.
-    if os.path.isdir(VENV_DIR) and not _venv_python_is_modern():
-        print(f"Rebuilding {VENV_DIR} (existing copy is on Python <3.10) ...",
-              file=sys.stderr)
-        _shu.rmtree(VENV_DIR)
+    venv_present = os.path.isdir(VENV_DIR)
+    needs_rebuild = False
+    if venv_present:
+        if not _venv_python_is_modern():
+            print(f"Rebuilding {VENV_DIR} (existing copy is on Python <3.10) ...",
+                  file=sys.stderr)
+            needs_rebuild = True
+        elif not _required_modules_importable():
+            print(f"Rebuilding {VENV_DIR} "
+                  f"(required modules don't import — assuming partial-install "
+                  f"corruption) ...", file=sys.stderr)
+            needs_rebuild = True
 
-    first_run = not os.path.isdir(VENV_DIR)
+    if needs_rebuild:
+        _shu.rmtree(VENV_DIR)
+        venv_present = False
+
+    first_run = not venv_present
     if first_run:
         print("Creating virtual environment ...", file=sys.stderr)
         venv.create(VENV_DIR, with_pip=True)
 
-    # Check if ffmpeg is available
+    # ffmpeg is a runtime dependency for mlx-whisper's audio decode path,
+    # not a Python package — install via Homebrew when absent.
     import shutil
     if not shutil.which("ffmpeg"):
         print("ffmpeg not found — installing via Homebrew ...", file=sys.stderr)
         subprocess.run(["brew", "install", "ffmpeg"], check=True)
 
-    # Install / update packages — but only when something's actually
-    # missing. The previous behaviour was to run `pip install` on every
-    # invocation, which meant every re-exec hit PyPI and intermittently
-    # failed on transient network blips. Across a batch of N back-to-back
-    # transcriptions (e.g. one per attachment in an iMessage export),
-    # that turns into N independent dice rolls for "did the network and
-    # PyPI behave?", and the user sees random `CalledProcessError`s
-    # bubbling up from `_bootstrap_venv()` mid-export even though every
-    # required package was already installed in the venv.
-    #
-    # New behaviour: probe whether all REQUIRED_PACKAGES are already
-    # importable in VENV_PYTHON. If yes, skip the pip-install step
-    # entirely — we don't need it. If no, run the install (and if THAT
-    # fails on network, the user gets a single, actionable error rather
-    # than a flaky one mid-batch).
+    # pip install — exactly once, only when we just created the venv. A
+    # pre-existing venv that survived the import probe above is, by
+    # definition, fully populated; running pip install again would be
+    # unnecessary PyPI traffic AND the entry point through which all the
+    # past corruption was introduced. So skip it.
     verbose = '-v' in sys.argv or '--verbose' in sys.argv
-    if first_run or not _required_modules_importable():
-        if verbose or first_run:
-            print("Installing dependencies (first run may take a few minutes) ...",
-                  file=sys.stderr, flush=True)
+    if first_run:
+        print("Installing dependencies (first run may take a few minutes) ...",
+              file=sys.stderr, flush=True)
         pip_sink = None if verbose else subprocess.DEVNULL
         subprocess.run(
             [VENV_PYTHON, "-m", "pip", "install", "--progress-bar", "off"] + REQUIRED_PACKAGES,

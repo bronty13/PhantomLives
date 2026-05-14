@@ -236,19 +236,13 @@ struct TranscriptionPreflightSheet: View {
                 isPresented = false
             }
             Spacer()
-            Button("Rebuild from scratch") {
-                Task {
-                    let ok = await service.rebuildVenv()
-                    if ok { await service.probeAll() }
-                }
-            }
-            .help("Deletes the existing Python environment and reinstalls from scratch. Slower but heals more breakage.")
             Button("Try again") {
                 Task {
                     let ok = await service.runSetup()
                     if ok { await service.probeAll() }
                 }
             }
+            .help("Re-runs the whole setup workflow from scratch — same as the initial Set up now button.")
             .keyboardShortcut(.defaultAction)
         }
     }

@@ -308,6 +308,23 @@ struct RootView: View {
         // stored value. Keeps the user's per-run preference intact for
         // when they re-enable the master.
         let effectiveTranscribe = transcribeMasterEnabled && transcribeEnabled
+
+        // Pre-run transcription gate. When the user asked for transcription,
+        // probe the venv RIGHT NOW (not at launch — state can change in
+        // between, especially across multiple back-to-back exports). If
+        // the dependencies aren't ready, surface the warm preflight sheet
+        // instead of launching a CLI that would spam 42 tracebacks across
+        // every attachment. The user sees a single dialog with a clear
+        // path forward — and can opt to run without transcription if they
+        // want the export anyway.
+        if effectiveTranscribe {
+            await preflight.probeAll()
+            if preflight.hasFailures {
+                showPreflightSheet = true
+                return
+            }
+        }
+
         let request = ExportRequest(
             contact: contact.trimmingCharacters(in: .whitespacesAndNewlines),
             handles: pickedHandle.map { [$0] } ?? [],

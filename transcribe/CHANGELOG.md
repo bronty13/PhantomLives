@@ -2,6 +2,29 @@
 
 All notable changes to transcribe will be documented in this file.
 
+## [1.4.4] — 2026-05-14
+
+### Fixed
+- **Self-heal venvs left in the empty-package-directory state.** 1.4.3's
+  bootstrap correctly skipped `pip install` when every required module
+  imported cleanly, but if the venv was already partially corrupted
+  (the canonical "interrupted pip uninstall left `__pycache__` and
+  `*.dist-info` behind while the `.py` files are gone" state), it still
+  fell back to `pip install` on top of the broken state — which itself
+  failed when pip was among the half-deleted packages. The net effect:
+  back-to-back invocations all hit a fresh `CalledProcessError` on the
+  same broken venv.
+- New behaviour: when `_required_modules_importable()` returns False
+  on an existing venv, `_bootstrap_venv` now **nukes and recreates the
+  venv** before running pip install. Pip install never runs on top of
+  a venv that didn't pass the import probe — clean slate is the only
+  reliable recovery from this state. We've confirmed this with the
+  exact reproducer (manually deleting `pip/_internal/utils/*.py` to
+  simulate the corruption): the bootstrap auto-detects, prints
+  `Rebuilding /…/.venv (required modules don't import — assuming
+  partial-install corruption) ...`, rebuilds, and re-execs in the
+  same invocation.
+
 ## [1.4.3] — 2026-05-14
 
 ### Fixed

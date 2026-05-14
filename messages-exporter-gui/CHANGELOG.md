@@ -2,6 +2,44 @@
 
 All notable changes to messages-exporter-gui will be documented in this file.
 
+## [1.0.269] — 2026-05-14
+
+### Fixed
+- **Stopped corrupting our own venv with `pip install --force-reinstall`.**
+  1.0.268's setup workflow ran `pip install --upgrade --force-reinstall`
+  on top of whatever was already there — a workflow that *removes files
+  first, re-extracts wheels after*. When the re-extract step failed for
+  any reason (network blip, pip itself becoming a half-installed
+  package mid-flight), the venv was left with `__pycache__` dirs and
+  `.dist-info` directories but no `.py` files — pip thought packages
+  were installed and refused to re-fetch them, mlx_whisper couldn't
+  import numpy, transcribe.py's bootstrap fell into the pre-1.4.4
+  pip-install-on-top-of-broken-state trap, and the user saw 42 fresh
+  CalledProcessErrors across a 42-attachment export. The setup workflow
+  was the source of the corruption it was trying to fix.
+- New behaviour: every "Set up now" / "Try again" / "Rebuild from
+  scratch" click runs the SAME workflow — **nuke .venv → `python -m
+  venv` → `pip install`**. No `--force-reinstall`, no `--upgrade`, no
+  `ensurepip --upgrade --default-pip` (that step was the no-op on a
+  fresh venv, and the wrong recovery tool on a corrupt one). A clean
+  slate every time is fast enough (~2 min over a healthy network) that
+  there's no benefit to trying to patch in place.
+
+### Added
+- **Pre-run transcription health gate.** When the user clicks Run with
+  the Transcribe toggle on, the GUI now probes the venv RIGHT BEFORE
+  spawning the CLI. If any required module won't import, the warm
+  preflight sheet opens — same dialog as the launch-time prompt, with
+  `Set up now` / `Disable transcription` / `Not now`. This stops the
+  "click Run, watch 42 tracebacks scroll past, then realise transcription
+  is broken" scenario; the user gets a single clear decision point
+  instead of a mid-batch failure parade.
+
+### Changed
+- The failure panel's `Rebuild from scratch` button removed. It did
+  exactly what `Try again` does now that both `runSetup` and
+  `rebuildVenv` are aliases for the clean-slate workflow.
+
 ## [1.0.268] — 2026-05-14
 
 ### Fixed
