@@ -29,6 +29,11 @@ struct PurpleLifeApp: App {
                 Divider()
                 JumpToTypeMenuItems()
             }
+            CommandGroup(after: .sidebar) {
+                Divider()
+                VaultMenuItem()
+                    .environmentObject(appState)
+            }
         }
 
         // The schema editor lives in its own window so it can be left open
@@ -106,6 +111,31 @@ private struct NewRecordMenuItem: View {
             )
         }
         .keyboardShortcut("n", modifiers: [.command])
+    }
+}
+
+/// View → Show Vault / Lock Vault. The same item flips its label
+/// based on the current `vaultRevealed` state. ⇧⌘V triggers the
+/// reveal flow (Touch ID / device password via `VaultAuthService`)
+/// or instantly locks if already revealed. Re-locks on every quit
+/// since `vaultRevealed` is runtime-only.
+private struct VaultMenuItem: View {
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        if appState.vaultRevealed {
+            Button("Lock Vault") {
+                appState.lockVault()
+            }
+            .keyboardShortcut("v", modifiers: [.command, .shift])
+        } else {
+            Button("Show Vault…") {
+                Task { @MainActor in
+                    await appState.revealVault()
+                }
+            }
+            .keyboardShortcut("v", modifiers: [.command, .shift])
+        }
     }
 }
 

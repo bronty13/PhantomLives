@@ -83,7 +83,14 @@ enum SearchService {
     /// Run a query. Empty / whitespace-only queries return `[]`. The
     /// tokenizer is `porter` so prefix-style queries are forgiving;
     /// callers don't need to massage the input.
-    static func search(_ query: String, limit: Int = 50) -> [Hit] {
+    ///
+    /// `excludingTypeIds` filters out hits whose `type_id` is in the
+    /// set — Quick Switcher and other surfaces pass
+    /// `schema.vaultTypeIds` when the Vault is locked so Vault records
+    /// never leak through search. Done at the SQL layer rather than
+    /// post-fetch so the `limit` is honored against the visible set,
+    /// not the underlying set.
+    static func search(_ query: String, limit: Int = 50, excludingTypeIds: Set<String> = []) -> [Hit] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
         // FTS5 prefix-match each token so typing "ada" finds "Adam" too.
@@ -96,17 +103,20 @@ enum SearchService {
 
         do {
             return try DatabaseService.shared.dbPool.read { db in
-                try Row.fetchAll(
-                    db,
-                    sql: """
-                        SELECT object_id, type_id, title, body
-                        FROM objects_fts
-                        WHERE objects_fts MATCH ?
-                        ORDER BY rank
-                        LIMIT ?
-                    """,
-                    arguments: [pattern, limit]
-                ).map { row in
+                var sql = """
+                    SELECT object_id, type_id, title, body
+                    FROM objects_fts
+                    WHERE objects_fts MATCH ?
+                """
+                var args: [DatabaseValueConvertible] = [pattern]
+                if !excludingTypeIds.isEmpty {
+                    let placeholders = Array(repeating: "?", count: excludingTypeIds.count).joined(separator: ", ")
+                    sql += " AND type_id NOT IN (\(placeholders))"
+                    args.append(contentsOf: excludingTypeIds.sorted())
+                }
+                sql += " ORDER BY rank LIMIT ?"
+                args.append(limit)
+                return try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args)).map { row in
                     Hit(
                         recordId: row["object_id"],
                         typeId: row["type_id"],

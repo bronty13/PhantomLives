@@ -131,7 +131,7 @@ Field deletes leave the data in `fields_json` blobs in place; a re-add of the sa
 
 ### Schema library
 
-The toolbar's **Library** button (or **Browse library…** below the types rail) opens a searchable gallery of **575 ready-made schemas** spanning planning, home admin, finance, health, food, hobbies, media, travel, creative work, career, learning, relationships, pets & animals, nature observation, and a deliberate "Unusual & Niche" bucket (dream journal, cocktails, tarot readings, mushroom foraging, sleep paralysis episodes, fortune cookies, mishap log, lefse batches, sleep talking, doppelgängers, time capsules, Mandela effects, party stories, found pennies, and more — including a 50-state License Plate sighting tracker for road-trip games). Pick a category in the sidebar, free-text search across names / fields / keywords, preview the field list with view-defaults (primary / kanban / calendar / gallery) called out, and click **Import** to drop a clean copy into your workspace. Each import gets fresh ids, so you can import the same template twice (or import-edit-import) without collisions. Library entries always land as user-defined types — they're not built-ins, so you can rename, delete, or hack them up freely.
+The toolbar's **Library** button (or **Browse library…** below the types rail) opens a searchable gallery of **595 ready-made schemas** spanning planning, home admin, finance, health, food, hobbies, media, travel, creative work, career, learning, relationships, pets & animals, nature observation, and a deliberate "Unusual & Niche" bucket (dream journal, cocktails, tarot readings, mushroom foraging, sleep paralysis episodes, fortune cookies, mishap log, lefse batches, sleep talking, doppelgängers, time capsules, Mandela effects, party stories, found pennies, and more — including a 50-state License Plate sighting tracker for road-trip games). The Vault category (sexual health, intimacy, kink — 20 entries) only appears when the Vault is unlocked; see **Vault** below. Pick a category in the sidebar, free-text search across names / fields / keywords, preview the field list with view-defaults (primary / kanban / calendar / gallery) called out, and click **Import** to drop a clean copy into your workspace. Each import gets fresh ids, so you can import the same template twice (or import-edit-import) without collisions. Library entries always land as user-defined types — they're not built-ins, so you can rename, delete, or hack them up freely.
 
 ### Import / export
 
@@ -144,6 +144,29 @@ The toolbar's **More** menu carries import + export actions:
 - **Reset built-ins to defaults…** — confirmation-gated. Restores Planner, Notes, People, Books, etc. to their bundled shape. Your records survive (record data keys by field key, not by field id, and field keys are stable). Custom types and hidden-flags are untouched. Undoable.
 
 The `.purplelifeschema.json` envelope is plain JSON — any tool can open it. A bare array of `ObjectType` objects also imports for forward-compat. Same files round-trip across Macs (each import gets fresh ids on read, so re-importing won't collide with the version already synced through CloudKit).
+
+## Vault (⇧⌘V)
+
+A private sidebar section gated by Touch ID (or your Mac login password). The Vault is **hidden by default on every launch** — there's no visual hint that it exists in the regular sidebar — and stays locked until you explicitly reveal it. **View → Show Vault…** (or **⇧⌘V**) prompts you for Touch ID or your Mac password; on success, a new "Vault" section slides into the sidebar below "Types". **View → Lock Vault** (same shortcut) hides it again. The Vault always re-locks when you quit the app — there's no "remember me" option, by design.
+
+What it's for: types you'd rather not see at a glance — sexual health, intimacy, kink, body diary, fantasy journal, and so on. Library imports from the **Vault** category in the schema gallery land in this section automatically. (You can also flip any user-defined type into the Vault via the Schema Editor by editing its `isVault` flag in `schema.json`, though there's no UI for that yet.)
+
+Behavior when the Vault is locked:
+
+- The Vault section is absent from the sidebar.
+- ⌘K Quick Switcher never returns hits from Vault types.
+- The Today timeline skips Vault-typed records.
+- Today's saved-query panels (e.g. "Recent" / "Favorites") filter Vault rows out of their results.
+- The schema library gallery hides the **Vault** category from the category sidebar and from the "All" count, and search across the library never returns Vault entries.
+- The schema editor still surfaces Vault types — that's the one explicit exception, so you can rename / edit / hide them without unlocking first.
+
+When the Vault is unlocked:
+
+- The Vault section appears in the sidebar with a row per Vault type and per-type record counts.
+- A small lock icon next to the section header re-locks immediately.
+- ⌘K, Today, and the library gallery surface Vault content normally for the duration of the session.
+
+The Vault sits on top of the same encryption story as everything else (Keychain-managed DEK + SQLCipher + CloudKit `encryptedValues`); the auth gate is a usability layer, not a second cryptographic layer.
 
 ## ⌘K Quick Switcher
 
@@ -161,6 +184,7 @@ The type picker remembers your last choice and defaults there next time, so drop
 - **⌘1 … ⌘9** — Jump to the Nth visible type in the sidebar.
 - **⌘K** — Quick switcher (search every record across every type).
 - **⇧⌘S** — Schema editor.
+- **⇧⌘V** — Show / lock Vault. Show prompts for Touch ID or your Mac password.
 - **⌘Z** / **⇧⌘Z** — Undo / redo. Covers record creates, edits, deletes, and schema mutations (add/edit/delete a type, add/rename/delete a field, hide/show a built-in). Multiple steps are undone in order. Cross-Mac: an undo on this Mac propagates to your other Macs the same way any other change does.
 - **⌘,** — Settings.
 

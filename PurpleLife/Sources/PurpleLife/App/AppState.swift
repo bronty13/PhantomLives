@@ -62,6 +62,14 @@ final class AppState: ObservableObject {
     /// into its detail sheet, then clears it.
     @Published var openRecordRequest: String?
 
+    /// Vault visibility for the current session. Deliberately NOT
+    /// persisted — every app launch starts with the Vault locked. The
+    /// user reveals via the View → Show Vault menu item (which triggers
+    /// Touch ID / device password via `VaultAuthService`) and locks via
+    /// View → Lock Vault. Sidebar, search, Quick Switcher, Today
+    /// timeline, and the schema library gallery all gate on this flag.
+    @Published var vaultRevealed: Bool = false
+
     /// Combine subscriptions held for the lifetime of the AppState.
     /// Currently bridges `SettingsStore.objectWillChange` into our own
     /// `objectWillChange` so a settings mutation (theme switch,
@@ -360,6 +368,44 @@ final class AppState: ObservableObject {
         } catch {
             NSLog("PurpleLife: recovery reset failed — \(error.localizedDescription)")
             dbHealth = .unrecoverable("Recovery failed: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Vault
+
+    /// Prompt for Touch ID / device password and reveal the Vault on
+    /// success. No-op when the Vault is already revealed. Called from
+    /// the View → Show Vault menu item. Failures (cancel, lockout)
+    /// leave `vaultRevealed = false` without surfacing a banner —
+    /// the menu item itself is the user's affordance to try again.
+    func revealVault() async {
+        guard !vaultRevealed else { return }
+        let result = await VaultAuthService.authenticate(reason: "Show the Vault")
+        if case .success = result {
+            vaultRevealed = true
+        } else if case .unavailable(let detail) = result {
+            // No biometrics + no passcode on this Mac. The Vault is
+            // unprotectable; log so a developer can see why the menu
+            // item looks like it did nothing, and leave the flag off.
+            NSLog("PurpleLife: Vault unlock unavailable — \(detail)")
+        }
+        // .userCancelled / .failed: silent — the user chose to back out
+        // (or got the password wrong); they'll re-invoke if they want.
+    }
+
+    /// Hide the Vault for the rest of the session. Called from the
+    /// View → Lock Vault menu item and implicitly any time the user
+    /// quits the app (since `vaultRevealed` isn't persisted).
+    func lockVault() {
+        vaultRevealed = false
+        // If the user is currently looking at a Vault type when they
+        // lock, snap them back to Today so they're not staring at a
+        // header for a type that's no longer in their visible list.
+        if let selected = selectedTypeId,
+           let type = schema.type(id: selected),
+           type.isVault {
+            selectedTypeId = nil
+            showTodayInDetail = true
         }
     }
 

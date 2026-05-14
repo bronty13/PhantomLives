@@ -71,7 +71,11 @@ struct QuickSwitcher: View {
             SearchService.reindexAll(schema: appState.schema)
         }
         .onChange(of: query) { _, q in
-            hits = SearchService.search(q)
+            // Vault types are excluded when the Vault is locked, so a
+            // search across types never reveals a hit from a private
+            // type the user hasn't unveiled this session.
+            let exclude = appState.vaultRevealed ? Set<String>() : appState.schema.vaultTypeIds
+            hits = SearchService.search(q, excludingTypeIds: exclude)
             selection = 0
         }
     }

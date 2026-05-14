@@ -118,6 +118,11 @@ struct TodayScreen: View {
         var rows: [TimelineRow] = []
         let typed = (try? ObjectEngine.allWithTypes(schema: appState.schema)) ?? []
         for (record, type) in typed {
+            // Vault types stay out of the timeline unless the user has
+            // explicitly unveiled the Vault this session. Without this,
+            // a Cycle Tracker or Encounter Journal entry would surface
+            // its title in the Today timeline next to public records.
+            if type.isVault && !appState.vaultRevealed { continue }
             // Prefer the type's calendarDateKey if set, otherwise the
             // first date-bearing field. Records without a date field
             // never appear in the timeline.
@@ -173,7 +178,8 @@ struct TodayScreen: View {
     @ViewBuilder
     private func railCard(forSavedQueryNamed name: String, subtitle: String) -> some View {
         if let query = appState.settingsStore.settings.todayQueries.first(where: { $0.name == name }),
-           let first = QueryRunner.run(query, schema: appState.schema).first {
+           let first = QueryRunner.run(query, schema: appState.schema)
+               .first(where: { appState.vaultRevealed || !$0.type.isVault }) {
             if first.type.id == "Weight" {
                 WeightRailCard(
                     latest: first.record,
@@ -522,7 +528,11 @@ private struct QueryPanel: View {
     var onOpen: (String) -> Void
 
     var body: some View {
-        let results = QueryRunner.run(query, schema: appState.schema)
+        // Drop Vault-typed results when the Vault is locked — a saved
+        // query that scans across types ("recent" / "favorites" / etc.)
+        // could otherwise surface Vault records on the Today screen.
+        let raw = QueryRunner.run(query, schema: appState.schema)
+        let results = appState.vaultRevealed ? raw : raw.filter { !$0.type.isVault }
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: query.systemImage)

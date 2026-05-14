@@ -42,11 +42,45 @@ struct Sidebar: View {
                         .tag(type.id)
                 }
             }
+            if appState.vaultRevealed {
+                let vaultTypes = appState.schema.visibleVaultTypes
+                Section {
+                    ForEach(vaultTypes) { type in
+                        typeRow(type)
+                            .tag(type.id)
+                    }
+                    if vaultTypes.isEmpty {
+                        Label {
+                            Text("Open the schema library to import Vault types.")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        } icon: {
+                            EmptyView()
+                        }
+                    }
+                } header: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "lock.open.fill")
+                            .imageScale(.small)
+                        Text("Vault")
+                        Spacer()
+                        Button {
+                            appState.lockVault()
+                        } label: {
+                            Image(systemName: "lock")
+                                .imageScale(.small)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Lock Vault")
+                    }
+                }
+            }
         }
         .listStyle(.sidebar)
         .navigationTitle("PurpleLife")
         .onAppear { reloadCounts() }
         .onChange(of: appState.objectCount) { _, _ in reloadCounts() }
+        .onChange(of: appState.vaultRevealed) { _, _ in reloadCounts() }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             syncStatusFooter
         }
@@ -113,6 +147,11 @@ struct Sidebar: View {
         var next: [String: Int] = [:]
         for t in appState.schema.visibleTypes {
             next[t.id] = (try? appState.database.objectCount(typeId: t.id)) ?? 0
+        }
+        if appState.vaultRevealed {
+            for t in appState.schema.visibleVaultTypes {
+                next[t.id] = (try? appState.database.objectCount(typeId: t.id)) ?? 0
+            }
         }
         countCache = next
     }

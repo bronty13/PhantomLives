@@ -65,6 +65,24 @@ struct SchemaLibrarySheet: View {
 
     // MARK: - Category sidebar
 
+    /// Categories the gallery surfaces. Hides `.vault` when the Vault
+    /// is locked so a passer-by browsing the schema library can't see
+    /// that intimate templates even exist. When unlocked, `.vault`
+    /// appears alongside the others and its entries become importable.
+    private var visibleCategories: [SchemaLibrary.Category] {
+        SchemaLibrary.Category.allCases.filter {
+            appState.vaultRevealed || $0 != .vault
+        }
+    }
+
+    /// Total entry count for the "All" row — also hides Vault-category
+    /// counts from the locked-state user so the displayed total matches
+    /// what they can actually see.
+    private var browsableEntries: [SchemaLibrary.Entry] {
+        if appState.vaultRevealed { return SchemaLibrary.entries }
+        return SchemaLibrary.entries.filter { $0.category != .vault }
+    }
+
     private var categorySidebar: some View {
         List(selection: Binding<SchemaLibrary.Category?>(
             get: { selectedCategory },
@@ -76,14 +94,14 @@ struct SchemaLibrarySheet: View {
                         .foregroundStyle(.secondary)
                     Text("All")
                     Spacer()
-                    Text("\(SchemaLibrary.entries.count)")
+                    Text("\(browsableEntries.count)")
                         .foregroundStyle(.tertiary)
                         .monospacedDigit()
                 }
                 .tag(SchemaLibrary.Category?.none)
 
-                ForEach(SchemaLibrary.Category.allCases, id: \.self) { cat in
-                    let count = SchemaLibrary.entries.filter { $0.category == cat }.count
+                ForEach(visibleCategories, id: \.self) { cat in
+                    let count = browsableEntries.filter { $0.category == cat }.count
                     HStack {
                         Image(systemName: cat.systemImage)
                             .foregroundStyle(.secondary)
@@ -107,7 +125,9 @@ struct SchemaLibrarySheet: View {
     // MARK: - Results list
 
     private var filteredEntries: [SchemaLibrary.Entry] {
-        SchemaLibrary.search(query: query, category: selectedCategory)
+        let hits = SchemaLibrary.search(query: query, category: selectedCategory)
+        if appState.vaultRevealed { return hits }
+        return hits.filter { $0.category != .vault }
     }
 
     private var resultsList: some View {

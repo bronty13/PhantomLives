@@ -65,6 +65,7 @@ _All queued follow-ups are closed as of 2026-05-11._ See HANDOFF.md for per-item
 
 Recently closed:
 
+- ~~**Vault: gated section for private types**~~ — new sidebar section (hidden on every launch) revealed via **View → Show Vault…** (⇧⌘V) behind Touch ID / Mac password. Sidebar, ⌘K Quick Switcher, Today timeline, Today saved-query panels, and the schema library gallery all gate on the runtime-only `vaultRevealed` flag — schema editor is the one deliberate exception so the user can manage Vault types without unlocking. 20 new library entries (sexual health · encounter / relational · kink · body & intimate). Shipped 2026-05-14.
 - ~~**Appearance theming · slice 3**~~ — JSON theme import/export (`.purplelifetheme.json` files via NSSavePanel/NSOpenPanel; right-click Export on every theme card, Import in the Custom themes section, Export in the builder footer). Shipped 2026-05-11.
 - ~~**Appearance theming · slice 2**~~ — WYSIWYG theme builder (Light/Dark ColorPickers side-by-side per slot, live preview pane with its own appearance toggle, Save / Save As / Delete with `basedOn` fallback when deleting an active theme). Shipped 2026-05-11.
 - ~~**Appearance theming · slice 1**~~ — 5 purple-rooted built-in themes (Royal Purple default, Lavender, Plum, Heather, High Contrast) + Light/Dark/Auto appearance picker. Reverses the prior "themes deferred" decision on accessibility grounds; see HANDOFF entry from 2026-05-11.

@@ -101,9 +101,31 @@ final class SchemaRegistry: ObservableObject {
         types.first { $0.id == id }
     }
 
-    /// Visible types in their stored order, minus user-hidden built-ins.
+    /// Visible types in their stored order, minus user-hidden built-ins
+    /// AND minus every Vault type. Vault types are surfaced separately
+    /// via `visibleVaultTypes` and only when the user has unlocked the
+    /// Vault for the session — keeping them out of this property is
+    /// what makes the sidebar / ⌘1-9 jump / Today count blind to them
+    /// by default.
     var visibleTypes: [ObjectType] {
-        types.filter { !($0.builtIn && hiddenBuiltInIds.contains($0.id)) }
+        types.filter { !$0.isVault && !($0.builtIn && hiddenBuiltInIds.contains($0.id)) }
+    }
+
+    /// Vault types in their stored order, minus user-hidden built-ins.
+    /// Consumers MUST gate rendering on `AppState.vaultRevealed`;
+    /// returning a non-empty array here when the user hasn't unlocked
+    /// would break the privacy contract.
+    var visibleVaultTypes: [ObjectType] {
+        types.filter { $0.isVault && !($0.builtIn && hiddenBuiltInIds.contains($0.id)) }
+    }
+
+    /// All Vault type ids — used by `SearchService` to exclude their
+    /// records from FTS results when the Vault is locked. Doesn't honor
+    /// `hiddenBuiltInIds` because the exclusion should be the same
+    /// regardless of whether the user has separately hidden the type
+    /// from the sidebar.
+    var vaultTypeIds: Set<String> {
+        Set(types.filter { $0.isVault }.map(\.id))
     }
 
     // MARK: - Mutation

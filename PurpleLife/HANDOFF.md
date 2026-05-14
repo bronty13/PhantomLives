@@ -12,6 +12,48 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-14 — Vault: a session-scoped sidebar section behind Touch ID / Mac password
+
+A new top-level section called **Vault** that's hidden on every launch and unlocks via **View → Show Vault…** (⇧⌘V). Built to hold types the user would rather not see at a glance — sexual health, intimacy, kink, body diary, fantasy journal. Shipped with 20 curated library entries spread across four buckets so the feature has content from day one.
+
+**Three design forks settled before writing code.** Confirmed with the user before locking the surface area.
+
+1. **Auth shape.** Three options on the table: menu-toggle-only ("section is hidden, you can flip it from a menu"), passphrase gate ("reuses KeyStore"), and biometric+fallback ("LAContext"). Picked the third. `LAContext.evaluatePolicy(.deviceOwnerAuthentication)` is the right policy here — it falls back automatically to the Mac login password when biometrics fail or aren't enrolled, so users on a Touch ID-less Mac aren't locked out. `.deviceOwnerAuthenticationWithBiometrics` would have been the wrong choice: no fallback, fails closed when biometrics aren't available. The reused-KeyStore-passphrase option was tempting (single source of truth) but multiplies the unlock surface — a user who wants the app passphrase off entirely shouldn't be forced to enable it just to use the Vault. Touch ID + system password is the lowest-friction high-trust path.
+
+2. **What "hidden" means.** Three options on the table: sidebar-only, sidebar + search + Today + library, and "everywhere including link pickers". Picked the middle. The first leaks Vault content through global search; the third would render `.link` field values as broken/empty references when the linked record is in the locked Vault, which surfaces in the UI as a bug rather than as privacy. Middle covers `SchemaRegistry.visibleTypes`, `SearchService.search`, ⌘K Quick Switcher, Today timeline + saved-query panels + right-rail saved-query lookups, and the `SchemaLibrarySheet` gallery's category sidebar + counts + result list. Schema editor is the one explicit exception — the user needs to manage Vault types (rename, hide individually, edit fields) without unlocking, and the editor surface is bounded enough that this is reasonable.
+
+3. **Seeding shape.** Three options on the table: library-only, seed-a-few-as-built-ins, seed-everything. Picked library-only. A user who doesn't care about the Vault should never see anything Vault-shaped installed in their workspace. The 20 entries live in `SchemaLibrary.entries` and only materialize as user-defined types when the user explicitly imports them via the gallery.
+
+**Shape — `ObjectType.isVault: Bool = false`.** New property with a custom `init(from:)` decoder. The synthesized decoder would have thrown on every pre-Vault `schema.json` (Swift doesn't honor `Bool` defaults during decode), `SchemaRegistry.load`'s `try?` would have silently swallowed the error, and the user would have lost their entire schema customization. Same `decodeIfPresent` pattern `AppSettings` already uses; this is the third type in the project that's eaten the same lesson. The explicit memberwise init was restored alongside it since adding `init(from:)` suppresses the synthesized memberwise — callers (tests, the `builtIn(...)` factory, library `makeType`) rely on the labelled-argument form.
+
+**Shape — `SchemaLibrary.Category.vault` + `materialize()` stamping.** New category case, new `lock.fill` system image. `Entry.materialize()` stamps `isVault = (category == .vault)` on the resulting `ObjectType` so the library category and the type flag stay in lockstep automatically — a user can never accidentally end up with a `.vault`-category entry that materializes as a non-Vault type or vice versa.
+
+**Shape — `Services/VaultAuthService.swift`** (new). One function: `authenticate(reason:) async -> AuthResult`. Returns a typed result (`success` / `userCancelled` / `unavailable` / `failed`) so the caller can distinguish "user backed out" from "no biometrics + no passcode on this Mac" — the second is rare on macOS but possible on a fresh local account that skipped passcode setup. Unavailable doesn't surface a banner; the menu item is the user's retry affordance.
+
+**Shape — runtime-only `AppState.vaultRevealed`.** `@Published`, default `false`, deliberately not persisted. App quit → vault locked. The `lockVault()` action also snaps `selectedTypeId` back to Today when the user is currently looking at a Vault type's records — without this, the user would stare at the (now-invisible) type's header until they clicked away.
+
+**Shape — `SchemaRegistry.visibleTypes` / `visibleVaultTypes` / `vaultTypeIds`.** `visibleTypes` excludes both hidden built-ins (existing behavior) and Vault types (new). `visibleVaultTypes` is the inverse — Vault types minus hidden built-ins, gated by `vaultRevealed` at the render layer. `vaultTypeIds` is the search-exclusion set; deliberately doesn't honor `hiddenBuiltInIds` because the search exclusion is the same whether the type is sidebar-hidden or not.
+
+**Shape — `SearchService.search(_:, limit:, excludingTypeIds:)`.** Optional `Set<String>` parameter. SQL builds `AND type_id NOT IN (?, ?, …)` only when non-empty, so the unchanged call shape stays cheap. Filter at the SQL layer rather than post-fetch so the `limit` is honored against the visible set, not the underlying set.
+
+**Library entries — 20 across four buckets.**
+- *Sexual health (6):* Cycle entry · Intimate health visit · STI test · Contraception entry · Libido entry · Intimate symptom
+- *Encounter / relational (4):* Encounter · Partner profile · Date night · Aftercare note
+- *Kink (6):* Kink · Scene · Toy / gear · Hard limit · Safeword · Scene plan
+- *Body & intimate (4):* Body entry · Fantasy · Intimacy goal · Negotiation
+
+Every entry uses the same field-kind discipline as the rest of the catalog (`.text`, `.date`, `.dateTime`, `.select`, `.multiSelect`, `.boolean`, `.rating`, `.longText`, `.richText`, `.noteLog`, `.link`, `.attachment`). The existing catalog-invariant tests (kanban → select, calendar → date, gallery → attachment, every entry has a primary + at least one required field) cover the new entries unchanged. Color palette is tonally cohesive — deep purples, magentas, soft pinks — so the Vault reads as part of the brand even while signaling distinct.
+
+**Deliberate omissions.**
+- **No UI to flip `isVault` on an existing type.** A user who wants to vault a type they've already created has to edit `schema.json` directly. Adding a context-menu "Move to Vault / Move out of Vault" is straightforward but adds a Schema Editor surface that's awkward to test; deferred.
+- **No PIN as an alternative to Touch ID + Mac password.** Reusing the existing KeyStore passphrase was on the table and would have given a per-app secret distinct from the Mac password. Rejected for v1 — multiplies the unlock surface and the typical user reads "Touch ID or Mac password" as "the way I unlock everything else." Revisit if anyone asks.
+- **No timed auto-lock.** The Vault stays unlocked for the rest of the session unless explicitly locked or the app is quit. A 15-minute idle re-lock is a natural follow-up but adds a timer surface plus UX questions about what counts as "activity" — deferred.
+- **No CloudKit-side awareness of Vault status.** The `isVault` flag rides through `CKRecord.encryptedValues.typeJSON` like every other schema field, so peers reconcile the flag via LWW the same as any other type edit. A second Mac receives the Vault type as a Vault type. No special "this peer hasn't unlocked yet" handshake — locally each Mac decides for itself whether to surface the Vault section.
+- **No Vault-specific encryption layer.** The existing whole-DB SQLCipher + CloudKit `encryptedValues` already encrypts all user content. Adding a second envelope under a Vault-only key would mean per-record key management, a new wrapped-key file, key rotation semantics, and a recovery path — significant work for negligible improvement over a sealed DB. The Vault gate is a usability layer, not a cryptographic one.
+- **No biometry-only mode.** `LAPolicy.deviceOwnerAuthenticationWithBiometrics` is the no-fallback variant — would lock out users on Touch ID-less Macs entirely. The `.deviceOwnerAuthentication` chosen here always offers password fallback automatically, which is the right default.
+
+**Test coverage**: 8 new `VaultTests` covering the load-bearing surfaces — `ObjectType.isVault` defaults to false, legacy `schema.json` decodes without the key (the load-bearing backward-compat test), Codable round-trips, `materialize()` stamps `isVault` correctly for vault and non-vault entries, the Vault library ships ≥20 entries, `SchemaRegistry.visibleTypes` excludes Vault, `visibleVaultTypes` includes only Vault, `vaultTypeIds` is populated, and the hidden-Vault built-in case (hidden disappears from `visibleVaultTypes` but stays in `vaultTypeIds` for search exclusion). `VaultAuthService` itself isn't unit-tested — `LAContext` requires a real device prompt and there's no XCTest hook for that path; the wrapper is small enough to verify by hand.
+
 ### 2026-05-12 — Schema library round 3: 11 entire categories from the proposals doc → 575 templates
 
 Third round of catalog growth. The previous two rounds shipped 251 entries; this one adds 324 more by implementing nearly the full Productivity, Home, Finance, Food, Travel, Creative, Relationships, Pets, Nature Observation, Unusual, and Long-tail sections from `Docs/SchemaLibraryProposals.md`. Total catalog is now **575 templates**.

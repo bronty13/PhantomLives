@@ -35,6 +35,11 @@ enum SchemaLibrary {
         case learning = "Learning & Reference"
         case relationships = "Relationships"
         case unusual = "Unusual & Niche"
+        /// Vault category — sexual health, intimacy, kink. Library entries
+        /// here materialize with `ObjectType.isVault = true` and the
+        /// gallery only surfaces this category when the user has
+        /// unlocked the Vault for the session.
+        case vault = "Vault"
 
         var systemImage: String {
             switch self {
@@ -51,6 +56,7 @@ enum SchemaLibrary {
             case .learning:      return "graduationcap"
             case .relationships: return "person.2"
             case .unusual:       return "sparkles"
+            case .vault:         return "lock.fill"
             }
         }
     }
@@ -73,11 +79,15 @@ enum SchemaLibrary {
         /// and the view-key references (primary / kanban / calendar /
         /// gallery) are rewritten to point at the new field ids' keys,
         /// which stay stable because they're derived from field names.
+        /// Entries in the `.vault` category materialize with
+        /// `ObjectType.isVault = true` so the resulting type lands in
+        /// the Vault section rather than the regular sidebar.
         func materialize() -> ObjectType {
             var fresh = template
             fresh.id = UUID().uuidString
             fresh.builtIn = false
             fresh.updatedAt = nil
+            fresh.isVault = (category == .vault)
             fresh.fields = fresh.fields.map { field in
                 var f = field
                 f.id = UUID().uuidString
@@ -134,10 +144,11 @@ extension SchemaLibrary {
 
     /// The full catalog the gallery shows. Computed so additional
     /// entries declared in extension files (e.g.
-    /// `SchemaLibrary+ExtendedCatalog.swift`, `SchemaLibrary+ExtendedCatalog2.swift`)
-    /// are picked up automatically without touching this file.
+    /// `SchemaLibrary+ExtendedCatalog.swift`, `SchemaLibrary+ExtendedCatalog2.swift`,
+    /// `SchemaLibrary+Vault.swift`) are picked up automatically without
+    /// touching this file.
     static var entries: [Entry] {
-        coreEntries + extendedEntries + extendedEntries2
+        coreEntries + extendedEntries + extendedEntries2 + vaultEntries
     }
 
     /// Original first-batch entries kept inline. New entries belong in
