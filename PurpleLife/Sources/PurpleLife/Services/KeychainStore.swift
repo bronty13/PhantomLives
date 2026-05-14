@@ -57,13 +57,35 @@ enum KeychainStore {
     }
 
     /// Wipe every item owned by this app's service. Called from the Security
-    /// tab's destructive "Reset" flow.
+    /// tab's destructive "Reset" flow and from `KeyStore.resetAndWipe`.
+    ///
+    /// Implementation note: `SecItemDelete` with a query that omits
+    /// `kSecAttrAccount` is unreliable across macOS versions —
+    /// historically it deleted all matches, but on macOS 15 it silently
+    /// returns `errSecSuccess` without actually removing items (caught
+    /// by `KeyStoreTests.test_resetAndWipeClearsEverything` failing
+    /// deterministically even in isolation). The robust pattern is to
+    /// enumerate items via `SecItemCopyMatching` with
+    /// `kSecMatchLimitAll`, then delete each by its specific account
+    /// using the account-scoped query — which IS reliable.
     static func deleteAll() {
-        let query: [String: Any] = [
+        let listQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service
+            kSecAttrService as String: service,
+            kSecMatchLimit as String: kSecMatchLimitAll,
+            kSecReturnAttributes as String: true
         ]
-        _ = SecItemDelete(query as CFDictionary)
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(listQuery as CFDictionary, &result)
+        // errSecItemNotFound is the happy path — there's nothing to delete.
+        guard status == errSecSuccess, let items = result as? [[String: Any]] else {
+            return
+        }
+        for item in items {
+            if let account = item[kSecAttrAccount as String] as? String {
+                try? delete(account: account)
+            }
+        }
     }
 
     /// Metadata-only probe — does an entry exist at this account?

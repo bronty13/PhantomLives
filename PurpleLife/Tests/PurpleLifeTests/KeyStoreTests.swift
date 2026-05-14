@@ -309,4 +309,34 @@ final class KeyStoreTests: XCTestCase {
         XCTAssertEqual(fresh.state, .notSetup)
         XCTAssertFalse(fresh.hasPassphrase)
     }
+
+    /// Regression: `KeychainStore.deleteAll()` previously used a
+    /// `SecItemDelete` query without `kSecAttrAccount`, which silently
+    /// returns `errSecSuccess` without removing items on macOS 15.
+    /// `resetAndWipe` would report `.notSetup` but the entry was still
+    /// in the Keychain, so a fresh `KeyStore` constructed against the
+    /// same support dir would discover the cached DEK and come up
+    /// `.unlocked`. This test seeds two entries under the service,
+    /// calls `deleteAll`, and asserts both are gone.
+    func test_keychainDeleteAllRemovesEveryEntryUnderService() throws {
+        // Belt-and-suspenders: clear anything left over from prior runs
+        // so the test is self-contained.
+        KeychainStore.deleteAll()
+
+        let account1 = "purplelife-test-deleteall-\(UUID().uuidString)"
+        let account2 = "purplelife-test-deleteall-\(UUID().uuidString)"
+        try KeychainStore.setData(Data("a".utf8), for: account1)
+        try KeychainStore.setData(Data("b".utf8), for: account2)
+
+        // Pre-condition: both are reachable.
+        XCTAssertEqual(KeychainStore.entryStatus(for: account1), .present)
+        XCTAssertEqual(KeychainStore.entryStatus(for: account2), .present)
+
+        KeychainStore.deleteAll()
+
+        XCTAssertEqual(KeychainStore.entryStatus(for: account1), .absent,
+                       "deleteAll must remove account1; the bug was that it silently succeeded without deleting")
+        XCTAssertEqual(KeychainStore.entryStatus(for: account2), .absent,
+                       "deleteAll must remove every entry under the service, not just one")
+    }
 }

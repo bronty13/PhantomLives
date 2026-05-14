@@ -4,6 +4,15 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-14 — Fix: `KeychainStore.deleteAll()` silently no-oping on macOS 15
+
+`SecItemDelete` with a query that omits `kSecAttrAccount` is unreliable across macOS versions — historically it deleted every match, but on macOS 15 it returns `errSecSuccess` while leaving the items in place. `KeyStore.resetAndWipe()` calls `deleteAll()` to wipe the DEK cache; the silent no-op meant a freshly-constructed `KeyStore` against the same support directory would discover the cached DEK and report `.unlocked` instead of `.notSetup`. Symptom in the test suite: `KeyStoreTests.test_resetAndWipeClearsEverything` failed deterministically even in isolation.
+
+- **`Services/KeychainStore.swift`** — rewrote `deleteAll()` to enumerate matching items via `SecItemCopyMatching` (with `kSecMatchLimitAll` + `kSecReturnAttributes: true`) and then delete each one by its specific account using the account-scoped `delete(account:)` form. Account-scoped `SecItemDelete` IS reliable; the multi-match shape is the one that broke.
+- **`Tests/.../KeyStoreTests.swift`** — new `test_keychainDeleteAllRemovesEveryEntryUnderService` regression: seeds two entries under the service, calls `deleteAll`, asserts both are gone via `entryStatus`. Locks the contract at the layer where the bug actually lived (rather than only at the `KeyStore` layer, where `test_resetAndWipeClearsEverything` already covers it).
+
+218/218 tests green (was 217/217 with 1 pre-existing failure).
+
 ### 2026-05-14 — Vault: gated section for private types + 20 new library entries
 
 A new sidebar section called **Vault** that's hidden on every launch and unlocks via **View → Show Vault…** (⇧⌘V). The reveal goes through `LAContext.deviceOwnerAuthentication` — Touch ID where available, falling back automatically to the Mac login password — and stays open until the user picks **Lock Vault** or quits. The flag is deliberately *not* persisted, so a forgotten unlock can't outlive the session.
