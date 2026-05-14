@@ -108,23 +108,29 @@ Behavior:
 
 **Master kill switch.** If you don't need transcription at all, flip **Settings → Transcription → Enable transcription** off. The per-run **Transcribe** toggle becomes disabled, exports never pass `--transcribe`, and the launch-time preflight is skipped.
 
-#### Launch-time preflight
+#### Launch-time preflight + pre-run gate
 
-When the master switch is on, the app probes the transcription dependency chain at launch:
+When the master switch is on, the app probes the transcription dependency chain on every launch AND immediately before each export (the pre-run gate added in 1.0.269 — stops the "I clicked Run, watched 42 tracebacks scroll past, *then* realised transcription was broken" scenario).
 
-| Check                              | What it verifies |
-| ---------------------------------- | ---------------- |
-| transcribe.py is reachable         | The sibling `transcribe/transcribe.py` is present (or `TRANSCRIBE_SCRIPT` env var points at one). |
-| Python 3.10+ is installed          | A 3.10-or-newer Python is on the augmented `PATH`. (CommandLineTools' 3.9 doesn't qualify.) |
-| ffmpeg is on PATH                  | `/usr/bin/env ffmpeg -version` succeeds. The app prepends `/opt/homebrew/bin` and `/usr/local/bin` to the child PATH automatically, so a Homebrew install is enough — even when launched from Finder. |
-| Transcribe venv exists             | `transcribe/.venv/bin/python` is present and Python 3.10+. |
-| mlx-whisper imports cleanly        | `python -c "import mlx_whisper"` inside the venv succeeds. (The single most common breakage after a Python upgrade.) |
+The probe checks:
 
-If any check fails, a **Transcription preflight** sheet opens automatically. Each row has a **Retry** button; a **Set up transcription** action runs `brew install ffmpeg` (when missing) and `pip install mlx-whisper` inside the venv with live progress. Re-run any time from **Settings → Transcription → Run preflight…**.
+| Check                                | What it verifies |
+| ------------------------------------ | ---------------- |
+| transcribe.py is reachable           | The sibling `transcribe/transcribe.py` is present (or `TRANSCRIBE_SCRIPT` env var points at one). |
+| Python 3.10+ is installed            | A 3.10-or-newer Python is on the augmented `PATH`. (CommandLineTools' 3.9 doesn't qualify.) |
+| ffmpeg is on PATH                    | `/usr/bin/env ffmpeg -version` succeeds. The app prepends `/opt/homebrew/bin` and `/usr/local/bin` to the child PATH automatically, so a Homebrew install is enough — even when launched from Finder. |
+| Transcribe venv exists               | `transcribe/.venv/bin/python` is present and Python 3.10+. |
+| Transcription packages import cleanly | `python -c "import mlx, mlx_whisper, mlx_lm, truststore"` inside the venv succeeds. Probes every package transcribe.py needs, not just one — drift between the GUI's verified list and transcribe.py's `REQUIRED_PACKAGES` caused intermittent mid-export failures in 1.0.268 and earlier. |
+
+If any check fails, a **warm one-button setup sheet** opens with `Set up now` (primary), `Disable transcription`, and `Not now`. The technical 5-row checklist + live pip log are hidden behind a `Show technical details` disclosure so the default view stays uncluttered. Re-run any time from **Settings → Transcription → Run preflight…**.
+
+The setup workflow is **clean-slate every time** in 1.0.269+: `rm -rf .venv` → `python -m venv` → `pip install` for all four required packages. There is no longer a "patch in place" path — earlier builds tried `pip install --upgrade --force-reinstall` on top of broken state, which removes files first and re-extracts after; interrupted in the middle, you got `__pycache__` and `.dist-info` directories with no `.py` files, and the next click made it worse. Clean slate is fast enough (~2 min over a healthy network) that the simpler workflow is strictly better.
 
 #### Why a reboot can break transcription
 
-When `MessagesExporterGUI.app` is launched from Finder, the inherited `PATH` is just `/usr/bin:/bin:/usr/sbin:/sbin` — `/opt/homebrew/bin` is **missing**. Older builds (< 1.0.264) didn't augment the child PATH, so `transcribe.py`'s self-healing call to `brew install ffmpeg` failed with `FileNotFoundError` inside `subprocess._execute_child`, the venv bootstrap died half-done, and every subsequent run reused the broken `.venv`. As of 1.0.264 the GUI auto-prepends the Homebrew prefixes to the child PATH, so this class of failure no longer happens — but if you have a pre-existing broken `.venv` from an older build, the preflight's **Set up transcription** action will repair it.
+When `MessagesExporterGUI.app` is launched from Finder, the inherited `PATH` is just `/usr/bin:/bin:/usr/sbin:/sbin` — `/opt/homebrew/bin` is **missing**. Older builds (< 1.0.264) didn't augment the child PATH, so `transcribe.py`'s self-healing call to `brew install ffmpeg` failed with `FileNotFoundError` inside `subprocess._execute_child`, the venv bootstrap died half-done, and every subsequent run reused the broken `.venv`.
+
+As of 1.0.264 the GUI auto-prepends the Homebrew prefixes to the child PATH, so this class of failure no longer happens at the PATH layer. And as of **transcribe 1.4.4** + **GUI 1.0.269**, both sides also self-heal partial-install corruption: transcribe.py's bootstrap detects when required modules don't import and rebuilds `.venv` from scratch on the same invocation, while the GUI's setup always starts from a clean slate. The only way to land in a broken state is a deliberate one (e.g. `rm` of the venv mid-install). If you're upgrading from an older build with a known-bad venv, the first `Set up now` click in the new build will repair it.
 
 Choose the Whisper model in **Messages Exporter → Settings… → Transcription** (⌘,):
 

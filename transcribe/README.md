@@ -21,6 +21,8 @@ No manual installation needed. On first run, the script automatically:
 
 **Subsequent runs skip step 3 entirely.** Once every required module is importable in the venv, the bootstrap probes with `import mlx, mlx_whisper, mlx_lm, truststore` and skips `pip install` — no PyPI round-trip on the steady-state path. Critical when transcribe.py is invoked in tight batches (e.g. per-attachment from `messages-exporter`), where N back-to-back `pip install` calls would otherwise turn intermittent PyPI failures into N% odds of a mid-batch crash.
 
+**The venv is also self-healing.** If the import probe fails (the canonical "partial-install corruption" state — `__pycache__` and `.dist-info` present, but the actual `.py` files missing because an earlier `pip uninstall` was interrupted before re-extract), the bootstrap automatically nukes `.venv/` and rebuilds it from scratch in a single invocation. You'll see `Rebuilding /…/.venv (required modules don't import — assuming partial-install corruption) ...` on stderr; the script then re-execs itself and proceeds normally. No need to manually delete the venv.
+
 Just run it:
 
 ```bash
@@ -29,7 +31,7 @@ python3 transcribe.py -i your_video.mp4
 
 Whisper and LLM models are downloaded from HuggingFace on first use of each model size.
 
-To force a clean reinstall of dependencies, delete the `.venv/` directory and re-run.
+If you want to force a clean reinstall anyway (e.g. to test a new model wheel), `rm -rf .venv/` and re-run — same result as letting the self-healing code do it.
 
 ## Quick Start
 
