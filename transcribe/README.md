@@ -19,6 +19,8 @@ No manual installation needed. On first run, the script automatically:
 3. Installs all Python dependencies (mlx, mlx-whisper, mlx-lm, truststore)
 4. Re-launches itself inside the venv
 
+**Subsequent runs skip step 3 entirely.** Once every required module is importable in the venv, the bootstrap probes with `import mlx, mlx_whisper, mlx_lm, truststore` and skips `pip install` — no PyPI round-trip on the steady-state path. Critical when transcribe.py is invoked in tight batches (e.g. per-attachment from `messages-exporter`), where N back-to-back `pip install` calls would otherwise turn intermittent PyPI failures into N% odds of a mid-batch crash.
+
 Just run it:
 
 ```bash

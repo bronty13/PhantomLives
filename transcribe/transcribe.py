@@ -6,7 +6,7 @@ Metal-accelerated speech-to-text using Whisper on Apple MLX.
 All processing is local — no data leaves your machine.
 """
 
-__version__ = "1.4.2"
+__version__ = "1.4.3"
 
 import os
 import subprocess
@@ -79,6 +79,46 @@ def _venv_python_is_modern() -> bool:
         return False
 
 
+# Top-level module name each REQUIRED_PACKAGES entry imports as. Used by
+# _required_modules_importable() to decide whether bootstrap can skip the
+# pip-install step on subsequent invocations. Keep this in sync with
+# REQUIRED_PACKAGES above — adding a package without listing its import
+# name here means we'll still run `pip install` every time, undoing the
+# whole point of the cache.
+_REQUIRED_IMPORTS = ["mlx", "mlx_whisper", "mlx_lm"]
+if sys.version_info >= (3, 10):
+    _REQUIRED_IMPORTS.append("truststore")
+
+
+def _required_modules_importable() -> bool:
+    """Probe whether VENV_PYTHON can import every entry in
+    _REQUIRED_IMPORTS. Returns True iff the import statement exits zero
+    inside the venv.
+
+    Why: the previous bootstrap ran `pip install` unconditionally on
+    every invocation. Across many back-to-back calls (e.g. one per
+    attachment in an iMessage export), the network round-trip to PyPI
+    intermittently fails for transient reasons (rate limits, brief
+    connectivity drops, mirror flakiness) — and `check=True` then
+    bubbles a CalledProcessError that aborts the whole transcription
+    even though the packages were already installed. Checking first is
+    both faster (no network, ~50 ms) and decoupled from PyPI's
+    availability after the initial install.
+    """
+    if not os.path.isfile(VENV_PYTHON):
+        return False
+    try:
+        # `python -c "import a, b, c"` exits 0 iff every module loads.
+        r = subprocess.run(
+            [VENV_PYTHON, "-c",
+             "import " + ", ".join(_REQUIRED_IMPORTS)],
+            check=False, capture_output=True, timeout=10,
+        )
+        return r.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def _bootstrap_venv() -> None:
     """Create the venv, install packages, and re-exec this script."""
     import venv
@@ -105,17 +145,34 @@ def _bootstrap_venv() -> None:
         print("ffmpeg not found — installing via Homebrew ...", file=sys.stderr)
         subprocess.run(["brew", "install", "ffmpeg"], check=True)
 
-    # Install / update packages. Only announce on first run (venv just created);
-    # subsequent runs pip-check silently so repeated transcriptions stay quiet.
+    # Install / update packages — but only when something's actually
+    # missing. The previous behaviour was to run `pip install` on every
+    # invocation, which meant every re-exec hit PyPI and intermittently
+    # failed on transient network blips. Across a batch of N back-to-back
+    # transcriptions (e.g. one per attachment in an iMessage export),
+    # that turns into N independent dice rolls for "did the network and
+    # PyPI behave?", and the user sees random `CalledProcessError`s
+    # bubbling up from `_bootstrap_venv()` mid-export even though every
+    # required package was already installed in the venv.
+    #
+    # New behaviour: probe whether all REQUIRED_PACKAGES are already
+    # importable in VENV_PYTHON. If yes, skip the pip-install step
+    # entirely — we don't need it. If no, run the install (and if THAT
+    # fails on network, the user gets a single, actionable error rather
+    # than a flaky one mid-batch).
     verbose = '-v' in sys.argv or '--verbose' in sys.argv
-    if first_run or verbose:
-        print("Installing dependencies (first run may take a few minutes) ...",
+    if first_run or not _required_modules_importable():
+        if verbose or first_run:
+            print("Installing dependencies (first run may take a few minutes) ...",
+                  file=sys.stderr, flush=True)
+        pip_sink = None if verbose else subprocess.DEVNULL
+        subprocess.run(
+            [VENV_PYTHON, "-m", "pip", "install", "--progress-bar", "off"] + REQUIRED_PACKAGES,
+            check=True, stdout=pip_sink, stderr=pip_sink,
+        )
+    elif verbose:
+        print("Dependencies already installed — skipping pip install.",
               file=sys.stderr, flush=True)
-    pip_sink = None if verbose else subprocess.DEVNULL
-    subprocess.run(
-        [VENV_PYTHON, "-m", "pip", "install", "--progress-bar", "off"] + REQUIRED_PACKAGES,
-        check=True, stdout=pip_sink, stderr=pip_sink,
-    )
 
     # Re-exec this script under the venv Python, preserving all arguments
     os.execv(VENV_PYTHON, [VENV_PYTHON] + sys.argv)

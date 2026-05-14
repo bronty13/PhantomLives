@@ -103,10 +103,30 @@ Behavior:
 
 - **Local only.** No servers, no Ollama, no internet. Apple Silicon Metal-accelerated.
 - **First run is slow.** The very first time you transcribe with a given Whisper model, the `transcribe/` project bootstraps a `.venv` and downloads the model from HuggingFace (~150 MB for `tiny` up to ~3 GB for `large`). Subsequent runs reuse the cached model.
-- **Failures are non-fatal.** If `ffmpeg` can't decode a file, the file is corrupt, or any other expected error occurs, the transcription is skipped, the per-attachment error is captured in `metadata.json` / `chain_of_custody.log` (raw) or `manifest.json` (sanitized), and the rest of the export continues.
+- **Failures are non-fatal — and now visible.** If `ffmpeg` can't decode a file, the venv is broken, or any other error occurs, the transcription is skipped *and* the GUI flips a yellow "Last run reported a problem" banner with a one-click **Run preflight** action. The CLI still records the per-attachment error in `metadata.json` / `chain_of_custody.log` (raw) or `manifest.json` (sanitized), and the rest of the export continues.
 - **Hashes** of both sidecar files (md5/sha1/sha256) are recorded in **raw** mode for forensic verification.
 
-Choose the Whisper model in **Messages Exporter → Settings… → Whisper transcription** (⌘,):
+**Master kill switch.** If you don't need transcription at all, flip **Settings → Transcription → Enable transcription** off. The per-run **Transcribe** toggle becomes disabled, exports never pass `--transcribe`, and the launch-time preflight is skipped.
+
+#### Launch-time preflight
+
+When the master switch is on, the app probes the transcription dependency chain at launch:
+
+| Check                              | What it verifies |
+| ---------------------------------- | ---------------- |
+| transcribe.py is reachable         | The sibling `transcribe/transcribe.py` is present (or `TRANSCRIBE_SCRIPT` env var points at one). |
+| Python 3.10+ is installed          | A 3.10-or-newer Python is on the augmented `PATH`. (CommandLineTools' 3.9 doesn't qualify.) |
+| ffmpeg is on PATH                  | `/usr/bin/env ffmpeg -version` succeeds. The app prepends `/opt/homebrew/bin` and `/usr/local/bin` to the child PATH automatically, so a Homebrew install is enough — even when launched from Finder. |
+| Transcribe venv exists             | `transcribe/.venv/bin/python` is present and Python 3.10+. |
+| mlx-whisper imports cleanly        | `python -c "import mlx_whisper"` inside the venv succeeds. (The single most common breakage after a Python upgrade.) |
+
+If any check fails, a **Transcription preflight** sheet opens automatically. Each row has a **Retry** button; a **Set up transcription** action runs `brew install ffmpeg` (when missing) and `pip install mlx-whisper` inside the venv with live progress. Re-run any time from **Settings → Transcription → Run preflight…**.
+
+#### Why a reboot can break transcription
+
+When `MessagesExporterGUI.app` is launched from Finder, the inherited `PATH` is just `/usr/bin:/bin:/usr/sbin:/sbin` — `/opt/homebrew/bin` is **missing**. Older builds (< 1.0.264) didn't augment the child PATH, so `transcribe.py`'s self-healing call to `brew install ffmpeg` failed with `FileNotFoundError` inside `subprocess._execute_child`, the venv bootstrap died half-done, and every subsequent run reused the broken `.venv`. As of 1.0.264 the GUI auto-prepends the Homebrew prefixes to the child PATH, so this class of failure no longer happens — but if you have a pre-existing broken `.venv` from an older build, the preflight's **Set up transcription** action will repair it.
+
+Choose the Whisper model in **Messages Exporter → Settings… → Transcription** (⌘,):
 
 | Model  | RAM    | Notes                                            |
 | ------ | ------ | ------------------------------------------------ |
@@ -233,7 +253,7 @@ Open with **Messages Exporter → Settings…** (⌘,):
 
 - **Range precision → Expand start by 60 seconds** — on by default. Compensates for Messages.app's swipe-time display rounding so the first message of a forensic range isn't silently dropped. Turn off when you want the picker bounds treated as strict (e.g., reproducing a previously-run query exactly).
 - **Default output folder** — same control as the inline picker, plus a "Reset to Downloads" shortcut that restores `~/Downloads/messages-exporter-gui/`.
-- **Whisper transcription** — model picker for `--transcribe` runs (see the Transcribe section above).
+- **Transcription** — **Enable transcription** master switch (default on), Whisper model picker, and a **Run preflight…** button that opens the dependency wizard on demand (see the Transcribe section above).
 - **Diagnostics → Debug Logging** — when on, passes `--debug` to the CLI. This enables full verbose output from the transcription subprocess: HuggingFace file-fetch progress bars, pip install lines, and Whisper model-load bars. Off by default. Enable when a transcription run silently fails or hangs and you need to see what the child process is doing.
 
 Settings persist via `@AppStorage` (UserDefaults). Wipe with `defaults delete com.bronty13.MessagesExporterGUI`.

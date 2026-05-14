@@ -30,6 +30,13 @@ enum SettingsKeys {
     /// which rounds to the displayed minute and can leave the first
     /// message a few seconds short of the user-chosen bound.
     static let expandStart     = "expandStartByOneMinute"
+    /// Global kill switch for the whole transcription subsystem. When
+    /// OFF, the form's per-run Transcribe toggle is force-disabled,
+    /// `--transcribe` never reaches the CLI, and the launch-time
+    /// preflight is skipped. Defaults ON so existing users see no
+    /// change — flip it off in Settings → Transcription if you never
+    /// need audio/video transcripts.
+    static let transcribeMasterOn = "transcribeMasterEnabled"
 }
 
 struct RootView: View {
@@ -63,6 +70,9 @@ struct RootView: View {
     @AppStorage(SettingsKeys.emojiMode) private var emojiRaw: String = EmojiMode.word.rawValue
     @AppStorage(SettingsKeys.themePreference) private var themeRaw: String = ThemePreference.system.rawValue
     @AppStorage(SettingsKeys.expandStart) private var expandStartByOneMinute: Bool = true
+    @AppStorage(SettingsKeys.transcribeMasterOn) private var transcribeMasterEnabled: Bool = true
+    @StateObject private var preflight = TranscriptionPreflightService()
+    @State private var showPreflightSheet = false
 
     private var themePreference: ThemePreference {
         ThemePreference(rawValue: themeRaw) ?? .system
@@ -93,6 +103,13 @@ struct RootView: View {
             .sheet(isPresented: $showFDASheet) {
                 FullDiskAccessSheet(showSheet: $showFDASheet)
             }
+            .sheet(isPresented: $showPreflightSheet) {
+                TranscriptionPreflightSheet(
+                    service: preflight,
+                    isPresented: $showPreflightSheet,
+                    masterEnabled: $transcribeMasterEnabled
+                )
+            }
             .sheet(isPresented: $showSavePreset) {
                 // Presets snapshot the resolved range (picker + SS + buffer
                 // collapsed into a single Date pair) so reloading a preset
@@ -117,6 +134,25 @@ struct RootView: View {
                 if runner.fdaStatus == .denied {
                     showFDASheet = true
                 }
+                // Run the transcription preflight only when the master
+                // switch is on — flipping it off is a deliberate "I never
+                // transcribe" signal and we shouldn't pester the user
+                // with setup prompts in that mode. The probe is cheap
+                // (subprocess spawns capped by exit) so we let it run
+                // every launch; auto-opening the sheet is gated on
+                // failures so a healthy system never sees it.
+                if transcribeMasterEnabled {
+                    await preflight.probeAll()
+                    // Two-sheet collision guard: SwiftUI can only show
+                    // one `.sheet(isPresented:)` at a time. If FDA is
+                    // still denied the user is mid-grant — surfacing
+                    // the preflight on top would either be ignored or
+                    // bury the FDA guidance. They can open it later
+                    // from Settings → Transcription → Run preflight.
+                    if preflight.hasFailures && !showFDASheet {
+                        showPreflightSheet = true
+                    }
+                }
             }
             .onReceive(NotificationCenter.default
                         .publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -132,6 +168,22 @@ struct RootView: View {
         VStack(alignment: .leading, spacing: 14) {
             if runner.fdaStatus == .denied {
                 FDABanner(showSheet: $showFDASheet)
+            }
+            // Post-run problem banner. Surfaces transcription failures the
+            // CLI logged but which would otherwise hide inside the live
+            // output — and any other terminal error captured in
+            // `lastError`. Hidden while a run is in flight so the user
+            // sees progress unobstructed.
+            if !runner.isRunning, let err = runner.lastError {
+                RunErrorBanner(
+                    message: err,
+                    showPreflight: runner.transcriptFailureCount > 0
+                                || runner.transcriptFailureSummary != nil,
+                    openPreflight: {
+                        showPreflightSheet = true
+                        Task { await preflight.probeAll() }
+                    }
+                )
             }
 
             header(t)
@@ -151,16 +203,30 @@ struct RootView: View {
                 mode: $mode,
                 transcribeEnabled: $transcribeEnabled,
                 transcribeModelRaw: $transcribeModelRaw,
+                transcribeMasterEnabled: transcribeMasterEnabled,
                 expandStartByOneMinute: expandStartByOneMinute,
                 resolvedStart: resolvedStart,
                 resolvedEnd: resolvedEnd
             )
 
-            RunStrip(
-                canRun: !runner.isRunning && !contact.trimmingCharacters(in: .whitespaces).isEmpty,
-                runAction: { Task { await runExport() } },
-                cancelAction: { showCancelConfirm = true }
-            )
+            HStack(spacing: 12) {
+                RunStrip(
+                    canRun: !runner.isRunning && !contact.trimmingCharacters(in: .whitespaces).isEmpty,
+                    runAction: { Task { await runExport() } },
+                    cancelAction: { showCancelConfirm = true }
+                )
+                .layoutPriority(1)
+                // Always-on Reveal-in-Finder action next to the primary
+                // Run/Cancel control. Lives here (in addition to the
+                // header chip) so the button is unmistakably visible at
+                // any window size — the header chips can compress out of
+                // sight on narrow windows, and this is the artifact users
+                // reach for after every successful run.
+                RevealOutputButton(
+                    runFolder: runner.runFolder,
+                    fallbackDir: outputDirPath
+                )
+            }
             .confirmationDialog("Cancel export?",
                                 isPresented: $showCancelConfirm,
                                 titleVisibility: .visible) {
@@ -217,6 +283,14 @@ struct RootView: View {
                 }
             }
         }
+        // Pin the header's vertical size. Without this, LiveOutputCard's
+        // `.frame(maxHeight: .infinity)` can greedily claim space on a
+        // window near its minimum height (632pt) and SwiftUI compresses
+        // the header — which (a) hides the chips and (b) overlaps the
+        // title bar. layoutPriority(1) makes the header the *last* row
+        // to give up space rather than the first.
+        .fixedSize(horizontal: false, vertical: true)
+        .layoutPriority(1)
     }
 
     private var displayContact: String {
@@ -229,6 +303,11 @@ struct RootView: View {
             showInstallSheet = true
             return
         }
+        // Hard kill switch: when the master is off, never send
+        // --transcribe to the CLI regardless of the per-run toggle's
+        // stored value. Keeps the user's per-run preference intact for
+        // when they re-enable the master.
+        let effectiveTranscribe = transcribeMasterEnabled && transcribeEnabled
         let request = ExportRequest(
             contact: contact.trimmingCharacters(in: .whitespacesAndNewlines),
             handles: pickedHandle.map { [$0] } ?? [],
@@ -237,7 +316,7 @@ struct RootView: View {
             outputDir: URL(fileURLWithPath: outputDirPath),
             emoji: EmojiMode(rawValue: emojiRaw) ?? .word,
             mode: mode,
-            transcribe: transcribeEnabled,
+            transcribe: effectiveTranscribe,
             transcribeModel: WhisperModel(rawValue: transcribeModelRaw) ?? .turbo,
             debug: debugLogging
         )
@@ -322,6 +401,10 @@ struct FormCard: View {
     @Binding var mode:  ExportMode
     @Binding var transcribeEnabled: Bool
     @Binding var transcribeModelRaw: String
+    /// Honours the Settings → Transcription master switch. When false,
+    /// the per-run toggle is hard-disabled and the row paints a hint
+    /// pointing the user at Settings instead of pretending to be live.
+    var transcribeMasterEnabled: Bool
     var expandStartByOneMinute: Bool
     var resolvedStart: Date
     var resolvedEnd:   Date
@@ -433,13 +516,19 @@ struct FormCard: View {
     }
 
     private var transcribeRow: some View {
-        HStack(spacing: 10) {
+        // When the master switch is OFF, force-show the toggle as off
+        // and disable it. We don't mutate the per-run @AppStorage value —
+        // flipping the master back on should restore whatever the user
+        // had set per-run, not silently clobber it.
+        let effectiveOn = transcribeMasterEnabled && transcribeEnabled
+        return HStack(spacing: 10) {
             Toggle("", isOn: $transcribeEnabled)
                 .toggleStyle(.switch)
                 .labelsHidden()
-            Text(transcribeEnabled ? "Audio & video" : "Skip audio & video")
+                .disabled(!transcribeMasterEnabled)
+            Text(rowCaption(effectiveOn: effectiveOn))
                 .font(MissionFont.sans(13))
-                .foregroundStyle(t.ink)
+                .foregroundStyle(transcribeMasterEnabled ? t.ink : t.inkMute)
             Spacer()
             modelTag
         }
@@ -453,6 +542,15 @@ struct FormCard: View {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .strokeBorder(t.rule, lineWidth: 1)
         )
+        .opacity(transcribeMasterEnabled ? 1 : 0.6)
+        .help(transcribeMasterEnabled
+              ? "Run Whisper over audio/video attachments. First run downloads the model and bootstraps a venv."
+              : "Transcription is disabled in Settings → Transcription. Enable the master switch to use this toggle.")
+    }
+
+    private func rowCaption(effectiveOn: Bool) -> String {
+        if !transcribeMasterEnabled { return "Disabled in Settings" }
+        return effectiveOn ? "Audio & video" : "Skip audio & video"
     }
 
     private var modelTag: some View {
@@ -491,6 +589,111 @@ struct VersionFooter: View {
             .font(MissionFont.mono(10))
             .foregroundStyle(t.inkMute)
             .textSelection(.enabled)
+    }
+}
+
+/// Prominent Reveal-in-Finder button anchored next to the Run/Cancel
+/// strip. Always visible regardless of header chip layout — the previous
+/// "Reveal output" lived only in the top-right chip row and could
+/// disappear at narrow window widths. Falls back to the configured
+/// output dir when no run folder has been captured yet.
+struct RevealOutputButton: View {
+    @Environment(\.missionTheme) private var t
+
+    let runFolder: URL?
+    /// Display path to use when `runFolder` is nil. Typed as String to
+    /// match the @AppStorage caller; we convert to URL at click time.
+    let fallbackDir: String
+
+    private var targetURL: URL {
+        runFolder ?? URL(fileURLWithPath: fallbackDir)
+    }
+
+    /// Disabled only if we have neither a run folder nor a writable
+    /// fallback directory on disk — otherwise the click always does
+    /// something useful (reveal the output root if no run yet).
+    private var disabled: Bool {
+        runFolder == nil
+            && !FileManager.default.fileExists(atPath: fallbackDir)
+    }
+
+    var body: some View {
+        Button(action: {
+            NSWorkspace.shared.activateFileViewerSelecting([targetURL])
+        }) {
+            HStack(spacing: 6) {
+                Image(systemName: "folder")
+                    .font(.system(size: 13, weight: .medium))
+                Text("Reveal")
+                    .font(MissionFont.sans(13, weight: .semibold))
+            }
+            .foregroundStyle(t.runGradStart)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(.white.opacity(0.95))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(t.rule, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .opacity(disabled ? 0.45 : 1)
+        .help(runFolder != nil
+              ? "Reveal the run folder in Finder."
+              : "Reveal the configured output folder in Finder. After a run, this jumps to the run subfolder.")
+    }
+}
+
+/// Inline banner shown after a run that surfaced a recoverable error —
+/// most commonly per-attachment transcription failures the CLI logs but
+/// the run pill still claims as "Done." Offers a one-click jump back to
+/// the transcription preflight wizard when the failure looks like a
+/// dependency issue. Hidden as soon as the user starts a new run or the
+/// runner clears `lastError`.
+struct RunErrorBanner: View {
+    @Environment(\.missionTheme) private var t
+
+    let message: String
+    /// When true, the banner shows a `Run preflight` chip — used for the
+    /// transcription-failure case where the wizard has a real chance of
+    /// helping. False for generic export failures where we'd just open
+    /// an empty wizard.
+    let showPreflight: Bool
+    let openPreflight: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(t.amber)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Last run reported a problem")
+                    .font(MissionFont.sans(13, weight: .semibold))
+                    .foregroundStyle(t.ink)
+                Text(message)
+                    .font(MissionFont.sans(11))
+                    .foregroundStyle(t.inkDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            if showPreflight {
+                ChipButton(label: "Run preflight",
+                           icon: "stethoscope",
+                           action: openPreflight)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(t.amber.opacity(0.15))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(t.amber.opacity(0.4), lineWidth: 1)
+        )
     }
 }
 
@@ -695,10 +898,17 @@ private struct InstallSheet: View {
 struct SettingsView: View {
     @AppStorage(SettingsKeys.outputDir) private var outputDirPath: String = defaultOutputDir().path
     @AppStorage(SettingsKeys.transcribeModel) private var transcribeModelRaw: String = WhisperModel.turbo.rawValue
+    @AppStorage(SettingsKeys.transcribeMasterOn) private var transcribeMasterEnabled: Bool = true
     @AppStorage(SettingsKeys.debugLogging) private var debugLogging: Bool = false
     @AppStorage(SettingsKeys.emojiMode) private var emojiRaw: String = EmojiMode.word.rawValue
     @AppStorage(SettingsKeys.themePreference) private var themeRaw: String = ThemePreference.system.rawValue
     @AppStorage(SettingsKeys.expandStart) private var expandStartByOneMinute: Bool = true
+    /// The Settings scene gets its own preflight instance — it lives in a
+    /// separate window from RootView and SwiftUI's @EnvironmentObject
+    /// doesn't follow across Scene boundaries reliably. Probes are
+    /// idempotent so two instances don't interfere.
+    @StateObject private var settingsPreflight = TranscriptionPreflightService()
+    @State private var showPreflightSheet = false
 
     var body: some View {
         Form {
@@ -759,20 +969,40 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Section("Whisper transcription") {
+            Section("Transcription") {
+                Toggle("Enable transcription", isOn: $transcribeMasterEnabled)
+                Text("Master switch. When off, the per-run **Transcribe** toggle on the main form is disabled, exports never pass `--transcribe` to the CLI, and the launch-time preflight is skipped. Flip this off if you never need audio/video transcripts.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
                 Picker("Model", selection: $transcribeModelRaw) {
                     ForEach(WhisperModel.allCases) { m in
                         Text(m.label).tag(m.rawValue)
                     }
                 }
-                Text("Used when the inline **Transcribe** toggle is on. First run for a given model downloads it (~150 MB for tiny up to ~3 GB for large) and self-bootstraps a venv at PhantomLives/transcribe/.venv via mlx-whisper. Subsequent runs reuse the cached model. Apple Silicon Metal-accelerated; no server.")
+                .disabled(!transcribeMasterEnabled)
+                Text("First run for a given model downloads it (~150 MB for tiny up to ~3 GB for large) and self-bootstraps a venv at PhantomLives/transcribe/.venv via mlx-whisper. Subsequent runs reuse the cached model. Apple Silicon Metal-accelerated; no server.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Button("Reset to turbo") {
-                    transcribeModelRaw = WhisperModel.turbo.rawValue
+
+                HStack {
+                    Button("Reset to turbo") {
+                        transcribeModelRaw = WhisperModel.turbo.rawValue
+                    }
+                    .controlSize(.small)
+                    .disabled(!transcribeMasterEnabled)
+
+                    Spacer()
+                    Button("Run preflight…") {
+                        showPreflightSheet = true
+                        Task { await settingsPreflight.probeAll() }
+                    }
+                    .controlSize(.small)
+                    .disabled(!transcribeMasterEnabled)
+                    .help("Re-probe the transcription dependencies (transcribe.py, Python 3.10+, ffmpeg, venv, mlx-whisper) and surface fix suggestions in a wizard.")
                 }
-                .controlSize(.small)
             }
             Section("Diagnostics") {
                 Toggle("Debug logging", isOn: $debugLogging)
@@ -787,5 +1017,12 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 600, height: 720)
+        .sheet(isPresented: $showPreflightSheet) {
+            TranscriptionPreflightSheet(
+                service: settingsPreflight,
+                isPresented: $showPreflightSheet,
+                masterEnabled: $transcribeMasterEnabled
+            )
+        }
     }
 }

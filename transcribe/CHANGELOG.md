@@ -2,6 +2,35 @@
 
 All notable changes to transcribe will be documented in this file.
 
+## [1.4.3] — 2026-05-14
+
+### Fixed
+- **Intermittent `_bootstrap_venv` failures during batched invocations.**
+  Root cause: `_bootstrap_venv()` ran `pip install` *unconditionally*
+  on every invocation, even when the venv was fully populated with
+  every entry in `REQUIRED_PACKAGES`. Across a batch of N back-to-back
+  invocations (e.g. one transcribe.py call per attachment in a 42-msg
+  iMessage export) this turned into N independent dice rolls for "did
+  the network and PyPI behave?" — and the user saw random
+  `subprocess.CalledProcessError`s bubbling up from `_bootstrap_venv`
+  mid-batch even though every package was already installed. The
+  in-line comment said "subsequent runs pip-check silently" but the
+  code did no such thing.
+- New behaviour: `_required_modules_importable()` probes whether
+  `VENV_PYTHON` can `import` every entry in `_REQUIRED_IMPORTS` (a new
+  module-name companion list kept in sync with `REQUIRED_PACKAGES`).
+  If it can, the bootstrap skips `pip install` entirely — no network
+  round trip. If anything's missing, `pip install` runs as before, so
+  the genuine first-run / partial-install paths still work. Verbose
+  mode (`-v`/`--verbose`) prints `"Dependencies already installed —
+  skipping pip install."` for confidence.
+
+### Changed
+- `_bootstrap_venv` no longer hits PyPI at all in the steady state.
+  Concretely: an idle bootstrap (everything already installed) now
+  takes ~50 ms of import-probe time instead of a multi-second
+  PyPI round trip per invocation.
+
 ## [1.4.2] — 2026-05-01
 
 ### Fixed

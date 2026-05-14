@@ -88,6 +88,19 @@ final class ExportRunner: ObservableObject {
     /// finalised after the run by reading metadata.json + walking the run
     /// folder for a byte total. Drives the four Mission Control stat tiles.
     @Published private(set) var runStats: RunStats = .empty
+    /// Number of per-attachment transcription failures the CLI emitted during
+    /// the current/most-recent run. Driven by `TRANSCRIBE_FAILED` markers
+    /// (and the Python subprocess traceback shape transcribe.py exits with
+    /// when its bootstrap can't find `brew`/`ffmpeg` on the .app's slim
+    /// LaunchServices PATH). Lets the UI flag "Done with N failed" instead
+    /// of falsely reporting success.
+    @Published private(set) var transcriptFailureCount: Int = 0
+    /// One-line classification of the first transcription failure observed
+    /// this run, used by the post-run banner. Examples:
+    ///   "transcribe.py couldn't find `ffmpeg` or `brew` (PATH issue)"
+    ///   "mlx-whisper not installed in .venv"
+    /// nil means "no transcription failure detected."
+    @Published private(set) var transcriptFailureSummary: String?
 
     /// Persistent run-history sink. Injected so tests can use a
     /// throw-away store. The `run(_:)` entry point appends a row here on
@@ -273,6 +286,8 @@ final class ExportRunner: ObservableObject {
         lastError = nil
         lastExitStatus = nil
         runStats = RunStats()
+        transcriptFailureCount = 0
+        transcriptFailureSummary = nil
         runStats.spanStart = request.start
         runStats.spanEnd   = request.end
         inflightRequest = request
@@ -313,6 +328,14 @@ final class ExportRunner: ObservableObject {
 
         if ok && runFolder == nil {
             lastError = "Export finished with no output folder — likely no contact match or no messages in range."
+        } else if ok && transcriptFailureCount > 0 {
+            // CLI exited zero (export succeeded) but at least one
+            // attachment failed transcription. Surface that explicitly
+            // rather than letting the run pill say "Done" — that's the
+            // exact silent-failure the user hit after reboot.
+            let summary = transcriptFailureSummary
+                ?? "transcription failed (see live output for details)"
+            lastError = "Export finished, but \(transcriptFailureCount) attachment\(transcriptFailureCount == 1 ? "" : "s") failed to transcribe. \(summary)"
         } else if !ok {
             // Detect the specific Full Disk Access failure so we can give
             // the user actionable guidance instead of just an exit code.
@@ -391,6 +414,15 @@ final class ExportRunner: ObservableObject {
         // real time rather than at process exit.
         var env = ProcessInfo.processInfo.environment
         env["PYTHONUNBUFFERED"] = "1"
+        // Inject a sensible PATH. .app bundles launched from Finder /
+        // LaunchServices inherit a minimal PATH (/usr/bin:/bin:/usr/sbin:
+        // /sbin) that omits /opt/homebrew/bin and /usr/local/bin, so
+        // shell-style lookups like `shutil.which("ffmpeg")` or
+        // `subprocess.run(["brew", ...])` inside transcribe.py fail with
+        // FileNotFoundError before mlx-whisper ever installs. Augment —
+        // don't replace — the inherited PATH so any user-set entries
+        // still win, while the homebrew prefixes are always reachable.
+        env["PATH"] = Self.augmentedPATH(existing: env["PATH"])
         process.environment = env
 
         // Buffer for partial-line accumulation. readabilityHandler runs
@@ -445,6 +477,23 @@ final class ExportRunner: ObservableObject {
         if let s = Self.stageNumber(in: line) { stage = s }
         if let folder = Self.runFolderPath(in: line) { runFolder = URL(fileURLWithPath: folder) }
         if let n = RunStats.messageCount(in: line) { runStats.messageCount = n }
+        // Transcription failures come through two channels: the CLI's own
+        // structured marker (one per failed attachment), and the bare
+        // Python traceback transcribe.py leaks when its bootstrap can't
+        // spawn `brew` / `ffmpeg`. The traceback only fires once per run
+        // but tells us the whole batch is doomed — bump the count by 1.
+        if Self.lineIsTranscribeFailedMarker(line) {
+            transcriptFailureCount += 1
+            if transcriptFailureSummary == nil {
+                transcriptFailureSummary = Self.classifyTranscribeFailure(in: line)
+            }
+        } else if Self.lineIsTranscribeBootstrapTraceback(line) {
+            if transcriptFailureCount == 0 { transcriptFailureCount = 1 }
+            if transcriptFailureSummary == nil {
+                transcriptFailureSummary =
+                    "transcribe.py bootstrap crashed — likely couldn't find `brew` or `ffmpeg` on PATH (Finder-launched apps inherit a minimal PATH). Open Settings → Transcription → Run preflight to verify."
+            }
+        }
     }
 
     private func appendLine(_ line: String) {
@@ -476,5 +525,65 @@ final class ExportRunner: ObservableObject {
         guard let range = line.range(of: marker) else { return nil }
         let path = line[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
         return path.isEmpty ? nil : path
+    }
+
+    /// Matches the CLI's per-attachment failure log marker, e.g.
+    ///   "2026-05-14T11:28:00 TRANSCRIBE_FAILED attachment=foo.m4a model=turbo …"
+    /// Tolerant of leading whitespace / pipe prefixes the GUI's stream
+    /// label may prepend.
+    nonisolated static func lineIsTranscribeFailedMarker(_ line: String) -> Bool {
+        line.contains("TRANSCRIBE_FAILED")
+    }
+
+    /// Catches the specific traceback shape transcribe.py emits when its
+    /// venv bootstrap calls `subprocess.run(["brew", ...])` or hits an
+    /// `shutil.which("ffmpeg")`-then-spawn path with a PATH that doesn't
+    /// include /opt/homebrew/bin. The user sees this when a Finder-
+    /// launched .app tries to transcribe before its env is fixed up.
+    nonisolated static func lineIsTranscribeBootstrapTraceback(_ line: String) -> Bool {
+        line.contains("[whisper] ")
+            && (line.contains("_execute_child")
+                || line.contains("FileNotFoundError")
+                || line.contains("brew")
+                || line.contains("No such file or directory"))
+    }
+
+    /// Best-effort classification of a TRANSCRIBE_FAILED marker. Pulls the
+    /// CLI's `error="..."` field when present so the UI can show the
+    /// actual reason instead of a generic "transcription failed."
+    nonisolated static func classifyTranscribeFailure(in line: String) -> String {
+        if let r = line.range(of: #"error="([^"]+)""#, options: .regularExpression) {
+            let raw = String(line[r])
+            // strip the `error="` prefix and trailing `"` to leave the message.
+            let inner = raw.dropFirst(7).dropLast()
+            return "transcription failed: \(inner)"
+        }
+        return "transcription failed (see live output for details)"
+    }
+
+    /// Build a PATH the child process can actually use. We prepend the two
+    /// homebrew prefixes that GUI-launched .apps are missing — keeping the
+    /// existing entries so a user-customised PATH still wins. Idempotent:
+    /// re-running this with an already-augmented PATH won't double-up.
+    nonisolated static func augmentedPATH(existing: String?) -> String {
+        // /opt/homebrew/bin is Apple Silicon; /usr/local/bin is Intel and
+        // also a common spot for hand-rolled installs. Order matters —
+        // homebrew first so its python overrides /usr/bin/python3 (which
+        // is the CommandLineTools 3.9, which transcribe.py rejects).
+        let mustHave = [
+            "/opt/homebrew/bin",
+            "/opt/homebrew/sbin",
+            "/usr/local/bin",
+            "/usr/local/sbin"
+        ]
+        let baseline = existing?
+            .split(separator: ":", omittingEmptySubsequences: true)
+            .map(String.init) ?? []
+        var seen = Set<String>()
+        var ordered: [String] = []
+        for p in mustHave + baseline {
+            if seen.insert(p).inserted { ordered.append(p) }
+        }
+        return ordered.joined(separator: ":")
     }
 }

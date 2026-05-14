@@ -652,3 +652,384 @@ struct FullDiskAccessProbeTests {
         #expect(ExportRunner.bundleIdentifier == "com.bronty13.MessagesExporterGUI")
     }
 }
+
+/// Coverage for the PATH augmentation that fixes the .app-launched-from-
+/// Finder bug where /opt/homebrew/bin is missing and transcribe.py's
+/// `subprocess.run(["brew", ...])` calls die with FileNotFoundError.
+@Suite("ExportRunner.augmentedPATH")
+struct AugmentedPATHTests {
+
+    @Test("prepends /opt/homebrew/bin even when existing PATH is the minimal LaunchServices set")
+    func injectsHomebrewIntoLaunchServicesPATH() {
+        let augmented = ExportRunner.augmentedPATH(
+            existing: "/usr/bin:/bin:/usr/sbin:/sbin"
+        )
+        // The .app launched from Finder lands with this exact PATH, so the
+        // augmented version MUST surface /opt/homebrew/bin or transcribe.py
+        // can't find brew/ffmpeg. This is the regression-guard for the
+        // reboot-broke-transcription incident.
+        let parts = augmented.split(separator: ":")
+        #expect(parts.contains("/opt/homebrew/bin"))
+        #expect(parts.contains("/usr/local/bin"))
+        // Original entries must still survive in the same relative order
+        // so a user with custom PATH tweaks doesn't lose them.
+        #expect(parts.contains("/usr/bin"))
+        #expect(parts.contains("/bin"))
+    }
+
+    @Test("homebrew entries appear before /usr/bin so brew python wins over CommandLineTools 3.9")
+    func brewBeatsCommandLineTools() {
+        let augmented = ExportRunner.augmentedPATH(
+            existing: "/usr/bin:/bin"
+        )
+        let parts = augmented.split(separator: ":").map(String.init)
+        let brewIdx = parts.firstIndex(of: "/opt/homebrew/bin")
+        let usrBinIdx = parts.firstIndex(of: "/usr/bin")
+        #expect(brewIdx != nil)
+        #expect(usrBinIdx != nil)
+        if let brewIdx, let usrBinIdx { #expect(brewIdx < usrBinIdx) }
+    }
+
+    @Test("no duplicates when /opt/homebrew/bin is already present")
+    func idempotent() {
+        let augmented = ExportRunner.augmentedPATH(
+            existing: "/opt/homebrew/bin:/usr/bin:/bin"
+        )
+        let parts = augmented.split(separator: ":")
+        let brewCount = parts.filter { $0 == "/opt/homebrew/bin" }.count
+        #expect(brewCount == 1)
+    }
+
+    @Test("nil existing PATH still produces a usable string")
+    func nilInputStillUsable() {
+        let augmented = ExportRunner.augmentedPATH(existing: nil)
+        let parts = augmented.split(separator: ":")
+        #expect(parts.contains("/opt/homebrew/bin"))
+        #expect(parts.contains("/usr/local/bin"))
+    }
+
+    @Test("empty existing PATH still produces a usable string")
+    func emptyInputStillUsable() {
+        let augmented = ExportRunner.augmentedPATH(existing: "")
+        let parts = augmented.split(separator: ":")
+        #expect(parts.contains("/opt/homebrew/bin"))
+    }
+}
+
+/// Coverage for the line-classification helpers that detect transcription
+/// failures inside the CLI's stream. These predicates are what turn a
+/// silent "Done" pill into the user-visible "Last run reported a problem"
+/// banner — wrong classification is the bug we're guarding against.
+@Suite("Transcription failure detection")
+struct TranscribeFailureDetectionTests {
+
+    @Test("recognizes a TRANSCRIBE_FAILED marker")
+    func detectsMarker() {
+        let line = #"2026-05-14T11:28:00 TRANSCRIBE_FAILED attachment=msg.m4a model=turbo duration_s=0.42 error="ffmpeg not found""#
+        #expect(ExportRunner.lineIsTranscribeFailedMarker(line))
+    }
+
+    @Test("ignores benign lines mentioning 'transcribe' but not the marker")
+    func ignoresBenignTranscribeLines() {
+        #expect(!ExportRunner.lineIsTranscribeFailedMarker("[transcribe] foo.m4a (model=turbo, this may take a minute…)"))
+        #expect(!ExportRunner.lineIsTranscribeFailedMarker("       [whisper] writing transcript.json"))
+    }
+
+    @Test("recognizes the Python subprocess bootstrap traceback")
+    func detectsBootstrapTraceback() {
+        // The exact shape transcribe.py emits when /opt/homebrew/bin is
+        // missing from PATH and `subprocess.run(["brew", "install",
+        // "ffmpeg"])` blows up inside `_execute_child`. This is what the
+        // user saw in the screenshot.
+        let line = #"      [whisper]     self._execute_child(args, executable, preexec_fn, close_fds,"#
+        #expect(ExportRunner.lineIsTranscribeBootstrapTraceback(line))
+    }
+
+    @Test("recognizes a FileNotFoundError from the venv bootstrap")
+    func detectsFileNotFoundError() {
+        let line = "      [whisper] FileNotFoundError: [Errno 2] No such file or directory: 'brew'"
+        #expect(ExportRunner.lineIsTranscribeBootstrapTraceback(line))
+    }
+
+    @Test("plain Python tracebacks without the [whisper] prefix do NOT match")
+    func ignoresUnrelatedTracebacks() {
+        // We only escalate when the prefix marks the line as coming from
+        // transcribe.py's subprocess stream; an unrelated traceback in
+        // the CLI's own log would otherwise produce a spurious banner.
+        let line = "Traceback (most recent call last):"
+        #expect(!ExportRunner.lineIsTranscribeBootstrapTraceback(line))
+    }
+
+    @Test("classifyTranscribeFailure extracts the error= field")
+    func extractsErrorField() {
+        let line = #"… TRANSCRIBE_FAILED attachment=msg.m4a model=turbo error="ffmpeg not found""#
+        let classified = ExportRunner.classifyTranscribeFailure(in: line)
+        #expect(classified.contains("ffmpeg not found"))
+    }
+
+    @Test("classifyTranscribeFailure returns a generic message when error= is missing")
+    func genericFallback() {
+        let line = "… TRANSCRIBE_FAILED attachment=msg.m4a model=turbo"
+        let classified = ExportRunner.classifyTranscribeFailure(in: line)
+        #expect(classified.contains("see live output"))
+    }
+}
+
+/// Behavioural test that the runner's `processLine` actually mutates
+/// `transcriptFailureCount` when it sees a marker. Runs on the main
+/// actor because the runner is @MainActor-isolated.
+@MainActor
+@Suite("ExportRunner transcript failure counting")
+struct TranscribeFailureCountingTests {
+
+    @Test("processLine bumps transcriptFailureCount on each marker")
+    func bumpsCount() async {
+        let runner = ExportRunner(history: RunHistoryStore())
+        #expect(runner.transcriptFailureCount == 0)
+        runner.processLine(#"… TRANSCRIBE_FAILED attachment=a.m4a error="x""#)
+        runner.processLine(#"… TRANSCRIBE_FAILED attachment=b.m4a error="y""#)
+        #expect(runner.transcriptFailureCount == 2)
+        #expect(runner.transcriptFailureSummary != nil)
+        // Summary is "sticky" to the first failure so the banner doesn't
+        // flicker between mid-stream lines.
+        #expect(runner.transcriptFailureSummary?.contains("x") == true)
+    }
+
+    @Test("processLine bumps count exactly once on a bootstrap traceback line")
+    func bumpsOnceForTraceback() async {
+        let runner = ExportRunner(history: RunHistoryStore())
+        runner.processLine("      [whisper]     self._execute_child(args, executable, preexec_fn, close_fds,")
+        #expect(runner.transcriptFailureCount == 1)
+        // A second traceback line should NOT double-count.
+        runner.processLine("      [whisper] FileNotFoundError: [Errno 2] No such file or directory: 'brew'")
+        #expect(runner.transcriptFailureCount == 1)
+    }
+}
+
+/// Coverage for the per-step probes in TranscriptionPreflightService.
+/// The probes shell out to real binaries, so these tests verify only the
+/// pure helpers (version parser, candidate path generator) — anything
+/// process-y is integration territory.
+@Suite("TranscriptionPreflightService helpers")
+struct TranscriptionPreflightHelperTests {
+
+    @Test("versionMeets accepts 3.10+")
+    func acceptsTenAndAbove() {
+        #expect(TranscriptionPreflightService.versionMeets("3.10.0", minMajor: 3, minMinor: 10))
+        #expect(TranscriptionPreflightService.versionMeets("3.12.5", minMajor: 3, minMinor: 10))
+        #expect(TranscriptionPreflightService.versionMeets("3.14.5", minMajor: 3, minMinor: 10))
+    }
+
+    @Test("versionMeets rejects 3.9 (CommandLineTools)")
+    func rejectsCommandLineTools() {
+        #expect(!TranscriptionPreflightService.versionMeets("3.9.6", minMajor: 3, minMinor: 10))
+    }
+
+    @Test("versionMeets tolerates pre-release suffixes")
+    func handlesPrereleases() {
+        // Homebrew sometimes serves "3.13.0rc1" pre-final.
+        #expect(TranscriptionPreflightService.versionMeets("3.13.0rc1", minMajor: 3, minMinor: 10))
+    }
+
+    @Test("versionMeets rejects malformed input")
+    func rejectsGarbage() {
+        #expect(!TranscriptionPreflightService.versionMeets("", minMajor: 3, minMinor: 10))
+        #expect(!TranscriptionPreflightService.versionMeets("not.a.version", minMajor: 3, minMinor: 10))
+    }
+
+    @Test("transcribeScriptCandidates includes the default path")
+    func defaultCandidate() {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let candidates = TranscriptionPreflightService.transcribeScriptCandidates()
+        #expect(candidates.contains("\(home)/Documents/GitHub/PhantomLives/transcribe/transcribe.py"))
+    }
+
+    @Test("PipeLineBuffer joins lines across chunk boundaries")
+    func bufferJoinsAcrossChunks() {
+        // Pip output in real life arrives as multi-line chunks where the
+        // last bytes of a chunk don't end in \n. The old implementation
+        // appended those partial tails as if they were full lines and
+        // lost the rest — which is what made the user think their
+        // working install had failed. Verify the new buffer reassembles
+        // them correctly.
+        let buf = PipeLineBuffer()
+        let first  = "Collecting mlx-whisper>=0.4.0\nUsing cached mlx_whi".data(using: .utf8)!
+        let second = "sper-0.4.3-py3-none-any.whl\nSuccessfully installed".data(using: .utf8)!
+
+        let lines1 = buf.append(first)
+        #expect(lines1 == ["Collecting mlx-whisper>=0.4.0"])
+
+        let lines2 = buf.append(second)
+        #expect(lines2 == ["Using cached mlx_whisper-0.4.3-py3-none-any.whl"])
+
+        // The unfinished "Successfully installed" remains in the buffer
+        // until drained.
+        #expect(buf.drainTrailing() == "Successfully installed")
+    }
+
+    @Test("PipeLineBuffer handles CRLF as a single line terminator")
+    func bufferCRLF() {
+        let buf = PipeLineBuffer()
+        let data = "line1\r\nline2\r\n".data(using: .utf8)!
+        #expect(buf.append(data) == ["line1", "line2"])
+        #expect(buf.drainTrailing() == nil)
+    }
+
+    @Test("PipeLineBuffer returns nil on empty drain")
+    func bufferEmptyDrain() {
+        let buf = PipeLineBuffer()
+        #expect(buf.drainTrailing() == nil)
+    }
+
+    @Test("requiredPipPackages includes transcribe.py's full REQUIRED_PACKAGES list")
+    func requiredPackagesMatchTranscribePy() async {
+        // transcribe.py's bootstrap will re-run `pip install` (and
+        // intermittently fail on PyPI flakiness) whenever any of its
+        // REQUIRED_PACKAGES is missing from the venv. This test pins
+        // the GUI's install list to match — drift here causes flaky
+        // mid-export transcription failures even after a "successful"
+        // setup wizard run.
+        let pipPackageNames = TranscriptionPreflightService.requiredPipPackages
+            .map { $0.split(separator: ">", omittingEmptySubsequences: true).first.map(String.init) ?? $0 }
+        #expect(pipPackageNames.contains("mlx"))
+        #expect(pipPackageNames.contains("mlx-whisper"))
+        #expect(pipPackageNames.contains("mlx-lm"))
+        #expect(pipPackageNames.contains("truststore"))
+    }
+
+    @Test("requiredImports maps 1:1 to requiredPipPackages")
+    func importsMapToPipPackages() {
+        // The verification probe imports each module in requiredImports.
+        // If the two lists drift, we'll either install a package and not
+        // verify it (silent partial install) or verify a module we never
+        // installed (false negative). Both bugs have happened in this
+        // project's history — this test locks the invariant down.
+        let pipNames = TranscriptionPreflightService.requiredPipPackages
+            .map { $0.split(separator: ">", omittingEmptySubsequences: true).first.map(String.init) ?? $0 }
+            .map { $0.replacingOccurrences(of: "-", with: "_") }
+        let imports = TranscriptionPreflightService.requiredImports
+        #expect(Set(pipNames) == Set(imports),
+                "pip names \(pipNames) and import names \(imports) don't match")
+    }
+
+    @Test("venvDir() and venvPython() agree on the canonical layout")
+    func venvLayout() {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let dir = TranscriptionPreflightService.venvDir()
+        #expect(dir == "\(home)/Documents/GitHub/PhantomLives/transcribe/.venv")
+        // venvPython() is nil iff the binary doesn't exist on this system;
+        // when it returns non-nil, it must point inside `dir`.
+        if let py = TranscriptionPreflightService.venvPython() {
+            #expect(py.hasPrefix(dir))
+            #expect(py.hasSuffix("/bin/python"))
+        }
+    }
+}
+
+/// Verifies the master kill-switch path: when the master flag is off,
+/// the request handed to the runner must NEVER contain `--transcribe`,
+/// regardless of the per-run toggle's stored value. The check lives at
+/// the ExportRequest level so the contract is tested without spinning
+/// up a SwiftUI view.
+@Suite("Transcription master kill switch")
+struct TranscribeMasterKillSwitchTests {
+
+    @Test("transcribe=false omits --transcribe entirely")
+    func skipsFlagWhenOff() {
+        let req = ExportRequest(
+            contact: "Sallie",
+            handles: [],
+            start: nil, end: nil,
+            outputDir: URL(fileURLWithPath: "/tmp/out"),
+            emoji: .word,
+            mode: .sanitized,
+            transcribe: false,
+            transcribeModel: .turbo
+        )
+        let args = req.argumentList()
+        #expect(!args.contains("--transcribe"))
+        #expect(!args.contains("--transcribe-model"))
+    }
+
+    @Test("transcribe=true emits the flag + model")
+    func emitsFlagWhenOn() {
+        let req = ExportRequest(
+            contact: "Sallie",
+            handles: [],
+            start: nil, end: nil,
+            outputDir: URL(fileURLWithPath: "/tmp/out"),
+            emoji: .word,
+            mode: .sanitized,
+            transcribe: true,
+            transcribeModel: .medium
+        )
+        let args = req.argumentList()
+        #expect(args.contains("--transcribe"))
+        let modelIdx = args.firstIndex(of: "--transcribe-model")
+        #expect(modelIdx != nil)
+        if let modelIdx { #expect(args[args.index(after: modelIdx)] == "medium") }
+    }
+}
+
+/// Coverage for the user-facing setup phase model. These tests pin
+/// what the wizard shows to the user — getting captions or progress
+/// fractions wrong silently is a UX regression, so we lock them down.
+@Suite("PreflightSetupPhase")
+struct PreflightSetupPhaseTests {
+
+    @Test("captions are friendly (no jargon in any non-failure caption)")
+    func captionsAreUserFacing() {
+        let phases: [PreflightSetupPhase] = [
+            .none, .checkingFfmpeg, .installingFfmpeg, .checkingVenv,
+            .rebuildingVenv, .creatingVenv, .refreshingPip,
+            .installingEngine, .verifying, .finishedOK
+        ]
+        // We can't enforce friendliness exhaustively but we CAN catch
+        // accidental jargon regressions for the words we know about:
+        // pip / mlx-whisper / venv leaking into the primary view is a
+        // failure mode. ".finishedFailed" is allowed to mention pip
+        // because we recommend rebuilding the venv in some messages.
+        for phase in phases {
+            let lower = phase.caption.lowercased()
+            #expect(!lower.contains("pip"),
+                    "phase \(phase) leaks 'pip' into the user-facing caption: \(phase.caption)")
+            #expect(!lower.contains("mlx-whisper") && !lower.contains("mlx_whisper"),
+                    "phase \(phase) leaks 'mlx-whisper' into the user-facing caption: \(phase.caption)")
+        }
+    }
+
+    @Test("progress fractions are monotonic across the happy path")
+    func progressIsMonotonic() {
+        // The progress bar should always move forward through the
+        // workflow — a step that goes backwards is visually jarring
+        // even though the underlying probe takes longer.
+        let happyPath: [PreflightSetupPhase] = [
+            .checkingFfmpeg, .installingFfmpeg, .checkingVenv,
+            .creatingVenv, .refreshingPip, .installingEngine,
+            .verifying, .finishedOK
+        ]
+        var last: Double = 0
+        for phase in happyPath {
+            #expect(phase.progress >= last,
+                    "phase \(phase) progress \(phase.progress) is lower than previous \(last)")
+            last = phase.progress
+        }
+        #expect(happyPath.last?.progress == 1.0)
+    }
+
+    @Test("terminal states identify themselves correctly")
+    func terminalDetection() {
+        #expect(PreflightSetupPhase.finishedOK.isTerminal)
+        #expect(PreflightSetupPhase.finishedFailed(reason: "x").isTerminal)
+        #expect(!PreflightSetupPhase.installingEngine.isTerminal)
+        #expect(!PreflightSetupPhase.none.isTerminal)
+    }
+
+    @Test("failure carries the user-facing reason verbatim")
+    func failureCarriesReason() {
+        let phase = PreflightSetupPhase.finishedFailed(
+            reason: "Couldn't reach PyPI. Check your internet.")
+        #expect(phase.caption.contains("Couldn't reach PyPI"))
+        #expect(phase.isFailure)
+    }
+}

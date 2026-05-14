@@ -2,6 +2,218 @@
 
 All notable changes to messages-exporter-gui will be documented in this file.
 
+## [1.0.268] — 2026-05-14
+
+### Fixed
+- **Transcription failing intermittently across long exports.** Each
+  attachment in an iMessage export spawns a fresh transcribe.py
+  invocation. With transcribe 1.4.2's unconditional `pip install`, an
+  export with 42 attachments meant 42 sequential PyPI round-trips —
+  enough rolls of the dice that intermittent network / rate-limit
+  failures guaranteed *some* mid-batch crashes even when the venv was
+  fully populated. Fixed by upgrading transcribe to **1.4.3** (skips
+  `pip install` when every required module already imports cleanly).
+- **GUI setup only installing mlx-whisper + truststore.** transcribe
+  1.4.3's REQUIRED_PACKAGES list is `mlx, mlx-whisper, mlx-lm,
+  truststore`, but the GUI's setup workflow only installed two of
+  those — so transcribe's bootstrap would (correctly) detect mlx-lm
+  missing and fall back to its own `pip install`, putting us right
+  back into the flakiness window. New `requiredPipPackages` /
+  `requiredImports` constants on the service are the single source of
+  truth for both install and verification; new tests pin them in 1:1
+  sync and lock the list to match transcribe.py's REQUIRED_PACKAGES.
+- **Install now uses `--upgrade --force-reinstall` for the package
+  list.** The user's venv kept ending up with packages pip "thought"
+  were installed but whose files were physically absent — pip's
+  dependency resolver warns about this with messages like "torch
+  requires networkx, which is not installed" after a successful
+  install. Force-reinstall makes the setup idempotent: clicking the
+  button a second time after corruption *fixes* the venv instead of
+  layering more half-installs on top.
+
+### Changed
+- The technical-details checklist's "mlx-whisper imports cleanly" row
+  renamed to "Transcription packages import cleanly" and now probes
+  all four required modules. Failure detail names exactly which
+  module(s) are missing — useful when filing bug reports.
+
+### Added
+- 2 new tests:
+  - **requiredPipPackages includes transcribe.py's full
+    REQUIRED_PACKAGES list** — drift here causes flaky mid-export
+    transcription failures.
+  - **requiredImports maps 1:1 to requiredPipPackages** — locks the
+    invariant that we verify what we install.
+  **94/94 pass.**
+
+## [1.0.267] — 2026-05-14
+
+### Fixed
+- **`Set up transcription` reported failure when the install actually
+  succeeded.** Root cause: the in-flight pip log was being captured by
+  a `readabilityHandler` that split each pipe chunk on `\n` and
+  appended any partial-line tail as if it were a complete line —
+  losing both the final lines of output (`Successfully installed …`,
+  `[setup] Done.`) and miscounting structure when a UTF-8 line
+  straddled a chunk boundary. Worse, we never drained the pipe after
+  process exit, so anything still buffered at the moment pip
+  terminated was silently dropped. Replaced with a `Data`-backed
+  `PipeLineBuffer` (the same shape `ExportRunner` already uses for the
+  CLI stream) that accumulates raw bytes, splits only on real `\n`
+  boundaries (and treats `\r\n` as one terminator), and exposes a
+  `drainTrailing()` the caller invokes after termination. Result: the
+  setup log now shows what actually happened, including the final
+  status line.
+- **Stopped trusting pip's exit code as the final word.** Pip can
+  print `Successfully installed …` and still return non-zero in edge
+  cases (deprecation warnings escalating to errors, etc.), and even
+  with the log buffer fixed it's still possible to lose the exit
+  value to a torrent of output. The setup workflow now always runs a
+  final acceptance probe — `python -c "import mlx_whisper"` — and
+  declares success or failure from THAT, regardless of what any
+  intermediate subprocess returned. If transcription works, we say it
+  works, even if pip lied; if it doesn't, we say so even if pip lied
+  the other way.
+
+### Changed
+- **Setup is one button, not five.** The preflight sheet now opens in
+  a warm one-button view by default — a friendly summary of what
+  needs to happen and a single primary action (`Set up now`,
+  `Try again`, or `Done` depending on state). The previous 5-row
+  technical checklist still exists for power users behind a
+  collapsible `Show technical details` disclosure, but it never gates
+  the primary action. `Set up transcription` and `Rebuild venv…`
+  collapsed into one workflow that does the right thing every time:
+  probe → rebuild if corrupt → install → verify. The destructive-
+  rebuild path is still reachable from the failure panel's
+  `Rebuild from scratch` button as a manual escape hatch.
+- **Plain-English progress while setup runs.** Replaced the live pip
+  log dump in the primary view with named phases above a progress
+  bar: `Checking for ffmpeg…` → `Installing ffmpeg…` → `Setting up
+  the Python environment…` → `Updating the package installer…` →
+  `Downloading the transcription engine (~200 MB)…` → `Verifying…`.
+  Pip output is still streamed live into the technical-details
+  disclosure for anyone who wants to follow along or grab it for a
+  bug report.
+- **Warm failure messages with actionable next steps.** When auto-
+  repair genuinely can't work, the wizard now classifies the failure
+  and shows a plain-English message instead of a traceback. Examples:
+  "Transcription needs Homebrew to install ffmpeg. Install Homebrew
+  from https://brew.sh, then click Fix transcription again." (with a
+  button that opens brew.sh); "Couldn't reach PyPI. Check your
+  internet connection and try again." The technical detail remains
+  available in the disclosure.
+
+### Added
+- 6 new tests pinning the UX-critical pieces in place: PipeLineBuffer
+  joining lines across chunk boundaries, CRLF handling, empty-drain
+  contract, monotonic progress fractions, terminal-state detection,
+  and a regression guard that fails the build if any phase caption
+  leaks "pip" or "mlx-whisper" jargon into the primary view.
+  **92/92 pass.**
+
+## [1.0.266] — 2026-05-14
+
+### Fixed
+- **`Set up transcription` failing with `ImportError: cannot import name
+  '_log' from 'pip._internal.utils'`.** The user's venv had a corrupt
+  pip — bundled pip's internal module layout drifted out of sync with
+  the rest of the wheel, the canonical "Python upgrade left the venv
+  half-migrated" symptom. The setup workflow now:
+  1. Probes `python -m pip --version` inside the existing venv before
+     doing anything else.
+  2. If that fails for any reason, nukes the .venv and recreates it
+     from scratch (auto-recovery — no user intervention needed).
+  3. Runs `python -m ensurepip --upgrade --default-pip` to harden pip
+     even on a freshly-created venv (a brand-new venv can still ship a
+     stale pip; ensurepip refreshes from the host Python's bundled
+     wheel without another full rebuild).
+  4. Only then runs `pip install mlx-whisper truststore`.
+  Steps 3+4 are shared by the new manual `Rebuild venv…` action.
+
+### Added
+- **`Rebuild venv…` button** in the preflight wizard footer. Manual
+  escape hatch for the case where auto-detection misses or the user
+  wants a clean reset. Gated behind a confirmation dialog because it
+  deletes ~/Documents/GitHub/PhantomLives/transcribe/.venv.
+- **Copy button on the Setup output log pane** — one-click clipboard
+  capture for bug reports. Briefly flashes "Copied" on success.
+
+### Tests
+- New test for `TranscriptionPreflightService.venvDir()` /
+  `venvPython()` agreement on the canonical layout — both must point
+  at `~/Documents/GitHub/PhantomLives/transcribe/.venv` so the
+  rebuild-venv path doesn't accidentally `rm -rf` the wrong directory.
+  **85/85 pass.**
+
+## [1.0.264] — 2026-05-14
+
+### Fixed
+- **Transcription silently failing after a reboot.** Root cause: when
+  MessagesExporterGUI.app is launched from Finder / LaunchServices, the
+  child processes inherit a minimal `PATH` (`/usr/bin:/bin:/usr/sbin:
+  /sbin`) that omits `/opt/homebrew/bin` and `/usr/local/bin`. Inside
+  the transcription chain, transcribe.py calls
+  `subprocess.run(["brew", "install", "ffmpeg"])` to self-heal a
+  missing ffmpeg — but `brew` itself isn't findable either, so the
+  bootstrap dies in `_execute_child` with `FileNotFoundError`, leaving
+  the .venv created but `mlx-whisper` never installed. Subsequent runs
+  reuse the broken venv. Fix: `ExportRunner` now prepends
+  `/opt/homebrew/bin`, `/opt/homebrew/sbin`, `/usr/local/bin`,
+  `/usr/local/sbin` to the child `PATH` before spawning the CLI — and
+  uses the same augmented PATH for all preflight probes so a green
+  preflight predicts a green run.
+- **"Done" pill claiming success when transcription failed.** The CLI
+  intentionally catches per-attachment transcription errors and
+  continues (the export itself succeeds; you still get message bodies
+  and attachment copies). The GUI now parses `TRANSCRIBE_FAILED`
+  markers and the bootstrap-traceback shape out of the CLI stream,
+  bumps a counter, and surfaces a yellow `Last run reported a problem`
+  banner after the run instead of pretending everything is fine. The
+  banner offers a one-click `Run preflight` chip when the failure
+  looks like a dependency issue.
+- **Header chips compressing on small windows.** "Save preset",
+  "Reveal output" and the theme chip could vanish at the minimum
+  window height because `LiveOutputCard.frame(maxHeight: .infinity)`
+  greedily reclaimed space and SwiftUI compressed the header to make
+  room. Added `.fixedSize(horizontal: false, vertical: true)` plus
+  `.layoutPriority(1)` to the header so it's the last row to give up
+  space, not the first.
+
+### Added
+- **Settings → Transcription master switch (hard kill switch).** New
+  `transcribeMasterEnabled` flag (default on, `AppStorage`-persisted).
+  When off, the per-run **Transcribe** toggle is force-disabled with a
+  caption pointing back to Settings, `--transcribe` never reaches the
+  CLI, and the launch-time preflight is skipped entirely. Flip this
+  off if you never need audio/video transcripts and don't want the
+  setup-wizard prompts.
+- **TranscriptionPreflightService** with launch-time + on-demand
+  probing. Five named steps:
+  1. transcribe.py is reachable
+  2. Python 3.10+ is installed
+  3. ffmpeg is on PATH
+  4. Transcribe venv exists
+  5. mlx-whisper imports cleanly
+  Each step has a Retry button. A `Set up transcription` action runs
+  `brew install ffmpeg` (when missing) and `pip install mlx-whisper`
+  inside the venv, streaming pip output into a live log pane. The
+  sheet auto-opens on launch when any check fails (and only then —
+  healthy systems never see it); reachable any time from Settings →
+  Transcription → Run preflight.
+- **Prominent Reveal-in-Finder button next to Run / Cancel.** Always
+  visible regardless of header chip layout; targets the run folder
+  after a successful run, falls back to the configured output dir
+  otherwise.
+
+### Tests
+- 17 new unit tests covering `ExportRunner.augmentedPATH` (homebrew
+  injection, ordering vs CommandLineTools Python, idempotency, nil
+  input), `TRANSCRIBE_FAILED` / bootstrap-traceback line classifiers,
+  per-line counter bumping, `versionMeets` (3.10+ acceptance, 3.9
+  rejection, pre-release tolerance), preflight script-candidate
+  discovery, and master kill-switch flag propagation. **84/84 pass.**
+
 ## [1.0.263] — 2026-05-13
 
 ### Fixed
