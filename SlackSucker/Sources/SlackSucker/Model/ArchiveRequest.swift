@@ -121,6 +121,13 @@ struct ArchiveRequest: Codable, Equatable {
     /// untouched. Read by `ArchiveRunner`, not by the argv builder
     /// (slackdump itself doesn't know about this option).
     var organizeFiles: Bool = true
+    /// Post-processing toggles — none of these touch slackdump itself.
+    var generateHashes: Bool = false
+    var hashAlgorithms: Set<HashAlgorithm> = [.sha256]
+    var transcribeMedia: Bool = false
+    var transcribeModel: TranscriptionModel = .turbo
+    var stripPhotoMetadata: Bool = false
+    var bakeOrientation: Bool = false
     /// Resolved path slackdump should write into. The runner computes
     /// this as `<settings.outputDir>/<scope.slug>_<YYYYMMDD_HHmmss>`.
     var outputDir: URL

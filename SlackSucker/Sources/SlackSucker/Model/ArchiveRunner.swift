@@ -99,9 +99,18 @@ final class ArchiveRunner: ObservableObject {
         // never touch SQLite or `__avatars/`.
         writeArchiveLog(folder: request.outputDir)
         if ok {
-            // Post-process: sort __uploads into media-category folders
-            // when the user has the toggle on. Runs *before* we compute
-            // outputBytes so the byte total reflects the final layout.
+            // Post-process pipeline. Order is deliberate:
+            //
+            //   1. FileOrganizer  → moves __uploads into media folders
+            //   2. OrientationBaker → bakes EXIF orientation INTO pixels
+            //                         (must precede #3 — strip wipes
+            //                         the orientation flag)
+            //   3. MetadataStripper → strips EXIF / IPTC / XMP
+            //   4. TranscriptionService → emits .txt next to videos/audio
+            //   5. HashService → hashes the final-state files
+            //   6. ChatExporter → renders Chat/<scope>.txt from SQLite
+            //
+            // Each step is independent — failures don't poison the rest.
             if request.organizeFiles {
                 let result = FileOrganizer.organize(runFolder: request.outputDir)
                 if result.totalMoved > 0 {
@@ -114,6 +123,52 @@ final class ArchiveRunner: ObservableObject {
                 }
                 if !result.errors.isEmpty {
                     appendLine("[organize] \(result.errors.count) error(s) — see organize-log.txt")
+                }
+            }
+            if request.bakeOrientation {
+                let r = OrientationBaker.run(runFolder: request.outputDir)
+                appendLine("[orient] photos \(r.photosRotated)/\(r.photosInspected) baked, videos \(r.videosRotated)/\(r.videosInspected) re-encoded"
+                           + (r.errors.isEmpty ? "" : " · \(r.errors.count) error(s) — see orient-log.txt"))
+                for skip in r.skipped where skip.contains("ffmpeg not on PATH") {
+                    appendLine("[orient] \(skip)")
+                }
+            }
+            if request.stripPhotoMetadata {
+                let r = MetadataStripper.run(runFolder: request.outputDir)
+                if !r.skipped.isEmpty, r.filesProcessed == 0 {
+                    for s in r.skipped { appendLine("[metadata] \(s)") }
+                } else {
+                    appendLine("[metadata] stripped \(r.filesChanged)/\(r.filesProcessed) file(s)"
+                               + (r.errors.isEmpty ? "" : " · \(r.errors.count) error(s) — see metadata-log.txt"))
+                }
+            }
+            if request.transcribeMedia {
+                let r = await TranscriptionService.run(
+                    runFolder: request.outputDir,
+                    model: request.transcribeModel,
+                    onLine: { [weak self] line in
+                        // service may invoke onLine from any context;
+                        // hop back to the runner's main actor.
+                        Task { @MainActor in self?.appendLine(line) }
+                    }
+                )
+                appendLine("[transcribe] done — \(r.succeeded)/\(r.attempted) succeeded"
+                           + (r.failed.isEmpty ? "" : " · \(r.failed.count) failed")
+                           + (r.skipped.isEmpty ? "" : " · \(r.skipped.count) skipped")
+                           + " — see transcribe-log.txt")
+            }
+            if request.generateHashes, !request.hashAlgorithms.isEmpty {
+                let r = HashService.run(runFolder: request.outputDir,
+                                        algorithms: request.hashAlgorithms)
+                if let out = r.outputPath {
+                    let algoList = request.hashAlgorithms
+                        .sorted(by: { $0.rawValue < $1.rawValue })
+                        .map(\.label)
+                        .joined(separator: ", ")
+                    appendLine("[hash] wrote \(out.lastPathComponent) — \(r.fileCount) file(s), algorithms \(algoList)")
+                }
+                if !r.errors.isEmpty {
+                    appendLine("[hash] \(r.errors.count) error(s) — see hashes.txt header for run state")
                 }
             }
             // Generate a plain-text chat transcript for targeted scopes

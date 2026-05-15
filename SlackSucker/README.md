@@ -23,26 +23,38 @@ Two-script flow (`build` → `install`) is the PhantomLives standard for `.app` 
 
 ## What it does
 
-| Step | Tool | Output |
-| --- | --- | --- |
-| Workspace auth | `slackdump workspace new <name>` | encrypted creds at `~/Library/Caches/slackdump/` |
-| Pick a scope | SlackSucker UI | `ArchiveRequest` value type |
-| Archive | bundled `slackdump archive` | `slackdump.sqlite` + `__uploads/<FILE_ID>/<name>` |
-| Reorganize files | `FileOrganizer` | `Videos/` `Photos/` `Audio/` `Other/` at run-folder root |
-| Render transcript | `ChatExporter` (SQLite → text) | `Chat/<scope>.txt` with mentions resolved |
-| Auto-backup | `BackupService` (launch hook) | `~/Downloads/SlackSucker backup/SlackSucker-<ts>.zip` |
+| Step | Tool | Output | Toggle |
+| --- | --- | --- | --- |
+| Workspace auth | `slackdump workspace new <name>` | encrypted creds at `~/Library/Caches/slackdump/` | — |
+| Pick a scope | SlackSucker UI | `ArchiveRequest` value type | — |
+| Archive | bundled `slackdump archive` | `slackdump.sqlite` + `__uploads/<FILE_ID>/<name>` | — |
+| Reorganize files | `FileOrganizer` | `Videos/` `Photos/` `Audio/` `Other/` at run-folder root | "Sort folders" |
+| Bake orientation | `OrientationBaker` (CoreImage / ffmpeg) | rotated pixels, `Orientation=1` | "Bake orientation" |
+| Strip metadata | `MetadataStripper` (exiftool) | EXIF/IPTC/XMP cleared | "Strip metadata" |
+| Transcribe A/V | `TranscriptionService` (transcribe.py) | `<name>.txt` next to Videos/ + Audio/ files | "Transcribe A/V" |
+| Generate hashes | `HashService` (CryptoKit) | `hashes.txt` (MD5/SHA-1/SHA-256) | "Hashes" |
+| Render transcript | `ChatExporter` (SQLite → text) | `Chat/<scope>.txt` with mentions resolved | — |
+| Auto-backup | `BackupService` (launch hook) | `~/Downloads/SlackSucker backup/SlackSucker-<ts>.zip` | Settings → Backup |
 
-End state of a typical channel run:
+The five toggled passes are independent — failures in one don't block the others, and each writes its own `<name>-log.txt` next to the SQLite. Defaults live in **Settings → POST-PROCESSING DEFAULTS**; the main-screen toggles override per-run.
+
+End state of a typical channel run with everything on:
 
 ```
 ~/Downloads/SlackSucker/<scope>_<YYYYMMDD_HHmmss>/
 ├── slackdump.sqlite           Source of truth — untouched
 ├── archive.log                Captured slackdump stdout
 ├── organize-log.txt           FileOrganizer summary
+├── orient-log.txt             OrientationBaker summary
+├── metadata-log.txt           MetadataStripper summary
+├── transcribe-log.txt         TranscriptionService summary
+├── hashes.txt                 Per-file checksums (GNU sha256sum format)
 ├── __avatars/                 Profile thumbnails (kept as-is)
 ├── Videos/                    .mp4 .mov .m4v .mkv .webm …
+│   └── <name>.txt             Whisper transcript per file
 ├── Photos/                    .jpg .png .heic .webp .gif …
 ├── Audio/                     .mp3 .m4a .wav .ogg .flac …
+│   └── <name>.txt             Whisper transcript per file
 ├── Other/                     PDFs, docs, archives, anything else
 └── Chat/
     └── <scope>.txt            Plain-text transcript
@@ -64,7 +76,7 @@ End state of a typical channel run:
 ```sh
 ./build-app.sh                 # release build (CONFIG=debug also supported)
 SLACKDUMP_BIN=/path/to/slackdump ./build-app.sh   # bundle a specific slackdump
-./run-tests.sh                 # 41 tests across 11 Swift Testing suites
+./run-tests.sh                 # 52 tests across 16 Swift Testing suites
 ./install.sh                   # replace /Applications/SlackSucker.app, relaunch
 ./install.sh --no-open         # same, but leave the new copy unlaunched
 ```

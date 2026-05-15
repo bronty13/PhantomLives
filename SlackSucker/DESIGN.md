@@ -131,7 +131,117 @@ self.organizeFiles = try c.decodeIfPresent(Bool.self, forKey: .organizeFiles) ??
 - The Application Support dir holds settings, run history, presets, and the channel cache. Losing any of those is annoying — losing the presets after building them up over months is genuinely painful.
 - Slackdump's own creds are deliberately *not* backed up. Re-auth is one command; shipping encrypted credential blobs into the user's Downloads folder is the wrong default.
 
-### 10. `install.sh` ships alongside `build-app.sh`
+### 10. Post-processing pipeline is a sequence of independent passes (1.1)
+
+Once the 1.0 baseline shipped, four post-archive enhancements landed
+as a batch: orientation baking, metadata stripping, A/V transcription,
+hash manifests. Decision: model each as a separate `Service` enum with
+a pure `run(runFolder:…)` entry point, NOT a shared "post-processor"
+framework with plugin protocols.
+
+**Why a sequence of separate passes**:
+- Each has different dependencies (`exiftool`, `ffmpeg`, `transcribe.py`,
+  `CryptoKit`) and failure modes. A unified framework would have to
+  paper over those differences, hiding important context from the user.
+- Order matters between TWO of them (orientation must precede strip).
+  Encoding that as a hardcoded sequence in `ArchiveRunner` is clearer
+  than a topological sort with declared dependencies.
+- Adding a new pass = drop a new `Services/<Name>.swift`, write the
+  pure entry point, wire one `if request.<flag>` block. No framework
+  to grok.
+
+**Why a `<name>-log.txt` per pass instead of one combined log**:
+- A user trying to debug "why didn't my photos rotate?" can `cat
+  orient-log.txt` without paging through everything else. The runner's
+  live log already has the cross-cutting view.
+- Each pass's log file is the source of truth for that pass; the
+  in-memory `Result` is just what the runner surfaces in the UI.
+
+### 11. Bake orientation honestly — no ML inference (1.1)
+
+The user asked: "can we automatically rotate images and videos so
+they're the correct way (people)". The honest answer was *yes for
+EXIF-flag-baking, no for content-aware inference*.
+
+**What we deliver**:
+- Photos: `CGImageSource` reads `kCGImagePropertyOrientation`. If non-1,
+  `CIImage.oriented(forExifOrientation:)` rotates the pixel data, we
+  re-encode via `CGImageDestination`, then reset Orientation=1.
+- Videos: `ffmpeg -display_rotation 0 -metadata:s:v:0 rotate=0 -c copy`
+  re-encodes (stream copy where possible) and drops the rotation tag.
+
+**What we explicitly don't deliver**:
+- ML-based "look at the picture and decide which way is up". Vision
+  framework's face detection works on best-case single-face shots and
+  fails on group photos, side profiles, abstract content, screenshots,
+  and indoor scenes. Horizon detection via ML is a research-grade
+  problem. The reliability ceiling on user content is too low.
+
+The trade-off: the toggle is correctly named "Bake orientation", not
+"Auto-rotate". Documented in both `USER_MANUAL.md` and `CHANGELOG.md`
+that the screenshot / no-flag case is out of scope.
+
+### 12. Single-pass multi-algorithm hashing (1.1)
+
+Hash manifests support multiple algorithms (MD5 / SHA-1 / SHA-256).
+Naïve implementation: three separate `FileHandle` reads, one per
+algorithm.
+
+**Chosen**: one `FileHandle.read(upToCount:)` loop, feed each chunk to
+every selected hasher via `Data.withUnsafeBytes { raw in ... }`. Each
+hasher's `.update(bufferPointer:)` is O(chunk-size); the read is what
+dominates. A 1GB file gets read exactly once regardless of how many
+algorithms the user picked.
+
+**Why CryptoKit**:
+- `Insecure.MD5` and `Insecure.SHA1` are right there. No need to link
+  CommonCrypto, no `<CC_MD5_CTX>` lifecycle to manage.
+- `SHA256()` matches the same `HashFunction` protocol — uniform call
+  site (`update` / `finalize`).
+- The `.Insecure` namespacing nudges callers toward SHA-256 by default;
+  MD5 / SHA-1 remain available for cross-referencing legacy archives
+  (Slack data export auditors, forensic catalogues).
+
+### 13. Transcription doesn't bundle, by design (1.1)
+
+The `transcribe/` PhantomLives subproject is a self-bootstrapping
+Python script that creates a `.venv` and pulls multi-GB MLX-Whisper
+weights on first run. Bundling all of that inside `SlackSucker.app`
+would:
+- Bloat the bundle from ~36MB to ~6GB.
+- Break code signing — the `.venv` interpreter and pip-installed
+  binaries fail `codesign --verify` because they have iCloud xattrs
+  the moment they live anywhere under `~/Documents/`.
+- Couple SlackSucker's release cadence to MLX-Whisper's. We'd have to
+  rebuild every time the user upgraded their Python.
+
+**Chosen**: resolve at runtime via `$SLACKSUCKER_TRANSCRIBE_BIN` →
+PATH `transcribe` → sibling-checkout `transcribe/transcribe.py`. If
+none of those exist, the live log shows `[transcribe] skipped — no
+transcribe binary found` and the archive otherwise completes normally.
+
+The user pays a one-time "check out the sibling repo" cost; in
+exchange the integration stays loose and the Whisper deps live where
+they should (the user's home, with the rest of their MLX models).
+
+### 14. Per-session output override doesn't write to Settings (1.1)
+
+The main-screen "Export folder" card has a "Choose…" button. Pressing
+it does NOT update `settings.json` — it only sets a `@State` variable
+in `RootView` that overrides for the current session.
+
+**Why**:
+- The user explicitly asked for this — "settings definition will
+  remain the default unless changed in settings". That's a deliberate
+  separation: Settings is for the persistent default; main-screen is
+  for "just this run, just this session".
+- Mixing "configure once" and "tweak per session" into the same
+  control creates surprise — change the main-screen path for a
+  one-off export and your default silently moves with it.
+- The "Reset" button next to the override returns to the Settings
+  default, so the user always has a one-click path back to home base.
+
+### 15. `install.sh` ships alongside `build-app.sh`
 
 **Why**:
 - `/Applications/<App>.app` is the only path that keeps TCC, Launch Services, Spotlight, and iCloud's File Provider all happy. Running from the project tree breaks all four in subtle ways (duplicate permission entries, phantom ` 2.app` clones, xattr-induced codesign failures).

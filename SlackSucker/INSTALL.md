@@ -15,6 +15,18 @@
    ```
    The version present here gets copied verbatim into `SlackSucker.app/Contents/Resources/slackdump`, code-signed with the host app, and used at runtime. You don't need slackdump on PATH after the build is done.
 
+### Optional Homebrew dependencies (per-feature)
+
+None of these are required to install or run SlackSucker. Each one unlocks a specific post-processing toggle; without it, the toggle either skips silently or logs a one-line "tool not installed" notice in the live log and the rest of the run still completes.
+
+| Tool | Install | Unlocks |
+| --- | --- | --- |
+| `exiftool` | `brew install exiftool` | "Strip metadata" toggle |
+| `ffmpeg` | `brew install ffmpeg` | Video orientation baking (photos work without it) |
+| `transcribe/` checked out alongside SlackSucker | `git clone` the PhantomLives repo (already done if you're reading this) | "Transcribe A/V" toggle. Apple Silicon only. First run pulls multi-GB MLX-Whisper weights. |
+
+Hashing has no external dependency — `CryptoKit` ships with the OS.
+
 ## Build + install
 
 ```sh

@@ -16,6 +16,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 22) {
                 outputSection
                 defaultsSection
+                postProcessingSection
                 appearanceSection
                 diagnosticsSection
                 BackupSettingsView()
@@ -59,6 +60,66 @@ struct SettingsView: View {
                     get: { settings.defaultArchiveOptions.organizeFiles },
                     set: { settings.defaultArchiveOptions.organizeFiles = $0; settings.save() }))
                 Text("When on, attachments are moved out of slackdump's \u{201C}__uploads/<ID>/\u{201D} layout into category subfolders at the run-folder root. The SQLite database and avatar thumbnails are untouched.")
+                    .font(AppFont.sans(11))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var postProcessingSection: some View {
+        section(title: "POST-PROCESSING DEFAULTS") {
+            VStack(alignment: .leading, spacing: 10) {
+                // Bake orientation
+                Toggle("Bake EXIF orientation into photos / videos by default", isOn: Binding(
+                    get: { settings.defaultArchiveOptions.bakeOrientation },
+                    set: { settings.defaultArchiveOptions.bakeOrientation = $0; settings.save() }))
+                Text("Photos: read the Orientation EXIF tag and bake the rotation into pixel data using Core Image. Videos: re-encode via ffmpeg with the display rotation flattened. Cannot infer orientation when there's no tag (e.g. screenshots) — that requires ML and is out of scope.")
+                    .font(AppFont.sans(11))
+                    .foregroundStyle(.tertiary)
+
+                // Strip metadata
+                Toggle("Strip EXIF / IPTC / XMP metadata by default", isOn: Binding(
+                    get: { settings.defaultArchiveOptions.stripPhotoMetadata },
+                    set: { settings.defaultArchiveOptions.stripPhotoMetadata = $0; settings.save() }))
+                Text("Uses `exiftool` (install via `brew install exiftool`). Runs AFTER orientation baking — stripping wipes the Orientation tag too.")
+                    .font(AppFont.sans(11))
+                    .foregroundStyle(.tertiary)
+
+                // Transcribe
+                Toggle("Transcribe audio / video files by default", isOn: Binding(
+                    get: { settings.defaultArchiveOptions.transcribeMedia },
+                    set: { settings.defaultArchiveOptions.transcribeMedia = $0; settings.save() }))
+                Picker("Whisper model", selection: Binding(
+                    get: { settings.defaultArchiveOptions.transcribeModel },
+                    set: { settings.defaultArchiveOptions.transcribeModel = $0; settings.save() })) {
+                    ForEach(TranscriptionModel.allCases) { m in
+                        Text(m.label).tag(m)
+                    }
+                }
+                .pickerStyle(.menu)
+                .disabled(!settings.defaultArchiveOptions.transcribeMedia)
+                Text("Shells to PhantomLives/transcribe/transcribe.py. Apple Silicon only. Emits <name>.txt next to each source media file.")
+                    .font(AppFont.sans(11))
+                    .foregroundStyle(.tertiary)
+
+                // Hashes
+                Toggle("Generate file hashes by default", isOn: Binding(
+                    get: { settings.defaultArchiveOptions.generateHashes },
+                    set: { settings.defaultArchiveOptions.generateHashes = $0; settings.save() }))
+                HStack(spacing: 14) {
+                    ForEach(HashAlgorithm.allCases) { algo in
+                        Toggle(algo.label, isOn: Binding(
+                            get: { settings.defaultArchiveOptions.hashAlgorithms.contains(algo) },
+                            set: { yes in
+                                if yes { settings.defaultArchiveOptions.hashAlgorithms.insert(algo) }
+                                else   { settings.defaultArchiveOptions.hashAlgorithms.remove(algo) }
+                                settings.save()
+                            }))
+                            .disabled(!settings.defaultArchiveOptions.generateHashes)
+                    }
+                }
+                Text("Writes hashes.txt at the run-folder root, GNU-coreutils-compatible format. SHA-256 is the modern default; MD5 / SHA-1 are kept available for cross-referencing legacy archives.")
                     .font(AppFont.sans(11))
                     .foregroundStyle(.tertiary)
             }

@@ -37,7 +37,7 @@ struct BackupSettingsView: View {
                 Text("Keep backups for \(retentionDays) day\(retentionDays == 1 ? "" : "s") (0 = forever)")
             }
 
-            HStack {
+            HStack(spacing: 8) {
                 Button("Run backup now") {
                     do {
                         _ = try BackupService.doBackup()
@@ -47,6 +47,17 @@ struct BackupSettingsView: View {
                         runtimeError = error.localizedDescription
                     }
                 }
+                Button("Reveal folder") {
+                    revealBackupFolder()
+                }
+                Button("Verify latest") {
+                    if let latest = rows.first { test(latest.url) }
+                }
+                .disabled(rows.isEmpty)
+                Button("Restore latest…") {
+                    if let latest = rows.first { restoreConfirm = latest.url }
+                }
+                .disabled(rows.isEmpty)
                 Spacer()
                 if !lastBackupAt.isEmpty {
                     Text("Last: \(lastBackupAt)")
@@ -146,6 +157,12 @@ struct BackupSettingsView: View {
         if panel.runModal() == .OK, let url = panel.url {
             pathRaw = url.path
         }
+    }
+
+    private func revealBackupFolder() {
+        let dir = BackupService.resolvedBackupDir
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        NSWorkspace.shared.activateFileViewerSelecting([dir])
     }
 
     private func test(_ url: URL) {

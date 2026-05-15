@@ -23,10 +23,10 @@ struct LiveOutputCard: View {
                     Spacer()
                     chip("Copy", systemImage: "doc.on.doc") { copyLog() }
                     if let folder = runFolder {
-                        chip("Reveal", systemImage: "folder") { reveal(folder) }
                         chip("Open DB", systemImage: "tablecells") {
                             openDB(folder.appendingPathComponent("slackdump.sqlite"))
                         }
+                        chip("Reveal", systemImage: "folder") { reveal(folder) }
                     }
                     if canResume, runFolder != nil {
                         chip("Resume", systemImage: "play.fill", emphasised: true, action: onResume)

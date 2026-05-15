@@ -1,5 +1,97 @@
 # SlackSucker changelog
 
+## 1.1.x — post-processing pipeline (2026-05-15)
+
+A batch of post-archive enhancements. The slackdump invocation itself
+is unchanged; everything new runs after slackdump exits 0.
+
+### UI
+
+- **Reveal / Open DB chip order swapped** in the live-output card so
+  the more-common "Open DB" sits to the left of "Reveal in Finder".
+- **Backup Settings**: added top-level **Reveal folder**, **Verify latest**,
+  and **Restore latest…** buttons alongside the existing per-row chips.
+- **Main-screen export-folder card** above the live output. Shows the
+  resolved output root, lets the user pick a per-session override
+  (does NOT persist — Settings remains the source of the default;
+  use Settings → Output to change the persistent default). Reset
+  button returns to the Settings default; folder chip reveals it.
+
+### New post-processing toggles
+
+All four are independent, run in this order after slackdump exits, and
+log to their own `<name>-log.txt` next to the SQLite. Failures in one
+don't block the others. Defaults live in **Settings → POST-PROCESSING
+DEFAULTS**; the main-screen toggles are per-run overrides.
+
+- **Bake orientation** — reads EXIF `Orientation` from each photo and
+  re-encodes via Core Image + ImageIO so the pixel data matches what
+  every viewer renders, then resets `Orientation=1`. Videos: ffmpeg
+  re-encode with `-display_rotation 0` + `rotate=0` metadata. Requires
+  ffmpeg on PATH for videos; photos work without external deps. Runs
+  BEFORE "Strip metadata" so the orientation hint isn't lost.
+  *Out of scope*: ML-based people-upright inference for files without
+  any orientation flag (screenshots, edited copies). That's a separate
+  feature category.
+- **Strip metadata** — `exiftool -all=` over Photos/ and Videos/.
+  In-place destructive; the slackdump SQLite retains all message-level
+  provenance. Requires `brew install exiftool`.
+- **Transcribe A/V** — shells to the sibling `transcribe/transcribe.py`
+  for every file under Videos/ and Audio/; emits `<name>.txt` next to
+  the source. Apple Silicon only. Configurable Whisper model in
+  Settings (tiny/base/small/medium/large/turbo; turbo is default).
+  Discovery: `$SLACKSUCKER_TRANSCRIBE_BIN` → `which transcribe` →
+  `~/Documents/GitHub/PhantomLives/transcribe/transcribe.py`.
+- **Hashes** — writes `hashes.txt` at the run-folder root in GNU
+  `sha256sum`-compatible format, grouped by algorithm. Configurable
+  set of algorithms in Settings (MD5 / SHA-1 / SHA-256, multi-select;
+  default SHA-256). Single-pass stream-hashes all selected algorithms
+  per file via `CryptoKit`.
+
+### New files
+
+- `Services/HashService.swift` — `CryptoKit`-backed single-pass hasher.
+  `Insecure.MD5`, `Insecure.SHA1`, and `SHA256` all updated from the
+  same `Data.withUnsafeBytes` chunk so a 1GB file is read exactly once.
+- `Services/OrientationBaker.swift` — `CGImageSource` + `CIImage.oriented`
+  for photos; `ffmpeg -display_rotation 0 -c copy` for videos.
+- `Services/MetadataStripper.swift` — batches paths through
+  `exiftool -@ <argfile>` to avoid per-file process spawning and argv
+  length limits on big runs.
+- `Services/TranscriptionService.swift` — per-file async subprocess
+  loop with stderr capture; bridges sync `Process` exit through
+  `withCheckedContinuation` so UI stays responsive between files.
+- `Tests/SlackSuckerTests/PostProcessingTests.swift` — 11 new tests
+  across the four services + an `ArchiveOptions` legacy-JSON decode
+  test (ensures 1.0.x settings.json files load cleanly post-upgrade).
+
+### Settings & schema
+
+- `ArchiveOptions` gained six new fields: `generateHashes`,
+  `hashAlgorithms`, `transcribeMedia`, `transcribeModel`,
+  `stripPhotoMetadata`, `bakeOrientation`. All decoded with
+  `decodeIfPresent` + safe defaults so older settings.json files load
+  without intervention.
+- New `HashAlgorithm` and `TranscriptionModel` Codable enums.
+- `ArchiveRequest` gained matching per-run fields.
+
+### Tests
+
+- **Total: 52 tests across 16 Swift Testing suites** (was 41 in 11).
+  All pre-existing suites unchanged; 11 new tests across
+  `HashService` × 4, `MetadataStripper` × 2, `OrientationBaker` × 3,
+  `TranscriptionService` × 1, `ArchiveOptions backwards compat` × 1.
+
+### Optional Homebrew dependencies
+
+None of these are required at install time — the toggles surface
+clear "tool not installed" messages in the live log when their
+helpers are missing. To enable the features:
+
+- `brew install exiftool` — for metadata stripping
+- `brew install ffmpeg` — for video orientation baking
+- `transcribe/` checked out alongside SlackSucker — for A/V transcription
+
 ## 1.0.x — initial release (2026-05-15)
 
 Initial public release. Version numbers derive from git commit count via `build-app.sh`.

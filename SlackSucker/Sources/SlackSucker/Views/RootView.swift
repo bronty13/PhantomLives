@@ -21,6 +21,15 @@ struct RootView: View {
     @State private var includeAvatars: Bool = false
     @State private var memberOnly: Bool = false
     @State private var organizeFiles: Bool = true
+    @State private var generateHashes: Bool = false
+    @State private var transcribeMedia: Bool = false
+    @State private var stripPhotoMetadata: Bool = false
+    @State private var bakeOrientation: Bool = false
+    /// Per-session override of the output root. Resets on relaunch
+    /// back to settings.resolvedOutputDir — Settings is the source of
+    /// the persistent default, the main-screen row is a temporary
+    /// "just for this run / session" override.
+    @State private var sessionOutputOverride: URL? = nil
     @State private var showWorkspaceSheet = false
     @State private var showSavePresetSheet = false
 
@@ -39,6 +48,7 @@ struct RootView: View {
                         formCard
                         runStrip
                         StatTiles(stats: runner.runStats)
+                        outputDirCard
                         LiveOutputCard(lines: runner.logLines,
                                        runFolder: runner.runFolder,
                                        canResume: runner.resumeAvailable,
@@ -70,6 +80,10 @@ struct RootView: View {
                 includeAvatars = opts.includeAvatars
                 memberOnly = opts.memberOnly
                 organizeFiles = opts.organizeFiles
+                generateHashes = opts.generateHashes
+                transcribeMedia = opts.transcribeMedia
+                stripPhotoMetadata = opts.stripPhotoMetadata
+                bakeOrientation = opts.bakeOrientation
                 Task {
                     await workspaces.refresh()
                     // Auto-populate the channel/DM picker on launch when
@@ -109,26 +123,103 @@ struct RootView: View {
     }
 
     @ViewBuilder private var archiveOptions: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("OPTIONS")
                 .font(AppFont.kicker())
                 .foregroundStyle(.secondary)
+            // Slackdump-side toggles (passed to the CLI).
             HStack(spacing: 14) {
                 Toggle("Download files", isOn: $includeFiles)
                 Toggle("Avatars", isOn: $includeAvatars)
                 if case .entireWorkspace = scope {
                     Toggle("Member-only channels", isOn: $memberOnly)
                 }
-                Toggle("Sort into Videos/Photos/Audio/Other", isOn: $organizeFiles)
-                    .disabled(!includeFiles)
-                    .help(includeFiles
-                          ? "After the archive completes, move attachments from __uploads/ into category subfolders at the run-folder root."
-                          : "Turn on \u{201C}Download files\u{201D} first — there's nothing to sort otherwise.")
                 Spacer()
                 Button("Save preset…") { showSavePresetSheet = true }
                     .buttonStyle(.borderless)
             }
+            // Post-processing toggles (run after slackdump exits 0).
+            // Each one is independent; failures don't block the others.
+            HStack(spacing: 14) {
+                Toggle("Sort folders", isOn: $organizeFiles)
+                    .disabled(!includeFiles)
+                    .help(includeFiles
+                          ? "After the archive completes, move attachments from __uploads/ into Videos/Photos/Audio/Other subfolders."
+                          : "Turn on \u{201C}Download files\u{201D} first — there's nothing to sort otherwise.")
+                Toggle("Bake orientation", isOn: $bakeOrientation)
+                    .disabled(!includeFiles)
+                    .help("Read each photo's EXIF Orientation tag and bake the rotation into pixel data; for videos, flatten the rotation matrix via ffmpeg. Runs before metadata strip so the orientation isn't lost.")
+                Toggle("Strip metadata", isOn: $stripPhotoMetadata)
+                    .disabled(!includeFiles)
+                    .help("Remove EXIF, IPTC, and XMP metadata from photos and videos via exiftool. Destructive — the slackdump SQLite still has provenance.")
+                Toggle("Transcribe A/V", isOn: $transcribeMedia)
+                    .disabled(!includeFiles)
+                    .help("Run the transcribe.py subproject against every audio/video file; emit a .txt transcript next to each source.")
+                Toggle("Hashes", isOn: $generateHashes)
+                    .disabled(!includeFiles)
+                    .help("Generate hashes.txt at the run-folder root with the configured checksum algorithms (Settings → Hashes).")
+                Spacer()
+            }
         }
+    }
+
+    @ViewBuilder private var outputDirCard: some View {
+        GlassCard {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("EXPORT FOLDER")
+                        .font(AppFont.kicker())
+                        .foregroundStyle(.secondary)
+                    Text(currentOutputRoot.path)
+                        .font(AppFont.mono(11))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if sessionOutputOverride != nil {
+                        Text("Session override — Settings default is \(settings.resolvedOutputDir.path)")
+                            .font(AppFont.sans(10))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                Spacer()
+                Button("Choose…") { chooseSessionOutputDir() }
+                if sessionOutputOverride != nil {
+                    Button("Reset") { sessionOutputOverride = nil }
+                        .buttonStyle(.borderless)
+                }
+                Button {
+                    revealCurrentOutputRoot()
+                } label: {
+                    Image(systemName: "folder")
+                }
+                .buttonStyle(.borderless)
+                .help("Reveal in Finder")
+            }
+            .padding(14)
+        }
+    }
+
+    /// Resolved output root for the next run — session override wins
+    /// over the persistent Settings default.
+    var currentOutputRoot: URL {
+        sessionOutputOverride ?? settings.resolvedOutputDir
+    }
+
+    private func chooseSessionOutputDir() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Use for this session"
+        panel.directoryURL = currentOutputRoot
+        if panel.runModal() == .OK, let url = panel.url {
+            sessionOutputOverride = url
+        }
+    }
+
+    private func revealCurrentOutputRoot() {
+        let dir = currentOutputRoot
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        NSWorkspace.shared.activateFileViewerSelecting([dir])
     }
 
     @ViewBuilder private var runStrip: some View {
@@ -146,7 +237,7 @@ struct RootView: View {
             ? .all
             : .range(from: fromDate, to: toDate)
         let outputDir = ArchiveRequest.computeRunFolder(
-            root: settings.resolvedOutputDir, scope: scope)
+            root: currentOutputRoot, scope: scope)
         return ArchiveRequest(
             workspace: settings.selectedWorkspace,
             scope: scope,
@@ -155,6 +246,12 @@ struct RootView: View {
             includeAvatars: includeAvatars,
             memberOnly: memberOnly,
             organizeFiles: organizeFiles && includeFiles,
+            generateHashes: generateHashes && includeFiles,
+            hashAlgorithms: settings.defaultArchiveOptions.hashAlgorithms,
+            transcribeMedia: transcribeMedia && includeFiles,
+            transcribeModel: settings.defaultArchiveOptions.transcribeModel,
+            stripPhotoMetadata: stripPhotoMetadata && includeFiles,
+            bakeOrientation: bakeOrientation && includeFiles,
             outputDir: outputDir,
             debug: UserDefaults.standard.bool(forKey: "debugLogging")
         )
@@ -177,6 +274,10 @@ struct RootView: View {
         includeAvatars = r.includeAvatars
         memberOnly = r.memberOnly
         organizeFiles = r.organizeFiles
+        generateHashes = r.generateHashes
+        transcribeMedia = r.transcribeMedia
+        stripPhotoMetadata = r.stripPhotoMetadata
+        bakeOrientation = r.bakeOrientation
     }
 
     private func applyHistoryEntry(_ entry: RunHistoryEntry) {

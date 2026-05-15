@@ -2,7 +2,7 @@
 
 Snapshot of where the project stands so a future session (human or AI) can pick up without re-deriving everything from the commit history.
 
-Last updated: 2026-05-15. Initial release v1.0.x (commit-count derived). 41 tests across 11 Swift Testing suites, all green. Bundle is Developer-ID-signed end-to-end (host app + bundled slackdump).
+Last updated: 2026-05-15. v1.1.x (post-processing pipeline batch) on top of the 1.0 baseline (commit-count derived). 52 tests across 16 Swift Testing suites, all green. Bundle is Developer-ID-signed end-to-end (host app + bundled slackdump).
 
 ## What it is
 
@@ -26,6 +26,10 @@ Top-level SwiftUI `@StateObject` graph injected via `environmentObject`:
 - **`PresetStore`** / **`RunHistoryStore`** — JSON-backed Codable arrays, 50-entry cap on history.
 - **`BackupService`** — enum with `runOnLaunchIfDue()`. Called from `SlackSuckerApp.init()` before UI is built. Modeled on Timeliner's reference impl.
 - **`FileOrganizer`** — pure enum, called post-archive when toggle is on. Walks `__uploads/<ID>/<name>`, sorts by extension into `Videos/` `Photos/` `Audio/` `Other/`. Collision → `(<FILE_ID>)` suffix.
+- **`OrientationBaker`** (1.1) — `CGImageSource` + `CIImage.oriented(forExifOrientation:)` for photos; `ffmpeg -display_rotation 0 -c copy` for videos. Bakes the orientation flag into pixel data and resets it. Runs BEFORE `MetadataStripper` so the orientation hint isn't gone by the time we read it.
+- **`MetadataStripper`** (1.1) — Batches paths through `exiftool -@ <argfile>` (one process for the whole run; avoids per-file spawn cost). Strips EXIF/IPTC/XMP destructively in-place. No-ops with a skip log when exiftool isn't on PATH.
+- **`TranscriptionService`** (1.1) — Per-file `transcribe.py -i <src> -o <name>.txt -m <model> -q` loop. Async; bridges `Process` termination via `withCheckedContinuation` so UI stays responsive. Binary resolution order: `$SLACKSUCKER_TRANSCRIBE_BIN` → PATH `transcribe` → sibling-checkout `transcribe/transcribe.py`.
+- **`HashService`** (1.1) — Single-pass stream-hasher. One `FileHandle.read` loop per file; the same `Data` chunk feeds `Insecure.MD5` / `Insecure.SHA1` / `SHA256` simultaneously so a 1GB file is read exactly once regardless of how many algorithms are selected. Output is GNU-coreutils-compatible `<hex>  <relpath>` lines grouped under `# <ALGO>` section headers.
 - **`ChatExporter`** — pure functions + a single `export()` entry point. Shells to `/usr/bin/sqlite3 -json` against `slackdump.sqlite`, decodes message/user/file rows, renders a plain-text transcript with thread indentation and `<@U…>` / `<#C…|name>` / `<https://…|label>` resolution.
 
 ### Pipeline overview
@@ -40,7 +44,19 @@ Top-level SwiftUI `@StateObject` graph injected via `environmentObject`:
    ║  archive.log written                            ║
    ║       │                                         ║
    ║       ▼                                         ║
-   ║  FileOrganizer.organize(runFolder)              ║
+   ║  FileOrganizer.organize         (organizeFiles) ║
+   ║       │                                         ║
+   ║       ▼                                         ║
+   ║  OrientationBaker.run           (bakeOrient.)   ║  ◄── 1.1
+   ║       │                                         ║
+   ║       ▼                                         ║
+   ║  MetadataStripper.run           (stripMeta)     ║  ◄── 1.1
+   ║       │                                         ║
+   ║       ▼                                         ║
+   ║  TranscriptionService.run       (transcribe)    ║  ◄── 1.1
+   ║       │                                         ║
+   ║       ▼                                         ║
+   ║  HashService.run                (genHashes)     ║  ◄── 1.1
    ║       │                                         ║
    ║       ▼                                         ║
    ║  ChatExporter.export(runFolder)  (non-WS only)  ║
@@ -52,6 +68,13 @@ Top-level SwiftUI `@StateObject` graph injected via `environmentObject`:
    ║  history.record(entry)                          ║
    ╚═════════════════════════════════════════════════╝
 ```
+
+The order is load-bearing in only one place: **OrientationBaker must
+run before MetadataStripper**. The stripper wipes the EXIF
+`Orientation` tag along with everything else, so anything not yet
+baked would visually rotate after the strip. The other steps are
+order-independent; HashService comes last so the manifest reflects
+the final on-disk state.
 
 ### `ArchiveRequest` argv builder
 
@@ -114,7 +137,7 @@ For ChatExporter's SQLite reads, we shell to `/usr/bin/sqlite3 -json` rather tha
 
 ## Test coverage
 
-41 tests across 11 suites:
+52 tests across 16 suites:
 
 - **ArchiveRequest** — argv shapes for every scope × every flag combo; thread-URL rewrite; scope-slug sanitisation
 - **LineBuffer** — `\n` / `\r\n` / bare `\r` overwrite; trailing partial-line drain
@@ -127,6 +150,11 @@ For ChatExporter's SQLite reads, we shell to `/usr/bin/sqlite3 -json` rather tha
 - **SlackdumpBinary** — chmod bit; bundle path resolution
 - **Settings & history round-trips** — JSON encode/decode; max-entries cap
 - **BackupService** — debounce; retention trim (prefix-scoped); target-dir auto-create; list ordering
+- **HashService** (1.1) — known-input SHA-256; multi-algo grouping; empty-algorithms bail-out; symlink + dotfile skip
+- **MetadataStripper** (1.1) — log written when exiftool absent / no media; binary discovery
+- **OrientationBaker** (1.1) — empty-folder no-op + log; bogus image surfaces .unsupported/.error not a crash; ffmpeg / ffprobe lookup contract
+- **TranscriptionService** (1.1) — binary resolver returns nil or a real executable
+- **ArchiveOptions backwards compat** (1.1) — 1.0 settings.json decodes cleanly with new fields defaulted off
 
 ## What's intentionally NOT here
 
@@ -135,6 +163,8 @@ For ChatExporter's SQLite reads, we shell to `/usr/bin/sqlite3 -json` rather tha
 - **Token storage.** SlackSucker never touches `~/Library/Caches/slackdump/provider.bin`.
 - **`export` / `dump` slackdump subcommands.** Only `archive`. Run those from the terminal if needed.
 - **Per-thread file scoping** for the thread-URL workaround. Channel-with-time-bracket can in rare cases pick up another message in the same 2-second window. The chat transcript shows whatever was archived — if the time bracket accidentally pulls in an adjacent message it'll appear in the .txt. Acceptable trade-off for now.
+- **ML-based people-upright orientation inference.** OrientationBaker bakes the EXIF Orientation flag into pixel data; that catches ~90% of "rotated" photos (phones held sideways). What it does NOT do is *infer* up-from-down on files that have no orientation flag at all (screenshots, edited copies, pipeline-stripped content). Doing that reliably requires ML face/horizon detection that fails badly on group shots and content with no people; users who need it should run a dedicated tool after the SlackSucker export.
+- **Bundled `transcribe` runtime.** The transcribe.py script self-bootstraps a multi-GB `.venv` on first run, and that bootstrap can't run from inside a signed `.app` bundle. The service relies on the sibling-checkout (or PATH shim) instead.
 
 ## Known slackdump quirks (workarounds in code)
 

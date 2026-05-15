@@ -18,12 +18,18 @@ The main pane has four sections:
   - **Channel / DM** — type-ahead picker over the cached entity list (channels, DMs, multi-party DMs, users)
   - **Thread URL** — paste a Slack message permalink (e.g. `https://your.slack.com/archives/C123/p1700000000123456`)
 - **Time range**: "Archive all time" or a from/to window. Pickers are local-time; SlackSucker converts to UTC for slackdump.
-- **Options**:
+- **Options** (slackdump-side):
   - **Download files** — fetch attachments alongside messages (default on)
   - **Avatars** — fetch user profile thumbnails to `__avatars/`
   - **Member-only channels** — workspace-wide runs only; skips channels you're not in
-  - **Sort into Videos/Photos/Audio/Other** — post-process to organize attachments by media type (default on)
-- **Run / Live output**: the blue gradient button kicks off the run. Output streams into the log card; chips along the top copy the buffer, reveal the run folder, open the SQLite database, or resume a cancelled run.
+- **Options** (post-processing — all run after slackdump exits 0, all gated on Download files being on):
+  - **Sort folders** — move attachments out of slackdump's `__uploads/` into `Videos/Photos/Audio/Other/` (default on)
+  - **Bake orientation** — read each photo's EXIF Orientation tag and bake the rotation into pixel data; flatten video rotation matrices via ffmpeg. Honest scope: this fixes "phone held sideways" cases reliably, but cannot detect orientation when there's no flag (e.g. screenshots, edited copies). See "Auto-rotate (the honest version)" below.
+  - **Strip metadata** — remove EXIF/IPTC/XMP from photos and videos via `exiftool`. Runs AFTER bake orientation so the rotation isn't lost.
+  - **Transcribe A/V** — run the `transcribe/` subproject against every audio/video file; emit `<name>.txt` next to the source. Whisper model picked in Settings.
+  - **Hashes** — write `hashes.txt` at the run-folder root. Algorithms (MD5/SHA-1/SHA-256) picked in Settings; defaults to SHA-256.
+- **Export folder**: above the live output, a card shows the resolved export root. The "Choose…" button picks a per-session override that doesn't persist — Settings is still the source of the default. Reset returns to that default.
+- **Run / Live output**: the blue gradient button kicks off the run. Output streams into the log card; chips along the top open the SQLite database, reveal the run folder, or resume a cancelled run.
 
 Each run writes to `~/Downloads/SlackSucker/<scope>_<YYYYMMDD_HHmmss>/`.
 
@@ -36,10 +42,16 @@ A successful run produces:
 ├── slackdump.sqlite           Source of truth — slackdump's archive
 ├── archive.log                Every line slackdump streamed
 ├── organize-log.txt           FileOrganizer summary (file counts per category)
+├── orient-log.txt             Orientation-bake summary (when toggle on)
+├── metadata-log.txt           Metadata-strip summary (when toggle on)
+├── transcribe-log.txt         Transcription summary (when toggle on)
+├── hashes.txt                 Per-file checksums (when toggle on)
 ├── __avatars/                 User profile thumbnails (untouched)
 ├── Videos/                    .mp4 .mov .m4v .mkv .webm .avi …
+│   └── <name>.txt             Whisper transcript (when Transcribe A/V on)
 ├── Photos/                    .jpg .jpeg .png .heic .webp .gif .svg …
 ├── Audio/                     .mp3 .m4a .wav .ogg .flac .opus …
+│   └── <name>.txt             Whisper transcript (when Transcribe A/V on)
 ├── Other/                     Everything else (PDFs, docs, archives)
 └── Chat/
     └── <scope>.txt            Plain-text transcript (channel/DM/thread only)
@@ -120,6 +132,54 @@ slackdump archive -o <out> -time-from 2023-11-14T22:13:19 -time-to 2023-11-14T22
 
 You'll see a `[scope] Thread URL — substituting channel archive with ±1s time bracket…` line in the live log before the actual command. Your time-range form is ignored for thread scope — a thread is identified by a single TS, not a range.
 
+## Post-processing pipeline
+
+When their respective toggles are on, four post-processing steps run after slackdump exits 0, in this order:
+
+1. **Sort folders** — moves `__uploads/<FILE_ID>/<name>` into `Videos/Photos/Audio/Other/`
+2. **Bake orientation** — Core Image re-encodes photos with the EXIF Orientation baked in; ffmpeg re-encodes videos with the rotation matrix flattened
+3. **Strip metadata** — `exiftool -all=` over Photos/ and Videos/
+4. **Transcribe A/V** — `transcribe.py -i <file> -o <name>.txt -m <model>` for every Videos/ and Audio/ file
+5. **Hashes** — single-pass stream-hash with the selected algorithms; write `hashes.txt`
+
+Then `Chat/<scope>.txt` is generated last (for channel/DM/thread scopes).
+
+Each step is independent. If exiftool isn't installed, only "Strip metadata" reports skipped; the rest still run. Each step also writes its own `<name>-log.txt` next to the SQLite, so you can audit what happened without re-running.
+
+### Auto-rotate (the honest version)
+
+Bake orientation handles the **photo-rotated-because-the-phone-was-sideways** case reliably. The EXIF Orientation tag is what 90% of "rotated" photos actually contain — Core Image reads it, rotates the pixel data, then resets the tag. After this, no downstream viewer needs to honor the tag because the pixels are already correct.
+
+What it can NOT do:
+
+- Detect that a screenshot should be rotated (no EXIF flag = no signal).
+- Detect that a photo with a flat horizon should be rotated (no metadata, content inference is required).
+- Reliably detect "people-upright" via face detection — works in best-case (one large face), fails on group shots, side profiles, indoor scenes, and content with no faces.
+
+That ML-based "look at the picture, decide which way is up" inference is genuinely hard and out of scope. If you need it, run the photos through a dedicated tool after the SlackSucker export.
+
+### Hash manifest format
+
+`hashes.txt` is GNU coreutils-compatible — you can verify it with:
+
+```sh
+cd <run-folder>
+# pull just the SHA-256 section out and pipe to sha256sum -c
+awk '/^# SHA-256/{f=1;next}/^# /{f=0}f' hashes.txt | sha256sum -c -
+```
+
+Each section is preceded by `# <ALGO>`; lines below it are `<hex>  <relative-path>`.
+
+### Transcription setup
+
+The Transcribe A/V toggle requires the `transcribe/` PhantomLives subproject. Resolution order:
+
+1. `$SLACKSUCKER_TRANSCRIBE_BIN` env var (escape hatch)
+2. `transcribe` on PATH (if you symlinked the script)
+3. `~/Documents/GitHub/PhantomLives/transcribe/transcribe.py` (the sibling checkout)
+
+If none of those exist, the live log shows `[transcribe] skipped — no transcribe binary found` and the run continues. Apple Silicon only — `transcribe.py` uses MLX-accelerated Whisper.
+
 ## Auto-backup on launch
 
 Every launch zips `~/Library/Application Support/SlackSucker/` into `~/Downloads/SlackSucker backup/SlackSucker-<timestamp>.zip`. Defaults:
@@ -134,11 +194,12 @@ All of this is configurable in **Settings → BACKUP**: toggle, path picker, ret
 
 One scrollable window:
 
-- **Output folder** — default `~/Downloads/SlackSucker`; overridable.
+- **Output folder** — persistent default. `~/Downloads/SlackSucker` if unset. The main-screen "Choose…" is a per-session override that doesn't write here; this is the source of truth that survives relaunch.
 - **Default archive options** — files / avatars / member-only / sort-into-categories. The values the form starts with on each launch.
+- **Post-processing defaults** — bake orientation / strip metadata / transcribe + Whisper model / hashes + algorithms. The main-screen toggles default to these on launch.
 - **Appearance** — Auto / Light / Dark.
 - **Diagnostics** — verbose slackdump output (`-v` appended to every archive run).
-- **Backup** — described above.
+- **Backup** — described above. The top-level row also has **Reveal folder**, **Verify latest**, and **Restore latest…** convenience buttons; per-row chips are still available on each individual backup.
 
 ## Troubleshooting
 
