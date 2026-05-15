@@ -59,6 +59,14 @@ cp "$BIN_PATH/SlackSucker" "$MACOS/SlackSucker"
 cp "$SLACKDUMP_BIN" "$RESOURCES/slackdump"
 chmod +x "$RESOURCES/slackdump"
 
+# Dock / Finder icon. Resources/AppIcon.icns is checked in; regenerate
+# it with `swift Tools/make-icon.swift` after editing the design.
+if [ -f "Resources/AppIcon.icns" ]; then
+    cp "Resources/AppIcon.icns" "$RESOURCES/AppIcon.icns"
+else
+    echo "warning: Resources/AppIcon.icns missing — bundle will use the generic Swift icon" >&2
+fi
+
 cat > "$CONTENTS/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -71,6 +79,7 @@ cat > "$CONTENTS/Info.plist" <<PLIST
     <key>CFBundleShortVersionString</key><string>${SHORT_VERSION}</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleExecutable</key><string>SlackSucker</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>

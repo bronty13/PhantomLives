@@ -1,6 +1,20 @@
 # SlackSucker changelog
 
-## 1.1.x — post-processing pipeline (2026-05-15)
+## 1.1.x — post-processing pipeline + dock icon (2026-05-15)
+
+### Icon
+
+- New dock / Finder icon: 🐙 octopus on a deep-purple squircle with
+  four `#` glyphs at the corners. Squid metaphor follows the app name;
+  hashes signal "what's being grabbed."
+- `Resources/AppIcon.icns` is checked in. Regenerate via
+  `swift Tools/make-icon.swift` after editing the design. The script
+  renders all 10 sizes (16/32/128/256/512 + @2x) using Core Graphics
+  + AppleColorEmoji and runs `iconutil -c icns` to package.
+- `build-app.sh` copies the .icns into `Contents/Resources/` and the
+  Info.plist gains `CFBundleIconFile=AppIcon`.
+
+
 
 A batch of post-archive enhancements. The slackdump invocation itself
 is unchanged; everything new runs after slackdump exits 0.
