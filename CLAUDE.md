@@ -77,6 +77,55 @@ Required tests:
 
 Reference implementation: `Timeliner/Sources/Timeliner/Services/BackupService.swift` (the launch-time auto-run, debounce, retention trim, verify, and restore pieces). `MasterClipper/Sources/MasterClipper/Services/BackupService.swift` is the older sibling without the launch-time auto-run — when MasterClipper is next touched, fold the launch-time hook in to bring it into compliance.
 
+## `install.sh` standard for `.app` subprojects
+
+PhantomLives macOS apps that get built into a `.app` bundle (PurpleIRC, MasterClipper, Timeliner, SlackSucker, PurpleLife, MusicJournal, …) **should ship an `install.sh`** alongside `build-app.sh` whenever the developer workflow benefits from running the app out of `/Applications/`. That's the case when **any** of these apply:
+
+- The app needs Full Disk Access, Accessibility, Automation, or another TCC entitlement — TCC keys grants on the `(team ID, bundle ID, cdhash)` tuple, and running from a stable `/Applications/` path keeps Launch Services + System Settings → Privacy from spawning duplicate stale entries on every rebuild.
+- The app registers a URL scheme, AppleScript dictionary, Shortcuts intents, or Spotlight metadata — same reason: those bind to the resolved bundle path that Launch Services indexes.
+- The app needs to be launched from outside the project tree (Spotlight, Dock, Cmd+Tab) for natural day-to-day use.
+
+When it does **not** make sense, skip it: pure CLI tools, Python scripts, dev-only utilities, or sandboxed apps where running from anywhere is fine.
+
+### What `install.sh` does
+
+Three steps, in order:
+
+1. **Quit the running copy** — `osascript -e 'tell application "<AppName>" to quit' >/dev/null 2>&1 || true`. Give Launch Services a moment (`sleep 1`) to release the bundle lock.
+2. **Replace `/Applications/<AppName>.app`** — `rm -rf` then `ditto --noextattr <project-dir>/<AppName>.app /Applications/<AppName>.app`. `ditto --noextattr` matters: it strips the iCloud File Provider xattrs that re-attach mid-copy and break `codesign --verify`.
+3. **Relaunch** — `open /Applications/<AppName>.app`. Skip with a `--no-open` flag for CI / scripted use.
+
+The script lives at the subproject root (`<SubProject>/install.sh`), is `chmod +x`-ed in git, refuses to run when `<SubProject>/<AppName>.app` doesn't exist yet (run `./build-app.sh` first), and tolerates a missing `/Applications/<AppName>.app` (first install).
+
+Reference implementation: `SlackSucker/install.sh`.
+
+### Developer workflow
+
+```sh
+./build-app.sh && ./install.sh
+```
+
+One line: build the bundle, replace the `/Applications/` copy, relaunch. Two-step variant (`./install.sh --no-open` then manually open from Spotlight) is useful when iterating on launch-time logic without auto-focus stealing.
+
+### Why `/Applications/`, not the project tree?
+
+- **TCC stability**: macOS Privacy & Security entries follow the cdhash of the *exact path* that was authorised. Running from `~/Documents/GitHub/PhantomLives/<Sub>/<App>.app` and from `/Applications/<App>.app` would each accumulate their own Full Disk Access grant; rebuilds in the project tree rotate the cdhash and force re-granting permissions on every iteration.
+- **Launch Services hygiene**: launching the same `.app` from two paths makes Spotlight / Cmd+Tab pick a phantom copy after Finder auto-renames duplicates to ` 2.app` / ` 3.app`. Pinning to `/Applications/` and rebuilding through ditto eliminates the duplicates entirely.
+- **No iCloud File Provider interference**: the project tree may be inside `~/Documents/GitHub/…` which is iCloud-synced on many maintainers' machines. The File Provider re-attaches `com.apple.fileprovider.fpfs#P` and `com.apple.FinderInfo` xattrs to `.app` bundles at arbitrary times, which trips `codesign --verify`. `/Applications/` is local-only.
+
+### Per-session Claude permission
+
+The `rm -rf /Applications/<AppName>.app` + `ditto * /Applications/<AppName>.app` operations live behind the auto-mode classifier's "modifying shared infrastructure" gate. To let Claude run `install.sh` end-to-end without prompting, add the matching rules to `.claude/settings.local.json`:
+
+```json
+"Bash(rm -rf /Applications/<AppName>.app)",
+"Bash(ditto --noextattr * /Applications/<AppName>.app)",
+"Bash(osascript -e 'tell application \"<AppName>\" to quit')",
+"Bash(open /Applications/<AppName>.app)"
+```
+
+Substitute `<AppName>` per subproject. These are scoped per project, so the permissions stay narrow.
+
 ## Per-subproject commands
 
 | Subproject | Build / Run | Tests |
@@ -84,6 +133,7 @@ Reference implementation: `Timeliner/Sources/Timeliner/Services/BackupService.sw
 | `PurpleIRC/` (Swift, SwiftUI macOS app) | `./build-app.sh` → `PurpleIRC.app` (or `swift build`; `CONFIG=debug` for debug). UI only activates from the `.app` bundle. | `./run-tests.sh` — wrapper that adds `Testing.framework` rpath for Command Line Tools setups; plain `swift test` works with full Xcode. |
 | `MusicJournal/` (Swift, SwiftUI macOS app) | XcodeGen project (`project.yml`); regenerate with `xcodegen generate`, build via `MusicJournal.xcodeproj`. Depends on GRDB. | `xcodebuild test` (no test targets currently configured in `project.yml`). |
 | `Timeliner/` (Swift, SwiftUI macOS app) | `./build-app.sh` → `Timeliner.app` (XcodeGen + GRDB; produces a Developer-ID-signed `.app`). Auto-runs the launch-time backup standard above. | `./run-tests.sh` — XCTest, 18 tests across migration / Codable / search / export / backup. |
+| `SlackSucker/` (Swift, SwiftUI macOS app wrapping the `slackdump` CLI) | `./build-app.sh` → `SlackSucker.app` (plain SwiftPM; bundles the slackdump binary from `$SLACKDUMP_BIN` or `which slackdump`; Developer-ID-signed). Then `./install.sh` to deploy to `/Applications/`. Auto-runs the launch-time backup standard. | `./run-tests.sh` — Swift Testing, 41 tests across argv building / line buffer / stdout parsing / channel JSON parser / file organizer / chat exporter / settings round-trip / backup debounce + retention + listing. |
 | `messages-exporter/` (Python) | `./install.sh` (user) or `./install.sh --system` (sudo). Then `export_messages "<contact>" --start ... --end ...`. Requires Full Disk Access for the terminal. | `python3 test_export_messages.py` |
 | `fsearch/` (Bash) | `./install.sh` (user) or `./install.sh --system`. Run as `fsearch ...`. | `./test_fsearch.sh` (also `fsearch-test` smoke script) |
 | `brew-autoupdate/` (Bash + launchd) | `bash install.sh` — installs to `~/.config/brew-autoupdate/`, sets up launchd, creates the `brew-logs` viewer. | `bash test_brew_autoupdate.sh` |

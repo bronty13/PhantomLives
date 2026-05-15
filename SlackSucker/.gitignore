@@ -1,0 +1,19 @@
+.build/
+.swiftpm/
+*.app/
+*.xcodeproj/
+Package.resolved
+.DS_Store
+# Bundled slackdump binary is copied in at build time from whatever
+# `which slackdump` (or $SLACKDUMP_BIN) resolves to. Keeping it out of
+# version control because (a) it's per-arch / per-version, and (b) we
+# don't want to ship multi-megabyte binaries through the repo.
+Resources/slackdump
+# Slackdump auto-saves these cache files to the working directory
+# whenever `slackdump list channels/users` is run without `-format JSON`.
+# They contain real workspace data and must never be committed.
+channels-T*.txt
+channels-T*.json
+users-T*.txt
+users-T*.json
+slackdump_*.zip
