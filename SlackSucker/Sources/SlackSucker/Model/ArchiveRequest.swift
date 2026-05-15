@@ -121,6 +121,10 @@ struct ArchiveRequest: Codable, Equatable {
     /// untouched. Read by `ArchiveRunner`, not by the argv builder
     /// (slackdump itself doesn't know about this option).
     var organizeFiles: Bool = true
+    /// How `FileOrganizer` orders the `0001_, 0002_, …` prefix within
+    /// each category. `.none` skips the prefix. Only honored when
+    /// `organizeFiles` is also on.
+    var fileOrdering: FileOrdering = .messageTimestamp
     /// Post-processing toggles — none of these touch slackdump itself.
     var generateHashes: Bool = false
     var hashAlgorithms: Set<HashAlgorithm> = [.sha256]

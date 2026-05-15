@@ -95,6 +95,12 @@ struct ArchiveOptions: Codable, Equatable {
     var includeAvatars: Bool
     var memberOnly: Bool
     var organizeFiles: Bool
+    /// How to order the per-category `0001_, 0002_, …` prefix.
+    /// `.none` disables the prefix entirely; the timestamp options
+    /// both add it but sort by different signals (Slack-side message
+    /// TS vs. on-disk file creation date). Only meaningful when
+    /// `organizeFiles` is also on.
+    var fileOrdering: FileOrdering
     /// Generate per-file checksums (md5/sha1/sha256) at run-folder
     /// root → `hashes.txt`. Algorithms selected by `hashAlgorithms`.
     var generateHashes: Bool
@@ -117,6 +123,7 @@ struct ArchiveOptions: Codable, Equatable {
         includeAvatars: false,
         memberOnly: false,
         organizeFiles: true,
+        fileOrdering: .messageTimestamp,
         generateHashes: false,
         hashAlgorithms: [.sha256],
         transcribeMedia: false,
@@ -129,6 +136,7 @@ struct ArchiveOptions: Codable, Equatable {
     /// fields — decode each post-1.0.0 field with a sensible default
     /// when absent so upgrades don't strand previously-saved configs.
     init(includeFiles: Bool, includeAvatars: Bool, memberOnly: Bool, organizeFiles: Bool,
+         fileOrdering: FileOrdering = .messageTimestamp,
          generateHashes: Bool = false,
          hashAlgorithms: Set<HashAlgorithm> = [.sha256],
          transcribeMedia: Bool = false,
@@ -139,6 +147,7 @@ struct ArchiveOptions: Codable, Equatable {
         self.includeAvatars = includeAvatars
         self.memberOnly = memberOnly
         self.organizeFiles = organizeFiles
+        self.fileOrdering = fileOrdering
         self.generateHashes = generateHashes
         self.hashAlgorithms = hashAlgorithms
         self.transcribeMedia = transcribeMedia
@@ -153,12 +162,52 @@ struct ArchiveOptions: Codable, Equatable {
         self.includeAvatars    = try c.decode(Bool.self, forKey: .includeAvatars)
         self.memberOnly        = try c.decode(Bool.self, forKey: .memberOnly)
         self.organizeFiles     = try c.decodeIfPresent(Bool.self, forKey: .organizeFiles) ?? true
+        self.fileOrdering      = try c.decodeIfPresent(FileOrdering.self, forKey: .fileOrdering) ?? .messageTimestamp
         self.generateHashes    = try c.decodeIfPresent(Bool.self, forKey: .generateHashes) ?? false
         self.hashAlgorithms    = try c.decodeIfPresent(Set<HashAlgorithm>.self, forKey: .hashAlgorithms) ?? [.sha256]
         self.transcribeMedia   = try c.decodeIfPresent(Bool.self, forKey: .transcribeMedia) ?? false
         self.transcribeModel   = try c.decodeIfPresent(TranscriptionModel.self, forKey: .transcribeModel) ?? .turbo
         self.stripPhotoMetadata = try c.decodeIfPresent(Bool.self, forKey: .stripPhotoMetadata) ?? false
         self.bakeOrientation   = try c.decodeIfPresent(Bool.self, forKey: .bakeOrientation) ?? false
+    }
+}
+
+/// How `FileOrganizer` orders files within each category when assigning
+/// the per-category `0001_, 0002_, …` prefix.
+///
+/// `.messageTimestamp` — chronological by parent Slack message TS
+///   (joined to `slackdump.sqlite`). Within a single message that has
+///   multiple attachments, files keep their `FILE.IDX` order. Files
+///   with no parent message (canvas etc.) sort last, by FILE_ID.
+/// `.captureDate` — fallback chain:
+///   1. EXIF `DateTimeOriginal` (+ `SubSecTimeOriginal`) for photos
+///      via `CGImageSource`
+///   2. QuickTime `creationDate` common metadata for videos via
+///      `AVAsset.commonMetadata`
+///   3. Slack-side upload TS from `FILE.DATA.created` in the SQLite —
+///      always present, so this layer rescues files whose EXIF was
+///      stripped during upload (iOS Photos / Slack web both do this)
+///   4. Sentinel sort-last by FILE_ID (deterministic across re-runs)
+/// `.none` — no prefix; original filenames preserved.
+enum FileOrdering: String, Codable, CaseIterable, Identifiable {
+    case messageTimestamp
+    case captureDate
+    case none
+
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .messageTimestamp: return "Slack message timestamp"
+        case .captureDate:      return "Capture date (EXIF/QuickTime, falls back to Slack upload TS)"
+        case .none:             return "No order"
+        }
+    }
+    var shortLabel: String {
+        switch self {
+        case .messageTimestamp: return "Slack TS"
+        case .captureDate:      return "Capture"
+        case .none:             return "None"
+        }
     }
 }
 

@@ -112,14 +112,21 @@ final class ArchiveRunner: ObservableObject {
             //
             // Each step is independent — failures don't poison the rest.
             if request.organizeFiles {
-                let result = FileOrganizer.organize(runFolder: request.outputDir)
+                let result = FileOrganizer.organize(
+                    runFolder: request.outputDir,
+                    ordering: request.fileOrdering
+                )
                 if result.totalMoved > 0 {
+                    let orderingNote: String = request.fileOrdering == .none
+                        ? ""
+                        : " · \(result.prefixedCount) prefixed (\(request.fileOrdering.shortLabel))"
                     appendLine("[organize] moved \(result.totalMoved) file"
                                + (result.totalMoved == 1 ? "" : "s")
                                + " into category folders"
                                + (result.collisions > 0
                                   ? " (\(result.collisions) renamed for name collisions)"
-                                  : ""))
+                                  : "")
+                               + orderingNote)
                 }
                 if !result.errors.isEmpty {
                     appendLine("[organize] \(result.errors.count) error(s) — see organize-log.txt")
@@ -146,10 +153,12 @@ final class ArchiveRunner: ObservableObject {
                 let r = await TranscriptionService.run(
                     runFolder: request.outputDir,
                     model: request.transcribeModel,
-                    onLine: { [weak self] line in
+                    onLine: { [weak self] line, replacesLast in
                         // service may invoke onLine from any context;
                         // hop back to the runner's main actor.
-                        Task { @MainActor in self?.appendLine(line) }
+                        Task { @MainActor in
+                            self?.processLine(line, replacesLast: replacesLast)
+                        }
                     }
                 )
                 appendLine("[transcribe] done — \(r.succeeded)/\(r.attempted) succeeded"

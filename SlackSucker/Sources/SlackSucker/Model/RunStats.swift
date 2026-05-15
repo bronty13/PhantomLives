@@ -41,6 +41,10 @@ struct RunStats: Equatable {
             phase = p
             matched = true
         }
+        if let p = RunStats.matchTranscribePhase(line) {
+            phase = p
+            matched = true
+        }
         return matched
     }
 
@@ -90,5 +94,24 @@ struct RunStats: Equatable {
             return trimmed
         }
         return nil
+    }
+
+    /// Convert TranscriptionService's "[transcribe N/M] foo.mp4 →
+    /// foo.txt (45 MB, model=turbo)" file-start lines into a compact
+    /// phase string ("Transcribing 3/7: foo.mp4") for the RunStrip.
+    /// Matches the "file is starting" shape specifically — per-line
+    /// tqdm updates and ✓/✗ summary lines don't trigger this.
+    static func matchTranscribePhase(_ line: String) -> String? {
+        guard let regex = try? NSRegularExpression(
+            pattern: #"\[transcribe (\d+)/(\d+)\] ([^ ]+) → [^ ]+\.txt"#
+        ) else { return nil }
+        let ns = line as NSString
+        let range = NSRange(location: 0, length: ns.length)
+        guard let m = regex.firstMatch(in: line, options: [], range: range),
+              m.numberOfRanges == 4 else { return nil }
+        let cur = ns.substring(with: m.range(at: 1))
+        let total = ns.substring(with: m.range(at: 2))
+        let name = ns.substring(with: m.range(at: 3))
+        return "Transcribing \(cur)/\(total): \(name)"
     }
 }

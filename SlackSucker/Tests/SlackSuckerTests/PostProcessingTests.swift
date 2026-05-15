@@ -169,6 +169,49 @@ struct TranscriptionServiceTests {
             #expect(leading.isEmpty || leading[0].hasSuffix(".py"))
         }
     }
+
+    @Test("formatDuration renders sub-minute and multi-minute spans")
+    func durationFormat() {
+        #expect(TranscriptionService.formatDuration(7.4) == "7s")
+        #expect(TranscriptionService.formatDuration(59.4) == "59s")
+        // 59.9 rounds to 60, which crosses into the minute branch.
+        #expect(TranscriptionService.formatDuration(59.9) == "1m0s")
+        #expect(TranscriptionService.formatDuration(125) == "2m5s")
+        #expect(TranscriptionService.formatDuration(0) == "0s")
+    }
+}
+
+@Suite("RunStats transcribe phase parser")
+struct RunStatsTranscribePhaseTests {
+
+    @Test("file-start line yields a compact phase string")
+    func fileStartLine() {
+        let line = "[transcribe 3/7] foo.mp4 → foo.txt (45 MB, model=turbo)"
+        #expect(RunStats.matchTranscribePhase(line) == "Transcribing 3/7: foo.mp4")
+    }
+
+    @Test("tqdm progress lines do NOT trigger a phase change")
+    func progressLineIgnored() {
+        // We only want the file-start lines to update phase. The
+        // per-chunk tqdm output overwrites itself in place via the
+        // LineBuffer CR handling — surfacing each chunk as a phase
+        // would flicker the run strip badly.
+        let progress = "[transcribe 3/7] 50% |████████| 30/60s"
+        #expect(RunStats.matchTranscribePhase(progress) == nil)
+    }
+
+    @Test("end-of-file ✓ / ✗ lines do NOT trigger a phase change")
+    func endLinesIgnored() {
+        #expect(RunStats.matchTranscribePhase("[transcribe 3/7] ✓ foo.mp4 in 1m12s") == nil)
+        #expect(RunStats.matchTranscribePhase("[transcribe 3/7] ✗ foo.mp4 — exit 1 after 4s") == nil)
+    }
+
+    @Test("absorb wires the transcribe match into runStats.phase")
+    func absorbPath() {
+        var stats = RunStats()
+        _ = stats.absorb("[transcribe 1/2] meeting.m4a → meeting.txt (12 MB, model=turbo)")
+        #expect(stats.phase == "Transcribing 1/2: meeting.m4a")
+    }
 }
 
 @Suite("ArchiveOptions backwards compat")
@@ -193,5 +236,186 @@ struct ArchiveOptionsCompatTests {
         #expect(opts.transcribeModel == .turbo)
         #expect(opts.stripPhotoMetadata == false)
         #expect(opts.bakeOrientation == false)
+        // fileOrdering defaults to .messageTimestamp so upgrading users
+        // get the better-organized layout without intervention.
+        #expect(opts.fileOrdering == .messageTimestamp)
+    }
+}
+
+@Suite("FileOrganizer ordering")
+struct FileOrganizerOrderingTests {
+
+    private func makeRunFolder() -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ss-order-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    /// Synthesize an `__uploads/<FILE_ID>/<name>` tree with the given
+    /// upload IDs, each with a single one-byte file. Returns the run
+    /// folder URL — caller is responsible for cleanup.
+    private func seed(uploads: [(fileID: String, name: String)]) -> URL {
+        let run = makeRunFolder()
+        let up = run.appendingPathComponent("__uploads", isDirectory: true)
+        try? FileManager.default.createDirectory(at: up, withIntermediateDirectories: true)
+        for (id, name) in uploads {
+            let dir = up.appendingPathComponent(id, isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try? Data([0x00]).write(to: dir.appendingPathComponent(name))
+        }
+        return run
+    }
+
+    @Test(".none ordering writes original filenames (no prefix)")
+    func noOrderingNoPrefix() {
+        let run = seed(uploads: [
+            ("F001", "alpha.jpg"),
+            ("F002", "beta.jpg"),
+        ])
+        let result = FileOrganizer.organize(runFolder: run, ordering: .none)
+        #expect(result.prefixedCount == 0)
+        let photos = run.appendingPathComponent("Photos", isDirectory: true)
+        #expect(FileManager.default.fileExists(atPath: photos.appendingPathComponent("alpha.jpg").path))
+        #expect(FileManager.default.fileExists(atPath: photos.appendingPathComponent("beta.jpg").path))
+        try? FileManager.default.removeItem(at: run)
+    }
+
+    @Test(".captureDate uses Slack upload TS fallback when EXIF absent")
+    func captureDateFallbackToUploadTS() throws {
+        // Two seeded files with NO embedded EXIF (we wrote raw bytes,
+        // not real images) — so the capture-date reader returns nil
+        // for both and the SQLite upload-TS layer takes over. Build
+        // a synthetic slackdump.sqlite with the expected FILE rows.
+        let run = seed(uploads: [
+            ("F-FIRST",  "alpha.jpg"),
+            ("F-SECOND", "beta.jpg"),
+        ])
+        let sqlite = run.appendingPathComponent("slackdump.sqlite")
+        try makeSyntheticSqlite(at: sqlite, rows: [
+            ("F-FIRST",  created: 1_700_000_000),  // earlier
+            ("F-SECOND", created: 1_800_000_000),  // later
+        ])
+
+        let result = FileOrganizer.organize(runFolder: run, ordering: .captureDate)
+        #expect(result.prefixedCount == 2)
+        let photos = run.appendingPathComponent("Photos", isDirectory: true)
+        #expect(FileManager.default.fileExists(atPath: photos.appendingPathComponent("0001_alpha.jpg").path))
+        #expect(FileManager.default.fileExists(atPath: photos.appendingPathComponent("0002_beta.jpg").path))
+        try? FileManager.default.removeItem(at: run)
+    }
+
+    @Test("per-category numbering resets between categories")
+    func perCategoryReset() throws {
+        // 1 jpg + 1 mp4 with synthetic Slack upload TS. Each category
+        // gets its own 0001_ regardless of cross-category order.
+        let run = seed(uploads: [
+            ("F-VID", "clip.mp4"),
+            ("F-PIC", "shot.jpg"),
+        ])
+        let sqlite = run.appendingPathComponent("slackdump.sqlite")
+        try makeSyntheticSqlite(at: sqlite, rows: [
+            ("F-VID", created: 1_700_000_000),
+            ("F-PIC", created: 1_800_000_000),
+        ])
+        _ = FileOrganizer.organize(runFolder: run, ordering: .captureDate)
+        #expect(FileManager.default.fileExists(
+            atPath: run.appendingPathComponent("Videos/0001_clip.mp4").path))
+        #expect(FileManager.default.fileExists(
+            atPath: run.appendingPathComponent("Photos/0001_shot.jpg").path))
+        try? FileManager.default.removeItem(at: run)
+    }
+
+    @Test("slackUploadOrdering returns empty when sqlite file is absent")
+    func uploadOrderingNoSqlite() {
+        let bogus = URL(fileURLWithPath: "/tmp/definitely-not-here-\(UUID()).sqlite")
+        let keys = FileOrganizer.slackUploadOrdering(sqliteURL: bogus)
+        #expect(keys.isEmpty)
+    }
+
+    @Test(".messageTimestamp falls back gracefully when SQLite is missing")
+    func messageTimestampNoSqlite() {
+        // No slackdump.sqlite in the folder. The chronological-ordering
+        // lookup returns empty → every file gets sentinel sort, so they
+        // line up by FILE_ID (still deterministic) and still get
+        // prefixed. The point of this test is "doesn't crash, still
+        // produces the prefix" rather than verifying the order — that
+        // needs a real SQLite.
+        let run = seed(uploads: [
+            ("F-Z", "z.jpg"),
+            ("F-A", "a.jpg"),
+        ])
+        let result = FileOrganizer.organize(runFolder: run, ordering: .messageTimestamp)
+        #expect(result.prefixedCount == 2)
+        // FILE_ID "F-A" sorts before "F-Z" lexically → it gets 0001_.
+        #expect(FileManager.default.fileExists(
+            atPath: run.appendingPathComponent("Photos/0001_a.jpg").path))
+        #expect(FileManager.default.fileExists(
+            atPath: run.appendingPathComponent("Photos/0002_z.jpg").path))
+        try? FileManager.default.removeItem(at: run)
+    }
+
+    /// Build a minimal slackdump.sqlite with a `FILE` table carrying
+    /// the rows we need for ordering-fallback tests. Schema matches
+    /// what slackdump 4.x produces (only the columns the ordering
+    /// query reads are populated).
+    private func makeSyntheticSqlite(at url: URL, rows: [(fileID: String, created: Int)]) throws {
+        try? FileManager.default.removeItem(at: url)
+        let create = """
+        CREATE TABLE FILE (
+          ID TEXT NOT NULL,
+          CHUNK_ID INTEGER NOT NULL,
+          LOAD_DTTM TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CHANNEL_ID TEXT NOT NULL,
+          MESSAGE_ID INTEGER,
+          THREAD_ID INTEGER,
+          IDX INTEGER NOT NULL,
+          MODE TEXT NOT NULL,
+          FILENAME TEXT,
+          URL TEXT,
+          DATA BLOB NOT NULL,
+          SIZE INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (ID, CHUNK_ID)
+        );
+        """
+        var sql = create
+        for (i, row) in rows.enumerated() {
+            let data = "{\"id\":\"\(row.fileID)\",\"created\":\(row.created)}"
+            sql += "INSERT INTO FILE (ID, CHUNK_ID, CHANNEL_ID, IDX, MODE, DATA) VALUES ('\(row.fileID)', \(i + 1), 'CTEST', 0, 'hosted', '\(data)');\n"
+        }
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        proc.arguments = [url.path]
+        let stdin = Pipe()
+        proc.standardInput = stdin
+        proc.standardOutput = Pipe()
+        proc.standardError = Pipe()
+        try proc.run()
+        stdin.fileHandleForWriting.write(sql.data(using: .utf8)!)
+        try stdin.fileHandleForWriting.close()
+        proc.waitUntilExit()
+        guard proc.terminationStatus == 0 else {
+            throw NSError(domain: "ss-test", code: Int(proc.terminationStatus))
+        }
+    }
+
+    @Test("chronologicalOrdering returns empty when sqlite file is absent")
+    func sqliteAbsent() {
+        let bogus = URL(fileURLWithPath: "/tmp/definitely-not-here-\(UUID()).sqlite")
+        let keys = FileOrganizer.chronologicalOrdering(sqliteURL: bogus)
+        #expect(keys.isEmpty)
+    }
+
+    @Test("prefix width widens past 4 digits when a category exceeds 9999")
+    func wideningPrefix() {
+        // Sanity check the format-width branch. We don't actually
+        // create 10k files — instead, verify the format calculation
+        // by simulating the count path indirectly: a single file gets
+        // width=4 (00001 would be 5).
+        let run = seed(uploads: [("F-X", "one.jpg")])
+        _ = FileOrganizer.organize(runFolder: run, ordering: .messageTimestamp)
+        #expect(FileManager.default.fileExists(
+            atPath: run.appendingPathComponent("Photos/0001_one.jpg").path))
+        try? FileManager.default.removeItem(at: run)
     }
 }

@@ -70,6 +70,21 @@ struct SettingsView: View {
     private var postProcessingSection: some View {
         section(title: "POST-PROCESSING DEFAULTS") {
             VStack(alignment: .leading, spacing: 10) {
+                // File ordering
+                Picker("File ordering (within each category)", selection: Binding(
+                    get: { settings.defaultArchiveOptions.fileOrdering },
+                    set: { settings.defaultArchiveOptions.fileOrdering = $0; settings.save() })) {
+                    ForEach(FileOrdering.allCases) { o in
+                        Text(o.label).tag(o)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+                Text("Determines the 0001_, 0002_, … per-category prefix applied by FileOrganizer.  \u{2022} Slack message timestamp: joins slackdump.sqlite for each FILE's parent MESSAGE.TS.  \u{2022} File created (ms): on-disk creation date with millisecond precision (reflects when slackdump wrote the file).  \u{2022} No order: original filenames preserved.")
+                    .font(AppFont.sans(11))
+                    .foregroundStyle(.tertiary)
+
+                Divider().padding(.vertical, 2)
+
                 // Bake orientation
                 Toggle("Bake EXIF orientation into photos / videos by default", isOn: Binding(
                     get: { settings.defaultArchiveOptions.bakeOrientation },

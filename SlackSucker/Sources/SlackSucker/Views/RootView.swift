@@ -21,6 +21,7 @@ struct RootView: View {
     @State private var includeAvatars: Bool = false
     @State private var memberOnly: Bool = false
     @State private var organizeFiles: Bool = true
+    @State private var fileOrdering: FileOrdering = .messageTimestamp
     @State private var generateHashes: Bool = false
     @State private var transcribeMedia: Bool = false
     @State private var stripPhotoMetadata: Bool = false
@@ -80,6 +81,7 @@ struct RootView: View {
                 includeAvatars = opts.includeAvatars
                 memberOnly = opts.memberOnly
                 organizeFiles = opts.organizeFiles
+                fileOrdering = opts.fileOrdering
                 generateHashes = opts.generateHashes
                 transcribeMedia = opts.transcribeMedia
                 stripPhotoMetadata = opts.stripPhotoMetadata
@@ -146,6 +148,15 @@ struct RootView: View {
                     .help(includeFiles
                           ? "After the archive completes, move attachments from __uploads/ into Videos/Photos/Audio/Other subfolders."
                           : "Turn on \u{201C}Download files\u{201D} first — there's nothing to sort otherwise.")
+                Picker("Order", selection: $fileOrdering) {
+                    ForEach(FileOrdering.allCases) { o in
+                        Text(o.shortLabel).tag(o)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 130)
+                .disabled(!includeFiles || !organizeFiles)
+                .help("Per-category 0001_, 0002_, … prefix order. Slack TS uses parent-message timestamps from slackdump.sqlite. Created uses the on-disk file creation date (ms). None disables the prefix.")
                 Toggle("Bake orientation", isOn: $bakeOrientation)
                     .disabled(!includeFiles)
                     .help("Read each photo's EXIF Orientation tag and bake the rotation into pixel data; for videos, flatten the rotation matrix via ffmpeg. Runs before metadata strip so the orientation isn't lost.")
@@ -246,6 +257,7 @@ struct RootView: View {
             includeAvatars: includeAvatars,
             memberOnly: memberOnly,
             organizeFiles: organizeFiles && includeFiles,
+            fileOrdering: (organizeFiles && includeFiles) ? fileOrdering : .none,
             generateHashes: generateHashes && includeFiles,
             hashAlgorithms: settings.defaultArchiveOptions.hashAlgorithms,
             transcribeMedia: transcribeMedia && includeFiles,
@@ -274,6 +286,7 @@ struct RootView: View {
         includeAvatars = r.includeAvatars
         memberOnly = r.memberOnly
         organizeFiles = r.organizeFiles
+        fileOrdering = r.fileOrdering
         generateHashes = r.generateHashes
         transcribeMedia = r.transcribeMedia
         stripPhotoMetadata = r.stripPhotoMetadata

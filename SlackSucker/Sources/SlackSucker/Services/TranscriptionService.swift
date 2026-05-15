@@ -65,18 +65,22 @@ enum TranscriptionService {
     }
 
     /// Process every transcribable file under Videos/ and Audio/.
-    /// `onLine` is invoked with each interesting status line so the
-    /// runner can surface it in the live log.
+    /// `onLine` is invoked with each line streamed from transcribe.py,
+    /// plus a `replacesLast` flag set when the line ended with bare
+    /// `\r` (tqdm-style in-place progress updates). The runner uses
+    /// that to overwrite the previous log line so the live view shows
+    /// one continuously-updating progress bar per file instead of a
+    /// scrolling wall of percentages.
     static func run(
         runFolder: URL,
         model: TranscriptionModel,
-        onLine: @escaping (String) -> Void
+        onLine: @escaping (String, Bool) -> Void
     ) async -> Result {
         var result = Result()
         guard let (exe, leading) = resolveBinary() else {
             result.skipped.append("transcribe not found — install via $SLACKSUCKER_TRANSCRIBE_BIN, add `transcribe` to PATH, or check out PhantomLives/transcribe alongside SlackSucker")
             writeLog(result, runFolder: runFolder)
-            onLine("[transcribe] skipped — no transcribe binary found")
+            onLine("[transcribe] skipped — no transcribe binary found", false)
             return result
         }
 
@@ -85,28 +89,38 @@ enum TranscriptionService {
             writeLog(result, runFolder: runFolder)
             return result
         }
+        let total = candidates.count
 
-        for source in candidates {
+        for (idx, source) in candidates.enumerated() {
             result.attempted += 1
+            let progressTag = "[transcribe \(idx + 1)/\(total)]"
             let txtURL = source.deletingPathExtension().appendingPathExtension("txt")
             if FileManager.default.fileExists(atPath: txtURL.path) {
                 result.skipped.append("\(source.lastPathComponent): transcript already exists")
-                onLine("[transcribe] skip \(source.lastPathComponent) — transcript already present")
+                onLine("\(progressTag) skip \(source.lastPathComponent) — transcript already present", false)
                 continue
             }
-            onLine("[transcribe] \(source.lastPathComponent) → \(txtURL.lastPathComponent) (model=\(model.rawValue))")
+
+            let sizeStr = humanFileSize(at: source)
+            onLine("\(progressTag) \(source.lastPathComponent) → \(txtURL.lastPathComponent) (\(sizeStr), model=\(model.rawValue))", false)
+            let started = Date()
 
             let proc = Process()
             proc.executableURL = URL(fileURLWithPath: exe)
+            // Default verbosity (no -q, no -v) gets us transcribe.py's
+            // phase lines ("Loading model", "Transcribing with model")
+            // plus mlx-whisper's own stderr; both go through the
+            // LineBuffer so tqdm bars overwrite cleanly.
             proc.arguments = leading + [
                 "-i", source.path,
                 "-o", txtURL.path,
                 "-f", "txt",
                 "-m", model.rawValue,
-                "-q"
             ]
             var env = ProcessInfo.processInfo.environment
             env["PATH"] = ArchiveRunner.augmentedPATH(existing: env["PATH"])
+            // mlx-whisper checks PYTHONUNBUFFERED for tqdm flushing.
+            env["PYTHONUNBUFFERED"] = "1"
             proc.environment = env
 
             let outPipe = Pipe()
@@ -114,36 +128,78 @@ enum TranscriptionService {
             proc.standardOutput = outPipe
             proc.standardError = errPipe
 
+            // Merge stdout + stderr into one LineBuffer. transcribe.py
+            // writes its `log()` output to stderr; some mlx-whisper
+            // internals write to stdout. Order matters less than
+            // surfacing them at all.
+            let buffer = LineBuffer()
+            let pump: @Sendable (FileHandle) -> Void = { handle in
+                let chunk = handle.availableData
+                guard !chunk.isEmpty else { return }
+                buffer.append(chunk)
+                for (line, replaces) in buffer.extractLines() {
+                    onLine("\(progressTag) \(line)", replaces)
+                }
+            }
+            outPipe.fileHandleForReading.readabilityHandler = pump
+            errPipe.fileHandleForReading.readabilityHandler = pump
+
             do { try proc.run() } catch {
+                outPipe.fileHandleForReading.readabilityHandler = nil
+                errPipe.fileHandleForReading.readabilityHandler = nil
                 result.failed.append("\(source.lastPathComponent): launch failed — \(error.localizedDescription)")
-                onLine("[transcribe] \(source.lastPathComponent) — launch failed: \(error.localizedDescription)")
+                onLine("\(progressTag) \(source.lastPathComponent) — launch failed: \(error.localizedDescription)", false)
                 continue
             }
 
             // Bridge sync Process exit into async/await so the UI
-            // stays responsive between files. termination handler must
-            // be Sendable-safe — a plain continuation works.
+            // stays responsive between files.
             await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
                 proc.terminationHandler = { _ in cont.resume() }
             }
+            // Drain any trailing data + retire the readability handlers
+            // before the file handles get closed — readabilityHandler
+            // outlives waitUntilExit on macOS 14+.
+            outPipe.fileHandleForReading.readabilityHandler = nil
+            errPipe.fileHandleForReading.readabilityHandler = nil
+            for handle in [outPipe.fileHandleForReading, errPipe.fileHandleForReading] {
+                let tail = handle.availableData
+                if !tail.isEmpty { buffer.append(tail) }
+            }
+            for (line, replaces) in buffer.extractLines() {
+                onLine("\(progressTag) \(line)", replaces)
+            }
+            for line in buffer.drainTrailing() {
+                onLine("\(progressTag) \(line)", false)
+            }
 
-            let stderrText = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(),
-                                    encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let elapsed = Date().timeIntervalSince(started)
             if proc.terminationStatus == 0 && FileManager.default.fileExists(atPath: txtURL.path) {
                 result.succeeded += 1
                 result.producedTranscripts.append((source, txtURL))
-                onLine("[transcribe] ✓ \(source.lastPathComponent)")
+                onLine("\(progressTag) ✓ \(source.lastPathComponent) in \(formatDuration(elapsed))", false)
             } else {
-                let reason = stderrText.isEmpty
-                    ? "exit \(proc.terminationStatus)"
-                    : "exit \(proc.terminationStatus) — \(stderrText.prefix(200))"
+                let reason = "exit \(proc.terminationStatus)"
                 result.failed.append("\(source.lastPathComponent): \(reason)")
-                onLine("[transcribe] ✗ \(source.lastPathComponent) — \(reason)")
+                onLine("\(progressTag) ✗ \(source.lastPathComponent) — \(reason) after \(formatDuration(elapsed))", false)
             }
         }
         writeLog(result, runFolder: runFolder)
         return result
+    }
+
+    private static func humanFileSize(at url: URL) -> String {
+        let bytes = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        let fmt = ByteCountFormatter()
+        fmt.allowedUnits = [.useMB, .useGB]
+        fmt.countStyle = .file
+        return fmt.string(fromByteCount: Int64(bytes))
+    }
+
+    nonisolated static func formatDuration(_ seconds: TimeInterval) -> String {
+        let s = Int(seconds.rounded())
+        if s < 60 { return "\(s)s" }
+        return "\(s / 60)m\(s % 60)s"
     }
 
     private static func collectCandidates(runFolder: URL) -> [URL] {
