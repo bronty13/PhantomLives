@@ -79,6 +79,14 @@ struct ObjectDetailSheet: View {
                         fieldEditor(field: field)
                     }
                 }
+                // Cross-cutting tag pill row. Reads & writes the
+                // reserved `_tags` array inside `fieldsBuffer`; the
+                // edit lands in storage via the same `saveAndDismiss`
+                // → `ObjectEngine.update` path as every other field,
+                // so undo / FTS / sync / record_tags index stay
+                // consistent without per-mutation plumbing here.
+                Divider()
+                TagPillRow(tagIds: tagIdsBinding())
             }
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -383,6 +391,18 @@ struct ObjectDetailSheet: View {
         Binding(
             get: { (fieldsBuffer[key] as? Bool) ?? false },
             set: { fieldsBuffer[key] = $0 }
+        )
+    }
+
+    /// Binding for the reserved `_tags` array of tag ids inside
+    /// `fieldsBuffer`. Reads return `[]` when missing; writes are
+    /// type-erased back into `Any` so the existing JSON-serialization
+    /// path in `ObjectEngine.update` carries the array through
+    /// unchanged.
+    private func tagIdsBinding() -> Binding<[String]> {
+        Binding(
+            get: { (fieldsBuffer[TagDef.recordKey] as? [String]) ?? [] },
+            set: { fieldsBuffer[TagDef.recordKey] = $0 }
         )
     }
 

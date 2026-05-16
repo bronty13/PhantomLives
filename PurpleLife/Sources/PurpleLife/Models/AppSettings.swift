@@ -46,6 +46,15 @@ struct AppSettings: Codable {
     /// the WYSIWYG builder UI. Empty until the user creates one.
     var userThemes: [UserTheme] = []
 
+    /// Cross-cutting tag vocabulary. Tags here are referenced from any
+    /// record (of any type) via the reserved `_tags` array in
+    /// `ObjectRecord.fieldsJSON`. Empty by default; populated as the
+    /// user creates tags through the Detail view's tag pill row or
+    /// the Manage Tags sheet. Not yet CloudKit-synced — `TagDef`
+    /// carries an `updatedAt` field so a future LWW sync hookup is
+    /// mechanical.
+    var tagVocabulary: [TagDef] = []
+
     init() {}
 
     /// Lenient decoder: every key is read via `decodeIfPresent` so a
@@ -72,6 +81,7 @@ struct AppSettings: Codable {
         themeID                 = try c.decodeIfPresent(String.self,          forKey: .themeID)                 ?? themeID
         appearance              = try c.decodeIfPresent(AppearanceMode.self,  forKey: .appearance)              ?? appearance
         userThemes              = try c.decodeIfPresent([UserTheme].self,     forKey: .userThemes)              ?? userThemes
+        tagVocabulary           = try c.decodeIfPresent([TagDef].self,        forKey: .tagVocabulary)           ?? tagVocabulary
     }
 }
 

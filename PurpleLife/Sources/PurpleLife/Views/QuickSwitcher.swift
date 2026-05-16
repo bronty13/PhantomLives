@@ -7,6 +7,7 @@ import SwiftUI
 struct QuickSwitcher: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openWindow) private var openWindow
 
     @State private var query: String = ""
     @State private var hits: [SearchService.Hit] = []
@@ -61,6 +62,37 @@ struct QuickSwitcher: View {
                 noResultsState
             } else {
                 resultList
+            }
+
+            // Tags Increment 3d — hand-off footer to the advanced
+            // Search window. Visible whenever there's a query
+            // typed, so the user sees a clear path to "more filters
+            // / Vault toggle / date range" without having to learn
+            // a separate shortcut. Stashes the current query in
+            // `appState.searchHandoffQuery`; SearchScreen consumes
+            // it once on appear.
+            if !query.isEmpty {
+                Divider()
+                Button {
+                    appState.searchHandoffQuery = query
+                    openWindow(id: "search")
+                    dismiss()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "slider.horizontal.3")
+                            .foregroundStyle(.secondary)
+                        Text("Open in Search…")
+                            .font(.callout)
+                        Spacer()
+                        Text("⌘⇧F")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.tertiary)
+                    }
+                    .contentShape(Rectangle())
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut("f", modifiers: [.command, .shift])
             }
         }
         .frame(width: 640, height: 440)

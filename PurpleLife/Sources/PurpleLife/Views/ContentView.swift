@@ -14,8 +14,24 @@ struct ContentView: View {
         // broken state, and clicking into a sidebar where every query
         // fails is worse than a clear "this is what's wrong" screen.
         if case .unrecoverable(let detail) = appState.dbHealth {
-            return AnyView(RecoveryScreen(detail: detail) {
-                appState.resetUnrecoverableData()
+            return AnyView(RecoveryScreen(
+                detail: detail,
+                onReset: { appState.resetUnrecoverableData() },
+                hasRecoveryEnvelope: appState.keyStore.hasRecoveryEnvelope,
+                onRecoveryKey: appState.keyStore.hasRecoveryEnvelope
+                    ? { phrase in appState.tryRecoveryKeyUnlock(phrase: phrase) }
+                    : nil
+            ))
+        }
+        // Phase B (2026-05-15) — first-launch / migration takeover.
+        // When a recovery key has just been generated the user MUST
+        // be shown it before they can do anything else. This screen
+        // is non-dismissable; the user clears it by going through
+        // the confirmation typeback inside, which calls
+        // `confirmRecoveryKeySaved()`.
+        if let words = appState.pendingRecoveryKey {
+            return AnyView(RecoveryKeySaveSheet(words: words) {
+                appState.confirmRecoveryKeySaved()
             })
         }
         return AnyView(mainSplitView)

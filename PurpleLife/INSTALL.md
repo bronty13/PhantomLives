@@ -17,6 +17,8 @@ mv PurpleLife.app /Applications/    # or anywhere; ~/Applications works too
 
 The first launch creates `~/Library/Application Support/PurpleLife/` and writes a baseline backup to `~/Downloads/PurpleLife backup/`.
 
+**First-launch recovery key.** Before the main UI appears, PurpleLife shows a full-window screen with a 24-word recovery key and refuses to dismiss until you've saved it (copy-to-clipboard / save-to-file / write down) AND retyped three randomly-picked words to prove you have the phrase. **Save this key somewhere safe** — your password manager, a paper note in a fireproof safe, etc. It is the only path to your data when the macOS Keychain entry is lost. The full rationale and the recovery flow are documented in [`USER_MANUAL.md`](USER_MANUAL.md) § "Your 24-word recovery key".
+
 ## Run the tests
 
 ```sh

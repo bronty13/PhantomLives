@@ -131,6 +131,188 @@ enum SearchService {
         }
     }
 
+    // MARK: - Advanced search (tags Increment 3a)
+
+    /// Tag-matching shape. `.any` (OR) succeeds when a record carries
+    /// *any* of the required tag ids. `.all` (AND) requires *every*
+    /// id to be present. Trivially `.any` when only one tag is
+    /// required — UI only surfaces the toggle for 2+ tags.
+    enum TagMatchMode: String, Equatable {
+        case any
+        case all
+    }
+
+    /// Composed search predicate. Used by the advanced Search window
+    /// (tags Increment 3) and any other surface that needs more than
+    /// the bare free-text path. Passing an all-default filter is
+    /// equivalent to "every record, newest first" — a useful "what's
+    /// in here?" baseline.
+    struct Filter: Equatable {
+        var query: String = ""
+        /// Restrict to these type ids. nil or empty = no type
+        /// restriction (all visible types). The Vault gating layer
+        /// in `SearchScreen` populates this from the user's chip
+        /// selection.
+        var typeIds: Set<String>? = nil
+        /// Always-excluded type ids. The Vault uses this when locked
+        /// (or unlocked + "Include Vault" unchecked) to keep Vault
+        /// records out of the result set regardless of the user's
+        /// type-chip selection.
+        var excludingTypeIds: Set<String> = []
+        /// Required tag ids (empty = no tag filter).
+        var requiredTagIds: Set<String> = []
+        /// AND or OR across `requiredTagIds`. Ignored when the set
+        /// has <= 1 element.
+        var tagMatchMode: TagMatchMode = .any
+        /// When true, only records carrying NO tags are returned.
+        /// Mutually exclusive with `requiredTagIds`; if both are
+        /// set, `requiredTagIds` wins (it's the more specific
+        /// filter and the UI never lets the user set both).
+        var untaggedOnly: Bool = false
+        /// Inclusive range on `objects.updated_at`. Either bound
+        /// may be nil for an open-ended range.
+        var dateRange: ClosedDateRange? = nil
+        var limit: Int = 200
+    }
+
+    /// Half-open inclusive date range used by `Filter.dateRange`.
+    /// `from` and `to` are bounded to whole-day boundaries by the UI
+    /// where appropriate (Today's "this week" uses midnight-to-now);
+    /// the comparison is straight ISO-8601 string compare against
+    /// `objects.updated_at` (which is stored as ISO-8601).
+    struct ClosedDateRange: Equatable {
+        var from: Date?
+        var to: Date?
+    }
+
+    /// Advanced search. Compiles the filter to a single SQL query
+    /// against `objects_fts` (and `record_tags` / `objects` via
+    /// subquery when needed). Returns the same `Hit` shape as the
+    /// free-text overload so call sites can render the two
+    /// uniformly.
+    ///
+    /// **Design notes.**
+    /// - Free-text uses the existing FTS5 prefix-match shape, so a
+    ///   typed "ad" finds "Adam".
+    /// - Tag filtering uses the derived `record_tags` table
+    ///   (migration v4) — `.any` is a plain `IN (?, ?, ...)`
+    ///   subquery; `.all` is `GROUP BY record_id HAVING COUNT(DISTINCT
+    ///   tag_id) = N`. Both run against an indexed table.
+    /// - Date filtering subqueries against `objects.updated_at` so
+    ///   we don't have to widen the FTS table.
+    /// - `excludingTypeIds` always applied (Vault gating). The UI
+    ///   passes `schema.vaultTypeIds` here whenever Vault is locked
+    ///   or "Include Vault" is unchecked.
+    /// - An empty `query` returns matching rows ordered by recency
+    ///   (via subquery against `objects.updated_at`) rather than
+    ///   FTS rank, since `rank` isn't defined without a MATCH.
+    static func search(_ filter: Filter) -> [Hit] {
+        // Tag-and-untagged conflict resolution: requiredTagIds wins.
+        let untaggedOnly = filter.untaggedOnly && filter.requiredTagIds.isEmpty
+
+        var sql = "SELECT objects_fts.object_id, objects_fts.type_id, objects_fts.title, objects_fts.body FROM objects_fts"
+        var clauses: [String] = []
+        var args: [DatabaseValueConvertible] = []
+
+        // Free-text MATCH (when non-empty).
+        let trimmed = filter.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            let tokens = trimmed
+                .lowercased()
+                .components(separatedBy: .whitespacesAndNewlines)
+                .filter { !$0.isEmpty }
+                .map { sanitize($0) + "*" }
+            let pattern = tokens.joined(separator: " ")
+            clauses.append("objects_fts MATCH ?")
+            args.append(pattern)
+        }
+
+        // Type-scope restriction.
+        if let typeIds = filter.typeIds, !typeIds.isEmpty {
+            let placeholders = Array(repeating: "?", count: typeIds.count).joined(separator: ", ")
+            clauses.append("objects_fts.type_id IN (\(placeholders))")
+            args.append(contentsOf: typeIds.sorted())
+        }
+
+        // Always-exclude (Vault gating).
+        if !filter.excludingTypeIds.isEmpty {
+            let placeholders = Array(repeating: "?", count: filter.excludingTypeIds.count).joined(separator: ", ")
+            clauses.append("objects_fts.type_id NOT IN (\(placeholders))")
+            args.append(contentsOf: filter.excludingTypeIds.sorted())
+        }
+
+        // Tag filter — IN-subquery against record_tags.
+        if !filter.requiredTagIds.isEmpty {
+            let ids = Array(filter.requiredTagIds).sorted()
+            let placeholders = Array(repeating: "?", count: ids.count).joined(separator: ", ")
+            switch filter.tagMatchMode {
+            case .any:
+                clauses.append("objects_fts.object_id IN (SELECT record_id FROM record_tags WHERE tag_id IN (\(placeholders)))")
+                args.append(contentsOf: ids)
+            case .all:
+                clauses.append("""
+                    objects_fts.object_id IN (
+                        SELECT record_id FROM record_tags
+                        WHERE tag_id IN (\(placeholders))
+                        GROUP BY record_id
+                        HAVING COUNT(DISTINCT tag_id) = \(ids.count)
+                    )
+                    """)
+                args.append(contentsOf: ids)
+            }
+        } else if untaggedOnly {
+            clauses.append("objects_fts.object_id NOT IN (SELECT record_id FROM record_tags)")
+        }
+
+        // Date range — subquery against objects.updated_at (ISO-8601
+        // strings, lexicographically comparable).
+        if let range = filter.dateRange, range.from != nil || range.to != nil {
+            var dateClauses: [String] = []
+            if let from = range.from {
+                dateClauses.append("updated_at >= ?")
+                args.append(ISO8601DateFormatter().string(from: from))
+            }
+            if let to = range.to {
+                dateClauses.append("updated_at <= ?")
+                args.append(ISO8601DateFormatter().string(from: to))
+            }
+            clauses.append("objects_fts.object_id IN (SELECT id FROM objects WHERE \(dateClauses.joined(separator: " AND ")))")
+        }
+
+        if !clauses.isEmpty {
+            sql += " WHERE " + clauses.joined(separator: " AND ")
+        }
+
+        // Order: FTS rank when MATCH used; updated_at desc otherwise.
+        // `rank` is only defined inside a MATCH context, so the
+        // empty-query path falls back to a join on `objects` for
+        // recency ordering. We do this with a subquery rather than
+        // a JOIN so the no-results-from-objects edge case (orphan
+        // FTS row) doesn't drop matches silently.
+        if !trimmed.isEmpty {
+            sql += " ORDER BY rank LIMIT ?"
+        } else {
+            sql += " ORDER BY (SELECT updated_at FROM objects WHERE id = objects_fts.object_id) DESC LIMIT ?"
+        }
+        args.append(filter.limit)
+
+        do {
+            return try DatabaseService.shared.dbPool.read { db in
+                try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args)).map { row in
+                    Hit(
+                        recordId: row["object_id"],
+                        typeId: row["type_id"],
+                        title: row["title"],
+                        body: row["body"]
+                    )
+                }
+            }
+        } catch {
+            NSLog("PurpleLife: SearchService.search(filter:) failed — \(error.localizedDescription)")
+            return []
+        }
+    }
+
     // MARK: - Helpers
 
     /// Strip characters that would confuse FTS5's mini-grammar (quotes,

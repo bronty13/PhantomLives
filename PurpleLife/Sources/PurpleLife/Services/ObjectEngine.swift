@@ -36,6 +36,7 @@ enum ObjectEngine {
         if let type = currentSchema?.type(id: typeId) {
             SearchService.upsert(record: record, type: type)
         }
+        TagService.indexUpsert(record: record)
         if let sync {
             Task { await sync.push(record: record) }
         }
@@ -79,6 +80,7 @@ enum ObjectEngine {
         if let type = currentSchema?.type(id: next.typeId) {
             SearchService.upsert(record: next, type: type)
         }
+        TagService.indexUpsert(record: next)
         // Re-fetch to capture the bumped updated_at that DatabaseService.update
         // stamped — push() compares timestamps for LWW.
         let pushable = (try? DatabaseService.shared.fetchObject(id: next.id)) ?? next
@@ -103,6 +105,12 @@ enum ObjectEngine {
         let snapshot = try? DatabaseService.shared.fetchObject(id: id)
         try DatabaseService.shared.deleteObject(id: id)
         SearchService.delete(recordId: id)
+        // `record_tags` has ON DELETE CASCADE on `record_id` against
+        // `objects`, so the row above implicitly clears the index.
+        // The explicit call keeps the engine's hook story symmetric
+        // and protects against a future migration that drops the
+        // foreign-key constraint.
+        TagService.indexDelete(recordId: id)
         if let sync {
             Task { await sync.pushDelete(recordId: id) }
         }
@@ -123,6 +131,7 @@ enum ObjectEngine {
         if let type = currentSchema?.type(id: record.typeId) {
             SearchService.upsert(record: record, type: type)
         }
+        TagService.indexUpsert(record: record)
         if let sync {
             Task { await sync.push(record: record) }
         }

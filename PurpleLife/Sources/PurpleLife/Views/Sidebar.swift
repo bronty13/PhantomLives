@@ -5,6 +5,7 @@ import SwiftUI
 /// status come later in Phase 2 / Phase 3.
 struct Sidebar: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.openWindow) private var openWindow
 
     /// "today" sentinel for selection — String? doesn't let us tell apart
     /// "no selection" from "Today is selected", so we use a magic value.
@@ -28,6 +29,23 @@ struct Sidebar: View {
     var body: some View {
         List(selection: selectionBinding) {
             Section {
+                // Tags Increment 3b — Search opens its own window
+                // rather than taking over the detail pane, so it
+                // sits here as a button (no `.tag()` → not a List
+                // selection target). Keyboard shortcut ⌘⇧F is wired
+                // separately via `SearchMenuItem`.
+                Button {
+                    openWindow(id: "search")
+                } label: {
+                    Label {
+                        Text("Search")
+                    } icon: {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.tint)
+                    }
+                }
+                .buttonStyle(.plain)
+
                 Label {
                     Text("Today")
                 } icon: {

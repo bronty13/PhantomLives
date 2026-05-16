@@ -43,6 +43,22 @@ final class AppState: ObservableObject {
     /// when `.unrecoverable`.
     @Published var dbHealth: DBHealth = .ok
 
+    /// Phase B (2026-05-15) — non-nil when a 24-word recovery key has
+    /// just been generated and the user hasn't yet confirmed they've
+    /// saved it. The first-launch save-recovery-key sheet (Phase B.3)
+    /// observes this and forces the user through a confirmation
+    /// typeback before clearing it. While non-nil, ContentView gates
+    /// the main app UI so the user can't bypass the save flow by
+    /// closing a regular sheet.
+    ///
+    /// **Never persisted, never logged.** The phrase exists in memory
+    /// for exactly long enough for the user to copy / print / write
+    /// it down. After `confirmRecoveryKeySaved()` clears the property,
+    /// the only place the phrase exists is wherever the user put it.
+    /// Losing it after that point is a deliberate consequence of the
+    /// recovery design — the same threat model as a Bitcoin seed.
+    @Published var pendingRecoveryKey: [String]? = nil
+
     enum DBHealth: Equatable {
         case ok
         /// The string is the underlying error description, surfaced to
@@ -61,6 +77,13 @@ final class AppState: ObservableObject {
     /// specific record. The `RecordsScreen` watches this and routes it
     /// into its detail sheet, then clears it.
     @Published var openRecordRequest: String?
+
+    /// Tags Increment 3d — when the user clicks "Open in Search…" in
+    /// Quick Switcher, the typed query is stashed here so the
+    /// advanced Search window can pick it up on appear. Cleared by
+    /// SearchScreen after consumption so a subsequent open with no
+    /// hand-off (e.g. ⌘⇧F directly) starts blank.
+    @Published var searchHandoffQuery: String?
 
     /// Vault visibility for the current session. Deliberately NOT
     /// persisted — every app launch starts with the Vault locked. The
@@ -114,7 +137,15 @@ final class AppState: ObservableObject {
             // UX instead.
             let dbLooksEncrypted = database.databaseFileLooksEncrypted()
             do {
-                try keyStore.setupKeychainManaged()
+                // Phase B (2026-05-15) — capture the generated
+                // recovery phrase. The user MUST see this before
+                // we hand them a functioning app; the value is
+                // stashed in `pendingRecoveryKey` and the
+                // save-recovery-key sheet (Phase B.3) gates the
+                // rest of the UI until the user confirms saving
+                // it.
+                let phrase = try keyStore.setupKeychainManaged()
+                pendingRecoveryKey = phrase
                 if dbLooksEncrypted {
                     // We bootstrapped successfully (no entry conflict),
                     // but encrypted data exists on disk that was
@@ -140,6 +171,24 @@ final class AppState: ObservableObject {
                     "PurpleLife's Keychain entry exists but can't be read right now. " +
                     "This is usually a transient Keychain issue. Quit and try again; " +
                     "if the problem persists, restore from Time Machine, or Reset to start fresh."
+                )
+            } catch KeyStore.KeyStoreError.everBootedButKeychainGone {
+                // Phase A.2 (2026-05-15) — the per-install
+                // `boot_state.json` marker says this install has
+                // launched successfully before, but the Keychain
+                // slot is now genuinely absent. The keystore refused
+                // to create a fresh DEK; keep `.notSetup` and let
+                // the recovery screen offer Time Machine / (Phase B+)
+                // recovery key as live paths. Don't paper over this
+                // by bootstrapping silently — that's the trap.
+                NSLog("PurpleLife: ever-booted marker present but Keychain entry gone — refusing to bootstrap a fresh DEK.")
+                dbHealth = .unrecoverable(
+                    "PurpleLife has launched successfully on this Mac before, but the " +
+                    "Keychain entry that unlocks your data is no longer available. " +
+                    "This usually means it was deleted out-of-band — check Time Machine for a " +
+                    "snapshot of ~/Library/Keychains/login.keychain-db from before the problem started. " +
+                    "If you have no backup, you can Reset to start fresh; the unreadable data is " +
+                    "preserved on disk in case the key can be recovered later."
                 )
             } catch {
                 NSLog("PurpleLife: keystore setup failed — \(error.localizedDescription)")
@@ -194,6 +243,39 @@ final class AppState: ObservableObject {
                 )
             }
         }
+        // Phase A.2 (2026-05-15) — mark the per-install ever-booted
+        // marker as soon as we know the keystore is unlocked AND the
+        // DB pool is live. Future launches against an empty Keychain
+        // slot will then refuse to bootstrap a fresh DEK, preserving
+        // Time Machine / recovery-key paths. Skipped under XCTest:
+        // tests use per-process temp support dirs that don't persist
+        // across runs, so a marker would only confuse the next test
+        // process. Production launches that reach this line have
+        // verified keystore.state == .unlocked AND database is not
+        // on the placeholder pool — the dbHealth == .ok check covers
+        // both via the guards above.
+        if keyStore.state == .unlocked,
+           dbHealth == .ok,
+           ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            BootState.markBooted(in: DatabaseService.supportDirectory)
+
+            // Phase B (2026-05-15) — migration for installs that
+            // pre-date the recovery-key work. These users have a
+            // perfectly good DEK in their Keychain but no
+            // recovery_envelope.json yet, which means a future
+            // Keychain loss would put them back in the trap we just
+            // fixed. Generating the envelope on-the-fly here from
+            // the live DEK gives them the same recovery path new
+            // installs get. `ensureRecoveryEnvelope` is a no-op
+            // when the envelope already exists, so this is safe
+            // to call on every launch.
+            if pendingRecoveryKey == nil {
+                if let migrated = try? keyStore.ensureRecoveryEnvelope() {
+                    pendingRecoveryKey = migrated
+                }
+            }
+        }
+
         // Re-read settings.json once the resolver is live so a previously-
         // encrypted file (from a prior launch where slice A3 was active)
         // decrypts correctly. No-op for plaintext / missing files.
@@ -298,6 +380,13 @@ final class AppState: ObservableObject {
         // counts and immune to a missed write or a restored backup.
         SearchService.reindexAll(schema: schema)
 
+        // Wire the cross-cutting tag service to the settings store
+        // (where the vocabulary lives) and rebuild the derived
+        // `record_tags` index from every record's `_tags` field.
+        // Same launch-time reindex pattern as `SearchService`.
+        TagService.settings = settingsStore
+        TagService.reindexAll()
+
         // Phase 4: kick off CloudKit sync. Runs async; the rest of the
         // app launches normally regardless of sync state. If iCloud
         // / entitlement / container isn't available, sync transitions to
@@ -349,6 +438,50 @@ final class AppState: ObservableObject {
             Task { @MainActor [weak self] in
                 self?.reloadAll()
             }
+        }
+    }
+
+    /// Phase B (2026-05-15) — user has confirmed they've saved their
+    /// recovery key. Clears `pendingRecoveryKey` so the gating sheet
+    /// dismisses and the main app UI becomes reachable. The phrase
+    /// is dropped from memory at this point; if the user lied about
+    /// saving it, that's their problem — and the threat model we
+    /// chose, by design.
+    func confirmRecoveryKeySaved() {
+        pendingRecoveryKey = nil
+    }
+
+    /// Phase B.4 (2026-05-15) — recovery screen "Enter recovery key"
+    /// path. Tries to unlock the keystore using the user-supplied
+    /// 24-word phrase, then reopens the SQLCipher DB with the
+    /// recovered DEK. On success: flips `dbHealth = .ok`, reloads
+    /// the UI, app is usable again. On failure: returns the typed
+    /// error so the UX can surface a specific message (wrong key,
+    /// no envelope, etc.). Never mutates `dbHealth` on failure —
+    /// the recovery screen stays visible so the user can try again.
+    @discardableResult
+    func tryRecoveryKeyUnlock(phrase: String) -> Result<Void, Error> {
+        do {
+            // Validate the phrase up front so single-word typos
+            // (caught by the BIP39 checksum) surface as a specific
+            // error instead of a generic "wrong key" via the
+            // AES-GCM tag mismatch path.
+            _ = try RecoveryKey.entropy(from: phrase)
+            try keyStore.unlockWithRecoveryKey(phrase: phrase)
+            try database.reopenDatabase()
+            if database.isUsingPlaceholderPool {
+                return .failure(KeyStore.KeyStoreError.corrupt)
+            }
+            dbHealth = .ok
+            // Write the ever-booted marker now that we've fully
+            // recovered — the same marker would otherwise stay
+            // missing across the recovery, and a future Keychain
+            // loss would re-open the data-loss trap.
+            BootState.markBooted(in: DatabaseService.supportDirectory)
+            reloadAll()
+            return .success(())
+        } catch {
+            return .failure(error)
         }
     }
 

@@ -28,9 +28,45 @@ PurpleLife treats your data as private by default. Three layers:
 - **Lock now** clears the in-memory key + Keychain cache. Useful before walking away from the Mac.
 - **Reset (destroys all data)** wipes the keystore. Use only if you've forgotten your passphrase and accept that data encrypted with the lost key is unrecoverable.
 
-**There is no passphrase recovery.** If you forget the passphrase and the Keychain cache is gone (clean reinstall, new Mac without iCloud Keychain), the data on this Mac is permanently inaccessible. The other Macs syncing your iCloud account still hold the same data through their own keys; restore by signing in there.
-
 The full whitepaper — threat model, primitives, known limitations — is in [`Docs/SECURITY.md`](Docs/SECURITY.md) in the source tree.
+
+## Your 24-word recovery key
+
+The first time you launch PurpleLife, the app generates a **24-word recovery key** and shows it to you on a full-window screen you cannot dismiss until you've confirmed you've saved it. **This is the most important screen in the app. Treat the recovery key like a Bitcoin seed phrase or an iCloud Recovery Key.**
+
+### What it unlocks
+
+The recovery key is an independent path to your data's encryption key. PurpleLife stores a copy of your encryption key wrapped under the recovery key in `~/Library/Application Support/PurpleLife/recovery_envelope.json`. That file rides in every auto-backup ZIP automatically. With your recovery key in hand, you can unlock your data:
+
+- **on this Mac**, if the Keychain entry is ever lost — by clicking **Enter recovery key…** on the recovery screen.
+- **on a different Mac**, by restoring a backup ZIP into `~/Library/Application Support/PurpleLife/` and entering the same key.
+
+This is the *only* recovery path that doesn't depend on iCloud, Time Machine, or a working Keychain. If you don't save the key, none of those external systems can save you when the Keychain fails.
+
+### How to save it
+
+The save-recovery-key screen offers three ways:
+
+- **Copy to clipboard** — paste into your password manager (1Password, Bitwarden, Apple Passwords, etc.). Recommended for most users.
+- **Save to file…** — writes a plain-text file (default location: `~/Downloads/PurpleLife/PurpleLife-recovery-key.txt`). Store it on an encrypted thumb drive, in a fireproof safe, anywhere offline.
+- **Hand-write it** — BIP39 words are short, common English words specifically chosen to be unambiguous in handwriting (no `m`/`n`/`l` confusion, no homophones). One word per line works well on paper.
+
+You'll be asked to retype three specific words (picked at random) before the screen lets you continue — this catches the "I clicked through without actually saving anything" failure mode.
+
+### Using it
+
+If your Keychain entry ever disappears (bug, OS reset, account migration, manual `security delete-generic-password`), the next launch shows the recovery screen. It detects whether a `recovery_envelope.json` exists on disk; if so, a third button appears: **Enter recovery key…**
+
+Type or paste your 24 words. PurpleLife checks the BIP39 checksum first (so single-word typos surface as "one of the words doesn't match — re-read each word carefully" instead of a generic failure), then unwraps your encryption key and reopens the database. Subsequent launches are silent again — the recovered key goes back into the Keychain.
+
+### What the recovery key does NOT protect against
+
+- **You losing the key.** PurpleLife does not store your recovery key anywhere except wrapped under itself. If you lose the key AND the Keychain entry is destroyed, the data is genuinely unrecoverable. This is the same trade-off Bitcoin wallets and iCloud Recovery Keys make.
+- **An attacker who has the key.** Anyone holding your 24 words can unlock your data. Store it as carefully as you would a password.
+
+### Migration: existing installs
+
+If you installed PurpleLife before recovery keys shipped, the next launch detects you have no `recovery_envelope.json`, generates one using your existing in-memory encryption key, and shows you the save-recovery-key screen exactly as it would on a fresh install. Your encryption key doesn't change; you just gain a recovery path you didn't have before.
 
 ## Notes
 
@@ -167,6 +203,26 @@ When the Vault is unlocked:
 - ⌘K, Today, and the library gallery surface Vault content normally for the duration of the session.
 
 The Vault sits on top of the same encryption story as everything else (Keychain-managed DEK + SQLCipher + CloudKit `encryptedValues`); the auth gate is a usability layer, not a second cryptographic layer.
+
+## Advanced Search (⌘⇧F)
+
+The **Search** entry in the sidebar (or ⌘⇧F from anywhere, or the **Open in Search…** footer in Quick Switcher) opens a dedicated window for cross-type queries with structured filters.
+
+### Filters
+
+- **Free-text query** — same FTS5 prefix-match used by Quick Switcher (typing "ad" finds "Adam"). Leave empty to filter purely by structure (e.g. "every record tagged `urgent` updated in the last 7 days").
+- **Types** — multi-select chip picker. Empty = all visible types. Vault types appear only when the Vault is unlocked AND the "Include Vault" checkbox below is on.
+- **Tags** — multi-select chip picker of every tag in your vocabulary. When you pick 2 or more, a segmented control appears to choose **Any of** (OR) or **All of** (AND). The **Untagged only** checkbox is the inverse: returns only records with no tags. (Mutually exclusive with the chip picker.)
+- **Updated** — date range. Pick one of the quick-range buttons (Last 24 hours / 7 days / 30 days) or set explicit From / To dates.
+- **Include Vault records** — only shown when the Vault is unlocked. Off by default; tick to include Vault records in the search and reveal Vault types in the type-chip picker. Re-locking the Vault while the search window is open auto-clears this and removes any Vault-type selections.
+
+### Vault privacy story
+
+When the Vault is locked, the search window behaves as if Vault types don't exist: the "Include Vault" checkbox is hidden, Vault types are absent from the type picker, and Vault records cannot appear in results even by accident (the SQL exclusion is enforced regardless of what the user has selected). This mirrors the Quick Switcher and library-gallery behavior — the existence of intimate templates / records is never telegraphed to a casual viewer.
+
+### Results
+
+Click any result to jump to that record's detail. Search runs automatically as you type or change filters — no separate "search" button to press.
 
 ## ⌘K Quick Switcher
 

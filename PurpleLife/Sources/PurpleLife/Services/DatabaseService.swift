@@ -223,8 +223,20 @@ final class DatabaseService {
             + "purplelife-throwaway-\(UUID().uuidString).sqlite"
         dbPool = try DatabasePool(path: throwawayPath)
 
+        // `boot_state.json` (Phase A.2 marker) is quarantined alongside
+        // the DB so the next launch is correctly treated as fresh — if
+        // the user chose Reset, they explicitly want a clean slate;
+        // leaving the marker would make `setupKeychainManaged` refuse
+        // to bootstrap and bounce them right back into the recovery
+        // screen they just escaped from. `recovery_envelope.json`
+        // (Phase B.2) gets the same treatment — the wrapped DEK it
+        // holds is tied to the now-quarantined data, so leaving it in
+        // place would let a user enter their old recovery key against
+        // a fresh empty DB, which would fail with a checksum mismatch
+        // anyway but is cleaner to avoid by quarantining the file.
         for name in ["purplelife.sqlite", "purplelife.sqlite-wal",
-                     "purplelife.sqlite-shm", "settings.json"] {
+                     "purplelife.sqlite-shm", "settings.json",
+                     BootState.fileName, "recovery_envelope.json"] {
             let src = support.appendingPathComponent(name)
             if fm.fileExists(atPath: src.path) {
                 try? fm.moveItem(at: src, to: quarantine.appendingPathComponent(name))
@@ -458,6 +470,31 @@ final class DatabaseService {
                 t.column("title")
                 t.column("body")
             }
+        }
+
+        // v4 — derived `record_tags` index for the cross-cutting tag
+        // vocabulary (see `TagDef`, `TagService`). Source of truth for
+        // per-record tag membership is the implicit `_tags` array
+        // inside each `objects.fields_json`; this table mirrors that
+        // array so tag filtering in advanced search is a fast SQL
+        // join instead of an O(N) Swift scan over decrypted blobs.
+        // The composite primary key keeps duplicates out; the
+        // explicit secondary index on `tag_id` powers the common
+        // "every record carrying tag X" lookup. ON DELETE CASCADE
+        // tracks record deletion automatically; tag-vocabulary
+        // mutations (merge / delete a tag) fan out through
+        // `ObjectEngine.update` per-record so undo / FTS / sync stay
+        // consistent.
+        migrator.registerMigration("v4_record_tags") { db in
+            try db.create(table: "record_tags") { t in
+                t.column("record_id", .text).notNull()
+                    .references("objects", column: "id", onDelete: .cascade)
+                t.column("tag_id", .text).notNull()
+                t.primaryKey(["record_id", "tag_id"])
+            }
+            try db.create(index: "idx_record_tags_tag",
+                          on: "record_tags",
+                          columns: ["tag_id"])
         }
 
         try migrator.migrate(writer)

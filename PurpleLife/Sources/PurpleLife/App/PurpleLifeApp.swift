@@ -26,6 +26,7 @@ struct PurpleLifeApp: App {
             CommandGroup(after: .toolbar) {
                 SchemaEditorMenuItem()
                 QuickSwitcherMenuItem()
+                SearchMenuItem()
                 Divider()
                 JumpToTypeMenuItems()
             }
@@ -55,6 +56,18 @@ struct PurpleLifeApp: App {
         }
         .defaultSize(width: 640, height: 440)
         .windowResizability(.contentSize)
+
+        // Tags Increment 3b — Advanced Search window. ⌘⇧F. Distinct
+        // from Quick Switcher (which stays minimal); this surface
+        // carries the structured filters (types, tags, date, Vault
+        // gating). Quick Switcher's footer (Phase 3d) hands off
+        // here via `appState.searchHandoffQuery`.
+        Window("Search", id: "search") {
+            SearchScreen()
+                .environmentObject(appState)
+                .preferredColorScheme(appState.settings.appearance.colorScheme)
+        }
+        .defaultSize(width: 880, height: 640)
 
         Settings {
             SettingsView()
@@ -94,6 +107,21 @@ private struct QuickSwitcherMenuItem: View {
             openWindow(id: "quick-switcher")
         }
         .keyboardShortcut("k", modifiers: [.command])
+    }
+}
+
+/// ⌘⇧F — Edit / Window menu entry for the advanced Search window
+/// (tags Increment 3b). Distinct from ⌘K Quick Switcher: Quick
+/// Switcher is the always-quick path; this is for structured
+/// filtering across types / tags / dates with Vault gating.
+private struct SearchMenuItem: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Search…") {
+            openWindow(id: "search")
+        }
+        .keyboardShortcut("f", modifiers: [.command, .shift])
     }
 }
 

@@ -4,6 +4,54 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-16 — Tags Increment 3: advanced Search window with tag / date / Vault filters
+
+Resumed from the pre-resilience pause. The Quick Switcher (⌘K) stays its current minimal self; the new advanced Search window (⌘⇧F) carries the structured filters that wouldn't fit in a single-input UI.
+
+- **`Services/SearchService.swift`** — new `Filter` value type wrapping query / typeIds / excludingTypeIds / requiredTagIds / tagMatchMode (.any/.all) / untaggedOnly / dateRange / limit. New `search(_ filter:)` overload compiles a single SQL query: FTS5 MATCH when the query is non-empty (ranked), plain SELECT ordered by `updated_at` DESC when it's empty; type IN/NOT-IN clauses; `record_tags` subquery for `.any` (IN) or `.all` (GROUP BY HAVING COUNT(DISTINCT)); `objects.updated_at` subquery for the date range. The existing `search(_, limit:, excludingTypeIds:)` overload stays untouched so QuickSwitcher's tight call path is unchanged.
+- **`Views/SearchScreen.swift`** (new) — dedicated window with a query header, collapsing filter bar (Types / Tags / Updated / Vault), and a results list. Filter changes collapse to a single `filterSignature` string so SwiftUI's `.onChange` chain doesn't blow the type checker on the nine inputs the search reacts to. Auto-runs the search on any change.
+- **`Views/Sidebar.swift`** — new "Search" entry above Today (button, not a selection target — opens the search window in its own scene).
+- **`App/PurpleLifeApp.swift`** — new `Window(id: "search")` scene; new `SearchMenuItem` (⌘⇧F).
+- **`Views/QuickSwitcher.swift`** — footer "Open in Search…" appears whenever the user has typed a query. Stashes the query in `AppState.searchHandoffQuery`, opens the Search window, dismisses Quick Switcher. SearchScreen picks up the handoff once on appear and clears it.
+- **`App/AppState.swift`** — new `searchHandoffQuery` for the Quick Switcher → Search hand-off.
+- **`Tests/.../SearchFilterTests.swift`** (new) — 11 tests covering each filter dimension in isolation plus composition: empty filter returns everything newest-first, free-text path matches the existing overload, type-scope restriction, `excludingTypeIds` wins over `typeIds` (the load-bearing Vault contract), tag `.any` / `.all` / untagged, `requiredTagIds` takes precedence when `untaggedOnly` is also set, date-range bounds, and the multi-filter compose case.
+
+**Vault gating (Phase 3c, built into SearchScreen).** Matches the 2026-05-14 design point-for-point: when the Vault is locked the "Include Vault" checkbox is hidden entirely, Vault types are absent from the type chip picker, and the SQL exclusion (`excludingTypeIds = schema.vaultTypeIds`) is passed unconditionally. When the Vault is unlocked the checkbox appears unchecked; ticking it clears the exclusion and reveals Vault chips. Re-locking the Vault while the search window is open auto-clears the user's "Include Vault" choice and any Vault-type chip selections — the SQL exclusion takes effect immediately.
+
+277/277 tests green (was 266 before).
+
+### 2026-05-15 — Resilience Phase A + B: 24-word recovery key + the trap-prevention guards
+
+Multi-tier data-loss prevention, landed together as Phase A (stop creating new losses) and Phase B (give the user a path back when something else goes wrong). Triggered by data-loss incident #4 — the test suite wiping the user's production DEK via a shared `KeychainStore` service name. Full design rationale lives in HANDOFF.md (2026-05-15).
+
+**Phase A — stop creating new losses.**
+
+- **`Services/KeychainStore.swift`** — `service` is now `"com.purplelife.tests-<pid>"` under XCTest, stable `"com.purplelife"` in production. The 2026-05-14 fix to `deleteAll()` correctly deletes every entry under the service; without this split, every test run nuked the user's real DEK. New `KeyStoreTests.test_keychainServiceIsTestIsolatedUnderXCTest` locks the contract.
+- **`Services/BootState.swift`** (new) — per-install `boot_state.json` marker, written on every successful unlock. Records first-launch and last-launch ISO timestamps. Forms the basis of the bootstrap-refusal guard below.
+- **`Services/KeyStore.swift`** — `setupKeychainManaged()` now consults `BootState.everBooted(...)` before generating a fresh DEK. When the marker exists AND the Keychain slot is genuinely absent — the data-loss-trap shape — it throws the new `KeyStoreError.everBootedButKeychainGone` instead of silently minting a fresh DEK that would foreclose every remaining recovery path. `resetAndWipe()` also clears the marker so deliberate resets aren't bounced back into recovery.
+- **`App/AppState.swift`** — catches `everBootedButKeychainGone` and routes to the recovery screen with a Time-Machine-specific message. Marks `BootState` on every successful unlock so future Keychain losses on this install get the protection automatically.
+- **`Services/DatabaseService.swift`** — the Reset quarantine sweep moves `boot_state.json` and (Phase B) `recovery_envelope.json` alongside the DB / settings / attachments. Reset keeps clean fresh-install semantics.
+- **`Tests/.../BootStateTests.swift`** (new) — 11 tests, including the **`test_RELEASE_BLOCKER_dataLossTrapScenarioDoesNotCreateFreshDEK`** invariant: simulates incident #4's conditions and asserts the bootstrap refuses to create a fresh DEK. If this test ever fails, the change being shipped has reintroduced the trap — do not merge.
+
+**Phase B — user-held recovery key (BIP39 24-word).**
+
+Picked over short hex / free-form passphrases because BIP39 has the best handwriting / dictation / mental-model story (every crypto wallet and Apple's iCloud Recovery Key already use this shape), and the checksum word gives free single-typo detection.
+
+- **`Services/BIP39Wordlist.swift`** (new) — vendored 2048-word canonical BIP39 English wordlist (public domain, sourced from `github.com/bitcoin/bips/blob/master/bip-0039/english.txt`). Embedded as a Swift `[String]` literal so the project ships without resource-loading code.
+- **`Services/RecoveryKey.swift`** (new) — generate / encode / decode / validate. `generate()` produces 256 bits of entropy + an 8-bit checksum = 24 words. `entropy(from:)` decodes back and verifies the checksum; single-word typos throw `.checksumMismatch`. Lowercase + whitespace tolerant for paste-from-anywhere unlock. `deriveKEK(phrase:salt:iterations:)` runs PBKDF2-SHA256 with the same 300k iterations `KeyStore` uses for passphrase mode.
+- **`Services/KeyStore.swift`** — new `RecoveryEnvelope` struct + `recovery_envelope.json` written alongside `keystore.json`. `setupKeychainManaged()` and `setupWithPassphrase(_:)` now both return the generated 24-word phrase (`@discardableResult` keeps the existing call sites compiling). `ensureRecoveryEnvelope()` is the migration path for installs that pre-date this work — runs on every launch, no-op when the envelope already exists, mints one using the live DEK when it doesn't. `unlockWithRecoveryKey(phrase:)` derives the KEK and unwraps the DEK, then caches it back in Keychain so subsequent launches are silent again.
+- **`App/AppState.swift`** — new `@Published pendingRecoveryKey: [String]?` non-nil whenever a phrase has been generated and the user hasn't yet confirmed they've saved it. `tryRecoveryKeyUnlock(phrase:)` is the recovery-screen entry point: validates the phrase, unlocks the keystore, reopens the SQLCipher pool, flips `dbHealth` back to `.ok` on success.
+- **`Views/RecoveryKeySaveSheet.swift`** (new) — full-window mandatory save-recovery-key UX. Displays the 24 words in a numbered monospaced grid, offers copy-to-clipboard / save-to-file. Requires the user to retype three randomly-picked words before the "I've saved my recovery key" button enables. Non-dismissable by any other path — gates the entire app behind the save flow.
+- **`Views/RecoveryScreen.swift`** — when a recovery envelope exists on disk, the recovery screen surfaces a third primary button "Enter recovery key…". Opens a sheet for the user to paste their 24 words; specific per-error-case messages (wrong word count, unknown word, checksum mismatch, wrong key entirely) instead of a generic failure.
+- **`Views/ContentView.swift`** — gates the main split view on both `dbHealth` (existing) and `pendingRecoveryKey` (new). Hands the keystore's `hasRecoveryEnvelope` + the `tryRecoveryKeyUnlock` closure into `RecoveryScreen`.
+- **`Tests/.../RecoveryKeyTests.swift`** (new) — 16 tests covering: BIP39 encode/decode round-trip including the canonical all-`0xFF` reference vector, checksum rejection on single-word edits, whitespace + case tolerance on decode, keystore round-trip via the recovery key, wrong-key rejection, `ensureRecoveryEnvelope` no-op + migration paths, and the **end-to-end Mac-A-backup → Mac-B-recovery release-blocker** test that takes a backup ZIP on one keystore and confirms the recovery key unlocks it on a completely separate keystore.
+
+**Docs.** USER_MANUAL.md gains a "Your 24-word recovery key" section explaining what the key is, how to save it, how to use it, and what it doesn't protect against. INSTALL.md flags the first-launch save-flow so new users know to expect it. HANDOFF.md (2026-05-15) carries the full architectural rationale, the data-loss-incident log, and the deferred Tier 3-5 follow-ups (iCloud Keychain mirror, CloudKit wrapped DEK, plaintext JSON export).
+
+**Pause status.** Tags Increments 1 + 2 (cross-cutting `_tags` field, `TagDef` vocabulary, `record_tags` index, `TagPillRow`, `TagManagementSheet`) shipped before this work and remain green. Tags Increment 3 (advanced Search window with Vault gating) was paused for resilience and is the next feature to resume.
+
+**Tests.** 218 → 266 (+48). All green.
+
 ### 2026-05-14 — Fix: `KeychainStore.deleteAll()` silently no-oping on macOS 15
 
 `SecItemDelete` with a query that omits `kSecAttrAccount` is unreliable across macOS versions — historically it deleted every match, but on macOS 15 it returns `errSecSuccess` while leaving the items in place. `KeyStore.resetAndWipe()` calls `deleteAll()` to wipe the DEK cache; the silent no-op meant a freshly-constructed `KeyStore` against the same support directory would discover the cached DEK and report `.unlocked` instead of `.notSetup`. Symptom in the test suite: `KeyStoreTests.test_resetAndWipeClearsEverything` failed deterministically even in isolation.

@@ -12,6 +12,41 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-15 — Data-loss incident #4 + multi-tier resilience plan (locked: Tier 0 + Tier 2 ship before any further feature work)
+
+Today's lockout was the **fourth** data-loss event in PurpleLife's short history. The pattern across all four is identical and is now formally locked as the project's #1 quality concern: **the SQLCipher DEK is a single point of failure**, and every recovery path the app currently has — auto-backup ZIPs, schema-sync, the recovery screen — depends on that same DEK still being readable. No DEK, no data; no exceptions.
+
+**Today's specific cause.** The 2026-05-14 fix to `KeychainStore.deleteAll()` correctly enumerates and deletes every item under service `"com.purplelife"`. But `KeychainStore.service` is a hard-coded constant shared between production and XCTest. Every test-suite invocation today (three full runs across Increment 1 and Increment 2 of the tag/search work) executed `KeyStoreTests.test_resetAndWipeClearsEverything` and `test_keychainDeleteAllRemovesEveryEntryUnderService`, both of which fan through `deleteAll()` — which then wiped the user's real production DEK along with the test entries. The on-disk DB stayed encrypted with that DEK; the next launch couldn't open it; recovery screen.
+
+The data from before today's launch is unrecoverable absent a Time Machine snapshot of `~/Library/Keychains/login.keychain-db` from before 2026-05-15 21:00 PT. The encrypted `purplelife.sqlite` is preserved in `.unrecoverable-<timestamp>/` against the (unlikely) chance of future recovery.
+
+**Decision: all further feature work pauses until Phase A + Phase B below land.** Tags Increment 1+2 are already shipped and remain green; tags Increment 3 (advanced search), Vault follow-ups, and every other open thread wait for resilience to land first.
+
+**Tiered defense-in-depth design.** Five tiers; the goal is multiple independent recovery paths, none of which weaken the crypto. Each tier protects against a different failure mode and stays independent of the others — compromising one path doesn't compromise any other.
+
+- **Tier 0 — Stop creating new losses.** Three pieces: (a) `KeychainStore.service` becomes `"com.purplelife.tests-<pid>"` under XCTest so `deleteAll()` cannot reach production entries by construction. (b) An "ever-booted" marker (`first_launch_completed.json` or similar) in `~/Library/Application Support/PurpleLife/` written on first successful unlock; when the Keychain entry is absent **AND** the marker exists, the app refuses to bootstrap a fresh DEK — it goes straight to a recovery screen that preserves the option to reinstate the entry from Time Machine. The current 2026-05-12 fix prevents overwrite when the slot is unreadable; the new marker prevents the silent "fresh DEK generated, old DB now unreadable" outcome when the slot is genuinely absent on a known-existing install. (c) A CI release-blocker test that fails on any launch path ending in `dbHealth = .unrecoverable`.
+
+- **Tier 1 — Keychain (existing).** Silent fast-path. Unchanged.
+
+- **Tier 2 — User-held recovery key (load-bearing addition).** A high-entropy printable recovery key is generated on first launch. The user is forced through a "save this somewhere safe" flow with copy-to-clipboard + print + confirmation typeback before they can use the app. The DEK is AES-GCM wrapped under a key derived from the recovery secret via PBKDF2-SHA256 (same KDF shape `KeyStore` already uses for passphrase-managed mode) and written to a separate `recovery_envelope.json` (so passphrase-mode users carrying a `keystore.json` envelope still get a recovery key, independent of whether they've set a passphrase). The file rides in every auto-backup ZIP for free since BackupService already zips the support directory. If the Keychain entry is lost for any reason — bug, OS corruption, user-initiated reset, account migration — the recovery screen offers an "Enter recovery key" path that unwraps the DEK and restores normal operation. This is the tier that flips PurpleLife from "fragile" to "responsible" — equivalent threat model to a Bitcoin seed phrase or an iCloud Recovery Key.
+
+  **Format decision (Phase B.1, 2026-05-15): 24-word BIP39 English.** 256 bits of entropy + an 8-bit checksum (the standard BIP39 shape), so the last word verifies the first 23 — typo detection comes free. Picked over short hex groups and free-form passphrases because: (1) it's the format every crypto wallet / iCloud Recovery Key / Apple Card recovery already uses, so the mental model is familiar; (2) words handwrite far better than hex (no `0`/`O`/`l`/`1` ambiguity, one word per line on paper) and dictate well over the phone in an emergency; (3) the wordlist is ~2KB compressed text — trivial in PurpleLife's bundle. The BIP39 English wordlist is vendored into `Sources/PurpleLife/Resources/bip39-english.txt`; the encoding/decoding is implemented in `Services/RecoveryKey.swift`.
+
+- **Tier 3 — iCloud Keychain mirror (deferred).** Second copy of the DEK stored with `kSecAttrSynchronizable=true` so Apple's iCloud Keychain trust circle syncs it to the user's other Macs. Restores transparently when local Keychain loses the entry but iCloud Keychain still has it. Pure convenience layer for multi-Mac users — Tier 2's recovery key already covers correctness.
+
+- **Tier 4 — CloudKit private-zone wrapped DEK (deferred).** Wrapped DEK stored in a small CKRecord in the user's CloudKit private DB, encrypted via `encryptedValues`. Distinct from iCloud Keychain (CloudKit storage survives some iCloud account events that local Keychain doesn't). Adds ~50 lines on top of the existing sync rails.
+
+- **Tier 5 — Plaintext JSON export (deferred).** A Settings → Backup → "Export plaintext snapshot…" button that decrypts the DB and writes a self-describing JSON file the user can stash anywhere (1Password attachments, encrypted thumb drive, paper printout for the most important records). Opt-in per-export, never automatic. The "I want to be able to read this in 30 years on hardware Apple doesn't sell yet" answer.
+
+**Multi-Mac coverage with Tier 0 + Tier 2 only.** Works correctly. The local DEK does **not** need to be shared between Macs — each Mac has its own DEK + its own recovery key. CloudKit `encryptedValues` uses Apple's iCloud Keychain trust-circle keys (independent of our DEK) to encrypt records in transit; Mac B receives them readable, then re-encrypts them into its own local SQLCipher DB under its own DEK. Schema sync, Vault flag, link references, the new cross-cutting `_tags` field — all flow through the same Apple-managed encryption layer and work cross-Mac without DEK sharing. Tier 3 is silent multi-Mac DEK inheritance (convenience); Tier 4 is iCloud-state resilience (depth); neither is required for the basic same-iCloud-account multi-Mac use case.
+
+**Implementation phasing.**
+- **Phase A** — Tier 0 (test-isolation fix, ever-booted marker, bootstrap refuses to create fresh DEK when marker exists + slot absent, CI release-blocker test). Lands before any further test run touches the user's machine.
+- **Phase B** — Tier 2 (recovery-key generation, AES-wrap of DEK, first-launch save-flow UX, recovery screen "Enter recovery key" path, embed in `keystore.json` + backup ZIPs, full test coverage). Lands before resuming feature work.
+- **Phase C+** — Tier 3, Tier 4, Tier 5 deferred; tracked here as known follow-ups, not on the immediate roadmap.
+
+**Pause status of in-flight work.** Tags Increment 1 + 2 (cross-cutting `_tags` field, `TagDef` vocabulary, `record_tags` index, `TagPillRow`, `TagManagementSheet`) shipped and remain green at 236/236 tests. Tags Increment 3 (`SearchFilter` + advanced Search window with Vault gating) and every Vault follow-up remain pending until Phase A + Phase B land.
+
 ### 2026-05-14 — Vault: a session-scoped sidebar section behind Touch ID / Mac password
 
 A new top-level section called **Vault** that's hidden on every launch and unlocks via **View → Show Vault…** (⇧⌘V). Built to hold types the user would rather not see at a glance — sexual health, intimacy, kink, body diary, fantasy journal. Shipped with 20 curated library entries spread across four buckets so the feature has content from day one.

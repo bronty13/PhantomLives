@@ -4,11 +4,31 @@ import Security
 /// Thin wrapper around `SecItemAdd` / `SecItemCopyMatching` / `SecItemDelete`.
 /// The DEK (data-encryption key) cache lives here so subsequent launches
 /// don't have to reprompt for the passphrase. All items are scoped to
-/// `kSecAttrService = "com.purplelife"` so an uninstall or
-/// `security delete-generic-password -s com.purplelife` clears everything.
+/// `kSecAttrService = service` so an uninstall or
+/// `security delete-generic-password -s com.purplelife` clears everything
+/// the production app owns.
+///
+/// **Test isolation (2026-05-15).** Under XCTest, `service` resolves to
+/// `"com.purplelife.tests-<pid>"` instead of `"com.purplelife"`. Without
+/// this split, `deleteAll()` (called by `KeyStoreTests.test_resetAndWipe…`
+/// and friends) queries SecItem by service name alone — so any test
+/// that exercised the wipe path would also delete the user's real
+/// production DEK and leave the on-disk SQLCipher DB permanently
+/// unreadable. Today's data-loss incident #4 was exactly this. The
+/// per-pid suffix also keeps parallel test invocations from interfering
+/// with each other. See HANDOFF.md (2026-05-15) for the full account.
 enum KeychainStore {
 
-    static let service = "com.purplelife"
+    /// Service name used on every SecItem call. Production value is the
+    /// stable `"com.purplelife"`; under XCTest it's a per-process
+    /// `"com.purplelife.tests-<pid>"` so test cleanup paths cannot
+    /// reach production entries.
+    static let service: String = {
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            return "com.purplelife.tests-\(ProcessInfo.processInfo.processIdentifier)"
+        }
+        return "com.purplelife"
+    }()
 
     enum Error: Swift.Error {
         case unexpectedStatus(OSStatus)

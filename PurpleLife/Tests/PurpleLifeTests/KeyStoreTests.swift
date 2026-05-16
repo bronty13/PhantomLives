@@ -339,4 +339,26 @@ final class KeyStoreTests: XCTestCase {
         XCTAssertEqual(KeychainStore.entryStatus(for: account2), .absent,
                        "deleteAll must remove every entry under the service, not just one")
     }
+
+    /// Regression for data-loss incident #4 (2026-05-15): the test
+    /// suite's `deleteAll()` callers wiped the user's real production
+    /// DEK because `KeychainStore.service` was a shared constant. The
+    /// fix scopes the service to `"com.purplelife.tests-<pid>"` under
+    /// XCTest so test cleanup paths cannot reach production entries.
+    ///
+    /// This test locks in the contract: under XCTest, the service
+    /// must not be `"com.purplelife"`, and must include the running
+    /// process id so parallel test invocations don't collide either.
+    /// If a future refactor reverts the isolation, this test fails
+    /// loudly before any `deleteAll()` call can do production damage.
+    func test_keychainServiceIsTestIsolatedUnderXCTest() {
+        let service = KeychainStore.service
+        XCTAssertNotEqual(service, "com.purplelife",
+                          "Production service name must never be used under XCTest — see HANDOFF 2026-05-15")
+        XCTAssertTrue(service.hasPrefix("com.purplelife.tests-"),
+                      "Test service name must use the documented `com.purplelife.tests-<pid>` shape; got \(service)")
+        let pid = ProcessInfo.processInfo.processIdentifier
+        XCTAssertTrue(service.hasSuffix("-\(pid)"),
+                      "Test service name must include the running pid so parallel invocations don't collide; got \(service)")
+    }
 }

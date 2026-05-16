@@ -50,6 +50,18 @@ final class KeyStore: ObservableObject {
         /// it. Surface the situation to the user instead of destroying
         /// the key.
         case keychainEntryAlreadyExists
+
+        /// Phase A.2 (2026-05-15) — `setupKeychainManaged` aborted
+        /// because the per-install `boot_state.json` marker exists
+        /// but the Keychain slot is empty. The marker says "this
+        /// install has launched successfully before, data has been
+        /// written under some prior DEK"; the absent slot says "that
+        /// DEK is gone." Generating a fresh DEK here would foreclose
+        /// every recovery path (Time Machine restore of the Keychain
+        /// entry, future user-held recovery key). The keystore
+        /// refuses; AppState surfaces the recovery screen *without*
+        /// any new DEK having been created.
+        case everBootedButKeychainGone
     }
 
     @Published private(set) var state: UnlockState = .notSetup
@@ -80,10 +92,29 @@ final class KeyStore: ObservableObject {
         var wrappedDEK: Data          // AES-GCM combined-format sealed box
     }
 
+    /// `recovery_envelope.json` contents (Phase B, 2026-05-15). Holds
+    /// the DEK wrapped under a KEK derived from the user's 24-word
+    /// recovery phrase. Separate file from `keystore.json` so the
+    /// passphrase-mode envelope and the recovery-key envelope are
+    /// independent — a user can have either, both, or (rarely)
+    /// neither. Auto-backup picks the file up automatically because
+    /// `BackupService` zips the whole support directory.
+    private struct RecoveryEnvelope: Codable {
+        var version: Int = 1
+        var salt: Data
+        var iterations: Int
+        var wrappedDEK: Data
+    }
+
+    /// Path to `recovery_envelope.json`. Stored alongside the
+    /// keystore envelope; lifecycle managed by the helpers below.
+    private let recoveryFileURL: URL
+
     // MARK: - Init
 
     init(supportDirectoryURL: URL) {
         self.fileURL = supportDirectoryURL.appendingPathComponent("keystore.json")
+        self.recoveryFileURL = supportDirectoryURL.appendingPathComponent("recovery_envelope.json")
         // Full SHA-256 hex of the support-directory path. Truncating to
         // 48 bits added no value and made colliding-path attacks plausible
         // (2^24 expected attempts) — there's no length pressure on the
@@ -92,6 +123,15 @@ final class KeyStore: ObservableObject {
             .map { String(format: "%02x", $0) }.joined()
         self.keychainDEKAccount = "dek-v1-\(pathHash)"
         refreshState()
+    }
+
+    /// True iff a recovery-envelope file exists on disk. Used by
+    /// `AppState` to decide whether the recovery screen should
+    /// expose an "Enter recovery key" path. Independent of
+    /// `hasPassphrase`: an install can have both, either, or
+    /// (legacy, pre-Phase-B) neither.
+    var hasRecoveryEnvelope: Bool {
+        FileManager.default.fileExists(atPath: recoveryFileURL.path)
     }
 
     /// Recompute `state` and `hasPassphrase`, then try a silent unlock via
@@ -108,10 +148,17 @@ final class KeyStore: ObservableObject {
             return
         }
 
-        // No Keychain cache. State depends on whether a passphrase
-        // envelope is on disk to unlock against.
+        // No Keychain cache. State depends on whether *any* unlock
+        // envelope is on disk: a passphrase envelope (legacy) or
+        // a Phase B recovery envelope. Either path can take us
+        // from `.locked` to `.unlocked`. Only when neither file
+        // is present do we treat this as a genuine fresh install.
         self.dek = nil
-        self.state = envelopeExists ? .locked : .notSetup
+        if envelopeExists || hasRecoveryEnvelope {
+            self.state = .locked
+        } else {
+            self.state = .notSetup
+        }
     }
 
     // MARK: - First-launch setup
@@ -120,7 +167,8 @@ final class KeyStore: ObservableObject {
     /// (no passphrase). Defends against bare-file exfiltration; subsequent
     /// launches open silently. The user can layer a passphrase on top later
     /// via `addPassphrase(_:)`.
-    func setupKeychainManaged() throws {
+    @discardableResult
+    func setupKeychainManaged() throws -> [String] {
         guard state == .notSetup else { throw KeyStoreError.alreadySetup }
         // Refuse to overwrite an existing slot. `KeychainStore.getData`
         // returns nil for "item not found" AND for any transient query
@@ -133,18 +181,58 @@ final class KeyStore: ObservableObject {
         if status != .absent {
             throw KeyStoreError.keychainEntryAlreadyExists
         }
+        // Phase A.2 (2026-05-15) — second guard: even when the slot
+        // is *definitively* absent, refuse to create a fresh DEK if
+        // the ever-booted marker says this install has run
+        // successfully before. The slot being absent now plus the
+        // marker existing implies the Keychain entry was destroyed
+        // out-of-band; generating a fresh DEK at this point would
+        // make every byte already on disk unreadable forever, and —
+        // critically — would foreclose recovery paths that still
+        // exist (Time Machine restoring the Keychain entry, the
+        // Phase B user-held recovery key). The keystore stays in
+        // `.notSetup`; AppState surfaces the recovery screen.
+        // Real incident: 2026-05-15 (#4). See HANDOFF.md.
+        if BootState.everBooted(in: supportDirectory) {
+            throw KeyStoreError.everBootedButKeychainGone
+        }
         let newDEK = SymmetricKey(size: .bits256)
         self.dek = newDEK
         self.state = .unlocked
         self.hasPassphrase = false
         cacheDEKInKeychain()
+        // Phase B (2026-05-15) — every fresh keystore also gets a
+        // 24-word recovery key. The wrapped DEK lands in
+        // `recovery_envelope.json` (auto-included in every backup
+        // ZIP by `BackupService`). The phrase is returned to the
+        // caller, which must show it to the user before allowing
+        // the app to continue; we deliberately do NOT log or store
+        // the phrase anywhere else — the user is the only persistence
+        // path, by design.
+        return try writeRecoveryEnvelope(for: newDEK)
+    }
+
+    /// Support directory derived from `fileURL` (which is
+    /// `<supportDir>/keystore.json`). The keystore was constructed
+    /// with a `supportDirectoryURL` parameter; recovering it from the
+    /// stored `fileURL` avoids duplicating the field. Used by the
+    /// Phase A.2 ever-booted marker check above.
+    private var supportDirectory: URL {
+        fileURL.deletingLastPathComponent()
     }
 
     /// First-launch path B: generate a DEK and wrap it under a passphrase.
     /// Stricter than Keychain-managed mode — `lock()` forces a re-prompt on
     /// next access. The Keychain still caches the unwrapped DEK for the
     /// current session so subsequent reads stay snappy.
-    func setupWithPassphrase(_ passphrase: String) throws {
+    ///
+    /// Phase B addition: passphrase users also get a 24-word recovery
+    /// key. The recovery envelope is independent of the passphrase
+    /// envelope — losing the passphrase no longer means losing the
+    /// data. The returned phrase MUST be surfaced to the user before
+    /// the app proceeds.
+    @discardableResult
+    func setupWithPassphrase(_ passphrase: String) throws -> [String] {
         guard state == .notSetup else { throw KeyStoreError.alreadySetup }
         let newDEK = SymmetricKey(size: .bits256)
         let salt = Crypto.randomBytes(Self.saltLength)
@@ -160,6 +248,82 @@ final class KeyStore: ObservableObject {
         self.state = .unlocked
         self.hasPassphrase = true
         cacheDEKInKeychain()
+        return try writeRecoveryEnvelope(for: newDEK)
+    }
+
+    /// Migration path: if the keystore is `.unlocked` (the silent-
+    /// fast-path) but no recovery envelope exists on disk, generate
+    /// one now using the live DEK. Returns the new phrase; the caller
+    /// must surface it to the user. Used on the first launch of a
+    /// Phase B build for installs that pre-date this work — without
+    /// it, existing users would never get a recovery key. Safe to
+    /// call on every launch: when an envelope already exists, returns
+    /// nil and does no work.
+    func ensureRecoveryEnvelope() throws -> [String]? {
+        guard state == .unlocked, let dek else { return nil }
+        if hasRecoveryEnvelope { return nil }
+        return try writeRecoveryEnvelope(for: dek)
+    }
+
+    /// Phase B unlock: derive the KEK from a recovery phrase, unwrap
+    /// the DEK from `recovery_envelope.json`, cache in Keychain so
+    /// subsequent launches are silent again. Reuses
+    /// `KeyStoreError.passphraseMismatch` for "wrong recovery key" —
+    /// the AES-GCM tag check is the same regardless of which secret
+    /// the KEK was derived from, and AppState's existing error
+    /// surfacing already speaks that vocabulary. The
+    /// `RecoveryKey.entropy(from:)` checksum check upstream catches
+    /// single-word typos before we even get here.
+    func unlockWithRecoveryKey(phrase: String) throws {
+        guard hasRecoveryEnvelope else { throw KeyStoreError.notSetup }
+        let env = try loadRecoveryEnvelope()
+        let kek = try RecoveryKey.deriveKEK(
+            phrase: phrase,
+            salt: env.salt,
+            iterations: env.iterations
+        )
+        let rawDEK: Data
+        do {
+            rawDEK = try Crypto.decrypt(env.wrappedDEK, using: kek)
+        } catch {
+            throw KeyStoreError.passphraseMismatch
+        }
+        self.dek = SymmetricKey(data: rawDEK)
+        self.state = .unlocked
+        cacheDEKInKeychain()
+    }
+
+    // MARK: - Recovery envelope helpers
+
+    /// Generate a fresh 24-word phrase, derive a KEK, wrap the
+    /// supplied DEK, and persist the envelope atomically. Returns
+    /// the words for the UX to show. **Never** logs or stores the
+    /// phrase outside the returned value — losing it after the
+    /// caller forgets it is a deliberate, documented property of
+    /// the recovery design.
+    private func writeRecoveryEnvelope(for dek: SymmetricKey) throws -> [String] {
+        let words = RecoveryKey.generate()
+        let phrase = RecoveryKey.format(words)
+        let salt = Crypto.randomBytes(Self.saltLength)
+        let kek = try RecoveryKey.deriveKEK(
+            phrase: phrase,
+            salt: salt,
+            iterations: Self.kdfIterations
+        )
+        let wrapped = try Crypto.encrypt(dek.rawData, using: kek)
+        let env = RecoveryEnvelope(
+            salt: salt,
+            iterations: Self.kdfIterations,
+            wrappedDEK: wrapped
+        )
+        let data = try JSONEncoder().encode(env)
+        try data.write(to: recoveryFileURL, options: .atomic)
+        return words
+    }
+
+    private func loadRecoveryEnvelope() throws -> RecoveryEnvelope {
+        let data = try Data(contentsOf: recoveryFileURL)
+        return try JSONDecoder().decode(RecoveryEnvelope.self, from: data)
     }
 
     // MARK: - Unlock / lock
@@ -280,11 +444,22 @@ final class KeyStore: ObservableObject {
     /// from scratch (e.g. if they forgot their passphrase and accept data loss).
     /// Any encrypted files on disk become unreadable garbage after this —
     /// callers should delete those separately.
+    ///
+    /// Also clears the Phase A.2 ever-booted marker. Without this,
+    /// the next launch would see "marker present + Keychain absent"
+    /// and refuse to bootstrap — bouncing the user back into the
+    /// recovery screen they just escaped from. Production's Reset
+    /// flow goes through `DatabaseService.resetUnrecoverableDataAndReopen`
+    /// which already quarantines the marker; clearing it here keeps
+    /// `resetAndWipe()` semantically self-contained for any other
+    /// caller.
     func resetAndWipe() {
         dek = nil
         state = .notSetup
         hasPassphrase = false
         try? FileManager.default.removeItem(at: fileURL)
+        try? FileManager.default.removeItem(at: recoveryFileURL)
+        try? FileManager.default.removeItem(at: BootState.markerURL(in: supportDirectory))
         KeychainStore.deleteAll()
     }
 

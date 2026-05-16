@@ -23,6 +23,7 @@ struct SchemaEditorScreen: View {
     @State private var importError: String? = nil
     @State private var showMultiExport = false
     @State private var multiExportSelection: Set<String> = []
+    @State private var showManageTags = false
 
     var body: some View {
         HSplitView {
@@ -51,6 +52,10 @@ struct SchemaEditorScreen: View {
                 }
             )
             .environmentObject(appState)
+        }
+        .sheet(isPresented: $showManageTags) {
+            TagManagementSheet()
+                .environmentObject(appState)
         }
         .alert("Reset built-in schemas?", isPresented: $showResetConfirm) {
             Button("Reset", role: .destructive) {
@@ -403,6 +408,10 @@ struct SchemaEditorScreen: View {
                 }
                 Button("Export all…") {
                     exportTypes(ids: appState.schema.types.map(\.id))
+                }
+                Divider()
+                Button("Manage tags…") {
+                    showManageTags = true
                 }
                 Divider()
                 Button("Reset built-ins to defaults…", role: .destructive) {
