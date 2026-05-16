@@ -1,0 +1,945 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Weight Tracker</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #f7f7f8;
+    --panel: #ffffff;
+    --text: #1a1a1c;
+    --muted: #6b6b73;
+    --border: #e3e3e8;
+    --accent: #4f46e5;
+    --accent-soft: #eef2ff;
+    --good: #16a34a;
+    --bad: #dc2626;
+    --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e0e11;
+      --panel: #17171c;
+      --text: #ececf1;
+      --muted: #9a9aa6;
+      --border: #2a2a32;
+      --accent: #8b85ff;
+      --accent-soft: #1f1d3a;
+      --good: #4ade80;
+      --bad: #f87171;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.35);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  header h1 { font-size: 22px; margin: 0; font-weight: 600; }
+  header .actions { display: flex; gap: 8px; }
+  button, .btn {
+    font: inherit;
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 12px;
+    cursor: pointer;
+    transition: background 0.1s, border-color 0.1s;
+  }
+  button:hover, .btn:hover { background: var(--accent-soft); border-color: var(--accent); }
+  button.primary { background: var(--accent); color: white; border-color: var(--accent); }
+  button.primary:hover { filter: brightness(1.1); }
+  button.danger { color: var(--bad); }
+  button.small { padding: 4px 8px; font-size: 12px; }
+  input, select, textarea {
+    font: inherit;
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 10px;
+    width: 100%;
+  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: var(--shadow);
+    margin-bottom: 16px;
+  }
+  .panel h2 { font-size: 14px; margin: 0 0 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+  }
+  .stat {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .stat .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .stat .value { font-size: 20px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .stat .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .good { color: var(--good); }
+  .bad { color: var(--bad); }
+
+  .chart-controls {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+    margin-bottom: 12px;
+  }
+  .chart-controls > div { display: flex; align-items: center; gap: 6px; }
+  .chips { display: inline-flex; gap: 4px; }
+  .chip {
+    padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px;
+    background: var(--panel); cursor: pointer; font-size: 12px;
+  }
+  .chip.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .chip:hover:not(.active) { background: var(--accent-soft); }
+  .check { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; }
+  .check input { width: auto; }
+  #chartWrap { position: relative; height: 320px; }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: 140px 110px 1fr auto;
+    gap: 10px;
+    align-items: end;
+  }
+  @media (max-width: 600px) {
+    .form-grid { grid-template-columns: 1fr 1fr; }
+    .form-grid > :nth-child(3), .form-grid > :nth-child(4) { grid-column: 1 / -1; }
+  }
+
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+  .tab {
+    padding: 8px 14px; cursor: pointer; border-bottom: 2px solid transparent;
+    color: var(--muted); font-weight: 500;
+  }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; cursor: pointer; user-select: none; }
+  tbody tr:hover { background: var(--accent-soft); }
+  .right { text-align: right; }
+  .notes-preview { color: var(--muted); font-size: 12px; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: none;
+    align-items: center; justify-content: center; z-index: 50;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px; min-width: 320px; max-width: 480px; width: 92%;
+    box-shadow: var(--shadow);
+  }
+  .modal h2 { margin: 0 0 14px; font-size: 16px; }
+  .modal-row { margin-bottom: 10px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--text); color: var(--bg);
+    padding: 10px 16px; border-radius: 8px; font-size: 13px;
+    opacity: 0; transition: opacity 0.2s;
+    pointer-events: none; z-index: 100;
+  }
+  .toast.show { opacity: 1; }
+
+  .empty { text-align: center; color: var(--muted); padding: 24px 0; }
+  .preview-table { max-height: 240px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>Weight Tracker</h1>
+    <div class="actions">
+      <button onclick="openSettings()">Settings</button>
+      <button onclick="exportCSV()">Export CSV</button>
+    </div>
+  </header>
+
+  <section class="panel">
+    <h2>Stats</h2>
+    <div id="stats" class="stats-grid"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Chart</h2>
+    <div class="chart-controls">
+      <div>
+        <label style="margin:0">Style</label>
+        <select id="chartStyle" onchange="renderChart()">
+          <option value="line">Line</option>
+          <option value="bar">Bar</option>
+          <option value="area">Area</option>
+          <option value="scatter">Scatter</option>
+          <option value="ma">Moving Avg (7 &amp; 30d)</option>
+        </select>
+      </div>
+      <div>
+        <label style="margin:0">Range</label>
+        <div id="rangeChips" class="chips">
+          <span class="chip" data-range="7">7D</span>
+          <span class="chip" data-range="30">30D</span>
+          <span class="chip" data-range="90">90D</span>
+          <span class="chip" data-range="365">1Y</span>
+          <span class="chip active" data-range="all">All</span>
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" id="showGoal" checked onchange="renderChart()" /> Goal line</label>
+      <label class="check"><input type="checkbox" id="showTrend" checked onchange="renderChart()" /> Trend line</label>
+    </div>
+    <div id="chartWrap"><canvas id="chart"></canvas></div>
+  </section>
+
+  <section class="panel">
+    <h2 id="formTitle">Add Entry</h2>
+    <div class="form-grid">
+      <div>
+        <label>Date</label>
+        <input type="date" id="entryDate" />
+      </div>
+      <div>
+        <label>Weight (lbs)</label>
+        <input type="number" id="entryWeight" step="0.1" min="0" placeholder="e.g. 184.2" />
+      </div>
+      <div>
+        <label>Notes</label>
+        <input type="text" id="entryNotes" placeholder="optional" />
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="primary" onclick="saveEntry()">Save</button>
+        <button id="cancelEditBtn" style="display:none" onclick="cancelEdit()">Cancel</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="tabs">
+      <div class="tab active" data-tab="entries" onclick="switchTab('entries')">Entries</div>
+      <div class="tab" data-tab="import" onclick="switchTab('import')">Import</div>
+    </div>
+
+    <div id="tab-entries">
+      <div id="entriesWrap"></div>
+    </div>
+
+    <div id="tab-import" style="display:none">
+      <p style="color:var(--muted);font-size:13px;margin-top:0">
+        Paste any text containing dates and weights (one pair per line works best), or upload a CSV.
+      </p>
+      <label>Paste text</label>
+      <textarea id="importText" rows="6" placeholder="2026-04-12: 184.2&#10;Apr 13 183.8&#10;4/14/26 183.0"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap">
+        <button onclick="parseImport()">Parse</button>
+        <label style="margin:0">
+          <span class="btn" style="display:inline-block">Upload CSV</span>
+          <input type="file" id="csvFile" accept=".csv,text/csv" style="display:none" onchange="importCSV(event)" />
+        </label>
+        <label class="check" style="margin-left:auto">
+          <input type="checkbox" id="overwriteDupes" /> Overwrite duplicates (default: skip)
+        </label>
+      </div>
+      <div id="importPreview" style="margin-top:12px"></div>
+    </div>
+  </section>
+
+</div>
+
+<!-- Settings modal -->
+<div id="settingsModal" class="modal-backdrop" onclick="if(event.target===this)closeSettings()">
+  <div class="modal">
+    <h2>Settings</h2>
+    <div class="modal-row">
+      <label>Goal weight (lbs)</label>
+      <input type="number" id="setGoal" step="0.1" />
+    </div>
+    <div class="modal-row">
+      <label>Starting weight (lbs)</label>
+      <input type="number" id="setStarting" step="0.1" />
+    </div>
+    <div class="modal-row">
+      <label>Height (inches)</label>
+      <input type="number" id="setHeight" step="0.1" />
+    </div>
+    <div class="modal-row">
+      <label>Forecast window (days)</label>
+      <input type="number" id="setForecast" step="1" min="3" />
+    </div>
+    <div class="modal-actions">
+      <button onclick="clearAllData()" class="danger">Clear all data</button>
+      <span style="flex:1"></span>
+      <button onclick="closeSettings()">Cancel</button>
+      <button class="primary" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+// ---------- storage ----------
+const LS_ENTRIES = "wt.entries";
+const LS_SETTINGS = "wt.settings";
+
+const defaultSettings = { goalLbs: 170, startingLbs: 200, heightInches: 70, forecastWindowDays: 30 };
+
+function loadEntries() {
+  try { return (JSON.parse(localStorage.getItem(LS_ENTRIES) || "[]")).sort((a,b)=>a.date.localeCompare(b.date)); }
+  catch { return []; }
+}
+function saveEntries(entries) {
+  entries.sort((a,b)=>a.date.localeCompare(b.date));
+  try { localStorage.setItem(LS_ENTRIES, JSON.stringify(entries)); }
+  catch (e) { toast("Storage error: " + e.message); }
+}
+function loadSettings() {
+  try { return Object.assign({}, defaultSettings, JSON.parse(localStorage.getItem(LS_SETTINGS) || "{}")); }
+  catch { return { ...defaultSettings }; }
+}
+function saveSettingsObj(s) {
+  try { localStorage.setItem(LS_SETTINGS, JSON.stringify(s)); }
+  catch (e) { toast("Storage error: " + e.message); }
+}
+
+let entries = loadEntries();
+let settings = loadSettings();
+let activeRange = "all";
+let editingDate = null;
+let sortKey = "date", sortDir = "desc";
+let chart = null;
+let pendingImport = null;
+
+// ---------- math helpers ----------
+function isoToday() { return new Date().toISOString().slice(0,10); }
+function isoDate(d) { return d.toISOString().slice(0,10); }
+function parseISO(s) { return new Date(s + "T00:00:00"); }
+function daysBetween(a, b) { return Math.round((parseISO(b) - parseISO(a)) / 86400000); }
+function fmt(n, decimals=1) { return (n === null || n === undefined || isNaN(n)) ? "—" : Number(n).toFixed(decimals); }
+function fmtSigned(n, decimals=1) {
+  if (n === null || n === undefined || isNaN(n)) return "—";
+  return (n >= 0 ? "+" : "") + Number(n).toFixed(decimals);
+}
+
+function filterByRange(rows, range) {
+  if (!rows.length || range === "all") return rows;
+  const days = Number(range);
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
+  const cutoffISO = isoDate(cutoff);
+  return rows.filter(r => r.date >= cutoffISO);
+}
+
+function movingAvg(rows, windowDays) {
+  return rows.map((r, i) => {
+    const cutoff = new Date(parseISO(r.date)); cutoff.setDate(cutoff.getDate() - windowDays + 1);
+    const cutoffISO = isoDate(cutoff);
+    const win = rows.slice(0, i + 1).filter(x => x.date >= cutoffISO);
+    const avg = win.reduce((s, x) => s + x.weightLbs, 0) / win.length;
+    return { date: r.date, weightLbs: avg };
+  });
+}
+
+function linearRegression(rows) {
+  if (rows.length < 2) return null;
+  const x0 = parseISO(rows[0].date);
+  const xs = rows.map(r => (parseISO(r.date) - x0) / 86400000);
+  const ys = rows.map(r => r.weightLbs);
+  const n = rows.length;
+  const sx = xs.reduce((s,v)=>s+v,0);
+  const sy = ys.reduce((s,v)=>s+v,0);
+  const sxy = xs.reduce((s,v,i)=>s+v*ys[i],0);
+  const sxx = xs.reduce((s,v)=>s+v*v,0);
+  const denom = n*sxx - sx*sx;
+  if (denom === 0) return null;
+  const slope = (n*sxy - sx*sy) / denom;
+  const intercept = (sy - slope*sx) / n;
+  const meanY = sy / n;
+  const ssTot = ys.reduce((s,v)=>s+(v-meanY)**2,0);
+  const ssRes = ys.reduce((s,v,i)=>s+(v-(slope*xs[i]+intercept))**2,0);
+  const r2 = ssTot === 0 ? 1 : 1 - ssRes/ssTot;
+  return { slope, intercept, r2, x0 };
+}
+
+function bestWorstWeek(rows) {
+  if (rows.length < 2) return { best: null, worst: null };
+  let best = null, worst = null;
+  for (let i = 0; i < rows.length; i++) {
+    const startDate = parseISO(rows[i].date);
+    const endDate = new Date(startDate); endDate.setDate(endDate.getDate() + 7);
+    const endISO = isoDate(endDate);
+    const within = rows.filter(r => r.date >= rows[i].date && r.date <= endISO);
+    if (within.length < 2) continue;
+    const change = within[within.length-1].weightLbs - within[0].weightLbs;
+    if (best === null || change < best.change) best = { change, from: within[0].date, to: within[within.length-1].date };
+    if (worst === null || change > worst.change) worst = { change, from: within[0].date, to: within[within.length-1].date };
+  }
+  return { best, worst };
+}
+
+function bmi(weightLbs, heightInches) {
+  if (!heightInches || heightInches <= 0) return null;
+  return (weightLbs / (heightInches*heightInches)) * 703;
+}
+
+// ---------- stats render ----------
+function renderStats() {
+  const el = document.getElementById("stats");
+  if (!entries.length) { el.innerHTML = `<div class="empty" style="grid-column:1/-1">No entries yet — add your first weight below.</div>`; return; }
+
+  const latest = entries[entries.length-1];
+  const prev = entries.length > 1 ? entries[entries.length-2] : null;
+  const startingW = settings.startingLbs || entries[0].weightLbs;
+  const totalChange = latest.weightLbs - startingW;
+  const lastDelta = prev ? latest.weightLbs - prev.weightLbs : null;
+
+  // 4-week rolling weekly change average
+  const fourWeeksAgo = new Date(parseISO(latest.date)); fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
+  const recent = entries.filter(r => r.date >= isoDate(fourWeeksAgo));
+  let weeklyAvg = null;
+  if (recent.length >= 2) {
+    const days = daysBetween(recent[0].date, recent[recent.length-1].date) || 1;
+    const change = recent[recent.length-1].weightLbs - recent[0].weightLbs;
+    weeklyAvg = (change / days) * 7;
+  }
+
+  const ma = movingAvg(entries, 7);
+  const ma7 = ma[ma.length-1]?.weightLbs;
+  const ma30arr = movingAvg(entries, 30);
+  const ma30 = ma30arr[ma30arr.length-1]?.weightLbs;
+
+  const { best, worst } = bestWorstWeek(entries);
+
+  // forecast / regression over forecastWindowDays
+  const fwDays = settings.forecastWindowDays || 30;
+  const fwCutoff = new Date(parseISO(latest.date)); fwCutoff.setDate(fwCutoff.getDate() - fwDays);
+  const fwData = entries.filter(r => r.date >= isoDate(fwCutoff));
+  const reg = linearRegression(fwData);
+  const slope = reg ? reg.slope : null;
+  const r2 = reg ? reg.r2 : null;
+
+  // days to goal
+  let daysToGoal = null;
+  if (slope !== null && settings.goalLbs) {
+    const remaining = latest.weightLbs - settings.goalLbs;
+    if (Math.abs(slope) > 1e-6) {
+      const d = remaining / slope;
+      daysToGoal = d > 0 && d < 1e5 ? d : null;
+    }
+  }
+
+  // % progress
+  let progress = null;
+  if (settings.goalLbs && settings.startingLbs && settings.startingLbs !== settings.goalLbs) {
+    progress = ((settings.startingLbs - latest.weightLbs) / (settings.startingLbs - settings.goalLbs)) * 100;
+  }
+
+  const bmiCur = bmi(latest.weightLbs, settings.heightInches);
+  const bmiStart = bmi(startingW, settings.heightInches);
+  const bmiGoal = settings.goalLbs ? bmi(settings.goalLbs, settings.heightInches) : null;
+
+  const cards = [
+    card("Current", fmt(latest.weightLbs) + " lbs", latest.date),
+    card("Total Change", fmtSigned(totalChange) + " lbs", "from " + fmt(startingW) + " lbs", changeClass(totalChange, true)),
+    card("Last Entry Δ", fmtSigned(lastDelta) + " lbs", prev ? "vs " + prev.date : "", changeClass(lastDelta, true)),
+    card("4-Week Weekly", fmtSigned(weeklyAvg) + " lbs/wk", "rolling avg", changeClass(weeklyAvg, true)),
+    card("7-Day MA", fmt(ma7) + " lbs", "moving average"),
+    card("30-Day MA", fmt(ma30) + " lbs", "moving average"),
+    card("Best Week", best ? fmtSigned(best.change) + " lbs" : "—", best ? best.from + " → " + best.to : "", "good"),
+    card("Worst Week", worst ? fmtSigned(worst.change) + " lbs" : "—", worst ? worst.from + " → " + worst.to : "", "bad"),
+    card("Trend", slope !== null ? fmtSigned(slope*7, 2) + " lbs/wk" : "—", reg ? "R² " + fmt(r2, 2) + " (last " + fwDays + "d)" : ""),
+    card("Days to Goal", daysToGoal !== null ? fmt(daysToGoal, 0) : "—", settings.goalLbs ? "to " + fmt(settings.goalLbs) + " lbs" : "set a goal"),
+    card("Progress", progress !== null ? fmt(progress, 0) + "%" : "—", settings.goalLbs ? "of goal" : ""),
+    card("BMI", fmt(bmiCur), bmiStart ? "start " + fmt(bmiStart) + (bmiGoal ? " · goal " + fmt(bmiGoal) : "") : ""),
+  ];
+  el.innerHTML = cards.join("");
+}
+function card(label, value, sub, cls) {
+  const vClass = cls ? ` class="value ${cls}"` : ` class="value"`;
+  return `<div class="stat"><div class="label">${label}</div><div${vClass}>${value}</div><div class="sub">${sub||""}</div></div>`;
+}
+function changeClass(n, lossIsGood) {
+  if (n === null || n === undefined || isNaN(n)) return "";
+  if (n === 0) return "";
+  if (lossIsGood) return n < 0 ? "good" : "bad";
+  return n > 0 ? "good" : "bad";
+}
+
+// ---------- chart render ----------
+function renderChart() {
+  const style = document.getElementById("chartStyle").value;
+  const showGoal = document.getElementById("showGoal").checked;
+  const showTrend = document.getElementById("showTrend").checked;
+  const ranged = filterByRange(entries, activeRange);
+
+  if (chart) { chart.destroy(); chart = null; }
+  const wrap = document.getElementById("chartWrap");
+  if (!ranged.length) {
+    wrap.innerHTML = `<div class="empty" style="padding-top:120px">No data in this range.</div>`;
+    return;
+  }
+  wrap.innerHTML = `<canvas id="chart"></canvas>`;
+  if (typeof Chart === "undefined") {
+    wrap.innerHTML = `<div class="empty" style="padding-top:120px">Chart.js failed to load (offline?). Entries still save.</div>`;
+    return;
+  }
+  const ctx2 = document.getElementById("chart").getContext("2d");
+  const labels = ranged.map(r => r.date);
+  const dataPoints = ranged.map(r => r.weightLbs);
+  const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+  const muted = getComputedStyle(document.documentElement).getPropertyValue("--muted").trim();
+  const good = getComputedStyle(document.documentElement).getPropertyValue("--good").trim();
+  const bad = getComputedStyle(document.documentElement).getPropertyValue("--bad").trim();
+
+  const datasets = [];
+  let chartType = "line";
+
+  if (style === "bar") {
+    chartType = "bar";
+    datasets.push({ label: "Weight (lbs)", data: dataPoints, backgroundColor: accent, borderColor: accent });
+  } else if (style === "scatter") {
+    chartType = "scatter";
+    datasets.push({
+      label: "Weight (lbs)",
+      data: ranged.map(r => ({ x: r.date, y: r.weightLbs })),
+      backgroundColor: accent,
+      borderColor: accent,
+      showLine: false,
+      pointRadius: 4,
+    });
+  } else if (style === "area") {
+    chartType = "line";
+    datasets.push({
+      label: "Weight (lbs)", data: dataPoints,
+      borderColor: accent, backgroundColor: accent + "33",
+      fill: true, tension: 0.25, pointRadius: 2,
+    });
+  } else if (style === "ma") {
+    chartType = "line";
+    datasets.push({
+      label: "Weight (lbs)", data: dataPoints,
+      borderColor: accent + "66", backgroundColor: "transparent",
+      borderWidth: 1, pointRadius: 1.5, tension: 0.2,
+    });
+    const ma7 = movingAvg(ranged, 7).map(r => r.weightLbs);
+    const ma30 = movingAvg(ranged, 30).map(r => r.weightLbs);
+    datasets.push({ label: "7-day MA", data: ma7, borderColor: good, backgroundColor: "transparent", borderWidth: 2, pointRadius: 0, tension: 0.2 });
+    datasets.push({ label: "30-day MA", data: ma30, borderColor: bad, backgroundColor: "transparent", borderWidth: 2, pointRadius: 0, tension: 0.2 });
+  } else {
+    chartType = "line";
+    datasets.push({
+      label: "Weight (lbs)", data: dataPoints,
+      borderColor: accent, backgroundColor: accent + "22",
+      fill: false, tension: 0.25, pointRadius: 2.5,
+    });
+  }
+
+  if (showGoal && settings.goalLbs) {
+    datasets.push({
+      label: "Goal",
+      data: labels.map(() => settings.goalLbs),
+      borderColor: good, borderDash: [6,4], borderWidth: 1.5,
+      pointRadius: 0, fill: false, tension: 0,
+    });
+  }
+
+  if (showTrend && ranged.length >= 2) {
+    const reg = linearRegression(ranged);
+    if (reg) {
+      const trendData = ranged.map(r => {
+        const x = (parseISO(r.date) - reg.x0) / 86400000;
+        return reg.slope * x + reg.intercept;
+      });
+      datasets.push({
+        label: "Trend", data: trendData,
+        borderColor: muted, borderDash: [4,4], borderWidth: 1.5,
+        pointRadius: 0, fill: false, tension: 0,
+      });
+    }
+  }
+
+  const config = {
+    type: chartType,
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { intersect: false, mode: "index" },
+      scales: {
+        x: chartType === "scatter"
+          ? { type: "category", labels, ticks: { color: muted, maxRotation: 0, autoSkip: true } }
+          : { ticks: { color: muted, maxRotation: 0, autoSkip: true }, grid: { color: muted + "22" } },
+        y: { ticks: { color: muted }, grid: { color: muted + "22" } },
+      },
+      plugins: {
+        legend: { labels: { color: muted, boxWidth: 12 } },
+        tooltip: { mode: "index", intersect: false },
+      },
+    },
+  };
+  chart = new Chart(ctx2, config);
+}
+
+// ---------- entries table ----------
+function renderEntries() {
+  const wrap = document.getElementById("entriesWrap");
+  if (!entries.length) { wrap.innerHTML = `<div class="empty">No entries yet.</div>`; return; }
+
+  const rows = [...entries];
+  rows.sort((a,b) => {
+    let cmp = 0;
+    if (sortKey === "date") cmp = a.date.localeCompare(b.date);
+    else if (sortKey === "weight") cmp = a.weightLbs - b.weightLbs;
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+
+  // compute deltas using date-sorted order (regardless of display sort)
+  const dateOrder = [...entries];
+  const deltaByDate = {};
+  for (let i = 0; i < dateOrder.length; i++) {
+    deltaByDate[dateOrder[i].date] = i > 0 ? dateOrder[i].weightLbs - dateOrder[i-1].weightLbs : null;
+  }
+
+  const ind = (k) => sortKey === k ? (sortDir === "asc" ? " ↑" : " ↓") : "";
+  let html = `<table>
+    <thead><tr>
+      <th onclick="setSort('date')">Date${ind("date")}</th>
+      <th onclick="setSort('weight')" class="right">Weight (lbs)${ind("weight")}</th>
+      <th class="right">Δ</th>
+      <th>Notes</th>
+      <th class="right">Actions</th>
+    </tr></thead><tbody>`;
+  for (const r of rows) {
+    const d = deltaByDate[r.date];
+    const dCls = d === null ? "" : (d < 0 ? "good" : d > 0 ? "bad" : "");
+    html += `<tr>
+      <td>${r.date}</td>
+      <td class="right">${fmt(r.weightLbs)}</td>
+      <td class="right ${dCls}">${d === null ? "—" : fmtSigned(d)}</td>
+      <td><div class="notes-preview">${escapeHTML(r.notes || "")}</div></td>
+      <td class="right">
+        <button class="small" onclick="editEntry('${r.date}')">Edit</button>
+        <button class="small danger" onclick="deleteEntry('${r.date}')">Delete</button>
+      </td>
+    </tr>`;
+  }
+  html += `</tbody></table>`;
+  wrap.innerHTML = html;
+}
+
+function setSort(k) {
+  if (sortKey === k) sortDir = sortDir === "asc" ? "desc" : "asc";
+  else { sortKey = k; sortDir = k === "date" ? "desc" : "asc"; }
+  renderEntries();
+}
+
+function escapeHTML(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+// ---------- entry CRUD ----------
+function saveEntry() {
+  const date = document.getElementById("entryDate").value;
+  const w = parseFloat(document.getElementById("entryWeight").value);
+  const notes = document.getElementById("entryNotes").value.trim();
+  if (!date) return toast("Pick a date");
+  if (!w || w <= 0 || w > 2000) return toast("Enter a valid weight");
+
+  const editingMatch = editingDate;
+  if (editingMatch && editingMatch !== date) {
+    entries = entries.filter(e => e.date !== editingMatch);
+  }
+  const existing = entries.findIndex(e => e.date === date);
+  const entry = { date, weightLbs: w, notes };
+  if (existing >= 0) entries[existing] = entry; else entries.push(entry);
+
+  saveEntries(entries);
+  cancelEdit();
+  renderAll();
+  toast(editingMatch ? "Entry updated" : "Entry saved");
+}
+
+function editEntry(date) {
+  const e = entries.find(x => x.date === date);
+  if (!e) return;
+  editingDate = date;
+  document.getElementById("entryDate").value = e.date;
+  document.getElementById("entryWeight").value = e.weightLbs;
+  document.getElementById("entryNotes").value = e.notes || "";
+  document.getElementById("formTitle").textContent = "Edit Entry — " + date;
+  document.getElementById("cancelEditBtn").style.display = "";
+  window.scrollTo({ top: document.getElementById("formTitle").offsetTop - 20, behavior: "smooth" });
+}
+function cancelEdit() {
+  editingDate = null;
+  document.getElementById("entryDate").value = isoToday();
+  document.getElementById("entryWeight").value = "";
+  document.getElementById("entryNotes").value = "";
+  document.getElementById("formTitle").textContent = "Add Entry";
+  document.getElementById("cancelEditBtn").style.display = "none";
+}
+function deleteEntry(date) {
+  if (!confirm("Delete entry for " + date + "?")) return;
+  entries = entries.filter(e => e.date !== date);
+  saveEntries(entries);
+  if (editingDate === date) cancelEdit();
+  renderAll();
+  toast("Deleted");
+}
+
+// ---------- settings ----------
+function openSettings() {
+  document.getElementById("setGoal").value = settings.goalLbs ?? "";
+  document.getElementById("setStarting").value = settings.startingLbs ?? "";
+  document.getElementById("setHeight").value = settings.heightInches ?? "";
+  document.getElementById("setForecast").value = settings.forecastWindowDays ?? 30;
+  document.getElementById("settingsModal").classList.add("open");
+}
+function closeSettings() { document.getElementById("settingsModal").classList.remove("open"); }
+function saveSettings() {
+  settings = {
+    goalLbs: parseFloat(document.getElementById("setGoal").value) || null,
+    startingLbs: parseFloat(document.getElementById("setStarting").value) || null,
+    heightInches: parseFloat(document.getElementById("setHeight").value) || null,
+    forecastWindowDays: parseInt(document.getElementById("setForecast").value, 10) || 30,
+  };
+  saveSettingsObj(settings);
+  closeSettings();
+  renderAll();
+  toast("Settings saved");
+}
+function clearAllData() {
+  if (!confirm("Delete ALL entries and settings? This cannot be undone.")) return;
+  localStorage.removeItem(LS_ENTRIES);
+  localStorage.removeItem(LS_SETTINGS);
+  entries = [];
+  settings = { ...defaultSettings };
+  closeSettings();
+  cancelEdit();
+  renderAll();
+  toast("All data cleared");
+}
+
+// ---------- tabs ----------
+function switchTab(name) {
+  for (const t of document.querySelectorAll(".tab")) t.classList.toggle("active", t.dataset.tab === name);
+  document.getElementById("tab-entries").style.display = name === "entries" ? "" : "none";
+  document.getElementById("tab-import").style.display = name === "import" ? "" : "none";
+}
+
+// ---------- import / export ----------
+function exportCSV() {
+  if (!entries.length) return toast("Nothing to export");
+  const lines = ["date,weight_lbs,notes"];
+  for (const e of entries) {
+    const notes = (e.notes || "").replace(/"/g, '""');
+    lines.push(`${e.date},${e.weightLbs},"${notes}"`);
+  }
+  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "weighttracker-export-" + isoToday().replace(/-/g,"") + ".csv";
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function parseImport() {
+  const txt = document.getElementById("importText").value;
+  const parsed = smartParse(txt);
+  pendingImport = parsed;
+  renderImportPreview(parsed);
+}
+
+function importCSV(ev) {
+  const f = ev.target.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const parsed = parseCSV(reader.result);
+    pendingImport = parsed;
+    renderImportPreview(parsed);
+    ev.target.value = "";
+  };
+  reader.readAsText(f);
+}
+
+function parseCSV(text) {
+  const rows = [];
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // crude CSV split (handles quoted notes with commas)
+    const cols = [];
+    let cur = "", inQ = false;
+    for (let j = 0; j < line.length; j++) {
+      const c = line[j];
+      if (inQ) {
+        if (c === '"' && line[j+1] === '"') { cur += '"'; j++; }
+        else if (c === '"') inQ = false;
+        else cur += c;
+      } else {
+        if (c === '"') inQ = true;
+        else if (c === ",") { cols.push(cur); cur = ""; }
+        else cur += c;
+      }
+    }
+    cols.push(cur);
+    if (i === 0 && /date/i.test(cols[0])) continue; // header
+    const date = normalizeDate(cols[0]);
+    const w = parseFloat(cols[1]);
+    if (date && !isNaN(w) && w > 0) rows.push({ date, weightLbs: w, notes: (cols[2] || "").trim() });
+  }
+  return rows;
+}
+
+function smartParse(text) {
+  const out = [];
+  const seen = new Set();
+  const lines = text.split(/\r?\n/);
+  for (const line of lines) {
+    const date = extractDate(line);
+    if (!date) continue;
+    const weightMatch = line.replace(date.matched, "").match(/(\d{2,3}(?:\.\d{1,2})?)\b/);
+    if (!weightMatch) continue;
+    const w = parseFloat(weightMatch[1]);
+    if (isNaN(w) || w < 30 || w > 1500) continue;
+    if (seen.has(date.iso)) continue;
+    seen.add(date.iso);
+    out.push({ date: date.iso, weightLbs: w, notes: "" });
+  }
+  return out;
+}
+
+function extractDate(s) {
+  let m;
+  m = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) {
+    const iso = `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+    if (validISO(iso)) return { iso, matched: m[0] };
+  }
+  m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (m) {
+    let y = parseInt(m[3],10);
+    if (y < 100) y = y < 50 ? 2000 + y : 1900 + y;
+    const iso = `${y}-${pad(m[1])}-${pad(m[2])}`;
+    if (validISO(iso)) return { iso, matched: m[0] };
+  }
+  const months = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+  m = s.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{1,2})(?:,?\s+(\d{4}))?/i);
+  if (m) {
+    const mo = months.indexOf(m[1].toLowerCase()) + 1;
+    const day = parseInt(m[2],10);
+    const yr = m[3] ? parseInt(m[3],10) : new Date().getFullYear();
+    const iso = `${yr}-${pad(mo)}-${pad(day)}`;
+    if (validISO(iso)) return { iso, matched: m[0] };
+  }
+  return null;
+}
+function pad(n) { return String(n).padStart(2, "0"); }
+function validISO(iso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return false;
+  const [y,mo,d] = iso.split("-").map(Number);
+  if (y < 1990 || y > 2100) return false;
+  if (mo < 1 || mo > 12) return false;
+  if (d < 1 || d > 31) return false;
+  return true;
+}
+function normalizeDate(s) {
+  if (!s) return null;
+  s = s.trim();
+  const d = extractDate(s);
+  return d ? d.iso : null;
+}
+
+function renderImportPreview(rows) {
+  const wrap = document.getElementById("importPreview");
+  if (!rows || !rows.length) { wrap.innerHTML = `<div class="empty">No (date, weight) pairs found.</div>`; return; }
+  const existing = new Set(entries.map(e => e.date));
+  let newCount = 0, dupCount = 0;
+  let html = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+    <strong>${rows.length}</strong> pair${rows.length===1?"":"s"} parsed
+    <span style="flex:1"></span>
+    <button class="primary" onclick="commitImport()">Import</button>
+  </div>
+  <div class="preview-table"><table>
+    <thead><tr><th>Date</th><th class="right">Weight</th><th>Status</th></tr></thead><tbody>`;
+  for (const r of rows) {
+    const dup = existing.has(r.date);
+    if (dup) dupCount++; else newCount++;
+    html += `<tr><td>${r.date}</td><td class="right">${fmt(r.weightLbs)}</td><td>${dup ? "<span class='bad'>duplicate</span>" : "<span class='good'>new</span>"}</td></tr>`;
+  }
+  html += `</tbody></table></div>
+  <div class="sub" style="color:var(--muted);font-size:12px;margin-top:6px">${newCount} new, ${dupCount} duplicate. Duplicates ${document.getElementById("overwriteDupes").checked ? "will be overwritten" : "will be skipped"}.</div>`;
+  wrap.innerHTML = html;
+}
+
+function commitImport() {
+  if (!pendingImport || !pendingImport.length) return;
+  const overwrite = document.getElementById("overwriteDupes").checked;
+  const byDate = new Map(entries.map(e => [e.date, e]));
+  let added = 0, updated = 0, skipped = 0;
+  for (const r of pendingImport) {
+    if (byDate.has(r.date)) {
+      if (overwrite) { byDate.set(r.date, { ...byDate.get(r.date), weightLbs: r.weightLbs }); updated++; }
+      else skipped++;
+    } else {
+      byDate.set(r.date, r); added++;
+    }
+  }
+  entries = Array.from(byDate.values());
+  saveEntries(entries);
+  pendingImport = null;
+  document.getElementById("importText").value = "";
+  document.getElementById("importPreview").innerHTML = "";
+  renderAll();
+  toast(`Imported: ${added} new, ${updated} updated, ${skipped} skipped`);
+  switchTab("entries");
+}
+
+// ---------- toast ----------
+let toastTimer = null;
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+// ---------- range chips ----------
+document.getElementById("rangeChips").addEventListener("click", (e) => {
+  if (!e.target.classList.contains("chip")) return;
+  for (const c of document.querySelectorAll("#rangeChips .chip")) c.classList.remove("active");
+  e.target.classList.add("active");
+  activeRange = e.target.dataset.range;
+  renderChart();
+});
+
+// ---------- init ----------
+function renderAll() { renderStats(); renderChart(); renderEntries(); }
+document.getElementById("entryDate").value = isoToday();
+renderAll();
+</script>
+</body>
+</html>
