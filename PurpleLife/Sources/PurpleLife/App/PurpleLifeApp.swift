@@ -34,6 +34,8 @@ struct PurpleLifeApp: App {
                 Divider()
                 VaultMenuItem()
                     .environmentObject(appState)
+                LockAppMenuItem()
+                    .environmentObject(appState)
             }
         }
 
@@ -142,11 +144,34 @@ private struct NewRecordMenuItem: View {
     }
 }
 
-/// View → Show Vault / Lock Vault. The same item flips its label
-/// based on the current `vaultRevealed` state. ⇧⌘V triggers the
-/// reveal flow (Touch ID / device password via `VaultAuthService`)
-/// or instantly locks if already revealed. Re-locks on every quit
-/// since `vaultRevealed` is runtime-only.
+/// View → Lock PurpleLife. Default shortcut ⌃⌘L. Calls
+/// `AppState.lockApp()`, which sets the screen-lock flag and (if the
+/// user has a passphrase) also calls `KeyStore.lock()` to wipe the
+/// in-memory DEK — both modes the user asked for. macOS users can
+/// rebind the shortcut via System Settings → Keyboard → Keyboard
+/// Shortcuts → App Shortcuts, targeting "Lock PurpleLife".
+private struct LockAppMenuItem: View {
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        Button("Lock PurpleLife") {
+            appState.lockApp()
+        }
+        .keyboardShortcut("l", modifiers: [.control, .command])
+        .disabled(appState.appLocked)
+    }
+}
+
+/// View → Show Vault / Lock Vault. Show Vault is **hidden by default**;
+/// it only appears when the user holds Shift+Option as the menu opens
+/// (`appState.vaultMenuVisible`). The intent is discoverability
+/// dampening — someone glancing at a shared Mac's menu bar shouldn't
+/// learn that PurpleLife has a vault feature at all. The keyboard
+/// shortcut ⇧⌘V still works even when the menu item is hidden, so a
+/// returning user doesn't have to fish through modifiers to unlock.
+/// Lock Vault stays visible whenever the vault is already revealed —
+/// re-locking is the obvious counter-move and shouldn't be hidden.
+/// Re-locks on every quit since `vaultRevealed` is runtime-only.
 private struct VaultMenuItem: View {
     @EnvironmentObject private var appState: AppState
 
@@ -156,13 +181,26 @@ private struct VaultMenuItem: View {
                 appState.lockVault()
             }
             .keyboardShortcut("v", modifiers: [.command, .shift])
-        } else {
+        } else if appState.vaultMenuVisible {
             Button("Show Vault…") {
                 Task { @MainActor in
                     await appState.revealVault()
                 }
             }
             .keyboardShortcut("v", modifiers: [.command, .shift])
+        } else {
+            // Hidden item that owns the keyboard shortcut so ⇧⌘V keeps
+            // working even when the visible menu item is suppressed.
+            // SwiftUI doesn't render a 1pt EmptyView in a Menu, but a
+            // Button with `.frame(width: 0, height: 0)` and the
+            // shortcut attached does register at the responder level.
+            Button("") {
+                Task { @MainActor in
+                    await appState.revealVault()
+                }
+            }
+            .keyboardShortcut("v", modifiers: [.command, .shift])
+            .hidden()
         }
     }
 }

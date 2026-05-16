@@ -100,8 +100,66 @@ struct Sidebar: View {
         .onChange(of: appState.objectCount) { _, _ in reloadCounts() }
         .onChange(of: appState.vaultRevealed) { _, _ in reloadCounts() }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            syncStatusFooter
+            VStack(spacing: 0) {
+                actionButtonsRow
+                syncStatusFooter
+            }
         }
+    }
+
+    /// Icon row above the sync footer — quick access to the four
+    /// surfaces a user reaches for most: Schema editor, Find, Quick
+    /// switcher, and (when the Vault is open) an instant Lock. Same
+    /// shortcuts as the View / Window menu items, so the buttons are
+    /// purely a discoverability + ergonomics layer; the keyboard
+    /// shortcuts stay the canonical path.
+    @ViewBuilder
+    private var actionButtonsRow: some View {
+        HStack(spacing: 14) {
+            Button {
+                openWindow(id: "schema-editor")
+            } label: {
+                Image(systemName: "square.grid.3x3.square")
+                    .imageScale(.medium)
+            }
+            .buttonStyle(.plain)
+            .help("Schema editor (⇧⌘S)")
+
+            Button {
+                openWindow(id: "search")
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .imageScale(.medium)
+            }
+            .buttonStyle(.plain)
+            .help("Find (⌘⇧F)")
+
+            Button {
+                openWindow(id: "quick-switcher")
+            } label: {
+                Image(systemName: "command")
+                    .imageScale(.medium)
+            }
+            .buttonStyle(.plain)
+            .help("Quick switcher (⌘K)")
+
+            Spacer()
+
+            if appState.vaultRevealed {
+                Button {
+                    appState.lockVault()
+                } label: {
+                    Image(systemName: "lock.fill")
+                        .imageScale(.medium)
+                        .foregroundStyle(.tint)
+                }
+                .buttonStyle(.plain)
+                .help("Lock Vault (⇧⌘V)")
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(.regularMaterial)
+        .overlay(alignment: .top) { Divider() }
     }
 
     @ViewBuilder

@@ -55,6 +55,16 @@ struct AppSettings: Codable {
     /// mechanical.
     var tagVocabulary: [TagDef] = []
 
+    /// Auto-lock the Vault after this many seconds of user inactivity.
+    /// 0 disables — Vault stays unlocked until manually re-locked or
+    /// the app quits. Default 120s (two minutes) — long enough to read
+    /// a record without it locking under you, short enough that a
+    /// stepped-away Mac doesn't leak Vault contents.
+    /// `AppState` listens to NSEvent input via a local monitor, stamps
+    /// `lastActivityAt` on every event, and re-checks the threshold
+    /// on the same 4 Hz timer that drives the vault-menu visibility.
+    var vaultAutoLockAfterSeconds: Int = 120
+
     init() {}
 
     /// Lenient decoder: every key is read via `decodeIfPresent` so a
@@ -82,6 +92,7 @@ struct AppSettings: Codable {
         appearance              = try c.decodeIfPresent(AppearanceMode.self,  forKey: .appearance)              ?? appearance
         userThemes              = try c.decodeIfPresent([UserTheme].self,     forKey: .userThemes)              ?? userThemes
         tagVocabulary           = try c.decodeIfPresent([TagDef].self,        forKey: .tagVocabulary)           ?? tagVocabulary
+        vaultAutoLockAfterSeconds = try c.decodeIfPresent(Int.self,           forKey: .vaultAutoLockAfterSeconds) ?? vaultAutoLockAfterSeconds
     }
 }
 

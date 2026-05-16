@@ -187,6 +187,43 @@ final class SchemaRegistry: ObservableObject {
         }
     }
 
+    /// Replace a type's tag list. Type-scope tags apply to every
+    /// record of the type via `TagService.effectiveTagIds(for:in:)`;
+    /// they aren't duplicated into record storage. Routes through
+    /// `upsertType` so undo + sync are the same as any other schema
+    /// edit. Duplicates are removed while preserving order.
+    func setTypeTags(_ tagIds: [String], onTypeId typeId: String) {
+        guard var t = type(id: typeId) else { return }
+        var seen: Set<String> = []
+        let unique = tagIds.filter { seen.insert($0).inserted }
+        if t.tags == unique { return }
+        t.tags = unique
+        upsertType(t)
+    }
+
+    /// Flip a type's Vault membership. Works on built-ins and user
+    /// types alike — moving a built-in into the Vault hides it from
+    /// the regular sidebar (`visibleTypes` filters by `!isVault`) and
+    /// surfaces it under `visibleVaultTypes` instead. Stamps
+    /// `updatedAt`, persists, and fans out to CloudKit so peers
+    /// reconcile via LWW — same envelope as `upsertType`.
+    func setVault(_ id: String, isVault: Bool) {
+        guard var t = type(id: id), t.isVault != isVault else { return }
+        let snapshot = self.snapshot()
+        t.isVault = isVault
+        t.updatedAt = isoNow()
+        if let idx = types.firstIndex(where: { $0.id == id }) {
+            types[idx] = t
+        }
+        save()
+        if let sync {
+            Task { [t, weak sync] in await sync?.pushType(t) }
+        }
+        registerUndo(name: isVault ? "Move to Vault" : "Move out of Vault") { [weak self] in
+            self?.restore(snapshot: snapshot, fanOut: true)
+        }
+    }
+
     // MARK: - Undo helpers
 
     /// Coarse snapshot — capture the full types array + hidden set

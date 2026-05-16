@@ -4,6 +4,70 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-16 — Sidebar action buttons, Vault auto-lock, Lock Application
+
+User asked for four things in one round:
+
+1. **Sidebar action buttons (Views/Sidebar.swift).** A horizontal row of icon buttons lives above the sync footer:
+   - Schema editor (opens the `schema-editor` window — same as ⇧⌘S)
+   - Find (opens the `search` window — same as ⌘⇧F)
+   - Quick switcher (opens the `quick-switcher` window — same as ⌘K)
+   - Lock (visible only when the Vault is revealed; instantly calls `lockVault()`)
+
+   Keyboard shortcuts are unchanged — these are purely a discoverability + ergonomics layer.
+
+2. **Vault auto-lock by inactivity.**
+   - **`Models/AppSettings.swift`** — new `vaultAutoLockAfterSeconds: Int = 120` (0 disables). Lenient decode so legacy settings.json files still load.
+   - **`App/AppState.swift`** — `lastActivityAt: Date` stamped on every NSEvent monitored via a local `addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown, .mouseMoved, .scrollWheel])`. The existing 4 Hz vault-menu Timer now also checks whether (now - lastActivityAt) ≥ threshold while the vault is open, and calls `lockVault()` when it crosses. `revealVault()` resets `lastActivityAt` on success so a stale stamp can't snap the vault closed on the next tick.
+   - **`Views/Settings/SecuritySettingsTab.swift`** — new Stepper in the Session section (step 15s, range 0–3600). Reads "Auto-lock Vault after 2 minutes" / "Auto-lock Vault: never" with a friendly time formatter.
+
+3. **Lock Application — screen lock + crypto lock.** User picked "both" semantics.
+   - **`App/AppState.swift`** — new `@Published var appLocked: Bool`. `lockApp()` flips it, locks the Vault for hygiene, and (when a passphrase is set) ALSO calls `keyStore.lock()` to wipe the in-memory DEK so a memory snapshot can't reveal it. `unlockApp()` clears the flag and resets `lastActivityAt`.
+   - **`Views/AppLockScreen.swift`** (new) — full-window lock screen. Auto-invokes `VaultAuthService.authenticate` on appear; offers a manual retry button on cancel/failure; surfaces a footnote when a passphrase is set telling the user to enter it via Settings → Security after the screen dismisses.
+   - **`Views/ContentView.swift`** — new gating branch: when `appLocked` is true, replace the entire content with `AppLockScreen`. Sits below the recovery / pending-key takeovers so an unrecoverable DB or first-launch key save still win.
+   - **`App/PurpleLifeApp.swift`** — new `LockAppMenuItem` ("Lock PurpleLife", ⌃⌘L) sits in the View commands after the Vault menu item. Disabled while already locked. Users can rebind via System Settings → Keyboard → App Shortcuts.
+
+USER_MANUAL gains "Vault auto-lock" + "Lock PurpleLife" sections; the Vault description picks up a sentence on the auto-lock setting.
+
+### 2026-05-16 — Schema editor: vault toggle, type-scope tags, select-option editor, palette wrap, table-layout fix, detail spacing
+
+Multi-part schema-editor pass triggered by reports against the Fantasy journal vault type:
+
+1. **Vault toggle on every type.** `ObjectType.isVault` has existed since the Vault landed, but no UI ever exposed it — the documented "user can also flip it on any type via the schema editor" was aspirational. Fixed.
+   - **`Services/SchemaRegistry.swift`** — new `setVault(_:isVault:)` mutator. Idempotent when the flag is already at the requested value, stamps `updatedAt`, persists, fans to CloudKit, and registers an undo action ("Move to Vault" / "Move out of Vault"). Same envelope as `upsertType`.
+   - **`Views/SchemaEditor.swift`** — added a "Move to Vault" / "Move out of Vault" entry to the type rail context menu (covers built-ins and custom types alike). A small muted `lock.fill` badge now sits next to the field count for any type with `isVault = true`, so the user can see at a glance which types live behind the lock.
+   - Comment in `Models/ObjectType.swift` updated to match reality — points at the new `setVault` mutator instead of the old aspirational claim.
+
+2. **Type-scope tags.** Tags previously could only attach to records. The new contract: tags can scope to either an `ObjectType` (every record of that type inherits) or an individual record. The schema editor exposes type tags; Detail's `TagPillRow` continues to handle per-record tags.
+   - **`Models/ObjectType.swift`** — new `tags: [String]` stored property, default `[]`. Lenient `decodeIfPresent` so legacy `schema.json` files without the key decode cleanly (same pattern as `isVault`).
+   - **`Services/SchemaRegistry.swift`** — new `setTypeTags(_:onTypeId:)` mutator, dedupes input while preserving order. Routes through `upsertType` so undo + CloudKit sync stay coherent.
+   - **`Services/TagService.swift`** — new `effectiveTagIds(for:in:)` and `effectiveTags(for:in:)` helpers. Return the union of `type.tags` (first) and `_tags` (second), dedupe with first-occurrence-wins, preserve declared order. Renderers can split on `Set(type.tags).contains` to distinguish inherited from per-record tags.
+   - **`Views/SchemaEditor.swift`** — type-tags row sits between the type header and the field list. Tag chips render with the assigned `colorHex` and a remove `xmark.circle.fill`; an `Add tag` button opens the existing `TagChipPicker`.
+
+3. **Record renderers — prominent tag colors + the vault marker.** Tags are no longer invisible until you open Detail.
+   - **`Views/RecordTagStrip.swift`** (new) — read-only horizontal tag chip strip. Two styles: `.compact` (single line, "+N" overflow indicator) for narrow contexts, `.wrap` (FlowLayout) for the Detail hero. Type-scope chips get a slightly lighter fill and a dashed outline so the user can tell at a glance which tags are inherited vs per-record.
+   - Wired into `RecordsTableBody.dataRow` (table), `RecordsKanbanBody.kanbanCard`, `RecordsGalleryBody.galleryCard`, `Today.TimelineRowView`, `Today.RailCard`, `QuickSwitcher.resultRow`, and `Detail.hero`.
+   - Each of the same renderers picked up a small muted `lock.fill` glyph when `type.isVault` is true. Subtle but visible — `.foregroundStyle(.tertiary)` + `imageScale(.small)`. (User-assignable tag colors via `ColorPicker` already shipped in `TagManagementSheet` — this work makes those colors visible at every place a record surfaces, not just inside the Detail tag pills.)
+
+4. **Field palette no longer cut off.** The `ADD A FIELD` row was a horizontal `ScrollView` with `showsIndicators: false`. Tiles past the visible edge were silently inaccessible — users had no scroll affordance to discover them.
+   - **`Views/SchemaEditor.swift`** — replaced with a `LazyVGrid(.adaptive(minimum: 92, maximum: 110))` so tiles wrap onto a second row as needed. Every `FieldKind` is reachable at any window width.
+
+5. **Select / multi-select option editor.** Field rows for `.select` and `.multiSelect` had no way to add / rename / recolor / reorder / delete option values. Option editing required hand-editing `schema.json`. Fixed.
+   - **`Views/SelectOptionsEditor.swift`** (new) — modal editor with rows for each option: color picker, name field, up / down reorder buttons, delete. Footer adds new options. Caption flags the deliberate limitation that renaming an option doesn't rewrite already-tagged records (option storage on a record is the option *name*, not its id).
+   - **`Views/SchemaEditor.swift`** — field row picks up an inline `N options · Edit` button beside the "required" / "primary" badges when the field is a select/multi-select kind, plus an "Edit options…" entry in the field row context menu. Both open the sheet, which commits via `SchemaRegistry.updateField` so undo + CloudKit-sync stay coherent.
+
+6. **Detail view: chip / note-log overlap fixed.** A multi-select chip cluster followed by a noteLog field rendered with no visible separation — reported as "themes squished" + "can't get at notes."
+   - **`Views/Detail.swift`** — per-field spacing in `mainPane` bumped from 14 → 22; each field block gets a hairline divider (40% opacity) so consecutive editors don't visually merge. Per-field label-to-editor spacing bumped from 4 → 8. `multiSelectEditor` chips redrawn with sharper contrast (off-state foreground = `.primary` instead of `.secondary`), thicker default opacity, and a thin outline; FlowLayout pinned to `maxWidth: .infinity` so wrap behavior is deterministic regardless of parent proposal.
+
+7. **Records table no longer pushed to the bottom.** For short tables, the column header + rows rendered near the bottom of the visible area with a huge empty gap above them.
+   - **`Views/RecordsScreen.swift`** — `RecordsTableBody` was using `ScrollView([.horizontal, .vertical])`, which on macOS 14/15 gave short tables a bottom-anchored layout no matter what `.frame(alignment: .topLeading)` the inner content asked for. Replaced with the nested-ScrollView pattern: outer `.vertical` ScrollView wrapping an inner `.horizontal` ScrollView wrapping the rows VStack. The inner ScrollView sizes to natural row height; the outer vertical ScrollView then top-aligns it the way every other scroll view in the app does. Both axes still scroll when content exceeds the viewport.
+
+8. **View → Show Vault is now hidden until Shift+Option is held.** Discoverability dampener: someone glancing at a shared Mac's menu bar shouldn't learn that PurpleLife has a vault feature at all. The keyboard shortcut (⇧⌘V) still works without the modifier so a returning user doesn't have to fish for it; only the visible menu item is gated.
+   - **`App/AppState.swift`** — new `@Published var vaultMenuVisible` driven by a 4 Hz Timer that polls `NSEvent.modifierFlags` (skipped under XCTest). ~250 ms latency between modifier hold and menu item appearance — well within the "hold this then click" tolerance.
+   - **`App/PurpleLifeApp.swift`** — `VaultMenuItem` renders the "Show Vault…" button only when `vaultMenuVisible == true`; when not held, a zero-size hidden Button keeps the ⇧⌘V keyboard shortcut alive at the responder level. "Lock Vault" stays visible whenever the vault is already revealed — re-locking is the obvious counter-move and shouldn't be hidden.
+
+**Tests.** `Tests/.../VaultToggleAndTypeTagsTests.swift` (new) — 8 tests covering `setVault` flag flip + visibility moves, `setVault` no-op-on-missing-id, `setVault` no-stamp-when-idempotent, `setTypeTags` replace + dedupe + clear, `setTypeTags` no-op-on-missing, `ObjectType.tags` legacy-JSON decode (without the key) and round-trip, and `effectiveTagIds` merge / dedupe / ordering invariants.
+
 ### 2026-05-16 — Fix: Notes workspace layout — replace inner HSplitView with HStack
 
 The Notes workspace's inner `HSplitView` was causing the outer NavigationSplitView's sidebar to clip its row labels (`Planner` → `lanner`, `Notes` → `lotes`, etc.) — reported as backlog #15 (2026-05-15). Confirmed root cause: SwiftUI's `HSplitView` wraps `NSSplitView`, which keeps its own copy of subview frames in UserDefaults under a synthesized `"NSSplitView Subview Frames …, SidebarNavigationSplitView"` key. The autosaved frames (248 + 1097 = 1345pt total) outsized the current window (976pt); AppKit fell back to laying the panes out at the saved widths, which squeezed the outer Sidebar below its declared `navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 400)` minimum and clipped the leading character of every row label.

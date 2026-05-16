@@ -34,6 +34,16 @@ struct ContentView: View {
                 appState.confirmRecoveryKeySaved()
             })
         }
+        // App-wide screen lock — user invoked Lock Application
+        // (⌃⌘L) or some future inactivity trigger. Replace the
+        // whole UI with the lock screen; the user re-authenticates
+        // via Touch ID / device password and `appLocked` flips back
+        // to false. Sits below the recovery / pending-key takeovers
+        // so an unrecoverable DB or a forced first-launch key save
+        // still win.
+        if appState.appLocked {
+            return AnyView(AppLockScreen())
+        }
         return AnyView(mainSplitView)
     }
 

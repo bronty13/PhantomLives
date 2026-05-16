@@ -24,6 +24,11 @@ struct SchemaEditorScreen: View {
     @State private var showMultiExport = false
     @State private var multiExportSelection: Set<String> = []
     @State private var showManageTags = false
+    @State private var showTypeTagPicker = false
+    /// Field id whose `.select` / `.multiSelect` options sheet is open.
+    /// Single-value because only one sheet can be modally presented
+    /// at a time; `nil` means no editor is showing.
+    @State private var editingOptionsForFieldId: String?
 
     var body: some View {
         HSplitView {
@@ -56,6 +61,15 @@ struct SchemaEditorScreen: View {
         .sheet(isPresented: $showManageTags) {
             TagManagementSheet()
                 .environmentObject(appState)
+        }
+        .sheet(isPresented: Binding(
+            get: { editingOptionsForFieldId != nil },
+            set: { if !$0 { editingOptionsForFieldId = nil } }
+        )) {
+            if let typeId = selectedTypeId, let fieldId = editingOptionsForFieldId {
+                SelectOptionsEditor(typeId: typeId, fieldId: fieldId)
+                    .environmentObject(appState)
+            }
         }
         .alert("Reset built-in schemas?", isPresented: $showResetConfirm) {
             Button("Reset", role: .destructive) {
@@ -139,6 +153,12 @@ struct SchemaEditorScreen: View {
                     .foregroundStyle(.tertiary)
             }
             Spacer()
+            if type.isVault {
+                Image(systemName: "lock.fill")
+                    .foregroundStyle(.tertiary)
+                    .imageScale(.small)
+                    .help("In the Vault — hidden from the regular sidebar")
+            }
             if type.builtIn && appState.schema.hiddenBuiltInIds.contains(type.id) {
                 Image(systemName: "eye.slash")
                     .foregroundStyle(.tertiary)
@@ -154,11 +174,15 @@ struct SchemaEditorScreen: View {
                 exportTypes(ids: [type.id])
             }
             Divider()
+            Button(type.isVault ? "Move out of Vault" : "Move to Vault") {
+                appState.schema.setVault(type.id, isVault: !type.isVault)
+            }
             if type.builtIn {
                 Button(appState.schema.hiddenBuiltInIds.contains(type.id) ? "Show in sidebar" : "Hide from sidebar") {
                     appState.schema.setHidden(type.id, hidden: !appState.schema.hiddenBuiltInIds.contains(type.id))
                 }
             } else {
+                Divider()
                 Button("Delete type", role: .destructive) {
                     appState.schema.deleteType(id: type.id)
                     if selectedTypeId == type.id {
@@ -187,6 +211,10 @@ struct SchemaEditorScreen: View {
                     Spacer()
                 }
                 .padding(.horizontal, 20).padding(.vertical, 14)
+                Divider()
+
+                typeTagsRow(type: type)
+
                 Divider()
 
                 ScrollView {
@@ -265,12 +293,28 @@ struct SchemaEditorScreen: View {
                             .font(.caption2)
                             .foregroundStyle(.tint)
                     }
+                    if field.kind == .select || field.kind == .multiSelect {
+                        Button {
+                            editingOptionsForFieldId = field.id
+                        } label: {
+                            Text("\(field.options.count) option\(field.options.count == 1 ? "" : "s") · Edit")
+                                .font(.caption2)
+                                .foregroundStyle(.tint)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Add, rename, recolor, reorder, or delete the option values")
+                    }
                 }
             }
             Spacer()
             Menu {
                 Button(renamingFieldId == field.id ? "Stop renaming" : "Rename") {
                     renamingFieldId = (renamingFieldId == field.id) ? nil : field.id
+                }
+                if field.kind == .select || field.kind == .multiSelect {
+                    Button("Edit options…") {
+                        editingOptionsForFieldId = field.id
+                    }
                 }
                 Button(field.required ? "Make optional" : "Make required") {
                     var f = field
@@ -324,9 +368,94 @@ struct SchemaEditorScreen: View {
         .padding(.top, 6)
     }
 
+    // MARK: - Type-scope tags
+
+    /// Tag chips that apply to every record of this type. Distinct from
+    /// per-record tags (Detail.swift's `TagPillRow`) — these are stored
+    /// on `ObjectType.tags` and resolved alongside per-record tags via
+    /// `TagService.effectiveTagIds(for:in:)`.
+    private func typeTagsRow(type: ObjectType) -> some View {
+        let vocab = Dictionary(uniqueKeysWithValues: TagService.allTags.map { ($0.id, $0) })
+        let resolved = type.tags.compactMap { vocab[$0] }
+        return HStack(alignment: .firstTextBaseline, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "tag")
+                    .foregroundStyle(.tertiary)
+                    .imageScale(.small)
+                Text("Tags")
+                    .font(.caption.weight(.semibold))
+                    .textCase(.uppercase).tracking(0.5)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(width: 80, alignment: .leading)
+            SchemaEditorTagFlow {
+                ForEach(resolved, id: \.id) { tag in
+                    typeTagPill(tag: tag, type: type)
+                }
+                addTypeTagButton(type: type)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 20).padding(.vertical, 8)
+    }
+
+    private func typeTagPill(tag: TagDef, type: ObjectType) -> some View {
+        let color = tag.colorHex.flatMap(Color.init(hex:)) ?? .secondary
+        return HStack(spacing: 4) {
+            Text(tag.name)
+                .font(.caption.weight(.medium))
+            Button {
+                let remaining = type.tags.filter { $0 != tag.id }
+                appState.schema.setTypeTags(remaining, onTypeId: type.id)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .imageScale(.small)
+                    .foregroundStyle(color.opacity(0.6))
+            }
+            .buttonStyle(.plain)
+            .help("Remove \(tag.name) from this type")
+        }
+        .padding(.horizontal, 8).padding(.vertical, 3)
+        .background(color.opacity(0.20))
+        .foregroundStyle(color)
+        .clipShape(Capsule())
+    }
+
+    private func addTypeTagButton(type: ObjectType) -> some View {
+        Button {
+            showTypeTagPicker = true
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: "plus")
+                    .imageScale(.small)
+                Text("Add tag")
+                    .font(.caption.weight(.medium))
+            }
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(Color.secondary.opacity(0.08))
+            .foregroundStyle(.secondary)
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $showTypeTagPicker, arrowEdge: .bottom) {
+            TagChipPicker(selectedTagIds: Set(type.tags)) { picked in
+                if !type.tags.contains(picked) {
+                    appState.schema.setTypeTags(type.tags + [picked], onTypeId: type.id)
+                }
+                showTypeTagPicker = false
+            }
+        }
+    }
+
     // MARK: - Field palette
 
     private var fieldPalette: some View {
+        // Wrapping grid of field-type tiles. Previously a horizontal
+        // ScrollView with `showsIndicators: false`, which made the
+        // right-edge tiles silently inaccessible at any window width
+        // that couldn't fit every FieldKind in one row. An adaptive
+        // LazyVGrid wraps onto a second row as needed, so every type
+        // is reachable without scrolling.
         VStack(alignment: .leading, spacing: 8) {
             Text("ADD A FIELD")
                 .font(.caption.weight(.semibold))
@@ -334,48 +463,55 @@ struct SchemaEditorScreen: View {
                 .tracking(0.5)
                 .padding(.horizontal, 20).padding(.top, 12)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(FieldKind.allCases, id: \.self) { kind in
-                        Button {
-                            addField(kind: kind)
-                        } label: {
-                            VStack(spacing: 4) {
-                                Image(systemName: kind.systemImage)
-                                    .imageScale(.medium)
-                                Text(kind.displayName)
-                                    .font(.caption)
-                            }
-                            .frame(width: 92, height: 56)
-                            .background(Theme.card)
-                            .overlay(RoundedRectangle(cornerRadius: 8)
-                                        .strokeBorder(Theme.cardBorder, lineWidth: 0.5))
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(selectedTypeId == nil)
-                        // Drag affordance — payload is the FieldKind's
-                        // raw value; the field list above accepts it
-                        // and calls addField. Click-to-add still works
-                        // for users who don't reach for drag.
-                        .draggable(FieldKindTransfer(rawKind: kind.rawValue)) {
-                            // Drag preview — same tile, slightly tinted.
-                            VStack(spacing: 4) {
-                                Image(systemName: kind.systemImage).imageScale(.medium)
-                                Text(kind.displayName).font(.caption)
-                            }
-                            .frame(width: 92, height: 56)
-                            .background(Theme.accent.opacity(0.18))
-                            .overlay(RoundedRectangle(cornerRadius: 8)
-                                        .strokeBorder(Theme.accent, lineWidth: 1))
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                        }
-                    }
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 92, maximum: 110), spacing: 8, alignment: .leading)],
+                alignment: .leading,
+                spacing: 8
+            ) {
+                ForEach(FieldKind.allCases, id: \.self) { kind in
+                    paletteTile(kind: kind)
                 }
-                .padding(.horizontal, 20).padding(.bottom, 12)
             }
+            .padding(.horizontal, 20).padding(.bottom, 12)
         }
         .background(Theme.bg.opacity(0.6))
+    }
+
+    private func paletteTile(kind: FieldKind) -> some View {
+        Button {
+            addField(kind: kind)
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: kind.systemImage)
+                    .imageScale(.medium)
+                Text(kind.displayName)
+                    .font(.caption)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 56)
+            .background(Theme.card)
+            .overlay(RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Theme.cardBorder, lineWidth: 0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .disabled(selectedTypeId == nil)
+        // Drag affordance — payload is the FieldKind's raw value; the
+        // field list above accepts it and calls addField. Click-to-add
+        // still works for users who don't reach for drag.
+        .draggable(FieldKindTransfer(rawKind: kind.rawValue)) {
+            VStack(spacing: 4) {
+                Image(systemName: kind.systemImage).imageScale(.medium)
+                Text(kind.displayName).font(.caption)
+            }
+            .frame(width: 92, height: 56)
+            .background(Theme.accent.opacity(0.18))
+            .overlay(RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Theme.accent, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
     }
 
     // MARK: - Actions
@@ -539,5 +675,56 @@ struct FieldKindTransfer: Codable, Transferable {
 
     static var transferRepresentation: some TransferRepresentation {
         CodableRepresentation(contentType: .data)
+    }
+}
+
+/// Wrapping flow layout used by the Schema editor's type-tags row.
+/// `TagPillRow.FlowLayout` is fileprivate; duplicating the ~30 lines
+/// here keeps the two views decoupled and avoids leaking the helper
+/// into a shared module before there are three callers.
+struct SchemaEditorTagFlow<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        SchemaEditorFlowLayout(spacing: 6) {
+            content()
+        }
+    }
+}
+
+struct SchemaEditorFlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, lineHeight: CGFloat = 0, maxRowWidth: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > maxWidth, x > 0 {
+                maxRowWidth = max(maxRowWidth, x - spacing)
+                x = 0
+                y += lineHeight + spacing
+                lineHeight = 0
+            }
+            x += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+        }
+        maxRowWidth = max(maxRowWidth, x - spacing)
+        return CGSize(width: maxRowWidth, height: y + lineHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x: CGFloat = bounds.minX, y: CGFloat = bounds.minY, lineHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > bounds.maxX, x > bounds.minX {
+                x = bounds.minX
+                y += lineHeight + spacing
+                lineHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+        }
     }
 }

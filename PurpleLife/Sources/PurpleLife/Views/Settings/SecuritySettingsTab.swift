@@ -145,12 +145,57 @@ struct SecuritySettingsTab: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Divider()
+            // Vault auto-lock. 0 = never; otherwise the Vault
+            // closes after this many seconds with no keyboard /
+            // mouse / scroll input. Persisted in settings.json so
+            // the choice survives relaunches.
+            vaultAutoLockStepper
+            Divider()
             Button("Reset (destroys all data)…", role: .destructive) {
                 showResetConfirm = true
             }
             Text("Use Reset if you forget your passphrase. There is no recovery — the data becomes unreadable.")
                 .font(.caption).foregroundStyle(.secondary)
         }
+    }
+
+    /// Inactivity threshold for Vault auto-lock. Bound directly to
+    /// `appState.settings.vaultAutoLockAfterSeconds`; the
+    /// AppState-side polling timer reads the live value each tick
+    /// so changes take effect immediately without a relaunch.
+    @ViewBuilder
+    private var vaultAutoLockStepper: some View {
+        let value = Binding(
+            get: { appState.settings.vaultAutoLockAfterSeconds },
+            set: {
+                var s = appState.settings
+                s.vaultAutoLockAfterSeconds = $0
+                appState.settings = s
+            }
+        )
+        VStack(alignment: .leading, spacing: 6) {
+            Stepper(value: value, in: 0...3600, step: 15) {
+                if value.wrappedValue == 0 {
+                    Text("Auto-lock Vault: never")
+                } else {
+                    Text("Auto-lock Vault after \(autoLockLabel(value.wrappedValue))")
+                }
+            }
+            Text("When the Vault is open, idle keyboard / mouse / scroll input longer than this triggers an instant re-lock. Set to 0 to disable.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    /// `120` → "2 minutes", `45` → "45 seconds", `90` → "1 minute, 30 seconds".
+    /// Conservative formatting — Foundation's `DateComponentsFormatter`
+    /// has a much richer abbreviation set, but for the narrow band
+    /// (15s … 1h, step 15s) the manual formatting reads better.
+    private func autoLockLabel(_ s: Int) -> String {
+        if s < 60 { return "\(s) second\(s == 1 ? "" : "s")" }
+        let minutes = s / 60
+        let seconds = s % 60
+        if seconds == 0 { return "\(minutes) minute\(minutes == 1 ? "" : "s")" }
+        return "\(minutes) minute\(minutes == 1 ? "" : "s"), \(seconds) second\(seconds == 1 ? "" : "s")"
     }
 
     // MARK: - Sheets

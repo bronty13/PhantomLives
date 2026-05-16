@@ -134,6 +134,31 @@ enum TagService {
         return allTags.filter { ids.contains($0.id) }
     }
 
+    /// Tag-id list that should be considered "on" a record when
+    /// rendering it: the union of the type's tags (which apply to
+    /// every record of that type via `ObjectType.tags`) and the
+    /// per-record tags inside `fields_json._tags`. Type-scope ids come
+    /// first, then per-record ids, with duplicates removed while
+    /// preserving order so the same tag never renders twice.
+    ///
+    /// Renderers can split the result on `Set(type.tags).contains` to
+    /// give type-scope chips a distinct treatment (e.g. no remove X).
+    static func effectiveTagIds(for record: ObjectRecord, in type: ObjectType) -> [String] {
+        var seen: Set<String> = []
+        var out: [String] = []
+        for id in type.tags + tagIds(on: record) where seen.insert(id).inserted {
+            out.append(id)
+        }
+        return out
+    }
+
+    /// Resolved-against-vocabulary form of `effectiveTagIds`. Orphaned
+    /// ids are dropped. Order matches `effectiveTagIds`.
+    static func effectiveTags(for record: ObjectRecord, in type: ObjectType) -> [TagDef] {
+        let vocab = Dictionary(uniqueKeysWithValues: allTags.map { ($0.id, $0) })
+        return effectiveTagIds(for: record, in: type).compactMap { vocab[$0] }
+    }
+
     /// Replace the tag list on a record. Routes through
     /// `ObjectEngine.update` so FTS, sync, undo, and the
     /// `record_tags` index all stay consistent. Duplicates in the

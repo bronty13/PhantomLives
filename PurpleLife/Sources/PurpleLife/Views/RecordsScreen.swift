@@ -311,15 +311,28 @@ struct RecordsTableBody: View {
 
     var body: some View {
         let fields = orderedFields(for: type)
-        ScrollView([.horizontal, .vertical]) {
-            VStack(alignment: .leading, spacing: 0) {
-                headerRow(fields: fields)
-                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                    dataRow(fields: fields, row: row, even: index.isMultiple(of: 2))
+        // Nested ScrollViews instead of `ScrollView([.horizontal,
+        // .vertical])`. The both-axes form parked short tables at the
+        // bottom of the viewport (visible empty space above the
+        // header row) on macOS 14/15 — SwiftUI's both-axis layout
+        // gives the content the full proposed size in both
+        // dimensions, and with short content the natural alignment
+        // ended up bottom-anchored. Splitting into outer-vertical +
+        // inner-horizontal makes the inner ScrollView size to its
+        // natural row height, which the outer vertical ScrollView
+        // then top-aligns the way every other vertical ScrollView in
+        // the app does.
+        ScrollView(.vertical) {
+            ScrollView(.horizontal) {
+                VStack(alignment: .leading, spacing: 0) {
+                    headerRow(fields: fields)
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                        dataRow(fields: fields, row: row, even: index.isMultiple(of: 2))
+                    }
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func orderedFields(for t: ObjectType) -> [FieldDef] {
@@ -363,12 +376,30 @@ struct RecordsTableBody: View {
 
     private func dataRow(fields: [FieldDef], row: ObjectRecord, even: Bool) -> some View {
         HStack(spacing: 0) {
-            ForEach(fields, id: \.id) { field in
-                FieldDisplay.cell(
-                    field: field,
-                    value: row.fields()[field.key],
-                    isPrimary: field.key == type.primaryFieldKey
-                )
+            ForEach(Array(fields.enumerated()), id: \.element.id) { idx, field in
+                HStack(spacing: 6) {
+                    // Vault marker + tag strip sit beside the primary
+                    // field so they ride along with the row's title
+                    // without claiming their own column. Tags are
+                    // read-only here; edit them from Detail or the
+                    // schema editor.
+                    if idx == 0 {
+                        if type.isVault {
+                            Image(systemName: "lock.fill")
+                                .imageScale(.small)
+                                .foregroundStyle(.tertiary)
+                                .help("Vault item")
+                        }
+                    }
+                    FieldDisplay.cell(
+                        field: field,
+                        value: row.fields()[field.key],
+                        isPrimary: field.key == type.primaryFieldKey
+                    )
+                    if idx == 0 {
+                        RecordTagStrip(record: row, type: type, style: .compact, maxCompactChips: 4)
+                    }
+                }
                 .frame(width: columnWidth(for: field), alignment: .leading)
                 .padding(.vertical, 10).padding(.horizontal, 12)
             }
@@ -468,9 +499,17 @@ struct RecordsKanbanBody: View {
         }.prefix(3)
 
         return VStack(alignment: .leading, spacing: 6) {
-            Text(FieldDisplay.title(of: record, in: type))
-                .font(.body.weight(.semibold))
-                .lineLimit(2)
+            HStack(spacing: 6) {
+                if type.isVault {
+                    Image(systemName: "lock.fill")
+                        .imageScale(.small)
+                        .foregroundStyle(.tertiary)
+                }
+                Text(FieldDisplay.title(of: record, in: type))
+                    .font(.body.weight(.semibold))
+                    .lineLimit(2)
+            }
+            RecordTagStrip(record: record, type: type, style: .compact, maxCompactChips: 3)
             ForEach(Array(fields), id: \.id) { field in
                 HStack(spacing: 6) {
                     Image(systemName: field.kind.systemImage)
@@ -676,9 +715,17 @@ struct RecordsGalleryBody: View {
                         .padding(8)
                 }
             }
-            Text(FieldDisplay.title(of: record, in: type))
-                .font(.body.weight(.semibold))
-                .lineLimit(2)
+            HStack(spacing: 6) {
+                if type.isVault {
+                    Image(systemName: "lock.fill")
+                        .imageScale(.small)
+                        .foregroundStyle(.tertiary)
+                }
+                Text(FieldDisplay.title(of: record, in: type))
+                    .font(.body.weight(.semibold))
+                    .lineLimit(2)
+            }
+            RecordTagStrip(record: record, type: type, style: .compact, maxCompactChips: 3)
             if let f = supportingField, f.kind == .select {
                 FieldDisplay.selectChip(value: record.fields()[f.key], options: f.options)
             }

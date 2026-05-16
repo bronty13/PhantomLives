@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Combine
+import AppKit
 
 /// Top-level observable state. Phase 1 keeps it deliberately thin: it owns
 /// the SettingsStore, fires the launch-time backup before any UI reads the
@@ -93,6 +94,27 @@ final class AppState: ObservableObject {
     /// timeline, and the schema library gallery all gate on this flag.
     @Published var vaultRevealed: Bool = false
 
+    /// Controls whether the View → Show Vault menu item is visible.
+    /// Gated on the user holding Shift+Option as the menu opens — a
+    /// deliberate discoverability dampener so the existence of the
+    /// Vault isn't apparent to someone shoulder-surfing the menu bar.
+    /// Polled at 4 Hz from a Timer set up in `init()`; cheap, and a
+    /// quarter-second latency between pressing the modifier and the
+    /// item showing is well within user tolerance for "hold this and
+    /// then click the menu." Lock Vault stays visible whenever the
+    /// vault is already revealed — re-locking is the obvious
+    /// counter-move and shouldn't be hidden behind a modifier.
+    @Published var vaultMenuVisible: Bool = false
+
+    /// Application-wide screen lock. When `true`, `ContentView`
+    /// replaces the main split view with `AppLockScreen` and refuses
+    /// to render anything else until the user re-authenticates. Set
+    /// by `lockApp()`; cleared by `unlockApp()`. Independent of the
+    /// keystore's lock state: crypto-locking (passphrase mode) is
+    /// stacked on top when a passphrase is set, but the screen lock
+    /// itself is the user-visible UI gate that works in both modes.
+    @Published var appLocked: Bool = false
+
     /// Combine subscriptions held for the lifetime of the AppState.
     /// Currently bridges `SettingsStore.objectWillChange` into our own
     /// `objectWillChange` so a settings mutation (theme switch,
@@ -100,6 +122,23 @@ final class AppState: ObservableObject {
     /// AppState. Without this, mutating a nested `@Published` on a
     /// nested ObservableObject doesn't propagate up.
     private var cancellables: Set<AnyCancellable> = []
+
+    /// Polls `NSEvent.modifierFlags` at 4 Hz to drive
+    /// `vaultMenuVisible`. Held strongly here so it lives as long as
+    /// the AppState does; never invalidated explicitly since AppState
+    /// is application-lifetime.
+    private var vaultMenuTimer: Timer?
+
+    /// Last user-input timestamp — drives Vault auto-lock. Updated
+    /// by the local NSEvent monitor on every key/mouse/scroll event.
+    /// Initialized to "now" so a freshly-launched-but-revealed Vault
+    /// doesn't auto-lock the moment the timer first ticks.
+    private var lastActivityAt: Date = Date()
+
+    /// Token for the activity monitor; held so it can be removed if
+    /// we ever want to tear down (we currently don't — AppState lives
+    /// for the whole process).
+    private var activityMonitor: Any?
 
     /// Pass-through to the underlying SettingsStore — saves on every set.
     /// Lets views write `appState.settings.foo = …` without thinking about
@@ -403,6 +442,53 @@ final class AppState: ObservableObject {
         selectedTypeId = nil
         showTodayInDetail = true
 
+        // Vault menu visibility + auto-lock — both polled on a single
+        // 4 Hz timer to keep the housekeeping cheap. The same tick
+        // (a) updates `vaultMenuVisible` from the live modifier flags
+        // and (b) checks whether the Vault should auto-lock for
+        // inactivity. Skipped under XCTest; a background Timer would
+        // leak across tests and a polling global isn't worth the
+        // bother in headless runs anyway.
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            // Activity monitor — stamps `lastActivityAt` on any user
+            // input that hits our app's run loop. Cheap; the monitor
+            // is invoked synchronously per event but our handler is
+            // a single property write.
+            activityMonitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.keyDown, .leftMouseDown, .rightMouseDown,
+                           .otherMouseDown, .mouseMoved, .scrollWheel]
+            ) { [weak self] event in
+                self?.lastActivityAt = Date()
+                return event
+            }
+
+            vaultMenuTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+                guard let self else { return }
+
+                // Vault-menu modifier polling.
+                let mods = NSEvent.modifierFlags
+                let held = mods.contains(.shift) && mods.contains(.option)
+                if self.vaultMenuVisible != held {
+                    self.vaultMenuVisible = held
+                }
+
+                // Vault auto-lock for inactivity. Only fires when the
+                // vault is currently revealed and the user has
+                // configured a non-zero threshold. The Date comparison
+                // is on wall-clock time (Date()), not monotonic — fine
+                // here; we want "wall-clock seconds since the user
+                // last touched anything," and a sleep/wake cycle that
+                // bumps the clock forward should still lock the vault.
+                let threshold = self.settings.vaultAutoLockAfterSeconds
+                if self.vaultRevealed && threshold > 0 {
+                    let idle = Date().timeIntervalSince(self.lastActivityAt)
+                    if idle >= Double(threshold) {
+                        self.lockVault()
+                    }
+                }
+            }
+        }
+
         reloadAll()
 
         // ⌘1…⌘9 menu commands post a notification with a 1-based
@@ -515,6 +601,11 @@ final class AppState: ObservableObject {
         guard !vaultRevealed else { return }
         let result = await VaultAuthService.authenticate(reason: "Show the Vault")
         if case .success = result {
+            // Reset the inactivity stamp on every reveal so the auto-
+            // lock timer starts fresh and a stale `lastActivityAt`
+            // from before the unlock doesn't snap the vault closed
+            // again on the very next tick.
+            lastActivityAt = Date()
             vaultRevealed = true
         } else if case .unavailable(let detail) = result {
             // No biometrics + no passcode on this Mac. The Vault is
@@ -524,6 +615,36 @@ final class AppState: ObservableObject {
         }
         // .userCancelled / .failed: silent — the user chose to back out
         // (or got the password wrong); they'll re-invoke if they want.
+    }
+
+    // MARK: - App-wide lock
+
+    /// Lock the entire application. Both modes the docs mention:
+    /// - Always sets `appLocked = true`, which makes `ContentView`
+    ///   replace the main UI with `AppLockScreen` until the user
+    ///   re-authenticates via Touch ID / device password.
+    /// - If a passphrase is configured, ALSO calls `keyStore.lock()`
+    ///   to wipe the in-memory DEK so a process-memory snapshot
+    ///   can't reveal it. The passphrase prompt comes after the
+    ///   screen-lock dismissal in that case.
+    /// Side effect: locks the Vault too. A locked app should never
+    /// resume with the Vault still revealed.
+    func lockApp() {
+        if keyStore.hasPassphrase {
+            _ = keyStore.lock()
+        }
+        vaultRevealed = false
+        appLocked = true
+    }
+
+    /// Clear the screen lock after a successful Touch ID /
+    /// device-password challenge from `AppLockScreen`. Doesn't try to
+    /// unlock the keystore — passphrase entry is the user's
+    /// responsibility from the regular Settings → Security path when
+    /// they need the keystore's passphrase-mode session back.
+    func unlockApp() {
+        lastActivityAt = Date()
+        appLocked = false
     }
 
     /// Hide the Vault for the rest of the session. Called from the

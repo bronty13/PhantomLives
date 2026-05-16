@@ -158,12 +158,22 @@ Click **Done** to save.
 
 `⇧⌘S` (or Window → Schema editor…). Split layout:
 
-- **Types rail** — built-in vs custom badges, hidden indicator. Right-click a built-in to hide/show; right-click a custom type to delete. Right-click any type to export it as a `.purplelifeschema.json` file.
-- **Field list** — rename / mark required / delete per field. The current primary-field is badged.
-- **Field-type palette** — 12 kinds (text, long text, number, date, date+time, yes/no, select, multi-select, link, rating, URL, email, attachment). Click a tile to add a field, or drag it onto the field list. The drag preview tints the tile in the accent color so you can tell it's "active." A short field list shows a dashed drop-zone hint.
+- **Types rail** — built-in vs custom badges, hidden indicator, plus a small muted lock badge for any type that lives in the Vault. Right-click a built-in to hide/show; right-click a custom type to delete. Right-click any type to export it as a `.purplelifeschema.json` file, or to **Move to Vault** / **Move out of Vault** (works on built-ins and custom types alike). Moving a type into the Vault drops it from the regular sidebar; moving it out brings it back.
+- **Tags row** — sits above the field list and shows the **type-scope** tags. Tags added here apply to every record of this type automatically; you don't need to tag each record individually. Type-scope tag chips render with a slightly lighter fill and a thin dashed outline everywhere a record is shown, so you can tell at a glance which tags are inherited from the type vs added per-record. Per-record tags still live in the record's Detail view (`TagPillRow`).
+- **Field list** — rename / mark required / delete per field. The current primary-field is badged. For `select` / `multi-select` fields the row shows an inline `N options · Edit` button that opens a modal **option editor** — add, rename, recolor (color picker), reorder (up/down chevrons), or delete option values without hand-editing `schema.json`. The same action is in the field row's `…` menu as **Edit options…**.
+- **Field-type palette** — every kind (text, long text, rich text, note log, number, date, date+time, yes/no, select, multi-select, link, rating, URL, email, attachment) lives in a wrapping grid; no horizontal scroll, no hidden tiles. Click a tile to add a field, or drag it onto the field list. The drag preview tints the tile in the accent color so you can tell it's "active." A short field list shows a dashed drop-zone hint.
 - **Reorder fields** via the per-row menu (`Move up` / `Move down`). The buttons are disabled at the array bounds.
 
-Field deletes leave the data in `fields_json` blobs in place; a re-add of the same name doesn't lose history.
+Field deletes leave the data in `fields_json` blobs in place; a re-add of the same name doesn't lose history. Renaming an *option* value (in the select-options editor) does **not** rewrite records that carry the old value — option storage on a record is the option *name*, not its id. Add the new option, then update the affected records by hand.
+
+### Tags, colors, and where they show up
+
+The cross-cutting tag vocabulary is managed in **Schema editor → More menu → Manage tags…** — rename, recolor (via the per-row color picker), merge, delete. Tags can be assigned at two scopes:
+
+- **Type-scope** — Schema editor → pick a type → use the **Tags** row to add/remove tags. Every record of that type inherits these tags.
+- **Per-record** — open any record → use the `Tags` pill row in Detail.
+
+Effective tags on a record are the union of both (deduplicated, type-scope first). They render as colored chips on the record's title in every list view (table / kanban / gallery / calendar), on Today's timeline and right-rail cards, in Quick Switcher results, and in the Detail hero. The chip color comes from the tag's own color in **Manage tags**; type-scope chips use a lighter fill + dashed outline so the inheritance is visible at a glance.
 
 ### Schema library
 
@@ -183,9 +193,33 @@ The `.purplelifeschema.json` envelope is plain JSON — any tool can open it. A 
 
 ## Vault (⇧⌘V)
 
-A private sidebar section gated by Touch ID (or your Mac login password). The Vault is **hidden by default on every launch** — there's no visual hint that it exists in the regular sidebar — and stays locked until you explicitly reveal it. **View → Show Vault…** (or **⇧⌘V**) prompts you for Touch ID or your Mac password; on success, a new "Vault" section slides into the sidebar below "Types". **View → Lock Vault** (same shortcut) hides it again. The Vault always re-locks when you quit the app — there's no "remember me" option, by design.
+A private sidebar section gated by Touch ID (or your Mac login password). The Vault is **hidden by default on every launch** — there's no visual hint that it exists in the regular sidebar — and stays locked until you explicitly reveal it. The **View → Show Vault…** menu item is itself hidden: it only appears in the View menu when you hold **Shift + Option** as you open the menu. The keyboard shortcut **⇧⌘V** still works without any modifier, so if you know it's there you can unlock immediately; the menu hiding is a discoverability dampener for shoulder-surfing situations. On success, a new "Vault" section slides into the sidebar below "Types". **View → Lock Vault** (same ⇧⌘V shortcut) hides it again — Lock Vault is always visible once the vault is open, since re-locking is the obvious counter-move. The Vault always re-locks when you quit the app — there's no "remember me" option, by design.
 
-What it's for: types you'd rather not see at a glance — sexual health, intimacy, kink, body diary, fantasy journal, and so on. Library imports from the **Vault** category in the schema gallery land in this section automatically. (You can also flip any user-defined type into the Vault via the Schema Editor by editing its `isVault` flag in `schema.json`, though there's no UI for that yet.)
+What it's for: types you'd rather not see at a glance — sexual health, intimacy, kink, body diary, fantasy journal, and so on. Library imports from the **Vault** category in the schema gallery land in this section automatically. You can also flip **any** type — built-in or custom — into the Vault from the Schema editor: right-click the type in the rail and pick **Move to Vault** (or **Move out of Vault** to bring it back). The flag round-trips through CloudKit schema sync, so the move propagates to your other Macs.
+
+Records of vault-flagged types pick up a small muted lock badge next to their title in every list view, on Today, in Quick Switcher, and in their Detail hero. The badge is the visual reminder that the record sits behind the auth gate; the underlying behavior (search exclusion when locked, etc.) is unchanged.
+
+### Auto-lock the Vault after idle time
+
+Settings → Security has a stepper labeled **Auto-lock Vault after N seconds** (default 2 minutes; set to 0 to disable). When the Vault is open, idle keyboard, mouse, or scroll input longer than the configured threshold triggers an instant `Lock Vault` — same effect as ⇧⌘V. Activity that resets the timer is anything in the PurpleLife window (or any window of the app); System-wide idle / screensaver is independent and isn't required for the Vault to lock.
+
+### Sidebar quick-access buttons
+
+The main app sidebar has an action row at the bottom (above the sync footer) with icon buttons for:
+
+- **Schema editor** (⇧⌘S)
+- **Find** (⌘⇧F) — opens the advanced Search window
+- **Quick switcher** (⌘K)
+- **Lock** — only visible when the Vault is currently revealed. Tapping it instantly re-locks the Vault without leaving the sidebar.
+
+## Lock PurpleLife (⌃⌘L)
+
+A screen-level lock that hides the entire app behind Touch ID / device password. Useful when stepping away from an unattended Mac without quitting the app or losing the current window state.
+
+- **Menu:** View → Lock PurpleLife
+- **Default shortcut:** ⌃⌘L (rebind via System Settings → Keyboard → Keyboard Shortcuts → App Shortcuts → "Lock PurpleLife")
+- **What it does:** flips the screen lock on. The main window is replaced with a Touch ID prompt that auto-fires on appear; click "Unlock" to retry if the prompt is cancelled or fails. The Vault is also locked as a hygiene step — a locked app should never resume with the Vault still open.
+- **Crypto lock on top:** if you've set a passphrase in Settings → Security, Lock PurpleLife also wipes the in-memory data encryption key. After Touch ID dismisses the screen lock, open Settings → Security and re-enter your passphrase to give the app read/write access to the database again. Without a passphrase, the screen lock is the only barrier — Touch ID dismissal alone is enough to resume.
 
 Behavior when the Vault is locked:
 

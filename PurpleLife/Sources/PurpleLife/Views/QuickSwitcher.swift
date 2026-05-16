@@ -162,9 +162,16 @@ struct QuickSwitcher: View {
                 .background(typeColor.opacity(0.12))
                 .clipShape(RoundedRectangle(cornerRadius: 7))
             VStack(alignment: .leading, spacing: 2) {
-                Text(hit.title.isEmpty ? "Untitled" : hit.title)
-                    .font(.body)
-                    .lineLimit(1)
+                HStack(spacing: 5) {
+                    if type?.isVault == true {
+                        Image(systemName: "lock.fill")
+                            .imageScale(.small)
+                            .foregroundStyle(.tertiary)
+                    }
+                    Text(hit.title.isEmpty ? "Untitled" : hit.title)
+                        .font(.body)
+                        .lineLimit(1)
+                }
                 HStack(spacing: 6) {
                     Text(type?.name ?? hit.typeId)
                         .font(.caption2).foregroundStyle(.tertiary)
@@ -174,6 +181,12 @@ struct QuickSwitcher: View {
                             .font(.caption2)
                             .lineLimit(1)
                             .foregroundStyle(.secondary)
+                    }
+                    // Render the hit's record's tag chips when we can
+                    // look the record up by id. Skipped silently when
+                    // the record isn't loadable (rare race during sync).
+                    if let type, let rec = (try? ObjectEngine.fetch(id: hit.recordId)) ?? nil {
+                        RecordTagStrip(record: rec, type: type, style: .compact, maxCompactChips: 3)
                     }
                 }
             }

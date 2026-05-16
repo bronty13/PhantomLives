@@ -74,9 +74,22 @@ struct ObjectDetailSheet: View {
             VStack(alignment: .leading, spacing: 18) {
                 hero(record: record, type: type)
                 Divider()
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(orderedFields(for: type), id: \.id) { field in
-                        fieldEditor(field: field)
+                // Per-field spacing bumped from 14 → 22 and each field
+                // gets a hairline divider so consecutive editors —
+                // especially a multi-select chip cluster followed by a
+                // noteLog composer — don't visually merge into one
+                // crowded block.
+                VStack(alignment: .leading, spacing: 22) {
+                    let fields = orderedFields(for: type)
+                    ForEach(Array(fields.enumerated()), id: \.element.id) { idx, field in
+                        VStack(alignment: .leading, spacing: 0) {
+                            fieldEditor(field: field)
+                            if idx < fields.count - 1 {
+                                Divider()
+                                    .padding(.top, 12)
+                                    .opacity(0.4)
+                            }
+                        }
                     }
                 }
                 // Cross-cutting tag pill row. Reads & writes the
@@ -107,13 +120,23 @@ struct ObjectDetailSheet: View {
                     .foregroundStyle(tone)
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text(type.name)
-                    .font(.caption2).fontWeight(.semibold).tracking(0.5)
-                    .textCase(.uppercase).foregroundStyle(.tertiary)
+                HStack(spacing: 6) {
+                    Text(type.name)
+                        .font(.caption2).fontWeight(.semibold).tracking(0.5)
+                        .textCase(.uppercase).foregroundStyle(.tertiary)
+                    if type.isVault {
+                        Image(systemName: "lock.fill")
+                            .imageScale(.small)
+                            .foregroundStyle(.tertiary)
+                            .help("Vault item")
+                    }
+                }
                 Text(title.isEmpty ? "Untitled" : title)
                     .font(.system(size: 26, weight: .bold))
                     .lineLimit(2)
                     .foregroundStyle(title.isEmpty ? Color.secondary : Color.primary)
+                RecordTagStrip(record: record, type: type, style: .wrap, font: .caption)
+                    .padding(.top, 2)
             }
             Spacer()
         }
@@ -221,7 +244,7 @@ struct ObjectDetailSheet: View {
 
     @ViewBuilder
     private func fieldEditor(field: FieldDef) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: field.kind.systemImage)
                     .foregroundStyle(.tertiary)
@@ -315,7 +338,7 @@ struct ObjectDetailSheet: View {
         let current = (fieldsBuffer[field.key] as? [String]) ?? []
         return WrappingHStack(items: field.options) { opt in
             let isOn = current.contains(opt.name)
-            let chipColor: Color = opt.colorHex.flatMap(Color.init(hex:)) ?? .secondary
+            let chipColor: Color = opt.colorHex.flatMap(Color.init(hex:)) ?? .accentColor
             Button {
                 var next = current
                 if isOn { next.removeAll { $0 == opt.name } }
@@ -324,13 +347,19 @@ struct ObjectDetailSheet: View {
             } label: {
                 Text(opt.name)
                     .font(.caption.weight(.medium))
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(isOn ? chipColor.opacity(0.25) : Color.secondary.opacity(0.08))
-                    .foregroundStyle(isOn ? chipColor : Color.secondary)
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .background(isOn ? chipColor.opacity(0.28) : Color.secondary.opacity(0.10))
+                    .foregroundStyle(isOn ? chipColor : .primary)
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(isOn ? chipColor.opacity(0.55) : Color.secondary.opacity(0.25),
+                                          lineWidth: 0.6)
+                    )
                     .clipShape(Capsule())
             }
             .buttonStyle(.plain)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func ratingEditor(field: FieldDef) -> some View {

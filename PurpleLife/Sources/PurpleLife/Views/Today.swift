@@ -289,13 +289,23 @@ private struct TimelineRowView: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(tone)
             }
-            VStack(alignment: .leading, spacing: 1) {
-                Text(FieldDisplay.title(of: row.record, in: row.type))
-                    .font(.body.weight(.medium))
-                    .lineLimit(1)
-                Text(row.type.name)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    if row.type.isVault {
+                        Image(systemName: "lock.fill")
+                            .imageScale(.small)
+                            .foregroundStyle(.tertiary)
+                    }
+                    Text(FieldDisplay.title(of: row.record, in: row.type))
+                        .font(.body.weight(.medium))
+                        .lineLimit(1)
+                }
+                HStack(spacing: 6) {
+                    Text(row.type.name)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    RecordTagStrip(record: row.record, type: row.type, style: .compact, maxCompactChips: 3)
+                }
             }
             Spacer()
             Image(systemName: "chevron.right")
@@ -325,9 +335,17 @@ private struct RailCard: View {
             Text(subtitle)
                 .font(.caption2).fontWeight(.semibold).tracking(0.4)
                 .textCase(.uppercase).foregroundStyle(.tertiary)
-            Text(FieldDisplay.title(of: record, in: type))
-                .font(.body.weight(.semibold))
-                .lineLimit(2)
+            HStack(spacing: 5) {
+                if type.isVault {
+                    Image(systemName: "lock.fill")
+                        .imageScale(.small)
+                        .foregroundStyle(.tertiary)
+                }
+                Text(FieldDisplay.title(of: record, in: type))
+                    .font(.body.weight(.semibold))
+                    .lineLimit(2)
+            }
+            RecordTagStrip(record: record, type: type, style: .compact, maxCompactChips: 3)
 
             // Two supporting fields under the title — same pattern as
             // the existing QueryPanel cards.

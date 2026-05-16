@@ -24,8 +24,17 @@ struct ObjectType: Codable, Identifiable, Hashable {
     /// user has unlocked the Vault for the current session
     /// (`AppState.vaultRevealed`). Set automatically by
     /// `SchemaLibrary.Entry.materialize()` for entries whose category is
-    /// `.vault`; user can also flip it on any type via the schema editor.
+    /// `.vault`; user flips it via the Schema editor's type context
+    /// menu, which calls `SchemaRegistry.setVault(_:isVault:)`.
     var isVault: Bool = false
+
+    /// Type-scope tags. Every record of this type implicitly carries
+    /// every tag id in this list, in addition to whatever per-record
+    /// ids live in `ObjectRecord.fieldsJSON._tags`. Resolved via
+    /// `TagService.effectiveTagIds(for:in:)`. Type-scope tags do not
+    /// duplicate into each record's storage — they're a single
+    /// source-of-truth on the type and apply automatically.
+    var tags: [String] = []
 
     /// ISO-8601 timestamp of the last mutation. CloudKit schema sync
     /// reconciles peers by LWW on this — the more recent of two
@@ -95,7 +104,8 @@ struct ObjectType: Codable, Identifiable, Hashable {
         calendarDateKey: String? = nil,
         galleryAttachmentKey: String? = nil,
         updatedAt: String? = nil,
-        isVault: Bool = false
+        isVault: Bool = false,
+        tags: [String] = []
     ) {
         self.id = id
         self.name = name
@@ -110,6 +120,7 @@ struct ObjectType: Codable, Identifiable, Hashable {
         self.galleryAttachmentKey = galleryAttachmentKey
         self.updatedAt = updatedAt
         self.isVault = isVault
+        self.tags = tags
     }
 
     /// Lenient decoder so existing `schema.json` files (pre-Vault)
@@ -133,5 +144,7 @@ struct ObjectType: Codable, Identifiable, Hashable {
         self.galleryAttachmentKey = try c.decodeIfPresent(String.self,  forKey: .galleryAttachmentKey)
         self.updatedAt            = try c.decodeIfPresent(String.self,  forKey: .updatedAt)
         self.isVault              = try c.decodeIfPresent(Bool.self,    forKey: .isVault) ?? false
+        // Lenient: pre-tags-on-types `schema.json` files lack this key.
+        self.tags                 = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
     }
 }
