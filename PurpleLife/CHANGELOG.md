@@ -4,6 +4,14 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-16 — Fix: Notes workspace layout — replace inner HSplitView with HStack
+
+The Notes workspace's inner `HSplitView` was causing the outer NavigationSplitView's sidebar to clip its row labels (`Planner` → `lanner`, `Notes` → `lotes`, etc.) — reported as backlog #15 (2026-05-15). Confirmed root cause: SwiftUI's `HSplitView` wraps `NSSplitView`, which keeps its own copy of subview frames in UserDefaults under a synthesized `"NSSplitView Subview Frames …, SidebarNavigationSplitView"` key. The autosaved frames (248 + 1097 = 1345pt total) outsized the current window (976pt); AppKit fell back to laying the panes out at the saved widths, which squeezed the outer Sidebar below its declared `navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 400)` minimum and clipped the leading character of every row label.
+
+`AppDelegate.applicationWillFinishLaunching` already wipes the autosaved frames on every launch (added in commit `0654b0a`), but AppKit re-writes them at app quit using its in-memory copy of the broken layout — so the wipe doesn't actually break the cycle.
+
+- **`Views/Notes/NotesWorkspaceView.swift`** — replaced the inner `HSplitView` with a plain `HStack(spacing: 0)`. The Notes list pane is now a fixed `width: 300`; the editor pane takes the rest. With no `NSSplitView` in the tree, the broken autosave path is impossible. Trade-off: the inner splitter is no longer user-draggable; the previous one was broken anyway. The outer NavigationSplitView splitter (for the app's main sidebar) still works.
+
 ### 2026-05-16 — Tags Increment 3: advanced Search window with tag / date / Vault filters
 
 Resumed from the pre-resilience pause. The Quick Switcher (⌘K) stays its current minimal self; the new advanced Search window (⌘⇧F) carries the structured filters that wouldn't fit in a single-input UI.

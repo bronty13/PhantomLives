@@ -42,7 +42,26 @@ struct NotesWorkspaceView: View {
     }
 
     var body: some View {
-        HSplitView {
+        // Plain HStack instead of `HSplitView` — backlog #15
+        // (2026-05-15) traced the broken Notes layout to a
+        // SwiftUI / AppKit bridge bug: NSSplitView (which
+        // HSplitView wraps) keeps its own copy of subview frames
+        // separately from SwiftUI's declared min/ideal/max
+        // constraints, autosaves them to UserDefaults under a
+        // synthesized key, and rewrites them at app quit even if
+        // we wipe at launch (which `AppDelegate` already does).
+        // When the autosaved sum-of-widths exceeds the current
+        // window, AppKit lays the panes out at the saved widths,
+        // which squeezes the outer NavigationSplitView's sidebar
+        // below its declared minimum and clips its labels —
+        // exactly the screenshot. Replacing the inner HSplitView
+        // with a fixed-width HStack eliminates NSSplitView from
+        // this view tree entirely, so the broken autosaved-frame
+        // path can't recur. Trade-off: the inner splitter is no
+        // longer user-draggable; the existing one was broken
+        // anyway. The outer NavigationSplitView splitter still
+        // works for the main app sidebar.
+        HStack(spacing: 0) {
             NotesListView(
                 type: type,
                 rows: filtered,
@@ -51,7 +70,9 @@ struct NotesWorkspaceView: View {
                 onCreate: createNote,
                 onDelete: deleteNote
             )
-            .frame(minWidth: 280, idealWidth: 320, maxWidth: 480)
+            .frame(width: 300)
+
+            Divider()
 
             Group {
                 if let id = selectedNoteId,
@@ -63,7 +84,7 @@ struct NotesWorkspaceView: View {
                     placeholder
                 }
             }
-            .frame(minWidth: 480)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
