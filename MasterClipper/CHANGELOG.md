@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-05-16 — build-app.sh: stop breaking the signature post-build
+
+The app stopped launching on macOS 26.5: every run crashed with `EXC_BREAKPOINT` deep inside `CKContainer.__allocating_init(identifier:)` (called from `ShareManager.shared` during `AppState.init`), and once the entitlements were preserved during re-sign it instead failed to even spawn with `Launchd job spawn failed (POSIX 163)`. Root cause was in `build-app.sh`:
+
+1. After `xcodebuild` produced a signed bundle, the script dropped a hand-generated `AppIcon.icns` into `Contents/Resources/` and rewrote `CFBundleIconFile` to `AppIcon.icns`, which invalidated the signature.
+2. It then re-signed with `codesign --force --sign "Developer ID Application" --deep` *without* `--entitlements`. The re-sign therefore stripped every entitlement Xcode's automatic signing had injected — `com.apple.developer.icloud-*`, `com.apple.application-identifier`, and `com.apple.developer.team-identifier`. With no iCloud entitlement the bundle had no permission to call `CKContainer(identifier:)` → trap. Once entitlements were restored, the *Developer ID* signature didn't match the embedded *Apple Development* provisioning profile, and `taskgated-helper` rejected the launch with `Unsatisfied entitlements: com.apple.developer.icloud-container-identifiers, com.apple.developer.icloud-services, com.apple.developer.ubiquity-container-identifiers`.
+
+Fix: trust the asset catalog. The icon already ships through `Assets.xcassets/AppIcon.appiconset/`, and `xcodebuild` already produces `Assets.car` and a valid Apple-Development-signed bundle paired with a Mac Team Provisioning Profile that grants the iCloud entitlements. `Scripts/generate-icon.swift` (driven from `build-app.sh`) now writes the regenerated PNGs straight into the asset catalog so the next `xcodebuild` picks them up, instead of being baked into a post-build `.icns`. The post-build re-sign is gone entirely. The build script just `ditto --noextattr`'s the xcodebuild output to the project directory — `--noextattr` matters because the iCloud File Provider in `~/Documents/GitHub/…` re-attaches `com.apple.FinderInfo` to `.app` bundles, which fails `codesign --verify --deep --strict` and trips launchd with the same POSIX 163.
+
+Behavioural change for distribution: with no Developer ID re-sign, distribution-quality bundles will require a separate signing/notarization step before being shipped to other Macs. For day-to-day local development on the maintainer's machine the new build runs cleanly out of `/Applications/`.
+
 ## 2026-05-12 — iOS companion app + time-limited CloudKit sharing (1.1.0 → 1.4.3)
 
 Major capability landing: a universal iPhone/iPad companion app, and the ability to share a chosen subset of clips with someone who isn't you. Shipped as six phases over a single session.

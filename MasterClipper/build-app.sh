@@ -24,11 +24,22 @@ if command -v xcodegen >/dev/null 2>&1; then
     xcodegen generate >/dev/null
 fi
 
-# Generate icon
+# Regenerate icon PNGs into the asset catalog. xcodebuild compiles the
+# Assets.xcassets to Assets.car during the build and bakes the icon into the
+# signed bundle. We must NOT drop a hand-built AppIcon.icns into Contents/
+# afterwards — doing so would force a re-sign that strips Xcode's
+# auto-generated provisioning profile association and breaks launch under
+# taskgated-helper ("Unsatisfied entitlements", POSIX 163).
 ICONSET_DIR="$(mktemp -d)/AppIcon.iconset"
 swift Scripts/generate-icon.swift "$ICONSET_DIR" >/dev/null
-ICNS_PATH="$(mktemp -d)/AppIcon.icns"
-iconutil -c icns "$ICONSET_DIR" -o "$ICNS_PATH"
+ASSET_ICONSET="Sources/MasterClipper/Resources/Assets.xcassets/AppIcon.appiconset"
+for png in icon_16x16.png icon_16x16@2x.png icon_32x32.png icon_32x32@2x.png \
+           icon_128x128.png icon_128x128@2x.png icon_256x256.png \
+           icon_256x256@2x.png icon_512x512.png icon_512x512@2x.png; do
+    if [ -f "$ICONSET_DIR/$png" ]; then
+        cp "$ICONSET_DIR/$png" "$ASSET_ICONSET/$png"
+    fi
+done
 
 # Update Info.plist version strings
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SHORT_VERSION" \
@@ -66,28 +77,26 @@ if [ ! -d "$SRC_APP" ]; then
     exit 1
 fi
 
-# Copy to project directory
+# Copy the xcodebuild-signed bundle to the project directory.
+#
+# We do NOT re-sign here. xcodebuild's automatic signing has already produced
+# a bundle with a valid embedded provisioning profile that grants the iCloud
+# entitlements; any re-sign would have to perfectly reproduce the
+# entitlements xcodebuild injected (including com.apple.application-identifier
+# and com.apple.developer.team-identifier) OR Apple's taskgated-helper will
+# reject the launch with "Unsatisfied entitlements" (POSIX 163).
+#
+# ditto --noextattr matters: when the project tree lives under
+# ~/Documents/GitHub/… the iCloud File Provider re-attaches
+# com.apple.FinderInfo to bundle contents at arbitrary times. Copying with
+# --noextattr leaves no extended attributes for the File Provider to step on
+# in the first place. The existing destination is removed up-front so a stale
+# bundle never lingers.
 DEST_APP="./$PRODUCT_NAME.app"
 rm -rf "$DEST_APP"
 ditto --noextattr "$SRC_APP" "$DEST_APP"
 
-# Install icon
-cp "$ICNS_PATH" "$DEST_APP/Contents/Resources/AppIcon.icns"
-/usr/libexec/PlistBuddy -c "Set :CFBundleIconFile AppIcon.icns" \
-    "$DEST_APP/Contents/Info.plist" 2>/dev/null || true
-
-# Code sign
-CERT="$(security find-identity -v -p codesigning 2>/dev/null | grep "Developer ID Application" | head -1 | awk '{print $2}' || echo "")"
-if [ -n "$CERT" ]; then
-    echo "Signing with Developer ID: $CERT"
-    xattr -cr "$DEST_APP"
-    codesign --sign "$CERT" --options runtime --timestamp --deep --force "$DEST_APP"
-else
-    echo "No Developer ID found — using ad-hoc signing"
-    xattr -cr "$DEST_APP"
-    codesign --sign - --deep --force "$DEST_APP"
-fi
-
 echo ""
 echo "✓ Built: $DEST_APP"
 echo "  Version: $SHORT_VERSION ($BUILD_NUMBER)"
+echo "  Signature: $(codesign -dvv "$DEST_APP" 2>&1 | grep -E 'Authority|TeamIdentifier' | head -2 | tr '\n' ' ' | sed 's/  */ /g')"
