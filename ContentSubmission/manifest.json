@@ -1,0 +1,91 @@
+{
+  "display_information": {
+    "name": "Content Submission",
+    "description": "Custom workflow step for content submissions",
+    "background_color": "#4a154b"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "Content Submission",
+      "always_online": true
+    }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "chat:write",
+        "chat:write.public",
+        "files:read"
+      ]
+    }
+  },
+  "settings": {
+    "org_deploy_enabled": true,
+    "socket_mode_enabled": true,
+    "token_rotation_enabled": false,
+    "function_runtime": "remote",
+    "event_subscriptions": {
+      "bot_events": [
+        "function_executed"
+      ]
+    }
+  },
+  "functions": {
+    "post_content_submission": {
+      "title": "Post Content Submission",
+      "description": "Post a content submission to a channel with a playable audio file",
+      "input_parameters": {
+        "persona": {
+          "type": "string",
+          "title": "Persona",
+          "description": "The persona this content is for.",
+          "is_required": true
+        },
+        "title": {
+          "type": "string",
+          "title": "Title",
+          "description": "Title of the content submission.",
+          "is_required": true
+        },
+        "video_url": {
+          "type": "string",
+          "title": "Video URL",
+          "description": "Slack URL to the video asset.",
+          "is_required": true
+        },
+        "golive_date": {
+          "type": "slack#/types/date",
+          "title": "GoLive Date",
+          "description": "Target go-live date for the content",
+          "is_required": true
+        },
+        "audio_file": {
+          "type": "slack#/types/rich_text",
+          "title": "Audio File",
+          "description": "Form file-upload variable (map to the File question, then pick File ID)",
+          "is_required": true
+        },
+        "special_requests": {
+          "type": "string",
+          "title": "Special Requests",
+          "description": "Optional notes from the submitter.",
+          "is_required": false
+        },
+        "channel": {
+          "type": "slack#/types/channel_id",
+          "title": "Destination channel",
+          "description": "Channel to post the submission to.",
+          "is_required": true
+        }
+      },
+      "output_parameters": {
+        "message_ts": {
+          "type": "string",
+          "title": "Posted message timestamp",
+          "description": "ts of the chat.postMessage that was posted.",
+          "is_required": false
+        }
+      }
+    }
+  }
+}
