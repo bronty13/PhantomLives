@@ -179,6 +179,9 @@ struct ArchiveOptions: Codable, Equatable {
 ///   (joined to `slackdump.sqlite`). Within a single message that has
 ///   multiple attachments, files keep their `FILE.IDX` order. Files
 ///   with no parent message (canvas etc.) sort last, by FILE_ID.
+///   *Limitation*: when several files share one message (iOS batch
+///   upload), Slack records no selection-order signal, so the order
+///   within the batch is not real post-order. See USER_MANUAL.md.
 /// `.captureDate` — fallback chain:
 ///   1. EXIF `DateTimeOriginal` (+ `SubSecTimeOriginal`) for photos
 ///      via `CGImageSource`
@@ -188,10 +191,15 @@ struct ArchiveOptions: Codable, Equatable {
 ///      always present, so this layer rescues files whose EXIF was
 ///      stripped during upload (iOS Photos / Slack web both do this)
 ///   4. Sentinel sort-last by FILE_ID (deterministic across re-runs)
+/// `.filenameNumeric` — extract the first numeric run from each
+///   filename (`IMG_3079.MP4` → 3079, `01_clip.mov` → 1). Lets users
+///   work around the iOS-batch-upload ordering loss by numbering
+///   files before sending. Files without digits sort last.
 /// `.none` — no prefix; original filenames preserved.
 enum FileOrdering: String, Codable, CaseIterable, Identifiable {
     case messageTimestamp
     case captureDate
+    case filenameNumeric
     case none
 
     var id: String { rawValue }
@@ -199,6 +207,7 @@ enum FileOrdering: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .messageTimestamp: return "Slack message timestamp"
         case .captureDate:      return "Capture date (EXIF/QuickTime, falls back to Slack upload TS)"
+        case .filenameNumeric:  return "Filename number (IMG_3079, 01_clip, …)"
         case .none:             return "No order"
         }
     }
@@ -206,6 +215,7 @@ enum FileOrdering: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .messageTimestamp: return "Slack TS"
         case .captureDate:      return "Capture"
+        case .filenameNumeric:  return "Filename #"
         case .none:             return "None"
         }
     }

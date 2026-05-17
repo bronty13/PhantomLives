@@ -2,7 +2,7 @@
 
 Snapshot of where the project stands so a future session (human or AI) can pick up without re-deriving everything from the commit history.
 
-Last updated: 2026-05-15. v1.1.x (post-processing pipeline batch) on top of the 1.0 baseline (commit-count derived). 52 tests across 16 Swift Testing suites, all green. Bundle is Developer-ID-signed end-to-end (host app + bundled slackdump).
+Last updated: 2026-05-17. v1.1.x (post-processing pipeline batch + file-ordering fix on top of the 1.0 baseline). 70 tests across 18 Swift Testing suites, all green. Bundle is Developer-ID-signed end-to-end (host app + bundled slackdump).
 
 ## What it is
 
@@ -25,7 +25,7 @@ Top-level SwiftUI `@StateObject` graph injected via `environmentObject`:
 - **`ChannelService`** — wraps `slackdump list channels -format JSON` + `list users -format JSON`. Decodes via Codable structs (`RawChannel`, `RawUser`), merges DMs against users to humanize partner names, caches per workspace at `channel-cache/<workspace>.json`.
 - **`PresetStore`** / **`RunHistoryStore`** — JSON-backed Codable arrays, 50-entry cap on history.
 - **`BackupService`** — enum with `runOnLaunchIfDue()`. Called from `SlackSuckerApp.init()` before UI is built. Modeled on Timeliner's reference impl.
-- **`FileOrganizer`** — pure enum, called post-archive when toggle is on. Walks `__uploads/<ID>/<name>`, sorts by extension into `Videos/` `Photos/` `Audio/` `Other/`. Collision → `(<FILE_ID>)` suffix.
+- **`FileOrganizer`** — pure enum, called post-archive when toggle is on. Walks `__uploads/<ID>/<name>`, sorts by extension into `Videos/` `Photos/` `Audio/` `Other/`. Collision → `(<FILE_ID>)` suffix. Optional per-category `0001_, 0002_, …` prefix in one of four orderings: `.messageTimestamp` (joins `MESSAGE × FILE` in slackdump.sqlite via libsqlite3 — `SQLITE_OPEN_READONLY | SQLITE_OPEN_URI ?immutable=1` so the WAL/SHM that slackdump may still hold open is ignored), `.captureDate` (EXIF / QuickTime metadata + Slack-upload-TS fallback), `.filenameNumeric` (first numeric run extracted from each filename — workaround for iOS batched uploads), or `.none`. Detects batched-upload runs (≥2 files sharing one `MESSAGE.TS`) and surfaces a warning via `OrganizeResult.batchedMessages / batchedFileCount`.
 - **`OrientationBaker`** (1.1) — `CGImageSource` + `CIImage.oriented(forExifOrientation:)` for photos; `ffmpeg -display_rotation 0 -c copy` for videos. Bakes the orientation flag into pixel data and resets it. Runs BEFORE `MetadataStripper` so the orientation hint isn't gone by the time we read it.
 - **`MetadataStripper`** (1.1) — Batches paths through `exiftool -@ <argfile>` (one process for the whole run; avoids per-file spawn cost). Strips EXIF/IPTC/XMP destructively in-place. No-ops with a skip log when exiftool isn't on PATH.
 - **`TranscriptionService`** (1.1) — Per-file `transcribe.py -i <src> -o <name>.txt -m <model> -q` loop. Async; bridges `Process` termination via `withCheckedContinuation` so UI stays responsive. Binary resolution order: `$SLACKSUCKER_TRANSCRIBE_BIN` → PATH `transcribe` → sibling-checkout `transcribe/transcribe.py`.
@@ -137,7 +137,7 @@ For ChatExporter's SQLite reads, we shell to `/usr/bin/sqlite3 -json` rather tha
 
 ## Test coverage
 
-52 tests across 16 suites:
+70 tests across 18 suites:
 
 - **ArchiveRequest** — argv shapes for every scope × every flag combo; thread-URL rewrite; scope-slug sanitisation
 - **LineBuffer** — `\n` / `\r\n` / bare `\r` overwrite; trailing partial-line drain
@@ -146,6 +146,7 @@ For ChatExporter's SQLite reads, we shell to `/usr/bin/sqlite3 -json` rather tha
 - **WorkspaceService parser** — slackdump v4 list output; overwrite-prompt detection
 - **ChannelService JSON parser** — channel/user JSON shapes; merge; DM partner resolution; archived/deleted filters; tolerant JSON-extraction
 - **FileOrganizer** — extension classification; reorg; collision suffix; no-op when uploads absent; idempotent
+- **FileOrganizer ordering** — `.messageTimestamp` libsqlite3-backed (FILE_ID + ts + idx); FILE.IDX tiebreak within one message; `.captureDate` Slack-upload-TS fallback; `.filenameNumeric` extraction (digit run; digit-less files sentinel-sort); batched-upload detection (≥2 files / one MESSAGE.TS surfaces `batchedMessages` / `batchedFileCount`); per-category numbering resets; collision suffix; `.none` no-prefix; idempotent
 - **ChatExporter** — thread indentation; mention/channel/URL/entity resolution; file attachments; unknown-user fallback; timestamp formatting
 - **SlackdumpBinary** — chmod bit; bundle path resolution
 - **Settings & history round-trips** — JSON encode/decode; max-entries cap

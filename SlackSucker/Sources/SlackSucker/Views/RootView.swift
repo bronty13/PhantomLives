@@ -156,7 +156,7 @@ struct RootView: View {
                 .pickerStyle(.menu)
                 .frame(width: 130)
                 .disabled(!includeFiles || !organizeFiles)
-                .help("Per-category 0001_, 0002_, … prefix order. Slack TS uses parent-message timestamps from slackdump.sqlite. Created uses the on-disk file creation date (ms). None disables the prefix.")
+                .help("Per-category 0001_, 0002_, … prefix order. Slack TS uses parent-message timestamps; Capture reads EXIF/QuickTime (falls back to Slack upload TS); Filename # extracts the first numeric run from each filename (IMG_3079, 01_clip); None disables the prefix. ⚠ When several files share one Slack message (iOS batch upload), Slack records no selection order — see USER_MANUAL.md.")
                 Toggle("Bake orientation", isOn: $bakeOrientation)
                     .disabled(!includeFiles)
                     .help("Read each photo's EXIF Orientation tag and bake the rotation into pixel data; for videos, flatten the rotation matrix via ffmpeg. Runs before metadata strip so the orientation isn't lost.")

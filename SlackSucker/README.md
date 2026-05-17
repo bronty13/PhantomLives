@@ -76,7 +76,7 @@ End state of a typical channel run with everything on:
 ```sh
 ./build-app.sh                 # release build (CONFIG=debug also supported)
 SLACKDUMP_BIN=/path/to/slackdump ./build-app.sh   # bundle a specific slackdump
-./run-tests.sh                 # 52 tests across 16 Swift Testing suites
+./run-tests.sh                 # 70 tests across 18 Swift Testing suites
 ./install.sh                   # replace /Applications/SlackSucker.app, relaunch
 ./install.sh --no-open         # same, but leave the new copy unlaunched
 ```
@@ -86,7 +86,7 @@ SLACKDUMP_BIN=/path/to/slackdump ./build-app.sh   # bundle a specific slackdump
 ## Architecture mental model
 
 - **`ArchiveRunner`** spawns `Resources/slackdump archive …`, streams stdout into a SwiftUI-observable buffer, and chains post-processing on success.
-- **`FileOrganizer`** walks `__uploads/<FILE_ID>/<name>` and moves each file into `Videos/` / `Photos/` / `Audio/` / `Other/` by extension. Name collisions get a `(<FILE_ID>)` suffix instead of overwriting.
+- **`FileOrganizer`** walks `__uploads/<FILE_ID>/<name>` and moves each file into `Videos/` / `Photos/` / `Audio/` / `Other/` by extension. Optionally applies a per-category `0001_, 0002_, …` prefix in one of four orderings (Slack message timestamp, capture date, filename number, none) — reads `slackdump.sqlite` via libsqlite3 directly. Name collisions get a `(<FILE_ID>)` suffix instead of overwriting. See USER_MANUAL.md for the iOS-batch-upload ordering caveat.
 - **`ChatExporter`** shells out to `/usr/bin/sqlite3 -json` against `slackdump.sqlite`, decodes the rows with Codable, formats messages chronologically with thread replies indented under their parent, and resolves `<@U…>` / `<#C…|name>` / `<https://…|label>` markup inline.
 - **`BackupService`** zips `~/Library/Application Support/SlackSucker/` on launch (5-min debounce, 14-day retention, prefix-scoped trim). Reference impl per `PhantomLives/CLAUDE.md`.
 - **`WorkspaceService` / `ChannelService`** wrap `slackdump workspace …` and `slackdump list …` respectively, parse the JSON output, cache the channel/user list per workspace.

@@ -49,19 +49,31 @@ struct ScopePicker: View {
                     .font(AppFont.sans(12))
                     .foregroundStyle(.secondary)
             case .conversation:
-                ChannelCombobox(query: $entityQuery,
-                                onPick: { entity in
-                                    let label = entity.subtitle.map { "\(entity.name) — \($0)" } ?? entity.name
-                                    if entity.kind == .user {
-                                        scope = .dm(idOrURL: entity.id, displayName: entity.name)
-                                    } else if entity.kind == .dm || entity.kind == .mpdm {
-                                        scope = .dm(idOrURL: entity.id, displayName: entity.name)
-                                    } else {
-                                        scope = .channel(idOrURL: entity.id, displayName: entity.name)
-                                    }
-                                    entityQuery = label
-                                })
-                    .environmentObject(channels)
+                HStack(spacing: 6) {
+                    ChannelCombobox(query: $entityQuery,
+                                    onPick: { entity in
+                                        let label = entity.subtitle.map { "\(entity.name) — \($0)" } ?? entity.name
+                                        if entity.kind == .user {
+                                            scope = .dm(idOrURL: entity.id, displayName: entity.name)
+                                        } else if entity.kind == .dm || entity.kind == .mpdm {
+                                            scope = .dm(idOrURL: entity.id, displayName: entity.name)
+                                        } else {
+                                            scope = .channel(idOrURL: entity.id, displayName: entity.name)
+                                        }
+                                        entityQuery = label
+                                    })
+                        .environmentObject(channels)
+                    if !entityQuery.isEmpty {
+                        Button {
+                            entityQuery = ""
+                            scope = .entireWorkspace
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Clear")
+                    }
+                }
                 HStack {
                     Button {
                         Task { await channels.refresh(for: settings.selectedWorkspace) }
@@ -103,10 +115,22 @@ struct ScopePicker: View {
                     }
                 }
             case .thread:
-                TextField("https://your.slack.com/archives/CXXXXX/p1700000000123456",
-                          text: $threadURL)
-                    .textFieldStyle(.roundedBorder)
-                    .onChange(of: threadURL) { _, _ in syncScope() }
+                HStack(spacing: 6) {
+                    TextField("https://your.slack.com/archives/CXXXXX/p1700000000123456",
+                              text: $threadURL)
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: threadURL) { _, _ in syncScope() }
+                    if !threadURL.isEmpty {
+                        Button {
+                            threadURL = ""
+                            syncScope()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Clear")
+                    }
+                }
             }
         }
     }

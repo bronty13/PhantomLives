@@ -79,7 +79,7 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.radioGroup)
-                Text("Determines the 0001_, 0002_, … per-category prefix applied by FileOrganizer.  \u{2022} Slack message timestamp: joins slackdump.sqlite for each FILE's parent MESSAGE.TS.  \u{2022} File created (ms): on-disk creation date with millisecond precision (reflects when slackdump wrote the file).  \u{2022} No order: original filenames preserved.")
+                Text("Determines the 0001_, 0002_, … per-category prefix applied by FileOrganizer.  \u{2022} Slack message timestamp: joins slackdump.sqlite for each FILE's parent MESSAGE.TS. ⚠ For files batched into a single message (iOS multi-select), Slack records no selection order — see USER_MANUAL.md.  \u{2022} Capture date: EXIF / QuickTime metadata with a Slack upload-TS fallback when stripped.  \u{2022} Filename number: extracts the first numeric run (IMG_3079, 01_clip). Best workaround for batched iOS uploads when the uploader is willing to prefix filenames.  \u{2022} No order: original filenames preserved.")
                     .font(AppFont.sans(11))
                     .foregroundStyle(.tertiary)
 

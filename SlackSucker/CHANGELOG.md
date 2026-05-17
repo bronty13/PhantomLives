@@ -1,5 +1,50 @@
 # SlackSucker changelog
 
+## 1.1.x — file ordering fix + iOS batch-upload limitation (2026-05-16)
+
+### FileOrganizer — order recovery
+
+- **Switched SQLite reads from `/usr/bin/sqlite3` to libsqlite3 directly**
+  (`import SQLite3`, `Package.swift` gains `linkedLibrary("sqlite3")`).
+  Eliminates a runtime regression where `.messageTimestamp` ordering
+  silently produced FILE_ID-lex sort instead of true chronological
+  order. The CLI invocation worked under test but came back empty in
+  production runs (likely a WAL/SHM timing interaction with slackdump's
+  still-warm DB handles). The library path is also faster and side-
+  steps JSON parsing of large result sets.
+- **New `.filenameNumeric` ordering mode**: extracts the first numeric
+  run from each filename (`IMG_3079.MP4` → 3079, `01_clip.mov` → 1).
+  Best workaround for archives with sequentially-named files; in
+  particular, the recommended escape hatch for users whose Slack
+  workflow forces batched iOS uploads (see USER_MANUAL.md).
+- **Batched-upload detection**: when `.messageTimestamp` runs over an
+  archive that contains ≥2 files sharing one MESSAGE.TS, the runner
+  appends a `[organize] ⚠ N file(s) across M batched message(s) …`
+  line to the live output and a "Batched-upload warning" block to
+  `organize-log.txt`. Tells the user upfront that the within-batch
+  order is upload-completion order, not selection order.
+
+### Docs
+
+- `USER_MANUAL.md` gains a **File ordering and the iOS batch-upload
+  limitation** section explaining why iOS Slack destroys ordering
+  signal for batched uploads, and listing workarounds (one-file-per-
+  message; numbered filenames + `.filenameNumeric` mode).
+
+### Tests
+
+- `chronologicalOrdering` now has a libsqlite3-backed test that seeds
+  a synthetic `MESSAGE × FILE` join with three files at one TS and
+  asserts the (ts, idx) keys come back populated — the regression test
+  that would have caught the fileID-lex bug.
+- `.messageTimestamp` end-to-end test: three files, one message,
+  distinct IDX values, asserts the 0001…0003 prefix follows IDX
+  ascending rather than FILE_ID lex.
+- Batched-detection test: 4 files across 2 messages, asserts
+  `result.batchedMessages == 1` and `result.batchedFileCount == 3`.
+- `.filenameNumeric` extraction unit test + two end-to-end tests
+  (numeric ordering, digit-less filenames falling to the sentinel).
+
 ## 1.1.x — post-processing pipeline + dock icon (2026-05-15)
 
 ### Icon

@@ -360,8 +360,47 @@ struct FileOrganizerOrderingTests {
     /// what slackdump 4.x produces (only the columns the ordering
     /// query reads are populated).
     private func makeSyntheticSqlite(at url: URL, rows: [(fileID: String, created: Int)]) throws {
+        try makeSyntheticSqlite(at: url, fileRows: rows.map {
+            FileRow(fileID: $0.fileID, created: $0.created, messageID: nil, idx: 0)
+        }, messageRows: [])
+    }
+
+    /// Synthetic-DB seeder for the full `MESSAGE × FILE` join used by
+    /// `chronologicalOrdering`. The earlier overload is preserved for
+    /// the upload-TS-only tests.
+    struct FileRow {
+        var fileID: String
+        var created: Int
+        var messageID: Int64?
+        var idx: Int
+    }
+    struct MessageRow {
+        var id: Int64       // numeric form of TS (TS × 1e6, slackdump convention)
+        var ts: Double      // seconds since epoch
+    }
+    private func makeSyntheticSqlite(
+        at url: URL,
+        fileRows: [FileRow],
+        messageRows: [MessageRow]
+    ) throws {
         try? FileManager.default.removeItem(at: url)
         let create = """
+        CREATE TABLE MESSAGE (
+          ID INTEGER NOT NULL,
+          CHUNK_ID INTEGER NOT NULL,
+          LOAD_DTTM TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CHANNEL_ID TEXT NOT NULL,
+          TS TEXT NOT NULL,
+          PARENT_ID INTEGER,
+          THREAD_TS TEXT,
+          LATEST_REPLY TEXT,
+          IS_PARENT SMALLINT NOT NULL DEFAULT 0,
+          IDX INTEGER NOT NULL,
+          NUM_FILES INTEGER NOT NULL DEFAULT 0,
+          TXT TEXT,
+          DATA BLOB NOT NULL,
+          PRIMARY KEY (ID, CHUNK_ID)
+        );
         CREATE TABLE FILE (
           ID TEXT NOT NULL,
           CHUNK_ID INTEGER NOT NULL,
@@ -379,9 +418,13 @@ struct FileOrganizerOrderingTests {
         );
         """
         var sql = create
-        for (i, row) in rows.enumerated() {
-            let data = "{\"id\":\"\(row.fileID)\",\"created\":\(row.created)}"
-            sql += "INSERT INTO FILE (ID, CHUNK_ID, CHANNEL_ID, IDX, MODE, DATA) VALUES ('\(row.fileID)', \(i + 1), 'CTEST', 0, 'hosted', '\(data)');\n"
+        for (i, m) in messageRows.enumerated() {
+            sql += "INSERT INTO MESSAGE (ID, CHUNK_ID, CHANNEL_ID, TS, IDX, DATA) VALUES (\(m.id), \(i + 1), 'CTEST', '\(m.ts)', 0, '{}');\n"
+        }
+        for (i, r) in fileRows.enumerated() {
+            let data = "{\"id\":\"\(r.fileID)\",\"created\":\(r.created)}"
+            let msg = r.messageID.map { String($0) } ?? "NULL"
+            sql += "INSERT INTO FILE (ID, CHUNK_ID, CHANNEL_ID, MESSAGE_ID, IDX, MODE, DATA) VALUES ('\(r.fileID)', \(i + 1), 'CTEST', \(msg), \(r.idx), 'hosted', '\(data)');\n"
         }
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
@@ -417,5 +460,153 @@ struct FileOrganizerOrderingTests {
         #expect(FileManager.default.fileExists(
             atPath: run.appendingPathComponent("Photos/0001_one.jpg").path))
         try? FileManager.default.removeItem(at: run)
+    }
+
+    // MARK: - libsqlite3-backed chronologicalOrdering
+
+    @Test("chronologicalOrdering produces correct (ts, idx) keys via libsqlite3")
+    func chronologicalOrderingViaLibSQLite() throws {
+        // Regression test for the fileID-lex-sentinel bug: prior to the
+        // libsqlite3 switch, `chronologicalOrdering` shelled to
+        // /usr/bin/sqlite3 and silently returned [:] under some runtime
+        // conditions, dropping every file to the FILE_ID-lex sentinel
+        // sort. With libsqlite3 the keys come back correctly populated.
+        let run = makeRunFolder()
+        defer { try? FileManager.default.removeItem(at: run) }
+        let sqlite = run.appendingPathComponent("slackdump.sqlite")
+        // One parent message, three files attached.
+        try makeSyntheticSqlite(at: sqlite, fileRows: [
+            FileRow(fileID: "F-A", created: 100, messageID: 1_700_000_000_000_000, idx: 2),
+            FileRow(fileID: "F-B", created: 101, messageID: 1_700_000_000_000_000, idx: 0),
+            FileRow(fileID: "F-C", created: 102, messageID: 1_700_000_000_000_000, idx: 1),
+        ], messageRows: [
+            MessageRow(id: 1_700_000_000_000_000, ts: 1_700_000_000.0)
+        ])
+        let keys = FileOrganizer.chronologicalOrdering(sqliteURL: sqlite)
+        #expect(keys.count == 3)
+        #expect(keys["F-A"]?.idx == 2)
+        #expect(keys["F-B"]?.idx == 0)
+        #expect(keys["F-C"]?.idx == 1)
+        // All three share the same TS — caller's tiebreak runs on idx.
+        #expect(keys["F-A"]?.ts == 1_700_000_000.0)
+        #expect(keys["F-B"]?.ts == 1_700_000_000.0)
+        #expect(keys["F-C"]?.ts == 1_700_000_000.0)
+    }
+
+    @Test(".messageTimestamp respects FILE.IDX tiebreak within one message")
+    func messageTimestampHonorsIDX() throws {
+        // End-to-end: seed __uploads, seed a synthetic DB with all files
+        // sharing one MESSAGE.TS but distinct FILE.IDX, run organize,
+        // and verify the 0001…0003 prefix maps to ascending IDX.
+        //
+        // This is the case that was silently broken — prior code would
+        // fall through to fileID-lex (F-A < F-B < F-C) regardless of
+        // the IDX values stored in the DB.
+        let run = seed(uploads: [
+            ("F-A", "alpha.jpg"),
+            ("F-B", "beta.jpg"),
+            ("F-C", "gamma.jpg"),
+        ])
+        let sqlite = run.appendingPathComponent("slackdump.sqlite")
+        // IDX = 2, 0, 1 → expected prefix order: B (idx 0), C (idx 1), A (idx 2).
+        try makeSyntheticSqlite(at: sqlite, fileRows: [
+            FileRow(fileID: "F-A", created: 100, messageID: 1_700_000_000_000_000, idx: 2),
+            FileRow(fileID: "F-B", created: 101, messageID: 1_700_000_000_000_000, idx: 0),
+            FileRow(fileID: "F-C", created: 102, messageID: 1_700_000_000_000_000, idx: 1),
+        ], messageRows: [
+            MessageRow(id: 1_700_000_000_000_000, ts: 1_700_000_000.0)
+        ])
+        _ = FileOrganizer.organize(runFolder: run, ordering: .messageTimestamp)
+        let photos = run.appendingPathComponent("Photos", isDirectory: true)
+        #expect(FileManager.default.fileExists(
+            atPath: photos.appendingPathComponent("0001_beta.jpg").path))
+        #expect(FileManager.default.fileExists(
+            atPath: photos.appendingPathComponent("0002_gamma.jpg").path))
+        #expect(FileManager.default.fileExists(
+            atPath: photos.appendingPathComponent("0003_alpha.jpg").path))
+        try? FileManager.default.removeItem(at: run)
+    }
+
+    @Test("organize() reports batched-upload count when ≥2 files share one TS")
+    func batchedUploadDetection() throws {
+        // Two messages — first has 3 files (batched), second has 1.
+        // Result should report 1 batched message covering 3 files.
+        let run = seed(uploads: [
+            ("F-A", "a.jpg"), ("F-B", "b.jpg"), ("F-C", "c.jpg"),  // same TS
+            ("F-D", "d.jpg"),                                       // its own TS
+        ])
+        let sqlite = run.appendingPathComponent("slackdump.sqlite")
+        try makeSyntheticSqlite(at: sqlite, fileRows: [
+            FileRow(fileID: "F-A", created: 100, messageID: 1_700_000_000_000_000, idx: 0),
+            FileRow(fileID: "F-B", created: 101, messageID: 1_700_000_000_000_000, idx: 1),
+            FileRow(fileID: "F-C", created: 102, messageID: 1_700_000_000_000_000, idx: 2),
+            FileRow(fileID: "F-D", created: 200, messageID: 1_700_000_111_000_000, idx: 0),
+        ], messageRows: [
+            MessageRow(id: 1_700_000_000_000_000, ts: 1_700_000_000.0),
+            MessageRow(id: 1_700_000_111_000_000, ts: 1_700_000_111.0),
+        ])
+        let result = FileOrganizer.organize(runFolder: run, ordering: .messageTimestamp)
+        #expect(result.batchedMessages == 1)
+        #expect(result.batchedFileCount == 3)
+        // Sanity: the lone file in its own message is NOT counted.
+        try? FileManager.default.removeItem(at: run)
+    }
+
+    // MARK: - filenameNumeric ordering
+
+    @Test(".filenameNumeric extracts the first numeric run from each filename")
+    func filenameNumericExtraction() {
+        let keys = FileOrganizer.filenameNumericOrdering([
+            ("F1", "IMG_3079.MP4"),
+            ("F2", "IMG_3081.MP4"),
+            ("F3", "IMG_3080.MP4"),
+            ("F4", "01_intro.mov"),
+            ("F5", "no-numbers-here.mov"),
+        ])
+        #expect(keys["F1"]?.ts == 3079)
+        #expect(keys["F2"]?.ts == 3081)
+        #expect(keys["F3"]?.ts == 3080)
+        #expect(keys["F4"]?.ts == 1)
+        // Files with no digits are absent — caller's sentinel sort
+        // handles them.
+        #expect(keys["F5"] == nil)
+    }
+
+    @Test(".filenameNumeric orders IMG_3079-style filenames numerically")
+    func filenameNumericEndToEnd() throws {
+        let run = seed(uploads: [
+            ("F-1", "IMG_3081.jpg"),
+            ("F-2", "IMG_3079.jpg"),
+            ("F-3", "IMG_3080.jpg"),
+        ])
+        defer { try? FileManager.default.removeItem(at: run) }
+        _ = FileOrganizer.organize(runFolder: run, ordering: .filenameNumeric)
+        let photos = run.appendingPathComponent("Photos", isDirectory: true)
+        #expect(FileManager.default.fileExists(
+            atPath: photos.appendingPathComponent("0001_IMG_3079.jpg").path))
+        #expect(FileManager.default.fileExists(
+            atPath: photos.appendingPathComponent("0002_IMG_3080.jpg").path))
+        #expect(FileManager.default.fileExists(
+            atPath: photos.appendingPathComponent("0003_IMG_3081.jpg").path))
+    }
+
+    @Test(".filenameNumeric places digit-less filenames at the end (by FILE_ID)")
+    func filenameNumericNoDigitsLast() throws {
+        let run = seed(uploads: [
+            ("F-A", "abstract.jpg"),     // no digits — sentinel sort
+            ("F-B", "IMG_42.jpg"),       // numeric 42 → first
+            ("F-Z", "another.jpg"),      // no digits — sentinel sort
+        ])
+        defer { try? FileManager.default.removeItem(at: run) }
+        _ = FileOrganizer.organize(runFolder: run, ordering: .filenameNumeric)
+        let photos = run.appendingPathComponent("Photos", isDirectory: true)
+        // 42 wins first slot. The two digit-less files fall to the
+        // sentinel and order by FILE_ID lex (F-A then F-Z).
+        #expect(FileManager.default.fileExists(
+            atPath: photos.appendingPathComponent("0001_IMG_42.jpg").path))
+        #expect(FileManager.default.fileExists(
+            atPath: photos.appendingPathComponent("0002_abstract.jpg").path))
+        #expect(FileManager.default.fileExists(
+            atPath: photos.appendingPathComponent("0003_another.jpg").path))
     }
 }

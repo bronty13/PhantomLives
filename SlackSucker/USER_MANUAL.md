@@ -158,6 +158,53 @@ What it can NOT do:
 
 That ML-based "look at the picture, decide which way is up" inference is genuinely hard and out of scope. If you need it, run the photos through a dedicated tool after the SlackSucker export.
 
+### File ordering
+
+The "Order" picker controls the `0001_, 0002_, …` prefix applied by **Sort folders**:
+
+- **Slack message timestamp** *(recommended)* — joins `slackdump.sqlite` to read each file's parent `MESSAGE.TS`. Within a single message that has multiple attachments, files keep their `FILE.IDX` order.
+- **Capture date** — EXIF `DateTimeOriginal` (photos) and QuickTime `creationDate` (videos), with `FILE.DATA.created` (Slack server upload time) as a fallback when the metadata was stripped.
+- **Filename number** — extracts the first numeric run from each filename (`IMG_3079.MP4` → 3079, `01_clip.mov` → 1). Useful when the uploader manually numbered files before sending.
+- **No order** — leaves original filenames untouched.
+
+#### Posting workflow for ordered runs
+
+**Tell the original poster to type a short caption between uploads.** Even one character of text forces iOS Slack to commit the upload-so-far as its own message before continuing — the in-flight batch is broken into N separate messages, each with its own `MESSAGE.TS`, and **Slack message timestamp** ordering produces the true post order.
+
+```
+Tap upload → "1." → send
+Tap upload → "2." → send
+Tap upload → "3." → send
+```
+
+That feels like one logical post to the client (a narrated reel) but is structurally five messages — exactly what the ordering query needs. Verified end-to-end against the same five clips in two configurations:
+
+- **Five separate messages** → 0001…0005 in correct order. ✓
+- **One conceptual post, interleaved with text** → Slack wraps the five uploads as a thread; thread reply TSs land in correct order. 0001…0005 in correct order. ✓
+- **One Slack message, five attachments in the picker** → Slack discards selection order; SlackSucker emits `[organize] ⚠ batched message(s)` and the within-batch order is **not** real post order. ✗
+
+#### The unfixable case: batched iOS uploads
+
+When somebody in your Slack opens the iOS app, multi-selects N files in the Photos picker, and posts them as one message without typing anything between:
+
+1. iOS Slack re-encodes the videos client-side before upload, stamping all N files with identical QuickTime `CreateDate` / `TrackCreateDate` / `MediaCreateDate`. The originals' camera-shutter timestamps are lost at this step.
+2. The N files are uploaded **in parallel**. Whichever finishes first (typically the smallest file) gets the lowest `FILE.DATA.created` timestamp — so `created` reflects upload-completion order, not selection order.
+3. All N files share a single `MESSAGE.TS`, so the **Slack message timestamp** prefix can't disambiguate within the batch.
+4. Slack's `files[]` array order in the message JSON is **not documented to match user selection order** — no `index`, `sequence`, or `batch_id` field exists anywhere in the Slack file/message API.
+
+For batch-uploaded videos with random/GUID filenames (the iOS Photos default), there is **no signal in the archive** that captures the order they were posted in. Not in Slack's data, not in the file metadata, not in the URL. SlackSucker detects this and prints:
+
+```
+[organize] ⚠ N file(s) across M batched message(s) — Slack does not record selection order for files posted together. Confirm order with the original poster before editing.
+```
+
+**Workarounds** when you're stuck with an existing batched archive, in order of reliability:
+
+1. **Numeric filenames** — if the poster prefixed files (`01_intro.mov`, `02_b-roll.mov`, …) before sending, Slack preserves the `name` field even when it strips other metadata. Switch to **Filename number** ordering.
+2. **Order list in a follow-up message** — have the poster send a text message right after the batch listing the intended order. SlackSucker doesn't parse this automatically; treat it as documentation for whoever does the edit.
+
+If neither applies, the order is not recoverable. Catch it before the edit, not after — and **set the posting workflow expectation up front**: "type a brief note between clips."
+
 ### Hash manifest format
 
 `hashes.txt` is GNU coreutils-compatible — you can verify it with:

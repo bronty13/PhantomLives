@@ -2,6 +2,7 @@ import Foundation
 import AVFoundation
 import ImageIO
 import CoreGraphics
+import SQLite3
 
 /// Post-process a completed slackdump archive folder by sorting
 /// `__uploads/<FILE_ID>/<name>` attachments into media-category
@@ -61,6 +62,16 @@ enum FileOrganizer {
         var collisions: Int = 0
         var prefixedCount: Int = 0       // count with NNNN_ prefix applied
         var errors: [String] = []
+        /// Number of Slack messages that posted ≥2 files at once
+        /// (batch upload). Order WITHIN one such message is not
+        /// recoverable from any field Slack records — iOS Slack
+        /// re-encodes batched uploads in parallel and stamps them
+        /// with identical metadata before sending. The runner uses
+        /// this to surface a warning so the user knows the prefix
+        /// they're seeing is not real post-order.
+        var batchedMessages: Int = 0
+        /// Total files spread across the batched messages above.
+        var batchedFileCount: Int = 0
 
         var totalMoved: Int { moved.values.reduce(0, +) }
     }
@@ -127,10 +138,14 @@ enum FileOrganizer {
 
         // Build the ordering only when the caller asked for it. Each
         // strategy has different inputs:
-        //   .messageTimestamp → one sqlite3 process spawn + JSON parse
+        //   .messageTimestamp → libsqlite3 read of FILE × MESSAGE
         //   .captureDate      → EXIF / AVAsset read per file, with a
         //                       Slack-upload-TS fallback that rescues
         //                       files whose EXIF was stripped on upload
+        //   .filenameNumeric  → first numeric run extracted from each
+        //                       filename — handles IMG_3079.MP4 /
+        //                       01_clip.mov patterns; no SQLite or
+        //                       file-metadata dependency
         //   .none             → skip entirely
         let prefixByOrder = (ordering != .none)
         if prefixByOrder {
@@ -150,6 +165,8 @@ enum FileOrganizer {
                     merged[fileID] = key
                 }
                 keys = merged
+            case .filenameNumeric:
+                keys = filenameNumericOrdering(pending.map { ($0.fileID, $0.originalName) })
             case .none:
                 keys = [:]  // unreachable
             }
@@ -163,6 +180,21 @@ enum FileOrganizer {
                 if ka.ts != kb.ts { return ka.ts < kb.ts }
                 if ka.idx != kb.idx { return ka.idx < kb.idx }
                 return ka.fileID < kb.fileID
+            }
+
+            // Detect batched messages — runs where ≥2 files share an
+            // identical TS. This is the iOS-Slack-batch-upload case
+            // documented in USER_MANUAL.md: Slack's data carries no
+            // signal for selection order, so the prefix we just
+            // assigned is best-effort. Surface it to the runner so it
+            // can warn the user.
+            if ordering == .messageTimestamp {
+                let grouped = Dictionary(grouping: pending.compactMap { keys[$0.fileID] },
+                                         by: { $0.ts })
+                for (ts, group) in grouped where group.count > 1 && ts != .greatestFiniteMagnitude {
+                    result.batchedMessages += 1
+                    result.batchedFileCount += group.count
+                }
             }
         }
 
@@ -363,6 +395,12 @@ enum FileOrganizer {
     /// in slackdump's archive — Slack assigns it server-side at
     /// upload time. Used as the fallback layer under capture-date
     /// ordering when a file has no embedded EXIF/QuickTime metadata.
+    ///
+    /// Reads via libsqlite3 directly. The earlier implementation
+    /// shelled to `/usr/bin/sqlite3 -json` and was observed to
+    /// silently return empty in production runs (likely a WAL/SHM
+    /// timing interaction with slackdump's still-warm DB handles),
+    /// dropping all files to the FILE_ID-lex sentinel sort.
     nonisolated static func slackUploadOrdering(sqliteURL: URL) -> [String: OrderKey] {
         guard FileManager.default.fileExists(atPath: sqliteURL.path) else { return [:] }
         let query = """
@@ -371,35 +409,21 @@ enum FileOrganizer {
         FROM FILE f
         GROUP BY f.ID;
         """
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
-        proc.arguments = ["-json", "-readonly", sqliteURL.path, query]
-        let out = Pipe()
-        proc.standardOutput = out
-        proc.standardError = Pipe()
-        do { try proc.run() } catch { return [:] }
-        proc.waitUntilExit()
-        guard proc.terminationStatus == 0 else { return [:] }
-        let data = out.fileHandleForReading.readDataToEndOfFile()
-        guard !data.isEmpty else { return [:] }
-        struct Row: Decodable { let id: String; let ts: Double? }
-        guard let rows = try? JSONDecoder().decode([Row].self, from: data) else { return [:] }
-        var result: [String: OrderKey] = [:]
-        result.reserveCapacity(rows.count)
-        for row in rows {
-            result[row.id] = OrderKey(
-                ts: row.ts ?? .greatestFiniteMagnitude,
-                idx: 0,
-                fileID: row.id
-            )
+        var out: [String: OrderKey] = [:]
+        runQuery(sqliteURL: sqliteURL, sql: query) { stmt in
+            guard let idCstr = sqlite3_column_text(stmt, 0) else { return }
+            let id = String(cString: idCstr)
+            let ts: Double = sqlite3_column_type(stmt, 1) == SQLITE_NULL
+                ? .greatestFiniteMagnitude
+                : sqlite3_column_double(stmt, 1)
+            out[id] = OrderKey(ts: ts, idx: 0, fileID: id)
         }
-        return result
+        return out
     }
 
-    /// Shells to `/usr/bin/sqlite3 -json` to grab `(FILE_ID, ts, idx)`
-    /// for every distinct FILE row, joined to its parent MESSAGE for
-    /// the TS. Returns `[:]` on any failure — caller falls back to
-    /// "no prefix" behavior, never blocks the move pass.
+    /// Parent-message TS plus file index for every FILE row.
+    /// Returns `[:]` on any failure — the caller falls back to the
+    /// FILE_ID-lex sentinel sort and continues without blocking.
     nonisolated static func chronologicalOrdering(sqliteURL: URL) -> [String: OrderKey] {
         guard FileManager.default.fileExists(atPath: sqliteURL.path) else { return [:] }
         let query = """
@@ -408,30 +432,100 @@ enum FileOrganizer {
         LEFT JOIN MESSAGE m ON f.MESSAGE_ID = m.ID
         GROUP BY f.ID;
         """
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
-        proc.arguments = ["-json", "-readonly", sqliteURL.path, query]
-        let out = Pipe()
-        proc.standardOutput = out
-        proc.standardError = Pipe()
-        do { try proc.run() } catch { return [:] }
-        proc.waitUntilExit()
-        guard proc.terminationStatus == 0 else { return [:] }
-        let data = out.fileHandleForReading.readDataToEndOfFile()
-        guard !data.isEmpty else { return [:] }
-
-        struct Row: Decodable { let id: String; let ts: Double?; let idx: Int? }
-        guard let rows = try? JSONDecoder().decode([Row].self, from: data) else { return [:] }
-        var result: [String: OrderKey] = [:]
-        result.reserveCapacity(rows.count)
-        for row in rows {
-            result[row.id] = OrderKey(
-                ts: row.ts ?? .greatestFiniteMagnitude,
-                idx: row.idx ?? 0,
-                fileID: row.id
-            )
+        var out: [String: OrderKey] = [:]
+        runQuery(sqliteURL: sqliteURL, sql: query) { stmt in
+            guard let idCstr = sqlite3_column_text(stmt, 0) else { return }
+            let id = String(cString: idCstr)
+            let ts: Double = sqlite3_column_type(stmt, 1) == SQLITE_NULL
+                ? .greatestFiniteMagnitude
+                : sqlite3_column_double(stmt, 1)
+            let idx: Int = sqlite3_column_type(stmt, 2) == SQLITE_NULL
+                ? 0
+                : Int(sqlite3_column_int64(stmt, 2))
+            out[id] = OrderKey(ts: ts, idx: idx, fileID: id)
         }
-        return result
+        return out
+    }
+
+    /// Open the DB read-only via libsqlite3, prepare the statement,
+    /// and invoke `row` once per result row with the live statement
+    /// handle. Swallows every error path back to the caller's `[:]`
+    /// sentinel — the file organizer should never crash because the
+    /// SQLite was missing / locked / corrupt.
+    ///
+    /// `SQLITE_OPEN_READONLY` + `?immutable=1` is the safest combo
+    /// when slackdump may still have a warm SHM / WAL alongside the
+    /// DB: it tells SQLite not to attempt any recovery and to ignore
+    /// the WAL entirely. We don't need it for this read.
+    nonisolated private static func runQuery(
+        sqliteURL: URL,
+        sql: String,
+        row: (OpaquePointer) -> Void
+    ) {
+        var db: OpaquePointer?
+        let uri = "file:\(sqliteURL.path)?immutable=1"
+        let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_URI
+        guard sqlite3_open_v2(uri, &db, flags, nil) == SQLITE_OK, let db else {
+            if db != nil { sqlite3_close(db) }
+            return
+        }
+        defer { sqlite3_close(db) }
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else {
+            if stmt != nil { sqlite3_finalize(stmt) }
+            return
+        }
+        defer { sqlite3_finalize(stmt) }
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            row(stmt)
+        }
+    }
+
+    // MARK: - Filename-numeric ordering
+
+    /// Extract the first numeric run from each filename and use it as
+    /// the sort key. Returns only files whose filename contains at
+    /// least one digit run — others are absent and the caller's
+    /// sentinel sort places them last (FILE_ID lex).
+    ///
+    /// Examples:
+    ///   IMG_3079.MP4   → 3079
+    ///   01_clip.mov    → 1
+    ///   clip-12-b.jpg  → 12
+    ///   PXL_20240615.. → 20240615
+    ///   abcdef.mov     → absent (no digits)
+    ///
+    /// This rescues archives where the uploader either kept the
+    /// camera's sequential naming or prefixed files manually (the
+    /// recommended workaround for batched-iOS-upload archives — see
+    /// USER_MANUAL.md). It does NOT help GUID-named (e.g. iOS Photos
+    /// asset UUID) filenames, where there's nothing numeric to use.
+    nonisolated static func filenameNumericOrdering(
+        _ items: [(fileID: String, name: String)]
+    ) -> [String: OrderKey] {
+        var out: [String: OrderKey] = [:]
+        out.reserveCapacity(items.count)
+        for (fileID, name) in items {
+            guard let n = firstNumericRun(in: name) else { continue }
+            out[fileID] = OrderKey(ts: Double(n), idx: 0, fileID: fileID)
+        }
+        return out
+    }
+
+    /// First run of consecutive ASCII digits in `s`, parsed as Int.
+    /// Returns nil when the string contains no digits. Stops at the
+    /// first non-digit after the first digit, so `IMG_3079` returns
+    /// 3079, not 30793079-ish accidental concatenation.
+    nonisolated private static func firstNumericRun(in s: String) -> Int64? {
+        var current = ""
+        for ch in s {
+            if ch.isASCII, ch.isNumber {
+                current.append(ch)
+            } else if !current.isEmpty {
+                break
+            }
+        }
+        return current.isEmpty ? nil : Int64(current)
     }
 
     /// Write a human-readable summary of the reorg into
@@ -452,6 +546,15 @@ enum FileOrganizer {
         }
         if result.collisions > 0 {
             lines.append("Filename collisions auto-renamed with file-ID suffix: \(result.collisions)")
+        }
+        if result.batchedMessages > 0 {
+            lines.append("")
+            lines.append("⚠ Batched-upload warning")
+            lines.append("\(result.batchedFileCount) file(s) across \(result.batchedMessages) message(s) were posted in a single Slack message each.")
+            lines.append("Slack records NO selection-order signal for batched uploads — the order")
+            lines.append("within each batch reflects upload-completion order (race conditions on")
+            lines.append("the iOS Slack client), not the order the files were selected.")
+            lines.append("Confirm order with the original poster before treating the prefix as truth.")
         }
         if !result.errors.isEmpty {
             lines.append("")

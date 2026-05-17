@@ -128,6 +128,16 @@ final class ArchiveRunner: ObservableObject {
                                   : "")
                                + orderingNote)
                 }
+                // Batched-iOS-upload warning. When a single Slack
+                // message carries ≥2 files, the order within that
+                // batch is not real post-order — Slack iOS uploads
+                // in parallel and the data carries no selection
+                // signal. Flag it so the user doesn't trust the
+                // prefix blindly. See USER_MANUAL.md.
+                if result.batchedMessages > 0,
+                   request.fileOrdering == .messageTimestamp {
+                    appendLine("[organize] ⚠ \(result.batchedFileCount) file(s) across \(result.batchedMessages) batched message(s) — Slack does not record selection order for files posted together. Confirm order with the original poster before editing.")
+                }
                 if !result.errors.isEmpty {
                     appendLine("[organize] \(result.errors.count) error(s) — see organize-log.txt")
                 }
