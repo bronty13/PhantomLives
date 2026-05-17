@@ -1,0 +1,16 @@
+# Xcode-generated
+*.xcodeproj/
+xcuserdata/
+DerivedData/
+
+# Build artifacts
+PurpleReel.app/
+build/
+.build/
+
+# macOS noise
+.DS_Store
+
+# SwiftPM
+Package.resolved
+.swiftpm/
