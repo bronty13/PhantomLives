@@ -308,7 +308,10 @@ struct NoteLogField: View {
         // disk is only pruned when no other row references the same
         // sha256 (handled inside AttachmentService.deleteRow).
         for ref in entry.attachments {
-            try? AttachmentService.deleteRow(id: ref.id)
+            // Best-effort: the row may already be gone (manual cleanup,
+            // earlier delete that failed mid-batch). The cascading FK
+            // on parent_object_id will scoop up any stragglers later.
+            _ = try? AttachmentService.deleteRow(id: ref.id)
         }
         var current = value
         current.entries.removeAll { $0.id == entry.id }

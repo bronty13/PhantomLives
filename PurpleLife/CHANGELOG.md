@@ -4,6 +4,26 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-16 — Resilience Tier 5: plaintext snapshot export
+
+The "I want to be able to read this in 30 years on hardware Apple doesn't sell yet" escape hatch from the 2026-05-15 resilience design. Settings → Backup gains an **Export plaintext snapshot…** button that walks every record + attachment, decrypts everything, and writes a self-describing file the user can stash anywhere — encrypted thumb drive, 1Password attachment, paper printout. The schema travels in the same file so every field meaning is interpretable without the running app.
+
+**Two output formats, user picks per-export.** Both produce a self-describing `purplelife.snapshot.v1` envelope.
+
+- **ZIP with sidecars** — `snapshot.json` + `attachments/<sha256>.<ext>` + a human-readable `README.txt`, bundled in a ZIP. Attachments stay binary-clean and open per-file after unzip; better for "I want to grep this with normal tools" use.
+- **Single JSON (base64 attachments)** — one file with attachment bytes inlined as base64 under each metadata entry. Round-trip-verifiable (sha256 over the base64-decoded bytes matches the metadata sha256). Better for "drop into 1Password as a single attachment" use.
+
+**Vault — require unlock first.** If the Vault is locked when the user opens the export sheet, Vault types are excluded by force (sheet says: cancel, unlock via ⇧⌘V, retry). If the Vault is unlocked, a checkbox controls inclusion and defaults to *off* — the user has to opt in to plaintext Vault data leaving the app. Matches the 2026-05-14 Vault contract: private data never leaves the app implicitly.
+
+- **`Services/PlaintextSnapshotService.swift`** (new) — pure assembly + writers. `buildEnvelope(schema:settings:excludingTypeIds:inlineAttachmentBytes:)` is the unit-testable seam; `export(to:format:schema:settings:excludingTypeIds:)` is the entry point the UI calls. Envelope shape: `format`, `formatDescription`, `exportedAt`, `appVersion`, `appBuildNumber`, `counts`, `notes`, `schema {types, tags}`, `records[]` (each with decoded `fields` dictionary + per-attachment metadata). Attachments in single-JSON mode carry `bytesBase64` + an optional `readError` so a decryption failure produces preserved metadata with a typed explanation rather than fake bytes.
+- **`AnyCodable`** — local helper at the bottom of the same file that round-trips the heterogeneous `fields_json` dictionary through `JSONEncoder` without per-key type-erasure. Detects `Bool`-wrapped-as-`NSNumber` via `CFBooleanGetTypeID` (the trap `JSONSerialization` would otherwise lay) and writes whole-number doubles as `Int64` so a `rating: 4` doesn't become `4.0` on disk.
+- **`Views/Settings/BackupSettingsTab.swift`** — new "Plaintext snapshot" section above "Recent backups" with the button, a description, and async status messaging. A modal sheet collects format + Vault decision (with state-aware text for locked/unlocked Vault) then routes through `NSSavePanel`. Default filename `PurpleLife-plaintext-snapshot-<stamp>.<ext>` and default directory is `~/Downloads/PurpleLife/`.
+- **`Tests/.../PlaintextSnapshotTests.swift`** (new) — 6 tests covering: envelope format tag + counts + schema embedding; record `fields` round-trip as a JSON object (not stringified); Vault exclusion drops both records and type definitions; ZIP shape (snapshot.json + attachments/ + README.txt, no bytes in manifest); single-JSON mode inlines bytes whose sha256 matches the metadata; filename convention.
+
+**Defers (per HANDOFF 2026-05-15).** Tier 3 (iCloud Keychain mirror) and Tier 4 (CloudKit private-zone wrapped DEK) remain on the deferred list — Tier 2's recovery key already covers correctness; 3 and 4 are convenience layers. With Tier 5 shipped, the resilience plan now stands at: Tier 0 (trap-prevention guards) + Tier 1 (Keychain fast-path) + Tier 2 (24-word recovery key) + Tier 5 (plaintext escape hatch), all in production.
+
+293/293 tests green (+6 PlaintextSnapshotTests).
+
 ### 2026-05-16 — Sidebar action buttons, Vault auto-lock, Lock Application
 
 User asked for four things in one round:

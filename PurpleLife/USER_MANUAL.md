@@ -344,6 +344,21 @@ Themes can travel as `.purplelifetheme.json` files.
 
 Backups run automatically on every launch, **debounced** to skip if the last successful backup is under 5 minutes old. Failures are logged via `NSLog` and never block app launch.
 
+#### Plaintext snapshot
+
+The button **Export plaintext snapshot…** writes your entire dataset, decrypted, to a single file you can store anywhere — encrypted thumb drive, 1Password attachment, paper printout for the most important records. The schema travels in the same file so a future reader can interpret every field meaning without the running app. This is the "I want to be able to read this in 30 years on hardware Apple doesn't sell yet" escape hatch.
+
+**Two formats — pick one per export:**
+
+- **ZIP with attachments** — bundles `snapshot.json` (schema + records + tag vocabulary) + `attachments/<sha256>.<ext>` (one decrypted file per unique attachment) + a `README.txt` that describes the format for a future reader.
+- **Single JSON (base64 attachments)** — one self-contained `.json` file with attachment bytes inlined as base64. Bigger on disk, but truly one file.
+
+**Vault behavior.** If the Vault is **locked** when you start the export, Vault types are excluded by default and a hint tells you to unlock (⇧⌘V) first if you want them included. If the Vault is **unlocked**, the sheet shows an "Include Vault data" checkbox that defaults to *off* — you have to opt in. Vault data never leaves the app implicitly.
+
+**Reading it later.** Open `snapshot.json` in any JSON viewer. Match each record's field keys against `schema.types[].fields[]`. Select / multi-select values are option ids — resolve them via `fields[].options[]`. Link values are record ids that point at other records in the same `records[]` array. Tag ids resolve via `schema.tags[]`. Attachment files live in the `attachments/` sidecar directory (ZIP mode) or inline as base64 (single-JSON mode); their `sha256` field is computed over the plaintext bytes so future-reader integrity checks are mechanical.
+
+**What it doesn't do.** No automatic schedule — every snapshot is a deliberate, opt-in action. No password protection on the file itself; that's why the confirmation flow calls out that the result is plaintext on disk. Store the file somewhere safe.
+
 ### Import
 
 - **Smart Import — Weight (free-form text)** — opens a wizard. Paste any text containing dates and weights — CSV / spreadsheet copy-paste / plain English (`On 3/5/2024 I weighed 182 pounds`) all work. Five date formats recognized: ISO-8601, `MM/DD/YYYY`, `MM-DD-YYYY`, `Jan 15 2024`, `January 15, 2024`. Weight extraction uses plausibility bounds (50-700 lb) and lookarounds so year digits aren't matched as weights. Preview table per parsed row; rows that match an existing Weight day are flagged "dup" and pre-deselected. Imports use `source: "Imported"` for filter consistency.

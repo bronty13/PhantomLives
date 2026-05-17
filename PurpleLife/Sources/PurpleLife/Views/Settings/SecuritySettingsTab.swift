@@ -337,11 +337,19 @@ struct SecuritySettingsTab: View {
 
     private func performReset() {
         store.resetAndWipe()
-        // Re-bootstrap into Keychain-managed mode so the next slice's
-        // SQLCipher path always has a DEK to open against. Without this,
-        // post-reset state is .notSetup and would block all reads.
-        try? store.setupKeychainManaged()
-        statusMessage = "Reset complete. A fresh Keychain-managed key was generated."
+        // Re-bootstrap into Keychain-managed mode so the SQLCipher path
+        // always has a DEK to open against. Without this, post-reset
+        // state is .notSetup and would block all reads. The generated
+        // 24-word recovery key is the Phase B contract: the user needs
+        // to save it before resuming the app, so route it through
+        // AppState the same way the first-launch path does.
+        do {
+            let phrase = try store.setupKeychainManaged()
+            appState.pendingRecoveryKey = phrase
+            statusMessage = "Reset complete. Save your new recovery key to finish."
+        } catch {
+            statusMessage = "Reset complete, but couldn't generate a new key: \(error.localizedDescription)"
+        }
         errorMessage = nil
     }
 

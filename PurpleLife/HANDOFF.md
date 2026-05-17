@@ -12,6 +12,26 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-16 — Resilience Tier 5 shipped: plaintext snapshot export (locked design points)
+
+Implementation of the deferred Tier 5 from the 2026-05-15 plan. The locked design points, in case a future revisit wants to know what was deliberate vs. accidental:
+
+- **Self-describing format, always.** `purplelife.snapshot.v1` envelope carries the schema (types + tags) alongside the records, so a 30-years-from-now reader has both the data and its dictionary in the same artifact. No external manifest, no version-aware decoder needed — `formatDescription` and `notes` inside the file explain the shape to a human.
+
+- **Two output formats, user picks per-export, not a single canonical one.** ZIP-with-sidecars (`snapshot.json` + `attachments/<sha256>.<ext>` + `README.txt`) vs single-JSON (attachments inlined as base64). The use cases for each are genuinely different — "I want to grep these files" vs "drop the whole thing into a 1Password attachment" — and locking one out forecloses the wrong half each time. The format chooser lives in the export-confirmation sheet, not in a preferences pane: every export is a deliberate decision and the choice belongs at the moment of choice.
+
+- **Vault gating: require explicit unlock, default opt-out when unlocked.** The Vault was designed so private data never leaves the app implicitly (2026-05-14 decisions). Plaintext export is the most "leaves the app" operation in the codebase, so the safer-by-default UX wins: locked Vault → force exclusion + show the unlock-and-retry path; unlocked Vault → checkbox defaults to *off* (user has to deliberately tick to include). Both paths produce a complete snapshot of the *non-Vault* data, so the user isn't forced to choose between "all-or-nothing" and "unlock first."
+
+- **Round-trip-verifiable.** In single-JSON mode, the sha256 over the base64-decoded attachment bytes must equal the metadata `sha256` field. Locked by `testSingleJSONInlinesAttachmentBytesMatchingSha256`. This is the future-reader's integrity check: a partial export, a base64 decode bug, or a CryptoKit unwrap failure are all detectable from inside the file without any external comparison.
+
+- **Decryption failures surface as typed `readError`, never as fake bytes.** In single-JSON mode an attachment that can't be decrypted (corrupted file, missing on disk, keystore mismatch) preserves all its metadata but leaves `bytesBase64 = nil` and writes the underlying error message into `readError`. A future reader sees what's missing instead of inferring corruption. In ZIP mode the equivalent is "the sidecar file just isn't there" — `NSLog`'d, the rest of the export proceeds.
+
+- **`AnyCodable` trap in `PlaintextSnapshotService.swift`.** `JSONSerialization` hands back `NSNumber` for both Bools and numerics; the naive `as? Bool / as? Int / as? Double` chain on a `Bool`-wrapped `NSNumber` matches `Int` (because Bool's ObjC encoding bridges to 0/1), and a record's `boolean` field would silently write as `0`/`1` in the snapshot. The fix uses `CFGetTypeID(v) == CFBooleanGetTypeID()` to detect Bool wrappers and encode as JSON `true`/`false`. Documented inline; do not "simplify" the type-check chain.
+
+- **Two test-design lessons banked.** (1) `SchemaRegistry` seeds the built-in catalog when its file is missing, so any test that points a registry at a fresh temp file gets the full seed set on top of whatever it `upsertType`s. Assert on type-id *membership*, not on exact `schema.types.count`. (2) `defaultFilename` is `@MainActor` (via the enum's `@MainActor` annotation); test methods that call it need `@MainActor` too — Swift 6 catches this at compile time as "main actor-isolated static method in a synchronous nonisolated context."
+
+- **Status of the resilience tier list.** Tier 0 (trap-prevention guards) + Tier 1 (Keychain fast-path) + Tier 2 (24-word recovery key) + **Tier 5 (plaintext snapshot)** all in production. Tier 3 (iCloud Keychain mirror) + Tier 4 (CloudKit wrapped DEK) remain deferred — both are convenience layers; correctness is covered by 0 + 1 + 2.
+
 ### 2026-05-15 — Data-loss incident #4 + multi-tier resilience plan (locked: Tier 0 + Tier 2 ship before any further feature work)
 
 Today's lockout was the **fourth** data-loss event in PurpleLife's short history. The pattern across all four is identical and is now formally locked as the project's #1 quality concern: **the SQLCipher DEK is a single point of failure**, and every recovery path the app currently has — auto-backup ZIPs, schema-sync, the recovery screen — depends on that same DEK still being readable. No DEK, no data; no exceptions.

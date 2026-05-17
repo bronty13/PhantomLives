@@ -23,6 +23,14 @@ struct BackupSettingsTab: View {
     @State private var testResults: [URL: BackupService.VerifyResult] = [:]
     @State private var testErrors: [URL: String] = [:]
 
+    // Plaintext snapshot (Tier 5).
+    @State private var showingSnapshotSheet = false
+    @State private var snapshotFormat: PlaintextSnapshotService.Format = .zipWithSidecars
+    @State private var snapshotIncludeVault: Bool = false
+    @State private var snapshotRunning = false
+    @State private var snapshotMessage: String?
+    @State private var snapshotError: String?
+
     var body: some View {
         Form {
             Section("Auto-backup") {
@@ -61,6 +69,25 @@ struct BackupSettingsTab: View {
                 }
             }
 
+            Section("Plaintext snapshot") {
+                Text("Export your entire dataset, decrypted, to a single file you can store anywhere — encrypted thumb drive, 1Password attachment, paper printout for the most important records. The schema is bundled in the same file so a future reader can interpret every field.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Button("Export plaintext snapshot…") { openSnapshotSheet() }
+                        .disabled(snapshotRunning)
+                    if snapshotRunning {
+                        ProgressView().controlSize(.small)
+                    }
+                    if let msg = snapshotMessage {
+                        Text(msg).font(.caption).foregroundStyle(.secondary)
+                    }
+                    if let err = snapshotError {
+                        Text(err).font(.caption).foregroundStyle(.red)
+                    }
+                }
+            }
+
             Section("Recent backups") {
                 if backups.isEmpty {
                     Text("No backups yet.").font(.callout).foregroundStyle(.secondary)
@@ -94,6 +121,137 @@ struct BackupSettingsTab: View {
         } message: {
             Text("Replaces the current database with the contents of the selected backup. A safety backup of the current state is written first.")
         }
+        .sheet(isPresented: $showingSnapshotSheet) {
+            snapshotSheet
+        }
+    }
+
+    // MARK: - Plaintext snapshot sheet
+
+    private var snapshotSheet: some View {
+        let totalTypes = appState.schema.types.count
+        let vaultTypeCount = appState.schema.vaultTypeIds.count
+        let includedTypeCount = snapshotIncludeVault ? totalTypes : (totalTypes - vaultTypeCount)
+        return VStack(alignment: .leading, spacing: 16) {
+            Text("Export plaintext snapshot")
+                .font(.title3.weight(.semibold))
+            Text("Writes a single file with your decrypted data plus the schema needed to interpret it. The result is **plaintext on disk** — store somewhere safe.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            Picker("Format", selection: $snapshotFormat) {
+                Text(PlaintextSnapshotService.Format.zipWithSidecars.menuLabel)
+                    .tag(PlaintextSnapshotService.Format.zipWithSidecars)
+                Text(PlaintextSnapshotService.Format.singleJSON.menuLabel)
+                    .tag(PlaintextSnapshotService.Format.singleJSON)
+            }
+            .pickerStyle(.radioGroup)
+
+            Group {
+                if snapshotFormat == .zipWithSidecars {
+                    Text("Bundles snapshot.json + attachments/<sha>.<ext> + README.txt inside a ZIP. Attachments stay binary-clean and openable per-file after unzip.")
+                } else {
+                    Text("Single self-contained JSON file with attachment bytes inlined as base64. Bigger on disk; portable into anything that can hold a long string.")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Vault data")
+                    .font(.headline)
+                if vaultTypeCount == 0 {
+                    Text("No Vault types — nothing extra to include.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if appState.vaultRevealed {
+                    Toggle("Include Vault data (\(vaultTypeCount) type\(vaultTypeCount == 1 ? "" : "s"))",
+                           isOn: $snapshotIncludeVault)
+                    Text(snapshotIncludeVault
+                         ? "Vault records will be written to the file in plaintext alongside everything else."
+                         : "Vault types will be excluded; the rest of your data still exports.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("The Vault is locked. \(vaultTypeCount) Vault type\(vaultTypeCount == 1 ? "" : "s") will be excluded from the snapshot.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("To include Vault data, cancel here, choose **View → Show Vault…** (⇧⌘V), then run the export again.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Divider()
+
+            Text("Will export \(includedTypeCount) of \(totalTypes) type\(totalTypes == 1 ? "" : "s").")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack {
+                Spacer()
+                Button("Cancel") { showingSnapshotSheet = false }
+                    .keyboardShortcut(.cancelAction)
+                Button("Choose location & export…") { runSnapshot() }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(snapshotRunning)
+            }
+        }
+        .padding(24)
+        .frame(width: 480)
+    }
+
+    private func openSnapshotSheet() {
+        snapshotMessage = nil
+        snapshotError = nil
+        // Default to including Vault only if the Vault is actually
+        // unlocked — otherwise we'd silently change the user's choice
+        // in their absence. When locked, exclusion is forced.
+        snapshotIncludeVault = appState.vaultRevealed
+        showingSnapshotSheet = true
+    }
+
+    private func runSnapshot() {
+        let format = snapshotFormat
+        let excludingTypeIds: Set<String> = {
+            // Locked Vault → always exclude. Unlocked Vault honors the
+            // checkbox. This matches the Vault contract from the
+            // 2026-05-14 design: Vault data never leaves the app
+            // implicitly.
+            if !appState.vaultRevealed { return appState.schema.vaultTypeIds }
+            return snapshotIncludeVault ? [] : appState.schema.vaultTypeIds
+        }()
+
+        let panel = NSSavePanel()
+        panel.title = "Export plaintext snapshot"
+        panel.message = "The file written here will contain your data in plaintext. Pick a safe location."
+        panel.nameFieldStringValue = PlaintextSnapshotService.defaultFilename(format: format)
+        panel.directoryURL = appState.settingsStore.resolvedExportDirectory
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+
+        showingSnapshotSheet = false
+        snapshotRunning = true
+        snapshotError = nil
+        snapshotMessage = nil
+
+        do {
+            let result = try PlaintextSnapshotService.export(
+                to: destination,
+                format: format,
+                schema: appState.schema,
+                settings: appState.settings,
+                excludingTypeIds: excludingTypeIds
+            )
+            snapshotMessage = "Wrote \(result.recordCount) record\(result.recordCount == 1 ? "" : "s"), \(result.attachmentCount) attachment\(result.attachmentCount == 1 ? "" : "s") → \(result.outputURL.lastPathComponent)"
+            NSWorkspace.shared.activateFileViewerSelecting([result.outputURL])
+        } catch {
+            snapshotError = error.localizedDescription
+        }
+        snapshotRunning = false
     }
 
     private func backupRow(_ entry: (url: URL, modified: Date, size: Int)) -> some View {

@@ -463,27 +463,33 @@ final class AppState: ObservableObject {
             }
 
             vaultMenuTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-                guard let self else { return }
+                // Timer fires on the main RunLoop, so the body is
+                // already main-actor in practice — `assumeIsolated`
+                // tells Swift 6 the same. Same pattern as
+                // `ObjectEngine.registerUndo`.
+                MainActor.assumeIsolated {
+                    guard let self else { return }
 
-                // Vault-menu modifier polling.
-                let mods = NSEvent.modifierFlags
-                let held = mods.contains(.shift) && mods.contains(.option)
-                if self.vaultMenuVisible != held {
-                    self.vaultMenuVisible = held
-                }
+                    // Vault-menu modifier polling.
+                    let mods = NSEvent.modifierFlags
+                    let held = mods.contains(.shift) && mods.contains(.option)
+                    if self.vaultMenuVisible != held {
+                        self.vaultMenuVisible = held
+                    }
 
-                // Vault auto-lock for inactivity. Only fires when the
-                // vault is currently revealed and the user has
-                // configured a non-zero threshold. The Date comparison
-                // is on wall-clock time (Date()), not monotonic — fine
-                // here; we want "wall-clock seconds since the user
-                // last touched anything," and a sleep/wake cycle that
-                // bumps the clock forward should still lock the vault.
-                let threshold = self.settings.vaultAutoLockAfterSeconds
-                if self.vaultRevealed && threshold > 0 {
-                    let idle = Date().timeIntervalSince(self.lastActivityAt)
-                    if idle >= Double(threshold) {
-                        self.lockVault()
+                    // Vault auto-lock for inactivity. Only fires when the
+                    // vault is currently revealed and the user has
+                    // configured a non-zero threshold. The Date comparison
+                    // is on wall-clock time (Date()), not monotonic — fine
+                    // here; we want "wall-clock seconds since the user
+                    // last touched anything," and a sleep/wake cycle that
+                    // bumps the clock forward should still lock the vault.
+                    let threshold = self.settings.vaultAutoLockAfterSeconds
+                    if self.vaultRevealed && threshold > 0 {
+                        let idle = Date().timeIntervalSince(self.lastActivityAt)
+                        if idle >= Double(threshold) {
+                            self.lockVault()
+                        }
                     }
                 }
             }
