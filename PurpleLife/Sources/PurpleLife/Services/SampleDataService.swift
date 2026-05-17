@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import GRDB
 
@@ -408,9 +409,20 @@ enum SampleDataService {
             .init(title: "Welcome to PurpleLife",       daysAgo: 45, category: "Journal",   body: "Trying this Life OS thing. Hobbies + planner + reading log + weight + photography + WoW all in one place. Worth a quarter to evaluate."),
         ]
         return notes.enumerated().map { (i, n) in
+            // Generate a real RTF blob so the Notes editor's load path
+            // (which decodes the rtf field, not the plain mirror)
+            // renders the body. Plain-only-no-rtf bodies tripped a bug
+            // where the editor showed blank then autosaved an empty
+            // value back over the plain string — see the editor fix
+            // in NoteEditorView.loadIfNeeded for the load-side guard.
+            let attr = NSAttributedString(string: n.body)
+            let rtf  = (try? attr.data(
+                from: NSRange(location: 0, length: attr.length),
+                documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
+            )) ?? Data()
             let body: [String: Any] = [
                 "plain": n.body,
-                "rtf":   ""
+                "rtf":   rtf.base64EncodedString()
             ]
             let fields: [String: Any] = [
                 "date":     dayStartString(daysAgo: n.daysAgo, from: now),

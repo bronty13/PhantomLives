@@ -94,7 +94,20 @@ struct NoteEditorView: View {
         }
         if let dict = fields[bodyKey] as? [String: Any] {
             let value = RichTextValue.from(jsonDictionary: dict)
-            attributed = NSAttributedString.fromRTFData(value.rtf)
+            let decoded = NSAttributedString.fromRTFData(value.rtf)
+            if decoded.length == 0 && !value.plain.isEmpty {
+                // Plain-only body (no RTF mirror) — happens for imported
+                // / sample / migrated data that lacks a real RTF blob.
+                // Materialize from the plain string so the editor
+                // shows the content; the next save upgrades the
+                // on-disk representation to rtf + plain. Without this
+                // fallback the editor renders blank and the
+                // load-induced onChange triggers an autosave that
+                // would wipe the original plain text.
+                attributed = NSAttributedString(string: value.plain)
+            } else {
+                attributed = decoded
+            }
         } else {
             attributed = NSAttributedString()
         }

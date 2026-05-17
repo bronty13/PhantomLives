@@ -4,6 +4,20 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-16 — Fix: Notes editor wiping plain-only bodies on view; sample-data Notes ship real RTF
+
+Two-layer bug surfaced by today's sample-data work. Sample notes wrote `{"rtf": "", "plain": "..."}`. The Notes editor's load path (`NoteEditorView.loadIfNeeded`) decodes the `rtf` field — not the `plain` mirror — so the editor pane rendered blank. Then SwiftUI's `.onChange(of: attributed)` fires **asynchronously after** `loadIfNeeded` sets `dirty = false`, which calls `markDirty()` (setting `dirty = true` and scheduling a 1.2s autosave). The autosave reads the empty editor and writes `{"rtf": "", "plain": ""}` back to the record — silently wiping the original plain text. Symptom: clicking a sample Note showed an empty editor, the list-row preview disappeared 1.2s later, and the body was permanently lost.
+
+**Fix has two layers — both ship together to defend the same property from two angles.**
+
+- **`Views/Notes/NoteEditorView.swift`** — `loadIfNeeded` now falls back to `NSAttributedString(string: value.plain)` when the decoded RTF is empty but the plain mirror isn't. The editor renders the content; the next autosave upgrades the on-disk shape from plain-only to plain + RTF. No data loss even if the latent SwiftUI-onChange-after-load timing recurs.
+- **`Services/SampleDataService.swift`** — `makeNotes` now generates a real RTF blob (`NSAttributedString(string:).data(from:documentAttributes:)`) and stores it base64-encoded in the body's `rtf` field. The editor's load path sees a valid RTF and renders correctly without needing the fallback.
+- **`Tests/.../SampleDataServiceTests.swift`** — new `testSampleNotesHaveDecodableRTFBodies` regression: walks every sample Note, decodes the body through `RichTextValue.from(jsonDictionary:)`, asserts both `plain` and `rtf` are non-empty, and asserts the RTF-decoded `NSAttributedString.string` equals the plain mirror. Locks the contract so a future "let's simplify the body" change can't silently re-introduce plain-only data.
+
+If you already had sample data populated from before this fix, the wiped notes are gone (the autosave already committed the empty values). Re-run **Settings → Backup → Populate sample data** to refresh the dataset; the new RTF-bearing version replaces the wiped records in place.
+
+319/319 tests green (+1 regression).
+
 ### 2026-05-16 — CloudKit attachment sync (CKAsset)
 
 Multi-Mac attachment content sync. Until today CloudKit only carried the sha256 *reference* in each record's `fields_json`; the binary content stayed local-only. Adding an attachment on Mac A and waiting for Mac B did nothing for the file bytes. Now they sync.

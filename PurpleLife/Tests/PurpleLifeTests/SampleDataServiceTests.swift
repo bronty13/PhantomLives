@@ -152,6 +152,35 @@ final class SampleDataServiceTests: XCTestCase {
     }
 
     @MainActor
+    func testSampleNotesHaveDecodableRTFBodies() throws {
+        // Regression for the 2026-05-16 bug where sample-data notes
+        // wrote `{"rtf": "", "plain": "..."}`. The Notes editor decodes
+        // the rtf field on load (not plain), saw empty, then autosaved
+        // an empty value back over the plain string. Wiping the
+        // user's preview. The fix writes a real RTF blob — assert it
+        // decodes back to an NSAttributedString whose plain content
+        // matches the metadata `plain` field, and that the rtf field
+        // round-trips through RichTextValue.
+        let records = SampleDataService.makeRecords(now: Date())
+        let noteRecords = records.filter { $0.typeId == "Note" }
+        XCTAssertGreaterThan(noteRecords.count, 0)
+        for note in noteRecords {
+            guard let body = note.fields()["body"] as? [String: Any] else {
+                XCTFail("Note \(note.id) missing body dict")
+                continue
+            }
+            let value = RichTextValue.from(jsonDictionary: body)
+            XCTAssertFalse(value.plain.isEmpty,
+                           "Sample note plain must not be empty (note \(note.id))")
+            XCTAssertFalse(value.rtf.isEmpty,
+                           "Sample note rtf must not be empty (note \(note.id)) — otherwise the editor load path renders blank and triggers a data-loss autosave")
+            let decoded = NSAttributedString.fromRTFData(value.rtf)
+            XCTAssertEqual(decoded.string, value.plain,
+                           "RTF-decoded text must match the plain mirror (note \(note.id))")
+        }
+    }
+
+    @MainActor
     func testStableIdShape() {
         XCTAssertEqual(SampleDataService.sampleId(for: "Book", index: 3),
                        "\(SampleDataService.idPrefix)Book-3")
