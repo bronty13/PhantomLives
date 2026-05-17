@@ -569,11 +569,19 @@ final class CloudKitSyncService: ObservableObject {
         }
     }
 
-    /// Mac B side: a remote PurpleAttachmentRef just arrived. Materialize
-    /// the local Attachment row, fetch + decrypt the asset, and write
-    /// the plaintext bytes through AttachmentService so the result is
-    /// at-rest-wrapped under Mac B's local DEK. Idempotent: if the row
-    /// already exists and the file is already on disk, we no-op.
+    /// Mac B side: a remote PurpleAttachmentRef just arrived.
+    /// **Metadata-only**: we materialize the local `Attachment` row
+    /// here but DON'T decrypt the asset bytes — that's deferred to
+    /// `fetchAttachmentAssetIfMissing(...)`, which runs on demand the
+    /// first time something tries to read the file (image view
+    /// rendering, NoteLog opening a thumbnail, the user clicking an
+    /// attachment chip). This is the lazy-fetch design: a user who
+    /// joins a new Mac with multi-GB of historical attachments only
+    /// downloads the bytes for files they actually look at, rather
+    /// than blocking the bootstrap pull on the entire history.
+    ///
+    /// Idempotent: re-pulls update the row in place (INSERT OR
+    /// REPLACE via Attachment.id primary key).
     private func applyRemoteAttachment(_ ck: CKRecord) async {
         guard
             let parentObjectId = ck["parent_object_id"] as? String,
@@ -582,21 +590,12 @@ final class CloudKitSyncService: ObservableObject {
             let filename       = ck["filename"]         as? String,
             let mimeType       = ck["mime_type"]        as? String,
             let sizeBox        = ck["size_bytes"]       as? NSNumber,
-            let createdAt      = ck["created_at"]       as? String,
-            let wrapKey        = ck.encryptedValues["wrap_key"] as? Data,
-            let nonce          = ck.encryptedValues["nonce"]    as? Data,
-            let asset          = ck["asset"] as? CKAsset,
-            let assetURL       = asset.fileURL
+            let createdAt      = ck["created_at"]       as? String
         else {
             NSLog("PurpleLife: applyRemoteAttachment skipped — malformed record \(ck.recordID.recordName)")
             return
         }
 
-        // Insert / update the Attachment row first so the user's UI
-        // sees the metadata even if the asset write below fails (the
-        // file fetch retries via the recovery poll). One INSERT OR
-        // REPLACE — Attachment.id is the primary key, so re-pulls
-        // update in place.
         let row = Attachment(
             id: ck.recordID.recordName,
             parentObjectId: parentObjectId,
@@ -615,25 +614,71 @@ final class CloudKitSyncService: ObservableObject {
             NSLog("PurpleLife: applyRemoteAttachment row save failed — \(error.localizedDescription)")
             return
         }
+        // Asset bytes are NOT touched here — the lazy-fetch trigger
+        // in AttachmentService pulls them on first access.
+    }
 
-        // Skip the asset write if we already have the bytes locally
-        // (another peer's attachment, or our own re-pull). The sha256
-        // is over plaintext, so if the file exists at the expected
-        // path the contents already match.
-        if AttachmentService.fileURL(forSha256: sha256) != nil {
-            return
+    /// On-demand attachment fetch. Called from
+    /// `AttachmentService.requestLazyFetchIfNeeded` when a read path
+    /// finds a row with no local file. Refetches the
+    /// PurpleAttachmentRef CKRecord, reads the CKAsset, decrypts with
+    /// the wrap_key + nonce in encryptedValues, and routes the
+    /// plaintext through `AttachmentService.writeIncomingPlaintext` —
+    /// same shape applyRemoteAttachment used to do inline before the
+    /// lazy split.
+    ///
+    /// Returns silently on any failure. The caller treats absence of
+    /// the file as "still missing"; the user will see the placeholder
+    /// stay until they retry (e.g. switch records and back, click the
+    /// attachment again). Posts `objectsChangedRemotelyNotification`
+    /// on success so views re-render and pick up the new file.
+    func fetchAttachmentAssetIfMissing(attachmentId: String, sha256: String) async {
+        guard isEnabled, let database else { return }
+        // Filesystem-level check (deliberately doesn't go through
+        // AttachmentService.fileURL — that path re-triggers the lazy
+        // fetch and would loop). The attachments directory is
+        // content-addressed by plaintext sha; if a file exists for
+        // this sha at any extension, we already have the bytes.
+        let dir = AttachmentService.directory
+        if let entries = try? FileManager.default.contentsOfDirectory(at: dir,
+                                                                       includingPropertiesForKeys: nil) {
+            for entry in entries where entry.lastPathComponent.hasPrefix(sha256) {
+                return
+            }
         }
 
-        // Decrypt + re-wrap under Mac B's local DEK + drop into the
-        // attachments directory. Failures here are non-fatal — the
-        // metadata row is in place; a future pull or a manual sync
-        // can retry.
         do {
+            let recordID = CKRecord.ID(recordName: attachmentId, zoneID: zoneID)
+            let ck = try await database.record(for: recordID)
+            guard
+                let asset    = ck["asset"] as? CKAsset,
+                let assetURL = asset.fileURL,
+                let wrapKey  = ck.encryptedValues["wrap_key"] as? Data,
+                let nonce    = ck.encryptedValues["nonce"]    as? Data,
+                let filename = ck["filename"] as? String
+            else {
+                NSLog("PurpleLife: lazy attachment fetch \(sha256) — malformed record \(attachmentId)")
+                return
+            }
             let ciphertext = try Data(contentsOf: assetURL)
             let plaintext  = try AttachmentCrypto.open(ciphertext: ciphertext, key: wrapKey, nonce: nonce)
             try AttachmentService.writeIncomingPlaintext(plaintext, sha256: sha256, filename: filename)
+            // Tell the UI a new attachment is now available locally
+            // so any view that rendered a placeholder re-renders with
+            // the actual content. The notification is the same one
+            // used by the bulk pull, so existing observers handle it
+            // without further wiring.
+            NotificationCenter.default.post(
+                name: AppState.objectsChangedRemotelyNotification,
+                object: nil
+            )
+        } catch let error as CKError where error.code == .unknownItem {
+            // CKRecord deleted server-side after the row metadata
+            // arrived. Leave the metadata in place (the user may have
+            // peers still holding the bytes); just log and bail.
+            NSLog("PurpleLife: lazy attachment fetch \(sha256) — CKRecord \(attachmentId) gone")
         } catch {
-            NSLog("PurpleLife: applyRemoteAttachment open/write failed for \(sha256) — \(error.localizedDescription)")
+            NSLog("PurpleLife: lazy attachment fetch \(sha256) failed — \(error.localizedDescription)")
         }
     }
 

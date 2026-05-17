@@ -42,6 +42,17 @@ enum AttachmentService {
     /// sync still work (the push/delete becomes a no-op).
     static var sync: CloudKitSyncService?
 
+    /// Lazy-fetch dedupe. When a read path finds a row with no local
+    /// file, it kicks off a CloudKit fetch via the sync service; the
+    /// fetch is fire-and-forget and posts
+    /// `objectsChangedRemotelyNotification` when done. Concurrent
+    /// callers asking for the same sha (e.g. a record list rendering
+    /// 12 photos that share the same shoot cover thumbnail) must NOT
+    /// all enqueue duplicate fetches. The in-flight set guards that.
+    /// `AttachmentService` is `@MainActor`, so all access to this
+    /// set is already serialized via the main actor.
+    private static var inFlightFetches: Set<String> = []
+
     enum AttachError: Error, LocalizedError {
         case fileNotFound(URL)
         case copyFailed(String)
@@ -119,6 +130,16 @@ enum AttachmentService {
     /// row for that sha256 exists or the file has been pruned. The URL
     /// points at ciphertext when at-rest encryption is in force — use
     /// `read(sha256:)` for content, `image(forSha256:)` for images.
+    ///
+    /// **Lazy fetch.** If a row exists but the file is missing locally
+    /// (the normal state for an attachment that just synced in from a
+    /// peer Mac via CloudKit), this method kicks off a background
+    /// fetch through `CloudKitSyncService.fetchAttachmentAssetIfMissing`
+    /// and returns `nil` for THIS call. When the fetch completes and
+    /// writes the file, `objectsChangedRemotelyNotification` fires
+    /// and the calling view re-renders, at which point this method
+    /// returns the URL. Concurrent calls for the same sha are
+    /// deduplicated via the in-flight set.
     static func fileURL(forSha256 hash: String) -> URL? {
         do {
             let row = try DatabaseService.shared.dbPool.read { db in
@@ -126,10 +147,32 @@ enum AttachmentService {
             }
             guard let row else { return nil }
             let url = directory.appendingPathComponent(filename(for: hash, ext: pathExt(of: row.filename)))
-            return FileManager.default.fileExists(atPath: url.path) ? url : nil
+            if FileManager.default.fileExists(atPath: url.path) {
+                return url
+            }
+            requestLazyFetchIfNeeded(attachmentId: row.id, sha256: hash)
+            return nil
         } catch {
             NSLog("PurpleLife: AttachmentService.fileURL failed — \(error.localizedDescription)")
             return nil
+        }
+    }
+
+    /// Fire-and-forget kickoff of a CloudKit fetch for the asset bytes
+    /// of an attachment whose row exists locally but whose file
+    /// doesn't. Deduplicates concurrent requests by sha. Caller (the
+    /// `fileURL` / `read` / `image` accessors) returns `nil` for the
+    /// current call; the view re-renders on
+    /// `objectsChangedRemotelyNotification` after the fetch completes.
+    private static func requestLazyFetchIfNeeded(attachmentId: String, sha256: String) {
+        guard let sync else { return }
+        if inFlightFetches.contains(sha256) { return }
+        inFlightFetches.insert(sha256)
+        Task { @MainActor in
+            await sync.fetchAttachmentAssetIfMissing(
+                attachmentId: attachmentId, sha256: sha256
+            )
+            inFlightFetches.remove(sha256)
         }
     }
 

@@ -99,6 +99,73 @@ final class AttachmentServiceTests: XCTestCase {
         XCTAssertTrue(listAfter.isEmpty, "Cascading FK should drop the attachment row")
     }
 
+    /// Lazy-fetch contract: an Attachment row that exists locally but
+    /// whose file content hasn't been downloaded yet (the post-sync,
+    /// pre-first-access state) must return nil from fileURL / read /
+    /// image instead of throwing or returning garbage. The lazy fetch
+    /// path kicks off in the background; the caller sees nil for now
+    /// and re-renders on objectsChangedRemotelyNotification later.
+    @MainActor
+    func testFileURLReturnsNilWhenRowExistsButFileMissing() throws {
+        try wipe()
+        let parent = try ObjectEngine.create(typeId: "Book", fields: ["title": "Synced"])
+        // Insert an Attachment row WITHOUT writing the local file — this
+        // is exactly the state CloudKitSyncService.applyRemoteAttachment
+        // leaves us in after a metadata-only pull.
+        let fakeSha = "deadbeef" + String(repeating: "0", count: 56)
+        let row = Attachment(
+            id: UUID().uuidString,
+            parentObjectId: parent.id,
+            fieldKey: "cover",
+            sha256: fakeSha,
+            filename: "remote.jpg",
+            mimeType: "image/jpeg",
+            sizeBytes: 12345,
+            createdAt: ISO8601DateFormatter().string(from: Date())
+        )
+        try DatabaseService.shared.dbPool.write { db in
+            try row.insert(db)
+        }
+        // No file on disk → fileURL returns nil (the lazy-fetch trigger
+        // fires under the hood, but with no CloudKitSyncService wired
+        // in the test environment it's a no-op).
+        XCTAssertNil(AttachmentService.fileURL(forSha256: fakeSha),
+                     "fileURL must return nil when the row exists but the file isn't local yet")
+        // The data-reading paths must also return nil rather than
+        // crashing or throwing on the missing file.
+        XCTAssertNil(try AttachmentService.read(sha256: fakeSha))
+        XCTAssertNil(AttachmentService.image(forSha256: fakeSha))
+    }
+
+    /// Repeated calls for the same missing sha shouldn't enqueue
+    /// duplicate fetches. The in-flight set is private, but we can
+    /// observe the property indirectly: calling fileURL three times
+    /// in a row must each return nil without crashing or leaking
+    /// concurrent state (e.g. the test running other assertions
+    /// shouldn't see weird side effects).
+    @MainActor
+    func testRepeatedMissingFileLookupsAreIdempotent() throws {
+        try wipe()
+        let parent = try ObjectEngine.create(typeId: "Book", fields: ["title": "Synced"])
+        let fakeSha = "feedface" + String(repeating: "0", count: 56)
+        let row = Attachment(
+            id: UUID().uuidString,
+            parentObjectId: parent.id,
+            fieldKey: "cover",
+            sha256: fakeSha,
+            filename: "remote.jpg",
+            mimeType: "image/jpeg",
+            sizeBytes: 12345,
+            createdAt: ISO8601DateFormatter().string(from: Date())
+        )
+        try DatabaseService.shared.dbPool.write { db in
+            try row.insert(db)
+        }
+        for _ in 0..<3 {
+            XCTAssertNil(AttachmentService.fileURL(forSha256: fakeSha))
+        }
+    }
+
     @MainActor
     func testSha256Determinism() {
         let s1 = AttachmentService.sha256(data: "abc".data(using: .utf8)!)
