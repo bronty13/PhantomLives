@@ -100,11 +100,20 @@ struct NoteEditorView: View {
                 // / sample / migrated data that lacks a real RTF blob.
                 // Materialize from the plain string so the editor
                 // shows the content; the next save upgrades the
-                // on-disk representation to rtf + plain. Without this
-                // fallback the editor renders blank and the
-                // load-induced onChange triggers an autosave that
-                // would wipe the original plain text.
-                attributed = NSAttributedString(string: value.plain)
+                // on-disk representation to rtf + plain.
+                //
+                // **MUST set explicit foregroundColor + font.** Without
+                // attributes, NSTextView renders the string in its
+                // default text color — black — invisible against the
+                // dark-mode editor background. The two attributes
+                // mirror the editor's own `clearFormatting` defaults
+                // so a plain-text-recovered note renders identically
+                // to a freshly-typed one.
+                let defaultAttrs: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.systemFont(ofSize: 13),
+                    .foregroundColor: NSColor.labelColor
+                ]
+                attributed = NSAttributedString(string: value.plain, attributes: defaultAttrs)
             } else {
                 attributed = decoded
             }
