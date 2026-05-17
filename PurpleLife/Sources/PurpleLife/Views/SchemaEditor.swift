@@ -175,7 +175,21 @@ struct SchemaEditorScreen: View {
             }
             Divider()
             Button(type.isVault ? "Move out of Vault" : "Move to Vault") {
-                appState.schema.setVault(type.id, isVault: !type.isVault)
+                let movingIntoVault = !type.isVault
+                appState.schema.setVault(type.id, isVault: movingIntoVault)
+                // If the main window is currently displaying this type
+                // and we just moved it into the Vault while the Vault
+                // is locked, the sidebar will hide the type but
+                // selectedTypeId would still point at it — same broken
+                // shape lockVault snaps out of. Clear selection so the
+                // user lands on Today when they switch back to the
+                // main window.
+                if movingIntoVault,
+                   !appState.vaultRevealed,
+                   appState.selectedTypeId == type.id {
+                    appState.selectedTypeId = nil
+                    appState.showTodayInDetail = true
+                }
             }
             if type.builtIn {
                 Button(appState.schema.hiddenBuiltInIds.contains(type.id) ? "Show in sidebar" : "Hide from sidebar") {

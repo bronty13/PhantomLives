@@ -27,6 +27,14 @@ targets:
     platform: macOS
     sources:
       - path: Sources/PurpleLife
+      # Bundle the security whitepaper into Contents/Resources so the
+      # in-app SecurityDocView can render it via Bundle.main lookup.
+      # Keeps the file in Docs/ as the canonical authoring location.
+      - path: Docs/SECURITY.md
+        type: file
+        buildPhase:
+          copyFiles:
+            destination: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.bronty13.PurpleLife

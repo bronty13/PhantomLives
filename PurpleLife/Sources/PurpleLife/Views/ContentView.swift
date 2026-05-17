@@ -78,6 +78,18 @@ struct ContentView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .alert(
+            "Vault unavailable on this Mac",
+            isPresented: Binding(
+                get: { appState.vaultUnavailableMessage != nil },
+                set: { if !$0 { appState.vaultUnavailableMessage = nil } }
+            ),
+            presenting: appState.vaultUnavailableMessage
+        ) { _ in
+            Button("OK", role: .cancel) { appState.vaultUnavailableMessage = nil }
+        } message: { message in
+            Text(message)
+        }
         .onAppear {
             // Wire SwiftUI's main-window undo manager into the engines
             // so ⌘Z routes to the same instance the mutation methods

@@ -4,6 +4,36 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-16 — In-app SECURITY whitepaper viewer + no-iCloud Vault banner + Move-to-Vault selection snap-back + flaky-BIP39 test fix
+
+Three small-but-visible polish items from the deferred list, plus a flaky-test fix discovered in the process.
+
+**In-app SECURITY.md viewer (HANDOFF 2026-05-11 deferred).**
+
+- **`Docs/SECURITY.md`** is now bundled into the app's `Contents/Resources/` via a new `project.yml` source entry (`Docs/SECURITY.md` with `type: file` + `copyFiles destination: resources`). Keeps the file in `Docs/` as the authoring location while making it readable at runtime via `Bundle.main.url(forResource:withExtension:)`.
+- **`Views/SecurityDocView.swift`** (new) — small SwiftUI view with a hand-rolled markdown block parser tuned to what SECURITY.md actually uses: H1/H2/H3 headings (rendered with real `.title` / `.title2` / `.title3` fonts so the structure is visible), bullet + dashed list items, numbered items, fenced code blocks, horizontal rules, paragraphs with inline `AttributedString(markdown:)` for bold / italic / inline code / links. Avoids pulling in a real markdown library for one document.
+- **`Views/SchemaEditor.swift`** + **`App/PurpleLifeApp.swift`** — new Help menu item "Security & Privacy whitepaper…" (replaces SwiftUI's default Help entry, which pointed at a nonexistent docset). Opens its own `Window(id: "security-doc")` so reading doesn't block the main UI.
+- **`Tests/.../SecurityDocViewTests.swift`** (new) — 7 tests covering each block type the parser handles, plus a bundle-loaded end-to-end parse of the actual SECURITY.md file (skips gracefully if run outside the host bundle).
+
+**No-iCloud Mac Vault banner.**
+
+The `.deviceOwnerAuthentication` policy fails closed on Macs with neither biometrics nor a login password configured (rare, but possible on fresh local accounts). Previously the "Show Vault…" menu item silently did nothing in that state; only an `NSLog` told the developer why.
+
+- **`App/AppState.swift`** — new `@Published var vaultUnavailableMessage: String?`. `revealVault()` sets it on the `.unavailable` path with a friendly explanation pointing the user at System Settings → Touch ID & Password. The `.failed` / `.userCancelled` paths remain silent — those are the user's choice.
+- **`Views/ContentView.swift`** — `.alert(...)` bound to `vaultUnavailableMessage`. Dismissal clears the property.
+
+**Move-to-Vault selection snap-back.**
+
+`SchemaRegistry.setVault(_:isVault:)` doesn't (and shouldn't) know about `AppState.selectedTypeId`. When a user in Schema Editor moves the currently-selected type into the Vault while the Vault is locked, the sidebar correctly hides the type, but the main window's selection still pointed at it — so switching back to the main window showed a Vault type's records pane even while the Vault was "locked." Same shape `lockVault()` snaps out of.
+
+- **`Views/SchemaEditor.swift`** — after the `setVault` call, if we just moved the type into the Vault AND the Vault isn't currently revealed AND `appState.selectedTypeId == type.id`, clear the selection and flip `showTodayInDetail` so the user lands on Today on next main-window focus. Symmetric to the existing `lockVault()` behavior.
+
+**Flaky-test fix in `RecoveryKeyTests`.**
+
+`test_decodeRejectsChecksumMismatchForSingleWordTypo` swapped one BIP39 word for a deterministically-picked replacement and asserted the checksum trips. BIP39's checksum is 8 bits, so a random one-word swap leaves the checksum coincidentally-valid ~1/256 of the time — making the test fail on roughly 0.4% of runs. The invariant we actually care about ("checksum catches single-word typos in expectation") is now expressed correctly: "*some* replacement in the 2048-word list must trip the checksum." The test scans the entire wordlist deterministically; the only way it can fail is if NO substitution trips the checksum (essentially impossible: would require 2047 SHA-256 outputs to all coincidentally match).
+
+300/300 tests green (was 293; +7 SecurityDocViewTests).
+
 ### 2026-05-16 — Resilience Tier 5: plaintext snapshot export
 
 The "I want to be able to read this in 30 years on hardware Apple doesn't sell yet" escape hatch from the 2026-05-15 resilience design. Settings → Backup gains an **Export plaintext snapshot…** button that walks every record + attachment, decrypts everything, and writes a self-describing file the user can stash anywhere — encrypted thumb drive, 1Password attachment, paper printout. The schema travels in the same file so every field meaning is interpretable without the running app.

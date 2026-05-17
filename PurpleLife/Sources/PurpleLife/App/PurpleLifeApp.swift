@@ -37,6 +37,9 @@ struct PurpleLifeApp: App {
                 LockAppMenuItem()
                     .environmentObject(appState)
             }
+            CommandGroup(replacing: .help) {
+                SecurityDocMenuItem()
+            }
         }
 
         // The schema editor lives in its own window so it can be left open
@@ -49,6 +52,15 @@ struct PurpleLifeApp: App {
                 .frame(minWidth: 900, minHeight: 560)
         }
         .defaultSize(width: 1100, height: 700)
+
+        // In-app SECURITY.md viewer. Reachable from Help → Security &
+        // Privacy whitepaper. Bundle-loaded markdown rendered by a
+        // small hand-rolled block parser; see SecurityDocView.
+        Window("Security & Privacy", id: "security-doc") {
+            SecurityDocView()
+                .preferredColorScheme(appState.settings.appearance.colorScheme)
+        }
+        .defaultSize(width: 760, height: 720)
 
         // ⌘K Quick Switcher — small floating window for global search.
         Window("Quick switcher", id: "quick-switcher") {
@@ -201,6 +213,21 @@ private struct VaultMenuItem: View {
             }
             .keyboardShortcut("v", modifiers: [.command, .shift])
             .hidden()
+        }
+    }
+}
+
+/// Help → Security & Privacy whitepaper. Replaces SwiftUI's default
+/// Help item (which just shows "<app name> Help" pointing at a
+/// nonexistent docset) with the link to the in-app SECURITY.md
+/// viewer. The viewer opens in its own window so reading the
+/// whitepaper doesn't block the main UI.
+private struct SecurityDocMenuItem: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Security & Privacy whitepaper…") {
+            openWindow(id: "security-doc")
         }
     }
 }

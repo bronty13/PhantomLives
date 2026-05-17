@@ -60,6 +60,15 @@ final class AppState: ObservableObject {
     /// recovery design — the same threat model as a Bitcoin seed.
     @Published var pendingRecoveryKey: [String]? = nil
 
+    /// Non-nil when `VaultAuthService.authenticate` returned
+    /// `.unavailable` — the rare case where neither biometrics nor a
+    /// device passcode are configured on this Mac. Without surfacing
+    /// it the View → Show Vault menu item looks like it silently does
+    /// nothing on a bare local account. `ContentView` observes and
+    /// shows an alert with system-settings guidance. The user
+    /// dismisses with OK; we nil it back out.
+    @Published var vaultUnavailableMessage: String? = nil
+
     enum DBHealth: Equatable {
         case ok
         /// The string is the underlying error description, surfaced to
@@ -615,9 +624,11 @@ final class AppState: ObservableObject {
             vaultRevealed = true
         } else if case .unavailable(let detail) = result {
             // No biometrics + no passcode on this Mac. The Vault is
-            // unprotectable; log so a developer can see why the menu
-            // item looks like it did nothing, and leave the flag off.
+            // unprotectable; surface the state so the user understands
+            // why Show Vault appeared to do nothing. ContentView
+            // observes `vaultUnavailableMessage` and shows an alert.
             NSLog("PurpleLife: Vault unlock unavailable — \(detail)")
+            vaultUnavailableMessage = "The Vault needs Touch ID or a Mac login password to unlock, and this Mac has neither configured. Set a login password in System Settings → Touch ID & Password, then try again.\n\n(System detail: \(detail))"
         }
         // .userCancelled / .failed: silent — the user chose to back out
         // (or got the password wrong); they'll re-invoke if they want.
