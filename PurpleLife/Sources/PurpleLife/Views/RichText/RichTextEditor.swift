@@ -115,17 +115,16 @@ struct RichTextRepresentable: NSViewRepresentable {
         tv.isAutomaticSpellingCorrectionEnabled = false
         tv.allowsUndo = true
         tv.font = NSFont.systemFont(ofSize: 13)
+        tv.textColor = NSColor.labelColor
+        tv.insertionPointColor = NSColor.labelColor
         tv.textContainerInset = NSSize(width: 8, height: 8)
-        // Dark-mode adaptation for RTF content. When AppKit encodes an
-        // NSAttributedString to RTF it bakes a color table; an attributed
-        // string with no explicit color round-trips through RTF as
-        // explicit-black. Without this property, that explicit black
-        // stays black even in dark mode — invisible against the editor's
-        // dark background. With it set to true, the framework remaps
-        // pure black ↔ white at render time based on the current
-        // appearance; user-chosen non-grayscale colors are unaffected.
-        // Apple-recommended fix for "RTF document opens with black
-        // text in dark mode."
+        // Dark-mode adaptation, second prong. The attributed string is
+        // also post-processed in `fromRTFData → adaptingDefaultBlackToLabelColor`
+        // so even text with explicit pure-black foregroundColor becomes
+        // dynamic labelColor. usesAdaptiveColorMappingForDarkAppearance
+        // is set here too as a documented Apple fallback, but inside
+        // our SwiftUI host it proves unreliable on its own; the
+        // per-attribute rewrite in fromRTFData is the load-bearing fix.
         tv.usesAdaptiveColorMappingForDarkAppearance = true
         tv.textStorage?.setAttributedString(attributed)
         // Snapshot the attachments that were in the initial storage so
@@ -1180,19 +1179,92 @@ extension NSAttributedString {
     /// Decode an RTF or RTFD payload back into an attributed string. Tries
     /// RTFD first (it tolerates plain-RTF input on macOS) so embedded images
     /// survive. Returns an empty attributed string if `data` is nil/empty.
+    ///
+    /// **Color adaptation.** When AppKit encodes an `NSAttributedString`
+    /// to RTF it bakes a color table even for source strings that had no
+    /// explicit foreground color, producing decoded text with explicit
+    /// pure-black foreground attributes. In dark mode that renders
+    /// invisible against the editor's dark background.
+    /// `NSTextView.usesAdaptiveColorMappingForDarkAppearance` is the
+    /// documented Apple fix but proves unreliable inside our SwiftUI
+    /// host (it's set in `RichTextEditor.makeNSView` already, belt-and-
+    /// suspenders). The reliable fix is to rewrite the decoded
+    /// attributed string here: if EVERY foreground color in the string
+    /// is pure black (the AppKit-encoder default), replace them with
+    /// `NSColor.labelColor` — dynamic, adapts to appearance. Intentional
+    /// user-chosen colors (red, blue, etc.) survive untouched because
+    /// the "all-black" check fails the moment any non-black run exists.
     static func fromRTFData(_ data: Data?) -> NSAttributedString {
         guard let data, !data.isEmpty else { return NSAttributedString() }
+        let decoded: NSAttributedString?
         if let s = try? NSAttributedString(
             data: data,
             options: [.documentType: NSAttributedString.DocumentType.rtfd],
             documentAttributes: nil
-        ) { return s }
-        if let s = try? NSAttributedString(
+        ) {
+            decoded = s
+        } else if let s = try? NSAttributedString(
             data: data,
             options: [.documentType: NSAttributedString.DocumentType.rtf],
             documentAttributes: nil
-        ) { return s }
-        return NSAttributedString()
+        ) {
+            decoded = s
+        } else {
+            decoded = nil
+        }
+        guard let s = decoded else { return NSAttributedString() }
+        return s.adaptingDefaultBlackToLabelColor()
+    }
+
+    /// Two-pronged color adaptation for the dark-mode-invisible-text bug:
+    ///
+    /// 1. Any range that has NO explicit `foregroundColor` attribute
+    ///    gets `NSColor.labelColor` added. Without this, NSTextView is
+    ///    supposed to fall back to its `textColor` (which should be
+    ///    dynamic `NSColor.textColor`) but inside our SwiftUI host that
+    ///    fallback empirically renders as static black on dark
+    ///    backgrounds. Adding the dynamic color explicitly bypasses the
+    ///    NSTextView default.
+    ///
+    /// 2. Any range that DOES have an explicit foreground color which is
+    ///    pure-black (the AppKit RTF-encoder default when source text
+    ///    had an explicit `NSColor.black`) also gets replaced with
+    ///    `NSColor.labelColor`. Intentional user-chosen non-black colors
+    ///    survive untouched.
+    func adaptingDefaultBlackToLabelColor() -> NSAttributedString {
+        guard length > 0 else { return self }
+        let fullRange = NSRange(location: 0, length: length)
+        let mutable = NSMutableAttributedString(attributedString: self)
+        var cursor = 0
+        // Pass 1: ensure every character has SOME foregroundColor —
+        // ranges with no attribute get labelColor.
+        mutable.enumerateAttribute(.foregroundColor, in: fullRange, options: []) { value, range, _ in
+            if value == nil {
+                mutable.addAttribute(.foregroundColor, value: NSColor.labelColor, range: range)
+            }
+            cursor = range.location + range.length
+        }
+        // Cover any trailing range the enumeration didn't visit.
+        if cursor < length {
+            mutable.addAttribute(.foregroundColor,
+                                 value: NSColor.labelColor,
+                                 range: NSRange(location: cursor, length: length - cursor))
+        }
+        // Pass 2: rewrite explicit pure-black to labelColor.
+        mutable.enumerateAttribute(.foregroundColor, in: fullRange, options: []) { value, range, _ in
+            guard let color = value as? NSColor else { return }
+            // labelColor is already dynamic — don't recurse-recolor.
+            if color === NSColor.labelColor { return }
+            let rgb = color.usingColorSpace(.sRGB)
+            let r = rgb?.redComponent ?? 1
+            let g = rgb?.greenComponent ?? 1
+            let b = rgb?.blueComponent ?? 1
+            if r <= 0.02 && g <= 0.02 && b <= 0.02 {
+                mutable.removeAttribute(.foregroundColor, range: range)
+                mutable.addAttribute(.foregroundColor, value: NSColor.labelColor, range: range)
+            }
+        }
+        return NSAttributedString(attributedString: mutable)
     }
 
     /// Count of `NSTextAttachment` instances in the string.
