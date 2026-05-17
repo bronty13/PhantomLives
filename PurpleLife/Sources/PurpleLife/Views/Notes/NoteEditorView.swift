@@ -21,6 +21,17 @@ struct NoteEditorView: View {
     @State private var loadedId: String = ""
     @State private var saveError: String?
 
+    // Snapshots of the values written by `loadIfNeeded`. Used by
+    // `markDirty` and `saveNow` to distinguish real user edits from
+    // SwiftUI's async `.onChange` firings triggered by the load-time
+    // assignments. Without this guard, every note view triggers an
+    // unnecessary 1.2s-debounced autosave whose only effect is a
+    // round-trip ObjectEngine.update + sync push + undo registration
+    // for content that didn't actually change.
+    @State private var loadedTitle: String = ""
+    @State private var loadedDate: Date = .distantPast
+    @State private var loadedAttributed: NSAttributedString = NSAttributedString()
+
     private var primaryKey: String { type.primaryFieldKey ?? "title" }
     private var dateKey: String   { type.calendarDateKey ?? "date" }
     private var categoryKey: String? {
@@ -120,13 +131,39 @@ struct NoteEditorView: View {
         } else {
             attributed = NSAttributedString()
         }
+        // Capture the loaded values for the noop-edit guard in
+        // markDirty / saveNow. MUST come AFTER all the assignments
+        // above so the snapshot matches what SwiftUI will see when
+        // it fires the load-induced .onChange handlers.
+        loadedTitle = title
+        loadedDate = noteDate
+        loadedAttributed = attributed
+
         dirty = false
         saveError = nil
         sizeError = nil
     }
 
+    /// Have any of the editable values diverged from the snapshot
+    /// captured at load? When SwiftUI fires `.onChange` handlers for
+    /// the assignments inside `loadIfNeeded` (which happens async on
+    /// the next body re-eval), the current values still match what
+    /// we just loaded; this returns `false` and `markDirty` bails.
+    /// When the user actually types, the textview's textDidChange
+    /// writes back a different attributed string (or title/date
+    /// diverges), this returns `true` and the autosave proceeds.
+    private var hasUnsavedEdits: Bool {
+        if title != loadedTitle { return true }
+        if noteDate != loadedDate { return true }
+        if !attributed.isEqual(to: loadedAttributed) { return true }
+        return false
+    }
+
     private func markDirty() {
         guard loadedId == note.id else { return }
+        // Suppress load-induced .onChange firings: if the current
+        // values match the loaded snapshot, this isn't a real edit.
+        guard hasUnsavedEdits else { return }
         dirty = true
         // Debounced autosave (1.2s after last edit).
         saveWork?.cancel()
@@ -147,6 +184,18 @@ struct NoteEditorView: View {
             live = NSAttributedString(attributedString: storage)
         } else {
             live = attributed
+        }
+
+        // Belt-and-suspenders against the same load-induced race:
+        // even if `dirty` got set, double-check that the live state
+        // actually differs from the loaded snapshot before writing.
+        // This protects against any future code path that flips
+        // `dirty` without going through `markDirty`'s guard.
+        if title == loadedTitle,
+           noteDate == loadedDate,
+           live.isEqual(to: loadedAttributed) {
+            dirty = false
+            return
         }
 
         let rtf = live.toRTFData() ?? Data()
