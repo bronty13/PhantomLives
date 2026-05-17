@@ -190,10 +190,16 @@ final class AppState: ObservableObject {
         guard let asset = selectedAsset, let id = asset.rowId else { return }
         aiSheetState = .transcribing(filename: asset.filename)
         aiStatus = "Loading MLX Whisper…"
+        // Honor user overrides from Settings → AI. Empty = defaults.
+        let scriptPathOverride = UserDefaults.standard.string(forKey: "whisperScriptPath")
+        let scriptPath = (scriptPathOverride?.isEmpty == false) ? scriptPathOverride : nil
+        let model = UserDefaults.standard.string(forKey: "whisperModel") ?? "turbo"
         Task {
             do {
                 let doc = try await WhisperService.transcribe(
-                    file: URL(fileURLWithPath: asset.path)
+                    file: URL(fileURLWithPath: asset.path),
+                    model: model,
+                    scriptPath: scriptPath
                 )
                 try await MainActor.run {
                     try db.saveTranscript(doc, assetId: id)
@@ -225,12 +231,14 @@ final class AppState: ObservableObject {
         guard let asset = selectedAsset, let id = asset.rowId else { return }
         aiSheetState = .describing(filename: asset.filename)
         aiStatus = "Calling local LLM…"
+        let model = UserDefaults.standard.string(forKey: "ollamaModel") ?? OllamaService.defaultModel
         Task {
             do {
                 let snippet = transcript?.fullText
                 let description = try await OllamaService.describe(
                     filename: asset.filename,
-                    transcriptSnippet: snippet
+                    transcriptSnippet: snippet,
+                    model: model
                 )
                 await MainActor.run {
                     let starsNow = rating?.stars ?? 0

@@ -67,33 +67,58 @@ enum VerifiedBackupService {
                 )
                 await MainActor.run { item.sourceHash = sourceHash }
 
-                // Copy + verify against each destination
-                var allDestinationsVerified = true
-                for dst in job.destinations {
-                    await MainActor.run { item.state = .copying }
-                    let dstURL = dst.appendingPathComponent(item.relativePath)
-                    try FileManager.default.createDirectory(
-                        at: dstURL.deletingLastPathComponent(),
-                        withIntermediateDirectories: true
-                    )
-                    if FileManager.default.fileExists(atPath: dstURL.path) {
-                        try FileManager.default.removeItem(at: dstURL)
+                // Copy + verify against each destination in PARALLEL.
+                // For most workloads each destination is on a different
+                // physical drive — serializing forces total throughput
+                // to drive_slow_min, whereas parallel saturates them
+                // independently and roughly halves wall time for 2
+                // destinations. Source-hash work happened once above.
+                await MainActor.run { item.state = .copying }
+                let results = await withTaskGroup(
+                    of: (URL, Result<String, Error>).self
+                ) { group in
+                    for dst in job.destinations {
+                        group.addTask {
+                            do {
+                                let dstURL = dst.appendingPathComponent(item.relativePath)
+                                try FileManager.default.createDirectory(
+                                    at: dstURL.deletingLastPathComponent(),
+                                    withIntermediateDirectories: true
+                                )
+                                if FileManager.default.fileExists(atPath: dstURL.path) {
+                                    try FileManager.default.removeItem(at: dstURL)
+                                }
+                                try FileManager.default.copyItem(at: item.sourceURL, to: dstURL)
+                                let hash = try await hashAsync(
+                                    url: dstURL, algorithm: job.algorithm,
+                                    onProgress: { _ in }
+                                )
+                                return (dst, .success(hash))
+                            } catch {
+                                return (dst, .failure(error))
+                            }
+                        }
                     }
-                    try FileManager.default.copyItem(at: item.sourceURL, to: dstURL)
+                    var collected: [(URL, Result<String, Error>)] = []
+                    for await r in group { collected.append(r) }
+                    return collected
+                }
 
-                    await MainActor.run { item.state = .verifying(destination: dst) }
-                    let dstHash = try await hashAsync(
-                        url: dstURL, algorithm: job.algorithm, onProgress: { _ in }
-                    )
-                    await MainActor.run { item.destinationHashes[dst] = dstHash }
-
-                    if dstHash != sourceHash {
+                var allDestinationsVerified = true
+                var perFileError: String?
+                for (dst, result) in results {
+                    switch result {
+                    case .success(let dstHash):
+                        await MainActor.run { item.destinationHashes[dst] = dstHash }
+                        if dstHash != sourceHash {
+                            allDestinationsVerified = false
+                            perFileError = "Hash mismatch at \(dst.lastPathComponent)"
+                        } else {
+                            await MainActor.run { item.state = .verifying(destination: dst) }
+                        }
+                    case .failure(let err):
                         allDestinationsVerified = false
-                        throw NSError(
-                            domain: "PurpleReel.Backup", code: 1,
-                            userInfo: [NSLocalizedDescriptionKey:
-                                "Hash mismatch at \(dst.lastPathComponent)"]
-                        )
+                        perFileError = err.localizedDescription
                     }
                 }
 
@@ -113,6 +138,12 @@ enum VerifiedBackupService {
                     }
                     succeeded += 1
                     await MainActor.run { item.state = .done }
+                } else {
+                    throw NSError(
+                        domain: "PurpleReel.Backup", code: 1,
+                        userInfo: [NSLocalizedDescriptionKey:
+                            perFileError ?? "verification failed"]
+                    )
                 }
             } catch {
                 failed += 1

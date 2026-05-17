@@ -309,7 +309,8 @@ private struct SFTPFileRow: View {
     private var stateLabel: String {
         switch item.state {
         case .queued: return "queued"
-        case .uploading: return "uploading"
+        case .uploading(let p):
+            return p > 0 ? String(format: "%.0f%%", p * 100) : "uploading"
         case .done: return "done"
         case .failed(let msg): return msg
         }

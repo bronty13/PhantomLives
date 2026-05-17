@@ -41,6 +41,14 @@ final class TranscodeJob: ObservableObject, Identifiable {
         state = .running
         progress = 0
 
+        // ffmpeg-routed presets go through a separate pipeline: we
+        // shell out to /usr/bin/env ffmpeg with the recipe's argument
+        // template, substituting {IN} / {OUT}.
+        if preset.isFFmpeg {
+            await runFFmpeg()
+            return
+        }
+
         let asset = AVURLAsset(url: source)
 
         // Some presets are codec-restricted (H.264 / HEVC) and need
@@ -108,6 +116,106 @@ final class TranscodeJob: ObservableObject, Identifiable {
         case "mov": return .mov
         default: return .mov
         }
+    }
+
+    /// ffmpeg shell-out path for Phase-2 codecs (DNxHR, Cineform,
+    /// MXF rewrap). Parses ffmpeg's `time=HH:MM:SS.ss` lines from
+    /// stderr to drive the progress bar.
+    private func runFFmpeg() async {
+        guard let recipe = preset.ffmpegArgs else {
+            state = .failed("Preset has no ffmpeg recipe"); return
+        }
+        guard let ffmpeg = findFFmpegExecutable() else {
+            state = .failed(
+                "ffmpeg not found. Install with `brew install ffmpeg` and rerun."
+            )
+            return
+        }
+
+        try? FileManager.default.removeItem(at: outputURL)
+        try? FileManager.default.createDirectory(
+            at: outputURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+
+        let args = recipe.map { arg in
+            arg.replacingOccurrences(of: "{IN}", with: source.path)
+               .replacingOccurrences(of: "{OUT}", with: outputURL.path)
+        }
+
+        // Probe input duration so the `time=` parser can produce
+        // a 0…1 progress fraction.
+        let sourceDuration = CMTimeGetSeconds(
+            (try? await AVURLAsset(url: source).load(.duration)) ?? .zero
+        )
+        let totalSeconds = max(0.1, sourceDuration.isFinite ? sourceDuration : 0)
+
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: ffmpeg)
+        task.arguments = args
+        let pipe = Pipe()
+        task.standardError = pipe   // ffmpeg writes progress to stderr
+        task.standardOutput = Pipe()  // drop stdout
+
+        do { try task.run() } catch {
+            state = .failed("Could not launch ffmpeg: \(error.localizedDescription)")
+            return
+        }
+
+        let handle = pipe.fileHandleForReading
+        let durSeconds = totalSeconds
+        handle.readabilityHandler = { [weak self] fh in
+            let data = fh.availableData
+            if data.isEmpty {
+                fh.readabilityHandler = nil
+                return
+            }
+            guard let chunk = String(data: data, encoding: .utf8) else { return }
+            // ffmpeg progress lines look like:
+            //   frame= 1234 fps=… time=00:00:42.50 bitrate=… speed=…
+            // Parse the time= occurrences and update progress.
+            if let timeRange = chunk.range(of: "time=") {
+                let after = chunk[timeRange.upperBound...]
+                let token = after.prefix { !$0.isWhitespace }
+                if let secs = Self.parseFFmpegTime(String(token)) {
+                    let frac = min(1.0, secs / durSeconds)
+                    Task { @MainActor in self?.progress = frac }
+                }
+            }
+        }
+
+        // Wait off the main actor.
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            task.terminationHandler = { _ in cont.resume() }
+        }
+
+        if task.terminationStatus == 0 {
+            progress = 1.0
+            state = .finished(outputURL)
+        } else {
+            state = .failed("ffmpeg exited \(task.terminationStatus)")
+        }
+    }
+
+    private func findFFmpegExecutable() -> String? {
+        let candidates = [
+            "/opt/homebrew/bin/ffmpeg",
+            "/usr/local/bin/ffmpeg",
+            "/usr/bin/ffmpeg",
+        ]
+        return candidates.first { FileManager.default.fileExists(atPath: $0) }
+    }
+
+    /// Parse `HH:MM:SS.xx` → seconds. Returns nil on malformed input.
+    /// Called from the ffmpeg-stderr readability handler (background
+    /// queue), so it must NOT be main-actor isolated.
+    nonisolated static func parseFFmpegTime(_ s: String) -> Double? {
+        let parts = s.split(separator: ":")
+        guard parts.count == 3 else { return nil }
+        guard let h = Double(parts[0]),
+              let m = Double(parts[1]),
+              let sec = Double(parts[2]) else { return nil }
+        return h * 3600 + m * 60 + sec
     }
 }
 

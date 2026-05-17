@@ -100,6 +100,9 @@ Toolbar → **Transcode** → choose a preset:
 - **HEVC 1080p** (`.mp4`, hardware-accelerated on Apple Silicon)
 - **ProRes Proxy / 422** (`.mov`)
 - **Pass-through (rewrap)** — no re-encode
+- **DNxHR SQ / HQ** (`.mov`) — requires `brew install ffmpeg`
+- **Cineform** (`.mov`) — requires ffmpeg
+- **ProRes in MXF** — broadcast/archive rewrap, requires ffmpeg
 
 Output lands in `~/Downloads/PurpleReel/transcoded/`.
 
@@ -236,6 +239,28 @@ collides with another batch entry). Apply renames the files on
 disk and updates the catalog DB.
 
 ---
+
+## Settings → AI pane
+
+Open **Settings** (⌘,) and the **AI** tab to configure:
+
+- **transcribe.py path** — leave blank to use the sibling project
+  default, or pick an alternate script. A green ✓ confirms the
+  file is present.
+- **Whisper model** — turbo (default, fastest), tiny / base / small /
+  medium / large-v3 (slower, higher quality).
+- **Ollama model** — populated live from `localhost:11434/api/tags`.
+  If Ollama isn't running you'll see a red status line and can type
+  a model name manually for when it comes up.
+
+## Tests
+
+```sh
+./run-tests.sh
+```
+
+24 unit tests covering the writers, services, and the
+`WindowStateGuard` semantics. Adds ~2 seconds to a full CI loop.
 
 ## Where things land
 

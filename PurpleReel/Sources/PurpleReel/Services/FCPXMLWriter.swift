@@ -216,10 +216,15 @@ enum FCPXMLWriter {
     // MARK: - String helpers
 
     private static func fileURL(path: String) -> String {
+        // Percent-encode for URL validity, then XML-escape the result.
+        // `.urlPathAllowed` permits `&`, which is a percent-encoding-
+        // legal but XML-illegal character; without the second escape
+        // the emitted FCPXML fails to parse for any path containing
+        // an ampersand.
         let escapedPath = path.addingPercentEncoding(
             withAllowedCharacters: .urlPathAllowed
         ) ?? path
-        return "file://\(escapedPath)"
+        return escape("file://\(escapedPath)")
     }
 
     private static func formatKey(fps: Double, w: Int, h: Int) -> String {

@@ -91,4 +91,21 @@ enum OllamaService {
             return false
         }
     }
+
+    /// List of installed model names from `/api/tags`. Empty if Ollama
+    /// isn't running.
+    static func listInstalledModels() async -> [String] {
+        var req = URLRequest(url: URL(string: "http://localhost:11434/api/tags")!)
+        req.timeoutInterval = 2.0
+        req.httpMethod = "GET"
+        do {
+            let (data, response) = try await URLSession.shared.data(for: req)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return [] }
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let models = json["models"] as? [[String: Any]] else { return [] }
+            return models.compactMap { $0["name"] as? String }
+        } catch {
+            return []
+        }
+    }
 }

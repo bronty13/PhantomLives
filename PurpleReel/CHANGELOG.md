@@ -1,5 +1,36 @@
 # PurpleReel Changelog
 
+## Unreleased — Post-MVP follow-ups
+
+- **XCTest suite** (24 tests across 6 files, `./run-tests.sh`):
+  BatchRenameService token expansion, HashingService SHA-1/MD5/SHA-256
+  against canonical FIPS vectors + chunked-matches-single-shot,
+  MHLWriter XML well-formedness + escape, FCPXMLWriter
+  well-formedness + special-chars escape, WhisperService.parseSRT
+  shape coverage, WindowStateGuard preflight semantics.
+- **FCPXMLWriter bug fix** caught by the new tests: `file://` URLs
+  with `&` in the path were emitted unescaped, breaking XML parse.
+  `fileURL()` now percent-encodes and XML-escapes.
+- **Settings → AI pane** (`AISettingsView`): override `transcribe.py`
+  path, pick Whisper model (turbo/tiny/base/small/medium/large-v3),
+  pick Ollama model from live `/api/tags` query with reachability +
+  script-presence indicators. Persisted via `@AppStorage`.
+- **AI service overrides plumbed** through `transcribeSelected` and
+  `autoDescribeSelected` — settings take effect immediately.
+- **Per-byte SFTP progress**: streaming stdout parser hops on the
+  main actor as sftp emits `Uploading <path> to <name>` / `100% …`
+  lines, updating `SFTPFileItem.state` live. Raw log accumulates in
+  real time too instead of all-at-end.
+- **Parallel multi-destination backup**: when ≥2 destinations are
+  configured, copy + verify happen concurrently via `TaskGroup`.
+  Source hash still computed once per file. Wall time ~= slowest
+  destination (was: sum across destinations).
+- **Phase-2 codecs via ffmpeg** (4 new presets): DNxHR SQ, DNxHR HQ,
+  Cineform, and ProRes-in-MXF rewrap. `TranscodeJob.runFFmpeg`
+  shells out to `ffmpeg`, parses `time=HH:MM:SS.xx` from stderr to
+  drive the progress bar, surfaces a clear error if ffmpeg isn't
+  installed.
+
 ## Unreleased — Phase 11-12: polish + docs
 
 - **Audio waveform overlay**: `WaveformService` runs an AVAssetReader
