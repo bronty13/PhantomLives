@@ -107,6 +107,82 @@ final class RichTextColorAdaptationTests: XCTestCase {
         XCTAssertEqual(NSAttributedString.fromRTFData(Data()).length, 0)
     }
 
+    /// **Light-mode safety.** Simulates the legacy data shape: a string
+    /// where the foreground color is a *resolved* near-white RGB
+    /// (what `labelColor` would freeze to if encoded in dark mode).
+    /// After adaptation, the runs must be rewritten to labelColor so
+    /// switching to light mode renders them readable instead of
+    /// invisible.
+    func testNearWhiteGrayscaleRunIsRewrittenToLabelColor() throws {
+        let frozenWhite = NSColor(srgbRed: 0.95, green: 0.95, blue: 0.95, alpha: 1)
+        let source = NSAttributedString(string: "Dark-mode-saved text",
+                                        attributes: [.foregroundColor: frozenWhite])
+        let rtf = try XCTUnwrap(source.data(
+            from: NSRange(location: 0, length: source.length),
+            documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
+        ))
+        let decoded = NSAttributedString.fromRTFData(rtf)
+        let color = decoded.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        XCTAssertEqual(color, NSColor.labelColor,
+                       "Frozen near-white grayscale must be rewritten to labelColor — symmetric with the pure-black rewrite")
+    }
+
+    /// Encoding `toRTFData` on a string that carries `NSColor.labelColor`
+    /// (catalog / dynamic) must NOT freeze the color into the RTF.
+    /// Otherwise saving in one appearance bakes a static color that
+    /// breaks in the other appearance — the bug this whole work was
+    /// motivated by.
+    func testToRTFDataStripsCatalogColorBeforeEncoding() throws {
+        let source = NSAttributedString(string: "Dynamic text",
+                                        attributes: [.foregroundColor: NSColor.labelColor])
+        // Pre-condition: the catalog color is actually present.
+        let preColor = source.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        XCTAssertEqual(preColor?.type, .catalog)
+
+        guard let rtf = source.toRTFData() else {
+            return XCTFail("toRTFData returned nil")
+        }
+        let decoded = NSAttributedString.fromRTFData(rtf)
+        // After save + load: should be labelColor again (added by the
+        // adapter on decode), NOT a frozen static white/black RGB.
+        let post = decoded.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        XCTAssertEqual(post, NSColor.labelColor)
+        XCTAssertEqual(post?.type, .catalog,
+                       "Round-tripped color must end up dynamic again; encoding must not have frozen a static RGB")
+    }
+
+    /// User-picked non-grayscale colors survive the save round-trip
+    /// untouched — the stripping is scoped to catalog colors only.
+    func testUserComponentColorSurvivesSaveRoundTrip() throws {
+        // sRGB-explicit so the color is component-based, not catalog.
+        let userRed = NSColor(srgbRed: 0.85, green: 0.10, blue: 0.10, alpha: 1)
+        XCTAssertEqual(userRed.type, .componentBased,
+                       "Pre-condition: user-picked colors should be component-based")
+        let source = NSAttributedString(string: "Hello red",
+                                        attributes: [.foregroundColor: userRed])
+        guard let rtf = source.toRTFData() else { return XCTFail("nil rtf") }
+        let decoded = NSAttributedString.fromRTFData(rtf)
+        let post = (decoded.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor)?
+            .usingColorSpace(.sRGB)
+        XCTAssertNotNil(post)
+        XCTAssertGreaterThan(post?.redComponent ?? 0, 0.6)
+        XCTAssertLessThan(post?.greenComponent ?? 1, 0.4)
+    }
+
+    /// Pure-mid-gray that a user might intentionally pick (not catalog,
+    /// not near-extreme) must survive — symmetric guard against
+    /// over-aggressive rewriting.
+    func testIntentionalMidGrayIsLeftAlone() {
+        let userGray = NSColor(srgbRed: 0.5, green: 0.5, blue: 0.5, alpha: 1)
+        let source = NSAttributedString(string: "Hello mid gray",
+                                        attributes: [.foregroundColor: userGray])
+        let adapted = source.adaptingDefaultBlackToLabelColor()
+        let post = (adapted.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor)?
+            .usingColorSpace(.sRGB)
+        XCTAssertEqual(post?.redComponent ?? 0, 0.5, accuracy: 0.05,
+                       "Mid-gray is between the black and white thresholds — must not be touched")
+    }
+
     /// The `adaptingDefaultBlackToLabelColor` extension is idempotent —
     /// re-running on already-adapted content leaves it unchanged.
     func testAdaptationIsIdempotent() {

@@ -1156,24 +1156,55 @@ extension NSAttributedString {
     /// string contains any attachments (pasted screenshots, images) so the
     /// image bytes survive the round-trip; falls back to plain RTF otherwise
     /// to stay backward-compatible with attachment-free notes.
+    ///
+    /// **Strips dynamic system foreground colors before encoding.** RTF
+    /// stores foreground color as resolved RGB, so encoding a string
+    /// that carries `NSColor.labelColor` (dynamic) freezes the color at
+    /// the current appearance — saving in dark mode would bake white,
+    /// reloading in light mode would render invisible. Walking the
+    /// string and removing `foregroundColor` attributes whose value is
+    /// a catalog (= system dynamic) color lets the RTF encoder leave
+    /// those ranges color-less; the load-time adapter in
+    /// `fromRTFData → adaptingDefaultBlackToLabelColor` adds dynamic
+    /// `labelColor` back. User-picked colors are component-based, not
+    /// catalog, so they survive untouched.
     func toRTFData() -> Data? {
-        let range = NSRange(location: 0, length: length)
-        if attachmentCount > 0 {
+        let neutral = strippingDynamicForegroundColors()
+        let range = NSRange(location: 0, length: neutral.length)
+        if neutral.attachmentCount > 0 {
             // NSTextView paste may stash images via `attachment.image`
             // without a `fileWrapper`. RTFD persistence reads bytes from
             // the file wrapper, so synthesize one when missing — and
             // downscale/compress while we're there, so notes don't blow
             // through the CloudKit record-size budget.
-            let prepared = NSAttributedString.ensureAttachmentFileWrappers(in: self)
+            let prepared = NSAttributedString.ensureAttachmentFileWrappers(in: neutral)
             if let rtfd = try? prepared.data(
                 from: NSRange(location: 0, length: prepared.length),
                 documentAttributes: [.documentType: NSAttributedString.DocumentType.rtfd]
             ) { return rtfd }
         }
-        return try? data(
+        return try? neutral.data(
             from: range,
             documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
         )
+    }
+
+    /// Returns a copy with `foregroundColor` attributes removed wherever
+    /// the value is a system catalog color (i.e. `NSColor.labelColor`,
+    /// `NSColor.textColor`, etc. — anything dynamic that resolves
+    /// per-appearance). Component-based and pattern colors (the kind
+    /// users pick from a color panel) are left alone.
+    func strippingDynamicForegroundColors() -> NSAttributedString {
+        guard length > 0 else { return self }
+        let fullRange = NSRange(location: 0, length: length)
+        let mutable = NSMutableAttributedString(attributedString: self)
+        mutable.enumerateAttribute(.foregroundColor, in: fullRange, options: []) { value, range, _ in
+            guard let color = value as? NSColor else { return }
+            if color.type == .catalog {
+                mutable.removeAttribute(.foregroundColor, range: range)
+            }
+        }
+        return NSAttributedString(attributedString: mutable)
     }
 
     /// Decode an RTF or RTFD payload back into an attributed string. Tries
@@ -1250,16 +1281,29 @@ extension NSAttributedString {
                                  value: NSColor.labelColor,
                                  range: NSRange(location: cursor, length: length - cursor))
         }
-        // Pass 2: rewrite explicit pure-black to labelColor.
+        // Pass 2: rewrite explicit pure-black OR near-white *grayscale*
+        // runs to labelColor. Pure-black catches the AppKit encoder's
+        // default when source had `NSColor.black` (or labelColor
+        // resolved in light mode). Near-white catches legacy data
+        // saved before the catalog-stripping fix landed — saving in
+        // dark mode froze labelColor as its resolved white-ish value.
+        // The grayscale guard (r ≈ g ≈ b) prevents user-picked
+        // non-gray colors (red, blue, etc.) from being clobbered;
+        // only achromatic blacks and whites get rewritten.
         mutable.enumerateAttribute(.foregroundColor, in: fullRange, options: []) { value, range, _ in
             guard let color = value as? NSColor else { return }
             // labelColor is already dynamic — don't recurse-recolor.
-            if color === NSColor.labelColor { return }
+            if color.type == .catalog { return }
             let rgb = color.usingColorSpace(.sRGB)
-            let r = rgb?.redComponent ?? 1
-            let g = rgb?.greenComponent ?? 1
-            let b = rgb?.blueComponent ?? 1
-            if r <= 0.02 && g <= 0.02 && b <= 0.02 {
+            let r = rgb?.redComponent ?? -1
+            let g = rgb?.greenComponent ?? -1
+            let b = rgb?.blueComponent ?? -1
+            guard r >= 0 else { return }
+            let isGrayscale = abs(r - g) < 0.02 && abs(g - b) < 0.02
+            guard isGrayscale else { return }
+            let isBlack = r <= 0.05
+            let isWhite = r >= 0.92
+            if isBlack || isWhite {
                 mutable.removeAttribute(.foregroundColor, range: range)
                 mutable.addAttribute(.foregroundColor, value: NSColor.labelColor, range: range)
             }
