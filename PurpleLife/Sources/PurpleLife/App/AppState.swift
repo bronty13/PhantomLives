@@ -160,21 +160,57 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Launch sequence. Each step is a named helper below so the init
+    /// reads as a script — the actual ordering rules live in the
+    /// per-method docs and the comments inside each helper. The
+    /// previous monolithic init was ~430 lines; the steps were always
+    /// distinct, the file just didn't say so. No behavior change from
+    /// the extraction.
     init() {
-        // Force-load SQLCipher's static archive into the binary. Without
-        // this reference, the linker resolves `sqlite3_*` to the system
-        // libsqlite3.dylib and our vendored SQLCipher is dead weight.
-        _ = SQLCipherForceLink._force
+        forceLinkSQLCipher()
+        bootstrapKeystoreIfNeeded()
+        wireKeyResolvers()
+        reopenKeyedDatabaseAndCheckHealth()
+        markBootedAndMigrateRecoveryEnvelope()
+        reloadSettingsAndReseal()
+        runLaunchBackup()
+        applyPersistedTheme()
+        setupCombineBridges()
+        wireSyncServices()
+        runStartupIndexes()
+        startCloudKitSyncIfAvailable()
+        setInitialSelection()
+        setupActivityMonitorAndVaultTimer()
+        reloadAll()
+        setupNotificationObservers()
+    }
 
-        // First-launch keystore bootstrap: if no DEK exists yet, generate
-        // one and stash it in the Keychain. The user can later add a
-        // passphrase via Settings → Security. Doing this before any
-        // persistence path runs means future slices (SQLCipher DB,
-        // encrypted attachments, encrypted settings) always have a DEK
-        // available. Skipped under XCTest so the unit tests use their own
-        // per-test KeyStores via tempDir.
-        if keyStore.state == .notSetup,
-           ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+    // MARK: - Launch sequence helpers
+
+    /// Force-load SQLCipher's static archive into the binary. Without
+    /// this reference, the linker resolves `sqlite3_*` to the system
+    /// libsqlite3.dylib and our vendored SQLCipher is dead weight.
+    private func forceLinkSQLCipher() {
+        _ = SQLCipherForceLink._force
+    }
+
+    /// First-launch keystore bootstrap: if no DEK exists yet, generate
+    /// one and stash it in the Keychain. The user can later add a
+    /// passphrase via Settings → Security. Doing this before any
+    /// persistence path runs means future slices (SQLCipher DB,
+    /// encrypted attachments, encrypted settings) always have a DEK
+    /// available. Skipped under XCTest so the unit tests use their own
+    /// per-test KeyStores via tempDir.
+    ///
+    /// Also the load-bearing trap-prevention site (Phase A.2 / Tier 4):
+    /// when the on-disk database looks encrypted but the keystore
+    /// can't mint or restore a DEK, this method routes to the recovery
+    /// screen path via `dbHealth = .unrecoverable(...)` rather than
+    /// silently destroying the data.
+    private func bootstrapKeystoreIfNeeded() {
+        guard keyStore.state == .notSetup,
+              ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
+        else { return }
             // Belt-and-suspenders: if the on-disk database file looks
             // SQLCipher-encrypted (non-zero, no SQLite magic header),
             // we have data that was written by a previous DEK. Even
@@ -274,8 +310,18 @@ final class AppState: ObservableObject {
             } catch {
                 NSLog("PurpleLife: keystore setup failed — \(error.localizedDescription)")
             }
-        }
+    }
 
+    /// Wire the SettingsStore / AttachmentService / DatabaseService key
+    /// resolvers to the live keystore. Each service was constructed
+    /// during property init with a nil resolver (the property
+    /// initializer can't reference `self.keyStore`); these closures
+    /// route them at the live keystore so reads decrypt and writes
+    /// seal correctly going forward.
+    ///
+    /// Idempotent and survives keystore swaps — each closure captures
+    /// `keyStore` weakly and re-resolves on each call.
+    private func wireKeyResolvers() {
         // Wire the SettingsStore to the live keystore. The store was
         // constructed without a key (property initializer can't reference
         // self.keyStore), so any settings.json read above happened with
@@ -305,6 +351,13 @@ final class AppState: ObservableObject {
         DatabaseService.keyResolver = { [weak keyStore] in
             keyStore?.currentKey
         }
+    }
+
+    /// Reopen the SQLCipher pool under the live DEK (if the keystore
+    /// is unlocked). Also detects the broken state where SQLCipher
+    /// can't open the on-disk file with the available key and
+    /// surfaces the recovery UX via `dbHealth`.
+    private func reopenKeyedDatabaseAndCheckHealth() {
         if keyStore.currentKey != nil {
             do {
                 try database.reopenDatabase()
@@ -324,53 +377,47 @@ final class AppState: ObservableObject {
                 )
             }
         }
-        // Phase A.2 (2026-05-15) — mark the per-install ever-booted
-        // marker as soon as we know the keystore is unlocked AND the
-        // DB pool is live. Future launches against an empty Keychain
-        // slot will then refuse to bootstrap a fresh DEK, preserving
-        // Time Machine / recovery-key paths. Skipped under XCTest:
-        // tests use per-process temp support dirs that don't persist
-        // across runs, so a marker would only confuse the next test
-        // process. Production launches that reach this line have
-        // verified keystore.state == .unlocked AND database is not
-        // on the placeholder pool — the dbHealth == .ok check covers
-        // both via the guards above.
-        if keyStore.state == .unlocked,
-           dbHealth == .ok,
-           ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
-            BootState.markBooted(in: DatabaseService.supportDirectory)
+    }
 
-            // Phase B (2026-05-15) — migration for installs that
-            // pre-date the recovery-key work. These users have a
-            // perfectly good DEK in their Keychain but no
-            // recovery_envelope.json yet, which means a future
-            // Keychain loss would put them back in the trap we just
-            // fixed. Generating the envelope on-the-fly here from
-            // the live DEK gives them the same recovery path new
-            // installs get. `ensureRecoveryEnvelope` is a no-op
-            // when the envelope already exists, so this is safe
-            // to call on every launch.
-            if pendingRecoveryKey == nil {
-                if let migrated = try? keyStore.ensureRecoveryEnvelope() {
-                    pendingRecoveryKey = migrated
-                }
+    /// Phase A.2 (2026-05-15) — mark the per-install ever-booted
+    /// marker as soon as we know the keystore is unlocked AND the
+    /// DB pool is live. Future launches against an empty Keychain
+    /// slot will then refuse to bootstrap a fresh DEK, preserving
+    /// Time Machine / recovery-key paths. Skipped under XCTest:
+    /// tests use per-process temp support dirs that don't persist
+    /// across runs, so a marker would only confuse the next test
+    /// process.
+    ///
+    /// Phase B (2026-05-15) — also runs the recovery-envelope
+    /// migration. Pre-Phase-B installs have a Keychain DEK but no
+    /// recovery_envelope.json; we mint one on the fly so a future
+    /// Keychain loss has the same recovery path as fresh installs.
+    /// `ensureRecoveryEnvelope` is a no-op when the file already
+    /// exists, so this is safe to call on every launch.
+    private func markBootedAndMigrateRecoveryEnvelope() {
+        guard keyStore.state == .unlocked,
+              dbHealth == .ok,
+              ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
+        else { return }
+        BootState.markBooted(in: DatabaseService.supportDirectory)
+        if pendingRecoveryKey == nil {
+            if let migrated = try? keyStore.ensureRecoveryEnvelope() {
+                pendingRecoveryKey = migrated
             }
         }
+    }
 
-        // Re-read settings.json once the resolver is live so a previously-
-        // encrypted file (from a prior launch where slice A3 was active)
-        // decrypts correctly. No-op for plaintext / missing files.
+    /// Re-read settings.json once the resolver is live so a previously-
+    /// encrypted file (from a prior launch where slice A3 was active)
+    /// decrypts correctly. Then forces a save with the live key
+    /// resolver so any plaintext settings.json written during the
+    /// resolver-less seed step gets sealed before anything else runs.
+    /// Same idempotent sweep for any plaintext attachment files
+    /// lingering from a pre-A3 install.
+    private func reloadSettingsAndReseal() {
         settingsStore.load()
-        // Idempotent encrypt-on-upgrade: forces a save with the live key
-        // resolver so a plaintext settings.json written during the early
-        // (resolver-less) seedTodayQueriesIfNeeded call gets sealed before
-        // anything else runs. If the file is already encrypted, this is a
-        // no-cost re-encrypt-with-the-same-key.
         if keyStore.currentKey != nil {
             settingsStore.save()
-            // Same sweep for any plaintext attachment files lingering from
-            // a pre-A3 install. Idempotent — files already wrapped get
-            // skipped by the magic-header check.
             AttachmentService.encryptExistingFilesIfNeeded()
             // Note: per-row field_json encryption (the A2′ stand-in) is
             // intentionally NOT swept here anymore. Slice A2's SQLCipher
@@ -380,45 +427,42 @@ final class AppState: ObservableObject {
             // the A2′-only window still read back correctly through
             // `unsealFromStorage` in `DatabaseService.fetch*`.
         }
+    }
 
-        // Backup-on-launch must run BEFORE any code touches the DB pool, so
-        // the archive captures a clean copy of the on-disk state from the
-        // last session. BackupService swallows its own errors.
+    /// Backup-on-launch must run BEFORE any code touches the DB pool, so
+    /// the archive captures a clean copy of the on-disk state from the
+    /// last session. `BackupService` swallows its own errors.
+    private func runLaunchBackup() {
         BackupService.runOnLaunchIfDue(settingsStore: settingsStore)
+    }
 
-        // Push the persisted theme into the static facade BEFORE any view
-        // body runs. SwiftUI evaluates @StateObject inits eagerly, so by
-        // the time WindowGroup renders the active palette is already in
-        // place — no first-frame flash of the default.
+    /// Push the persisted theme into the static facade BEFORE any view
+    /// body runs. SwiftUI evaluates @StateObject inits eagerly, so by
+    /// the time WindowGroup renders the active palette is already in
+    /// place — no first-frame flash of the default.
+    private func applyPersistedTheme() {
         Theme.current = settingsStore.currentTheme
+    }
 
-        // Bridge SettingsStore's @Published changes up to AppState's
-        // observers. The pass-through `appState.settings = …` setter
-        // mutates settingsStore.settings, which fires SettingsStore's
-        // objectWillChange but NOT AppState's; without this Combine
-        // hop, views observing AppState wouldn't re-render after a
-        // theme switch or appearance change.
+    /// Bridge each nested `ObservableObject`'s `objectWillChange` up to
+    /// AppState's. Without these hops, views observing `appState`
+    /// don't re-render when `settingsStore.settings` / `schema.types` /
+    /// `keyStore.state` / `sync.status` mutate — they only see
+    /// changes to AppState's own @Published vars.
+    ///
+    /// Settings change also re-resolves `Theme.current` so views
+    /// reading the static facade pick up the new palette on their
+    /// next body evaluation.
+    private func setupCombineBridges() {
         settingsStore.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] in
                 guard let self else { return }
-                // Re-resolve the active theme on every settings change
-                // so views reading `Theme.bg` see the new palette on
-                // their next body evaluation.
                 Theme.current = self.settingsStore.currentTheme
                 self.objectWillChange.send()
             }
             .store(in: &cancellables)
 
-        // Same bridge for SchemaRegistry. Without it, `@Published var
-        // schema` only fires when the SchemaRegistry instance itself
-        // gets reassigned — internal `types` / `hiddenBuiltInIds`
-        // mutations bubble through `schema.objectWillChange` but never
-        // reach `AppState.objectWillChange`. Symptom: SchemaEditor's
-        // "Delete field" / "Move up" / "Move down" buttons mutate the
-        // model correctly but the rendered field list doesn't refresh
-        // until the user clicks away and back (which forces a new
-        // body evaluation).
         schema.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] in
@@ -426,10 +470,6 @@ final class AppState: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // Same nested-ObservableObject bridge for KeyStore. Symptoms
-        // without it: Settings → Security tab doesn't reflect Lock /
-        // Unlock state transitions until you click another tab and
-        // come back. Same fix as the schema bridge above.
         keyStore.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] in
@@ -437,123 +477,117 @@ final class AppState: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // Same for CloudKitSyncService. Symptoms: the sync footer
-        // stays at "Synced" even when the service transitions to
-        // .error or .syncing, since the surrounding view observes
-        // AppState rather than `sync` directly.
         sync.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] in
                 self?.objectWillChange.send()
             }
             .store(in: &cancellables)
+    }
 
-        // Wire ObjectEngine → SchemaRegistry so search-index updates have
-        // the type definitions they need.
+    /// Wire the static / sentinel hooks each service uses to find the
+    /// schema and sync surfaces. Done here (and only here) so the
+    /// dependency injection stays one-way: AppState owns the
+    /// services, services read from it via these statics.
+    private func wireSyncServices() {
         ObjectEngine.currentSchema = schema
         ObjectEngine.sync = sync
-        // Wire SchemaRegistry → sync so user schema mutations
-        // (add/rename/delete types and fields) push to CloudKit and
-        // peers learn about them. Same mirror pattern as ObjectEngine.
+        // SchemaRegistry → sync: user schema mutations push to CloudKit.
         schema.sync = sync
-        // Wire AttachmentService → sync so add() / deleteRow() fan
-        // out to CloudKit. The PurpleAttachmentRef CKRecord type
-        // carries the encrypted asset bytes alongside the row
-        // metadata; peers materialize the row + decrypt the asset
-        // on pull.
+        // AttachmentService → sync: add()/deleteRow() fan out per
+        // attachment via PurpleAttachmentRef CKRecord type.
         AttachmentService.sync = sync
-        // Wire KeyStore → sync so resilience Tier 4 (CloudKit DEK
-        // backup) can push on every cache and the recovery path can
-        // pull on launch. Same fire-and-forget shape as the other
-        // service hookups.
+        // KeyStore → sync: resilience Tier 4 (CloudKit DEK backup)
+        // pushes on every cache; recovery path pulls on launch.
         keyStore.sync = sync
+    }
 
-        // Rebuild the FTS5 index on every launch — cheap for our row
-        // counts and immune to a missed write or a restored backup.
+    /// Rebuild the FTS5 search index and the derived `record_tags`
+    /// index from authoritative `_tags` fields. Cheap for our row
+    /// counts and immune to a missed write or a restored backup.
+    private func runStartupIndexes() {
         SearchService.reindexAll(schema: schema)
-
-        // Wire the cross-cutting tag service to the settings store
-        // (where the vocabulary lives) and rebuild the derived
-        // `record_tags` index from every record's `_tags` field.
-        // Same launch-time reindex pattern as `SearchService`.
         TagService.settings = settingsStore
         TagService.reindexAll()
+    }
 
-        // Phase 4: kick off CloudKit sync. Runs async; the rest of the
-        // app launches normally regardless of sync state. If iCloud
-        // / entitlement / container isn't available, sync transitions to
-        // `.disabled` and the app stays fully usable locally.
-        // Skipped under XCTest — CloudKit's account check stalls the
-        // test runner connection (we hit the XCTest timeout because the
-        // host app's startup tasks block on iCloud auth).
-        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
-            sync.start(schema: schema)
-        }
+    /// Phase 4: kick off CloudKit sync. Runs async; the rest of the
+    /// app launches normally regardless of sync state. If iCloud /
+    /// entitlement / container isn't available, sync transitions to
+    /// `.disabled` and the app stays fully usable locally.
+    ///
+    /// Skipped under XCTest — CloudKit's account check stalls the
+    /// test runner connection (we hit the XCTest timeout because the
+    /// host app's startup tasks block on iCloud auth).
+    private func startCloudKitSyncIfAvailable() {
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        sync.start(schema: schema)
+    }
 
-        // Default detail pane is Today; type selection is left nil so the
-        // sidebar's Today row reads as selected.
+    /// Default detail pane is Today; type selection is left nil so the
+    /// sidebar's Today row reads as selected.
+    private func setInitialSelection() {
         selectedTypeId = nil
         showTodayInDetail = true
+    }
 
-        // Vault menu visibility + auto-lock — both polled on a single
-        // 4 Hz timer to keep the housekeeping cheap. The same tick
-        // (a) updates `vaultMenuVisible` from the live modifier flags
-        // and (b) checks whether the Vault should auto-lock for
-        // inactivity. Skipped under XCTest; a background Timer would
-        // leak across tests and a polling global isn't worth the
-        // bother in headless runs anyway.
-        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
-            // Activity monitor — stamps `lastActivityAt` on any user
-            // input that hits our app's run loop. Cheap; the monitor
-            // is invoked synchronously per event but our handler is
-            // a single property write.
-            activityMonitor = NSEvent.addLocalMonitorForEvents(
-                matching: [.keyDown, .leftMouseDown, .rightMouseDown,
-                           .otherMouseDown, .mouseMoved, .scrollWheel]
-            ) { [weak self] event in
-                self?.lastActivityAt = Date()
-                return event
-            }
+    /// Vault menu visibility + auto-lock are polled on a single 4 Hz
+    /// timer to keep the housekeeping cheap. The same tick:
+    /// (a) updates `vaultMenuVisible` from the live modifier flags
+    /// (b) checks whether the Vault should auto-lock for inactivity.
+    /// Alongside, a local NSEvent monitor stamps `lastActivityAt` on
+    /// any user input so the inactivity check has fresh data.
+    ///
+    /// Skipped under XCTest; a background Timer would leak across
+    /// tests and a polling global isn't worth the bother in headless
+    /// runs anyway.
+    private func setupActivityMonitorAndVaultTimer() {
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        activityMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.keyDown, .leftMouseDown, .rightMouseDown,
+                       .otherMouseDown, .mouseMoved, .scrollWheel]
+        ) { [weak self] event in
+            self?.lastActivityAt = Date()
+            return event
+        }
 
-            vaultMenuTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-                // Timer fires on the main RunLoop, so the body is
-                // already main-actor in practice — `assumeIsolated`
-                // tells Swift 6 the same. Same pattern as
-                // `ObjectEngine.registerUndo`.
-                MainActor.assumeIsolated {
-                    guard let self else { return }
-
-                    // Vault-menu modifier polling.
-                    let mods = NSEvent.modifierFlags
-                    let held = mods.contains(.shift) && mods.contains(.option)
-                    if self.vaultMenuVisible != held {
-                        self.vaultMenuVisible = held
-                    }
-
-                    // Vault auto-lock for inactivity. Only fires when the
-                    // vault is currently revealed and the user has
-                    // configured a non-zero threshold. The Date comparison
-                    // is on wall-clock time (Date()), not monotonic — fine
-                    // here; we want "wall-clock seconds since the user
-                    // last touched anything," and a sleep/wake cycle that
-                    // bumps the clock forward should still lock the vault.
-                    let threshold = self.settings.vaultAutoLockAfterSeconds
-                    if self.vaultRevealed && threshold > 0 {
-                        let idle = Date().timeIntervalSince(self.lastActivityAt)
-                        if idle >= Double(threshold) {
-                            self.lockVault()
-                        }
+        vaultMenuTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            // Timer fires on the main RunLoop, so the body is
+            // already main-actor in practice — `assumeIsolated`
+            // tells Swift 6 the same. Same pattern as
+            // `ObjectEngine.registerUndo`.
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                // Vault-menu modifier polling.
+                let mods = NSEvent.modifierFlags
+                let held = mods.contains(.shift) && mods.contains(.option)
+                if self.vaultMenuVisible != held {
+                    self.vaultMenuVisible = held
+                }
+                // Vault auto-lock for inactivity. Only fires when the
+                // vault is currently revealed and the user has
+                // configured a non-zero threshold. Date comparison is
+                // on wall-clock time (Date()), not monotonic — fine
+                // here; "wall-clock seconds since the user last
+                // touched anything" is what we want, and a sleep/wake
+                // cycle that bumps the clock forward should still
+                // lock the vault.
+                let threshold = self.settings.vaultAutoLockAfterSeconds
+                if self.vaultRevealed && threshold > 0 {
+                    let idle = Date().timeIntervalSince(self.lastActivityAt)
+                    if idle >= Double(threshold) {
+                        self.lockVault()
                     }
                 }
             }
         }
+    }
 
-        reloadAll()
-
-        // ⌘1…⌘9 menu commands post a notification with a 1-based
-        // index; resolve here against `schema.visibleTypes` and route
-        // to the existing `selectedTypeId` binding so the sidebar
-        // reflects the change naturally.
+    /// ⌘1…⌘9 jump-to-type + remote-pull refresh. Both arrive via
+    /// NotificationCenter so the menu commands / sync service don't
+    /// need a direct AppState reference. Bridged to actual UI updates
+    /// here.
+    private func setupNotificationObservers() {
         NotificationCenter.default.addObserver(
             forName: AppState.jumpToTypeIndexNotification,
             object: nil,
@@ -569,12 +603,11 @@ final class AppState: ObservableObject {
                 self.showTodayInDetail = false
             }
         }
-
         // Remote pulls land into DatabaseService directly via
         // CloudKitSyncService.applyRemote, bypassing ObjectEngine's
         // hooks. Without this observer, the sidebar count and the
-        // Today panels (driven off appState.objectCount + the schema)
-        // wouldn't refresh until the next type switch / restart.
+        // Today panels wouldn't refresh until the next type switch /
+        // restart.
         NotificationCenter.default.addObserver(
             forName: AppState.objectsChangedRemotelyNotification,
             object: nil,
