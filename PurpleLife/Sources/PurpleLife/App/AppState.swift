@@ -423,6 +423,12 @@ final class AppState: ObservableObject {
         // (add/rename/delete types and fields) push to CloudKit and
         // peers learn about them. Same mirror pattern as ObjectEngine.
         schema.sync = sync
+        // Wire AttachmentService → sync so add() / deleteRow() fan
+        // out to CloudKit. The PurpleAttachmentRef CKRecord type
+        // carries the encrypted asset bytes alongside the row
+        // metadata; peers materialize the row + decrypt the asset
+        // on pull.
+        AttachmentService.sync = sync
 
         // Rebuild the FTS5 index on every launch — cheap for our row
         // counts and immune to a missed write or a restored backup.

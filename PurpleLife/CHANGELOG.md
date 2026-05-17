@@ -4,6 +4,37 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-16 — CloudKit attachment sync (CKAsset)
+
+Multi-Mac attachment content sync. Until today CloudKit only carried the sha256 *reference* in each record's `fields_json`; the binary content stayed local-only. Adding an attachment on Mac A and waiting for Mac B did nothing for the file bytes. Now they sync.
+
+**Architecture.**
+
+- **New CKRecord type `PurpleAttachmentRef`** — one record per local `Attachment` row, keyed by the row's UUID id. Carries plaintext metadata (`parent_object_id`, `field_key`, `sha256`, `filename`, `mime_type`, `size_bytes`, `created_at`) alongside a CKAsset with the encrypted content + AES-GCM wrap key + nonce in `encryptedValues`.
+- **Two-layer encryption.** Per-attachment random 256-bit AES-GCM key, fresh per upload — Apple sees opaque ciphertext bytes in the CKAsset, and the wrap key never reaches Apple in plaintext (CKKS encrypts `encryptedValues` in transit). Defense-in-depth: an attacker who compromises one channel has half the picture and can't decrypt without the other. **Importantly the wrap key is NOT the local DEK** — the 2026-05-15 resilience design keeps DEKs Mac-local, so we generate ephemeral per-attachment keys that ride through CKKS instead. This is the model commit-C-or-die piece that lets attachment sync work with Mac-local DEKs.
+- **Push hooks.** `AttachmentService.add()` and `deleteRow()` now fire fire-and-forget `Task { await sync.pushAttachment(_:) }` / `pushDeleteAttachment(id:)` calls, same shape as `ObjectEngine.create/update/delete` and `SchemaRegistry.upsertType`. The local write completes first; the cloud hop is decoupled.
+- **Bootstrap catch-up.** `pushPendingLocalAttachments()` runs as part of the existing `pushPendingLocalChanges()` flow at first sync. Walks every local Attachment row; the `record(for:)` fast-path short-circuits on already-synced records so the loop is cheap on repeat launches.
+- **Pull path.** The existing `runFetchOperation()` partition now includes attachment records. For each incoming `PurpleAttachmentRef`: insert/upsert the local `Attachment` row first (so the UI sees metadata immediately), then fetch the CKAsset, decrypt with the wrap key + nonce, and route the plaintext through new `AttachmentService.writeIncomingPlaintext(...)` which re-wraps under Mac B's local DEK via `EncryptedJSON.safeWrite` — the on-disk shape is identical to a locally-added attachment.
+- **Idempotent + content-addressed.** `pushAttachment` no-ops when the record already exists in CloudKit. `applyRemoteAttachment` no-ops on the asset write when the local file already exists (sha is over plaintext, so contents are guaranteed to match).
+- **Delete propagation.** `pushDeleteAttachment` mirrors `pushDelete(recordId:)`. Incoming attachment deletes route through the deleted-record partitioning by looking up the local attachment id set before the dispatch — same idempotent-deletion safety the existing object/type path has.
+
+**New files.**
+
+- **`Services/AttachmentCrypto.swift`** — small pure helper: `seal(_:) -> Sealed` (returns ciphertext + 32-byte key + 12-byte nonce), `open(ciphertext:key:nonce:)`. AES-256-GCM via CryptoKit. Tampering, wrong-key, wrong-nonce, wrong-key-length all reject correctly.
+- **`Tests/.../AttachmentCryptoTests.swift`** — 8 tests covering round-trip, fresh-key-per-call, tampering rejection, wrong-key/nonce/length rejection, and a 1 MB large-payload sanity check.
+
+**Modified files.**
+
+- **`Services/CloudKitSyncService.swift`** — `attachmentRecordType`, `pushAttachment(_:)`, `pushDeleteAttachment(id:)`, `pushPendingLocalAttachments()`, `applyRemoteAttachment(_:)`. Pull-path dispatcher now partitions attachment changes/deletes alongside objects + types.
+- **`Services/AttachmentService.swift`** — new static `sync: CloudKitSyncService?`, fire-and-forget pushes from `add()` / `deleteRow()`, new `writeIncomingPlaintext(_:sha256:filename:)` for the sync ingress path.
+- **`App/AppState.swift`** — wires `AttachmentService.sync = sync` at launch alongside the existing `ObjectEngine.sync = sync` / `schema.sync = sync`.
+
+**Manual verification (Phase 4 convention).** The CloudKit round-trip can't be unit-tested without a real container — same pattern as the existing `CloudKitSubscriptionTests`. End-to-end Mac→Mac was exercised by hand: attach a JPEG on Mac A → wait for the silent-push subscription to fire on Mac B → confirm the Attachment row + decrypted file land on Mac B + render in the gallery view.
+
+**Status of the deferred list.** Tier 3 (iCloud Keychain DEK mirror) and Tier 4 (CloudKit private-zone wrapped DEK) remain deferred — both are convenience layers; correctness is covered by Tiers 0 + 1 + 2 + 5 + this CKAsset path.
+
+318/318 tests green (+8 AttachmentCryptoTests).
+
 ### 2026-05-16 — Sample data populate / clear
 
 Two new buttons in Settings → Backup → "Sample data" let the user populate the app with a curated narrative-shaped dataset and clear it back out at will. Useful for poking at every view kind with real-shaped content, demoing the app, or evaluating it without committing real data.

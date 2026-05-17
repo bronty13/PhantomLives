@@ -422,7 +422,7 @@ Files referenced by `.attachment` fields live at:
 
 Content-addressed: the same file referenced by multiple records de-duplicates on disk. Deleting a reference only prunes the file when the last reference is gone. The metadata table (`attachments`) handles cascading deletes when a parent record is removed.
 
-Files travel inside backup zips automatically. CloudKit sync of attachment **content** (via `CKAsset`) is queued; today only the sha256 ref syncs through the JSON blob.
+Files travel inside backup zips automatically. CloudKit also syncs attachment **content** across Macs via a per-attachment encrypted `CKAsset` (AES-256-GCM with a fresh wrap key per upload, key carried in CKKS-encrypted `encryptedValues`). Apple sees opaque ciphertext bytes only.
 
 ## Versioning
 

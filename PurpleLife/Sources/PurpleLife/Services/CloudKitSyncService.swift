@@ -38,6 +38,7 @@ final class CloudKitSyncService: ObservableObject {
     static let containerID = "iCloud.com.bronty13.PurpleLife"
     static let recordType = "PurpleObject"
     static let typeRecordType = "PurpleType"
+    static let attachmentRecordType = "PurpleAttachmentRef"
     static let zoneName = "PurpleLifeZone"
     static let subscriptionID = "PurpleLife.databaseSubscription"
     /// Recovery poll. The primary sync trigger is the
@@ -439,6 +440,203 @@ final class CloudKitSyncService: ObservableObject {
         }
     }
 
+    // MARK: - Attachment sync (PurpleAttachmentRef)
+
+    /// Push one local `Attachment` row plus its file content to
+    /// CloudKit. One CKRecord per row (not per sha) — same sha
+    /// referenced by N rows produces N CKRecords. The redundancy is
+    /// deliberate: each row's parentObjectId / fieldKey routes back to
+    /// the correct local destination on the receiving Mac, and
+    /// CloudKit's per-record encrypted-asset shape requires the
+    /// metadata to ride alongside the asset.
+    ///
+    /// The asset bytes are AES-GCM-encrypted with a fresh per-upload
+    /// key/nonce via `AttachmentCrypto`. The wrap key + nonce ride in
+    /// `encryptedValues` (CKKS-encrypted in transit). Apple sees only
+    /// the ciphertext blob; the key never reaches Apple in plaintext.
+    func pushAttachment(_ att: Attachment) async {
+        guard isEnabled, let database else { return }
+
+        // Idempotent fast-path: if the record already exists in
+        // CloudKit, skip the asset upload. The whole point of
+        // bootstrap is to push *missing* attachments.
+        let recordID = CKRecord.ID(recordName: att.id, zoneID: zoneID)
+        let existing: CKRecord? = try? await database.record(for: recordID)
+        if existing != nil {
+            return
+        }
+
+        // Read the plaintext bytes via AttachmentService (which
+        // unwraps the local DEK-encrypted file). If the local file
+        // is missing or unreadable, log and skip — we don't push
+        // metadata without content; that would leave a broken stub
+        // record on CloudKit.
+        let plaintext: Data
+        do {
+            guard let bytes = try AttachmentService.read(sha256: att.sha256) else {
+                NSLog("PurpleLife: pushAttachment(\(att.id)) skipped — local file missing for \(att.sha256)")
+                return
+            }
+            plaintext = bytes
+        } catch {
+            NSLog("PurpleLife: pushAttachment(\(att.id)) skipped — local decrypt failed: \(error.localizedDescription)")
+            return
+        }
+
+        let sealed: AttachmentCrypto.Sealed
+        do {
+            sealed = try AttachmentCrypto.seal(plaintext)
+        } catch {
+            NSLog("PurpleLife: pushAttachment(\(att.id)) seal failed — \(error.localizedDescription)")
+            return
+        }
+
+        // CKAsset needs a fileURL. Write the ciphertext to a temp
+        // file; CloudKit copies the bytes during save() and we can
+        // clean the temp file up afterwards.
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pl-att-push-\(UUID().uuidString).bin")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        do {
+            try sealed.ciphertext.write(to: tempURL, options: .atomic)
+        } catch {
+            NSLog("PurpleLife: pushAttachment(\(att.id)) temp write failed — \(error.localizedDescription)")
+            return
+        }
+
+        let ck = CKRecord(recordType: Self.attachmentRecordType, recordID: recordID)
+        // Plaintext metadata (Apple can see these — same as the
+        // object record's type_id / created_at / updated_at).
+        ck["parent_object_id"] = att.parentObjectId as CKRecordValue
+        ck["field_key"]        = att.fieldKey       as CKRecordValue
+        ck["sha256"]           = att.sha256         as CKRecordValue
+        ck["filename"]         = att.filename       as CKRecordValue
+        ck["mime_type"]        = att.mimeType       as CKRecordValue
+        ck["size_bytes"]       = NSNumber(value: att.sizeBytes)
+        ck["created_at"]       = att.createdAt      as CKRecordValue
+        // CKKS-encrypted: the wrap key + nonce. Without these, the
+        // asset is unrecoverable. Without the asset, these are
+        // useless. Two channels, two failure modes — defense in depth.
+        ck.encryptedValues["wrap_key"] = sealed.key   as CKRecordValue
+        ck.encryptedValues["nonce"]    = sealed.nonce as CKRecordValue
+        // The asset itself: opaque ciphertext to Apple.
+        ck["asset"] = CKAsset(fileURL: tempURL)
+
+        do {
+            _ = try await database.save(ck)
+            lastSyncAt = Date()
+            if status.isError { status = .idle; lastError = nil }
+        } catch {
+            NSLog("PurpleLife: pushAttachment(\(att.id)) save failed — \(error.localizedDescription)")
+            status = .error(error.localizedDescription)
+            lastError = error.localizedDescription
+        }
+    }
+
+    /// Remove the CKRecord for an Attachment row that was just deleted
+    /// locally. Same shape as `pushDelete(recordId:)` — the cascading
+    /// FK on `parent_object_id` already cleared the row; we just
+    /// echo the deletion to peers.
+    func pushDeleteAttachment(id: String) async {
+        guard isEnabled, let database else { return }
+        do {
+            let ckID = CKRecord.ID(recordName: id, zoneID: zoneID)
+            _ = try await database.deleteRecord(withID: ckID)
+            lastSyncAt = Date()
+            if status.isError { status = .idle; lastError = nil }
+        } catch let error as CKError where error.code == .unknownItem {
+            // Already gone server-side; nothing to do.
+        } catch {
+            NSLog("PurpleLife: pushDeleteAttachment(\(id)) failed — \(error.localizedDescription)")
+            status = .error(error.localizedDescription)
+            lastError = error.localizedDescription
+        }
+    }
+
+    /// Bootstrap: walk every local Attachment row and push any that
+    /// aren't already in CloudKit. Cheap-when-already-synced because
+    /// `pushAttachment` short-circuits on existing records.
+    private func pushPendingLocalAttachments() async {
+        do {
+            let rows = try await DatabaseService.shared.dbPool.read { db in
+                try Attachment.fetchAll(db)
+            }
+            for row in rows {
+                await pushAttachment(row)
+            }
+        } catch {
+            NSLog("PurpleLife: pushPendingLocalAttachments failed — \(error.localizedDescription)")
+        }
+    }
+
+    /// Mac B side: a remote PurpleAttachmentRef just arrived. Materialize
+    /// the local Attachment row, fetch + decrypt the asset, and write
+    /// the plaintext bytes through AttachmentService so the result is
+    /// at-rest-wrapped under Mac B's local DEK. Idempotent: if the row
+    /// already exists and the file is already on disk, we no-op.
+    private func applyRemoteAttachment(_ ck: CKRecord) async {
+        guard
+            let parentObjectId = ck["parent_object_id"] as? String,
+            let fieldKey       = ck["field_key"]        as? String,
+            let sha256         = ck["sha256"]           as? String,
+            let filename       = ck["filename"]         as? String,
+            let mimeType       = ck["mime_type"]        as? String,
+            let sizeBox        = ck["size_bytes"]       as? NSNumber,
+            let createdAt      = ck["created_at"]       as? String,
+            let wrapKey        = ck.encryptedValues["wrap_key"] as? Data,
+            let nonce          = ck.encryptedValues["nonce"]    as? Data,
+            let asset          = ck["asset"] as? CKAsset,
+            let assetURL       = asset.fileURL
+        else {
+            NSLog("PurpleLife: applyRemoteAttachment skipped — malformed record \(ck.recordID.recordName)")
+            return
+        }
+
+        // Insert / update the Attachment row first so the user's UI
+        // sees the metadata even if the asset write below fails (the
+        // file fetch retries via the recovery poll). One INSERT OR
+        // REPLACE — Attachment.id is the primary key, so re-pulls
+        // update in place.
+        let row = Attachment(
+            id: ck.recordID.recordName,
+            parentObjectId: parentObjectId,
+            fieldKey: fieldKey,
+            sha256: sha256,
+            filename: filename,
+            mimeType: mimeType,
+            sizeBytes: sizeBox.int64Value,
+            createdAt: createdAt
+        )
+        do {
+            try await DatabaseService.shared.dbPool.write { db in
+                try row.save(db)
+            }
+        } catch {
+            NSLog("PurpleLife: applyRemoteAttachment row save failed — \(error.localizedDescription)")
+            return
+        }
+
+        // Skip the asset write if we already have the bytes locally
+        // (another peer's attachment, or our own re-pull). The sha256
+        // is over plaintext, so if the file exists at the expected
+        // path the contents already match.
+        if AttachmentService.fileURL(forSha256: sha256) != nil {
+            return
+        }
+
+        // Decrypt + re-wrap under Mac B's local DEK + drop into the
+        // attachments directory. Failures here are non-fatal — the
+        // metadata row is in place; a future pull or a manual sync
+        // can retry.
+        do {
+            let ciphertext = try Data(contentsOf: assetURL)
+            let plaintext  = try AttachmentCrypto.open(ciphertext: ciphertext, key: wrapKey, nonce: nonce)
+            try AttachmentService.writeIncomingPlaintext(plaintext, sha256: sha256, filename: filename)
+        } catch {
+            NSLog("PurpleLife: applyRemoteAttachment open/write failed for \(sha256) — \(error.localizedDescription)")
+        }
+    }
+
     private func fetchOrMakeType(typeId: String) async throws -> CKRecord {
         guard let database else { throw CKError(.internalError) }
         let id = CKRecord.ID(recordName: typeId, zoneID: zoneID)
@@ -545,6 +743,11 @@ final class CloudKitSyncService: ObservableObject {
         } catch {
             NSLog("PurpleLife: pushPendingLocalChanges failed — \(error.localizedDescription)")
         }
+        // Attachments after objects: an attachment row references its
+        // parent object, so the parent should already exist server-side
+        // when peers reconcile. `pushAttachment` short-circuits on
+        // existing records, so re-running is cheap.
+        await pushPendingLocalAttachments()
     }
 
     /// Mirror of `pushPendingLocalChanges` for the schema. On
@@ -705,18 +908,40 @@ final class CloudKitSyncService: ObservableObject {
         // mid-apply. CKFetchRecordZoneChangesOperation doesn't
         // guarantee record-type ordering inside a single fetch, so
         // we partition the buffered results and order them here.
-        let typeChanges   = changedRecords.filter { $0.recordType == Self.typeRecordType }
-        let objectChanges = changedRecords.filter { $0.recordType == Self.recordType }
+        let typeChanges       = changedRecords.filter { $0.recordType == Self.typeRecordType }
+        let objectChanges     = changedRecords.filter { $0.recordType == Self.recordType }
+        let attachmentChanges = changedRecords.filter { $0.recordType == Self.attachmentRecordType }
+
+        // Build the set of known local attachment ids before
+        // partitioning deletes so we can route an `unknown` recordName
+        // either to an attachment delete or to an object delete with
+        // the same idempotent-deletion safety the existing logic has.
+        let localAttachmentIds: Set<String> = await {
+            do {
+                let ids = try await DatabaseService.shared.dbPool.read { db in
+                    try String.fetchAll(db, sql: "SELECT id FROM attachments")
+                }
+                return Set(ids)
+            } catch {
+                return []
+            }
+        }()
+
+        let attachmentDeletes = deletedRecordIDs.filter { id in
+            localAttachmentIds.contains(id.recordName)
+        }
         let objectDeletes = deletedRecordIDs.filter { id in
             // A deletion only tells us the record name + zone id, not
             // the type. Object record-ids match a UUID format that
             // is the same shape as type ids (UUID strings), so we
             // can't distinguish by name alone. Use a heuristic: if
             // the id matches a known local type, it's a type
-            // deletion; otherwise treat as object. This is safe
-            // because both apply* paths are idempotent — deleting a
-            // missing local row is a no-op.
+            // deletion; otherwise (and unless it's a known
+            // attachment) treat as object. This is safe because all
+            // apply* paths are idempotent — deleting a missing local
+            // row is a no-op.
             schema?.type(id: id.recordName) == nil
+                && !localAttachmentIds.contains(id.recordName)
         }
         let typeDeletes = deletedRecordIDs.filter { id in
             schema?.type(id: id.recordName) != nil
@@ -728,9 +953,17 @@ final class CloudKitSyncService: ObservableObject {
         for record in objectChanges {
             await applyRemote(record)
         }
+        for record in attachmentChanges {
+            await applyRemoteAttachment(record)
+        }
         for id in objectDeletes {
             try? DatabaseService.shared.deleteObject(id: id.recordName)
             SearchService.delete(recordId: id.recordName)
+        }
+        for id in attachmentDeletes {
+            try? await DatabaseService.shared.dbPool.write { db in
+                _ = try Attachment.deleteOne(db, key: id.recordName)
+            }
         }
         for id in typeDeletes {
             schema?.applyRemoteDelete(typeId: id.recordName)
@@ -744,7 +977,8 @@ final class CloudKitSyncService: ObservableObject {
         // one UI reload, not 100. Skipped when the batch was empty
         // (no need to spin views on a no-op pull).
         if !objectChanges.isEmpty || !objectDeletes.isEmpty
-            || !typeChanges.isEmpty || !typeDeletes.isEmpty {
+            || !typeChanges.isEmpty || !typeDeletes.isEmpty
+            || !attachmentChanges.isEmpty || !attachmentDeletes.isEmpty {
             NotificationCenter.default.post(
                 name: AppState.objectsChangedRemotelyNotification,
                 object: nil

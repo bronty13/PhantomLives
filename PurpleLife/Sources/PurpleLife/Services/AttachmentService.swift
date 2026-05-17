@@ -36,6 +36,12 @@ enum AttachmentService {
 
     private static var currentKey: SymmetricKey? { keyResolver?() }
 
+    /// Wired by `AppState` at launch — gives the service access to the
+    /// CloudKit sync surface so `add()` / `deleteRow()` can fan out
+    /// per-attachment pushes. Optional so tests that don't initialize
+    /// sync still work (the push/delete becomes a no-op).
+    static var sync: CloudKitSyncService?
+
     enum AttachError: Error, LocalizedError {
         case fileNotFound(URL)
         case copyFailed(String)
@@ -96,6 +102,13 @@ enum AttachmentService {
         )
         try DatabaseService.shared.dbPool.write { db in
             try row.insert(db)
+        }
+        // Fire-and-forget CloudKit push. Same pattern as `ObjectEngine`
+        // and `SchemaRegistry` — local write completes first; the
+        // sync hop happens out of band so a flaky network never
+        // blocks the user's attach action.
+        if let sync = sync {
+            Task { await sync.pushAttachment(row) }
         }
         return row
     }
@@ -170,7 +183,7 @@ enum AttachmentService {
     @discardableResult
     static func deleteRow(id: String) throws -> Bool {
         let fm = FileManager.default
-        return try DatabaseService.shared.dbPool.write { db in
+        let removed: Bool = try DatabaseService.shared.dbPool.write { db in
             guard let row = try Attachment.fetchOne(db, key: id) else { return false }
             _ = try Attachment.deleteOne(db, key: id)
 
@@ -185,6 +198,12 @@ enum AttachmentService {
             }
             return true
         }
+        // Echo the deletion to CloudKit so peers drop their copies
+        // too. Same fire-and-forget shape as the add() push.
+        if removed, let sync = sync {
+            Task { await sync.pushDeleteAttachment(id: id) }
+        }
+        return removed
     }
 
     /// Convenience: clear the attachment ref attached to a specific
@@ -244,6 +263,32 @@ enum AttachmentService {
             NSLog("PurpleLife: encrypted \(encrypted) attachment file(s) on launch; \(skipped) already encrypted")
         }
         return (encrypted, skipped)
+    }
+
+    // MARK: - Sync ingress
+
+    /// Sync path: write plaintext bytes that just arrived from a peer
+    /// to the local attachments directory, re-wrapped under this
+    /// Mac's local DEK. Caller (CloudKitSyncService.applyRemoteAttachment)
+    /// has already confirmed the sha256 matches the metadata; we just
+    /// route the bytes through `EncryptedJSON.safeWrite` so the
+    /// on-disk shape is identical to a locally-added attachment.
+    ///
+    /// No-op when the file already exists at the expected path (content
+    /// is content-addressed; bytes already there match by sha).
+    /// Does NOT push back to CloudKit — that would loop with the same
+    /// record we just received.
+    static func writeIncomingPlaintext(_ plaintext: Data, sha256 hash: String, filename: String) throws {
+        let fm = FileManager.default
+        let ext = (filename as NSString).pathExtension.lowercased()
+        let url = directory.appendingPathComponent(self.filename(for: hash, ext: ext))
+        try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        if fm.fileExists(atPath: url.path) { return }
+        do {
+            _ = try EncryptedJSON.safeWrite(plaintext, to: url, key: currentKey)
+        } catch {
+            throw AttachError.copyFailed(error.localizedDescription)
+        }
     }
 
     // MARK: - Helpers
