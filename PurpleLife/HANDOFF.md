@@ -30,7 +30,23 @@ Implementation of the deferred Tier 5 from the 2026-05-15 plan. The locked desig
 
 - **Two test-design lessons banked.** (1) `SchemaRegistry` seeds the built-in catalog when its file is missing, so any test that points a registry at a fresh temp file gets the full seed set on top of whatever it `upsertType`s. Assert on type-id *membership*, not on exact `schema.types.count`. (2) `defaultFilename` is `@MainActor` (via the enum's `@MainActor` annotation); test methods that call it need `@MainActor` too — Swift 6 catches this at compile time as "main actor-isolated static method in a synchronous nonisolated context."
 
-- **Status of the resilience tier list.** Tier 0 (trap-prevention guards) + Tier 1 (Keychain fast-path) + Tier 2 (24-word recovery key) + **Tier 5 (plaintext snapshot)** all in production. Tier 3 (iCloud Keychain mirror) + Tier 4 (CloudKit wrapped DEK) remain deferred — both are convenience layers; correctness is covered by 0 + 1 + 2.
+- **Status of the resilience tier list.** Tier 0 (trap-prevention guards) + Tier 1 (Keychain fast-path) + Tier 2 (24-word recovery key) + Tier 3 (iCloud Keychain mirror, 2026-05-17) + **Tier 5 (plaintext snapshot)** all in production. Tier 4 (CloudKit wrapped DEK) remains deferred — pure convenience layer; correctness already covered.
+
+### 2026-05-17 — Resilience Tier 3 shipped: per-Mac iCloud Keychain mirror (locked design point)
+
+Tier 3's value is silent recovery when **this** Mac's local Keychain entry is destroyed (bug, OS event, account migration) but the iCloud trust circle still has the user's data. Without it, the user falls back to typing the 24-word recovery key — which works, but is friction.
+
+Critical design decision: **per-Mac account name, NOT a shared DEK across Macs.** The naive "all Macs share one synchronizable Keychain entry" approach was rejected because it loses to the bootstrap race — Mac B first-launches before iCloud Keychain has delivered Mac A's DEK, mints its own, overwrites Mac A's iCloud entry, and the next time Mac A restores from iCloud it gets Mac B's DEK (which can't decrypt Mac A's SQLCipher DB). The 2026-05-15 architecture (per-Mac DEKs + encryptedValues for cross-Mac sync) is preserved; Tier 3 is purely a same-Mac convenience.
+
+- **`KeychainStore.machineIdentifier`** — sourced from `IOPlatformUUID` via IOKit. OS-stable across reboots and OS reinstalls; rotates on hardware replacement (which is the right behavior — the SQLCipher DB on disk doesn't migrate either; cross-hardware moves go through Tier 2).
+- **`KeychainStore.iCloudMirrorAccount(for:)`** — `"icloud-mirror.<machineId>.<primary>"`. Salts in the machine identifier so Mac A and Mac B never collide on the same iCloud Keychain entry. Greppable prefix helps debugging.
+- **`KeychainStore.setDataWithICloudMirror`** — writes both local non-sync entry (fast unlock path) and the per-Mac iCloud-synced entry. iCloud-side is best-effort: if the user has iCloud Keychain disabled / isn't signed in / is offline, the OS no-ops the sync but the local copy still succeeds.
+- **`KeychainStore.getDataIncludingICloudMirror`** — probes local first, falls back to the per-Mac mirror. Wired into `KeyStore.refreshState`; backfills the local copy when the mirror fires so subsequent launches use the fast path.
+- **`KeyStore.setupKeychainManaged` hardening** — checks the mirror entry's `entryStatus` (synchronizable: true) in addition to the local one. If the mirror exists but `refreshState` missed it (transient Keychain failure), throws `keychainEntryAlreadyExists` instead of minting a fresh DEK that would clobber the prior one.
+- **`KeychainStore.deleteAll`** — now lists with `kSecAttrSynchronizableAny` and routes each per-account delete to the namespace the item actually lives in, so Reset wipes both local and mirror entries in one pass.
+- **Test isolation** — `iCloudMirrorEnabled = false` under XCTest. The per-pid test service name would otherwise pollute the developer's iCloud Keychain. Production tests verify the contract (per-Mac account naming, fallback shape, gating) without exercising actual iCloud sync; the cross-Mac round-trip is verified manually per the Phase 4 convention.
+
+338/338 tests green (+7 KeychainICloudMirrorTests).
 
 ### 2026-05-15 — Data-loss incident #4 + multi-tier resilience plan (locked: Tier 0 + Tier 2 ship before any further feature work)
 

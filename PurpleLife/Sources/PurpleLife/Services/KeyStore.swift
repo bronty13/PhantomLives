@@ -141,10 +141,21 @@ final class KeyStore: ObservableObject {
         let envelopeExists = FileManager.default.fileExists(atPath: fileURL.path)
         hasPassphrase = envelopeExists
 
-        if let cached = KeychainStore.getData(for: keychainDEKAccount),
+        // Tier 3 — probe local Keychain first; fall back to the per-Mac
+        // iCloud Keychain mirror. If the mirror fires (local lost,
+        // iCloud trust circle still has it), backfill the local copy
+        // so subsequent launches use the fast non-sync path.
+        if let cached = KeychainStore.getDataIncludingICloudMirror(for: keychainDEKAccount),
            cached.count >= 16 {
             self.dek = SymmetricKey(data: cached)
             self.state = .unlocked
+            // Backfill: if local was missing but mirror provided the
+            // bytes, write a local copy so the next launch doesn't
+            // round-trip through iCloud Keychain again.
+            if KeychainStore.getData(for: keychainDEKAccount, synchronizable: false) == nil {
+                try? KeychainStore.setData(cached, for: keychainDEKAccount, synchronizable: false)
+                NSLog("PurpleLife: KeyStore recovered DEK from iCloud Keychain mirror — local Keychain backfilled.")
+            }
             return
         }
 
@@ -179,6 +190,20 @@ final class KeyStore: ObservableObject {
         // refreshState misread a transient miss as "first launch".
         let status = KeychainStore.entryStatus(for: keychainDEKAccount)
         if status != .absent {
+            throw KeyStoreError.keychainEntryAlreadyExists
+        }
+        // Tier 3 — same defense against the iCloud Keychain mirror.
+        // refreshState should have picked up the mirror via
+        // getDataIncludingICloudMirror and unlocked us; if it didn't
+        // but the mirror entry still exists (a transient iCloud
+        // failure, locked Keychain, etc.), minting a fresh DEK here
+        // would overwrite the mirror and orphan whatever the prior
+        // DEK was protecting. The per-Mac mirror account means a
+        // genuinely-fresh Mac has no entry under its own machine ID
+        // and this check correctly passes for first launches.
+        let mirrorAccount = KeychainStore.iCloudMirrorAccount(for: keychainDEKAccount)
+        let mirrorStatus = KeychainStore.entryStatus(for: mirrorAccount, synchronizable: true)
+        if mirrorStatus != .absent {
             throw KeyStoreError.keychainEntryAlreadyExists
         }
         // Phase A.2 (2026-05-15) — second guard: even when the slot
@@ -525,6 +550,12 @@ final class KeyStore: ObservableObject {
 
     private func cacheDEKInKeychain() {
         guard let dek else { return }
-        try? KeychainStore.setData(dek.rawData, for: keychainDEKAccount)
+        // Tier 3 — write the DEK to both the local Keychain entry
+        // (fast non-sync silent-unlock path) AND the per-Mac iCloud
+        // Keychain mirror (synced via the user's iCloud trust circle).
+        // The mirror enables silent recovery when the local entry is
+        // lost. Best-effort on the iCloud side; if it fails we still
+        // have a valid local copy and the keystore is fully usable.
+        try? KeychainStore.setDataWithICloudMirror(dek.rawData, for: keychainDEKAccount)
     }
 }
