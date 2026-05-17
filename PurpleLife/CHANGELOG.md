@@ -4,6 +4,27 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-16 — Sample data populate / clear
+
+Two new buttons in Settings → Backup → "Sample data" let the user populate the app with a curated narrative-shaped dataset and clear it back out at will. Useful for poking at every view kind with real-shaped content, demoing the app, or evaluating it without committing real data.
+
+**Dataset shape.** ~130 records modeling one fictional person ("Sam Reyes") across the last ~90 days — 50 daily-ish Weight readings with a realistic downward trend, 20 Planner items mixing Done / Doing / Pending / Cancelled across several projects, 10 People (family / friends / colleagues), 8 Books across all four statuses with realistic dates + ratings, 3 Cameras, 6 Photo Shoots linked to those cameras, 12 Photos linked to shoots + cameras, 5 WoW Characters, 12 Notes across the seed Note categories. Link fields resolve within the dataset; the test suite locks that contract.
+
+**Id-prefix discipline.** Every sample record carries an id with the `sample-` prefix — `sample-Weight-0`, `sample-Book-3`, etc. That makes:
+
+- **Populate idempotent.** Re-running replaces in place (no duplicates).
+- **Clear narrowly subtractive.** A single `WHERE id LIKE 'sample-%'` removes every sample record. User-created records (whose ids are UUIDs, never starting with `sample-`) are untouched in both directions — proven by `testClearRemovesOnlySamplePrefixedRecords`.
+
+**Vault contract.** Sample data never lands in Vault types. Enforced by construction (the dataset only references built-in non-Vault types) and guarded by `testDatasetHasNoVaultTypes`.
+
+**Performance.** Bulk inserts bypass `ObjectEngine`'s per-record sync push / undo registration / FTS upsert — we write straight to `DatabaseService.insertObject`/`updateObject`, then re-index search + tags in a single pass at the end. The full ~130-record populate finishes in well under a second.
+
+- **`Services/SampleDataService.swift`** (new) — `populate()`, `clearSampleData()`, `currentSampleRecordCount()`, plus per-type generators that pin field keys to the seed schema via `optionId(for:inField:ofType:)` lookups.
+- **`Views/Settings/BackupSettingsTab.swift`** — new "Sample data" section with two buttons + a status counter ("130 sample records present" / "No sample data present") + a destructive-action confirmation alert on Clear.
+- **`Tests/.../SampleDataServiceTests.swift`** (new) — 10 tests covering insert / idempotent-replace / scoped-clear / user-record-preservation / count-accuracy / no-Vault-types / link-target-resolution within the dataset / field-key-vs-seed-schema consistency / stable-id-shape.
+
+310/310 tests green (+10 SampleDataServiceTests).
+
 ### 2026-05-16 — In-app SECURITY whitepaper viewer + no-iCloud Vault banner + Move-to-Vault selection snap-back + flaky-BIP39 test fix
 
 Three small-but-visible polish items from the deferred list, plus a flaky-test fix discovered in the process.

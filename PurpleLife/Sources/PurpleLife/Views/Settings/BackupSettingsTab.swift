@@ -23,6 +23,13 @@ struct BackupSettingsTab: View {
     @State private var testResults: [URL: BackupService.VerifyResult] = [:]
     @State private var testErrors: [URL: String] = [:]
 
+    // Sample data populate / clear.
+    @State private var samplePopulating = false
+    @State private var sampleMessage: String?
+    @State private var sampleError: String?
+    @State private var showingClearSampleConfirm = false
+    @State private var sampleRecordCount = SampleDataService.currentSampleRecordCount()
+
     // Plaintext snapshot (Tier 5).
     @State private var showingSnapshotSheet = false
     @State private var snapshotFormat: PlaintextSnapshotService.Format = .zipWithSidecars
@@ -66,6 +73,35 @@ struct BackupSettingsTab: View {
                     Text("Last backup: \(appState.settings.lastBackupAt)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Sample data") {
+                Text("Populate the app with a narrative-shaped dataset (one fictional person's slice-of-life across the last ~90 days) so you can see how every view kind looks with real-shaped content. Idempotent — re-running refreshes the same set without duplicating. **Vault types are never populated.** User-created records are untouched in both directions.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Button("Populate sample data") { populateSample() }
+                        .disabled(samplePopulating)
+                    Button("Clear sample data") { showingClearSampleConfirm = true }
+                        .disabled(samplePopulating || sampleRecordCount == 0)
+                    if samplePopulating { ProgressView().controlSize(.small) }
+                    Spacer()
+                    if sampleRecordCount > 0 {
+                        Text("\(sampleRecordCount) sample record\(sampleRecordCount == 1 ? "" : "s") present")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("No sample data present")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                if let msg = sampleMessage {
+                    Text(msg).font(.caption).foregroundStyle(.green)
+                }
+                if let err = sampleError {
+                    Text(err).font(.caption).foregroundStyle(.red)
                 }
             }
 
@@ -123,6 +159,15 @@ struct BackupSettingsTab: View {
         }
         .sheet(isPresented: $showingSnapshotSheet) {
             snapshotSheet
+        }
+        .alert(
+            "Clear sample data?",
+            isPresented: $showingClearSampleConfirm
+        ) {
+            Button("Cancel", role: .cancel) { }
+            Button("Clear", role: .destructive) { clearSample() }
+        } message: {
+            Text("Removes every record whose id starts with \"sample-\". Your own records are matched by UUID and are untouched.")
         }
     }
 
@@ -202,6 +247,44 @@ struct BackupSettingsTab: View {
         }
         .padding(24)
         .frame(width: 480)
+    }
+
+    // MARK: - Sample data actions
+
+    private func populateSample() {
+        sampleMessage = nil
+        sampleError = nil
+        samplePopulating = true
+        // Synchronous on the main actor — the dataset is ~130 records
+        // and finishes in under a second on the hardware target. If we
+        // ever need progress UI, this is the seam to detach onto a
+        // Task.detached.
+        do {
+            let result = try SampleDataService.populate()
+            sampleMessage = result.replaced == 0
+                ? "Populated \(result.total) sample records."
+                : "Refreshed \(result.total) sample records (\(result.inserted) new, \(result.replaced) updated)."
+            sampleRecordCount = SampleDataService.currentSampleRecordCount()
+            appState.reloadAll()
+        } catch {
+            sampleError = "Populate failed: \(error.localizedDescription)"
+        }
+        samplePopulating = false
+    }
+
+    private func clearSample() {
+        sampleMessage = nil
+        sampleError = nil
+        samplePopulating = true
+        do {
+            let removed = try SampleDataService.clearSampleData()
+            sampleMessage = "Removed \(removed) sample record\(removed == 1 ? "" : "s")."
+            sampleRecordCount = SampleDataService.currentSampleRecordCount()
+            appState.reloadAll()
+        } catch {
+            sampleError = "Clear failed: \(error.localizedDescription)"
+        }
+        samplePopulating = false
     }
 
     private func openSnapshotSheet() {

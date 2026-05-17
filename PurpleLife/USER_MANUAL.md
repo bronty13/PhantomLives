@@ -344,6 +344,15 @@ Themes can travel as `.purplelifetheme.json` files.
 
 Backups run automatically on every launch, **debounced** to skip if the last successful backup is under 5 minutes old. Failures are logged via `NSLog` and never block app launch.
 
+#### Sample data
+
+Two buttons let you populate the app with a curated fictional dataset (~130 records modeling one person's last ~90 days — Weight readings, Planner items, People, Books, Cameras, Photo Shoots, Photos, WoW Characters, Notes) or remove it again. Useful for trying out every view kind with real-shaped content before committing your own data.
+
+- **Populate sample data** — adds the dataset. Re-running refreshes in place (no duplicates).
+- **Clear sample data** — removes only records whose id starts with `sample-`. Your own records (UUID-id'd) are never touched.
+
+Vault types are never populated.
+
 #### Plaintext snapshot
 
 The button **Export plaintext snapshot…** writes your entire dataset, decrypted, to a single file you can store anywhere — encrypted thumb drive, 1Password attachment, paper printout for the most important records. The schema travels in the same file so a future reader can interpret every field meaning without the running app. This is the "I want to be able to read this in 30 years on hardware Apple doesn't sell yet" escape hatch.
