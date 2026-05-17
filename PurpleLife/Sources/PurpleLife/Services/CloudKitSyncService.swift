@@ -39,6 +39,7 @@ final class CloudKitSyncService: ObservableObject {
     static let recordType = "PurpleObject"
     static let typeRecordType = "PurpleType"
     static let attachmentRecordType = "PurpleAttachmentRef"
+    static let dekBackupRecordType = "PurpleDEKBackup"
     static let zoneName = "PurpleLifeZone"
     static let subscriptionID = "PurpleLife.databaseSubscription"
     /// Recovery poll. The primary sync trigger is the
@@ -437,6 +438,79 @@ final class CloudKitSyncService: ObservableObject {
             NSLog("PurpleLife: pushDeleteType(\(id)) failed — \(error.localizedDescription)")
             status = .error(error.localizedDescription)
             lastError = error.localizedDescription
+        }
+    }
+
+    // MARK: - DEK backup (PurpleDEKBackup) — resilience Tier 4
+
+    /// Per-Mac record name for the DEK backup. Salts in the same
+    /// `machineIdentifier` Tier 3 uses for its iCloud Keychain mirror
+    /// so the two tiers are aligned: same Mac, same identity. Different
+    /// Macs in the same iCloud account each get their own
+    /// `PurpleDEKBackup` record — no collisions, each Mac's DEK is
+    /// independently recoverable.
+    private var dekBackupRecordID: CKRecord.ID {
+        CKRecord.ID(
+            recordName: "dek-backup-\(KeychainStore.machineIdentifier)",
+            zoneID: zoneID
+        )
+    }
+
+    /// Write the local DEK to CloudKit as a `PurpleDEKBackup` record.
+    /// The 32-byte DEK rides in `encryptedValues["dek"]` so Apple's
+    /// CKKS trust-circle keys wrap it in transit — Apple never sees
+    /// the plaintext bytes. Same opaque-blob property as our object
+    /// record sync.
+    ///
+    /// Tier 4 is purely a same-Mac recovery convenience, paired with
+    /// Tier 3 (iCloud Keychain mirror). Both survive different
+    /// failure modes: iCloud Keychain can lose entries during some
+    /// account migrations / OS reset events that CloudKit storage
+    /// rides through, and vice versa. The pair gives defense in
+    /// depth on top of the load-bearing Tier 2 recovery key.
+    func pushDEKBackup(dekData: Data) async {
+        guard isEnabled, let database else { return }
+        do {
+            let ck: CKRecord
+            do {
+                ck = try await database.record(for: dekBackupRecordID)
+            } catch let error as CKError where error.code == .unknownItem {
+                ck = CKRecord(recordType: Self.dekBackupRecordType, recordID: dekBackupRecordID)
+            }
+            ck["updated_at"] = ISO8601DateFormatter().string(from: Date()) as CKRecordValue
+            ck.encryptedValues["dek"] = dekData as CKRecordValue
+            _ = try await database.save(ck)
+            lastSyncAt = Date()
+            if status.isError { status = .idle; lastError = nil }
+        } catch {
+            NSLog("PurpleLife: pushDEKBackup failed — \(error.localizedDescription)")
+            // Don't surface as a sync error — Tier 4 is best-effort
+            // backup; the local DEK still functions.
+        }
+    }
+
+    /// Try to read the DEK backup for THIS Mac from CloudKit. Returns
+    /// the raw 32-byte DEK on success, nil on any failure (record
+    /// not found, container unavailable, decrypt error). Called from
+    /// `KeyStore.tryRestoreFromCloudKitBackup` as the third silent
+    /// recovery path after local Keychain (Tier 1) and iCloud
+    /// Keychain mirror (Tier 3) both fail.
+    func fetchDEKBackup() async -> Data? {
+        guard isEnabled, let database else { return nil }
+        do {
+            let ck = try await database.record(for: dekBackupRecordID)
+            guard let data = ck.encryptedValues["dek"] as? Data else {
+                NSLog("PurpleLife: fetchDEKBackup — record exists but no dek field")
+                return nil
+            }
+            return data
+        } catch let error as CKError where error.code == .unknownItem {
+            // No backup for this Mac yet (expected on fresh installs
+            // or installs that pre-date Tier 4).
+            return nil
+        } catch {
+            NSLog("PurpleLife: fetchDEKBackup failed — \(error.localizedDescription)")
+            return nil
         }
     }
 

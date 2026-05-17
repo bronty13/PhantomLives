@@ -30,7 +30,22 @@ Implementation of the deferred Tier 5 from the 2026-05-15 plan. The locked desig
 
 - **Two test-design lessons banked.** (1) `SchemaRegistry` seeds the built-in catalog when its file is missing, so any test that points a registry at a fresh temp file gets the full seed set on top of whatever it `upsertType`s. Assert on type-id *membership*, not on exact `schema.types.count`. (2) `defaultFilename` is `@MainActor` (via the enum's `@MainActor` annotation); test methods that call it need `@MainActor` too — Swift 6 catches this at compile time as "main actor-isolated static method in a synchronous nonisolated context."
 
-- **Status of the resilience tier list.** Tier 0 (trap-prevention guards) + Tier 1 (Keychain fast-path) + Tier 2 (24-word recovery key) + Tier 3 (iCloud Keychain mirror, 2026-05-17) + **Tier 5 (plaintext snapshot)** all in production. Tier 4 (CloudKit wrapped DEK) remains deferred — pure convenience layer; correctness already covered.
+- **Status of the resilience tier list.** Tier 0 (trap-prevention guards) + Tier 1 (Keychain fast-path) + Tier 2 (24-word recovery key) + Tier 3 (iCloud Keychain mirror, 2026-05-17) + Tier 4 (CloudKit private-zone DEK backup, 2026-05-17) + **Tier 5 (plaintext snapshot)** all in production. The full multi-tier resilience plan from 2026-05-15 is now in place.
+
+### 2026-05-17 — Resilience Tier 4 shipped: CloudKit private-zone DEK backup
+
+Companion to Tier 3 — both are silent recovery paths when **this** Mac's local Keychain entry is destroyed. They survive different failure modes: iCloud Keychain can lose entries during some iCloud account migrations and OS reset events that CloudKit storage rides through; CloudKit storage can become unreachable in network/account states where the local iCloud Keychain trust circle still has the entry. Together they cover the realistic recovery space without needing the 24-word recovery key.
+
+- **`CloudKitSyncService.pushDEKBackup(dekData:)`** — writes a `PurpleDEKBackup` record to the user's private CloudKit zone with the 32-byte DEK in `encryptedValues["dek"]` (CKKS-encrypted in transit; Apple never sees the plaintext bytes). One record per Mac, keyed by `dek-backup-<machineIdentifier>` so Mac A and Mac B store independently without collision.
+- **`CloudKitSyncService.fetchDEKBackup() async -> Data?`** — reads this Mac's backup. Returns nil on any failure (record not found, container unavailable, decrypt error). `unknownItem` is the happy "no backup yet" path on fresh installs.
+- **`KeyStore.cacheDEKInKeychain`** now fans out to Tier 3 (iCloud Keychain mirror) AND Tier 4 (CloudKit backup) on every cache. Both fire-and-forget; failures don't propagate. The local DEK remains the source of truth.
+- **`KeyStore.tryRestoreFromCloudKitBackup() async -> Bool`** — async recovery entry point. Fetches the per-Mac backup, restores into local Keychain + iCloud mirror (so the next launch unlocks via Tier 1 silently), sets `state = .unlocked`. Caller falls back to the recovery screen on `false`.
+- **`AppState`'s `everBootedButKeychainGone` catch** now kicks off a Task that awaits `tryRestoreFromCloudKitBackup`. During the fetch the user sees "Checking iCloud for a recovery copy…"; on success the trap recovers silently and the database reopens under the restored DEK; on failure the original recovery prose appears with the 24-word-key path. The boot marker is re-stamped on Tier 4 success so the trap-prevention test invariant continues to hold.
+- **Test isolation** — production builds push every cache; tests bail because the sync service isn't wired (`KeyStore.sync == nil` in the default test path). CloudKit round-trip verified manually per the Phase 4 convention.
+
+341/341 tests green (+3 DEKBackupTier4Tests).
+
+**Closing the resilience plan.** All five tiers from the 2026-05-15 design are now in production: Tier 0 trap guards + Tier 1 Keychain fast-path + Tier 2 24-word recovery key + Tier 3 iCloud Keychain mirror + Tier 4 CloudKit DEK backup + Tier 5 plaintext snapshot. The data-loss surface area that motivated incident #4 is fully addressed.
 
 ### 2026-05-17 — Resilience Tier 3 shipped: per-Mac iCloud Keychain mirror (locked design point)
 

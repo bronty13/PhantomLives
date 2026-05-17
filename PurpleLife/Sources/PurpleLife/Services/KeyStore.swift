@@ -70,6 +70,13 @@ final class KeyStore: ObservableObject {
     /// When false, the DEK is held only by the Keychain.
     @Published private(set) var hasPassphrase: Bool = false
 
+    /// Wired by `AppState` at launch — gives the keystore access to
+    /// the CloudKit sync surface so Tier 4 backup pushes / fetches
+    /// can fire. Optional so tests that don't initialize sync still
+    /// work; weak so the keystore doesn't keep the sync service
+    /// alive past AppState's tear-down.
+    weak var sync: CloudKitSyncService?
+
     private let fileURL: URL
     /// Current DEK. Non-nil iff state == .unlocked. Never serialised directly.
     private var dek: SymmetricKey?
@@ -557,5 +564,46 @@ final class KeyStore: ObservableObject {
         // lost. Best-effort on the iCloud side; if it fails we still
         // have a valid local copy and the keystore is fully usable.
         try? KeychainStore.setDataWithICloudMirror(dek.rawData, for: keychainDEKAccount)
+        // Tier 4 — also push a backup copy to CloudKit's private DB,
+        // wrapped via Apple's CKKS trust-circle keys (encryptedValues).
+        // Fires-and-forgets; pushDEKBackup logs but doesn't propagate
+        // failures. The local DEK still functions if the push fails;
+        // the backup is purely a recovery convenience that survives
+        // iCloud Keychain wipes Tier 3 can't.
+        if let sync {
+            let payload = dek.rawData
+            Task { @MainActor in await sync.pushDEKBackup(dekData: payload) }
+        }
+    }
+
+    // MARK: - Tier 4: CloudKit DEK backup restore
+
+    /// Async recovery path used by `AppState` when both local Keychain
+    /// (Tier 1) and the iCloud Keychain mirror (Tier 3) are gone.
+    /// Tries to fetch the per-Mac `PurpleDEKBackup` record from
+    /// CloudKit; if found, restores the DEK into local + iCloud
+    /// Keychain entries so subsequent launches use the fast path.
+    ///
+    /// Returns `true` if the DEK was restored and the keystore is now
+    /// `.unlocked`. Returns `false` if no backup exists, the fetch
+    /// failed, the bytes are wrong-sized, or the sync service isn't
+    /// wired. Caller falls back to the recovery screen on `false`.
+    func tryRestoreFromCloudKitBackup() async -> Bool {
+        guard let sync else { return false }
+        guard let dekData = await sync.fetchDEKBackup() else { return false }
+        guard dekData.count >= 16 else {
+            NSLog("PurpleLife: tryRestoreFromCloudKitBackup — fetched DEK is too short (\(dekData.count) bytes)")
+            return false
+        }
+        let restored = SymmetricKey(data: dekData)
+        self.dek = restored
+        self.state = .unlocked
+        self.hasPassphrase = FileManager.default.fileExists(atPath: fileURL.path)
+        // Backfill the local Keychain entry + iCloud mirror so the
+        // next launch unlocks silently via Tier 1 / Tier 3 without
+        // needing to round-trip through CloudKit again.
+        cacheDEKInKeychain()
+        NSLog("PurpleLife: KeyStore recovered DEK from CloudKit backup (Tier 4) — local Keychain backfilled.")
+        return true
     }
 }

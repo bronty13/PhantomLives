@@ -230,14 +230,47 @@ final class AppState: ObservableObject {
                 // recovery key as live paths. Don't paper over this
                 // by bootstrapping silently — that's the trap.
                 NSLog("PurpleLife: ever-booted marker present but Keychain entry gone — refusing to bootstrap a fresh DEK.")
+                // Tier 4 (2026-05-17) — before showing the recovery
+                // screen, kick off an async attempt to restore from
+                // the CloudKit DEK backup. While that runs, the user
+                // sees a "Checking iCloud backup…" message. On
+                // success we silently unlock and trigger
+                // reloadAll(); on failure we replace the message
+                // with the original recovery prose.
                 dbHealth = .unrecoverable(
-                    "PurpleLife has launched successfully on this Mac before, but the " +
-                    "Keychain entry that unlocks your data is no longer available. " +
-                    "This usually means it was deleted out-of-band — check Time Machine for a " +
-                    "snapshot of ~/Library/Keychains/login.keychain-db from before the problem started. " +
-                    "If you have no backup, you can Reset to start fresh; the unreadable data is " +
-                    "preserved on disk in case the key can be recovered later."
+                    "PurpleLife is checking iCloud for a recovery copy of your encryption key. This usually takes a few seconds…"
                 )
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    let recovered = await self.keyStore.tryRestoreFromCloudKitBackup()
+                    if recovered {
+                        // Backfill the boot marker and reopen the
+                        // database under the recovered DEK. Same
+                        // shape as a successful Tier 2 recovery-key
+                        // unlock.
+                        BootState.markBooted(in: DatabaseService.supportDirectory)
+                        do {
+                            try self.database.reopenDatabase()
+                            self.dbHealth = .ok
+                            self.reloadAll()
+                        } catch {
+                            NSLog("PurpleLife: SQLCipher reopen after Tier 4 restore failed — \(error.localizedDescription)")
+                            self.dbHealth = .unrecoverable(
+                                "Recovered the encryption key from iCloud backup, but couldn't reopen the database: \(error.localizedDescription)"
+                            )
+                        }
+                    } else {
+                        self.dbHealth = .unrecoverable(
+                            "PurpleLife has launched successfully on this Mac before, but the " +
+                            "Keychain entry that unlocks your data is no longer available, and no " +
+                            "iCloud backup was found. Check Time Machine for a snapshot of " +
+                            "~/Library/Keychains/login.keychain-db from before the problem started. " +
+                            "If you have no backup, enter your 24-word recovery key below, or Reset to " +
+                            "start fresh — the unreadable data is preserved on disk in case the key " +
+                            "can be recovered later."
+                        )
+                    }
+                }
             } catch {
                 NSLog("PurpleLife: keystore setup failed — \(error.localizedDescription)")
             }
@@ -429,6 +462,11 @@ final class AppState: ObservableObject {
         // metadata; peers materialize the row + decrypt the asset
         // on pull.
         AttachmentService.sync = sync
+        // Wire KeyStore → sync so resilience Tier 4 (CloudKit DEK
+        // backup) can push on every cache and the recovery path can
+        // pull on launch. Same fire-and-forget shape as the other
+        // service hookups.
+        keyStore.sync = sync
 
         // Rebuild the FTS5 index on every launch — cheap for our row
         // counts and immune to a missed write or a restored backup.
