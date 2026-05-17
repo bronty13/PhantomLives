@@ -48,10 +48,16 @@ enum SimilarTakesService {
         }
         onProgress(videos.count, videos.count)
 
-        // Naive O(n²) pairing — fine for the few hundred clips a
-        // PurpleReel project typically has. For 10k-clip libraries
-        // we'd want a BK-tree (port from PurpleDedup) but it's not
-        // needed yet.
+        // BK-tree pairing — replaces the previous O(n²) double loop.
+        // Build the tree in one pass, then query each hash for its
+        // within-threshold neighbors. Triangle-inequality pruning
+        // skips entire subtrees that can't satisfy the threshold,
+        // collapsing the average case to ~O(n log n) on real data.
+        let tree = BKTree()
+        for (i, item) in hashes.enumerated() {
+            tree.insert(value: item.1, payload: i)
+        }
+
         var parent = Array(0..<hashes.count)
         func find(_ x: Int) -> Int {
             var r = x
@@ -64,12 +70,9 @@ enum SimilarTakesService {
             let ra = find(a), rb = find(b)
             if ra != rb { parent[ra] = rb }
         }
-        for i in 0..<hashes.count {
-            for j in (i+1)..<hashes.count {
-                if hamming(hashes[i].1, hashes[j].1) <= hammingThreshold {
-                    union(i, j)
-                }
-            }
+        for (i, item) in hashes.enumerated() {
+            let neighbors = tree.neighbors(of: item.1, within: hammingThreshold)
+            for j in neighbors where j != i { union(i, j) }
         }
 
         var groups: [Int: [Int]] = [:]
@@ -142,10 +145,6 @@ enum SimilarTakesService {
             }
         }
         return hash
-    }
-
-    private static func hamming(_ a: UInt64, _ b: UInt64) -> Int {
-        (a ^ b).nonzeroBitCount
     }
 
     private static func pickBest(in assets: [Asset],

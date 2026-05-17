@@ -27,7 +27,10 @@ Launch from Spotlight or `/Applications/PurpleReel.app`.
    `.mov` / `.mp4` / `.m4v` source media. PurpleReel recursively
    scans and reads codec / resolution / fps / duration via
    AVFoundation.
-2. **Click a clip** in the asset table — the bottom split appears:
+2. **Hover over a clip's thumbnail** in the leftmost column —
+   the cursor's horizontal position cycles through 12 frames
+   spread across the clip. Click anywhere in the row to select.
+3. **Click a clip** in the asset table — the bottom split appears:
    AVPlayer on the left, log panes on the right.
 3. **Play / scrub** — the scrubber shows the audio waveform and the
    playhead. Click anywhere to seek.
@@ -143,9 +146,17 @@ Toolbar → **SFTP Delivery**:
   script (`mkdir` + `cd` + `put` per file + `bye`). Per-file
   state and raw `sftp` log surface in the sheet.
 
-**Auth note:** SSH key only in this MVP. Set up either ssh-agent
-or `~/.ssh/config` with the right HostName/User/IdentityFile, or
-provide an identity-file path explicitly in the destination editor.
+**Auth options:**
+- **SSH key** (preferred): set up ssh-agent or `~/.ssh/config`
+  with HostName/User/IdentityFile, or provide an explicit
+  identity-file path in the destination editor.
+- **Password**: fill the **Password** secure field and save the
+  destination. The password is stored in the macOS Keychain
+  under service `com.bronty13.PurpleReel.sftp`, keyed by the
+  destination's UUID. Non-interactive use requires `sshpass`
+  (`brew install hudochenkov/sshpass/sshpass`). When sshpass is
+  available, the password is fed in via the `SSHPASS` environment
+  variable rather than the `-p` flag — keeps it out of `ps` output.
 
 ---
 

@@ -1,5 +1,38 @@
 # PurpleReel Changelog
 
+## Unreleased — Round 2 follow-ups (thumbnails, SFTP pwd, BK-tree)
+
+- **Thumbnail strip with hover-scrub** in the browser:
+  `ThumbnailService` generates 12 evenly-spaced JPEGs per video
+  (spread over the middle 90% to skip slates/leader), JPEG-encoded
+  at 240px max, cached under
+  `~/Library/Application Support/PurpleReel/thumbnails/<hash>/`.
+  Cache key includes file modification time so touching the source
+  invalidates. `ThumbnailCell` is the SwiftUI view: lazy-loads the
+  middle frame on appear, cycles frames based on cursor X under
+  `onContinuousHover`, falls back to a film icon when frame
+  extraction fails. Added as the leftmost (90px) column of the
+  asset table.
+- **SFTP password auth** via `sshpass` + Keychain:
+  `KeychainService` wraps `SecItem*` for per-destination password
+  storage keyed by the destination's UUID. `SFTPService` detects
+  `sshpass` (Homebrew or system path); when a password is stored
+  for the active destination, sftp is launched as
+  `sshpass -e /usr/bin/sftp …` with the password injected via the
+  `SSHPASS` env var (safer than `-p` which would expose it in
+  `ps`). UI gets a SecureField + a green/orange status line
+  indicating whether sshpass is installed.
+- **BK-tree similar-takes clustering**: replaces the previous
+  O(n²) pairwise loop. `BKTree.swift` is the Burkhard-Keller tree
+  with triangle-inequality pruning at each level. Scales us up to
+  tens of thousands of clips without changing the
+  `SimilarTakesService.findClusters` API. Verified against
+  brute-force on 500 synthetic UInt64 hashes at four thresholds
+  (2, 8, 20, 64) — results agree exactly.
+- **Tests**: +4 BK-tree tests (exact match, within-threshold
+  set membership, brute-force agreement, insertion count). All
+  28 tests still green.
+
 ## Unreleased — Post-MVP follow-ups
 
 - **XCTest suite** (24 tests across 6 files, `./run-tests.sh`):

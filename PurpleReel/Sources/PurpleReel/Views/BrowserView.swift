@@ -55,6 +55,10 @@ struct BrowserView: View {
 
     private var assetTable: some View {
         Table(filteredAssets, selection: $appState.selectedAssetPath) {
+            TableColumn("") { asset in
+                ThumbnailCell(asset: asset)
+            }
+            .width(90)
             TableColumn("Name") { asset in
                 Text(asset.filename)
                     .lineLimit(1)

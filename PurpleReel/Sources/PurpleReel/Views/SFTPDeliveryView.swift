@@ -8,6 +8,7 @@ struct SFTPDeliveryView: View {
     @State private var destinations: [SFTPDestination] = SFTPDestinationStore.load()
     @State private var selectedID: SFTPDestination.ID?
     @State private var editing = SFTPDestination()
+    @State private var editingPassword: String = ""
     @State private var pickedFiles: [URL] = []
     @State private var runningJob: SFTPJob?
     @State private var showLog = false
@@ -112,6 +113,11 @@ struct SFTPDeliveryView: View {
                     .help("e.g. /home/alice/deliveries — created with mkdir on connect")
                 TextField("Identity file (optional)", text: $editing.identityFile)
                     .help("Absolute or ~/-prefixed path to a private key. Leave empty to use ssh-agent / ~/.ssh/config.")
+                SecureField("Password (optional)", text: $editingPassword)
+                    .help("Stored in macOS Keychain. Requires `sshpass` for non-interactive use.")
+                if !editingPassword.isEmpty {
+                    sshpassStatus
+                }
                 Toggle("Accept new host keys automatically",
                         isOn: $editing.acceptNewHostKeys)
             }
@@ -202,10 +208,35 @@ struct SFTPDeliveryView: View {
 
     // MARK: - Actions
 
+    @ViewBuilder
+    private var sshpassStatus: some View {
+        if SFTPService.sshpassPath() != nil {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text("sshpass detected — password auth ready.")
+                    .font(.caption)
+            }
+        } else {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("sshpass not installed.")
+                        .font(.caption)
+                    Text("Install with `brew install hudochenkov/sshpass/sshpass` for non-interactive password auth, or use SSH key auth instead.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
     private func hydrate() {
         if selectedID == nil, let first = destinations.first {
             selectedID = first.id
             editing = first
+            editingPassword = KeychainService.password(account: first.id.uuidString) ?? ""
         }
     }
 
@@ -233,6 +264,7 @@ struct SFTPDeliveryView: View {
         guard let id = selectedID,
               let dst = destinations.first(where: { $0.id == id }) else { return }
         editing = dst
+        editingPassword = KeychainService.password(account: dst.id.uuidString) ?? ""
     }
 
     private func saveEditor() {
@@ -243,6 +275,10 @@ struct SFTPDeliveryView: View {
             selectedID = editing.id
         }
         SFTPDestinationStore.save(destinations)
+        // Keychain is updated alongside the persisted JSON; empty
+        // password deletes the entry.
+        KeychainService.set(password: editingPassword,
+                              account: editing.id.uuidString)
     }
 
     private func pickFiles() {

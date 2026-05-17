@@ -114,6 +114,15 @@ enum SFTPService {
         return args
     }
 
+    /// Path to `sshpass` if installed (Homebrew or system). Used to
+    /// pipe a password into sftp non-interactively.
+    static func sshpassPath() -> String? {
+        let candidates = ["/opt/homebrew/bin/sshpass",
+                          "/usr/local/bin/sshpass",
+                          "/usr/bin/sshpass"]
+        return candidates.first { FileManager.default.fileExists(atPath: $0) }
+    }
+
     static func buildBatchScript(destination dst: SFTPDestination,
                                   items: [(localURL: URL, remoteName: String)]) -> String {
         var s = ""
@@ -155,9 +164,25 @@ enum SFTPService {
 
         for item in items { item.state = .queued }
 
+        // If the destination has a password configured in Keychain,
+        // route the invocation through `sshpass -p ...`. Falls back
+        // to plain sftp (key auth) if sshpass isn't installed.
         let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/sftp")
-        task.arguments = buildArguments(destination: dst, batchPath: tmp)
+        let storedPassword = KeychainService.password(account: dst.id.uuidString)
+        if let pw = storedPassword, !pw.isEmpty, let sshpass = sshpassPath() {
+            task.executableURL = URL(fileURLWithPath: sshpass)
+            // sshpass -e reads SSHPASS env var (safer than -p on
+            // shared systems, where -p would show the password in
+            // `ps` output).
+            task.arguments = ["-e", "/usr/bin/sftp"]
+                + buildArguments(destination: dst, batchPath: tmp)
+            var env = ProcessInfo.processInfo.environment
+            env["SSHPASS"] = pw
+            task.environment = env
+        } else {
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/sftp")
+            task.arguments = buildArguments(destination: dst, batchPath: tmp)
+        }
         let pipe = Pipe()
         task.standardOutput = pipe
         task.standardError = pipe
