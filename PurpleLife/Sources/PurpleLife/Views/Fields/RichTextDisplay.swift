@@ -22,6 +22,11 @@ struct RichTextDisplay: NSViewRepresentable {
         tv.textContainerInset = NSSize(width: 0, height: 2)
         tv.textContainer?.lineFragmentPadding = 0
         tv.font = NSFont.systemFont(ofSize: 13)
+        // Dark-mode adaptation — RTF/RTFD content with baked-in black
+        // foregroundColor would otherwise render invisible on dark
+        // backgrounds. Same fix as the main RichTextEditor; see comment
+        // there for details.
+        tv.usesAdaptiveColorMappingForDarkAppearance = true
         tv.textStorage?.setAttributedString(attributed)
         return tv
     }

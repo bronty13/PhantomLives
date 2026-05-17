@@ -116,6 +116,17 @@ struct RichTextRepresentable: NSViewRepresentable {
         tv.allowsUndo = true
         tv.font = NSFont.systemFont(ofSize: 13)
         tv.textContainerInset = NSSize(width: 8, height: 8)
+        // Dark-mode adaptation for RTF content. When AppKit encodes an
+        // NSAttributedString to RTF it bakes a color table; an attributed
+        // string with no explicit color round-trips through RTF as
+        // explicit-black. Without this property, that explicit black
+        // stays black even in dark mode — invisible against the editor's
+        // dark background. With it set to true, the framework remaps
+        // pure black ↔ white at render time based on the current
+        // appearance; user-chosen non-grayscale colors are unaffected.
+        // Apple-recommended fix for "RTF document opens with black
+        // text in dark mode."
+        tv.usesAdaptiveColorMappingForDarkAppearance = true
         tv.textStorage?.setAttributedString(attributed)
         // Snapshot the attachments that were in the initial storage so
         // the extractor (if wired) doesn't treat already-saved inline
