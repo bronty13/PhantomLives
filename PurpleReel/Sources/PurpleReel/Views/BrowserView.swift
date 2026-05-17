@@ -1,14 +1,35 @@
 import SwiftUI
 
+enum DetailTab: String, CaseIterable, Identifiable {
+    case content, tracks, log
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .content: return "Content"
+        case .tracks:  return "Tracks"
+        case .log:     return "Log"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .content: return "rectangle.grid.2x2"
+        case .tracks:  return "waveform.path.ecg"
+        case .log:     return "list.bullet.rectangle"
+        }
+    }
+}
+
 struct BrowserView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var playerController = PlayerController()
     @State private var filterText: String = ""
+    @AppStorage("detailTab") private var detailTab: DetailTab = .content
 
     private var filteredAssets: [Asset] {
+        let base = appState.displayedAssets
         let term = filterText.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !term.isEmpty else { return appState.assets }
-        return appState.assets.filter { $0.filename.lowercased().contains(term) }
+        guard !term.isEmpty else { return base }
+        return base.filter { $0.filename.lowercased().contains(term) }
     }
 
     var body: some View {
@@ -30,23 +51,66 @@ struct BrowserView: View {
             }
         }
         .safeAreaInset(edge: .top) {
-            HStack {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField("Filter by name…", text: $filterText)
-                    .textFieldStyle(.plain)
-                Spacer()
-                if appState.isScanning {
-                    ProgressView().controlSize(.small)
-                    Text(appState.scanProgress).foregroundStyle(.secondary).font(.caption)
-                } else {
-                    Text("\(filteredAssets.count) of \(appState.assets.count)")
-                        .foregroundStyle(.secondary).font(.caption)
+            VStack(spacing: 0) {
+                // Row 1: back/forward + drilldown + type filter chips + sort + scan status
+                HStack(spacing: 10) {
+                    Button { appState.goBack() } label: {
+                        Image(systemName: "chevron.backward")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(!appState.canGoBack)
+                    .keyboardShortcut("[", modifiers: [.command])
+                    .help("Back (⌘[)")
+
+                    Button { appState.goForward() } label: {
+                        Image(systemName: "chevron.forward")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(!appState.canGoForward)
+                    .keyboardShortcut("]", modifiers: [.command])
+                    .help("Forward (⌘])")
+
+                    Divider().frame(height: 14)
+
+                    Toggle(isOn: $appState.drilldownEnabled) {
+                        Label("Drilldown", systemImage: "tray.full")
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .toggleStyle(.button)
+                    .controlSize(.small)
+                    .help("Drilldown ON shows every file under the selected folder, including subfolders. OFF shows direct children only.")
+
+                    Divider().frame(height: 14)
+
+                    typeFilterChips
+
+                    Spacer()
+
+                    sortMenu
+
+                    if appState.isScanning {
+                        ProgressView().controlSize(.small)
+                        Text(appState.scanProgress).foregroundStyle(.secondary).font(.caption)
+                    } else {
+                        Text("\(filteredAssets.count) of \(appState.assets.count)")
+                            .foregroundStyle(.secondary).font(.caption)
+                    }
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(.bar)
+                Divider()
+                // Row 2: name filter
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField("Filter by name…", text: $filterText)
+                        .textFieldStyle(.plain)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(.bar)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(.bar)
         }
         .onChange(of: appState.selectedAsset) { _, newValue in
             loadIntoPlayer(newValue)
@@ -107,19 +171,120 @@ struct BrowserView: View {
             .frame(minWidth: 480)
 
             VStack(spacing: 0) {
-                MarkersListView(
-                    fps: playerController.fps,
-                    onJumpTo: { playerController.seek(to: $0) }
-                )
+                tabSwitcher
                 Divider()
-                SubclipsListView(
-                    fps: playerController.fps,
-                    onJumpTo: { playerController.seek(to: $0) }
-                )
-                Divider()
-                TagsRatingView()
+                Group {
+                    switch detailTab {
+                    case .content:
+                        if let asset = appState.selectedAsset {
+                            ClipContentView(asset: asset,
+                                             onSeek: { playerController.seek(to: $0) })
+                        } else {
+                            Color.clear
+                        }
+                    case .tracks:
+                        if let asset = appState.selectedAsset {
+                            ClipTracksView(asset: asset)
+                        } else {
+                            Color.clear
+                        }
+                    case .log:
+                        VStack(spacing: 0) {
+                            MarkersListView(
+                                fps: playerController.fps,
+                                onJumpTo: { playerController.seek(to: $0) }
+                            )
+                            Divider()
+                            SubclipsListView(
+                                fps: playerController.fps,
+                                onJumpTo: { playerController.seek(to: $0) }
+                            )
+                            Divider()
+                            TagsRatingView()
+                        }
+                    }
+                }
             }
-            .frame(minWidth: 320, idealWidth: 360)
+            .frame(minWidth: 360, idealWidth: 420)
+        }
+    }
+
+    private var tabSwitcher: some View {
+        Picker("", selection: $detailTab) {
+            ForEach(DetailTab.allCases) { tab in
+                Label(tab.label, systemImage: tab.icon).tag(tab)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+    }
+
+    @ViewBuilder
+    private var typeFilterChips: some View {
+        HStack(spacing: 4) {
+            chipButton(title: "All",    icon: "circle.grid.2x2", value: "all")
+            chipButton(title: "Video",  icon: "film",            value: "video")
+            chipButton(title: "Audio",  icon: "waveform",        value: "audio")
+            chipButton(title: "Images", icon: "photo",           value: "image")
+        }
+    }
+
+    private func chipButton(title: String, icon: String, value: String) -> some View {
+        let active = appState.typeFilter == value
+        return Button {
+            appState.typeFilter = value
+        } label: {
+            Label(title, systemImage: icon)
+                .labelStyle(.titleAndIcon)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(active ? Color.accentColor : Color.secondary.opacity(0.15),
+                              in: Capsule())
+                .foregroundStyle(active ? .white : .primary)
+                .font(.caption)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var sortMenu: some View {
+        Menu {
+            sortOption("Name",     value: "name")
+            sortOption("Date",     value: "date")
+            sortOption("Size",     value: "size")
+            sortOption("Duration", value: "duration")
+            sortOption("FPS",      value: "fps")
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.up.arrow.down")
+                Text("Sort: \(sortLabel(appState.sortKey))")
+                    .font(.caption)
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .frame(width: 160)
+    }
+
+    private func sortOption(_ label: String, value: String) -> some View {
+        Button {
+            appState.sortKey = value
+        } label: {
+            if appState.sortKey == value {
+                Label(label, systemImage: "checkmark")
+            } else {
+                Text(label)
+            }
+        }
+    }
+
+    private func sortLabel(_ key: String) -> String {
+        switch key {
+        case "date":     return "Date"
+        case "size":     return "Size"
+        case "duration": return "Duration"
+        case "fps":      return "FPS"
+        default:         return "Name"
         }
     }
 

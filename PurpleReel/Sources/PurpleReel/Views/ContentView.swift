@@ -173,23 +173,134 @@ struct SidebarView: View {
     @EnvironmentObject var appState: AppState
 
     var body: some View {
-        List {
-            Section("Library") {
-                if let root = appState.rootFolder {
-                    Label(root.lastPathComponent, systemImage: "folder")
-                        .lineLimit(1)
-                        .help(root.path)
+        VStack(spacing: 0) {
+            workspaceHeader
+            Divider()
+            if !appState.workspaceRoots.isEmpty {
+                List(selection: Binding(
+                    get: { appState.selectedFolderPath },
+                    set: { appState.navigate(to: $0) }
+                )) {
+                    Section("Workspace") {
+                        ForEach(appState.workspaceRoots, id: \.self) { root in
+                            if let tree = appState.folderTree(forRoot: root) {
+                                FolderNodeRow(node: tree, depth: 0)
+                                    .contextMenu {
+                                        Button("Remove from Workspace") {
+                                            appState.removeWorkspaceRoot(root)
+                                        }
+                                        Button("Reveal in Finder") {
+                                            NSWorkspace.shared.activateFileViewerSelecting([root])
+                                        }
+                                    }
+                            }
+                        }
+                    }
+                    Section("Stats") {
+                        LabeledContent("Items",
+                                        value: "\(appState.displayedAssets.count) / \(appState.assets.count)")
+                        LabeledContent("Status",
+                                        value: appState.isScanning ? appState.scanProgress : "Idle")
+                    }
+                }
+                .listStyle(.sidebar)
+                .scrollContentBackground(.hidden)
+            } else {
+                VStack {
+                    Spacer()
+                    Image(systemName: "folder.badge.questionmark")
+                        .font(.title)
+                        .foregroundStyle(.secondary)
+                    Text("Open a folder to start")
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private var workspaceHeader: some View {
+        HStack {
+            Text("WORKSPACE")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Spacer()
+            Menu {
+                Button("Add Folder to Workspace…") {
+                    appState.addFolderToWorkspace()
+                }
+                .keyboardShortcut("i", modifiers: [.command])
+                Divider()
+                Button("Clear Workspace…") {
+                    let alert = NSAlert()
+                    alert.messageText = "Clear Workspace?"
+                    alert.informativeText = "All workspace roots will be removed. Catalogued metadata (markers, tags, ratings) stays in the database."
+                    alert.addButton(withTitle: "Clear")
+                    alert.addButton(withTitle: "Cancel")
+                    if alert.runModal() == .alertFirstButtonReturn {
+                        appState.clearWorkspace()
+                    }
+                }
+            } label: {
+                Image(systemName: "gearshape")
+                    .foregroundStyle(.secondary)
+            }
+            .menuStyle(.borderlessButton)
+            .frame(width: 30)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+    }
+}
+
+/// Recursive disclosure-style folder tree row. Each node is selectable
+/// via List's selection binding; tapping expands/collapses children
+/// via the chevron at the leading edge.
+private struct FolderNodeRow: View {
+    let node: FolderNode
+    let depth: Int
+
+    @State private var expanded: Bool = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 4) {
+                if !node.children.isEmpty {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.12)) { expanded.toggle() }
+                    } label: {
+                        Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 12)
+                    }
+                    .buttonStyle(.plain)
                 } else {
-                    Text("No folder selected")
+                    Spacer().frame(width: 12)
+                }
+                Image(systemName: node.children.isEmpty ? "folder" : "folder.fill")
+                    .foregroundStyle(.tint)
+                    .font(.callout)
+                Text(node.name)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer()
+                if node.recursiveAssetCount > 0 {
+                    Text("\(node.recursiveAssetCount)")
+                        .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }
-            Section("Stats") {
-                LabeledContent("Items", value: "\(appState.assets.count)")
-                LabeledContent("Status", value: appState.isScanning ? appState.scanProgress : "Idle")
+            .padding(.leading, CGFloat(depth) * 10)
+            .tag(node.path)
+
+            if expanded {
+                ForEach(node.children) { child in
+                    FolderNodeRow(node: child, depth: depth + 1)
+                }
             }
         }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
     }
 }

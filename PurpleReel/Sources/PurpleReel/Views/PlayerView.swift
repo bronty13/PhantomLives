@@ -4,9 +4,14 @@ import UniformTypeIdentifiers
 
 /// Hosts an AVPlayer in an AVPlayerLayer-backed NSView. Custom
 /// transport sits below; we don't use AVPlayerView so we own the
-/// scrubber + keyboard handling.
+/// scrubber + keyboard handling. The layer transform applies
+/// rotation/flip for preview-only orientation (the underlying file
+/// is never touched — transcode keeps the source orientation).
 final class PlayerNSView: NSView {
     let playerLayer = AVPlayerLayer()
+    var rotationDegrees: Int = 0 { didSet { applyTransform() } }
+    var flipHorizontal: Bool = false { didSet { applyTransform() } }
+    var flipVertical: Bool = false { didSet { applyTransform() } }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -22,15 +27,39 @@ final class PlayerNSView: NSView {
     override func layout() {
         super.layout()
         playerLayer.frame = bounds
+        applyTransform()
+    }
+
+    private func applyTransform() {
+        // Rotate around the layer's anchor point (default 0.5, 0.5).
+        // Negative angle because CALayer y-axis flips relative to
+        // the math convention.
+        var t = CGAffineTransform.identity
+        if rotationDegrees != 0 {
+            t = t.rotated(by: -CGFloat(rotationDegrees) * .pi / 180)
+        }
+        if flipHorizontal { t = t.scaledBy(x: -1, y: 1) }
+        if flipVertical   { t = t.scaledBy(x: 1, y: -1) }
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)   // no animation on transform change
+        playerLayer.setAffineTransform(t)
+        CATransaction.commit()
     }
 }
 
 struct PlayerSurface: NSViewRepresentable {
     let player: AVPlayer
+    let rotation: Int
+    let flipH: Bool
+    let flipV: Bool
 
     func makeNSView(context: Context) -> PlayerNSView {
         let v = PlayerNSView()
         v.playerLayer.player = player
+        v.rotationDegrees = rotation
+        v.flipHorizontal = flipH
+        v.flipVertical = flipV
         return v
     }
 
@@ -38,6 +67,9 @@ struct PlayerSurface: NSViewRepresentable {
         if nsView.playerLayer.player !== player {
             nsView.playerLayer.player = player
         }
+        if nsView.rotationDegrees != rotation { nsView.rotationDegrees = rotation }
+        if nsView.flipHorizontal != flipH { nsView.flipHorizontal = flipH }
+        if nsView.flipVertical != flipV { nsView.flipVertical = flipV }
     }
 }
 
@@ -51,6 +83,9 @@ final class PlayerController: ObservableObject {
     @Published private(set) var currentLUT: LUTData?
     @Published private(set) var waveform: WaveformSamples?
     @Published private(set) var currentRate: Float = 0
+    @Published var rotation: Int = 0          // 0 / 90 / 180 / 270
+    @Published var flipHorizontal: Bool = false
+    @Published var flipVertical: Bool = false
 
     let player = AVPlayer()
     private var timeObserver: Any?
@@ -197,7 +232,10 @@ struct PlayerView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PlayerSurface(player: controller.player)
+            PlayerSurface(player: controller.player,
+                           rotation: controller.rotation,
+                           flipH: controller.flipHorizontal,
+                           flipV: controller.flipVertical)
                 .frame(minHeight: 280)
                 .background(Color.black)
 
@@ -264,6 +302,47 @@ struct PlayerView: View {
         }
     }
 
+    private var viewMenu: some View {
+        Menu {
+            Section("Rotate") {
+                ForEach([0, 90, 180, 270], id: \.self) { deg in
+                    Button {
+                        controller.rotation = deg
+                    } label: {
+                        if controller.rotation == deg {
+                            Label("\(deg)°", systemImage: "checkmark")
+                        } else {
+                            Text("\(deg)°")
+                        }
+                    }
+                }
+            }
+            Section("Flip") {
+                Toggle("Horizontal", isOn: Binding(
+                    get: { controller.flipHorizontal },
+                    set: { controller.flipHorizontal = $0 }
+                ))
+                Toggle("Vertical", isOn: Binding(
+                    get: { controller.flipVertical },
+                    set: { controller.flipVertical = $0 }
+                ))
+            }
+            if controller.rotation != 0 || controller.flipHorizontal || controller.flipVertical {
+                Divider()
+                Button("Reset Orientation") {
+                    controller.rotation = 0
+                    controller.flipHorizontal = false
+                    controller.flipVertical = false
+                }
+            }
+        } label: {
+            Image(systemName: "rotate.right")
+        }
+        .menuStyle(.borderlessButton)
+        .frame(width: 36)
+        .help("View → Rotate / Flip. Preview only — output files keep source orientation.")
+    }
+
     private func pickLUT() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
@@ -315,6 +394,8 @@ struct PlayerView: View {
                 .foregroundStyle(.secondary)
 
             Spacer()
+
+            viewMenu
 
             Button { controller.markIn() } label: { Text("I") }
                 .help("Mark in (I)")

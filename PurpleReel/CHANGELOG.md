@@ -1,5 +1,72 @@
 # PurpleReel Changelog
 
+## Unreleased — Kyno-parity round 2 (workspace, history, full menu bar)
+
+- **Workspace = multiple roots** (was: single rootFolder). `Open
+  Folder…` replaces the workspace; new **Add Folder to Workspace…**
+  (⌘I) extends it. Sidebar renders one folder tree per root with
+  a context menu (Remove from Workspace / Reveal in Finder), a
+  Workspace header gear-menu (Add Folder / Clear Workspace), and
+  persists across launches.
+- **Bug fix**: opening a different folder no longer leaves the
+  previous folder's clips visible. `displayedAssets` now always
+  filters by either the explicitly-selected folder or — when no
+  folder is selected — the union of all workspace roots.
+- **History navigation**: ⌘[/⌘] back/forward through folder
+  selections, with a History menu plus back/forward arrow buttons
+  in the browser toolbar. The History → Clear History menu wipes
+  the stack but keeps the current location.
+- **Comprehensive Kyno-style menu bar**: File / Edit / Playback /
+  Metadata / Convert / View / History / Window / Help, mirroring
+  the reference screenshots. Wires every action that already
+  exists (Open, Add Folder, Reveal, Rename, Export Subclips/
+  Metadata, Copy and Verify [opens Verified Backup], Playback
+  shortcuts, Rating ⌘0…⌘5, Transcribe / Auto-Describe / Similar
+  Takes, every Transcode preset including ffmpeg, Previous/Next
+  Clip ⌘←/⌘→, Drilldown ⌘D, Back/Forward ⌘[/⌘], Reset Window
+  State, Keyboard Shortcut Reference). Menu items routed to the
+  player (loop, in/out, markers, export frame, in-to-out) post
+  `Notification.Name.playerCommand` so the menu drives the same
+  pipeline as the existing keyboard handler.
+- **Previous/Next Clip** (⌘← / ⌘→) — moves the asset selection up
+  or down one row within the current displayed list. Wraps to
+  start/end at boundaries.
+- New `KYNO_PARITY_ROADMAP.md` tracks the complete gap from Kyno
+  with ✅ / 🟡 / ⬜ status per item.
+
+## Unreleased — Kyno-parity round 1 (Content/Tracks tabs, folder tree, browser controls)
+
+User-driven; replicating the parts of Kyno's UX that close the most
+visible gaps. Working from Kyno reference screenshots + the support
+keyboard-shortcuts reference page.
+
+- **Content tab** (`ClipContentView`): file metadata block (filename,
+  path, size, modification/recording date, container, codec, fps,
+  bitrate, audio codec/rate/channels) stacked above a 5×6 = 30-frame
+  grid. Each tile shows the seconds offset overlay and is clickable
+  to seek the player. `ClipDetailsService` pulls the extended
+  metadata from `AVURLAsset` on demand.
+- **Tracks tab** (`ClipTracksView`): per-stream technical breakdown
+  matching Kyno's Tracks view — Track #1 (video) with codec / fps /
+  resolution / aspect / bitrate / duration; Track #2 (audio) with
+  codec / sample rate / channel layout / bitrate. Loads lazily on
+  appear.
+- **`ThumbnailService` parameterized**: accepts a frame count;
+  hover-scrub cell still uses 12, the Content grid uses 30. Cache
+  dir hash now includes the count so different counts cohabit.
+- **Player View menu**: Rotate (0/90/180/270) + Flip H/V applied as
+  a `CALayer.setAffineTransform` on `AVPlayerLayer`. Preview-only —
+  the underlying file and any transcode are untouched.
+- **Folder tree sidebar + drilldown**: recursive `FolderNode` tree
+  built from the asset list's paths; expandable rows with disclosure
+  triangles, recursive asset count badges. Selection drives a
+  `displayedAssets` filter on AppState. Drilldown toggle in the
+  browser toolbar controls whether subfolder contents are included.
+- **Type filter chips**: All / Video / Audio / Images, capsule
+  buttons in the browser toolbar.
+- **Sort dropdown**: Name / Date / Size / Duration / FPS, persisted
+  in `@AppStorage`. Drives the `displayedAssets` sort order.
+
 ## Unreleased — Round 2 follow-ups (thumbnails, SFTP pwd, BK-tree)
 
 - **Thumbnail strip with hover-scrub** in the browser:

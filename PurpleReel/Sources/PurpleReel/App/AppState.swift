@@ -5,11 +5,139 @@ import SwiftUI
 @MainActor
 final class AppState: ObservableObject {
     @Published var rootFolder: URL?
+    @Published var workspaceRoots: [URL] = []
     @Published var assets: [Asset] = []
+    @Published var folderTree: FolderNode?
+    @Published var selectedFolderPath: String?   // nil = root (all)
+    @AppStorage("drilldownEnabled") var drilldownEnabled: Bool = true
+    @AppStorage("typeFilter") var typeFilter: String = "all"  // all/video/audio/image
+    @AppStorage("sortKey") var sortKey: String = "name"        // name/date/size/duration/fps/rating
+
+    // History stack for the back/forward navigation arrows.
+    // Each entry is the `selectedFolderPath` value at that point.
+    @Published private(set) var historyStack: [String?] = [nil]
+    @Published private(set) var historyIndex: Int = 0
+    private var suppressHistory = false
+    var canGoBack: Bool { historyIndex > 0 }
+    var canGoForward: Bool { historyIndex < historyStack.count - 1 }
     @Published var isScanning = false
     @Published var scanProgress: String = ""
     @Published var selectedAssetPath: String? {
         didSet { loadSelectionDetail() }
+    }
+
+    // Bridges `selectedFolderPath` writes through a history-aware
+    // setter so the back/forward arrows see every navigation event.
+    // Direct `selectedFolderPath = …` is still valid and supported;
+    // when it changes from a non-suppressed path, we append.
+    func navigate(to folder: String?) {
+        let cur = historyStack.indices.contains(historyIndex) ? historyStack[historyIndex] : nil
+        guard cur != folder else { return }
+        // Drop any forward history past the current point — same as
+        // browser history semantics.
+        if historyIndex < historyStack.count - 1 {
+            historyStack = Array(historyStack.prefix(historyIndex + 1))
+        }
+        historyStack.append(folder)
+        historyIndex = historyStack.count - 1
+        suppressHistory = true
+        selectedFolderPath = folder
+        suppressHistory = false
+    }
+
+    func goBack() {
+        guard canGoBack else { return }
+        historyIndex -= 1
+        suppressHistory = true
+        selectedFolderPath = historyStack[historyIndex]
+        suppressHistory = false
+    }
+
+    func goForward() {
+        guard canGoForward else { return }
+        historyIndex += 1
+        suppressHistory = true
+        selectedFolderPath = historyStack[historyIndex]
+        suppressHistory = false
+    }
+
+    func clearHistory() {
+        let current = historyStack.indices.contains(historyIndex) ? historyStack[historyIndex] : nil
+        historyStack = [current]
+        historyIndex = 0
+    }
+
+    /// Move the asset-table selection up or down by `delta` rows
+    /// (within the currently-displayed list). Wired to ⌘← / ⌘→.
+    func selectAdjacentAsset(delta: Int) {
+        let list = displayedAssets
+        guard !list.isEmpty else { return }
+        if let current = selectedAssetPath,
+           let idx = list.firstIndex(where: { $0.path == current }) {
+            let newIdx = max(0, min(list.count - 1, idx + delta))
+            selectedAssetPath = list[newIdx].path
+        } else {
+            selectedAssetPath = list.first?.path
+        }
+    }
+
+    /// Filtered view of `assets` driven by `selectedFolderPath`,
+    /// `drilldownEnabled`, `typeFilter`, and sorted by `sortKey`.
+    /// Matches Kyno's browser-toolbar semantics.
+    var displayedAssets: [Asset] {
+        // Always scope to *some* root: either the explicitly-selected
+        // folder, the current active root, or — if a workspace has
+        // multiple roots — the union of all of them. Without this,
+        // catalogue-wide history bleeds previous folders into the view.
+        var base: [Asset]
+        if let folder = selectedFolderPath, !folder.isEmpty {
+            let normalized = (folder as NSString).standardizingPath
+            if drilldownEnabled {
+                base = assets.filter { ($0.path as NSString).standardizingPath
+                                         .hasPrefix(normalized + "/") }
+            } else {
+                base = assets.filter { asset in
+                    let parent = ((asset.path as NSString).standardizingPath as NSString)
+                        .deletingLastPathComponent
+                    return parent == normalized
+                }
+            }
+        } else if !workspaceRoots.isEmpty {
+            // Show every asset under any workspace root.
+            let normalizedRoots = workspaceRoots.map { ($0.path as NSString).standardizingPath }
+            base = assets.filter { asset in
+                let p = (asset.path as NSString).standardizingPath
+                return normalizedRoots.contains { p.hasPrefix($0 + "/") }
+            }
+        } else {
+            base = assets
+        }
+
+        // Media-type filter
+        switch typeFilter {
+        case "video":
+            base = base.filter { AssetKind.from(extension: ($0.filename as NSString).pathExtension) == .video }
+        case "audio":
+            base = base.filter { AssetKind.from(extension: ($0.filename as NSString).pathExtension) == .audio }
+        case "image":
+            base = base.filter { AssetKind.from(extension: ($0.filename as NSString).pathExtension) == .image }
+        default: break
+        }
+
+        // Sort
+        switch sortKey {
+        case "date":
+            base.sort { $0.modifiedAt > $1.modifiedAt }
+        case "size":
+            base.sort { $0.sizeBytes > $1.sizeBytes }
+        case "duration":
+            base.sort { ($0.durationSeconds ?? 0) > ($1.durationSeconds ?? 0) }
+        case "fps":
+            base.sort { ($0.frameRate ?? 0) > ($1.frameRate ?? 0) }
+        default:
+            base.sort { $0.filename.localizedCaseInsensitiveCompare($1.filename) == .orderedAscending }
+        }
+        return base
     }
 
     // Detail state for the currently selected asset.
@@ -38,43 +166,135 @@ final class AppState: ObservableObject {
             fatalError("PurpleReel could not open its database: \(error)")
         }
         BackupService.runOnLaunchIfNeeded()
-        if let saved = UserDefaults.standard.string(forKey: "rootFolder") {
+        // Hydrate workspace from defaults: prefer the new
+        // `workspaceRoots` array; fall back to the legacy single
+        // `rootFolder` string for users upgrading from earlier builds.
+        if let savedArray = UserDefaults.standard.array(forKey: "workspaceRoots") as? [String],
+           !savedArray.isEmpty {
+            self.workspaceRoots = savedArray.map { URL(fileURLWithPath: $0) }
+            self.rootFolder = self.workspaceRoots.first
+        } else if let saved = UserDefaults.standard.string(forKey: "rootFolder") {
             self.rootFolder = URL(fileURLWithPath: saved)
+            self.workspaceRoots = [URL(fileURLWithPath: saved)]
+        }
+        if let root = rootFolder {
+            self.selectedFolderPath = root.path
+            self.historyStack = [root.path]
+            self.historyIndex = 0
+            self.assets = (try? db.allAssets()) ?? []
+            self.rebuildFolderTree()
             Task { await rescan() }
         }
     }
 
     // MARK: - Root folder / scan
 
+    /// "Open Folder…" semantics: replace the workspace with a single
+    /// root and scan it. Behaves like a fresh-start.
     func chooseRootFolder() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {
+            self.workspaceRoots = [url]
             self.rootFolder = url
-            UserDefaults.standard.set(url.path, forKey: "rootFolder")
+            self.selectedFolderPath = url.path
+            self.historyStack = [url.path]
+            self.historyIndex = 0
+            persistWorkspace()
             Task { await rescan() }
         }
     }
 
+    /// Workspace addition: pick a folder and add it as a sibling
+    /// root without dropping the existing roots. Matches Kyno's
+    /// "Add Folder to Workspace…".
+    func addFolderToWorkspace() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            if !workspaceRoots.contains(url) {
+                workspaceRoots.append(url)
+            }
+            self.rootFolder = url   // make the newly-added root active
+            self.selectedFolderPath = url.path
+            persistWorkspace()
+            navigate(to: url.path)
+            Task { await rescan() }
+        }
+    }
+
+    func clearWorkspace() {
+        workspaceRoots = []
+        rootFolder = nil
+        selectedFolderPath = nil
+        assets = []
+        folderTree = nil
+        historyStack = [nil]
+        historyIndex = 0
+        persistWorkspace()
+    }
+
+    func removeWorkspaceRoot(_ url: URL) {
+        workspaceRoots.removeAll { $0 == url }
+        if rootFolder == url { rootFolder = workspaceRoots.first }
+        persistWorkspace()
+        Task { await rescan() }
+    }
+
+    private func persistWorkspace() {
+        let paths = workspaceRoots.map { $0.path }
+        UserDefaults.standard.set(paths, forKey: "workspaceRoots")
+        UserDefaults.standard.set(rootFolder?.path, forKey: "rootFolder")
+    }
+
+    /// Scan every workspace root and union the results into the
+    /// catalogue. Always reloads `assets` from the DB at the end so
+    /// the displayed view reflects EVERY catalogued file under any
+    /// workspace root, with no stale entries from previously-opened
+    /// folders.
     func rescan() async {
-        guard let root = rootFolder else { return }
+        let roots: [URL] = !workspaceRoots.isEmpty
+            ? workspaceRoots
+            : (rootFolder.map { [$0] } ?? [])
+        guard !roots.isEmpty else { return }
         isScanning = true
-        scanProgress = "Scanning \(root.lastPathComponent)…"
         defer { isScanning = false; scanProgress = "" }
 
         do {
-            let found = try await scanner.scan(root: root) { [weak self] count in
-                Task { @MainActor in
-                    self?.scanProgress = "Found \(count) media files…"
+            for root in roots {
+                scanProgress = "Scanning \(root.lastPathComponent)…"
+                let found = try await scanner.scan(root: root) { [weak self] count in
+                    Task { @MainActor in
+                        self?.scanProgress = "Found \(count) media files in \(root.lastPathComponent)…"
+                    }
                 }
+                try db.upsertAssets(found)
             }
-            try db.upsertAssets(found)
             self.assets = try db.allAssets()
+            self.rebuildFolderTree()
         } catch {
             NSLog("[PurpleReel] scan failed: \(error)")
         }
+    }
+
+    /// Rebuild the sidebar folder tree(s) from the current asset list.
+    /// For a single-root workspace it's still rendered as one tree; for
+    /// multi-root, the sidebar walks `workspaceRoots` and builds one
+    /// tree per root (via the helper below).
+    func rebuildFolderTree() {
+        guard let root = rootFolder else {
+            folderTree = nil
+            return
+        }
+        folderTree = FolderTreeBuilder.build(rootPath: root.path, assets: assets)
+    }
+
+    func folderTree(forRoot root: URL) -> FolderNode? {
+        FolderTreeBuilder.build(rootPath: root.path, assets: assets)
     }
 
     // MARK: - Selection detail

@@ -24,23 +24,26 @@ import CryptoKit
 /// invalidates the cache.
 enum ThumbnailService {
 
-    static let frameCount = 12
+    static let defaultFrameCount = 12
     static let thumbWidth: CGFloat = 240
     static let jpegQuality: Float = 0.7
 
     /// Returns thumbnail URLs for the asset, generating on first call.
     /// Safe to call from any actor; the heavy work happens on a
-    /// detached task.
-    static func thumbnails(for asset: Asset) async -> [URL] {
+    /// detached task. `count` is encoded into the cache directory so
+    /// different counts (hover-scrub = 12, Content grid = 30) cache
+    /// independently and don't clobber each other.
+    static func thumbnails(for asset: Asset,
+                            count: Int = defaultFrameCount) async -> [URL] {
         do {
-            let dir = try cacheDirectory(for: asset)
+            let dir = try cacheDirectory(for: asset, count: count)
             // Fast path: cache hit.
             if let existing = try? cachedThumbnailURLs(in: dir),
-               existing.count == frameCount {
+               existing.count == count {
                 return existing
             }
             return await Task.detached(priority: .utility) {
-                generateSync(asset: asset, into: dir)
+                generateSync(asset: asset, count: count, into: dir)
             }.value
         } catch {
             NSLog("[PurpleReel] thumbnail dir setup failed: \(error)")
@@ -57,7 +60,7 @@ enum ThumbnailService {
 
     // MARK: - Internals
 
-    private static func generateSync(asset: Asset, into dir: URL) -> [URL] {
+    private static func generateSync(asset: Asset, count: Int, into dir: URL) -> [URL] {
         let url = URL(fileURLWithPath: asset.path)
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -73,12 +76,12 @@ enum ThumbnailService {
         generator.maximumSize = CGSize(width: thumbWidth, height: thumbWidth) // bounding
 
         var urls: [URL] = []
-        urls.reserveCapacity(frameCount)
-        for i in 0..<frameCount {
+        urls.reserveCapacity(count)
+        for i in 0..<count {
             // Spread frames across the middle 90% of the clip so we
             // skip slates/leader at start and end.
-            let t = (Double(i) + 0.5) / Double(frameCount)   // (0.5/N) … (N-0.5)/N
-            let bias = 0.05 + t * 0.90                       // 5% … 95%
+            let t = (Double(i) + 0.5) / Double(count)        // (0.5/N) … (N-0.5)/N
+            let bias = 0.05 + t * 0.90                        // 5% … 95%
             let secs = bias * duration
             let cm = CMTime(seconds: secs, preferredTimescale: 600)
             do {
@@ -131,10 +134,11 @@ enum ThumbnailService {
         return appSupport
     }
 
-    private static func cacheDirectory(for asset: Asset) throws -> URL {
-        // Hash: path + modification date. If the user touches the
-        // file, the directory name changes and we regenerate.
-        let key = "\(asset.path)|\(asset.modifiedAt.timeIntervalSince1970)"
+    private static func cacheDirectory(for asset: Asset, count: Int) throws -> URL {
+        // Hash: path + modification date + count. Different counts
+        // cache independently (12 for hover-scrub vs. 30 for the
+        // Content grid).
+        let key = "\(asset.path)|\(asset.modifiedAt.timeIntervalSince1970)|\(count)"
         let digest = SHA256.hash(data: Data(key.utf8))
         let hex = digest.map { String(format: "%02x", $0) }.joined()
         return try cacheRoot().appendingPathComponent(String(hex.prefix(32)))
