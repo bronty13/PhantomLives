@@ -80,10 +80,16 @@ struct AssetContextMenu: View {
                 }
             }
         }
-        if kind == .image {
-            Button("Batch Image Transform…") { notImplementedAlert("Batch Image Transform") }
+        // (Batch Image Transform was a dead-end menu item — image
+        // batch resize/crop isn't on any roadmap, so removing it
+        // beats an "On the roadmap" alert that never gets crossed
+        // off. Use Convert presets on images for format changes.)
+        if kind == .video || kind == .audio {
+            Button("Export Markers as Stills…") {
+                appState.selectedAssetPath = asset.path
+                appState.exportFramesAtMarkers()
+            }
         }
-        Button("Export Markers as Stills…") { notImplementedAlert("Export Markers as Stills") }
         Menu("Export Metadata") {
             Button("Selected → FCPXML") {
                 appState.selectedAssetPath = asset.path
@@ -93,7 +99,10 @@ struct AssetContextMenu: View {
                 appState.exportFCPXML(scope: .allCatalogued, openInFCP: false)
             }
         }
-        Button("Import Metadata…") { notImplementedAlert("Import Metadata") }
+        Menu("Import Metadata") {
+            Button("From FCPXML…") { appState.importFCPXML() }
+            Button("From Kyno (.LP_Store)…") { appState.importFromKynoLPStore() }
+        }
         Divider()
     }
 
@@ -107,22 +116,22 @@ struct AssetContextMenu: View {
                 }
             }
         }
-        Button("Tags…") { notImplementedAlert("Tags sheet") }
-            .keyboardShortcut("t", modifiers: [.command, .shift])
-        Button("Edit Multiple…") { notImplementedAlert("Edit Multiple") }
-            .keyboardShortcut("m", modifiers: [.command, .shift])
-        if kind == .video {
-            Menu("Camera LUT") {
-                Button("Load .cube…") {
-                    notImplementedAlert("Camera LUT picker — use the LUT bar in the player for now.")
-                }
-            }
-            Menu("Creative LUT") {
-                Button("Load .cube…") {
-                    notImplementedAlert("Creative LUT picker — use the LUT bar in the player for now.")
-                }
-            }
+        Button("Tags…") {
+            appState.selectedAssetPath = asset.path
+            appState.batchTagSheetVisible = true
         }
+        .keyboardShortcut("t", modifiers: [.command, .shift])
+        Button("Edit Multiple…") {
+            appState.selectedAssetPath = asset.path
+            appState.batchMetadataSheetVisible = true
+        }
+        .keyboardShortcut("m", modifiers: [.command, .shift])
+        // Per-clip LUT assignment (Kyno's Camera/Creative LUT
+        // distinction) isn't a separate path — PurpleReel applies
+        // LUTs preview-only via the player's LUT bar, and bakes
+        // them on export per the `applyLUTToExportedFrames` toggle.
+        // So no menu items here; the LUT bar in the player is the
+        // single source of truth.
         Divider()
     }
 
@@ -231,10 +240,4 @@ struct AssetContextMenu: View {
         NSPasteboard.general.writeObjects([url as NSURL])
     }
 
-    private func notImplementedAlert(_ title: String) {
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = "On the Kyno-parity roadmap. See KYNO_PARITY_ROADMAP.md."
-        alert.runModal()
-    }
 }

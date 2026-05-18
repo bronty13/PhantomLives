@@ -141,11 +141,7 @@ struct PurpleReelApp: App {
                 .disabled(appState.assets.isEmpty)
                 Divider()
                 Button("Export Markers as Stills…") {
-                    // TODO: wire batch-export of frames at every marker
-                    // for the selected clip. Engine exists in
-                    // ThumbnailService; needs a save-panel + per-marker
-                    // frame extraction at the exact TC.
-                    notImplementedAlert(title: "Export Markers as Stills")
+                    appState.exportFramesAtMarkers()
                 }
                 .disabled(appState.selectedAsset == nil)
                 Menu("Export Subclips") {
@@ -732,13 +728,3 @@ private struct PlaybackSpeedItem: View {
     }
 }
 
-/// Small fallback alert for menu items whose implementation is on the
-/// roadmap but not yet wired. Lives at module scope so the View body
-/// doesn't escape its function-builder constraint.
-@MainActor
-private func notImplementedAlert(title: String) {
-    let alert = NSAlert()
-    alert.messageText = title
-    alert.informativeText = "On the Kyno-parity roadmap. See KYNO_PARITY_ROADMAP.md."
-    alert.runModal()
-}
