@@ -9,6 +9,10 @@ final class AppState: ObservableObject {
     @Published var workspaceRoots: [URL] = []
     @Published var assets: [Asset] = []
     @Published var folderTree: FolderNode?
+    /// Detected camera-card span groups (Kyno-parity row 29).
+    /// Recomputed at the end of every scan. Empty when no spans
+    /// were found — most non-DIT workspaces never trip this.
+    @Published var spanGroups: [SpanDetectionService.SpanGroup] = []
     @Published var selectedFolderPath: String?   // nil = root (all)
     @AppStorage("drilldownEnabled") var drilldownEnabled: Bool = true  // legacy default
     @AppStorage("typeFilter") var typeFilter: String = "all"  // all/video/audio/image
@@ -207,10 +211,38 @@ final class AppState: ObservableObject {
             self.assets = try db.allAssets()
             self.rebuildFolderTree()
             self.refreshClipMetadataIndex()
+            self.recomputeSpanGroups()
             hydrateUserMetadataFromCache(scannedPaths: found.map(\.path))
         } catch {
             NSLog("[PurpleReel] on-demand scan failed for \(path): \(error)")
         }
+    }
+
+    /// Pure-function pass over the in-memory `assets` array to
+    /// rebuild `spanGroups`. Cheap (O(n log n) per folder bucket);
+    /// safe to call on every scan.
+    func recomputeSpanGroups() {
+        spanGroups = SpanDetectionService.detect(in: assets)
+    }
+
+    /// Open the Combine Clips sheet pre-populated with a span
+    /// group's segments. Selecting + invoking Combine from the
+    /// sidebar is the canonical action on a detected span (Kyno
+    /// "Treat as one clip" → render).
+    func combineSpanGroup(_ group: SpanDetectionService.SpanGroup) {
+        // Select the segments in the catalogue so the
+        // `combineCandidates()` resolver returns them in order.
+        selectedAssetPaths = Set(group.segments.map(\.path))
+        selectedAssetPath = group.segments.first?.path
+        combineClipsSheetVisible = true
+    }
+
+    /// Pin a span group's segments as the active filter — quickly
+    /// jump the browser to just those clips so the user can audit
+    /// what'll get combined.
+    func revealSpanGroup(_ group: SpanDetectionService.SpanGroup) {
+        selectedAssetPaths = Set(group.segments.map(\.path))
+        selectedAssetPath = group.segments.first?.path
     }
 
     /// Map a boot-volume firmlink (e.g. `/Volumes/Macintosh HD`) back to
@@ -698,6 +730,7 @@ final class AppState: ObservableObject {
             self.assets = try db.allAssets()
             self.rebuildFolderTree()
             self.refreshClipMetadataIndex()
+            self.recomputeSpanGroups()
             hydrateUserMetadataFromCache(scannedPaths: allScanned)
             // Soft warning when the workspace balloons past the
             // safety limit. Doesn't block; we still load every asset.

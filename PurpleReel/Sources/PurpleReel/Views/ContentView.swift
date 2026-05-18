@@ -239,6 +239,7 @@ struct SidebarView: View {
     @AppStorage("sidebar.workspace.expanded") private var workspaceExpanded: Bool = true
     @AppStorage("sidebar.devices.expanded")   private var devicesExpanded:   Bool = true
     @AppStorage("sidebar.stats.expanded")     private var statsExpanded:     Bool = true
+    @AppStorage("sidebar.spans.expanded")     private var spansExpanded:     Bool = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -274,6 +275,16 @@ struct SidebarView: View {
                                             workspaceRootContextMenu(root: root)
                                         }
                                 }
+                            }
+                        }
+                    }
+                    if !appState.spanGroups.isEmpty {
+                        Divider().padding(.vertical, 8)
+                        sectionHeader("Spanned Clips", expanded: $spansExpanded)
+                        if spansExpanded {
+                            ForEach(appState.spanGroups) { group in
+                                SpanGroupRow(group: group)
+                                    .environmentObject(appState)
                             }
                         }
                     }
