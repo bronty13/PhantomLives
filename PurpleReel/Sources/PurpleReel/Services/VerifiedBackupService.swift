@@ -158,18 +158,31 @@ enum VerifiedBackupService {
         for dst in job.destinations {
             let entries = entriesByDestination[dst] ?? []
             let stamp = mhlTimestamp(date: finishedAt)
+            let ext = job.mhlFormat.fileExtension
             let mhlURL = dst.appendingPathComponent(
-                "\(job.source.lastPathComponent)_\(stamp).mhl"
+                "\(job.source.lastPathComponent)_\(stamp).\(ext)"
             )
             do {
-                try MHLWriter.write(
-                    entries: entries,
-                    rootName: job.source.lastPathComponent,
-                    startDate: startedAt,
-                    finishDate: finishedAt,
-                    toolVersion: toolVersion,
-                    to: mhlURL
-                )
+                switch job.mhlFormat {
+                case .legacy:
+                    try MHLWriter.write(
+                        entries: entries,
+                        rootName: job.source.lastPathComponent,
+                        startDate: startedAt,
+                        finishDate: finishedAt,
+                        toolVersion: toolVersion,
+                        to: mhlURL
+                    )
+                case .ascMHL:
+                    try ASCMHLWriter.write(
+                        entries: entries,
+                        rootName: job.source.lastPathComponent,
+                        startDate: startedAt,
+                        finishDate: finishedAt,
+                        toolVersion: toolVersion,
+                        to: mhlURL
+                    )
+                }
                 mhlPaths.append(mhlURL)
             } catch {
                 NSLog("[PurpleReel] MHL write failed at \(dst.path): \(error)")

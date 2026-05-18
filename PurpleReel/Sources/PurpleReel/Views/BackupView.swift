@@ -8,6 +8,9 @@ struct BackupView: View {
     @State private var source: URL?
     @State private var destinations: [URL] = []
     @State private var algorithm: HashAlgorithm = .sha1
+    /// MHL output format. Defaults to legacy v1.1 because every DIT
+    /// tool reads it; ASC-MHL v2.0 is the Netflix-spec option.
+    @State private var mhlFormat: MHLFormat = .legacy
     @State private var runningJob: BackupJob?
 
     var body: some View {
@@ -112,9 +115,48 @@ struct BackupView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                Text("SHA-1 is the MHL default and the recommended choice for compatibility with downstream tools.")
+                .onChange(of: algorithm) { _, new in
+                    // C4 requires the ASC-MHL writer; legacy MHL
+                    // v1.1 doesn't know the c4 element. Switch the
+                    // format implicitly so the user can't ship a
+                    // manifest with `<c4>` inside a v1.1 hashlist.
+                    if !new.legacyMHLCompatible {
+                        mhlFormat = .ascMHL
+                    }
+                }
+                Text(algorithmHelpText)
                     .font(.caption).foregroundStyle(.secondary)
             }
+
+            // MHL output format
+            VStack(alignment: .leading, spacing: 4) {
+                Text("MHL format").font(.headline)
+                Picker("", selection: $mhlFormat) {
+                    ForEach(MHLFormat.allCases) { fmt in
+                        Text(fmt.rawValue).tag(fmt)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .disabled(!algorithm.legacyMHLCompatible)
+                Text(mhlFormatHelpText)
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var algorithmHelpText: String {
+        switch algorithm {
+        case .sha1:   return "SHA-1 — the MHL v1.1 default; ubiquitous DIT-tool compatibility."
+        case .md5:    return "MD5 — fastest, but cryptographically weakest. Use only for self-audit."
+        case .sha256: return "SHA-256 — modern, widely supported."
+        case .c4:     return "C4 ID — SHA-512 base58-encoded; required for Netflix Originals delivery alongside ASC-MHL."
+        }
+    }
+    private var mhlFormatHelpText: String {
+        switch mhlFormat {
+        case .legacy: return "ASC Media Hash List v1.1 (.mhl) — the long-standing DIT format."
+        case .ascMHL: return "ASC-MHL v2.0 (.ascmhl) — the Netflix Originals-mandated successor."
         }
     }
 
@@ -198,7 +240,8 @@ struct BackupView: View {
     private func startBackup() {
         guard let source else { return }
         let job = BackupJob(source: source, destinations: destinations,
-                             algorithm: algorithm)
+                             algorithm: algorithm,
+                             mhlFormat: mhlFormat)
         runningJob = job
         Task {
             await VerifiedBackupService.run(job: job, toolVersion: AppVersion.marketing)

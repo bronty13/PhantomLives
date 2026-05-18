@@ -28,12 +28,29 @@ final class BackupFileItem: ObservableObject, Identifiable {
     }
 }
 
+/// MHL output format. Legacy = ASC Media Hash List v1.1 (the
+/// long-standing DIT format, hex digests inside one `<hash>` per
+/// file). ascMHL = ASC-MHL v2.0 (Netflix Originals requirement) —
+/// supports C4 IDs alongside hex hashes and emits the v2.0 schema.
+enum MHLFormat: String, CaseIterable, Identifiable, Codable {
+    case legacy   = "MHL v1.1"
+    case ascMHL   = "ASC-MHL v2.0"
+    var id: String { rawValue }
+    var fileExtension: String {
+        switch self {
+        case .legacy: return "mhl"
+        case .ascMHL: return "ascmhl"
+        }
+    }
+}
+
 @MainActor
 final class BackupJob: ObservableObject, Identifiable {
     let id = UUID()
     let source: URL
     let destinations: [URL]
     let algorithm: HashAlgorithm
+    let mhlFormat: MHLFormat
 
     @Published var items: [BackupFileItem] = []
     @Published var isRunning = false
@@ -42,9 +59,12 @@ final class BackupJob: ObservableObject, Identifiable {
     @Published var summary: String = ""
     @Published var mhlPaths: [URL] = []
 
-    init(source: URL, destinations: [URL], algorithm: HashAlgorithm) {
+    init(source: URL, destinations: [URL],
+         algorithm: HashAlgorithm,
+         mhlFormat: MHLFormat = .legacy) {
         self.source = source
         self.destinations = destinations
         self.algorithm = algorithm
+        self.mhlFormat = mhlFormat
     }
 }
