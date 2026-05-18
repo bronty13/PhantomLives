@@ -310,7 +310,7 @@ final class DatabaseService {
 
     func addMarker(assetId: Int64, timecodeIn: Double, timecodeOut: Double? = nil,
                    note: String? = nil) throws -> Marker {
-        var m = Marker(id: nil, assetId: assetId, timecodeIn: timecodeIn,
+        let m = Marker(id: nil, assetId: assetId, timecodeIn: timecodeIn,
                        timecodeOut: timecodeOut, note: note, createdAt: Date())
         try dbQueue.write { db in
             try m.insert(db)
@@ -342,7 +342,7 @@ final class DatabaseService {
 
     func addSubclip(parentAssetId: Int64, name: String,
                     timecodeIn: Double, timecodeOut: Double) throws -> Subclip {
-        var s = Subclip(id: nil, parentAssetId: parentAssetId, name: name,
+        let s = Subclip(id: nil, parentAssetId: parentAssetId, name: name,
                         timecodeIn: timecodeIn, timecodeOut: timecodeOut,
                         createdAt: Date())
         try dbQueue.write { db in
@@ -376,7 +376,7 @@ final class DatabaseService {
         try dbQueue.write { db in
             var tag = try Tag.filter(Column("name") == name).fetchOne(db)
             if tag == nil {
-                var t = Tag(id: nil, name: name)
+                let t = Tag(id: nil, name: name)
                 try t.insert(db)
                 tag = t
             }
@@ -445,7 +445,7 @@ final class DatabaseService {
                 try Rating.filter(Column("assetId") == assetId).deleteAll(db)
                 return
             }
-            var r = Rating(assetId: assetId, stars: stars,
+            let r = Rating(assetId: assetId, stars: stars,
                             colorLabel: colorLabel, description: description)
             try r.save(db)
         }

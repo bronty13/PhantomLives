@@ -62,7 +62,7 @@ enum WhisperService {
                                                   withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(atPath: tmp) }
 
-        let (code, log) = try await Task.detached(priority: .userInitiated) {
+        let (code, log) = await Task.detached(priority: .userInitiated) {
             invokePython(script: script, args: [
                 "-i", url.path,
                 "-o", tmp,

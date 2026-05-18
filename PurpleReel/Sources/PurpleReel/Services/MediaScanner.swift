@@ -93,7 +93,11 @@ actor MediaScanner {
             return results
         }
 
-        for case let url as URL in enumerator {
+        // `for ... in enumerator` would call makeIterator() and
+        // trip Swift 6's strict-concurrency check. nextObject() is
+        // the explicit cursor — keeps skipDescendants() available.
+        while let object = enumerator.nextObject() {
+            guard let url = object as? URL else { continue }
             let values = try url.resourceValues(forKeys: Set(keys))
             let last = url.lastPathComponent
             // Glob match — early out for directories so we don't walk

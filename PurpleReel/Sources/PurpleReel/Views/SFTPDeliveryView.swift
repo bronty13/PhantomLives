@@ -301,7 +301,7 @@ struct SFTPDeliveryView: View {
         let items = pickedFiles.map { url -> SFTPFileItem in
             let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
             return SFTPFileItem(localURL: url, remoteName: url.lastPathComponent,
-                                 sizeBytes: size ?? 0)
+                                 sizeBytes: size)
         }
         let job = SFTPJob(destination: editing, items: items)
         runningJob = job

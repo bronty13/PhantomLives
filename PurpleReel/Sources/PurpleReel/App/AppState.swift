@@ -1841,7 +1841,10 @@ final class AppState: ObservableObject {
                 at: root, includingPropertiesForKeys: Array(keys),
                 options: [.skipsHiddenFiles, .skipsPackageDescendants]
             ) else { continue }
-            for case let url as URL in walker {
+            // nextObject() instead of for-in keeps makeIterator()
+            // out of the async context (Swift 6 strict-concurrency).
+            while let object = walker.nextObject() {
+                guard let url = object as? URL else { continue }
                 let values = try? url.resourceValues(forKeys: keys)
                 if values?.isDirectory == true { continue }
                 let key = "\(url.lastPathComponent)|\(values?.fileSize ?? 0)"

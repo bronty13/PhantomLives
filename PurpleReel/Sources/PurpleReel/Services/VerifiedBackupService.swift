@@ -189,9 +189,15 @@ enum VerifiedBackupService {
             }
         }
 
+        // Snapshot before the MainActor hop. Capturing the `var`s
+        // directly is a Swift 6 strict-concurrency error — they're
+        // shared with the async caller's stack frame.
+        let finalMHL = mhlPaths
+        let finalSucceeded = succeeded
+        let finalFailed = failed
         await MainActor.run {
-            job.mhlPaths = mhlPaths
-            job.summary = "Done: \(succeeded) verified, \(failed) failed, \(mhlPaths.count) MHL(s) written"
+            job.mhlPaths = finalMHL
+            job.summary = "Done: \(finalSucceeded) verified, \(finalFailed) failed, \(finalMHL.count) MHL(s) written"
         }
     }
 
@@ -209,7 +215,9 @@ enum VerifiedBackupService {
             ) else { return [] }
 
             let rootPath = source.path
-            for case let url as URL in enumerator {
+            // nextObject() instead of for-in (Swift 6 strict-concurrency).
+            while let object = enumerator.nextObject() {
+                guard let url = object as? URL else { continue }
                 let values = try url.resourceValues(forKeys: Set(keys))
                 if values.isDirectory == true { continue }
                 let rel: String
@@ -218,11 +226,15 @@ enum VerifiedBackupService {
                 } else {
                     rel = url.lastPathComponent
                 }
+                // Extract the size before the MainActor hop so the
+                // non-Sendable URLResourceValues doesn't cross the
+                // boundary (Swift 6 strict-concurrency).
+                let size = Int64(values.fileSize ?? 0)
                 let item = await MainActor.run {
                     BackupFileItem(
                         sourceURL: url,
                         relativePath: rel,
-                        sizeBytes: Int64(values.fileSize ?? 0)
+                        sizeBytes: size
                     )
                 }
                 items.append(item)

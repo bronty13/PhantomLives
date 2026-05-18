@@ -134,7 +134,7 @@ enum BackupService {
         return (
             dbExists,
             dbExists
-                ? "✓ DB present (\(ByteCountFormatter().string(fromByteCount: size ?? 0)))"
+                ? "✓ DB present (\(ByteCountFormatter().string(fromByteCount: size)))"
                 : "✗ DB missing in archive"
         )
     }

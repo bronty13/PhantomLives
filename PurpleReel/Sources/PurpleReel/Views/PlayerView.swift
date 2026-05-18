@@ -1,5 +1,6 @@
 import SwiftUI
 import AVKit
+@preconcurrency import CoreImage
 import UniformTypeIdentifiers
 
 /// How the video frame is sized inside the player surface.
@@ -235,9 +236,14 @@ final class PlayerController: ObservableObject {
     init() {
         let interval = CMTime(seconds: 1.0 / 30.0, preferredTimescale: 600)
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] t in
-            guard let self else { return }
-            let seconds = CMTimeGetSeconds(t)
-            if seconds.isFinite { self.currentTime = seconds }
+            // `queue: .main` puts this on the main actor at runtime,
+            // but the closure signature is non-isolated so Swift 6
+            // can't see it. `assumeIsolated` is the supported tell.
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let seconds = CMTimeGetSeconds(t)
+                if seconds.isFinite { self.currentTime = seconds }
+            }
         }
         // Loop-mode handler. Subscribed once; when `loopMode` is on we
         // seek to the start (or to the I-marker if set) on end-of-item

@@ -43,7 +43,7 @@ enum ThumbnailService {
                 return existing
             }
             return await Task.detached(priority: .utility) {
-                generateSync(asset: asset, count: count, into: dir)
+                await generateAsync(asset: asset, count: count, into: dir)
             }.value
         } catch {
             NSLog("[PurpleReel] thumbnail dir setup failed: \(error)")
@@ -83,7 +83,12 @@ enum ThumbnailService {
                                                "tif", "tiff", "gif", "bmp", "webp"]
                 if imageExts.contains(ext) { return nil }
                 let avAsset = AVURLAsset(url: url)
-                let dur = CMTimeGetSeconds(avAsset.duration)
+                let dur: Double
+                if let cm = try? await avAsset.load(.duration) {
+                    dur = CMTimeGetSeconds(cm)
+                } else {
+                    return nil
+                }
                 guard dur.isFinite, dur > 0 else { return nil }
                 let clamped = max(0, min(seconds, dur - 0.01))
                 let gen = AVAssetImageGenerator(asset: avAsset)
@@ -110,7 +115,7 @@ enum ThumbnailService {
 
     // MARK: - Internals
 
-    private static func generateSync(asset: Asset, count: Int, into dir: URL) -> [URL] {
+    private static func generateAsync(asset: Asset, count: Int, into dir: URL) async -> [URL] {
         let url = URL(fileURLWithPath: asset.path)
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -126,7 +131,12 @@ enum ThumbnailService {
         }
 
         let avAsset = AVURLAsset(url: url)
-        let duration = CMTimeGetSeconds(avAsset.duration)
+        let duration: Double
+        if let cm = try? await avAsset.load(.duration) {
+            duration = CMTimeGetSeconds(cm)
+        } else {
+            return []
+        }
         guard duration.isFinite, duration > 0 else { return [] }
 
         let generator = AVAssetImageGenerator(asset: avAsset)

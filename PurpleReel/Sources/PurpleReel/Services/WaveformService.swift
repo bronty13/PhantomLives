@@ -23,7 +23,7 @@ enum WaveformService {
     /// nil if the file has no audio track or reading fails.
     static func generate(url: URL, bucketCount: Int = 800) async -> WaveformSamples? {
         await Task.detached(priority: .utility) {
-            generateSync(url: url, bucketCount: bucketCount)
+            await generateAsync(url: url, bucketCount: bucketCount)
         }.value
     }
 
@@ -67,9 +67,10 @@ enum WaveformService {
         return support.appendingPathComponent("\(String(hex.prefix(32))).json")
     }
 
-    static func generateSync(url: URL, bucketCount: Int) -> WaveformSamples? {
+    static func generateAsync(url: URL, bucketCount: Int) async -> WaveformSamples? {
         let asset = AVURLAsset(url: url)
-        guard let track = asset.tracks(withMediaType: .audio).first else {
+        let audioTracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
+        guard let track = audioTracks.first else {
             // No audio track (or AVFoundation couldn't read one); not
             // an error — the scrubber simply renders without a
             // waveform layer underneath.
@@ -97,9 +98,14 @@ enum WaveformService {
         guard reader.startReading() else { return nil }
 
         // Estimate total sample frames so we can size buckets up front.
-        let totalSeconds = CMTimeGetSeconds(asset.duration)
-        let sampleRate = readSampleRate(track: track) ?? 48000
-        let channels = readChannelCount(track: track) ?? 2
+        let totalSeconds: Double
+        if let dur = try? await asset.load(.duration) {
+            totalSeconds = CMTimeGetSeconds(dur)
+        } else {
+            totalSeconds = 0
+        }
+        let sampleRate = (await readSampleRateAsync(track: track)) ?? 48000
+        let channels = (await readChannelCountAsync(track: track)) ?? 2
         let totalFrames = max(1, Int(totalSeconds * sampleRate))
         let framesPerBucket = max(1, totalFrames / bucketCount)
 
@@ -144,19 +150,17 @@ enum WaveformService {
 
     // MARK: - Track introspection
 
-    private static func readSampleRate(track: AVAssetTrack) -> Double? {
-        guard let desc = track.formatDescriptions.first else { return nil }
-        let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(
-            desc as! CMFormatDescription
-        )
+    private static func readSampleRateAsync(track: AVAssetTrack) async -> Double? {
+        let formats = (try? await track.load(.formatDescriptions)) ?? []
+        guard let cm = formats.first else { return nil }
+        let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(cm)
         return asbd?.pointee.mSampleRate
     }
 
-    private static func readChannelCount(track: AVAssetTrack) -> Int? {
-        guard let desc = track.formatDescriptions.first else { return nil }
-        let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(
-            desc as! CMFormatDescription
-        )
+    private static func readChannelCountAsync(track: AVAssetTrack) async -> Int? {
+        let formats = (try? await track.load(.formatDescriptions)) ?? []
+        guard let cm = formats.first else { return nil }
+        let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(cm)
         return asbd.map { Int($0.pointee.mChannelsPerFrame) }
     }
 }

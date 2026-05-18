@@ -71,7 +71,7 @@ enum HashingService {
         defer { try? handle.close() }
         var bytesRead: Int64 = 0
         while true {
-            let chunk = try autoreleasepool { () -> Data in
+            let chunk = autoreleasepool { () -> Data in
                 handle.readData(ofLength: chunkSize)
             }
             if chunk.isEmpty { break }
@@ -92,7 +92,7 @@ enum HashingService {
         defer { try? handle.close() }
         var bytesRead: Int64 = 0
         while true {
-            let chunk = try autoreleasepool { () -> Data in
+            let chunk = autoreleasepool { () -> Data in
                 handle.readData(ofLength: chunkSize)
             }
             if chunk.isEmpty { break }

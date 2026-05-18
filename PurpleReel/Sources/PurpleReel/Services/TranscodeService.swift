@@ -303,8 +303,8 @@ final class TranscodeJob: ObservableObject, Identifiable {
     /// a full-frame canvas) to keep per-frame allocations small;
     /// AVAssetExportSession dispatches dozens of these per second
     /// of video.
-    static func makeTCOverlay(text: String,
-                                frameSize: CGSize) -> CIImage {
+    nonisolated static func makeTCOverlay(text: String,
+                                            frameSize: CGSize) -> CIImage {
         let fontSize = max(20, frameSize.width * 0.04)
         let font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .bold)
         let attrs: [NSAttributedString.Key: Any] = [

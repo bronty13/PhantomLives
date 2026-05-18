@@ -28,14 +28,15 @@ struct ClipDetails {
 enum ClipDetailsService {
 
     /// Load full details from disk + AVFoundation. Safe to call from
-    /// any actor — heavy work runs on a detached task.
+    /// any actor — heavy work runs on a detached task. The track /
+    /// metadata reads use the modern async `.load(...)` API.
     static func load(asset: Asset) async -> ClipDetails {
         await Task.detached(priority: .userInitiated) {
-            loadSync(asset: asset)
+            await loadAsync(asset: asset)
         }.value
     }
 
-    private static func loadSync(asset: Asset) -> ClipDetails {
+    private static func loadAsync(asset: Asset) async -> ClipDetails {
         var d = ClipDetails(
             path: asset.path,
             sizeBytes: asset.sizeBytes,
@@ -59,20 +60,24 @@ enum ClipDetailsService {
 
         let avAsset = AVURLAsset(url: url)
 
-        // Creation date from QuickTime common metadata.
-        for item in avAsset.commonMetadata where item.commonKey == .commonKeyCreationDate {
-            if let date = item.dateValue {
+        // Creation date from QuickTime common metadata (async-load).
+        let commonItems = (try? await avAsset.load(.commonMetadata)) ?? []
+        for item in commonItems where item.commonKey == .commonKeyCreationDate {
+            if let date = try? await item.load(.dateValue) {
                 d.creationDate = date
-            } else if let str = item.stringValue,
+            } else if let str = try? await item.load(.stringValue),
                       let parsed = ISO8601DateFormatter().date(from: str) {
                 d.creationDate = parsed
             }
         }
 
-        if let video = avAsset.tracks(withMediaType: .video).first {
-            d.videoBitrateBps = Double(video.estimatedDataRate)
-            if let fmt = video.formatDescriptions.first {
-                let cm = fmt as! CMFormatDescription
+        let videoTracks = (try? await avAsset.loadTracks(withMediaType: .video)) ?? []
+        if let video = videoTracks.first {
+            if let rate = try? await video.load(.estimatedDataRate) {
+                d.videoBitrateBps = Double(rate)
+            }
+            let formats = (try? await video.load(.formatDescriptions)) ?? []
+            if let cm = formats.first {
                 d.videoCodec = fourCC(CMFormatDescriptionGetMediaSubType(cm))
                 if d.widthPx == nil || d.heightPx == nil {
                     let dim = CMVideoFormatDescriptionGetDimensions(cm)
@@ -82,10 +87,13 @@ enum ClipDetailsService {
             }
         }
 
-        if let audio = avAsset.tracks(withMediaType: .audio).first {
-            d.audioBitrateBps = Double(audio.estimatedDataRate)
-            if let fmt = audio.formatDescriptions.first {
-                let cm = fmt as! CMFormatDescription
+        let audioTracks = (try? await avAsset.loadTracks(withMediaType: .audio)) ?? []
+        if let audio = audioTracks.first {
+            if let rate = try? await audio.load(.estimatedDataRate) {
+                d.audioBitrateBps = Double(rate)
+            }
+            let formats = (try? await audio.load(.formatDescriptions)) ?? []
+            if let cm = formats.first {
                 d.audioCodec = fourCC(CMFormatDescriptionGetMediaSubType(cm))
                 if let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(cm) {
                     d.audioSampleRate = asbd.pointee.mSampleRate

@@ -148,7 +148,7 @@ func escapeAttr(_ s: String) -> String {
 /// Anti-feature: keeps the implementation small enough to maintain. If
 /// we ever need true CommonMark conformance, swap in cmark via SPM.
 func markdownToHTML(_ md: String) -> String {
-    var lines = md.components(separatedBy: "\n")
+    let lines = md.components(separatedBy: "\n")
     var out: [String] = []
     var i = 0
     var inCodeBlock = false
@@ -236,7 +236,7 @@ func markdownToHTML(_ md: String) -> String {
            i + 1 < lines.count,
            lines[i + 1].trimmingCharacters(in: .whitespaces).contains("---") {
             flushParagraph()
-            var headerCells = splitTableRow(trimmed)
+            let headerCells = splitTableRow(trimmed)
             // Skip separator
             i += 2
             var bodyRows: [[String]] = []

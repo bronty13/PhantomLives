@@ -85,7 +85,11 @@ enum KynoImportService {
                 includingPropertiesForKeys: [.isDirectoryKey],
                 options: []
             ) else { return [] }
-            for case let url as URL in walker {
+            // nextObject() instead of for-in to keep
+            // skipDescendants() available under Swift 6 strict
+            // concurrency (for-in on NSEnumerator tripped makeIterator).
+            while let object = walker.nextObject() {
+                guard let url = object as? URL else { continue }
                 let name = url.lastPathComponent
                 let parent = url.deletingLastPathComponent().lastPathComponent
                 if (parent == ".LP_Store" || parent == ".kyno"),
@@ -175,7 +179,11 @@ enum KynoImportService {
             let text = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
             currentText = ""
             switch elementName.lowercased() {
-            case "filename", "name", "file":
+            // Note: `"file"` lives in the asset-container case below
+            // — it's a synonym for `<asset>` / `<clip>` per Kyno's
+            // schema drift. Inner filename text is captured via the
+            // `<filename>` / `<name>` synonyms here.
+            case "filename", "name":
                 if current?.filename.isEmpty == true, !text.isEmpty {
                     current?.filename = text
                 }
