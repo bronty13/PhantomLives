@@ -19,6 +19,59 @@ struct PurpleReelApp: App {
     @State private var showPermissionsWizard: Bool = !UserDefaults.standard
         .bool(forKey: "permissionsWizardShown")
 
+    /// Producer / AE report-export menu dispatch. Picks the scope
+    /// (multi-selection or visible list as fallback), runs an
+    /// NSSavePanel, then calls `ReportExporter`. Errors surface as
+    /// an alert — these are user-driven file writes so we want to
+    /// be explicit when they fail (vs the silent NSLog the
+    /// scanner / queue use).
+    private enum ReportFormat { case csv, html }
+
+    @MainActor
+    private func runReportExport(_ format: ReportFormat) {
+        let scope = !appState.selectedAssetPaths.isEmpty
+            ? appState.displayedAssets.filter {
+                appState.selectedAssetPaths.contains($0.path)
+              }
+            : appState.displayedAssets
+        guard !scope.isEmpty else { return }
+        let panel = NSSavePanel()
+        let suffix = format == .csv ? "csv" : "html"
+        panel.allowedContentTypes = [
+            .init(filenameExtension: suffix) ?? .data
+        ]
+        panel.nameFieldStringValue =
+            "PurpleReel_Report_\(ReportExporter.filenameTimestamp()).\(suffix)"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task { @MainActor in
+            do {
+                switch format {
+                case .csv:
+                    try ReportExporter.writeCSV(
+                        assets: scope, to: url, appState: appState
+                    )
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                case .html:
+                    let r = try await ReportExporter.writeHTML(
+                        assets: scope, to: url, appState: appState
+                    )
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                    if r.skipped > 0 {
+                        let alert = NSAlert()
+                        alert.messageText = "Report written with \(r.skipped) missing preview(s)."
+                        alert.informativeText = "Wrote thumbnails for \(r.written) clip(s); \(r.skipped) clip(s) had no extractable preview (image-only assets without a thumbnail path, missing source files, etc.) and show as 'no preview' in the report."
+                        alert.runModal()
+                    }
+                }
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "Couldn't write report"
+                alert.informativeText = error.localizedDescription
+                alert.runModal()
+            }
+        }
+    }
+
     var body: some Scene {
         WindowGroup("PurpleReel") {
             ContentView()
@@ -112,6 +165,15 @@ struct PurpleReelApp: App {
                         appState.exportFCPXML(scope: .allCatalogued, openInFCP: false)
                     }
                 }
+                Menu("Export Report") {
+                    Button("CSV…") {
+                        runReportExport(.csv)
+                    }
+                    Button("HTML (with thumbnails)…") {
+                        runReportExport(.html)
+                    }
+                }
+                .disabled(appState.displayedAssets.isEmpty)
             }
 
             // ---- Edit (extends standard) -------------------------------
