@@ -1,0 +1,176 @@
+# Kyno Parity & Competitive Research
+
+External research snapshot compiled **2026-05-18** — input to the
+next planning round. This sits next to [`KYNO_PARITY_ROADMAP.md`](KYNO_PARITY_ROADMAP.md)
+(the living checklist of feature parity) and exists to capture the
+broader picture: not just "what's on Kyno's feature page", but also
+behavior differences that create migration friction, competitive
+features from adjacent tools, and recurring annoyances that we can
+solve to position PurpleReel above the competition.
+
+## Sources surveyed
+
+- Kyno release notes (every version since 1.0)
+- Kyno keyboard-shortcut reference + product feature pages + FAQ
+- ProVideo Coalition coverage (Scott Simmons — multi-year)
+- Richard Lackey, Definition Magazine, Pixel Valley, Newsshooter reviews
+- DPReview / forum threads
+- "Still Alive, Still Useful" Kyno 1.9 launch article
+  (Digital Production, September 2025)
+- Competing products: Hedge OffShoot / EditReady, Pomfort Silverstack,
+  Imagine ShotPut Pro, Quantum CatDV, Photo Mechanic, Videoloupe,
+  Aftershoot
+
+## Categories
+
+- **Parity gap** — feature Kyno has that we don't (includes
+  some items we explicitly skipped in the original build plan —
+  flagged so we can revisit)
+- **Behavior difference** — feature we have but that operates
+  differently from Kyno, where alignment would reduce friction for
+  converting users
+- **Competitive improvement** — feature from an adjacent tool
+  (Hedge / Pomfort / CatDV / Photo Mechanic etc.) that would
+  leapfrog Kyno
+- **Annoyance to solve** — recurring Kyno user complaint we can
+  fix to differentiate (or marketing lever vs Kyno's perceived
+  abandonment)
+
+## How to read PurpleReel status
+
+| Status | Meaning |
+|---|---|
+| `Missing` | Not built; on the roadmap |
+| `Partial` | Some-but-not-all of Kyno's behavior |
+| `Shipped` | Confirmed in PurpleReel today |
+| `Different behavior` | Built but operates differently — friction risk |
+| `Explicitly skipped` | Out of FCP-only scope per original build plan |
+
+---
+
+## Findings
+
+| # | Category | Item | Source type | Source URL | PurpleReel status | Friction / improvement note |
+|---|---|---|---|---|---|---|
+| 1 | Parity gap | Send-to NLE: Avid Media Composer ALE export + marker copy/paste | Kyno docs | https://lesspain.software/kyno/integrations/ | Explicitly skipped | FCP-only is your scoped choice, but Avid ALE is the single most-cited Premium Kyno integration. Kyno users running multi-NLE shops will balk; consider a one-page "FCP-only by design" doc in onboarding. |
+| 2 | Parity gap | Send-to NLE: Premiere Pro with XMP sidecars | Kyno docs | https://lesspain.software/kyno/integrations/ | Explicitly skipped | Same scoping logic; surface as a deliberate skip. Will lose the "occasional Premiere day" editor entirely. |
+| 3 | Parity gap | Send-to NLE: DaVinci Resolve via FCP7 XML | Kyno docs | https://lesspain.software/kyno/integrations/ | Explicitly skipped | Resolve users currently can't bring metadata + markers across. Cheap to enable later via Pipeline Neo's FCP7 path; flag as v2 candidate. |
+| 4 | Parity gap | "Find Lost Metadata" / reconnect after move-rename | Forum/Reddit post | https://support.lesspain.software/support/discussions/topics/12000027432 | Missing | One of Kyno's most-relied-on safety nets. PurpleReel needs file-fingerprint reconnect (size+modtime+optional hash) so users don't lose ratings/tags when they reorganize. High migration anxiety blocker. |
+| 5 | Parity gap | Metadata import/merge from FCPX + Premiere XML back into Kyno | Kyno docs | https://lesspain.software/kyno/integrations/ | Missing | Kyno reads what editors added in the NLE and merges it back into the library. PurpleReel exports FCPXML but doesn't appear to ingest. Round-trip is a recurring Kyno selling point. |
+| 6 | Parity gap | Paste Metadata between clips (proxy → master, different containers) | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Missing | Added in 1.7. Critical for proxy-logged → master-reconnect workflow. PurpleReel has batch edit (⌘⇧M) but not clip-to-clip paste. |
+| 7 | Parity gap | Shared cache for thumbnails/metadata on NAS/SAN (`.LP_Store/`) | Kyno docs | https://support.lesspain.software/support/solutions/articles/12000075313-volume-settings | Missing | Kyno 1.9 emphasized this for team browsing. Two-person edit shops on shared storage will notice when only the first user benefits from PurpleReel's analysis. |
+| 8 | Parity gap | Combine multiple clips into one (assembly-cut without NLE) | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Missing | 1.4 feature. Doc shooters and corporate-video people use this to glue 8-minute talking-head pieces together without spinning up FCP. |
+| 9 | Parity gap | Play-all-selected continuously | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Missing | Added 1.4. A first-pass review staple. PurpleReel plays one clip at a time; need a sequential-play queue toggle. |
+| 10 | Parity gap | Timecode burn-in (overlay) during transcoding | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Missing | Added 1.4. Required for any client-review dailies workflow. Should ride on the existing conversion preset system. |
+| 11 | Parity gap | Sidecar LUT auto-detection alongside media (Log-C, V-Log, S-Log presets) | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Partial | PurpleReel ships LUT loading, but Kyno auto-detects Log-C footage and ships ARRI/Panasonic/Sony LUTs. Open gap (you flagged: "LUT auto-detect from FCP/Resolve libraries"). |
+| 12 | Parity gap | Smart proxy presets with automatic scaling | Release notes | https://lesspain.software/kyno/pages/news/kyno-1.9-release/ | Missing | New in 1.9 (Sept 2025). Auto-scale to e.g. 1/2 or 1/4 of source. Easy win in the Conversion preset system. |
+| 13 | Parity gap | Incremental transcoding (skip what's already done) | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Missing | Added 1.8. Re-running a dailies batch should not re-encode existing outputs. Hashable-target check is a small lift. |
+| 14 | Parity gap | Transfer metadata between matching folder structures (copy/paste whole tree) | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Missing | 1.8 feature. When a producer hands off a duplicate folder tree, Kyno mirrors all tags/ratings across. Important DIT/AE workflow. |
+| 15 | Parity gap | Export still frame at marker (batch) with LUT baked in | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Partial | PurpleReel has ⌘⇧E export-frame; Kyno batch-exports at every marker with LUT applied + sets title/description on the still. Round out the export-frame feature for batches. |
+| 16 | Parity gap | Excel/CSV report with thumbnails + duration + start TC | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Missing | Producer/AE staple. PurpleReel has FCPXML and tag JSON; an Excel/CSV-with-thumbnails export is a low-cost addition that Kyno users expect. |
+| 17 | Parity gap | Verified copy (offload) to up to 4 destinations simultaneously | Review article | https://www.richardlackey.com/kyno-review-media-management-for-video-creators/ | Partial | PurpleReel has MHL-verified backup + SFTP. Multi-destination simultaneous offload (Hedge/Shotput baseline) is the bar; confirm/expose in Transfer pane. |
+| 18 | Parity gap | "Paste & rename" workflow (paste files + apply naming template) | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Missing | 1.6 feature. AE bread-and-butter. Tie into PurpleReel's existing batch-edit infrastructure. |
+| 19 | Parity gap | XMP write-back for Premiere metadata | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Explicitly skipped | Out of FCP-only scope, but document. |
+| 20 | Parity gap | Fade in/out option in transcoder | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Missing | 1.6 feature. Small but expected by anyone making client deliverables. |
+| 21 | Parity gap | Transcoder file-timestamp preservation toggle | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Missing | 1.2 feature. Important when transcoded outputs feed archival systems that key off mtime. |
+| 22 | Parity gap | Drop-frame TC: zero-based timecode preference | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Partial | PurpleReel has SMPTE-12M drop-frame; add the "force zero-based timecode" preference Kyno shipped in 1.7. |
+| 23 | Parity gap | DMG display in Devices section (optional) | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Missing | Kyno 1.5 feature. Cheap. Mounted DMG often holds delivered dailies. |
+| 24 | Parity gap | Image-file Excel export for storyboarding | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Missing | 1.0 feature. Storyboard/look-dev users would notice. |
+| 25 | Parity gap | "Type to add tag" autocomplete in batch tag editor (⌘⇧T) | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Partial | PurpleReel has batch metadata edit ⌘⇧M and OPEN GAP ⌘⇧T for batch tag edit. Kyno binds it to ⌘⇧T specifically; expect users to muscle-memory hit ⌘⇧T. |
+| 26 | Parity gap | Tag negation in tag filter ("NOT tagged X") | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Partial | PurpleReel's advanced Filter supports many criteria; verify "is not"/negate is exposed on Tag specifically (Kyno added in 1.5.1 for Rating/Audio Codec/Video Codec/Pixel format/Display size/Frame rate). |
+| 27 | Parity gap | Boolean expressions in filter queries | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Partial | 1.7 feature. PurpleReel's multi-criteria builder is AND-only by default; expose OR/parentheses for power users. |
+| 28 | Parity gap | VFR vs CFR filter ("variable frame rate" / "constant") | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Missing | 1.7 feature. Critical for FCP users who want to flag phone footage before edit. |
+| 29 | Parity gap | Spanned-clip detection (multi-file recordings auto-joined) | Kyno docs | https://lesspain.software/kyno/features/ | Missing | Already on your OPEN list. C300, GH5, sony cards. Without this, drilldown shows broken segments. |
+| 30 | Parity gap | Tag import/export JSON across machines | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Shipped | Confirmed shipped per cheat sheet. No change. |
+| 31 | Parity gap | Recover ratings/tags/markers after files renamed externally | Forum/Reddit post | https://support.lesspain.software/support/discussions/topics/12000027432 | Missing | See row 4. Specifically the rename case, not just move. Kyno users have been bitten; their solution is "Find Lost Metadata." |
+| 32 | Parity gap | Send subclips as duration markers (not just in/out points) | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Partial | 1.3 feature. Verify FCPXML export uses range-based keywords vs just in/out. |
+| 33 | Parity gap | Date Recorded column + Date Created column | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Partial | You flagged Date Created as OPEN GAP. Kyno added both 1.7. Distinct from DateModified. |
+| 34 | Parity gap | Display size + Aspect ratio columns in list view | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Partial | OPEN GAP per cheat sheet. List-view columns are Kyno's strongest browsing surface. |
+| 35 | Parity gap | Correct creation/mod-date utility for files with wrong timestamps | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Missing | 1.5 feature. Niche but loved — fixes camera-clock-wrong-day disasters. |
+| 36 | Behavior difference | J/L = 5-sec jumps in Kyno; PurpleReel default is multi-rate shuttle | Kyno docs | https://support.lesspain.software/support/solutions/articles/12000010141-keyboard-shortcuts | Different behavior | You ship the toggle. Make sure first-launch onboarding offers a "I'm coming from Kyno" preset that flips J/L to 5-sec mode. Critical retention moment. |
+| 37 | Behavior difference | View-mode wording: Kyno = "Thumbnail/List/Detail"; PurpleReel = "Grid/List/Detail" | Kyno docs | https://support.lesspain.software/support/solutions/articles/12000010141-keyboard-shortcuts | Different behavior | ⌘1/2/3 ordering matches Kyno, but the label "Grid" diverges from "Thumbnail." Tooltip or settings "Use Kyno terminology" toggle solves it cheaply. |
+| 38 | Behavior difference | Cmd-Left/Right = "go to next/previous file in detail view" (Kyno) vs Back/Forward (PurpleReel ⌘[ ⌘]) | Kyno docs | https://support.lesspain.software/support/solutions/articles/12000010141-keyboard-shortcuts | Different behavior | PurpleReel uses ⌘[ ⌘] for nav history (matches Kyno), but Cmd-Left/Right specifically is Kyno's clip-to-clip stepper in detail. Likely missing — verify and add. |
+| 39 | Behavior difference | Toggle zebra = Ctrl-Alt-E in Kyno; widescreen bar = Ctrl-Alt-W | Kyno docs | https://support.lesspain.software/support/solutions/articles/12000010141-keyboard-shortcuts | Different behavior | PurpleReel exposes both via toolbar menu but apparently no keyboard binding. Add Ctrl-Alt-E / Ctrl-Alt-W to match muscle memory. |
+| 40 | Behavior difference | Audio mute = X key | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Missing | 1.4.2 feature. Verify PurpleReel binding; X is a Kyno-specific muscle-memory key. |
+| 41 | Behavior difference | Poster-frame keyboard shortcut = P | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Missing | 1.4 feature. PurpleReel has clip metadata but no poster-frame concept exposed; consider adding (sets the thumbnail shown in Grid for that clip). |
+| 42 | Behavior difference | Open with default app = Alt-Shift-O | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Missing | 1.5 feature. Useful escape hatch when PurpleReel can't render a frame. |
+| 43 | Behavior difference | Cmd-Alt-M = focus metadata input | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Missing | 1.3 feature. Power user shortcut for fast logging. |
+| 44 | Behavior difference | Drilldown = Cmd-Shift-D | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Different behavior | PurpleReel has drilldown via toolbar button; bind ⌘⇧D to it as well so it matches Kyno-muscle-memory. |
+| 45 | Behavior difference | Subclip export = Cmd-U | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Missing | 1.4 feature. Cmd-U is unusual in macOS apps but Kyno-trained users will reach for it. |
+| 46 | Behavior difference | Add folder to workspace = Cmd-I | Kyno docs | https://support.lesspain.software/support/solutions/articles/12000010141-keyboard-shortcuts | Shipped | Confirmed shipped per cheat sheet. Good — already matches. |
+| 47 | Behavior difference | "Edit Tags" specifically bound to Cmd-Shift-T | Kyno docs | https://support.lesspain.software/support/solutions/articles/12000010141-keyboard-shortcuts | Partial | PurpleReel uses ⌘⇧M for batch metadata, ⌘⇧T listed as OPEN GAP for batch tag edit. Direct Kyno equivalent — bind it. |
+| 48 | Behavior difference | Toolbar reorganization 1.9: Drilldown moved to main toolbar | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Shipped | Confirmed per cheat sheet (drilldown via toolbar button). Matches Kyno's most-recent layout. |
+| 49 | Behavior difference | "Show in Enclosing Folder" context action | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Partial | New in 1.9. Likely there in PurpleReel via macOS conventions; verify exact wording in context menu matches. |
+| 50 | Behavior difference | Shift+click refresh = hard refresh | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Missing | New 1.9. Solves "stale state" of cached index. Should add to PurpleReel's refresh affordance. |
+| 51 | Behavior difference | Drilldown does NOT walk into camera structures by default (1.8.1 added toggle) | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Different behavior | PurpleReel auto-drills DCIM/AVCHD/PRIVATE on volume mount. Kyno added a setting to disable; PurpleReel has gates (reactLocal/Removable/Network) — confirm the disable-auto-drilldown toggle is one click in Settings → Devices. |
+| 52 | Behavior difference | Audio playback rate options include 75% / 125% / 150% | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Different behavior | Kyno preserves pitch at non-1x rates (1.8.1). PurpleReel's shuttle modes may not include audio-pitch-preserved 75/125 — verify or add. |
+| 53 | Behavior difference | "is not" negation in metadata filter values (UI affordance) | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Different behavior | See row 26. Kyno surfaces this as a per-field control, not buried in advanced. Make the UI match. |
+| 54 | Behavior difference | Natural file-name sorting (numeric-aware) | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Different behavior | 1.5 feature. Confirm PurpleReel's sort treats `clip2` < `clip10`. Default in Finder, often broken in 3rd-party apps. |
+| 55 | Behavior difference | LUT applied by default to all still-frame exports | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Different behavior | 1.8 default. PurpleReel may export raw; expose a "Apply current LUT" toggle in ⌘⇧E export-frame. |
+| 56 | Behavior difference | UI language: English, German, French, Spanish | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Missing | Kyno is multilingual. PurpleReel English-only is fine for v1 but is a hidden retention factor for European DIT shops. |
+| 57 | Competitive improvement | Centralized cross-volume search (no offline limit) | Review article | https://www.richardlackey.com/kyno-review-media-management-for-video-creators/ | Missing | Lackey called this Kyno's biggest gap: "No offline search, no centralized database." If PurpleReel ships a lightweight library/spotlight index of unmounted volumes, that's a genuine competitive leap over Kyno. |
+| 58 | Competitive improvement | AI culling: blur/eye-closure/duplicate grouping (Photo Mechanic gap) | Competitor feature | https://aftershoot.com/blog/aftershoot-vs-photo-mechanic/ | Partial | PurpleReel ships PurpleDedup-derived similar-takes picker — already ahead of Photo Mechanic, which "has no AI culling." Market this clearly. |
+| 59 | Competitive improvement | Embedded-thumbnail browsing speed (Photo Mechanic gold standard) | Competitor feature | https://shotkit.com/photo-mechanic-review/ | Shipped | Per your PurpleDedup memory, you already cap concurrency and use embedded thumbs. Make sure the same is true in PurpleReel browse. |
+| 60 | Competitive improvement | Multi-destination simultaneous offload with xxHash + ASC-MHL | Competitor feature | https://docs.hedge.video/offshoot/features/verification | Partial | Hedge OffShoot is the bar. PurpleReel has MHL + verify; surface "Hedge-parity" by adding xxHash and ASC-MHL spec compliance, plus parallel writes to N targets. |
+| 61 | Competitive improvement | C4 checksums + ASC-MHL Netflix spec | Competitor feature | https://docs.hedge.video/offshoot/features/verification | Missing | Netflix-spec ASC-MHL is now required on big shows. Add as a Transfer-pane option to claim DIT credibility. |
+| 62 | Competitive improvement | EditReady-style "transcode just a portion of a clip" (clip trimming) | Competitor feature | https://hedge.co/products/editready | Partial | PurpleReel has subclips → export. Verify the transcode pipeline supports trimming to in/out by default without re-encoding the whole file. |
+| 63 | Competitive improvement | Whisper transcription with searchable per-clip transcripts | Competitor feature | https://hedge.co/products/editready | Shipped | Already shipped — push hard in marketing; Kyno doesn't have it. Genuinely category-leading. |
+| 64 | Competitive improvement | Ollama local-AI tagging (privacy + no API cost) | Competitor feature | https://www.quantum.com/en/products/asset-management/ | Shipped | CatDV's AI tagging needs a cloud service; PurpleReel's Ollama-local is a clear differentiator for editors who can't upload client footage. |
+| 65 | Competitive improvement | Pomfort-grade deep camera metadata (ARRI, RED, Sony reels) | Review article | https://definitionmagazine.com/reviews/review-kyno-media-manager/ | Explicitly skipped | Reviewer noted Kyno reads metadata "shallow" vs Silverstack/Resolve. Camera-specific schemas are on your skip list — note as a deliberate FCP-friendly trade-off. |
+| 66 | Competitive improvement | Silverstack "workflow chains" (offload → transcode → upload → report as one job) | Competitor feature | https://pomfort.com/silverstackxt/ | Missing | Power-user workflow automation. Even a simple "After offload, run preset X" hook would close this. |
+| 67 | Competitive improvement | Hover-preview thumbnail scrubbing in Grid | Competitor feature | https://www.videoloupe.com/ | Partial | Videoloupe + Vidi both do this. PurpleReel Grid shows static tile + tile-size slider; consider hover-to-scrub for content overview without entering Detail. |
+| 68 | Competitive improvement | Live waveform audio overview in browse (Photo Mechanic for audio) | Kyno docs | https://lesspain.software/kyno/pages/faq/ | Partial | Kyno admits in FAQ: "we are still working on visual waveform support for the player." PurpleReel has waveform in player; if you also show it in tile/list, you leapfrog Kyno entirely. |
+| 69 | Competitive improvement | Markdown notes per clip (research/journalism workflow) | Competitor feature | https://www.provideocoalition.com/nab-at-home-kyno/ | Partial | PurpleReel has Description field and Notes tab. Promote as alternative to Kyno's notes-via-Description hack. |
+| 70 | Competitive improvement | FCP X library predicate / saved-search criterion | Kyno docs | https://lesspain.software/kyno/features/ | Explicitly skipped | On your skip list but flagged worth revisiting in OPEN GAPS. Letting users define a smart-filter that surfaces inside FCP would be a unique hook. |
+| 71 | Annoyance to solve | Future-uncertain abandonment perception (Signiant acquisition) | Blog/news article | https://www.provideocoalition.com/an-update-on-kyno-and-what-might-be-in-store-for-the-future-of-this-fantastic-piece-of-post-production-software/ | Shipped | Simmons: "I'm worried" Signiant doesn't "screw up" Kyno. PurpleReel can win these users on commitment alone — public roadmap doc + monthly changelog. |
+| 72 | Annoyance to solve | Kyno forums taken offline | Blog/news article | https://www.provideocoalition.com/kyno-finally-gets-an-update/ | Shipped | Simmons: "I hate that the Kyno forums were taken offline." Community vacuum — even a low-maintenance GitHub Discussions / Discord captures the orphaned community. |
+| 73 | Annoyance to solve | Frame.io integration removed in 1.9 | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Explicitly skipped | Users who relied on Kyno → Frame.io are now stranded. PurpleReel could win them with SFTP delivery (already shipped) plus a Frame.io upload preset. |
+| 74 | Annoyance to solve | Archiware P5 integration removed in 1.9 | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Explicitly skipped | Same as above — archive workflow users orphaned. Likely too niche for PurpleReel; document as not on roadmap. |
+| 75 | Annoyance to solve | "Preview window surprisingly slow even on fast SSDs" | Forum/Reddit post | https://www.dpreview.com/forums/thread/4178836 | Shipped | Specific complaint about scrub speed. PurpleReel uses AVFoundation player with embedded thumbs — ensure scrub uses keyframe-only seek by default and document in benchmark. |
+| 76 | Annoyance to solve | Thread leak / instability after long usage (macOS) | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Different behavior | Reported pre-1.7.4. Validate PurpleReel doesn't have similar long-session leaks; pair with Backup-on-launch (you already standardize this). |
+| 77 | Annoyance to solve | Apple Silicon auto-updater still ships Intel build | Review article | https://digitalproduction.com/2025/09/19/kyno-update-still-alive-still-useful/ | Shipped | Quoted: "auto-updater delivers Intel build only." PurpleReel is Swift/Apple Silicon native by definition — make this a marketing bullet. |
+| 78 | Annoyance to solve | "Maximum number of files exceeded" security limit | Kyno docs | https://lesspain.software/kyno/pages/faq/ | Different behavior | Kyno hard-caps drilldown for safety; user must dig into Advanced to raise it. PurpleReel should warn but not block; if blocking, surface the dial in main UI. |
+| 79 | Annoyance to solve | macOS permission denials (Removable Volumes, Files & Folders) | Kyno docs | https://lesspain.software/kyno/pages/faq/ | Different behavior | Kyno's FAQ has multiple entries for this. PurpleReel already has Mac HD symlink fix + volume gating; add a first-launch permissions wizard and you skip a major Kyno pain. |
+| 80 | Annoyance to solve | Metadata stored as sidecar XML files in hidden dirs (`/.LP_Store/`, `.kyno/`) | Kyno docs | https://lesspain.software/kyno/pages/faq/ | Different behavior | Some users dislike per-folder XML droppings on shared storage. PurpleReel uses a clip_metadata schema (centralized) — clarify in onboarding so Kyno migrants know to import their XMLs first. |
+| 81 | Annoyance to solve | License: 2 machines per single user, yearly renewal for updates | Kyno docs | https://lesspain.software/kyno/pages/faq/ | Different behavior | Kyno is €159/yr renewal-for-updates. PurpleReel's licensing model is your competitive lever — if perpetual or one-time, lead with it. |
+| 82 | Annoyance to solve | "Disconnect drive before importing metadata XML" workaround | Forum/Reddit post | https://support.lesspain.software/support/discussions/topics/12000027432 | Missing | Bizarre Kyno quirk users had to discover. PurpleReel's metadata import (when built — see row 5) should not require this. |
+| 83 | Annoyance to solve | Subclip overwrite collisions on identical names | Release notes | https://support.lesspain.software/support/solutions/articles/12000016005-release-notes-for-kyno | Different behavior | Long-standing Kyno bug stream. PurpleReel should auto-disambiguate (timestamp/counter) silently. |
+| 84 | Annoyance to solve | Audio channel names ("boom"/"lav") not preserved | Forum/Reddit post | https://lesspain.software/kyno/features/ | Missing | Confirmed limitation — "Kyno doesn't handle channel names currently." A trivial schema add for PurpleReel and an instant-win for doc/interview shops. |
+| 85 | Annoyance to solve | Default list-view columns not configurable as global default | Forum/Reddit post | https://support.lesspain.software/support/discussions/topics/12000026375 | Shipped | PurpleReel already exposes column choice. Document "save as default columns" prominently. |
+
+---
+
+## Top 5 highest-impact
+
+1. **Row 4 (Find Lost Metadata) + Row 31 (rename recovery)** — single
+   biggest emotional safety net for Kyno migrants; without it they
+   will lose tags during their first reorganization and abandon ship.
+2. **Row 36 (J/L 5-sec default)** — you have the toggle; a "Coming
+   from Kyno" first-launch preset eliminates the most universal
+   complaint about converting NLE-shortcut users.
+3. **Row 5 + Row 6 (FCPXML re-import + clip-to-clip Paste
+   Metadata)** — Kyno's flagship round-trip story. Without it,
+   PurpleReel is one-way and editors lose all the logging their AE
+   did downstream.
+4. **Row 7 (shared cache on NAS/SAN)** — every multi-seat shop hits
+   this within a week. Kyno made it the headline of 1.9 specifically
+   because team browsing on shared storage is where they were
+   losing customers.
+5. **Row 71 + 77 (Signiant abandonment perception + Apple Silicon
+   native)** — pure marketing lever. PurpleReel can win lapsed Kyno
+   users on commitment + native-ARM alone; ship a public roadmap
+   and a "why we exist" page that names Kyno directly.
+
+---
+
+## Next steps
+
+- **Triage**: walk the table and decide what goes into the Small /
+  Medium / Large effort buckets in
+  [`KYNO_PARITY_ROADMAP.md`](KYNO_PARITY_ROADMAP.md).
+- **Verify behavior-difference rows**: the "verify in PurpleReel"
+  flags (rows 26, 32, 49, 51, 52, 54) need an actual check against
+  the running app before they're closed or scheduled.
+- **First-launch "Coming from Kyno" preset**: one screen / one
+  toggle flips J/L, key bindings, view-mode labels, drilldown
+  shortcut, etc. — a near-zero-cost retention multiplier.
