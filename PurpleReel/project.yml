@@ -16,6 +16,16 @@ targets:
     platform: macOS
     sources:
       - path: Sources/PurpleReel
+        excludes:
+          # The Apple Help Book bundle is a directory tree that must
+          # land in the .app with its `Contents/Resources/en.lproj/`
+          # layout intact. xcodegen would otherwise flatten the .html
+          # / .helpindex into the app's top-level en.lproj. Excluding
+          # it from the default sweep + re-including it as a
+          # `type: folder` reference preserves the structure.
+          - "Resources/PurpleReel.help/**"
+      - path: Sources/PurpleReel/Resources/PurpleReel.help
+        type: folder
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.bronty13.PurpleReel

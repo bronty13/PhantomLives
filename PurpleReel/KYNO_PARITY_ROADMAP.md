@@ -178,7 +178,7 @@ window to find them.
 | ✅ | In-app **Help → Keyboard Shortcuts** menu | `ShortcutsCheatSheet` sheet (⌘?). Searchable, grouped, reads `Shortcuts.all`. |
 | ✅ | In-app **Help → Install & Setup** menu | Wired to open `INSTALL.md`; alerts politely until the doc itself ships. |
 | ✅ | Bundle docs into the `.app` | **Shipped.** `build-app.sh` stages USER_MANUAL.md / INSTALL.md / SHORTCUTS.md / KYNO_PARITY_ROADMAP.md into `Sources/PurpleReel/Resources/Help/` before xcodegen runs; xcodegen bundles them under `Contents/Resources/`. `HelpDocs.locate()` checks bundled paths first (with and without the `Help` subdir for xcodegen-flattening tolerance), falls back to sibling-of-binary + repo-path for dev builds. Staged copies gitignored — single source of truth is the repo-root *.md. |
-| ⬜ | Help search-bar entries | macOS's standard Help menu has a search field. Populate it via `NSHelpManager` so users can type "drilldown" and jump to the relevant section. |
+| ✅ | Help search-bar entries | **Shipped.** Apple Help Book bundle (`PurpleReel.help`) generated at build time from the four `.md` docs by `Scripts/generate-help-book.swift` (minimal Markdown→HTML — headings / paragraphs / fenced code / inline code / lists / pipe tables / links / bold / italic / horizontal rules). `hiutil` builds the `.helpindex`. `CFBundleHelpBookFolder` + `CFBundleHelpBookName` registered in `Info.plist`. xcodegen `type: folder` preserves the bundle directory tree. macOS Help menu's search field finds matching topics across every doc. |
 
 Implementation order suggestion:
 1. **`SHORTCUTS.md`** first (smallest, derives directly from the

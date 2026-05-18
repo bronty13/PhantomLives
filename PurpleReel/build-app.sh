@@ -46,6 +46,25 @@ for doc in USER_MANUAL INSTALL SHORTCUTS KYNO_PARITY_ROADMAP; do
     fi
 done
 
+# Regenerate the Apple Help Book bundle from the same .md files so
+# the macOS Help menu's search field can index and surface topics.
+# The bundle lives at Sources/PurpleReel/Resources/PurpleReel.help/;
+# xcodegen picks it up because Resources/ is a sources root.
+echo "Generating PurpleReel.help bundle..."
+swift Scripts/generate-help-book.swift >/dev/null
+
+# Build the .helpindex via Apple's `hiutil`. Apple Help requires the
+# index file referenced by HPDBookIndexPath to live alongside the
+# .html pages in en.lproj/.
+HELP_LPROJ="Sources/PurpleReel/Resources/PurpleReel.help/Contents/Resources/en.lproj"
+if [ -d "$HELP_LPROJ" ] && command -v /usr/bin/hiutil >/dev/null 2>&1; then
+    echo "Indexing Help Book via hiutil..."
+    (
+        cd "$HELP_LPROJ" && \
+        /usr/bin/hiutil -C -a -s en -f PurpleReelHelp.helpindex . >/dev/null
+    ) || echo "warning: hiutil failed; Help menu search will be empty"
+fi
+
 # Regenerate Xcode project from project.yml
 if command -v xcodegen >/dev/null 2>&1; then
     xcodegen generate >/dev/null

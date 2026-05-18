@@ -8,6 +8,10 @@
 	<string>PurpleReel</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleHelpBookFolder</key>
+	<string>PurpleReel.help</string>
+	<key>CFBundleHelpBookName</key>
+	<string>com.bronty13.PurpleReel.help</string>
 	<key>CFBundleIconName</key>
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
@@ -19,9 +23,9 @@
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.301</string>
+	<string>0.1.302</string>
 	<key>CFBundleVersion</key>
-	<string>301.dd6a6ff</string>
+	<string>302.e8f081b</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSHumanReadableCopyright</key>
