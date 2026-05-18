@@ -26,12 +26,20 @@ enum DetailTab: String, CaseIterable, Identifiable {
 struct BrowserView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var playerController = PlayerController()
+    /// Live textfield value — updates on every keystroke.
     @State private var filterText: String = ""
+    /// Debounced filter term. Lags `filterText` by 200ms so typing
+    /// "abc" doesn't fire three full filter passes against
+    /// `displayedAssets`. Mid-keystroke the textfield still feels
+    /// responsive because the binding writes immediately; the
+    /// expensive `filteredAssets` recomputation just waits.
+    @State private var stableFilterText: String = ""
+    @State private var filterDebounceTask: Task<Void, Never>?
     @AppStorage("detailTab") private var detailTab: DetailTab = .content
 
     private var filteredAssets: [Asset] {
         let base = appState.displayedAssets
-        let term = filterText.trimmingCharacters(in: .whitespaces).lowercased()
+        let term = stableFilterText.trimmingCharacters(in: .whitespaces).lowercased()
         guard !term.isEmpty else { return base }
         return base.filter { $0.filename.lowercased().contains(term) }
     }
@@ -144,6 +152,18 @@ struct BrowserView: View {
                         .foregroundStyle(.secondary)
                     TextField("Filter by name…", text: $filterText)
                         .textFieldStyle(.plain)
+                        .onChange(of: filterText) { _, new in
+                            // 200ms debounce keeps the textfield
+                            // responsive while typing — only one
+                            // filter pass fires for a typed word.
+                            filterDebounceTask?.cancel()
+                            filterDebounceTask = Task { @MainActor in
+                                try? await Task.sleep(nanoseconds: 200_000_000)
+                                if !Task.isCancelled {
+                                    stableFilterText = new
+                                }
+                            }
+                        }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)

@@ -549,10 +549,65 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Memoization cache for `displayedAssets`. Recomputing the
+    /// filter + sort pipeline on every access cost ~ms on
+    /// 1000-asset workspaces and was being called many times per
+    /// SwiftUI render (cell counts, "N of M" toolbar text, menu
+    /// `.disabled(...)` predicates that re-evaluate on every
+    /// @Published change). The cache key is a stringified
+    /// signature of every input that affects the result — cheap
+    /// to compute, fully invalidating.
+    private var displayedAssetsCache: [Asset] = []
+    private var displayedAssetsCacheKey: String = ""
+
+    private func computeDisplayedAssetsCacheKey() -> String {
+        var parts: [String] = []
+        parts.append("a:\(assets.count)")
+        // `assets` is reassigned wholesale on rescan; rolling the
+        // count into the key catches add / remove. For pure-rename
+        // (count unchanged), `addedAt` of the most recent asset
+        // changes — fold a sample of paths to catch that.
+        if let last = assets.last { parts.append("ap:\(last.path)") }
+        parts.append("f:\(selectedFolderPath ?? "")")
+        parts.append("d:\(drilldownPaths.sorted().joined(separator: ","))")
+        parts.append("t:\(typeFilter)")
+        parts.append("tm:\(timeFilter)")
+        parts.append("af:\(activeFilters.map(\.id).joined(separator: ","))")
+        parts.append("fm:\(filterMatchMode)")
+        parts.append("sk:\(sortKey)")
+        parts.append("sa:\(sortAscending)")
+        parts.append("op:\(onlinePaths.count)")
+        parts.append("ti:\(tagIndex.count)")
+        parts.append("ri:\(ratingIndex.count)")
+        // workspaceRoots affects the "no folder selected" fallback.
+        parts.append("wr:\(workspaceRoots.map(\.path).joined(separator: ","))")
+        return parts.joined(separator: "|")
+    }
+
     /// Filtered view of `assets` driven by `selectedFolderPath`,
     /// `drilldownEnabled`, `typeFilter`, and sorted by `sortKey`.
     /// Matches Kyno's browser-toolbar semantics.
+    ///
+    /// Memoized: returns the cached array when none of the inputs
+    /// have changed since the last call. Most calls per render
+    /// pass return the cached value in microseconds; the actual
+    /// O(n) filter+sort runs only when the user mutates a filter,
+    /// changes the sort key, or the scan completes with new data.
     var displayedAssets: [Asset] {
+        let key = computeDisplayedAssetsCacheKey()
+        if key == displayedAssetsCacheKey {
+            return displayedAssetsCache
+        }
+        let fresh = computeDisplayedAssets()
+        displayedAssetsCache = fresh
+        displayedAssetsCacheKey = key
+        return fresh
+    }
+
+    /// Underlying filter + sort pipeline. Kept as a private
+    /// function so the memoized `displayedAssets` accessor stays
+    /// thin.
+    private func computeDisplayedAssets() -> [Asset] {
         // Always scope to *some* root: either the explicitly-selected
         // folder, the current active root, or — if a workspace has
         // multiple roots — the union of all of them. Without this,
