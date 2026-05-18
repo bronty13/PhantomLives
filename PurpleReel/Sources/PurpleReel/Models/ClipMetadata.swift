@@ -15,16 +15,25 @@ struct ClipMetadata: Codable, Equatable, FetchableRecord, PersistableRecord {
     var take: String?
     var angle: String?
     var camera: String?
+    /// User-provided per-channel labels for the asset's audio
+    /// tracks ("boom", "lav-Alice", "lav-Bob"). Comma-separated in
+    /// SQLite; indexed by track order. Kyno doesn't preserve these
+    /// — a doc/interview-shop win. Nil when the user hasn't named
+    /// channels yet. Default = nil keeps the old memberwise
+    /// initializer's call-site compatible at every existing site.
+    var audioChannelNames: String? = nil
 
     static let databaseTableName = "clip_metadata"
 
     enum CodingKeys: String, CodingKey {
         case assetId, title, description, reel, scene, shot, take, angle, camera
+        case audioChannelNames
     }
 
     static let empty = ClipMetadata(
         assetId: 0,
         title: nil, description: nil,
-        reel: nil, scene: nil, shot: nil, take: nil, angle: nil, camera: nil
+        reel: nil, scene: nil, shot: nil, take: nil, angle: nil, camera: nil,
+        audioChannelNames: nil
     )
 }

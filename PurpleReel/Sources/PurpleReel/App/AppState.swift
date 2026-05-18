@@ -676,10 +676,31 @@ final class AppState: ObservableObject {
             self.assets = try db.allAssets()
             self.rebuildFolderTree()
             self.refreshClipMetadataIndex()
+            // Soft warning when the workspace balloons past the
+            // safety limit. Doesn't block; we still load every asset.
+            // The user can either narrow the workspace or raise
+            // `fileCountSafetyLimit` in Settings → Advanced.
+            if self.assets.count > self.fileCountSafetyLimit,
+               self.fileCountWarning == nil {
+                self.fileCountWarning = self.assets.count
+            }
         } catch {
             NSLog("[PurpleReel] scan failed: \(error)")
         }
     }
+
+    // MARK: - Safety limit (rescan warning)
+
+    /// Max files PurpleReel will silently catalogue without warning
+    /// the user. Stored as `@AppStorage` so power users can raise it.
+    var fileCountSafetyLimit: Int {
+        let raw = UserDefaults.standard.integer(forKey: "fileCountSafetyLimit")
+        return raw > 0 ? raw : 50_000
+    }
+
+    /// Posted when the rescanned asset count crosses the safety limit.
+    /// UI presents a sheet; the catalogue still loads in full.
+    @Published var fileCountWarning: Int?
 
     /// Rebuild the sidebar folder tree(s) from the current asset list.
     /// For a single-root workspace it's still rendered as one tree; for
@@ -888,9 +909,24 @@ final class AppState: ObservableObject {
         guard let id = selectedAsset?.rowId else { return }
         let lo = min(timecodeIn, timecodeOut)
         let hi = max(timecodeIn, timecodeOut)
-        _ = try? db.addSubclip(parentAssetId: id, name: name,
+        // Kyno collision quirk: identical subclip names on the same
+        // asset silently overwrote each other. We auto-disambiguate
+        // with a numeric suffix so the user never loses a take.
+        let finalName = uniqueSubclipName(base: name, on: id)
+        _ = try? db.addSubclip(parentAssetId: id, name: finalName,
                                 timecodeIn: lo, timecodeOut: hi)
         refreshSubclips()
+    }
+
+    /// Pick the next non-colliding subclip name on `assetId`. If
+    /// `base` isn't taken, returns it unchanged; otherwise appends
+    /// " 2", " 3", … until free.
+    private func uniqueSubclipName(base: String, on assetId: Int64) -> String {
+        let existing = (try? db.subclips(parentAssetId: assetId).map(\.name)) ?? []
+        if !existing.contains(base) { return base }
+        var counter = 2
+        while existing.contains("\(base) \(counter)") { counter += 1 }
+        return "\(base) \(counter)"
     }
 
     func deleteSubclip(_ subclip: Subclip) {
@@ -1210,6 +1246,185 @@ final class AppState: ObservableObject {
     /// `openConvertDialog(preset:)`.
     func transcodeSelected(preset: TranscodePreset) {
         openConvertDialog(preset: preset)
+    }
+
+    // MARK: - Metadata clipboard (Kyno-parity Paste Metadata)
+
+    /// Snapshot of one asset's user-editable metadata, captured by
+    /// "Copy Metadata" and applied verbatim to every target asset by
+    /// "Paste Metadata". Doesn't copy markers/subclips — those are
+    /// clip-anchored on absolute timecodes and would land wrong on a
+    /// different-duration target. Tags union additively (Kyno's
+    /// behavior). Rating overrides.
+    struct MetadataClipboard {
+        let title: String?
+        let description: String?
+        let reel: String?
+        let scene: String?
+        let shot: String?
+        let take: String?
+        let angle: String?
+        let camera: String?
+        let audioChannelNames: String?
+        let stars: Int?
+        let colorLabel: String?
+        let tags: [String]
+        let sourceFilename: String
+    }
+
+    @Published var metadataClipboard: MetadataClipboard?
+
+    func copyMetadataFromSelected() {
+        guard let asset = selectedAsset, let id = asset.rowId else { return }
+        let meta = (try? db.clipMetadata(assetId: id))
+            ?? ClipMetadata(assetId: id, title: nil, description: nil,
+                             reel: nil, scene: nil, shot: nil,
+                             take: nil, angle: nil, camera: nil)
+        let r: Rating? = (try? db.rating(assetId: id)) ?? nil
+        let tagList = (try? db.tags(assetId: id).map(\.name)) ?? []
+        metadataClipboard = MetadataClipboard(
+            title: meta.title, description: meta.description,
+            reel: meta.reel, scene: meta.scene, shot: meta.shot,
+            take: meta.take, angle: meta.angle, camera: meta.camera,
+            audioChannelNames: meta.audioChannelNames,
+            stars: r?.stars, colorLabel: r?.colorLabel,
+            tags: tagList,
+            sourceFilename: asset.filename
+        )
+    }
+
+    @discardableResult
+    func pasteMetadataToSelected() -> Int {
+        guard let clip = metadataClipboard else { return 0 }
+        let targets: [Asset]
+        if !selectedAssetPaths.isEmpty {
+            targets = assets.filter { selectedAssetPaths.contains($0.path) }
+        } else if let a = selectedAsset {
+            targets = [a]
+        } else { return 0 }
+        var applied = 0
+        for asset in targets {
+            guard let id = asset.rowId else { continue }
+            var meta = (try? db.clipMetadata(assetId: id))
+                ?? ClipMetadata(assetId: id, title: nil, description: nil,
+                                 reel: nil, scene: nil, shot: nil,
+                                 take: nil, angle: nil, camera: nil)
+            meta.assetId = id
+            meta.title = clip.title
+            meta.description = clip.description
+            meta.reel = clip.reel
+            meta.scene = clip.scene
+            meta.shot = clip.shot
+            meta.take = clip.take
+            meta.angle = clip.angle
+            meta.camera = clip.camera
+            meta.audioChannelNames = clip.audioChannelNames
+            try? db.setClipMetadata(meta)
+            clipMetadataIndex[id] = meta
+            if let stars = clip.stars {
+                try? db.setRating(assetId: id, stars: stars,
+                                    colorLabel: clip.colorLabel,
+                                    description: nil)
+                ratingIndex[asset.path] = stars
+            }
+            for tagName in clip.tags {
+                _ = try? db.addTag(name: tagName, assetId: id)
+            }
+            applied += 1
+        }
+        refreshClipMetadataIndex()
+        loadSelectionDetail()
+        return applied
+    }
+
+    // MARK: - Find Lost Metadata (file-fingerprint reconnect)
+
+    struct FindLostResult {
+        var reconnected: [(filename: String, oldPath: String, newPath: String)] = []
+        var stillMissing: [String] = []
+        var skipped: [String] = []
+    }
+
+    /// Walk the catalogue for entries whose path no longer resolves;
+    /// for each, search workspace roots for a file with matching
+    /// (filename, sizeBytes) and rewrite the DB row's path. Linked
+    /// metadata stays connected because everything is keyed off
+    /// `assetId`, not path. Returns a per-asset outcome summary.
+    func findLostMetadata() async -> FindLostResult {
+        var result = FindLostResult()
+        let fm = FileManager.default
+        let dbAssets = (try? db.allAssets()) ?? []
+        let missing = dbAssets.filter { !fm.fileExists(atPath: $0.path) }
+        guard !missing.isEmpty else { return result }
+        var index: [String: [URL]] = [:]
+        let keys: Set<URLResourceKey> = [.fileSizeKey, .isDirectoryKey]
+        for root in workspaceRoots {
+            guard let walker = fm.enumerator(
+                at: root, includingPropertiesForKeys: Array(keys),
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            ) else { continue }
+            for case let url as URL in walker {
+                let values = try? url.resourceValues(forKeys: keys)
+                if values?.isDirectory == true { continue }
+                let key = "\(url.lastPathComponent)|\(values?.fileSize ?? 0)"
+                index[key, default: []].append(url)
+            }
+        }
+        for asset in missing {
+            let key = "\(asset.filename)|\(asset.sizeBytes)"
+            let candidates = index[key] ?? []
+            if candidates.count == 1, let hit = candidates.first {
+                try? db.updateAssetPath(oldPath: asset.path, newPath: hit.path)
+                result.reconnected.append(
+                    (asset.filename, asset.path, hit.path)
+                )
+            } else if candidates.count > 1 {
+                result.skipped.append(asset.path)
+            } else {
+                result.stillMissing.append(asset.path)
+            }
+        }
+        self.assets = (try? db.allAssets()) ?? self.assets
+        rebuildFolderTree()
+        refreshClipMetadataIndex()
+        loadSelectionDetail()
+        return result
+    }
+
+    // MARK: - Play-all-selected (continuous playback)
+
+    @Published var playAllQueue: [String] = []
+    @Published var playAllIndex: Int = 0
+
+    /// Queue the current multi-selection (or the visible list as
+    /// fallback) for continuous play. ClipDetailInline observes
+    /// AVPlayerItem.didPlayToEndTime and calls advancePlayAll().
+    func startPlayAllSelected() {
+        let queue: [String]
+        if !selectedAssetPaths.isEmpty {
+            queue = displayedAssets.map(\.path).filter {
+                selectedAssetPaths.contains($0)
+            }
+        } else {
+            queue = displayedAssets.map(\.path)
+        }
+        guard !queue.isEmpty else { return }
+        playAllQueue = queue
+        playAllIndex = 0
+        selectedAssetPath = queue[0]
+    }
+
+    @discardableResult
+    func advancePlayAll() -> Bool {
+        guard !playAllQueue.isEmpty else { return false }
+        playAllIndex = (playAllIndex + 1) % playAllQueue.count
+        selectedAssetPath = playAllQueue[playAllIndex]
+        return true
+    }
+
+    func stopPlayAll() {
+        playAllQueue = []
+        playAllIndex = 0
     }
 
     func setDescription(_ text: String) {

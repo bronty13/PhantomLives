@@ -26,6 +26,7 @@ actor MediaScanner {
         let resolved = root.resolvingSymlinksInPath()
         let keys: Set<URLResourceKey> = [
             .isDirectoryKey, .fileSizeKey, .contentModificationDateKey,
+            .creationDateKey,
         ]
         let entries = (try? fm.contentsOfDirectory(
             at: resolved,
@@ -47,7 +48,8 @@ actor MediaScanner {
                 codec: nil, widthPx: nil, heightPx: nil,
                 durationSeconds: nil, frameRate: nil,
                 sha1: nil, addedAt: Date(),
-                audioCodec: nil, recordedAt: nil
+                audioCodec: nil, recordedAt: nil,
+                createdAt: values.creationDate
             )
             if videoExtensions.contains(ext) || audioExtensions.contains(ext) {
                 await enrichVideoMetadata(into: &asset, url: url)
@@ -70,7 +72,8 @@ actor MediaScanner {
         var results: [Asset] = []
         let fm = FileManager.default
         let keys: [URLResourceKey] = [
-            .isDirectoryKey, .fileSizeKey, .contentModificationDateKey
+            .isDirectoryKey, .fileSizeKey, .contentModificationDateKey,
+            .creationDateKey,
         ]
         let ignoreGlobs = Self.parseIgnoredGlobs(
             UserDefaults.standard.string(forKey: "ignoredFilesGlob") ?? ""
@@ -113,7 +116,8 @@ actor MediaScanner {
                 sha1: nil,
                 addedAt: Date(),
                 audioCodec: nil,
-                recordedAt: nil
+                recordedAt: nil,
+                createdAt: values.creationDate
             )
 
             if videoExtensions.contains(ext) || audioExtensions.contains(ext) {

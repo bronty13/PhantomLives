@@ -288,7 +288,17 @@ final class PlayerController: ObservableObject {
         guard panel.runModal() == .OK, let dst = panel.url else { return }
         do {
             let cg = try gen.copyCGImage(at: time, actualTime: nil)
-            let rep = NSBitmapImageRep(cgImage: cg)
+            // Kyno-parity: bake the currently-applied LUT into the
+            // exported still by default. Toggleable via Settings →
+            // General → "Apply LUT to exported frames"; defaults on
+            // because Kyno's 1.8 default is on and is what dailies
+            // reviewers expect.
+            let bakeLUT = (UserDefaults.standard.object(forKey: "applyLUTToExportedFrames")
+                            as? Bool) ?? true
+            let finalCG = (bakeLUT && currentLUT != nil)
+                ? applyCurrentLUT(to: cg) ?? cg
+                : cg
+            let rep = NSBitmapImageRep(cgImage: finalCG)
             guard let png = rep.representation(using: .png, properties: [:]) else { return }
             try png.write(to: dst)
             NSWorkspace.shared.activateFileViewerSelecting([dst])
@@ -298,6 +308,22 @@ final class PlayerController: ObservableObject {
             alert.informativeText = error.localizedDescription
             alert.runModal()
         }
+    }
+
+    /// Bake the active LUT into a CGImage by routing it through the
+    /// same `CIFilter` the player uses live. Returns the result as a
+    /// CGImage so the caller can hand it straight to NSBitmapImageRep
+    /// for PNG encoding.
+    private func applyCurrentLUT(to source: CGImage) -> CGImage? {
+        guard let lut = currentLUT,
+              let filter = LUTService.filter(for: lut) else {
+            return source
+        }
+        let ci = CIImage(cgImage: source)
+        filter.setValue(ci, forKey: kCIInputImageKey)
+        guard let out = filter.outputImage else { return nil }
+        let ctx = CIContext()
+        return ctx.createCGImage(out, from: ci.extent)
     }
 
     func load(url: URL, fps: Double) {

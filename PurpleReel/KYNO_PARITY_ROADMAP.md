@@ -34,7 +34,7 @@ Legend: ✅ done · 🟡 partial · ⬜ open · ❌ explicitly skipped
 | ✅ | List view (table with thumbnail / name / codec / res / fps / duration / size) | |
 | ✅ | Thumbnail (grid) view | LazyVGrid tiles with selection ring + transcode-progress overlay; toolbar tile-size slider (Grid-only, 100…320 pt, persisted via `@AppStorage("gridTileSize")`) |
 | ✅ | Single-clip Detail view | `ClipDetailInline` — player + metadata pane; ⌘1/⌘2/⌘3 switches mode |
-| 🟡 | Extra columns: Date Modified, Date Created, Date Recorded, Display size, Aspect ratio, Rating, Frame rate (visible), Title, Description, Reel/Scene/Shot/Take/Angle, Camera | Rating / Date Modified / Title / Description / Reel/Scene/Shot/Take/Angle/Camera done via `ListColumn` toolbar menu (Table cap = 3 optional at a time). Date Recorded + Audio Codec now in the schema (v3 migration) — surface as List columns in a follow-up. **TODO**: Date Created, Display size, Aspect ratio. |
+| ✅ | Extra columns: Date Modified, Date Created, Date Recorded, Display size, Aspect ratio, Rating, Frame rate (visible), Title, Description, Reel/Scene/Shot/Take/Angle, Camera | All shipped via `ListColumn` (Table cap = 3 optional at a time). Date Created via FS birthtime (v4 migration); Display Size derived from short-edge px (4K/1080p/720p/…); Aspect Ratio snaps to canonical (16:9, 4:3, 1.85, 2.35, 2.39, 1:1, 9:16). |
 
 ---
 

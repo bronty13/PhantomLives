@@ -428,6 +428,22 @@ struct BrowserView: View {
         case .modified:
             Text(shortDate(asset.modifiedAt))
                 .foregroundStyle(.secondary)
+        case .created:
+            if let d = asset.createdAt {
+                Text(shortDate(d)).foregroundStyle(.secondary)
+            } else {
+                Text("—").foregroundStyle(.secondary)
+            }
+        case .recorded:
+            if let d = asset.recordedAt {
+                Text(shortDate(d)).foregroundStyle(.secondary)
+            } else {
+                Text("—").foregroundStyle(.secondary)
+            }
+        case .displaySize:
+            logCell(displaySizeLabel(asset))
+        case .aspectRatio:
+            logCell(aspectRatioLabel(asset))
         case .title:
             Text(meta?.title ?? "—")
                 .foregroundStyle((meta?.title ?? "").isEmpty ? .secondary : .primary)
@@ -445,6 +461,49 @@ struct BrowserView: View {
         case .angle:   logCell(meta?.angle)
         case .camera:  logCell(meta?.camera)
         }
+    }
+
+    /// Derive a Kyno-style "display size" label from the asset's pixel
+    /// dimensions: 4320p / 2160p / 1440p / 1080p / 720p / 576p / 480p /
+    /// SD. The label keys off the SHORTER edge so portrait phone video
+    /// (1080×1920) shows as 1080p, matching every NLE's convention.
+    private func displaySizeLabel(_ asset: Asset) -> String? {
+        guard let w = asset.widthPx, let h = asset.heightPx, w > 0, h > 0
+        else { return nil }
+        let short = min(w, h)
+        switch short {
+        case 4320...:        return "8K (\(short)p)"
+        case 2160..<4320:    return "4K (\(short)p)"
+        case 1440..<2160:    return "QHD (\(short)p)"
+        case 1080..<1440:    return "1080p"
+        case 720..<1080:     return "720p"
+        case 576..<720:      return "576p"
+        case 480..<576:      return "480p"
+        default:             return "SD"
+        }
+    }
+
+    /// Reduce W×H to the nearest common cinema/broadcast aspect, or
+    /// fall back to the GCD-reduced ratio. Matches what most editors
+    /// expect to see in a list column.
+    private func aspectRatioLabel(_ asset: Asset) -> String? {
+        guard let w = asset.widthPx, let h = asset.heightPx, w > 0, h > 0
+        else { return nil }
+        let ratio = Double(w) / Double(h)
+        let canon: [(Double, String)] = [
+            (16.0/9, "16:9"),
+            (4.0/3, "4:3"),
+            (1.85, "1.85:1"),
+            (2.35, "2.35:1"),
+            (2.39, "2.39:1"),
+            (1.0, "1:1"),
+            (9.0/16, "9:16"),
+            (3.0/4, "3:4"),
+        ]
+        for (target, label) in canon where abs(ratio - target) < 0.02 {
+            return label
+        }
+        return String(format: "%.2f:1", ratio)
     }
 
     @ViewBuilder

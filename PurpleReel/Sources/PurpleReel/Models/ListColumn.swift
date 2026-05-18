@@ -6,6 +6,10 @@ import Foundation
 enum ListColumn: String, CaseIterable, Identifiable {
     case rating
     case modified
+    case created
+    case recorded
+    case displaySize
+    case aspectRatio
     case title
     case description
     case reel
@@ -19,26 +23,32 @@ enum ListColumn: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .rating:      return "Rating"
-        case .modified:    return "Date Modified"
-        case .title:       return "Title"
-        case .description: return "Description"
-        case .reel:        return "Reel"
-        case .scene:       return "Scene"
-        case .shot:        return "Shot"
-        case .take:        return "Take"
-        case .angle:       return "Angle"
-        case .camera:      return "Camera"
+        case .rating:       return "Rating"
+        case .modified:     return "Date Modified"
+        case .created:      return "Date Created"
+        case .recorded:     return "Date Recorded"
+        case .displaySize:  return "Display Size"
+        case .aspectRatio:  return "Aspect Ratio"
+        case .title:        return "Title"
+        case .description:  return "Description"
+        case .reel:         return "Reel"
+        case .scene:        return "Scene"
+        case .shot:         return "Shot"
+        case .take:         return "Take"
+        case .angle:        return "Angle"
+        case .camera:       return "Camera"
         }
     }
 
     /// Default preferred width per column.
     var idealWidth: CGFloat {
         switch self {
-        case .rating:                  return 70
-        case .modified:                return 130
-        case .title, .description:     return 180
-        default:                       return 80
+        case .rating:                                return 70
+        case .modified, .created, .recorded:         return 130
+        case .displaySize:                           return 100
+        case .aspectRatio:                           return 80
+        case .title, .description:                   return 180
+        default:                                     return 80
         }
     }
 }

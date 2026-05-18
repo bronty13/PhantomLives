@@ -21,6 +21,18 @@ struct PurpleReelApp: App {
                 .sheet(isPresented: $showComingFromKyno) {
                     ComingFromKynoSheet()
                 }
+                .alert(
+                    "Large workspace",
+                    isPresented: Binding(
+                        get: { appState.fileCountWarning != nil },
+                        set: { if !$0 { appState.fileCountWarning = nil } }
+                    ),
+                    presenting: appState.fileCountWarning
+                ) { _ in
+                    Button("OK") { appState.fileCountWarning = nil }
+                } message: { count in
+                    Text("PurpleReel catalogued \(count) files — past the warning threshold (\(appState.fileCountSafetyLimit)). Performance stays usable but you may want to narrow your workspace roots, or raise the limit in Settings → Advanced.")
+                }
         }
         .defaultSize(width: 1400, height: 900)
         .windowToolbarStyle(.unified(showsTitle: true))
@@ -220,6 +232,18 @@ struct PurpleReelApp: App {
                 }
                 .keyboardShortcut("u", modifiers: [.command])
                 .disabled(appState.selectedAsset == nil)
+                Divider()
+                Button("Play All Selected") {
+                    appState.startPlayAllSelected()
+                }
+                .help("Continuous playback through the current multi-selection (or visible list).")
+                .disabled(appState.selectedAssetPath == nil
+                          && appState.selectedAssetPaths.isEmpty
+                          && appState.displayedAssets.isEmpty)
+                Button("Stop Play All") {
+                    appState.stopPlayAll()
+                }
+                .disabled(appState.playAllQueue.isEmpty)
             }
 
             // ---- Metadata (new top-level) ------------------------------
@@ -247,6 +271,42 @@ struct PurpleReelApp: App {
                 .keyboardShortcut("m", modifiers: [.command, .shift])
                 .disabled(appState.selectedAssetPaths.isEmpty
                           && appState.selectedAsset == nil)
+                Divider()
+                Button("Copy Metadata") {
+                    appState.copyMetadataFromSelected()
+                }
+                .keyboardShortcut("c", modifiers: [.command, .option])
+                .disabled(appState.selectedAsset == nil)
+                Button("Paste Metadata") {
+                    _ = appState.pasteMetadataToSelected()
+                }
+                .keyboardShortcut("v", modifiers: [.command, .option])
+                .disabled(appState.metadataClipboard == nil
+                          || (appState.selectedAsset == nil
+                              && appState.selectedAssetPaths.isEmpty))
+                Divider()
+                Button("Find Lost Metadata…") {
+                    Task {
+                        let r = await appState.findLostMetadata()
+                        let alert = NSAlert()
+                        alert.messageText = "Find Lost Metadata"
+                        var lines: [String] = []
+                        if !r.reconnected.isEmpty {
+                            lines.append("Reconnected \(r.reconnected.count) asset(s).")
+                        }
+                        if !r.skipped.isEmpty {
+                            lines.append("Skipped \(r.skipped.count) (multiple candidates).")
+                        }
+                        if !r.stillMissing.isEmpty {
+                            lines.append("Still missing: \(r.stillMissing.count).")
+                        }
+                        if lines.isEmpty {
+                            lines.append("Nothing to reconnect — every catalogued asset's file is in place.")
+                        }
+                        alert.informativeText = lines.joined(separator: "\n")
+                        alert.runModal()
+                    }
+                }
                 // Kyno-compat: ⌘⌥M jumps keyboard focus to the
                 // Metadata pane's Title field for fast logging
                 // without reaching for the mouse.

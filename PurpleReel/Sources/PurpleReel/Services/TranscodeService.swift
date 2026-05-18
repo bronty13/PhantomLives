@@ -96,6 +96,7 @@ final class TranscodeJob: ObservableObject, Identifiable {
         switch session.status {
         case .completed:
             progress = 1
+            preserveTimestampsIfRequested()
             state = .finished(outputURL)
         case .cancelled:
             state = .cancelled
@@ -104,6 +105,23 @@ final class TranscodeJob: ObservableObject, Identifiable {
         default:
             state = .failed("Export ended in unexpected state \(session.status.rawValue)")
         }
+    }
+
+    /// Optionally copy the source file's mtime onto the freshly-
+    /// written output. Toggled by `preserveTranscodeTimestamps` in
+    /// Settings → Conversion; off by default so the user sees
+    /// "modified just now" for freshly-rendered exports (matches
+    /// AVAssetExportSession's default behavior). Kyno 1.2 shipped
+    /// this for archival workflows where timestamps key the chain
+    /// of custody.
+    private nonisolated func preserveTimestampsIfRequested() {
+        guard UserDefaults.standard.bool(forKey: "preserveTranscodeTimestamps")
+        else { return }
+        let fm = FileManager.default
+        guard let attrs = try? fm.attributesOfItem(atPath: source.path),
+              let mtime = attrs[.modificationDate] as? Date else { return }
+        try? fm.setAttributes([.modificationDate: mtime],
+                               ofItemAtPath: outputURL.path)
     }
 
     func cancel() {
@@ -191,6 +209,7 @@ final class TranscodeJob: ObservableObject, Identifiable {
 
         if task.terminationStatus == 0 {
             progress = 1.0
+            preserveTimestampsIfRequested()
             state = .finished(outputURL)
         } else {
             state = .failed("ffmpeg exited \(task.terminationStatus)")

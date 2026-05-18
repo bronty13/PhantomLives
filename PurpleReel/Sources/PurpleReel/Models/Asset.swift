@@ -27,6 +27,13 @@ struct Asset: Codable, Identifiable, Equatable, Hashable, FetchableRecord, Persi
     /// (most prosumer cameras + iPhone do). Nil for assets where the
     /// container has no creation-date metadata.
     var recordedAt: Date?
+    /// Filesystem birth time (BTime) for the file at scan time —
+    /// `URLResourceKey.creationDateKey`. Distinct from
+    /// `modifiedAt` (last-write) and `recordedAt` (camera/container
+    /// metadata). Nil on volumes where the FS doesn't carry one.
+    /// Default = nil keeps the old memberwise initializer's
+    /// call-site compatible.
+    var createdAt: Date? = nil
 
     static let databaseTableName = "asset"
 
@@ -37,7 +44,7 @@ struct Asset: Codable, Identifiable, Equatable, Hashable, FetchableRecord, Persi
         case rowId = "id"
         case path, filename, sizeBytes, modifiedAt, codec, widthPx, heightPx
         case durationSeconds, frameRate, sha1, addedAt
-        case audioCodec, recordedAt
+        case audioCodec, recordedAt, createdAt
     }
 
     enum Columns {

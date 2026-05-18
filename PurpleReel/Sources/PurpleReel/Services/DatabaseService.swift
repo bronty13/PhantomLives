@@ -126,6 +126,19 @@ final class DatabaseService {
             }
         }
 
+        // v4 — Date Created column on asset (filesystem birth time)
+        // and audioChannelNames on clip_metadata. Both backfill to
+        // NULL for existing rows; rescan repopulates createdAt from
+        // the FS, and the channel-names field is user-edited.
+        m.registerMigration("v4_asset_created_channels") { db in
+            try db.alter(table: "asset") { t in
+                t.add(column: "createdAt", .datetime)
+            }
+            try db.alter(table: "clip_metadata") { t in
+                t.add(column: "audioChannelNames", .text)
+            }
+        }
+
         return m
     }
 

@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import AVFoundation
 
 /// Inline Detail view — same content as `ClipDetailSheet`, but
 /// rendered in-place as the main area when the user picks the
@@ -50,6 +51,24 @@ struct ClipDetailInline: View {
             case .removeLastSubclip:
                 appState.removeLastSubclipForSelection()
             default: break
+            }
+        }
+        // Play-all-selected: when the AVPlayerItem hits its end and
+        // PurpleReel has an active play-all queue, advance to the
+        // next clip and resume playback. Loop-mode wins inside the
+        // PlayerController itself so this only fires when loop is
+        // off.
+        .onReceive(NotificationCenter.default.publisher(
+            for: AVPlayerItem.didPlayToEndTimeNotification
+        )) { _ in
+            guard !playerController.loopMode,
+                  !appState.playAllQueue.isEmpty else { return }
+            if appState.advancePlayAll() {
+                // `selectedAssetPath` change triggers loadPlayer()
+                // via the .onChange above; resume play once loaded.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    playerController.setRate(1.0)
+                }
             }
         }
     }

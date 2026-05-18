@@ -35,6 +35,7 @@ struct GeneralSettingsView: View {
     @AppStorage("importLUTsFromFCP") private var importLUTsFromFCP: Bool = true
     @AppStorage("importLUTsFromResolve") private var importLUTsFromResolve: Bool = true
     @AppStorage("applyLUTsToThumbnails") private var applyLUTsToThumbnails: Bool = false
+    @AppStorage("applyLUTToExportedFrames") private var applyLUTToExports: Bool = true
     @AppStorage("defaultViewOnLaunch") private var defaultViewOnLaunch: String = "list"
     @AppStorage(KynoCompatibility.modeKey) private var kynoMode: Bool = false
 
@@ -98,6 +99,10 @@ struct GeneralSettingsView: View {
                 Toggle("Import LUTs from Final Cut Pro", isOn: $importLUTsFromFCP)
                 Toggle("Import LUTs from DaVinci Resolve", isOn: $importLUTsFromResolve)
                 Toggle("Apply detected LUTs to thumbnails", isOn: $applyLUTsToThumbnails)
+                Toggle("Apply current LUT to exported frames", isOn: $applyLUTToExports)
+                Text("When on (default, matches Kyno 1.8+), ⌘⇧E bakes the active LUT into the PNG it writes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             Section("Cache") {
                 Button("Clear Thumbnail Cache") {
@@ -218,6 +223,7 @@ struct ConversionSettingsView: View {
     @EnvironmentObject var appState: AppState
     @AppStorage("maxParallelConversions") private var maxParallel: Int = 1
     @AppStorage("transcodeOutputDir") private var outputDir: String = ""
+    @AppStorage("preserveTranscodeTimestamps") private var preserveMtime: Bool = false
 
     @State private var customPresets: [TranscodePreset] = []
     @State private var customPresetStatus: String = ""
@@ -244,6 +250,10 @@ struct ConversionSettingsView: View {
                         }
                     }
                 }
+                Toggle("Preserve source file timestamps", isOn: $preserveMtime)
+                Text("Sets the transcoded output's modified-date to match the source. Useful for archival pipelines that key off mtime; off by default so freshly-rendered files show as just-modified.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 HStack {
                     Button("Clear Conversion History") {
                         appState.transcodeQueue.clearDone()
@@ -419,6 +429,7 @@ struct AdvancedSettingsView: View {
     @AppStorage("confirmCopyAndMove") private var confirmCopyMove: Bool = true
     @AppStorage("debugMode") private var debugMode: Bool = false
     @AppStorage("metadataStorage") private var metadataStorage: String = "hidden"
+    @AppStorage("fileCountSafetyLimit") private var fileCountLimit: Int = 50_000
 
     var body: some View {
         Form {
@@ -430,6 +441,11 @@ struct AdvancedSettingsView: View {
                 }
                 TextField("Ignored files and folders", text: $ignoredGlob,
                             prompt: Text("e.g.: tmp;*backup"))
+                Stepper("Warn when workspace exceeds \(fileCountLimit) files",
+                        value: $fileCountLimit, in: 1_000...1_000_000, step: 5_000)
+                Text("Soft warning only — the catalogue still loads. Raise it if you regularly browse season-of-dailies sized workspaces; lower it to nudge yourself toward narrower roots.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             Section("Timecode") {
                 Toggle("Use drop-frame timecode", isOn: $dropFrameTC)

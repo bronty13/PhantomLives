@@ -75,10 +75,23 @@ struct ContentView: View {
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    Task { await appState.rescan() }
+                    let hardRefresh = NSEvent.modifierFlags.contains(.shift)
+                    Task {
+                        if hardRefresh {
+                            // Kyno-parity (1.9): Shift-click forces a
+                            // hard refresh — purge all asset rows and
+                            // rebuild from disk. Costs a full re-scan
+                            // but fixes "stale index" / "phantom file"
+                            // cases. Plain click stays the cheap
+                            // incremental rescan.
+                            try? appState.db.clearAssets()
+                        }
+                        await appState.rescan()
+                    }
                 } label: {
                     Label("Rescan", systemImage: "arrow.clockwise")
                 }
+                .help("Rescan workspace (Shift-click = hard refresh; purges + reloads catalog).")
                 .disabled(appState.rootFolder == nil || appState.isScanning)
             }
             ToolbarItem(placement: .primaryAction) {

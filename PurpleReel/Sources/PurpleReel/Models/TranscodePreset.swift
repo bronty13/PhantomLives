@@ -182,6 +182,41 @@ struct TranscodePreset: Identifiable, Hashable, Codable {
                             "-c:a", "pcm_s24le",
                             "{OUT}",
                         ]),
+
+        // ---- Smart proxies (Kyno 1.9) ----------------------------
+        // Auto-scale to a fraction of the source resolution. ffmpeg's
+        // `scale='trunc(iw/N/2)*2':-2` rounds to even dimensions to
+        // keep H.264 / ProRes encoders happy. Slot AFTER index 9 so
+        // the ⌘1..⌘0 menu shortcuts keep pointing at the original
+        // built-in catalogue (`TranscodePreset.all[0...9]`).
+        TranscodePreset(id: "proxy-half",
+                        name: "Smart Proxy 1/2 (ProRes Proxy)",
+                        avPresetName: "",
+                        fileExtension: "mov", suffix: "_proxy_half",
+                        category: .proxies,
+                        alwaysAvailable: true,
+                        ffmpegArgs: [
+                            "-y", "-i", "{IN}",
+                            "-vf", "scale='trunc(iw/2/2)*2':-2",
+                            "-c:v", "prores_ks", "-profile:v", "0",
+                            "-pix_fmt", "yuv422p10le",
+                            "-c:a", "pcm_s16le",
+                            "{OUT}",
+                        ]),
+        TranscodePreset(id: "proxy-quarter",
+                        name: "Smart Proxy 1/4 (ProRes Proxy)",
+                        avPresetName: "",
+                        fileExtension: "mov", suffix: "_proxy_qtr",
+                        category: .proxies,
+                        alwaysAvailable: true,
+                        ffmpegArgs: [
+                            "-y", "-i", "{IN}",
+                            "-vf", "scale='trunc(iw/4/2)*2':-2",
+                            "-c:v", "prores_ks", "-profile:v", "0",
+                            "-pix_fmt", "yuv422p10le",
+                            "-c:a", "pcm_s16le",
+                            "{OUT}",
+                        ]),
     ]
 }
 
