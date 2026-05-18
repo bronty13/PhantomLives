@@ -478,6 +478,7 @@ struct BrowserView: View {
         case .take:    logCell(meta?.take)
         case .angle:   logCell(meta?.angle)
         case .camera:  logCell(meta?.camera)
+        case .waveform: WaveformInlineView(asset: asset)
         }
     }
 

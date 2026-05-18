@@ -1,9 +1,10 @@
 import Foundation
 import AVFoundation
 import Accelerate
+import CryptoKit
 
 /// Downsampled audio waveform: one peak amplitude per bucket, in [0, 1].
-struct WaveformSamples {
+struct WaveformSamples: Codable {
     let peaks: [Float]
     let sourcePath: String
     let bucketCount: Int
@@ -24,6 +25,46 @@ enum WaveformService {
         await Task.detached(priority: .utility) {
             generateSync(url: url, bucketCount: bucketCount)
         }.value
+    }
+
+    /// Disk-cached variant for the list-view "Waveform" column
+    /// (Kyno-parity row 68). The peaks file is keyed by
+    /// `(path, modtime, bucketCount)` so touching the source
+    /// invalidates without nuking the whole cache. Generation cost
+    /// is a one-time 1-2s per clip; subsequent loads are a JSON
+    /// read off SSD.
+    static func cachedOrGenerate(url: URL, bucketCount: Int = 160) async -> WaveformSamples? {
+        let cacheFile: URL
+        do {
+            cacheFile = try cacheFileURL(for: url, bucketCount: bucketCount)
+        } catch {
+            return await generate(url: url, bucketCount: bucketCount)
+        }
+        if let data = try? Data(contentsOf: cacheFile),
+           let samples = try? JSONDecoder().decode(WaveformSamples.self, from: data) {
+            return samples
+        }
+        let samples = await generate(url: url, bucketCount: bucketCount)
+        if let samples,
+           let data = try? JSONEncoder().encode(samples) {
+            try? data.write(to: cacheFile)
+        }
+        return samples
+    }
+
+    private static func cacheFileURL(for url: URL, bucketCount: Int) throws -> URL {
+        let support = try FileManager.default.url(
+            for: .applicationSupportDirectory, in: .userDomainMask,
+            appropriateFor: nil, create: true
+        ).appendingPathComponent("PurpleReel/waveforms", isDirectory: true)
+        try FileManager.default.createDirectory(at: support,
+                                                  withIntermediateDirectories: true)
+        let attrs = (try? FileManager.default.attributesOfItem(atPath: url.path)) ?? [:]
+        let mod = (attrs[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        let key = "\(url.path)|\(mod)|\(bucketCount)"
+        let digest = SHA256.hash(data: Data(key.utf8))
+        let hex = digest.map { String(format: "%02x", $0) }.joined()
+        return support.appendingPathComponent("\(String(hex.prefix(32))).json")
     }
 
     static func generateSync(url: URL, bucketCount: Int) -> WaveformSamples? {
