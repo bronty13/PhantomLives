@@ -223,6 +223,10 @@ struct ContentView: View {
             PasteRenameSheet()
                 .environmentObject(appState)
         }
+        .sheet(isPresented: $appState.combineClipsSheetVisible) {
+            CombineClipsSheet(initialSources: appState.combineCandidates())
+                .environmentObject(appState)
+        }
     }
 }
 

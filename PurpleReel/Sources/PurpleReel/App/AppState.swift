@@ -1721,6 +1721,26 @@ final class AppState: ObservableObject {
     /// flow.
     @Published var pasteRenameSheetVisible = false
 
+    /// Visibility flag for `CombineClipsSheet` (Kyno-parity row 8).
+    /// The sheet itself reads the current multi-selection on appear.
+    @Published var combineClipsSheetVisible = false
+
+    /// Resolve the current multi-selection (or single selection)
+    /// into an ordered Asset list for the Combine Clips sheet. We
+    /// follow the current display order so the user's catalogue
+    /// sort matches the assembly order they see in the sheet.
+    func combineCandidates() -> [Asset] {
+        let paths: Set<String>
+        if !selectedAssetPaths.isEmpty {
+            paths = selectedAssetPaths
+        } else if let path = selectedAssetPath {
+            paths = [path]
+        } else {
+            return []
+        }
+        return displayedAssets.filter { paths.contains($0.path) }
+    }
+
     /// Compute the matching pairs across two folders without
     /// mutating anything. Drives the sheet's Preview row before
     /// the user commits.

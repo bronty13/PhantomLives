@@ -502,6 +502,13 @@ struct PurpleReelApp: App {
                     }.disabled(appState.selectedAsset == nil)
                 }
                 Divider()
+                Button("Combine Clips…") {
+                    appState.combineClipsSheetVisible = true
+                }
+                .keyboardShortcut("j", modifiers: [.command, .shift])
+                .disabled(appState.combineCandidates().count < 2)
+                .help("Assembly-cut without an NLE: render the selected clips head-to-tail into a single file.")
+                Divider()
                 Button("Show Queue…") {
                     appState.transcodeSheetVisible = true
                 }
