@@ -305,7 +305,24 @@ final class TranscodeJob: ObservableObject, Identifiable {
     /// of video.
     nonisolated static func makeTCOverlay(text: String,
                                             frameSize: CGSize) -> CIImage {
-        let fontSize = max(20, frameSize.width * 0.04)
+        // Defensive guards (added after a 2026-05-18 crash on a
+        // clip whose source-image extent came through with a
+        // non-finite width — `Int(boxWidth)` then trapped with
+        // "Double value cannot be converted to Int because the
+        // result would be greater than Int.max"). AVFoundation can
+        // hand us empty / null extents during transitions or for
+        // partially-loaded items; we should silently no-op
+        // instead of crashing the transcode session.
+        guard frameSize.width.isFinite,
+              frameSize.height.isFinite,
+              frameSize.width > 0,
+              frameSize.height > 0
+        else { return CIImage.empty() }
+        // Clamp font size into a sane range so an absurd frame
+        // size (e.g. 50000-wide composition) can't escape into
+        // `attrStr.size()` returning out-of-range values.
+        let rawFont = frameSize.width * 0.04
+        let fontSize = max(20, min(rawFont.isFinite ? rawFont : 20, 200))
         let font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .bold)
         let attrs: [NSAttributedString.Key: Any] = [
             .font: font,
@@ -313,9 +330,14 @@ final class TranscodeJob: ObservableObject, Identifiable {
         ]
         let attrStr = NSAttributedString(string: text, attributes: attrs)
         let textSize = attrStr.size()
+        guard textSize.width.isFinite, textSize.height.isFinite,
+              textSize.width > 0, textSize.height > 0
+        else { return CIImage.empty() }
         let pad: CGFloat = max(8, fontSize * 0.3)
-        let boxWidth  = ceil(textSize.width + pad * 2)
-        let boxHeight = ceil(textSize.height + pad * 2)
+        // Cap at a reasonable max so a degenerate font / glyph set
+        // can't produce a multi-million-pixel context.
+        let boxWidth  = min(ceil(textSize.width + pad * 2), 4096)
+        let boxHeight = min(ceil(textSize.height + pad * 2), 512)
         let bytesPerRow = Int(boxWidth) * 4
         guard let ctx = CGContext(
             data: nil,
