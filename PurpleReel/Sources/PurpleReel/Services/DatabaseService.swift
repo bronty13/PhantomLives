@@ -308,14 +308,32 @@ final class DatabaseService {
         }
     }
 
+    /// Insert a marker and return it with its `id` populated.
+    ///
+    /// GRDB's `PersistableRecord.insert(db)` is non-mutating and
+    /// does NOT update the source record's id after insert — same
+    /// trap that bit `addTag` (`tag.id` stayed nil and the
+    /// asset_tag link insert threw silently). `addMarker` callers
+    /// currently all discard the return value, so the bug is
+    /// latent here — fixed preemptively so a future caller that
+    /// expects a usable id doesn't hit it.
     func addMarker(assetId: Int64, timecodeIn: Double, timecodeOut: Double? = nil,
                    note: String? = nil) throws -> Marker {
-        let m = Marker(id: nil, assetId: assetId, timecodeIn: timecodeIn,
-                       timecodeOut: timecodeOut, note: note, createdAt: Date())
-        try dbQueue.write { db in
-            try m.insert(db)
+        let createdAt = Date()
+        return try dbQueue.write { db in
+            try db.execute(sql: """
+                INSERT INTO marker (assetId, timecodeIn, timecodeOut, note, createdAt)
+                VALUES (?, ?, ?, ?, ?)
+                """, arguments: [assetId, timecodeIn, timecodeOut, note, createdAt])
+            return Marker(
+                id: db.lastInsertedRowID,
+                assetId: assetId,
+                timecodeIn: timecodeIn,
+                timecodeOut: timecodeOut,
+                note: note,
+                createdAt: createdAt
+            )
         }
-        return m
     }
 
     func updateMarker(_ marker: Marker) throws {
@@ -340,15 +358,26 @@ final class DatabaseService {
         }
     }
 
+    /// Insert a subclip and return it with its `id` populated.
+    /// Same id-roundtrip pattern as addMarker / addTag — see the
+    /// comment on addMarker for the rationale.
     func addSubclip(parentAssetId: Int64, name: String,
                     timecodeIn: Double, timecodeOut: Double) throws -> Subclip {
-        let s = Subclip(id: nil, parentAssetId: parentAssetId, name: name,
-                        timecodeIn: timecodeIn, timecodeOut: timecodeOut,
-                        createdAt: Date())
-        try dbQueue.write { db in
-            try s.insert(db)
+        let createdAt = Date()
+        return try dbQueue.write { db in
+            try db.execute(sql: """
+                INSERT INTO subclip (parentAssetId, name, timecodeIn, timecodeOut, createdAt)
+                VALUES (?, ?, ?, ?, ?)
+                """, arguments: [parentAssetId, name, timecodeIn, timecodeOut, createdAt])
+            return Subclip(
+                id: db.lastInsertedRowID,
+                parentAssetId: parentAssetId,
+                name: name,
+                timecodeIn: timecodeIn,
+                timecodeOut: timecodeOut,
+                createdAt: createdAt
+            )
         }
-        return s
     }
 
     func deleteSubclip(id: Int64) throws {
