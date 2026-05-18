@@ -590,7 +590,7 @@ struct BrowserView: View {
     private func modeButton(icon: String, value: String, help: String) -> some View {
         let active = appState.viewMode == value
         return Button {
-            appState.viewMode = value
+            switchTo(viewMode: value)
         } label: {
             Image(systemName: icon)
                 .padding(.horizontal, 8)
@@ -603,14 +603,33 @@ struct BrowserView: View {
         .help(help)
     }
 
+    /// Switching to Detail (⌘3) with no asset selected used to dump
+    /// the user at the "Select a clip…" placeholder with no obvious
+    /// next step. Auto-pick the first visible asset so Detail mode
+    /// always shows *something*. Other modes (Grid / List) just flip
+    /// the mode flag.
+    private func switchTo(viewMode value: String) {
+        appState.viewMode = value
+        if value == "detail",
+           appState.selectedAssetPath == nil,
+           let first = filteredAssets.first {
+            appState.selectedAssetPath = first.path
+        }
+    }
+
     @ViewBuilder
     private var typeFilterChips: some View {
+        // `.fixedSize` (and Label's own `.lineLimit(1)`) is the only
+        // thing keeping the chips from collapsing into vertical
+        // letter-stacked "A / I / I" pills when the toolbar gets
+        // squeezed by Filter / Columns / Sort menus on the right.
         HStack(spacing: 4) {
             chipButton(title: "All",    icon: "circle.grid.2x2", value: "all")
             chipButton(title: "Video",  icon: "film",            value: "video")
             chipButton(title: "Audio",  icon: "waveform",        value: "audio")
             chipButton(title: "Images", icon: "photo",           value: "image")
         }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private func chipButton(title: String, icon: String, value: String) -> some View {
@@ -620,6 +639,8 @@ struct BrowserView: View {
         } label: {
             Label(title, systemImage: icon)
                 .labelStyle(.titleAndIcon)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
                 .background(active ? Color.accentColor : Color.secondary.opacity(0.15),

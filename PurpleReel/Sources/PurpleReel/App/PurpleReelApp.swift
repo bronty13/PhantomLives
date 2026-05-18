@@ -273,8 +273,18 @@ struct PurpleReelApp: App {
                     .keyboardShortcut("1", modifiers: [.command])
                 Button("as List")   { appState.viewMode = "list" }
                     .keyboardShortcut("2", modifiers: [.command])
-                Button("as Detail") { appState.viewMode = "detail" }
-                    .keyboardShortcut("3", modifiers: [.command])
+                Button("as Detail") {
+                    appState.viewMode = "detail"
+                    // Same UX as the toolbar Detail button: auto-pick
+                    // the first displayed asset so Detail mode always
+                    // shows *something* rather than the dead-end
+                    // "Select a clip..." placeholder.
+                    if appState.selectedAssetPath == nil,
+                       let first = appState.displayedAssets.first {
+                        appState.selectedAssetPath = first.path
+                    }
+                }
+                .keyboardShortcut("3", modifiers: [.command])
                 Divider()
                 Button("Open Detail Sheet (Quick Look)") {
                     if appState.selectedAssetPath != nil {

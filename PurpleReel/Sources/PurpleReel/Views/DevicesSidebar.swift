@@ -147,18 +147,35 @@ private struct DeviceRow: View {
 
     private func loadChildren() {
         didLoadChildren = true
-        // Filesystem walk on a background task to keep the UI snappy
-        // on volumes with thousands of top-level entries.
-        Task.detached(priority: .userInitiated) {
-            let fm = FileManager.default
-            let raw = (try? fm.contentsOfDirectory(at: url,
-                                                     includingPropertiesForKeys: [.isDirectoryKey],
-                                                     options: [.skipsHiddenFiles])) ?? []
+        // Synchronous read on the main actor — listing a volume root
+        // is ~1ms even for crowded `/Volumes` and the previous
+        // Task.detached approach was racing the @State binding for
+        // Macintosh HD (the View struct got recreated before the
+        // detached task hopped back, so `self.children = dirs` landed
+        // on a stale wrapper). Synchronous makes children appear
+        // before `expanded` flips and is plenty fast for these reads.
+        let fm = FileManager.default
+        do {
+            let raw = try fm.contentsOfDirectory(
+                at: url,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            )
             let dirs = raw.filter { u in
                 ((try? u.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false)
-            }.sorted { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent)
-                        == .orderedAscending }
-            await MainActor.run { self.children = dirs }
+            }.sorted {
+                $0.lastPathComponent
+                    .localizedCaseInsensitiveCompare($1.lastPathComponent)
+                    == .orderedAscending
+            }
+            self.children = dirs
+        } catch {
+            // Most likely cause when this fails for /Volumes/Macintosh HD:
+            // Files & Folders TCC hasn't been granted. We log and
+            // leave `children` empty; the chevron stays flipped so
+            // the user sees nothing dropped down and can retry after
+            // granting access.
+            NSLog("[PurpleReel] DeviceRow loadChildren(\(url.path)) failed: \(error)")
         }
     }
 }
