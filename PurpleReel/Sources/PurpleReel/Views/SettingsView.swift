@@ -196,6 +196,10 @@ struct ConversionSettingsView: View {
     @AppStorage("maxParallelConversions") private var maxParallel: Int = 1
     @AppStorage("transcodeOutputDir") private var outputDir: String = ""
 
+    @State private var customPresets: [TranscodePreset] = []
+    @State private var customPresetStatus: String = ""
+    @State private var exportTargetPresetID: String = ""
+
     var body: some View {
         Form {
             Section("Queue") {
@@ -226,8 +230,104 @@ struct ConversionSettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
+            Section("Custom Presets") {
+                if customPresets.isEmpty {
+                    Text("No custom presets yet. Import a JSON file someone shared with you, or export a built-in preset as a starting template you can edit in TextEdit.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(customPresets) { preset in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(preset.name).font(.body)
+                                HStack(spacing: 6) {
+                                    Text(preset.category.displayName)
+                                    Text("·")
+                                    Text(preset.isFFmpeg ? "ffmpeg" : "AVFoundation")
+                                    Text("·")
+                                    Text(".\(preset.fileExtension)")
+                                }
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button("Reveal") {
+                                if let dir = CustomPresets.directory() {
+                                    let url = dir.appendingPathComponent("\(preset.id).json")
+                                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                                }
+                            }
+                            .controlSize(.small)
+                            Button("Delete", role: .destructive) {
+                                CustomPresets.delete(preset)
+                                refreshCustoms()
+                                customPresetStatus = "Removed “\(preset.name)”."
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                }
+                HStack {
+                    Button("Import…") { importPreset() }
+                    Menu("Export Built-in as Custom…") {
+                        ForEach(TranscodePreset.all) { preset in
+                            Button(preset.name) { exportPreset(preset) }
+                        }
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    Button("Reveal Folder") {
+                        if let dir = CustomPresets.directory() {
+                            NSWorkspace.shared.activateFileViewerSelecting([dir])
+                        }
+                    }
+                    Spacer()
+                }
+                if !customPresetStatus.isEmpty {
+                    Text(customPresetStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text("Customs live in ~/Library/Application Support/PurpleReel/CustomPresets/<id>.json. Each is a Codable TranscodePreset — edit in TextEdit, restart the app to pick up edits.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
+        .onAppear(perform: refreshCustoms)
+    }
+
+    private func refreshCustoms() {
+        customPresets = CustomPresets.load()
+    }
+
+    private func importPreset() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let preset = try CustomPresets.import(from: url)
+            refreshCustoms()
+            customPresetStatus = "Imported “\(preset.name)” (\(preset.id))."
+        } catch {
+            customPresetStatus = "Import failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func exportPreset(_ preset: TranscodePreset) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "\(preset.id).json"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try CustomPresets.export(preset, to: url)
+            customPresetStatus = "Exported “\(preset.name)” to \(url.lastPathComponent)."
+        } catch {
+            customPresetStatus = "Export failed: \(error.localizedDescription)"
+        }
     }
 }
 

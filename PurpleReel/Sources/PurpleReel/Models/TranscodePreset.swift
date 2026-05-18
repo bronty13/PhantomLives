@@ -4,7 +4,7 @@ import AVFoundation
 /// Kyno-style preset categories. Drives the Convert submenu grouping
 /// in `AssetContextMenu` (Editing / Web / Proxies / DNxHR / DNxHD /
 /// Audio / Rewrap / Distribution) and the recently-used carousel.
-enum TranscodeCategory: String, CaseIterable, Identifiable {
+enum TranscodeCategory: String, CaseIterable, Identifiable, Codable {
     case editing      // ProRes 422 (FCP timeline-native)
     case web          // H.264 / HEVC (delivery / preview)
     case proxies      // Lower-bitrate ProRes for offline editing
@@ -35,7 +35,7 @@ enum TranscodeCategory: String, CaseIterable, Identifiable {
 /// preset name (for native AVFoundation codecs) or an `ffmpegArgs`
 /// recipe (for codecs Apple's stack doesn't expose: DNxHD/HR, Cineform,
 /// MXF rewrap).
-struct TranscodePreset: Identifiable, Hashable {
+struct TranscodePreset: Identifiable, Hashable, Codable {
     let id: String
     let name: String
     let avPresetName: String
@@ -56,14 +56,42 @@ struct TranscodePreset: Identifiable, Hashable {
 
     var isFFmpeg: Bool { ffmpegArgs != nil }
 
+    /// True if this preset was loaded from the user's custom-presets
+    /// directory, false for built-ins. Drives the badge in the
+    /// Convert menu and the delete affordance in Settings.
+    var isCustom: Bool {
+        !TranscodePreset.builtInIDs.contains(id)
+    }
+
+    /// Built-in ID set — frozen, used by `isCustom` lookup and to
+    /// keep ⌘1..⌘0 menu indices stable across releases.
+    static let builtInIDs: Set<String> = [
+        "h264-1080p", "h264-720p", "hevc-1080p",
+        "prores-422", "prores-422-proxy",
+        "passthrough",
+        "dnxhr-sq", "dnxhr-hq",
+        "cineform", "mxf-prores",
+    ]
+
+    /// Built-ins plus user customs. Used by `byCategory(_:)` and
+    /// `find(id:)`. Built-ins always come first so user customs sort
+    /// after the canonical presets in any category submenu.
+    static func combined() -> [TranscodePreset] {
+        all + CustomPresets.load()
+    }
+
     static func byCategory(_ cat: TranscodeCategory) -> [TranscodePreset] {
-        all.filter { $0.category == cat }
+        combined().filter { $0.category == cat }
     }
 
     /// Looks up a preset by id (used for the Recently Used carousel,
-    /// where only the id is persisted in UserDefaults).
+    /// where only the id is persisted in UserDefaults). Searches
+    /// customs too so a recently-used custom preset survives a relaunch.
     static func find(id: String) -> TranscodePreset? {
-        all.first { $0.id == id }
+        if let builtIn = all.first(where: { $0.id == id }) {
+            return builtIn
+        }
+        return CustomPresets.load().first { $0.id == id }
     }
 
     static let all: [TranscodePreset] = [

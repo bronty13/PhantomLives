@@ -210,8 +210,11 @@ code drift problem that hits every keyboard-heavy app.
   WKWebView loading the pre-generated styled HTML in a managed
   per-doc NSWindow; falls back to `NSWorkspace.open(.md)` when the
   HTML rendition isn't bundled)
-- Custom transcode presets — Import/Export user-defined presets
-  alongside the built-in catalogue
+- ~~Custom transcode presets — Import/Export user-defined presets
+  alongside the built-in catalogue~~ — shipped (`Services/CustomPresets.swift`
+  reads/writes `<id>.json` under Application Support; merged into
+  `byCategory(_:)`/`find(id:)`; Settings → Conversion → Custom Presets
+  exposes Import/Export/Reveal/Delete)
 - ~~Volume-change watcher consuming the Devices-pane "React to
   changes on …" toggles~~ — shipped (`Services/VolumeWatcher.swift`)
 
