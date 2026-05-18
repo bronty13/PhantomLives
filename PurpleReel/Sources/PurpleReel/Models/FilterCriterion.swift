@@ -25,6 +25,7 @@ enum FilterCriterion: Hashable, Identifiable {
     case recordedSince(DateBucket)
     case underFolder(String)         // path-prefix scope
     case frameRateMode(FrameRateMode)  // VFR vs CFR (Kyno 1.7 parity)
+    case onlineStatus(OnlineStatus)    // Kyno-parity row 57: offline-volume index
 
     var id: String { encoded() }
 
@@ -59,6 +60,8 @@ enum FilterCriterion: Hashable, Identifiable {
             return "In folder: \(label.isEmpty ? p : label)"
         case .frameRateMode(let m):
             return "Frame rate: \(m.displayName)"
+        case .onlineStatus(let s):
+            return "Volume: \(s.displayName)"
         }
     }
 
@@ -71,10 +74,13 @@ enum FilterCriterion: Hashable, Identifiable {
 
     /// Test whether an asset passes this criterion. The `tagIndex`
     /// (path → Set<String> of tags) is precomputed once per filter
-    /// pass to avoid per-asset DB hits.
+    /// pass to avoid per-asset DB hits. `isOnline` answers whether
+    /// the asset's file is currently reachable on disk — used by
+    /// `.onlineStatus` to filter the offline-volume catalogue.
     func matches(_ asset: Asset,
                   ratingForAsset: (Asset) -> Int,
-                  tagIndex: [String: Set<String>]) -> Bool {
+                  tagIndex: [String: Set<String>],
+                  isOnline: (Asset) -> Bool = { _ in true }) -> Bool {
         switch self {
         case .ratingAtLeast(let n):
             return ratingForAsset(asset) >= n
@@ -109,6 +115,8 @@ enum FilterCriterion: Hashable, Identifiable {
             return (asset.path as NSString).standardizingPath.hasPrefix(pfx)
         case .frameRateMode(let mode):
             return mode.matches(asset.isVFR)
+        case .onlineStatus(let status):
+            return status.matches(isOnline: isOnline(asset))
         }
     }
 
@@ -133,6 +141,7 @@ enum FilterCriterion: Hashable, Identifiable {
         case .recordedSince(let b):           return "recorded=\(b.rawValue)"
         case .underFolder(let p):             return "folder=\(p)"
         case .frameRateMode(let m):           return "frmode=\(m.rawValue)"
+        case .onlineStatus(let s):            return "online=\(s.rawValue)"
         }
     }
 
@@ -183,6 +192,10 @@ enum FilterCriterion: Hashable, Identifiable {
         if let v = strip(token, prefix: "frmode="),
            let m = FrameRateMode(rawValue: v) {
             return .frameRateMode(m)
+        }
+        if let v = strip(token, prefix: "online="),
+           let s = OnlineStatus(rawValue: v) {
+            return .onlineStatus(s)
         }
         return nil
     }
@@ -296,6 +309,31 @@ enum FrameRateMode: String, CaseIterable, Identifiable {
         case .constant: return assetIsVFR == false
         case .variable: return assetIsVFR == true
         case .unknown:  return assetIsVFR == nil
+        }
+    }
+}
+
+/// Online / offline filter for cross-volume search (Kyno-parity
+/// row 57). PurpleReel keeps catalogue rows alive when a volume
+/// unmounts — this filter lets the user search across cards even
+/// when only a couple are physically attached.
+enum OnlineStatus: String, CaseIterable, Identifiable {
+    case online  = "online"
+    case offline = "offline"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .online:  return "Currently online (mounted)"
+        case .offline: return "Offline (volume unmounted)"
+        }
+    }
+
+    func matches(isOnline: Bool) -> Bool {
+        switch self {
+        case .online:  return isOnline
+        case .offline: return !isOnline
         }
     }
 }

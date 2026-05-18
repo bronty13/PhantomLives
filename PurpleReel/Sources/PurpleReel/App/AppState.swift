@@ -13,6 +13,14 @@ final class AppState: ObservableObject {
     /// Recomputed at the end of every scan. Empty when no spans
     /// were found — most non-DIT workspaces never trip this.
     @Published var spanGroups: [SpanDetectionService.SpanGroup] = []
+    /// Snapshot of catalogue paths that currently resolve to a
+    /// real file (Kyno-parity row 57: offline-volume index).
+    /// Recomputed at the end of every scan and after each volume
+    /// mount/unmount notification. Consulted by the
+    /// `.onlineStatus` filter and by cells that fade unreachable
+    /// rows. Empty during first launch — every check returns
+    /// false until the first scan completes.
+    @Published var onlinePaths: Set<String> = []
     @Published var selectedFolderPath: String?   // nil = root (all)
     @AppStorage("drilldownEnabled") var drilldownEnabled: Bool = true  // legacy default
     @AppStorage("typeFilter") var typeFilter: String = "all"  // all/video/audio/image
@@ -212,6 +220,7 @@ final class AppState: ObservableObject {
             self.rebuildFolderTree()
             self.refreshClipMetadataIndex()
             self.recomputeSpanGroups()
+            self.recomputeOnlinePaths()
             hydrateUserMetadataFromCache(scannedPaths: found.map(\.path))
         } catch {
             NSLog("[PurpleReel] on-demand scan failed for \(path): \(error)")
@@ -223,6 +232,63 @@ final class AppState: ObservableObject {
     /// safe to call on every scan.
     func recomputeSpanGroups() {
         spanGroups = SpanDetectionService.detect(in: assets)
+    }
+
+    /// Rebuild `onlinePaths` from the current `assets` array via
+    /// `FileManager.fileExists`. Called after each scan and on
+    /// volume mount/unmount notifications. Cheap — one stat
+    /// syscall per asset; volumes that aren't mounted answer
+    /// instantly (no I/O).
+    func recomputeOnlinePaths() {
+        let fm = FileManager.default
+        var online: Set<String> = []
+        for a in assets where fm.fileExists(atPath: a.path) {
+            online.insert(a.path)
+        }
+        onlinePaths = online
+    }
+
+    /// Repath every catalogue row tied to `volumeUUID` when the
+    /// volume comes back under a different `/Volumes/<name>`
+    /// path. Called from `VolumeWatcher.handleMounted`. Best-
+    /// effort: rows that don't share the old root prefix stay as
+    /// they were (e.g. the user could re-add a different workspace
+    /// from the same volume).
+    func reconnectVolume(uuid: String, newRoot: String) {
+        // Find any catalogue path whose volumeUUID matches and
+        // whose path starts with an old `/Volumes/...` prefix
+        // that doesn't match `newRoot`. Take the first such path's
+        // root component as the "old root".
+        let matches = assets.filter { $0.volumeUUID == uuid }
+        guard let firstPath = matches.first?.path else { return }
+        let oldRoot = Self.mountPointPrefix(of: firstPath)
+        guard !oldRoot.isEmpty, oldRoot != newRoot else { return }
+        do {
+            let n = try db.updateAssetPathPrefix(
+                volumeUUID: uuid, oldRoot: oldRoot, newRoot: newRoot
+            )
+            if n > 0 {
+                self.assets = (try? db.allAssets()) ?? assets
+                recomputeOnlinePaths()
+                NSLog("[PurpleReel] reconnected \(n) asset(s) for volume \(uuid): \(oldRoot) → \(newRoot)")
+            }
+        } catch {
+            NSLog("[PurpleReel] volume reconnect failed: \(error)")
+        }
+    }
+
+    /// Pluck the `/Volumes/<name>` (or `/`) prefix from an
+    /// absolute path. Used by `reconnectVolume` to figure out the
+    /// old mount point to replace.
+    private static func mountPointPrefix(of path: String) -> String {
+        if path.hasPrefix("/Volumes/") {
+            let trimmed = String(path.dropFirst("/Volumes/".count))
+            if let slash = trimmed.firstIndex(of: "/") {
+                return "/Volumes/" + String(trimmed[..<slash])
+            }
+            return "/Volumes/" + trimmed
+        }
+        return "/"
     }
 
     /// Open the Combine Clips sheet pre-populated with a span
@@ -513,14 +579,18 @@ final class AppState: ObservableObject {
             // so existing user-saved filter sets behave the way
             // they did before.
             let anyMode = filterMatchMode == "any"
+            let online = onlinePaths
+            let isOnline: (Asset) -> Bool = { online.contains($0.path) }
             base = base.filter { asset in
                 if anyMode {
                     return activeFilters.contains {
-                        $0.matches(asset, ratingForAsset: ratingFor, tagIndex: tags)
+                        $0.matches(asset, ratingForAsset: ratingFor,
+                                   tagIndex: tags, isOnline: isOnline)
                     }
                 } else {
                     return activeFilters.allSatisfy {
-                        $0.matches(asset, ratingForAsset: ratingFor, tagIndex: tags)
+                        $0.matches(asset, ratingForAsset: ratingFor,
+                                   tagIndex: tags, isOnline: isOnline)
                     }
                 }
             }
@@ -731,6 +801,7 @@ final class AppState: ObservableObject {
             self.rebuildFolderTree()
             self.refreshClipMetadataIndex()
             self.recomputeSpanGroups()
+            self.recomputeOnlinePaths()
             hydrateUserMetadataFromCache(scannedPaths: allScanned)
             // Soft warning when the workspace balloons past the
             // safety limit. Doesn't block; we still load every asset.

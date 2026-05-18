@@ -160,7 +160,68 @@ final class DatabaseService {
             }
         }
 
+        // v7 — volume identity for offline / cross-volume search
+        // (Kyno-parity row 57). `volumeUUID` lets us reconnect
+        // catalogue rows after a `/Volumes/<name>` mount-point
+        // shift; `volumeLabel` is a human-readable display field
+        // for the optional list column. NULL on assets scanned
+        // before this migration — rescan repopulates from
+        // URLResourceKey.volumeIdentifierKey.
+        m.registerMigration("v7_asset_volume_id") { db in
+            try db.alter(table: "asset") { t in
+                t.add(column: "volumeUUID", .text)
+                t.add(column: "volumeLabel", .text)
+            }
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS asset_volumeUUID
+                ON asset(volumeUUID)
+                """)
+        }
+
         return m
+    }
+
+    /// Repath every asset on the given volume after a remount.
+    /// `oldRoot` and `newRoot` are mount-point paths like
+    /// `/Volumes/CardA`. Rewrites the `path` column for assets
+    /// whose path starts with `oldRoot/`. Returns the number of
+    /// rows touched.
+    func updateAssetPathPrefix(volumeUUID: String,
+                                oldRoot: String,
+                                newRoot: String) throws -> Int {
+        let oldPrefix = oldRoot.hasSuffix("/") ? oldRoot : oldRoot + "/"
+        let newPrefix = newRoot.hasSuffix("/") ? newRoot : newRoot + "/"
+        return try dbQueue.write { db in
+            try db.execute(sql: """
+                UPDATE asset
+                   SET path = ? || substr(path, ?)
+                 WHERE volumeUUID = ?
+                   AND substr(path, 1, ?) = ?
+                """, arguments: [
+                    newPrefix,
+                    oldPrefix.count + 1,
+                    volumeUUID,
+                    oldPrefix.count,
+                    oldPrefix
+                ])
+            return db.changesCount
+        }
+    }
+
+    /// Distinct volumes catalogued so far. Used by the Offline
+    /// filter UI to show "you have clips on N volumes" copy.
+    func catalogedVolumes() throws -> [(uuid: String, label: String?)] {
+        try dbQueue.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT volumeUUID, volumeLabel
+                  FROM asset
+                 WHERE volumeUUID IS NOT NULL
+                 GROUP BY volumeUUID
+                """).map {
+                    (uuid: $0["volumeUUID"] ?? "",
+                     label: $0["volumeLabel"])
+                }
+        }
     }
 
     // MARK: - Poster frame

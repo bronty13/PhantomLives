@@ -109,6 +109,18 @@ final class VolumeWatcher {
     @MainActor
     private func handleMounted(_ url: URL) {
         let defaults = UserDefaults.standard
+        // Offline-index reconnect (Kyno-parity row 57): if the
+        // newly-mounted volume carries catalogue rows, repath them
+        // under the new mount point (in case macOS appended " 2"
+        // to the volume name to avoid a collision) and flip them
+        // back to online.
+        if let app = appState {
+            let info = MediaScanner.resolveVolume(forPath: url.path)
+            if let uuid = info.uuid {
+                app.reconnectVolume(uuid: uuid, newRoot: url.path)
+            }
+            app.recomputeOnlinePaths()
+        }
         // "Select device when connected" — navigate the user to the
         // new mount. We don't add it to the workspace; Kyno surfaces
         // it in the Devices pane and selects it there.
@@ -138,6 +150,7 @@ final class VolumeWatcher {
         NSLog("[PurpleReel] volume unmounted: \(url.path)")
         Task { @MainActor [weak self] in
             self?.rebuildStream()
+            self?.appState?.recomputeOnlinePaths()
         }
     }
 

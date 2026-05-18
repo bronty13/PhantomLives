@@ -48,6 +48,18 @@ struct Asset: Codable, Identifiable, Equatable, Hashable, FetchableRecord, Persi
     /// representative frame match what they care about. Nil =
     /// auto-pick. Image assets ignore this.
     var posterFrameSeconds: Double? = nil
+    /// APFS volume identifier the file lived on at scan time. Used
+    /// by the offline-search feature (Kyno-parity row 57) to keep
+    /// catalogue rows reachable after the volume is unmounted, and
+    /// to repath rows when the volume remounts under a different
+    /// `/Volumes/<name>` path. Nil = boot volume or scanner couldn't
+    /// resolve it.
+    var volumeUUID: String? = nil
+    /// Human-readable volume label captured at scan time ("CardA",
+    /// "Macintosh HD"). Surfaced in the optional "Volume" list
+    /// column so a DIT can read which card an offline clip lives on
+    /// without remounting it.
+    var volumeLabel: String? = nil
 
     static let databaseTableName = "asset"
 
@@ -59,6 +71,7 @@ struct Asset: Codable, Identifiable, Equatable, Hashable, FetchableRecord, Persi
         case path, filename, sizeBytes, modifiedAt, codec, widthPx, heightPx
         case durationSeconds, frameRate, sha1, addedAt
         case audioCodec, recordedAt, createdAt, isVFR, posterFrameSeconds
+        case volumeUUID, volumeLabel
     }
 
     enum Columns {

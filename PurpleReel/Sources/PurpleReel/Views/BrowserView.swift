@@ -796,6 +796,13 @@ struct BrowserView: View {
                     }
                 }
             }
+            Menu("Volume / Online status") {
+                ForEach(OnlineStatus.allCases) { s in
+                    Button(s.displayName) {
+                        appState.addFilter(.onlineStatus(s))
+                    }
+                }
+            }
             Menu("Size") {
                 Button("≥ 100 MB") { appState.addFilter(.sizeAtLeastMB(100)) }
                 Button("≥ 500 MB") { appState.addFilter(.sizeAtLeastMB(500)) }

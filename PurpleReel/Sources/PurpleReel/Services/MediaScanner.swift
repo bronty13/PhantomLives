@@ -24,6 +24,7 @@ actor MediaScanner {
     func scanShallow(root: URL) async throws -> [Asset] {
         let fm = FileManager.default
         let resolved = root.resolvingSymlinksInPath()
+        let volume = Self.resolveVolume(forPath: resolved.path)
         let keys: Set<URLResourceKey> = [
             .isDirectoryKey, .fileSizeKey, .contentModificationDateKey,
             .creationDateKey,
@@ -51,6 +52,8 @@ actor MediaScanner {
                 audioCodec: nil, recordedAt: nil,
                 createdAt: values.creationDate
             )
+            asset.volumeUUID  = volume.uuid
+            asset.volumeLabel = volume.label
             if let cached = WorkspaceCacheService.loadIfFresh(for: url.path) {
                 applyCachedTech(cached.tech, to: &asset)
             } else if videoExtensions.contains(ext) || audioExtensions.contains(ext) {
@@ -73,6 +76,7 @@ actor MediaScanner {
     func scan(root: URL, progress: @escaping (Int) -> Void) async throws -> [Asset] {
         var results: [Asset] = []
         let fm = FileManager.default
+        let volume = Self.resolveVolume(forPath: root.path)
         let keys: [URLResourceKey] = [
             .isDirectoryKey, .fileSizeKey, .contentModificationDateKey,
             .creationDateKey,
@@ -121,6 +125,8 @@ actor MediaScanner {
                 recordedAt: nil,
                 createdAt: values.creationDate
             )
+            asset.volumeUUID  = volume.uuid
+            asset.volumeLabel = volume.label
 
             // Shared-cache fast path (Kyno-parity row 7): when a
             // `.purplereel/<name>.json` sidecar is fresh, hydrate
@@ -156,6 +162,27 @@ actor MediaScanner {
         asset.isVFR              = tech.isVFR
         asset.sha1               = tech.sha1
         asset.posterFrameSeconds = tech.posterFrameSeconds
+    }
+
+    /// Resolve the (volume UUID, volume label) for `path`. Called
+    /// once per scan rather than per file — same volume across the
+    /// whole tree. Returns nils when the OS won't answer (boot
+    /// volume on older macOS, FUSE mounts, edge cases).
+    static func resolveVolume(forPath path: String) -> (uuid: String?, label: String?) {
+        let url = URL(fileURLWithPath: path)
+        let keys: Set<URLResourceKey> = [
+            .volumeIdentifierKey,
+            .volumeLocalizedNameKey,
+            .volumeURLKey,
+        ]
+        let values = try? url.resourceValues(forKeys: keys)
+        // volumeIdentifier is `Any` (CFData under the hood). Coerce
+        // to NSObject then describe — stable enough for our use.
+        var uuid: String? = nil
+        if let id = values?.volumeIdentifier as? NSObject {
+            uuid = id.description
+        }
+        return (uuid, values?.volumeLocalizedName)
     }
 
     private func enrichVideoMetadata(into asset: inout Asset, url: URL) async {

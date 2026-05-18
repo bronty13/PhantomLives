@@ -5,6 +5,7 @@ import AppKit
 /// the middle frame by default, and cycles frames based on cursor X
 /// when the mouse hovers over it. Same UX shape Kyno's browser uses.
 struct ThumbnailCell: View {
+    @EnvironmentObject var appState: AppState
     let asset: Asset
 
     @State private var urls: [URL] = []
@@ -15,6 +16,12 @@ struct ThumbnailCell: View {
     /// poster override (P key). Used as the at-rest cell frame and
     /// when hover ends, so the cell snaps back to the user's pick.
     @State private var posterImage: NSImage?
+
+    /// True when the asset's file is currently reachable. Drives
+    /// the offline-fade + cloud-slash overlay (Kyno-parity row 57).
+    private var isOnline: Bool {
+        appState.onlinePaths.contains(asset.path)
+    }
 
     var body: some View {
         ZStack {
@@ -29,6 +36,14 @@ struct ThumbnailCell: View {
                 Image(systemName: "film")
                     .foregroundStyle(.secondary)
                     .font(.title3)
+            }
+            if !isOnline {
+                // Offline overlay — semi-opaque tint + corner badge.
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color.black.opacity(0.35))
+                Image(systemName: "icloud.slash")
+                    .foregroundStyle(.white.opacity(0.9))
+                    .font(.system(size: 14))
             }
             if hovering, urls.count > 1 {
                 // Tiny tick row showing the cursor's mapped frame index.

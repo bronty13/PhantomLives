@@ -325,10 +325,17 @@ private struct EscapeCatcher: NSViewRepresentable {
 /// for the "primary" anchor in a multi-selection), and a transcode
 /// progress overlay when the queue has a job for this asset's path.
 struct GridCell: View {
+    @EnvironmentObject var appState: AppState
     let asset: Asset
     let isSelected: Bool
     var isPrimary: Bool = false
     @ObservedObject var transcodeQueue: TranscodeQueue
+
+    /// True when the asset's file is currently reachable. Drives
+    /// the offline-fade + cloud-slash overlay (Kyno-parity row 57).
+    private var isOnline: Bool {
+        appState.onlinePaths.contains(asset.path)
+    }
 
     /// All thumbnail frames for this asset (12 across the duration).
     /// Loaded once on appear; hover-scrub picks an index based on
@@ -371,6 +378,21 @@ struct GridCell: View {
                         Image(systemName: "film")
                             .font(.system(size: 28))
                             .foregroundStyle(.secondary)
+                    }
+                    if !isOnline {
+                        // Offline overlay (row 57).
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.black.opacity(0.35))
+                        VStack(spacing: 2) {
+                            Image(systemName: "icloud.slash")
+                                .font(.system(size: 22))
+                                .foregroundStyle(.white.opacity(0.9))
+                            if let label = asset.volumeLabel {
+                                Text(label)
+                                    .font(.caption2)
+                                    .foregroundStyle(.white.opacity(0.85))
+                            }
+                        }
                     }
                     if hovering, urls.count > 1, let u = url,
                        let activeIdx = urls.firstIndex(of: u) {
