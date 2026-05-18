@@ -329,6 +329,18 @@ final class PlayerController: ObservableObject {
     func load(url: URL, fps: Double) {
         self.fps = fps > 0 ? fps : 30
         self.currentURL = url
+        // Auto-LUT suggestion. When the user has the Settings
+        // toggle on AND `LUTLibraryService` finds a filename-keyword
+        // match (e.g. `_slog3_` → S-Log3 LUT), apply it before the
+        // first frame renders. User can always clear via the LUT
+        // bar. Skipped when the user has manually loaded a LUT
+        // this session — their explicit pick wins.
+        if currentLUT == nil,
+           UserDefaults.standard.object(forKey: "autoApplySuggestedLUT") as? Bool ?? true,
+           let suggested = LUTLibraryService.suggested(for: url),
+           let parsed = try? LUTService.load(url: suggested.url) {
+            currentLUT = parsed
+        }
         let item = AVPlayerItem(url: url)
         applyEffectsToItem(item)
         player.replaceCurrentItem(with: item)

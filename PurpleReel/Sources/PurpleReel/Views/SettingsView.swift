@@ -36,6 +36,7 @@ struct GeneralSettingsView: View {
     @AppStorage("importLUTsFromResolve") private var importLUTsFromResolve: Bool = true
     @AppStorage("applyLUTsToThumbnails") private var applyLUTsToThumbnails: Bool = false
     @AppStorage("applyLUTToExportedFrames") private var applyLUTToExports: Bool = true
+    @AppStorage("autoApplySuggestedLUT") private var autoApplySuggestedLUT: Bool = true
     @AppStorage("defaultViewOnLaunch") private var defaultViewOnLaunch: String = "list"
     @AppStorage(KynoCompatibility.modeKey) private var kynoMode: Bool = false
 
@@ -97,7 +98,17 @@ struct GeneralSettingsView: View {
                     }
                 }
                 Toggle("Import LUTs from Final Cut Pro", isOn: $importLUTsFromFCP)
+                    .onChange(of: importLUTsFromFCP) { _, _ in
+                        LUTLibraryService.invalidate()
+                    }
                 Toggle("Import LUTs from DaVinci Resolve", isOn: $importLUTsFromResolve)
+                    .onChange(of: importLUTsFromResolve) { _, _ in
+                        LUTLibraryService.invalidate()
+                    }
+                Toggle("Auto-apply suggested LUT on clip load", isOn: $autoApplySuggestedLUT)
+                Text("Matches log-profile keywords in the filename (SLog3, V-Log, LogC, HLG, etc.) against discovered LUTs. User-managed PurpleReel LUTs win ties over FCP / Resolve.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Toggle("Apply detected LUTs to thumbnails", isOn: $applyLUTsToThumbnails)
                 Toggle("Apply current LUT to exported frames", isOn: $applyLUTToExports)
                 Text("When on (default, matches Kyno 1.8+), ⌘⇧E bakes the active LUT into the PNG it writes.")
