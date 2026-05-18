@@ -14,7 +14,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     //   holding a stale split-view divider position that AppKit
     //   restored after the UserDefaults preflight. Preflight now wipes
     //   .savedState whenever it purges a split-view frame key.
-    static let windowResetVersion = 2
+    // v3 (2026-05-17 later same day): user reported the sidebar
+    //   rendering with its content shifted off the left edge of the
+    //   window — labels truncated on the LEFT, right-side counts still
+    //   visible. Even with the HStack pattern (no NavigationSplitView),
+    //   something in the persisted NSWindow / saved-app-state surface
+    //   was anchoring content past the window's leading edge.
+    //   Bumping forces a one-shot full wipe of NSWindow Frame keys,
+    //   .savedState, and SidebarSeparation on every install so each
+    //   user's window snaps back to defaults on next launch.
+    static let windowResetVersion = 3
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         WindowStateGuard.applyOnLaunch(

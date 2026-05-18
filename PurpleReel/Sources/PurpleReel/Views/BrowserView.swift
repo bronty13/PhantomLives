@@ -123,10 +123,15 @@ struct BrowserView: View {
 
                     if appState.isScanning {
                         ProgressView().controlSize(.small)
-                        Text(appState.scanProgress).foregroundStyle(.secondary).font(.caption)
+                        Text(appState.scanProgress)
+                            .foregroundStyle(.secondary).font(.caption)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     } else {
                         Text("\(filteredAssets.count) of \(appState.assets.count)")
                             .foregroundStyle(.secondary).font(.caption)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                 }
                 .padding(.horizontal, 12)
@@ -575,6 +580,8 @@ struct BrowserView: View {
                   ? "arrow.down.right.and.arrow.up.left.square.fill"
                   : "arrow.down.right.and.arrow.up.left.square")
                 .labelStyle(.titleAndIcon)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
                 .background(on ? Color.orange : Color.secondary.opacity(0.15),

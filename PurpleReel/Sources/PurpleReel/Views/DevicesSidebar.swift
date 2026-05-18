@@ -147,17 +147,28 @@ private struct DeviceRow: View {
 
     private func loadChildren() {
         didLoadChildren = true
-        // Synchronous read on the main actor — listing a volume root
-        // is ~1ms even for crowded `/Volumes` and the previous
-        // Task.detached approach was racing the @State binding for
-        // Macintosh HD (the View struct got recreated before the
-        // detached task hopped back, so `self.children = dirs` landed
-        // on a stale wrapper). Synchronous makes children appear
-        // before `expanded` flips and is plenty fast for these reads.
+        // ROOT CAUSE for the Macintosh HD "won't expand" symptom:
+        // on macOS the boot volume's entry in `/Volumes/` is a
+        // SYMLINK pointing at `/`, not a real directory.
+        //   $ ls -la "/Volumes/Macintosh HD"
+        //   lrwxr-xr-x  root  wheel  /Volumes/Macintosh HD -> /
+        // `FileManager.contentsOfDirectory(at: URL)` does NOT follow
+        // symlinks (it throws POSIX 20 "Not a directory"). So Mac HD
+        // expansion failed silently while every other volume worked
+        // because they were real mountpoints.
+        //
+        // Fix: resolve the symlink up front via
+        // `resolvingSymlinksInPath()`. For Mac HD this gives `/`,
+        // whose listing is the 4 user-visible firmlinks
+        // (Library / System / Users / Applications) — exactly what
+        // Finder shows when you double-click Macintosh HD. External
+        // volumes are unaffected (they're real dirs, resolveSymlinks
+        // is a no-op).
         let fm = FileManager.default
+        let target = url.resolvingSymlinksInPath()
         do {
             let raw = try fm.contentsOfDirectory(
-                at: url,
+                at: target,
                 includingPropertiesForKeys: [.isDirectoryKey],
                 options: [.skipsHiddenFiles]
             )
@@ -170,12 +181,7 @@ private struct DeviceRow: View {
             }
             self.children = dirs
         } catch {
-            // Most likely cause when this fails for /Volumes/Macintosh HD:
-            // Files & Folders TCC hasn't been granted. We log and
-            // leave `children` empty; the chevron stays flipped so
-            // the user sees nothing dropped down and can retry after
-            // granting access.
-            NSLog("[PurpleReel] DeviceRow loadChildren(\(url.path)) failed: \(error)")
+            NSLog("[PurpleReel] DeviceRow loadChildren(\(target.path)) failed: \(error)")
         }
     }
 }
