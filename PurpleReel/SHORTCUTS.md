@@ -41,6 +41,10 @@ Generated from `Sources/PurpleReel/Help/Shortcuts.swift` — do not edit by hand
 | `⌘L` | Toggle loop mode |
 | `⌘F` | Toggle fullscreen |
 | `⌘⇧E` | Export current frame as PNG |
+| `⌥⌘⇧E` | Export frames at every marker as PNGs |
+| `X` | Mute / unmute audio (Kyno-compat) |
+| `P` | Set poster frame at playhead |
+| `⇧P` | Clear poster frame |
 
 ## Logging & Metadata
 
@@ -51,14 +55,22 @@ Generated from `Sources/PurpleReel/Help/Shortcuts.swift` — do not edit by hand
 | `S` | Save subclip from I/O range |
 | `⌥S` | Remove most-recent subclip |
 | `⌘0…⌘5` | Set rating (0 = unrated) |
-| `⌘⇧T` | Tags sheet (roadmap) |
+| `⌘⇧T` | Edit Tags sheet (batch tag editor) |
 | `⌘⇧M` | Edit Multiple metadata across selection |
+| `⌘⌥M` | Focus Metadata pane Title field (Kyno-compat) |
+| `⌘⌥C` | Copy metadata from selected clip |
+| `⌘⌥V` | Paste metadata to selection |
 
 ## Convert / Send
 
 | Shortcut | Action |
 |---|---|
 | `⌘E` | Convert with most-recently-used preset |
+| `⌘U` | Export subclip from I/O range |
+| `⌘⇧V` | Paste with Rename — copy from clipboard with template |
+| `⌘⇧J` | Combine Clips — assembly-cut head-to-tail |
+| `⌘⇧Y` | Workflow Chains — offload → transcode → report |
+| `⌘⇧C` | Copy and Verify (open Verified Backup sheet) |
 
 ## View
 
@@ -66,8 +78,10 @@ Generated from `Sources/PurpleReel/Help/Shortcuts.swift` — do not edit by hand
 |---|---|
 | `⌘R` | Rotate preview clockwise (90°) |
 | `⌘⌥R` | Rotate preview counter-clockwise (-90°) |
-| `⌃⌥E` | Zebra filter (roadmap) |
-| `⌃⌥W` | Widescreen mattes (roadmap) |
+| `⌃⌥E` | Toggle zebra filter (Kyno-compat) |
+| `⌃⌥W` | Cycle widescreen matte aspect (Kyno-compat) |
+| `⌥⇧O` | Open with default application (Kyno-compat) |
+| `⌘⇧D` | Toggle drilldown for selected folder (Kyno-compat) |
 
 ## Window
 
@@ -78,4 +92,4 @@ Generated from `Sources/PurpleReel/Help/Shortcuts.swift` — do not edit by hand
 
 ---
 
-Total: **42** documented shortcuts.
+Total: **56** documented shortcuts.

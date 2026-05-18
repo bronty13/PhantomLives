@@ -1652,6 +1652,19 @@ final class AppState: ObservableObject {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.message = "Pick a destination folder for the frame stills."
+        // Default to ~/Downloads/PurpleReel/stills/ per the
+        // PhantomLives output convention.
+        if let downloads = FileManager.default.urls(
+            for: .downloadsDirectory, in: .userDomainMask
+        ).first {
+            let suggested = downloads
+                .appendingPathComponent("PurpleReel", isDirectory: true)
+                .appendingPathComponent("stills", isDirectory: true)
+            try? FileManager.default.createDirectory(
+                at: suggested, withIntermediateDirectories: true
+            )
+            panel.directoryURL = suggested
+        }
         guard panel.runModal() == .OK, let dest = panel.url else { return }
 
         // Resolve the LUT the same way PlayerController does: honour

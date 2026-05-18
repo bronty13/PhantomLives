@@ -231,6 +231,21 @@ struct CombineClipsSheet: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
+        // Default to ~/Downloads/PurpleReel/combined/ per the
+        // PhantomLives output-location convention. Created if
+        // absent so the picker doesn't dead-end the user.
+        let downloads = FileManager.default.urls(
+            for: .downloadsDirectory, in: .userDomainMask
+        ).first
+        let suggested = downloads?
+            .appendingPathComponent("PurpleReel", isDirectory: true)
+            .appendingPathComponent("combined", isDirectory: true)
+        if let s = suggested {
+            try? FileManager.default.createDirectory(
+                at: s, withIntermediateDirectories: true
+            )
+            panel.directoryURL = s
+        }
         if panel.runModal() == .OK, let url = panel.url {
             dest = url
         }

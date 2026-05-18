@@ -16,6 +16,7 @@
 //           INSTALL.html
 //           SHORTCUTS.html
 //           KYNO_PARITY_ROADMAP.html
+//           KYNO_RESEARCH.html
 //
 // `hiutil` is run by `build-app.sh` after this script to produce the
 // search index (.helpindex) inside en.lproj/.
@@ -41,6 +42,7 @@ let docs: [(file: String, title: String)] = [
     ("INSTALL.md",             "Install & Setup"),
     ("SHORTCUTS.md",           "Keyboard Shortcuts"),
     ("KYNO_PARITY_ROADMAP.md", "Roadmap"),
+    ("KYNO_RESEARCH.md",       "Kyno Feature Research"),
 ]
 
 // MARK: - Filesystem setup
@@ -396,6 +398,7 @@ for doc in docs {
         .replacingOccurrences(of: "INSTALL.md",             with: "INSTALL.html")
         .replacingOccurrences(of: "SHORTCUTS.md",           with: "SHORTCUTS.html")
         .replacingOccurrences(of: "KYNO_PARITY_ROADMAP.md", with: "KYNO_PARITY_ROADMAP.html")
+        .replacingOccurrences(of: "KYNO_RESEARCH.md", with: "KYNO_RESEARCH.html")
         .replacingOccurrences(of: "README.md",
                                 with: "https://github.com/bronty13/PhantomLives/tree/main/PurpleReel")
         .replacingOccurrences(of: "INTEGRATION_TEST_PLAN.md",
