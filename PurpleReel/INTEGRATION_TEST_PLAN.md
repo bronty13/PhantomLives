@@ -1330,6 +1330,97 @@ audio codec + recording date.
 
 ---
 
+## Scenario 28 — Preferences panes (six Kyno-parity panes wired)
+
+Closes the Preferences row on the Kyno parity matrix. Six panes
+beyond Backup / AI / About are scaffolded; this round wires the
+controls that affect runtime behaviour and adds Import/Export +
+Reset-all.
+
+**Setup**
+- Recent build installed.
+- A workspace with a folder named e.g. "tmp" + several media files
+  inside it (used by the ignore-glob step).
+
+**Steps**
+
+1. **Pane inventory** — Settings (⌘,). Verify nine tabs in order:
+   General / Tags / Conversion / Devices / Transfer / Advanced /
+   Backup / AI / About.
+2. **General → LUTs folder** — type a path or click Choose…
+   - **Expected:** Path persists. **Open** creates the dir if missing
+     and reveals in Finder. The three import-LUT toggles persist
+     (consumed by the larger Phase-2 auto-import; flags are
+     forward-compatible).
+3. **General → Clear Thumbnail Cache** — click.
+   - **Expected:** `~/Library/Application Support/PurpleReel/thumbnails/`
+     is wiped. Switch to Grid; thumbnails re-generate.
+4. **Tags → Add + Import + Export**
+   - Add a few tags via the Add field.
+   - Export → save to `~/Desktop/test-tags.json`. Open the file:
+     it has `{"tags":[…]}` with sorted keys, pretty-printed.
+   - Delete all tags from the Settings list. Click Import…, pick
+     the same file.
+   - **Expected:** Status shows "Imported N new tag(s)." All tags
+     restored. Re-importing the same file yields "Imported 0 new
+     tag(s)." (additive union — no duplicates).
+5. **Tags → Import bare JSON array** — manually create
+   `~/Desktop/test-arr.json` with content `["alpha","beta"]`. Import.
+   - **Expected:** Same union behaviour; status updates.
+6. **Conversion → Max parallel** — set to 3. Queue 5 transcodes
+   (Convert via right-click). Open Transcode Queue.
+   - **Expected:** Up to 3 jobs run concurrently (see `running`
+     count). When one finishes, the next pending is pulled in.
+     With max=1 it's serial as before.
+7. **Conversion → Clear History** — wait for jobs to finish. Click
+   Clear Conversion History.
+   - **Expected:** "Finished job(s)" count drops to 0 in the
+     caption. The queue sheet's "Done" column empties. Button
+     greys out when the list is empty.
+8. **Devices pane toggles persist** — flip every toggle on, quit,
+   relaunch.
+   - **Expected:** Values restored. Toggles are stored-only today
+     (consumers are a future-hook volume-change watcher); no
+     visible side effect.
+9. **Transfer → Slack URL persistence** — enter
+   `https://hooks.slack.com/test`, change tabs, come back.
+   - **Expected:** Value remains. Sidecar extension picker
+     persists too.
+10. **Advanced → Ignored globs** — enter `tmp;*backup` and rescan
+    the workspace.
+    - **Expected:** Files inside `tmp/` and anything matching
+      `*backup` disappear from the catalogue. Toggle to empty and
+      rescan — they return.
+11. **Advanced → Drop-frame timecode** — toggle ON. Load a 29.97
+    or 59.94 fps clip in the player.
+    - **Expected:** The transport bar's timecode readout uses
+      `;` between seconds and frames (drop-frame convention).
+      Non-29.97/59.94 clips show non-drop with `:` regardless.
+12. **Advanced → Reset All Preferences** — click.
+    - **Expected:** Confirmation alert with the warning text.
+      Clicking Reset clears every PurpleReel UserDefaults key
+      (column visibility, drilldown set, sort key, active filters,
+      AI overrides, sidebar collapse state, Convert MRU, …). The
+      catalog DB and the auto-backup history are NOT touched
+      (per the alert's promise). Quit + relaunch to apply.
+13. **Backup pane** — already covered by Scenario 14 / 19; verify
+    nothing regressed (Run Backup Now still works, retention
+    stepper still saves, list refreshes).
+
+**Pass criteria**
+- All six new panes show their controls; values persist across
+  relaunches.
+- Tags JSON Import/Export round-trips correctly; additive on
+  import.
+- Max parallel actually runs concurrent jobs.
+- Clear Conversion History wipes the done list.
+- Ignored globs filter the scanner.
+- Drop-frame TC formatter switches on the toggle for 29.97/59.94.
+- Reset All Preferences clears every key but leaves catalog DB +
+  auto-backups intact.
+
+---
+
 ## Regression triggers
 
 After **any** change, re-run **at minimum**:
@@ -1383,3 +1474,8 @@ After any change to the **v3 schema (audioCodec / recordedAt) /
 MediaScanner.enrichVideoMetadata / `FilterCriterion.audioCodec
 /.modifiedSince/.recordedSince/.underFolder` / DateBucket / Filter
 menu submenus**, re-run Scenario 27.
+
+After any change to **`SettingsView` panes / `TranscodeQueue.clearDone`
+/ `TranscodeQueue` concurrent pump / `MediaScanner` ignored-globs /
+`Timecode` drop-frame / Tags JSON Import/Export / Reset All
+Preferences**, re-run Scenario 28.

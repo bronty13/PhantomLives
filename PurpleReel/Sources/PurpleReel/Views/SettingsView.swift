@@ -81,6 +81,7 @@ struct GeneralSettingsView: View {
 struct TagsSettingsView: View {
     @State private var userTags: [String] = (UserDefaults.standard.array(forKey: "userDefinedTags") as? [String]) ?? []
     @State private var newTag: String = ""
+    @State private var importStatus: String = ""
 
     var body: some View {
         VStack(alignment: .leading) {
@@ -98,27 +99,89 @@ struct TagsSettingsView: View {
             }
             HStack {
                 TextField("New tag", text: $newTag)
-                Button("Add") {
-                    let trimmed = newTag.trimmingCharacters(in: .whitespaces)
-                    guard !trimmed.isEmpty, !userTags.contains(trimmed) else { return }
-                    userTags.append(trimmed)
-                    newTag = ""
-                    save()
+                Button("Add") { commitNew() }
+                    .disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            Divider()
+            HStack {
+                Button("Import…")  { importTags() }
+                Button("Export…")  { exportTags() }
+                    .disabled(userTags.isEmpty)
+                Spacer()
+                if !importStatus.isEmpty {
+                    Text(importStatus).font(.caption).foregroundStyle(.secondary)
                 }
-                .disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
         .padding()
     }
 
+    private func commitNew() {
+        let trimmed = newTag.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, !userTags.contains(trimmed) else { return }
+        userTags.append(trimmed)
+        newTag = ""
+        save()
+    }
+
     private func save() {
         UserDefaults.standard.set(userTags, forKey: "userDefinedTags")
+    }
+
+    /// JSON import — accepts both `["a", "b", "c"]` and
+    /// `{"tags":["a","b","c"]}` shapes. Union'd with the existing
+    /// set; never destructive.
+    private func importTags() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url,
+              let data = try? Data(contentsOf: url) else { return }
+        if let arr = try? JSONSerialization.jsonObject(with: data) as? [String] {
+            absorb(arr)
+        } else if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let arr = obj["tags"] as? [String] {
+            absorb(arr)
+        } else {
+            importStatus = "Couldn't parse \(url.lastPathComponent) as JSON tags."
+        }
+    }
+
+    private func absorb(_ incoming: [String]) {
+        let cleaned = incoming.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { !$0.isEmpty }
+        let before = userTags.count
+        for tag in cleaned where !userTags.contains(tag) {
+            userTags.append(tag)
+        }
+        save()
+        importStatus = "Imported \(userTags.count - before) new tag(s)."
+    }
+
+    private func exportTags() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "PurpleReel-tags.json"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let payload: [String: Any] = ["tags": userTags]
+            let data = try JSONSerialization.data(
+                withJSONObject: payload,
+                options: [.prettyPrinted, .sortedKeys]
+            )
+            try data.write(to: url, options: .atomic)
+            importStatus = "Wrote \(userTags.count) tag(s) to \(url.lastPathComponent)."
+        } catch {
+            importStatus = "Export failed: \(error.localizedDescription)"
+        }
     }
 }
 
 // MARK: - Conversion
 
 struct ConversionSettingsView: View {
+    @EnvironmentObject var appState: AppState
     @AppStorage("maxParallelConversions") private var maxParallel: Int = 1
     @AppStorage("transcodeOutputDir") private var outputDir: String = ""
 
@@ -143,8 +206,13 @@ struct ConversionSettingsView: View {
                         }
                     }
                 }
-                Button("Clear Conversion History") {
-                    // Stub for now — transcode queue history is in-memory.
+                HStack {
+                    Button("Clear Conversion History") {
+                        appState.transcodeQueue.clearDone()
+                    }
+                    .disabled(appState.transcodeQueue.done.isEmpty)
+                    Text("\(appState.transcodeQueue.done.count) finished job(s)")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
@@ -244,8 +312,31 @@ struct AdvancedSettingsView: View {
                     Text("Sidecar files").tag("sidecar")
                 }
             }
+            Section("Reset") {
+                Button("Reset All Preferences…") {
+                    confirmAndResetAllPreferences()
+                }
+                Text("Clears every PurpleReel preference (sidebar collapse, sort, columns, filters, AI overrides, …). Window state and the catalog DB are NOT touched. Restart PurpleReel after confirming.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
+    }
+
+    private func confirmAndResetAllPreferences() {
+        let alert = NSAlert()
+        alert.messageText = "Reset all PurpleReel preferences?"
+        alert.informativeText = "Every Settings value (across all panes), persisted sort / filter / drilldown / column state, and the Recently Used Convert presets will be cleared. The catalog DB, your media, and the auto-backup history are not affected.\n\nQuit and relaunch after confirming."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Reset")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        // Wipe every key under our bundle ID. The user-facing
+        // 'Reset Window State' (Window menu) is the separate path
+        // for layout corruption — this is the prefs-only reset.
+        if let bundleID = Bundle.main.bundleIdentifier {
+            UserDefaults.standard.removePersistentDomain(forName: bundleID)
+        }
     }
 }
 

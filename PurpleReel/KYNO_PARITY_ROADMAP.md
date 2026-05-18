@@ -123,12 +123,12 @@ field is populated.
 | ✅ | Backup | Already have |
 | ✅ | AI | transcribe.py path, Whisper model, Ollama model |
 | ✅ | About | |
-| ⬜ | **General** — language (already comes via macOS), LUTs folder, Import LUTs from FCP, Import LUTs from Resolve, Apply detected LUTs to thumbnails | |
-| ⬜ | **Tags** — user-defined tag library with Add / Remove / Import / Export | |
-| ⬜ | **Conversion** — Max parallel conversions, user-defined transcode presets (Import / Export), Clear conversion-history | |
-| ⬜ | **Devices** — Restore browser UI per device, Select device on connect, Auto-drilldown for camera media, Minimize multi-threaded access, Show DMG in devices, React-to-changes toggles | |
-| ⬜ | **Transfer** — Registered SFTP endpoints, Slack notification webhook, Sidecar files config | Some of this already exists in the SFTP sheet |
-| ⬜ | **Advanced** — Thumbnail loading performance, Ignored files/folders glob, Use drop-frame timecode, Use zero-based timecode, Shared cache folder, Store metadata in (hidden dirs / sidecar files) | |
+| ✅ | **General** — LUTs folder + Choose/Open, Import LUTs from FCP/Resolve (flags), Apply detected LUTs to thumbnails (flag), Clear Thumbnail Cache button | Auto-import from FCP/Resolve libraries is the larger Phase-2 piece; flags persist meanwhile. |
+| ✅ | **Tags** — user-defined tag library with Add / Remove / Import / Export | JSON Import/Export (accepts `["a","b"]` or `{"tags":[…]}`), additive union on import |
+| ✅ | **Conversion** — Max parallel conversions (consumed by TranscodeQueue), user-defined transcode presets stub, **Clear Conversion History** (wired to `transcodeQueue.clearDone()`) | Custom-preset Import/Export deferred; built-in preset catalogue covers Kyno's defaults |
+| ✅ | **Devices** — Select device on connect, Auto-drilldown for camera media, Show DMG in devices, React-to-changes (local/removable/network) toggles | All toggles persist; consumers (volume-change watcher) are future-hook |
+| ✅ | **Transfer** — pointer to SFTP delivery sheet (endpoints managed there), Slack notification web-hook URL, Sidecar file extension picker | Slack post is a future feature; URL persists today |
+| ✅ | **Advanced** — Thumbnail loading performance, **Ignored files/folders glob** (consumed by MediaScanner), Use drop-frame timecode (consumed by Timecode formatter), Use zero-based timecode, Confirm copy/move, Debug mode, Metadata storage choice, **Reset All Preferences** | Ignored-globs uses tiny `fnmatch` impl supporting `*`/`?`; SMPTE-12M drop-frame implemented for 29.97 / 59.94 |
 
 ---
 
@@ -202,14 +202,15 @@ code drift problem that hits every keyboard-heavy app.
   tables above)
 
 **Medium** (half-day each):
-- Filter advanced dropdown (multi-criteria builder: Size / Date /
-  Rating / Tag / Codec / Resolution / Frame rate)
 - Zebra + widescreen filter (CIFilter chain on the player)
 - Aspect-fit / actual-size / fit-window zoom controls
-- Preferences panes (General / Tags / Conversion / Devices / Transfer
-  / Advanced) — split across several rounds
-- In-app **Help → User Manual / Shortcuts / Install & Setup** menu
-  entries + bundled Markdown renderer
+- In-app Markdown renderer (currently Help → User Manual opens
+  bundled .md via NSWorkspace which defers to the user's default
+  Markdown viewer)
+- Custom transcode presets — Import/Export user-defined presets
+  alongside the built-in catalogue
+- Volume-change watcher consuming the Devices-pane "React to
+  changes on …" toggles
 
 **Large** (1+ day):
 - LUT auto-detect from FCP / Resolve libraries

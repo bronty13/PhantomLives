@@ -19,12 +19,21 @@ actor MediaScanner {
     /// Recursive walk of `root` building a fresh `Asset` per matching file.
     /// `progress` is called on the actor's queue; callers should hop to
     /// the main actor to mutate UI.
+    ///
+    /// Honors `ignoredFilesGlob` from Settings → Advanced: a
+    /// `;`-separated list of fnmatch-style globs ("tmp;*backup;.cache").
+    /// Each enumerated path's last component is matched against every
+    /// glob; on a hit the file is skipped (and if it's a directory,
+    /// its children too via `enumerator.skipDescendants()`).
     func scan(root: URL, progress: @escaping (Int) -> Void) async throws -> [Asset] {
         var results: [Asset] = []
         let fm = FileManager.default
         let keys: [URLResourceKey] = [
             .isDirectoryKey, .fileSizeKey, .contentModificationDateKey
         ]
+        let ignoreGlobs = Self.parseIgnoredGlobs(
+            UserDefaults.standard.string(forKey: "ignoredFilesGlob") ?? ""
+        )
 
         guard let enumerator = fm.enumerator(
             at: root,
@@ -36,6 +45,15 @@ actor MediaScanner {
 
         for case let url as URL in enumerator {
             let values = try url.resourceValues(forKeys: Set(keys))
+            let last = url.lastPathComponent
+            // Glob match — early out for directories so we don't walk
+            // them at all.
+            if !ignoreGlobs.isEmpty, ignoreGlobs.contains(where: { fnmatch(last, $0) }) {
+                if values.isDirectory == true {
+                    enumerator.skipDescendants()
+                }
+                continue
+            }
             if values.isDirectory == true { continue }
             let ext = url.pathExtension.lowercased()
             guard allExtensions.contains(ext) else { continue }
@@ -107,6 +125,39 @@ actor MediaScanner {
         } catch {
             NSLog("[PurpleReel] video metadata load failed for \(url.lastPathComponent): \(error)")
         }
+    }
+
+    /// Parse the `ignoredFilesGlob` defaults string into individual
+    /// patterns. Splits on `;`, strips whitespace, drops empty entries.
+    static func parseIgnoredGlobs(_ raw: String) -> [String] {
+        raw.split(separator: ";")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// Tiny fnmatch — supports `*`, `?`, and literal characters.
+    /// Anchors at both ends. Sufficient for the Settings → Advanced
+    /// ignore patterns; full POSIX fnmatch would be overkill.
+    private nonisolated func fnmatch(_ name: String, _ pattern: String) -> Bool {
+        Self.fnmatchImpl(Array(name), Array(pattern))
+    }
+
+    private static func fnmatchImpl(_ name: [Character], _ pat: [Character]) -> Bool {
+        var ni = 0, pi = 0
+        var star = -1, sBack = 0
+        while ni < name.count {
+            if pi < pat.count, pat[pi] == name[ni] || pat[pi] == "?" {
+                ni += 1; pi += 1
+            } else if pi < pat.count, pat[pi] == "*" {
+                star = pi; sBack = ni; pi += 1
+            } else if star != -1 {
+                pi = star + 1; sBack += 1; ni = sBack
+            } else {
+                return false
+            }
+        }
+        while pi < pat.count, pat[pi] == "*" { pi += 1 }
+        return pi == pat.count
     }
 
     private func fourCCToString(_ code: FourCharCode) -> String {
