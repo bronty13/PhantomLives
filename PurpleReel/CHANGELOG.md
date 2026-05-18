@@ -1,6 +1,121 @@
 # PurpleReel Changelog
 
-## Unreleased — Kyno-parity round 2 (workspace, history, full menu bar)
+## Unreleased — Sprint 3-4: Kyno parity closeout (Medium + Large rows)
+
+A run through every remaining Kyno parity item in `KYNO_RESEARCH.md`.
+Builds 327 → 348. Canonical status: `KYNO_RESEARCH.md` (per-row), this
+section is the user-facing rollup.
+
+### Medium bucket (rows 10, 11, 14, 15, 18, 27, 28, 41, 47, 52, 61,
+68, 80)
+
+- **Timecode burn-in during transcode** (row 10). Convert dialog →
+  "Burn timecode into video". `TranscodeJob.applyComposition` switches
+  to a CIFilter-handler videoComposition that runs the opacity ramp +
+  per-frame TC overlay in one pass.
+- **LUT auto-detection** (row 11). `LUTLibraryService` walks PurpleReel
+  + FCP `*.fcpbundle` + Resolve LUT roots; `PlayerController.load`
+  matches filename keywords (`SLog3` / `V-Log` / `LogC` / `HLG` etc.)
+  and auto-applies. Settings → General → "Auto-apply suggested LUT".
+- **Folder-tree metadata transfer** (row 14). File → "Transfer Metadata
+  Between Folders…" copies clip_metadata + rating + tags across two
+  folders matched by filename + size.
+- **Batch export frames at every marker, with LUT baked in** (row 15).
+  Playback → "Export Frames at Markers…" (⌥⌘⇧E). One PNG per marker,
+  filename embeds `HHMMSS_FFf_<note-slug>`.
+- **Excel/CSV report with thumbnails** (row 16). File → Export Report
+  → CSV / HTML. HTML embeds the middle-frame thumbnail per row as
+  base64 PNG; CSV writes 22 columns with RFC 4180 escaping.
+- **Paste & rename** (row 18). File → "Paste with Rename…" (⌘⇧V) reads
+  file URLs from NSPasteboard, applies a `{date}_{orig}{ext}` template,
+  copies into a chosen folder.
+- **AND / OR filter combine mode** (row 27). `filterMatchMode` AppStorage
+  flips active-filter set between AND and OR. Pills bar exposes the
+  chip.
+- **VFR vs CFR filter** (row 28). v5 schema adds `asset.isVFR`.
+  MediaScanner detects via `nominalFrameRate` vs `minFrameDuration`
+  (>10% gap = VFR). Filter → Frame Rate → CFR / VFR / Unknown.
+- **Poster-frame keyboard P** (row 41). v6 schema adds
+  `asset.posterFrameSeconds`. P key captures the playhead; ⇧P clears.
+  `ThumbnailService.posterFrame(for:seconds:)` caches one frame per
+  (path, modtime, seconds). Grid + List cells render the poster as the
+  at-rest frame; hover-scrub still uses the 12-frame strip.
+- **Edit Tags ⌘⇧T + autocomplete** (rows 25, 47). `BatchTagEditorSheet`
+  shows union-of-selection tags with "partial" badges, autocomplete
+  from known tag names, additive add / batch remove.
+- **Pitch-preserved playback at 0.5/0.75/1.25/1.5/2×** (row 52).
+  `item.audioTimePitchAlgorithm = .spectral`. Playback → Speed
+  sub-menu.
+- **C4 IDs + ASC-MHL v2.0** (row 61). `HashAlgorithm.c4` = SHA-512
+  base58-with-c4-prefix. New `ASCMHLWriter` emits the Netflix-required
+  v2.0 schema. `BackupJob.mhlFormat` picks legacy vs ASC-MHL.
+- **Live waveform column in the list view** (row 68). Optional
+  `ListColumn.waveform`. `WaveformService.cachedOrGenerate` caches
+  peaks as JSON keyed by (path, modtime, bucketCount).
+- **Kyno `.LP_Store/` XML import** (row 80). Metadata → "Import from
+  Kyno (.LP_Store)…" recursively walks the chosen root and parses
+  sidecar XMLs with a permissive XMLParserDelegate (accepts
+  schema-drift synonyms — `<asset>`/`<clip>`/`<file>`,
+  `<rating>`/`<stars>`, `<tag>`/`<keyword>`).
+
+### Large bucket (rows 5, 7, 8, 29, 57, 66)
+
+- **FCPXML re-import / round-trip** (row 5). Metadata → "Import
+  FCPXML…". `FCPXMLImportService.importXML(at:db:)` parses 1.8-1.11
+  with a permissive XMLParserDelegate. Match strategy: full URL-decoded
+  path → filename fallback. Merge is additive — markers de-duped by
+  ±1/fps + note, keywords union as tags, FCP `favorite` raises rating
+  to 5★ but never demotes, `<metadata><md/>` fills empty log fields
+  only.
+- **Combine multiple clips** (row 8). Convert → "Combine Clips…" (⌘⇧J).
+  `CombineClipsJob.run()` builds an `AVMutableComposition`, inserts
+  video + audio at a running CMTime cursor, copies the first clip's
+  `preferredTransform` + `naturalSize` so portrait phone footage stays
+  upright, exports via AVAssetExportSession.
+- **Shared workspace cache for NAS / SAN** (row 7). Off by default.
+  Settings → General → "Write shared metadata cache next to media".
+  `<dir>/.purplereel/<filename>.json` per clip carries technical + user
+  metadata. MediaScanner's read path checks `loadIfFresh(for:)` first
+  and skips AVAsset probes on hit. After scan, `hydrateUserMetadataFromCache`
+  runs the user portion through additive merge.
+- **Spanned-clip detection** (row 29). `SpanDetectionService.detect(in:)`
+  pure-Swift heuristic: same-dir + same-ext + matching tech specs +
+  sequential trailing digits (MVI_0001/MVI_0002, C0001/C0002,
+  00000/00001) + modtime within 120s. New "Spanned Clips" sidebar
+  section; right-click → "Combine Segments…" opens the row-8 sheet
+  pre-populated.
+- **Centralized cross-volume offline search** (row 57). v7 schema adds
+  `asset.volumeUUID` (indexed) + `asset.volumeLabel`. Catalogue persists
+  across unmounts; cells fade-overlay + cloud-slash badge offline
+  assets. Filter → "Volume / Online status" → Online / Offline.
+  `VolumeWatcher.handleMounted` calls `AppState.reconnectVolume(...)`
+  to re-anchor paths after a remount renames the volume.
+- **Workflow chains** (row 66). `WorkflowChain` model + `WorkflowChainsStore`
+  (JSON in UserDefaults). Three step kinds: Verified Backup, Transcode,
+  Export Report. `WorkflowChainRun` drives sequential execution with
+  per-step state. File → "Workflow Chains…" (⌘⇧Y) does CRUD + run.
+  `runOnCameraMediaMount` flag auto-offers the chain when a camera
+  card mounts.
+
+### Polish & UX
+
+- **Detail-view tabbed right pane** (Kyno-style). Segmented control
+  toggles Metadata / Content / Subclips / Tracks. New `ClipFramesGrid`
+  extracted from `ClipContentView`'s frames block. Active tab sticky
+  via `clipDetailInspectorTab` AppStorage.
+- **Sidebar snap-back from Detail to List**. Clicking a sidebar folder
+  while in single-clip Detail used to leave the previous clip stuck
+  on screen. `AppState.navigate(to:)` flips `viewMode` to "list" so
+  the user lands somewhere browse-able.
+- **Right-click menu wired to shipped features**. Five items used to
+  fire an "On the Kyno-parity roadmap" alert despite the underlying
+  features shipping — Export Markers as Stills, Import Metadata,
+  Tags, Edit Multiple, Export Markers as Stills (in Edit menu).
+  All now invoke the real methods. Dropped dead-end items (Batch
+  Image Transform, per-clip LUT picker).
+- **App version**: bumped through builds 327→348 during this run.
+
+
 
 - **Workspace = multiple roots** (was: single rootFolder). `Open
   Folder…` replaces the workspace; new **Add Folder to Workspace…**
