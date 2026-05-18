@@ -156,7 +156,7 @@ field is populated.
 | ⬜ | ⌘R / ⌘⌥R | Rotate right / left |
 | ⬜ | ⌥M / ⌥S | Remove marker / subclip |
 | ⬜ | ⌃⌥E / ⌃⌥W | Zebra / widescreen filter |
-| ⬜ | ⌘⇧M | Batch metadata edit |
+| ✅ | ⌘⇧M | Batch metadata edit — per-field opt-in apply across multi-selection |
 | ⬜ | ⌘⇧T | Batch tag edit |
 | ✅ | ⌘E | Convert with most-recent preset |
 | ✅ | Cmd-click / Shift-click | Multi-select in grid + list |
@@ -220,8 +220,6 @@ code drift problem that hits every keyboard-heavy app.
   entries + bundled Markdown renderer
 
 **Large** (1+ day):
-- Batch metadata edit sheet (Cmd+Shift+M) — apply tags / rating /
-  log fields across the multi-selection
 - LUT auto-detect from FCP / Resolve libraries
 - USER_MANUAL.md full task-oriented rewrite with screenshots
 - Shortcuts single-source-of-truth file + build-time generator (Swift

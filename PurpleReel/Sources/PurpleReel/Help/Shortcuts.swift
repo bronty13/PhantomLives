@@ -108,7 +108,8 @@ enum Shortcuts {
         .init(.logging, "S",      "Save subclip from I/O range"),
         .init(.logging, "⌘0…⌘5", "Set rating (0 = unrated)"),
         .init(.logging, "⌘⇧T",  "Tags sheet (roadmap)"),
-        .init(.logging, "⌘⇧M",  "Edit Multiple metadata (roadmap)"),
+        .init(.logging, "⌘⇧M",  "Edit Multiple metadata across selection",
+              source: "AppState.applyBatchMetadata(_:)"),
 
         // ---- Convert / Send ----
         .init(.convert, "⌘E",  "Convert with most-recently-used preset",

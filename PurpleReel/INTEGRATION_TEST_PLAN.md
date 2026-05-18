@@ -1028,6 +1028,84 @@ they fire system-wide while the app is frontmost).
 
 ---
 
+## Scenario 24 — Batch metadata edit sheet (⌘⇧M)
+
+Covers the per-field opt-in batch editor that applies log fields,
+rating, and additive tags across the multi-selection.
+
+**Setup**
+- Workspace contains at least 5 clips. Some have existing tags
+  (e.g. "alpha") and some have ratings.
+
+**Steps**
+
+1. **Open via menu** — pick 3+ clips (Grid view, Cmd-click). Menu
+   bar → **Metadata → Edit Multiple…** (⌘⇧M).
+   - **Expected:** Sheet opens titled "Edit Metadata for N clips"
+     matching the count.
+2. **No selection** — clear selection, open the Metadata menu.
+   - **Expected:** "Edit Multiple…" is disabled.
+3. **Apply checkboxes gate writes** — open sheet with selection.
+   - **Expected:** Every row (Rating / Add Tags / Title /
+     Description / Reel / Scene / Shot / Take / Angle / Camera) is
+     greyed out until its Apply checkbox is ticked. The Apply
+     button at the bottom-right is disabled until at least one row
+     is ticked.
+4. **Set rating across selection** — tick Apply Rating, click 4
+   stars. Click Apply.
+   - **Expected:** Sheet shows "Applied to N clips." in green and
+     auto-dismisses after ~0.8s. Click any of the previously
+     selected clips and confirm in the Metadata pane the rating is
+     now 4. Clips NOT in the selection are untouched.
+5. **Add tags (additive)** — select clips, one of which already has
+   tag "alpha". Open sheet, tick Add Tags, type "beta", Return,
+   "gamma", Return. Apply.
+   - **Expected:** All selected clips now carry "alpha" (where
+     pre-existing), "beta", and "gamma". The pre-existing "alpha"
+     was NOT cleared on the clip that had it. New tags appear in
+     the Filter menu's Has Tag submenu and in `knownTagNames`.
+6. **Set Scene + Camera, leave others unchecked** — open sheet,
+   tick Apply Scene = "2A", Apply Camera = "RED V-Raptor". Apply.
+   - **Expected:** Every selected clip gets Scene and Camera set.
+     Description / Reel / Shot / Take / Angle remain whatever they
+     were per-clip (verify by clicking individual clips).
+7. **Clearing a field** — tick Apply Scene with the field empty.
+   Apply.
+   - **Expected:** Scene is cleared on every selected clip
+     (sanitize() converts empty to nil). Other fields untouched.
+8. **Cancel** — open sheet, type into fields, click Cancel.
+   - **Expected:** No writes happen. Selection's metadata
+     unchanged.
+9. **Returned but unsubmitted tag draft** — in the tag field, type
+   "delta" but click Apply without pressing Return.
+   - **Expected:** `commitTagDraft()` runs before Apply, so "delta"
+     IS added to the selection's tags.
+10. **Single-clip mode** — select exactly one clip (no multi-select).
+    Open ⌘⇧M.
+    - **Expected:** Sheet works identically; header says "Edit
+      Metadata for 1 clip"; Apply writes to that one clip.
+11. **Cheat sheet** — Help → Keyboard Shortcuts… (⌘?), search "edit
+    multiple".
+    - **Expected:** Row appears: `⌘⇧M` → "Edit Multiple metadata
+      across selection".
+12. **FCPXML round-trip carries batched fields** — after step 6,
+    Send selected → "Save .fcpxml Only". Check the file:
+    `grep -A1 metadata ~/Downloads/PurpleReel/exports/PurpleReel_*.fcpxml`.
+    - **Expected:** Each `<asset-clip>` for a batched clip carries
+      `<md key="Scene" value="2A"/>` and `<md key="Camera"
+      value="RED V-Raptor"/>` (and Title / Description etc. for
+      any other batched fields).
+
+**Pass criteria**
+- Sheet's per-field opt-in checkbox gating is reliable: unticked
+  fields never write.
+- Tags are additive only — no destructive replacement.
+- Apply auto-dismisses after the green confirmation.
+- Multi-select drives the target set; single-select still works.
+- FCPXML emission picks up the batched fields.
+
+---
+
 ## Regression triggers
 
 After **any** change, re-run **at minimum**:
@@ -1063,3 +1141,7 @@ Scenario 22.
 After any change to **`PlayerController.jumpSeconds(_:)` /
 `seekToAnchor(direction:markerTimes:)` / PlayerView key handler /
 Playback menu / `onJumpMarker` plumbing**, re-run Scenario 23.
+
+After any change to **`BatchMetadataChange` /
+`AppState.applyBatchMetadata(_:)` / `BatchMetadataSheet`**,
+re-run Scenario 24.

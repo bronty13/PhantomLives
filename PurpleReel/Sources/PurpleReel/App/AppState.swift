@@ -429,6 +429,7 @@ final class AppState: ObservableObject {
     @Published var detailSheetVisible = false
     @Published var aiSheetState: AISheetState?
     @Published var batchRenameSheetVisible = false
+    @Published var batchMetadataSheetVisible = false
     @Published var shortcutsCheatSheetVisible = false
 
     @Published private(set) var transcript: TranscriptDocument?
@@ -609,6 +610,81 @@ final class AppState: ObservableObject {
         } catch {
             NSLog("[PurpleReel] selection load failed: \(error)")
         }
+    }
+
+    /// Apply a `BatchMetadataChange` to every asset in the current
+    /// multi-selection (or the single primary selection if no
+    /// multi-select). Each field is opt-in via the `apply…` flags —
+    /// unticked fields stay untouched on every target; ticked fields
+    /// write the corresponding value (empty string clears).
+    /// Tags are additive, never destructive.
+    /// Refreshes caches + the currently-loaded selection at the end.
+    func applyBatchMetadata(_ change: BatchMetadataChange) -> Int {
+        let targets: [Asset]
+        if !selectedAssetPaths.isEmpty {
+            targets = assets.filter { selectedAssetPaths.contains($0.path) }
+        } else if let a = selectedAsset {
+            targets = [a]
+        } else {
+            return 0
+        }
+        var applied = 0
+        for asset in targets {
+            guard let id = asset.rowId else { continue }
+            var meta = (try? db.clipMetadata(assetId: id))
+                ?? ClipMetadata(assetId: id, title: nil, description: nil,
+                                 reel: nil, scene: nil, shot: nil,
+                                 take: nil, angle: nil, camera: nil)
+            meta.assetId = id
+
+            // Single-line log fields.
+            if change.applyTitle       { meta.title       = sanitize(change.title) }
+            if change.applyDescription { meta.description = sanitize(change.description) }
+            if change.applyReel        { meta.reel        = sanitize(change.reel) }
+            if change.applyScene       { meta.scene       = sanitize(change.scene) }
+            if change.applyShot        { meta.shot        = sanitize(change.shot) }
+            if change.applyTake        { meta.take        = sanitize(change.take) }
+            if change.applyAngle       { meta.angle       = sanitize(change.angle) }
+            if change.applyCamera      { meta.camera      = sanitize(change.camera) }
+            try? db.setClipMetadata(meta)
+            clipMetadataIndex[id] = meta
+
+            // Rating.
+            if change.applyRating {
+                let existing = (try? db.rating(assetId: id)) ?? nil
+                try? db.setRating(assetId: id, stars: change.rating,
+                                    colorLabel: existing?.colorLabel,
+                                    description: existing?.description)
+                ratingIndex[asset.path] = change.rating
+            }
+
+            // Tags — additive (never clears existing). De-duplicates
+            // implicitly because asset_tag is keyed (assetId, tagId).
+            if change.applyTags {
+                for tag in change.tagsToAdd {
+                    let trimmed = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else { continue }
+                    _ = try? db.addTag(name: trimmed, assetId: id)
+                }
+            }
+
+            applied += 1
+        }
+        // If the primary selection was one of the targets, refresh
+        // the inspector pane so the user sees the new values.
+        if let p = selectedAssetPath, selectedAssetPaths.contains(p)
+                                   || targets.count == 1 {
+            loadSelectionDetail()
+        }
+        // Rebuild tag index — additive writes may have introduced new
+        // tag names not in the cache yet.
+        refreshClipMetadataIndex()
+        return applied
+    }
+
+    private func sanitize(_ s: String) -> String? {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
     }
 
     /// Persist a single ClipMetadata field. The Metadata pane calls

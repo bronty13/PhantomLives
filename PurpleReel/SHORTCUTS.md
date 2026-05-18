@@ -51,7 +51,7 @@ Generated from `Sources/PurpleReel/Help/Shortcuts.swift` — do not edit by hand
 | `S` | Save subclip from I/O range |
 | `⌘0…⌘5` | Set rating (0 = unrated) |
 | `⌘⇧T` | Tags sheet (roadmap) |
-| `⌘⇧M` | Edit Multiple metadata (roadmap) |
+| `⌘⇧M` | Edit Multiple metadata across selection |
 
 ## Convert / Send
 

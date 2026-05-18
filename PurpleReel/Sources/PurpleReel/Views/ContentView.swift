@@ -177,6 +177,10 @@ struct ContentView: View {
         .sheet(isPresented: $appState.shortcutsCheatSheetVisible) {
             ShortcutsCheatSheet()
         }
+        .sheet(isPresented: $appState.batchMetadataSheetVisible) {
+            BatchMetadataSheet()
+                .environmentObject(appState)
+        }
     }
 }
 

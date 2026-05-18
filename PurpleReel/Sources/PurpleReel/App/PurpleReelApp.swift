@@ -177,9 +177,11 @@ struct PurpleReelApp: App {
                 }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
                 Button("Edit Multiple…") {
-                    notImplementedAlert(title: "Batch metadata editor — see Kyno-parity roadmap.")
+                    appState.batchMetadataSheetVisible = true
                 }
                 .keyboardShortcut("m", modifiers: [.command, .shift])
+                .disabled(appState.selectedAssetPaths.isEmpty
+                          && appState.selectedAsset == nil)
                 Divider()
                 Button("Transcribe (Whisper)") {
                     appState.transcribeSelected(generateMarkers: false)
