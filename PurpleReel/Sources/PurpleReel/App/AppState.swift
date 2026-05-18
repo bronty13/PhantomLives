@@ -949,6 +949,70 @@ final class AppState: ObservableObject {
         refreshTags()
     }
 
+    // MARK: - Batch tag operations (⌘⇧T sheet)
+
+    @Published var batchTagSheetVisible = false
+
+    /// Assets the batch tag sheet operates on — the multi-selection
+    /// when non-empty, falling back to the primary selection. Exposed
+    /// so the sheet can show a target count.
+    var batchTagTargets: [Asset] {
+        if !selectedAssetPaths.isEmpty {
+            return assets.filter { selectedAssetPaths.contains($0.path) }
+        }
+        return selectedAsset.map { [$0] } ?? []
+    }
+
+    /// Union of tag names present on the current batch targets. Drives
+    /// the sheet's "currently-applied" list — a tag that's on every
+    /// target is shown without a badge; a tag on a subset shows a
+    /// "partial" badge so the user knows removing it touches a
+    /// strict subset of the selection.
+    func batchTagSummary() -> [(name: String, partial: Bool)] {
+        let targets = batchTagTargets
+        guard !targets.isEmpty else { return [] }
+        var counts: [String: Int] = [:]
+        for asset in targets {
+            let names = tagIndex[asset.path] ?? []
+            for n in names { counts[n, default: 0] += 1 }
+        }
+        return counts.map { (name: $0.key, partial: $0.value < targets.count) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// Apply `name` as a tag to every batch target. Additive — no-op
+    /// on assets that already carry the tag. Refreshes the in-memory
+    /// indices so the metadata pane / list columns update immediately.
+    @discardableResult
+    func batchAddTag(name: String) -> Int {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return 0 }
+        var added = 0
+        for asset in batchTagTargets {
+            guard let id = asset.rowId else { continue }
+            _ = try? db.addTag(name: trimmed, assetId: id)
+            added += 1
+        }
+        refreshClipMetadataIndex()
+        refreshTags()
+        return added
+    }
+
+    /// Remove `name` from every batch target. Idempotent on assets
+    /// that didn't carry the tag in the first place.
+    @discardableResult
+    func batchRemoveTag(name: String) -> Int {
+        var removed = 0
+        for asset in batchTagTargets {
+            guard let id = asset.rowId else { continue }
+            try? db.removeTag(name: name, assetId: id)
+            removed += 1
+        }
+        refreshClipMetadataIndex()
+        refreshTags()
+        return removed
+    }
+
     // MARK: - Rating + description
 
     func setRating(stars: Int) {

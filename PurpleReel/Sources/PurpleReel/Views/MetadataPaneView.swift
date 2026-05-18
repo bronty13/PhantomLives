@@ -25,6 +25,10 @@ struct MetadataPaneView: View {
     @State private var take: String = ""
     @State private var angle: String = ""
     @State private var camera: String = ""
+    /// One label per audio track, joined with comma on commit so the
+    /// schema stores a single text column. Kyno doesn't preserve
+    /// channel labels — a doc/interview-shop differentiator.
+    @State private var audioChannelNames: String = ""
 
     /// Drives the ⌘⌥M "focus metadata input" Kyno shortcut — the
     /// menu posts `.focusMetadata` and we route focus to the Title
@@ -38,6 +42,7 @@ struct MetadataPaneView: View {
                 ratingRow
                 titleAndDescription
                 logFieldsGrid
+                audioChannelsBlock
                 tagsBlock
                 markersBlock
             }
@@ -127,6 +132,28 @@ struct MetadataPaneView: View {
     }
 
     @ViewBuilder
+    private var audioChannelsBlock: some View {
+        Divider()
+        labelledField("Audio Channels") {
+            VStack(alignment: .leading, spacing: 4) {
+                TextField("e.g. boom, lav-Alice, lav-Bob",
+                           text: $audioChannelNames)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { commitChannelNames() }
+                Text("Comma-separated track labels. Survives transcode + FCPXML export; Kyno doesn't preserve these at all.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func commitChannelNames() {
+        let trimmed = audioChannelNames.trimmingCharacters(in: .whitespacesAndNewlines)
+        appState.updateClipMetadata(\.audioChannelNames,
+                                      value: trimmed)
+    }
+
+    @ViewBuilder
     private var tagsBlock: some View {
         Divider()
         labelledField("Tags") {
@@ -181,6 +208,7 @@ struct MetadataPaneView: View {
         take = m.take ?? ""
         angle = m.angle ?? ""
         camera = m.camera ?? ""
+        audioChannelNames = m.audioChannelNames ?? ""
     }
 }
 

@@ -259,12 +259,11 @@ struct PurpleReelApp: App {
                     }
                 }
                 Button("Tags…") {
-                    // The right pane's Log tab houses the tag editor;
-                    // this menu item nudges the user there. A standalone
-                    // tags sheet is a small Phase-2 addition.
-                    notImplementedAlert(title: "Tags sheet — for now use the Log tab on the right.")
+                    appState.batchTagSheetVisible = true
                 }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
+                .disabled(appState.selectedAsset == nil
+                          && appState.selectedAssetPaths.isEmpty)
                 Button("Edit Multiple…") {
                     appState.batchMetadataSheetVisible = true
                 }
