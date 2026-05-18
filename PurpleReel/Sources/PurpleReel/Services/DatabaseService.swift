@@ -372,22 +372,30 @@ final class DatabaseService {
 
     /// Idempotent. Creates the tag if needed, links it to the asset.
     /// Returns the tag (with its id populated).
+    ///
+    /// GRDB's `PersistableRecord.insert(db)` is non-mutating and
+    /// does NOT update the source record's id after the insert,
+    /// so we use raw SQL + `lastInsertedRowID` to fetch the new
+    /// tag's id. Re-fetching via filter() also works but costs an
+    /// extra round trip. (The earlier `var t = Tag(...); try
+    /// t.insert(db); tag = t` pattern was silently broken on new
+    /// tags — `t.id` stayed nil and the guard below threw.)
     func addTag(name: String, assetId: Int64) throws -> Tag {
         try dbQueue.write { db in
-            var tag = try Tag.filter(Column("name") == name).fetchOne(db)
-            if tag == nil {
-                let t = Tag(id: nil, name: name)
-                try t.insert(db)
-                tag = t
+            if let existing = try Tag.filter(Column("name") == name).fetchOne(db),
+               let tagId = existing.id {
+                try db.execute(sql: """
+                    INSERT OR IGNORE INTO asset_tag (assetId, tagId) VALUES (?, ?)
+                    """, arguments: [assetId, tagId])
+                return existing
             }
-            guard let tagId = tag?.id else {
-                throw NSError(domain: "PurpleReel.DB", code: -1,
-                              userInfo: [NSLocalizedDescriptionKey: "tag insert produced no id"])
-            }
+            try db.execute(sql: "INSERT INTO tag (name) VALUES (?)",
+                            arguments: [name])
+            let tagId = db.lastInsertedRowID
             try db.execute(sql: """
                 INSERT OR IGNORE INTO asset_tag (assetId, tagId) VALUES (?, ?)
                 """, arguments: [assetId, tagId])
-            return tag!
+            return Tag(id: tagId, name: name)
         }
     }
 

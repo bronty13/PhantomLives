@@ -5,8 +5,13 @@ import AppKit
 /// the middle frame by default, and cycles frames based on cursor X
 /// when the mouse hovers over it. Same UX shape Kyno's browser uses.
 struct ThumbnailCell: View {
-    @EnvironmentObject var appState: AppState
     let asset: Asset
+    /// Drives the offline-fade + cloud-slash overlay (Kyno-parity
+    /// row 57). Parent decides — SwiftUI Table column closures
+    /// don't reliably propagate `@EnvironmentObject` on macOS, so
+    /// passing it in explicitly avoids a crash when the row body
+    /// renders without AppState in its environment chain.
+    var isOnline: Bool = true
 
     @State private var urls: [URL] = []
     @State private var loadedImage: NSImage?
@@ -16,12 +21,6 @@ struct ThumbnailCell: View {
     /// poster override (P key). Used as the at-rest cell frame and
     /// when hover ends, so the cell snaps back to the user's pick.
     @State private var posterImage: NSImage?
-
-    /// True when the asset's file is currently reachable. Drives
-    /// the offline-fade + cloud-slash overlay (Kyno-parity row 57).
-    private var isOnline: Bool {
-        appState.onlinePaths.contains(asset.path)
-    }
 
     var body: some View {
         ZStack {

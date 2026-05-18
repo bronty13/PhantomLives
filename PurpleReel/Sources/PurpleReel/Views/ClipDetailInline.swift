@@ -385,17 +385,17 @@ private struct EscapeCatcher: NSViewRepresentable {
 /// for the "primary" anchor in a multi-selection), and a transcode
 /// progress overlay when the queue has a job for this asset's path.
 struct GridCell: View {
-    @EnvironmentObject var appState: AppState
     let asset: Asset
     let isSelected: Bool
     var isPrimary: Bool = false
     @ObservedObject var transcodeQueue: TranscodeQueue
-
-    /// True when the asset's file is currently reachable. Drives
-    /// the offline-fade + cloud-slash overlay (Kyno-parity row 57).
-    private var isOnline: Bool {
-        appState.onlinePaths.contains(asset.path)
-    }
+    /// Drives the offline-fade + cloud-slash overlay (Kyno-parity
+    /// row 57). Passed in by the parent because SwiftUI Grid /
+    /// List cell-builder closures don't reliably propagate
+    /// `@EnvironmentObject` across macOS Table column boundaries
+    /// (crash reported 2026-05-18; EnvironmentObject lookup
+    /// asserts when the environment isn't propagated).
+    var isOnline: Bool = true
 
     /// All thumbnail frames for this asset (12 across the duration).
     /// Loaded once on appear; hover-scrub picks an index based on

@@ -266,7 +266,8 @@ struct BrowserView: View {
         GridCell(asset: asset,
                  isSelected: selected,
                  isPrimary: primary,
-                 transcodeQueue: appState.transcodeQueue)
+                 transcodeQueue: appState.transcodeQueue,
+                 isOnline: appState.onlinePaths.contains(asset.path))
             .contentShape(Rectangle())
             .overlay(
                 ClickWithModifiers(
@@ -340,7 +341,10 @@ struct BrowserView: View {
     private var assetTable: some View {
         Table(filteredAssets, selection: tableSelection) {
             TableColumn("") { asset in
-                ThumbnailCell(asset: asset)
+                ThumbnailCell(
+                    asset: asset,
+                    isOnline: appState.onlinePaths.contains(asset.path)
+                )
             }
             .width(90)
             TableColumn("Name") { asset in

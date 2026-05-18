@@ -1,6 +1,16 @@
 # PurpleReel Changelog
 
-## Unreleased — Sprint 3-4: Kyno parity closeout (Medium + Large rows)
+PurpleReel uses a build-number-as-version scheme — every commit
+bumps the bundle version (`0.1.<git-commit-count>`) via
+`build-app.sh`. There are no tagged releases yet, so each section
+below is a "milestone" rather than a version. The current build
+number is stamped into the app at `About → Version`.
+
+Newest first.
+
+---
+
+## Sprint 3-4 — Kyno parity closeout (Medium + Large rows)
 
 A run through every remaining Kyno parity item in `KYNO_RESEARCH.md`.
 Builds 327 → 348. Canonical status: `KYNO_RESEARCH.md` (per-row), this
@@ -113,9 +123,11 @@ section is the user-facing rollup.
   Tags, Edit Multiple, Export Markers as Stills (in Edit menu).
   All now invoke the real methods. Dropped dead-end items (Batch
   Image Transform, per-clip LUT picker).
-- **App version**: bumped through builds 327→348 during this run.
+- **App version**: bumped through builds 327→356 during this run.
 
+---
 
+## Kyno-parity Round 2 — Workspace + history + full menu bar
 
 - **Workspace = multiple roots** (was: single rootFolder). `Open
   Folder…` replaces the workspace; new **Add Folder to Workspace…**
@@ -149,7 +161,7 @@ section is the user-facing rollup.
 - New `KYNO_PARITY_ROADMAP.md` tracks the complete gap from Kyno
   with ✅ / 🟡 / ⬜ status per item.
 
-## Unreleased — Kyno-parity round 1 (Content/Tracks tabs, folder tree, browser controls)
+## Kyno-parity round 1 (Content/Tracks tabs, folder tree, browser controls)
 
 User-driven; replicating the parts of Kyno's UX that close the most
 visible gaps. Working from Kyno reference screenshots + the support
@@ -182,7 +194,7 @@ keyboard-shortcuts reference page.
 - **Sort dropdown**: Name / Date / Size / Duration / FPS, persisted
   in `@AppStorage`. Drives the `displayedAssets` sort order.
 
-## Unreleased — Round 2 follow-ups (thumbnails, SFTP pwd, BK-tree)
+## Round 2 follow-ups (thumbnails, SFTP pwd, BK-tree)
 
 - **Thumbnail strip with hover-scrub** in the browser:
   `ThumbnailService` generates 12 evenly-spaced JPEGs per video
@@ -215,7 +227,7 @@ keyboard-shortcuts reference page.
   set membership, brute-force agreement, insertion count). All
   28 tests still green.
 
-## Unreleased — Post-MVP follow-ups
+## Post-MVP follow-ups
 
 - **XCTest suite** (24 tests across 6 files, `./run-tests.sh`):
   BatchRenameService token expansion, HashingService SHA-1/MD5/SHA-256
@@ -246,7 +258,7 @@ keyboard-shortcuts reference page.
   drive the progress bar, surfaces a clear error if ffmpeg isn't
   installed.
 
-## Unreleased — Phase 11-12: polish + docs
+## Phase 11-12: polish + docs
 
 - **Audio waveform overlay**: `WaveformService` runs an AVAssetReader
   pass over the first audio track at file-load time, bucketing
@@ -264,7 +276,7 @@ keyboard-shortcuts reference page.
   toolbar, logging, LUT, transcode, backup+MHL, SFTP, FCPXML, all
   three AI flows, batch rename, output paths, recovery.
 
-## Unreleased — Phase 9-10: AI augmentation
+## Phase 9-10: AI augmentation
 
 All three differentiators that make this not-a-Kyno-clone, fully local
 (nothing leaves the machine):
@@ -304,7 +316,7 @@ All three differentiators that make this not-a-Kyno-clone, fully local
 - Unified `AISheetView` sheet handles all three flows via an
   `AISheetState` enum (progress / ready / error).
 
-## Unreleased — Phase 8: SFTP delivery
+## Phase 8: SFTP delivery
 
 - `SFTPDestination` model + `SFTPDestinationStore` (JSON-backed
   UserDefaults persistence). Multiple named destinations.
@@ -322,7 +334,7 @@ All three differentiators that make this not-a-Kyno-clone, fully local
 - `com.apple.security.network.client` added to entitlements
   (defensive; sandbox is off so not strictly required).
 
-## Unreleased — Phase 8: FCPXML export
+## Phase 8: FCPXML export
 
 - `FCPXMLWriter`: emits well-formed FCPXML v1.10 (validates with
   `xmllint`). Per-asset `<asset>` + `<format>` dedup, rational-time
@@ -337,7 +349,7 @@ All three differentiators that make this not-a-Kyno-clone, fully local
   Falls back to Finder reveal when FCP isn't installed.
 - Output lands in `~/Downloads/PurpleReel/exports/`.
 
-## Unreleased — Phase 7: verified backup + MHL
+## Phase 7: verified backup + MHL
 
 - Chunked streaming hasher (`HashingService`): CryptoKit-backed SHA-1,
   MD5, SHA-256. 4 MB chunks. Cross-validated bit-for-bit against
@@ -355,7 +367,7 @@ All three differentiators that make this not-a-Kyno-clone, fully local
   failed), reveal-in-finder for each written `.mhl`.
 - Toolbar action: "Verified Backup" (next to Transcode).
 
-## Unreleased — Sidebar layout: HStack pattern adopted
+## Sidebar layout: HStack pattern adopted
 
 - Replaced `NavigationSplitView` in `ContentView` with manual `HStack` +
   fixed 240px sidebar (MusicJournal-proven pattern). Rationale:
@@ -370,7 +382,7 @@ All three differentiators that make this not-a-Kyno-clone, fully local
   `~/Documents/GitHub/PhantomLives/CLAUDE.md` and memory rule
   `feedback_split_view_state_guard`.
 
-## Unreleased — Phase 6: transcode
+## Phase 6: transcode
 
 - Six built-in transcode presets: H.264 1080p/720p, HEVC 1080p,
   ProRes Proxy, ProRes 422, and pass-through rewrap.
@@ -385,7 +397,7 @@ All three differentiators that make this not-a-Kyno-clone, fully local
   completion.
 - Default output: `~/Downloads/PurpleReel/transcoded/`.
 
-## Unreleased — Phase 5: LUT preview
+## Phase 5: LUT preview
 
 - Adobe `.cube` LUT parser (3D LUTs native; 1D LUTs synthesized into
   a 33³ cube by per-channel curve sampling).
@@ -395,7 +407,7 @@ All three differentiators that make this not-a-Kyno-clone, fully local
 - LUT bar under the transport: load `.cube`, show name + cube size,
   clear, persist last-used path via UserDefaults.
 
-## Unreleased — Phase 2: player + logging
+## Phase 2: player + logging
 
 - AVPlayer-based detail pane with custom transport (play/pause, 1-frame
   step, J/K/L shuttle rates, I/O markers, click-to-seek scrubber).
@@ -409,7 +421,7 @@ All three differentiators that make this not-a-Kyno-clone, fully local
 - All detail state persists through GRDB CRUD on `marker`, `subclip`,
   `tag` / `asset_tag`, `rating` tables.
 
-## Unreleased — Phase 1 skeleton
+## Phase 1 skeleton
 
 - Scaffolded XcodeGen project, GRDB dependency, asset catalog with
   programmatic film-reel `AppIcon`.
