@@ -229,9 +229,22 @@ final class AppState: ObservableObject {
 
     /// Pure-function pass over the in-memory `assets` array to
     /// rebuild `spanGroups`. Cheap (O(n log n) per folder bucket);
-    /// safe to call on every scan.
+    /// safe to call on every scan. Idempotent — only mutates the
+    /// @Published value when the detected groups actually differ
+    /// from the current snapshot, so an unchanged rescan doesn't
+    /// trigger a SwiftUI redraw of the sidebar's Spanned Clips
+    /// section.
     func recomputeSpanGroups() {
-        spanGroups = SpanDetectionService.detect(in: assets)
+        let next = SpanDetectionService.detect(in: assets)
+        // Compare by (id, segment-count) pairs — cheap and stable.
+        // Full structural equality would require Equatable on the
+        // value type, which we dropped because Asset's GRDB
+        // conformances trip auto-synthesis.
+        let prevSig = spanGroups.map { "\($0.id)|\($0.segments.count)" }
+        let nextSig = next.map { "\($0.id)|\($0.segments.count)" }
+        if prevSig != nextSig {
+            spanGroups = next
+        }
     }
 
     /// Rebuild `onlinePaths` from the current `assets` array via
@@ -239,13 +252,21 @@ final class AppState: ObservableObject {
     /// volume mount/unmount notifications. Cheap — one stat
     /// syscall per asset; volumes that aren't mounted answer
     /// instantly (no I/O).
+    ///
+    /// Idempotent — only assigns when the set actually differs.
+    /// Without this gate the @Published reassignment fires on
+    /// every rescan even when no online/offline transitions
+    /// happened, causing a sidebar redraw + a brief offline-badge
+    /// flicker.
     func recomputeOnlinePaths() {
         let fm = FileManager.default
         var online: Set<String> = []
         for a in assets where fm.fileExists(atPath: a.path) {
             online.insert(a.path)
         }
-        onlinePaths = online
+        if online != onlinePaths {
+            onlinePaths = online
+        }
     }
 
     /// Repath every catalogue row tied to `volumeUUID` when the
@@ -828,16 +849,46 @@ final class AppState: ObservableObject {
             ? workspaceRoots
             : (rootFolder.map { [$0] } ?? [])
         guard !roots.isEmpty else { return }
-        isScanning = true
-        defer { isScanning = false; scanProgress = "" }
+        // Throttled scanning indicator: don't flip `isScanning` to
+        // true immediately. For the unchanged-since-last-launch
+        // case the cached + sidecar fast paths complete in <200ms;
+        // showing "Scanning…" for that long causes a visible
+        // flicker in the sidebar's Stats line. We arm a deferred
+        // task to flip the flag only if the rescan is still
+        // running after 300ms — long enough that the user actually
+        // benefits from the feedback.
+        let scanStart = Date()
+        let revealTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            if let self,
+               !Task.isCancelled,
+               Date().timeIntervalSince(scanStart) >= 0.3 {
+                self.isScanning = true
+            }
+        }
+        defer {
+            revealTask.cancel()
+            isScanning = false
+            scanProgress = ""
+        }
 
         do {
             var allScanned: [String] = []
             for root in roots {
-                scanProgress = "Scanning \(root.lastPathComponent)…"
+                // Only display per-root progress text after the
+                // 300ms reveal threshold — keeps the Stats line
+                // stable for fast no-op rescans.
+                if isScanning {
+                    scanProgress = "Scanning \(root.lastPathComponent)…"
+                }
                 let found = try await scanner.scan(root: root) { [weak self] count in
                     Task { @MainActor in
-                        self?.scanProgress = "Found \(count) media files in \(root.lastPathComponent)…"
+                        // Same gate on the per-batch progress
+                        // updates — no point showing intermediate
+                        // counts if we never showed "Scanning…".
+                        if self?.isScanning == true {
+                            self?.scanProgress = "Found \(count) media files in \(root.lastPathComponent)…"
+                        }
                     }
                 }
                 try db.upsertAssets(found)
