@@ -32,7 +32,7 @@ Legend: ✅ done · 🟡 partial · ⬜ open · ❌ explicitly skipped
 | Status | View | Notes |
 |---|---|---|
 | ✅ | List view (table with thumbnail / name / codec / res / fps / duration / size) | |
-| 🟡 | Thumbnail (grid) view | LazyVGrid tiles with selection ring + transcode-progress overlay; **TODO**: thumbnail size slider |
+| ✅ | Thumbnail (grid) view | LazyVGrid tiles with selection ring + transcode-progress overlay; toolbar tile-size slider (Grid-only, 100…320 pt, persisted via `@AppStorage("gridTileSize")`) |
 | ✅ | Single-clip Detail view | `ClipDetailInline` — player + metadata pane; ⌘1/⌘2/⌘3 switches mode |
 | 🟡 | Extra columns: Date Modified, Date Created, Date Recorded, Display size, Aspect ratio, Rating, Frame rate (visible), Title, Description, Reel/Scene/Shot/Take/Angle, Camera | Rating / Date Modified / Title / Description / Reel/Scene/Shot/Take/Angle/Camera done via `ListColumn` toolbar menu (Table cap = 3 optional at a time); **TODO**: Date Created, Date Recorded, Display size, Aspect ratio |
 
@@ -70,8 +70,8 @@ Legend: ✅ done · 🟡 partial · ⬜ open · ❌ explicitly skipped
 | ✅ | **Cmd+L** = toggle loop mode | `PlayerController.loopMode` + didPlayToEnd observer |
 | ✅ | **Cmd+F** = full-screen toggle | `NSWindow.toggleFullScreen` |
 | ✅ | **Cmd+Shift+E** = export current frame | `PlayerController.exportCurrentFrame()` w/ save panel |
-| ⬜ | **Cmd+R / Cmd+Alt+R** = rotate right/left | Already have in View menu; bind as menu shortcuts |
-| ⬜ | **Alt+M** / **Alt+S** = remove marker / subclip | |
+| ✅ | **Cmd+R / Cmd+Alt+R** = rotate right/left | `PlayerController.rotateBy(±90)`; menu items in Playback |
+| ✅ | **Alt+M** / **Alt+S** = remove marker / subclip | ⌥M nearest-marker-to-playhead, ⌥S removes most-recent subclip |
 | ⬜ | **Zebra filter** (Ctrl+Alt+E) | Metal/CIFilter: highlight pixels > threshold |
 | ⬜ | **Widescreen mattes** (Ctrl+Alt+W) | Black bars at 2.39:1 or 1.85:1 |
 | ⬜ | Aspect-fit / actual-size / fit-window zoom controls | "Fit: 52%" stepper in Kyno's toolbar |
@@ -86,7 +86,7 @@ Legend: ✅ done · 🟡 partial · ⬜ open · ❌ explicitly skipped
 | ✅ | Folder tree with drilldown | |
 | ✅ | **Workspace section** (multiple rooted folders) | "Add Folder to Workspace…" (⌘I) / "Clear Workspace…" gear menu, per-root context menu |
 | ✅ | **Devices section** | Enumerates `/Volumes/*`; boot-volume firmlink resolved to `/` so its prefix matches catalogued paths |
-| ⬜ | Sidebar collapsible sections (Workspace / Devices) | Disclosure caret on each section header |
+| ✅ | Sidebar collapsible sections (Workspace / Devices / Stats) | Disclosure chevron on each section header; per-section `@AppStorage` so the collapse state persists across launches |
 | ✅ | Sidebar settings gear menu (workspace mgmt) | Top-right gear in Workspace header |
 
 ---
@@ -153,8 +153,8 @@ field is populated.
 | ✅ | ⌘L | Toggle loop |
 | ✅ | ⌘F / ESC | Full-screen toggle |
 | ✅ | ⌘⇧E | Export current frame |
-| ⬜ | ⌘R / ⌘⌥R | Rotate right / left |
-| ⬜ | ⌥M / ⌥S | Remove marker / subclip |
+| ✅ | ⌘R / ⌘⌥R | Rotate preview right / left |
+| ✅ | ⌥M / ⌥S | Remove marker (nearest playhead) / most-recent subclip |
 | ⬜ | ⌃⌥E / ⌃⌥W | Zebra / widescreen filter |
 | ✅ | ⌘⇧M | Batch metadata edit — per-field opt-in apply across multi-selection |
 | ⬜ | ⌘⇧T | Batch tag edit |
@@ -198,16 +198,9 @@ code drift problem that hits every keyboard-heavy app.
 ## Effort-buckets for the **remaining** open items
 
 **Small** (1-2 hours each):
-- 5-second jump (Shift+Arrow / alternate J/L mode in Preferences)
-- Up/Down marker navigation
-- Cmd+R / Cmd+Alt+R rotate shortcuts
-- Alt+M / Alt+S remove marker / subclip
-- Subclips own tab
-- Sidebar collapsible sections (Workspace / Devices disclosure)
-- `SHORTCUTS.md` extraction from this roadmap
-- `INSTALL.md` consolidation (mostly exists in README + CLAUDE.md fragments)
-- Thumbnail-size slider in grid view
-- Markers in the Metadata tab (in addition to the Log tab)
+- Alternate J/L mode (5-sec jumps) in Preferences — Kyno's default
+- Subclips own tab (split out of Log)
+- Markers in the Metadata tab (alongside Log)
 
 **Medium** (half-day each):
 - Filter advanced dropdown (multi-criteria builder: Size / Date /

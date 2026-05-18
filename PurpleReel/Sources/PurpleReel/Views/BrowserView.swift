@@ -103,6 +103,22 @@ struct BrowserView: View {
 
                     sortMenu
 
+                    // Grid-mode-only tile-size slider. Tucked between
+                    // sort and scan status so it doesn't compete for
+                    // space in List or Detail mode.
+                    if appState.viewMode == "grid" {
+                        Divider().frame(height: 14)
+                        HStack(spacing: 4) {
+                            Image(systemName: "rectangle.grid.3x2")
+                                .foregroundStyle(.secondary)
+                                .font(.caption)
+                            Slider(value: $gridTileSize, in: 100...320)
+                                .frame(width: 90)
+                                .controlSize(.mini)
+                        }
+                        .help("Resize Grid view tiles")
+                    }
+
                     if appState.isScanning {
                         ProgressView().controlSize(.small)
                         Text(appState.scanProgress).foregroundStyle(.secondary).font(.caption)
@@ -192,7 +208,15 @@ struct BrowserView: View {
 
     // MARK: - Grid view (Kyno ⌘1)
 
-    private let gridColumns = [GridItem(.adaptive(minimum: 160, maximum: 220), spacing: 12)]
+    /// User-settable thumbnail tile size for Grid view (⌘1). Drives
+    /// the LazyVGrid's adaptive minimum so tiles flow with the
+    /// window. Persisted as a Double via @AppStorage.
+    @AppStorage("gridTileSize") private var gridTileSize: Double = 180
+
+    private var gridColumns: [GridItem] {
+        let m = CGFloat(gridTileSize)
+        return [GridItem(.adaptive(minimum: m, maximum: m * 1.4), spacing: 12)]
+    }
 
     private var gridView: some View {
         ScrollView {

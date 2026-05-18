@@ -36,6 +36,22 @@ struct ClipDetailInline: View {
         .background(EscapeCatcher { if isFullscreen { isFullscreen = false } })
         .onAppear { loadDetails(); loadPlayer() }
         .onChange(of: current?.path) { _, _ in loadDetails(); loadPlayer() }
+        // Parent-side handlers for PlayerCommand cases that need access
+        // to AppState (markers / subclips). PlayerView itself only
+        // forwards the controller-affecting cases.
+        .onReceive(NotificationCenter.default.publisher(for: .playerCommand)) { note in
+            guard let cmd = note.object as? PlayerCommand else { return }
+            switch cmd {
+            case .removeMarker:
+                appState.removeMarkerNearestPlayhead(
+                    currentTime: playerController.currentTime,
+                    fps: playerController.fps
+                )
+            case .removeLastSubclip:
+                appState.removeLastSubclipForSelection()
+            default: break
+            }
+        }
     }
 
     private var header: some View {

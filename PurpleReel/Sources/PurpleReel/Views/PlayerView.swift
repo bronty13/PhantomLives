@@ -127,6 +127,14 @@ final class PlayerController: ObservableObject {
 
     func toggleLoop() { loopMode.toggle() }
 
+    /// Rotate the preview ±90° around the current orientation.
+    /// Wraps within [0, 90, 180, 270]. Preview-only — never touches
+    /// the underlying file.
+    func rotateBy(_ degrees: Int) {
+        let next = ((rotation + degrees) % 360 + 360) % 360
+        rotation = next
+    }
+
     /// Capture the player's current displayed frame and save it as PNG.
     /// Uses AVAssetImageGenerator with `requestedTimeToleranceBefore/
     /// After = .zero` for frame accuracy.
@@ -381,6 +389,11 @@ struct PlayerView: View {
             case .jumpForward5s: controller.jumpSeconds(5)
             case .jumpPrevMarker: onJumpMarker(-1)
             case .jumpNextMarker: onJumpMarker(1)
+            case .rotateLeft:    controller.rotateBy(-90)
+            case .rotateRight:   controller.rotateBy(90)
+            // removeLastSubclip is parent-handled (AppState owns the
+            // subclip list). PlayerView ignores it cleanly.
+            case .removeLastSubclip: break
             }
         }
     }

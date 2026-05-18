@@ -186,6 +186,13 @@ struct ContentView: View {
 
 struct SidebarView: View {
     @EnvironmentObject var appState: AppState
+    // Per-section collapse state — persisted across launches so the
+    // user's preferred sidebar layout sticks. Sections collapse
+    // independently; their headers remain visible (with the chevron)
+    // so the user can re-expand without rummaging.
+    @AppStorage("sidebar.workspace.expanded") private var workspaceExpanded: Bool = true
+    @AppStorage("sidebar.devices.expanded")   private var devicesExpanded:   Bool = true
+    @AppStorage("sidebar.stats.expanded")     private var statsExpanded:     Bool = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -203,42 +210,36 @@ struct SidebarView: View {
             // user can browse files even before adding a workspace.
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Workspace")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 12)
-                        .padding(.top, 6)
-                    if appState.workspaceRoots.isEmpty {
-                        Text("Drag a folder here or use ⌘O to add one.")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                    } else {
-                        ForEach(appState.workspaceRoots, id: \.self) { root in
-                            if let tree = appState.folderTree(forRoot: root) {
-                                FolderNodeRow(node: tree, depth: 0,
-                                                workspaceParentLabel: workspaceParentLabel(root))
-                                    .environmentObject(appState)
-                                    .contextMenu {
-                                        workspaceRootContextMenu(root: root)
-                                    }
+                    sectionHeader("Workspace", expanded: $workspaceExpanded)
+                    if workspaceExpanded {
+                        if appState.workspaceRoots.isEmpty {
+                            Text("Drag a folder here or use ⌘O to add one.")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                        } else {
+                            ForEach(appState.workspaceRoots, id: \.self) { root in
+                                if let tree = appState.folderTree(forRoot: root) {
+                                    FolderNodeRow(node: tree, depth: 0,
+                                                    workspaceParentLabel: workspaceParentLabel(root))
+                                        .environmentObject(appState)
+                                        .contextMenu {
+                                            workspaceRootContextMenu(root: root)
+                                        }
+                                }
                             }
                         }
                     }
                     Divider().padding(.vertical, 8)
-                    Text("Devices")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 4)
-                    DevicesSection()
-                        .environmentObject(appState)
+                    sectionHeader("Devices", expanded: $devicesExpanded)
+                    if devicesExpanded {
+                        DevicesSection()
+                            .environmentObject(appState)
+                    }
                     Divider().padding(.vertical, 8)
-                    Text("Stats")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 12)
+                    sectionHeader("Stats", expanded: $statsExpanded)
+                    if statsExpanded {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             Text("Items").foregroundStyle(.secondary)
@@ -256,10 +257,39 @@ struct SidebarView: View {
                     .font(.caption)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
+                    }
                 }
                 .padding(.bottom, 8)
             }
         }
+    }
+
+    /// Collapsible section header — Kyno-style disclosure chevron
+    /// + label. Clicking anywhere on the header toggles the section.
+    /// State persists across launches via @AppStorage on each
+    /// section's binding.
+    private func sectionHeader(_ title: String,
+                                expanded: Binding<Bool>) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                expanded.wrappedValue.toggle()
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: expanded.wrappedValue ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 12)
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     /// Kyno-style right-click menu for a workspace-root row.

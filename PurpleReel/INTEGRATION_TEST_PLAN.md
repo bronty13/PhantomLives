@@ -1106,6 +1106,80 @@ rating, and additive tags across the multi-selection.
 
 ---
 
+## Scenario 25 — Polish round: rotate / remove / collapsible sidebar / grid slider
+
+Four small Kyno-parity items bundled. Each step exercises one
+specific binding or affordance.
+
+**Setup**
+- A clip selected with at least two markers + one subclip.
+- Workspace + Devices sections expanded by default.
+
+**Steps**
+
+1. **⌘R rotate clockwise** — press ⌘R in the player.
+   - **Expected:** Preview rotates 90° clockwise. The underlying
+     file is untouched (verify by reopening in QuickLook or by
+     transcoding — output matches source orientation).
+2. **⌘⌥R rotate counter-clockwise** — press ⌘⌥R.
+   - **Expected:** Preview rotates back through 0°. Repeat presses
+     wrap through 0/270/180/90 cleanly.
+3. **Playback menu** — open menu bar → Playback. Verify items
+   "Rotate Clockwise (⌘R)" and "Rotate Counter-clockwise (⌘⌥R)"
+   are present.
+4. **⌥M remove marker** — seek the playhead to within a frame of
+   marker A. Press ⌥M.
+   - **Expected:** Marker A is removed from both the Log tab and
+     the Metadata pane. The other marker remains.
+5. **⌥M with no nearby marker** — seek to a position well away
+   from any marker. Press ⌥M.
+   - **Expected:** Removes the marker nearest to the playhead (no
+     no-op). Use only with playhead near the intended target.
+6. **⌥S remove last subclip** — press ⌥S.
+   - **Expected:** The most recently created subclip is removed.
+     The earlier subclip(s) stay.
+7. **Disabled when no clip selected** — clear selection. Open
+   Playback menu.
+   - **Expected:** Remove Marker at Playhead, Remove Last Subclip,
+     and all transport items that need a clip are disabled.
+8. **Sidebar disclosure — Workspace** — click the "Workspace"
+   section header.
+   - **Expected:** Chevron flips from ▼ to ▶; the workspace tree
+     collapses. Click again to expand.
+9. **Sidebar disclosure — Devices** — same on the "Devices"
+   header.
+   - **Expected:** Devices list collapses/expands independently.
+10. **Sidebar disclosure — Stats** — same on the "Stats" header.
+11. **Disclosure persistence** — collapse Workspace, quit
+    PurpleReel, relaunch.
+    - **Expected:** Workspace remains collapsed (driven by
+      `@AppStorage("sidebar.workspace.expanded")`). Devices and
+      Stats keep their states too.
+12. **Grid tile-size slider — Grid mode only** — switch to Grid
+    view (⌘1). Toolbar row 1 shows a small slider with a 3×2
+    rectangle icon between Sort and the count.
+    - **Expected:** Slider visible in Grid view; absent in List
+      (⌘2) and Detail (⌘3).
+13. **Slider effect** — drag the slider left/right.
+    - **Expected:** Tiles re-flow continuously. At minimum (100)
+      tiles are dense; at max (320) they're large. Persists across
+      relaunches via @AppStorage("gridTileSize").
+14. **Cheat sheet** — Help → Keyboard Shortcuts… (⌘?). Search
+    "rotate" and "remove".
+    - **Expected:** ⌘R / ⌘⌥R rows under View; ⌥M / ⌥S rows under
+      Logging & Metadata. SHORTCUTS.md `grep -E "Rotate|Remove"`
+      shows the same.
+
+**Pass criteria**
+- ⌘R / ⌘⌥R rotate the preview; underlying file is untouched.
+- ⌥M removes the nearest marker; ⌥S removes the latest subclip.
+- All three sidebar sections collapse independently and persist.
+- Grid tile slider lives only in Grid view, persists, and re-flows
+  cells continuously.
+- Cheat sheet + SHORTCUTS.md reflect all four new combos.
+
+---
+
 ## Regression triggers
 
 After **any** change, re-run **at minimum**:
@@ -1145,3 +1219,8 @@ Playback menu / `onJumpMarker` plumbing**, re-run Scenario 23.
 After any change to **`BatchMetadataChange` /
 `AppState.applyBatchMetadata(_:)` / `BatchMetadataSheet`**,
 re-run Scenario 24.
+
+After any change to **`PlayerController.rotateBy(_:)` /
+`AppState.removeMarkerNearestPlayhead(...)` /
+`removeLastSubclipForSelection()` / sidebar `sectionHeader(...)` /
+grid `gridTileSize` slider**, re-run Scenario 25.

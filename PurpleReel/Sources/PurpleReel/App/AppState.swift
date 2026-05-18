@@ -740,6 +740,30 @@ final class AppState: ObservableObject {
         refreshMarkers()
     }
 
+    /// ⌥M handler — remove the marker closest to the current player
+    /// playhead. ε = 1/(fps) so anything within a frame counts.
+    /// `currentTime` comes from the menu-bar listener, since AppState
+    /// doesn't own the PlayerController directly.
+    func removeMarkerNearestPlayhead(currentTime: Double, fps: Double) {
+        guard !markers.isEmpty else { return }
+        let epsilon = max(0.05, 1.0 / max(fps, 1))
+        let candidates = markers.filter {
+            abs($0.timecodeIn - currentTime) <= epsilon
+        }
+        if let target = candidates.first ?? markers.min(by: {
+            abs($0.timecodeIn - currentTime) < abs($1.timecodeIn - currentTime)
+        }) {
+            deleteMarker(target)
+        }
+    }
+
+    /// ⌥S handler — remove the most recently created subclip on the
+    /// current selection.
+    func removeLastSubclipForSelection() {
+        guard let last = subclips.last else { return }
+        deleteSubclip(last)
+    }
+
     func updateMarkerNote(_ marker: Marker, note: String) {
         var copy = marker
         copy.note = note.isEmpty ? nil : note

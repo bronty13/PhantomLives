@@ -1,5 +1,5 @@
 enum AppVersion {
-    static let marketing = "0.1.303"
-    static let build = "303.3f27236"
+    static let marketing = "0.1.304"
+    static let build = "304.8496d3e"
     static let display = "v\(AppVersion.marketing) (\(AppVersion.build))"
 }

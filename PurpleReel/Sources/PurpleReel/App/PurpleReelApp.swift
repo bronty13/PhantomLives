@@ -96,6 +96,17 @@ struct PurpleReelApp: App {
                 }
                 .keyboardShortcut("f", modifiers: [.command])
                 Divider()
+                Button("Rotate Clockwise") {
+                    NotificationCenter.default.post(name: .playerCommand,
+                                                    object: PlayerCommand.rotateRight)
+                }
+                .keyboardShortcut("r", modifiers: [.command])
+                Button("Rotate Counter-clockwise") {
+                    NotificationCenter.default.post(name: .playerCommand,
+                                                    object: PlayerCommand.rotateLeft)
+                }
+                .keyboardShortcut("r", modifiers: [.command, .option])
+                Divider()
                 Button("Jump Back 5 Seconds") {
                     NotificationCenter.default.post(name: .playerCommand,
                                                     object: PlayerCommand.jumpBack5s)
@@ -143,11 +154,18 @@ struct PurpleReelApp: App {
                                                     object: PlayerCommand.removeMarker)
                 }
                 .keyboardShortcut("m", modifiers: [.option])
+                .disabled(appState.selectedAsset == nil)
                 Button("Create or Edit Subclip") {
                     NotificationCenter.default.post(name: .playerCommand,
                                                     object: PlayerCommand.saveSubclip)
                 }
                 .keyboardShortcut("s", modifiers: [])
+                Button("Remove Last Subclip") {
+                    NotificationCenter.default.post(name: .playerCommand,
+                                                    object: PlayerCommand.removeLastSubclip)
+                }
+                .keyboardShortcut("s", modifiers: [.option])
+                .disabled(appState.selectedAsset == nil)
                 Divider()
                 Button("Export Current Frame…") {
                     NotificationCenter.default.post(name: .playerCommand,
@@ -358,10 +376,11 @@ enum PlayerCommand {
     case playInToOut
     case toggleLoop
     case setIn, setOut, clearInOut
-    case addMarker, removeMarker, saveSubclip
+    case addMarker, removeMarker, saveSubclip, removeLastSubclip
     case exportFrame
     case jumpPrevMarker, jumpNextMarker
     case jumpBack5s, jumpForward5s
+    case rotateLeft, rotateRight
 }
 
 extension Notification.Name {

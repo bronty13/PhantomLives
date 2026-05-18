@@ -47,8 +47,9 @@ Generated from `Sources/PurpleReel/Help/Shortcuts.swift` — do not edit by hand
 | Shortcut | Action |
 |---|---|
 | `M` | Add marker at playhead |
-| `⌥M` | Remove marker at playhead |
+| `⌥M` | Remove marker nearest playhead |
 | `S` | Save subclip from I/O range |
+| `⌥S` | Remove most-recent subclip |
 | `⌘0…⌘5` | Set rating (0 = unrated) |
 | `⌘⇧T` | Tags sheet (roadmap) |
 | `⌘⇧M` | Edit Multiple metadata across selection |
@@ -63,8 +64,8 @@ Generated from `Sources/PurpleReel/Help/Shortcuts.swift` — do not edit by hand
 
 | Shortcut | Action |
 |---|---|
-| `⌘R` | Rotate clockwise (roadmap) |
-| `⌘⌥R` | Rotate counter-clockwise (roadmap) |
+| `⌘R` | Rotate preview clockwise (90°) |
+| `⌘⌥R` | Rotate preview counter-clockwise (-90°) |
 | `⌃⌥E` | Zebra filter (roadmap) |
 | `⌃⌥W` | Widescreen mattes (roadmap) |
 
@@ -77,4 +78,4 @@ Generated from `Sources/PurpleReel/Help/Shortcuts.swift` — do not edit by hand
 
 ---
 
-Total: **41** documented shortcuts.
+Total: **42** documented shortcuts.

@@ -104,8 +104,11 @@ enum Shortcuts {
 
         // ---- Logging & Metadata ----
         .init(.logging, "M",      "Add marker at playhead"),
-        .init(.logging, "⌥M",    "Remove marker at playhead"),
+        .init(.logging, "⌥M",    "Remove marker nearest playhead",
+              source: "AppState.removeMarkerNearestPlayhead"),
         .init(.logging, "S",      "Save subclip from I/O range"),
+        .init(.logging, "⌥S",    "Remove most-recent subclip",
+              source: "AppState.removeLastSubclipForSelection"),
         .init(.logging, "⌘0…⌘5", "Set rating (0 = unrated)"),
         .init(.logging, "⌘⇧T",  "Tags sheet (roadmap)"),
         .init(.logging, "⌘⇧M",  "Edit Multiple metadata across selection",
@@ -116,8 +119,10 @@ enum Shortcuts {
               source: "AssetContextMenu.convertSubmenuContents"),
 
         // ---- View ----
-        .init(.view, "⌘R",  "Rotate clockwise (roadmap)"),
-        .init(.view, "⌘⌥R", "Rotate counter-clockwise (roadmap)"),
+        .init(.view, "⌘R",  "Rotate preview clockwise (90°)",
+              source: "PlayerController.rotateBy(90)"),
+        .init(.view, "⌘⌥R", "Rotate preview counter-clockwise (-90°)",
+              source: "PlayerController.rotateBy(-90)"),
         .init(.view, "⌃⌥E", "Zebra filter (roadmap)"),
         .init(.view, "⌃⌥W", "Widescreen mattes (roadmap)"),
 
