@@ -51,9 +51,16 @@ enum HelpDocs {
     // MARK: - Resolution
 
     private static func locate(_ doc: Document) -> URL? {
+        // Bundled docs — try with and without the `Help` subdir
+        // because xcodegen sometimes flattens nested resource dirs
+        // depending on how the source path is declared.
         if let bundled = Bundle.main.url(forResource: doc.resourceName,
                                            withExtension: "md",
                                            subdirectory: "Help") {
+            return bundled
+        }
+        if let bundled = Bundle.main.url(forResource: doc.resourceName,
+                                           withExtension: "md") {
             return bundled
         }
         // Look one directory up from the .app for a sibling

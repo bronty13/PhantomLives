@@ -8,6 +8,11 @@ PurpleReel.app/
 build/
 .build/
 
+# Help docs are staged into Resources/ at build time from the
+# repo-root .md files. Bundled into the .app for offline access via
+# HelpDocs; canonical copy lives at the repo root.
+Sources/PurpleReel/Resources/Help/
+
 # macOS noise
 .DS_Store
 

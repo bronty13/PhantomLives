@@ -177,7 +177,7 @@ window to find them.
 | ✅ | In-app **Help → User Manual** menu | Opens USER_MANUAL.md via `HelpDocs.open(.userManual)` (bundle → sibling-of-binary → repo path). |
 | ✅ | In-app **Help → Keyboard Shortcuts** menu | `ShortcutsCheatSheet` sheet (⌘?). Searchable, grouped, reads `Shortcuts.all`. |
 | ✅ | In-app **Help → Install & Setup** menu | Wired to open `INSTALL.md`; alerts politely until the doc itself ships. |
-| ⬜ | Bundle docs into the `.app` | Ship `*.md` under `Contents/Resources/Help/`. `HelpDocs.open(...)` already checks the bundle first, so this is a project.yml-side change. |
+| ✅ | Bundle docs into the `.app` | **Shipped.** `build-app.sh` stages USER_MANUAL.md / INSTALL.md / SHORTCUTS.md / KYNO_PARITY_ROADMAP.md into `Sources/PurpleReel/Resources/Help/` before xcodegen runs; xcodegen bundles them under `Contents/Resources/`. `HelpDocs.locate()` checks bundled paths first (with and without the `Help` subdir for xcodegen-flattening tolerance), falls back to sibling-of-binary + repo-path for dev builds. Staged copies gitignored — single source of truth is the repo-root *.md. |
 | ⬜ | Help search-bar entries | macOS's standard Help menu has a search field. Populate it via `NSHelpManager` so users can type "drilldown" and jump to the relevant section. |
 
 Implementation order suggestion:

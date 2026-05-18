@@ -30,6 +30,22 @@ swift Scripts/generate-icon.swift Sources/PurpleReel/Resources/Assets.xcassets/A
 echo "Regenerating SHORTCUTS.md..."
 swift Scripts/generate-shortcuts-md.swift >/dev/null
 
+# Stage Markdown help docs into Sources/PurpleReel/Resources/Help/
+# so xcodegen bundles them as `Contents/Resources/Help/*.md` inside
+# the .app. HelpDocs.locate() prefers the bundle path so an
+# installed app can open User Manual / Install & Setup / Shortcuts /
+# roadmap offline without falling back to the source-tree path.
+# The staged copies are gitignored; the canonical files are the
+# repo-root *.md.
+echo "Staging help docs into Resources/Help/..."
+HELP_STAGE="Sources/PurpleReel/Resources/Help"
+mkdir -p "$HELP_STAGE"
+for doc in USER_MANUAL INSTALL SHORTCUTS KYNO_PARITY_ROADMAP; do
+    if [ -f "$doc.md" ]; then
+        cp "$doc.md" "$HELP_STAGE/$doc.md"
+    fi
+done
+
 # Regenerate Xcode project from project.yml
 if command -v xcodegen >/dev/null 2>&1; then
     xcodegen generate >/dev/null
