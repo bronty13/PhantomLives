@@ -726,6 +726,18 @@ final class AppState: ObservableObject {
             self.assets = (try? db.allAssets()) ?? []
             self.rebuildFolderTree()
             self.refreshClipMetadataIndex()
+            // Compute span groups + online-paths from the cached
+            // catalogue BEFORE the rescan kicks off. Without this,
+            // the sidebar's first frame renders without the
+            // "Spanned Clips" section (and cells render without
+            // online/offline overlays), and then the rescan
+            // completing ~3-5 seconds later visibly pops both into
+            // place. Looks unprofessional ("askew, fixes itself
+            // in two increments"). Pre-seeding from cached state
+            // makes the first frame match the eventual frame for
+            // the unchanged-since-last-launch case.
+            self.recomputeSpanGroups()
+            self.recomputeOnlinePaths()
             Task { await rescan() }
         }
         // Mount/unmount + FSEvents observer. Kicked off after every
@@ -831,10 +843,24 @@ final class AppState: ObservableObject {
                 try db.upsertAssets(found)
                 allScanned.append(contentsOf: found.map(\.path))
             }
-            self.assets = try db.allAssets()
-            self.rebuildFolderTree()
-            self.refreshClipMetadataIndex()
-            self.recomputeSpanGroups()
+            // Diff before mutating @Published state. The init path
+            // already seeded `assets` / `folderTree` / `spanGroups`
+            // / `onlinePaths` from the cached DB; if the rescan
+            // produced an identical asset set, we want zero
+            // redraws so the user's launch view doesn't visibly
+            // pop. Hashing paths is cheap (one Set membership
+            // pass) compared to the SwiftUI invalidation cost.
+            let fresh = try db.allAssets()
+            let prevSig = Set(self.assets.map(\.path))
+            let nextSig = Set(fresh.map(\.path))
+            if prevSig != nextSig {
+                self.assets = fresh
+                self.rebuildFolderTree()
+                self.refreshClipMetadataIndex()
+                self.recomputeSpanGroups()
+            }
+            // Online-paths always re-snapshots — a previously-
+            // online clip may have gone offline mid-session.
             self.recomputeOnlinePaths()
             hydrateUserMetadataFromCache(scannedPaths: allScanned)
             // Soft warning when the workspace balloons past the
