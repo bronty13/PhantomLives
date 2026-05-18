@@ -40,7 +40,7 @@ swift Scripts/generate-shortcuts-md.swift >/dev/null
 echo "Staging help docs into Resources/Help/..."
 HELP_STAGE="Sources/PurpleReel/Resources/Help"
 mkdir -p "$HELP_STAGE"
-for doc in USER_MANUAL INSTALL SHORTCUTS KYNO_PARITY_ROADMAP; do
+for doc in USER_MANUAL INSTALL SHORTCUTS KYNO_PARITY_ROADMAP KYNO_RESEARCH; do
     if [ -f "$doc.md" ]; then
         cp "$doc.md" "$HELP_STAGE/$doc.md"
     fi

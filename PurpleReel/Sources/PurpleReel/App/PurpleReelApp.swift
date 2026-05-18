@@ -627,8 +627,11 @@ struct PurpleReelApp: App {
                     showPermissionsWizard = true
                 }
                 Divider()
-                Button("Visit Kyno parity roadmap") {
+                Button("Kyno Parity Roadmap") {
                     HelpDocs.open(.kynoRoadmap)
+                }
+                Button("Kyno Feature Research (every row)") {
+                    HelpDocs.open(.kynoResearch)
                 }
             }
         }

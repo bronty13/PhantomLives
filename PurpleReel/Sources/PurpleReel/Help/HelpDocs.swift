@@ -19,6 +19,7 @@ enum HelpDocs {
         case install
         case shortcutsMarkdown
         case kynoRoadmap
+        case kynoResearch
 
         /// File name (no extension) used to look up bundled resources.
         var resourceName: String {
@@ -27,6 +28,7 @@ enum HelpDocs {
             case .install:           return "INSTALL"
             case .shortcutsMarkdown: return "SHORTCUTS"
             case .kynoRoadmap:       return "KYNO_PARITY_ROADMAP"
+            case .kynoResearch:      return "KYNO_RESEARCH"
             }
         }
         /// Title used in the missing-doc alert.
@@ -36,6 +38,7 @@ enum HelpDocs {
             case .install:           return "Install & Setup"
             case .shortcutsMarkdown: return "Shortcuts Reference"
             case .kynoRoadmap:       return "Kyno Parity Roadmap"
+            case .kynoResearch:      return "Kyno Feature Research"
             }
         }
     }

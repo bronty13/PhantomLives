@@ -572,7 +572,10 @@ directory. Restart for full effect.
   generated from the canonical Swift source.
 - [`INTEGRATION_TEST_PLAN.md`](INTEGRATION_TEST_PLAN.md) — 23
   scenarios that exercise the whole surface end-to-end.
-- [`KYNO_PARITY_ROADMAP.md`](KYNO_PARITY_ROADMAP.md) — what's
-  done, what's next.
+- [`KYNO_RESEARCH.md`](KYNO_RESEARCH.md) — canonical per-feature
+  Kyno parity status (85 rows, per-row source citations + effort
+  estimates + implementation notes).
+- [`KYNO_PARITY_ROADMAP.md`](KYNO_PARITY_ROADMAP.md) — short
+  shipping-summary index pointing at `KYNO_RESEARCH.md`.
 - [`README.md`](README.md) — repo overview, build / test
   commands.
