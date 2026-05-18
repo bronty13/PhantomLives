@@ -214,6 +214,18 @@ final class PlayerController: ObservableObject {
     }
     func toggleMute() { isMuted.toggle() }
 
+    /// Cycle the widescreen-matte aspect through the four most-used
+    /// cinema values. Off → 1.85 → 2.35 → 2.39 → Off. Driven by the
+    /// ⌃⌥W Kyno shortcut; the full picker stays in the monitoring
+    /// menu for less-common ratios.
+    func cycleMatteAspect() {
+        let cycle: [Double] = [0, 1.85, 2.35, 2.39]
+        let idx = cycle.firstIndex(where: {
+            abs($0 - matteAspect) < 0.001
+        }) ?? 0
+        matteAspect = cycle[(idx + 1) % cycle.count]
+    }
+
     private var didPlayToEndObserver: NSObjectProtocol?
     private var timeObserver: Any?
     private(set) var fps: Double = 30.0
@@ -570,16 +582,7 @@ struct PlayerView: View {
             case .rotateRight:   controller.rotateBy(90)
             case .toggleMute:    controller.toggleMute()
             case .toggleZebra:   controller.zebraEnabled.toggle()
-            case .cycleMatte:
-                // Off → 1.85 → 2.35 → 2.39 → Off. Cycle through the
-                // three most common cinema aspects via one key
-                // (⌃⌥W). Power users still have the full picker in
-                // the monitoring menu.
-                let cycle: [Double] = [0, 1.85, 2.35, 2.39]
-                let idx = cycle.firstIndex(where: {
-                    abs($0 - controller.matteAspect) < 0.001
-                }) ?? 0
-                controller.matteAspect = cycle[(idx + 1) % cycle.count]
+            case .cycleMatte:    controller.cycleMatteAspect()
             // removeLastSubclip is parent-handled (AppState owns the
             // subclip list). PlayerView ignores it cleanly.
             case .removeLastSubclip: break

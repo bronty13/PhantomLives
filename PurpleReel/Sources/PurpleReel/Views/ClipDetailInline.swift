@@ -77,9 +77,14 @@ struct ClipDetailInline: View {
     @ViewBuilder
     private var centerPane: some View {
         VStack(spacing: 0) {
+            // No outer `.background(Color.black)` here — PlayerView's
+            // own VStack puts black behind ONLY the PlayerSurface
+            // (the video frame). Forcing black on the whole
+            // previewArea hides the transport-bar buttons in light
+            // mode: their default `.primary` foreground resolves to
+            // black, against a black background.
             previewArea
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black)
             if !isFullscreen {
                 Divider()
                 fileInfoBlock
