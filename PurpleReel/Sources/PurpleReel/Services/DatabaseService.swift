@@ -139,6 +139,16 @@ final class DatabaseService {
             }
         }
 
+        // v5 — variable-frame-rate flag on asset. NULL = unknown;
+        // populated by MediaScanner via the
+        // `nominalFrameRate` vs `minFrameDuration` heuristic.
+        // Drives the new VFR/CFR Filter criterion.
+        m.registerMigration("v5_asset_is_vfr") { db in
+            try db.alter(table: "asset") { t in
+                t.add(column: "isVFR", .boolean)
+            }
+        }
+
         return m
     }
 

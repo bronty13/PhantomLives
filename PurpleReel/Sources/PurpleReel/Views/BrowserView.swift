@@ -761,6 +761,14 @@ struct BrowserView: View {
                         appState.addFilter(.frameRatePreset(p))
                     }
                 }
+                Divider()
+                Section("Constant vs variable") {
+                    ForEach(FrameRateMode.allCases) { m in
+                        Button(m.displayName) {
+                            appState.addFilter(.frameRateMode(m))
+                        }
+                    }
+                }
             }
             Menu("Size") {
                 Button("≥ 100 MB") { appState.addFilter(.sizeAtLeastMB(100)) }

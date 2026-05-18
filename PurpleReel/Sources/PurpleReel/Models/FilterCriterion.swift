@@ -24,6 +24,7 @@ enum FilterCriterion: Hashable, Identifiable {
     case modifiedSince(DateBucket)   // last N days / specific date
     case recordedSince(DateBucket)
     case underFolder(String)         // path-prefix scope
+    case frameRateMode(FrameRateMode)  // VFR vs CFR (Kyno 1.7 parity)
 
     var id: String { encoded() }
 
@@ -56,6 +57,8 @@ enum FilterCriterion: Hashable, Identifiable {
         case .underFolder(let p):
             let label = (p as NSString).lastPathComponent
             return "In folder: \(label.isEmpty ? p : label)"
+        case .frameRateMode(let m):
+            return "Frame rate: \(m.displayName)"
         }
     }
 
@@ -104,6 +107,8 @@ enum FilterCriterion: Hashable, Identifiable {
             let normalized = (prefix as NSString).standardizingPath
             let pfx = normalized.hasSuffix("/") ? normalized : normalized + "/"
             return (asset.path as NSString).standardizingPath.hasPrefix(pfx)
+        case .frameRateMode(let mode):
+            return mode.matches(asset.isVFR)
         }
     }
 
@@ -127,6 +132,7 @@ enum FilterCriterion: Hashable, Identifiable {
         case .modifiedSince(let b):           return "modified=\(b.rawValue)"
         case .recordedSince(let b):           return "recorded=\(b.rawValue)"
         case .underFolder(let p):             return "folder=\(p)"
+        case .frameRateMode(let m):           return "frmode=\(m.rawValue)"
         }
     }
 
@@ -173,6 +179,10 @@ enum FilterCriterion: Hashable, Identifiable {
         }
         if let v = strip(token, prefix: "folder=") {
             return .underFolder(v)
+        }
+        if let v = strip(token, prefix: "frmode="),
+           let m = FrameRateMode(rawValue: v) {
+            return .frameRateMode(m)
         }
         return nil
     }
@@ -258,6 +268,35 @@ enum DateBucket: String, CaseIterable, Identifiable {
 
     func matches(_ date: Date) -> Bool {
         Date().timeIntervalSince(date) <= windowSeconds
+    }
+}
+
+/// VFR / CFR / unknown bucket for the Filter dropdown. Reads off
+/// `Asset.isVFR`, populated by MediaScanner at scan time. The
+/// "unknown" bucket catches assets scanned before v5 migration
+/// landed (their isVFR is NULL until rescan) and audio/image
+/// assets that have no concept of frame timing.
+enum FrameRateMode: String, CaseIterable, Identifiable {
+    case constant = "cfr"
+    case variable = "vfr"
+    case unknown  = "unknown"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .constant: return "Constant (CFR)"
+        case .variable: return "Variable (VFR) — flag for editing"
+        case .unknown:  return "Unknown / not video"
+        }
+    }
+
+    func matches(_ assetIsVFR: Bool?) -> Bool {
+        switch self {
+        case .constant: return assetIsVFR == false
+        case .variable: return assetIsVFR == true
+        case .unknown:  return assetIsVFR == nil
+        }
     }
 }
 

@@ -147,6 +147,27 @@ actor MediaScanner {
                     let subtype = CMFormatDescriptionGetMediaSubType(fmt)
                     asset.codec = fourCCToString(subtype)
                 }
+                // VFR vs CFR heuristic. `minFrameDuration` is the
+                // shortest interval AVFoundation ever sees between
+                // two adjacent frames. For a CFR track it equals
+                // `1 / nominalFrameRate`. For VFR (iPhone footage,
+                // screen recordings, some action-cam high-speed
+                // modes), the minimum interval is meaningfully
+                // tighter than the nominal-average rate would
+                // predict. We threshold the relative gap at 10%
+                // to absorb 23.976-vs-24 family noise and round-
+                // off in `nominalFrameRate`. Cheap — both values
+                // come from the same track-load we already do for
+                // the codec / size / nominal-rate.
+                let minDur = try await track.load(.minFrameDuration)
+                let minDurSec = CMTimeGetSeconds(minDur)
+                if nominalRate > 0,
+                   minDurSec.isFinite, minDurSec > 0 {
+                    let inferred = 1.0 / minDurSec
+                    let relGap = abs(Double(nominalRate) - inferred)
+                                  / Double(nominalRate)
+                    asset.isVFR = relGap > 0.10
+                }
             }
             // Audio codec — read first audio track's format four-CC.
             // Works for assets that have an audio track regardless of

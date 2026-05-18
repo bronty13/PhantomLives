@@ -34,6 +34,13 @@ struct Asset: Codable, Identifiable, Equatable, Hashable, FetchableRecord, Persi
     /// Default = nil keeps the old memberwise initializer's
     /// call-site compatible.
     var createdAt: Date? = nil
+    /// True when the scanner detected a VFR (variable frame rate)
+    /// video track, false for confirmed CFR, nil for unknown / not
+    /// applicable (audio / image / unreadable). Inferred from a
+    /// disagreement between `nominalFrameRate` and `minFrameDuration`
+    /// — iPhone footage and screen recordings are the canonical VFR
+    /// sources every FCP user wants to flag before timeline import.
+    var isVFR: Bool? = nil
 
     static let databaseTableName = "asset"
 
@@ -44,7 +51,7 @@ struct Asset: Codable, Identifiable, Equatable, Hashable, FetchableRecord, Persi
         case rowId = "id"
         case path, filename, sizeBytes, modifiedAt, codec, widthPx, heightPx
         case durationSeconds, frameRate, sha1, addedAt
-        case audioCodec, recordedAt, createdAt
+        case audioCodec, recordedAt, createdAt, isVFR
     }
 
     enum Columns {
