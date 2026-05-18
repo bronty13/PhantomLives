@@ -29,8 +29,19 @@ struct ContentView: View {
     var body: some View {
         HStack(spacing: 0) {
             if sidebarVisible {
+                // `.frame(width:)` proposes 240 but SwiftUI lets the
+                // child overflow if its intrinsic width exceeds the
+                // proposal — long folder names at deep indents inside
+                // Devices > Macintosh HD > … push the sidebar wider
+                // than 240 and clip the LEFT edge on the next render.
+                // `.clipped()` enforces visual bounds; combined with
+                // a fixed-width frame the sidebar is locked at 240
+                // regardless of content width. Long path components
+                // truncate inside the row instead of widening the
+                // sidebar.
                 SidebarView()
                     .frame(width: sidebarWidth)
+                    .clipped()
                     .background(.ultraThinMaterial)
                 Divider()
             }
@@ -474,7 +485,10 @@ private struct FolderNodeRow: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .padding(.leading, 8 + CGFloat(depth) * 12)
+            // Indent caps at depth 6 so /Users/bronty/Documents/A/B/C
+            // doesn't shove a Devices-tree row 120 pixels right and
+            // squeeze the truncated name into a few characters.
+            .padding(.leading, 8 + CGFloat(min(depth, 6)) * 12)
             .padding(.trailing, 8)
             .padding(.vertical, 3)
             .background(

@@ -103,7 +103,8 @@ private struct DeviceRow: View {
                     .truncationMode(.middle)
                 Spacer()
             }
-            .padding(.leading, 8 + CGFloat(depth) * 12)
+            // Cap deep-tree indent — see FolderNodeRow comment.
+            .padding(.leading, 8 + CGFloat(min(depth, 6)) * 12)
             .padding(.trailing, 8)
             .padding(.vertical, 3)
             .background(

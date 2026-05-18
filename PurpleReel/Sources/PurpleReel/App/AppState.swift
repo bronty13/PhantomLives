@@ -140,12 +140,48 @@ final class AppState: ObservableObject {
     }
 
     func toggleDrilldown(forPath path: String) {
-        if drilldownPaths.contains(path) {
-            drilldownPaths.remove(path)
-        } else {
+        let turningOn = !drilldownPaths.contains(path)
+        if turningOn {
             drilldownPaths.insert(path)
+        } else {
+            drilldownPaths.remove(path)
         }
         persistDrilldownPaths()
+        // Devices-folder drilldown: when the user enables drilldown
+        // on a path NOT covered by any workspace root, the catalog
+        // has no assets for it (the scanner only indexes workspace
+        // roots), so the grid stays empty and the user thinks
+        // drilldown is broken. Auto-add the path as a workspace root
+        // and rescan so files actually show up — matches the user's
+        // mental model ("turn drilldown on → see files").
+        if turningOn, !isPathUnderAnyWorkspaceRoot(path) {
+            adoptPathIntoWorkspace(path)
+        }
+    }
+
+    private func isPathUnderAnyWorkspaceRoot(_ path: String) -> Bool {
+        let p = (path as NSString).standardizingPath
+        for root in workspaceRoots {
+            let r = (root.path as NSString).standardizingPath
+            if p == r || p.hasPrefix(r + "/") { return true }
+        }
+        return false
+    }
+
+    private func adoptPathIntoWorkspace(_ path: String) {
+        // Skip the special "/" sentinel — adopting the whole boot
+        // volume would scan every file on the system and pin the
+        // workspace tree at root. Devices' clickable subfolders
+        // (Applications / Library / Users / etc.) are the right
+        // granularity to pick up.
+        guard path != "/" else { return }
+        let url = URL(fileURLWithPath: path)
+        guard !workspaceRoots.contains(url) else { return }
+        workspaceRoots.append(url)
+        if rootFolder == nil { rootFolder = url }
+        persistWorkspace()
+        // Rescan picks up the new root via `workspaceRoots`.
+        Task { await rescan() }
     }
 
     /// Map a boot-volume firmlink (e.g. `/Volumes/Macintosh HD`) back to
