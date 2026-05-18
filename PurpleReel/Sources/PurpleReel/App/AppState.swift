@@ -1887,6 +1887,11 @@ final class AppState: ObservableObject {
     /// The sheet itself reads the current multi-selection on appear.
     @Published var combineClipsSheetVisible = false
 
+    /// Visibility flag for `WorkflowChainsSheet` (Kyno-parity row
+    /// 66). Manage saved chains, plus run them against a chosen
+    /// folder with per-step progress.
+    @Published var workflowChainsSheetVisible = false
+
     /// Resolve the current multi-selection (or single selection)
     /// into an ordered Asset list for the Combine Clips sheet. We
     /// follow the current display order so the user's catalogue

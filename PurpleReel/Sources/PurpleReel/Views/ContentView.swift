@@ -227,6 +227,10 @@ struct ContentView: View {
             CombineClipsSheet(initialSources: appState.combineCandidates())
                 .environmentObject(appState)
         }
+        .sheet(isPresented: $appState.workflowChainsSheetVisible) {
+            WorkflowChainsSheet()
+                .environmentObject(appState)
+        }
     }
 }
 

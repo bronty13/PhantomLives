@@ -508,6 +508,11 @@ struct PurpleReelApp: App {
                 .keyboardShortcut("j", modifiers: [.command, .shift])
                 .disabled(appState.combineCandidates().count < 2)
                 .help("Assembly-cut without an NLE: render the selected clips head-to-tail into a single file.")
+                Button("Workflow Chains…") {
+                    appState.workflowChainsSheetVisible = true
+                }
+                .keyboardShortcut("y", modifiers: [.command, .shift])
+                .help("Saved offload → transcode → report pipelines. Silverstack-style automation.")
                 Divider()
                 Button("Show Queue…") {
                     appState.transcodeSheetVisible = true
