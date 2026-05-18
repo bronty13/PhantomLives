@@ -36,7 +36,7 @@ struct ComingFromKynoSheet: View {
                 BulletPoint("Use 'Thumbnail' instead of 'Grid' for the first view mode.")
                 BulletPoint("Sort filenames numerically (`clip2` before `clip10`).")
                 BulletPoint("Stop auto-enabling drilldown on camera-card mounts.")
-                Text("Plus PurpleReel adds Kyno-familiar shortcuts regardless of your choice: X mutes audio, ⌘⇧D toggles drilldown, ⌘U exports the I/O subclip, ⌃⌥E toggles zebra, ⌃⌥W toggles widescreen matte, ⌥⇧O opens with the default app, and ⌘⌥M focuses the metadata input.")
+                Text("Plus PurpleReel adds Kyno-familiar shortcuts regardless of your choice: X mutes audio, ⌘⇧D toggles drilldown, ⌘U exports the I/O subclip, ⌃⌥E toggles zebra, ⌃⌥W toggles widescreen matte, ⌥⇧O opens with the default app, ⌘⌥M focuses the metadata input, and ⌘←/⌘→ step between clips in Detail view.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.top, 4)

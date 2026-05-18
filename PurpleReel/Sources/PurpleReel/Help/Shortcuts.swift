@@ -77,6 +77,10 @@ enum Shortcuts {
               source: "AppState.handleAssetClick"),
         .init(.browser, "Double-click", "Open clip in Detail view (inline)",
               source: "BrowserView.openInlineDetail"),
+        .init(.browser, "⌘←", "Previous clip in displayed order (Kyno-compat)",
+              source: "AppState.selectAdjacentAsset(delta: -1)"),
+        .init(.browser, "⌘→", "Next clip in displayed order (Kyno-compat)",
+              source: "AppState.selectAdjacentAsset(delta: +1)"),
 
         // ---- Player ----
         .init(.player, "Space",   "Play / pause",

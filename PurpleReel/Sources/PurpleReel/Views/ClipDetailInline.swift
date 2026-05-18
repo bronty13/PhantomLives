@@ -79,6 +79,18 @@ struct ClipDetailInline: View {
 
     private var header: some View {
         HStack(spacing: 12) {
+            Button { appState.selectAdjacentAsset(delta: -1) } label: {
+                Image(systemName: "chevron.left")
+            }
+            .buttonStyle(.borderless)
+            .disabled(!hasPrev)
+            .help("Previous clip (⌘←)")
+            Button { appState.selectAdjacentAsset(delta: 1) } label: {
+                Image(systemName: "chevron.right")
+            }
+            .buttonStyle(.borderless)
+            .disabled(!hasNext)
+            .help("Next clip (⌘→)")
             Text(current?.filename ?? "—")
                 .font(.headline)
                 .lineLimit(1)
@@ -95,6 +107,20 @@ struct ClipDetailInline: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+    }
+
+    private var hasPrev: Bool {
+        guard let path = current?.path,
+              let idx = appState.displayedAssets.firstIndex(where: { $0.path == path })
+        else { return false }
+        return idx > 0
+    }
+
+    private var hasNext: Bool {
+        guard let path = current?.path,
+              let idx = appState.displayedAssets.firstIndex(where: { $0.path == path })
+        else { return false }
+        return idx < appState.displayedAssets.count - 1
     }
 
     @ViewBuilder

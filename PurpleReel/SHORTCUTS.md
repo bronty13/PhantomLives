@@ -19,6 +19,8 @@ Generated from `Sources/PurpleReel/Help/Shortcuts.swift` — do not edit by hand
 | `Cmd-click` | Toggle item in multi-selection |
 | `Shift-click` | Range-extend multi-selection |
 | `Double-click` | Open clip in Detail view (inline) |
+| `⌘←` | Previous clip in displayed order (Kyno-compat) |
+| `⌘→` | Next clip in displayed order (Kyno-compat) |
 
 ## Player
 
@@ -92,4 +94,4 @@ Generated from `Sources/PurpleReel/Help/Shortcuts.swift` — do not edit by hand
 
 ---
 
-Total: **56** documented shortcuts.
+Total: **58** documented shortcuts.

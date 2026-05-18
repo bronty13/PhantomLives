@@ -10,6 +10,30 @@ Newest first.
 
 ---
 
+## Sprint 5 — Coming-from-Kyno polish
+
+Verification + final polish on the Kyno compatibility bundle that
+shipped across Sprints 1-4. Confirmed all 12 keyboard / sort / label
+items in `KYNO_RESEARCH.md`'s "Recommended starting sprint" are now
+wired end-to-end (preset, first-launch sheet, Settings toggle, menu
+bindings, shortcuts catalogue).
+
+- **Detail-view clip stepper visible affordance.** `ClipDetailInline`
+  header now shows ◀ / ▶ chevron buttons next to the filename,
+  disabled at the ends of the displayed list. The ⌘← / ⌘→ keybindings
+  remained as before (wired in `PurpleReelApp.swift`'s View menu) — the
+  chevrons just make the feature discoverable for users who didn't
+  read the Kyno-compat sheet.
+- **Shortcuts catalogue + cheat-sheet.** Added the previously-missing
+  ⌘← / ⌘→ "Previous / Next clip" entries to `Help/Shortcuts.swift`
+  under the Browser group; cheat-sheet and `SHORTCUTS.md` now show
+  them.
+- **First-launch sheet copy.** `ComingFromKynoSheet`'s "regardless of
+  your choice" paragraph now lists ⌘← / ⌘→ alongside the rest of the
+  Kyno-familiar bindings.
+
+---
+
 ## Sprint 3-4 — Kyno parity closeout (Medium + Large rows)
 
 A run through every remaining Kyno parity item in `KYNO_RESEARCH.md`.
