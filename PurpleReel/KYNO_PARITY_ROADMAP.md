@@ -172,7 +172,7 @@ window to find them.
 | Status | Doc | Notes |
 |---|---|---|
 | 🟡 | `USER_MANUAL.md` — full task-oriented user manual | Stub exists. Needs end-to-end coverage: workspace setup → catalog scan → browse / filter / multi-select → player + LUT → markers/subclips → metadata pane → Convert workflow → verified backup → SFTP delivery → FCPXML to FCP → AI features (Whisper / Ollama / Similar Takes) → preferences. Plus screenshots. |
-| ⬜ | `INSTALL.md` — install manual | First-launch flow: macOS version requirement (14.4+), Developer-ID-signed `.app` vs ad-hoc, drag to `/Applications/`, TCC grants (Files & Folders), optional `brew install ffmpeg` for DNxHR / Cineform / MXF, optional `transcribe.py` venv for Whisper, Ollama for auto-describe. Troubleshooting for "executable missing" / TCC reset. |
+| ✅ | `INSTALL.md` — install manual | **Shipped.** System requirements / two install paths (`.app` and source) / Gatekeeper bypass / TCC (Files & Folders / Full Disk Access) / auto-backup-on-launch / optional deps (ffmpeg / Whisper / Ollama / sshpass) / troubleshooting / file-system layout / uninstall. Opened via Help → Install & Setup. |
 | ✅ | `SHORTCUTS.md` — keyboard shortcut cross-reference | **Generated** from `Sources/PurpleReel/Help/Shortcuts.swift` by `Scripts/generate-shortcuts-md.swift` (auto-run from `build-app.sh`). Single source-of-truth shared with the in-app cheat sheet — they can't drift. |
 | ✅ | In-app **Help → User Manual** menu | Opens USER_MANUAL.md via `HelpDocs.open(.userManual)` (bundle → sibling-of-binary → repo path). |
 | ✅ | In-app **Help → Keyboard Shortcuts** menu | `ShortcutsCheatSheet` sheet (⌘?). Searchable, grouped, reads `Shortcuts.all`. |
