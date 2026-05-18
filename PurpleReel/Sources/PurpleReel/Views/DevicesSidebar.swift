@@ -101,12 +101,15 @@ private struct DeviceRow: View {
                 Text(displayName)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Spacer()
+                    .layoutPriority(1)
+                Spacer(minLength: 4)
             }
             // Cap deep-tree indent — see FolderNodeRow comment.
             .padding(.leading, 8 + CGFloat(min(depth, 6)) * 12)
             .padding(.trailing, 8)
             .padding(.vertical, 3)
+            // Force row to fit the proposed width — see FolderNodeRow.
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 isSelected ? Color.accentColor.opacity(0.30) : Color.clear,
                 in: RoundedRectangle(cornerRadius: 4)

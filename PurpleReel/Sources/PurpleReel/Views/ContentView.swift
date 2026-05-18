@@ -32,15 +32,21 @@ struct ContentView: View {
                 // `.frame(width:)` proposes 240 but SwiftUI lets the
                 // child overflow if its intrinsic width exceeds the
                 // proposal — long folder names at deep indents inside
-                // Devices > Macintosh HD > … push the sidebar wider
-                // than 240 and clip the LEFT edge on the next render.
-                // `.clipped()` enforces visual bounds; combined with
-                // a fixed-width frame the sidebar is locked at 240
-                // regardless of content width. Long path components
-                // truncate inside the row instead of widening the
-                // sidebar.
+                // Devices > Macintosh HD > … render the underlying
+                // HStack wider than 240. The frame's DEFAULT alignment
+                // is `.center`, which then splits that overflow evenly
+                // between the leading and trailing edges. `.clipped()`
+                // hides what's beyond the frame, but the leading half
+                // of the overflow is what gets chopped — every label
+                // appears to lose its first few characters.
+                //
+                // Fix: pin the inner content to the leading edge via
+                // `alignment: .leading` so any overflow falls off the
+                // (clipped) trailing edge harmlessly instead of shoving
+                // the whole sidebar leftward. Then `.clipped()` keeps
+                // the visual bounds tight.
                 SidebarView()
-                    .frame(width: sidebarWidth)
+                    .frame(width: sidebarWidth, alignment: .leading)
                     .clipped()
                     .background(.ultraThinMaterial)
                 Divider()
@@ -471,20 +477,31 @@ private struct FolderNodeRow: View {
                 Text(node.name)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                    .layoutPriority(1)
                 if let parent = workspaceParentLabel {
                     Text(parent)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                        .layoutPriority(0)
                 }
-                Spacer()
+                Spacer(minLength: 4)
                 if node.recursiveAssetCount > 0 {
                     Text("\(node.recursiveAssetCount)")
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
+                        .fixedSize()
                 }
             }
+            // Hard cap row width — otherwise the workspace parent
+            // label "[bronty/Downloads]" plus a long folder name
+            // plus a 4-digit count plus indent can push the HStack
+            // wider than the sidebar's proposed 240. SwiftUI then
+            // hands that wider intrinsic size back up the tree and
+            // the parent frame fails to clip it cleanly. Forcing
+            // each row to fit the parent's proposal stops the leak.
+            .frame(maxWidth: .infinity, alignment: .leading)
             // Indent caps at depth 6 so /Users/bronty/Documents/A/B/C
             // doesn't shove a Devices-tree row 120 pixels right and
             // squeeze the truncated name into a few characters.

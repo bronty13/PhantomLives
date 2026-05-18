@@ -35,9 +35,20 @@ struct GeneralSettingsView: View {
     @AppStorage("importLUTsFromFCP") private var importLUTsFromFCP: Bool = true
     @AppStorage("importLUTsFromResolve") private var importLUTsFromResolve: Bool = true
     @AppStorage("applyLUTsToThumbnails") private var applyLUTsToThumbnails: Bool = false
+    @AppStorage("defaultViewOnLaunch") private var defaultViewOnLaunch: String = "list"
 
     var body: some View {
         Form {
+            Section("Startup") {
+                Picker("Default view on launch", selection: $defaultViewOnLaunch) {
+                    Text("List").tag("list")
+                    Text("Grid").tag("grid")
+                    Text("Detail").tag("detail")
+                }
+                Text("Mid-session switches still work; this decides what to land on every time the app opens.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Section("LUTs") {
                 HStack {
                     TextField("LUTs folder", text: $lutFolderPath,

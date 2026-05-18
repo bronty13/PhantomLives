@@ -13,7 +13,11 @@ final class AppState: ObservableObject {
     @AppStorage("typeFilter") var typeFilter: String = "all"  // all/video/audio/image
     @AppStorage("sortKey") var sortKey: String = "name"        // name/date/size/duration/fps/rating/modified/title
     @AppStorage("sortAscending") var sortAscending: Bool = true
-    @AppStorage("viewMode") var viewMode: String = "list"      // grid/list/detail (Kyno ⌘1/⌘2/⌘3)
+    @AppStorage("viewMode") var viewMode: String = "list"      // grid/list/detail (Kyno ⌘1/⌘2/⌘3). Reset to `defaultViewOnLaunch` on every launch via init.
+    /// User-selectable default view applied on every app launch. Set
+    /// in Settings → General. Mid-session switches to a different view
+    /// still work; this only decides what we land on at startup.
+    @AppStorage("defaultViewOnLaunch") var defaultViewOnLaunch: String = "list"
     @AppStorage("timeFilter") var timeFilter: String = "any"   // any/hour/24h/2d/7d/30d/3m/6m/year
 
     /// Set of optional List-view columns the user has turned on.
@@ -506,6 +510,9 @@ final class AppState: ObservableObject {
 
     private let scanner = MediaScanner()
     let db: DatabaseService
+    /// Mount/unmount + FSEvents observer. Consumes Settings → Devices
+    /// toggles to decide what to react to.
+    let volumeWatcher = VolumeWatcher()
     let transcodeQueue = TranscodeQueue()
     @Published var transcodeSheetVisible = false
     @Published var backupSheetVisible = false
@@ -557,6 +564,15 @@ final class AppState: ObservableObject {
             self.refreshClipMetadataIndex()
             Task { await rescan() }
         }
+        // Mount/unmount + FSEvents observer. Kicked off after every
+        // other init step so the watcher sees the fully-hydrated
+        // workspace on its first stream rebuild.
+        volumeWatcher.start(appState: self)
+        // Per-launch view reset. The user picks the preferred startup
+        // view in Settings → General → "Default view on launch";
+        // mid-session switches still stick (and are persisted), but
+        // every launch lands back on the configured default.
+        self.viewMode = defaultViewOnLaunch
     }
 
     // MARK: - Root folder / scan
@@ -621,6 +637,9 @@ final class AppState: ObservableObject {
         let paths = workspaceRoots.map { $0.path }
         UserDefaults.standard.set(paths, forKey: "workspaceRoots")
         UserDefaults.standard.set(rootFolder?.path, forKey: "rootFolder")
+        // Workspace shape changed — re-aim the FSEvents stream so new
+        // roots are observed and removed roots stop firing rescans.
+        volumeWatcher.rebuildStream()
     }
 
     /// Scan every workspace root and union the results into the

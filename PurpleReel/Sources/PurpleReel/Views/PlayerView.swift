@@ -2,6 +2,33 @@ import SwiftUI
 import AVKit
 import UniformTypeIdentifiers
 
+/// How the video frame is sized inside the player surface.
+///
+/// - `fit`: aspect-fit (letterbox / pillarbox to preserve aspect).
+///   Default — the rectangle fills the surface without cropping.
+/// - `fill`: aspect-fill (crops). Good for previewing reframes.
+/// - `actualSize`: 1:1 pixel-for-pixel. Video may exceed the surface;
+///   excess is centered and clipped at the bounds. Useful for QC at
+///   100% — a 4K video in a 1080p preview no longer downsamples.
+enum ZoomMode: String, CaseIterable, Identifiable {
+    case fit, fill, actualSize
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .fit:        return "Fit Window"
+        case .fill:       return "Fill Window"
+        case .actualSize: return "Actual Size (100%)"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .fit:        return "rectangle.arrowtriangle.2.inward"
+        case .fill:       return "rectangle.arrowtriangle.2.outward"
+        case .actualSize: return "1.square"
+        }
+    }
+}
+
 /// Hosts an AVPlayer in an AVPlayerLayer-backed NSView. Custom
 /// transport sits below; we don't use AVPlayerView so we own the
 /// scrubber + keyboard handling. The layer transform applies
@@ -12,12 +39,18 @@ final class PlayerNSView: NSView {
     var rotationDegrees: Int = 0 { didSet { applyTransform() } }
     var flipHorizontal: Bool = false { didSet { applyTransform() } }
     var flipVertical: Bool = false { didSet { applyTransform() } }
+    var zoomMode: ZoomMode = .fit { didSet { needsLayout = true } }
+    /// Natural pixel size of the current video track. Used only by
+    /// `.actualSize` mode; ignored for fit / fill. Zero until the
+    /// asset loads.
+    var videoNaturalSize: CGSize = .zero { didSet { needsLayout = true } }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
         layer = CALayer()
         layer?.backgroundColor = NSColor.black.cgColor
+        layer?.masksToBounds = true   // clip actualSize overflow cleanly
         playerLayer.videoGravity = .resizeAspect
         layer?.addSublayer(playerLayer)
     }
@@ -26,8 +59,36 @@ final class PlayerNSView: NSView {
 
     override func layout() {
         super.layout()
-        playerLayer.frame = bounds
+        applyZoom()
         applyTransform()
+    }
+
+    private func applyZoom() {
+        switch zoomMode {
+        case .fit:
+            playerLayer.videoGravity = .resizeAspect
+            playerLayer.frame = bounds
+        case .fill:
+            playerLayer.videoGravity = .resizeAspectFill
+            playerLayer.frame = bounds
+        case .actualSize:
+            // Render the layer at the video's natural pixel size,
+            // centered. If the source is larger than the surface
+            // the excess is clipped by the parent layer's
+            // `masksToBounds`. If natural size hasn't been resolved
+            // yet, fall back to bounds so the user still sees the
+            // frame instead of black until the size arrives.
+            playerLayer.videoGravity = .resizeAspect
+            let s = videoNaturalSize
+            guard s.width > 0, s.height > 0 else {
+                playerLayer.frame = bounds
+                return
+            }
+            let x = (bounds.width - s.width) / 2
+            let y = (bounds.height - s.height) / 2
+            playerLayer.frame = CGRect(x: x, y: y,
+                                        width: s.width, height: s.height)
+        }
     }
 
     private func applyTransform() {
@@ -53,6 +114,8 @@ struct PlayerSurface: NSViewRepresentable {
     let rotation: Int
     let flipH: Bool
     let flipV: Bool
+    let zoomMode: ZoomMode
+    let naturalSize: CGSize
 
     func makeNSView(context: Context) -> PlayerNSView {
         let v = PlayerNSView()
@@ -60,6 +123,8 @@ struct PlayerSurface: NSViewRepresentable {
         v.rotationDegrees = rotation
         v.flipHorizontal = flipH
         v.flipVertical = flipV
+        v.zoomMode = zoomMode
+        v.videoNaturalSize = naturalSize
         return v
     }
 
@@ -70,6 +135,10 @@ struct PlayerSurface: NSViewRepresentable {
         if nsView.rotationDegrees != rotation { nsView.rotationDegrees = rotation }
         if nsView.flipHorizontal != flipH { nsView.flipHorizontal = flipH }
         if nsView.flipVertical != flipV { nsView.flipVertical = flipV }
+        if nsView.zoomMode != zoomMode { nsView.zoomMode = zoomMode }
+        if nsView.videoNaturalSize != naturalSize {
+            nsView.videoNaturalSize = naturalSize
+        }
     }
 }
 
@@ -89,6 +158,52 @@ final class PlayerController: ObservableObject {
     /// Loop mode: when on, the AVPlayer auto-seeks back to the start
     /// (or to `inMarker` when an I/O range is set) on item end.
     @Published var loopMode: Bool = false
+    /// Zoom / fit mode for the player surface. Hydrated from
+    /// `playerZoomMode` AppStorage on init so the user's preference
+    /// sticks across clips and launches. See `ZoomMode`.
+    @Published var zoomMode: ZoomMode = {
+        let raw = UserDefaults.standard.string(forKey: "playerZoomMode") ?? ""
+        return ZoomMode(rawValue: raw) ?? .fit
+    }() {
+        didSet {
+            UserDefaults.standard.set(zoomMode.rawValue, forKey: "playerZoomMode")
+        }
+    }
+    /// Natural pixel size of the current video track. Pulled from
+    /// `AVAssetTrack.naturalSize` after each load; consumed only by
+    /// the `.actualSize` zoom mode.
+    @Published var videoNaturalSize: CGSize = .zero
+
+    /// Zebra overlay (highlights pixels with luma > threshold).
+    /// Toggle + threshold persist in defaults so a colorist can set
+    /// up once and have the same monitoring config across clips.
+    @Published var zebraEnabled: Bool = UserDefaults.standard.bool(forKey: "playerZebraEnabled") {
+        didSet {
+            UserDefaults.standard.set(zebraEnabled, forKey: "playerZebraEnabled")
+            reapplyEffects()
+        }
+    }
+    @Published var zebraThreshold: Double = {
+        let raw = UserDefaults.standard.object(forKey: "playerZebraThreshold") as? Double
+        return raw ?? 0.95   // 95 IRE = standard "clipping warning" preset
+    }() {
+        didSet {
+            UserDefaults.standard.set(zebraThreshold, forKey: "playerZebraThreshold")
+            reapplyEffects()
+        }
+    }
+    /// Target display aspect for the widescreen matte preview. Zero =
+    /// off (no bars). See `WidescreenAspect` for canonical values.
+    @Published var matteAspect: Double = UserDefaults.standard.double(forKey: "playerMatteAspect") {
+        didSet {
+            UserDefaults.standard.set(matteAspect, forKey: "playerMatteAspect")
+            reapplyEffects()
+        }
+    }
+
+    private func reapplyEffects() {
+        if let item = player.currentItem { applyEffectsToItem(item) }
+    }
 
     let player = AVPlayer()
     private var didPlayToEndObserver: NSObjectProtocol?
@@ -169,7 +284,7 @@ final class PlayerController: ObservableObject {
         self.fps = fps > 0 ? fps : 30
         self.currentURL = url
         let item = AVPlayerItem(url: url)
-        applyLUTToItem(item)
+        applyEffectsToItem(item)
         player.replaceCurrentItem(with: item)
         currentTime = 0
         duration = 0
@@ -178,6 +293,10 @@ final class PlayerController: ObservableObject {
         outMarker = nil
         currentRate = 0
         waveform = nil
+        // Clear the previous clip's natural size — the new value
+        // arrives via the async track-load below. Leaving the old
+        // value in place would size `.actualSize` to the wrong frame.
+        videoNaturalSize = .zero
         waveformTask?.cancel()
         waveformTask = Task { [weak self] in
             // Async waveform generation. Cancels cleanly when the
@@ -198,28 +317,72 @@ final class PlayerController: ObservableObject {
                 NSLog("[PurpleReel] could not load duration: \(error)")
             }
         }
+
+        // Resolve the video track's natural size for `.actualSize`
+        // zoom. AVAssetTrack.naturalSize is the encoded pixel
+        // dimensions, ignoring the `preferredTransform` rotation; we
+        // pass the raw size since the player layer applies its own
+        // rotation via `applyTransform()` and we don't want to
+        // double-rotate. Falls back to zero on failure, which makes
+        // `.actualSize` mode behave like `.fit` until the next clip.
+        Task { [weak self] in
+            do {
+                let tracks = try await item.asset.loadTracks(withMediaType: .video)
+                if let track = tracks.first {
+                    let size = try await track.load(.naturalSize)
+                    await MainActor.run {
+                        self?.videoNaturalSize = CGSize(
+                            width: abs(size.width),
+                            height: abs(size.height)
+                        )
+                    }
+                }
+            } catch {
+                NSLog("[PurpleReel] could not load video natural size: \(error)")
+            }
+        }
     }
 
     func setLUT(_ lut: LUTData?) {
         self.currentLUT = lut
         if let item = player.currentItem {
-            applyLUTToItem(item)
+            applyEffectsToItem(item)
         }
     }
 
-    /// Rebuild the video composition on `item` to apply (or clear) the
-    /// current LUT via a CoreImage filter handler. Re-entered when the
-    /// LUT changes or a new asset is loaded.
-    private func applyLUTToItem(_ item: AVPlayerItem) {
-        guard let lut = currentLUT, let filter = LUTService.filter(for: lut) else {
+    /// Rebuild the video composition on `item` to apply the current
+    /// preview-only effect stack: LUT (color) → zebra (exposure
+    /// monitoring) → widescreen matte (framing preview). Re-entered
+    /// when any of those properties change or a new asset loads. If
+    /// every effect is off, drops the composition entirely so playback
+    /// uses the direct AVPlayer path (no CoreImage cost per frame).
+    private func applyEffectsToItem(_ item: AVPlayerItem) {
+        let lutFilter = currentLUT.flatMap { LUTService.filter(for: $0) }
+        let zebraOn = zebraEnabled
+        let matteOn = matteAspect > 0
+        guard lutFilter != nil || zebraOn || matteOn else {
             item.videoComposition = nil
             return
         }
+        // Capture monitoring state out of the closure scope so the
+        // filter handler doesn't reach back into `self` on the render
+        // queue.
+        let zThresh = zebraThreshold
+        let mAspect = matteAspect
         let comp = AVVideoComposition(asset: item.asset, applyingCIFiltersWithHandler: { request in
-            let source = request.sourceImage.clampedToExtent()
-            filter.setValue(source, forKey: kCIInputImageKey)
-            let output = (filter.outputImage ?? source).cropped(to: request.sourceImage.extent)
-            request.finish(with: output, context: nil)
+            var image = request.sourceImage.clampedToExtent()
+            if let f = lutFilter {
+                f.setValue(image, forKey: kCIInputImageKey)
+                image = f.outputImage ?? image
+            }
+            image = MonitoringEffects.apply(
+                to: image,
+                zebraEnabled: zebraOn,
+                zebraThreshold: zThresh,
+                matteAspect: mAspect
+            )
+            request.finish(with: image.cropped(to: request.sourceImage.extent),
+                            context: nil)
         })
         item.videoComposition = comp
     }
@@ -338,7 +501,9 @@ struct PlayerView: View {
             PlayerSurface(player: controller.player,
                            rotation: controller.rotation,
                            flipH: controller.flipHorizontal,
-                           flipV: controller.flipVertical)
+                           flipV: controller.flipVertical,
+                           zoomMode: controller.zoomMode,
+                           naturalSize: controller.videoNaturalSize)
                 .frame(minHeight: 280)
                 .background(Color.black)
 
@@ -432,6 +597,102 @@ struct PlayerView: View {
             Button("Load LUT…") { pickLUT() }
                 .controlSize(.small)
         }
+    }
+
+    private var monitoringMenu: some View {
+        Menu {
+            Section("Zebra (Overexposure)") {
+                Toggle("Enabled", isOn: Binding(
+                    get: { controller.zebraEnabled },
+                    set: { controller.zebraEnabled = $0 }
+                ))
+                .disabled(false)
+                Section("Threshold") {
+                    ForEach([0.50, 0.70, 0.80, 0.95, 1.00], id: \.self) { v in
+                        Button {
+                            controller.zebraThreshold = v
+                            if !controller.zebraEnabled {
+                                controller.zebraEnabled = true
+                            }
+                        } label: {
+                            let label = "\(Int(v * 100)) IRE"
+                            if abs(controller.zebraThreshold - v) < 0.001 {
+                                Label(label, systemImage: "checkmark")
+                            } else {
+                                Text(label)
+                            }
+                        }
+                    }
+                }
+            }
+            Section("Widescreen Matte") {
+                Button {
+                    controller.matteAspect = 0
+                } label: {
+                    if controller.matteAspect == 0 {
+                        Label("Off", systemImage: "checkmark")
+                    } else {
+                        Text("Off")
+                    }
+                }
+                ForEach(WidescreenAspect.allCases) { a in
+                    Button {
+                        controller.matteAspect = a.rawValue
+                    } label: {
+                        if abs(controller.matteAspect - a.rawValue) < 0.001 {
+                            Label(a.label, systemImage: "checkmark")
+                        } else {
+                            Text(a.label)
+                        }
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: monitoringIcon)
+                .foregroundStyle(monitoringActive ? Color.orange : Color.primary)
+        }
+        .menuStyle(.borderlessButton)
+        .frame(width: 36)
+        .help("Monitoring — zebra stripes + widescreen matte. Preview only; transcode keeps source pixels.")
+    }
+
+    /// Whichever monitoring badge to show on the toolbar icon. Zebra
+    /// takes priority because it's a continuous visual; matte is a
+    /// static crop. Both off = neutral icon, both on = zebra wins.
+    private var monitoringIcon: String {
+        if controller.zebraEnabled { return "waveform.path.ecg.rectangle" }
+        if controller.matteAspect > 0 { return "rectangle.split.3x1" }
+        return "viewfinder"
+    }
+    private var monitoringActive: Bool {
+        controller.zebraEnabled || controller.matteAspect > 0
+    }
+
+    private var zoomMenu: some View {
+        Menu {
+            ForEach(ZoomMode.allCases) { mode in
+                Button {
+                    controller.zoomMode = mode
+                } label: {
+                    if controller.zoomMode == mode {
+                        Label(mode.label, systemImage: "checkmark")
+                    } else {
+                        Label(mode.label, systemImage: mode.icon)
+                    }
+                }
+            }
+            if controller.zoomMode == .actualSize,
+               controller.videoNaturalSize != .zero {
+                Divider()
+                let s = controller.videoNaturalSize
+                Text("Native: \(Int(s.width)) × \(Int(s.height))")
+            }
+        } label: {
+            Image(systemName: controller.zoomMode.icon)
+        }
+        .menuStyle(.borderlessButton)
+        .frame(width: 36)
+        .help("Zoom — Fit / Fill / Actual Size. Preview only; transcode keeps source dimensions.")
     }
 
     private var viewMenu: some View {
@@ -549,6 +810,8 @@ struct PlayerView: View {
             }
             .help("Toggle fullscreen (⌘F)")
 
+            zoomMenu
+            monitoringMenu
             viewMenu
 
             Button { controller.markIn() } label: { Text("I") }
