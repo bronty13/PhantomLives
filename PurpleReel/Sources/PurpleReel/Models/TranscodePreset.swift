@@ -56,6 +56,28 @@ struct TranscodePreset: Identifiable, Hashable, Codable {
 
     var isFFmpeg: Bool { ffmpegArgs != nil }
 
+    /// True for presets that run through Apple Silicon's hardware
+    /// video encoder (H.264 / HEVC via AVAssetExportSession). The
+    /// VTHEncoder serializes internally — running two H.264 jobs
+    /// in parallel doesn't actually speed anything up, it just
+    /// burns context-switch CPU. CPU-bound codecs (ProRes,
+    /// DNxHR, Cineform) and pass-through (no encode at all) can
+    /// genuinely run in parallel. Drives the two-pool dispatcher
+    /// in TranscodeQueue.
+    var usesHardwareEncoder: Bool {
+        if isFFmpeg { return false }
+        // Inferred from avPresetName because AVAssetExportSession
+        // doesn't expose the encoder family directly. Hardware-
+        // bound presets are the H.264 / HEVC family.
+        let name = avPresetName
+        return name == AVAssetExportPreset1920x1080
+            || name == AVAssetExportPreset1280x720
+            || name == AVAssetExportPreset640x480
+            || name == AVAssetExportPreset3840x2160
+            || name == AVAssetExportPresetHEVC1920x1080
+            || name == AVAssetExportPresetHEVC3840x2160
+    }
+
     /// True if this preset was loaded from the user's custom-presets
     /// directory, false for built-ins. Drives the badge in the
     /// Convert menu and the delete affordance in Settings.

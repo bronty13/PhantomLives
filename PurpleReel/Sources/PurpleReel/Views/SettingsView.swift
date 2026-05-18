@@ -250,6 +250,7 @@ struct TagsSettingsView: View {
 struct ConversionSettingsView: View {
     @EnvironmentObject var appState: AppState
     @AppStorage("maxParallelConversions") private var maxParallel: Int = 1
+    @AppStorage("maxParallelCPUConversions") private var maxParallelCPU: Int = 3
     @AppStorage("transcodeOutputDir") private var outputDir: String = ""
     @AppStorage("preserveTranscodeTimestamps") private var preserveMtime: Bool = false
 
@@ -260,9 +261,13 @@ struct ConversionSettingsView: View {
     var body: some View {
         Form {
             Section("Queue") {
-                Stepper("Maximum parallel conversions: \(maxParallel)",
-                        value: $maxParallel, in: 1...8)
-                Text("Native AVAssetExportSession can run concurrently but shares one hardware HEVC encoder; values > 2 typically don't speed up real workloads.")
+                Stepper("Hardware-encoder conversions (H.264 / HEVC): \(maxParallel)",
+                        value: $maxParallel, in: 1...4)
+                Text("Apple Silicon's hardware video encoder serializes — running two H.264 / HEVC jobs in parallel against it doesn't actually speed anything up. Default 1; raising past 2 rarely helps real workloads.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Stepper("CPU-codec conversions (ProRes / DNxHR / Cineform / rewrap): \(maxParallelCPU)",
+                        value: $maxParallelCPU, in: 1...8)
+                Text("CPU codecs and pass-through rewraps can run in parallel without contending for shared hardware. 3 is the default sweet spot on most Apple Silicon machines; bump to 4-6 on M2 Max / M3 Max if you're transcoding 4K ProRes batches.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Output") {
