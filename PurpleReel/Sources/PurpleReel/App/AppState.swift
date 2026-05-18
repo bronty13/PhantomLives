@@ -884,6 +884,25 @@ final class AppState: ObservableObject {
         refreshMarkers()
     }
 
+    /// P-key handler. Stores the player's current playhead as the
+    /// selected asset's poster-frame override and refreshes the
+    /// in-memory `assets` list so Grid / List cells re-render with
+    /// the new frame. Pass `nil` to clear (⇧P).
+    func setPosterFrameForSelected(seconds: Double?) {
+        guard let asset = selectedAsset, let id = asset.rowId else { return }
+        try? db.setPosterFrame(assetId: id, seconds: seconds)
+        // Patch the in-memory copies so cells re-render without a
+        // full rescan. `assets` is the catalogue array (cells read
+        // from there); `selectedAsset` is its own @Published value.
+        // Matching by path is safe — path is the unique key.
+        if let idx = assets.firstIndex(where: { $0.path == asset.path }) {
+            assets[idx].posterFrameSeconds = seconds
+        }
+        var patched = asset
+        patched.posterFrameSeconds = seconds
+        selectedAsset = patched
+    }
+
     func deleteMarker(_ marker: Marker) {
         guard let mid = marker.id else { return }
         try? db.deleteMarker(id: mid)

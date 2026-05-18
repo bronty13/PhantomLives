@@ -11,6 +11,10 @@ struct ThumbnailCell: View {
     @State private var loadedImage: NSImage?
     @State private var hoverFraction: Double? = nil   // 0…1 within the cell
     @State private var hovering = false
+    /// Cached poster-frame image when the asset has a user-set
+    /// poster override (P key). Used as the at-rest cell frame and
+    /// when hover ends, so the cell snaps back to the user's pick.
+    @State private var posterImage: NSImage?
 
     var body: some View {
         ZStack {
@@ -48,6 +52,7 @@ struct ThumbnailCell: View {
         .frame(width: 80, height: 45)
         .clipped()
         .onAppear(perform: loadIfNeeded)
+        .onChange(of: asset.posterFrameSeconds) { _, _ in reloadPoster() }
         .onContinuousHover { phase in
             switch phase {
             case .active(let location):
@@ -59,10 +64,13 @@ struct ThumbnailCell: View {
             case .ended:
                 hovering = false
                 hoverFraction = nil
-                // Reset to middle frame on hover exit so the table
-                // doesn't keep the last scrubbed frame as the cell's
-                // identity.
-                if !urls.isEmpty {
+                // Reset on hover exit: prefer the user's poster
+                // pick (P key) over the auto-mid frame, so the
+                // table reads the cell as the user's chosen frame
+                // at rest.
+                if let poster = posterImage {
+                    loadedImage = poster
+                } else if !urls.isEmpty {
                     loadFrame(at: urls.count / 2)
                 }
             }
@@ -72,10 +80,42 @@ struct ThumbnailCell: View {
     private func loadIfNeeded() {
         Task {
             let urls = await ThumbnailService.thumbnails(for: asset)
+            // Resolve the user's poster-frame override (P key) in
+            // parallel — falls back to mid-strip when nil.
+            var poster: NSImage? = nil
+            if let secs = asset.posterFrameSeconds,
+               let pURL = await ThumbnailService.posterFrame(for: asset, seconds: secs) {
+                poster = NSImage(contentsOf: pURL)
+            }
             await MainActor.run {
                 self.urls = urls
-                if !urls.isEmpty {
+                self.posterImage = poster
+                if let poster {
+                    self.loadedImage = poster
+                } else if !urls.isEmpty {
                     loadFrame(at: urls.count / 2)
+                }
+            }
+        }
+    }
+
+    /// Re-resolve the poster frame after the user has changed it
+    /// (P / ⇧P). Doesn't touch the hover-scrub strip.
+    private func reloadPoster() {
+        Task {
+            var poster: NSImage? = nil
+            if let secs = asset.posterFrameSeconds,
+               let pURL = await ThumbnailService.posterFrame(for: asset, seconds: secs) {
+                poster = NSImage(contentsOf: pURL)
+            }
+            await MainActor.run {
+                self.posterImage = poster
+                if !hovering {
+                    if let poster {
+                        loadedImage = poster
+                    } else if !urls.isEmpty {
+                        loadFrame(at: urls.count / 2)
+                    }
                 }
             }
         }

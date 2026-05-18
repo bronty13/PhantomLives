@@ -149,7 +149,31 @@ final class DatabaseService {
             }
         }
 
+        // v6 — user-set poster-frame override (seconds into the
+        // clip). NULL = auto-pick mid-clip frame. Kyno-parity for
+        // the P keyboard shortcut. Lives on `asset` so the grid /
+        // list cells can read it from the same value type they
+        // already render; no extra DB join per cell.
+        m.registerMigration("v6_asset_poster_frame") { db in
+            try db.alter(table: "asset") { t in
+                t.add(column: "posterFrameSeconds", .double)
+            }
+        }
+
         return m
+    }
+
+    // MARK: - Poster frame
+
+    /// Update just the poster-frame column without touching the rest
+    /// of the asset row. Cheaper than re-upserting, and keeps the
+    /// scanner-owned columns untouched.
+    func setPosterFrame(assetId: Int64, seconds: Double?) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: """
+                UPDATE asset SET posterFrameSeconds = ? WHERE id = ?
+                """, arguments: [seconds, assetId])
+        }
     }
 
     // MARK: - Clip metadata (Kyno log fields)

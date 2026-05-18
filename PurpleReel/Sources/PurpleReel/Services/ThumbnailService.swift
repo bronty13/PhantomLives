@@ -58,6 +58,56 @@ enum ThumbnailService {
         try? FileManager.default.removeItem(at: root)
     }
 
+    /// Render a single thumbnail at the user's poster-frame time
+    /// (seconds into the clip) and return its URL. Cached by
+    /// (path, modtime, seconds) so the same poster pick re-resolves
+    /// instantly on every subsequent render, and bumping the time
+    /// invalidates without nuking the hover-scrub strip.
+    /// Image assets (already a single frame) return nil and the
+    /// caller falls back to the strip's first frame.
+    static func posterFrame(for asset: Asset, seconds: Double) async -> URL? {
+        do {
+            let dir = try cacheRoot().appendingPathComponent("posters", isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let key = "\(asset.path)|\(asset.modifiedAt.timeIntervalSince1970)|\(seconds)"
+            let digest = SHA256.hash(data: Data(key.utf8))
+            let hex = digest.map { String(format: "%02x", $0) }.joined()
+            let out = dir.appendingPathComponent("\(String(hex.prefix(32))).jpg")
+            if FileManager.default.fileExists(atPath: out.path) { return out }
+
+            return await Task.detached(priority: .utility) {
+                let url = URL(fileURLWithPath: asset.path)
+                guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+                let ext = (asset.path as NSString).pathExtension.lowercased()
+                let imageExts: Set<String> = ["jpg", "jpeg", "png", "heic",
+                                               "tif", "tiff", "gif", "bmp", "webp"]
+                if imageExts.contains(ext) { return nil }
+                let avAsset = AVURLAsset(url: url)
+                let dur = CMTimeGetSeconds(avAsset.duration)
+                guard dur.isFinite, dur > 0 else { return nil }
+                let clamped = max(0, min(seconds, dur - 0.01))
+                let gen = AVAssetImageGenerator(asset: avAsset)
+                gen.appliesPreferredTrackTransform = true
+                gen.requestedTimeToleranceBefore = .zero
+                gen.requestedTimeToleranceAfter  = .zero
+                gen.maximumSize = CGSize(width: thumbWidth, height: thumbWidth)
+                do {
+                    let cg = try gen.copyCGImage(
+                        at: CMTime(seconds: clamped, preferredTimescale: 600),
+                        actualTime: nil
+                    )
+                    if writeJPEG(cgImage: cg, to: out) { return out }
+                } catch {
+                    NSLog("[PurpleReel] poster-frame generate failed: \(error)")
+                }
+                return nil
+            }.value
+        } catch {
+            NSLog("[PurpleReel] poster-frame dir setup failed: \(error)")
+            return nil
+        }
+    }
+
     // MARK: - Internals
 
     private static func generateSync(asset: Asset, count: Int, into dir: URL) -> [URL] {

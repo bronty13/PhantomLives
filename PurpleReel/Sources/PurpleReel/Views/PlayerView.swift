@@ -549,6 +549,11 @@ struct PlayerView: View {
     /// active marker list so the player stays decoupled from the
     /// catalogue / AppState.
     var onJumpMarker: (Int) -> Void = { _ in }
+    /// Kyno-parity P key. Parent persists the player's current
+    /// playhead as the selected asset's poster-frame override (or
+    /// nil to clear via ⇧P). Closure shape lets the player stay
+    /// agnostic about which AppState owns the catalogue.
+    var onSetPosterFrame: (Double?) -> Void = { _ in }
     /// "shuttle" = multi-rate J/L (PurpleReel default, matches FCP /
     /// Premiere); "jump5s" = J/L jump 5 seconds (Kyno's default).
     /// Bound to the user-toggleable Playback menu item.
@@ -621,6 +626,8 @@ struct PlayerView: View {
             case .toggleMute:    controller.toggleMute()
             case .toggleZebra:   controller.zebraEnabled.toggle()
             case .cycleMatte:    controller.cycleMatteAspect()
+            case .setPosterFrame:   onSetPosterFrame(controller.currentTime)
+            case .clearPosterFrame: onSetPosterFrame(nil)
             // removeLastSubclip is parent-handled (AppState owns the
             // subclip list). PlayerView ignores it cleanly.
             case .removeLastSubclip: break
@@ -916,6 +923,16 @@ struct PlayerView: View {
             // regardless of compatibility mode — it's a useful key
             // that doesn't collide with PurpleReel-native ones.
             controller.toggleMute()
+            return true
+        case "p":
+            // Kyno-parity: P sets the asset's poster frame at the
+            // current playhead. Shift-P clears the override.
+            // Parent handles persistence + cell refresh.
+            if event.modifierFlags.contains(.shift) {
+                onSetPosterFrame(nil)
+            } else {
+                onSetPosterFrame(controller.currentTime)
+            }
             return true
         default: break
         }

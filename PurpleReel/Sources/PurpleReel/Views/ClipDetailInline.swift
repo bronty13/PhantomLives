@@ -124,7 +124,10 @@ struct ClipDetailInline: View {
                     controller: playerController,
                     onAddMarker: addMarker,
                     onSaveSubclip: saveSubclip,
-                    onJumpMarker: jumpToAdjacentMarker
+                    onJumpMarker: jumpToAdjacentMarker,
+                    onSetPosterFrame: { seconds in
+                        appState.setPosterFrameForSelected(seconds: seconds)
+                    }
                 )
             }
         } else {
@@ -341,6 +344,9 @@ struct GridCell: View {
     /// Cell width captured by GeometryReader so the hover handler
     /// can map cursor X to a 0…1 fraction without an extra read.
     @State private var lastWidth: CGFloat = 1
+    /// User-set poster-frame URL (P key). When non-nil, used as the
+    /// at-rest cell URL and the hover-exit fallback.
+    @State private var posterURL: URL?
 
     private var activeJob: TranscodeJob? {
         if let cur = transcodeQueue.current, cur.source.path == asset.path { return cur }
@@ -412,9 +418,10 @@ struct GridCell: View {
                     applyHover(x: location.x, width: lastWidth)
                 case .ended:
                     hovering = false
-                    if !urls.isEmpty {
-                        url = urls[urls.count / 2]
-                    }
+                    // Prefer the user's poster-frame pick on hover
+                    // exit; fall back to mid-strip when none.
+                    if let p = posterURL { url = p }
+                    else if !urls.isEmpty { url = urls[urls.count / 2] }
                 }
             }
             Text(asset.filename)
@@ -422,14 +429,41 @@ struct GridCell: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
-        .onAppear {
-            Task {
-                let urls = await ThumbnailService.thumbnails(for: asset, count: 12)
-                if !urls.isEmpty {
-                    await MainActor.run {
-                        self.urls = urls
-                        self.url = urls[urls.count / 2]
-                    }
+        .onAppear(perform: loadInitial)
+        .onChange(of: asset.posterFrameSeconds) { _, _ in reloadPoster() }
+    }
+
+    private func loadInitial() {
+        Task {
+            let urls = await ThumbnailService.thumbnails(for: asset, count: 12)
+            var poster: URL? = nil
+            if let secs = asset.posterFrameSeconds {
+                poster = await ThumbnailService.posterFrame(for: asset, seconds: secs)
+            }
+            await MainActor.run {
+                self.urls = urls
+                self.posterURL = poster
+                if let poster {
+                    self.url = poster
+                } else if !urls.isEmpty {
+                    self.url = urls[urls.count / 2]
+                }
+            }
+        }
+    }
+
+    /// Re-resolve the poster after the user has changed it (P / ⇧P).
+    private func reloadPoster() {
+        Task {
+            var poster: URL? = nil
+            if let secs = asset.posterFrameSeconds {
+                poster = await ThumbnailService.posterFrame(for: asset, seconds: secs)
+            }
+            await MainActor.run {
+                self.posterURL = poster
+                if !hovering {
+                    if let poster { url = poster }
+                    else if !urls.isEmpty { url = urls[urls.count / 2] }
                 }
             }
         }

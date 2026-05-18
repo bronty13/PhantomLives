@@ -147,7 +147,10 @@ struct ClipDetailSheet: View {
                 PlayerView(
                     controller: playerController,
                     onAddMarker: addMarker,
-                    onSaveSubclip: saveSubclip
+                    onSaveSubclip: saveSubclip,
+                    onSetPosterFrame: { seconds in
+                        appState.setPosterFrameForSelected(seconds: seconds)
+                    }
                 )
             }
         } else {

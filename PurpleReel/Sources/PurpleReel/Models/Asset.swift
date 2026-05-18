@@ -41,6 +41,13 @@ struct Asset: Codable, Identifiable, Equatable, Hashable, FetchableRecord, Persi
     /// — iPhone footage and screen recordings are the canonical VFR
     /// sources every FCP user wants to flag before timeline import.
     var isVFR: Bool? = nil
+    /// User-set poster-frame time (seconds into the clip). When
+    /// non-nil the Grid / List thumbnail renders this frame instead
+    /// of the auto-pick mid-clip frame. Kyno-parity for the P key
+    /// shortcut — gives the user one keystroke to make a clip's
+    /// representative frame match what they care about. Nil =
+    /// auto-pick. Image assets ignore this.
+    var posterFrameSeconds: Double? = nil
 
     static let databaseTableName = "asset"
 
@@ -51,7 +58,7 @@ struct Asset: Codable, Identifiable, Equatable, Hashable, FetchableRecord, Persi
         case rowId = "id"
         case path, filename, sizeBytes, modifiedAt, codec, widthPx, heightPx
         case durationSeconds, frameRate, sha1, addedAt
-        case audioCodec, recordedAt, createdAt, isVFR
+        case audioCodec, recordedAt, createdAt, isVFR, posterFrameSeconds
     }
 
     enum Columns {

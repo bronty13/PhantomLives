@@ -399,6 +399,25 @@ struct PurpleReelApp: App {
                 .keyboardShortcut("m", modifiers: [.command, .option])
                 .disabled(appState.selectedAsset == nil)
                 Divider()
+                // Kyno-parity poster frame (P / ⇧P). The bare-key
+                // P binding lives in PlayerView's key handler so it
+                // can read the playhead directly; the menu items
+                // here drive the same actions for menu / VoiceOver
+                // discoverability.
+                Button("Set Poster Frame at Playhead") {
+                    NotificationCenter.default.post(name: .playerCommand,
+                                                    object: PlayerCommand.setPosterFrame)
+                }
+                .keyboardShortcut("p", modifiers: [])
+                .disabled(appState.selectedAsset == nil)
+                Button("Clear Poster Frame") {
+                    NotificationCenter.default.post(name: .playerCommand,
+                                                    object: PlayerCommand.clearPosterFrame)
+                }
+                .keyboardShortcut("p", modifiers: [.shift])
+                .disabled(appState.selectedAsset == nil
+                          || appState.selectedAsset?.posterFrameSeconds == nil)
+                Divider()
                 Button("Transcribe (Whisper)") {
                     appState.transcribeSelected(generateMarkers: false)
                 }
@@ -607,6 +626,15 @@ enum PlayerCommand {
     case toggleMute              // X
     case toggleZebra             // ⌃⌥E
     case cycleMatte              // ⌃⌥W
+    /// Kyno-parity P: store the player's current playhead as the
+    /// asset's poster-frame override. PlayerView handles the key
+    /// directly via `onSetPosterFrame` closure (so we have the live
+    /// `currentTime`); this case lets the menu item drive the same
+    /// action without re-implementing the read.
+    case setPosterFrame          // P
+    /// ⇧P: clear the poster-frame override; cell falls back to
+    /// auto-pick middle frame.
+    case clearPosterFrame        // ⇧P
 }
 
 extension Notification.Name {
