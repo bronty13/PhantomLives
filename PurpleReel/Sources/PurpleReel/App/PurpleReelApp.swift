@@ -203,6 +203,18 @@ struct PurpleReelApp: App {
                                                     object: PlayerCommand.playInToOut)
                 }
                 .keyboardShortcut(.space, modifiers: [.option])
+                // Kyno-parity row 52: pitch-preserved audio at
+                // common review speeds. The PlayerController sets
+                // `audioTimePitchAlgorithm = .spectral` on every
+                // item, so non-1× rates stay intelligible.
+                Menu("Speed") {
+                    PlaybackSpeedItem(rate: 0.5,  label: "0.5×",  shortcut: nil)
+                    PlaybackSpeedItem(rate: 0.75, label: "0.75×", shortcut: nil)
+                    PlaybackSpeedItem(rate: 1.0,  label: "1× (Normal)", shortcut: nil)
+                    PlaybackSpeedItem(rate: 1.25, label: "1.25×", shortcut: nil)
+                    PlaybackSpeedItem(rate: 1.5,  label: "1.5×",  shortcut: nil)
+                    PlaybackSpeedItem(rate: 2.0,  label: "2×",    shortcut: nil)
+                }
                 Divider()
                 Button("Loop") {
                     NotificationCenter.default.post(name: .playerCommand,
@@ -635,6 +647,11 @@ enum PlayerCommand {
     /// ⇧P: clear the poster-frame override; cell falls back to
     /// auto-pick middle frame.
     case clearPosterFrame        // ⇧P
+    /// Kyno-parity row 52: jump to a specific playback rate with
+    /// pitch-preserved audio (0.5× / 0.75× / 1× / 1.25× / 1.5× / 2×).
+    /// Distinct from shuttle (J/L); this is the "review at speed"
+    /// path.
+    case setRate(Float)
 }
 
 extension Notification.Name {
@@ -667,6 +684,24 @@ private struct JLModeToggleMenuItem: View {
                 Label("5-second jumps (Kyno)",
                        systemImage: jlMode == "jump5s" ? "checkmark" : "")
             }
+        }
+    }
+}
+
+/// Single playback-rate menu item used by Playback → Speed (Kyno-
+/// parity row 52). Posts `PlayerCommand.setRate(rate)` so the active
+/// PlayerView routes it through `controller.setRate(_:)` — the same
+/// path J/L shuttle uses — and pitch-preservation kicks in via the
+/// item's `audioTimePitchAlgorithm = .spectral`.
+private struct PlaybackSpeedItem: View {
+    let rate: Float
+    let label: String
+    let shortcut: KeyboardShortcut?
+
+    var body: some View {
+        Button(label) {
+            NotificationCenter.default.post(name: .playerCommand,
+                                            object: PlayerCommand.setRate(rate))
         }
     }
 }

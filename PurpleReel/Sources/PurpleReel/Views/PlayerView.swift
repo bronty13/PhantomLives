@@ -342,6 +342,12 @@ final class PlayerController: ObservableObject {
             currentLUT = parsed
         }
         let item = AVPlayerItem(url: url)
+        // Kyno-parity row 52: non-1× audio rates preserve pitch. The
+        // `.spectral` algorithm is AVFoundation's highest-quality
+        // option — keeps voices intelligible at 1.25×/1.5× review
+        // speeds and slowdowns at 0.75×. Set on every item so the
+        // existing shuttle (J/L) gets the same benefit.
+        item.audioTimePitchAlgorithm = .spectral
         applyEffectsToItem(item)
         player.replaceCurrentItem(with: item)
         currentTime = 0
@@ -628,6 +634,7 @@ struct PlayerView: View {
             case .cycleMatte:    controller.cycleMatteAspect()
             case .setPosterFrame:   onSetPosterFrame(controller.currentTime)
             case .clearPosterFrame: onSetPosterFrame(nil)
+            case .setRate(let rate): controller.setRate(rate)
             // removeLastSubclip is parent-handled (AppState owns the
             // subclip list). PlayerView ignores it cleanly.
             case .removeLastSubclip: break
