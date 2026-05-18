@@ -18,6 +18,15 @@ struct Asset: Codable, Identifiable, Equatable, Hashable, FetchableRecord, Persi
     var frameRate: Double?
     var sha1: String?
     var addedAt: Date
+    /// Audio codec four-CC (e.g. "aac ", "mp4a", "alac", "pcm "). Read
+    /// at scan time from the asset's first audio track's
+    /// `formatDescription`. Nil for image / video-only assets.
+    var audioCodec: String?
+    /// "Date recorded" — `AVAsset.creationDate.dateValue`. Reflects the
+    /// camera-set recording time when the file's container carries it
+    /// (most prosumer cameras + iPhone do). Nil for assets where the
+    /// container has no creation-date metadata.
+    var recordedAt: Date?
 
     static let databaseTableName = "asset"
 
@@ -28,6 +37,7 @@ struct Asset: Codable, Identifiable, Equatable, Hashable, FetchableRecord, Persi
         case rowId = "id"
         case path, filename, sizeBytes, modifiedAt, codec, widthPx, heightPx
         case durationSeconds, frameRate, sha1, addedAt
+        case audioCodec, recordedAt
     }
 
     enum Columns {

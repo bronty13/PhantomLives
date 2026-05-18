@@ -14,12 +14,16 @@ enum FilterCriterion: Hashable, Identifiable {
     case ratingAtLeast(Int)
     case hasTag(String)
     case videoCodec(String)
+    case audioCodec(String)
     case resolutionPreset(ResolutionPreset)
     case frameRatePreset(FrameRatePreset)
     case durationAtLeastSeconds(Double)
     case durationAtMostSeconds(Double)
     case sizeAtLeastMB(Int)
     case sizeAtMostMB(Int)
+    case modifiedSince(DateBucket)   // last N days / specific date
+    case recordedSince(DateBucket)
+    case underFolder(String)         // path-prefix scope
 
     var id: String { encoded() }
 
@@ -30,7 +34,9 @@ enum FilterCriterion: Hashable, Identifiable {
         case .hasTag(let tag):
             return "Tag: \(tag)"
         case .videoCodec(let codec):
-            return "Codec: \(codec.uppercased())"
+            return "Video: \(codec.uppercased())"
+        case .audioCodec(let codec):
+            return "Audio: \(codec.uppercased())"
         case .resolutionPreset(let r):
             return "Resolution: \(r.displayName)"
         case .frameRatePreset(let f):
@@ -43,6 +49,13 @@ enum FilterCriterion: Hashable, Identifiable {
             return "Size ≥ \(mb) MB"
         case .sizeAtMostMB(let mb):
             return "Size ≤ \(mb) MB"
+        case .modifiedSince(let b):
+            return "Modified: \(b.displayName)"
+        case .recordedSince(let b):
+            return "Recorded: \(b.displayName)"
+        case .underFolder(let p):
+            let label = (p as NSString).lastPathComponent
+            return "In folder: \(label.isEmpty ? p : label)"
         }
     }
 
@@ -79,6 +92,18 @@ enum FilterCriterion: Hashable, Identifiable {
             return asset.sizeBytes >= Int64(mb) * 1_000_000
         case .sizeAtMostMB(let mb):
             return asset.sizeBytes <= Int64(mb) * 1_000_000
+        case .audioCodec(let codec):
+            let c = (asset.audioCodec ?? "").lowercased()
+            return c.contains(codec.lowercased())
+        case .modifiedSince(let bucket):
+            return bucket.matches(asset.modifiedAt)
+        case .recordedSince(let bucket):
+            guard let recorded = asset.recordedAt else { return false }
+            return bucket.matches(recorded)
+        case .underFolder(let prefix):
+            let normalized = (prefix as NSString).standardizingPath
+            let pfx = normalized.hasSuffix("/") ? normalized : normalized + "/"
+            return (asset.path as NSString).standardizingPath.hasPrefix(pfx)
         }
     }
 
@@ -98,6 +123,10 @@ enum FilterCriterion: Hashable, Identifiable {
         case .durationAtMostSeconds(let s):   return "dur<=\(s)"
         case .sizeAtLeastMB(let mb):          return "sizeMB>=\(mb)"
         case .sizeAtMostMB(let mb):           return "sizeMB<=\(mb)"
+        case .audioCodec(let codec):          return "acodec=\(codec)"
+        case .modifiedSince(let b):           return "modified=\(b.rawValue)"
+        case .recordedSince(let b):           return "recorded=\(b.rawValue)"
+        case .underFolder(let p):             return "folder=\(p)"
         }
     }
 
@@ -130,6 +159,20 @@ enum FilterCriterion: Hashable, Identifiable {
         }
         if let v = strip(token, prefix: "sizeMB<="), let mb = Int(v) {
             return .sizeAtMostMB(mb)
+        }
+        if let v = strip(token, prefix: "acodec=") {
+            return .audioCodec(v)
+        }
+        if let v = strip(token, prefix: "modified="),
+           let b = DateBucket(rawValue: v) {
+            return .modifiedSince(b)
+        }
+        if let v = strip(token, prefix: "recorded="),
+           let b = DateBucket(rawValue: v) {
+            return .recordedSince(b)
+        }
+        if let v = strip(token, prefix: "folder=") {
+            return .underFolder(v)
         }
         return nil
     }
@@ -172,6 +215,49 @@ enum ResolutionPreset: String, CaseIterable, Identifiable {
         case .hd720:  return v >= 720  && v < 1080
         case .sd480:  return v >= 480  && v < 720
         }
+    }
+}
+
+/// Date-window presets used by `.modifiedSince` and `.recordedSince`.
+/// Each bucket maps to a number of seconds back from now; `matches`
+/// returns true when the asset's date falls inside the window. Kept
+/// as discrete enum cases (rather than free-form dates) so the active
+/// filter set persists cleanly via UserDefaults without serialising
+/// timestamps that go stale a day later.
+enum DateBucket: String, CaseIterable, Identifiable {
+    case lastHour      = "1h"
+    case last24h       = "24h"
+    case last7d        = "7d"
+    case last30d       = "30d"
+    case last90d       = "90d"
+    case lastYear      = "1y"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .lastHour: return "Last hour"
+        case .last24h:  return "Last 24 hours"
+        case .last7d:   return "Last 7 days"
+        case .last30d:  return "Last 30 days"
+        case .last90d:  return "Last 90 days"
+        case .lastYear: return "Last year"
+        }
+    }
+
+    private var windowSeconds: TimeInterval {
+        switch self {
+        case .lastHour: return 3600
+        case .last24h:  return 86_400
+        case .last7d:   return 7 * 86_400
+        case .last30d:  return 30 * 86_400
+        case .last90d:  return 90 * 86_400
+        case .lastYear: return 365 * 86_400
+        }
+    }
+
+    func matches(_ date: Date) -> Bool {
+        Date().timeIntervalSince(date) <= windowSeconds
     }
 }
 

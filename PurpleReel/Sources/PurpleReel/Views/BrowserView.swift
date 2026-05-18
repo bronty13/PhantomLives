@@ -643,11 +643,19 @@ struct BrowserView: View {
                     }
                 }
             }
-            Menu("Codec") {
+            Menu("Video Codec") {
                 ForEach(["h264", "hevc", "prores", "dnxhr", "cineform"],
                          id: \.self) { codec in
                     Button(codec.uppercased()) {
                         appState.addFilter(.videoCodec(codec))
+                    }
+                }
+            }
+            Menu("Audio Codec") {
+                ForEach(["aac", "pcm", "alac", "mp3", "ac3"],
+                         id: \.self) { codec in
+                    Button(codec.uppercased()) {
+                        appState.addFilter(.audioCodec(codec))
                     }
                 }
             }
@@ -682,6 +690,21 @@ struct BrowserView: View {
                 Button("≤ 30 seconds") { appState.addFilter(.durationAtMostSeconds(30)) }
                 Button("≤ 5 minutes")  { appState.addFilter(.durationAtMostSeconds(300)) }
             }
+            Menu("Date Modified") {
+                ForEach(DateBucket.allCases) { b in
+                    Button(b.displayName) {
+                        appState.addFilter(.modifiedSince(b))
+                    }
+                }
+            }
+            Menu("Date Recorded") {
+                ForEach(DateBucket.allCases) { b in
+                    Button(b.displayName) {
+                        appState.addFilter(.recordedSince(b))
+                    }
+                }
+            }
+            folderScopeSubmenu
             tagFilterSubmenu
             if !appState.activeFilters.isEmpty {
                 Divider()
@@ -719,6 +742,34 @@ struct BrowserView: View {
                         appState.addFilter(.hasTag(tag))
                     }
                 }
+            }
+        }
+    }
+
+    /// Folder-scope filter — narrows the result set to assets whose
+    /// path is under the chosen folder. Complements the sidebar's
+    /// drilldown: drilldown changes the *displayed* root; this filter
+    /// adds a path-prefix predicate on top of the current view, so
+    /// the user can e.g. drill into ProjectA but limit to a single
+    /// shot subfolder.
+    @ViewBuilder
+    private var folderScopeSubmenu: some View {
+        Menu("In Folder") {
+            if let selected = appState.selectedFolderPath, !selected.isEmpty {
+                Button("Current folder (\((selected as NSString).lastPathComponent))") {
+                    appState.addFilter(.underFolder(selected))
+                }
+                Divider()
+            }
+            ForEach(appState.workspaceRoots, id: \.self) { root in
+                Button(root.lastPathComponent) {
+                    appState.addFilter(.underFolder(root.path))
+                }
+            }
+            if appState.workspaceRoots.isEmpty
+                && (appState.selectedFolderPath?.isEmpty ?? true) {
+                Text("No folders to scope to")
+                    .foregroundStyle(.secondary)
             }
         }
     }

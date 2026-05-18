@@ -1250,6 +1250,86 @@ tweaks bundled.
 
 ---
 
+## Scenario 27 — Filter dropdown extensions + v3 schema
+
+Adds the remaining filter criteria (Audio codec / Date Modified /
+Date Recorded / In Folder) on top of the v3 schema that surfaces
+audio codec + recording date.
+
+**Setup**
+- Workspace with a mix of clips: at least one clip with AAC audio,
+  one with PCM (e.g. ProRes from a camera), one image (no audio),
+  one camera-recorded video (creation date populated), and one
+  re-encoded file (no creation date metadata).
+- Existing DB (pre-v3) optional — the migration should add the
+  columns on relaunch.
+
+**Steps**
+
+1. **v3 migration runs cleanly on first launch** — quit, relaunch.
+   Tail the Console for `[PurpleReel]` errors. Run
+   `sqlite3 ~/Library/Application\ Support/PurpleReel/purplereel.sqlite ".schema asset" | grep -E "audioCodec|recordedAt"`.
+   - **Expected:** Both columns present. No data yet (NULL for
+     every existing row).
+2. **Rescan backfills the new columns** — toolbar → Rescan, or
+   re-add a workspace folder.
+   - **Expected:** Console shows scan progress. After completion,
+     query the DB:
+     `sqlite3 … "SELECT filename, audioCodec, recordedAt FROM asset LIMIT 10"`
+     — most video / audio rows have an audioCodec set; clips from
+     a camera (iPhone, Sony, RED, etc.) also have recordedAt; image
+     rows have both NULL.
+3. **Filter → Audio Codec** — open Filter menu. New "Audio Codec"
+   submenu lists AAC / PCM / ALAC / MP3 / AC3.
+   - **Expected:** Pick AAC. Pill appears: "Audio: AAC". Only
+     AAC-audio clips remain.
+4. **Image clips excluded from Audio filter** — keep the AAC pill
+   active.
+   - **Expected:** Image-only assets disappear (their audioCodec is
+     NULL).
+5. **Filter → Date Modified** — clear filters, pick Date Modified
+   → "Last 7 days".
+   - **Expected:** Only clips with `modifiedAt` within 7 days
+     remain. Pill: "Modified: Last 7 days".
+6. **Filter → Date Recorded** — pick Date Recorded → "Last 30 days".
+   - **Expected:** Only clips with a `recordedAt` value within 30
+     days remain. Clips with NULL recordedAt drop out (the filter
+     is opt-in to recording-date metadata — by design, since
+     "recorded never" is rarely what the user means).
+7. **Filter → In Folder** — drill into a workspace root. Open
+   Filter → In Folder.
+   - **Expected:** Two sections: "Current folder (<lastPathComp>)"
+     at the top + each workspace root below. Pick the current
+     folder.
+   - **Expected:** Pill appears: "In folder: <lastPathComp>". Only
+     assets under that path remain. Drilling out of the folder
+     doesn't drop the filter (deliberate — drilldown changes the
+     view root, the filter is a path-prefix predicate on top).
+8. **Persistence across launches** — pin Audio Codec PCM + Date
+   Recorded Last 90 days + In Folder. Quit, relaunch.
+   - **Expected:** All three pills restore. Same clips visible.
+9. **Empty / "no folders" state** — clear the workspace and any
+   selected folder. Open Filter → In Folder.
+   - **Expected:** Menu shows "No folders to scope to" instead of
+     an empty list. No crash.
+10. **Pill removal — individual** — click × on the In Folder pill.
+    - **Expected:** Just that pill goes; the others stay; visible
+      clip count expands.
+11. **Cheat sheet sync** — Help → Keyboard Shortcuts… (⌘?).
+    - **Expected:** No new key bindings (filters are menu-driven)
+      so no new rows; SHORTCUTS.md unchanged.
+
+**Pass criteria**
+- v3 migration applies cleanly on existing DBs.
+- Audio codec / Date Modified / Date Recorded / In Folder all
+  filter correctly per their semantic.
+- Pills persist across launches via UserDefaults.
+- Empty / nil-data paths behave gracefully.
+- Audio-only and image-only assets behave correctly under each
+  filter (NULL audioCodec for images, etc.).
+
+---
+
 ## Regression triggers
 
 After **any** change, re-run **at minimum**:
@@ -1298,3 +1378,8 @@ grid `gridTileSize` slider**, re-run Scenario 25.
 After any change to **`@AppStorage("playerJLMode")` /
 `DetailTab.subclips` / `MetadataPaneView.markersBlock`**,
 re-run Scenario 26.
+
+After any change to the **v3 schema (audioCodec / recordedAt) /
+MediaScanner.enrichVideoMetadata / `FilterCriterion.audioCodec
+/.modifiedSince/.recordedSince/.underFolder` / DateBucket / Filter
+menu submenus**, re-run Scenario 27.

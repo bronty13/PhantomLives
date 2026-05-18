@@ -52,10 +52,12 @@ actor MediaScanner {
                 durationSeconds: nil,
                 frameRate: nil,
                 sha1: nil,
-                addedAt: Date()
+                addedAt: Date(),
+                audioCodec: nil,
+                recordedAt: nil
             )
 
-            if videoExtensions.contains(ext) {
+            if videoExtensions.contains(ext) || audioExtensions.contains(ext) {
                 await enrichVideoMetadata(into: &asset, url: url)
             }
             results.append(asset)
@@ -82,6 +84,25 @@ actor MediaScanner {
                     let subtype = CMFormatDescriptionGetMediaSubType(fmt)
                     asset.codec = fourCCToString(subtype)
                 }
+            }
+            // Audio codec — read first audio track's format four-CC.
+            // Works for assets that have an audio track regardless of
+            // whether they have a video track.
+            let audioTracks = try await avAsset.loadTracks(withMediaType: .audio)
+            if let aTrack = audioTracks.first {
+                let formats = try await aTrack.load(.formatDescriptions)
+                if let fmt = formats.first {
+                    let subtype = CMFormatDescriptionGetMediaSubType(fmt)
+                    asset.audioCodec = fourCCToString(subtype)
+                }
+            }
+            // Camera-set creation date. AVMetadata is the modern path
+            // (load(.creationDate) on AVURLAsset returns the same
+            // value the container's mdta atom carries on iPhone /
+            // most prosumer cameras).
+            if let creationDate = try await avAsset.load(.creationDate)?
+                .load(.dateValue) {
+                asset.recordedAt = creationDate
             }
         } catch {
             NSLog("[PurpleReel] video metadata load failed for \(url.lastPathComponent): \(error)")

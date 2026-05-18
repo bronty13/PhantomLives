@@ -20,7 +20,7 @@ Legend: ✅ done · 🟡 partial · ⬜ open · ❌ explicitly skipped
 | ✅ | Name filter (search field) | |
 | ✅ | View mode toggle (Grid / List / Detail) | 3-icon segmented control bound to ⌘1/⌘2/⌘3 |
 | ✅ | **Time** filter (Any / Last Hour / 24h / 7d / 30d / 3mo / 6mo / Last Year) | Date predicate on `modifiedAt` |
-| 🟡 | **Filter** advanced dropdown (Size / Date / Folder / Rating / Tag / Duration / Audio codec / Video codec / Resolution / Frame rate / Spanning / FCP X) | Multi-criteria predicate builder shipped: Rating / Tag / Video Codec / Resolution / Frame Rate / Size / Duration. Pills bar + UserDefaults persistence. **TODO**: Audio codec, Date Modified/Recorded, Folder scope, Spanning, FCP X library predicate. |
+| 🟡 | **Filter** advanced dropdown (Size / Date / Folder / Rating / Tag / Duration / Audio codec / Video codec / Resolution / Frame rate / Spanning / FCP X) | Multi-criteria predicate builder shipped: Rating / Tag / Video Codec / Audio Codec / Resolution / Frame Rate / Size / Duration / Date Modified / Date Recorded / In Folder. Pills bar + UserDefaults persistence. **TODO (out of scope for PurpleReel's data model)**: Spanning (multi-file clip detection), FCP X library predicate. |
 | ✅ | Back / Forward navigation arrows + ⌘[/⌘] | History stack of folder selections; History menu |
 | ✅ | Drilldown as button (not toggle) — toggles drilldown for the *currently-selected folder* only | Per-folder set in AppState; toolbar button acts on selection |
 | ✅ | Sort direction triangle | Asc/Desc toggle in sort menu, persisted via `sortAscending` |
@@ -34,7 +34,7 @@ Legend: ✅ done · 🟡 partial · ⬜ open · ❌ explicitly skipped
 | ✅ | List view (table with thumbnail / name / codec / res / fps / duration / size) | |
 | ✅ | Thumbnail (grid) view | LazyVGrid tiles with selection ring + transcode-progress overlay; toolbar tile-size slider (Grid-only, 100…320 pt, persisted via `@AppStorage("gridTileSize")`) |
 | ✅ | Single-clip Detail view | `ClipDetailInline` — player + metadata pane; ⌘1/⌘2/⌘3 switches mode |
-| 🟡 | Extra columns: Date Modified, Date Created, Date Recorded, Display size, Aspect ratio, Rating, Frame rate (visible), Title, Description, Reel/Scene/Shot/Take/Angle, Camera | Rating / Date Modified / Title / Description / Reel/Scene/Shot/Take/Angle/Camera done via `ListColumn` toolbar menu (Table cap = 3 optional at a time); **TODO**: Date Created, Date Recorded, Display size, Aspect ratio |
+| 🟡 | Extra columns: Date Modified, Date Created, Date Recorded, Display size, Aspect ratio, Rating, Frame rate (visible), Title, Description, Reel/Scene/Shot/Take/Angle, Camera | Rating / Date Modified / Title / Description / Reel/Scene/Shot/Take/Angle/Camera done via `ListColumn` toolbar menu (Table cap = 3 optional at a time). Date Recorded + Audio Codec now in the schema (v3 migration) — surface as List columns in a follow-up. **TODO**: Date Created, Display size, Aspect ratio. |
 
 ---
 

@@ -113,6 +113,19 @@ final class DatabaseService {
             }
         }
 
+        // Filter-dropdown extensions: audio codec + camera-set
+        // creation date. Both populated by MediaScanner.scan(...) via
+        // AVURLAsset. Nullable — older / unsupported containers and
+        // non-AV assets simply have NULL columns. Existing rows are
+        // backfilled on the next rescan because upsertAssets() always
+        // writes every column.
+        m.registerMigration("v3_asset_audio_recorded") { db in
+            try db.alter(table: "asset") { t in
+                t.add(column: "audioCodec", .text)
+                t.add(column: "recordedAt", .datetime)
+            }
+        }
+
         return m
     }
 
