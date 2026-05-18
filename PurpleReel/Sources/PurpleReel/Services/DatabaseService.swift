@@ -95,7 +95,43 @@ final class DatabaseService {
             }
         }
 
+        // Kyno-parity log fields. Separate table (1:1 with asset) so the
+        // sidebar Metadata pane can read/write a single row and the
+        // technical `asset` columns stay tightly scoped to scanner output.
+        m.registerMigration("v2_clip_metadata") { db in
+            try db.create(table: "clip_metadata") { t in
+                t.column("assetId", .integer).primaryKey()
+                    .references("asset", onDelete: .cascade)
+                t.column("title", .text)
+                t.column("description", .text)
+                t.column("reel", .text)
+                t.column("scene", .text)
+                t.column("shot", .text)
+                t.column("take", .text)
+                t.column("angle", .text)
+                t.column("camera", .text)
+            }
+        }
+
         return m
+    }
+
+    // MARK: - Clip metadata (Kyno log fields)
+
+    func clipMetadata(assetId: Int64) throws -> ClipMetadata {
+        try dbQueue.read { db in
+            try ClipMetadata.fetchOne(db, key: assetId)
+                ?? ClipMetadata(assetId: assetId,
+                                title: nil, description: nil,
+                                reel: nil, scene: nil, shot: nil,
+                                take: nil, angle: nil, camera: nil)
+        }
+    }
+
+    func setClipMetadata(_ meta: ClipMetadata) throws {
+        try dbQueue.write { db in
+            try meta.save(db)
+        }
     }
 
     // MARK: - Asset CRUD

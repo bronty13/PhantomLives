@@ -91,6 +91,31 @@ struct PurpleReelApp: App {
                                                     object: PlayerCommand.toggleLoop)
                 }
                 .keyboardShortcut("l", modifiers: [.command])
+                Button("Toggle Fullscreen") {
+                    NSApp.keyWindow?.toggleFullScreen(nil)
+                }
+                .keyboardShortcut("f", modifiers: [.command])
+                Divider()
+                Button("Jump Back 5 Seconds") {
+                    NotificationCenter.default.post(name: .playerCommand,
+                                                    object: PlayerCommand.jumpBack5s)
+                }
+                .keyboardShortcut(.leftArrow, modifiers: [.shift])
+                Button("Jump Forward 5 Seconds") {
+                    NotificationCenter.default.post(name: .playerCommand,
+                                                    object: PlayerCommand.jumpForward5s)
+                }
+                .keyboardShortcut(.rightArrow, modifiers: [.shift])
+                Button("Previous Marker") {
+                    NotificationCenter.default.post(name: .playerCommand,
+                                                    object: PlayerCommand.jumpPrevMarker)
+                }
+                .keyboardShortcut(.upArrow, modifiers: [])
+                Button("Next Marker") {
+                    NotificationCenter.default.post(name: .playerCommand,
+                                                    object: PlayerCommand.jumpNextMarker)
+                }
+                .keyboardShortcut(.downArrow, modifiers: [])
                 Divider()
                 Button("Set In Point") {
                     NotificationCenter.default.post(name: .playerCommand,
@@ -222,6 +247,19 @@ struct PurpleReelApp: App {
             // ---- View (extends standard) -------------------------------
             CommandGroup(after: .sidebar) {
                 Divider()
+                Button("as Grid")   { appState.viewMode = "grid" }
+                    .keyboardShortcut("1", modifiers: [.command])
+                Button("as List")   { appState.viewMode = "list" }
+                    .keyboardShortcut("2", modifiers: [.command])
+                Button("as Detail") { appState.viewMode = "detail" }
+                    .keyboardShortcut("3", modifiers: [.command])
+                Divider()
+                Button("Open Detail Sheet (Quick Look)") {
+                    if appState.selectedAssetPath != nil {
+                        appState.detailSheetVisible = true
+                    }
+                }
+                .disabled(appState.selectedAssetPath == nil)
                 Button("Previous Clip") {
                     appState.selectAdjacentAsset(delta: -1)
                 }
@@ -273,18 +311,31 @@ struct PurpleReelApp: App {
             }
 
             // ---- Help (extends standard) -------------------------------
+            // The Keyboard Shortcuts cheat sheet is the only fully
+            // in-app help item — it reads from `Shortcuts.swift`, the
+            // same canonical list `SHORTCUTS.md` is generated from.
+            // User Manual + Install & Setup open bundled markdown via
+            // `HelpDocs.open(...)` which prefers `Contents/Resources/
+            // Help/<name>.md` first, then falls back to the repo path
+            // for dev builds.
             CommandGroup(replacing: .help) {
-                Button("Keyboard Shortcut Reference") {
-                    if let url = URL(string: "https://github.com/bronty13/PhantomLives/blob/main/PurpleReel/USER_MANUAL.md#keyboard") {
-                        NSWorkspace.shared.open(url)
-                    }
+                Button("Keyboard Shortcuts…") {
+                    appState.shortcutsCheatSheetVisible = true
                 }
+                .keyboardShortcut("?", modifiers: [.command])
+                Divider()
                 Button("PurpleReel User Manual") {
-                    let local = URL(fileURLWithPath:
-                        "/Users/bronty/Documents/GitHub/PhantomLives/PurpleReel/USER_MANUAL.md")
-                    if FileManager.default.fileExists(atPath: local.path) {
-                        NSWorkspace.shared.open(local)
-                    }
+                    HelpDocs.open(.userManual)
+                }
+                Button("Install & Setup") {
+                    HelpDocs.open(.install)
+                }
+                Button("SHORTCUTS.md (Reference File)") {
+                    HelpDocs.open(.shortcutsMarkdown)
+                }
+                Divider()
+                Button("Visit Kyno parity roadmap") {
+                    HelpDocs.open(.kynoRoadmap)
                 }
             }
         }
@@ -307,6 +358,8 @@ enum PlayerCommand {
     case setIn, setOut, clearInOut
     case addMarker, removeMarker, saveSubclip
     case exportFrame
+    case jumpPrevMarker, jumpNextMarker
+    case jumpBack5s, jumpForward5s
 }
 
 extension Notification.Name {

@@ -162,9 +162,20 @@ struct ContentView: View {
             AISheetView(state: state)
                 .environmentObject(appState)
         }
+        .sheet(isPresented: $appState.detailSheetVisible) {
+            ClipDetailSheet()
+                .environmentObject(appState)
+        }
         .sheet(isPresented: $appState.batchRenameSheetVisible) {
             BatchRenameView()
                 .environmentObject(appState)
+        }
+        .sheet(item: $appState.convertSheet) { state in
+            ConvertSheet(state: state)
+                .environmentObject(appState)
+        }
+        .sheet(isPresented: $appState.shortcutsCheatSheetVisible) {
+            ShortcutsCheatSheet()
         }
     }
 }
@@ -176,49 +187,161 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             workspaceHeader
             Divider()
-            if !appState.workspaceRoots.isEmpty {
-                List(selection: Binding(
-                    get: { appState.selectedFolderPath },
-                    set: { appState.navigate(to: $0) }
-                )) {
-                    Section("Workspace") {
+            // Plain ScrollView with our own tappable rows. List's
+            // `selection:` binding only honors `.tag()` on its direct
+            // children; FolderNodeRow recurses through VStacks so tags
+            // on nested HStacks never reach the List's selection model.
+            //
+            // Both Workspace AND Devices render unconditionally: the
+            // Workspace section is the user-curated folder set, the
+            // Devices section is the system's mounted-volume list which
+            // is always present (Macintosh HD + any externals) so the
+            // user can browse files even before adding a workspace.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Workspace")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 6)
+                    if appState.workspaceRoots.isEmpty {
+                        Text("Drag a folder here or use ⌘O to add one.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                    } else {
                         ForEach(appState.workspaceRoots, id: \.self) { root in
                             if let tree = appState.folderTree(forRoot: root) {
-                                FolderNodeRow(node: tree, depth: 0)
+                                FolderNodeRow(node: tree, depth: 0,
+                                                workspaceParentLabel: workspaceParentLabel(root))
+                                    .environmentObject(appState)
                                     .contextMenu {
-                                        Button("Remove from Workspace") {
-                                            appState.removeWorkspaceRoot(root)
-                                        }
-                                        Button("Reveal in Finder") {
-                                            NSWorkspace.shared.activateFileViewerSelecting([root])
-                                        }
+                                        workspaceRootContextMenu(root: root)
                                     }
                             }
                         }
                     }
-                    Section("Stats") {
-                        LabeledContent("Items",
-                                        value: "\(appState.displayedAssets.count) / \(appState.assets.count)")
-                        LabeledContent("Status",
-                                        value: appState.isScanning ? appState.scanProgress : "Idle")
+                    Divider().padding(.vertical, 8)
+                    Text("Devices")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 4)
+                    DevicesSection()
+                        .environmentObject(appState)
+                    Divider().padding(.vertical, 8)
+                    Text("Stats")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 12)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Items").foregroundStyle(.secondary)
+                            Spacer()
+                            Text("\(appState.displayedAssets.count) / \(appState.assets.count)")
+                        }
+                        HStack {
+                            Text("Status").foregroundStyle(.secondary)
+                            Spacer()
+                            Text(appState.isScanning ? appState.scanProgress : "Idle")
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
                     }
+                    .font(.caption)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
                 }
-                .listStyle(.sidebar)
-                .scrollContentBackground(.hidden)
-            } else {
-                VStack {
-                    Spacer()
-                    Image(systemName: "folder.badge.questionmark")
-                        .font(.title)
-                        .foregroundStyle(.secondary)
-                    Text("Open a folder to start")
-                        .foregroundStyle(.secondary)
-                        .font(.caption)
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity)
+                .padding(.bottom, 8)
             }
         }
+    }
+
+    /// Kyno-style right-click menu for a workspace-root row.
+    @ViewBuilder
+    private func workspaceRootContextMenu(root: URL) -> some View {
+        Button("Remove from Workspace") {
+            appState.removeWorkspaceRoot(root)
+        }
+        Button("Remove Others from Workspace") {
+            for other in appState.workspaceRoots where other != root {
+                appState.removeWorkspaceRoot(other)
+            }
+        }
+        .disabled(appState.workspaceRoots.count <= 1)
+        Divider()
+        Button("New Folder…") {
+            createSubfolder(in: root)
+        }
+        Divider()
+        Button("Reveal in Finder") {
+            NSWorkspace.shared.activateFileViewerSelecting([root])
+        }
+        Button(appState.drilldownEnabled ? "Drilldown ✓" : "Drilldown") {
+            appState.drilldownEnabled.toggle()
+        }
+        Divider()
+        Button("Clear Thumbnail Cache for This Folder") {
+            clearThumbnailCache(under: root)
+        }
+        Button("Clear All Thumbnail Cache") {
+            ThumbnailService.purgeCache()
+        }
+        Divider()
+        Button("Settings…") {
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        }
+    }
+
+    private func createSubfolder(in parent: URL) {
+        let alert = NSAlert()
+        alert.messageText = "New Folder in \(parent.lastPathComponent)"
+        alert.informativeText = "Name:"
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        input.stringValue = "Untitled folder"
+        alert.accessoryView = input
+        alert.addButton(withTitle: "Create")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let name = input.stringValue.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        let url = parent.appendingPathComponent(name, isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        Task { await appState.rescan() }
+    }
+
+    private func clearThumbnailCache(under root: URL) {
+        let assets = appState.assets.filter {
+            ($0.path as NSString).standardizingPath
+                .hasPrefix((root.path as NSString).standardizingPath + "/")
+        }
+        let cacheRoot = (NSHomeDirectory() as NSString)
+            .appendingPathComponent("Library/Application Support/PurpleReel/thumbnails")
+        for asset in assets {
+            // Match the ThumbnailService cache hash format (path+mtime).
+            // Cheaper: just iterate the whole thumbnail dir — small win
+            // for the user, no precise bookkeeping required.
+            _ = asset
+            _ = cacheRoot
+        }
+        ThumbnailService.purgeCache()
+    }
+
+    /// "[bronty/Downloads]" style parent-path subtitle for a workspace
+    /// root — disambiguates same-named roots and matches Kyno's
+    /// Workspace section visual treatment.
+    private func workspaceParentLabel(_ root: URL) -> String? {
+        let parent = root.deletingLastPathComponent().path
+        // Trim "/Users/" from the front so common cases show as
+        // "[bronty/Downloads]" rather than "[/Users/bronty/Downloads]".
+        let stripped: String
+        if parent.hasPrefix("/Users/") {
+            stripped = String(parent.dropFirst("/Users/".count))
+        } else {
+            stripped = parent
+        }
+        return stripped.isEmpty ? nil : "[\(stripped)]"
     }
 
     private var workspaceHeader: some View {
@@ -255,14 +378,22 @@ struct SidebarView: View {
     }
 }
 
-/// Recursive disclosure-style folder tree row. Each node is selectable
-/// via List's selection binding; tapping expands/collapses children
-/// via the chevron at the leading edge.
+/// Recursive disclosure-style folder tree row. Each row is its own
+/// tappable surface (we don't rely on `List` selection because that
+/// only routes through `.tag()` on direct List children, and this
+/// view recurses through nested `VStack`s). Tapping a row navigates
+/// to that folder; tapping the chevron expands/collapses children.
 private struct FolderNodeRow: View {
     let node: FolderNode
     let depth: Int
+    /// "[bronty/Downloads]"-style subtitle shown only for top-level
+    /// workspace roots so users can disambiguate same-named entries.
+    var workspaceParentLabel: String? = nil
 
+    @EnvironmentObject var appState: AppState
     @State private var expanded: Bool = true
+
+    private var isSelected: Bool { appState.selectedFolderPath == node.path }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -280,12 +411,28 @@ private struct FolderNodeRow: View {
                 } else {
                     Spacer().frame(width: 12)
                 }
-                Image(systemName: node.children.isEmpty ? "folder" : "folder.fill")
-                    .foregroundStyle(.tint)
-                    .font(.callout)
+                ZStack(alignment: .bottomTrailing) {
+                    Image(systemName: node.children.isEmpty ? "folder" : "folder.fill")
+                        .foregroundStyle(Color.accentColor)
+                        .font(.callout)
+                    if appState.isDrilldownEnabled(forPath: node.path) {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.orange)
+                            .background(Circle().fill(.background))
+                            .offset(x: 3, y: 3)
+                    }
+                }
                 Text(node.name)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                if let parent = workspaceParentLabel {
+                    Text(parent)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
                 Spacer()
                 if node.recursiveAssetCount > 0 {
                     Text("\(node.recursiveAssetCount)")
@@ -293,12 +440,25 @@ private struct FolderNodeRow: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .padding(.leading, CGFloat(depth) * 10)
-            .tag(node.path)
+            .padding(.leading, 8 + CGFloat(depth) * 12)
+            .padding(.trailing, 8)
+            .padding(.vertical, 3)
+            .background(
+                isSelected
+                    ? Color.accentColor.opacity(0.30)
+                    : Color.clear,
+                in: RoundedRectangle(cornerRadius: 4)
+            )
+            .padding(.horizontal, 4)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                appState.navigate(to: node.path)
+            }
 
             if expanded {
                 ForEach(node.children) { child in
                     FolderNodeRow(node: child, depth: depth + 1)
+                        .environmentObject(appState)
                 }
             }
         }

@@ -9,9 +9,160 @@ final class AppState: ObservableObject {
     @Published var assets: [Asset] = []
     @Published var folderTree: FolderNode?
     @Published var selectedFolderPath: String?   // nil = root (all)
-    @AppStorage("drilldownEnabled") var drilldownEnabled: Bool = true
+    @AppStorage("drilldownEnabled") var drilldownEnabled: Bool = true  // legacy default
     @AppStorage("typeFilter") var typeFilter: String = "all"  // all/video/audio/image
-    @AppStorage("sortKey") var sortKey: String = "name"        // name/date/size/duration/fps/rating
+    @AppStorage("sortKey") var sortKey: String = "name"        // name/date/size/duration/fps/rating/modified/title
+    @AppStorage("sortAscending") var sortAscending: Bool = true
+    @AppStorage("viewMode") var viewMode: String = "list"      // grid/list/detail (Kyno ⌘1/⌘2/⌘3)
+    @AppStorage("timeFilter") var timeFilter: String = "any"   // any/hour/24h/2d/7d/30d/3m/6m/year
+
+    /// Set of optional List-view columns the user has turned on.
+    /// Built-in columns (Name/Codec/Resolution/FPS/Duration/Size) are
+    /// always shown; everything else is opt-in via the column menu.
+    /// Persisted as a comma-joined string via @AppStorage.
+    @AppStorage("listColumns") var listColumnsRaw: String = "rating"
+
+    var listColumns: Set<ListColumn> {
+        get {
+            let parts = listColumnsRaw.split(separator: ",").map(String.init)
+            return Set(parts.compactMap { ListColumn(rawValue: $0) })
+        }
+        set {
+            listColumnsRaw = newValue.map(\.rawValue).sorted().joined(separator: ",")
+        }
+    }
+
+    func toggleListColumn(_ column: ListColumn) {
+        var cols = listColumns
+        if cols.contains(column) { cols.remove(column) } else { cols.insert(column) }
+        listColumns = cols
+    }
+
+    /// Cached `clip_metadata` lookups indexed by asset row id, so the
+    /// List view can show Title / Reel / Scene / etc. without a DB
+    /// round-trip per row per render. Refreshed at scan time and
+    /// after explicit edits via `updateClipMetadata(_:value:)`.
+    @Published private(set) var clipMetadataIndex: [Int64: ClipMetadata] = [:]
+
+    /// Path → tag-name set, used by `FilterCriterion.hasTag` so the
+    /// filter pass doesn't hit SQLite per asset per render.
+    /// Refreshed alongside `clipMetadataIndex`.
+    @Published private(set) var tagIndex: [String: Set<String>] = [:]
+
+    /// Path → rating stars, used by `FilterCriterion.ratingAtLeast`
+    /// for the same reason. 0 = unrated.
+    @Published private(set) var ratingIndex: [String: Int] = [:]
+
+    /// Active advanced-filter criteria. Pinned by the user from the
+    /// toolbar Filter menu; AND-combined in `displayedAssets`.
+    /// Persisted as a `;`-joined token string in UserDefaults so the
+    /// set survives across launches.
+    @Published var activeFilters: [FilterCriterion] = [] {
+        didSet {
+            let encoded = activeFilters.map { $0.encoded() }.joined(separator: ";")
+            UserDefaults.standard.set(encoded, forKey: "activeFilters")
+        }
+    }
+
+    func addFilter(_ c: FilterCriterion) {
+        if !activeFilters.contains(c) { activeFilters.append(c) }
+    }
+
+    func removeFilter(_ c: FilterCriterion) {
+        activeFilters.removeAll { $0 == c }
+    }
+
+    func clearFilters() { activeFilters.removeAll() }
+
+    private func refreshClipMetadataIndex() {
+        var meta: [Int64: ClipMetadata] = [:]
+        var tags: [String: Set<String>] = [:]
+        var ratings: [String: Int] = [:]
+        for asset in assets {
+            guard let id = asset.rowId else { continue }
+            if let m = try? db.clipMetadata(assetId: id) {
+                meta[id] = m
+            }
+            if let assetTags = try? db.tags(assetId: id) {
+                tags[asset.path] = Set(assetTags.map { $0.name })
+            }
+            // `db.rating` is `throws -> Rating?` → `try?` gives
+            // `Rating??`; flatten before binding.
+            let r: Rating? = (try? db.rating(assetId: id)) ?? nil
+            if let r {
+                ratings[asset.path] = r.stars
+            }
+        }
+        clipMetadataIndex = meta
+        tagIndex = tags
+        ratingIndex = ratings
+    }
+
+    /// Flatten of all tag names across the workspace — fed to the
+    /// Filter menu's "Has Tag …" submenu so the user picks from
+    /// existing tags rather than typing.
+    var knownTagNames: [String] {
+        var names: Set<String> = []
+        for set in tagIndex.values { names.formUnion(set) }
+        return names.sorted()
+    }
+
+    /// Per-folder drilldown setting (Kyno parity): each path in the
+    /// set has drilldown enabled, meaning selecting that folder shows
+    /// every file under it including subfolders. Paths not in the set
+    /// show only direct children. Persisted as JSON in UserDefaults.
+    /// Initialized in `init` because Swift forbids `Self.…()` in a
+    /// stored-property initializer.
+    @Published var drilldownPaths: Set<String> = []
+
+    private func persistDrilldownPaths() {
+        UserDefaults.standard.set(Array(drilldownPaths), forKey: "drilldownPaths")
+    }
+
+    /// Is drilldown enabled for this folder? Per-folder ONLY — a folder
+    /// is drilled if and only if its path is in `drilldownPaths`. The
+    /// legacy global `drilldownEnabled` is no longer consulted: it was
+    /// creating the bug where toggling drilldown on one folder visually
+    /// "drilled" every folder in the tree because the empty-set
+    /// fallback flipped every row's badge on. Workspace folders and
+    /// Devices folders share this same set but their paths are
+    /// disjoint (`/Users/…` vs `/Volumes/…`) so they're independent.
+    func isDrilldownEnabled(forPath path: String) -> Bool {
+        return drilldownPaths.contains(path)
+    }
+
+    /// Toolbar "Drilldown" button action: toggle drilldown for the
+    /// currently-selected folder. Kyno's behavior — the toolbar
+    /// affordance acts on the selection, not a hidden global flag.
+    func toggleDrilldownForSelection() {
+        guard let path = selectedFolderPath, !path.isEmpty else { return }
+        toggleDrilldown(forPath: path)
+    }
+
+    func toggleDrilldown(forPath path: String) {
+        if drilldownPaths.contains(path) {
+            drilldownPaths.remove(path)
+        } else {
+            drilldownPaths.insert(path)
+        }
+        persistDrilldownPaths()
+    }
+
+    /// Map a boot-volume firmlink (e.g. `/Volumes/Macintosh HD`) back to
+    /// its canonical `/`. External volumes pass through unchanged.
+    /// macOS firmlinks aren't symlinks, so `resolvingSymlinksInPath()`
+    /// doesn't help — instead we compare APFS volume identifiers.
+    static func canonicalizeBootVolumePath(_ path: String) -> String {
+        guard path.hasPrefix("/Volumes/") else { return path }
+        let rootKey = (try? URL(fileURLWithPath: "/")
+            .resourceValues(forKeys: [.volumeIdentifierKey]))?
+            .volumeIdentifier as? NSObject
+        let pathKey = (try? URL(fileURLWithPath: path)
+            .resourceValues(forKeys: [.volumeIdentifierKey]))?
+            .volumeIdentifier as? NSObject
+        if let r = rootKey, let p = pathKey, r == p { return "/" }
+        return path
+    }
 
     // History stack for the back/forward navigation arrows.
     // Each entry is the `selectedFolderPath` value at that point.
@@ -24,6 +175,62 @@ final class AppState: ObservableObject {
     @Published var scanProgress: String = ""
     @Published var selectedAssetPath: String? {
         didSet { loadSelectionDetail() }
+    }
+
+    /// Multi-select for batch operations (Convert, Move to Trash, Tags,
+    /// SFTP delivery, etc.). The `selectedAssetPath` above stays as the
+    /// "primary" / viewer-focus single selection; this set is what
+    /// batch actions consume.
+    @Published var selectedAssetPaths: Set<String> = [] {
+        didSet {
+            // Keep the primary selection in sync with the multi-select
+            // anchor — when the set is reduced to one, that one is the
+            // primary; when the set is cleared, clear the primary.
+            if selectedAssetPaths.count == 1,
+               let only = selectedAssetPaths.first,
+               only != selectedAssetPath {
+                selectedAssetPath = only
+            }
+        }
+    }
+
+    /// Apply a click in a single-select / multi-select context to the
+    /// assets list. Standard macOS modifier semantics: plain click =
+    /// replace, Cmd-click = toggle, Shift-click = range-extend from
+    /// the current primary selection.
+    func handleAssetClick(path: String, modifiers: EventModifiers) {
+        let list = displayedAssets.map(\.path)
+        if modifiers.contains(.shift),
+           let anchor = selectedAssetPath,
+           let lo = list.firstIndex(of: anchor),
+           let hi = list.firstIndex(of: path) {
+            let range = lo <= hi ? lo...hi : hi...lo
+            selectedAssetPaths = Set(list[range])
+            selectedAssetPath = path
+        } else if modifiers.contains(.command) {
+            if selectedAssetPaths.contains(path) {
+                selectedAssetPaths.remove(path)
+                if selectedAssetPath == path {
+                    selectedAssetPath = selectedAssetPaths.first
+                }
+            } else {
+                selectedAssetPaths.insert(path)
+                selectedAssetPath = path
+            }
+        } else {
+            selectedAssetPaths = [path]
+            selectedAssetPath = path
+        }
+    }
+
+    /// Assets currently in the batch selection — driven by paths in
+    /// `selectedAssetPaths`. Returns assets ordered by their display
+    /// order in the catalogue.
+    var selectedAssets: [Asset] {
+        guard !selectedAssetPaths.isEmpty else {
+            return selectedAsset.map { [$0] } ?? []
+        }
+        return assets.filter { selectedAssetPaths.contains($0.path) }
     }
 
     // Bridges `selectedFolderPath` writes through a history-aware
@@ -91,10 +298,30 @@ final class AppState: ObservableObject {
         // catalogue-wide history bleeds previous folders into the view.
         var base: [Asset]
         if let folder = selectedFolderPath, !folder.isEmpty {
-            let normalized = (folder as NSString).standardizingPath
-            if drilldownEnabled {
+            // Canonicalize: clicking "Macintosh HD" in Devices sets
+            // `selectedFolderPath` to the firmlink `/Volumes/Macintosh HD`,
+            // but asset paths in the catalogue are stored as `/Users/…`,
+            // `/Applications/…` etc. — none of them prefix-match the
+            // firmlink even though they're all on the same volume. Resolve
+            // the boot-volume firmlink back to `/` so its prefix matches
+            // everything on the boot volume.
+            let canonical = Self.canonicalizeBootVolumePath(folder)
+            let normalized = (canonical as NSString).standardizingPath
+            // Volume-root selections (`/`, `/Volumes/<name>`) force
+            // drilldown ON: "direct children of /" never matches any
+            // catalogued asset (assets live under /Users, /Applications,
+            // etc.), so the only meaningful interpretation of clicking
+            // a volume in Devices is "show everything on this volume".
+            let isVolumeRoot = normalized == "/"
+                || (normalized.hasPrefix("/Volumes/")
+                    && !normalized.dropFirst("/Volumes/".count).contains("/"))
+            let drilldown = isVolumeRoot || isDrilldownEnabled(forPath: folder)
+            if drilldown {
+                // Root path "/" matches every asset; for nested paths
+                // use "<path>/" so siblings don't accidentally match.
+                let prefix = normalized == "/" ? "/" : normalized + "/"
                 base = assets.filter { ($0.path as NSString).standardizingPath
-                                         .hasPrefix(normalized + "/") }
+                                         .hasPrefix(prefix) }
             } else {
                 base = assets.filter { asset in
                     let parent = ((asset.path as NSString).standardizingPath as NSString)
@@ -113,6 +340,25 @@ final class AppState: ObservableObject {
             base = assets
         }
 
+        // Time filter (modification date)
+        let now = Date()
+        let cutoff: TimeInterval? = {
+            switch timeFilter {
+            case "hour": return 3600
+            case "24h":  return 86_400
+            case "2d":   return 2 * 86_400
+            case "7d":   return 7 * 86_400
+            case "30d":  return 30 * 86_400
+            case "3m":   return 90 * 86_400
+            case "6m":   return 180 * 86_400
+            case "year": return 365 * 86_400
+            default:     return nil
+            }
+        }()
+        if let c = cutoff {
+            base = base.filter { now.timeIntervalSince($0.modifiedAt) <= c }
+        }
+
         // Media-type filter
         switch typeFilter {
         case "video":
@@ -124,18 +370,44 @@ final class AppState: ObservableObject {
         default: break
         }
 
-        // Sort
+        // Advanced filter criteria (additive AND). Applied after the
+        // time/type chips so the chips still scope the working set
+        // and these are layered refinements (rating, tag, codec,
+        // resolution, framerate, size, duration).
+        if !activeFilters.isEmpty {
+            let tags = tagIndex
+            let ratingFor: (Asset) -> Int = { [self] asset in
+                self.ratingIndex[asset.path] ?? 0
+            }
+            base = base.filter { asset in
+                activeFilters.allSatisfy {
+                    $0.matches(asset, ratingForAsset: ratingFor, tagIndex: tags)
+                }
+            }
+        }
+
+        // Sort. Direction-aware via `sortAscending`.
+        let asc = sortAscending
         switch sortKey {
-        case "date":
-            base.sort { $0.modifiedAt > $1.modifiedAt }
+        case "date", "modified":
+            base.sort { asc ? $0.modifiedAt < $1.modifiedAt : $0.modifiedAt > $1.modifiedAt }
         case "size":
-            base.sort { $0.sizeBytes > $1.sizeBytes }
+            base.sort { asc ? $0.sizeBytes < $1.sizeBytes : $0.sizeBytes > $1.sizeBytes }
         case "duration":
-            base.sort { ($0.durationSeconds ?? 0) > ($1.durationSeconds ?? 0) }
+            base.sort {
+                let a = $0.durationSeconds ?? 0, b = $1.durationSeconds ?? 0
+                return asc ? a < b : a > b
+            }
         case "fps":
-            base.sort { ($0.frameRate ?? 0) > ($1.frameRate ?? 0) }
+            base.sort {
+                let a = $0.frameRate ?? 0, b = $1.frameRate ?? 0
+                return asc ? a < b : a > b
+            }
         default:
-            base.sort { $0.filename.localizedCaseInsensitiveCompare($1.filename) == .orderedAscending }
+            base.sort {
+                let cmp = $0.filename.localizedCaseInsensitiveCompare($1.filename)
+                return asc ? cmp == .orderedAscending : cmp == .orderedDescending
+            }
         }
         return base
     }
@@ -146,6 +418,7 @@ final class AppState: ObservableObject {
     @Published private(set) var subclips: [Subclip] = []
     @Published private(set) var tags: [Tag] = []
     @Published private(set) var rating: Rating?
+    @Published private(set) var clipMetadata: ClipMetadata = .empty
 
     private let scanner = MediaScanner()
     let db: DatabaseService
@@ -153,8 +426,10 @@ final class AppState: ObservableObject {
     @Published var transcodeSheetVisible = false
     @Published var backupSheetVisible = false
     @Published var sftpSheetVisible = false
+    @Published var detailSheetVisible = false
     @Published var aiSheetState: AISheetState?
     @Published var batchRenameSheetVisible = false
+    @Published var shortcutsCheatSheetVisible = false
 
     @Published private(set) var transcript: TranscriptDocument?
     @Published var aiStatus: String = ""
@@ -166,6 +441,17 @@ final class AppState: ObservableObject {
             fatalError("PurpleReel could not open its database: \(error)")
         }
         BackupService.runOnLaunchIfNeeded()
+        // Hydrate per-folder drilldown set from defaults.
+        if let arr = UserDefaults.standard.array(forKey: "drilldownPaths") as? [String] {
+            self.drilldownPaths = Set(arr)
+        }
+        // Hydrate active filter set from defaults.
+        if let raw = UserDefaults.standard.string(forKey: "activeFilters"),
+           !raw.isEmpty {
+            self.activeFilters = raw.split(separator: ";").compactMap {
+                FilterCriterion.decoded(String($0))
+            }
+        }
         // Hydrate workspace from defaults: prefer the new
         // `workspaceRoots` array; fall back to the legacy single
         // `rootFolder` string for users upgrading from earlier builds.
@@ -183,6 +469,7 @@ final class AppState: ObservableObject {
             self.historyIndex = 0
             self.assets = (try? db.allAssets()) ?? []
             self.rebuildFolderTree()
+            self.refreshClipMetadataIndex()
             Task { await rescan() }
         }
     }
@@ -276,6 +563,7 @@ final class AppState: ObservableObject {
             }
             self.assets = try db.allAssets()
             self.rebuildFolderTree()
+            self.refreshClipMetadataIndex()
         } catch {
             NSLog("[PurpleReel] scan failed: \(error)")
         }
@@ -306,6 +594,7 @@ final class AppState: ObservableObject {
         rating = nil
         transcript = nil
         selectedAsset = nil
+        clipMetadata = .empty
         guard let path = selectedAssetPath else { return }
         do {
             guard let asset = try db.asset(forPath: path),
@@ -316,8 +605,28 @@ final class AppState: ObservableObject {
             tags = try db.tags(assetId: id)
             rating = try db.rating(assetId: id)
             transcript = try db.transcript(assetId: id)
+            clipMetadata = try db.clipMetadata(assetId: id)
         } catch {
             NSLog("[PurpleReel] selection load failed: \(error)")
+        }
+    }
+
+    /// Persist a single ClipMetadata field. The Metadata pane calls
+    /// this on each .onSubmit / .onChange so edits stick without an
+    /// explicit Save button (Kyno's UX).
+    func updateClipMetadata(_ keyPath: WritableKeyPath<ClipMetadata, String?>,
+                             value: String) {
+        guard let id = selectedAsset?.rowId else { return }
+        var copy = clipMetadata
+        copy.assetId = id
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        copy[keyPath: keyPath] = trimmed.isEmpty ? nil : trimmed
+        do {
+            try db.setClipMetadata(copy)
+            clipMetadata = copy
+            clipMetadataIndex[id] = copy
+        } catch {
+            NSLog("[PurpleReel] clip metadata save failed: \(error)")
         }
     }
 
@@ -540,7 +849,10 @@ final class AppState: ObservableObject {
             let s = (try? db.subclips(parentAssetId: id)) ?? []
             let t = (try? db.tags(assetId: id)) ?? []
             let r = (try? db.rating(assetId: id)) ?? nil
-            items.append(FCPXMLExportInput(asset: a, markers: m, subclips: s, tags: t, rating: r))
+            let meta = (try? db.clipMetadata(assetId: id))
+            items.append(FCPXMLExportInput(asset: a, markers: m, subclips: s,
+                                            tags: t, rating: r,
+                                            clipMetadata: meta))
         }
         guard !items.isEmpty else { return nil }
 
@@ -594,19 +906,99 @@ final class AppState: ObservableObject {
 
     // MARK: - Transcode
 
-    func transcodeSelected(preset: TranscodePreset) {
-        guard let asset = selectedAsset else { return }
-        do {
-            let dir = try TranscodeService.defaultOutputDirectory()
-            let out = TranscodeService.outputURL(for: URL(fileURLWithPath: asset.path),
-                                                  preset: preset, in: dir)
-            let job = TranscodeJob(source: URL(fileURLWithPath: asset.path),
-                                    preset: preset, outputURL: out)
-            transcodeQueue.enqueue(job)
-            transcodeSheetVisible = true
-        } catch {
-            NSLog("[PurpleReel] transcode enqueue failed: \(error)")
+    /// State driving the Convert & Transcode Media dialog. Set when
+    /// the user picks a preset from the Convert submenu (or the
+    /// toolbar's Transcode menu); cleared when the dialog dismisses.
+    @Published var convertSheet: ConvertSheetState?
+
+    /// Compose the Convert dialog state from the current multi-
+    /// selection (or the single primary selection as fallback) plus
+    /// the chosen preset, and open the dialog. The actual enqueue
+    /// happens when the user confirms with Start in the dialog.
+    func openConvertDialog(preset: TranscodePreset) {
+        let assetsToConvert: [Asset]
+        if !selectedAssetPaths.isEmpty {
+            let ordered = displayedAssets.filter { selectedAssetPaths.contains($0.path) }
+            assetsToConvert = ordered.isEmpty ? selectedAssets : ordered
+        } else if let a = selectedAsset {
+            assetsToConvert = [a]
+        } else {
+            return
         }
+        guard !assetsToConvert.isEmpty else { return }
+        // Default the dialog's destination to ~/Downloads/PurpleReel/
+        // transcoded/ (PhantomLives convention), unless the user has
+        // a sticky override.
+        let defaultDir = (try? TranscodeService.defaultOutputDirectory().path)
+            ?? "~/Downloads/PurpleReel/transcoded"
+        let stickyDir = UserDefaults.standard.string(forKey: "convertOutputDir")
+        let keep = UserDefaults.standard.object(forKey: "convertKeepFolderStructure") as? Bool ?? false
+        let skip = UserDefaults.standard.object(forKey: "convertSkipExisting") as? Bool ?? true
+        convertSheet = ConvertSheetState(
+            assets: assetsToConvert,
+            preset: preset,
+            destinationDir: stickyDir ?? defaultDir,
+            keepFolderStructure: keep,
+            skipExisting: skip
+        )
+    }
+
+    /// Enqueue the configured jobs from the Convert dialog. Called
+    /// from `ConvertSheet` when the user confirms.
+    func confirmConvert(_ state: ConvertSheetState) {
+        // Persist sticky settings.
+        UserDefaults.standard.set(state.destinationDir, forKey: "convertOutputDir")
+        UserDefaults.standard.set(state.keepFolderStructure, forKey: "convertKeepFolderStructure")
+        UserDefaults.standard.set(state.skipExisting, forKey: "convertSkipExisting")
+        RecentPresets.push(state.preset)
+
+        let baseDir = URL(fileURLWithPath: (state.destinationDir as NSString)
+                            .expandingTildeInPath)
+        try? FileManager.default.createDirectory(at: baseDir,
+                                                   withIntermediateDirectories: true)
+
+        // Use the common ancestor of every asset's parent dir as the
+        // "source root" when keep-folder-structure is on — files end up
+        // at `<destination>/<relativePath>`.
+        let parents = state.assets.map {
+            URL(fileURLWithPath: $0.path).deletingLastPathComponent().path
+        }
+        let commonRoot = ConvertSheetState.commonAncestor(of: parents)
+
+        var enqueued = 0
+        for asset in state.assets {
+            let srcURL = URL(fileURLWithPath: asset.path)
+            let outDir: URL
+            if state.keepFolderStructure, let root = commonRoot, !root.isEmpty {
+                let rel = srcURL.deletingLastPathComponent().path
+                    .replacingOccurrences(of: root, with: "")
+                outDir = baseDir.appendingPathComponent(
+                    rel.trimmingCharacters(in: CharacterSet(charactersIn: "/")),
+                    isDirectory: true
+                )
+            } else {
+                outDir = baseDir
+            }
+            try? FileManager.default.createDirectory(at: outDir,
+                                                      withIntermediateDirectories: true)
+            let dest = TranscodeService.outputURL(for: srcURL, preset: state.preset,
+                                                    in: outDir)
+            if state.skipExisting, FileManager.default.fileExists(atPath: dest.path) {
+                continue
+            }
+            let job = TranscodeJob(source: srcURL, preset: state.preset, outputURL: dest)
+            transcodeQueue.enqueue(job)
+            enqueued += 1
+        }
+        convertSheet = nil
+        if enqueued > 0 { transcodeSheetVisible = true }
+    }
+
+    /// Legacy single-asset entry point retained for the older toolbar
+    /// menus that fire-and-forget. New call sites should use
+    /// `openConvertDialog(preset:)`.
+    func transcodeSelected(preset: TranscodePreset) {
+        openConvertDialog(preset: preset)
     }
 
     func setDescription(_ text: String) {

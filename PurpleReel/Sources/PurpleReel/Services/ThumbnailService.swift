@@ -65,6 +65,16 @@ enum ThumbnailService {
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
+        // For image assets there's nothing to seek through — write
+        // the same frame `count` times so the hover-scrub cell still
+        // renders cleanly and the Content view's grid has thumbnails.
+        let ext = (asset.path as NSString).pathExtension.lowercased()
+        let imageExts: Set<String> = ["jpg", "jpeg", "png", "heic",
+                                       "tif", "tiff", "gif", "bmp", "webp"]
+        if imageExts.contains(ext) {
+            return generateImageThumbs(url: url, count: count, into: dir)
+        }
+
         let avAsset = AVURLAsset(url: url)
         let duration = CMTimeGetSeconds(avAsset.duration)
         guard duration.isFinite, duration > 0 else { return [] }
@@ -92,6 +102,44 @@ enum ThumbnailService {
                 // Drop the frame; continue with the rest. A clip with
                 // a corrupt middle won't kill the whole strip.
                 continue
+            }
+        }
+        return urls
+    }
+
+    /// Image-asset path: load the source via NSImage, downscale to the
+    /// thumbnail bounding box, and write the same JPEG `count` times so
+    /// the hover-scrub cell and the Content grid both work uniformly.
+    private static func generateImageThumbs(url: URL, count: Int, into dir: URL) -> [URL] {
+        guard let nsImage = NSImage(contentsOf: url) else { return [] }
+        let pxSize = nsImage.size
+        guard pxSize.width > 0, pxSize.height > 0 else { return [] }
+
+        // Bounding box fit at thumbWidth.
+        let scale = thumbWidth / max(pxSize.width, pxSize.height)
+        let target = NSSize(width: pxSize.width * scale,
+                              height: pxSize.height * scale)
+        let scaled = NSImage(size: target)
+        scaled.lockFocus()
+        NSGraphicsContext.current?.imageInterpolation = .high
+        nsImage.draw(in: NSRect(origin: .zero, size: target),
+                       from: NSRect(origin: .zero, size: pxSize),
+                       operation: .copy, fraction: 1.0)
+        scaled.unlockFocus()
+
+        guard let tiff = scaled.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let data = rep.representation(
+                using: .jpeg,
+                properties: [.compressionFactor: NSNumber(value: jpegQuality)])
+        else { return [] }
+
+        var urls: [URL] = []
+        urls.reserveCapacity(count)
+        for i in 0..<count {
+            let outURL = dir.appendingPathComponent("\(i).jpg")
+            if (try? data.write(to: outURL)) != nil {
+                urls.append(outURL)
             }
         }
         return urls

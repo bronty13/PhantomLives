@@ -2,7 +2,7 @@ name: PurpleReel
 options:
   bundleIdPrefix: com.bronty13
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "14.4"
   xcodeVersion: "16"
 
 packages:
@@ -20,7 +20,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.bronty13.PurpleReel
         SWIFT_VERSION: "5.10"
-        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        MACOSX_DEPLOYMENT_TARGET: "14.4"
         CODE_SIGN_STYLE: Automatic
         INFOPLIST_FILE: Sources/PurpleReel/App/Info.plist
         CODE_SIGN_ENTITLEMENTS: Sources/PurpleReel/App/PurpleReel.entitlements
@@ -43,6 +43,6 @@ targets:
     settings:
       base:
         SWIFT_VERSION: "5.10"
-        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        MACOSX_DEPLOYMENT_TARGET: "14.4"
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.bronty13.PurpleReelTests

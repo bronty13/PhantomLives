@@ -59,14 +59,27 @@ Default behavior:
 - **Failure mode**: log via `NSLog`, never throw. The app must launch even if backup fails (volume unmounted, disk full, etc.). The error surfaces in Settings → Backup.
 - **User overrides** persist in `settings.json`: `autoBackupEnabled`, `backupPath`, `backupRetentionDays`, `lastBackupAt`.
 
-Required UI (Settings → Backup):
+**Required UI (Settings → Backup) — non-negotiable** for any app
+with persistent user data. Missing controls = ship blocker.
 
 - Toggle for `autoBackupEnabled` (default **on**).
-- Text field + "Choose…" picker for the backup directory; show the resolved path below in monospaced caption.
-- Stepper for retention days.
-- "Run backup now" button.
-- "Recent backups" list with **Test** (verify archive + count rows non-destructively), **Restore** (with mandatory pre-restore safety backup), and **Reveal in Finder** actions.
+- Text field + "Choose…" picker for the backup directory; show the
+  resolved path below in monospaced caption. "Default" button restores
+  the convention path.
+- Stepper for retention days (0…365; `0` = keep forever).
+- **Run Backup Now** button — calls `BackupService.runBackup()`
+  unconditionally (ignores the 5-min launch debounce).
+- **Reveal in Finder** button for the backup directory.
+- **Recent backups** list with per-row actions:
+  - **Test** — verify the archive (extract to tempdir, confirm
+    payload + DB presence, count rows non-destructively).
+  - **Restore** — replace live Application Support directory with the
+    archive. ALWAYS create a `<AppName>-pre-restore-…zip` safety
+    backup first.
+  - **Reveal in Finder**.
 - Last-backup timestamp readout.
+- Status line showing the most recent operation result or failure
+  reason.
 
 Required tests:
 

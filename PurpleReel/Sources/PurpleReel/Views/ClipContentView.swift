@@ -6,6 +6,29 @@ import AppKit
 ///
 /// Frame grid is a 30-thumb (5×6) set. Cached independently of the
 /// 12-frame hover-scrub strip so neither clobbers the other.
+/// User-selectable thumbnail size for the Frames grid. Persists via
+/// @AppStorage so the choice survives selection changes + relaunches.
+enum FrameGridSize: String, CaseIterable, Identifiable {
+    case small, medium, large, xlarge
+    var id: String { rawValue }
+    var columns: Int {
+        switch self {
+        case .small:  return 5
+        case .medium: return 4
+        case .large:  return 3
+        case .xlarge: return 2
+        }
+    }
+    var label: String {
+        switch self {
+        case .small:  return "S"
+        case .medium: return "M"
+        case .large:  return "L"
+        case .xlarge: return "XL"
+        }
+    }
+}
+
 struct ClipContentView: View {
     let asset: Asset
     let onSeek: (Double) -> Void
@@ -14,9 +37,16 @@ struct ClipContentView: View {
     @State private var frameURLs: [URL] = []
     @State private var loadingFrames = true
 
+    @AppStorage("frameGridSize") private var frameSizeRaw: String = FrameGridSize.medium.rawValue
+    private var frameSize: FrameGridSize {
+        FrameGridSize(rawValue: frameSizeRaw) ?? .medium
+    }
+
     private let frameCount = 30
-    private let columns = [GridItem](repeating: GridItem(.flexible(), spacing: 4),
-                                       count: 5)
+    private var columns: [GridItem] {
+        [GridItem](repeating: GridItem(.flexible(), spacing: 4),
+                    count: frameSize.columns)
+    }
 
     var body: some View {
         ScrollView {
@@ -122,6 +152,18 @@ struct ClipContentView: View {
             HStack {
                 Text("Frames").font(.headline)
                 Spacer()
+                Picker("", selection: Binding(
+                    get: { frameSize },
+                    set: { frameSizeRaw = $0.rawValue }
+                )) {
+                    ForEach(FrameGridSize.allCases) { size in
+                        Text(size.label).tag(size)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 120)
+                .controlSize(.small)
                 if !frameURLs.isEmpty {
                     Text("\(frameURLs.count)")
                         .font(.caption).foregroundStyle(.secondary)

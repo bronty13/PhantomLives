@@ -86,8 +86,12 @@ final class PlayerController: ObservableObject {
     @Published var rotation: Int = 0          // 0 / 90 / 180 / 270
     @Published var flipHorizontal: Bool = false
     @Published var flipVertical: Bool = false
+    /// Loop mode: when on, the AVPlayer auto-seeks back to the start
+    /// (or to `inMarker` when an I/O range is set) on item end.
+    @Published var loopMode: Bool = false
 
     let player = AVPlayer()
+    private var didPlayToEndObserver: NSObjectProtocol?
     private var timeObserver: Any?
     private(set) var fps: Double = 30.0
     private var currentURL: URL?
@@ -100,10 +104,57 @@ final class PlayerController: ObservableObject {
             let seconds = CMTimeGetSeconds(t)
             if seconds.isFinite { self.currentTime = seconds }
         }
+        // Loop-mode handler. Subscribed once; when `loopMode` is on we
+        // seek to the start (or to the I-marker if set) on end-of-item
+        // and resume playback. When off this is a no-op.
+        didPlayToEndObserver = NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.didPlayToEndTimeNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.loopMode else { return }
+                let restart = self.inMarker ?? 0
+                self.seek(to: restart)
+                self.setRate(1.0)
+            }
+        }
     }
 
     deinit {
         if let timeObserver { player.removeTimeObserver(timeObserver) }
+        if let didPlayToEndObserver { NotificationCenter.default.removeObserver(didPlayToEndObserver) }
+    }
+
+    func toggleLoop() { loopMode.toggle() }
+
+    /// Capture the player's current displayed frame and save it as PNG.
+    /// Uses AVAssetImageGenerator with `requestedTimeToleranceBefore/
+    /// After = .zero` for frame accuracy.
+    func exportCurrentFrame() {
+        guard let url = currentURL else { return }
+        let time = CMTime(seconds: currentTime, preferredTimescale: 600)
+        let asset = AVURLAsset(url: url)
+        let gen = AVAssetImageGenerator(asset: asset)
+        gen.appliesPreferredTrackTransform = true
+        gen.requestedTimeToleranceBefore = .zero
+        gen.requestedTimeToleranceAfter = .zero
+        let stamp = String(format: "%.3f", currentTime).replacingOccurrences(of: ".", with: "_")
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.png]
+        panel.nameFieldStringValue = "\(url.deletingPathExtension().lastPathComponent)_t\(stamp).png"
+        guard panel.runModal() == .OK, let dst = panel.url else { return }
+        do {
+            let cg = try gen.copyCGImage(at: time, actualTime: nil)
+            let rep = NSBitmapImageRep(cgImage: cg)
+            guard let png = rep.representation(using: .png, properties: [:]) else { return }
+            try png.write(to: dst)
+            NSWorkspace.shared.activateFileViewerSelecting([dst])
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "Couldn't export frame"
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+        }
     }
 
     func load(url: URL, fps: Double) {
@@ -214,6 +265,42 @@ final class PlayerController: ObservableObject {
         seek(to: currentTime + Double(frames) * Timecode.frameDuration(fps: fps))
     }
 
+    /// 5-second jump used by Shift+← / Shift+→ — coarser than frame
+    /// step, fine-grained enough to scan a long take.
+    func jumpSeconds(_ delta: Double) {
+        seek(to: currentTime + delta, snapToFrame: false)
+    }
+
+    /// Seek to the nearest anchor time (markers + in-marker +
+    /// out-marker) in `direction` (-1 = previous, +1 = next). Returns
+    /// `true` if it moved, `false` if no anchor exists in that
+    /// direction. Anchors are the union of marker timecodes plus the
+    /// I/O range so Up/Down navigates everything the user has
+    /// pinned without an extra keystroke.
+    @discardableResult
+    func seekToAnchor(direction: Int, markerTimes: [Double]) -> Bool {
+        var anchors = markerTimes
+        if let inT  = inMarker  { anchors.append(inT) }
+        if let outT = outMarker { anchors.append(outT) }
+        anchors.sort()
+        guard !anchors.isEmpty else { return false }
+        // Small epsilon so a jump can land "on" the current position
+        // without immediately re-firing into the same anchor.
+        let eps = 0.05
+        if direction > 0 {
+            if let next = anchors.first(where: { $0 > currentTime + eps }) {
+                seek(to: next, snapToFrame: false)
+                return true
+            }
+        } else {
+            if let prev = anchors.last(where: { $0 < currentTime - eps }) {
+                seek(to: prev, snapToFrame: false)
+                return true
+            }
+        }
+        return false
+    }
+
     func setRate(_ rate: Float) {
         player.rate = rate
         currentRate = rate
@@ -229,6 +316,10 @@ struct PlayerView: View {
     @ObservedObject var controller: PlayerController
     let onAddMarker: () -> Void
     let onSaveSubclip: () -> Void
+    /// Direction = -1 (previous) or +1 (next). Parent supplies the
+    /// active marker list so the player stays decoupled from the
+    /// catalogue / AppState.
+    var onJumpMarker: (Int) -> Void = { _ in }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -266,6 +357,30 @@ struct PlayerView: View {
                         controller.setLUT(lut)
                     }
                 }
+            }
+        }
+        // Route menu-bar PlayerCommand notifications to the controller.
+        .onReceive(NotificationCenter.default.publisher(for: .playerCommand)) { note in
+            guard let cmd = note.object as? PlayerCommand else { return }
+            switch cmd {
+            case .playInToOut:
+                if let inT = controller.inMarker {
+                    controller.seek(to: inT)
+                    controller.setRate(1.0)
+                }
+            case .toggleLoop:
+                controller.toggleLoop()
+            case .setIn:        controller.markIn()
+            case .setOut:       controller.markOut()
+            case .clearInOut:   controller.clearInOut()
+            case .addMarker:    onAddMarker()
+            case .saveSubclip:  onSaveSubclip()
+            case .exportFrame:  controller.exportCurrentFrame()
+            case .removeMarker: break   // wired by inspector; player is no-op
+            case .jumpBack5s:    controller.jumpSeconds(-5)
+            case .jumpForward5s: controller.jumpSeconds(5)
+            case .jumpPrevMarker: onJumpMarker(-1)
+            case .jumpNextMarker: onJumpMarker(1)
             }
         }
     }
@@ -395,6 +510,28 @@ struct PlayerView: View {
 
             Spacer()
 
+            // Loop toggle — orange when on. ⌘L from the menu bar.
+            Button {
+                controller.toggleLoop()
+            } label: {
+                Image(systemName: controller.loopMode
+                                   ? "repeat.circle.fill" : "repeat")
+                    .foregroundStyle(controller.loopMode ? Color.orange : Color.secondary)
+            }
+            .help("Loop mode (⌘L)")
+
+            Button { controller.exportCurrentFrame() } label: {
+                Image(systemName: "camera")
+            }
+            .help("Export current frame as PNG (⌘⇧E)")
+
+            Button {
+                NSApp.keyWindow?.toggleFullScreen(nil)
+            } label: {
+                Image(systemName: "rectangle.expand.vertical")
+            }
+            .help("Toggle fullscreen (⌘F)")
+
             viewMenu
 
             Button { controller.markIn() } label: { Text("I") }
@@ -429,9 +566,18 @@ struct PlayerView: View {
             return false
         default: break
         }
+        let shift = event.modifierFlags.contains(.shift)
         switch event.keyCode {
-        case 123: controller.step(frames: -1); return true // ←
-        case 124: controller.step(frames: 1);  return true // →
+        case 123:                       // ←
+            if shift { controller.jumpSeconds(-5) }
+            else     { controller.step(frames: -1) }
+            return true
+        case 124:                       // →
+            if shift { controller.jumpSeconds(5) }
+            else     { controller.step(frames: 1) }
+            return true
+        case 126: onJumpMarker(-1); return true   // ↑ previous marker
+        case 125: onJumpMarker(1);  return true   // ↓ next marker
         default: return false
         }
     }

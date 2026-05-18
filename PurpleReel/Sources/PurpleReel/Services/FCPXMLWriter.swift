@@ -21,6 +21,11 @@ struct FCPXMLExportInput {
     let subclips: [Subclip]
     let tags: [Tag]
     let rating: Rating?
+    /// Kyno-parity log fields (Title / Description / Reel / Scene /
+    /// Shot / Take / Angle / Camera). When non-nil, each populated
+    /// field becomes an FCPXML `<md key="…" value="…"/>` entry so the
+    /// information lands in Final Cut Pro's metadata inspector.
+    var clipMetadata: ClipMetadata? = nil
 }
 
 enum FCPXMLWriter {
@@ -81,7 +86,8 @@ enum FCPXMLWriter {
                 duration: duration, fps: fps,
                 markers: item.markers,
                 tags: item.tags,
-                rating: item.rating
+                rating: item.rating,
+                clipMetadata: item.clipMetadata
             )
 
             for sub in item.subclips {
@@ -141,7 +147,8 @@ enum FCPXMLWriter {
                                           name: String, duration: Double,
                                           fps: Double,
                                           markers: [Marker], tags: [Tag],
-                                          rating: Rating?) -> String {
+                                          rating: Rating?,
+                                          clipMetadata: ClipMetadata? = nil) -> String {
         let dur = rationalTime(seconds: duration, fps: fps)
         var s = #"    <asset-clip ref="\#(assetRef)" name="\#(escape(name))" "#
         s += #"offset="0s" start="0s" duration="\#(dur)" format="\#(formatID)">"# + "\n"
@@ -162,6 +169,29 @@ enum FCPXMLWriter {
             // FCP's rating system only has "favorite" (no star ratings);
             // map 4-5 stars to favorite, others to no rating.
             s += #"      <rating name="Favorite" start="0s" duration="\#(dur)" value="favorite"/>"# + "\n"
+        }
+
+        // Kyno log fields → FCPXML `<metadata>` block. FCP shows these
+        // in the Info inspector under "Custom Metadata". Skip the
+        // block entirely when nothing populated to keep XML tidy.
+        if let m = clipMetadata {
+            let fields: [(String, String?)] = [
+                ("Title", m.title), ("Description", m.description),
+                ("Reel", m.reel), ("Scene", m.scene),
+                ("Shot", m.shot), ("Take", m.take),
+                ("Angle", m.angle), ("Camera", m.camera),
+            ]
+            let present = fields.compactMap { (key, val) -> (String, String)? in
+                guard let v = val, !v.isEmpty else { return nil }
+                return (key, v)
+            }
+            if !present.isEmpty {
+                s += "      <metadata>\n"
+                for (key, val) in present {
+                    s += #"        <md key="\#(escape(key))" value="\#(escape(val))"/>"# + "\n"
+                }
+                s += "      </metadata>\n"
+            }
         }
 
         s += "    </asset-clip>\n"

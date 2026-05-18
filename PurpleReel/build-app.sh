@@ -25,6 +25,11 @@ echo "Building $PRODUCT_NAME $SHORT_VERSION ($BUILD_NUMBER)..."
 echo "Generating icon assets..."
 swift Scripts/generate-icon.swift Sources/PurpleReel/Resources/Assets.xcassets/AppIcon.appiconset >/dev/null
 
+# Regenerate SHORTCUTS.md from the canonical Swift source so the
+# Markdown reference and the in-app cheat sheet can't drift apart.
+echo "Regenerating SHORTCUTS.md..."
+swift Scripts/generate-shortcuts-md.swift >/dev/null
+
 # Regenerate Xcode project from project.yml
 if command -v xcodegen >/dev/null 2>&1; then
     xcodegen generate >/dev/null

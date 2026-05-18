@@ -18,12 +18,12 @@ Legend: ✅ done · 🟡 partial · ⬜ open · ❌ explicitly skipped
 | ✅ | Type filter chips (All / Video / Audio / Images) | Capsule buttons |
 | ✅ | Sort dropdown (Name / Date / Size / Duration / FPS) | `@AppStorage` |
 | ✅ | Name filter (search field) | |
-| ⬜ | View mode toggle (Thumbnail / List / Detail) | 3-icon segmented control; needs Thumbnail (grid) + Detail (single-clip viewer) modes |
-| ⬜ | **Time** filter (Any / Last Hour / 24h / 7d / 30d / 3mo / 6mo / Last Year) | Date predicate on `modifiedAt` |
-| ⬜ | **Filter** advanced dropdown (Size / Date / Folder / Rating / Tag / Duration / Audio codec / Video codec / Resolution / Frame rate / Spanning / FCP X) | Multi-criteria predicate builder |
+| ✅ | View mode toggle (Grid / List / Detail) | 3-icon segmented control bound to ⌘1/⌘2/⌘3 |
+| ✅ | **Time** filter (Any / Last Hour / 24h / 7d / 30d / 3mo / 6mo / Last Year) | Date predicate on `modifiedAt` |
+| 🟡 | **Filter** advanced dropdown (Size / Date / Folder / Rating / Tag / Duration / Audio codec / Video codec / Resolution / Frame rate / Spanning / FCP X) | Multi-criteria predicate builder shipped: Rating / Tag / Video Codec / Resolution / Frame Rate / Size / Duration. Pills bar + UserDefaults persistence. **TODO**: Audio codec, Date Modified/Recorded, Folder scope, Spanning, FCP X library predicate. |
 | ✅ | Back / Forward navigation arrows + ⌘[/⌘] | History stack of folder selections; History menu |
-| ⬜ | Drilldown as button (not toggle) — toggles drilldown for the *currently-selected folder* only | UX detail |
-| ⬜ | Sort direction triangle | Asc/Desc toggle on the sort key |
+| ✅ | Drilldown as button (not toggle) — toggles drilldown for the *currently-selected folder* only | Per-folder set in AppState; toolbar button acts on selection |
+| ✅ | Sort direction triangle | Asc/Desc toggle in sort menu, persisted via `sortAscending` |
 
 ---
 
@@ -32,9 +32,9 @@ Legend: ✅ done · 🟡 partial · ⬜ open · ❌ explicitly skipped
 | Status | View | Notes |
 |---|---|---|
 | ✅ | List view (table with thumbnail / name / codec / res / fps / duration / size) | |
-| ⬜ | Thumbnail (grid) view | Tile grid like Finder Icon View; size slider |
-| ⬜ | Single-clip Detail view | Player + tabs at the top with prev/next clip arrows |
-| ⬜ | Extra columns: Date Modified, Date Created, Date Recorded, Display size, Aspect ratio, Rating, Frame rate (visible), Title, Description, Reel/Scene/Shot/Take/Angle, Camera | Add to the Table column set; persist visible-column set |
+| 🟡 | Thumbnail (grid) view | LazyVGrid tiles with selection ring + transcode-progress overlay; **TODO**: thumbnail size slider |
+| ✅ | Single-clip Detail view | `ClipDetailInline` — player + metadata pane; ⌘1/⌘2/⌘3 switches mode |
+| 🟡 | Extra columns: Date Modified, Date Created, Date Recorded, Display size, Aspect ratio, Rating, Frame rate (visible), Title, Description, Reel/Scene/Shot/Take/Angle, Camera | Rating / Date Modified / Title / Description / Reel/Scene/Shot/Take/Angle/Camera done via `ListColumn` toolbar menu (Table cap = 3 optional at a time); **TODO**: Date Created, Date Recorded, Display size, Aspect ratio |
 
 ---
 
@@ -44,8 +44,8 @@ Legend: ✅ done · 🟡 partial · ⬜ open · ❌ explicitly skipped
 |---|---|---|
 | ✅ | Content | Metadata block + 30-frame grid |
 | ✅ | Tracks | Per-track technical breakdown |
-| 🟡 | Log → Markers / Subclips / Tags / Rating | Functional; should split into separate tabs like Kyno (Metadata / Subclips). Kyno's Metadata tab also has Reel / Scene / Shot / Take / Angle / Camera fields and a Description textarea. |
-| ⬜ | **Metadata** dedicated tab with: Title, Description, Rating, Reel, Scene, Shot, Take, Angle, Camera, Tags, Markers | Schema additions: reel/scene/shot/take/angle/camera columns on `asset` (migration v2) |
+| 🟡 | Log → Markers / Subclips / Tags / Rating | Functional; should split into separate tabs like Kyno (Metadata / Subclips). |
+| ✅ | **Metadata** dedicated tab with: Title, Description, Rating, Reel, Scene, Shot, Take, Angle, Camera, Tags | `MetadataPaneView`; v2 migration shipped as separate `clip_metadata` table. Markers still live in Log tab. |
 | ⬜ | Subclips as own tab with Start / End / Title columns | Currently lives inside the Log pane |
 
 ---
@@ -64,18 +64,18 @@ Legend: ✅ done · 🟡 partial · ⬜ open · ❌ explicitly skipped
 | ✅ | LUT loader | |
 | ✅ | Audio waveform overlay | |
 | ✅ | Multi-rate shuttle | |
-| ⬜ | **5-second jumps**: Shift+Arrow or alternate J/L mode | Kyno's default J/L |
-| ⬜ | **Up/Down arrows** = jump to next/previous marker or in/out | |
-| ⬜ | **Alt+Space** = play in→out | |
-| ⬜ | **Cmd+L** = toggle loop mode | AVPlayer.actionAtItemEnd |
-| ⬜ | **Cmd+F** = full-screen toggle | NSWindow.toggleFullScreen + ESC to exit |
-| ⬜ | **Cmd+Shift+E** = export current frame | Already have `AVAssetImageGenerator`; needs save panel |
+| 🟡 | **5-second jumps**: Shift+Arrow or alternate J/L mode | Shift+← / Shift+→ shipped; alternate J/L mode (Kyno's default) still on the Preferences backlog |
+| ✅ | **Up/Down arrows** = jump to next/previous marker or in/out | `PlayerController.seekToAnchor(direction:markerTimes:)` — union of markers + I/O |
+| ✅ | **Alt+Space** = play in→out | Wired via menu + PlayerCommand.playInToOut |
+| ✅ | **Cmd+L** = toggle loop mode | `PlayerController.loopMode` + didPlayToEnd observer |
+| ✅ | **Cmd+F** = full-screen toggle | `NSWindow.toggleFullScreen` |
+| ✅ | **Cmd+Shift+E** = export current frame | `PlayerController.exportCurrentFrame()` w/ save panel |
 | ⬜ | **Cmd+R / Cmd+Alt+R** = rotate right/left | Already have in View menu; bind as menu shortcuts |
 | ⬜ | **Alt+M** / **Alt+S** = remove marker / subclip | |
 | ⬜ | **Zebra filter** (Ctrl+Alt+E) | Metal/CIFilter: highlight pixels > threshold |
 | ⬜ | **Widescreen mattes** (Ctrl+Alt+W) | Black bars at 2.39:1 or 1.85:1 |
 | ⬜ | Aspect-fit / actual-size / fit-window zoom controls | "Fit: 52%" stepper in Kyno's toolbar |
-| ⬜ | Loop-mode UI | |
+| ✅ | Loop-mode UI | Orange `repeat.circle.fill` button in transport bar |
 
 ---
 
@@ -85,30 +85,34 @@ Legend: ✅ done · 🟡 partial · ⬜ open · ❌ explicitly skipped
 |---|---|---|
 | ✅ | Folder tree with drilldown | |
 | ✅ | **Workspace section** (multiple rooted folders) | "Add Folder to Workspace…" (⌘I) / "Clear Workspace…" gear menu, per-root context menu |
-| ⬜ | **Devices section** | Enumerate mounted volumes via `FileManager.url(forUbiquityContainerIdentifier:)`/`URL(fileURLWithPath: "/Volumes")` |
-| ⬜ | Sidebar collapsible sections (Workspace / Devices) | |
-| ⬜ | Sidebar settings gear menu (workspace mgmt) | |
+| ✅ | **Devices section** | Enumerates `/Volumes/*`; boot-volume firmlink resolved to `/` so its prefix matches catalogued paths |
+| ⬜ | Sidebar collapsible sections (Workspace / Devices) | Disclosure caret on each section header |
+| ✅ | Sidebar settings gear menu (workspace mgmt) | Top-right gear in Workspace header |
 
 ---
 
 ## Metadata schema
 
-Schema migration `v2_metadata_fields` to add:
+Schema migration `v2_clip_metadata` — **shipped** as a separate
+`clip_metadata` table (1:1 with `asset`, FK cascade) so the
+scanner-owned `asset` table stays tightly scoped to technical
+columns. Edits commit on Return / focus loss from the Metadata pane.
 
 | Status | Column | Type |
 |---|---|---|
-| ⬜ | `title` | text |
-| ⬜ | `reel` | text |
-| ⬜ | `scene` | text |
-| ⬜ | `shot` | text |
-| ⬜ | `take` | text |
-| ⬜ | `angle` | text |
-| ⬜ | `camera` | text |
-| 🟡 | `description` | text (currently inside `rating.description`) — promote to its own column |
-| ✅ | `colorLabel` | text |
+| ✅ | `title` | text |
+| ✅ | `reel` | text |
+| ✅ | `scene` | text |
+| ✅ | `shot` | text |
+| ✅ | `take` | text |
+| ✅ | `angle` | text |
+| ✅ | `camera` | text |
+| ✅ | `description` | text (its own column in `clip_metadata`) |
+| ✅ | `colorLabel` | text (on `rating` table) |
 
-These should flow through to FCPXML as the corresponding `<metadata>`
-entries (FCPXML metadata key/value).
+These flow through to FCPXML as `<metadata>` entries with `<md
+key="Title" value="…"/>` style children, omitted entirely when no
+field is populated.
 
 ---
 
@@ -139,54 +143,89 @@ entries (FCPXML metadata key/value).
 | ✅ | S | Save subclip |
 | ✅ | J/K/L | Shuttle (PurpleReel convention; Kyno uses J/L for 5-sec jumps) |
 | ✅ | ⌃⌘S | Toggle sidebar |
-| ⬜ | ⌘1/⌘2/⌘3 | Switch to Thumbnail/List/Detail view |
-| ⬜ | ⌘← / ⌘→ | Prev/next clip in detail view |
-| ⬜ | ⌘[ / ⌘] | History back/forward |
-| ⬜ | ⌘I | Add folder to workspace |
-| ⬜ | Shift+← / Shift+→ | 5-second jump |
-| ⬜ | ↑ / ↓ | Jump to next/prev marker |
-| ⬜ | ⌥Space | Play in→out |
-| ⬜ | ⌘L | Toggle loop |
-| ⬜ | ⌘F / ESC | Full-screen toggle |
-| ⬜ | ⌘⇧E | Export current frame |
+| ✅ | ⌘1/⌘2/⌘3 | Switch to Grid / List / Detail view |
+| ✅ | ⌘← / ⌘→ | Prev/next clip in detail view |
+| ✅ | ⌘[ / ⌘] | History back/forward |
+| ✅ | ⌘I | Add folder to workspace |
+| ✅ | Shift+← / Shift+→ | 5-second jump |
+| ✅ | ↑ / ↓ | Jump to next/prev marker (or in/out) |
+| ✅ | ⌥Space | Play in→out |
+| ✅ | ⌘L | Toggle loop |
+| ✅ | ⌘F / ESC | Full-screen toggle |
+| ✅ | ⌘⇧E | Export current frame |
 | ⬜ | ⌘R / ⌘⌥R | Rotate right / left |
 | ⬜ | ⌥M / ⌥S | Remove marker / subclip |
 | ⬜ | ⌃⌥E / ⌃⌥W | Zebra / widescreen filter |
 | ⬜ | ⌘⇧M | Batch metadata edit |
 | ⬜ | ⌘⇧T | Batch tag edit |
+| ✅ | ⌘E | Convert with most-recent preset |
+| ✅ | Cmd-click / Shift-click | Multi-select in grid + list |
 
 ---
 
-## Effort-buckets for the open items
+## Documentation (backlog)
+
+External docs that ship alongside the app — every item should also be
+reachable from the in-app Help menu so users don't have to leave the
+window to find them.
+
+| Status | Doc | Notes |
+|---|---|---|
+| 🟡 | `USER_MANUAL.md` — full task-oriented user manual | Stub exists. Needs end-to-end coverage: workspace setup → catalog scan → browse / filter / multi-select → player + LUT → markers/subclips → metadata pane → Convert workflow → verified backup → SFTP delivery → FCPXML to FCP → AI features (Whisper / Ollama / Similar Takes) → preferences. Plus screenshots. |
+| ⬜ | `INSTALL.md` — install manual | First-launch flow: macOS version requirement (14.4+), Developer-ID-signed `.app` vs ad-hoc, drag to `/Applications/`, TCC grants (Files & Folders), optional `brew install ffmpeg` for DNxHR / Cineform / MXF, optional `transcribe.py` venv for Whisper, Ollama for auto-describe. Troubleshooting for "executable missing" / TCC reset. |
+| ✅ | `SHORTCUTS.md` — keyboard shortcut cross-reference | **Generated** from `Sources/PurpleReel/Help/Shortcuts.swift` by `Scripts/generate-shortcuts-md.swift` (auto-run from `build-app.sh`). Single source-of-truth shared with the in-app cheat sheet — they can't drift. |
+| ✅ | In-app **Help → User Manual** menu | Opens USER_MANUAL.md via `HelpDocs.open(.userManual)` (bundle → sibling-of-binary → repo path). |
+| ✅ | In-app **Help → Keyboard Shortcuts** menu | `ShortcutsCheatSheet` sheet (⌘?). Searchable, grouped, reads `Shortcuts.all`. |
+| ✅ | In-app **Help → Install & Setup** menu | Wired to open `INSTALL.md`; alerts politely until the doc itself ships. |
+| ⬜ | Bundle docs into the `.app` | Ship `*.md` under `Contents/Resources/Help/`. `HelpDocs.open(...)` already checks the bundle first, so this is a project.yml-side change. |
+| ⬜ | Help search-bar entries | macOS's standard Help menu has a search field. Populate it via `NSHelpManager` so users can type "drilldown" and jump to the relevant section. |
+
+Implementation order suggestion:
+1. **`SHORTCUTS.md`** first (smallest, derives directly from the
+   roadmap's existing table) + ship a Help menu entry that opens it.
+2. **`INSTALL.md`** second (also small; mostly already-known
+   prerequisites).
+3. **`USER_MANUAL.md`** expansion last — biggest single doc, benefits
+   from referencing the other two.
+
+Single-source-of-truth idea: keep the shortcut definitions in a Swift
+file (`Help/Shortcuts.swift`) and *generate* both `SHORTCUTS.md` and
+the in-app cheat-sheet from it at build time. Stops the doc / menu /
+code drift problem that hits every keyboard-heavy app.
+
+---
+
+## Effort-buckets for the **remaining** open items
 
 **Small** (1-2 hours each):
-- 5-second jump (Shift+Arrow)
+- 5-second jump (Shift+Arrow / alternate J/L mode in Preferences)
 - Up/Down marker navigation
-- Cmd+L loop
-- Cmd+F full-screen
 - Cmd+R / Cmd+Alt+R rotate shortcuts
-- Alt+M / Alt+S remove
-- Time filter dropdown
-- Sort direction toggle
-- Extra Table columns
-- Devices sidebar section
+- Alt+M / Alt+S remove marker / subclip
 - Subclips own tab
+- Sidebar collapsible sections (Workspace / Devices disclosure)
+- `SHORTCUTS.md` extraction from this roadmap
+- `INSTALL.md` consolidation (mostly exists in README + CLAUDE.md fragments)
+- Thumbnail-size slider in grid view
+- Markers in the Metadata tab (in addition to the Log tab)
 
 **Medium** (half-day each):
-- Cmd+Shift+E export frame
-- Cmd+1/2/3 view mode toggle (needs Thumbnail grid view)
-- Metadata schema migration v2 + UI fields (Reel/Scene/Shot/Take/Angle/Camera)
-- Workspace = multi-root (need to evolve `rootFolder` → `[rootFolder]`)
-- History stack (back/forward)
-- Filter advanced dropdown (multi-criteria builder)
-- Zebra + widescreen filter (CIFilter chain)
-- Preferences panes (General, Tags, Conversion, Devices, Transfer, Advanced) — split across several rounds
+- Filter advanced dropdown (multi-criteria builder: Size / Date /
+  Rating / Tag / Codec / Resolution / Frame rate)
+- Zebra + widescreen filter (CIFilter chain on the player)
+- Aspect-fit / actual-size / fit-window zoom controls
+- Preferences panes (General / Tags / Conversion / Devices / Transfer
+  / Advanced) — split across several rounds
+- In-app **Help → User Manual / Shortcuts / Install & Setup** menu
+  entries + bundled Markdown renderer
 
 **Large** (1+ day):
-- Single-clip Detail view mode (with prev/next clip nav)
-- Thumbnail (grid) view with size slider
-- Batch metadata edit sheet (Cmd+Shift+M)
-- LUT auto-detect from FCP/Resolve libraries
+- Batch metadata edit sheet (Cmd+Shift+M) — apply tags / rating /
+  log fields across the multi-selection
+- LUT auto-detect from FCP / Resolve libraries
+- USER_MANUAL.md full task-oriented rewrite with screenshots
+- Shortcuts single-source-of-truth file + build-time generator (Swift
+  → `SHORTCUTS.md` + in-app cheat-sheet)
 
 **Explicitly skipped** (out of FCP-only scope):
 - Avid Op-Atom MXF, RED R3D, P2, DNxHD non-rewrap — already declined in original build plan

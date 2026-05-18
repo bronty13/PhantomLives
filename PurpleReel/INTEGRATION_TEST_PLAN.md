@@ -615,6 +615,419 @@ responsive [ ] · memory bounded [ ]
 
 ---
 
+## Scenario 18 — Multi-select + categorized Convert + Convert dialog + per-asset progress
+
+Covers the Kyno-parity Convert workflow shipped on top of the original
+transcode scenario: multi-selection in the grid + list, the categorized
+right-click Convert submenu (with Recently Used), the "Convert & Transcode
+Media" pre-queue dialog, and the per-asset transcode-progress overlays on
+the grid tiles.
+
+**Setup**
+- Workspace contains at least three short video clips (≤ 30 s each is
+  enough for the progress overlay to be observable).
+- No prior Convert run for these files: `~/Downloads/PurpleReel/transcoded/`
+  is empty (or the user is OK with the "Skip items that already exist
+  on target" behaviour kicking in).
+
+**Steps**
+
+1. **Multi-select in grid** — switch to Grid view (⌘1). Click the first
+   clip. Cmd-click two more clips. Then Shift-click a clip further down
+   to extend the range.
+   - **Expected:** Each clicked clip shows a selection ring; the most
+     recently clicked clip shows a thicker (primary) ring. The selection
+     count matches what was clicked.
+2. **Multi-select in list** — switch to List view (⌘2). Click a row,
+   Cmd-click two more rows, Shift-click a fourth.
+   - **Expected:** Standard macOS Table multi-row selection. Selection
+     persists when switching back to Grid (⌘1).
+3. **Right-click on a non-selected row** — in either view, right-click
+   a clip that isn't in the current selection.
+   - **Expected:** The selection collapses to just that row before the
+     menu's batch actions run; the user sees only that one clip in the
+     subsequent Convert dialog.
+4. **Convert submenu — Recently Used** — on a brand-new install (no
+   MRU yet), open the Convert submenu.
+   - **Expected:** No "Recently Used" group. Categories show: Editing
+     (ProRes 422), Web (H.264 1080p/720p, HEVC), Proxies (ProRes
+     Proxy), Rewrap (Pass-through), DNxHR (SQ/HQ), Distribution
+     (Cineform, ProRes-in-MXF). Categories with no presets are not
+     rendered.
+5. **Pick a preset → dialog opens** — right-click a multi-selection,
+   Convert → Web → "H.264 1080p".
+   - **Expected:** Convert & Transcode Media sheet appears. Shows:
+     destination directory (default `~/Downloads/PurpleReel/transcoded`),
+     "Select…" button, two toggles (Keep folder structure, Skip
+     existing), preset summary (File format MP4, Category Web, Engine
+     AVFoundation, suffix `_h264_1080p`), and the summary line
+     "N files will be created in <path>".
+6. **Change destination via Select…** — click Select… and pick a folder
+   (e.g. `~/Desktop/test-out/`).
+   - **Expected:** Text field updates to the new path; summary line
+     reflects it.
+7. **Keep folder structure on** — toggle on. Pick clips that span two
+   different subfolders.
+   - **Expected:** After Start (next step), output files end up under
+     `<destination>/<relative subfolder>/` instead of all flat at
+     destination root. Verify with Finder.
+8. **Skip existing** — leave on. Re-run the same Convert on the same
+   selection.
+   - **Expected:** Second run produces zero new files (existing files
+     are skipped); the queue view shows no enqueued jobs from the
+     second invocation. Toggle Skip off and re-run; jobs are enqueued
+     with numeric suffixes (e.g. `_h264_1080p_1.mp4`).
+9. **Start enqueues + queue opens** — click Start with skip off.
+   - **Expected:** Sheet closes; transcode queue sheet opens
+     automatically; all N jobs visible there as "queued"; first one
+     transitions to "running".
+10. **Per-asset progress overlay** — return to the Grid behind the
+    queue sheet (close it if necessary; the queue persists).
+    - **Expected:** Active clip's tile has a dark bar at the bottom
+      with the preset name and an orange progress bar; percentage
+      updates in real time. Queued clips have a "Queued · H.264
+      1080p" label without a progress bar.
+11. **Finish indicators** — wait for at least one job to finish.
+    - **Expected:** A green checkmark badge in the top-right corner of
+      the finished clip's tile. Bottom progress bar gone. If a job
+      fails (e.g. preset incompatible with source), red X badge
+      instead.
+12. **Recently Used after a run** — pick a different preset for one
+    more clip (Convert → Editing → ProRes 422). Then right-click any
+    clip again.
+    - **Expected:** "Recently Used" section appears at the top of the
+      Convert menu, showing **ProRes 422** first (last pick), then
+      **H.264 1080p**. ⌘E is bound to the topmost (ProRes 422).
+13. **Sticky preferences across relaunches** — close PurpleReel,
+    relaunch. Trigger Convert again.
+    - **Expected:** The dialog remembers the destination directory,
+      the Keep-folder-structure state, and the Skip-existing state
+      from the previous run. Recently Used list also persists.
+
+**Pass criteria**
+- Multi-select works in both Grid and List with Cmd / Shift modifiers.
+- Right-click on a non-selected row replaces the selection.
+- Convert submenu shows categories + Recently Used; ⌘E hits the most
+  recent preset.
+- Convert dialog enforces destination + flags + skip logic correctly.
+- Each grid tile shows its own progress overlay while running and the
+  finish badge once done.
+- Sticky destination / toggles / MRU survive relaunch.
+
+---
+
+## Scenario 19 — Kyno log-field metadata (Title / Description / Reel / Scene / Shot / Take / Angle / Camera)
+
+Covers the v2 schema migration, the new Metadata tab in the inspector,
+the inline-edit-on-Return UX, and the FCPXML round-trip carrying the
+new fields into Final Cut Pro as `<md>` entries.
+
+**Setup**
+- Workspace contains at least one video clip with non-trivial duration.
+- Final Cut Pro 11+ installed (only required for the round-trip step).
+
+**Steps**
+
+1. **Migration on first launch** — quit PurpleReel. Move the existing
+   DB aside: `mv ~/Library/Application\ Support/PurpleReel/purplereel.sqlite ~/Desktop/`.
+   Re-launch.
+   - **Expected:** App starts cleanly, scans the workspace, and the
+     new `clip_metadata` table is created on first migration run. No
+     error in Console.
+   - **Then** restore your DB: quit, move it back, relaunch.
+2. **Verify migration applied to existing DB** — open Terminal:
+   `sqlite3 ~/Library/Application\ Support/PurpleReel/purplereel.sqlite ".schema clip_metadata"`.
+   - **Expected:** Table definition is printed with columns
+     `assetId, title, description, reel, scene, shot, take, angle, camera`.
+3. **Metadata tab visible in inspector** — select a clip in List view
+   (⌘2). Look at the right-side inspector tab bar.
+   - **Expected:** "Metadata" tab is present, left of Content / Tracks
+     / Log. Selecting it shows: Rating row (5 stars + clear), Title
+     field, Description multi-line, then a 6-row grid of Reel /
+     Scene / Shot / Take / Angle / Camera, then a Tags section.
+4. **Inline edit + persistence** — type into Title, press Return. Type
+   into Description, click elsewhere. Fill in Reel "A001", Scene "1",
+   Shot "A", Take "3".
+   - **Expected:** Every edit commits when you press Return or move
+     focus. Switch to another clip, then back — the values reload
+     correctly. Quit + relaunch the app — values still there.
+5. **Rating + tags from Metadata pane** — set rating to 4. Add tag
+   "interior".
+   - **Expected:** Stars fill yellow up to position 4. The tag
+     appears as a removable pill. Click the X to remove and confirm
+     it goes away (same backing table as the Log tab — they should
+     stay in sync).
+6. **Inline detail view shows Metadata pane** — switch to Detail view
+   (⌘3). The right-side pane title says "Metadata".
+   - **Expected:** Same Title / Description / Reel / Scene / Shot /
+     Take / Angle / Camera form, edits commit identically.
+7. **FCPXML round-trip — single clip** — pick the clip with the
+   metadata you set. Send to FCP via the toolbar's "Send to FCP →
+   Selected Clip to Final Cut Pro".
+   - **Expected:** Final Cut Pro launches, an event is created, the
+     clip imports.
+   - **In Final Cut Pro**, select the imported clip and open the Info
+     inspector → Metadata View → "General" or "Custom" (depending on
+     FCP version). The Title / Description / Reel / Scene / Shot /
+     Take / Angle / Camera fields should be populated from the
+     PurpleReel sheet.
+   - **Also verify** the fcpxml on disk: `cat ~/Downloads/PurpleReel/exports/PurpleReel_*.fcpxml | grep -A1 metadata`
+     should show `<md key="Title" value="…"/>` style entries.
+8. **FCPXML — empty metadata is skipped** — pick a clip with NO log
+   fields set. Send to FCP.
+   - **Expected:** Generated `.fcpxml` for that clip has NO
+     `<metadata>` block (XML stays tidy when nothing is populated).
+9. **Library-wide export carries metadata** — toolbar → "Send to FCP
+   → Entire Library — Save .fcpxml Only".
+   - **Expected:** The single bulk `.fcpxml` file contains a
+     `<metadata>` block under every `<asset-clip>` whose backing
+     clip has any populated log field.
+10. **Tab persistence** — switch the inspector to "Metadata", then to
+    "Content", then quit. Relaunch.
+    - **Expected:** The Metadata tab is remembered as the active
+      inspector tab (`detailTab` @AppStorage). Was "Log" the
+      default; new installs land on "Content" — verify that.
+
+**Pass criteria**
+- v2 migration creates `clip_metadata` cleanly on fresh and existing
+  installs.
+- Metadata tab edits persist across selection changes and relaunches.
+- Rating / Tags from the Metadata pane share state with the Log pane.
+- FCPXML carries Title / Description / Reel / Scene / Shot / Take /
+  Angle / Camera as `<md>` entries; empty fields are omitted.
+- Final Cut Pro shows the fields after import.
+
+---
+
+## Scenario 20 — Extra List columns + sort direction + player shortcuts
+
+Covers the optional columns toolbar control, the new sort
+ascending/descending direction toggle, and the player keyboard
+shortcuts ⌘F / ⌘L / ⌘⇧E.
+
+**Steps**
+
+1. **Columns menu** — switch to List view (⌘2). Open the "Columns" menu
+   in the browser toolbar.
+   - **Expected:** Menu items for Rating, Date Modified, Title,
+     Description, Reel, Scene, Shot, Take, Angle, Camera. Rating is
+     checked by default.
+2. **Toggle three columns on** — turn on Rating, Title, and Reel.
+   - **Expected:** Three new columns appear after Size. Rating shows
+     5-dot stars per row; Title pulls from the clip_metadata you set
+     in Scenario 19. Empty values render as `—` in secondary colour.
+   - **Note:** SwiftUI Table caps at 10 columns, so the optional
+     column set is limited to the first 3 enabled (priority =
+     `ListColumn.allCases` order). Enabling more displays only the
+     first 3; toggle off one to surface another.
+3. **Cross-launch persistence** — quit, relaunch. Columns selection
+   survives.
+4. **Sort direction toggle** — open Sort menu. Click "Ascending" /
+   "Descending" entries at the bottom; also click an already-selected
+   sort key to flip direction.
+   - **Expected:** The toolbar Sort label shows the up/down arrow
+     reflecting current direction; the table reorders accordingly.
+     Direction persists across relaunch.
+5. **⌘L loop mode** — in the player (List view, click a video; or
+   Detail view), press ⌘L (or click the repeat button in the
+   transport bar).
+   - **Expected:** The repeat icon turns orange (filled) when on;
+     when the clip reaches its end (or hits the out marker if I/O
+     is set), the player seeks back to the in marker (or 0) and
+     resumes playing. Pressing ⌘L again turns loop off.
+6. **⌘F fullscreen** — press ⌘F.
+   - **Expected:** Window enters macOS fullscreen mode. ⌘F or Esc
+     exits.
+7. **⌘⇧E export current frame** — play to an interesting frame,
+   pause, press ⌘⇧E.
+   - **Expected:** Save panel appears with default filename
+     `<clipname>_t<seconds>.png`. After save, Finder opens with the
+     PNG selected. Frame is the exact pause-time frame (verified by
+     opening in Preview).
+
+**Pass criteria**
+- Columns add value (no crashes, values populate correctly).
+- Sort direction works in both menu entries and the "click-again"
+  flip on the selected key.
+- Loop, fullscreen, export-frame shortcuts behave as documented.
+
+---
+
+## Scenario 21 — In-app Help: Keyboard Shortcuts cheat sheet + User Manual / Install entries
+
+Covers the Shortcuts source-of-truth + the in-app cheat-sheet sheet +
+SHORTCUTS.md generator + Help menu entries.
+
+**Steps**
+
+1. **Help menu items** — open the macOS Help menu in PurpleReel.
+   - **Expected:** Items: Keyboard Shortcuts… (⌘?), PurpleReel User
+     Manual, Install & Setup, SHORTCUTS.md (Reference File), Visit
+     Kyno parity roadmap. macOS's default search field still appears
+     above this list.
+2. **Cheat sheet via menu** — click Keyboard Shortcuts… (or press
+   ⌘?).
+   - **Expected:** A 620×540 sheet opens with grouped sections
+     (Browser / Player / Logging & Metadata / Convert / View /
+     Window). Each row shows the combo in a monospace pill and the
+     action text. The header shows the app version; the footer shows
+     "N of M shortcuts" and a Close button (or ⎋).
+3. **Search** — type "loop" into the search field.
+   - **Expected:** Only the ⌘L row remains. The "N of M" counter
+     updates. Clearing the field via the ✕ button restores all
+     groups.
+4. **SHORTCUTS.md** — click "SHORTCUTS.md (Reference File)".
+   - **Expected:** The default Markdown viewer opens the file. The
+     file lists the same shortcuts as the cheat sheet, grouped
+     identically.
+5. **User Manual** — click "PurpleReel User Manual".
+   - **Expected:** USER_MANUAL.md opens. (Stub today — fuller content
+     is on the documentation backlog.)
+6. **Install & Setup** — click "Install & Setup".
+   - **Expected:** Polite "INSTALL.md not found" alert with an
+     explanation, until the doc lands. No crash.
+7. **Source-of-truth round-trip** — open
+   `Sources/PurpleReel/Help/Shortcuts.swift`, add a fake entry, run
+   `swift Scripts/generate-shortcuts-md.swift`.
+   - **Expected:** Generator reports "Wrote SHORTCUTS.md (N
+     shortcuts)" with the count incremented; the new combo appears
+     in `SHORTCUTS.md`. Build the app and confirm the cheat sheet
+     shows it too. Remove the test entry and regenerate to clean up.
+
+**Pass criteria**
+- Cheat sheet renders, search works, ⌘? opens it.
+- Help menu opens external markdown for files that exist; alerts
+  cleanly for files that don't.
+- `build-app.sh` runs the generator (look for "Regenerating
+  SHORTCUTS.md…" in build output).
+- Adding an entry to `Shortcuts.swift` propagates to both the
+  in-app sheet and `SHORTCUTS.md`.
+
+---
+
+## Scenario 22 — Advanced Filter dropdown
+
+Covers the multi-criteria Filter menu, the active-filter pills bar,
+and the per-criterion match semantics (rating / tag / codec /
+resolution / framerate / size / duration).
+
+**Setup**
+- Workspace contains a mix of clips with different rating values,
+  codecs (H.264 + ProRes if possible), resolutions (1080p + 4K if
+  possible), and frame rates.
+- At least one clip has a tag (set via the Metadata pane).
+
+**Steps**
+
+1. **Open Filter menu** — toolbar shows a "Filter" button between
+   the type chips and the Columns menu. Click it.
+   - **Expected:** A categorized menu opens: Rating (≥★ through
+     ≥★★★★★), Codec (H264 / HEVC / PRORES / DNXHR / CINEFORM),
+     Resolution (8K / 4K / 1440p / 1080p / 720p / 480p), Frame Rate
+     (23.98 / 24 / 25 / 29.97 / 30 / 50 / 59.94 / 60 fps), Size,
+     Duration, Has Tag (only shown if any tags exist).
+2. **Pin Rating ≥ ★★★★** — count goes from "X of Y" to filtered N.
+   - **Expected:** Active-filter pills row appears under the toolbar
+     in a soft-orange background. One pill says "Rating ≥ 4★" with
+     an × button. Filter-menu icon turns orange + shows "(1)".
+3. **Add Codec: PRORES** — second pill appears.
+   - **Expected:** Only ProRes clips with ≥4★ rating remain. Pill
+     count "(2)".
+4. **Remove the rating pill** — click the × on "Rating ≥ 4★".
+   - **Expected:** Only the codec pill remains; the rating
+     restriction is lifted (all ProRes clips show again regardless
+     of stars).
+5. **Resolution preset** — add Resolution → 4K UHD.
+   - **Expected:** Only 4K-resolution ProRes clips remain. Match
+     handles portrait clips by using `max(width, height)`.
+6. **Frame rate preset** — add Frame Rate → 23.98 fps.
+   - **Expected:** Match tolerates the 23.976/24.000 boundary
+     (±0.05). 24.000-fps clips do *not* match.
+7. **Has Tag** — add Has Tag → <your tag>.
+   - **Expected:** Pill appears; only clips with that tag remain.
+8. **"Clear All" button** — at the trailing edge of the pills bar.
+   - **Expected:** All pills removed in one click; toolbar Filter
+     icon goes back to gray; full unfiltered count restored.
+9. **Persistence across launches** — pin two criteria, quit, relaunch.
+   - **Expected:** The same pills are restored. (Backed by
+     `UserDefaults("activeFilters")` as a `;`-joined token string.)
+10. **Type chip + advanced filter combined** — click the Video chip,
+    then add a Filter > Resolution > 1080p.
+    - **Expected:** Both apply (AND-combined). Switching the type
+      chip back to "All" leaves the advanced filter in place.
+11. **Empty active set behaviour** — clear filters. The pills row
+    should disappear (toolbar shrinks back to 2 rows).
+12. **Many criteria** — add 6+ filters. Pills should scroll
+    horizontally inside the bar without overflowing the window.
+
+**Pass criteria**
+- Filter menu opens, every category lists the right options.
+- Each pill matches its semantics; AND composition is correct.
+- × on a pill, "Clear All" button, and "Clear All Filters" inside
+  the menu all behave consistently.
+- Pills bar shows only when criteria are active.
+- Active filters round-trip across launches.
+
+---
+
+## Scenario 23 — Player Up/Down marker nav + Shift+Arrow 5-sec jumps
+
+Covers two related player polish items: arrow-shift coarse jumps and
+Up/Down marker (or in/out) navigation. Both work from the player key
+handler (when the player has focus) and from the Playback menu (so
+they fire system-wide while the app is frontmost).
+
+**Setup**
+- A video clip at least 30 seconds long.
+- The clip has 2-3 markers added (M key) at known timecodes plus an
+  in/out range set with I/O.
+
+**Steps**
+
+1. **Shift+→ jumps forward 5 s** — start at 0:00. Press Shift+→.
+   - **Expected:** Playhead advances by exactly 5 seconds. Timecode
+     readout shows ~0:05. Repeating moves to 0:10, 0:15, …
+2. **Shift+← jumps back 5 s** — press Shift+← from 0:15.
+   - **Expected:** Playhead returns to 0:10. Stops at 0:00 if you
+     keep pressing (no negative seek).
+3. **↓ jumps to next marker** — from 0:00, with markers at e.g.
+   0:03, 0:12, 0:25, press ↓.
+   - **Expected:** Playhead snaps to 0:03 (first marker after 0:00).
+     Next ↓ press → 0:12, then 0:25. Further ↓ presses no-op once
+     no anchor is ahead of the playhead.
+4. **↑ jumps to previous marker** — from 0:25, press ↑.
+   - **Expected:** Playhead snaps to 0:12, then 0:03, then no-op
+     (no anchor before the playhead).
+5. **In / Out points count as anchors** — set I at 0:08, O at 0:18.
+   From 0:00, press ↓ four times.
+   - **Expected:** Sequence is 0:03 → 0:08 (in) → 0:12 → 0:18 (out).
+     Markers + I/O combine sorted into a single anchor list.
+6. **Epsilon — landing on an anchor doesn't immediately re-fire** —
+   from 0:00, ↓ to 0:03. Press ↓ again.
+   - **Expected:** Advances to 0:08, not stuck on 0:03 (epsilon ±0.05s).
+7. **Menu-bar firing** — open Playback menu. Verify items: Jump Back
+   5 Seconds (Shift+←), Jump Forward 5 Seconds (Shift+→), Previous
+   Marker (↑), Next Marker (↓). Click each.
+   - **Expected:** Same behaviour as the in-player keystrokes.
+8. **No markers + no I/O** — clear all markers, clear I/O. Press ↑/↓.
+   - **Expected:** No-ops cleanly (no crash, playhead stays put).
+9. **Cheat sheet** — Help → Keyboard Shortcuts… (⌘?). Search
+   "marker" and "5".
+   - **Expected:** Shift+← / Shift+→ / ↑ / ↓ entries appear in the
+     Player group with the correct action labels.
+10. **SHORTCUTS.md** — `cat SHORTCUTS.md | grep -E "Shift\+|marker"`.
+    - **Expected:** Four matching rows generated from
+      `Shortcuts.swift`.
+
+**Pass criteria**
+- Both Shift+arrow and ↑/↓ behave as documented from keyboard and
+  menu.
+- Anchor list correctly unions markers + in + out.
+- Epsilon prevents the "stuck on an anchor" bug.
+- Cheat sheet + SHORTCUTS.md reflect the four new combos.
+
+---
+
 ## Regression triggers
 
 After **any** change, re-run **at minimum**:
@@ -629,3 +1042,24 @@ After any change to the **transcode / backup / SFTP / FCPXML /
 AI** code paths, re-run the scenario(s) covering that area.
 
 After any change to **window/sidebar layout**, re-run Scenario 15.
+
+After any change to **multi-select / Convert submenu / Convert
+dialog / per-asset progress overlays**, re-run Scenario 18.
+
+After any change to the **clip_metadata schema / Metadata tab /
+FCPXML metadata emission**, re-run Scenario 19.
+
+After any change to **optional List columns / sort direction /
+player keyboard shortcuts**, re-run Scenario 20.
+
+After any change to **`Shortcuts.swift` / `ShortcutsCheatSheet.swift`
+/ `Scripts/generate-shortcuts-md.swift` / Help menu**, re-run
+Scenario 21.
+
+After any change to **`FilterCriterion` / activeFilters /
+tagIndex / Filter toolbar menu / active-filter pills bar**, re-run
+Scenario 22.
+
+After any change to **`PlayerController.jumpSeconds(_:)` /
+`seekToAnchor(direction:markerTimes:)` / PlayerView key handler /
+Playback menu / `onJumpMarker` plumbing**, re-run Scenario 23.
