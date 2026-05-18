@@ -19,6 +19,10 @@ struct ConvertSheetState: Identifiable {
     /// Same shape as `fadeInSeconds` but applied at the end of each
     /// output clip — fade to black + audio cross-fade to silence.
     var fadeOutSeconds: Double = 0
+    /// Burn the running source timecode into every output frame.
+    /// Required for any dailies / client-review workflow. Honored
+    /// only on AVFoundation presets (same scope as fades).
+    var tcBurnIn: Bool = false
 
     /// Longest path that is a prefix of every input path. Used for
     /// the "keep folder structure" relative-path computation.
@@ -119,8 +123,10 @@ struct ConvertSheet: View {
                               : "Fade out: off")
                     }
                     .disabled(state.preset.isFFmpeg)
+                    Toggle("Burn timecode into video", isOn: $state.tcBurnIn)
+                        .disabled(state.preset.isFFmpeg)
                     if state.preset.isFFmpeg {
-                        Text("Fades currently apply to AVFoundation presets only. ffmpeg recipes (DNxHR, Cineform, MXF, Smart Proxy) render without them.")
+                        Text("Fades + TC burn-in currently apply to AVFoundation presets only. ffmpeg recipes (DNxHR, Cineform, MXF, Smart Proxy) render without them.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

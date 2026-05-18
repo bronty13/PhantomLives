@@ -1,6 +1,8 @@
 import Foundation
 import AVFoundation
 import AppKit
+import CoreImage
+import CoreImage.CIFilterBuiltins
 
 /// A single transcode job. State is observable so views can show
 /// per-row progress without diffing through a parent queue.
@@ -31,6 +33,10 @@ final class TranscodeJob: ObservableObject, Identifiable {
     /// (filter-chain merge is a follow-up).
     let fadeInSeconds: Double
     let fadeOutSeconds: Double
+    /// Burn the running source timecode into every output frame.
+    /// AVFoundation-only; honored alongside fades by composing the
+    /// opacity ramp into a single CIFilter-handler videoComposition.
+    let tcBurnIn: Bool
 
     @Published var state: State = .queued
     @Published var progress: Double = 0
@@ -39,12 +45,14 @@ final class TranscodeJob: ObservableObject, Identifiable {
     private var progressTimer: Timer?
 
     init(source: URL, preset: TranscodePreset, outputURL: URL,
-         fadeInSeconds: Double = 0, fadeOutSeconds: Double = 0) {
+         fadeInSeconds: Double = 0, fadeOutSeconds: Double = 0,
+         tcBurnIn: Bool = false) {
         self.source = source
         self.preset = preset
         self.outputURL = outputURL
         self.fadeInSeconds = max(0, fadeInSeconds)
         self.fadeOutSeconds = max(0, fadeOutSeconds)
+        self.tcBurnIn = tcBurnIn
     }
 
     func run() async {
@@ -84,15 +92,18 @@ final class TranscodeJob: ObservableObject, Identifiable {
         session.shouldOptimizeForNetworkUse = true
         self.exportSession = session
 
-        // Audio + video fades (Kyno 1.6 parity). Skipped for the
-        // pass-through preset — the export bypasses both audioMix
-        // and videoComposition when re-wrapping the source. Built
-        // from the source AVAsset's tracks directly; no full
-        // composition needed because AVAssetExportSession accepts
-        // these on top of the bare asset.
-        if (fadeInSeconds > 0 || fadeOutSeconds > 0)
+        // Audio + video fades + optional timecode burn-in.
+        // Skipped for the pass-through preset — the export bypasses
+        // both audioMix and videoComposition when re-wrapping the
+        // source. Built from the source AVAsset's tracks directly;
+        // no full composition needed because AVAssetExportSession
+        // accepts both on top of the bare asset.
+        let needsComposition = fadeInSeconds > 0
+            || fadeOutSeconds > 0
+            || tcBurnIn
+        if needsComposition
            && preset.avPresetName != AVAssetExportPresetPassthrough {
-            await applyFades(to: session, asset: asset)
+            await applyComposition(to: session, asset: asset)
         }
 
         try? FileManager.default.removeItem(at: outputURL)
@@ -128,14 +139,14 @@ final class TranscodeJob: ObservableObject, Identifiable {
         }
     }
 
-    /// Build audio-volume ramps and a video opacity-ramp composition
-    /// for the requested fade-in / fade-out durations, and hang them
-    /// off the export session. Black background for the video fades
-    /// (the composition's default render color is `.clear`, which
-    /// would composite the source over nothing — visually identical
-    /// to fade-to-black at the start/end where there's no source).
-    private func applyFades(to session: AVAssetExportSession,
-                             asset: AVURLAsset) async {
+    /// Build the export-side composition: audio volume ramps for the
+    /// requested fade-in / fade-out durations, plus a video pipeline
+    /// that handles either layer-instruction-driven opacity ramps
+    /// (when TC burn-in is off — cheap, no per-frame work) OR a
+    /// CIFilter-handler that does both opacity multiplication and
+    /// per-frame timecode rendering (when TC burn-in is on).
+    private func applyComposition(to session: AVAssetExportSession,
+                                    asset: AVURLAsset) async {
         let duration = (try? await asset.load(.duration)) ?? .zero
         let durSec = CMTimeGetSeconds(duration)
         guard durSec.isFinite, durSec > 0 else { return }
@@ -173,50 +184,168 @@ final class TranscodeJob: ObservableObject, Identifiable {
         }
 
         // ----- video ----------------------------------------------
-        if let videoTracks = try? await asset.loadTracks(withMediaType: .video),
-           let videoTrack = videoTracks.first {
-            let comp = AVMutableVideoComposition()
-            // Use the source track's nominal frame rate when sane,
-            // otherwise 30 fps — Apple's HEIC/PNG fallback.
-            let nominal = (try? await videoTrack.load(.nominalFrameRate)) ?? 30
-            let fr = nominal > 0 ? Double(nominal) : 30
-            comp.frameDuration = CMTime(value: 1, timescale: CMTimeScale(fr.rounded()))
-            // Honor any preferred transform / native size on the
-            // source so the export doesn't end up rotated.
-            let natural = (try? await videoTrack.load(.naturalSize)) ?? .zero
-            let transform = (try? await videoTrack.load(.preferredTransform)) ?? .identity
-            let rotated = natural.applying(transform)
-            comp.renderSize = CGSize(
-                width: abs(rotated.width), height: abs(rotated.height)
+        // Two pipelines:
+        //  - When TC burn-in is off, opacity ramps via the lighter
+        //    layer-instruction path. Zero per-frame cost.
+        //  - When TC burn-in is on, switch to a CIFilter handler
+        //    that does opacity multiplication AND text rendering
+        //    inside one closure. The handler approach is the only
+        //    way AVFoundation lets us draw arbitrary content per
+        //    frame from CoreImage.
+        guard let videoTracks = try? await asset.loadTracks(withMediaType: .video),
+              let videoTrack = videoTracks.first else { return }
+
+        let nominal = (try? await videoTrack.load(.nominalFrameRate)) ?? 30
+        let trackFps = Double(nominal > 0 ? nominal : 30)
+        let natural = (try? await videoTrack.load(.naturalSize)) ?? .zero
+        let transform = (try? await videoTrack.load(.preferredTransform)) ?? .identity
+        let rotated = natural.applying(transform)
+        let renderSize = CGSize(
+            width: abs(rotated.width), height: abs(rotated.height)
+        )
+
+        if tcBurnIn {
+            let comp = AVMutableVideoComposition(
+                asset: asset,
+                applyingCIFiltersWithHandler: { [inLen, outLen, durSec] request in
+                    var image = request.sourceImage
+                    let t = CMTimeGetSeconds(request.compositionTime)
+
+                    // Opacity ramp (fade in/out), computed on the
+                    // request time. Multiplied into alpha via a
+                    // CIColorMatrix because CIImage has no direct
+                    // opacity setter on the input side.
+                    var alpha = 1.0
+                    if inLen > 0, t < inLen {
+                        alpha = max(0, t / inLen)
+                    }
+                    if outLen > 0 {
+                        let outStartT = durSec - outLen
+                        if t > outStartT {
+                            alpha = min(alpha, max(0, (durSec - t) / outLen))
+                        }
+                    }
+                    if alpha < 1 {
+                        let mat = CIFilter.colorMatrix()
+                        mat.inputImage = image
+                        mat.rVector = CIVector(x: 1, y: 0, z: 0, w: 0)
+                        mat.gVector = CIVector(x: 0, y: 1, z: 0, w: 0)
+                        mat.bVector = CIVector(x: 0, y: 0, z: 1, w: 0)
+                        mat.aVector = CIVector(x: 0, y: 0, z: 0,
+                                                 w: CGFloat(alpha))
+                        image = mat.outputImage ?? image
+                    }
+
+                    // TC overlay — drawn at the source extent so
+                    // the position math is in pixel coordinates of
+                    // the un-rotated frame. AVFoundation applies
+                    // the track's preferredTransform after our
+                    // handler returns, so we don't need to rotate.
+                    let extent = request.sourceImage.extent
+                    let label = Timecode.format(seconds: t, fps: trackFps)
+                    let tcImage = Self.makeTCOverlay(
+                        text: label, frameSize: extent.size
+                    )
+                    let over = CIFilter.sourceOverCompositing()
+                    over.inputImage = tcImage
+                    over.backgroundImage = image
+                    let composed = over.outputImage ?? image
+                    request.finish(
+                        with: composed.cropped(to: extent),
+                        context: nil
+                    )
+                }
             )
-
-            let inst = AVMutableVideoCompositionInstruction()
-            inst.timeRange = CMTimeRange(start: .zero, duration: duration)
-            inst.backgroundColor = NSColor.black.cgColor
-
-            let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)
-            layer.setTransform(transform, at: .zero)
-            if inLen > 0 {
-                let endTime = CMTime(seconds: inLen, preferredTimescale: 600)
-                layer.setOpacityRamp(
-                    fromStartOpacity: 0,
-                    toEndOpacity: 1,
-                    timeRange: CMTimeRange(start: .zero, end: endTime)
-                )
-            }
-            if outLen > 0 {
-                let startSec = max(0, durSec - outLen)
-                let outStart = CMTime(seconds: startSec, preferredTimescale: 600)
-                layer.setOpacityRamp(
-                    fromStartOpacity: 1,
-                    toEndOpacity: 0,
-                    timeRange: CMTimeRange(start: outStart, end: duration)
-                )
-            }
-            inst.layerInstructions = [layer]
-            comp.instructions = [inst]
             session.videoComposition = comp
+            return
         }
+
+        // Fade-only path (no TC burn-in): layer-instruction
+        // opacity ramps. Cheaper because there's no per-frame
+        // CIFilter dispatch.
+        let comp = AVMutableVideoComposition()
+        comp.frameDuration = CMTime(
+            value: 1, timescale: CMTimeScale(trackFps.rounded())
+        )
+        comp.renderSize = renderSize
+
+        let inst = AVMutableVideoCompositionInstruction()
+        inst.timeRange = CMTimeRange(start: .zero, duration: duration)
+        inst.backgroundColor = NSColor.black.cgColor
+
+        let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)
+        layer.setTransform(transform, at: .zero)
+        if inLen > 0 {
+            let endTime = CMTime(seconds: inLen, preferredTimescale: 600)
+            layer.setOpacityRamp(
+                fromStartOpacity: 0,
+                toEndOpacity: 1,
+                timeRange: CMTimeRange(start: .zero, end: endTime)
+            )
+        }
+        if outLen > 0 {
+            let startSec = max(0, durSec - outLen)
+            let outStart = CMTime(seconds: startSec, preferredTimescale: 600)
+            layer.setOpacityRamp(
+                fromStartOpacity: 1,
+                toEndOpacity: 0,
+                timeRange: CMTimeRange(start: outStart, end: duration)
+            )
+        }
+        inst.layerInstructions = [layer]
+        comp.instructions = [inst]
+        session.videoComposition = comp
+    }
+
+    /// Render the TC label into a small CGContext sized to the text
+    /// box, then position it bottom-center of `frameSize` as a
+    /// transparent-background CIImage. We render only the box (not
+    /// a full-frame canvas) to keep per-frame allocations small;
+    /// AVAssetExportSession dispatches dozens of these per second
+    /// of video.
+    static func makeTCOverlay(text: String,
+                                frameSize: CGSize) -> CIImage {
+        let fontSize = max(20, frameSize.width * 0.04)
+        let font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .bold)
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.white,
+        ]
+        let attrStr = NSAttributedString(string: text, attributes: attrs)
+        let textSize = attrStr.size()
+        let pad: CGFloat = max(8, fontSize * 0.3)
+        let boxWidth  = ceil(textSize.width + pad * 2)
+        let boxHeight = ceil(textSize.height + pad * 2)
+        let bytesPerRow = Int(boxWidth) * 4
+        guard let ctx = CGContext(
+            data: nil,
+            width: Int(boxWidth),
+            height: Int(boxHeight),
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return CIImage.empty() }
+        ctx.clear(CGRect(x: 0, y: 0, width: boxWidth, height: boxHeight))
+        ctx.setFillColor(CGColor(gray: 0, alpha: 0.65))
+        ctx.fill(CGRect(x: 0, y: 0, width: boxWidth, height: boxHeight))
+        // NSAttributedString.draw needs an NSGraphicsContext on the
+        // stack. Restore the previous one when we're done — the
+        // export session uses CoreGraphics from multiple threads
+        // and we don't want to leak the wrapper.
+        let ns = NSGraphicsContext(cgContext: ctx, flipped: false)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = ns
+        attrStr.draw(at: CGPoint(x: pad, y: pad))
+        NSGraphicsContext.restoreGraphicsState()
+        guard let cg = ctx.makeImage() else { return CIImage.empty() }
+        let img = CIImage(cgImage: cg)
+        // Position bottom-center. CIImage uses bottom-left origin;
+        // 30px above the bottom keeps the badge clear of the
+        // safe-area mask most monitors will overlay anyway.
+        let x = (frameSize.width - boxWidth) / 2
+        let y: CGFloat = max(20, frameSize.height * 0.04)
+        return img.transformed(by: CGAffineTransform(translationX: x, y: y))
     }
 
     /// Optionally copy the source file's mtime onto the freshly-

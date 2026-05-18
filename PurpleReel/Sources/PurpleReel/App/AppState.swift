@@ -1302,7 +1302,8 @@ final class AppState: ObservableObject {
                 preset: state.preset,
                 outputURL: dest,
                 fadeInSeconds: state.fadeInSeconds,
-                fadeOutSeconds: state.fadeOutSeconds
+                fadeOutSeconds: state.fadeOutSeconds,
+                tcBurnIn: state.tcBurnIn
             )
             transcodeQueue.enqueue(job)
             enqueued += 1
