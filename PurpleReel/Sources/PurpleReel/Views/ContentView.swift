@@ -215,6 +215,10 @@ struct ContentView: View {
             BatchTagEditorSheet()
                 .environmentObject(appState)
         }
+        .sheet(isPresented: $appState.transferMetadataSheetVisible) {
+            TransferMetadataSheet()
+                .environmentObject(appState)
+        }
     }
 }
 

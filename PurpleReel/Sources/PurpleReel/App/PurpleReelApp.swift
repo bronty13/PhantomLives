@@ -174,6 +174,11 @@ struct PurpleReelApp: App {
                     }
                 }
                 .disabled(appState.displayedAssets.isEmpty)
+                Divider()
+                Button("Transfer Metadata Between Folders…") {
+                    appState.transferMetadataSheetVisible = true
+                }
+                .disabled(appState.workspaceRoots.isEmpty)
             }
 
             // ---- Edit (extends standard) -------------------------------

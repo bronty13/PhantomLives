@@ -1516,6 +1516,106 @@ final class AppState: ObservableObject {
         playAllIndex = 0
     }
 
+    // MARK: - Folder-tree metadata transfer (Kyno 1.8 parity)
+
+    /// Visibility flag for `TransferMetadataSheet` — set from the
+    /// File menu item, read from `ContentView` via the standard
+    /// `.sheet(isPresented:)` pattern.
+    @Published var transferMetadataSheetVisible = false
+
+    /// Compute the matching pairs across two folders without
+    /// mutating anything. Drives the sheet's Preview row before
+    /// the user commits.
+    func previewMetadataTransfer(from source: URL,
+                                  to dest: URL) -> TransferMetadataSheet.PreviewResult {
+        let pairs = matchAssetPairs(source: source, dest: dest)
+        let srcCount = countAssetsUnder(source)
+        let dstCount = countAssetsUnder(dest)
+        return TransferMetadataSheet.PreviewResult(
+            matchedPairs: pairs.count,
+            unmatchedSource: max(0, srcCount - pairs.count),
+            unmatchedDest: max(0, dstCount - pairs.count),
+            transferredFieldsPerPair: 9   // 9 user-edited fields
+        )
+    }
+
+    /// Apply the metadata copy. For every matching pair: clip_metadata
+    /// (title, description, reel, scene, shot, take, angle, camera,
+    /// audioChannelNames), rating, and every tag (additive).
+    /// Markers / subclips intentionally NOT copied — those carry
+    /// absolute timecodes that may not survive a swap between a
+    /// proxy and a different-duration master.
+    @discardableResult
+    func applyMetadataTransfer(from source: URL, to dest: URL) async -> Int {
+        let pairs = matchAssetPairs(source: source, dest: dest)
+        var applied = 0
+        for (srcAsset, dstAsset) in pairs {
+            guard let srcId = srcAsset.rowId,
+                  let dstId = dstAsset.rowId else { continue }
+            if let meta = try? db.clipMetadata(assetId: srcId) {
+                var copy = meta
+                copy.assetId = dstId
+                try? db.setClipMetadata(copy)
+                clipMetadataIndex[dstId] = copy
+            }
+            if let r: Rating = (try? db.rating(assetId: srcId)) ?? nil {
+                try? db.setRating(assetId: dstId, stars: r.stars,
+                                    colorLabel: r.colorLabel,
+                                    description: r.description)
+                ratingIndex[dstAsset.path] = r.stars
+            }
+            if let srcTags = try? db.tags(assetId: srcId) {
+                for t in srcTags {
+                    _ = try? db.addTag(name: t.name, assetId: dstId)
+                }
+            }
+            applied += 1
+        }
+        refreshClipMetadataIndex()
+        refreshTags()
+        loadSelectionDetail()
+        return applied
+    }
+
+    /// Build the (source, dest) pair list. Match key is (filename,
+    /// sizeBytes) — same fingerprint `findLostMetadata` uses, so
+    /// two clips with identical names but different sizes (proxy
+    /// vs master from different camera) don't accidentally cross-
+    /// contaminate. Pairs are computed against the in-memory
+    /// `assets` cache; both folders must be workspaced (assets
+    /// catalogued) for the pair to exist.
+    private func matchAssetPairs(source: URL, dest: URL)
+        -> [(source: Asset, dest: Asset)] {
+        let srcPrefix = (source.path as NSString).standardizingPath
+        let dstPrefix = (dest.path as NSString).standardizingPath
+        let srcAssets = assetsUnder(prefix: srcPrefix)
+        let dstAssets = assetsUnder(prefix: dstPrefix)
+        var srcIndex: [String: Asset] = [:]
+        for a in srcAssets {
+            srcIndex["\(a.filename)|\(a.sizeBytes)"] = a
+        }
+        var pairs: [(source: Asset, dest: Asset)] = []
+        for dst in dstAssets {
+            let key = "\(dst.filename)|\(dst.sizeBytes)"
+            if let src = srcIndex[key], src.path != dst.path {
+                pairs.append((src, dst))
+            }
+        }
+        return pairs
+    }
+
+    private func assetsUnder(prefix: String) -> [Asset] {
+        let pfx = prefix.hasSuffix("/") ? prefix : prefix + "/"
+        return assets.filter { asset in
+            let p = (asset.path as NSString).standardizingPath
+            return p == prefix || p.hasPrefix(pfx)
+        }
+    }
+
+    private func countAssetsUnder(_ url: URL) -> Int {
+        assetsUnder(prefix: (url.path as NSString).standardizingPath).count
+    }
+
     func setDescription(_ text: String) {
         guard let id = selectedAsset?.rowId else { return }
         let stars = rating?.stars ?? 0
