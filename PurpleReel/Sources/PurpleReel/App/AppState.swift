@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 @MainActor
 final class AppState: ObservableObject {
@@ -1515,6 +1516,61 @@ final class AppState: ObservableObject {
                 if r.written > 0 {
                     NSWorkspace.shared.activateFileViewerSelecting([dest])
                 }
+            }
+        }
+    }
+
+    /// FCPXML round-trip import (Kyno-parity row 5). Pops a file
+    /// picker for `.fcpxml`, hands it to `FCPXMLImportService`,
+    /// then refreshes the per-asset metadata so the inspector
+    /// reflects whatever just landed. Adds markers, tags, raises
+    /// rating to 5★ on FCP `favorite`, fills empty log fields.
+    /// Never creates new asset rows — unmatched files surface in
+    /// the result alert with a rescan prompt.
+    func importFCPXML() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        if let t = UTType(filenameExtension: "fcpxml") {
+            panel.allowedContentTypes = [t]
+        }
+        panel.message = "Pick an FCPXML exported from Final Cut Pro or Premiere. Markers, keywords, favorites, and log notes will merge back into PurpleReel for every file that matches a catalogue asset."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task {
+            let r = await FCPXMLImportService.importXML(at: url, db: db)
+            await MainActor.run {
+                refreshTags()
+                refreshRating()
+                refreshMarkers()
+                refreshClipMetadataIndex()
+                let alert = NSAlert()
+                alert.messageText = "FCPXML Import"
+                var lines: [String] = []
+                lines.append("Clips matched: \(r.matchedClips)")
+                if r.markersAdded > 0 {
+                    lines.append("Markers added: \(r.markersAdded)")
+                }
+                if r.markersSkipped > 0 {
+                    lines.append("Markers already present (skipped): \(r.markersSkipped)")
+                }
+                if r.tagsAdded > 0 {
+                    lines.append("Tags added: \(r.tagsAdded)")
+                }
+                if r.ratingsApplied > 0 {
+                    lines.append("Favorites → 5★ applied: \(r.ratingsApplied)")
+                }
+                if r.metadataFieldsApplied > 0 {
+                    lines.append("Log fields filled: \(r.metadataFieldsApplied)")
+                }
+                if !r.unmatchedFilenames.isEmpty {
+                    lines.append("Unmatched files: \(r.unmatchedFilenames.count)")
+                    lines.append("Examples: " +
+                        r.unmatchedFilenames.prefix(5).joined(separator: ", "))
+                    lines.append("Tip: rescan the workspace so PurpleReel knows about every clip the editor used, then re-run the import.")
+                }
+                alert.informativeText = lines.joined(separator: "\n")
+                alert.runModal()
             }
         }
     }

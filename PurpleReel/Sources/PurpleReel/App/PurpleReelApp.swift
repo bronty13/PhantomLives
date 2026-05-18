@@ -411,6 +411,10 @@ struct PurpleReelApp: App {
                     appState.importFromKynoLPStore()
                 }
                 .help("Walk a folder for Kyno's hidden .LP_Store / .kyno sidecar XMLs and pull rating, tags, description, and markers into PurpleReel for matching catalogue assets.")
+                Button("Import FCPXML…") {
+                    appState.importFCPXML()
+                }
+                .help("Re-import markers, keywords, favorites, and log notes from an FCPXML exported by Final Cut Pro or Premiere. Merges additively — existing markers / tags are preserved.")
                 // Kyno-compat: ⌘⌥M jumps keyboard focus to the
                 // Metadata pane's Title field for fast logging
                 // without reaching for the mouse.
