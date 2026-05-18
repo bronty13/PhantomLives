@@ -147,17 +147,24 @@ final class AppState: ObservableObject {
             drilldownPaths.remove(path)
         }
         persistDrilldownPaths()
-        // Devices-folder drilldown: when the user enables drilldown
-        // on a path NOT covered by any workspace root, the catalog
-        // has no assets for it (the scanner only indexes workspace
-        // roots), so the grid stays empty and the user thinks
-        // drilldown is broken. Auto-add the path as a workspace root
-        // and rescan so files actually show up — matches the user's
-        // mental model ("turn drilldown on → see files").
-        if turningOn, !isPathUnderAnyWorkspaceRoot(path) {
-            adoptPathIntoWorkspace(path)
+        // Kyno-style ephemeral browse: when the user enables drilldown
+        // on a path the catalog doesn't know about (a Devices folder,
+        // including the whole boot volume), recursively scan it on
+        // demand. Per Kyno's docs: "In order to search an entire hard
+        // disk, you need to enable Drilldown on the entire hard disk."
+        // We do NOT pin the path to `workspaceRoots` — that would
+        // pollute the user's curated workspace surface. The scanned
+        // content lands in the DB and persists across launches.
+        if turningOn, !isPathUnderAnyWorkspaceRoot(path), !path.isEmpty {
+            Task { await scanOnDemand(path: path) }
         }
     }
+
+    /// Tracks paths that have been shallow-scanned this session via
+    /// `navigate(to:)` so we don't re-walk a folder every time the
+    /// user clicks it. Drilldown-triggered deep scans use the DB's
+    /// existing upsert path so they're naturally idempotent.
+    private var shallowScannedPaths: Set<String> = []
 
     private func isPathUnderAnyWorkspaceRoot(_ path: String) -> Bool {
         let p = (path as NSString).standardizingPath
@@ -168,20 +175,30 @@ final class AppState: ObservableObject {
         return false
     }
 
-    private func adoptPathIntoWorkspace(_ path: String) {
-        // Skip the special "/" sentinel — adopting the whole boot
-        // volume would scan every file on the system and pin the
-        // workspace tree at root. Devices' clickable subfolders
-        // (Applications / Library / Users / etc.) are the right
-        // granularity to pick up.
-        guard path != "/" else { return }
+    /// Recursive scan of an arbitrary path. Used when the user navigates
+    /// into / drills into a Devices folder that isn't covered by any
+    /// workspace root — Kyno's browse-anywhere semantic. Persists to
+    /// the catalog like a normal scan so the assets show up in the
+    /// grid; doesn't add the path to `workspaceRoots` so the
+    /// workspace section stays user-curated.
+    func scanOnDemand(path: String) async {
         let url = URL(fileURLWithPath: path)
-        guard !workspaceRoots.contains(url) else { return }
-        workspaceRoots.append(url)
-        if rootFolder == nil { rootFolder = url }
-        persistWorkspace()
-        // Rescan picks up the new root via `workspaceRoots`.
-        Task { await rescan() }
+        isScanning = true
+        defer { isScanning = false; scanProgress = "" }
+        do {
+            scanProgress = "Scanning \(url.lastPathComponent)…"
+            let found = try await scanner.scan(root: url) { [weak self] count in
+                Task { @MainActor in
+                    self?.scanProgress = "Found \(count) media files in \(url.lastPathComponent)…"
+                }
+            }
+            try db.upsertAssets(found)
+            self.assets = try db.allAssets()
+            self.rebuildFolderTree()
+            self.refreshClipMetadataIndex()
+        } catch {
+            NSLog("[PurpleReel] on-demand scan failed for \(path): \(error)")
+        }
     }
 
     /// Map a boot-volume firmlink (e.g. `/Volumes/Macintosh HD`) back to
@@ -286,6 +303,36 @@ final class AppState: ObservableObject {
         suppressHistory = true
         selectedFolderPath = folder
         suppressHistory = false
+        // Kyno-style "select a folder → see top-level media
+        // immediately" — when the user navigates to a folder that
+        // ISN'T under any workspace root, shallow-scan it on demand
+        // so its direct-children media files appear in the grid
+        // without requiring drilldown. One scan per path per
+        // session via `shallowScannedPaths`.
+        if let path = folder,
+           !path.isEmpty,
+           !isPathUnderAnyWorkspaceRoot(path),
+           !shallowScannedPaths.contains(path) {
+            shallowScannedPaths.insert(path)
+            Task { await shallowScanAndUpsert(path: path) }
+        }
+    }
+
+    /// Shallow scan (direct children only) used by navigate(to:) for
+    /// non-workspace paths. Per-path one-shot per session — cheap
+    /// because it doesn't recurse.
+    private func shallowScanAndUpsert(path: String) async {
+        let url = URL(fileURLWithPath: path)
+        do {
+            let found = try await scanner.scanShallow(root: url)
+            if !found.isEmpty {
+                try db.upsertAssets(found)
+                self.assets = try db.allAssets()
+                self.refreshClipMetadataIndex()
+            }
+        } catch {
+            NSLog("[PurpleReel] shallow scan failed for \(path): \(error)")
+        }
     }
 
     func goBack() {
@@ -343,15 +390,16 @@ final class AppState: ObservableObject {
             // everything on the boot volume.
             let canonical = Self.canonicalizeBootVolumePath(folder)
             let normalized = (canonical as NSString).standardizingPath
-            // Volume-root selections (`/`, `/Volumes/<name>`) force
-            // drilldown ON: "direct children of /" never matches any
-            // catalogued asset (assets live under /Users, /Applications,
-            // etc.), so the only meaningful interpretation of clicking
-            // a volume in Devices is "show everything on this volume".
-            let isVolumeRoot = normalized == "/"
-                || (normalized.hasPrefix("/Volumes/")
-                    && !normalized.dropFirst("/Volumes/".count).contains("/"))
-            let drilldown = isVolumeRoot || isDrilldownEnabled(forPath: folder)
+            // Drilldown is strictly user-controlled. Earlier builds
+            // force-enabled it for volume roots (`/`, `/Volumes/<name>`)
+            // on the theory that "direct children of /" never matches
+            // any catalogued asset — but that turned out to be wrong:
+            // when the user selects Mac HD with drilldown OFF they
+            // genuinely expect to see the direct-children listing
+            // (which is zero items, since no media lives at /), and
+            // they'll toggle drilldown ON when they want the recursive
+            // listing. Matches Kyno's Devices behaviour.
+            let drilldown = isDrilldownEnabled(forPath: folder)
             if drilldown {
                 // Root path "/" matches every asset; for nested paths
                 // use "<path>/" so siblings don't accidentally match.

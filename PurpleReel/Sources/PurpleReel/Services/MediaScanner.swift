@@ -16,6 +16,47 @@ actor MediaScanner {
         videoExtensions.union(imageExtensions).union(audioExtensions)
     }
 
+    /// Shallow scan — direct children of `root` only, no recursion.
+    /// Used by `AppState.navigateAndShallowScan(_:)` for Kyno-style
+    /// "select a folder → see media files at the top level
+    /// immediately" behaviour. Symlink-aware so `/Volumes/Macintosh HD`
+    /// resolves to `/` before listing.
+    func scanShallow(root: URL) async throws -> [Asset] {
+        let fm = FileManager.default
+        let resolved = root.resolvingSymlinksInPath()
+        let keys: Set<URLResourceKey> = [
+            .isDirectoryKey, .fileSizeKey, .contentModificationDateKey,
+        ]
+        let entries = (try? fm.contentsOfDirectory(
+            at: resolved,
+            includingPropertiesForKeys: Array(keys),
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        )) ?? []
+        var results: [Asset] = []
+        for url in entries {
+            let values = try url.resourceValues(forKeys: keys)
+            if values.isDirectory == true { continue }
+            let ext = url.pathExtension.lowercased()
+            guard allExtensions.contains(ext) else { continue }
+            var asset = Asset(
+                rowId: nil,
+                path: url.path,
+                filename: url.lastPathComponent,
+                sizeBytes: Int64(values.fileSize ?? 0),
+                modifiedAt: values.contentModificationDate ?? Date(),
+                codec: nil, widthPx: nil, heightPx: nil,
+                durationSeconds: nil, frameRate: nil,
+                sha1: nil, addedAt: Date(),
+                audioCodec: nil, recordedAt: nil
+            )
+            if videoExtensions.contains(ext) || audioExtensions.contains(ext) {
+                await enrichVideoMetadata(into: &asset, url: url)
+            }
+            results.append(asset)
+        }
+        return results
+    }
+
     /// Recursive walk of `root` building a fresh `Asset` per matching file.
     /// `progress` is called on the actor's queue; callers should hop to
     /// the main actor to mutate UI.
