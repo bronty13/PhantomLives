@@ -1453,6 +1453,58 @@ final class AppState: ObservableObject {
         var skipped: [String] = []
     }
 
+    /// Kyno migration import (row 80). Picks a folder via NSOpenPanel
+    /// and runs `KynoImportService.importTree` against it, then refreshes
+    /// the in-memory catalogue for the currently-selected asset so the
+    /// Metadata pane reflects the imported fields immediately. Shows
+    /// the summary in an NSAlert.
+    func importFromKynoLPStore() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Pick a Kyno workspace folder (or its parent). PurpleReel will scan for .LP_Store / .kyno sidecars and merge their metadata into the catalogue."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task {
+            let r = await KynoImportService.importTree(root: url, db: db)
+            await MainActor.run {
+                // Refresh per-asset state so the user sees the
+                // imported rating / tags / markers without rescan.
+                refreshTags()
+                refreshRating()
+                refreshMarkers()
+                refreshClipMetadataIndex()
+                let alert = NSAlert()
+                alert.messageText = "Kyno Import"
+                var lines: [String] = []
+                lines.append("Sidecars found: \(r.sidecarsFound)")
+                lines.append("Entries matched to catalogue: \(r.matched)")
+                if r.clipFieldsApplied > 0 {
+                    lines.append("Clip fields applied: \(r.clipFieldsApplied)")
+                }
+                if r.ratingsApplied > 0 {
+                    lines.append("Ratings applied: \(r.ratingsApplied)")
+                }
+                if r.tagsApplied > 0 {
+                    lines.append("Tags applied: \(r.tagsApplied)")
+                }
+                if r.markersApplied > 0 {
+                    lines.append("Markers applied: \(r.markersApplied)")
+                }
+                if r.skipped > 0 {
+                    lines.append("Skipped (no matching catalogue asset): \(r.skipped)")
+                    if !r.unmatchedFilenames.isEmpty {
+                        lines.append("Examples: " +
+                            r.unmatchedFilenames.prefix(5).joined(separator: ", "))
+                        lines.append("Tip: rescan the workspace first so PurpleReel knows about the files, then re-run the import.")
+                    }
+                }
+                alert.informativeText = lines.joined(separator: "\n")
+                alert.runModal()
+            }
+        }
+    }
+
     /// Walk the catalogue for entries whose path no longer resolves;
     /// for each, search workspace roots for a file with matching
     /// (filename, sizeBytes) and rewrite the DB row's path. Linked

@@ -401,6 +401,10 @@ struct PurpleReelApp: App {
                         alert.runModal()
                     }
                 }
+                Button("Import from Kyno (.LP_Store)…") {
+                    appState.importFromKynoLPStore()
+                }
+                .help("Walk a folder for Kyno's hidden .LP_Store / .kyno sidecar XMLs and pull rating, tags, description, and markers into PurpleReel for matching catalogue assets.")
                 // Kyno-compat: ⌘⌥M jumps keyboard focus to the
                 // Metadata pane's Title field for fast logging
                 // without reaching for the mouse.
