@@ -26,7 +26,20 @@ final class AppState: ObservableObject {
     @AppStorage("typeFilter") var typeFilter: String = "all"  // all/video/audio/image
     @AppStorage("sortKey") var sortKey: String = "name"        // name/date/size/duration/fps/rating/modified/title
     @AppStorage("sortAscending") var sortAscending: Bool = true
-    @AppStorage("viewMode") var viewMode: String = "list"      // grid/list/detail (Kyno ⌘1/⌘2/⌘3). Reset to `defaultViewOnLaunch` on every launch via init.
+    /// grid / list / detail (Kyno ⌘1/⌘2/⌘3). Reset to
+    /// `defaultViewOnLaunch` on every launch via init.
+    ///
+    /// Previously this was `@AppStorage`, which writes UserDefaults
+    /// on assignment but does NOT call AppState's `objectWillChange`,
+    /// so views that read `appState.viewMode` never saw the change.
+    /// Symptom: clicking a sidebar folder while in single-clip Detail
+    /// left the view stuck on Detail showing the empty-state
+    /// placeholder. Now a regular `@Published` with a `didSet` that
+    /// mirrors to UserDefaults — gets the cross-launch persistence
+    /// without the SwiftUI notification gap.
+    @Published var viewMode: String = "list" {
+        didSet { UserDefaults.standard.set(viewMode, forKey: "viewMode") }
+    }
     /// User-selectable default view applied on every app launch. Set
     /// in Settings → General. Mid-session switches to a different view
     /// still work; this only decides what we land on at startup.
