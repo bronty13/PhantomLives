@@ -2,6 +2,39 @@ import Foundation
 import AVFoundation
 import AppKit
 import CryptoKit
+import ImageIO
+
+/// Concurrency cap for video thumbnail generation. The Apple
+/// Silicon hardware HEVC decoder serializes — running more than a
+/// few decoders in parallel doesn't actually overlap and just
+/// burns CPU on context switches. 6 is the PurpleDedup-validated
+/// sweet spot for perceptual hashing of HEIC; same applies here.
+@MainActor
+final class ThumbnailGenerationGate {
+    static let shared = ThumbnailGenerationGate()
+    private var inflight = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private let maxConcurrent = 6
+
+    func acquire() async {
+        if inflight < maxConcurrent {
+            inflight += 1
+            return
+        }
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+            waiters.append(c)
+        }
+        inflight += 1
+    }
+
+    func release() {
+        inflight -= 1
+        if !waiters.isEmpty {
+            let next = waiters.removeFirst()
+            next.resume()
+        }
+    }
+}
 
 /// On-demand video thumbnail strip generator with a persistent disk
 /// cache.
@@ -28,6 +61,31 @@ enum ThumbnailService {
     static let thumbWidth: CGFloat = 240
     static let jpegQuality: Float = 0.7
 
+    /// In-memory cache of (cache-key → URL array). Skips the
+    /// per-cell `FileManager.contentsOfDirectory` listing on
+    /// warm hits — most rows in a 1000-asset workspace
+    /// previously paid that disk cost on every appear, despite
+    /// the URLs being deterministic. Capped via an LRU-ish
+    /// strategy: when count exceeds the limit we drop the
+    /// oldest half. Backed by an actor for async-safe access.
+    private actor InMemoryCache {
+        private var store: [String: [URL]] = [:]
+        private let limit: Int = 4000
+
+        func get(_ key: String) -> [URL]? {
+            store[key]
+        }
+
+        func set(_ key: String, _ urls: [URL]) {
+            if store.count >= limit {
+                let keysToDrop = Array(store.keys.prefix(limit / 2))
+                for k in keysToDrop { store.removeValue(forKey: k) }
+            }
+            store[key] = urls
+        }
+    }
+    private static let inMemoryCache = InMemoryCache()
+
     /// Returns thumbnail URLs for the asset, generating on first call.
     /// Safe to call from any actor; the heavy work happens on a
     /// detached task. `count` is encoded into the cache directory so
@@ -37,13 +95,31 @@ enum ThumbnailService {
                             count: Int = defaultFrameCount) async -> [URL] {
         do {
             let dir = try cacheDirectory(for: asset, count: count)
-            // Fast path: cache hit.
+            let memoryKey = dir.lastPathComponent
+            // Tier 1: in-memory cache (zero disk I/O).
+            if let cached = await inMemoryCache.get(memoryKey),
+               cached.count == count {
+                return cached
+            }
+            // Tier 2: on-disk cache (one directory listing).
             if let existing = try? cachedThumbnailURLs(in: dir),
                existing.count == count {
+                await inMemoryCache.set(memoryKey, existing)
                 return existing
             }
+            // Tier 3: generate. Gate via the concurrency cap so
+            // we don't pile 1000 AVAssetImageGenerator tasks on
+            // the hardware HEVC decoder.
             return await Task.detached(priority: .utility) {
-                await generateAsync(asset: asset, count: count, into: dir)
+                await ThumbnailGenerationGate.shared.acquire()
+                let urls = await generateAsync(asset: asset, count: count, into: dir)
+                await MainActor.run {
+                    ThumbnailGenerationGate.shared.release()
+                }
+                if !urls.isEmpty {
+                    await inMemoryCache.set(memoryKey, urls)
+                }
+                return urls
             }.value
         } catch {
             NSLog("[PurpleReel] thumbnail dir setup failed: \(error)")
@@ -167,15 +243,66 @@ enum ThumbnailService {
         return urls
     }
 
-    /// Image-asset path: load the source via NSImage, downscale to the
-    /// thumbnail bounding box, and write the same JPEG `count` times so
-    /// the hover-scrub cell and the Content grid both work uniformly.
+    /// Image-asset path: produce one thumbnail then write it
+    /// `count` times so the hover-scrub strip and the Content
+    /// grid see a uniform set of URLs.
+    ///
+    /// For HEIC / HEIF / RAW we go through ImageIO's
+    /// `CGImageSourceCreateThumbnailAtIndex` — it can either
+    /// return the file's embedded thumbnail (10-100× faster than
+    /// decoding the full image) or downsample directly to the
+    /// requested size without ever decoding the full pixel buffer.
+    /// `NSImage(contentsOf:)` decoded the full image then
+    /// re-rendered it through `lockFocus` — orders of magnitude
+    /// slower on a 48 MP iPhone HEIC.
     private static func generateImageThumbs(url: URL, count: Int, into dir: URL) -> [URL] {
+        guard let cg = generateImageThumbCG(url: url) else {
+            return generateImageThumbsNSImageFallback(url: url, count: count, into: dir)
+        }
+        let bitmap = NSBitmapImageRep(cgImage: cg)
+        guard let data = bitmap.representation(
+            using: .jpeg,
+            properties: [.compressionFactor: NSNumber(value: jpegQuality)]
+        ) else {
+            return generateImageThumbsNSImageFallback(url: url, count: count, into: dir)
+        }
+        var urls: [URL] = []
+        urls.reserveCapacity(count)
+        for i in 0..<count {
+            let outURL = dir.appendingPathComponent("\(i).jpg")
+            if (try? data.write(to: outURL)) != nil {
+                urls.append(outURL)
+            }
+        }
+        return urls
+    }
+
+    /// ImageIO-backed thumbnail generator. Returns nil for source
+    /// formats ImageIO can't decode (extremely rare for our
+    /// extension set); callers fall back to NSImage.
+    private static func generateImageThumbCG(url: URL) -> CGImage? {
+        let options: [CFString: Any] = [
+            // Use the embedded thumbnail when the file has one
+            // (HEIC commonly does); fall back to a fresh
+            // downsample when not.
+            kCGImageSourceCreateThumbnailFromImageIfAbsent: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: false,
+            kCGImageSourceThumbnailMaxPixelSize: Int(thumbWidth),
+        ]
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, options as CFDictionary)
+        else { return nil }
+        return cg
+    }
+
+    /// Original NSImage-based path, retained as the fallback for
+    /// formats ImageIO doesn't recognise.
+    private static func generateImageThumbsNSImageFallback(url: URL, count: Int, into dir: URL) -> [URL] {
         guard let nsImage = NSImage(contentsOf: url) else { return [] }
         let pxSize = nsImage.size
         guard pxSize.width > 0, pxSize.height > 0 else { return [] }
 
-        // Bounding box fit at thumbWidth.
         let scale = thumbWidth / max(pxSize.width, pxSize.height)
         let target = NSSize(width: pxSize.width * scale,
                               height: pxSize.height * scale)
