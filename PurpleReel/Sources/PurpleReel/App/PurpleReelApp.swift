@@ -13,6 +13,12 @@ struct PurpleReelApp: App {
     @State private var showComingFromKyno: Bool = !UserDefaults.standard
         .bool(forKey: KynoCompatibility.promptShownKey)
 
+    /// Permissions wizard. Shown once per install — gated on
+    /// `permissionsWizardShown` — and re-runnable via the
+    /// Help menu.
+    @State private var showPermissionsWizard: Bool = !UserDefaults.standard
+        .bool(forKey: "permissionsWizardShown")
+
     var body: some Scene {
         WindowGroup("PurpleReel") {
             ContentView()
@@ -20,6 +26,12 @@ struct PurpleReelApp: App {
                 .frame(minWidth: 1100, minHeight: 700)
                 .sheet(isPresented: $showComingFromKyno) {
                     ComingFromKynoSheet()
+                }
+                .sheet(isPresented: $showPermissionsWizard, onDismiss: {
+                    UserDefaults.standard.set(true,
+                                                forKey: "permissionsWizardShown")
+                }) {
+                    PermissionsWizardSheet()
                 }
                 .alert(
                     "Large workspace",
@@ -485,6 +497,10 @@ struct PurpleReelApp: App {
                 }
                 Button("SHORTCUTS.md (Reference File)") {
                     HelpDocs.open(.shortcutsMarkdown)
+                }
+                Divider()
+                Button("Re-check Privacy & Security…") {
+                    showPermissionsWizard = true
                 }
                 Divider()
                 Button("Visit Kyno parity roadmap") {
