@@ -192,6 +192,11 @@ preview surface on top and a transport bar below.
 - **↑** / **↓** — jump to previous / next anchor (markers + in +
   out, unioned and sorted, with a ±0.05s epsilon so landing on
   one doesn't immediately re-fire)
+- **Playback → Speed** — 0.5× / 0.75× / 1× / 1.25× / 1.5× / 2×
+  with pitch preservation. Every loaded clip gets
+  `audioTimePitchAlgorithm = .spectral` so non-1× rates stay
+  intelligible — review long takes at 1.5× without chipmunk
+  audio. The J/L shuttle inherits the same algorithm.
 
 ### Scrubbing + waveform
 
@@ -250,8 +255,19 @@ metadata pane still works identically.
 
 ## Logging clips: Metadata pane
 
-The right-side inspector has four tabs: **Metadata** (default) /
-**Content** / **Tracks** / **Log**.
+The right-side inspector is a tabbed panel matching Kyno's detail-
+view layout. Active tab persists across launches via
+`clipDetailInspectorTab` AppStorage. The four tabs:
+
+- **Metadata** (default) — log fields + rating + tags + markers
+- **Content** — N-up frame grid with click-to-seek
+- **Subclips** — saved I/O ranges
+- **Tracks** — per-stream technical breakdown
+
+The file-info block (file / size / modified / created / recorded /
+container / duration / bitrate / video / audio) lives **below the
+player on the left** — separate from the tabs so you can read
+technical details while editing metadata on the right.
 
 ### Metadata tab — Kyno-style log fields
 
@@ -270,32 +286,36 @@ Fields:
   `<metadata>` block (omitted entirely when no field is set).
 - **Tags** — removable pill list with inline "Add tag and press
   Return" field. Tags also drive the advanced **Has Tag** filter.
+  ⌘⇧T opens the **Batch Tag Editor** with autocomplete from
+  `knownTagNames` and union-of-selection partial badges so multi-
+  selection editing doesn't silently overwrite tags only some
+  clips share.
+- **Markers** — tap any timecode to seek the player; edit notes
+  inline; minus icon removes. Add markers via `M` at the playhead;
+  remove the nearest with ⌥M.
+- **Poster Frame** — press `P` while playing to set the asset's
+  poster (the frame the Grid / List view shows at rest). ⇧P
+  clears the override. Hover-scrub still works regardless.
 
 ### Content tab
 
-Read-only technical summary plus a 5×6 frame grid (30 thumbnails
-spread across the clip's duration). Click any frame to seek the
-player to that timecode. Includes: filename, path, size,
-modification/creation/recording dates, container format, codec,
-fps, bitrate, audio codec/sample rate/channels.
+5×6 frame grid (30 thumbnails spread across the clip's duration).
+Click any frame to seek the player to that timecode. Size picker
+(S / M / L / XL) at the top changes the columns; choice persists
+in `frameGridSize` AppStorage.
+
+### Subclips tab
+
+Saved I/O ranges. Create with `S` after marking I/O; tap a row
+to jump the player to that subclip; minus icon removes. ⌘U
+exports the current I/O range as a subclip with the canonical
+"`<asset>` [`<tc-in>`]" naming. ⌥S removes the most recent.
 
 ### Tracks tab
 
 Per-stream technical breakdown. Video track: codec, fps,
 resolution, aspect, bitrate, duration. Audio track: codec,
 sample rate, channel layout, bitrate.
-
-### Log tab
-
-The original logging surface — still functional, still where
-markers and subclips live:
-
-- **Markers** — tap a timecode to seek the player; edit notes
-  inline; minus icon removes.
-- **Subclips** — same; created via `S` after I/O markers are
-  set.
-- **Tags + Rating** — same data as the Metadata tab; either pane
-  edits the other.
 
 ---
 
@@ -348,6 +368,165 @@ Open the queue sheet (toolbar → Transcode → Show Queue…). Click
 running AVAssetExportSession's partial output file is removed on
 cancellation; ffmpeg jobs are SIGKILL-ed by `Process.terminate()`.
 
+### Timecode burn-in
+
+The Convert dialog has a **"Burn timecode into video"** checkbox.
+When on, every output frame gets the running source timecode
+overlaid (bottom-center, monospaced, white text on a dark
+pill). Plays nice with fade-in / fade-out — both effects land
+in a single CIFilter-handler video composition so they don't
+fight each other.
+
+### Batch frame export at every marker
+
+Playback menu → **Export Frames at Markers…** (⌥⌘⇧E) — one
+PNG per catalogued marker on the selected clip, written to a
+chosen folder (defaults to `~/Downloads/PurpleReel/stills/`).
+Filenames embed `HHMMSS_FFf_<note-slug>` so a reviewer can read
+each still by name. Active LUT bakes in by default
+(togglable in Settings → General → "Apply LUT to exported
+frames"). Skips collisions, reports written / skipped /
+failures, reveals the folder in Finder when anything wrote.
+
+---
+
+## Combine Clips (assembly-cut without an NLE)
+
+Convert menu → **Combine Clips…** (⌘⇧J). Renders two or more
+clips head-to-tail into a single file without firing up Final
+Cut. The Kyno 1.4 doc-shooter workflow.
+
+How to use:
+
+1. Multi-select 2+ video clips in the browser (⌘-click).
+2. ⌘⇧J or Convert → "Combine Clips…".
+3. Reorder with up/down arrows; remove a clip with ✕.
+4. Pick a preset (defaults to ProRes 422; H.264 / HEVC / 4444
+   available — ffmpeg recipes and pass-through don't apply to
+   compositions).
+5. Pick a destination (defaults to
+   `~/Downloads/PurpleReel/combined/`) + filename.
+6. **Combine**.
+
+Behind the scenes: `CombineClipsJob` builds an
+`AVMutableComposition`, inserts every source's video + audio
+at a running CMTime cursor, copies the first clip's
+`preferredTransform` + `naturalSize` so portrait phone footage
+stays upright, and renders via `AVAssetExportSession`. Live
+progress in the sheet; reveals the output on success and
+rescans the catalogue so the combined file shows up.
+
+**Limits (v1)**: whole-clip concatenation only — per-clip in/out
+trim is a follow-up. Mixed-resolution sources letterbox to the
+first clip's size. No cross-fades between cuts.
+
+### Detecting spanned clips (camera-card multi-file recordings)
+
+C300, GH5, Sony XAVC, and any camera recording to FAT32 cards
+breaks long takes across multiple files at the 4 GB / 2 GB
+limit. PurpleReel auto-detects these and surfaces them in a
+**Spanned Clips** sidebar section (only appears when spans
+exist).
+
+Each row: tap to reveal the segments in the browser;
+right-click → **Combine Segments…** opens the Combine Clips
+sheet pre-populated with the segments in disk order. Render
+the span as one continuous file in one click.
+
+The detector is conservative — same-directory + same-extension
++ matching codec / dims / fps / audioCodec + sequential
+trailing-digit filenames (MVI_0001 / MVI_0002, C0001 / C0002,
+00000 / 00001) + modtime within 120 s. False positives would
+silently glue unrelated takes, which is much worse than
+missing a span.
+
+---
+
+## Workflow Chains (offload → transcode → report as one job)
+
+File menu → **Workflow Chains…** (⌘⇧Y). Silverstack-style
+pipeline automation: define a saved chain that bundles existing
+PurpleReel services into a single execution, then run it
+against any folder.
+
+**Three step kinds for v1**, each wrapping an existing service:
+
+- **Verified Backup** — pick destinations, hash algorithm,
+  MHL format. Source folder is supplied at run time.
+- **Transcode** — pick a non-ffmpeg preset (ProRes / H.264 /
+  HEVC). Output defaults to `<source>/Proxies/` or a chosen
+  folder. Every media file under the source is enqueued; the
+  global "Maximum parallel conversions" setting controls
+  concurrency.
+- **Export Report** — HTML (with embedded base64 thumbnails)
+  or CSV. Defaults to
+  `~/Downloads/PurpleReel/<chain>-<stamp>.<ext>`.
+
+**The sheet has two panes** — chain list on the left (add /
+delete / select), step editor on the right (reorder up/down,
+delete per-step, per-step parameter controls). The bottom bar
+picks a source folder and runs the chain. Per-step state is
+a live checklist (queued → running → finished / failed /
+cancelled) with detail strings ("3/12 verified", "8/12
+transcoded"). "Reveal Artifacts in Finder" surfaces every MHL
+/ Proxies dir / report file the run produced.
+
+### Auto-trigger on camera-card mount
+
+A chain's "Offer to run automatically when a camera card
+mounts" toggle marks it for auto-trigger. When a newly-mounted
+volume looks like camera media (DCIM / AVCHD / PRIVATE / BPAV
+/ XDROOT at root), PurpleReel pops an alert offering to run
+the first matching chain on that volume — "Run Chain" opens
+the sheet with everything pre-populated and starts the run;
+"Skip" continues normal mount handling. Never starts long work
+without consent.
+
+---
+
+## Cross-volume offline search
+
+PurpleReel keeps every catalogued clip findable + filterable
+even when its volume is unmounted. A multi-card DIT can search
+"where's the clip with the marker about Alice" across 8 cards
+with only 2 currently plugged in.
+
+How it works:
+
+- Every asset gets `volumeUUID` + `volumeLabel` captured at
+  scan time via `URLResourceKey.volumeIdentifierKey`.
+- Catalogue rows persist across unmounts — `rescan()` is
+  non-destructive on unmount, only updating fresh assets.
+- Cells overlay a translucent black layer + `cloud.slash`
+  badge + volume label when the asset's file isn't currently
+  reachable.
+- Filter menu → **"Volume / Online status"** → Online /
+  Offline narrows the browser to either set.
+- On volume mount, `VolumeWatcher` calls
+  `AppState.reconnectVolume(uuid:newRoot:)` to repath every
+  catalogue row whose `volumeUUID` matches — so macOS renaming
+  a card to "MEDIA 1" on re-attach doesn't strand the
+  catalogue.
+
+---
+
+## Paste & Rename
+
+File menu → **Paste with Rename…** (⌘⇧V). Copy files in
+Finder (⌘C), then run this — PurpleReel reads file URLs from
+the system pasteboard, applies a naming template, and copies
+them into a chosen folder.
+
+Tokens supported: `{orig}` (source basename, no extension),
+`{ext}` (extension with dot), `{date}` (today, ISO), `{date:fmt}`
+(custom DateFormatter pattern), `{counter}` (1-based sequence
+across the paste), `{counter:04}` (zero-padded). Default
+template: `{date}_{orig}{ext}`.
+
+Live preview shows every source → renamed pair before commit.
+Auto-skips destination collisions. Kicks a workspace rescan
+when anything copied so the new files appear in the catalogue.
+
 ---
 
 ## Verified backup + MHL
@@ -356,15 +535,20 @@ Toolbar → **Verified Backup**:
 
 1. Pick a **source** folder.
 2. Add **1–4 destinations**.
-3. Pick a hash algorithm — **SHA-1** is the ASC MHL default;
-   SHA-256 / MD5 / xxHash also supported.
-4. **Start Backup**.
+3. Pick a hash algorithm — **SHA-1** (ASC-MHL v1.1 default,
+   universally compatible), **SHA-256**, **MD5**, or **C4**
+   (SHA-512 base58-encoded with the C4 alphabet, required for
+   Netflix Originals delivery).
+4. Pick an **MHL format** — **ASC Media Hash List v1.1** (`.mhl`)
+   for general DIT tools, or **ASC-MHL v2.0** (`.ascmhl`) for
+   Netflix-spec delivery. Selecting C4 auto-switches the format
+   to ASC-MHL since v1.1 has no `<c4>` element.
+5. **Start Backup**.
 
 For each file: source is hashed → copied to each destination →
 destination re-hashed → compared. Mismatches fail that file
-individually; the rest continue. On completion an industry-
-standard ASC Media Hash List v1.1 `.mhl` lands in every
-destination, listing every verified file.
+individually; the rest continue. On completion the manifest
+file lands in every destination, listing every verified file.
 
 This is separate from the **auto-backup** of the catalog DB,
 which runs on every app launch — see Settings → Backup.
@@ -423,6 +607,44 @@ The generated XML carries:
 - `<metadata>` block with `<md key="Title" .../>` etc. for any
   populated log field (Title / Description / Reel / Scene /
   Shot / Take / Angle / Camera)
+
+### Round-trip: re-importing FCPXML from the editor
+
+After the editor (FCP, Premiere 2024+, or Resolve via its FCPXML
+exporter) adds markers / keywords / favorites / log notes during
+the cut, you can pull all of it back into PurpleReel:
+
+**Metadata menu → "Import FCPXML…"**. Pick the `.fcpxml` the
+editor produced. PurpleReel parses 1.8-1.11 with a permissive
+parser, matches NLE clips to catalogue assets by URL-decoded
+path (with filename fallback when only one catalogue match
+exists), and merges additively:
+
+- **Markers** de-dupe by ±1/fps + note match — re-running the
+  import on the same XML is a no-op.
+- **Keywords** become tags, case-insensitive dedupe.
+- **Rating**: FCP `favorite` raises to 5★ but never demotes.
+- **Metadata fields** fill empty Title / Description / Reel /
+  Scene / Shot / Take / Angle / Camera slots only — never
+  overwrites a local edit.
+- `<note>` lands in description when description is empty.
+
+The result alert shows matched / added / skipped counts plus
+unmatched filenames (with a "rescan first" hint when the editor
+references files PurpleReel doesn't know about).
+
+### Import from Kyno (one-way migration)
+
+**Metadata menu → "Import from Kyno (.LP_Store)…"**. Pick the
+root of a former Kyno workspace. PurpleReel walks every
+`.LP_Store/` and `.kyno/` sidecar XML and pulls rating, tags,
+description, and markers into the catalogue for filename-matched
+assets. Permissive parser — accepts schema-drift synonyms
+(`<asset>` / `<clip>` / `<file>`, `<rating>` / `<stars>`,
+`<tag>` / `<keyword>`).
+
+This is a one-way ingest. PurpleReel keeps its centralized
+SQLite store and doesn't write back into `.LP_Store/`.
 
 ---
 
@@ -492,6 +714,36 @@ disk and updates the catalog DB.
 ## Settings
 
 Open with ⌘, (standard macOS shortcut).
+
+### General pane
+
+- **Kyno Compatibility Mode** — single toggle that flips J/L to
+  5-second jumps, renames "Grid" to "Thumbnail", reverses the
+  no-auto-drilldown default, and switches to natural numeric
+  sort. Reversible at any time via "Restore PurpleReel
+  defaults". Kyno-familiar shortcuts (X mute, ⌘⇧D drilldown,
+  ⌘U subclip export, ⌃⌥E zebra, ⌃⌥W matte, ⌥⇧O default-app
+  open, ⌘⌥M focus metadata) are wired regardless of this
+  toggle — the mode just changes opinionated defaults.
+- **Default view on launch** — List / Grid / Detail. Mid-
+  session switches still stick within that session.
+- **Workspace Cache (Shared NAS / SAN)** — drops a hidden
+  `.purplereel/<file>.json` sidecar next to each clip carrying
+  rating, tags, markers, subclips, and log fields. A second
+  user opening the same volume inherits everything without
+  rescanning, and AVAsset probes (codec / dims / fps /
+  duration / VFR / volume UUID) skip too. Off by default —
+  not all storage tolerates per-folder sidecars. Concurrent
+  edits between two users on the same clip are last-writer-
+  wins (real conflict resolution is a follow-up). Thumbnails
+  and waveforms stay local — they regenerate cheaply.
+- **LUTs** — folder picker for `~/Library/Application
+  Support/PurpleReel/LUTs/`, toggles for importing LUTs from
+  Final Cut Pro `*.fcpbundle` and Resolve LUT roots, plus
+  "Auto-apply suggested LUT on clip load" (filename keyword
+  match for `_slog3_` / `_vlog_` / `_logc_` / etc.). The
+  "Apply LUT to exported frames" toggle bakes the active LUT
+  into ⌘⇧E single-frame and ⌥⌘⇧E batch-marker exports.
 
 ### Backup pane
 
