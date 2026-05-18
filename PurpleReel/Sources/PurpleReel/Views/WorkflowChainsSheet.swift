@@ -37,7 +37,34 @@ struct WorkflowChainsSheet: View {
             footer
         }
         .frame(width: 860, height: 600)
-        .onAppear { chains = WorkflowChainsStore.load() }
+        .onAppear {
+            chains = WorkflowChainsStore.load()
+            consumePendingAutoRun()
+        }
+    }
+
+    /// VolumeWatcher's camera-media auto-trigger primes
+    /// `appState.pendingAutoRunChain` and opens the sheet. On
+    /// appear we adopt that prime — select the chain, populate
+    /// the source folder, kick the run, then clear the prime so
+    /// re-opening the sheet manually doesn't replay the run.
+    private func consumePendingAutoRun() {
+        guard let prime = appState.pendingAutoRunChain else { return }
+        appState.pendingAutoRunChain = nil
+        // Ensure the auto-trigger chain is in our local list (it
+        // would be unless the user deleted it after enabling the
+        // toggle — but be defensive).
+        if !chains.contains(where: { $0.id == prime.chain.id }) {
+            chains.append(prime.chain)
+        }
+        selectedID = prime.chain.id
+        sourceFolder = prime.source
+        // Defer the run slightly so SwiftUI finishes its first
+        // layout pass with the new selection populated; otherwise
+        // the run progress UI renders before the chain list does.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            runSelected()
+        }
     }
 
     // MARK: - Header

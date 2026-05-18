@@ -277,6 +277,34 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Triggered by `VolumeWatcher.handleMounted` when a freshly-
+    /// mounted volume looks like camera media. Presents an alert
+    /// with the matching chain (or the first match if there are
+    /// several); on Run, primes `pendingAutoRunChain` and opens
+    /// the sheet to execute it. Workflow row 66 auto-trigger.
+    func offerWorkflowChainOnMount(volumeURL: URL) {
+        let chains = WorkflowChainsStore.load()
+                       .filter { $0.runOnCameraMediaMount }
+        guard let chain = chains.first else { return }
+        let alert = NSAlert()
+        alert.messageText = "Run workflow chain on \(volumeURL.lastPathComponent)?"
+        var info = "Detected camera media at \(volumeURL.path)."
+        info += "\n\nChain: \(chain.name)"
+        info += "\nSteps: " + chain.steps
+            .map { $0.displayName }
+            .joined(separator: " → ")
+        if chains.count > 1 {
+            info += "\n\n(\(chains.count - 1) other chain(s) also set to auto-run; using the first.)"
+        }
+        alert.informativeText = info
+        alert.addButton(withTitle: "Run Chain")
+        alert.addButton(withTitle: "Skip")
+        if alert.runModal() == .alertFirstButtonReturn {
+            pendingAutoRunChain = (chain: chain, source: volumeURL)
+            workflowChainsSheetVisible = true
+        }
+    }
+
     /// Pluck the `/Volumes/<name>` (or `/`) prefix from an
     /// absolute path. Used by `reconnectVolume` to figure out the
     /// old mount point to replace.
@@ -1891,6 +1919,14 @@ final class AppState: ObservableObject {
     /// 66). Manage saved chains, plus run them against a chosen
     /// folder with per-step progress.
     @Published var workflowChainsSheetVisible = false
+
+    /// When non-nil, `WorkflowChainsSheet` reads this on appear,
+    /// pre-selects the chain, pre-populates the source folder,
+    /// and immediately starts the run. Set by `VolumeWatcher`'s
+    /// camera-media auto-trigger (row 66 stretch). Cleared once
+    /// the sheet consumes it so re-opening the sheet manually
+    /// doesn't replay the run.
+    @Published var pendingAutoRunChain: (chain: WorkflowChain, source: URL)?
 
     /// Resolve the current multi-selection (or single selection)
     /// into an ordered Asset list for the Combine Clips sheet. We

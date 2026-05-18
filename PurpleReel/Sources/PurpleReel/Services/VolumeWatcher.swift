@@ -132,11 +132,19 @@ final class VolumeWatcher {
         // consumer cams), PRIVATE/BPAV (broadcast). Cheap heuristic;
         // false positives just mean an unneeded recursive scan, no
         // catalogue corruption.
+        let isCameraMedia = Self.looksLikeCameraMedia(url)
         if defaults.object(forKey: "autoDrilldownCameraMedia") as? Bool ?? true,
-           Self.looksLikeCameraMedia(url),
+           isCameraMedia,
            let app = appState,
            !app.isDrilldownEnabled(forPath: url.path) {
             app.toggleDrilldown(forPath: url.path)
+        }
+        // Workflow-chain auto-trigger (row 66 stretch): when the
+        // volume looks like camera media AND the user has at least
+        // one chain flagged `runOnCameraMediaMount`, offer to run
+        // it. Dialog-driven — never starts work without consent.
+        if isCameraMedia, let app = appState {
+            app.offerWorkflowChainOnMount(volumeURL: url)
         }
         // Newly-mounted volume might host a workspace root the user
         // pre-configured before the drive was attached — rebuild so
