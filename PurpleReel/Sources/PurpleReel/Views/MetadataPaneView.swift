@@ -26,6 +26,12 @@ struct MetadataPaneView: View {
     @State private var angle: String = ""
     @State private var camera: String = ""
 
+    /// Drives the ⌘⌥M "focus metadata input" Kyno shortcut — the
+    /// menu posts `.focusMetadata` and we route focus to the Title
+    /// field. `FocusState` rather than first-responder hackery
+    /// because the Title field is a SwiftUI TextField.
+    @FocusState private var titleFocused: Bool
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -40,6 +46,9 @@ struct MetadataPaneView: View {
         .onAppear(perform: hydrate)
         .onChange(of: appState.selectedAsset?.path) { _, _ in hydrate() }
         .onChange(of: appState.clipMetadata) { _, _ in hydrate() }
+        .onReceive(NotificationCenter.default.publisher(for: .focusMetadataInput)) { _ in
+            titleFocused = true
+        }
     }
 
     /// Optional Markers section — only rendered when the caller
@@ -87,6 +96,7 @@ struct MetadataPaneView: View {
         labelledField("Title") {
             TextField("", text: $title)
                 .textFieldStyle(.roundedBorder)
+                .focused($titleFocused)
                 .onSubmit { commit(\.title, title) }
         }
         labelledField("Description") {

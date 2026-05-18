@@ -206,6 +206,14 @@ final class PlayerController: ObservableObject {
     }
 
     let player = AVPlayer()
+    /// Audio mute state. Toggled by X key (Kyno-compat) and any
+    /// future Audio menu item. Persists via the player object only
+    /// — clip-scope, not app-scope.
+    @Published var isMuted: Bool = false {
+        didSet { player.isMuted = isMuted }
+    }
+    func toggleMute() { isMuted.toggle() }
+
     private var didPlayToEndObserver: NSObjectProtocol?
     private var timeObserver: Any?
     private(set) var fps: Double = 30.0
@@ -560,6 +568,18 @@ struct PlayerView: View {
             case .jumpNextMarker: onJumpMarker(1)
             case .rotateLeft:    controller.rotateBy(-90)
             case .rotateRight:   controller.rotateBy(90)
+            case .toggleMute:    controller.toggleMute()
+            case .toggleZebra:   controller.zebraEnabled.toggle()
+            case .cycleMatte:
+                // Off → 1.85 → 2.35 → 2.39 → Off. Cycle through the
+                // three most common cinema aspects via one key
+                // (⌃⌥W). Power users still have the full picker in
+                // the monitoring menu.
+                let cycle: [Double] = [0, 1.85, 2.35, 2.39]
+                let idx = cycle.firstIndex(where: {
+                    abs($0 - controller.matteAspect) < 0.001
+                }) ?? 0
+                controller.matteAspect = cycle[(idx + 1) % cycle.count]
             // removeLastSubclip is parent-handled (AppState owns the
             // subclip list). PlayerView ignores it cleanly.
             case .removeLastSubclip: break
@@ -850,6 +870,12 @@ struct PlayerView: View {
                 onSaveSubclip(); return true
             }
             return false
+        case "x":
+            // Kyno-compat: X mutes/unmutes audio. Always-on binding
+            // regardless of compatibility mode — it's a useful key
+            // that doesn't collide with PurpleReel-native ones.
+            controller.toggleMute()
+            return true
         default: break
         }
         let shift = event.modifierFlags.contains(.shift)

@@ -6,11 +6,21 @@ struct PurpleReelApp: App {
     @StateObject private var appState = AppState()
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
+    /// One-shot first-launch sheet. Sticks via
+    /// `KynoCompatibility.promptShownKey` so the user only sees it
+    /// once per installation; mid-life flips are via Settings →
+    /// General → Kyno Compatibility.
+    @State private var showComingFromKyno: Bool = !UserDefaults.standard
+        .bool(forKey: KynoCompatibility.promptShownKey)
+
     var body: some Scene {
         WindowGroup("PurpleReel") {
             ContentView()
                 .environmentObject(appState)
                 .frame(minWidth: 1100, minHeight: 700)
+                .sheet(isPresented: $showComingFromKyno) {
+                    ComingFromKynoSheet()
+                }
         }
         .defaultSize(width: 1400, height: 900)
         .windowToolbarStyle(.unified(showsTitle: true))
@@ -35,6 +45,17 @@ struct PurpleReelApp: App {
                 }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
                 .disabled(appState.selectedAsset == nil && appState.rootFolder == nil)
+                // Kyno-compat: ⌥⇧O hands the selected clip to whatever
+                // the user has set as the default app for its UTI. Useful
+                // escape hatch when PurpleReel can't render a frame
+                // (exotic codec, partial download, etc.).
+                Button("Open with Default App") {
+                    if let path = appState.selectedAsset?.path {
+                        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+                    }
+                }
+                .keyboardShortcut("o", modifiers: [.option, .shift])
+                .disabled(appState.selectedAsset == nil)
                 Divider()
                 Button("Rename…") {
                     appState.batchRenameSheetVisible = true
@@ -175,6 +196,30 @@ struct PurpleReelApp: App {
                 }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
                 .disabled(appState.selectedAsset == nil)
+                Divider()
+                // Kyno-compat shortcuts. Unconditional bindings —
+                // see PlayerCommand cases for rationale.
+                Button("Mute Audio") {
+                    NotificationCenter.default.post(name: .playerCommand,
+                                                    object: PlayerCommand.toggleMute)
+                }
+                .keyboardShortcut("x", modifiers: [])
+                Button("Toggle Zebra") {
+                    NotificationCenter.default.post(name: .playerCommand,
+                                                    object: PlayerCommand.toggleZebra)
+                }
+                .keyboardShortcut("e", modifiers: [.control, .option])
+                Button("Cycle Widescreen Matte") {
+                    NotificationCenter.default.post(name: .playerCommand,
+                                                    object: PlayerCommand.cycleMatte)
+                }
+                .keyboardShortcut("w", modifiers: [.control, .option])
+                Button("Export Subclip from I/O") {
+                    NotificationCenter.default.post(name: .playerCommand,
+                                                    object: PlayerCommand.saveSubclip)
+                }
+                .keyboardShortcut("u", modifiers: [.command])
+                .disabled(appState.selectedAsset == nil)
             }
 
             // ---- Metadata (new top-level) ------------------------------
@@ -202,6 +247,15 @@ struct PurpleReelApp: App {
                 .keyboardShortcut("m", modifiers: [.command, .shift])
                 .disabled(appState.selectedAssetPaths.isEmpty
                           && appState.selectedAsset == nil)
+                // Kyno-compat: ⌘⌥M jumps keyboard focus to the
+                // Metadata pane's Title field for fast logging
+                // without reaching for the mouse.
+                Button("Focus Metadata Input") {
+                    NotificationCenter.default.post(name: .focusMetadataInput,
+                                                    object: nil)
+                }
+                .keyboardShortcut("m", modifiers: [.command, .option])
+                .disabled(appState.selectedAsset == nil)
                 Divider()
                 Button("Transcribe (Whisper)") {
                     appState.transcribeSelected(generateMarkers: false)
@@ -269,7 +323,9 @@ struct PurpleReelApp: App {
             // ---- View (extends standard) -------------------------------
             CommandGroup(after: .sidebar) {
                 Divider()
-                Button("as Grid")   { appState.viewMode = "grid" }
+                Button(UserDefaults.standard.bool(forKey: "useKynoTerminology")
+                       ? "as Thumbnail" : "as Grid")
+                { appState.viewMode = "grid" }
                     .keyboardShortcut("1", modifiers: [.command])
                 Button("as List")   { appState.viewMode = "list" }
                     .keyboardShortcut("2", modifiers: [.command])
@@ -304,9 +360,15 @@ struct PurpleReelApp: App {
                 .disabled(appState.selectedAssetPath == nil)
                 Divider()
                 Button("Drilldown") {
-                    appState.drilldownEnabled.toggle()
+                    appState.toggleDrilldownForSelection()
                 }
                 .keyboardShortcut("d", modifiers: [.command])
+                // Kyno-compat alias: ⌘⇧D is Kyno's drilldown binding.
+                // ⌘D stays wired for PurpleReel-native muscle memory.
+                Button("Drilldown (Kyno binding)") {
+                    appState.toggleDrilldownForSelection()
+                }
+                .keyboardShortcut("d", modifiers: [.command, .shift])
             }
 
             // ---- History (new top-level) -------------------------------
@@ -393,10 +455,20 @@ enum PlayerCommand {
     case jumpPrevMarker, jumpNextMarker
     case jumpBack5s, jumpForward5s
     case rotateLeft, rotateRight
+    /// Kyno-compat shortcuts. Wired unconditionally so PurpleReel-
+    /// native users benefit too; mode-gating these would just create
+    /// a "feature is off, why?" surprise.
+    case toggleMute              // X
+    case toggleZebra             // ⌃⌥E
+    case cycleMatte              // ⌃⌥W
 }
 
 extension Notification.Name {
     static let playerCommand = Notification.Name("PurpleReel.PlayerCommand")
+    /// Posted by the Metadata menu's "Focus Metadata Input" item
+    /// (⌘⌥M, Kyno-compat). `MetadataPaneView` subscribes and routes
+    /// keyboard focus to the Title field.
+    static let focusMetadataInput = Notification.Name("PurpleReel.FocusMetadataInput")
 }
 
 /// Playback-menu toggle that flips J/L between multi-rate shuttle

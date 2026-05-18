@@ -555,9 +555,11 @@ struct BrowserView: View {
     }
 
     private var viewModeToggle: some View {
-        HStack(spacing: 2) {
+        let useKyno = UserDefaults.standard.bool(forKey: "useKynoTerminology")
+        let gridLabel = useKyno ? "Thumbnail" : "Grid"
+        return HStack(spacing: 2) {
             modeButton(icon: "square.grid.2x2", value: "grid",
-                       help: "Grid view (⌘1)")
+                       help: "\(gridLabel) view (⌘1)")
             modeButton(icon: "list.bullet", value: "list",
                        help: "List view (⌘2)")
             modeButton(icon: "rectangle", value: "detail",

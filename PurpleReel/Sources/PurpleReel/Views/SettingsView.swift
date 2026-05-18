@@ -36,9 +36,32 @@ struct GeneralSettingsView: View {
     @AppStorage("importLUTsFromResolve") private var importLUTsFromResolve: Bool = true
     @AppStorage("applyLUTsToThumbnails") private var applyLUTsToThumbnails: Bool = false
     @AppStorage("defaultViewOnLaunch") private var defaultViewOnLaunch: String = "list"
+    @AppStorage(KynoCompatibility.modeKey) private var kynoMode: Bool = false
 
     var body: some View {
         Form {
+            Section("Kyno Compatibility") {
+                Toggle(isOn: Binding(
+                    get: { kynoMode && KynoCompatibility.allDrivenKeysMatchKyno() },
+                    set: { newValue in
+                        if newValue {
+                            KynoCompatibility.apply()
+                        } else {
+                            KynoCompatibility.restore()
+                        }
+                    }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Use Kyno keyboard & defaults")
+                        Text("Flips J/L to 5-sec jumps, 'Thumbnail' label, numeric sort, no auto-drilldown on camera mounts.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Text("Kyno-familiar shortcuts (X mute, ⌘⇧D drilldown, ⌘U subclip export, ⌃⌥E zebra, ⌃⌥W widescreen, ⌥⇧O default-app open, ⌘⌥M focus metadata) are wired regardless of this toggle.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Section("Startup") {
                 Picker("Default view on launch", selection: $defaultViewOnLaunch) {
                     Text("List").tag("list")

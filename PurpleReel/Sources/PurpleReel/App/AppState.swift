@@ -492,8 +492,16 @@ final class AppState: ObservableObject {
                 return asc ? a < b : a > b
             }
         default:
+            // Kyno-compat mode (and most users' expectation): treat
+            // numeric runs naturally so `clip2` sorts before `clip10`.
+            // PurpleReel's original default was lexicographic via
+            // `localizedCaseInsensitiveCompare`; flag persists via
+            // `naturalFileSort` AppStorage.
+            let natural = UserDefaults.standard.bool(forKey: "naturalFileSort")
             base.sort {
-                let cmp = $0.filename.localizedCaseInsensitiveCompare($1.filename)
+                let cmp: ComparisonResult = natural
+                    ? $0.filename.localizedStandardCompare($1.filename)
+                    : $0.filename.localizedCaseInsensitiveCompare($1.filename)
                 return asc ? cmp == .orderedAscending : cmp == .orderedDescending
             }
         }

@@ -72,9 +72,9 @@ Legend: ✅ done · 🟡 partial · ⬜ open · ❌ explicitly skipped
 | ✅ | **Cmd+Shift+E** = export current frame | `PlayerController.exportCurrentFrame()` w/ save panel |
 | ✅ | **Cmd+R / Cmd+Alt+R** = rotate right/left | `PlayerController.rotateBy(±90)`; menu items in Playback |
 | ✅ | **Alt+M** / **Alt+S** = remove marker / subclip | ⌥M nearest-marker-to-playhead, ⌥S removes most-recent subclip |
-| ⬜ | **Zebra filter** (Ctrl+Alt+E) | Metal/CIFilter: highlight pixels > threshold |
-| ⬜ | **Widescreen mattes** (Ctrl+Alt+W) | Black bars at 2.39:1 or 1.85:1 |
-| ⬜ | Aspect-fit / actual-size / fit-window zoom controls | "Fit: 52%" stepper in Kyno's toolbar |
+| ✅ | **Zebra filter** (Ctrl+Alt+E) | `MonitoringEffects` CIFilter chain + Playback menu binding |
+| ✅ | **Widescreen mattes** (Ctrl+Alt+W) | Cycles Off → 1.85 → 2.35 → 2.39 → Off via Playback menu |
+| ✅ | Aspect-fit / actual-size / fit-window zoom controls | `ZoomMode` + toolbar zoom menu |
 | ✅ | Loop-mode UI | Orange `repeat.circle.fill` button in transport bar |
 
 ---
@@ -155,7 +155,7 @@ field is populated.
 | ✅ | ⌘⇧E | Export current frame |
 | ✅ | ⌘R / ⌘⌥R | Rotate preview right / left |
 | ✅ | ⌥M / ⌥S | Remove marker (nearest playhead) / most-recent subclip |
-| ⬜ | ⌃⌥E / ⌃⌥W | Zebra / widescreen filter |
+| ✅ | ⌃⌥E / ⌃⌥W | Zebra toggle / widescreen-matte cycle (Playback menu) |
 | ✅ | ⌘⇧M | Batch metadata edit — per-field opt-in apply across multi-selection |
 | ⬜ | ⌘⇧T | Batch tag edit |
 | ✅ | ⌘E | Convert with most-recent preset |
