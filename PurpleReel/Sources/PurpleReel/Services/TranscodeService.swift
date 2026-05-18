@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import AppKit
 
 /// A single transcode job. State is observable so views can show
 /// per-row progress without diffing through a parent queue.
@@ -24,6 +25,12 @@ final class TranscodeJob: ObservableObject, Identifiable {
     let source: URL
     let preset: TranscodePreset
     let outputURL: URL
+    /// Fade-in / fade-out durations in seconds. Zero = off.
+    /// Applied via `AVMutableAudioMix` + `AVMutableVideoComposition`
+    /// in the AVFoundation export path; ignored on ffmpeg presets
+    /// (filter-chain merge is a follow-up).
+    let fadeInSeconds: Double
+    let fadeOutSeconds: Double
 
     @Published var state: State = .queued
     @Published var progress: Double = 0
@@ -31,10 +38,13 @@ final class TranscodeJob: ObservableObject, Identifiable {
     private var exportSession: AVAssetExportSession?
     private var progressTimer: Timer?
 
-    init(source: URL, preset: TranscodePreset, outputURL: URL) {
+    init(source: URL, preset: TranscodePreset, outputURL: URL,
+         fadeInSeconds: Double = 0, fadeOutSeconds: Double = 0) {
         self.source = source
         self.preset = preset
         self.outputURL = outputURL
+        self.fadeInSeconds = max(0, fadeInSeconds)
+        self.fadeOutSeconds = max(0, fadeOutSeconds)
     }
 
     func run() async {
@@ -74,6 +84,17 @@ final class TranscodeJob: ObservableObject, Identifiable {
         session.shouldOptimizeForNetworkUse = true
         self.exportSession = session
 
+        // Audio + video fades (Kyno 1.6 parity). Skipped for the
+        // pass-through preset — the export bypasses both audioMix
+        // and videoComposition when re-wrapping the source. Built
+        // from the source AVAsset's tracks directly; no full
+        // composition needed because AVAssetExportSession accepts
+        // these on top of the bare asset.
+        if (fadeInSeconds > 0 || fadeOutSeconds > 0)
+           && preset.avPresetName != AVAssetExportPresetPassthrough {
+            await applyFades(to: session, asset: asset)
+        }
+
         try? FileManager.default.removeItem(at: outputURL)
         try? FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(),
                                                   withIntermediateDirectories: true)
@@ -104,6 +125,97 @@ final class TranscodeJob: ObservableObject, Identifiable {
             state = .failed(session.error?.localizedDescription ?? "Unknown export failure")
         default:
             state = .failed("Export ended in unexpected state \(session.status.rawValue)")
+        }
+    }
+
+    /// Build audio-volume ramps and a video opacity-ramp composition
+    /// for the requested fade-in / fade-out durations, and hang them
+    /// off the export session. Black background for the video fades
+    /// (the composition's default render color is `.clear`, which
+    /// would composite the source over nothing — visually identical
+    /// to fade-to-black at the start/end where there's no source).
+    private func applyFades(to session: AVAssetExportSession,
+                             asset: AVURLAsset) async {
+        let duration = (try? await asset.load(.duration)) ?? .zero
+        let durSec = CMTimeGetSeconds(duration)
+        guard durSec.isFinite, durSec > 0 else { return }
+        let inLen = min(fadeInSeconds, durSec)
+        let outLen = min(fadeOutSeconds, durSec)
+
+        // ----- audio ----------------------------------------------
+        if let audioTracks = try? await asset.loadTracks(withMediaType: .audio),
+           !audioTracks.isEmpty {
+            let audioMix = AVMutableAudioMix()
+            var params: [AVMutableAudioMixInputParameters] = []
+            for track in audioTracks {
+                let p = AVMutableAudioMixInputParameters(track: track)
+                if inLen > 0 {
+                    let endTime = CMTime(seconds: inLen, preferredTimescale: 600)
+                    p.setVolumeRamp(
+                        fromStartVolume: 0,
+                        toEndVolume: 1,
+                        timeRange: CMTimeRange(start: .zero, end: endTime)
+                    )
+                }
+                if outLen > 0 {
+                    let startSec = max(0, durSec - outLen)
+                    let outStart = CMTime(seconds: startSec, preferredTimescale: 600)
+                    p.setVolumeRamp(
+                        fromStartVolume: 1,
+                        toEndVolume: 0,
+                        timeRange: CMTimeRange(start: outStart, end: duration)
+                    )
+                }
+                params.append(p)
+            }
+            audioMix.inputParameters = params
+            session.audioMix = audioMix
+        }
+
+        // ----- video ----------------------------------------------
+        if let videoTracks = try? await asset.loadTracks(withMediaType: .video),
+           let videoTrack = videoTracks.first {
+            let comp = AVMutableVideoComposition()
+            // Use the source track's nominal frame rate when sane,
+            // otherwise 30 fps — Apple's HEIC/PNG fallback.
+            let nominal = (try? await videoTrack.load(.nominalFrameRate)) ?? 30
+            let fr = nominal > 0 ? Double(nominal) : 30
+            comp.frameDuration = CMTime(value: 1, timescale: CMTimeScale(fr.rounded()))
+            // Honor any preferred transform / native size on the
+            // source so the export doesn't end up rotated.
+            let natural = (try? await videoTrack.load(.naturalSize)) ?? .zero
+            let transform = (try? await videoTrack.load(.preferredTransform)) ?? .identity
+            let rotated = natural.applying(transform)
+            comp.renderSize = CGSize(
+                width: abs(rotated.width), height: abs(rotated.height)
+            )
+
+            let inst = AVMutableVideoCompositionInstruction()
+            inst.timeRange = CMTimeRange(start: .zero, duration: duration)
+            inst.backgroundColor = NSColor.black.cgColor
+
+            let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)
+            layer.setTransform(transform, at: .zero)
+            if inLen > 0 {
+                let endTime = CMTime(seconds: inLen, preferredTimescale: 600)
+                layer.setOpacityRamp(
+                    fromStartOpacity: 0,
+                    toEndOpacity: 1,
+                    timeRange: CMTimeRange(start: .zero, end: endTime)
+                )
+            }
+            if outLen > 0 {
+                let startSec = max(0, durSec - outLen)
+                let outStart = CMTime(seconds: startSec, preferredTimescale: 600)
+                layer.setOpacityRamp(
+                    fromStartOpacity: 1,
+                    toEndOpacity: 0,
+                    timeRange: CMTimeRange(start: outStart, end: duration)
+                )
+            }
+            inst.layerInstructions = [layer]
+            comp.instructions = [inst]
+            session.videoComposition = comp
         }
     }
 

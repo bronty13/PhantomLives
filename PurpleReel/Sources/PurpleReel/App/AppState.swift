@@ -1233,7 +1233,13 @@ final class AppState: ObservableObject {
             if state.skipExisting, FileManager.default.fileExists(atPath: dest.path) {
                 continue
             }
-            let job = TranscodeJob(source: srcURL, preset: state.preset, outputURL: dest)
+            let job = TranscodeJob(
+                source: srcURL,
+                preset: state.preset,
+                outputURL: dest,
+                fadeInSeconds: state.fadeInSeconds,
+                fadeOutSeconds: state.fadeOutSeconds
+            )
             transcodeQueue.enqueue(job)
             enqueued += 1
         }

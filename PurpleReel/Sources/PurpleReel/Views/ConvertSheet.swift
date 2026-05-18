@@ -11,6 +11,14 @@ struct ConvertSheetState: Identifiable {
     var destinationDir: String
     var keepFolderStructure: Bool
     var skipExisting: Bool
+    /// Audio + video fade-in length applied at the start of every
+    /// output clip. Zero = off. Honored only on AVFoundation presets;
+    /// ffmpeg recipes ignore this for now (filter-chain merge is a
+    /// follow-up).
+    var fadeInSeconds: Double = 0
+    /// Same shape as `fadeInSeconds` but applied at the end of each
+    /// output clip — fade to black + audio cross-fade to silence.
+    var fadeOutSeconds: Double = 0
 
     /// Longest path that is a prefix of every input path. Used for
     /// the "keep folder structure" relative-path computation.
@@ -91,6 +99,31 @@ struct ConvertSheet: View {
                             isOn: $state.keepFolderStructure)
                     Toggle("Skip items that already exist on target",
                             isOn: $state.skipExisting)
+                }
+                .gridCellColumns(2)
+            }
+            GridRow {
+                Text("Fades:").foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Stepper(value: $state.fadeInSeconds,
+                             in: 0...10, step: 0.5) {
+                        Text(state.fadeInSeconds > 0
+                              ? "Fade in: \(String(format: "%.1f", state.fadeInSeconds)) sec"
+                              : "Fade in: off")
+                    }
+                    .disabled(state.preset.isFFmpeg)
+                    Stepper(value: $state.fadeOutSeconds,
+                             in: 0...10, step: 0.5) {
+                        Text(state.fadeOutSeconds > 0
+                              ? "Fade out: \(String(format: "%.1f", state.fadeOutSeconds)) sec"
+                              : "Fade out: off")
+                    }
+                    .disabled(state.preset.isFFmpeg)
+                    if state.preset.isFFmpeg {
+                        Text("Fades currently apply to AVFoundation presets only. ffmpeg recipes (DNxHR, Cineform, MXF, Smart Proxy) render without them.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .gridCellColumns(2)
             }
