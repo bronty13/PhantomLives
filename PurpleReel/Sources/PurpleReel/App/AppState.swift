@@ -443,9 +443,10 @@ final class AppState: ObservableObject {
         suppressHistory = false
         // Switching folders from the sidebar while in single-clip
         // Detail view would otherwise leave the previous clip on
-        // screen with no way to update — snap back to Grid so the
-        // user lands in a browse-able state. Same shape Kyno uses.
-        if viewMode == "detail" { viewMode = "grid" }
+        // screen with no way to update — snap back to List so the
+        // user lands in a browse-able state. List is PurpleReel's
+        // default view; Detail makes no sense for a folder click.
+        if viewMode == "detail" { viewMode = "list" }
         // Kyno-style "select a folder → see top-level media
         // immediately" — when the user navigates to a folder that
         // ISN'T under any workspace root, shallow-scan it on demand
