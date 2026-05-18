@@ -168,6 +168,24 @@ struct BrowserView: View {
             Image(systemName: "line.3.horizontal.decrease.circle.fill")
                 .foregroundStyle(.orange)
                 .font(.caption)
+            // Match-mode toggle. Tap the chip to flip AND ↔ OR
+            // without diving back into the Filter menu. Only shown
+            // when there are 2+ criteria (single-criterion case
+            // is degenerate).
+            if appState.activeFilters.count >= 2 {
+                Button {
+                    appState.filterMatchMode = (appState.filterMatchMode == "all" ? "any" : "all")
+                } label: {
+                    Text(appState.filterMatchMode == "all" ? "AND" : "OR")
+                        .font(.caption2.weight(.bold))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.orange.opacity(0.35), in: Capsule())
+                        .foregroundStyle(.primary)
+                }
+                .buttonStyle(.plain)
+                .help("Tap to switch between match-all (AND) and match-any (OR).")
+            }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     ForEach(appState.activeFilters) { criterion in
@@ -725,6 +743,13 @@ struct BrowserView: View {
     @ViewBuilder
     private var filterMenu: some View {
         Menu {
+            Section("Combine criteria") {
+                Picker("Match", selection: $appState.filterMatchMode) {
+                    Text("Match all (AND)").tag("all")
+                    Text("Match any (OR)").tag("any")
+                }
+                .pickerStyle(.inline)
+            }
             Section("Rating") {
                 ForEach((1...5).reversed(), id: \.self) { stars in
                     Button("≥ \(String(repeating: "★", count: stars))") {

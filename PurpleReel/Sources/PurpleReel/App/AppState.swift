@@ -57,10 +57,16 @@ final class AppState: ObservableObject {
     /// for the same reason. 0 = unrated.
     @Published private(set) var ratingIndex: [String: Int] = [:]
 
+    /// Match mode for the active-filter set: "all" = AND, "any"
+    /// = OR. Default AND keeps existing user filter combos behaving
+    /// the way they did before this toggle landed. Persisted in
+    /// AppStorage so the choice sticks across launches.
+    @AppStorage("filterMatchMode") var filterMatchMode: String = "all"
+
     /// Active advanced-filter criteria. Pinned by the user from the
-    /// toolbar Filter menu; AND-combined in `displayedAssets`.
-    /// Persisted as a `;`-joined token string in UserDefaults so the
-    /// set survives across launches.
+    /// toolbar Filter menu; combined per `filterMatchMode` in
+    /// `displayedAssets`. Persisted as a `;`-joined token string in
+    /// UserDefaults so the set survives across launches.
     @Published var activeFilters: [FilterCriterion] = [] {
         didSet {
             let encoded = activeFilters.map { $0.encoded() }.joined(separator: ";")
@@ -467,9 +473,21 @@ final class AppState: ObservableObject {
             let ratingFor: (Asset) -> Int = { [self] asset in
                 self.ratingIndex[asset.path] ?? 0
             }
+            // AND (every criterion matches) vs OR (at least one
+            // matches). Kyno 1.7-parity power-user toggle; sticky
+            // via `filterMatchMode` AppStorage. AND is the default
+            // so existing user-saved filter sets behave the way
+            // they did before.
+            let anyMode = filterMatchMode == "any"
             base = base.filter { asset in
-                activeFilters.allSatisfy {
-                    $0.matches(asset, ratingForAsset: ratingFor, tagIndex: tags)
+                if anyMode {
+                    return activeFilters.contains {
+                        $0.matches(asset, ratingForAsset: ratingFor, tagIndex: tags)
+                    }
+                } else {
+                    return activeFilters.allSatisfy {
+                        $0.matches(asset, ratingForAsset: ratingFor, tagIndex: tags)
+                    }
                 }
             }
         }
