@@ -274,7 +274,92 @@ private struct FieldGrid: View {
     }
 }
 
-private struct FrameGridCell: View {
+/// Frames-only view used by the Detail-view "Content" tab —
+/// renders the same N-up thumbnail grid `ClipContentView` does in
+/// its `framesBlock`, but without the duplicated file-metadata
+/// header (the inline Detail view already shows that on the left).
+/// Click-to-seek delegates back to the parent player via `onSeek`.
+struct ClipFramesGrid: View {
+    let asset: Asset
+    let onSeek: (Double) -> Void
+
+    @State private var frameURLs: [URL] = []
+    @State private var loading: Bool = true
+    @AppStorage("frameGridSize") private var frameSizeRaw: String = FrameGridSize.medium.rawValue
+    private var frameSize: FrameGridSize {
+        FrameGridSize(rawValue: frameSizeRaw) ?? .medium
+    }
+    private let frameCount = 30
+    private var columns: [GridItem] {
+        [GridItem](repeating: GridItem(.flexible(), spacing: 4),
+                    count: frameSize.columns)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Frames").font(.headline)
+                Spacer()
+                Picker("", selection: Binding(
+                    get: { frameSize },
+                    set: { frameSizeRaw = $0.rawValue }
+                )) {
+                    ForEach(FrameGridSize.allCases) { size in
+                        Text(size.label).tag(size)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 120)
+                .controlSize(.small)
+                if !frameURLs.isEmpty {
+                    Text("\(frameURLs.count)")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            if loading && frameURLs.isEmpty {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Extracting \(frameCount) frames…")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 120)
+            } else if frameURLs.isEmpty {
+                Text("Could not extract frames.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                ScrollView {
+                    LazyVGrid(columns: columns, spacing: 4) {
+                        ForEach(Array(frameURLs.enumerated()), id: \.offset) { idx, url in
+                            FrameGridCell(
+                                url: url, index: idx, total: frameURLs.count,
+                                onClick: { secs in onSeek(secs) },
+                                duration: asset.durationSeconds ?? 0
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .onAppear(perform: load)
+        .onChange(of: asset.path) { _, _ in load() }
+    }
+
+    private func load() {
+        frameURLs = []
+        loading = true
+        Task {
+            let urls = await ThumbnailService.thumbnails(for: asset, count: frameCount)
+            await MainActor.run {
+                self.frameURLs = urls
+                self.loading = false
+            }
+        }
+    }
+}
+
+struct FrameGridCell: View {
     let url: URL
     let index: Int
     let total: Int

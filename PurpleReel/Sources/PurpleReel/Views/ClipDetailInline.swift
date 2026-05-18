@@ -12,6 +12,10 @@ struct ClipDetailInline: View {
     @ObservedObject var playerController: PlayerController
     @State private var details: ClipDetails?
     @State private var isFullscreen: Bool = false
+    /// Kyno-style right-pane tabs (Metadata / Content / Subclips /
+    /// Tracks). Sticky across launches via @AppStorage so the user
+    /// lands on the tab they last used.
+    @AppStorage("clipDetailInspectorTab") private var inspectorTab: String = "metadata"
 
     private var current: Asset? { appState.selectedAsset }
     private var isImageAsset: Bool {
@@ -30,7 +34,7 @@ struct ClipDetailInline: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 if !isFullscreen {
                     Divider()
-                    metadataPane.frame(width: 360)
+                    inspectorPane.frame(width: 360)
                 }
             }
         }
@@ -183,20 +187,76 @@ struct ClipDetailInline: View {
         }
     }
 
-    private var metadataPane: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Metadata")
-                .font(.headline)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+    /// Right-pane tabbed inspector (Kyno-style). Tabs: Metadata
+    /// (editable log fields + ratings + tags), Content (frames
+    /// grid with click-to-seek), Subclips, Tracks (technical
+    /// per-track readout). Active tab is sticky in
+    /// `clipDetailInspectorTab` AppStorage.
+    @ViewBuilder
+    private var inspectorPane: some View {
+        VStack(spacing: 0) {
+            Picker("", selection: $inspectorTab) {
+                Text("Metadata").tag("metadata")
+                Text("Content").tag("content")
+                Text("Subclips").tag("subclips")
+                Text("Tracks").tag("tracks")
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 8)
+            .padding(.vertical, 8)
             Divider()
+            inspectorContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+        .background(.ultraThinMaterial)
+    }
+
+    @ViewBuilder
+    private var inspectorContent: some View {
+        switch inspectorTab {
+        case "content":
+            if let asset = current {
+                ClipFramesGrid(
+                    asset: asset,
+                    onSeek: { playerController.seek(to: $0) }
+                )
+            } else {
+                inspectorEmptyState
+            }
+        case "subclips":
+            if current != nil {
+                SubclipsListView(
+                    fps: playerController.fps,
+                    onJumpTo: { playerController.seek(to: $0) }
+                )
+            } else {
+                inspectorEmptyState
+            }
+        case "tracks":
+            if let asset = current {
+                ClipTracksView(asset: asset)
+            } else {
+                inspectorEmptyState
+            }
+        default:
             MetadataPaneView(
                 playerFps: playerController.fps,
                 onSeek: { playerController.seek(to: $0) }
             )
-                .frame(maxHeight: .infinity, alignment: .top)
         }
-        .background(.ultraThinMaterial)
+    }
+
+    private var inspectorEmptyState: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "rectangle.dashed")
+                .font(.system(size: 32))
+                .foregroundStyle(.secondary)
+            Text("No clip selected")
+                .foregroundStyle(.secondary)
+                .font(.caption)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Helpers
