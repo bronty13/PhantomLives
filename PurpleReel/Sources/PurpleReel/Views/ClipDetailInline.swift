@@ -163,7 +163,10 @@ struct ClipDetailInline: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
             Divider()
-            MetadataPaneView()
+            MetadataPaneView(
+                playerFps: playerController.fps,
+                onSeek: { playerController.seek(to: $0) }
+            )
                 .frame(maxHeight: .infinity, alignment: .top)
         }
         .background(.ultraThinMaterial)

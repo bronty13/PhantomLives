@@ -45,8 +45,8 @@ Legend: ✅ done · 🟡 partial · ⬜ open · ❌ explicitly skipped
 | ✅ | Content | Metadata block + 30-frame grid |
 | ✅ | Tracks | Per-track technical breakdown |
 | 🟡 | Log → Markers / Subclips / Tags / Rating | Functional; should split into separate tabs like Kyno (Metadata / Subclips). |
-| ✅ | **Metadata** dedicated tab with: Title, Description, Rating, Reel, Scene, Shot, Take, Angle, Camera, Tags | `MetadataPaneView`; v2 migration shipped as separate `clip_metadata` table. Markers still live in Log tab. |
-| ⬜ | Subclips as own tab with Start / End / Title columns | Currently lives inside the Log pane |
+| ✅ | **Metadata** dedicated tab with: Title, Description, Rating, Reel, Scene, Shot, Take, Angle, Camera, Tags, Markers | `MetadataPaneView`; v2 migration shipped as separate `clip_metadata` table. Markers section appears at the bottom when the pane is hosted next to a player (BrowserView inspector + Detail-mode right pane). |
+| ✅ | Subclips as own tab with Start / End / Title columns | New `.subclips` `DetailTab` between Tracks and Log; Log still owns Markers + Tags + Rating |
 
 ---
 
@@ -64,7 +64,7 @@ Legend: ✅ done · 🟡 partial · ⬜ open · ❌ explicitly skipped
 | ✅ | LUT loader | |
 | ✅ | Audio waveform overlay | |
 | ✅ | Multi-rate shuttle | |
-| 🟡 | **5-second jumps**: Shift+Arrow or alternate J/L mode | Shift+← / Shift+→ shipped; alternate J/L mode (Kyno's default) still on the Preferences backlog |
+| ✅ | **5-second jumps**: Shift+Arrow or alternate J/L mode | Shift+← / Shift+→ shipped; alternate J/L mode via Playback → "J / L Behaviour" submenu, sticky in @AppStorage("playerJLMode") |
 | ✅ | **Up/Down arrows** = jump to next/previous marker or in/out | `PlayerController.seekToAnchor(direction:markerTimes:)` — union of markers + I/O |
 | ✅ | **Alt+Space** = play in→out | Wired via menu + PlayerCommand.playInToOut |
 | ✅ | **Cmd+L** = toggle loop mode | `PlayerController.loopMode` + didPlayToEnd observer |
@@ -198,9 +198,8 @@ code drift problem that hits every keyboard-heavy app.
 ## Effort-buckets for the **remaining** open items
 
 **Small** (1-2 hours each):
-- Alternate J/L mode (5-sec jumps) in Preferences — Kyno's default
-- Subclips own tab (split out of Log)
-- Markers in the Metadata tab (alongside Log)
+- (small bucket fully drained — see open items in the larger feature
+  tables above)
 
 **Medium** (half-day each):
 - Filter advanced dropdown (multi-criteria builder: Size / Date /

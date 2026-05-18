@@ -1,13 +1,14 @@
 import SwiftUI
 
 enum DetailTab: String, CaseIterable, Identifiable {
-    case metadata, content, tracks, log
+    case metadata, content, tracks, subclips, log
     var id: String { rawValue }
     var label: String {
         switch self {
         case .metadata: return "Metadata"
         case .content:  return "Content"
         case .tracks:   return "Tracks"
+        case .subclips: return "Subclips"
         case .log:      return "Log"
         }
     }
@@ -16,6 +17,7 @@ enum DetailTab: String, CaseIterable, Identifiable {
         case .metadata: return "tag.fill"
         case .content:  return "rectangle.grid.2x2"
         case .tracks:   return "waveform.path.ecg"
+        case .subclips: return "scissors"
         case .log:      return "list.bullet.rectangle"
         }
     }
@@ -492,7 +494,10 @@ struct BrowserView: View {
             Group {
                 switch detailTab {
                 case .metadata:
-                    MetadataPaneView()
+                    MetadataPaneView(
+                        playerFps: playerController.fps,
+                        onSeek: { playerController.seek(to: $0) }
+                    )
                 case .content:
                     if let asset = appState.selectedAsset {
                         ClipContentView(asset: asset,
@@ -506,15 +511,17 @@ struct BrowserView: View {
                     } else {
                         Color.clear
                     }
+                case .subclips:
+                    ScrollView {
+                        SubclipsListView(
+                            fps: playerController.fps,
+                            onJumpTo: { playerController.seek(to: $0) }
+                        )
+                    }
                 case .log:
                     ScrollView {
                         VStack(spacing: 0) {
                             MarkersListView(
-                                fps: playerController.fps,
-                                onJumpTo: { playerController.seek(to: $0) }
-                            )
-                            Divider()
-                            SubclipsListView(
                                 fps: playerController.fps,
                                 onJumpTo: { playerController.seek(to: $0) }
                             )

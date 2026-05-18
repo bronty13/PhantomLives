@@ -1180,6 +1180,76 @@ specific binding or affordance.
 
 ---
 
+## Scenario 26 — Polish round 2: J/L alt mode + Subclips tab + Markers in Metadata
+
+Closes out the small-bucket roadmap items. Three independent surface
+tweaks bundled.
+
+**Setup**
+- Workspace with a long-enough video clip (≥ 30s).
+- Add 2-3 markers + 1-2 subclips to that clip.
+
+**Steps**
+
+1. **J/L default behaviour** — open Playback → "J / L Behaviour".
+   Verify "Multi-rate shuttle (default)" is checked.
+   - **Expected:** With the clip loaded, press L. Player ramps
+     forward (1× → 2× → 4×). Press K to stop. Press J. Reverses.
+2. **Switch to 5-sec jump mode** — Playback → "J / L Behaviour" →
+   "5-second jumps (Kyno)".
+   - **Expected:** Check mark moves to "5-second jumps". From a
+     stopped state at 0:00, press L. Playhead jumps to 0:05.
+     Press L again → 0:10. Press J → 0:05. Press K → no-op (rate
+     was already 0). Behaviour matches Shift+→ / Shift+← within
+     this mode.
+3. **Stickiness** — switch to 5-sec mode, quit, relaunch.
+   - **Expected:** "J / L Behaviour" submenu still shows the
+     5-second option checked; J/L still jump 5 seconds. (Backed by
+     `@AppStorage("playerJLMode")`.)
+4. **Subclips tab present** — click a clip, look at the inspector
+   tab bar.
+   - **Expected:** Tabs are Metadata / Content / Tracks /
+     **Subclips** / Log, in that order. Subclips icon is `scissors`.
+5. **Subclips tab content** — click Subclips.
+   - **Expected:** SubclipsListView shows for the current clip with
+     Start / End / Title columns. Empty-state message when the clip
+     has no subclips.
+6. **Jump-to from Subclips** — click a subclip's row / timecode.
+   - **Expected:** Player seeks to that subclip's start. Works
+     identically to the Log-tab subclip jump.
+7. **Log tab still works** — switch to Log.
+   - **Expected:** Markers section + Tags+Rating section remain;
+     Subclips section is gone (it moved to its own tab).
+8. **Markers in Metadata tab** — switch to Metadata.
+   - **Expected:** Scroll to the bottom of the pane. After the Tags
+     section, a Markers section appears showing every marker for
+     this clip with timecode + note + jump-to button (same UI as
+     the Log tab's marker list).
+9. **Detail view marker jumps from Metadata pane** — switch to
+   Detail mode (⌘3). The right pane is the Metadata pane.
+   - **Expected:** The Markers section at the bottom is there too;
+     clicking a marker seeks the player on the left without leaving
+     the pane.
+10. **No-player context (future-proofing)** — if a caller embeds
+    `MetadataPaneView` without providing `playerFps:` / `onSeek:`
+    (no current callers do, but the optional params exist), the
+    Markers section is omitted gracefully.
+11. **Shortcuts catalogue** — Help → Keyboard Shortcuts… (⌘?).
+    - **Expected:** Logging & Metadata group still lists ⌥M and
+      ⌥S; no new entries needed for the J/L mode toggle (it's a
+      menu state, not a binding).
+
+**Pass criteria**
+- J/L mode toggle works both ways; persists across launches.
+- Subclips tab is independent of Log; Subclips list still routes
+  jumps through the player.
+- Markers section renders inside the Metadata pane in both
+  BrowserView's inspector and ClipDetailInline's side pane.
+- All three are independent — toggling one doesn't affect the
+  others.
+
+---
+
 ## Regression triggers
 
 After **any** change, re-run **at minimum**:
@@ -1224,3 +1294,7 @@ After any change to **`PlayerController.rotateBy(_:)` /
 `AppState.removeMarkerNearestPlayhead(...)` /
 `removeLastSubclipForSelection()` / sidebar `sectionHeader(...)` /
 grid `gridTileSize` slider**, re-run Scenario 25.
+
+After any change to **`@AppStorage("playerJLMode")` /
+`DetailTab.subclips` / `MetadataPaneView.markersBlock`**,
+re-run Scenario 26.

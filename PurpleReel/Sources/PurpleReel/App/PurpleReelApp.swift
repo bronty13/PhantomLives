@@ -80,6 +80,8 @@ struct PurpleReelApp: App {
 
             // ---- Playback (new top-level) ------------------------------
             CommandMenu("Playback") {
+                JLModeToggleMenuItem()
+                Divider()
                 Button("Play From In to Out Point") {
                     NotificationCenter.default.post(name: .playerCommand,
                                                     object: PlayerCommand.playInToOut)
@@ -385,6 +387,32 @@ enum PlayerCommand {
 
 extension Notification.Name {
     static let playerCommand = Notification.Name("PurpleReel.PlayerCommand")
+}
+
+/// Playback-menu toggle that flips J/L between multi-rate shuttle
+/// (PurpleReel default, FCP / Premiere convention) and 5-second jumps
+/// (Kyno's default). Owns its own @AppStorage so we don't have to
+/// thread state down from PurpleReelApp into PlayerView via AppState
+/// — the player reads the same defaults key directly.
+private struct JLModeToggleMenuItem: View {
+    @AppStorage("playerJLMode") private var jlMode: String = "shuttle"
+
+    var body: some View {
+        Menu("J / L Behaviour") {
+            Button {
+                jlMode = "shuttle"
+            } label: {
+                Label("Multi-rate shuttle (default)",
+                       systemImage: jlMode == "shuttle" ? "checkmark" : "")
+            }
+            Button {
+                jlMode = "jump5s"
+            } label: {
+                Label("5-second jumps (Kyno)",
+                       systemImage: jlMode == "jump5s" ? "checkmark" : "")
+            }
+        }
+    }
 }
 
 /// Small fallback alert for menu items whose implementation is on the

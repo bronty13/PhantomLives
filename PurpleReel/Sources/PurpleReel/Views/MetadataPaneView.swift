@@ -6,6 +6,13 @@ import SwiftUI
 struct MetadataPaneView: View {
     @EnvironmentObject var appState: AppState
 
+    /// When both `playerFps` and `onSeek` are non-nil, the pane
+    /// appends a Markers section that lets the user jump to each
+    /// marker without flipping tabs. Callers from contexts with no
+    /// player (e.g. preview-only) omit them.
+    var playerFps: Double? = nil
+    var onSeek: ((Double) -> Void)? = nil
+
     // Local mirrors of the persisted ClipMetadata fields so the
     // TextFields stay responsive while typing. Synced back via
     // .onChange of `appState.selectedAsset` (clip change) and pushed
@@ -26,12 +33,25 @@ struct MetadataPaneView: View {
                 titleAndDescription
                 logFieldsGrid
                 tagsBlock
+                markersBlock
             }
             .padding(14)
         }
         .onAppear(perform: hydrate)
         .onChange(of: appState.selectedAsset?.path) { _, _ in hydrate() }
         .onChange(of: appState.clipMetadata) { _, _ in hydrate() }
+    }
+
+    /// Optional Markers section — only rendered when the caller
+    /// passed a player fps + seek callback (i.e. when the pane is
+    /// hosted next to an actual player). Otherwise the metadata pane
+    /// stays compact.
+    @ViewBuilder
+    private var markersBlock: some View {
+        if let fps = playerFps, let seek = onSeek {
+            Divider()
+            MarkersListView(fps: fps, onJumpTo: seek)
+        }
     }
 
     // MARK: - Sections

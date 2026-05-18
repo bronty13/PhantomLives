@@ -328,6 +328,10 @@ struct PlayerView: View {
     /// active marker list so the player stays decoupled from the
     /// catalogue / AppState.
     var onJumpMarker: (Int) -> Void = { _ in }
+    /// "shuttle" = multi-rate J/L (PurpleReel default, matches FCP /
+    /// Premiere); "jump5s" = J/L jump 5 seconds (Kyno's default).
+    /// Bound to the user-toggleable Playback menu item.
+    @AppStorage("playerJLMode") private var jlMode: String = "shuttle"
 
     var body: some View {
         VStack(spacing: 0) {
@@ -566,9 +570,15 @@ struct PlayerView: View {
     private func handleKey(_ event: NSEvent) -> Bool {
         guard let chars = event.charactersIgnoringModifiers else { return false }
         switch chars.lowercased() {
-        case "j": controller.shuttle(direction: -1); return true
-        case "k": controller.setRate(0);             return true
-        case "l": controller.shuttle(direction: 1);  return true
+        case "j":
+            if jlMode == "jump5s" { controller.jumpSeconds(-5) }
+            else                  { controller.shuttle(direction: -1) }
+            return true
+        case "k": controller.setRate(0); return true
+        case "l":
+            if jlMode == "jump5s" { controller.jumpSeconds(5) }
+            else                  { controller.shuttle(direction: 1) }
+            return true
         case "i": controller.markIn();               return true
         case "o": controller.markOut();              return true
         case "m": onAddMarker();                     return true
