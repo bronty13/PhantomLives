@@ -1453,6 +1453,72 @@ final class AppState: ObservableObject {
         var skipped: [String] = []
     }
 
+    /// Batch frame export (Kyno-parity row 15). Iterates the
+    /// selected asset's catalogued markers; writes one PNG per
+    /// marker into the user-chosen folder with the most-recently-
+    /// used LUT baked in (per `applyLUTToExportedFrames` AppStorage,
+    /// default on). Uses the active session's `lastLUTPath` so the
+    /// user's manual pick or the LUT auto-suggest both flow through.
+    func exportFramesAtMarkers() {
+        guard let asset = selectedAsset else { return }
+        guard !markers.isEmpty else {
+            let alert = NSAlert()
+            alert.messageText = "No markers on this clip"
+            alert.informativeText = "Add markers (M) at the frames you want exported, then run this again."
+            alert.runModal()
+            return
+        }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Pick a destination folder for the frame stills."
+        guard panel.runModal() == .OK, let dest = panel.url else { return }
+
+        // Resolve the LUT the same way PlayerController does: honour
+        // the `applyLUTToExportedFrames` toggle, fall back to the
+        // last-loaded LUT file path.
+        let bakeLUT = (UserDefaults.standard.object(forKey: "applyLUTToExportedFrames")
+                        as? Bool) ?? true
+        var lut: LUTData? = nil
+        if bakeLUT,
+           let path = UserDefaults.standard.string(forKey: "lastLUTPath"),
+           FileManager.default.fileExists(atPath: path),
+           let loaded = try? LUTService.load(url: URL(fileURLWithPath: path)) {
+            lut = loaded
+        }
+
+        let fps = asset.frameRate ?? 30
+        let url = URL(fileURLWithPath: asset.path)
+        let markersCopy = markers
+        Task {
+            let r = await FrameExportService.exportFramesAtMarkers(
+                assetURL: url, markers: markersCopy, lut: lut,
+                fps: fps, destDirectory: dest
+            )
+            await MainActor.run {
+                let alert = NSAlert()
+                alert.messageText = "Export Frames at Markers"
+                var lines: [String] = []
+                lines.append("Written: \(r.written)")
+                if r.skipped > 0 {
+                    lines.append("Skipped (already existed): \(r.skipped)")
+                }
+                if !r.failures.isEmpty {
+                    lines.append("Failures: \(r.failures.count)")
+                }
+                if lut != nil {
+                    lines.append("LUT baked in: \(lut?.name ?? "—")")
+                }
+                alert.informativeText = lines.joined(separator: "\n")
+                alert.runModal()
+                if r.written > 0 {
+                    NSWorkspace.shared.activateFileViewerSelecting([dest])
+                }
+            }
+        }
+    }
+
     /// Kyno migration import (row 80). Picks a folder via NSOpenPanel
     /// and runs `KynoImportService.importTree` against it, then refreshes
     /// the in-memory catalogue for the currently-selected asset so the

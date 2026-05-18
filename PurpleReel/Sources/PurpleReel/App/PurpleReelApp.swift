@@ -303,6 +303,12 @@ struct PurpleReelApp: App {
                 }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
                 .disabled(appState.selectedAsset == nil)
+                Button("Export Frames at Markers…") {
+                    appState.exportFramesAtMarkers()
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift, .option])
+                .disabled(appState.selectedAsset == nil)
+                .help("Write one PNG per catalogued marker on the selected clip, with the active LUT baked in.")
                 Divider()
                 // Kyno-compat shortcuts. Unconditional bindings —
                 // see PlayerCommand cases for rationale.
