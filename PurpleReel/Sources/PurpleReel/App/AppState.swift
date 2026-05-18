@@ -207,6 +207,7 @@ final class AppState: ObservableObject {
             self.assets = try db.allAssets()
             self.rebuildFolderTree()
             self.refreshClipMetadataIndex()
+            hydrateUserMetadataFromCache(scannedPaths: found.map(\.path))
         } catch {
             NSLog("[PurpleReel] on-demand scan failed for \(path): \(error)")
         }
@@ -683,6 +684,7 @@ final class AppState: ObservableObject {
         defer { isScanning = false; scanProgress = "" }
 
         do {
+            var allScanned: [String] = []
             for root in roots {
                 scanProgress = "Scanning \(root.lastPathComponent)…"
                 let found = try await scanner.scan(root: root) { [weak self] count in
@@ -691,10 +693,12 @@ final class AppState: ObservableObject {
                     }
                 }
                 try db.upsertAssets(found)
+                allScanned.append(contentsOf: found.map(\.path))
             }
             self.assets = try db.allAssets()
             self.rebuildFolderTree()
             self.refreshClipMetadataIndex()
+            hydrateUserMetadataFromCache(scannedPaths: allScanned)
             // Soft warning when the workspace balloons past the
             // safety limit. Doesn't block; we still load every asset.
             // The user can either narrow the workspace or raise
@@ -852,6 +856,7 @@ final class AppState: ObservableObject {
             try db.setClipMetadata(copy)
             clipMetadata = copy
             clipMetadataIndex[id] = copy
+            writeCacheForSelected()
         } catch {
             NSLog("[PurpleReel] clip metadata save failed: \(error)")
         }
@@ -883,6 +888,7 @@ final class AppState: ObservableObject {
         guard let id = selectedAsset?.rowId else { return }
         _ = try? db.addMarker(assetId: id, timecodeIn: timecodeIn, note: note)
         refreshMarkers()
+        writeCacheForSelected()
     }
 
     /// P-key handler. Stores the player's current playhead as the
@@ -902,12 +908,14 @@ final class AppState: ObservableObject {
         var patched = asset
         patched.posterFrameSeconds = seconds
         selectedAsset = patched
+        writeCacheForSelected()
     }
 
     func deleteMarker(_ marker: Marker) {
         guard let mid = marker.id else { return }
         try? db.deleteMarker(id: mid)
         refreshMarkers()
+        writeCacheForSelected()
     }
 
     /// ⌥M handler — remove the marker closest to the current player
@@ -939,6 +947,7 @@ final class AppState: ObservableObject {
         copy.note = note.isEmpty ? nil : note
         try? db.updateMarker(copy)
         refreshMarkers()
+        writeCacheForSelected()
     }
 
     // MARK: - Subclips
@@ -954,6 +963,7 @@ final class AppState: ObservableObject {
         _ = try? db.addSubclip(parentAssetId: id, name: finalName,
                                 timecodeIn: lo, timecodeOut: hi)
         refreshSubclips()
+        writeCacheForSelected()
     }
 
     /// Pick the next non-colliding subclip name on `assetId`. If
@@ -971,6 +981,7 @@ final class AppState: ObservableObject {
         guard let sid = subclip.id else { return }
         try? db.deleteSubclip(id: sid)
         refreshSubclips()
+        writeCacheForSelected()
     }
 
     // MARK: - Tags
@@ -979,12 +990,14 @@ final class AppState: ObservableObject {
         guard let id = selectedAsset?.rowId else { return }
         _ = try? db.addTag(name: name, assetId: id)
         refreshTags()
+        writeCacheForSelected()
     }
 
     func removeTag(name: String) {
         guard let id = selectedAsset?.rowId else { return }
         try? db.removeTag(name: name, assetId: id)
         refreshTags()
+        writeCacheForSelected()
     }
 
     // MARK: - Batch tag operations (⌘⇧T sheet)
@@ -1060,6 +1073,7 @@ final class AppState: ObservableObject {
         try? db.setRating(assetId: id, stars: stars,
                           colorLabel: color, description: desc)
         refreshRating()
+        writeCacheForSelected()
     }
 
     // MARK: - AI: Whisper transcription
@@ -1518,6 +1532,50 @@ final class AppState: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Walk every freshly-scanned asset, find its corresponding
+    /// catalogue row, and hydrate user metadata from the sidecar
+    /// (Kyno-parity row 7). Cheap when the feature is off — the
+    /// sidecar reader gates on `isEnabled` before any disk hit.
+    private func hydrateUserMetadataFromCache(scannedPaths: [String]) {
+        guard WorkspaceCacheService.isEnabled else { return }
+        // Index the in-memory catalogue once.
+        let byPath = Dictionary(uniqueKeysWithValues:
+            assets.map { ($0.path, $0) }
+        )
+        for path in scannedPaths {
+            guard let payload = WorkspaceCacheService.loadIfFresh(for: path),
+                  let asset = byPath[path],
+                  let aid = asset.rowId else { continue }
+            WorkspaceCacheService.hydrateUserMetadata(
+                payload, assetId: aid, db: db
+            )
+        }
+        // After hydration the per-asset clip-metadata index is stale.
+        refreshClipMetadataIndex()
+        refreshTags()
+        refreshRating()
+        refreshMarkers()
+    }
+
+    /// Write the workspace-cache sidecar for the currently-selected
+    /// asset. Called after any user mutation (rating, tag, marker,
+    /// log fields, poster frame). No-op when the feature is off or
+    /// the asset has no rowId yet.
+    private func writeCacheForSelected() {
+        guard WorkspaceCacheService.isEnabled,
+              let asset = selectedAsset else { return }
+        WorkspaceCacheService.saveAsset(asset, db: db)
+    }
+
+    /// Same as `writeCacheForSelected` but for an explicit asset.
+    /// Use when the mutation touched a clip that isn't necessarily
+    /// the focused selection (batch operations).
+    private func writeCacheForAsset(path: String) {
+        guard WorkspaceCacheService.isEnabled,
+              let asset = assets.first(where: { $0.path == path }) else { return }
+        WorkspaceCacheService.saveAsset(asset, db: db)
     }
 
     /// FCPXML round-trip import (Kyno-parity row 5). Pops a file

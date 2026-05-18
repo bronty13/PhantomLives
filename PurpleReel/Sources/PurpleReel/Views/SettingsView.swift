@@ -39,6 +39,8 @@ struct GeneralSettingsView: View {
     @AppStorage("autoApplySuggestedLUT") private var autoApplySuggestedLUT: Bool = true
     @AppStorage("defaultViewOnLaunch") private var defaultViewOnLaunch: String = "list"
     @AppStorage(KynoCompatibility.modeKey) private var kynoMode: Bool = false
+    @AppStorage(WorkspaceCacheService.enabledDefaultsKey)
+    private var workspaceCacheEnabled: Bool = false
 
     var body: some View {
         Form {
@@ -73,6 +75,21 @@ struct GeneralSettingsView: View {
                 Text("Mid-session switches still work; this decides what to land on every time the app opens.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+            Section("Workspace Cache (Shared NAS / SAN)") {
+                Toggle(isOn: $workspaceCacheEnabled) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Write shared metadata cache next to media")
+                        Text("Drops a hidden .purplereel/<file>.json sidecar next to each clip carrying rating, tags, markers, subclips, and log fields. A second user opening the same volume inherits everything without rescanning — and AVAsset probes (codec / dims / fps / duration) skip too. Best-effort writes; read-only volumes silently no-op.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Text("Concurrent edits between two users on the same clip are last-writer-wins. Thumbnails and waveforms stay local — they regenerate cheaply.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Section("LUTs") {
                 HStack {

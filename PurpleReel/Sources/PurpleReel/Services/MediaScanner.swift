@@ -51,7 +51,9 @@ actor MediaScanner {
                 audioCodec: nil, recordedAt: nil,
                 createdAt: values.creationDate
             )
-            if videoExtensions.contains(ext) || audioExtensions.contains(ext) {
+            if let cached = WorkspaceCacheService.loadIfFresh(for: url.path) {
+                applyCachedTech(cached.tech, to: &asset)
+            } else if videoExtensions.contains(ext) || audioExtensions.contains(ext) {
                 await enrichVideoMetadata(into: &asset, url: url)
             }
             results.append(asset)
@@ -120,7 +122,14 @@ actor MediaScanner {
                 createdAt: values.creationDate
             )
 
-            if videoExtensions.contains(ext) || audioExtensions.contains(ext) {
+            // Shared-cache fast path (Kyno-parity row 7): when a
+            // `.purplereel/<name>.json` sidecar is fresh, hydrate
+            // the technical fields from it and skip the AVAsset
+            // probe. Cuts ~50ms per video on a slow NAS — adds up
+            // fast at workspace sizes.
+            if let cached = WorkspaceCacheService.loadIfFresh(for: url.path) {
+                applyCachedTech(cached.tech, to: &asset)
+            } else if videoExtensions.contains(ext) || audioExtensions.contains(ext) {
                 await enrichVideoMetadata(into: &asset, url: url)
             }
             results.append(asset)
@@ -128,6 +137,25 @@ actor MediaScanner {
         }
         progress(results.count)
         return results
+    }
+
+    /// Hydrate `asset` from a sidecar's technical block. The user
+    /// portion is applied later by `WorkspaceCacheService.hydrateUserMetadata`
+    /// — that hop has to live on the main actor because it touches
+    /// `DatabaseService`.
+    private func applyCachedTech(_ tech: WorkspaceCacheService.Tech,
+                                  to asset: inout Asset) {
+        asset.codec              = tech.codec
+        asset.widthPx            = tech.widthPx
+        asset.heightPx           = tech.heightPx
+        asset.durationSeconds    = tech.durationSeconds
+        asset.frameRate          = tech.frameRate
+        asset.audioCodec         = tech.audioCodec
+        asset.recordedAt         = tech.recordedAt
+        asset.createdAt          = tech.createdAt ?? asset.createdAt
+        asset.isVFR              = tech.isVFR
+        asset.sha1               = tech.sha1
+        asset.posterFrameSeconds = tech.posterFrameSeconds
     }
 
     private func enrichVideoMetadata(into asset: inout Asset, url: URL) async {
