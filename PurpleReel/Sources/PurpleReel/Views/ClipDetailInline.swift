@@ -326,7 +326,21 @@ struct GridCell: View {
     let isSelected: Bool
     var isPrimary: Bool = false
     @ObservedObject var transcodeQueue: TranscodeQueue
+
+    /// All thumbnail frames for this asset (12 across the duration).
+    /// Loaded once on appear; hover-scrub picks an index based on
+    /// cursor X. Loading 12 URLs vs the previous 1 still hits
+    /// `ThumbnailService`'s embedded-thumbnail-first path so the
+    /// real disk cost is unchanged for files with the cache primed.
+    @State private var urls: [URL] = []
+    /// Currently-displayed frame URL. Defaults to the middle of the
+    /// strip; hover-scrub mutates this in `applyHover(x:width:)`.
     @State private var url: URL?
+    /// On-cell mouse state for the tick-row overlay.
+    @State private var hovering: Bool = false
+    /// Cell width captured by GeometryReader so the hover handler
+    /// can map cursor X to a 0…1 fraction without an extra read.
+    @State private var lastWidth: CGFloat = 1
 
     private var activeJob: TranscodeJob? {
         if let cur = transcodeQueue.current, cur.source.path == asset.path { return cur }
@@ -338,20 +352,44 @@ struct GridCell: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.secondary.opacity(0.15))
-                if let u = url, let img = NSImage(contentsOf: u) {
-                    Image(nsImage: img)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                } else {
-                    Image(systemName: "film")
-                        .font(.system(size: 28))
-                        .foregroundStyle(.secondary)
+            GeometryReader { geo in
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.secondary.opacity(0.15))
+                    if let u = url, let img = NSImage(contentsOf: u) {
+                        Image(nsImage: img)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    } else {
+                        Image(systemName: "film")
+                            .font(.system(size: 28))
+                            .foregroundStyle(.secondary)
+                    }
+                    if hovering, urls.count > 1, let u = url,
+                       let activeIdx = urls.firstIndex(of: u) {
+                        // Tick row at the bottom showing the cursor's
+                        // mapped frame. Mirrors the list-view
+                        // `ThumbnailCell` overlay so the affordance
+                        // is consistent between views.
+                        HStack(spacing: 1) {
+                            ForEach(0..<urls.count, id: \.self) { i in
+                                Rectangle()
+                                    .fill(i == activeIdx
+                                          ? Color.accentColor
+                                          : Color.white.opacity(0.35))
+                                    .frame(maxWidth: .infinity)
+                            }
+                        }
+                        .frame(height: 2)
+                        .padding(.horizontal, 6)
+                        .position(x: geo.size.width / 2,
+                                   y: geo.size.height - 6)
+                    }
+                    transcodeOverlay
                 }
-                transcodeOverlay
+                .onAppear { lastWidth = geo.size.width }
+                .onChange(of: geo.size.width) { _, new in lastWidth = new }
             }
             .aspectRatio(16.0/9.0, contentMode: .fit)
             .overlay(
@@ -367,6 +405,18 @@ struct GridCell: View {
                           ? Color.accentColor.opacity(isPrimary ? 0.18 : 0.10)
                           : Color.clear)
             )
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let location):
+                    hovering = true
+                    applyHover(x: location.x, width: lastWidth)
+                case .ended:
+                    hovering = false
+                    if !urls.isEmpty {
+                        url = urls[urls.count / 2]
+                    }
+                }
+            }
             Text(asset.filename)
                 .font(.caption)
                 .lineLimit(1)
@@ -376,10 +426,25 @@ struct GridCell: View {
             Task {
                 let urls = await ThumbnailService.thumbnails(for: asset, count: 12)
                 if !urls.isEmpty {
-                    await MainActor.run { self.url = urls[urls.count / 2] }
+                    await MainActor.run {
+                        self.urls = urls
+                        self.url = urls[urls.count / 2]
+                    }
                 }
             }
         }
+    }
+
+    /// Map cursor `x` to a frame index across the loaded strip.
+    /// Skips when fewer than two frames are available (e.g. images
+    /// or single-frame clips) so static assets don't flicker.
+    private func applyHover(x: CGFloat, width: CGFloat) {
+        guard urls.count > 1, width > 1 else { return }
+        let clamped = min(max(0, x), width)
+        let idx = min(urls.count - 1,
+                       Int((clamped / width) * CGFloat(urls.count)))
+        let next = urls[idx]
+        if url != next { url = next }
     }
 
     @ViewBuilder
