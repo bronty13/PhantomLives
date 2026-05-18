@@ -219,6 +219,10 @@ struct ContentView: View {
             TransferMetadataSheet()
                 .environmentObject(appState)
         }
+        .sheet(isPresented: $appState.pasteRenameSheetVisible) {
+            PasteRenameSheet()
+                .environmentObject(appState)
+        }
     }
 }
 

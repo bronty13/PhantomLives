@@ -1523,6 +1523,11 @@ final class AppState: ObservableObject {
     /// `.sheet(isPresented:)` pattern.
     @Published var transferMetadataSheetVisible = false
 
+    /// Visibility flag for `PasteRenameSheet`. Same pattern as
+    /// the transfer sheet; opens the Kyno 1.6 paste-with-template
+    /// flow.
+    @Published var pasteRenameSheetVisible = false
+
     /// Compute the matching pairs across two folders without
     /// mutating anything. Drives the sheet's Preview row before
     /// the user commits.

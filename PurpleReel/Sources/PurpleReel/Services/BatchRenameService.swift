@@ -67,6 +67,82 @@ enum BatchRenameService {
         return plans
     }
 
+    /// Expand a template against a URL alone — used by the
+    /// "Paste & rename" flow where the source files aren't
+    /// catalogued yet. Resolves `{orig}` / `{ext}` / `{date}` /
+    /// `{counter}` from the URL + its filesystem mtime; leaves
+    /// catalog-only tokens (`{codec}`, `{fps}`, etc.) as literal
+    /// `{token}` placeholders so the user sees them in the preview.
+    static func expandForPaste(template: String,
+                                url: URL,
+                                counter: Int) -> String {
+        let mtime = (try? FileManager.default
+            .attributesOfItem(atPath: url.path)[.modificationDate]
+            as? Date) ?? Date()
+        return expandTokens(template: template, urlOnlyURL: url,
+                             modified: mtime, counter: counter)
+    }
+
+    /// Expansion helper that works without an Asset — only resolves
+    /// URL-derived tokens. Used by both the regular rename (which
+    /// passes nil for the asset when it wants the cheap path) and
+    /// the paste-with-rename flow.
+    private static func expandTokens(template: String,
+                                       urlOnlyURL: URL,
+                                       modified: Date,
+                                       counter: Int) -> String {
+        var out = ""
+        var i = template.startIndex
+        let end = template.endIndex
+        while i < end {
+            let c = template[i]
+            if c == "{", let close = template[i...].firstIndex(of: "}") {
+                let body = String(template[template.index(after: i)..<close])
+                let resolved = urlOnlyValue(
+                    forToken: body, url: urlOnlyURL,
+                    modified: modified, counter: counter
+                )
+                out += resolved ?? "{\(body)}"
+                i = template.index(after: close)
+            } else {
+                out.append(c)
+                i = template.index(after: i)
+            }
+        }
+        return out
+    }
+
+    /// URL-only token resolver. Returns nil for catalog-derived
+    /// tokens (codec / fps / w / h / size_mb) so `expandTokens`
+    /// leaves them as literals — the user sees the typo or the
+    /// "no metadata yet" reality in the preview.
+    private static func urlOnlyValue(forToken token: String,
+                                       url: URL,
+                                       modified: Date,
+                                       counter: Int) -> String? {
+        let parts = token.split(separator: ":", maxSplits: 1)
+        let key = String(parts[0]).lowercased()
+        let spec = parts.count > 1 ? String(parts[1]) : nil
+        switch key {
+        case "orig":
+            return url.deletingPathExtension().lastPathComponent
+        case "ext":
+            let e = url.pathExtension
+            return e.isEmpty ? "" : "." + e
+        case "date":
+            let fmt = DateFormatter()
+            fmt.dateFormat = spec ?? "yyyy-MM-dd"
+            return fmt.string(from: modified)
+        case "counter":
+            if let s = spec, let pad = Int(s) {
+                return String(format: "%0\(pad)d", counter)
+            }
+            return String(counter)
+        default:
+            return nil   // catalog-derived; leave literal
+        }
+    }
+
     /// Apply a plan: rename each file on disk and return a list of
     /// (oldPath → newPath) tuples for DB updates. Skips no-ops and
     /// conflicts. Stops at the first hard error.

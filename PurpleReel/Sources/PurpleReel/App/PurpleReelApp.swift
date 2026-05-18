@@ -179,6 +179,10 @@ struct PurpleReelApp: App {
                     appState.transferMetadataSheetVisible = true
                 }
                 .disabled(appState.workspaceRoots.isEmpty)
+                Button("Paste with Rename…") {
+                    appState.pasteRenameSheetVisible = true
+                }
+                .keyboardShortcut("v", modifiers: [.command, .shift])
             }
 
             // ---- Edit (extends standard) -------------------------------
