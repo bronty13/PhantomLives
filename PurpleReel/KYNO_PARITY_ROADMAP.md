@@ -206,9 +206,10 @@ code drift problem that hits every keyboard-heavy app.
   (`Services/MonitoringEffects.swift` + monitoring menu in player toolbar)
 - ~~Aspect-fit / actual-size / fit-window zoom controls~~ — shipped
   (`PlayerView.swift` `ZoomMode` + zoom menu)
-- In-app Markdown renderer (currently Help → User Manual opens
-  bundled .md via NSWorkspace which defers to the user's default
-  Markdown viewer)
+- ~~In-app Markdown renderer~~ — shipped (`Views/MarkdownDocWindow.swift`:
+  WKWebView loading the pre-generated styled HTML in a managed
+  per-doc NSWindow; falls back to `NSWorkspace.open(.md)` when the
+  HTML rendition isn't bundled)
 - Custom transcode presets — Import/Export user-defined presets
   alongside the built-in catalogue
 - ~~Volume-change watcher consuming the Devices-pane "React to

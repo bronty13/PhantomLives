@@ -40,8 +40,23 @@ enum HelpDocs {
         }
     }
 
+    /// Default entry point. Opens the doc in PurpleReel's in-app
+    /// Markdown viewer (a free-floating WKWebView window backed by
+    /// the bundled HTML rendition). Falls back to the legacy
+    /// "open .md externally" path when the HTML isn't available —
+    /// e.g. a developer running an unbundled debug build.
     static func open(_ doc: Document) {
-        if let url = locate(doc) {
+        Task { @MainActor in
+            MarkdownDocWindow.open(doc)
+        }
+    }
+
+    /// Open the raw `.md` source via NSWorkspace — uses the system's
+    /// default Markdown handler. Exposed because the in-app viewer's
+    /// "Open .md…" affordance routes here, and as the fallback path
+    /// when the HTML rendition can't be located.
+    static func openExternally(_ doc: Document) {
+        if let url = locateMarkdown(doc) {
             NSWorkspace.shared.open(url)
         } else {
             showMissingAlert(doc)
@@ -49,6 +64,13 @@ enum HelpDocs {
     }
 
     // MARK: - Resolution
+
+    /// Locate the source `.md` file. Public so the in-app viewer can
+    /// reveal it in Finder and the `openExternally` path can hand it
+    /// off to NSWorkspace.
+    static func locateMarkdown(_ doc: Document) -> URL? {
+        locate(doc)
+    }
 
     private static func locate(_ doc: Document) -> URL? {
         // Bundled docs — try with and without the `Help` subdir
