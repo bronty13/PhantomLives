@@ -44,6 +44,14 @@ struct CombineClipsSheet: View {
     /// (e.g. delivering to a client who shouldn't see the editor's
     /// review notes).
     @State private var preserveMarkers: Bool = true
+    /// C19 — canvas-size policy picker. Stored as an Int because
+    /// SwiftUI's Picker doesn't play with associated-value enums;
+    /// we project to/from `CombineDimensionMode` at runCombine time.
+    /// 0 = .firstClip (default, pre-C19 behavior), 1 = .largestSource,
+    /// 2 = .explicit(W, H).
+    @State private var dimensionModeKind: Int = 0
+    @State private var explicitWidthText: String = "1920"
+    @State private var explicitHeightText: String = "1080"
 
     init(initialSources: [Asset]) {
         _rows = State(initialValue: initialSources.map {
@@ -218,6 +226,36 @@ struct CombineClipsSheet: View {
                 TextField("", text: $filename)
                     .textFieldStyle(.roundedBorder)
             }
+            // C19 — canvas-size policy picker. Hidden for audio-only
+            // presets (no video canvas to pick). The W/H fields show
+            // up only when `.explicit` is the active choice.
+            if selectedPreset?.isAudioOnly == false {
+                HStack(spacing: 8) {
+                    Text("Canvas size:")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 80, alignment: .trailing)
+                    Picker("", selection: $dimensionModeKind) {
+                        Text("Match first clip").tag(0)
+                        Text("Largest source").tag(1)
+                        Text("Custom WxH").tag(2)
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 200)
+                    if dimensionModeKind == 2 {
+                        TextField("W", text: $explicitWidthText)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.caption.monospaced())
+                            .frame(width: 70)
+                        Text("×")
+                            .foregroundStyle(.secondary)
+                        TextField("H", text: $explicitHeightText)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.caption.monospaced())
+                            .frame(width: 70)
+                    }
+                    Spacer()
+                }
+            }
             // C17 — preserve-markers toggle. Hidden when no source
             // has any markers (nothing to preserve, no need to
             // surface the option).
@@ -236,6 +274,23 @@ struct CombineClipsSheet: View {
 
     private var anySourceHasMarkers: Bool {
         rows.contains { !$0.sourceMarkers.isEmpty }
+    }
+
+    /// C19 — project the picker's Int kind + text fields back into
+    /// a `CombineDimensionMode`. Unparseable explicit W/H falls back
+    /// to `.firstClip` so a typo doesn't blow up the export — the
+    /// user can fix the field and re-Combine.
+    private func resolvedDimensionMode() -> CombineDimensionMode {
+        switch dimensionModeKind {
+        case 1: return .largestSource
+        case 2:
+            if let w = Int(explicitWidthText), let h = Int(explicitHeightText),
+               w > 0, h > 0 {
+                return .explicit(width: w, height: h)
+            }
+            return .firstClip
+        default: return .firstClip
+        }
     }
 
     private func progressRow(job: CombineClipsJob) -> some View {
@@ -358,7 +413,8 @@ struct CombineClipsSheet: View {
         }
         let j = CombineClipsJob(sources: combineSources,
                                  outputURL: outURL,
-                                 preset: preset)
+                                 preset: preset,
+                                 dimensionMode: resolvedDimensionMode())
         self.job = j
         Task {
             await j.run()

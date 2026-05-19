@@ -19,6 +19,19 @@ struct CombineSource: Identifiable, Equatable {
     var sourceMarkers: [Marker] = []
 }
 
+/// C19 — picks the target canvas size for a combined output. The
+/// dominant case for doc shooters is "match the first clip", which
+/// is what Combine has done since the C8 MVP and stays the default.
+/// `.largestSource` is the right call for mixed-resolution sets where
+/// the user wants none of the sources downscaled; `.explicit` is for
+/// delivery specs ("must be 1920×1080") that the source set doesn't
+/// naturally satisfy.
+enum CombineDimensionMode: Equatable {
+    case firstClip
+    case largestSource
+    case explicit(width: Int, height: Int)
+}
+
 /// C17 — value-type description of one marker that survived the
 /// trim/offset pass and should land on the combined output. Carries
 /// timecode + note only; no `assetId` yet (the output asset is
@@ -66,6 +79,9 @@ final class CombineClipsJob: ObservableObject, Identifiable {
     let sources: [CombineSource]
     let outputURL: URL
     let preset: TranscodePreset
+    /// C19 — canvas-size policy for the combined output. Default
+    /// stays `.firstClip` so existing callers keep behaving the same.
+    let dimensionMode: CombineDimensionMode
 
     @Published var state: State = .queued
     @Published var progress: Double = 0
@@ -78,21 +94,60 @@ final class CombineClipsJob: ObservableObject, Identifiable {
     private var exportSession: AVAssetExportSession?
     private var progressTimer: Timer?
 
-    init(sources: [CombineSource], outputURL: URL, preset: TranscodePreset) {
+    init(sources: [CombineSource], outputURL: URL, preset: TranscodePreset,
+         dimensionMode: CombineDimensionMode = .firstClip) {
         self.sources = sources
         self.outputURL = outputURL
         self.preset = preset
+        self.dimensionMode = dimensionMode
     }
 
     /// Convenience init for the pre-C16 URL-only call sites. Wraps
     /// each URL into a `CombineSource` with no trim — same behavior
     /// as before. Kept so non-dialog callers (workflow chains,
     /// scripted invocations) don't have to migrate at the same time.
-    convenience init(sources: [URL], outputURL: URL, preset: TranscodePreset) {
+    /// C19 — defaults `dimensionMode` to `.firstClip` so legacy
+    /// callers keep producing the same output.
+    convenience init(sources: [URL], outputURL: URL, preset: TranscodePreset,
+                     dimensionMode: CombineDimensionMode = .firstClip) {
         self.init(
             sources: sources.map { CombineSource(url: $0) },
-            outputURL: outputURL, preset: preset
+            outputURL: outputURL, preset: preset,
+            dimensionMode: dimensionMode
         )
+    }
+
+    /// C19 — pure helper that resolves the target canvas size for
+    /// the combined output given the picked policy and the natural
+    /// sizes of the source clips (in render order). Returns nil if
+    /// the policy can't be satisfied (e.g. `.firstClip` with an
+    /// empty source list — caller falls back to leaving
+    /// `comp.naturalSize` at its default).
+    ///
+    /// `.largestSource` picks the max width and max height
+    /// independently — so a 1920×1080 source mixed with a
+    /// 1080×1920 vertical one yields a 1920×1920 square canvas
+    /// that pillarboxes BOTH (the wide one is letterboxed top/bottom
+    /// to the square, the tall one is pillarboxed left/right). That
+    /// preserves all pixels at the cost of black bars, which is
+    /// the right default for a "don't downscale anything" policy.
+    nonisolated static func resolveTargetSize(
+        mode: CombineDimensionMode,
+        sourceSizes: [CGSize]
+    ) -> CGSize? {
+        switch mode {
+        case .firstClip:
+            return sourceSizes.first
+        case .largestSource:
+            guard !sourceSizes.isEmpty else { return nil }
+            let maxW = sourceSizes.map(\.width).max() ?? 0
+            let maxH = sourceSizes.map(\.height).max() ?? 0
+            guard maxW > 0, maxH > 0 else { return nil }
+            return CGSize(width: maxW, height: maxH)
+        case .explicit(let w, let h):
+            guard w > 0, h > 0 else { return nil }
+            return CGSize(width: w, height: h)
+        }
     }
 
     /// C17 — pure offset/filter helper, extracted so the marker
@@ -168,6 +223,12 @@ final class CombineClipsJob: ObservableObject, Identifiable {
 
         var cursor: CMTime = .zero
         var collectedMarkers: [PreservedMarker] = []
+        // C19 — collect per-source natural sizes so we can resolve
+        // the target canvas size after the loop. Audio-only outputs
+        // skip the lookup (no video tracks to read), but it's cheap
+        // to keep the code path uniform.
+        var sourceSizes: [CGSize] = []
+        var firstVideoTransform: CGAffineTransform?
         for source in sources {
             let url = source.url
             let asset = AVURLAsset(url: url)
@@ -199,6 +260,19 @@ final class CombineClipsJob: ObservableObject, Identifiable {
                     let vSources = try await asset.loadTracks(withMediaType: .video)
                     if let v = vSources.first {
                         try vTrack.insertTimeRange(range, of: v, at: cursor)
+                        // C19 — record natural size for each video
+                        // source so we can pick a target canvas
+                        // after the loop. naturalSize is the encoded
+                        // dimensions (not the preferredTransform-
+                        // applied display size), which is what
+                        // `comp.naturalSize` expects.
+                        if let size = try? await v.load(.naturalSize) {
+                            sourceSizes.append(size)
+                        }
+                        if firstVideoTransform == nil,
+                           let xform = try? await v.load(.preferredTransform) {
+                            firstVideoTransform = xform
+                        }
                     }
                 }
                 if let a = aSources.first {
@@ -227,17 +301,17 @@ final class CombineClipsJob: ObservableObject, Identifiable {
         // .finished — published-early just helps the UI badge.)
         preservedMarkers = collectedMarkers
 
-        // Pick a sensible orientation for the output composition. We
-        // copy the first video source's `preferredTransform` so the
-        // composition rotates portrait phone footage right-side-up.
-        // Skipped on audio-only — no video track to orient.
-        if let vTrack, let firstSource = sources.first {
-            let firstAsset = AVURLAsset(url: firstSource.url)
-            if let firstV = try? await firstAsset.loadTracks(withMediaType: .video).first,
-               let xform = try? await firstV.load(.preferredTransform),
-               let size = try? await firstV.load(.naturalSize) {
+        // C19 — pick the target canvas size from the chosen policy.
+        // Default `.firstClip` keeps pre-C19 behavior (canvas matches
+        // the first clip's natural size). `.largestSource` widens to
+        // the union of source dimensions; `.explicit` clamps to the
+        // user-specified WxH. Skipped on audio-only — no video track.
+        if let vTrack,
+           let target = Self.resolveTargetSize(mode: dimensionMode,
+                                                sourceSizes: sourceSizes) {
+            comp.naturalSize = target
+            if let xform = firstVideoTransform {
                 vTrack.preferredTransform = xform
-                comp.naturalSize = size
             }
         }
 

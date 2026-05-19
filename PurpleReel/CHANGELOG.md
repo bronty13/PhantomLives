@@ -17,6 +17,60 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C19 — Combine Clips: dimension-match override
+
+Category F follow-up #4. The pre-C19 path always picked the first
+clip's natural size as the combined canvas, which is the right
+default but wrong when (a) the first clip happens to be the
+smallest in the set, or (b) the delivery spec wants a fixed canvas
+the source set doesn't naturally satisfy ("must be 1920×1080").
+
+**Service layer** — `CombineClipsService.swift`:
+- New `CombineDimensionMode` enum with three cases:
+  `.firstClip` (default, pre-C19 behavior), `.largestSource`
+  (max width × max height across sources — independent axes, so
+  mixed orientations pillarbox/letterbox without downscaling),
+  `.explicit(width: Int, height: Int)`.
+- `CombineClipsJob` gains a `let dimensionMode:` property with a
+  `.firstClip` default on both inits (memberwise and the
+  legacy URL-only convenience init), so existing workflow-chain
+  callers keep producing the same output.
+- New `nonisolated static func resolveTargetSize(mode:sourceSizes:)`
+  — pure helper that takes the policy and per-source natural
+  sizes (in render order) and returns the resolved
+  `CGSize`. Returns nil when the policy can't be satisfied
+  (empty source list for `.firstClip`/`.largestSource`, or
+  non-positive WxH for `.explicit`).
+- `run()` collects per-source natural sizes during the loop and
+  applies the resolved size to `comp.naturalSize` after the
+  loop. The first video source's `preferredTransform` is still
+  copied onto the composition's video track (portrait phone
+  footage still orients correctly).
+
+**Sheet layer** — `CombineClipsSheet.swift`:
+- New Picker "Canvas size:" with three options — "Match first
+  clip" / "Largest source" / "Custom WxH". Hidden for audio-only
+  presets (no canvas to pick).
+- W and H TextFields surface only when "Custom WxH" is the
+  active choice. Default values 1920 / 1080.
+- `resolvedDimensionMode()` helper projects the picker's Int kind
+  + the W/H text back into a `CombineDimensionMode` at runCombine
+  time. Unparseable / non-positive WxH falls back to `.firstClip`
+  so a typo doesn't blow up the export — user can fix the field
+  and re-Combine.
+
+**Tests** — `CombineDimensionModeTests.swift` (NEW, 8 cases):
+- `.firstClip` returns the first source's size; nil for empty.
+- `.largestSource` picks max W and max H independently — covered
+  by both a homogeneous set (3840×2160 wins) and a mixed-
+  orientation case (1920×1080 + 1080×1920 → 1920×1920).
+- `.largestSource` returns nil for empty sources.
+- `.explicit` returns the requested size and ignores source sizes
+  (delivery-spec takes precedence).
+- `.explicit` with zero or negative dimensions returns nil
+  (resolver guards against typos that AVAssetExportSession
+  would otherwise blow up on).
+
 ### C18 — Combine Clips: audio-only output
 
 Category F follow-up #3. Adds an "Audio Only (AAC m4a)" preset to
