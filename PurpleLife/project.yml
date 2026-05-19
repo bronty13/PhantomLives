@@ -20,6 +20,13 @@ packages:
   # PROVENANCE.md for the SHA-256 + build recipe.
   SQLCipher:
     path: Vendor/SQLCipher
+  # CoreXLSX — read-only .xlsx parsing, MIT-licensed, no transitive
+  # dependencies. Powers the Purple Import Phase 3 Excel reader. Pinned
+  # to a specific version so a future SPM resolve can't silently change
+  # the .xlsx wire format expectations.
+  CoreXLSX:
+    url: https://github.com/CoreOffice/CoreXLSX
+    from: "0.14.2"
 
 targets:
   PurpleLife:
@@ -53,6 +60,7 @@ targets:
       # libsqlite3.dylib and shadow our static symbols.
       - package: SQLCipher
       - package: GRDB
+      - package: CoreXLSX
     scheme:
       testTargets:
         - PurpleLifeTests
@@ -66,6 +74,7 @@ targets:
       - target: PurpleLife
       - package: SQLCipher
       - package: GRDB
+      - package: CoreXLSX
     settings:
       base:
         SWIFT_VERSION: "5.10"

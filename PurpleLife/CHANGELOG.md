@@ -4,6 +4,37 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-19 — Purple Import Phase 3: Excel (.xlsx) reader via CoreXLSX + sheet/range picker
+
+Third slice. Adds .xlsx support — the format the user explicitly wanted in the "all formats" v1 scope.
+
+**Vendored dependency.** `project.yml` now pulls `CoreOffice/CoreXLSX` 0.14.2 as an SPM dep (transitively brings in `weichsel/ZIPFoundation` 0.9.20 and `maxdesiatov/XMLCoder` 0.14.0). MIT-licensed, read-only XLSX parsing, no Apple-platform-specific dependencies. Pinned `from: 0.14.2` so a future SPM resolve can't silently change the wire-format expectations.
+
+**Reader: `Readers/XLSXReader.swift`.** Always tabular. Options:
+
+- `sheetName` (String) — picks a worksheet by name (case-insensitive). Default: the first sheet in the workbook.
+- `headerRow` (Int, default 1) — 1-based row carrying column headers. Set to 0 to skip header parsing and surface columns as `col_A`, `col_B`, … (useful for export files that don't have headers).
+- `firstDataRow` (Int, derived) — first data row to read. Defaults to `headerRow + 1`.
+- `startColumn` / `endColumn` (String) — A/B/C-style column letters bounding the active range. Both default to auto-detection.
+
+Static `XLSXReader.sheetNames(in:)` helper used by the wizard's sheet picker — probes the workbook for its sheet list without parsing a full worksheet, so the picker is responsive even on big files.
+
+**UI: sheet + range picker.**
+
+- `PickSourceStep` — Excel help text ungrey-ed and now describes what each knob does.
+- `ImportWizardModel` gains `xlsxSheetNames: [String]` populated by `chooseFile(_:)` after an `.xlsx` pick.
+- `ConfigureSourceStep` — new Excel section: a Sheet picker (Menu populated from `xlsxSheetNames`, with `(first sheet)` as the default), header-row stepper with `0 = none` semantics, optional start/end column letter inputs. Help text under each control explains the auto-detect default.
+
+**Cell decoding.** CoreXLSX returns shared-string and inline-string types separately from raw values. The reader unwraps the chain (`stringValue(sharedStrings)` → `inlineString.text` → `cell.value`) and emits Strings universally; the existing `FieldValueCoercer` does its usual inference + per-kind coercion at import time so numeric/boolean/date columns still land typed.
+
+**Range-filter regression caught.** Initial `extractRows` populated the column footprint by starting from `Set(headers.keys)` (all header-row entries) and inserting data-row cells that passed the start/end window. Result: header-row columns outside the window survived the filter. Test `testStartColumnOptionTrimsLeftColumns` flagged it; fix moves the window check to a post-aggregation `filter` pass so header- and data-row columns are gated identically. Comment locked in source.
+
+**Tests.** 415/415 green (+7 new):
+
+- `XLSXReaderTests` — sheet-name enumeration, first-sheet default, `sheetName` option picking an alternate sheet, header-row + data-row parsing, `headerRow: 0` fallback to col_A/B/C labels, `startColumn` window trimming the header-only columns, malformed-file throws cleanly. Fixture is a base64-inlined 2-sheet .xlsx (People, Books) generated via Python openpyxl so the test target doesn't need a binary resource on disk.
+
+**What's deferred.** Word + PDF (Phase 5, text-only single-record), the full Purple Export wizard (Phase 4), `_tags` ingress, attachment-field resolution in the runner.
+
 ### 2026-05-19 — Purple Import Phase 2: Markdown + XML readers, tree-source mapping polish, drag-drop guardrails
 
 Second slice of the Purple Import / Purple Export build. Two new source-format readers wired into the existing wizard, plus UX polish on the mapping table and the drop zone.

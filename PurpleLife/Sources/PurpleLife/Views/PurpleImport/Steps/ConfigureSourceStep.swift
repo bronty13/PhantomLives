@@ -11,6 +11,10 @@ struct ConfigureSourceStep: View {
     @State private var ndjson: Bool = false
     @State private var markdownMode: String = "auto"
     @State private var tableIndex: Int = 0
+    @State private var xlsxSheetName: String = ""
+    @State private var xlsxHeaderRow: Int = 1
+    @State private var xlsxStartColumn: String = ""
+    @State private var xlsxEndColumn: String = ""
 
     var body: some View {
         Form {
@@ -19,6 +23,7 @@ struct ConfigureSourceStep: View {
             case .json:     jsonSection
             case .markdown: markdownSection
             case .xml:      xmlSection
+            case .xlsx:     xlsxSection
             default:        deferredSection
             }
         }
@@ -31,6 +36,10 @@ struct ConfigureSourceStep: View {
         .onChange(of: ndjson) { persist() }
         .onChange(of: markdownMode) { persist() }
         .onChange(of: tableIndex) { persist() }
+        .onChange(of: xlsxSheetName) { persist() }
+        .onChange(of: xlsxHeaderRow) { persist() }
+        .onChange(of: xlsxStartColumn) { persist() }
+        .onChange(of: xlsxEndColumn) { persist() }
     }
 
     // MARK: - CSV
@@ -112,6 +121,61 @@ struct ConfigureSourceStep: View {
         }
     }
 
+    // MARK: - Excel (.xlsx)
+
+    @ViewBuilder
+    private var xlsxSection: some View {
+        Section("Excel options") {
+            // Sheet picker — populated when the file was picked.
+            if model.xlsxSheetNames.isEmpty {
+                HStack {
+                    Text("Sheet name")
+                    Spacer()
+                    TextField("Sheet1", text: $xlsxSheetName)
+                        .frame(width: 200)
+                        .multilineTextAlignment(.trailing)
+                }
+                Text("Sheet list will populate once a file is picked. Type a sheet name to override.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                Picker("Sheet", selection: $xlsxSheetName) {
+                    Text("(first sheet)").tag("")
+                    ForEach(model.xlsxSheetNames, id: \.self) { name in
+                        Text(name).tag(name)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+
+            Stepper(value: $xlsxHeaderRow, in: 0...50) {
+                HStack {
+                    Text("Header row")
+                    Spacer()
+                    Text(xlsxHeaderRow == 0 ? "none" : "\(xlsxHeaderRow)").foregroundStyle(.secondary)
+                }
+            }
+            Text("Row number (1-based) that carries column headers. Use 0 to skip headers and address columns as col_A, col_B, …")
+                .font(.caption).foregroundStyle(.secondary)
+
+            HStack {
+                Text("Start column")
+                Spacer()
+                TextField("auto", text: $xlsxStartColumn)
+                    .frame(width: 80)
+                    .multilineTextAlignment(.trailing)
+            }
+            HStack {
+                Text("End column")
+                Spacer()
+                TextField("auto", text: $xlsxEndColumn)
+                    .frame(width: 80)
+                    .multilineTextAlignment(.trailing)
+            }
+            Text("Optional A/B/C-style column letters. Leave blank to auto-detect the populated range.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
     @ViewBuilder
     private var deferredSection: some View {
         Section {
@@ -133,6 +197,10 @@ struct ConfigureSourceStep: View {
         if case .bool(let b) = model.draft.sourceOptions["ndjson"] { ndjson = b }
         if case .string(let s) = model.draft.sourceOptions["mode"] { markdownMode = s }
         if case .int(let i) = model.draft.sourceOptions["tableIndex"] { tableIndex = i }
+        if case .string(let s) = model.draft.sourceOptions["sheetName"] { xlsxSheetName = s }
+        if case .int(let i) = model.draft.sourceOptions["headerRow"] { xlsxHeaderRow = i }
+        if case .string(let s) = model.draft.sourceOptions["startColumn"] { xlsxStartColumn = s }
+        if case .string(let s) = model.draft.sourceOptions["endColumn"] { xlsxEndColumn = s }
     }
 
     private func persist() {
@@ -143,6 +211,10 @@ struct ConfigureSourceStep: View {
         opts["ndjson"] = .bool(ndjson)
         opts["mode"] = .string(markdownMode)
         opts["tableIndex"] = .int(tableIndex)
+        opts["sheetName"] = .string(xlsxSheetName)
+        opts["headerRow"] = .int(xlsxHeaderRow)
+        opts["startColumn"] = .string(xlsxStartColumn)
+        opts["endColumn"] = .string(xlsxEndColumn)
         model.draft.sourceOptions = opts
     }
 }

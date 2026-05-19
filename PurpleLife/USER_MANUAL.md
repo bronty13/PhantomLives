@@ -408,7 +408,7 @@ Save the mapping any time via the footer's **Save Mapping** button (available fr
 | **JSON** | Phase 1 | Top-level array, NDJSON, nested root path. JSONPath-lite: `$`, `.key`, `[n]`, `[*]`, `["bracketed key"]`. |
 | **Markdown** | Phase 2 | Auto-detects three shapes: GFM pipe tables (header + separator + data rows; pick which table via `tableIndex` when the file has more than one), YAML/TOML frontmatter (`---` or `+++` delimited, scalar values only — keys become `$.key`, the body lives at `$._body`), or plain document (whole text as a single `$._body` field). Mode override available in the source-configure step. |
 | **XML** | Phase 2 | Tree-shaped. The largest repeating child element under the root becomes the row collection automatically; override via a JSONPath-lite root path (`$.catalog.books[*]`). Attributes surface as top-level keys on each record. |
-| Excel (.xlsx) | Phase 3 | Sheet + range picker. |
+| **Excel (.xlsx)** | Phase 3 | Read-only via CoreXLSX. Sheet picker (populated from the workbook), header-row stepper (0 = no header → columns become col_A, col_B, …), optional A/B/C-style start/end column window. |
 | Word (.docx) | Phase 5 | Text-only single record (no table extraction in v1). |
 | PDF | Phase 5 | Text-only single record (no table extraction in v1). |
 

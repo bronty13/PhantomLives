@@ -75,7 +75,7 @@ struct PickSourceStep: View {
         case .json:     return "Supported. Top-level array, NDJSON, or single object."
         case .markdown: return "Supported. GFM pipe tables, YAML/TOML frontmatter, or plain document."
         case .xml:      return "Supported. Tree-shaped; the largest repeating child element becomes the row collection (override via root path in the next step)."
-        case .xlsx:     return "Phase 3 — readers land soon."
+        case .xlsx:     return "Supported. Picks the first sheet by default; sheet, header row, and column range are tunable in the next step."
         case .docx:     return "Phase 5 — readers land soon (text-only, single record)."
         case .pdf:      return "Phase 5 — readers land soon (text-only, single record)."
         }

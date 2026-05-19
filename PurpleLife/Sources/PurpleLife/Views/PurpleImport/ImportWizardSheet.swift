@@ -189,6 +189,11 @@ final class ImportWizardModel: ObservableObject, Identifiable {
     @Published var preview: PurpleImport.SourcePreview?
     @Published var pickedSource: PurpleImport.SourceInput?
     @Published var pickedFilename: String?
+
+    /// Sheet names available in the picked source. Populated when the
+    /// user picks an `.xlsx` file (XLSXReader.sheetNames probes the
+    /// workbook lazily); empty for non-Excel formats.
+    @Published var xlsxSheetNames: [String] = []
     @Published var summary: PurpleImport.RunSummary?
     @Published var lastError: String?
     @Published var rowEvents: [PurpleImport.RunEvent] = []
@@ -259,6 +264,14 @@ final class ImportWizardModel: ObservableObject, Identifiable {
         for fmt in PurpleImport.SourceFormat.allCases where fmt.defaultFileExtensions.contains(ext) {
             draft.sourceFormat = fmt
             break
+        }
+        // XLSX-only: probe the sheet list so the configure step's
+        // sheet-name picker has options to show. Failure is
+        // non-fatal — the user can still type a sheet name manually.
+        if draft.sourceFormat == .xlsx, let input = pickedSource {
+            xlsxSheetNames = (try? XLSXReader.sheetNames(in: input)) ?? []
+        } else {
+            xlsxSheetNames = []
         }
     }
 
