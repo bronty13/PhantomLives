@@ -1580,12 +1580,16 @@ final class AppState: ObservableObject {
         let stickyDir = UserDefaults.standard.string(forKey: "convertOutputDir")
         let keep = UserDefaults.standard.object(forKey: "convertKeepFolderStructure") as? Bool ?? false
         let skip = UserDefaults.standard.object(forKey: "convertSkipExisting") as? Bool ?? true
+        let stickyPattern = UserDefaults.standard.string(forKey: "convertFilenamePattern")
+            .flatMap(FilenamePattern.init(rawValue:))
+            ?? .originalPlusSuffix
         convertSheet = ConvertSheetState(
             assets: assetsToConvert,
             preset: preset,
             destinationDir: stickyDir ?? defaultDir,
             keepFolderStructure: keep,
-            skipExisting: skip
+            skipExisting: skip,
+            filenamePattern: stickyPattern
         )
     }
 
@@ -1596,6 +1600,8 @@ final class AppState: ObservableObject {
         UserDefaults.standard.set(state.destinationDir, forKey: "convertOutputDir")
         UserDefaults.standard.set(state.keepFolderStructure, forKey: "convertKeepFolderStructure")
         UserDefaults.standard.set(state.skipExisting, forKey: "convertSkipExisting")
+        UserDefaults.standard.set(state.filenamePattern.rawValue,
+                                    forKey: "convertFilenamePattern")
         RecentPresets.push(state.preset)
 
         let baseDir = URL(fileURLWithPath: (state.destinationDir as NSString)
@@ -1627,8 +1633,10 @@ final class AppState: ObservableObject {
             }
             try? FileManager.default.createDirectory(at: outDir,
                                                       withIntermediateDirectories: true)
-            let dest = TranscodeService.outputURL(for: srcURL, preset: state.preset,
-                                                    in: outDir)
+            let dest = TranscodeService.outputURL(
+                for: srcURL, preset: state.preset,
+                in: outDir, pattern: state.filenamePattern
+            )
             if state.skipExisting, FileManager.default.fileExists(atPath: dest.path) {
                 continue
             }

@@ -566,17 +566,80 @@ enum TranscodeService {
     /// Collisions are resolved with a numeric suffix.
     static func outputURL(for source: URL, preset: TranscodePreset,
                           in directory: URL) -> URL {
+        outputURL(for: source, preset: preset,
+                   in: directory,
+                   pattern: .originalPlusSuffix)
+    }
+
+    /// Filename-pattern-aware variant. Kyno-parity File Name Pattern
+    /// dropdown (C4) routes through this. Existing callers that don't
+    /// care about the pattern keep using the no-pattern overload.
+    static func outputURL(for source: URL, preset: TranscodePreset,
+                          in directory: URL,
+                          pattern: FilenamePattern) -> URL {
         let base = source.deletingPathExtension().lastPathComponent
+        let stem = stem(from: base, preset: preset, pattern: pattern)
         var candidate = directory.appendingPathComponent(
-            "\(base)\(preset.suffix).\(preset.fileExtension)"
+            "\(stem).\(preset.fileExtension)"
         )
         var counter = 1
         while FileManager.default.fileExists(atPath: candidate.path) {
             candidate = directory.appendingPathComponent(
-                "\(base)\(preset.suffix)_\(counter).\(preset.fileExtension)"
+                "\(stem)_\(counter).\(preset.fileExtension)"
             )
             counter += 1
         }
         return candidate
+    }
+
+    /// Build the output filename stem (without extension or collision
+    /// counter) for the given pattern. Pulled out so the Convert
+    /// dialog's live Example preview can call it without depending on
+    /// the filesystem (no collision check).
+    static func stem(from base: String,
+                      preset: TranscodePreset,
+                      pattern: FilenamePattern) -> String {
+        switch pattern {
+        case .originalOnly:
+            return base
+        case .originalPlusPresetName:
+            // Strip whitespace + parenthetical suffixes from the
+            // preset name; gives "H264", "ProRes422", "DNxHRHQ" etc.
+            let slug = preset.name
+                .replacingOccurrences(of: " ", with: "")
+                .replacingOccurrences(of: "(", with: "")
+                .replacingOccurrences(of: ")", with: "")
+                .replacingOccurrences(of: "/", with: "")
+                .replacingOccurrences(of: ".", with: "")
+            return "\(base)-\(slug)"
+        case .originalPlusSuffix:
+            return "\(base)\(preset.suffix)"
+        }
+    }
+}
+
+/// File-name pattern picker for the Convert dialog (Kyno-parity, C4).
+/// Drives both the live Example preview in the UI and the actual
+/// output URL construction in `TranscodeService.outputURL(...)`.
+enum FilenamePattern: String, CaseIterable, Codable, Identifiable {
+    /// `video.mov` → `video.<ext>`. Useful when transcoding to a
+    /// different folder where naming collisions don't matter.
+    case originalOnly
+    /// `video.mov` → `video-H264.<ext>`. Kyno default. Slug derived
+    /// from preset name with spaces / parentheses / slashes stripped.
+    case originalPlusPresetName
+    /// `video.mov` → `video_h264_1080p.<ext>`. PurpleReel's legacy
+    /// default — kept for users who already rely on the existing
+    /// suffix shape. Default for C4 to preserve backward compat.
+    case originalPlusSuffix
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .originalOnly:          return "Original name"
+        case .originalPlusPresetName: return "Original name + Transcoding Preset"
+        case .originalPlusSuffix:    return "Original name + Suffix"
+        }
     }
 }

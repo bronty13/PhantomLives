@@ -17,6 +17,66 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C4 — Convert dialog UI restructure (Kyno-shaped layout)
+
+ConvertSheet rebuilt to match Kyno's compact layout per the user's
+reference screenshots. The runner stays on the legacy preset path;
+the new composable execution path (C3) wires in during C5 alongside
+the per-channel Settings… tabbed editor.
+
+**Destination section** stays at top, plus:
+
+- **File name pattern** Picker — `Original name + Suffix` (legacy
+  default, sticks for upgrade compat), `Original name + Transcoding
+  Preset` (Kyno default, e.g. `clip-H2641080p.mp4`), `Original name`.
+  Persisted under `UserDefaults["convertFilenamePattern"]`.
+- **Example** preview — live filename for the first asset under the
+  current pattern + preset (`stem(from:preset:pattern:)` runs the
+  same logic the actual job runner does, with no disk dependency).
+- **Collision warning row** — counts how many output paths already
+  exist on disk and surfaces `"N warnings: Would overwrite existing
+  file"` in orange with a triangle icon. When `skipExisting` is on,
+  appends `(will be skipped)` so the user knows nothing destructive
+  is queued.
+- **More Options** disclosure — collapses fades + TC burn-in by
+  default so the main dialog footprint matches Kyno's; expanding
+  reveals the same controls PurpleReel has always shipped.
+
+**Conversion Preset section** rebuilt with:
+
+- Header: `Conversion Preset: <name>` + `(edited)` indicator (today
+  fires when filename pattern diverges from the legacy default — the
+  C5 full options editor will pipe more deltas through it) + gear
+  icon with help tooltip (preset Save As / Reset land in C5).
+- Per-channel grid rows: **File format / Video / Audio / Trimming**
+  each showing the preset's effective value + a short descriptor
+  (`Streamable, Source Timecode` / `Do not re-encode` / `H.264 1080p,
+  Size Like Source` etc.) + a `Settings…` button that's disabled
+  with a tooltip flagging C5.
+
+**TranscodeService changes**:
+
+- New `stem(from:preset:pattern:) -> String` pulled out so the
+  Convert dialog's Example preview can render filenames without
+  hitting the filesystem.
+- New `outputURL(for:preset:in:pattern:)` overload routes the
+  pattern through to the actual collision-resolving URL builder.
+  Legacy `outputURL(for:preset:in:)` delegates with
+  `.originalPlusSuffix` so existing callers see no change.
+- `confirmConvert(_:)` and `openConvertDialog(preset:)` thread the
+  sticky pattern through.
+
+9 new tests (`FilenamePatternTests`) covering stem construction for
+each pattern, slug stripping (parens / dots / spaces / slashes),
+default = `.originalPlusSuffix`, rawValue round-trip for the sticky
+persistence, and `outputURL` collision-counter behavior.
+
+USER_MANUAL update deferred to C5 (when the full options-edit story
+is in place — current dialog is a UI restructure, not new user-facing
+capability beyond the filename pattern picker).
+
+---
+
 ### C3 — Composable runtime (TranscodeOptions → executable backend)
 
 Bridge between the new composable spec (C1 / `TranscodeOptions`) and
