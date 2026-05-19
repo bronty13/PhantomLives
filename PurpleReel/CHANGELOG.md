@@ -17,6 +17,28 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C28 — Marketing copy sweep ("Why PurpleReel")
+
+KYNO_RESEARCH rows 71/72/77/81 are non-engineering marketing
+levers — competitive advantages PurpleReel already has but doesn't
+surface to potential users. C28 lands them as a "Why PurpleReel
+(vs Kyno)" section in the README:
+
+- **Row 77 — Apple Silicon native.** Kyno's auto-updater ships
+  Intel-only on Apple Silicon; PurpleReel has no Intel build by
+  construction.
+- **Row 71 — Active development, public roadmap.** Counters
+  Signiant-acquisition abandonment perception by pointing at the
+  monthly CHANGELOG cadence and the public parity roadmap doc.
+- **Row 81 — Pay-once licensing.** Kyno is €159/year renewal-for-
+  updates; PurpleReel ships from PhantomLives one-time-pay,
+  every update included.
+- **Row 72 — Community on GitHub Discussions.** Kyno forums were
+  taken offline; PurpleReel's community lives in the
+  bronty13/PhantomLives repo's Discussions/Issues.
+
+No code changed.
+
 ### C27 — Combine Clips: non-linear easing on cross-fades + edge fades
 
 Deferred from C20 ("non-linear easing curves — needs custom

@@ -6,6 +6,32 @@ processing local, no telemetry.
 Built on the PhantomLives stack: SwiftUI + GRDB + XcodeGen, integrated
 with the sibling `transcribe/` MLX-Whisper project and local Ollama.
 
+## Why PurpleReel (vs Kyno)
+
+Four reasons doc shooters, post houses, and AE workflows are
+migrating off Kyno onto PurpleReel:
+
+- **Apple Silicon native by design.** Pure Swift + SwiftUI built
+  against Apple's modern AV stack. Kyno's auto-updater still ships
+  the Intel build on Apple Silicon machines as of late 2025 — the
+  Rosetta cost shows up in every preview scrub. PurpleReel has no
+  Intel build to confuse the updater with.
+- **Active development, public roadmap.** Kyno's post-Signiant
+  cadence has been slow enough that users openly worry about
+  abandonment. PurpleReel ships a monthly changelog (see
+  [CHANGELOG.md](CHANGELOG.md) — currently at commit C27) and
+  publishes its parity roadmap as [KYNO_PARITY_ROADMAP.md](KYNO_PARITY_ROADMAP.md).
+- **Pay-once licensing, not annual-renewal-for-updates.**
+  Kyno's model is €159/year and updates stop when the renewal
+  lapses. PurpleReel ships from PhantomLives — the licensing
+  model is one-time-pay, every update included, runs on every
+  Mac you own.
+- **Community lives somewhere.** The original Kyno forums were
+  taken offline; community questions go unanswered. PurpleReel
+  uses GitHub Discussions on the [bronty13/PhantomLives](https://github.com/bronty13/PhantomLives)
+  repo — every issue, every feature request, every release note
+  is in one place, searchable, permanent.
+
 ## Features
 
 - **Browser** — Finder-rooted recursive scan with hover-scrub thumbnails
