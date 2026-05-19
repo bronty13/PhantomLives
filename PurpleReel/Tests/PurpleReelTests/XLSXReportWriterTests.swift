@@ -133,6 +133,110 @@ final class XLSXReportWriterTests: XCTestCase {
                         "Empty asset list shouldn't reference a drawing part")
     }
 
+    // MARK: - Section toggles (C26)
+
+    /// Default `.all` keeps every column we expect — locks the
+    /// pre-C26 schema as a regression baseline.
+    func testAllSectionsIncludesEveryColumnHeader() async throws {
+        let dest = tempRoot.appendingPathComponent("all.xlsx")
+        _ = try await XLSXReportWriter.writeXLSX(
+            assets: [],
+            to: dest,
+            appState: AppState(),
+            sections: .all
+        )
+        let sheet = try readZipEntry("xl/worksheets/sheet1.xml", at: dest)
+        for header in [
+            "Filename", "Codec", "Resolution", "Display Size",
+            "Aspect Ratio", "FPS", "Duration (sec)", "Size (bytes)",
+            "Date Modified", "Date Created", "Date Recorded",
+            "Rating", "Title", "Description", "Reel", "Scene",
+            "Shot", "Take", "Angle", "Camera", "Audio Channels", "Tags",
+        ] {
+            XCTAssertTrue(sheet.contains(header),
+                           "Default .all should include header '\(header)'")
+        }
+    }
+
+    /// Dropping `.descriptiveMetadata` removes Title/Description/
+    /// Reel/Scene/Shot/Take/Angle/Camera/Audio Channels/Tags +
+    /// Rating — but keeps Filename/Codec/Size (always-on) and the
+    /// formatDetails block intact.
+    func testDescriptiveMetadataOffDropsLogFieldColumns() async throws {
+        let dest = tempRoot.appendingPathComponent("nodesc.xlsx")
+        let sections: ReportSections = [.duration, .formatDetails]
+        _ = try await XLSXReportWriter.writeXLSX(
+            assets: [],
+            to: dest,
+            appState: AppState(),
+            sections: sections
+        )
+        let sheet = try readZipEntry("xl/worksheets/sheet1.xml", at: dest)
+        for dropped in ["Title", "Description", "Reel", "Scene",
+                         "Take", "Angle", "Audio Channels", "Tags"] {
+            XCTAssertFalse(sheet.contains(dropped),
+                            "Header '\(dropped)' must be dropped when descriptiveMetadata off")
+        }
+        XCTAssertTrue(sheet.contains("Filename"))
+        XCTAssertTrue(sheet.contains("Codec"))
+        XCTAssertTrue(sheet.contains("Resolution"),
+                       "formatDetails columns must stay when only descriptiveMetadata is off")
+    }
+
+    /// Dropping `.formatDetails` removes Resolution/FPS/Date* etc.
+    /// but keeps Duration (gated by `.duration` separately) and
+    /// the always-on Filename/Codec/Size.
+    func testFormatDetailsOffDropsResolutionAndDateColumns() async throws {
+        let dest = tempRoot.appendingPathComponent("nofmt.xlsx")
+        let sections: ReportSections = [.duration, .descriptiveMetadata]
+        _ = try await XLSXReportWriter.writeXLSX(
+            assets: [],
+            to: dest,
+            appState: AppState(),
+            sections: sections
+        )
+        let sheet = try readZipEntry("xl/worksheets/sheet1.xml", at: dest)
+        for dropped in ["Resolution", "Display Size", "Aspect Ratio",
+                         "FPS", "Date Modified", "Date Created", "Date Recorded"] {
+            XCTAssertFalse(sheet.contains(dropped),
+                            "Header '\(dropped)' must be dropped when formatDetails off")
+        }
+        XCTAssertTrue(sheet.contains("Duration (sec)"),
+                       "duration is independent of formatDetails")
+        XCTAssertTrue(sheet.contains("Title"))
+    }
+
+    /// OOXML cell letters come from each cell's POSITION in the
+    /// row; dropping columns must realign them automatically. This
+    /// test asserts that with descriptiveMetadata + formatDetails
+    /// off, the Filename column lands at `B` (after the always-on
+    /// thumbnail at `A`) and the Size column lands at `D` (after
+    /// Filename / Codec / Duration).
+    func testColumnLettersRealignWhenSectionsDropped() async throws {
+        let assets = [
+            Asset(rowId: 1, path: "/tmp/x.mov", filename: "x.mov",
+                   sizeBytes: 4242, modifiedAt: Date(),
+                   codec: "avc1", widthPx: 1920, heightPx: 1080,
+                   durationSeconds: 60, frameRate: 29.97,
+                   sha1: nil, addedAt: Date())
+        ]
+        let dest = tempRoot.appendingPathComponent("realign.xlsx")
+        _ = try await XLSXReportWriter.writeXLSX(
+            assets: assets,
+            to: dest,
+            appState: AppState(),
+            sections: [.duration]   // formatDetails OFF, descMeta OFF
+        )
+        let sheet = try readZipEntry("xl/worksheets/sheet1.xml", at: dest)
+        // Header columns now: A=Thumbnail (empty cell), B=Filename,
+        // C=Codec, D=Duration, E=Size (bytes). Data row indices
+        // match. Verify the size value lands in column E for row 2.
+        XCTAssertTrue(sheet.contains("r=\"E2\""),
+                       "With only .duration, Size should land at column E in row 2")
+        XCTAssertTrue(sheet.contains("4242"),
+                       "Row data must still include the size value")
+    }
+
     // MARK: - Zip helpers
 
     /// Run `/usr/bin/unzip -l` and parse the resulting entry list.

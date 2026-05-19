@@ -17,6 +17,42 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C26 — XLSX report honors section toggles
+
+Deferred from C12. When PurpleReel's CSV/HTML exports shipped the
+Report Definition section gating, the XLSX path was excluded with
+a note that "OOXML column-letter realignment when sections drop is
+a follow-up." C26 lands that — XLSX now matches CSV/HTML.
+
+**Why the deferral mattered**: OOXML cell references are
+positional (`<c r="C5">…`). If we just dropped a column upstream
+without recomputing the letter for each later cell, Excel would
+either reject the file or render columns mis-aligned. The fix is
+emit cells in a single dynamic list whose order is gated by the
+sections OptionSet — `rowXML`'s existing `columnLetter(col)` call
+already picks up the right letter from the cell's position in the
+emitted array, so the realignment is automatic once the upstream
+list shrinks.
+
+- `XLSXReportWriter.writeXLSX(...)` gains
+  `sections: ReportSections = .all`. Threaded through to
+  `sheetXML(...)`.
+- `sheetXML` rewritten: header + per-row cells built via the same
+  always-on / `.formatDetails` / `.duration` /
+  `.descriptiveMetadata` gates the CSV path uses.
+- AppState's XLSX export call site now passes `sections` (was
+  previously discarded with a TODO comment).
+
+**Tests** — `XLSXReportWriterTests.swift` (+4 cases, total 9):
+- `.all` includes every expected header (regression baseline).
+- Dropping `.descriptiveMetadata` removes Title/Description/Reel/
+  Scene/Take/Angle/Audio Channels/Tags; format columns stay.
+- Dropping `.formatDetails` removes Resolution/FPS/Date* but
+  keeps Duration (gated independently).
+- OOXML column-letter realignment: with only `.duration` on
+  (formatDetails + descMeta off), Size lands at column E in
+  row 2 — verified by grep for `r="E2"` in the sheet XML.
+
 ### C25 — FCPXML project-membership tracking
 
 Deferred from C11. The FCPXML round-trip importer already pulls

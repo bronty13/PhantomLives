@@ -1721,12 +1721,13 @@ final class AppState: ObservableObject {
                         alert.runModal()
                     }
                 case .xlsx:
-                    // XLSX still emits the full 23-col schema for
-                    // now; OOXML column-letter realignment when
-                    // sections drop is a follow-up. Section toggles
-                    // affect CSV / HTML today.
+                    // C26 — XLSX now honors section toggles too,
+                    // dropping columns + realigning OOXML cell
+                    // letters dynamically. Matches CSV / HTML
+                    // behavior shipped in C12.
                     let r = try await XLSXReportWriter.writeXLSX(
-                        assets: scope, to: url, appState: appState
+                        assets: scope, to: url, appState: appState,
+                        sections: sections
                     )
                     NSWorkspace.shared.activateFileViewerSelecting([url])
                     if r.skipped > 0 {

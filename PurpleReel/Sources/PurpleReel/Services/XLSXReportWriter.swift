@@ -34,7 +34,8 @@ enum XLSXReportWriter {
     /// extractable preview.
     static func writeXLSX(assets: [Asset],
                            to destination: URL,
-                           appState: AppState) async throws
+                           appState: AppState,
+                           sections: ReportSections = .all) async throws
         -> (written: Int, skipped: Int)
     {
         let work = FileManager.default.temporaryDirectory
@@ -111,7 +112,8 @@ enum XLSXReportWriter {
                    atomically: true, encoding: .utf8)
         try sheetXML(assets: assets,
                       appState: appState,
-                      thumbs: thumbs)
+                      thumbs: thumbs,
+                      sections: sections)
             .write(to: work.appendingPathComponent("xl/worksheets/sheet1.xml"),
                    atomically: true, encoding: .utf8)
         try sheetRelsXML()
@@ -200,16 +202,31 @@ enum XLSXReportWriter {
     private static func sheetXML(assets: [Asset],
                                   appState: AppState,
                                   thumbs: [(assetIndex: Int, jpegPath: URL,
-                                              sizePx: CGSize)]) -> String {
+                                              sizePx: CGSize)],
+                                  sections: ReportSections) -> String {
         // Row 1 = header. Rows 2…N = data. Column A = thumbnail
         // (empty cell label — the drawing anchors a JPEG over it).
-        let header = ["Thumbnail", "Filename", "Codec", "Resolution",
-                       "Display Size", "Aspect Ratio", "FPS",
-                       "Duration (sec)", "Size (bytes)",
-                       "Date Modified", "Date Created", "Date Recorded",
-                       "Rating", "Title", "Description",
-                       "Reel", "Scene", "Shot", "Take", "Angle", "Camera",
-                       "Audio Channels", "Tags"]
+        // C26 — column set now driven by `sections` so a user who
+        // turned off Format details / Descriptive metadata gets a
+        // narrower workbook. Thumbnail + Filename + Codec + Size
+        // stay always-on (mirrors CSV/HTML's "File type + File size
+        // are locked" rule from C12).
+        var header: [String] = ["Thumbnail", "Filename", "Codec"]
+        if sections.contains(.formatDetails) {
+            header += ["Resolution", "Display Size", "Aspect Ratio", "FPS"]
+        }
+        if sections.contains(.duration) {
+            header.append("Duration (sec)")
+        }
+        header.append("Size (bytes)")
+        if sections.contains(.formatDetails) {
+            header += ["Date Modified", "Date Created", "Date Recorded"]
+        }
+        if sections.contains(.descriptiveMetadata) {
+            header += ["Rating", "Title", "Description",
+                       "Reel", "Scene", "Shot", "Take",
+                       "Angle", "Camera", "Audio Channels", "Tags"]
+        }
 
         var rows: [String] = []
         rows.append(rowXML(rowIdx: 1, cells: header))
@@ -223,31 +240,42 @@ enum XLSXReportWriter {
                 .map { String(format: "%.3f", $0) } ?? ""
             let created = asset.createdAt.map(dateString) ?? ""
             let recorded = asset.recordedAt.map(dateString) ?? ""
-            let cells: [String] = [
-                "",                                  // thumbnail column
-                asset.filename,
-                asset.codec ?? "",
-                resolutionString(asset),
-                displaySizeString(asset),
-                aspectRatioString(asset),
-                fpsString(asset),
-                dur,
-                "\(asset.sizeBytes)",
-                dateString(asset.modifiedAt),
-                created,
-                recorded,
-                rating,
-                meta?.title ?? "",
-                meta?.description ?? "",
-                meta?.reel ?? "",
-                meta?.scene ?? "",
-                meta?.shot ?? "",
-                meta?.take ?? "",
-                meta?.angle ?? "",
-                meta?.camera ?? "",
-                meta?.audioChannelNames ?? "",
-                tags
-            ]
+            // Cells must line up with the header order above.
+            // OOXML column letters come from cell position in this
+            // array (via `columnLetter(col)` in rowXML), so dropping
+            // a column here automatically realigns every later cell
+            // to its correct letter — no manual A/B/C/… juggling.
+            var cells: [String] = ["", asset.filename, asset.codec ?? ""]
+            if sections.contains(.formatDetails) {
+                cells += [
+                    resolutionString(asset),
+                    displaySizeString(asset),
+                    aspectRatioString(asset),
+                    fpsString(asset),
+                ]
+            }
+            if sections.contains(.duration) {
+                cells.append(dur)
+            }
+            cells.append("\(asset.sizeBytes)")
+            if sections.contains(.formatDetails) {
+                cells += [dateString(asset.modifiedAt), created, recorded]
+            }
+            if sections.contains(.descriptiveMetadata) {
+                cells += [
+                    rating,
+                    meta?.title ?? "",
+                    meta?.description ?? "",
+                    meta?.reel ?? "",
+                    meta?.scene ?? "",
+                    meta?.shot ?? "",
+                    meta?.take ?? "",
+                    meta?.angle ?? "",
+                    meta?.camera ?? "",
+                    meta?.audioChannelNames ?? "",
+                    tags,
+                ]
+            }
             rows.append(rowXML(rowIdx: i + 2, cells: cells,
                                  rowHeight: rowHeightForThumb(i, in: thumbs)))
         }
