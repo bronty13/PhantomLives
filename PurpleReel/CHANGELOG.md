@@ -10,6 +10,30 @@ Newest first.
 
 ---
 
+## Sprint 8 — Hover-scrub polish (more frames + SMPTE TC tooltip)
+
+Hover-scrub thumbnails (Kyno-parity row 67) were already shipped in
+both List view (`ThumbnailCell`) and Grid view (`GridCell`). This pass
+polishes them.
+
+- **Strip granularity 12 → 20 frames.** `ThumbnailService.defaultFrameCount`
+  bumped so scrubbing a long clip is noticeably finer. Cache key encodes
+  the count, so old 12-frame strips stay on disk as orphans and the
+  next hover regenerates a 20-frame strip. `ClipDetailInline.GridCell`
+  switched from a hard-coded `count: 12` to the default so all hover
+  surfaces share the same granularity.
+- **SMPTE timecode tooltip during hover.** Both cells now show the
+  clip-time at the cursor position (e.g. `00:01:23:15`) as a small
+  monospaced overlay near the top of the cell. Uses
+  `Timecode.format(seconds: dur * frac, fps: ...)` with the asset's
+  duration + frame rate (defaults fps to 30 when missing).
+- **Tick-row cleanup.** `ThumbnailCell` previously inferred the active
+  frame index by round-tripping `loadedImage.tiffRepresentation`
+  against every URL in the strip (O(N) heavy comparison per render).
+  Replaced with a state-tracked `activeIdx` mutated in `loadFrame(at:)`.
+
+---
+
 ## Sprint 7 — Dark mode (Settings → Appearance)
 
 User-facing appearance picker in Settings → General → Appearance:

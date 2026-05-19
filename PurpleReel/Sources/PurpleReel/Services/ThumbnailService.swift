@@ -57,7 +57,7 @@ final class ThumbnailGenerationGate {
 /// invalidates the cache.
 enum ThumbnailService {
 
-    static let defaultFrameCount = 12
+    static let defaultFrameCount = 20
     static let thumbWidth: CGFloat = 240
     static let jpegQuality: Float = 0.7
 

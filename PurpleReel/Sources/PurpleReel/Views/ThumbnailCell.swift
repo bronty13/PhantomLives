@@ -17,6 +17,10 @@ struct ThumbnailCell: View {
     @State private var loadedImage: NSImage?
     @State private var hoverFraction: Double? = nil   // 0…1 within the cell
     @State private var hovering = false
+    /// Most-recently-loaded frame index (0..<urls.count). Used by the
+    /// tick-row highlight and by the SMPTE tooltip so they don't have
+    /// to round-trip through `tiffRepresentation` comparisons.
+    @State private var activeIdx: Int = 0
     /// Cached poster-frame image when the asset has a user-set
     /// poster override (P key). Used as the at-rest cell frame and
     /// when hover ends, so the cell snaps back to the user's pick.
@@ -47,7 +51,6 @@ struct ThumbnailCell: View {
             if hovering, urls.count > 1 {
                 // Tiny tick row showing the cursor's mapped frame index.
                 GeometryReader { geo in
-                    let activeIdx = currentFrameIndex(width: geo.size.width)
                     HStack(spacing: 1) {
                         ForEach(0..<urls.count, id: \.self) { i in
                             Rectangle()
@@ -60,6 +63,18 @@ struct ThumbnailCell: View {
                     .frame(height: 2)
                     .padding(.horizontal, 2)
                     .position(x: geo.size.width / 2, y: geo.size.height - 4)
+                }
+                if let tc = hoverTimecode {
+                    Text(tc)
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 3)
+                        .padding(.vertical, 1)
+                        .background(Color.black.opacity(0.65),
+                                     in: RoundedRectangle(cornerRadius: 2))
+                        .padding(.top, 2)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity,
+                                alignment: .top)
                 }
             }
         }
@@ -137,6 +152,7 @@ struct ThumbnailCell: View {
 
     private func loadFrame(at index: Int) {
         guard index >= 0 && index < urls.count else { return }
+        activeIdx = index
         if let img = NSImage(contentsOf: urls[index]) {
             loadedImage = img
         }
@@ -146,20 +162,20 @@ struct ThumbnailCell: View {
         guard !urls.isEmpty else { return }
         let cellWidth: CGFloat = 80
         let clampedX = min(max(0, x), cellWidth)
+        let frac = clampedX / cellWidth
+        hoverFraction = Double(frac)
         let idx = min(urls.count - 1,
-                       Int((clampedX / cellWidth) * CGFloat(urls.count)))
+                       Int(frac * CGFloat(urls.count)))
         loadFrame(at: idx)
     }
 
-    private func currentFrameIndex(width: CGFloat) -> Int {
-        // Used only by the tick overlay; we don't have direct access
-        // to the cursor here, so we approximate from the most recent
-        // loaded image index. Acceptable since the highlight is a
-        // small UX nicety, not load-bearing.
-        guard let img = loadedImage,
-              let url = urls.first(where: { NSImage(contentsOf: $0)?.tiffRepresentation == img.tiffRepresentation }) else {
-            return urls.count / 2
-        }
-        return Int(url.deletingPathExtension().lastPathComponent) ?? urls.count / 2
+    /// SMPTE-formatted clip-time at the hovered fraction, e.g.
+    /// "00:01:23:15". nil when we don't have duration or fps yet
+    /// (image assets, or strip not yet loaded).
+    private var hoverTimecode: String? {
+        guard let frac = hoverFraction,
+              let dur = asset.durationSeconds, dur > 0 else { return nil }
+        let fps = asset.frameRate ?? 30.0
+        return Timecode.format(seconds: dur * frac, fps: fps)
     }
 }

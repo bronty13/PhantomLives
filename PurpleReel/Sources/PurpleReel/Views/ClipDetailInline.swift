@@ -440,6 +440,10 @@ struct GridCell: View {
     /// User-set poster-frame URL (P key). When non-nil, used as the
     /// at-rest cell URL and the hover-exit fallback.
     @State private var posterURL: URL?
+    /// Cursor's 0…1 horizontal fraction within the cell, captured by
+    /// `applyHover`. Drives the SMPTE timecode tooltip; nil when not
+    /// hovering or fraction not yet computed.
+    @State private var hoverFraction: Double?
 
     private var activeJob: TranscodeJob? {
         if let cur = transcodeQueue.current, cur.source.path == asset.path { return cur }
@@ -500,6 +504,20 @@ struct GridCell: View {
                         .position(x: geo.size.width / 2,
                                    y: geo.size.height - 6)
                     }
+                    if hovering, let tc = hoverTimecode {
+                        Text(tc)
+                            .font(.system(size: 11,
+                                            weight: .medium,
+                                            design: .monospaced))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.black.opacity(0.65),
+                                         in: RoundedRectangle(cornerRadius: 3))
+                            .padding(.top, 6)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity,
+                                    alignment: .top)
+                    }
                     transcodeOverlay
                 }
                 .onAppear { lastWidth = geo.size.width }
@@ -526,6 +544,7 @@ struct GridCell: View {
                     applyHover(x: location.x, width: lastWidth)
                 case .ended:
                     hovering = false
+                    hoverFraction = nil
                     // Prefer the user's poster-frame pick on hover
                     // exit; fall back to mid-strip when none.
                     if let p = posterURL { url = p }
@@ -543,7 +562,7 @@ struct GridCell: View {
 
     private func loadInitial() {
         Task {
-            let urls = await ThumbnailService.thumbnails(for: asset, count: 12)
+            let urls = await ThumbnailService.thumbnails(for: asset)
             var poster: URL? = nil
             if let secs = asset.posterFrameSeconds {
                 poster = await ThumbnailService.posterFrame(for: asset, seconds: secs)
@@ -583,10 +602,21 @@ struct GridCell: View {
     private func applyHover(x: CGFloat, width: CGFloat) {
         guard urls.count > 1, width > 1 else { return }
         let clamped = min(max(0, x), width)
-        let idx = min(urls.count - 1,
-                       Int((clamped / width) * CGFloat(urls.count)))
+        let frac = clamped / width
+        hoverFraction = Double(frac)
+        let idx = min(urls.count - 1, Int(frac * CGFloat(urls.count)))
         let next = urls[idx]
         if url != next { url = next }
+    }
+
+    /// SMPTE-formatted clip-time at the hovered fraction. nil when
+    /// the asset has no duration (image / unprobed file) or the
+    /// cursor hasn't moved over the cell yet.
+    private var hoverTimecode: String? {
+        guard let frac = hoverFraction,
+              let dur = asset.durationSeconds, dur > 0 else { return nil }
+        let fps = asset.frameRate ?? 30.0
+        return Timecode.format(seconds: dur * frac, fps: fps)
     }
 
     @ViewBuilder
