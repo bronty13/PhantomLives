@@ -19,6 +19,12 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject var appState: AppState
     @AppStorage("sidebarVisible") private var sidebarVisible: Bool = true
+    /// C6 — non-modal Transcode Queue. The boolean
+    /// `appState.transcodeSheetVisible` is now an *open me* signal:
+    /// when it flips to true we open the floating Queue window scene
+    /// and immediately reset the flag, so the next enqueue (or the
+    /// next user-driven menu click) can fire the signal again.
+    @Environment(\.openWindow) private var openWindow
 
     /// Fixed width. Could be made user-resizable via a drag-handle, but
     /// MusicJournal's experience shows that fixed-width sidebars cause
@@ -106,6 +112,13 @@ struct ContentView: View {
                 }
                 .disabled(appState.selectedAsset == nil)
             }
+            // C6 — Active-queue status chip. Only renders when at
+            // least one job is running or pending; clicking it brings
+            // the floating Queue window back to the front so the user
+            // can monitor / cancel without losing browser context.
+            ToolbarItem(placement: .status) {
+                queueStatusChip
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     appState.backupSheetVisible = true
@@ -177,8 +190,15 @@ struct ContentView: View {
                 .disabled(appState.rootFolder == nil)
             }
         }
-        .sheet(isPresented: $appState.transcodeSheetVisible) {
-            TranscodeQueueView(queue: appState.transcodeQueue)
+        .onChange(of: appState.transcodeSheetVisible) { _, visible in
+            // Treat the boolean as an "open me" pulse — open the
+            // floating Queue window and immediately reset so the
+            // next enqueue can re-fire. Idempotent: openWindow brings
+            // an existing window to front rather than spawning a
+            // duplicate.
+            guard visible else { return }
+            openWindow(id: "transcode-queue")
+            appState.transcodeSheetVisible = false
         }
         .sheet(isPresented: $appState.backupSheetVisible) {
             BackupView()
@@ -230,6 +250,35 @@ struct ContentView: View {
         .sheet(isPresented: $appState.workflowChainsSheetVisible) {
             WorkflowChainsSheet()
                 .environmentObject(appState)
+        }
+    }
+
+    /// C6 — non-modal queue status chip. Only renders when at least
+    /// one transcode job is running or pending; clicking it brings
+    /// the floating Queue window back to the front. Live-updates as
+    /// the queue's @Published lists change.
+    @ViewBuilder
+    private var queueStatusChip: some View {
+        let queue = appState.transcodeQueue
+        let running = queue.running.count
+        let pending = queue.pending.count
+        let total = running + pending
+        if total > 0 {
+            Button {
+                openWindow(id: "transcode-queue")
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                    Text("\(total) \(total == 1 ? "job" : "jobs")")
+                        .font(.caption.weight(.medium))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Color.accentColor.opacity(0.18),
+                             in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .help("\(running) running, \(pending) pending — click to open the Transcode Queue window")
         }
     }
 }

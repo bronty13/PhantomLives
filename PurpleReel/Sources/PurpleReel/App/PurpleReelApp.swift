@@ -675,6 +675,24 @@ struct PurpleReelApp: App {
                 .frame(minWidth: 640, minHeight: 420)
                 .preferredColorScheme(preferredColorScheme)
         }
+
+        // C6 — non-modal Transcode Queue. Was a `.sheet` on the main
+        // window, which blocked all other interaction while jobs ran.
+        // A separate `Window` scene floats independently, so the user
+        // can keep browsing / logging / converting more clips while
+        // the queue grinds in the background. Reachable via:
+        //   • automatic open when a job is enqueued (ContentView
+        //     observes `appState.transcodeSheetVisible` and calls
+        //     `openWindow(id: "transcode-queue")`)
+        //   • Show Queue toolbar button / menu item
+        //   • status indicator chip in the main toolbar
+        Window("Transcode Queue", id: "transcode-queue") {
+            TranscodeQueueView(queue: appState.transcodeQueue)
+                .environmentObject(appState)
+                .preferredColorScheme(preferredColorScheme)
+        }
+        .defaultSize(width: 640, height: 480)
+        .commandsRemoved()
     }
 }
 

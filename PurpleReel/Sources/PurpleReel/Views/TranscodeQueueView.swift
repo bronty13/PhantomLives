@@ -3,7 +3,10 @@ import AppKit
 
 struct TranscodeQueueView: View {
     @ObservedObject var queue: TranscodeQueue
-    @Environment(\.dismiss) private var dismiss
+    /// C6 — the view runs in a stand-alone `Window` scene now, not
+    /// a `.sheet`. SwiftUI's `dismissWindow` action closes the
+    /// window cleanly without affecting any other open windows.
+    @Environment(\.dismissWindow) private var dismissWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -15,7 +18,7 @@ struct TranscodeQueueView: View {
                         NSWorkspace.shared.open(dir)
                     }
                 }
-                Button("Close") { dismiss() }
+                Button("Close") { dismissWindow(id: "transcode-queue") }
                     .keyboardShortcut(.cancelAction)
             }
             .padding(12)

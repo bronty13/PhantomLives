@@ -17,6 +17,51 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C6 — Non-modal Transcode Queue window
+
+Original complaint that kicked off this whole reshape (Image #77 →
+#78): the Transcode Queue was a `.sheet` on the main window, which
+blocked all other interaction while jobs ran. C6 promotes it to a
+stand-alone `Window` scene that floats independently.
+
+**Window scene** added in `PurpleReelApp.swift`:
+
+    Window("Transcode Queue", id: "transcode-queue") {
+        TranscodeQueueView(queue: appState.transcodeQueue)
+            …
+    }
+    .defaultSize(width: 640, height: 480)
+    .commandsRemoved()
+
+`.commandsRemoved()` keeps a "New Transcode Queue" entry out of the
+File menu (we never want a second one).
+
+**Trigger mechanics** — the existing
+`@Published var transcodeSheetVisible` boolean is now treated as an
+"open me" *pulse*: when it flips to true, ContentView's `.onChange`
+handler calls `openWindow(id: "transcode-queue")` and immediately
+resets the flag so the next enqueue (or the next manual menu click)
+can re-fire. Idempotent — `openWindow` brings an existing window to
+front rather than spawning duplicates.
+
+**Status indicator chip** in the main window's toolbar
+(`.placement(.status)`): a small Capsule with the spin-icon + "N
+jobs" label, only renders when `running + pending > 0`. Clicking it
+brings the floating Queue window back to the front. Live-updates as
+the queue's @Published lists change.
+
+**Queue view** updates:
+- `@Environment(\.dismissWindow)` instead of `\.dismiss` so the
+  Close button targets the right window.
+- Existing "Show Queue…" menu item still functions — it just
+  triggers the same boolean pulse the auto-open does.
+
+Net result: queue lives in its own window. App stays usable.
+Multiple transcodes can run in the background while you keep
+browsing, logging, even queueing more jobs.
+
+---
+
 ### C5 — Per-channel composable editing (Settings… tabbed editor)
 
 Convert dialog's per-channel rows are now **functional**:
