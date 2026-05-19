@@ -12,7 +12,6 @@ import SwiftUI
 struct ImportSettingsTab: View {
     @EnvironmentObject private var appState: AppState
 
-    @State private var showingWizard: Bool = false
     @State private var wizardModel: ImportWizardModel?
     @State private var legacyReport: WeightCSVImporter.Report?
     @State private var legacyError: String?
@@ -91,11 +90,15 @@ struct ImportSettingsTab: View {
         }
         .formStyle(.grouped)
         .padding(20)
-        .sheet(isPresented: $showingWizard) {
-            if let m = wizardModel {
-                ImportWizardSheet(model: m)
-                    .environmentObject(appState)
-            }
+        // .sheet(item:) instead of .sheet(isPresented:) + conditional
+        // content — the isPresented variant occasionally rendered an
+        // empty sheet body because the @State write ordering put the
+        // sheet's content closure on a code path where wizardModel
+        // was still nil. .sheet(item:) presents only when the
+        // optional is non-nil and passes the non-nil value through.
+        .sheet(item: $wizardModel) { m in
+            ImportWizardSheet(model: m)
+                .environmentObject(appState)
         }
     }
 
@@ -153,7 +156,6 @@ struct ImportSettingsTab: View {
             sink: appState.purpleImportSink,
             mappingStore: appState.mappingStore
         )
-        showingWizard = true
     }
 
     private func runSaved(_ mapping: SavedImportMapping) {
@@ -162,7 +164,6 @@ struct ImportSettingsTab: View {
             sink: appState.purpleImportSink,
             mappingStore: appState.mappingStore
         )
-        showingWizard = true
     }
 
     private func editSaved(_ mapping: SavedImportMapping) {

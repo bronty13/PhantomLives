@@ -174,7 +174,15 @@ enum ImportStep: Hashable {
 // MARK: - Wizard model
 
 @MainActor
-final class ImportWizardModel: ObservableObject {
+final class ImportWizardModel: ObservableObject, Identifiable {
+
+    /// Stable id so `.sheet(item: $wizardModel)` can drive presentation.
+    /// SwiftUI's `.sheet(isPresented:) + if let` pattern was flaky —
+    /// some presentations rendered an empty sheet because the
+    /// closure ran before the @State write had propagated. `.sheet(item:)`
+    /// presents only when the binding becomes non-nil and passes the
+    /// non-nil value directly, removing the timing window.
+    nonisolated let id = UUID()
 
     @Published var step: ImportStep = .pickSource
     @Published var draft: SavedImportMapping
