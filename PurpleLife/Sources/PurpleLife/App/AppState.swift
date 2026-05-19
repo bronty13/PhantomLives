@@ -33,6 +33,16 @@ final class AppState: ObservableObject {
     @Published var keyStore = KeyStore(supportDirectoryURL: DatabaseService.supportDirectory)
     let database = DatabaseService.shared
 
+    /// Phase 5 — Purple Import / Purple Export. `mappingStore` owns
+    /// the on-disk per-file storage of `SavedImportMapping` records
+    /// (under `~/Library/Application Support/PurpleLife/mappings/`).
+    /// `purpleImportSink` is the wizard's adapter to PurpleLife's
+    /// SchemaRegistry / ObjectEngine / AttachmentService. The sink is
+    /// constructed lazily so it always reads the live `schema` even
+    /// if AppState is re-init'd in a test fixture.
+    @Published var mappingStore = MappingStore()
+    lazy var purpleImportSink: PurpleLifeSink = PurpleLifeSink(schema: schema)
+
     @Published var objectCount: Int = 0
 
     /// Health of the on-disk database. Set after the launch-time keyed
@@ -349,6 +359,11 @@ final class AppState: ObservableObject {
         // longer plaintext, the magic-header check skips, only the
         // reopen-with-key step runs.
         DatabaseService.keyResolver = { [weak keyStore] in
+            keyStore?.currentKey
+        }
+        // Purple Import — per-mapping files seal under the same DEK
+        // as everything else under Application Support.
+        mappingStore.setKeyResolver { [weak keyStore] in
             keyStore?.currentKey
         }
     }

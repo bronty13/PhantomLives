@@ -12,6 +12,26 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-19 — Purple Import / Purple Export Phase 1 shipped (locked design points)
+
+First commit in the multi-phase Purple Import / Purple Export initiative — the generic import/export engine that becomes the model for the PhantomLives family. Full plan: `~/.claude/plans/cheeky-yawning-giraffe.md`. Locked design points worth remembering:
+
+- **Engine + Sink split for cross-app reuse.** The engine inside `Services/PurpleImport/` does NOT import `SchemaRegistry`, `ObjectEngine`, or `AttachmentService` directly. All access goes through `PurpleImportSink` / `PurpleImportSourceReader` protocols, implemented by `PurpleLifeSink.swift`. A future sibling app reuses the engine by writing its own sink against its own record store. Extraction to a separate SPM package is deferred to v2 / first sibling adoption per `CLAUDE.md`'s no-Core-Swift-package-split rule — but the boundary is structured so the extract is mechanical.
+
+- **String-keyed everything, no associated-type protocols.** PurpleLife uses `String` for typeId and field keys already. Avoiding associated-type protocols keeps SwiftUI views readable (they get noisy fast). Type safety inside a sink implementation is recovered with strong wrappers.
+
+- **Per-file mapping persistence, NOT inside `AppSettings`.** Each mapping is its own encrypted file under `~/Library/Application Support/PurpleLife/mappings/<uuid>.purplelifemapping.json`. Three reasons: (1) one malformed mapping would otherwise poison the entire `settings.json` (one-blob encode/decode). (2) `SettingsStore.save()` rewrites the whole settings blob on every tick — 20 mappings × 5 KB each is 100 KB rewritten per setting touch. (3) Per-file storage makes Reveal-in-Finder + drag-drop import-share + per-mapping Export trivially free. The original plan called for arrays in `AppSettings`; the architecture review caught this and we moved. `AppSettings` is **deliberately not modified** by this feature.
+
+- **Bulk insert path on the sink (load-bearing).** Imports above `PurpleImport.bulkThreshold` (25 rows) route to `ObjectEngine.bulkInsert(typeId:rows:)` which: (a) does all inserts inside one GRDB write transaction via new `DatabaseService.bulkInsertObjects(_:)`, (b) registers a single coalesced undo group (not N), (c) defers CloudKit push to a single serial Task at the end (not N concurrent), (d) calls `SearchService.upsert` per record but inside one engine-level pass. Without this, a 5,000-row CSV would have wedged the undo stack and flooded the zone — flagged by the plan-review agent before code landed. `PurpleLifeSinkBulkTests` pins the one-undo-entry invariant.
+
+- **Date timezone trap (caught by tests, locked here so it doesn't reappear).** `FieldValueCoercer.coerce(_, to: .date)` must force `TimeZone(identifier: "UTC")` on BOTH the parse-side `asDate` formatters AND the stringify-side output formatter. The parse side already used UTC; the output formatter inherited local timezone, so a "2024-01-15" input round-tripped as "2024-01-14" anywhere west of UTC. The fix is one-liner but the bug was silent under XCTest in PT and would have surfaced as silent data corruption on user CSVs. The 4-format date test in `FieldValueCoercerTests` catches it.
+
+- **Swift `Character` grapheme trap on CSV CRLF.** `"\r\n"` is one `Character` in Swift's grapheme-cluster string iteration, not two. A naive `if c == "\r"` branch in a per-Character parser never fires on CRLF-line-ended CSV files. Fix: normalize `\r\n` → `\n` and `\r` → `\n` before the per-Character pass. Locked in `CSVReader.parse(_:maxRows:)` with `testCRLFLineEndings()` as the regression. Do not "simplify" the normalization step; the parse loop relies on it.
+
+- **`Hashable` step enum + payload on the model.** The wizard's `ImportStep` enum is pure user-visible state with no associated values. Terminal outcomes (`summary: ImportSummary?`, `lastError: String?`) live on the `ImportWizardModel` instead. Original plan tried `case done(Summary)` / `case error(String)` cases; the architect's review flagged the trivial-Hashable concern and we split. Don't merge them back without thinking through `withAnimation(.transition)` comparators.
+
+- **Word + PDF v1 scope: text-only single-record (deferred).** Both formats need to ship in Phase 5 per the user's "all formats" answer, but the architecture review caught that .docx namespace complexity (revisions, comments, AlternateContent, merged cells via `<w:vMerge>` / `<w:gridSpan>`) and PDF table reconstruction (PDFKit has no per-glyph x/y positioning) are known-hard multi-week CS problems. Phase 5 scope: `PDFDocument().string` → one record with body in a single `.richText` field; unzip + paragraph-concat for .docx with the same single-record shape. Table extraction is a separate Phase-7 follow-up with its own design doc when there's a real motivating document.
+
 ### 2026-05-16 — Resilience Tier 5 shipped: plaintext snapshot export (locked design points)
 
 Implementation of the deferred Tier 5 from the 2026-05-15 plan. The locked design points, in case a future revisit wants to know what was deliberate vs. accidental:

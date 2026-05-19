@@ -1,0 +1,183 @@
+import SwiftUI
+
+/// Step 4 — the field-mapping table. One row per source column/path
+/// → target field key. Per-row: source dropdown, target field key
+/// (existing or new), expected kind, transforms (collapsed for Phase
+/// 1; chip-row UI in Phase 2), error behavior.
+struct MapFieldsStep: View {
+    @ObservedObject var model: ImportWizardModel
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Map source → field").font(.title3).bold()
+                Spacer()
+                Button {
+                    addMapping()
+                } label: {
+                    Label("Add mapping", systemImage: "plus")
+                }
+            }
+            .padding(.horizontal, 20).padding(.top, 16)
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    headerRow
+                    Divider()
+                    ForEach(Array(model.draft.fieldMappings.enumerated()), id: \.element.id) { idx, _ in
+                        mappingRow(index: idx)
+                        Divider()
+                    }
+                }
+            }
+            .background(Theme.bg.opacity(0.4))
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
+
+            upsertControls
+                .padding(.horizontal, 20)
+                .padding(.bottom, 16)
+        }
+    }
+
+    // MARK: - Header
+
+    private var headerRow: some View {
+        HStack(spacing: 8) {
+            label("Source", width: 220)
+            label("→", width: 16)
+            label("Target field key", width: 180)
+            label("Kind", width: 140)
+            label("On error", width: 130)
+            Spacer()
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(Color.secondary.opacity(0.08))
+    }
+
+    private func label(_ s: String, width: CGFloat) -> some View {
+        Text(s)
+            .font(.caption.weight(.semibold)).tracking(0.4)
+            .textCase(.uppercase).foregroundStyle(.tertiary)
+            .frame(width: width, alignment: .leading)
+    }
+
+    // MARK: - Row
+
+    private func mappingRow(index: Int) -> some View {
+        HStack(spacing: 8) {
+            sourceField(index: index)
+                .frame(width: 220, alignment: .leading)
+            Text("→").foregroundStyle(.tertiary).frame(width: 16)
+            TextField(
+                "field_key",
+                text: Binding(
+                    get: { model.draft.fieldMappings[index].targetKey },
+                    set: { model.draft.fieldMappings[index].targetKey = $0 }
+                )
+            )
+            .font(.body.monospaced())
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 180)
+            Picker("", selection: Binding(
+                get: { model.draft.fieldMappings[index].expectedKind },
+                set: { model.draft.fieldMappings[index].expectedKind = $0 }
+            )) {
+                ForEach(FieldKind.allCases, id: \.self) { k in
+                    Text(k.displayName).tag(k)
+                }
+            }
+            .labelsHidden()
+            .frame(width: 140)
+            Picker("", selection: Binding(
+                get: { model.draft.fieldMappings[index].onError },
+                set: { model.draft.fieldMappings[index].onError = $0 }
+            )) {
+                Text("Skip row").tag(SavedImportMapping.OnError.skipRow)
+                Text("Default").tag(SavedImportMapping.OnError.fillDefault)
+                Text("Abort").tag(SavedImportMapping.OnError.abort)
+            }
+            .labelsHidden()
+            .frame(width: 130)
+            Spacer()
+            Button {
+                model.draft.fieldMappings.remove(at: index)
+            } label: {
+                Image(systemName: "minus.circle").foregroundStyle(.red)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
+    }
+
+    @ViewBuilder
+    private func sourceField(index: Int) -> some View {
+        let locator = model.draft.fieldMappings[index].source
+        switch locator {
+        case .column(let s):
+            // For tabular sources, render a menu of available columns.
+            if let shape = model.preview?.shape, case let .tabular(cols, _) = shape, !cols.isEmpty {
+                Picker("", selection: Binding(
+                    get: { s },
+                    set: { newVal in
+                        model.draft.fieldMappings[index].source = .column(newVal)
+                    }
+                )) {
+                    ForEach(cols, id: \.self) { c in Text(c).tag(c) }
+                }
+                .labelsHidden()
+            } else {
+                Text(s).font(.body.monospaced())
+            }
+        case .path(let p):
+            TextField("$.path", text: Binding(
+                get: { p },
+                set: { model.draft.fieldMappings[index].source = .path($0) }
+            ))
+            .font(.body.monospaced())
+            .textFieldStyle(.roundedBorder)
+        }
+    }
+
+    // MARK: - Upsert
+
+    private var upsertControls: some View {
+        HStack(spacing: 10) {
+            Picker("Reimport behavior", selection: $model.draft.upsertStrategy) {
+                Text("Insert every row").tag(SavedImportMapping.UpsertStrategy.insertOnly)
+                Text("Upsert on key field").tag(SavedImportMapping.UpsertStrategy.upsertOnKey)
+            }
+            .pickerStyle(.menu)
+            if model.draft.upsertStrategy == .upsertOnKey {
+                Picker("Key field", selection: Binding(
+                    get: { model.draft.keyFieldKey ?? "" },
+                    set: { model.draft.keyFieldKey = $0.isEmpty ? nil : $0 }
+                )) {
+                    Text("Choose…").tag("")
+                    ForEach(model.draft.fieldMappings, id: \.id) { m in
+                        Text(m.targetKey).tag(m.targetKey)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+        }
+    }
+
+    // MARK: - Actions
+
+    private func addMapping() {
+        let isTabular: Bool
+        if case .tabular? = model.preview?.shape { isTabular = true } else { isTabular = false }
+        let m = SavedImportMapping.FieldMapping(
+            id: UUID().uuidString,
+            source: isTabular ? .column("") : .path("$."),
+            targetKey: "",
+            expectedKind: .text,
+            transforms: [],
+            defaultValue: nil,
+            onError: .skipRow
+        )
+        model.draft.fieldMappings.append(m)
+    }
+}

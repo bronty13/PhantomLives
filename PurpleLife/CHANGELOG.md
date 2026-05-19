@@ -4,6 +4,38 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-19 — Purple Import + Purple Export: Phase 1 (engine skeleton, CSV + JSON, bulk path)
+
+First commit of the **Purple Import / Purple Export** initiative — a generic, wizard-driven import/export engine that becomes the model for the PhantomLives family. The full design is in `~/.claude/plans/cheeky-yawning-giraffe.md`; this commit lands the Phase 1 slice end-to-end.
+
+**What ships today.**
+
+- **Engine boundary.** `Services/PurpleImport/Protocols/PurpleImportSink.swift` + `PurpleImportSourceReader.swift` — app-agnostic protocols. PurpleLife's concrete sink (`Sinks/PurpleLifeSink.swift`) is the only file that knows both the protocol AND `SchemaRegistry` / `ObjectEngine` / `AttachmentService`. Future PhantomLives apps reuse the engine by writing their own sink. No SPM split today per `CLAUDE.md`'s single-target rule.
+- **Two readers.** `Readers/CSVReader.swift` (RFC 4180 — quoting, CRLF normalization, BOM + UTF-16 + Latin-1 fallback encoding chain) and `Readers/JSONReader.swift` (top-level array, NDJSON, nested root path; JSONPath-lite expression syntax: `$`, `.key`, `[n]`, `[*]`, bracket-quoted-key escape).
+- **Centralized coercer.** `Services/FieldValueCoercer.swift` — kind inference from sample values (with the 80%-vote-required-for-non-text rule) + per-value coercion across every `FieldKind`. The `NSNumber`-Bool detection trap (`CFGetTypeID == CFBooleanGetTypeID`) the snapshot service already learned the hard way is centralized here. Date coercion forces UTC on both parse and stringify sides so a "2024-01-15" doesn't drift back to the 14th under local-timezone offset.
+- **Per-file mapping persistence.** `Services/PurpleImport/MappingStore.swift` — one `<uuid>.purplelifemapping.json` per saved mapping under `~/Library/Application Support/PurpleLife/mappings/`, sealed via `EncryptedJSON.safeWrite`. Per the plan's design decision #7 the mappings deliberately do **not** live inside `AppSettings.settings.json` — a malformed mapping must not poison the rest of settings, and per-file storage makes Reveal-in-Finder + drag-drop sharing free.
+- **Bulk insert path.** `ObjectEngine.bulkInsert(typeId:rows:)` — the load-bearing addition flagged in the plan review. Imports above the new `PurpleImport.bulkThreshold` (25 rows) take this path: one transaction (via new `DatabaseService.bulkInsertObjects`), one coalesced undo group, deferred CloudKit fan-out as a single sequential push task, end-of-run FTS pass instead of per-row. Without this, a 5,000-row import would have registered 5,000 undo entries and flooded the CloudKit zone.
+- **Wizard.** `Views/PurpleImport/ImportWizardSheet.swift` + eight step views: pick source / configure source / pick target / new-type-from-source / map fields / preview rows / confirm / run. Step state is a clean `enum ImportStep: Hashable` with terminal payload (`summary`, `lastError`) on the wizard model — split out per the plan's design decision #13. Drag-and-drop via `DropZone.swift`.
+- **Rewritten Settings → Import.** The tab is now the saved-mappings list (backed by `MappingStore.@Published mappings`) + a "+ New mapping" launcher. Per-row actions: Run / Edit / Reveal in Finder / Export Mapping / Duplicate / Delete. The legacy WeightTracker CSV one-shot stays below the new section — a future phase folds it into a built-in mapping.
+- **`SmartImportWizard` retired.** The paste-CSV-for-Weight wizard is gone (replaced by the new wizard's paste affordance in step 1). The underlying `SmartWeightImporter` parser stays — `WeightSettingsTab` still uses it.
+- **`AnyCodable` extraction.** Moved from `PlaintextSnapshotService.swift` to `Services/AnyCodable.swift` so the import codec can reuse it. Behavior identical.
+- **AppState wiring.** New `@Published var mappingStore` + `lazy var purpleImportSink` properties + key-resolver wiring in `wireKeyResolvers()`. `AppSettings` is **not** modified (per design decision #7).
+
+**Format scope today.** CSV + JSON only. The wizard's source-picker shows all seven formats but greys help text for Markdown/XML/Excel/Word/PDF until those readers land in Phases 2–5. Word + PDF will be text-only single-record on first ship per design decision #8.
+
+**`PurpleLifeSink.bulkInsert` contract verified.** New `PurpleLifeSinkBulkTests` pin the architect-reviewed invariants: one coalesced undo entry per batch (regardless of row count), correct row count after the bulk transaction, idempotent on empty input, and upsert-on-key updates the matching row instead of duplicating.
+
+**Tests.** 394/394 green (+53 new in `Tests/PurpleLifeTests/PurpleImport/`):
+
+- `FieldValueCoercerTests` — 18 tests across inference, every supported FieldKind, the Bool-as-NSNumber trap, multi-format date parsing, comma-separator handling, options matching, multi-select splitting, locked unsupported-kind rejection for richText / attachment / link / noteLog.
+- `CSVReaderTests` — 9 tests: header / no-header preview, quoted cells with embedded commas + newlines + escaped quotes, CRLF normalization, UTF-8 BOM stripping, tab-delimited override, Latin-1 encoding fallback, empty input, inferred-kinds surfaced in preview.
+- `JSONReaderTests` — 9 tests: path evaluation (root, dotted, index, bracket-quoted, missing-key error), top-level array reads, nested-root path, NDJSON, preview surfaces top-level keys.
+- `MappingStoreTests` — 7 tests: save/reload round-trip, **malformed file in directory does not poison other entries** (the design-decision-#7 invariant), delete, duplicate, envelope encoding round-trip, bare-payload forward-compat fallback.
+- `PurpleLifeSinkBulkTests` — 5 tests: 5,000-row single-undo-entry, bulk produces all rows, empty bulk is no-op, upsert-on-key updates, plus the per-record path.
+- `ImportRunnerTests` — 3 tests: small import uses per-record path, large import uses bulk path, upsertOnKey forces per-record path regardless of size.
+
+**What's deferred.** Word/PDF readers (Phase 5, text-only); Markdown/XML readers (Phase 2); Excel via CoreXLSX (Phase 3); the full Purple Export wizard (Phase 4); `_tags` ingress (out-of-scope per design decision #12); attachment-field resolution in the runner (placeholder today — runner passes `[]`).
+
 ### 2026-05-16 — Fix: Notes editor wiping plain-only bodies on view; sample-data Notes ship real RTF
 
 Two-layer bug surfaced by today's sample-data work. Sample notes wrote `{"rtf": "", "plain": "..."}`. The Notes editor's load path (`NoteEditorView.loadIfNeeded`) decodes the `rtf` field — not the `plain` mirror — so the editor pane rendered blank. Then SwiftUI's `.onChange(of: attributed)` fires **asynchronously after** `loadIfNeeded` sets `dirty = false`, which calls `markDirty()` (setting `dirty = true` and scheduling a 1.2s autosave). The autosave reads the empty editor and writes `{"rtf": "", "plain": ""}` back to the record — silently wiping the original plain text. Symptom: clicking a sample Note showed an empty editor, the list-row preview disappeared 1.2s later, and the body was permanently lost.

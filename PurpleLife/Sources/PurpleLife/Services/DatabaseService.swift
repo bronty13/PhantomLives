@@ -516,6 +516,21 @@ final class DatabaseService {
         }
     }
 
+    /// Insert many `ObjectRecord` rows in a single transaction. The bulk
+    /// path for Purple Import: one transaction means one GRDB write
+    /// (~10–100x cheaper for thousands of rows) and atomic rollback if
+    /// any row fails. The caller is responsible for stamping timestamps
+    /// + sealing (via `sealForStorage`) on each record before passing
+    /// it in — same contract as `insertObject`.
+    func bulkInsertObjects(_ objects: [ObjectRecord]) throws {
+        guard !objects.isEmpty else { return }
+        try dbPool.write { db in
+            for object in objects {
+                try object.insert(db)
+            }
+        }
+    }
+
     func updateObject(_ object: ObjectRecord) throws {
         var stamped = object
         stamped.updatedAt = Self.isoNow()

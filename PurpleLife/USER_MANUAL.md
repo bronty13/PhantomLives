@@ -370,8 +370,65 @@ The button **Export plaintext snapshot…** writes your entire dataset, decrypte
 
 ### Import
 
-- **Smart Import — Weight (free-form text)** — opens a wizard. Paste any text containing dates and weights — CSV / spreadsheet copy-paste / plain English (`On 3/5/2024 I weighed 182 pounds`) all work. Five date formats recognized: ISO-8601, `MM/DD/YYYY`, `MM-DD-YYYY`, `Jan 15 2024`, `January 15, 2024`. Weight extraction uses plausibility bounds (50-700 lb) and lookarounds so year digits aren't matched as weights. Preview table per parsed row; rows that match an existing Weight day are flagged "dup" and pre-deselected. Imports use `source: "Imported"` for filter consistency.
-- **WeightTracker CSV** — file picker that ingests a WeightTracker export. Header auto-detects lb vs kg; kg → pounds conversion is applied. Per-row errors collect into a report; the run never aborts on a single bad row.
+**Purple Import** is the generic, wizard-driven import engine. Bring data in from external files and graphically map source columns or path expressions to schema fields, with inline schema authoring along the way. Phase 1 ships **CSV** and **JSON** end-to-end; Markdown, XML, Excel, Word, and PDF land in later phases.
+
+#### Saved import mappings
+
+Each saved mapping is its own portable file at `~/Library/Application Support/PurpleLife/mappings/<uuid>.purplelifemapping.json` (encrypted at rest). Per-mapping actions in the Settings → Import list:
+
+- **Run** — re-run the saved mapping against a freshly picked source file. The wizard opens at the source-pick step with the saved choices pre-filled; you can change anything before clicking through.
+- **Edit** — same as Run, but you're explicitly editing.
+- **Reveal in Finder** — surfaces the per-mapping file under `~/Library/Application Support/PurpleLife/mappings/`. The mapping itself rides under PurpleLife's standard encryption envelope; opening it in a text editor on a locked install will show binary.
+- **Export Mapping…** — writes an unencrypted `.purplelifemapping.json` file you can share. Same envelope `SchemaIO` uses (`format` + `exportedAt` + payload).
+- **Duplicate** — clone the mapping with a fresh id and a "(copy)" suffix on the name. Useful for forking a mapping into a slight variant without losing the original.
+- **Delete** — drops the file from disk and the in-memory list.
+
+The list is sorted newest-first by last edit. A separate **Import mapping…** button at the top of the section accepts a `.purplelifemapping.json` file dropped from another Mac or teammate.
+
+#### Wizard flow
+
+Click **+ New mapping…** to open the import wizard:
+
+1. **Pick source** — drag a file onto the drop zone, click to open a file picker, or toggle on **Paste text instead** and paste raw CSV/JSON into the editor. Format is auto-detected from the extension and can be overridden via the segmented picker.
+2. **Configure source** — per-format options. CSV: delimiter + has-header. JSON: root path expression (e.g. `$.results.records`) and an NDJSON toggle for one-object-per-line files.
+3. **Pick target** — either pick an existing schema type from the list, or toggle **Create a new type from this source** to define one inline.
+4. **(If creating)** Name the new type, set its SF Symbol, configure proposed fields (auto-inferred from the source columns/paths), mark per-field required, flip Vault membership if appropriate.
+5. **Map fields** — one row per source column or JSON path → target field key. Per row: source dropdown (tabular) or path text field (tree), target field key, expected kind, error policy (Skip row / Default / Abort). The Reimport behavior dropdown picks **Insert every row** (default) or **Upsert on key field** — when upsert, pick which target field acts as the dedup key.
+6. **Preview rows** — coerced output of the first ~10 source rows. Per-cell OK / Skip / Fail badges with the underlying error available as a tooltip.
+7. **Confirm** — last chance to review. Edit the mapping name; check the source filename, format, target, mapped-field count, and reimport strategy. The footer notes that imports above 25 rows take the bulk path (one coalesced undo entry, deferred CloudKit fan-out, end-of-run search reindex).
+8. **Run** — progress bar; per-row events stream into the model.
+
+Save the mapping any time via the footer's **Save Mapping** button (available from the Confirm step onward); the next run skips the wizard's editing steps unless you change things.
+
+#### Format support
+
+| Format | Status | Notes |
+|---|---|---|
+| **CSV** | Phase 1 | RFC 4180 quoting, CRLF / LF / CR line endings, UTF-8 BOM detection, UTF-16 + Latin-1 fallback, header auto-detect. |
+| **JSON** | Phase 1 | Top-level array, NDJSON, nested root path. JSONPath-lite: `$`, `.key`, `[n]`, `[*]`, `["bracketed key"]`. |
+| Markdown | Phase 2 | Table extraction + YAML frontmatter. |
+| XML | Phase 2 | Same path-expression syntax as JSON. |
+| Excel (.xlsx) | Phase 3 | Sheet + range picker. |
+| Word (.docx) | Phase 5 | Text-only single record (no table extraction in v1). |
+| PDF | Phase 5 | Text-only single record (no table extraction in v1). |
+
+#### Field-kind coercion + inference
+
+When the wizard previews a source, it samples up to a few hundred values per column and votes for the best `FieldKind` (number, boolean, date, etc.). A non-text classification requires ≥80% of non-empty samples to match — a single typo doesn't drag a clean numeric column into text. Per-cell coercion supports:
+
+- **Boolean** — `true`/`false`/`yes`/`no`/`1`/`0`/`t`/`f`/`y`/`n`, case-insensitive.
+- **Number** — Swift `Double` parsing; strips comma thousands separators (`1,234.5`).
+- **Date** — ISO-8601 (with or without fractional seconds), `yyyy-MM-dd`, `yyyy/MM/dd`, `M/d/yyyy`, `MM/dd/yyyy`. Normalized to UTC on both ends so values don't drift across timezones.
+- **Date-time** — ISO-8601 with `T`.
+- **Rating** — clipped to 0–5.
+- **Select / Multi-select** — matches option names case-insensitively, falls through to raw text if no option matches. Multi-select splits on `,`, `;`, or `|`.
+- **URL / Email / Text / Long text** — passthrough.
+
+Rich text, note logs, attachments, and links can't be coerced from raw primitives — the wizard's preview step flags those as failures so the user can re-map.
+
+#### Legacy: WeightTracker CSV
+
+The original WeightTracker CSV one-shot still lives in Settings → Import below the new section. It bypasses Purple Import for now and goes directly through `WeightCSVImporter` (auto-detects lb vs kg, applies kg → pounds conversion, never aborts on a single bad row). A future phase folds it into a built-in Purple Import mapping.
 
 ### Export
 
