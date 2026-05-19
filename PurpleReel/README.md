@@ -32,6 +32,13 @@ migrating off Kyno onto PurpleReel:
   repo — every issue, every feature request, every release note
   is in one place, searchable, permanent.
 
+**Migrating?** See
+[`MIGRATING_FROM_KYNO.md`](MIGRATING_FROM_KYNO.md) for a step-by-
+step walkthrough: setting up your workspace, importing your
+existing Kyno metadata via `.LP_Store/` sidecars, round-tripping
+with Final Cut via FCPXML, the daily DIT camera-card workflow,
+and the Kyno → PurpleReel keyboard-shortcut mapping.
+
 ## Features
 
 - **Browser** — Finder-rooted recursive scan with hover-scrub thumbnails

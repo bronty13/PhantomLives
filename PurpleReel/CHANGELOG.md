@@ -17,6 +17,38 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C39 — Docs: parity-roadmap refresh + Migrating-from-Kyno guide
+
+No-code release. Two doc deliverables:
+
+**Item 13 — `KYNO_PARITY_ROADMAP.md` refresh.** The roadmap was
+last-updated at the end of Sprint 4 ("status: complete"). C21–C38
+added a meaningful pile of follow-ups (Combine Clips maturation,
+discoverability sweep, workflow chain run resumption, workspace
+cache age-based eviction, per-clip LUT pinning, …). C39 appends a
+"Post-parity polish (C21–C38)" section with cross-references to
+the relevant CHANGELOG entries — keeps the doc trustworthy as a
+status snapshot. Also updates the Frame.io entry under "items
+that fell out of scope" to reflect C38's review-preset addition.
+
+**Item 14 — `MIGRATING_FROM_KYNO.md` (NEW).** A step-by-step
+walkthrough for the Kyno user evaluating PurpleReel:
+1. First launch — workspace setup + Permissions Wizard.
+2. Bringing in `.LP_Store/` metadata (one-way, merge rules
+   spelled out).
+3. Round-trip with Final Cut via FCPXML (C25's per-project
+   tracking gets a mention).
+4. Camera-card workflow (workflow chain templates from C33 +
+   run resumption from C34).
+5. Keyboard-shortcut mapping (Coming from Kyno toggle + table).
+6. Deliberate differences (centralized catalog, no live-waveform-
+   on-import, no `.fcpbundle` introspection, Apple Silicon
+   native).
+7. On-disk file locations cheat-sheet.
+
+README's "Why PurpleReel (vs Kyno)" section gains a paragraph
+pointing at the new doc.
+
 ### C38 — FCPXML destination picker + Frame.io review preset
 
 Two unrelated mediums bundled.
