@@ -17,6 +17,68 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C2 — Extended preset catalog (~50 new presets)
+
+`Sources/PurpleReel/Models/PresetCatalog.swift` ships a curated
+extended catalog wired into `TranscodePreset.combined()` so the
+right-click Convert / Combine / Export Subclips menus immediately
+gain Kyno-shaped coverage across all 8 categories:
+
+- **Audio (10)**: Wav 16/24/32, AIFF 16/32, M4A 128/192/256,
+  MP3 128/256. All ffmpeg-routed with `-vn` so no video stream
+  leaks into the audio container.
+- **Distribution extras (6)**: H.264 480p, HEVC 4K UHD, Flash
+  Video (FLV), WMV HQ, WebM VP8/Vorbis, WebM VP9/Vorbis.
+- **DNxHD (10)**: bitrate ladder × framerates DITs actually
+  deliver (23.98 / 25 / 29.97 / 50 / 59.94 fps at 115-440 Mbps).
+- **DNxHR (9)**: HQ + HQX + 444 across UHD and 4K at 23.98 /
+  29.97 / 50 fps. ffmpeg's `dnxhr_*` profiles are resolution-
+  independent; the menu name carries the resolution for legibility.
+- **Editing extras (6)**: ProRes 422 HQ / LT / Proxy / 4444
+  (via ffmpeg `prores_ks` profile 0-4; AVAssetExportSession
+  doesn't expose these as preset constants on macOS), Photo
+  JPEG, V210 Uncompressed.
+- **Proxies (7)**: H.264 Web Proxy 1080/720/540 × LQ/HQ,
+  ProRes Editing Proxy 1080/720. Augments the existing
+  smart-proxy half/quarter.
+- **Web extras (2)**: HEVC 8K UHD (via Highest Quality preset),
+  HEVC 720p.
+- **Rewrap variants (2)**: Rewrap to MOV, Rewrap to MXF.
+
+Every preset is executable today — Apple-native codecs (H.264 /
+HEVC) use AVAssetExportSession preset names; everything else
+uses ffmpeg with the same `{IN}` / `{OUT}` placeholder
+substitution the existing built-ins use.
+
+Curated, not exhaustive. Kyno ships ~28 DNxHD and ~30 DNxHR
+variants; the long-tail entries are 1-2-per-decade deliveries
+that we can surface via "Save as Preset…" once C4 lands.
+
+9 new tests (`PresetCatalogTests`):
+- Catalog ships non-empty
+- IDs disjoint from legacy `TranscodePreset.all`
+- IDs unique within catalog
+- Every TranscodeCategory has ≥1 preset (so no submenu collapses)
+- `combined()` is a strict superset of `all` + extended
+- Every preset is executable (has avPresetName OR ffmpegArgs)
+- All ffmpeg recipes carry `{IN}` / `{OUT}` placeholders
+- Audio presets all include `-vn` (no video stream)
+- Extended catalog reports `isCustom = true` (since IDs aren't
+  in `builtInIDs` — pinned behavior for this commit)
+
+No menu code changed — `AssetContextMenu.convertSubmenuContents`
+already iterates `TranscodeCategory.allCases` and calls
+`TranscodePreset.byCategory(_:)`, which routes through
+`combined()`. So the new presets auto-surface in the right
+submenus. Right-click any clip → Convert / Combine / Export
+Subclips submenus now show the full Kyno-style tree.
+
+C3 next: rebuild TranscodeJob to read TranscodeOptions directly
+so per-channel Copy/Re-encode + filter chain + per-channel
+settings dialogs can drive the runtime.
+
+---
+
 ### C1 — TranscodeOptions composable model
 
 New `Sources/PurpleReel/Models/TranscodeOptions.swift` introduces the

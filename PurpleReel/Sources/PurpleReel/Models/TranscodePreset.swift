@@ -95,11 +95,13 @@ struct TranscodePreset: Identifiable, Hashable, Codable {
         "cineform", "mxf-prores",
     ]
 
-    /// Built-ins plus user customs. Used by `byCategory(_:)` and
-    /// `find(id:)`. Built-ins always come first so user customs sort
-    /// after the canonical presets in any category submenu.
+    /// Built-ins plus the extended catalog (PresetCatalog) plus user
+    /// customs. Used by `byCategory(_:)` and `find(id:)`. The legacy
+    /// `all` list comes first so the ⌘1..⌘0 menu indices and any
+    /// previously-pinned MRU IDs keep pointing at the same presets;
+    /// PresetCatalog.extended slots after; user customs come last.
     static func combined() -> [TranscodePreset] {
-        all + CustomPresets.load()
+        all + PresetCatalog.extended + CustomPresets.load()
     }
 
     static func byCategory(_ cat: TranscodeCategory) -> [TranscodePreset] {
