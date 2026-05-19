@@ -100,7 +100,14 @@ struct ConfigureSourceStep: View {
     }
 
     private func tabularPreview(columns: [String], rows: [PurpleImport.SourceRow]) -> some View {
-        ScrollView([.horizontal, .vertical]) {
+        // Probe once per render — cheap, samples are at most 10 rows.
+        // A column whose values are mostly integers in the Excel-date
+        // window gets a date-hint treatment in the cell renderer
+        // ("2019-01-13" primary, raw serial below). Gated on XLSX
+        // source so a CSV column of small integers doesn't get
+        // randomly reinterpreted.
+        let dateLikeColumns = computeDateLikeColumns(columns: columns, rows: rows)
+        return ScrollView([.horizontal, .vertical]) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 0) {
                     Text("#")
@@ -109,12 +116,20 @@ struct ConfigureSourceStep: View {
                         .frame(width: 32, alignment: .leading)
                         .padding(.horizontal, 6).padding(.vertical, 4)
                     ForEach(columns, id: \.self) { col in
-                        Text(col)
-                            .font(.caption.weight(.semibold)).textCase(.uppercase)
-                            .tracking(0.4).foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                            .frame(width: 140, alignment: .leading)
-                            .padding(.horizontal, 6).padding(.vertical, 4)
+                        HStack(spacing: 4) {
+                            Text(col)
+                                .font(.caption.weight(.semibold)).textCase(.uppercase)
+                                .tracking(0.4).foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                            if dateLikeColumns.contains(col) {
+                                Image(systemName: "calendar")
+                                    .font(.caption2)
+                                    .foregroundStyle(Color.accentColor.opacity(0.7))
+                                    .help("Looks like Excel-date serial numbers — map this column with Kind = Date to import as dates.")
+                            }
+                        }
+                        .frame(width: 140, alignment: .leading)
+                        .padding(.horizontal, 6).padding(.vertical, 4)
                     }
                 }
                 .background(Color.secondary.opacity(0.08))
@@ -127,17 +142,82 @@ struct ConfigureSourceStep: View {
                             .frame(width: 32, alignment: .leading)
                             .padding(.horizontal, 6).padding(.vertical, 3)
                         ForEach(columns, id: \.self) { col in
-                            Text(cellString(row.cell(at: .column(col))))
-                                .font(.caption)
-                                .lineLimit(1).truncationMode(.tail)
-                                .frame(width: 140, alignment: .leading)
-                                .padding(.horizontal, 6).padding(.vertical, 3)
+                            cellView(
+                                raw: cellString(row.cell(at: .column(col))),
+                                dateLike: dateLikeColumns.contains(col)
+                            )
                         }
                     }
                     Divider().opacity(0.3)
                 }
             }
         }
+    }
+
+    /// Renders one cell. For date-like XLSX columns, surfaces the
+    /// converted date as the primary text and the raw serial below
+    /// in a tertiary style. Otherwise a plain truncated string.
+    @ViewBuilder
+    private func cellView(raw: String, dateLike: Bool) -> some View {
+        if dateLike, let dateStr = excelDateHint(for: raw) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(dateStr)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.primary)
+                Text(raw)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+            }
+            .frame(width: 140, alignment: .leading)
+            .padding(.horizontal, 6).padding(.vertical, 3)
+        } else {
+            Text(raw)
+                .font(.caption)
+                .lineLimit(1).truncationMode(.tail)
+                .frame(width: 140, alignment: .leading)
+                .padding(.horizontal, 6).padding(.vertical, 3)
+        }
+    }
+
+    /// Per-column "is this an Excel-date-serial column?" detection.
+    /// Empty when the source isn't XLSX, or when fewer than 80% of
+    /// the column's non-empty values are integers in 25000..100000
+    /// (roughly 1968 through 2173 — well within any realistic
+    /// modern Excel date workbook).
+    private func computeDateLikeColumns(columns: [String], rows: [PurpleImport.SourceRow]) -> Set<String> {
+        guard model.draft.sourceFormat == .xlsx else { return [] }
+        var out: Set<String> = []
+        for col in columns {
+            let raws = rows.compactMap { row -> String? in
+                guard let v = row.cell(at: .column(col)) else { return nil }
+                let s = (v as? String) ?? String(describing: v)
+                let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : trimmed
+            }
+            guard !raws.isEmpty else { continue }
+            let serialLike = raws.filter { s in
+                guard let n = Double(s) else { return false }
+                return n >= 25_000 && n <= 100_000 && n == n.rounded()
+            }.count
+            if Double(serialLike) / Double(raws.count) >= 0.8 {
+                out.insert(col)
+            }
+        }
+        return out
+    }
+
+    /// Excel-serial → ISO-date hint. Defers to the shared coercer so
+    /// the math (1899-12-30 base, leap-year quirk) stays in one
+    /// place. Returns nil when the raw value isn't a serial-shaped
+    /// number.
+    private func excelDateHint(for raw: String) -> String? {
+        guard let n = Double(raw), n >= 1, n <= 100_000 else { return nil }
+        guard let date = FieldValueCoercer.asDate(raw) else { return nil }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: date)
     }
 
     private func treePreview(paths: [String], rows: [PurpleImport.SourceRow]) -> some View {

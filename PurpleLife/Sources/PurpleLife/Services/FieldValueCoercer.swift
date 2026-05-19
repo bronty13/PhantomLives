@@ -299,8 +299,10 @@ enum FieldValueCoercer {
     }
 
     /// Tries ISO-8601 (with and without fractional seconds), then
-    /// `yyyy-MM-dd`, then a few common slash-separated forms. Returns
-    /// nil if nothing matches.
+    /// `yyyy-MM-dd`, then a few common slash-separated forms. As a
+    /// final fallback, if the input is a numeric value in the Excel
+    /// date-serial range, treat it as a serial (days since
+    /// 1899-12-30). Returns nil if nothing matches.
     static func asDate(_ v: Any) -> Date? {
         if let d = v as? Date { return d }
         let s = stringValue(v).trimmingCharacters(in: .whitespaces)
@@ -320,7 +322,38 @@ enum FieldValueCoercer {
             f.dateFormat = fmt
             if let d = f.date(from: s) { return d }
         }
+
+        // Excel-serial fallback. Pivot tables and certain other
+        // workbook shapes drop the date number-format from the
+        // underlying cells, so XLSXReader's style-aware date
+        // conversion misses them and we end up seeing values like
+        // "43478" land here. Range gate: 1..100000 covers
+        // 1900-01-01 through 2173, which more than covers any
+        // realistic spreadsheet date. Below 1 we'd map to negative
+        // dates; above 100000 it's almost certainly a real number.
+        if let serial = Double(s), serial >= 1, serial <= 100_000 {
+            return dateFromExcelSerial(serial)
+        }
         return nil
+    }
+
+    /// Excel's day count starts at 1899-12-30 (the offset that
+    /// reconciles the 1900-leap-year bug). Fractional part is the
+    /// time of day. UTC throughout — same as `asDate`'s other paths.
+    private static func dateFromExcelSerial(_ serial: Double) -> Date? {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        guard let epoch = cal.date(from: DateComponents(
+            timeZone: TimeZone(identifier: "UTC"),
+            year: 1899, month: 12, day: 30
+        )) else { return nil }
+        let wholeDays = Int(serial.rounded(.towardZero))
+        let fractional = serial - Double(wholeDays)
+        guard let dayDate = cal.date(byAdding: .day, value: wholeDays, to: epoch) else {
+            return nil
+        }
+        let seconds = Int((fractional * 86_400).rounded())
+        return dayDate.addingTimeInterval(TimeInterval(seconds))
     }
 
     private static func matchesRegex(_ s: String, pattern: String) -> Bool {

@@ -87,6 +87,11 @@ final class XLSXReader: PurpleImportSourceReader {
     private struct ParsedWorkbook {
         let worksheet: Worksheet
         let sharedStrings: SharedStrings?
+        /// styleIndex values whose number-format is a date / time /
+        /// date-time. Populated from `Styles.cellFormats` + a lookup
+        /// into `Styles.numberFormats` (and the OOXML built-in IDs).
+        /// Empty when no styles are present.
+        let dateStyleIndices: Set<Int>
     }
 
     private func loadWorkbook(_ source: PurpleImport.SourceInput) throws -> ParsedWorkbook {
@@ -107,7 +112,71 @@ final class XLSXReader: PurpleImportSourceReader {
         }
         let worksheet = try file.parseWorksheet(at: chosen.path)
         let sharedStrings = try? file.parseSharedStrings()
-        return ParsedWorkbook(worksheet: worksheet, sharedStrings: sharedStrings)
+        let styles = try? file.parseStyles()
+        let dateStyleIndices = Self.detectDateStyleIndices(in: styles)
+        return ParsedWorkbook(
+            worksheet: worksheet,
+            sharedStrings: sharedStrings,
+            dateStyleIndices: dateStyleIndices
+        )
+    }
+
+    /// OOXML built-in numFmtIds whose format is a date/time. The spec
+    /// reserves a small range for these; anything ≥ 164 is a custom
+    /// format whose actual `formatCode` we have to inspect.
+    private static let builtInDateFormatIDs: Set<Int> = [
+        14, 15, 16, 17,        // m/d/yyyy, d-mmm-yy, d-mmm, mmm-yy
+        18, 19, 20, 21,        // h:mm AM/PM, h:mm:ss AM/PM, h:mm, h:mm:ss
+        22,                    // m/d/yyyy h:mm
+        45, 46, 47             // mm:ss, [h]:mm:ss, mm:ss.0
+    ]
+
+    /// Walks `Styles.cellFormats` and returns the set of cell-format
+    /// indices (the value cells refer to via `styleIndex`) whose
+    /// number-format is a date / time. Two sources: built-in ID
+    /// range, and custom format codes whose `formatCode` matches
+    /// date-token heuristics.
+    static func detectDateStyleIndices(in styles: Styles?) -> Set<Int> {
+        guard let styles, let cellFormats = styles.cellFormats else { return [] }
+        // Map numFmtId → formatCode for custom (≥ 164) formats. The
+        // built-in IDs don't appear here; the spec implies them.
+        let customCodes: [Int: String] = (styles.numberFormats?.items ?? [])
+            .reduce(into: [:]) { acc, nf in acc[nf.id] = nf.formatCode }
+
+        var indices: Set<Int> = []
+        for (cellFormatIndex, fmt) in cellFormats.items.enumerated() {
+            let fid = fmt.numberFormatId
+            if Self.builtInDateFormatIDs.contains(fid) {
+                indices.insert(cellFormatIndex)
+            } else if let code = customCodes[fid], isLikelyDateFormatCode(code) {
+                indices.insert(cellFormatIndex)
+            }
+        }
+        return indices
+    }
+
+    /// Excel custom format codes use `y`/`m`/`d`/`h`/`s` tokens for
+    /// date and time parts. The minimal heuristic: any of those
+    /// tokens outside a literal-string segment marks it as a date.
+    /// We strip quoted literals and bracketed conditionals (e.g.
+    /// `[Red]`, `[$-409]`) before checking, otherwise a currency
+    /// code containing `d` (USD) would false-positive.
+    static func isLikelyDateFormatCode(_ code: String) -> Bool {
+        // Strip "..." / '...' quoted literals.
+        var s = code
+        s = s.replacingOccurrences(of: "\"[^\"]*\"", with: "", options: .regularExpression)
+        s = s.replacingOccurrences(of: "'[^']*'", with: "", options: .regularExpression)
+        // Strip [bracketed] directives.
+        s = s.replacingOccurrences(of: "\\[[^\\]]*\\]", with: "", options: .regularExpression)
+        let lower = s.lowercased()
+        // y is unambiguous; mm/dd/hh/ss only when paired with another
+        // date/time token nearby. The cheap test: just look for any
+        // of the unambiguous date markers.
+        if lower.contains("y") { return true }   // yyyy / yy / y
+        if lower.contains("d") && lower.contains("m") { return true }  // d-m, dd-mm, m/d
+        if lower.contains("h") && lower.contains(":") { return true }  // h:mm
+        if lower.contains("am/pm") { return true }
+        return false
     }
 
     private func makeFile(_ source: PurpleImport.SourceInput) throws -> XLSXFile {
@@ -162,7 +231,10 @@ final class XLSXReader: PurpleImportSourceReader {
            let hRow = allRows.first(where: { $0.reference == UInt(headerRowVal) }) {
             for cell in hRow.cells {
                 let colRef = cell.reference.column.value
-                let label = stringValue(of: cell, sharedStrings: parsed.sharedStrings)
+                // Headers are always treated as strings — even if a
+                // workbook has stuck a date style on the header row,
+                // we want "Weight (kg)" not "2024-01-15".
+                let label = stringValue(of: cell, sharedStrings: parsed.sharedStrings, dateStyles: [])
                 if !label.isEmpty { headers[colRef] = label }
             }
         }
@@ -208,7 +280,11 @@ final class XLSXReader: PurpleImportSourceReader {
             for cell in row.cells {
                 let letter = cell.reference.column.value
                 guard let label = labelByLetter[letter] else { continue }
-                rec[label] = stringValue(of: cell, sharedStrings: parsed.sharedStrings)
+                rec[label] = stringValue(
+                    of: cell,
+                    sharedStrings: parsed.sharedStrings,
+                    dateStyles: parsed.dateStyleIndices
+                )
             }
             // Skip fully-empty rows so trailing blank lines don't
             // generate empty records.
@@ -221,15 +297,63 @@ final class XLSXReader: PurpleImportSourceReader {
 
     // MARK: - Cell decoding
 
-    private func stringValue(of cell: Cell, sharedStrings: SharedStrings?) -> String {
-        // `cell.stringValue(_:)` requires non-optional SharedStrings;
-        // when nil, fall through to `cell.value` (the raw stored
-        // numeric string) or an inline string.
+    private func stringValue(of cell: Cell, sharedStrings: SharedStrings?, dateStyles: Set<Int>) -> String {
+        // Excel-date cells: numeric value + a date number-format
+        // style. Convert the serial to an ISO date string here so
+        // downstream coercion to `.date` / `.dateTime` works without
+        // each consumer having to know about Excel serials.
+        if let styleIndex = cell.styleIndex,
+           dateStyles.contains(styleIndex),
+           let raw = cell.value,
+           let serial = Double(raw) {
+            return Self.isoStringFromExcelSerial(serial)
+        }
+        // Regular string lookup. `cell.stringValue(_:)` requires
+        // non-optional SharedStrings; when nil, fall through to
+        // `cell.value` (raw stored numeric or inline) or
+        // `inlineString.text`.
         if let shared = sharedStrings, let s = cell.stringValue(shared) {
             return s
         }
         if let inline = cell.inlineString?.text { return inline }
         return cell.value ?? ""
+    }
+
+    /// Excel stores dates as days since 1899-12-30 (the offset that
+    /// reconciles the famous 1900-leap-year bug). Fractional part is
+    /// the time of day (0.5 = noon). Returns:
+    ///   • "yyyy-MM-dd"               when there's no fractional part
+    ///   • "yyyy-MM-ddTHH:mm:ssZ"      when there is one
+    /// Mac-style 1904 workbooks aren't auto-detected — Excel for Mac
+    /// has used the 1900 base since 2008, so the 1904 system is rare
+    /// in real-world files. If a user reports off-by-1462 days we
+    /// add the option then.
+    static func isoStringFromExcelSerial(_ serial: Double) -> String {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let epoch = cal.date(from: DateComponents(
+            timeZone: TimeZone(identifier: "UTC"),
+            year: 1899, month: 12, day: 30
+        )) ?? Date(timeIntervalSince1970: 0)
+        let wholeDays = Int(serial.rounded(.towardZero))
+        let fractional = serial - Double(wholeDays)
+        guard let date = cal.date(byAdding: .day, value: wholeDays, to: epoch) else {
+            return String(serial)
+        }
+        if fractional == 0 {
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.timeZone = TimeZone(identifier: "UTC")
+            f.dateFormat = "yyyy-MM-dd"
+            return f.string(from: date)
+        }
+        // Add fractional-day seconds.
+        let secondsInDay = 86_400
+        let extraSeconds = Int((fractional * Double(secondsInDay)).rounded())
+        let withTime = date.addingTimeInterval(TimeInterval(extraSeconds))
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f.string(from: withTime)
     }
 
     private func isEmptyValue(_ v: Any) -> Bool {

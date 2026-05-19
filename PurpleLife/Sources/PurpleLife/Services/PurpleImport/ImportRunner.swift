@@ -89,13 +89,37 @@ final class ImportRunner {
                         uniqueKeysWithValues: typeFields.map { ($0.key, $0.options) }
                     )
 
+                    // For new-type imports, the user defined the
+                    // field kinds in step 3a. Those kinds are
+                    // authoritative — the auto-inferred kind on the
+                    // mapping row (which was derived from raw sample
+                    // values, e.g. .number for an Excel-serial date
+                    // column) would otherwise win during coercion
+                    // and the field would land as the wrong type. Sync
+                    // the mapping kinds to the target field kinds
+                    // here whenever we own the type definition.
+                    let effectiveMappings: [SavedImportMapping.FieldMapping]
+                    if self.mapping.newTypeTemplate != nil {
+                        let kindByKey = Dictionary(
+                            uniqueKeysWithValues: typeFields.map { ($0.key, $0.kind) }
+                        )
+                        effectiveMappings = self.mapping.fieldMappings.map { m in
+                            guard let kind = kindByKey[m.targetKey] else { return m }
+                            var updated = m
+                            updated.expectedKind = kind
+                            return updated
+                        }
+                    } else {
+                        effectiveMappings = self.mapping.fieldMappings
+                    }
+
                     var coercedRows: [[String: Any]] = []
                     var coercionFailures: [(Int, String)] = []
                     for (i, row) in rows.enumerated() {
                         if Task.isCancelled { break }
                         switch self.coerceRow(
                             row,
-                            mappings: self.mapping.fieldMappings,
+                            mappings: effectiveMappings,
                             fieldOptions: fieldOptions
                         ) {
                         case .accepted(let dict):

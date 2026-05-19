@@ -96,6 +96,22 @@ final class FieldValueCoercerTests: XCTestCase {
         }
     }
 
+    func testCoerceDateFromExcelSerial() {
+        // 43478 days from 1899-12-30 = 2019-01-13 (verified against
+        // openpyxl.utils.datetime.from_excel). Pivot tables and some
+        // workbook shapes drop date number-formatting from the
+        // underlying cells, so XLSXReader can't always tag the cell
+        // as a date — coercion has to recover.
+        if case .value(let v) = FieldValueCoercer.coerce("43478", to: .date) {
+            XCTAssertEqual(v as? String, "2019-01-13")
+        } else { XCTFail() }
+        // Below the 1..100000 gate stays unparsed.
+        if case .failure = FieldValueCoercer.coerce("0", to: .date) { /* ok */ }
+        else { XCTFail("0 should not be treated as Excel serial") }
+        if case .failure = FieldValueCoercer.coerce("999999", to: .date) { /* ok */ }
+        else { XCTFail("999999 should not be treated as Excel serial") }
+    }
+
     func testCoerceDateFromMultipleFormats() {
         for s in ["2024-01-15", "2024/01/15", "1/15/2024", "01/15/2024"] {
             if case .value(let v) = FieldValueCoercer.coerce(s, to: .date) {

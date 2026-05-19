@@ -45,11 +45,12 @@ struct MapFieldsStep: View {
 
     private var headerRow: some View {
         HStack(spacing: 8) {
-            label("Source", width: 220)
+            label("Source", width: 180)
+            label("Sample", width: 220)
             label("→", width: 16)
             label("Target field key", width: 180)
-            label("Kind", width: 140)
-            label("On error", width: 130)
+            label("Kind", width: 130)
+            label("On error", width: 110)
             Spacer()
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
@@ -68,6 +69,8 @@ struct MapFieldsStep: View {
     private func mappingRow(index: Int) -> some View {
         HStack(spacing: 8) {
             sourceField(index: index)
+                .frame(width: 180, alignment: .leading)
+            sampleValues(forMappingAt: index)
                 .frame(width: 220, alignment: .leading)
             Text("→").foregroundStyle(.tertiary).frame(width: 16)
             TextField(
@@ -89,7 +92,7 @@ struct MapFieldsStep: View {
                 }
             }
             .labelsHidden()
-            .frame(width: 140)
+            .frame(width: 130)
             Picker("", selection: Binding(
                 get: { model.draft.fieldMappings[index].onError },
                 set: { model.draft.fieldMappings[index].onError = $0 }
@@ -99,7 +102,7 @@ struct MapFieldsStep: View {
                 Text("Abort").tag(SavedImportMapping.OnError.abort)
             }
             .labelsHidden()
-            .frame(width: 130)
+            .frame(width: 110)
             Spacer()
             Button {
                 model.draft.fieldMappings.remove(at: index)
@@ -109,6 +112,47 @@ struct MapFieldsStep: View {
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 12).padding(.vertical, 6)
+    }
+
+    /// Renders the first 3 sample values from the preview for this
+    /// mapping's source locator. The whole point of this step is to
+    /// know what column B *contains*, not just that it's column B —
+    /// without this readout the user is mapping blind.
+    @ViewBuilder
+    private func sampleValues(forMappingAt index: Int) -> some View {
+        let locator = model.draft.fieldMappings[index].source
+        let samples = collectSamples(at: locator, maxCount: 3)
+        if samples.isEmpty {
+            Text("—")
+                .font(.caption.italic())
+                .foregroundStyle(.tertiary)
+        } else {
+            Text(samples.joined(separator: " · "))
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .help(samples.joined(separator: "\n"))
+        }
+    }
+
+    private func collectSamples(at locator: PurpleImport.SourceLocator, maxCount: Int) -> [String] {
+        guard let rows = model.preview?.sampleRows else { return [] }
+        var out: [String] = []
+        for row in rows {
+            guard let value = row.cell(at: locator) else { continue }
+            let s = stringValue(value).trimmingCharacters(in: .whitespacesAndNewlines)
+            if s.isEmpty { continue }
+            out.append(s)
+            if out.count >= maxCount { break }
+        }
+        return out
+    }
+
+    private func stringValue(_ v: Any) -> String {
+        if let s = v as? String { return s }
+        if v is NSNull { return "" }
+        return String(describing: v)
     }
 
     @ViewBuilder
