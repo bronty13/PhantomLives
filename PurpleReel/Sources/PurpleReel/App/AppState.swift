@@ -195,6 +195,45 @@ final class AppState: ObservableObject {
         var direct: Int
         var nested: Int
     }
+    // MARK: - Silent-gotcha computeds (C29 / C31)
+
+    /// C31 — workspace roots whose paths don't resolve on the
+    /// filesystem (drive ejected, network share dropped, volume
+    /// renamed mid-session). Banner in BrowserView surfaces this so
+    /// the user sees why catalogued assets from that root are
+    /// suddenly unreadable.
+    var offlineWorkspaceRoots: [URL] {
+        let fm = FileManager.default
+        return workspaceRoots.filter { !fm.fileExists(atPath: $0.path) }
+    }
+
+    /// C31 — count of catalogued assets that don't exist on disk
+    /// right now. Drives the "stale catalogue" banner threshold.
+    var catalogueOfflineCount: Int {
+        max(0, assets.count - onlinePaths.count)
+    }
+
+    /// C31 — fraction of catalogue that's currently offline.
+    /// Returns 0 for empty catalogues (avoids the divide-by-zero +
+    /// avoids surfacing the banner on a fresh-install state where
+    /// the user hasn't scanned anything yet).
+    var catalogueOfflineFraction: Double {
+        guard !assets.isEmpty else { return 0 }
+        return Double(catalogueOfflineCount) / Double(assets.count)
+    }
+
+    /// C31 — workspace roots that exist on disk but PurpleReel
+    /// can't enumerate (Files & Folders / Full Disk Access not
+    /// granted, removable-volumes not authorized for new device).
+    /// Probes via `PermissionsCheck.canRead(path:)`.
+    var permissionDeniedWorkspaceRoots: [URL] {
+        let fm = FileManager.default
+        return workspaceRoots.filter { root in
+            fm.fileExists(atPath: root.path)
+                && !PermissionsCheck.canRead(path: root.path)
+        }
+    }
+
     func folderCounts(forFolder folder: String) -> FolderCounts {
         let canonical = Self.canonicalizeBootVolumePath(folder)
         let normalized = (canonical as NSString).standardizingPath

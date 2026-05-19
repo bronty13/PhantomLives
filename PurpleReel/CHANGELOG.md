@@ -17,6 +17,62 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C31 — Silent-gotcha sweep #2: workspace + catalogue banners
+
+Sibling of C21 / C29. Surfaces four more "the UI is technically
+correct but the user has no idea why it's behaving this way"
+states with inline banners + a toolbar caption.
+
+**AppState** — three new computeds + one PermissionsCheck change:
+- `offlineWorkspaceRoots: [URL]` — workspace roots whose paths
+  don't resolve on disk right now.
+- `catalogueOfflineCount: Int` and
+  `catalogueOfflineFraction: Double` — how much of the catalogue
+  is currently unreachable.
+- `permissionDeniedWorkspaceRoots: [URL]` — roots that exist but
+  PurpleReel can't enumerate (Files & Folders / FDA not granted).
+- `PermissionsCheck.canRead(path:)` is now public so the AppState
+  computed can probe arbitrary user-chosen folders.
+
+**BrowserView** — four new surfaces stacked below the toolbar
+Divider, each self-suppressing:
+
+1. **`offlineWorkspaceRootsBanner`** — red strip,
+   externaldrive.badge.xmark icon. Lists the offline roots and
+   shows a "Reconnect…" button that opens an NSOpenPanel and
+   swaps the stale URL in `workspaceRoots` for the new mount
+   point. Triggers a rescan automatically.
+
+2. **`permissionsBanner`** — orange strip, lock.fill icon. Fires
+   when a workspace root exists per FileManager but
+   `contentsOfDirectory` throws. "Open System Settings…" jumps
+   straight to Files & Folders pane.
+
+3. **`staleCatalogueBanner`** — yellow strip, questionmark.folder
+   icon. Threshold: ≥5 offline assets AND ≥10% of total catalogue
+   AND offline-workspace-roots banner isn't already explaining
+   the loss. "Rescan" + "Find Lost Metadata…" actions wire to
+   existing AppState methods.
+
+4. **`multiRootSummary`** — small toolbar-end caption
+   `rectangle.stack  N/M ✗` (online / total + red drive icon
+   when any offline). Only when `workspaceRoots.count >= 2`.
+
+**Thresholds chosen for signal/noise**:
+- Stale-catalogue: ≥5 + ≥10% avoids firing on tiny 3-asset
+  workspaces where one offline = 33%.
+- Stale-catalogue suppressed when offlineWorkspaceRoots > 0 —
+  the offline-roots banner already explains the same loss.
+- Multi-root caption only at ≥2 roots: single-root is the
+  assumed default UX; one root with no caption is silent.
+
+No unit tests — all four are state inspection + UI render; the
+detection helpers are thin wrappers over FileManager.fileExists
+and PermissionsCheck.canRead(path:). Manual QA: eject a drive
+that hosts a workspace root → red banner; deny PurpleReel's
+Files & Folders permission for a Movies folder → orange banner;
+delete a chunk of catalogued files → yellow banner.
+
 ### C30 — Per-clip Camera + Creative LUT pinning
 
 Deferred from C5. Camera LUT and Creative LUT are conceptually

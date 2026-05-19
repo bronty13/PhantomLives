@@ -55,6 +55,14 @@ struct BrowserView: View {
         VStack(spacing: 0) {
             browserToolbar
             Divider()
+            // C31 — silent-gotcha banners stacked vertically. Each is
+            // self-suppressing (hidden when its condition doesn't
+            // apply); order is by user-impact: offline workspace
+            // roots first, then permission-denied roots, then stale-
+            // catalogue, then C21's drilldown hint.
+            offlineWorkspaceRootsBanner
+            permissionsBanner
+            staleCatalogueBanner
             drilldownHintBanner
             Group {
                 if appState.rootFolder == nil {
@@ -156,6 +164,14 @@ struct BrowserView: View {
                             .foregroundStyle(.secondary).font(.caption)
                             .lineLimit(1)
                             .fixedSize(horizontal: true, vertical: false)
+                    }
+                    // C31 — multi-root workspace summary. Only
+                    // surfaces when 2+ roots are configured (single
+                    // root is the assumed default; no caption
+                    // needed). Online/offline split based on
+                    // FileManager.fileExists at render time.
+                    if appState.workspaceRoots.count >= 2 {
+                        multiRootSummary
                     }
                 }
                 .padding(.horizontal, 12)
@@ -330,6 +346,171 @@ struct BrowserView: View {
                 .background(Color.accentColor.opacity(0.08))
             }
         }
+    }
+
+    // MARK: - Silent-gotcha banners (C31)
+
+    /// Toolbar-end caption "✓ 2 / ✕ 1 across 3 workspace roots"
+    /// for multi-root workspaces. Hidden when only one root is
+    /// configured (single-root is the assumed default UX, no
+    /// caption needed).
+    @ViewBuilder
+    private var multiRootSummary: some View {
+        let total = appState.workspaceRoots.count
+        let offline = appState.offlineWorkspaceRoots.count
+        let online = max(0, total - offline)
+        HStack(spacing: 4) {
+            Image(systemName: "rectangle.stack")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("\(online) / \(total)")
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+            if offline > 0 {
+                Image(systemName: "externaldrive.badge.xmark")
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+            }
+        }
+        .help("\(online) of \(total) workspace roots online" +
+               (offline > 0 ? "; \(offline) offline" : ""))
+    }
+
+
+
+    /// Surfaces workspace roots whose paths don't resolve on disk
+    /// right now — drive ejected, network share dropped, volume
+    /// renamed mid-session. Catalogued assets from that root stay
+    /// in the table but are unreadable; without this banner the
+    /// user has no idea why playback errored.
+    @ViewBuilder
+    private var offlineWorkspaceRootsBanner: some View {
+        let offline = appState.offlineWorkspaceRoots
+        if !offline.isEmpty {
+            HStack(spacing: 10) {
+                Image(systemName: "externaldrive.badge.xmark")
+                    .foregroundStyle(.red)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(offline.count == 1
+                          ? "1 workspace root is offline"
+                          : "\(offline.count) workspace roots are offline")
+                        .font(.callout.weight(.medium))
+                    Text(offline.map { $0.lastPathComponent }
+                          .joined(separator: ", "))
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Spacer()
+                Button("Reconnect…") {
+                    reconnectFirstOfflineRoot()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .help("Pick the new mount point for the offline root. Catalogue paths get rewritten.")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.red.opacity(0.08))
+        }
+    }
+
+    /// Surfaces workspace roots that exist on disk but PurpleReel
+    /// can't enumerate — typically a Files & Folders / Full Disk
+    /// Access grant that hasn't been given for that path. Opens
+    /// System Settings to the right pane on tap.
+    @ViewBuilder
+    private var permissionsBanner: some View {
+        let denied = appState.permissionDeniedWorkspaceRoots
+        if !denied.isEmpty {
+            HStack(spacing: 10) {
+                Image(systemName: "lock.fill")
+                    .foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Can't read \(denied.count == 1 ? "this workspace folder" : "these workspace folders")")
+                        .font(.callout.weight(.medium))
+                    Text("Grant Files & Folders or Full Disk Access in System Settings.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Open System Settings…") {
+                    PermissionsCheck.openSettings(.filesAndFolders)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.orange.opacity(0.08))
+        }
+    }
+
+    /// Surfaces when a meaningful fraction (≥10%, and ≥5 assets) of
+    /// the catalogue points at paths that no longer exist on disk.
+    /// Common causes: files moved without rescan, drive that hosted
+    /// those clips not mounted right now. One-click "Rescan" + "Find
+    /// Lost Metadata…" reuses existing services.
+    @ViewBuilder
+    private var staleCatalogueBanner: some View {
+        let offlineCount = appState.catalogueOfflineCount
+        let total = appState.assets.count
+        // Threshold tuned so the banner doesn't fire on a tiny
+        // 3-asset workspace where one offline = 33% (noise), but
+        // does fire when a working 50-asset workspace lost a drive.
+        if offlineCount >= 5
+            && appState.catalogueOfflineFraction >= 0.10
+            // Suppress when the offline count is exactly the offline-
+            // workspace-root explanation (avoids stacking two banners
+            // saying the same thing).
+            && appState.offlineWorkspaceRoots.isEmpty {
+            HStack(spacing: 10) {
+                Image(systemName: "questionmark.folder")
+                    .foregroundStyle(.yellow)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(offlineCount) of \(total) assets show as offline")
+                        .font(.callout.weight(.medium))
+                    Text("Catalogue paths don't resolve. Files may have moved or been renamed.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Rescan") {
+                    Task { await appState.rescan() }
+                }
+                .controlSize(.small)
+                Button("Find Lost Metadata…") {
+                    Task { _ = await appState.findLostMetadata() }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.yellow.opacity(0.08))
+        }
+    }
+
+    /// Pick a new mount point for the first offline workspace root
+    /// and replace it in `workspaceRoots`. Catalogue paths under the
+    /// old root keep their values — the user can re-run "Find Lost
+    /// Metadata" or rescan to rebuild them. Single-drive case is the
+    /// common one; users with 2+ offline roots reconnect iteratively.
+    private func reconnectFirstOfflineRoot() {
+        guard let stale = appState.offlineWorkspaceRoots.first else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Pick the new mount point for the offline workspace root '\(stale.lastPathComponent)'."
+        guard panel.runModal() == .OK, let newURL = panel.url else { return }
+        if let idx = appState.workspaceRoots.firstIndex(of: stale) {
+            appState.workspaceRoots[idx] = newURL
+        } else {
+            appState.workspaceRoots.append(newURL)
+        }
+        Task { await appState.rescan() }
     }
 
     // MARK: - No-results banner (C29)

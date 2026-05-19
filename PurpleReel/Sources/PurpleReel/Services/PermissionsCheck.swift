@@ -48,6 +48,14 @@ enum PermissionsCheck {
         )
     }
 
+    /// C31 — public probe used by the browser's permission-gotcha
+    /// banner. Calls the same path-listing check the private helpers
+    /// use; exposed so the banner can ask "is this specific folder
+    /// readable?" against any user-selected workspace root.
+    static func canRead(path: String) -> Bool {
+        canRead(absolute: path)
+    }
+
     /// Attempt a directory listing under the user's home and return
     /// true if it succeeds. Empty result counts as success — the
     /// permission gate fires as a thrown error, not an empty list.
