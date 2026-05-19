@@ -51,8 +51,18 @@ enum VerifiedBackupService {
 
         var succeeded = 0
         var failed = 0
+        var cancelledCount = 0
 
         for item in items {
+            // C37 — bail between files when the user has hit
+            // cancel. Files NOT yet processed get marked
+            // .cancelled so the run sheet shows the truncated
+            // state rather than leaving them stuck on .queued.
+            if await MainActor.run(body: { job.isCancelled }) {
+                await MainActor.run { item.state = .cancelled }
+                cancelledCount += 1
+                continue
+            }
             do {
                 // Hash source
                 await MainActor.run { item.state = .hashing(bytesRead: 0) }

@@ -115,18 +115,17 @@ final class WorkflowChainRun: ObservableObject, Identifiable {
     }
 
     func cancel() {
-        // C32 (E1) — propagate cancel to every step kind we can
-        // reach right now. Transcode sub-jobs each respond to
-        // `cancel()` (TranscodeJob has its own AVAssetExportSession
-        // / Process termination). Report export checks the run's
-        // `state` at await boundaries. VerifiedBackupService doesn't
-        // currently expose mid-flight cancellation — the backup
-        // step still respects step-boundary cancel (state check at
-        // top of loop) but won't interrupt an in-flight verify of
-        // a large file. Documented as a known gap pending a
-        // BackupJob.cancel API.
+        // C32 (E1) + C37 — propagate cancel to every step kind.
+        // Transcode sub-jobs each respond to `cancel()` (their
+        // own AVAssetExportSession / Process termination). Report
+        // export checks the run's `state` at await boundaries.
+        // Backup now (C37) honors `BackupJob.cancel()` — the
+        // service checks `isCancelled` between files so the chain
+        // can stop a long verify run mid-way (granularity: between
+        // files, not mid-bytestream).
         state = .cancelled
         for j in activeTranscodes { j.cancel() }
+        activeBackup?.cancel()
     }
 
     func run(toolVersion: String, transcodeQueue: TranscodeQueue,

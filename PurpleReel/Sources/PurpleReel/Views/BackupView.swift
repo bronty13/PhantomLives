@@ -295,6 +295,10 @@ private struct BackupFileRow: View {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         case .failed:
             Image(systemName: "xmark.octagon.fill").foregroundStyle(.red)
+        case .cancelled:
+            // C37 — distinct from .failed so the row renders as
+            // "user-stopped" rather than "broken at verify".
+            Image(systemName: "minus.circle.fill").foregroundStyle(.secondary)
         }
     }
 
@@ -307,6 +311,7 @@ private struct BackupFileRow: View {
         case .verifying(let dst): return "verifying → \(dst.lastPathComponent)"
         case .done: return "done"
         case .failed(let msg): return msg
+        case .cancelled: return "cancelled"
         }
     }
 

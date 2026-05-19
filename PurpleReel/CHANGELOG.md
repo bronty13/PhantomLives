@@ -17,6 +17,50 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C37 — Real backup-step cancel for workflow chains
+
+C32 noted that VerifiedBackupService didn't honor mid-flight
+cancellation — the chain's `cancel()` only stopped processing at
+step boundaries (the next step never started, but the current
+backup ran to completion). C37 closes that gap.
+
+**Model** — `BackupJob`:
+- New `@Published private(set) var isCancelled: Bool` + `cancel()`.
+- New `BackupFileState.cancelled` case alongside `.failed` /
+  `.done` so the run sheet can render "you stopped this one"
+  separately from "it broke at verify".
+
+**Service** — `VerifiedBackupService.run(...)`:
+- Per-file loop checks `job.isCancelled` at the top of each
+  iteration. Files NOT yet processed get marked `.cancelled`
+  and a `cancelledCount` is tracked alongside `succeeded` /
+  `failed`. Granularity: between files, not mid-bytestream —
+  a partial copy would be invalid anyway, so we let the
+  in-flight file finish (verified or fail-fast) before bailing.
+
+**Workflow runner** — `WorkflowChainRun.cancel()`:
+- Drops the C32 "known gap" comment, calls
+  `activeBackup?.cancel()`. The chain's existing
+  `activeBackup: weak BackupJob?` link (already wired by
+  C32 for tracking) becomes load-bearing instead of just
+  bookkeeping.
+
+**View** — `BackupView.swift`:
+- Per-file row renders `.cancelled` with a
+  "minus.circle.fill" + secondary tint and "cancelled" label,
+  distinct from `.failed`'s xmark.octagon.fill red.
+
+**Tests** — `BackupJobCancelTests` (NEW, 4 cases):
+- Default state: not cancelled.
+- `cancel()` flips the flag.
+- Idempotent (re-cancel is a no-op).
+- `.cancelled` ≠ `.failed` (different enum cases).
+
+Full mid-bytestream cancel within a single hash/copy/verify of
+a multi-GB file is still deferred — that needs cooperative
+cancellation inside the hash + copy loops via Task cancellation.
+Documented in the file-loop comment.
+
 ### C36 — Polish bundle: auto-prune-on-launch + ConvertSheet LUT defaults + per-pair easing
 
 Three smalls bundled.

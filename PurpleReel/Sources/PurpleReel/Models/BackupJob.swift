@@ -7,6 +7,10 @@ enum BackupFileState: Equatable {
     case verifying(destination: URL)
     case done
     case failed(String)
+    /// C37 — set when the user cancelled the run before this file
+    /// got processed. Distinct from `.failed` so the summary alert
+    /// can report "X cancelled, Y verified" separately.
+    case cancelled
 }
 
 @MainActor
@@ -58,6 +62,15 @@ final class BackupJob: ObservableObject, Identifiable {
     @Published var finishedAt: Date?
     @Published var summary: String = ""
     @Published var mhlPaths: [URL] = []
+    /// C37 — cancel flag checked at the top of each per-file loop
+    /// iteration inside `VerifiedBackupService.run(...)`. Set by
+    /// `cancel()`; the run terminates between files (after the
+    /// current file's hash + copy + verify completes) rather than
+    /// mid-bytestream. That's the right granularity — a partial
+    /// copy on the destination would be invalid anyway, so we let
+    /// the in-flight file finish so it's either fully verified or
+    /// not started.
+    @Published private(set) var isCancelled = false
 
     init(source: URL, destinations: [URL],
          algorithm: HashAlgorithm,
@@ -66,5 +79,15 @@ final class BackupJob: ObservableObject, Identifiable {
         self.destinations = destinations
         self.algorithm = algorithm
         self.mhlFormat = mhlFormat
+    }
+
+    /// C37 — user-triggered cancel. `VerifiedBackupService.run(...)`
+    /// checks `isCancelled` between files; the WorkflowChainRun
+    /// propagates this through to its active backup step so a chain-
+    /// level cancel actually stops mid-backup (was step-boundary-
+    /// only pre-C37).
+    @MainActor
+    func cancel() {
+        isCancelled = true
     }
 }
