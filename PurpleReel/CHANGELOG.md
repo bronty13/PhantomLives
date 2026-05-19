@@ -17,6 +17,33 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### Dark mode — Help / User Manual viewer contrast fix
+
+User-reported regression: the User Manual window (Help → User Manual
+→ MarkdownDocWindow → WKWebView) was unreadable in Dark mode because
+the bundled `PurpleReel.help` HTML hard-coded light-mode colors
+(`#222` body, `#111` headings, `#f2f2f2` code backgrounds) with no
+`prefers-color-scheme: dark` overrides.
+
+`Scripts/generate-help-book.swift` (the build-time generator that
+emits every help page under `Resources/PurpleReel.help/.../en.lproj/`)
+gained:
+
+- `:root { color-scheme: light dark; }` so WKWebView's system surface
+  picks the right background under the body.
+- Explicit `background: #fff` on the body so light mode stays light.
+- A full `@media (prefers-color-scheme: dark)` block that re-tints
+  body / headings / borders / code / pre / table / blockquote / nav
+  for legible dark-mode contrast (`#1c1c1e` background, `#e6e6e6`
+  body, `#f2f2f2` headings, `#b39bff` accent links, etc.).
+
+All 5 docs (USER_MANUAL.html, INSTALL.html, SHORTCUTS.html,
+KYNO_PARITY_ROADMAP.html, KYNO_RESEARCH.html) plus the
+PurpleReelHelp.html index regenerate via the same `htmlTemplate`
+helper, so the fix lands across every page in one shot.
+
+---
+
 ### C8 — Edit Multiple Items dialog Keep-dropdown redesign
 
 `BatchMetadataSheet` rebuilt to match Kyno's "Edit Multiple Items"

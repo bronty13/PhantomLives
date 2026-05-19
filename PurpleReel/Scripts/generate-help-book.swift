@@ -98,9 +98,15 @@ func htmlTemplate(title: String, body: String) -> String {
         <meta name="description" content="\(escapeAttr(title)) — PurpleReel documentation">
         <title>\(escapeHTML(title))</title>
         <style>
+            /* Tell the browser this page supports both schemes so it
+               renders the correct system background under the body
+               and respects color-scheme-aware UI (form controls,
+               scrollbars, etc.). */
+            :root { color-scheme: light dark; }
             body {
                 font: 14px -apple-system, sans-serif;
                 color: #222;
+                background: #fff;
                 max-width: 720px;
                 margin: 20px auto;
                 padding: 0 20px;
@@ -122,6 +128,27 @@ func htmlTemplate(title: String, body: String) -> String {
             hr { border: none; border-top: 1px solid #eee; margin: 1.4em 0; }
             nav.home { font-size: 12px; margin: 0 0 12px; color: #888; }
             nav.home a { color: #6a4ac0; }
+
+            /* Dark-mode overrides. macOS Sequoia's WKWebView honors
+               the system Appearance via prefers-color-scheme; when
+               PurpleReel's Settings → Appearance is "Dark" (or
+               System with macOS in Dark Mode), this block kicks in
+               and re-tints every surface for legible contrast. */
+            @media (prefers-color-scheme: dark) {
+                body { color: #e6e6e6; background: #1c1c1e; }
+                h1, h2, h3, h4, h5, h6 { color: #f2f2f2; }
+                h1 { border-bottom-color: #3a3a3c; }
+                h2 { border-bottom-color: #2c2c2e; }
+                code { background: #2c2c2e; color: #e6e6e6; }
+                pre { background: #232325; color: #e6e6e6; }
+                table th, table td { border-color: #3a3a3c; }
+                th { background: #232325; }
+                a { color: #b39bff; }
+                blockquote { color: #b0b0b0; border-left-color: #3a3a3c; }
+                hr { border-top-color: #2c2c2e; }
+                nav.home { color: #9a9a9a; }
+                nav.home a { color: #b39bff; }
+            }
         </style>
     </head>
     <body>
