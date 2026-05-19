@@ -17,6 +17,76 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C10 — Batch Rename redesign + Manage Filename Presets
+
+Layered a named-preset system on top of the existing token engine
+(Kyno-parity, Images #88-#91). User picks a preset from a dropdown
+(system catalog + their own saved customs + a Manage… leaf) instead
+of typing a raw `{date}_{orig}_{counter}{ext}` template. Custom Name
+field appears only when the picked preset includes `${customName}`;
+a live Example renders the first asset's resulting filename.
+
+**Model** — new `Models/FilenameRenamePreset.swift`:
+- `FilenameRenamePreset` value type (id, name, template, isSystem).
+- `FilenameRenamePresetCatalog.system` ships 13 Kyno-shaped presets:
+  Add Prefix / Add Suffix, Custom Name (+ Index / + Global Index /
+  + Original Name / + Timecode), Original Name (+ Custom Name / +
+  Custom Name + Index / + Date Modified / + Index / + Timecode).
+- `BatchRenamePresets` enum handles user-preset persistence via a
+  single JSON-encoded UserDefaults key (`batchRenameUserPresets`).
+- `BatchRenamePresets.variables` lists the 8 variables surfaced in
+  the "Add Variable" picker: customName / originalName / extension /
+  index / globalIndex / timecode / dateModified / markerTitle.
+
+**Service** — `BatchRenameService` gained `${variable}` syntax
+alongside the legacy `{token}` form; both can coexist in the same
+template. `normalize(template:)` rewrites `${originalName}` →
+`{orig}`, `${extension}` → `{ext}`, `${dateModified}` → `{date}`,
+`${index}` → `{counter}` before per-row expansion, so the existing
+token-expander handles them transparently. New C10 tokens:
+- `${customName}` — typed by the user in the Custom Name field;
+  threaded through `plan(template:items:startCounter:customName:)`.
+- `${timecode}` — `HHmmss` filename-safe formatting of the
+  embedded source TC (falls back to mtime when not catalogued).
+- `${globalIndex}` — monotonic counter persisted in
+  `UserDefaults["batchRenameGlobalIndex"]`; survives across batches.
+- `${markerTitle}` — placeholder for now (DB lookup is a follow-up).
+
+**UI** — `BatchRenameView` rewritten:
+- Pattern Picker grouped by system / Custom / "Manage…" leaf.
+  Clicking Manage… opens the new sheet and snaps the picker back
+  to a valid preset so the menu never parks on the action item.
+- Custom Name TextField appears conditionally when the active
+  template references `${customName}`.
+- Live Example reads the first scoped asset (or a synthetic
+  placeholder when no asset is selected so the dialog is useful
+  before clicking a clip).
+- Output-empty warning surfaces when Custom Name is required but
+  blank ("⚠ Output file has an empty name") — Start Renaming
+  button disables in that state.
+
+**New sheet** — `Views/ManageFilenamePresetsSheet.swift`:
+- Two-pane list: presets (left, with lock icons for system) +
+  Delete / Duplicate buttons (right). System presets are locked
+  and can't be edited / deleted; user can Duplicate one to start
+  from a known-good shape.
+- Template editor field at the bottom for the selected user
+  preset, monospaced font.
+- "Add Variable" Menu emits `${variable}` tokens into the editor.
+
+9 new tests (`FilenameRenamePresetTests`):
+- System catalog ships the expected 5 anchor presets
+- Every system preset is locked
+- `${originalName}` resolves to the source basename
+- `${customName}` lands the user's typed text
+- `${index}` matches the legacy `{counter}` behavior
+- Mixed `${variable}` + `{token}` syntaxes coexist in one template
+- Unknown `${variable}` passes through as literal (typo-friendly)
+- User-preset persistence round-trips through UserDefaults JSON
+- combined() lists system before user-created presets
+
+---
+
 ### C9 — Inline filter rows (operator + value + unit editors)
 
 Active-filter bar restructured to match Kyno's full-width inline rows

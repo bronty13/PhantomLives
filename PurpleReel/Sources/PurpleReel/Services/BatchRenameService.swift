@@ -29,21 +29,65 @@ struct BatchRenamePlan: Identifiable, Equatable {
 /// typos in the preview.
 enum BatchRenameService {
 
+    /// `${variable}` syntax used by Kyno-shaped preset templates.
+    /// Normalized to the engine's existing `{variable}` form on the
+    /// way in so a single token-expander handles both. Both syntaxes
+    /// can coexist in a single template (existing PurpleReel `{date}`
+    /// patterns keep working alongside new `${customName}` ones).
+    static func normalize(template: String) -> String {
+        var out = template
+        // Replace `${…}` → `{…}` for the recognized Kyno variables
+        // listed in `BatchRenamePresets.variables`. Unknown `${…}`
+        // tokens pass through unchanged so a typo is visible in the
+        // preview (mirrors the legacy unknown-`{token}` behavior).
+        for (key, _) in BatchRenamePresets.variables {
+            // Each variable maps onto an engine-side token. Some
+            // alias to existing PurpleReel tokens (originalName →
+            // orig, extension → ext, dateModified → date,
+            // index → counter).
+            let target = engineToken(for: key)
+            out = out.replacingOccurrences(of: "${\(key)}",
+                                            with: "{\(target)}")
+        }
+        return out
+    }
+
+    /// Map a Kyno-style `${variable}` name onto the existing engine
+    /// `{token}` name. Variables introduced in C10 (customName /
+    /// timecode / markerTitle / globalIndex) keep their key as-is
+    /// and have their own token handlers in `value(forToken:…)`.
+    private static func engineToken(for variable: String) -> String {
+        switch variable {
+        case "originalName": return "orig"
+        case "extension":    return "ext"
+        case "dateModified": return "date"
+        case "index":        return "counter"
+        default:             return variable   // customName / timecode / etc.
+        }
+    }
+
     /// Build a plan over the given assets without touching disk.
     static func plan(template: String,
                      items: [Asset],
-                     startCounter: Int = 1) -> [BatchRenamePlan] {
+                     startCounter: Int = 1,
+                     customName: String = "") -> [BatchRenamePlan] {
         var plans: [BatchRenamePlan] = []
         plans.reserveCapacity(items.count)
         var seenNames: Set<String> = []
         let fm = FileManager.default
 
+        // Normalize `${variable}` syntax first so the per-row expander
+        // only sees one form. Hot path is single-template-many-assets,
+        // so doing this once outside the loop is the right shape.
+        let normalized = normalize(template: template)
+
         for (idx, asset) in items.enumerated() {
             let originalURL = URL(fileURLWithPath: asset.path)
             let modified = asset.modifiedAt
-            let name = expand(template: template, asset: asset,
+            let name = expand(template: normalized, asset: asset,
                               originalURL: originalURL, modified: modified,
-                              counter: startCounter + idx)
+                              counter: startCounter + idx,
+                              customName: customName)
             let dir = originalURL.deletingLastPathComponent()
             let proposedURL = dir.appendingPathComponent(name)
             let lowerName = name.lowercased()
@@ -160,7 +204,8 @@ enum BatchRenameService {
 
     private static func expand(template: String, asset: Asset,
                                 originalURL: URL, modified: Date,
-                                counter: Int) -> String {
+                                counter: Int,
+                                customName: String = "") -> String {
         var out = ""
         var i = template.startIndex
         let end = template.endIndex
@@ -171,7 +216,8 @@ enum BatchRenameService {
                 let tokenBody = String(template[template.index(after: i)..<close])
                 out += value(forToken: tokenBody, asset: asset,
                              originalURL: originalURL, modified: modified,
-                             counter: counter) ?? "{\(tokenBody)}"
+                             counter: counter,
+                             customName: customName) ?? "{\(tokenBody)}"
                 i = template.index(after: close)
             } else {
                 out.append(c)
@@ -190,7 +236,8 @@ enum BatchRenameService {
 
     private static func value(forToken token: String, asset: Asset,
                                originalURL: URL, modified: Date,
-                               counter: Int) -> String? {
+                               counter: Int,
+                               customName: String = "") -> String? {
         // Split on first ":" for tokens with a format spec.
         let parts = token.split(separator: ":", maxSplits: 1).map(String.init)
         let key = parts[0].lowercased()
@@ -222,6 +269,37 @@ enum BatchRenameService {
             return asset.heightPx.map { String($0) } ?? ""
         case "size_mb":
             return String(asset.sizeBytes / (1024 * 1024))
+        // Kyno-shaped variables (C10). Most alias to existing tokens
+        // via `normalize(template:)`; these are the C10-only ones.
+        case "customname":
+            return customName
+        case "timecode":
+            // Use embedded source timecode if available, else fall
+            // back to the file's modified-time as a TC-shaped stamp.
+            // Format: HHMMSS — filename-safe (no colons).
+            let date = asset.recordedAt ?? modified
+            let f = DateFormatter()
+            f.dateFormat = "HHmmss"
+            return f.string(from: date)
+        case "globalindex":
+            // Monotonic counter across batches. Stored in
+            // UserDefaults so the next batch picks up where the
+            // previous one stopped.
+            let bumped = UserDefaults.standard
+                .integer(forKey: "batchRenameGlobalIndex") + 1
+            UserDefaults.standard.set(bumped,
+                                        forKey: "batchRenameGlobalIndex")
+            let width = spec.flatMap { Int($0) } ?? 4
+            return width > 0
+                ? String(format: "%0\(width)d", bumped)
+                : String(bumped)
+        case "markertitle":
+            // First marker on the asset (if catalogued). The service
+            // doesn't have DB access; the view layer can pre-populate
+            // this by overriding the token before the batch runs.
+            // For now, leaves a literal placeholder so the user sees
+            // the gap in the preview.
+            return ""
         default:
             return nil  // unknown token: caller leaves it literal
         }
