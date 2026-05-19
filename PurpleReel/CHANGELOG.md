@@ -17,6 +17,48 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C15 — List view column-header click-to-sort
+
+List view's Table headers are now clickable to sort, with the native
+SwiftUI chevron indicating the active column + asc/desc direction.
+Switched the Table to use the `sortOrder:` API so the chevron, click
+handling, and direction toggle come for free.
+
+**Sortable columns** (6): Name, Codec, Resolution (sorts by
+widthPx — close-enough proxy since the catalogue is overwhelmingly
+landscape), FPS, Duration, Size. Thumbnail column stays unclickable
+(no value to sort by).
+
+**Optional columns** (rating, recordedAt, etc.) keep their current
+non-clickable headers — adding sortability per `ListColumn` case
+needs a per-case comparator dispatch and is a follow-up.
+
+**Bidirectional bridge with `appState.sortKey` + `sortAscending`**:
+- Click a header → `tableSortOrder` updates → `applyTableSortToAppState`
+  writes the matching string sortKey + asc bool to AppState. The
+  Grid view, the toolbar Sort menu, and the table stay in lockstep.
+- Change `sortKey`/`sortAscending` externally (toolbar Sort menu)
+  → `syncTableSortFromAppState` mirrors back into `tableSortOrder`
+  so the column chevron tracks.
+- Both directions guard against re-fire loops by comparing values
+  before writing.
+
+**New file** — `Views/NilHandlingComparator.swift`. `SortComparator`
+that pushes nil entries to the end in both sort directions
+(standard library's optional `Comparable` would put nils first in
+ascending, which is noise for "no data" rows). Used for Codec /
+Resolution / FPS / Duration columns where the underlying field is
+optional.
+
+5 new tests (`NilHandlingComparatorTests`):
+- Ascending pushes nils to end
+- Descending also pushes nils to end (not flipped to front)
+- Equal values → .orderedSame
+- Both nil → .orderedSame
+- Works for String? (not just Int?)
+
+---
+
 ### C14 — Single-clip Edit Tags dialog
 
 Kyno's right-click Tags (Image #91) routes single-clip taggings to

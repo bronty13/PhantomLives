@@ -37,6 +37,13 @@ struct BrowserView: View {
     @State private var filterDebounceTask: Task<Void, Never>?
     @AppStorage("detailTab") private var detailTab: DetailTab = .content
 
+    /// Click-to-sort state for the List view's Table. Bidirectionally
+    /// mirrored with `appState.sortKey` + `sortAscending` so the
+    /// toolbar Sort menu and the column-header clicks stay in sync.
+    /// SwiftUI Table auto-renders the chevron on the active column.
+    @State private var tableSortOrder: [KeyPathComparator<Asset>] =
+        [KeyPathComparator(\Asset.filename, order: .forward)]
+
     private var filteredAssets: [Asset] {
         let base = appState.displayedAssets
         let term = stableFilterText.trimmingCharacters(in: .whitespaces).lowercased()
@@ -396,7 +403,10 @@ struct BrowserView: View {
     }
 
     private var assetTable: some View {
-        Table(filteredAssets, selection: tableSelection) {
+        Table(filteredAssets, selection: tableSelection,
+                sortOrder: $tableSortOrder) {
+            // Thumbnail column is not sortable — leaves out the
+            // `value:` arg so the header stays unclickable.
             TableColumn("") { asset in
                 ThumbnailCell(
                     asset: asset,
@@ -404,16 +414,18 @@ struct BrowserView: View {
                 )
             }
             .width(90)
-            TableColumn("Name") { asset in
+            TableColumn("Name", value: \.filename) { asset in
                 Text(asset.filename)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
-            TableColumn("Codec") { asset in
+            TableColumn("Codec", value: \.codec, comparator: optionalStringComparator) { asset in
                 Text(asset.codec ?? "—").foregroundStyle(.secondary)
             }
             .width(min: 60, ideal: 80)
-            TableColumn("Resolution") { asset in
+            // Resolution sorts by width — close-enough proxy since
+            // PurpleReel's catalogue is overwhelmingly landscape.
+            TableColumn("Resolution", value: \.widthPx, comparator: optionalIntComparator) { asset in
                 if let w = asset.widthPx, let h = asset.heightPx {
                     Text("\(w)×\(h)")
                 } else {
@@ -421,7 +433,7 @@ struct BrowserView: View {
                 }
             }
             .width(min: 80, ideal: 110)
-            TableColumn("FPS") { asset in
+            TableColumn("FPS", value: \.frameRate, comparator: optionalDoubleComparator) { asset in
                 if let r = asset.frameRate {
                     Text(String(format: "%.2f", r))
                 } else {
@@ -429,12 +441,12 @@ struct BrowserView: View {
                 }
             }
             .width(min: 50, ideal: 70)
-            TableColumn("Duration") { asset in
+            TableColumn("Duration", value: \.durationSeconds, comparator: optionalDoubleComparator) { asset in
                 Text(formatDuration(asset.durationSeconds))
                     .foregroundStyle(.secondary)
             }
             .width(min: 70, ideal: 90)
-            TableColumn("Size") { asset in
+            TableColumn("Size", value: \.sizeBytes) { asset in
                 Text(formatSize(asset.sizeBytes))
                     .foregroundStyle(.secondary)
             }
@@ -479,6 +491,82 @@ struct BrowserView: View {
                let asset = filteredAssets.first(where: { $0.path == path }) {
                 openInlineDetail(asset)
             }
+        }
+        // C15 — column-header click-to-sort. Mirror table changes
+        // back to appState so the toolbar Sort menu and Grid view
+        // stay in lockstep.
+        .onChange(of: tableSortOrder) { _, new in
+            applyTableSortToAppState(new)
+        }
+        .onChange(of: appState.sortKey) { _, _ in
+            syncTableSortFromAppState()
+        }
+        .onChange(of: appState.sortAscending) { _, _ in
+            syncTableSortFromAppState()
+        }
+        .onAppear { syncTableSortFromAppState() }
+    }
+
+    // MARK: - Sort bridge (Table sortOrder ↔ AppState.sortKey)
+
+    /// Translate a `KeyPathComparator<Asset>` change from the Table's
+    /// header click into the existing string-based sort state on
+    /// AppState. Idempotent — guards against re-firing when AppState
+    /// is already in the requested shape.
+    private func applyTableSortToAppState(_ comparators: [KeyPathComparator<Asset>]) {
+        guard let primary = comparators.first else { return }
+        let key = sortKeyFromKeyPath(primary.keyPath)
+        let asc = (primary.order == .forward)
+        if appState.sortKey != key { appState.sortKey = key }
+        if appState.sortAscending != asc { appState.sortAscending = asc }
+    }
+
+    /// Pull `appState.sortKey` + `sortAscending` into the Table's
+    /// `sortOrder` so the chevron tracks toolbar-Sort-menu changes.
+    /// Idempotent — only updates when the desired state differs.
+    private func syncTableSortFromAppState() {
+        let desired = comparator(forSortKey: appState.sortKey,
+                                  ascending: appState.sortAscending)
+        if tableSortOrder.first?.order != desired.order
+            || tableSortOrder.first?.keyPath != desired.keyPath {
+            tableSortOrder = [desired]
+        }
+    }
+
+    /// Map `AppState.sortKey` strings to the matching keypath
+    /// comparator. Falls back to filename so the Table always has
+    /// a valid sort state.
+    private func comparator(forSortKey key: String,
+                              ascending: Bool) -> KeyPathComparator<Asset> {
+        let order: SortOrder = ascending ? .forward : .reverse
+        switch key {
+        case "name":     return KeyPathComparator(\Asset.filename, order: order)
+        case "size":     return KeyPathComparator(\Asset.sizeBytes, order: order)
+        case "duration": return KeyPathComparator(\Asset.durationSeconds,
+                                                   order: order)
+        case "fps":      return KeyPathComparator(\Asset.frameRate, order: order)
+        case "modified": return KeyPathComparator(\Asset.modifiedAt, order: order)
+        // Codec / resolution / etc. don't have direct keypaths in
+        // appState.sortKey today; default to filename when the toolbar
+        // pick doesn't map.
+        default:         return KeyPathComparator(\Asset.filename, order: order)
+        }
+    }
+
+    /// Reverse map: the Table reports back a `PartialKeyPath`-typed
+    /// comparator; translate that to AppState's string-keyed sort.
+    /// Unknown keypaths fall back to "name" so we never end up with
+    /// a sort state the rest of the app can't render.
+    private func sortKeyFromKeyPath(_ kp: PartialKeyPath<Asset>) -> String {
+        switch kp {
+        case \Asset.filename:        return "name"
+        case \Asset.sizeBytes:       return "size"
+        case \Asset.durationSeconds: return "duration"
+        case \Asset.frameRate:       return "fps"
+        case \Asset.modifiedAt:      return "modified"
+        case \Asset.codec:           return "codec"
+        case \Asset.widthPx:         return "resolution"
+        default:                      return "name"
         }
     }
 
@@ -1107,5 +1195,21 @@ struct BrowserView: View {
         let f = ByteCountFormatter()
         f.countStyle = .file
         return f.string(fromByteCount: bytes)
+    }
+
+    // MARK: - Sort comparators for optional Comparable columns
+
+    /// `SortComparator` for `String?` columns (Codec). Nil sorts last
+    /// in either direction so an "Ascending" click on the Codec
+    /// header puts named codecs first and unknowns at the bottom
+    /// (less surprising than nil-first).
+    private var optionalStringComparator: NilHandlingComparator<String> {
+        NilHandlingComparator()
+    }
+    private var optionalIntComparator: NilHandlingComparator<Int> {
+        NilHandlingComparator()
+    }
+    private var optionalDoubleComparator: NilHandlingComparator<Double> {
+        NilHandlingComparator()
     }
 }
