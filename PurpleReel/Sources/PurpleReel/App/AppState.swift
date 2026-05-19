@@ -184,6 +184,32 @@ final class AppState: ObservableObject {
         return drilldownPaths.contains(path)
     }
 
+    /// C21 — direct vs nested asset counts for a given folder. Used by
+    /// `BrowserView`'s drilldown hint banner to surface "you have N
+    /// more files in subfolders, but drilldown is off" when the user
+    /// hits a sparse direct-children listing. The split is the same
+    /// rule the displayedAssets filter uses (parent == folder ⇒
+    /// direct, otherwise nested), so the banner's counts always match
+    /// what the user would see after toggling drilldown on.
+    struct FolderCounts: Equatable {
+        var direct: Int
+        var nested: Int
+    }
+    func folderCounts(forFolder folder: String) -> FolderCounts {
+        let canonical = Self.canonicalizeBootVolumePath(folder)
+        let normalized = (canonical as NSString).standardizingPath
+        let prefix = normalized == "/" ? "/" : normalized + "/"
+        var direct = 0
+        var nested = 0
+        for a in assets {
+            let p = (a.path as NSString).standardizingPath
+            guard p.hasPrefix(prefix) else { continue }
+            let parent = (p as NSString).deletingLastPathComponent
+            if parent == normalized { direct += 1 } else { nested += 1 }
+        }
+        return FolderCounts(direct: direct, nested: nested)
+    }
+
     /// Toolbar "Drilldown" button action: toggle drilldown for the
     /// currently-selected folder. Kyno's behavior — the toolbar
     /// affordance acts on the selection, not a hidden global flag.

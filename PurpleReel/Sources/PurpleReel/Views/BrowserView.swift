@@ -55,6 +55,7 @@ struct BrowserView: View {
         VStack(spacing: 0) {
             browserToolbar
             Divider()
+            drilldownHintBanner
             Group {
                 if appState.rootFolder == nil {
                     emptyState
@@ -281,6 +282,45 @@ struct BrowserView: View {
             return true
         default:
             return false
+        }
+    }
+
+    // MARK: - Drilldown hint banner (C21)
+
+    /// Surfaces "N more files in subfolders, but drilldown is off" so
+    /// the user doesn't sit on a sparse listing wondering where their
+    /// media went. Threshold: direct children ≤ 1 AND nested ≥ 1. The
+    /// "Show all" button enables drilldown for the current folder
+    /// (`drilldownPaths` is persisted per-folder, so this is sticky —
+    /// the user only needs to do it once per folder).
+    @ViewBuilder
+    private var drilldownHintBanner: some View {
+        if let folder = appState.selectedFolderPath, !folder.isEmpty,
+           !appState.isDrilldownEnabled(forPath: folder) {
+            let counts = appState.folderCounts(forFolder: folder)
+            if counts.direct <= 1 && counts.nested >= 1 {
+                HStack(spacing: 10) {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundStyle(.tint)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("\(counts.nested) more file\(counts.nested == 1 ? "" : "s") in subfolders")
+                            .font(.callout.weight(.medium))
+                        Text("Drilldown is off — only direct children of this folder are shown.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Show all") {
+                        appState.toggleDrilldown(forPath: folder)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .help("Enable drilldown for this folder (⌘⇧D). Sticky — only need to do this once per folder.")
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.accentColor.opacity(0.08))
+            }
         }
     }
 

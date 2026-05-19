@@ -17,6 +17,45 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C21 — Drilldown hint banner
+
+When a user clicks into a folder with one (or zero) direct media
+files but more in subfolders, the UI used to silently show only the
+top-level entries — and `drilldown is off, you can't see the rest`
+was a hidden gotcha. C21 surfaces an inline banner above the asset
+list ("N more files in subfolders — drilldown is off") with a
+"Show all" button that flips drilldown on for that folder (sticky;
+the user only does it once per folder).
+
+**Threshold**: `direct ≤ 1 AND nested ≥ 1`. Documents the user's
+exact complaint ("I know there are videos but I only see one"). At
+2+ direct items the banner stays quiet — the user is already
+seeing a populated listing and an extra prompt would be noise.
+
+**AppState** — `App/AppState.swift`:
+- New `FolderCounts { direct, nested }` struct.
+- New `folderCounts(forFolder:) -> FolderCounts` — reuses the same
+  canonicalization (`canonicalizeBootVolumePath` + standardizing
+  path) the displayedAssets filter uses, so the banner's numbers
+  always match what the user would see after toggling drilldown.
+  Includes a trailing-`/` guard so sibling paths
+  (`/Volumes/CardABig` vs `/Volumes/CardA`) don't leak in.
+
+**BrowserView** — `Views/BrowserView.swift`:
+- New `drilldownHintBanner` @ViewBuilder slotted between the
+  toolbar Divider and the content Group.
+- Renders only when `selectedFolderPath != nil`, drilldown is OFF
+  for that folder, and the threshold matches.
+- "Show all" button calls `appState.toggleDrilldown(forPath:)` —
+  same code path as the toolbar toggle and ⌘⇧D.
+
+**Tests** — `FolderCountsTests.swift` (NEW, 6 cases):
+- Empty assets → (0, 0).
+- Direct-only / nested-only / sparse-with-hidden-nested splits.
+- Sibling-prefix leak guard
+  (`/Volumes/CardABig` ⊄ `/Volumes/CardA`).
+- Mixed direct + nested + deeper-nested → correct split.
+
 ### C20 — Combine Clips: cross-fades
 
 Category F follow-up #5 — the medium-effort one that closes out
