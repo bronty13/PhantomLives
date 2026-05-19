@@ -4,6 +4,42 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-19 — Purple Export Phase 4: full export wizard + CSV/JSON/XML/Markdown/HTML/PDF writers + saved configs
+
+The symmetric counterpart of Purple Import. Wizard-driven engine for pulling records out of PurpleLife and writing them in any of six destination formats, with saved configurations that re-run end-to-end.
+
+**Engine boundary.** Mirrors Purple Import: `Services/PurpleExport/Protocols/PurpleExportSource.swift` + `PurpleExportWriter.swift` are the app-agnostic protocols. `Sources/PurpleLifeSource.swift` is the only file that talks to `SchemaRegistry` + `ObjectEngine` + the attachments table — extraction to a sibling app is a matter of writing one new source.
+
+**Six writers shipped.**
+
+- `CSVWriter` — RFC 4180 cells via `ExportService.csvEscape`. Optional always-quote.
+- `MarkdownWriter` — GFM pipe table (round-trips through `MarkdownReader`) or list-per-record.
+- `HTMLWriter` — standalone document with inline CSS matching the purple palette of the legacy export.
+- `PDFWriter` — `HTMLWriter`'s output → `ExportService.renderHTMLToPDF` (WKWebView) → bytes on disk.
+- `JSONWriter` — three shapes (array-of-objects / NDJSON / nested envelope with embedded schema). Type-preserving: number / boolean / rating kinds stay JSON-native; everything else stringifies through `ExportService.renderCell` so links + attachments resolve to readable labels.
+- `XMLWriter` — `<records>` / `<record>` root (configurable element names), one child per field. Header names sanitized to valid XML tag names; values entity-escaped.
+
+**Writer reuse.** `ExportService.csvEscape`, `markdownEscape`, `htmlEscape`, `renderCell`, `renderHTMLToPDF`, and `sanitizeFilename` were all bumped from `private` to internal so the new writers don't duplicate the rules. The legacy Records → Export toolbar menu keeps using the all-fields-in-schema-order shortcuts; Purple Export is the field-subset + header-rename + saved-config path.
+
+**Saved export configurations.** Each `SavedExportConfig` lives as its own `<uuid>.purpleexport.json` file under `~/Library/Application Support/PurpleLife/export-configs/`, sealed via `EncryptedJSON.safeWrite`. Same per-file design rationale as Purple Import's mappings: malformed file doesn't poison others; Reveal-in-Finder + drag-drop share are free. Envelope shape: `purplelife.export-config.v1`.
+
+**Wizard.** Six steps: PickType → PickRecords → PickFields (subset + header rename) → PickFormat (segmented picker + per-format options) → Preview (renders the writer to a tempfile, shows first ~4 KB) → Save (destination mode + filename template + resolved-path readout) → Run → Done. `Done` step has Reveal-in-Finder + Open buttons.
+
+**Settings → Export rewritten.** Saved configurations list now lives above the default-directory picker (the high-leverage surface). Per-row actions: Run / Edit / Reveal in Finder / Export Config… / Duplicate / Delete. "+ New config" launcher + "Import config…" button mirror the Import tab.
+
+**ExportRunner.** Async event stream pattern matching `ImportRunner`. Format dispatch via `ExportRunner.writer(for:)`. Filename template tokens (`{type-plural}`, `{type-name}`, `{stamp}`, `{ext}`) match the legacy `ExportService.export(...)` naming so files dropped next to each other from either flow stay visually consistent.
+
+**XLSX + DOCX intentionally deferred.** CoreXLSX (Phase 3's vendored dep) is read-only; writing XLSX needs a minimal OOXML emitter on top of the already-pulled-in ZIPFoundation. DOCX write is paired with Phase 5's reader effort. Both formats are visible in the wizard's format picker but the Continue button stays disabled with an explanatory note. v1.5 scope.
+
+**Wiring.** `AppState` gains `@Published var exportConfigStore` and `lazy var purpleExportSource`. `wireKeyResolvers()` plumbs the DEK through the store the same way `mappingStore` was.
+
+**Tests.** 430/430 green (+15 new):
+
+- `ExportWritersTests` (11) — per-writer round-trip smoke: CSV header + data shape, header overrides applied, JSON array-of-objects type fidelity, NDJSON one-per-line, nested envelope carries the schema, XML root + escape of `<` `&` `"`, Markdown table and list-per-record, HTML standalone doc + title resolution.
+- `ExportConfigStoreTests` (4) — save/reload, malformed-file isolation, envelope round-trip, bare-payload forward-compat decode.
+
+**What's left.** Phase 4.5 (XLSX writer via minimal OOXML emitter), Phase 5 (Word + PDF readers + DOCX writer), Phase 6 (polish + cross-app extraction prep).
+
 ### 2026-05-19 — Purple Import Phase 3: Excel (.xlsx) reader via CoreXLSX + sheet/range picker
 
 Third slice. Adds .xlsx support — the format the user explicitly wanted in the "all formats" v1 scope.

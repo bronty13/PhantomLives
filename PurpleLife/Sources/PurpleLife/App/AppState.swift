@@ -43,6 +43,15 @@ final class AppState: ObservableObject {
     @Published var mappingStore = MappingStore()
     lazy var purpleImportSink: PurpleLifeSink = PurpleLifeSink(schema: schema)
 
+    /// Phase 4 — Purple Export. `exportConfigStore` owns the on-disk
+    /// `SavedExportConfig` files under
+    /// `~/Library/Application Support/PurpleLife/export-configs/`.
+    /// `purpleExportSource` is the wizard's adapter to PurpleLife's
+    /// `SchemaRegistry` + `ObjectEngine` for record reads. Lazy so it
+    /// always reads the live `schema`.
+    @Published var exportConfigStore = ExportConfigStore()
+    lazy var purpleExportSource: PurpleLifeSource = PurpleLifeSource(schema: schema)
+
     @Published var objectCount: Int = 0
 
     /// Health of the on-disk database. Set after the launch-time keyed
@@ -364,6 +373,10 @@ final class AppState: ObservableObject {
         // Purple Import — per-mapping files seal under the same DEK
         // as everything else under Application Support.
         mappingStore.setKeyResolver { [weak keyStore] in
+            keyStore?.currentKey
+        }
+        // Purple Export config store rides the same DEK.
+        exportConfigStore.setKeyResolver { [weak keyStore] in
             keyStore?.currentKey
         }
     }

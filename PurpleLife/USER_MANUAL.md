@@ -432,7 +432,50 @@ The original WeightTracker CSV one-shot still lives in Settings → Import below
 
 ### Export
 
-- **Default export directory** — text field + Choose…, Reveal button. Files saved by the Records → Export menu land here. Default `~/Downloads/PurpleLife/`. Empty value reverts to the default.
+**Purple Export** is the symmetric counterpart of Purple Import. Pulls records out of any schema type and writes them in six formats (CSV / JSON / XML / Markdown / HTML / PDF) with field subset selection, header renaming, and saved configurations.
+
+#### Saved export configurations
+
+Each saved configuration is its own portable file at `~/Library/Application Support/PurpleLife/export-configs/<uuid>.purpleexport.json` (encrypted at rest). Per-configuration actions in the Settings → Export list:
+
+- **Run** — open the wizard with this config pre-loaded. Run it again to produce a fresh-stamped file in the destination.
+- **Edit** — same as Run, but you're explicitly editing.
+- **Reveal in Finder** — surface the per-config file under `~/Library/Application Support/PurpleLife/export-configs/`.
+- **Export Config…** — write an unencrypted `.purpleexport.json` you can share with another Mac.
+- **Duplicate** — clone with a fresh id and "(copy)" suffix.
+- **Delete** — drop the file from disk and the in-memory list.
+
+A separate **Import config…** button accepts a `.purpleexport.json` from another Mac.
+
+#### Wizard flow
+
+Click **+ New config…** to walk:
+
+1. **Pick type** — pick which schema type to export from. Vault types appear when the Vault is unlocked.
+2. **Pick records** — Phase 4 supports "all records of this type"; "saved search" is staged grey for Phase 4.5.
+3. **Pick fields + headers** — table of every field on the type with a header (column / property name) override per field. Defaults to all fields in schema order, headers matching field names. Uncheck rows to omit fields; **Reset to all fields** restores.
+4. **Pick format** — segmented picker of all seven formats. Per-format options surface below: CSV delimiter + always-quote toggle; JSON shape (array / NDJSON / nested envelope) + pretty-print; Markdown shape (table / list-per-record); XML root + record element names. HTML and PDF have no extra options. XLSX and DOCX are visible but greyed (Phase 4.5 / 5).
+5. **Preview** — renders the chosen writer to a tempfile, shows the first ~4 KB of output so you can spot-check formatting before committing.
+6. **Save** — destination mode (default `~/Downloads/PurpleLife/` or custom path), filename template (tokens `{type-plural}`, `{type-name}`, `{stamp}`, `{ext}`), resolved-path preview. **Save Config** persists the wizard's choices for re-runs; **Export** writes the actual file.
+
+After **Run**, the Done screen shows Reveal in Finder + Open buttons.
+
+#### Format quick reference
+
+| Format | Status | Notes |
+|---|---|---|
+| **CSV** | Phase 4 | RFC 4180 quoting via the same escaper as the legacy export. Configurable delimiter; always-quote-every-cell toggle. |
+| **JSON** | Phase 4 | Three shapes. *Array of objects* (default) is the simplest for downstream tools. *NDJSON* puts one object per line for stream-friendly pipelines. *Nested envelope* (`purplelife.per-type-export.v1`) embeds the schema alongside the records — a future reader can interpret each field without the live app. |
+| **XML** | Phase 4 | `<records>` / `<record>` root + per-field child elements. Element names sanitized to valid XML tags; text content entity-escaped. Root + record element names are configurable. |
+| **Markdown** | Phase 4 | GFM pipe table (round-trips through Purple Import's MarkdownReader) or list-per-record (`## Record id \n - **Header:** value`). |
+| **HTML** | Phase 4 | Standalone document with inline CSS matching the legacy purple palette. Open in any browser; print to share. |
+| **PDF** | Phase 4 | Rendered from the HTML pipeline via WKWebView. US Letter portrait. |
+| Excel (.xlsx) | Phase 4.5 | Minimal OOXML emitter on top of ZIPFoundation. Wizard greys until shipped. |
+| Word (.docx) | Phase 5 | Paired with the .docx reader effort. Wizard greys until shipped. |
+
+### Default export directory
+
+- **Default export directory** — text field + Choose…, Reveal button. Files saved by the legacy Records → Export menu land here, and Purple Export's default-mode destinations resolve here too. Default `~/Downloads/PurpleLife/`. Empty value reverts to the default.
 
 ### Weight
 

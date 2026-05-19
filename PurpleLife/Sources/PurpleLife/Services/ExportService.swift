@@ -335,7 +335,10 @@ enum ExportService {
     /// Same pipeline as `Timeliner.ExportService.exportCaseAsPDF`; the
     /// only difference is that we write to a generic per-type filename
     /// rather than a case-specific one.
-    private static func renderHTMLToPDF(html: String) async throws -> Data {
+    /// Exposed (was `private`) so the Phase 4 Purple Export PDF
+    /// writer can hand a pre-rendered HTML string straight to this
+    /// pipeline without re-implementing the WKWebView dance.
+    static func renderHTMLToPDF(html: String) async throws -> Data {
         // 8.5 × 11 in at 72 dpi — US letter portrait.
         let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792)
         let webView = WKWebView(frame: pageRect)
@@ -400,7 +403,9 @@ enum ExportService {
          .replacingOccurrences(of: "\n", with: "<br>")
     }
 
-    nonisolated private static func htmlEscape(_ s: String) -> String {
+    /// Exposed (was `private`) so the Phase 4 Purple Export writers
+    /// can reuse it without duplicating the entity-encoding rules.
+    nonisolated static func htmlEscape(_ s: String) -> String {
         s.replacingOccurrences(of: "&", with: "&amp;")
          .replacingOccurrences(of: "<", with: "&lt;")
          .replacingOccurrences(of: ">", with: "&gt;")
@@ -408,7 +413,10 @@ enum ExportService {
          .replacingOccurrences(of: "'", with: "&#39;")
     }
 
-    nonisolated private static func sanitizeFilename(_ s: String) -> String {
+    /// Exposed (was `private`) so the Phase 4 Purple Export runner
+    /// can use the same filename-safe sanitizer for its template
+    /// substitution.
+    nonisolated static func sanitizeFilename(_ s: String) -> String {
         let unsafe = CharacterSet(charactersIn: "/\\?%*|\"<>:")
         let cleaned = s.components(separatedBy: unsafe).joined(separator: "-")
         return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
