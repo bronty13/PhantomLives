@@ -17,6 +17,60 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C23 — Combine Clips: fade-from / fade-to black
+
+Edge-fade follow-up deferred from C20. The cross-fade work landed
+the dual-track + AVMutableVideoComposition machinery for clip-to-
+clip dissolves; C23 layers two new dials on the same path:
+  - Fade-from-black on the first clip's leading edge.
+  - Fade-to-black on the last clip's trailing edge.
+
+Both are independent of cross-fade — either dial can be used alone
+(e.g. fade-from-black with hard cuts in between, for podcast/
+voiceover work) or together with cross-fades for the full
+A/B-roll-dissolve story.
+
+**Service** — `CombineClipsService.swift`:
+- `CombineClipsJob` gains
+  `fadeFromBlackSeconds` and `fadeToBlackSeconds` (both default 0)
+  on both inits.
+- New `nonisolated static func clampEdgeFadeSeconds(_:edgeClipDuration:)`
+  pure helper. Bounds each fade by its edge clip's trimmed
+  duration so we don't ask AVFoundation to ramp opacity over a
+  segment that doesn't exist.
+- `run()` now decides `useVideoComp` and `useAudioMix`
+  independently (was a single `useDual`). Either flag flips on
+  when **any** of cross-fade / fade-from-black / fade-to-black is
+  non-zero. Audio-only outputs still skip video composition.
+- `buildCrossfadeVideoComposition` gains
+  `fadeFromBlack` + `fadeToBlack` params:
+  - First clip's solo region trimmed by `fadeFromBlack` so the
+    edge ramp gets its own instruction `[0, fadeFromBlack]` with
+    layer opacity ramping 0→1. AVFoundation's default video-
+    comp background is black, so a 0→1 ramp reveals it as
+    "fade from black."
+  - Last clip mirrored: `[tail - fadeToBlack, tail]` instruction
+    with 1→0 opacity.
+  - Instructions sorted by `timeRange.start` so the append order
+    of edge / solo / overlap segments doesn't matter.
+- `buildCrossfadeAudioMix` mirrored: leading 0→1 / trailing 1→0
+  volume ramps on the first / last clip when the corresponding
+  fade is on. Stacks correctly with the cross-fade ramps via
+  `setVolumeRamp` accumulating on the same input parameters.
+
+**Sheet** — `CombineClipsSheet.swift`:
+- New "Fade in: N sec from black on first clip" and
+  "Fade out: N sec to black on last clip" rows next to the
+  existing "Cross-fade" row in the output-controls block.
+- Sheet frame height 620→680 to accommodate the new rows.
+
+**Tests** — `EdgeFadeTests.swift` (NEW, 7 cases):
+- Zero / negative request → zero.
+- Request < edge duration → pass-through.
+- Request > edge duration → clamp to edge duration.
+- Request exactly == edge duration → pass-through.
+- Zero / negative edge duration → zero (degenerate guard).
+
 ### C22 — Polish bundle: recent destinations + custom LUT + ${markerTitle}
 
 Three small, independent polish items bundled into a single commit.

@@ -88,6 +88,14 @@ final class CombineClipsJob: ObservableObject, Identifiable {
     /// path with opacity & volume ramps. Clamped at run time so it
     /// can't exceed half of the shortest trimmed segment.
     let crossfadeSeconds: Double
+    /// C23 — opacity / volume ramp from black/silence on the first
+    /// clip's leading edge. 0 = no fade-in (default). Clamped to
+    /// the first clip's trimmed duration. Triggers an
+    /// AVMutableVideoComposition + AVMutableAudioMix even when
+    /// `crossfadeSeconds == 0` so the edge ramp can land.
+    let fadeFromBlackSeconds: Double
+    /// C23 — symmetric trailing ramp on the last clip. Same rules.
+    let fadeToBlackSeconds: Double
 
     @Published var state: State = .queued
     @Published var progress: Double = 0
@@ -102,28 +110,36 @@ final class CombineClipsJob: ObservableObject, Identifiable {
 
     init(sources: [CombineSource], outputURL: URL, preset: TranscodePreset,
          dimensionMode: CombineDimensionMode = .firstClip,
-         crossfadeSeconds: Double = 0) {
+         crossfadeSeconds: Double = 0,
+         fadeFromBlackSeconds: Double = 0,
+         fadeToBlackSeconds: Double = 0) {
         self.sources = sources
         self.outputURL = outputURL
         self.preset = preset
         self.dimensionMode = dimensionMode
         self.crossfadeSeconds = max(0, crossfadeSeconds)
+        self.fadeFromBlackSeconds = max(0, fadeFromBlackSeconds)
+        self.fadeToBlackSeconds = max(0, fadeToBlackSeconds)
     }
 
     /// Convenience init for the pre-C16 URL-only call sites. Wraps
     /// each URL into a `CombineSource` with no trim — same behavior
     /// as before. Kept so non-dialog callers (workflow chains,
     /// scripted invocations) don't have to migrate at the same time.
-    /// Defaults `dimensionMode` to `.firstClip` and `crossfadeSeconds`
-    /// to 0 so legacy callers keep producing the same output.
+    /// Defaults all fade durations to 0 so legacy callers keep
+    /// producing the same output.
     convenience init(sources: [URL], outputURL: URL, preset: TranscodePreset,
                      dimensionMode: CombineDimensionMode = .firstClip,
-                     crossfadeSeconds: Double = 0) {
+                     crossfadeSeconds: Double = 0,
+                     fadeFromBlackSeconds: Double = 0,
+                     fadeToBlackSeconds: Double = 0) {
         self.init(
             sources: sources.map { CombineSource(url: $0) },
             outputURL: outputURL, preset: preset,
             dimensionMode: dimensionMode,
-            crossfadeSeconds: crossfadeSeconds
+            crossfadeSeconds: crossfadeSeconds,
+            fadeFromBlackSeconds: fadeFromBlackSeconds,
+            fadeToBlackSeconds: fadeToBlackSeconds
         )
     }
 
@@ -145,6 +161,20 @@ final class CombineClipsJob: ObservableObject, Identifiable {
         let shortest = trimmedDurations.min() ?? 0
         let maxAllowed = shortest / 2
         return max(0, min(requested, maxAllowed))
+    }
+
+    /// C23 — pure helper that clamps a fade-from-black or fade-to-
+    /// black duration so it can't exceed the corresponding edge
+    /// clip's trimmed duration. Symmetric on both sides of the
+    /// timeline: leading-edge fade-in is bounded by the first clip's
+    /// duration; trailing-edge fade-out is bounded by the last
+    /// clip's. Returns 0 for empty input / negative request.
+    nonisolated static func clampEdgeFadeSeconds(
+        _ requested: Double,
+        edgeClipDuration: Double
+    ) -> Double {
+        guard requested > 0, edgeClipDuration > 0 else { return 0 }
+        return min(requested, edgeClipDuration)
     }
 
     /// C19 — pure helper that resolves the target canvas size for
@@ -285,6 +315,24 @@ final class CombineClipsJob: ObservableObject, Identifiable {
             trimmedDurations: resolved.map(\.trimmedSeconds)
         )
         let useDual = clampedCF > 0 && resolved.count >= 2
+        // C23 — clamp edge fades against the first / last clip's
+        // trimmed duration. fadeIn / fadeOut may be non-zero even
+        // when cross-fade is zero; in that case we still build a
+        // video composition + audio mix (single-track) for the
+        // edge ramps.
+        let firstDur = resolved.first?.trimmedSeconds ?? 0
+        let lastDur = resolved.last?.trimmedSeconds ?? 0
+        let clampedFadeIn = Self.clampEdgeFadeSeconds(
+            fadeFromBlackSeconds, edgeClipDuration: firstDur
+        )
+        let clampedFadeOut = Self.clampEdgeFadeSeconds(
+            fadeToBlackSeconds, edgeClipDuration: lastDur
+        )
+        let useVideoComp = (useDual || clampedFadeIn > 0 || clampedFadeOut > 0)
+            && !preset.isAudioOnly
+        let useAudioMix = useDual
+            || clampedFadeIn > 0
+            || clampedFadeOut > 0
 
         // Build the composition. C18 — audio-only outputs skip the
         // video track entirely so the export session doesn't fail
@@ -388,32 +436,39 @@ final class CombineClipsJob: ObservableObject, Identifiable {
             }
         }
 
-        // C20 — build the optional video composition + audio mix
-        // for the cross-fade path. Hard-cut path leaves both nil so
+        // C20 + C23 — build the optional video composition + audio
+        // mix when ANY of cross-fade / fade-from-black / fade-to-
+        // black is on. Pure hard-cut path leaves both nil so
         // AVAssetExportSession takes its default "play all tracks at
         // full volume / opacity" behavior.
         var videoComposition: AVMutableVideoComposition?
         var audioMix: AVMutableAudioMix?
-        if useDual {
+        if useVideoComp || useAudioMix {
             let durations = resolved.map(\.trimmedSeconds)
             let timescale = resolved.first?.timescale ?? 600
-            if !vTracks.isEmpty {
+            if useVideoComp, !vTracks.isEmpty {
                 videoComposition = buildCrossfadeVideoComposition(
                     tracks: vTracks,
                     canvasSize: comp.naturalSize,
                     durations: durations,
                     offsets: offsets,
                     crossfade: clampedCF,
+                    fadeFromBlack: clampedFadeIn,
+                    fadeToBlack: clampedFadeOut,
                     timescale: timescale
                 )
             }
-            audioMix = buildCrossfadeAudioMix(
-                tracks: aTracks,
-                durations: durations,
-                offsets: offsets,
-                crossfade: clampedCF,
-                timescale: timescale
-            )
+            if useAudioMix {
+                audioMix = buildCrossfadeAudioMix(
+                    tracks: aTracks,
+                    durations: durations,
+                    offsets: offsets,
+                    crossfade: clampedCF,
+                    fadeFromBlack: clampedFadeIn,
+                    fadeToBlack: clampedFadeOut,
+                    timescale: timescale
+                )
+            }
         }
 
         // Pre-create the destination directory and clobber any prior
@@ -488,13 +543,23 @@ final class CombineClipsJob: ObservableObject, Identifiable {
         return offsets
     }
 
-    /// C20 — build the AVMutableVideoComposition that drives the
-    /// cross-fade. For each clip i we emit:
+    /// C20 + C23 — build the AVMutableVideoComposition that drives
+    /// cross-fades and edge fade-from/to-black. For each clip i we
+    /// emit:
     ///   - **Solo region**: when only clip i is visible. One layer
-    ///     at opacity 1.
+    ///     at opacity 1. The first/last clip's solo region is
+    ///     trimmed by `fadeFromBlack`/`fadeToBlack` so the edge
+    ///     ramp can land in its own instruction.
     ///   - **Overlap region** with clip i+1 (when i < n-1): a `cf`-
     ///     second window starting at offsets[i+1], with clip i at
     ///     opacity ramp 1→0 and clip i+1 at opacity ramp 0→1.
+    ///   - **Edge fade-from-black** (C23, when fadeFromBlack > 0):
+    ///     a single instruction at [0, fadeFromBlack] with the
+    ///     first clip's track ramping opacity 0→1. AVFoundation's
+    ///     default video-composition background is black, so a
+    ///     0→1 opacity ramp reveals it as a fade-from-black.
+    ///   - **Edge fade-to-black** (C23, symmetric on trailing edge):
+    ///     opacity ramp 1→0 over [tail - fadeToBlack, tail].
     /// Track alternation: clip i lives on `tracks[i % tracks.count]`.
     private func buildCrossfadeVideoComposition(
         tracks: [AVMutableCompositionTrack],
@@ -502,6 +567,8 @@ final class CombineClipsJob: ObservableObject, Identifiable {
         durations: [Double],
         offsets: [Double],
         crossfade: Double,
+        fadeFromBlack: Double,
+        fadeToBlack: Double,
         timescale: CMTimeScale
     ) -> AVMutableVideoComposition {
         let vc = AVMutableVideoComposition()
@@ -517,8 +584,17 @@ final class CombineClipsJob: ObservableObject, Identifiable {
             let track = tracks[i % tracks.count]
             let segStart = offsets[i]
             let segEnd = offsets[i] + durations[i]
-            let soloStart = segStart + (i > 0 ? crossfade : 0)
-            let soloEnd = segEnd - (i < n - 1 ? crossfade : 0)
+            // C23 — edge fades trim the first/last clip's solo
+            // region further (they get their own ramp instructions
+            // below). Middle clips ignore both.
+            let isFirst = i == 0
+            let isLast = i == n - 1
+            let leadingTrim = (isFirst ? fadeFromBlack : 0)
+                + (i > 0 ? crossfade : 0)
+            let trailingTrim = (isLast ? fadeToBlack : 0)
+                + (i < n - 1 ? crossfade : 0)
+            let soloStart = segStart + leadingTrim
+            let soloEnd = segEnd - trailingTrim
 
             if soloEnd > soloStart {
                 let inst = AVMutableVideoCompositionInstruction()
@@ -527,6 +603,33 @@ final class CombineClipsJob: ObservableObject, Identifiable {
                     duration: CMTime(seconds: soloEnd - soloStart, preferredTimescale: timescale)
                 )
                 let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
+                inst.layerInstructions = [layer]
+                instructions.append(inst)
+            }
+
+            // C23 — leading fade-from-black on the first clip only.
+            if isFirst, fadeFromBlack > 0 {
+                let r = CMTimeRange(
+                    start: CMTime(seconds: 0, preferredTimescale: timescale),
+                    duration: CMTime(seconds: fadeFromBlack, preferredTimescale: timescale)
+                )
+                let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
+                layer.setOpacityRamp(fromStartOpacity: 0, toEndOpacity: 1, timeRange: r)
+                let inst = AVMutableVideoCompositionInstruction()
+                inst.timeRange = r
+                inst.layerInstructions = [layer]
+                instructions.append(inst)
+            }
+            // C23 — trailing fade-to-black on the last clip only.
+            if isLast, fadeToBlack > 0 {
+                let r = CMTimeRange(
+                    start: CMTime(seconds: segEnd - fadeToBlack, preferredTimescale: timescale),
+                    duration: CMTime(seconds: fadeToBlack, preferredTimescale: timescale)
+                )
+                let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
+                layer.setOpacityRamp(fromStartOpacity: 1, toEndOpacity: 0, timeRange: r)
+                let inst = AVMutableVideoCompositionInstruction()
+                inst.timeRange = r
                 inst.layerInstructions = [layer]
                 instructions.append(inst)
             }
@@ -554,19 +657,28 @@ final class CombineClipsJob: ObservableObject, Identifiable {
                 instructions.append(inst)
             }
         }
+        // Sort by time so AVFoundation gets a contiguous timeline —
+        // C23's edge-fade instruction for clip 0 may end up before
+        // the solo region in our append order.
+        instructions.sort { CMTimeCompare($0.timeRange.start, $1.timeRange.start) < 0 }
         vc.instructions = instructions
         return vc
     }
 
-    /// C20 — build the AVMutableAudioMix paired with the cross-fade
-    /// video composition. Each audio track carries the alternating
-    /// clips; volume ramps mirror the video opacity ramps so the
-    /// audio fades in and out alongside the picture.
+    /// C20 + C23 — build the AVMutableAudioMix paired with the
+    /// cross-fade video composition. Each audio track carries the
+    /// alternating clips; volume ramps mirror the video opacity
+    /// ramps so the audio fades in and out alongside the picture.
+    /// C23 — adds a leading volume ramp 0→1 on the first clip when
+    /// `fadeFromBlack > 0` (silence-to-audio) and a trailing
+    /// 1→0 on the last clip when `fadeToBlack > 0`.
     private func buildCrossfadeAudioMix(
         tracks: [AVMutableCompositionTrack],
         durations: [Double],
         offsets: [Double],
         crossfade: Double,
+        fadeFromBlack: Double,
+        fadeToBlack: Double,
         timescale: CMTimeScale
     ) -> AVMutableAudioMix {
         let mix = AVMutableAudioMix()
@@ -592,6 +704,22 @@ final class CombineClipsJob: ObservableObject, Identifiable {
                     start: CMTime(seconds: offsets[i] + durations[i] - crossfade,
                                    preferredTimescale: timescale),
                     duration: CMTime(seconds: crossfade, preferredTimescale: timescale)
+                )
+                p.setVolumeRamp(fromStartVolume: 1, toEndVolume: 0, timeRange: r)
+            }
+            // C23 — edge fades.
+            if i == 0, fadeFromBlack > 0 {
+                let r = CMTimeRange(
+                    start: CMTime(seconds: offsets[i], preferredTimescale: timescale),
+                    duration: CMTime(seconds: fadeFromBlack, preferredTimescale: timescale)
+                )
+                p.setVolumeRamp(fromStartVolume: 0, toEndVolume: 1, timeRange: r)
+            }
+            if i == n - 1, fadeToBlack > 0 {
+                let r = CMTimeRange(
+                    start: CMTime(seconds: offsets[i] + durations[i] - fadeToBlack,
+                                   preferredTimescale: timescale),
+                    duration: CMTime(seconds: fadeToBlack, preferredTimescale: timescale)
                 )
                 p.setVolumeRamp(fromStartVolume: 1, toEndVolume: 0, timeRange: r)
             }

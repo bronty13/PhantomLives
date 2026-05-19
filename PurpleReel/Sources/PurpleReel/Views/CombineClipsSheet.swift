@@ -57,6 +57,12 @@ struct CombineClipsSheet: View {
     /// freely; parsed at runCombine time. Service clamps to half
     /// of the shortest trimmed segment.
     @State private var crossfadeText: String = "0"
+    /// C23 — fade-from-black on the first clip's leading edge, and
+    /// fade-to-black on the last clip's trailing edge. Both 0 by
+    /// default. Service clamps each against the corresponding edge
+    /// clip's trimmed duration.
+    @State private var fadeFromBlackText: String = "0"
+    @State private var fadeToBlackText: String = "0"
 
     init(initialSources: [Asset]) {
         _rows = State(initialValue: initialSources.map {
@@ -79,7 +85,7 @@ struct CombineClipsSheet: View {
             footer
         }
         .padding(20)
-        .frame(width: 640, height: 620)
+        .frame(width: 640, height: 680)
         .onAppear { loadSourceMarkers() }
     }
 
@@ -281,6 +287,36 @@ struct CombineClipsSheet: View {
                     .foregroundStyle(.secondary)
                 Spacer()
             }
+            // C23 — edge fade-from/to-black. Independent of
+            // cross-fade; either can be used alone (e.g. fade-from-
+            // black on a single concatenated piece with hard cuts in
+            // between).
+            HStack(spacing: 8) {
+                Text("Fade in:")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 80, alignment: .trailing)
+                TextField("0", text: $fadeFromBlackText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption.monospaced())
+                    .frame(width: 70)
+                Text("sec from black on first clip")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            HStack(spacing: 8) {
+                Text("Fade out:")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 80, alignment: .trailing)
+                TextField("0", text: $fadeToBlackText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption.monospaced())
+                    .frame(width: 70)
+                Text("sec to black on last clip")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
             // C17 — preserve-markers toggle. Hidden when no source
             // has any markers (nothing to preserve, no need to
             // surface the option).
@@ -467,7 +503,9 @@ struct CombineClipsSheet: View {
                                  outputURL: outURL,
                                  preset: preset,
                                  dimensionMode: resolvedDimensionMode(),
-                                 crossfadeSeconds: Double(crossfadeText) ?? 0)
+                                 crossfadeSeconds: Double(crossfadeText) ?? 0,
+                                 fadeFromBlackSeconds: Double(fadeFromBlackText) ?? 0,
+                                 fadeToBlackSeconds: Double(fadeToBlackText) ?? 0)
         self.job = j
         Task {
             await j.run()
