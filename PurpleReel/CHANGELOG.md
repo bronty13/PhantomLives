@@ -10,6 +10,57 @@ Newest first.
 
 ---
 
+## Sprint 10 (in progress) — Convert dialog + right-click reshape
+
+Multi-commit restructure to match Kyno's Convert / Combine / Export
+Subclips UX (per user screenshots showing ~120 presets across 8
+buckets + per-channel Copy/Re-encode controls + tabbed Settings…
+editor for Encoding / Filters / LUTs / Overlays / Container).
+
+### C1 — TranscodeOptions composable model
+
+New `Sources/PurpleReel/Models/TranscodeOptions.swift` introduces the
+foundation value type that the new Convert dialog will edit
+field-by-field and the new job runner will execute against:
+
+- **ContainerFormat** — MOV / MP4 / MKV / MXF / audioOnly.
+- **VideoChannel** — Copy / Disabled / Reencode(VideoEncoding) where
+  VideoEncoding carries codec + profile + frame rate + size + display
+  AR + rotation + field type + quality (codecDefault / bitrate(kbps) /
+  crf(value)).
+- **VideoCodec** — H.264, HEVC, the ProRes family, DNxHD/HR, Cineform,
+  MPEG-4, Photo JPEG, V210, VP8 / VP9, Flash Video, WMV. Each carries
+  `displayName` + `isAppleNative` so the C3 job-runner can route to
+  AVAssetExportSession vs AVAssetWriter vs ffmpeg.
+- **AudioChannel** + **AudioEncoding** — Copy / Disabled / Reencode
+  with codec (AAC, ALAC, PCM 16/24/32, MP3, MP2, Vorbis) + sample
+  rate + bitrate.
+- **FilterChain** — Denoise, SharpenBlur (luma+chroma radius+strength),
+  AddNoise (luma+chroma), fade in / out seconds.
+- **LUTSelection** — none / automatic / sidecarIfPresent /
+  asDefinedInPlayer / file(path). Stored separately for Camera LUT
+  (input correction) and Creative LUT (look) per Kyno's split.
+- **OverlaySettings** — TC overlay enable + size + 9-position grid +
+  opacity.
+- **ContainerSettings** — streamable, keep source timestamps,
+  timecode source (fromSourceIfAvailable / zeroBased / custom), embed
+  XMP metadata.
+- **Trimming** — none / inToOut.
+
+Everything is Codable + Equatable + Hashable so the model can carry
+custom-preset persistence and live edit state without manual
+serialization plumbing. 9 tests covering defaults, equality, full
+JSON round-trip with every nested type populated, default bitrate /
+codec values, Apple-native routing classification, and the 9-cell
+overlay grid coverage.
+
+This commit ships the foundation only — no UI changes, no
+TranscodePreset migration yet. Existing transcode behavior unchanged.
+Next commit (C2) will migrate TranscodePreset to embed
+TranscodeOptions and add the ~100 missing preset entries.
+
+---
+
 ## Sprint 9 — Excel (XLSX) report with embedded thumbnails
 
 File → Export Report → **Excel (XLSX, with thumbnails)…** —
