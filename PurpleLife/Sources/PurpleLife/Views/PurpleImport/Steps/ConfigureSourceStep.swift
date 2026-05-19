@@ -17,29 +17,192 @@ struct ConfigureSourceStep: View {
     @State private var xlsxEndColumn: String = ""
 
     var body: some View {
-        Form {
-            switch model.draft.sourceFormat {
-            case .csv:      csvSection
-            case .json:     jsonSection
-            case .markdown: markdownSection
-            case .xml:      xmlSection
-            case .xlsx:     xlsxSection
-            default:        deferredSection
+        VStack(spacing: 0) {
+            Form {
+                switch model.draft.sourceFormat {
+                case .csv:      csvSection
+                case .json:     jsonSection
+                case .markdown: markdownSection
+                case .xml:      xmlSection
+                case .xlsx:     xlsxSection
+                default:        deferredSection
+                }
+            }
+            .formStyle(.grouped)
+            .frame(maxHeight: 280)
+            Divider()
+            previewPane
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding(20)
+        .onAppear {
+            loadFromDraft()
+            Task { await model.loadPreview() }
+        }
+        .onChange(of: delimiter) { persistAndReload() }
+        .onChange(of: hasHeader) { persistAndReload() }
+        .onChange(of: rootPath) { persistAndReload() }
+        .onChange(of: ndjson) { persistAndReload() }
+        .onChange(of: markdownMode) { persistAndReload() }
+        .onChange(of: tableIndex) { persistAndReload() }
+        .onChange(of: xlsxSheetName) { persistAndReload() }
+        .onChange(of: xlsxHeaderRow) { persistAndReload() }
+        .onChange(of: xlsxStartColumn) { persistAndReload() }
+        .onChange(of: xlsxEndColumn) { persistAndReload() }
+    }
+
+    /// Re-renders the preview on every option change. Light debounce
+    /// via the Task scheduling itself — Swift coalesces back-to-back
+    /// runs when the previous Task is still pending on @MainActor.
+    private func persistAndReload() {
+        persist()
+        Task { await model.loadPreview() }
+    }
+
+    // MARK: - Preview pane
+
+    @ViewBuilder
+    private var previewPane: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Preview").font(.headline)
+                Spacer()
+                if model.pickedFilename == nil {
+                    Text("Pick a file first").font(.caption).foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.top, 12)
+
+            if let preview = model.preview {
+                previewContent(preview)
+            } else if model.pickedFilename != nil {
+                HStack {
+                    ProgressView().controlSize(.small)
+                    Text("Reading sample…").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                }
+            } else {
+                Spacer(minLength: 0)
             }
         }
-        .formStyle(.grouped)
-        .padding(20)
-        .onAppear { loadFromDraft() }
-        .onChange(of: delimiter) { persist() }
-        .onChange(of: hasHeader) { persist() }
-        .onChange(of: rootPath) { persist() }
-        .onChange(of: ndjson) { persist() }
-        .onChange(of: markdownMode) { persist() }
-        .onChange(of: tableIndex) { persist() }
-        .onChange(of: xlsxSheetName) { persist() }
-        .onChange(of: xlsxHeaderRow) { persist() }
-        .onChange(of: xlsxStartColumn) { persist() }
-        .onChange(of: xlsxEndColumn) { persist() }
+    }
+
+    @ViewBuilder
+    private func previewContent(_ preview: PurpleImport.SourcePreview) -> some View {
+        switch preview.shape {
+        case .tabular(let columns, _):
+            tabularPreview(columns: columns, rows: preview.sampleRows)
+        case .tree(let paths):
+            treePreview(paths: paths, rows: preview.sampleRows)
+        case .document(let body):
+            documentPreview(body: body)
+        }
+    }
+
+    private func tabularPreview(columns: [String], rows: [PurpleImport.SourceRow]) -> some View {
+        ScrollView([.horizontal, .vertical]) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 0) {
+                    Text("#")
+                        .font(.caption.weight(.semibold)).textCase(.uppercase)
+                        .tracking(0.4).foregroundStyle(.tertiary)
+                        .frame(width: 32, alignment: .leading)
+                        .padding(.horizontal, 6).padding(.vertical, 4)
+                    ForEach(columns, id: \.self) { col in
+                        Text(col)
+                            .font(.caption.weight(.semibold)).textCase(.uppercase)
+                            .tracking(0.4).foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .frame(width: 140, alignment: .leading)
+                            .padding(.horizontal, 6).padding(.vertical, 4)
+                    }
+                }
+                .background(Color.secondary.opacity(0.08))
+                Divider()
+                ForEach(Array(rows.prefix(10).enumerated()), id: \.offset) { idx, row in
+                    HStack(spacing: 0) {
+                        Text("\(idx + 1)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .frame(width: 32, alignment: .leading)
+                            .padding(.horizontal, 6).padding(.vertical, 3)
+                        ForEach(columns, id: \.self) { col in
+                            Text(cellString(row.cell(at: .column(col))))
+                                .font(.caption)
+                                .lineLimit(1).truncationMode(.tail)
+                                .frame(width: 140, alignment: .leading)
+                                .padding(.horizontal, 6).padding(.vertical, 3)
+                        }
+                    }
+                    Divider().opacity(0.3)
+                }
+            }
+        }
+    }
+
+    private func treePreview(paths: [String], rows: [PurpleImport.SourceRow]) -> some View {
+        ScrollView([.horizontal, .vertical]) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 0) {
+                    Text("#")
+                        .font(.caption.weight(.semibold)).textCase(.uppercase)
+                        .tracking(0.4).foregroundStyle(.tertiary)
+                        .frame(width: 32, alignment: .leading)
+                        .padding(.horizontal, 6).padding(.vertical, 4)
+                    ForEach(paths, id: \.self) { path in
+                        Text(path)
+                            .font(.caption.weight(.semibold).monospaced())
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .frame(width: 180, alignment: .leading)
+                            .padding(.horizontal, 6).padding(.vertical, 4)
+                    }
+                }
+                .background(Color.secondary.opacity(0.08))
+                Divider()
+                ForEach(Array(rows.prefix(10).enumerated()), id: \.offset) { idx, row in
+                    HStack(spacing: 0) {
+                        Text("\(idx + 1)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .frame(width: 32, alignment: .leading)
+                            .padding(.horizontal, 6).padding(.vertical, 3)
+                        ForEach(paths, id: \.self) { path in
+                            Text(cellString(row.cell(at: .path(path))))
+                                .font(.caption)
+                                .lineLimit(1).truncationMode(.tail)
+                                .frame(width: 180, alignment: .leading)
+                                .padding(.horizontal, 6).padding(.vertical, 3)
+                        }
+                    }
+                    Divider().opacity(0.3)
+                }
+            }
+        }
+    }
+
+    private func documentPreview(body: String) -> some View {
+        ScrollView {
+            Text(body.prefix(2000))
+                .font(.caption.monospaced())
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
+                .padding(8)
+                .background(Color.secondary.opacity(0.04))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            if body.count > 2000 {
+                Text("(\(body.count - 2000) more chars truncated)")
+                    .font(.caption2).foregroundStyle(.tertiary)
+                    .padding(.top, 4)
+            }
+        }
+    }
+
+    private func cellString(_ value: Any?) -> String {
+        guard let v = value else { return "" }
+        if let s = v as? String { return s }
+        if v is NSNull { return "" }
+        return String(describing: v)
     }
 
     // MARK: - CSV

@@ -48,7 +48,7 @@ enum PurpleImport {
             case .json:     return ["json", "ndjson"]
             case .markdown: return ["md", "markdown"]
             case .xml:      return ["xml"]
-            case .xlsx:     return ["xlsx"]
+            case .xlsx:     return ["xlsx", "xlsm"]
             case .docx:     return ["docx"]
             case .pdf:      return ["pdf"]
             }

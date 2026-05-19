@@ -18,11 +18,7 @@ struct PickSourceStep: View {
                     .font(.title3).bold()
 
                 if !showingPaste {
-                    DropZone(
-                        prompt: prompt,
-                        acceptedExtensions: model.draft.sourceFormat.defaultFileExtensions,
-                        acceptedDescription: "\(model.draft.sourceFormat.displayName) file"
-                    ) { url in
+                    DropZone(prompt: prompt) { url in
                         model.chooseFile(url)
                     }
                 } else {
@@ -55,9 +51,21 @@ struct PickSourceStep: View {
                 }
 
                 if let filename = model.pickedFilename {
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                        Text("Source: \(filename)").font(.callout)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                            Text("Source: \(filename)").font(.callout)
+                        }
+                        HStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                            Text("Auto-detected format: ")
+                                .font(.caption).foregroundStyle(.secondary)
+                            + Text(model.draft.sourceFormat.displayName)
+                                .font(.caption.weight(.semibold))
+                            Spacer()
+                            Text("Override above if wrong")
+                                .font(.caption2).foregroundStyle(.tertiary)
+                        }
                     }
                 }
             }

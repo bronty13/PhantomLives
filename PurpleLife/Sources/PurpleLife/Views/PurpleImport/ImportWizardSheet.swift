@@ -258,12 +258,16 @@ final class ImportWizardModel: ObservableObject, Identifiable {
     func chooseFile(_ url: URL) {
         pickedSource = .url(url)
         pickedFilename = url.lastPathComponent
-        // Detect format from the file extension if the user hasn't
-        // explicitly picked one yet.
-        let ext = url.pathExtension.lowercased()
-        for fmt in PurpleImport.SourceFormat.allCases where fmt.defaultFileExtensions.contains(ext) {
-            draft.sourceFormat = fmt
-            break
+        // Interrogate the file in two passes:
+        //   1. Filename extension — fast and usually right.
+        //   2. Magic-bytes content sniff — catches files with no
+        //      extension or a misleading one (.txt that's really CSV,
+        //      a .data dumped from some other tool, etc.).
+        // The format picker in the wizard's source step is now a
+        // *hint*, not a gate — the user can override either of the
+        // above by picking a format explicitly.
+        if let detected = Self.detectFormat(at: url) {
+            draft.sourceFormat = detected
         }
         // XLSX-only: probe the sheet list so the configure step's
         // sheet-name picker has options to show. Failure is
@@ -273,6 +277,49 @@ final class ImportWizardModel: ObservableObject, Identifiable {
         } else {
             xlsxSheetNames = []
         }
+    }
+
+    /// Best-effort format detection. Returns `nil` when the file
+    /// extension is unrecognized AND a content sniff can't confirm.
+    /// Sniff order matters: PDF and DOCX/XLSX (zip-magic) are
+    /// distinct binary headers, JSON / XML / CSV / Markdown are
+    /// text-shaped and fall through to plain-content inspection.
+    static func detectFormat(at url: URL) -> PurpleImport.SourceFormat? {
+        // 1. Extension wins when it matches one of the known sets.
+        let ext = url.pathExtension.lowercased()
+        for fmt in PurpleImport.SourceFormat.allCases where fmt.defaultFileExtensions.contains(ext) {
+            return fmt
+        }
+        // 2. Magic-bytes / content sniff fallback.
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let head = try? handle.read(upToCount: 4096) else { return nil }
+
+        // PDF.
+        if head.starts(with: [0x25, 0x50, 0x44, 0x46]) { return .pdf }
+        // ZIP-shaped containers — disambiguate xlsx vs docx by
+        // looking for namespace strings in the first 4 KB.
+        if head.starts(with: [0x50, 0x4B, 0x03, 0x04]) {
+            let s = String(data: head, encoding: .ascii) ?? ""
+            if s.contains("xl/") || s.contains("xl/workbook.xml") { return .xlsx }
+            if s.contains("word/") || s.contains("word/document.xml") { return .docx }
+            // Unknown zip — bail.
+            return nil
+        }
+        // Text-shaped formats. Strip a UTF-8 BOM if present so the
+        // leading-char check works.
+        var text = String(data: head, encoding: .utf8) ?? String(data: head, encoding: .isoLatin1) ?? ""
+        if text.hasPrefix("\u{FEFF}") { text.removeFirst() }
+        let trimmed = text.drop(while: { $0.isWhitespace })
+        if trimmed.hasPrefix("<?xml") || trimmed.hasPrefix("<") { return .xml }
+        if trimmed.hasPrefix("{") || trimmed.hasPrefix("[") { return .json }
+        if trimmed.hasPrefix("---") || trimmed.hasPrefix("+++") || trimmed.hasPrefix("#") { return .markdown }
+        // Pipe-table → markdown.
+        if trimmed.contains("|") && trimmed.contains("---") { return .markdown }
+        // Comma-rich plain text → CSV. Cheap heuristic, last resort.
+        let commaCount = text.prefix(2000).filter { $0 == "," }.count
+        if commaCount >= 5 { return .csv }
+        return nil
     }
 
     func choosePaste(_ text: String) {

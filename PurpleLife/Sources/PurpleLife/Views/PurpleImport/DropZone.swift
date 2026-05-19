@@ -1,23 +1,15 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Reusable drag-drop affordance for Purple Import. Accepts a single
-/// file URL whose extension matches one of the caller's
-/// `acceptedExtensions`. Multi-file drops, directories, and
-/// mismatched-extension drops are rejected with a friendly inline
-/// message (cleared after a few seconds).
+/// Reusable drag-drop affordance for Purple Import. Accepts any
+/// single file URL — Purple Import infers the source format from the
+/// extension after the pick, so it would be hostile to filter at the
+/// drop / NSOpenPanel layer (the user can pick the wrong format up
+/// top and still drag a "right" file in). Multi-file drops and
+/// directories are still rejected with a friendly inline message.
 struct DropZone: View {
     var prompt: String = "Drop a file here, or click to choose"
     var systemImage: String = "tray.and.arrow.down"
-
-    /// Lowercased extensions the drop should accept (e.g. `["csv", "tsv"]`).
-    /// Empty array means any file extension is accepted.
-    var acceptedExtensions: [String] = []
-
-    /// User-friendly description used in the rejection message
-    /// (e.g. "CSV file"). Defaults to "file" — sufficient for the
-    /// "any file" case.
-    var acceptedDescription: String = "file"
 
     var onPick: (URL) -> Void
 
@@ -68,7 +60,7 @@ struct DropZone: View {
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
         if providers.count > 1 {
-            showRejection("Drop only one \(acceptedDescription) at a time.")
+            showRejection("Drop only one file at a time.")
             return false
         }
         guard let provider = providers.first else { return false }
@@ -77,12 +69,7 @@ struct DropZone: View {
             guard let url else { return }
             DispatchQueue.main.async {
                 if isDirectory(url) {
-                    showRejection("Drop a \(acceptedDescription), not a folder.")
-                    return
-                }
-                if !extensionMatches(url) {
-                    let exts = acceptedExtensions.map { ".\($0)" }.joined(separator: " or ")
-                    showRejection("This zone expects a \(acceptedDescription) (\(exts)).")
+                    showRejection("Drop a file, not a folder.")
                     return
                 }
                 rejectionMessage = nil
@@ -91,11 +78,6 @@ struct DropZone: View {
             }
         }
         return true
-    }
-
-    private func extensionMatches(_ url: URL) -> Bool {
-        if acceptedExtensions.isEmpty { return true }
-        return acceptedExtensions.contains(url.pathExtension.lowercased())
     }
 
     private func isDirectory(_ url: URL) -> Bool {
@@ -117,21 +99,18 @@ struct DropZone: View {
     // MARK: - Click-to-open fallback
 
     private func runOpenPanel() {
+        // Deliberately unfiltered. macOS doesn't ship a UTType
+        // registration for every extension Purple Import understands
+        // (`UTType(filenameExtension: "xlsx")` notoriously returns
+        // nil on some installs, which then filters .xlsx files out
+        // of the open panel entirely — the symptom that motivated
+        // removing this gate). Format inference happens after the
+        // pick.
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        if !acceptedExtensions.isEmpty {
-            panel.allowedContentTypes = acceptedExtensions.compactMap {
-                UTType(filenameExtension: $0)
-            }
-        }
         if panel.runModal() == .OK, let url = panel.url {
-            if !extensionMatches(url) {
-                let exts = acceptedExtensions.map { ".\($0)" }.joined(separator: " or ")
-                showRejection("Pick a \(acceptedDescription) (\(exts)).")
-                return
-            }
             onPick(url)
         }
     }
