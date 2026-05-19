@@ -45,3 +45,17 @@ echo "✓ Built $APP_DIR"
 echo
 echo "Run with:  open '$APP_DIR'"
 echo "Quarantine clear:  xattr -dr com.apple.quarantine '$APP_DIR'"
+
+# Auto-install: replace /Applications/MacSearchReplace.app and relaunch. Opt
+# out with `--no-install` (CI builds, signature inspection) or
+# `--no-open` (install without focus-stealing relaunch). Per the
+# PhantomLives install.sh standard in CLAUDE.md.
+if [ "${BUILD_ONLY:-0}" != "1" ] && [[ ! " $* " =~ " --no-install " ]]; then
+    INSTALL_FLAGS=""
+    if [[ " $* " =~ " --no-open " ]]; then INSTALL_FLAGS="--no-open"; fi
+    INSTALL_SH="$(dirname "$0")/../install.sh"
+    if [ -x "$INSTALL_SH" ]; then
+        echo ""
+        "$INSTALL_SH" $INSTALL_FLAGS
+    fi
+fi

@@ -197,13 +197,15 @@ the worst cases) but the only durable fix is to drop
 
 ## `install.sh` standard for `.app` subprojects
 
-PhantomLives macOS apps that get built into a `.app` bundle (PurpleIRC, MasterClipper, Timeliner, SlackSucker, PurpleLife, MusicJournal, …) **should ship an `install.sh`** alongside `build-app.sh` whenever the developer workflow benefits from running the app out of `/Applications/`. That's the case when **any** of these apply:
+**Every PhantomLives macOS-app subproject (anything with a `build-app.sh` that produces a `.app` bundle) ships an `install.sh`, and `build-app.sh` auto-chains into it.** Building defaults to *build + install + relaunch* — one command does everything. This rule was made unconditional in 2026-05-19 because the conditional gating below was producing accidentally-divergent dev workflows across subprojects.
 
-- The app needs Full Disk Access, Accessibility, Automation, or another TCC entitlement — TCC keys grants on the `(team ID, bundle ID, cdhash)` tuple, and running from a stable `/Applications/` path keeps Launch Services + System Settings → Privacy from spawning duplicate stale entries on every rebuild.
-- The app registers a URL scheme, AppleScript dictionary, Shortcuts intents, or Spotlight metadata — same reason: those bind to the resolved bundle path that Launch Services indexes.
-- The app needs to be launched from outside the project tree (Spotlight, Dock, Cmd+Tab) for natural day-to-day use.
+The conditional rationale still applies (the *why* below is still load-bearing), it's just now applied universally:
 
-When it does **not** make sense, skip it: pure CLI tools, Python scripts, dev-only utilities, or sandboxed apps where running from anywhere is fine.
+- TCC entitlements (Full Disk Access, Accessibility, Automation) key grants on the `(team ID, bundle ID, cdhash)` tuple — running from `/Applications/<App>.app` keeps Launch Services + System Settings → Privacy from spawning duplicate stale entries on every rebuild.
+- URL schemes, AppleScript dictionaries, Shortcuts intents, Spotlight metadata — all bind to the resolved bundle path that Launch Services indexes.
+- Daily-use launching from Spotlight / Dock / Cmd+Tab needs a stable bundle path.
+
+Pure CLI tools, Python scripts, and dev-only utilities are still exempt — they don't have `build-app.sh` to begin with.
 
 ### What `install.sh` does
 
@@ -213,17 +215,41 @@ Three steps, in order:
 2. **Replace `/Applications/<AppName>.app`** — `rm -rf` then `ditto --noextattr <project-dir>/<AppName>.app /Applications/<AppName>.app`. `ditto --noextattr` matters: it strips the iCloud File Provider xattrs that re-attach mid-copy and break `codesign --verify`.
 3. **Relaunch** — `open /Applications/<AppName>.app`. Skip with a `--no-open` flag for CI / scripted use.
 
-The script lives at the subproject root (`<SubProject>/install.sh`), is `chmod +x`-ed in git, refuses to run when `<SubProject>/<AppName>.app` doesn't exist yet (run `./build-app.sh` first), and tolerates a missing `/Applications/<AppName>.app` (first install).
+The script lives at the subproject root (`<SubProject>/install.sh`), is `chmod +x`-ed in git, refuses to run when the local `<App>.app` doesn't exist yet (run `./build-app.sh` first), and tolerates a missing `/Applications/<AppName>.app` (first install).
 
 Reference implementation: `SlackSucker/install.sh`.
+
+### `build-app.sh` chain
+
+Every `build-app.sh` ends with this canonical block after the build succeeds:
+
+```bash
+# Auto-install: replace /Applications/<App>.app and relaunch. Opt out
+# with `--no-install` (CI builds, signature inspection) or `--no-open`
+# (install without focus-stealing relaunch). Per the install.sh standard.
+if [ "${BUILD_ONLY:-0}" != "1" ] && [[ ! " $* " =~ " --no-install " ]]; then
+    INSTALL_FLAGS=""
+    if [[ " $* " =~ " --no-open " ]]; then INSTALL_FLAGS="--no-open"; fi
+    if [ -x "$(dirname "$0")/install.sh" ]; then
+        "$(dirname "$0")/install.sh" $INSTALL_FLAGS
+    fi
+fi
+```
+
+The `BUILD_ONLY=1` env-var override is for one-off invocations from scripts that genuinely want only the .app bundle (PR previews, signature checks). The `--no-install` flag is the same idea on the command line.
 
 ### Developer workflow
 
 ```sh
-./build-app.sh && ./install.sh
+./build-app.sh                       # build + install + relaunch
+./build-app.sh --no-open             # build + install, no focus steal
+./build-app.sh --no-install          # build only (legacy behavior)
+BUILD_ONLY=1 ./build-app.sh          # same, via env
+./install.sh                          # re-install last-built bundle
+./install.sh --no-open               # re-install without launching
 ```
 
-One line: build the bundle, replace the `/Applications/` copy, relaunch. Two-step variant (`./install.sh --no-open` then manually open from Spotlight) is useful when iterating on launch-time logic without auto-focus stealing.
+The pre-2026-05-19 two-line idiom (`./build-app.sh && ./install.sh`) still works (install.sh is idempotent — running it twice just does the kill-replace-relaunch cycle twice), but it's redundant now.
 
 ### Why `/Applications/`, not the project tree?
 
