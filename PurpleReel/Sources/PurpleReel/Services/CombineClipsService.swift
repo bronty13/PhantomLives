@@ -145,15 +145,23 @@ final class CombineClipsJob: ObservableObject, Identifiable {
         progress = 0
 
         // Build the head-to-tail composition. Tracks are added once;
-        // each source is inserted at the running cursor.
+        // each source is inserted at the running cursor. C18 — for
+        // audio-only output we skip the video track entirely so the
+        // export session doesn't try to encode video into an m4a
+        // container (it'd fail with "no compatible video").
         let comp = AVMutableComposition()
-        guard let vTrack = comp.addMutableTrack(
+        let vTrack: AVMutableCompositionTrack? = preset.isAudioOnly ? nil
+            : comp.addMutableTrack(
                 withMediaType: .video,
-                preferredTrackID: kCMPersistentTrackID_Invalid),
-              let aTrack = comp.addMutableTrack(
+                preferredTrackID: kCMPersistentTrackID_Invalid)
+        guard let aTrack = comp.addMutableTrack(
                 withMediaType: .audio,
                 preferredTrackID: kCMPersistentTrackID_Invalid)
         else {
+            state = .failed("Couldn't create composition tracks")
+            return
+        }
+        if !preset.isAudioOnly && vTrack == nil {
             state = .failed("Couldn't create composition tracks")
             return
         }
@@ -186,10 +194,12 @@ final class CombineClipsJob: ObservableObject, Identifiable {
                 let dur = CMTime(seconds: trimmedSeconds,
                                   preferredTimescale: assetDuration.timescale)
                 let range = CMTimeRange(start: start, duration: dur)
-                let vSources = try await asset.loadTracks(withMediaType: .video)
                 let aSources = try await asset.loadTracks(withMediaType: .audio)
-                if let v = vSources.first {
-                    try vTrack.insertTimeRange(range, of: v, at: cursor)
+                if let vTrack {
+                    let vSources = try await asset.loadTracks(withMediaType: .video)
+                    if let v = vSources.first {
+                        try vTrack.insertTimeRange(range, of: v, at: cursor)
+                    }
                 }
                 if let a = aSources.first {
                     try aTrack.insertTimeRange(range, of: a, at: cursor)
@@ -220,7 +230,8 @@ final class CombineClipsJob: ObservableObject, Identifiable {
         // Pick a sensible orientation for the output composition. We
         // copy the first video source's `preferredTransform` so the
         // composition rotates portrait phone footage right-side-up.
-        if let firstSource = sources.first {
+        // Skipped on audio-only — no video track to orient.
+        if let vTrack, let firstSource = sources.first {
             let firstAsset = AVURLAsset(url: firstSource.url)
             if let firstV = try? await firstAsset.loadTracks(withMediaType: .video).first,
                let xform = try? await firstV.load(.preferredTransform),
@@ -279,12 +290,14 @@ final class CombineClipsJob: ObservableObject, Identifiable {
     }
 
     /// Match the file type to the chosen preset. ProRes wants `.mov`,
-    /// H.264 / HEVC are happy in `.mp4`.
+    /// audio-only m4a wants `.m4a`, H.264 / HEVC are happy in `.mp4`.
     private func containerType() -> AVFileType {
         switch preset.avPresetName {
         case AVAssetExportPresetAppleProRes422LPCM,
              AVAssetExportPresetAppleProRes4444LPCM:
             return .mov
+        case AVAssetExportPresetAppleM4A:
+            return .m4a
         default:
             return .mp4
         }

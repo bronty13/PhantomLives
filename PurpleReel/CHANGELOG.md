@@ -17,6 +17,54 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C18 — Combine Clips: audio-only output
+
+Category F follow-up #3. Adds an "Audio Only (AAC m4a)" preset to
+the catalogue and teaches `CombineClipsJob` to skip the video track
+when the chosen preset is audio-only. The use case is doc / podcast
+work where the user wants to glue dialogue takes together without
+ever rendering video — was previously a manual ffmpeg-on-the-side
+step.
+
+**Catalogue** — `TranscodePreset.swift`:
+- New built-in `m4a-audio-only` preset in `TranscodePreset.all`:
+  AAC in an `.m4a` container, `category: .audio` (the enum case
+  has existed since Sprint 3 but was unused).
+- New computed property `isAudioOnly` — true when
+  `category == .audio` OR `avPresetName == AVAssetExportPresetAppleM4A`
+  OR `fileExtension ∈ {m4a, wav, aiff}`. The extension fallback
+  lets a future user-created WAV / AIFF preset pick up audio-only
+  semantics without the service needing to learn another constant.
+
+**Service layer** — `CombineClipsService.swift`:
+- `run()` now builds `vTrack` as Optional: nil for audio-only
+  presets, the usual `AVMutableCompositionTrack` otherwise. The
+  source loop guards both the per-clip `insertTimeRange(.video)`
+  call and the post-loop `preferredTransform` / `naturalSize`
+  copy on the optional track.
+- `containerType()` recognises `AVAssetExportPresetAppleM4A` →
+  `.m4a` ahead of the default `.mp4` fallthrough.
+
+**Sheet layer** — `CombineClipsSheet.swift`:
+- `retitleForPreset()` swaps from a hardcoded ProRes-vs-mp4
+  ternary to reading the preset's declared `fileExtension`. The
+  audio-only preset's `m4a` extension flows through naturally;
+  the existing ProRes path stays correct because the ProRes
+  presets declare `fileExtension: "mov"`.
+- `combinePresets` (which already filtered out ffmpeg + passthrough)
+  picks up `m4a-audio-only` automatically; no UI logic needed.
+
+**Tests** — `AudioOnlyPresetTests.swift` (NEW, 3 cases):
+- `testM4APresetExistsInCatalogueAndIsAudioOnly` — pins the
+  catalogue entry shape (`id`, `avPresetName`, `fileExtension`,
+  `category`, `isAudioOnly`).
+- `testVideoPresetsAreNotMarkedAudioOnly` — sanity check that
+  H.264 / HEVC / ProRes / pass-through don't accidentally pick
+  up the audio-only treatment.
+- `testWAVAndAIFFExtensionsFallBackToAudioOnly` — documents the
+  extension-based fallback so a future WAV preset doesn't break
+  the rule.
+
 ### C17 — Combine Clips: marker preservation
 
 Category F follow-up #2. Builds on the C16 trim/reorder pass.

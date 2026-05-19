@@ -241,7 +241,32 @@ struct TranscodePreset: Identifiable, Hashable, Codable {
                             "-c:a", "pcm_s16le",
                             "{OUT}",
                         ]),
+
+        // ---- Audio-only -----------------------------------------
+        // C18 — extract the audio track only, AAC in an m4a
+        // container. Combine Clips uses this for "glue dialogue
+        // takes" without rendering video. Stand-alone transcode
+        // can also pick this when the audio is the only thing
+        // wanted (interview transcript prep, podcast cut-down).
+        TranscodePreset(id: "m4a-audio-only",
+                        name: "Audio Only (AAC m4a)",
+                        avPresetName: AVAssetExportPresetAppleM4A,
+                        fileExtension: "m4a", suffix: "_audio",
+                        category: .audio,
+                        alwaysAvailable: true, ffmpegArgs: nil),
     ]
+
+    /// C18 — true when this preset writes audio without video. The
+    /// Combine Clips composition skips the video track entirely for
+    /// these so the export session doesn't try (and fail) to encode
+    /// a video stream into an audio-only container.
+    var isAudioOnly: Bool {
+        category == .audio
+            || avPresetName == AVAssetExportPresetAppleM4A
+            || fileExtension == "m4a"
+            || fileExtension == "wav"
+            || fileExtension == "aiff"
+    }
 }
 
 /// Recently-used preset tracking — persists the IDs of the last six

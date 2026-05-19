@@ -333,9 +333,10 @@ struct CombineClipsSheet: View {
     }
 
     private func retitleForPreset() {
-        let ext = (selectedPreset?.avPresetName == AVAssetExportPresetAppleProRes422LPCM
-                   || selectedPreset?.avPresetName == AVAssetExportPresetAppleProRes4444LPCM)
-                  ? "mov" : "mp4"
+        // Pick the file extension off the preset's declared one. C18
+        // — audio-only (m4a) sits in the picker now, so the legacy
+        // ProRes-vs-mp4 ternary isn't expressive enough.
+        let ext = selectedPreset?.fileExtension ?? "mp4"
         let base = (filename as NSString).deletingPathExtension
         filename = base.isEmpty ? "combined.\(ext)" : "\(base).\(ext)"
     }

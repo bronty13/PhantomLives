@@ -76,16 +76,3 @@ fi
 echo ""
 echo "✓ Built: $DEST_APP"
 echo "  Version: $SHORT_VERSION ($BUILD_NUMBER)"
-
-# Auto-install: replace /Applications/PurpleLife.app and relaunch. Opt
-# out with `--no-install` (CI builds, signature inspection) or
-# `--no-open` (install without focus-stealing relaunch). Per the
-# PhantomLives install.sh standard in CLAUDE.md.
-if [ "${BUILD_ONLY:-0}" != "1" ] && [[ ! " $* " =~ " --no-install " ]]; then
-    INSTALL_FLAGS=""
-    if [[ " $* " =~ " --no-open " ]]; then INSTALL_FLAGS="--no-open"; fi
-    if [ -x "$(dirname "$0")/install.sh" ]; then
-        echo ""
-        "$(dirname "$0")/install.sh" $INSTALL_FLAGS
-    fi
-fi

@@ -100,17 +100,3 @@ echo ""
 echo "✓ Built: $DEST_APP"
 echo "  Version: $SHORT_VERSION ($BUILD_NUMBER)"
 echo "  Signature: $(codesign -dvv "$DEST_APP" 2>&1 | grep -E 'Authority|TeamIdentifier' | head -2 | tr '\n' ' ' | sed 's/  */ /g')"
-
-# Auto-install: replace /Applications/MasterClipper.app and relaunch. Opt
-# out with `--no-install` (CI builds, signature inspection) or
-# `--no-open` (install without focus-stealing relaunch). Per the
-# PhantomLives install.sh standard in CLAUDE.md.
-if [ "${BUILD_ONLY:-0}" != "1" ] && [[ ! " $* " =~ " --no-install " ]]; then
-    INSTALL_FLAGS=""
-    if [[ " $* " =~ " --no-open " ]]; then INSTALL_FLAGS="--no-open"; fi
-    INSTALL_SH="$(dirname "$0")/install.sh"
-    if [ -x "$INSTALL_SH" ]; then
-        echo ""
-        "$INSTALL_SH" $INSTALL_FLAGS
-    fi
-fi

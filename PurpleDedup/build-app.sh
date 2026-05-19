@@ -324,17 +324,3 @@ echo "CLI:       $FINAL_APP_DIR/Contents/MacOS/pdedup --help"
 if [ -n "${NOTARIZE_PROFILE:-}" ] && [ "$CODESIGN_ID" != "-" ]; then
     echo "(Notarized — Gatekeeper will accept this bundle on any Mac.)"
 fi
-
-# Auto-install: replace /Applications/PurpleDedup.app and relaunch. Opt
-# out with `--no-install` (CI builds, signature inspection) or
-# `--no-open` (install without focus-stealing relaunch). Per the
-# PhantomLives install.sh standard in CLAUDE.md.
-if [ "${BUILD_ONLY:-0}" != "1" ] && [[ ! " $* " =~ " --no-install " ]]; then
-    INSTALL_FLAGS=""
-    if [[ " $* " =~ " --no-open " ]]; then INSTALL_FLAGS="--no-open"; fi
-    INSTALL_SH="$(dirname "$0")/install.sh"
-    if [ -x "$INSTALL_SH" ]; then
-        echo ""
-        "$INSTALL_SH" $INSTALL_FLAGS
-    fi
-fi
