@@ -59,6 +59,14 @@ struct BrowserView: View {
             Group {
                 if appState.rootFolder == nil {
                     emptyState
+                } else if filteredAssets.isEmpty && shouldShowNoResultsBanner {
+                    // C29 — silent-gotcha sweep: when filters /
+                    // search / type chip hide every asset in the
+                    // current folder, replace the empty list with
+                    // a banner that explains which gate is hiding
+                    // things and offers one-click resets. Avoids
+                    // the "the UI is blank, why?" foot-gun.
+                    noResultsBanner
                 } else {
                     switch appState.viewMode {
                     case "grid":   gridView
@@ -321,6 +329,123 @@ struct BrowserView: View {
                 .padding(.vertical, 8)
                 .background(Color.accentColor.opacity(0.08))
             }
+        }
+    }
+
+    // MARK: - No-results banner (C29)
+
+    /// True when at least one filter / search / type-chip / time
+    /// gate is doing the hiding — so dropping it to "All / cleared"
+    /// would surface some assets. If no gate is active, an empty
+    /// list means the folder really is empty (or drilldown is off,
+    /// which the C21 banner covers).
+    private var shouldShowNoResultsBanner: Bool {
+        // Catalogue has at least one asset for the current folder
+        // (drilldown ON to count nested too — if there's nothing
+        // anywhere in the tree, the gotcha isn't filters).
+        let folderHasAnyAsset = (appState.selectedFolderPath.flatMap {
+            appState.folderCounts(forFolder: $0)
+        }).map { $0.direct + $0.nested > 0 } ?? !appState.assets.isEmpty
+        if !folderHasAnyAsset { return false }
+        // Any gate active?
+        return appState.typeFilter != "all"
+            || !appState.activeFilters.isEmpty
+            || appState.timeFilter != "any"
+            || !stableFilterText.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    @ViewBuilder
+    private var noResultsBanner: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .font(.system(size: 56))
+                .foregroundStyle(.secondary)
+            Text("No assets match the current filters")
+                .font(.title3.weight(.semibold))
+            Text("Here's what's hiding things — one click to drop a gate.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 8) {
+                if !stableFilterText.trimmingCharacters(in: .whitespaces).isEmpty {
+                    gateRow(
+                        icon: "magnifyingglass",
+                        label: "Search: \"\(stableFilterText)\"",
+                        clearLabel: "Clear search"
+                    ) {
+                        filterText = ""
+                        stableFilterText = ""
+                    }
+                }
+                if appState.typeFilter != "all" {
+                    gateRow(
+                        icon: "rectangle.3.group",
+                        label: "Media-type chip: \(appState.typeFilter.capitalized) only",
+                        clearLabel: "Show all types"
+                    ) {
+                        appState.typeFilter = "all"
+                    }
+                }
+                if appState.timeFilter != "any" {
+                    gateRow(
+                        icon: "clock",
+                        label: "Date filter: \(timeFilterLabel(appState.timeFilter))",
+                        clearLabel: "Show all dates"
+                    ) {
+                        appState.timeFilter = "any"
+                    }
+                }
+                if !appState.activeFilters.isEmpty {
+                    gateRow(
+                        icon: "line.3.horizontal.decrease.circle.fill",
+                        label: "\(appState.activeFilters.count) advanced filter pill\(appState.activeFilters.count == 1 ? "" : "s")",
+                        clearLabel: "Clear all filters"
+                    ) {
+                        appState.activeFilters = []
+                    }
+                }
+            }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.gray.opacity(0.08))
+            )
+            .frame(maxWidth: 420)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(40)
+    }
+
+    @ViewBuilder
+    private func gateRow(icon: String, label: String, clearLabel: String,
+                          action: @escaping () -> Void) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .foregroundStyle(.tint)
+                .frame(width: 18)
+            Text(label)
+                .font(.callout)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 12)
+            Button(clearLabel, action: action)
+                .controlSize(.small)
+        }
+    }
+
+    /// Human-readable mirror of the timeFilter raw values — same
+    /// strings the toolbar chips show.
+    private func timeFilterLabel(_ raw: String) -> String {
+        switch raw {
+        case "hour": return "Last hour"
+        case "24h":  return "Last 24 hours"
+        case "2d":   return "Last 2 days"
+        case "7d":   return "Last 7 days"
+        case "30d":  return "Last 30 days"
+        case "3m":   return "Last 3 months"
+        case "6m":   return "Last 6 months"
+        case "year": return "Last year"
+        default:     return raw
         }
     }
 

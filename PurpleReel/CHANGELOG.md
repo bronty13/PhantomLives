@@ -17,6 +17,41 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C29 — Silent-gotcha sweep: "no results" banner for active filters
+
+Sibling of C21's drilldown-hint banner. When the user lands on a
+folder that has assets in the catalogue but the visible list is
+empty because of one or more active gates (search term / type chip
+/ date filter / advanced filter pills), the UI used to silently
+show a blank list. C29 replaces the blank list with an inline panel
+that explains *which* gate is hiding things and offers a one-click
+clear button per gate.
+
+**Detection** — `BrowserView.shouldShowNoResultsBanner`:
+- Folder has at least one catalogued asset (direct or nested via
+  C21's `folderCounts(forFolder:)`).
+- AND filteredAssets is empty.
+- AND at least one gate is non-default:
+  `typeFilter != "all"`, `timeFilter != "any"`,
+  `!activeFilters.isEmpty`, or non-empty search term.
+
+If folder really has zero assets (or drilldown is off — C21
+covers that), the banner stays quiet.
+
+**UI** — `noResultsBanner` view:
+- Centered "No assets match the current filters" message.
+- One row per active gate listing the cause + a Clear button
+  that drops just that gate. So a user with both a typed
+  search and a type-chip selection sees two distinct rows
+  with their own clear actions — no all-or-nothing.
+- Date-filter rows use human-readable labels ("Last 24 hours")
+  instead of the storage keys ("24h").
+
+No new tests — the helper is straight state inspection that
+mirrors existing UI bindings (Picker selections + AppStorage
+keys). Manual QA: type a search that matches nothing → banner
+appears; click "Clear search" → list re-populates.
+
 ### C28 — Marketing copy sweep ("Why PurpleReel")
 
 KYNO_RESEARCH rows 71/72/77/81 are non-engineering marketing
