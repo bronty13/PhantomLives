@@ -32,6 +32,11 @@ struct ContentView: View {
     /// the persistence-corruption door — defer until asked for.
     private let sidebarWidth: CGFloat = 240
 
+    /// C34 — gates the resume-interrupted-runs alert so it fires at
+    /// most once per launch. Set true on the first onAppear pass
+    /// when AppState's `interruptedRuns` is non-empty.
+    @State private var resumePromptShown: Bool = false
+
     var body: some View {
         HStack(spacing: 0) {
             if sidebarVisible {
@@ -212,6 +217,40 @@ struct ContentView: View {
         .sheet(isPresented: $appState.backupSheetVisible) {
             BackupView()
                 .environmentObject(appState)
+        }
+        // C34 — resume-interrupted-runs alert. Fires at most once
+        // per launch via the `resumePromptShown` gate. Resuming
+        // restores the run; "Discard all" wipes every snapshot
+        // (NB: the per-run resume action only discards the one it
+        // resumed). Skipping the alert (no button) leaves snapshots
+        // on disk for next launch.
+        .alert(
+            "Resume interrupted workflow chain?",
+            isPresented: Binding(
+                get: { !resumePromptShown && !appState.interruptedRuns.isEmpty },
+                set: { _ in resumePromptShown = true }
+            ),
+            presenting: appState.interruptedRuns.first
+        ) { firstRun in
+            Button("Resume “\(firstRun.chain.name)”") {
+                appState.resumeInterruptedRun(firstRun)
+            }
+            Button("Discard All", role: .destructive) {
+                ActiveRunPersistence.clearAll()
+                appState.interruptedRuns = []
+            }
+            Button("Not Now", role: .cancel) { }
+        } message: { firstRun in
+            let completedCount = firstRun.completedStepIndices.count
+            let totalCount = firstRun.chain.steps.count
+            Text(
+                "PurpleReel found \(appState.interruptedRuns.count) "
+                + "interrupted run(s) from a prior session. "
+                + "“\(firstRun.chain.name)” completed "
+                + "\(completedCount) of \(totalCount) step(s) before "
+                + "it stopped. Resuming picks up at step "
+                + "\(completedCount + 1)."
+            )
         }
         .sheet(isPresented: $appState.sftpSheetVisible) {
             SFTPDeliveryView()

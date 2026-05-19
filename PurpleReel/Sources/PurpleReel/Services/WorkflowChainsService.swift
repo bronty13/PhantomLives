@@ -52,10 +52,66 @@ final class WorkflowChainRun: ObservableObject, Identifiable {
     /// between steps.
     private var activeTranscodes: [TranscodeJob] = []
 
+    /// C34 — persistence snapshot id. Static for the lifetime of
+    /// the run; the same UUID is used to save and to delete the
+    /// snapshot file under `ActiveRunPersistence`.
+    let snapshotID: UUID
+    /// C34 — indices already completed before this run started.
+    /// Empty on a fresh run; populated when constructing a run
+    /// from an interrupted-run snapshot. Steps at these indices
+    /// are pre-marked as `.finished` and skipped in `run()`.
+    private let preCompletedIndices: Set<Int>
+    /// C34 — when true, this run was reconstructed from disk and
+    /// is replaying a chain that was interrupted in a prior
+    /// session. Surfaces in the run-sheet header so the user knows
+    /// they're not starting from scratch.
+    let isResumed: Bool
+
     init(chain: WorkflowChain, source: URL) {
         self.chain = chain
         self.source = source
         self.steps = chain.steps.map { StepState($0) }
+        self.snapshotID = UUID()
+        self.preCompletedIndices = []
+        self.isResumed = false
+    }
+
+    /// C34 — resume an interrupted run from a snapshot loaded by
+    /// `ActiveRunPersistence.loadAll()`. Steps at the snapshot's
+    /// `completedStepIndices` are pre-marked `.finished` so
+    /// `run()` skips them. Source URL + chain definition come from
+    /// the snapshot directly — the user doesn't have to re-pick
+    /// the source folder.
+    init(resumingFrom snapshot: ActiveRunPersistence.Snapshot) {
+        self.chain = snapshot.chain
+        self.source = URL(fileURLWithPath: snapshot.sourcePath)
+        self.steps = snapshot.chain.steps.map { StepState($0) }
+        self.snapshotID = snapshot.id
+        self.preCompletedIndices = Set(snapshot.completedStepIndices)
+        self.isResumed = true
+        for idx in preCompletedIndices where idx < steps.count {
+            steps[idx].status = .finished
+            steps[idx].detail = "Already finished in prior session"
+            steps[idx].progress = 1
+        }
+    }
+
+    /// C34 — build the current snapshot for persistence. Walks
+    /// `steps` to compute the completed-indices set right now;
+    /// caller decides when to write.
+    private func currentSnapshot() -> ActiveRunPersistence.Snapshot {
+        let completed: [Int] = steps.enumerated().compactMap { idx, s in
+            if case .finished = s.status { return idx }
+            return nil
+        }
+        return ActiveRunPersistence.Snapshot(
+            id: snapshotID,
+            chain: chain,
+            sourcePath: source.path,
+            startedAt: Date(),
+            lastUpdatedAt: Date(),
+            completedStepIndices: completed
+        )
     }
 
     func cancel() {
@@ -76,9 +132,21 @@ final class WorkflowChainRun: ObservableObject, Identifiable {
     func run(toolVersion: String, transcodeQueue: TranscodeQueue,
              appState: AppState) async {
         state = .running
+        // C34 — initial snapshot so an immediate crash still
+        // leaves something the launch prompt can pick up.
+        ActiveRunPersistence.save(currentSnapshot())
         for (idx, stepState) in steps.enumerated() {
             if state == .cancelled {
                 stepState.status = .cancelled
+                continue
+            }
+            // C34 — skip steps that were already finished in the
+            // prior session (resumed run). They were pre-marked
+            // .finished by the init; just step `currentStep`
+            // forward without running them again.
+            if preCompletedIndices.contains(idx),
+               case .finished = stepState.status {
+                currentStep = idx
                 continue
             }
             currentStep = idx
@@ -106,10 +174,20 @@ final class WorkflowChainRun: ObservableObject, Identifiable {
                 // state at the end is .failed iff ANY step failed.
                 if !chain.continueOnFailure {
                     state = .failed("Step \(idx + 1): \(stepState.detail)")
+                    // C34 — keep the snapshot on disk so the
+                    // launch prompt can offer to resume / retry.
+                    ActiveRunPersistence.save(currentSnapshot())
                     return
                 }
                 // Continuing — leave state at .running; the loop
                 // will land on the next step.
+            }
+            // C34 — after every successful step, refresh the
+            // snapshot so the completed-indices set on disk grows.
+            // Resumption from a mid-chain crash skips exactly the
+            // steps that landed here.
+            if case .finished = stepState.status {
+                ActiveRunPersistence.save(currentSnapshot())
             }
         }
         if state != .cancelled {
@@ -126,9 +204,19 @@ final class WorkflowChainRun: ObservableObject, Identifiable {
                     if case .failed = $0.status { return true }; return false
                 }.count
                 state = .failed("\(failedCount) of \(steps.count) step(s) failed (chain ran to completion).")
+                // C34 — leave the snapshot for the user's retry
+                // decision (same as the abort-on-failure path).
+                ActiveRunPersistence.save(currentSnapshot())
             } else {
                 state = .finished
+                // C34 — clean exit: snapshot served its purpose.
+                ActiveRunPersistence.delete(snapshotID)
             }
+        } else {
+            // C34 — cancelled path also deletes the snapshot — the
+            // user explicitly chose to abandon. (Failure leaves it
+            // for a possible retry.)
+            ActiveRunPersistence.delete(snapshotID)
         }
         currentStep = steps.count
     }

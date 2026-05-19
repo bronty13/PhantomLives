@@ -40,6 +40,37 @@ struct WorkflowChainsSheet: View {
         .onAppear {
             chains = WorkflowChainsStore.load()
             consumePendingAutoRun()
+            consumePendingResume()
+        }
+    }
+
+    /// C34 — pick up a resume request seeded by
+    /// `AppState.resumeInterruptedRun` (launch-time alert in
+    /// ContentView). Reconstructs the run from the snapshot,
+    /// pre-marks completed steps, and kicks `run()` so the user
+    /// lands on the in-progress UI immediately.
+    private func consumePendingResume() {
+        guard let snap = appState.pendingResumeSnapshot else { return }
+        appState.pendingResumeSnapshot = nil
+        // Ensure the chain is in the local list so the UI selects
+        // it on the left side. If the user deleted the chain since
+        // the snapshot was written, restore it from the snapshot —
+        // the user can re-delete after the resumed run finishes.
+        if !chains.contains(where: { $0.id == snap.chain.id }) {
+            chains.append(snap.chain)
+        }
+        selectedID = snap.chain.id
+        sourceFolder = URL(fileURLWithPath: snap.sourcePath)
+        let run = WorkflowChainRun(resumingFrom: snap)
+        activeRun = run
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            Task {
+                await run.run(
+                    toolVersion: AppVersion.display,
+                    transcodeQueue: appState.transcodeQueue,
+                    appState: appState
+                )
+            }
         }
     }
 

@@ -856,6 +856,10 @@ final class AppState: ObservableObject {
     let transcodeQueue = TranscodeQueue()
     @Published var transcodeSheetVisible = false
     @Published var backupSheetVisible = false
+    /// C34 (E3) — workflow-chain run snapshots persisted on disk
+    /// that didn't reach a clean .finished exit in a prior session.
+    /// ContentView surfaces a one-shot resume prompt at launch.
+    @Published var interruptedRuns: [ActiveRunPersistence.Snapshot] = []
     @Published var sftpSheetVisible = false
     @Published var detailSheetVisible = false
     @Published var aiSheetState: AISheetState?
@@ -873,6 +877,12 @@ final class AppState: ObservableObject {
             fatalError("PurpleReel could not open its database: \(error)")
         }
         BackupService.runOnLaunchIfNeeded()
+        // C34 — pick up any workflow-chain runs that were
+        // interrupted in a prior session. We just load the
+        // snapshots into a Published property here; the actual
+        // resume prompt is a SwiftUI alert wired up in ContentView
+        // (so it only fires once the UI is on screen).
+        self.interruptedRuns = ActiveRunPersistence.loadAll()
         // Hydrate per-folder drilldown set from defaults.
         if let arr = UserDefaults.standard.array(forKey: "drilldownPaths") as? [String] {
             self.drilldownPaths = Set(arr)
@@ -2458,6 +2468,27 @@ final class AppState: ObservableObject {
     /// 66). Manage saved chains, plus run them against a chosen
     /// folder with per-step progress.
     @Published var workflowChainsSheetVisible = false
+    /// C34 (E3) — pending resume request set by `resumeInterruptedRun`.
+    /// `WorkflowChainsSheet`'s onAppear / onChange picks it up and
+    /// constructs a `WorkflowChainRun(resumingFrom:)`. Cleared by
+    /// the sheet once consumed so the same snapshot doesn't fire
+    /// twice.
+    @Published var pendingResumeSnapshot: ActiveRunPersistence.Snapshot?
+
+    /// C34 (E3) — entry point from the launch-time resume prompt
+    /// in ContentView. Opens the Workflow Chains sheet and stashes
+    /// the snapshot for it to consume.
+    func resumeInterruptedRun(_ snapshot: ActiveRunPersistence.Snapshot) {
+        pendingResumeSnapshot = snapshot
+        workflowChainsSheetVisible = true
+        // The resumed run will land in `interruptedRuns` again if
+        // it doesn't finish, but the one we just chose to resume
+        // shouldn't reappear in this session's prompt. Drop it
+        // from the in-memory list (file stays on disk until the
+        // resumed run either finishes — which deletes it — or the
+        // user discards it explicitly).
+        interruptedRuns.removeAll { $0.id == snapshot.id }
+    }
 
     /// When non-nil, `WorkflowChainsSheet` reads this on appear,
     /// pre-selects the chain, pre-populates the source folder,

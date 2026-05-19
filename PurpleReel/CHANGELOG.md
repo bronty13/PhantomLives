@@ -17,6 +17,85 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C34 — Workflow chain run resumption across app launches
+
+Deferred from C33's E3. A workflow-chain run can be 30+ minutes
+(verified backup of a 256GB camera card → 30 transcodes → CSV
+report). Pre-C34, a force-quit / crash / "Cmd-Q during a backup"
+lost every per-step state and the user had to re-run the whole
+chain from scratch — re-verifying every file, re-encoding every
+clip.
+
+C34 snapshots the run's progress to disk after every successful
+step. On the next app launch, AppState surfaces a one-shot resume
+prompt offering to pick up at the first incomplete step.
+
+**Persistence service** — new `ActiveRunPersistence` enum:
+- `Snapshot` codable type: id, chain (full JSON), sourcePath,
+  startedAt, lastUpdatedAt, completedStepIndices.
+- Files at `~/Library/Application Support/PurpleReel/active-runs/<UUID>.json`.
+- API: `save(_:)` (atomic write), `delete(UUID)`, `loadAll()`
+  (newest-first), `clearAll()` for the "Discard all" button.
+- Test seam: `directoryOverride` lets unit tests redirect to a
+  temp path without mocking FileManager.
+
+**Runner integration** — `WorkflowChainRun`:
+- New `snapshotID`, `preCompletedIndices`, `isResumed` fields.
+- New `init(resumingFrom: Snapshot)` reconstructs a run from a
+  snapshot — steps in `completedStepIndices` are pre-marked
+  `.finished` with detail "Already finished in prior session"
+  + progress 1.
+- `run()`:
+  - Writes initial snapshot before the first step (so an
+    immediate crash leaves something to resume).
+  - Refreshes snapshot after every step that transitions to
+    `.finished`.
+  - On overall `.finished`: deletes the snapshot (clean exit).
+  - On `.cancelled`: deletes (user explicitly abandoned).
+  - On `.failed`: KEEPS the snapshot (user might retry).
+- Resumed runs skip steps whose index is in
+  `preCompletedIndices` — the loop bumps `currentStep` past
+  them without re-running.
+
+**Launch prompt** — `AppState` + `ContentView`:
+- `AppState.interruptedRuns: [Snapshot]` populated in init via
+  `ActiveRunPersistence.loadAll()`.
+- `AppState.resumeInterruptedRun(_:)` stashes the chosen
+  snapshot in `pendingResumeSnapshot` and pops open the
+  Workflow Chains sheet.
+- `WorkflowChainsSheet.consumePendingResume()` picks up the
+  stash on appear, ensures the chain is in the local list
+  (re-adds if the user deleted it), and kicks
+  `WorkflowChainRun(resumingFrom:).run()` after a short delay
+  for the layout to settle.
+- `ContentView` adds a single-shot `.alert` gated by
+  `resumePromptShown` — fires when AppState's `interruptedRuns`
+  is non-empty after launch. Three buttons:
+  - **Resume "<name>"** — calls `resumeInterruptedRun`.
+  - **Discard All** — wipes every snapshot via
+    `ActiveRunPersistence.clearAll()`.
+  - **Not Now** — leaves snapshots on disk for next launch.
+
+**Tests** — `ActiveRunPersistenceTests` (NEW, 8 cases):
+- Save + loadAll round-trip with all fields preserved.
+- Empty dir → empty list.
+- Save same id → overwrite (no duplicates).
+- Delete removes the file; delete unknown id is a no-op.
+- clearAll wipes every snapshot.
+- loadAll sorts newest-first by `lastUpdatedAt`.
+- Resume reconstruction: pre-completed indices land as
+  `.finished` step states with progress 1; non-completed
+  remain `.queued`.
+
+**Known gap**: a chain that was interrupted mid-step (e.g.
+verified backup halfway through hash-checking) still has to
+restart that step from scratch — we only resume at step
+boundaries. True mid-step resumption needs cooperative
+checkpointing inside `VerifiedBackupService` / `TranscodeJob`
+itself, which is much bigger. Documented as a follow-up for
+the day someone files a "my 8-hour ingest crashed at 7h59m"
+ticket.
+
 ### C33 — Workflow chains: continueOnFailure + templates library
 
 Two more Category E deferrals. Skip-failed-step opens the
