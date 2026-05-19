@@ -56,8 +56,20 @@ struct BatchRenameView: View {
             template: currentPreset.template,
             items: sourceAssets,
             startCounter: startCounter,
-            customName: customName
+            customName: customName,
+            markerTitleLookup: markerTitleLookup
         )
+    }
+
+    /// C22 — DB-backed resolver for the `${markerTitle}` token.
+    /// Returns the first catalogued marker's note text for an asset,
+    /// nil if the asset has no rowId yet or no markers. The service
+    /// applies its own filename-safe sanitization on the way out.
+    private var markerTitleLookup: (Asset) -> String? {
+        { asset in
+            guard let rowId = asset.rowId else { return nil }
+            return (try? appState.db.markers(assetId: rowId))?.first?.note
+        }
     }
 
     /// One-asset preview that drives the live Example label without
@@ -73,7 +85,8 @@ struct BatchRenameView: View {
             template: currentPreset.template,
             items: [first],
             startCounter: startCounter,
-            customName: customName
+            customName: customName,
+            markerTitleLookup: markerTitleLookup
         )
         return plan.first?.proposedName ?? "—"
     }

@@ -137,6 +137,11 @@ struct ConvertSheet: View {
                     TextField("", text: $state.destinationDir)
                         .textFieldStyle(.roundedBorder)
                     Button("Select…") { pickDestination() }
+                    // C22 — Recent destinations dropdown. Hidden
+                    // when the list is empty (first-run UX is the
+                    // same as before; menu shows up once the user
+                    // has picked at least one folder).
+                    recentsMenu
                 }
                 .gridCellColumns(2)
             }
@@ -518,6 +523,32 @@ struct ConvertSheet: View {
         .background(.bar)
     }
 
+    /// C22 — small Menu next to the Select… button listing the
+    /// last 6 destinations the user picked in any Convert session.
+    /// Hidden when the list is empty so the dialog looks identical
+    /// to pre-C22 on first run.
+    @ViewBuilder
+    private var recentsMenu: some View {
+        let recents = RecentDestinations.list(.convert)
+        if !recents.isEmpty {
+            Menu {
+                ForEach(recents, id: \.path) { url in
+                    Button {
+                        state.destinationDir = url.path
+                        RecentDestinations.push(url, scope: .convert)
+                    } label: {
+                        Text(url.path)
+                    }
+                }
+            } label: {
+                Image(systemName: "clock.arrow.circlepath")
+            }
+            .menuStyle(.borderlessButton)
+            .frame(width: 28)
+            .help("Recent destinations")
+        }
+    }
+
     private func pickDestination() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -527,6 +558,10 @@ struct ConvertSheet: View {
             (state.destinationDir as NSString).expandingTildeInPath)
         if panel.runModal() == .OK, let url = panel.url {
             state.destinationDir = url.path
+            // C22 — record on the convert-scope recents list so the
+            // user's next session can re-pick this folder without
+            // re-traversing the picker.
+            RecentDestinations.push(url, scope: .convert)
         }
     }
 }

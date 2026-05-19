@@ -17,6 +17,64 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C22 — Polish bundle: recent destinations + custom LUT + ${markerTitle}
+
+Three small, independent polish items bundled into a single commit.
+
+**Part 1 — Recent destinations dropdown** (deferred from C4 / C16):
+- New `RecentDestinations` service with per-scope persistence
+  (UserDefaults), case-insensitive dedupe, cap at 6. Mirrors the
+  existing `RecentPresets` pattern. Scopes: `.convert`, `.combine`.
+- Convert dialog (`ConvertSheet`) and Combine Clips
+  (`CombineClipsSheet`) now push the chosen destination onto the
+  scope-specific recents list every time the user picks via
+  NSOpenPanel.
+- Small `recentsMenu` dropdown (clock-arrow icon) next to the
+  Select…/Choose… button in both sheets. Lists recents most-recent-
+  first; selecting one sets the destination and re-pushes (so the
+  rolling LRU stays useful). Hidden when empty — first-run UX
+  matches pre-C22.
+
+**Part 2 — Custom-file LUT picker** (deferred since the C5
+VideoSettingsSheet rollout):
+- New `Pick from disk…` option in the LUT picker. Wires an
+  `NSOpenPanel` with `allowedFileTypes = ["cube", "3dl", "dat",
+  "lut"]` so the panel greys out files `LUTService.load(url:)`
+  doesn't understand.
+- Cancel reverts to the previous mode (no stranding on an empty
+  `.file(path: "")` selection).
+- When `.file` mode is active, a small caption below the picker
+  shows the picked filename + a `Change…` button to swap.
+
+**Part 3 — `${markerTitle}` token in batch rename** (declared in
+C10, stubbed pending DB access):
+- `BatchRenameService.plan(...)` gains
+  `markerTitleLookup: ((Asset) -> String?)? = nil`. Closure threads
+  through `expand(...)` and `value(forToken:)` so the service stays
+  GRDB-free.
+- `BatchRenameView` passes a closure that looks up the asset's
+  first marker via `appState.db.markers(assetId: rowId).first?.note`.
+- New `BatchRenameService.sanitizeForFilename(_:)` — folds
+  newlines/tabs/control codes to single spaces, replaces nine
+  filesystem-hostile chars (`/ \ : * ? " < > |`) with `_`,
+  collapses whitespace runs, trims. Marker notes are free-form
+  user input (multi-line, emoji, special chars); the rest of the
+  rename pipeline assumes single-line clean segments.
+- Nil / empty closure return collapses to `""` so a template like
+  `${originalName}_${markerTitle}${extension}` against an un-marked
+  asset produces a stable `clip_.mov` filename rather than leaking
+  a literal `{markerTitle}` token.
+
+**Tests** — 16 new cases:
+- `RecentDestinationsTests` (7) — empty initial, push-to-front,
+  dedupe-on-repush, case-insensitive dedupe (`/Volumes/CardA` vs
+  `/volumes/carda`), 6-entry cap with oldest eviction, scope
+  independence, clear.
+- `MarkerTitleTokenTests` (9) — closure-routed resolution, missing
+  closure → empty, nil / empty-string returns → empty, sanitizer
+  rules (9 hostile chars, newlines/tabs, whitespace trim, safe
+  chars survive, emoji preserved).
+
 ### C21 — Drilldown hint banner
 
 When a user clicks into a folder with one (or zero) direct media

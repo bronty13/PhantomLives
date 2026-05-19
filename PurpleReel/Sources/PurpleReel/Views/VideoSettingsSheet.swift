@@ -345,8 +345,11 @@ struct VideoSettingsSheet: View {
     private func lutPicker(binding: Binding<LUTSelection>,
                             isCamera: Bool) -> some View {
         // We represent the picker via a simplified Tag enum so the
-        // Picker stays Hashable; `.file(path:)` selections aren't
-        // surfaced here yet (would need an Open panel — defer).
+        // Picker stays Hashable. C22 — `.file` mode now opens an
+        // NSOpenPanel; the chosen path lands on the binding as
+        // `LUTSelection.file(path:)`. Cancel reverts to the previous
+        // mode so a stray click on "Pick from disk…" doesn't strand
+        // the user on a path-less .file selection.
         let modeBinding = Binding<LUTMode>(
             get: {
                 switch binding.wrappedValue {
@@ -364,21 +367,79 @@ struct VideoSettingsSheet: View {
                 case .sidecarIfPresent:  binding.wrappedValue = .sidecarIfPresent
                 case .asDefinedInPlayer: binding.wrappedValue = .asDefinedInPlayer
                 case .file:
-                    // Stub — Open panel wiring lands in a follow-up.
-                    binding.wrappedValue = .file(path: "")
+                    let prev = binding.wrappedValue
+                    if let picked = Self.pickLUTFile() {
+                        binding.wrappedValue = .file(path: picked.path)
+                    } else {
+                        // Cancelled — revert to the previous mode
+                        // so the picker doesn't get stuck on an
+                        // empty .file selection.
+                        binding.wrappedValue = prev
+                    }
                 }
             }
         )
-        Picker("", selection: modeBinding) {
-            Text("None").tag(LUTMode.none)
-            if isCamera {
-                Text("Automatic (if applicable)").tag(LUTMode.automatic)
+        VStack(alignment: .leading, spacing: 4) {
+            Picker("", selection: modeBinding) {
+                Text("None").tag(LUTMode.none)
+                if isCamera {
+                    Text("Automatic (if applicable)").tag(LUTMode.automatic)
+                }
+                Text("Sidecar file (if present)").tag(LUTMode.sidecarIfPresent)
+                Text("As Defined in Player").tag(LUTMode.asDefinedInPlayer)
+                Text("Pick from disk…").tag(LUTMode.file)
             }
-            Text("Sidecar file (if present)").tag(LUTMode.sidecarIfPresent)
-            Text("As Defined in Player").tag(LUTMode.asDefinedInPlayer)
+            .labelsHidden()
+            .frame(maxWidth: 280, alignment: .leading)
+            // C22 — surface the currently-picked LUT filename when
+            // .file mode is active. Easy way to verify which custom
+            // LUT will bake without re-running the panel.
+            if case .file(let path) = binding.wrappedValue, !path.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: "doc.fill")
+                        .foregroundStyle(.secondary)
+                        .font(.caption2)
+                    Text((path as NSString).lastPathComponent)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Button("Change…") {
+                        if let picked = Self.pickLUTFile() {
+                            binding.wrappedValue = .file(path: picked.path)
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                }
+                .frame(maxWidth: 280, alignment: .leading)
+            }
         }
-        .labelsHidden()
-        .frame(maxWidth: 280, alignment: .leading)
+    }
+
+    /// C22 — open-panel helper for LUT file selection. Filters to
+    /// the formats `LUTService.load(url:)` already understands
+    /// (`.cube`, `.3dl`, `.dat`, `.lut`) so the user can't pick a
+    /// file that'll just fail at bake time.
+    private static func pickLUTFile() -> URL? {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = []  // fall back to extension filter
+        panel.message = "Pick a LUT file to bake into the export."
+        // Restrict by extension — `allowedFileTypes` is the
+        // pre-UTType API but still honored on macOS 14+. Lets the
+        // panel grey out unsupported files instead of accepting them
+        // and failing at LUTService.load().
+        if #available(macOS 11, *) {
+            // Empty allowedContentTypes + non-empty
+            // allowedFileTypes is the documented escape hatch for
+            // "filter by extension only".
+        }
+        panel.allowedFileTypes = ["cube", "3dl", "dat", "lut"]
+        guard panel.runModal() == .OK else { return nil }
+        return panel.url
     }
 
     private enum LUTMode: Hashable {

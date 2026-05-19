@@ -67,10 +67,18 @@ enum BatchRenameService {
     }
 
     /// Build a plan over the given assets without touching disk.
+    ///
+    /// C22 — `markerTitleLookup` lets the view layer inject DB
+    /// access for the `${markerTitle}` token without pulling
+    /// GRDB into the service. The closure is called per asset
+    /// (only for templates that actually use the token) and
+    /// should return the first catalogued marker's note text,
+    /// or nil if none.
     static func plan(template: String,
                      items: [Asset],
                      startCounter: Int = 1,
-                     customName: String = "") -> [BatchRenamePlan] {
+                     customName: String = "",
+                     markerTitleLookup: ((Asset) -> String?)? = nil) -> [BatchRenamePlan] {
         var plans: [BatchRenamePlan] = []
         plans.reserveCapacity(items.count)
         var seenNames: Set<String> = []
@@ -87,7 +95,8 @@ enum BatchRenameService {
             let name = expand(template: normalized, asset: asset,
                               originalURL: originalURL, modified: modified,
                               counter: startCounter + idx,
-                              customName: customName)
+                              customName: customName,
+                              markerTitleLookup: markerTitleLookup)
             let dir = originalURL.deletingLastPathComponent()
             let proposedURL = dir.appendingPathComponent(name)
             let lowerName = name.lowercased()
@@ -205,7 +214,8 @@ enum BatchRenameService {
     private static func expand(template: String, asset: Asset,
                                 originalURL: URL, modified: Date,
                                 counter: Int,
-                                customName: String = "") -> String {
+                                customName: String = "",
+                                markerTitleLookup: ((Asset) -> String?)? = nil) -> String {
         var out = ""
         var i = template.startIndex
         let end = template.endIndex
@@ -217,7 +227,8 @@ enum BatchRenameService {
                 out += value(forToken: tokenBody, asset: asset,
                              originalURL: originalURL, modified: modified,
                              counter: counter,
-                             customName: customName) ?? "{\(tokenBody)}"
+                             customName: customName,
+                             markerTitleLookup: markerTitleLookup) ?? "{\(tokenBody)}"
                 i = template.index(after: close)
             } else {
                 out.append(c)
@@ -237,7 +248,8 @@ enum BatchRenameService {
     private static func value(forToken token: String, asset: Asset,
                                originalURL: URL, modified: Date,
                                counter: Int,
-                               customName: String = "") -> String? {
+                               customName: String = "",
+                               markerTitleLookup: ((Asset) -> String?)? = nil) -> String? {
         // Split on first ":" for tokens with a format spec.
         let parts = token.split(separator: ":", maxSplits: 1).map(String.init)
         let key = parts[0].lowercased()
@@ -294,14 +306,47 @@ enum BatchRenameService {
                 ? String(format: "%0\(width)d", bumped)
                 : String(bumped)
         case "markertitle":
-            // First marker on the asset (if catalogued). The service
-            // doesn't have DB access; the view layer can pre-populate
-            // this by overriding the token before the batch runs.
-            // For now, leaves a literal placeholder so the user sees
-            // the gap in the preview.
-            return ""
+            // C22 — view layer injects a closure that does the
+            // DB lookup; service stays GRDB-free. Empty / nil
+            // returns map to "" so a template that uses the token
+            // against an un-marked asset produces a stable filename
+            // (rather than a literal "{markerTitle}" leak).
+            guard let lookup = markerTitleLookup,
+                  let raw = lookup(asset),
+                  !raw.isEmpty else { return "" }
+            return sanitizeForFilename(raw)
         default:
             return nil  // unknown token: caller leaves it literal
         }
+    }
+
+    /// C22 — filename-safe sanitizer for marker note text. Marker
+    /// notes are free-form user input (multi-line, special chars,
+    /// emoji, control codes) and the rest of the rename pipeline
+    /// assumes the substituted value is a clean single-line segment.
+    /// Strips newlines/tabs/control chars, replaces filesystem-
+    /// hostile chars (`/`, `\`, `:`, `*`, `?`, `"`, `<`, `>`, `|`)
+    /// with `_`, and trims surrounding whitespace.
+    static func sanitizeForFilename(_ raw: String) -> String {
+        // Collapse newlines / tabs / control codes into a single
+        // space so multi-line notes ("Question 1\nfollow-up") fold
+        // into a single segment.
+        let spaced = raw.unicodeScalars.map { scalar -> Character in
+            if CharacterSet.controlCharacters.contains(scalar)
+                || CharacterSet.newlines.contains(scalar)
+                || scalar.value == 9 /* tab */ {
+                return " "
+            }
+            return Character(scalar)
+        }
+        var out = String(spaced)
+        for ch in ["/", "\\", ":", "*", "?", "\"", "<", ">", "|"] {
+            out = out.replacingOccurrences(of: ch, with: "_")
+        }
+        // Collapse runs of whitespace so "foo   bar" → "foo bar".
+        while out.contains("  ") {
+            out = out.replacingOccurrences(of: "  ", with: " ")
+        }
+        return out.trimmingCharacters(in: .whitespaces)
     }
 }

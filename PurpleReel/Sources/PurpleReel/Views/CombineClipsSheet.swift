@@ -222,6 +222,9 @@ struct CombineClipsSheet: View {
                     .truncationMode(.middle)
                     .foregroundStyle(dest == nil ? .secondary : .primary)
                 Spacer()
+                // C22 — Recent destinations dropdown. Hidden when
+                // empty (first-run UX matches pre-C22).
+                recentsMenu
                 Button("Choose…") { pickDest() }
             }
             HStack(spacing: 8) {
@@ -384,6 +387,31 @@ struct CombineClipsSheet: View {
     // C16 — drag-reorder via List/.onMove replaces the up/down
     // arrows. The legacy `move(_:by:)` helper is no longer needed.
 
+    /// C22 — small Menu next to the Choose… button listing the
+    /// last 6 destinations the user picked in any Combine session.
+    /// Hidden when the list is empty (first-run UX matches pre-C22).
+    @ViewBuilder
+    private var recentsMenu: some View {
+        let recents = RecentDestinations.list(.combine)
+        if !recents.isEmpty {
+            Menu {
+                ForEach(recents, id: \.path) { url in
+                    Button {
+                        dest = url
+                        RecentDestinations.push(url, scope: .combine)
+                    } label: {
+                        Text(url.path)
+                    }
+                }
+            } label: {
+                Image(systemName: "clock.arrow.circlepath")
+            }
+            .menuStyle(.borderlessButton)
+            .frame(width: 28)
+            .help("Recent destinations")
+        }
+    }
+
     private func pickDest() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -406,6 +434,8 @@ struct CombineClipsSheet: View {
         }
         if panel.runModal() == .OK, let url = panel.url {
             dest = url
+            // C22 — record on the combine-scope recents list.
+            RecentDestinations.push(url, scope: .combine)
         }
     }
 
