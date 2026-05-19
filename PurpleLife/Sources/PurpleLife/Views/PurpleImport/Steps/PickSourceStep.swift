@@ -18,7 +18,11 @@ struct PickSourceStep: View {
                     .font(.title3).bold()
 
                 if !showingPaste {
-                    DropZone(prompt: prompt) { url in
+                    DropZone(
+                        prompt: prompt,
+                        acceptedExtensions: model.draft.sourceFormat.defaultFileExtensions,
+                        acceptedDescription: "\(model.draft.sourceFormat.displayName) file"
+                    ) { url in
                         model.chooseFile(url)
                     }
                 } else {
@@ -67,10 +71,10 @@ struct PickSourceStep: View {
 
     private var formatHelp: String {
         switch model.draft.sourceFormat {
-        case .csv:      return "Phase 1 — supported. Header row auto-detected; override in the next step."
-        case .json:     return "Phase 1 — supported. Top-level array, NDJSON, or single object."
-        case .markdown: return "Phase 2 — readers land soon. Pick CSV or JSON for now."
-        case .xml:      return "Phase 2 — readers land soon."
+        case .csv:      return "Supported. Header row auto-detected; override in the next step."
+        case .json:     return "Supported. Top-level array, NDJSON, or single object."
+        case .markdown: return "Supported. GFM pipe tables, YAML/TOML frontmatter, or plain document."
+        case .xml:      return "Supported. Tree-shaped; the largest repeating child element becomes the row collection (override via root path in the next step)."
         case .xlsx:     return "Phase 3 — readers land soon."
         case .docx:     return "Phase 5 — readers land soon (text-only, single record)."
         case .pdf:      return "Phase 5 — readers land soon (text-only, single record)."

@@ -4,6 +4,41 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-19 — Purple Import Phase 2: Markdown + XML readers, tree-source mapping polish, drag-drop guardrails
+
+Second slice of the Purple Import / Purple Export build. Two new source-format readers wired into the existing wizard, plus UX polish on the mapping table and the drop zone.
+
+**Readers shipped.**
+
+- **`Readers/MarkdownReader.swift`** — auto-detects three shapes: (1) GFM pipe tables (header + separator + rows), (2) YAML/TOML frontmatter (delimited by `---` for YAML or `+++` for TOML, scalar values only — keys become `$.key` paths, the post-delimiter body lands at `$._body`), (3) plain document fallback (whole text as a single `$._body` field on one record). Mode override + `tableIndex` option in case the user wants a later table.
+- **`Readers/XMLReader.swift`** — `Foundation.XMLParser` SAX events fold into a nested dictionary. The largest repeating child element under the root becomes the row collection automatically; the user can override via a `rootPath` JSONPath-lite expression. Attributes surface as top-level keys on each record (no `@` prefix — keeps path expressions clean). Same JSONPath-lite eval shared with `JSONReader`.
+
+**Wired into the registry + UI.**
+
+- **`PurpleImportReaderRegistry.reader(for:)`** now returns the Markdown and XML readers. xlsx / docx / pdf still throw `.noReaderForFormat` until Phases 3 + 5 land.
+- **`PickSourceStep`** — format-picker help text ungrey-ed for Markdown + XML; updated copy to describe what each reader does.
+- **`ConfigureSourceStep`** — new per-format option sections: Markdown gets a Mode picker (Auto / GFM table / Frontmatter / Plain document) and a Table index stepper; XML gets a Root path text field with auto-detect default.
+
+**Tree-source mapping polish (`MapFieldsStep`).**
+
+The path locator UI was a plain TextField in Phase 1. Now it's a compact Menu of detected paths (built from `model.preview.shape == .tree(rootPaths:)`) with a "Custom path…" escape hatch that swaps the row to a free-form TextField. The chevron menu stays attached so the user can flip back to a detected path without retyping. Same UX feel as the tabular column dropdown, which keeps the mapping table consistent across source shapes.
+
+**Drag-drop guardrails (`DropZone`).**
+
+- **Format-aware acceptance** — `DropZone` now takes `acceptedExtensions: [String]` and `acceptedDescription: String`. `PickSourceStep` wires the active source format's extensions through, so dropping a `.csv` on a JSON-mode wizard prompts "This zone expects a JSON file (.json or .ndjson)" instead of silently misparsing.
+- **Multi-file + directory rejection** — drops of more than one file or of a directory show an inline orange warning that auto-clears after ~4.5 seconds. The wizard's `onPick` only fires after the URL passes the accepted-extension probe.
+- **Click-to-browse improvements** — the `NSOpenPanel` now uses `allowedContentTypes` derived from the same `acceptedExtensions` list, so the file picker filters server-side too. Added a tertiary "Click to browse" hint under the prompt so the affordance is obvious on first sight.
+- **Reject state** — the dotted border switches to orange while the rejection message is visible, matching the inline warning color.
+
+**Bug fixed in passing.** `ImportWizardSheet` used `@StateObject var model: ImportWizardModel` and accepted the model via the synthesized memberwise init. SwiftUI's `@StateObject` owns its object's lifecycle; passing one in by init makes the sheet render a near-empty body on first presentation (the symptom was a tiny brown rounded rect centered in the Settings window when the user clicked "+ New mapping…"). The parent (`ImportSettingsTab`) owns the wizard model via `@State var wizardModel: ImportWizardModel?`, so the sheet's correct shape is `@ObservedObject`. Comment locked in the source.
+
+**Tests.** 408/408 green (+14 new):
+
+- `MarkdownReaderTests` — 8 tests: GFM table parsing (header + rows, alignment colons, multi-table index), YAML frontmatter (key/value, quoted-value stripping), plain-document fallback, and the auto-detect priority rule (frontmatter beats table when both present, but forced `mode = "table"` overrides).
+- `XMLReaderTests` — 6 tests: repeating-child auto-detection, attribute → top-level-key collapsing, explicit rootPath, single-element document → single record, malformed-XML throws, preview path-list assertion.
+
+**What's still deferred.** Excel (.xlsx — Phase 3), Word + PDF (Phase 5, text-only single-record), full Purple Export wizard (Phase 4), `_tags` ingress, attachment-field resolution in the runner.
+
 ### 2026-05-19 — Purple Import + Purple Export: Phase 1 (engine skeleton, CSV + JSON, bulk path)
 
 First commit of the **Purple Import / Purple Export** initiative — a generic, wizard-driven import/export engine that becomes the model for the PhantomLives family. The full design is in `~/.claude/plans/cheeky-yawning-giraffe.md`; this commit lands the Phase 1 slice end-to-end.

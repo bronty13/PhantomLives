@@ -131,12 +131,70 @@ struct MapFieldsStep: View {
                 Text(s).font(.body.monospaced())
             }
         case .path(let p):
-            TextField("$.path", text: Binding(
-                get: { p },
-                set: { model.draft.fieldMappings[index].source = .path($0) }
-            ))
-            .font(.body.monospaced())
-            .textFieldStyle(.roundedBorder)
+            // For tree sources, surface a menu of detected paths from
+            // the preview plus a "Custom path…" escape hatch that
+            // swaps the row to a free-form text field. Same UX shape
+            // as the tabular column dropdown.
+            if let shape = model.preview?.shape,
+               case let .tree(paths) = shape,
+               !paths.isEmpty {
+                pathPicker(index: index, current: p, choices: paths)
+            } else {
+                TextField("$.path", text: Binding(
+                    get: { p },
+                    set: { model.draft.fieldMappings[index].source = .path($0) }
+                ))
+                .font(.body.monospaced())
+                .textFieldStyle(.roundedBorder)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func pathPicker(index: Int, current: String, choices: [String]) -> some View {
+        // If the row's current path is one of the detected ones, show
+        // a compact Menu; otherwise show a TextField for free-form
+        // editing with a small chevron menu next to it for switching
+        // back to a detected path.
+        let isCustom = !choices.contains(current)
+        HStack(spacing: 4) {
+            if isCustom {
+                TextField("$.", text: Binding(
+                    get: { current },
+                    set: { model.draft.fieldMappings[index].source = .path($0) }
+                ))
+                .font(.body.monospaced())
+                .textFieldStyle(.roundedBorder)
+            } else {
+                Text(current.isEmpty ? "(pick a path)" : current)
+                    .font(.body.monospaced())
+                    .lineLimit(1).truncationMode(.middle)
+            }
+            Menu {
+                ForEach(choices, id: \.self) { path in
+                    Button {
+                        model.draft.fieldMappings[index].source = .path(path)
+                    } label: {
+                        HStack {
+                            if path == current { Image(systemName: "checkmark") }
+                            Text(path).font(.body.monospaced())
+                        }
+                    }
+                }
+                Divider()
+                Button("Custom path…") {
+                    // Switch to a non-detected path so the next render
+                    // shows the text field.
+                    if !isCustom {
+                        model.draft.fieldMappings[index].source = .path("$.")
+                    }
+                }
+            } label: {
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            .menuStyle(.borderlessButton)
+            .frame(width: 20)
         }
     }
 

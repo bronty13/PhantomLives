@@ -10,7 +10,14 @@ struct ImportWizardSheet: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
 
-    @StateObject var model: ImportWizardModel
+    // Parent (`ImportSettingsTab`) owns the wizard model via its
+    // `@State var wizardModel: ImportWizardModel?` so the sheet
+    // takes it by reference. `@StateObject` here would fight that
+    // ownership — `@StateObject` is for views that mint their own
+    // observable object and want to control its lifecycle. Passing
+    // one in via init under `@StateObject` renders a near-empty
+    // sheet on first presentation; the symptom was a tiny brown box.
+    @ObservedObject var model: ImportWizardModel
 
     var body: some View {
         VStack(spacing: 0) {

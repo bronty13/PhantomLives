@@ -9,13 +9,17 @@ struct ConfigureSourceStep: View {
     @State private var hasHeader: Bool = true
     @State private var rootPath: String = "$"
     @State private var ndjson: Bool = false
+    @State private var markdownMode: String = "auto"
+    @State private var tableIndex: Int = 0
 
     var body: some View {
         Form {
             switch model.draft.sourceFormat {
-            case .csv: csvSection
-            case .json: jsonSection
-            default: deferredSection
+            case .csv:      csvSection
+            case .json:     jsonSection
+            case .markdown: markdownSection
+            case .xml:      xmlSection
+            default:        deferredSection
             }
         }
         .formStyle(.grouped)
@@ -25,6 +29,8 @@ struct ConfigureSourceStep: View {
         .onChange(of: hasHeader) { persist() }
         .onChange(of: rootPath) { persist() }
         .onChange(of: ndjson) { persist() }
+        .onChange(of: markdownMode) { persist() }
+        .onChange(of: tableIndex) { persist() }
     }
 
     // MARK: - CSV
@@ -63,6 +69,49 @@ struct ConfigureSourceStep: View {
         }
     }
 
+    // MARK: - Markdown
+
+    @ViewBuilder
+    private var markdownSection: some View {
+        Section("Markdown options") {
+            Picker("Mode", selection: $markdownMode) {
+                Text("Auto-detect").tag("auto")
+                Text("GFM table").tag("table")
+                Text("YAML / TOML frontmatter").tag("frontmatter")
+                Text("Plain document").tag("document")
+            }
+            .pickerStyle(.menu)
+            if markdownMode == "table" || markdownMode == "auto" {
+                Stepper(value: $tableIndex, in: 0...20) {
+                    HStack {
+                        Text("Table index")
+                        Spacer()
+                        Text("\(tableIndex)").foregroundStyle(.secondary)
+                    }
+                }
+                Text("0 = first table in the file. Use higher values to pick later tables when the document has more than one.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    // MARK: - XML
+
+    @ViewBuilder
+    private var xmlSection: some View {
+        Section("XML options") {
+            HStack {
+                Text("Root path")
+                Spacer()
+                TextField("auto", text: $rootPath)
+                    .frame(width: 240)
+                    .multilineTextAlignment(.trailing)
+            }
+            Text("Path to the element collection that fans out into one record per row. Leave blank to auto-detect the largest repeating child of the root element. Syntax: $.catalog.books[*]")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
     @ViewBuilder
     private var deferredSection: some View {
         Section {
@@ -82,6 +131,8 @@ struct ConfigureSourceStep: View {
         if case .bool(let b) = model.draft.sourceOptions["hasHeader"] { hasHeader = b }
         if case .string(let s) = model.draft.sourceOptions["rootPath"] { rootPath = s }
         if case .bool(let b) = model.draft.sourceOptions["ndjson"] { ndjson = b }
+        if case .string(let s) = model.draft.sourceOptions["mode"] { markdownMode = s }
+        if case .int(let i) = model.draft.sourceOptions["tableIndex"] { tableIndex = i }
     }
 
     private func persist() {
@@ -90,6 +141,8 @@ struct ConfigureSourceStep: View {
         opts["hasHeader"] = .bool(hasHeader)
         opts["rootPath"] = .string(rootPath)
         opts["ndjson"] = .bool(ndjson)
+        opts["mode"] = .string(markdownMode)
+        opts["tableIndex"] = .int(tableIndex)
         model.draft.sourceOptions = opts
     }
 }

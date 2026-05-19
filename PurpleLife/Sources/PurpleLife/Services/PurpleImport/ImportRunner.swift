@@ -281,16 +281,19 @@ enum PurpleImportError: LocalizedError {
     }
 }
 
-/// Pick the right reader for a source format. Phase 1 only wires CSV
-/// and JSON; the wizard's format picker hides the others until their
-/// readers land in Phases 2–5.
+/// Pick the right reader for a source format. Readers are added as
+/// phases land — Phase 1 shipped CSV + JSON; Phase 2 adds Markdown +
+/// XML. The wizard's format picker greys help text for formats whose
+/// readers aren't wired yet.
 @MainActor
 enum PurpleImportReaderRegistry {
     static func reader(for format: PurpleImport.SourceFormat) throws -> PurpleImportSourceReader {
         switch format {
-        case .csv:  return CSVReader()
-        case .json: return JSONReader()
-        case .markdown, .xml, .xlsx, .docx, .pdf:
+        case .csv:      return CSVReader()
+        case .json:     return JSONReader()
+        case .markdown: return MarkdownReader()
+        case .xml:      return XMLReader()
+        case .xlsx, .docx, .pdf:
             throw PurpleImportError.noReaderForFormat(format)
         }
     }
