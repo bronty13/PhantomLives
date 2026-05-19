@@ -143,8 +143,15 @@ struct AssetContextMenu: View {
             }
         }
         Button("Tags…") {
+            // C14 — Kyno routes single-clip Tags to a dedicated
+            // dialog and multi-clip Tags to a batch sheet. Set the
+            // primary selection first so the resolver sees the
+            // right-clicked clip when nothing else is multi-selected.
+            if !appState.selectedAssetPaths.contains(asset.path) {
+                appState.selectedAssetPaths = [asset.path]
+            }
             appState.selectedAssetPath = asset.path
-            appState.batchTagSheetVisible = true
+            appState.openTagEditor()
         }
         .keyboardShortcut("t", modifiers: [.command, .shift])
         Button("Edit Multiple…") {

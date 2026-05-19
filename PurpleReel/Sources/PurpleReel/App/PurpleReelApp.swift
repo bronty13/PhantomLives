@@ -332,7 +332,10 @@ struct PurpleReelApp: App {
                     .disabled(appState.selectedAsset == nil)
                 }
                 Button("Tags…") {
-                    appState.batchTagSheetVisible = true
+                    // C14 — resolver routes single-clip to the
+                    // dedicated Tag dialog and multi-clip to the
+                    // batch editor (Kyno-shaped split).
+                    appState.openTagEditor()
                 }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
                 .disabled(appState.selectedAsset == nil

@@ -17,6 +17,47 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C14 — Single-clip Edit Tags dialog
+
+Kyno's right-click Tags (Image #91) routes single-clip taggings to
+a dedicated "Tag <filename>" dialog; multi-select stays on the
+batch additive editor. PurpleReel was sending both paths to the
+batch editor before C14 — meaning a one-clip tag edit went through
+a UI optimized for "add tags to N clips" semantics. C14 splits the
+two:
+
+**New view** — `Views/SingleClipTagDialog.swift`:
+- Title bar: "Tag <filename>"
+- "Select or Create Tag" TextField + autocomplete Menu (filtered
+  on draft, excludes already-applied tags, top 20 by name).
+- Current-tags list with selection + Remove / Remove All buttons.
+- Footer: Cancel / Save Changes (disabled until edits land).
+- Save diffs against the original snapshot, calling
+  `addTag(name:)` for additions and `removeTag(name:)` for
+  deletions in one pass — single source of truth stays on the
+  existing AppState helpers.
+
+**AppState plumbing**:
+- `singleClipTagState: SingleClipTagState?` — dialog open flag.
+- `openTagEditor()` is the new resolver: multi-selection
+  (`selectedAssetPaths.count > 1`) → batch editor; single (or
+  empty) → single-clip dialog (or fall back to batch's empty
+  state when no asset resolves).
+
+**Wiring**:
+- `AssetContextMenu` "Tags…" button now sets the right-clicked
+  clip as the primary selection and calls `openTagEditor()`.
+- `PurpleReelApp` `⌘⇧T` menu item routes through `openTagEditor()`
+  too, so the keyboard shortcut respects the single/multi split.
+
+3 new tests (`TagEditorRouterTests`):
+- Multi-select → batch editor; single-clip dialog stays nil
+- Single-select → single-clip dialog; batch editor stays closed;
+  the dialog carries the right path + filename
+- Empty selection → falls back to batch (empty-state)
+
+---
+
 ### C13 — Pre-analyze Analysis Scope dialog
 
 C7 shipped Pre-analyze that always re-ran the AVAsset probe; Kyno's

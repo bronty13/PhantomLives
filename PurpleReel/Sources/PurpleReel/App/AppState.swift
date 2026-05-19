@@ -1300,6 +1300,45 @@ final class AppState: ObservableObject {
         writeCacheForSelected()
     }
 
+    // MARK: - Single-clip tag dialog (Kyno-parity, C14)
+
+    /// Dialog state for the single-clip Tag editor. nil = closed.
+    /// Routed to from the right-click "Tags…" item when only one
+    /// clip is in scope; multi-selection still opens the batch
+    /// editor (different semantics — additive vs replace).
+    @Published var singleClipTagState: SingleClipTagState?
+
+    struct SingleClipTagState: Identifiable {
+        let id = UUID()
+        let assetPath: String
+        let assetFilename: String
+    }
+
+    /// Resolver for the right-click Tags item. Single-clip scope →
+    /// dedicated dialog; multi-clip → existing batch sheet.
+    func openTagEditor() {
+        if selectedAssetPaths.count > 1 {
+            batchTagSheetVisible = true
+            return
+        }
+        // Single clip path. Use the multi-selection's single member
+        // if set, else the active selection.
+        let path: String? = selectedAssetPaths.first ?? selectedAsset?.path
+        guard let p = path,
+              let asset = assets.first(where: { $0.path == p })
+                ?? selectedAsset
+        else {
+            // Nothing selected → fall back to the batch editor's
+            // empty-state.
+            batchTagSheetVisible = true
+            return
+        }
+        singleClipTagState = SingleClipTagState(
+            assetPath: asset.path,
+            assetFilename: asset.filename
+        )
+    }
+
     // MARK: - Batch tag operations (⌘⇧T sheet)
 
     @Published var batchTagSheetVisible = false

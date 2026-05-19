@@ -245,6 +245,13 @@ struct ContentView: View {
             AnalysisScopeSheet(scope: state.scope)
                 .environmentObject(appState)
         }
+        .sheet(item: $appState.singleClipTagState) { state in
+            SingleClipTagDialog(
+                assetPath: state.assetPath,
+                assetFilename: state.assetFilename
+            )
+            .environmentObject(appState)
+        }
         .sheet(isPresented: $appState.shortcutsCheatSheetVisible) {
             ShortcutsCheatSheet()
         }
