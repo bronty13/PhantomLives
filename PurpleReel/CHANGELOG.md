@@ -17,6 +17,87 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C5 — Per-channel composable editing (Settings… tabbed editor)
+
+Convert dialog's per-channel rows are now **functional**:
+File format / Video / Audio / Trimming dropdowns edit the live
+`TranscodeOptions`, and the Settings… buttons open three new sheets
+that bind through the same state. When the user diverges from the
+preset's defaults the job runs through C3's composable runtime
+instead of the legacy preset path.
+
+**New file** `Sources/PurpleReel/Models/TranscodePreset+Options.swift`
+materializes a starting `TranscodeOptions` from any existing preset's
+`avPresetName` / `ffmpegArgs`:
+
+- AVAssetExportSession constants → matching VideoCodec + size
+  (pass-through → copy/copy; size-keyed presets pick the right
+  `.fixed(W, H)`; ProRes 422 / 4444 constants map to their codecs)
+- ffmpeg recipes → sniff `-c:v <codec>` + `-profile:v` + `-b:v` /
+  `-crf` out of the argv. `dnxhd` with `dnxhr_*` profile maps to
+  `.dnxhr`; bare `dnxhd` stays `.dnxhd`. Bitrate parser handles
+  `220M` / `192k` / plain integers.
+- Audio extracted from `-c:a <codec>` + `-b:a <kbps>`. Audio-only
+  recipes (`-vn` present) collapse video channel to `.disabled` and
+  container to `.audioOnly`.
+
+**New sheets**:
+
+- `Views/ContainerSettingsSheet.swift` — File & Container Settings
+  flyout (Image #85). Streamability, keep-source-timestamps,
+  timecode source (fromSource / zeroBased / custom), embed XMP.
+- `Views/AudioSettingsSheet.swift` — Audio codec picker, sample
+  rate (44.1 / 48 / 96 kHz), bitrate (128 / 192 / 256 / 320 kbit/s).
+  Renders a "switch the channel to Re-Encode first" message when the
+  audio channel is `.copy` or `.disabled`.
+- `Views/VideoSettingsSheet.swift` — Tabbed editor matching Kyno's
+  Video Settings flyout (Images #80-#84, #86):
+  - **Encoding**: Codec, Frame rate (Like Source + standard cinema
+    rates), Size (Like Source + standard ladder + Half/Quarter),
+    Quality (Codec Default / Bitrate / CRF — the latter two with
+    inline editors).
+  - **Filters**: Denoise, Sharpen/Blur (luma+chroma radius +
+    strength sliders), Add noise (luma+chroma), Fade in/out
+    steppers.
+  - **LUTs**: Camera LUT + Creative LUT selection (None /
+    Automatic / Sidecar / As Defined in Player). Custom-file
+    selection wires in via a follow-up.
+  - **Overlays**: Timecode toggle, size (small / regular / large),
+    9-position grid picker, opacity slider.
+
+**ConvertSheet plumbing**:
+
+- New `@State editableOptions: TranscodeOptions` seeded on first
+  render from `state.preset.defaultOptions()`.
+- New `@State optionsBaseline: TranscodeOptions` snapshot of the
+  same seed, so `isEdited` is "diff vs baseline" instead of "diff
+  vs `TranscodeOptions()`".
+- Per-channel `Picker` bindings (Copy / Re-Encode / Off) for video
+  and audio; switching to Re-Encode restores the baseline's encoding
+  shape if it had one, else defaults to H.264 / AAC.
+- Container Picker (MOV / MP4 / MKV / MXF / Audio Only) wired.
+- Trimming Picker (None / In - Out) wired.
+- "(edited)" indicator + new "Reset" button that snaps everything
+  back to the baseline.
+
+**AppState routing** — `confirmConvert(_:editedOptions:)` now takes
+an optional `TranscodeOptions`. When non-nil the job runs through
+`TranscodeJob(source:options:outputURL:displayName:fadeInSeconds:
+fadeOutSeconds:tcBurnIn:)` (C3); when nil the legacy
+`TranscodeJob(source:preset:...)` path runs. ConvertSheet's Start
+button passes `editableOptions` when it differs from baseline.
+
+11 new tests (`PresetDefaultOptionsTests`) covering Apple-native
+preset → options mapping (H.264 / HEVC / ProRes 422 / passthrough),
+ffmpeg preset → options mapping (DNxHR / DNxHD with bitrate
+extraction / Cineform / ProRes Proxy via `-profile:v 0`), audio-only
+preset mapping (Wav → pcm16 + audioOnly + video disabled; M4A →
+aac + carries bitrate), plus a coverage probe that asserts every
+non-passthrough non-rewrap preset maps to a non-default options
+shape (catches future codec gaps).
+
+---
+
 ### C4 — Convert dialog UI restructure (Kyno-shaped layout)
 
 ConvertSheet rebuilt to match Kyno's compact layout per the user's

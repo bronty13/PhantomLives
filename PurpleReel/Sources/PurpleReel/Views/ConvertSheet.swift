@@ -61,6 +61,18 @@ struct ConvertSheet: View {
     /// compact layout; power users expand to see the same controls
     /// PurpleReel has always shipped.
     @State private var showMoreOptions: Bool = false
+    /// C5 — composable editing. Initialized from the preset's
+    /// defaults on first render; the Settings… sheets bind through
+    /// `$editableOptions` so edits flow back here. When this diverges
+    /// from `state.preset.defaultOptions()` we route the job through
+    /// the composable runtime instead of the legacy preset path.
+    @State private var editableOptions: TranscodeOptions = TranscodeOptions()
+    @State private var optionsBaseline: TranscodeOptions = TranscodeOptions()
+    @State private var didInitOptions: Bool = false
+
+    @State private var showContainerSettings: Bool = false
+    @State private var showVideoSettings: Bool = false
+    @State private var showAudioSettings: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -80,6 +92,28 @@ struct ConvertSheet: View {
             footer
         }
         .frame(width: 720, height: 580)
+        .onAppear {
+            guard !didInitOptions else { return }
+            let base = state.preset.defaultOptions()
+            editableOptions = base
+            optionsBaseline = base
+            didInitOptions = true
+        }
+        .sheet(isPresented: $showContainerSettings) {
+            ContainerSettingsSheet(
+                settings: $editableOptions.containerSettings,
+                timecodeSource: Binding(
+                    get: { editableOptions.containerSettings.timecodeSource },
+                    set: { editableOptions.containerSettings.timecodeSource = $0 }
+                )
+            )
+        }
+        .sheet(isPresented: $showAudioSettings) {
+            AudioSettingsSheet(channel: $editableOptions.audio)
+        }
+        .sheet(isPresented: $showVideoSettings) {
+            VideoSettingsSheet(options: $editableOptions)
+        }
     }
 
     private var header: some View {
@@ -254,100 +288,196 @@ struct ConvertSheet: View {
                 Text("(edited)")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                Button("Reset") {
+                    editableOptions = optionsBaseline
+                    state.filenamePattern = .originalPlusSuffix
+                }
+                .buttonStyle(.borderless)
+                .font(.caption)
             }
-            Image(systemName: "gearshape")
-                .foregroundStyle(.secondary)
-                .help("Preset management — Save As / Reset coming in C5")
             Spacer()
         }
         Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
-            channelRow(label: "File format:",
-                        value: state.preset.fileExtension.uppercased(),
-                        descriptor: fileFormatDescriptor)
-            channelRow(label: "Video:",
-                        value: videoChannelLabel,
-                        descriptor: videoDescriptor)
-            channelRow(label: "Audio:",
-                        value: audioChannelLabel,
-                        descriptor: audioDescriptor)
-            channelRow(label: "Trimming:",
-                        value: "None",
-                        descriptor: "No in/out trim applied")
+            // File format row — Picker is functional; Settings opens
+            // container settings.
+            GridRow {
+                Text("File format:").foregroundStyle(.secondary)
+                Picker("", selection: containerBinding) {
+                    Text("MOV").tag(ContainerFormat.mov)
+                    Text("MP4").tag(ContainerFormat.mp4)
+                    Text("MKV").tag(ContainerFormat.mkv)
+                    Text("MXF").tag(ContainerFormat.mxf)
+                    Text("Audio Only").tag(ContainerFormat.audioOnly)
+                }
+                .labelsHidden()
+                .frame(width: 140, alignment: .leading)
+                HStack {
+                    Text(fileFormatDescriptor)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Spacer()
+                    Button("Settings…") { showContainerSettings = true }
+                }
+            }
+            // Video row — Picker toggles Copy ↔ Re-Encode.
+            GridRow {
+                Text("Video:").foregroundStyle(.secondary)
+                Picker("", selection: videoChannelModeBinding) {
+                    Text("Copy").tag(ChannelMode.copy)
+                    Text("Re-Encode").tag(ChannelMode.reencode)
+                    Text("Off").tag(ChannelMode.disabled)
+                }
+                .labelsHidden()
+                .frame(width: 140, alignment: .leading)
+                HStack {
+                    Text(videoDescriptor)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer()
+                    Button("Settings…") { showVideoSettings = true }
+                }
+            }
+            // Audio row.
+            GridRow {
+                Text("Audio:").foregroundStyle(.secondary)
+                Picker("", selection: audioChannelModeBinding) {
+                    Text("Copy").tag(ChannelMode.copy)
+                    Text("Re-Encode").tag(ChannelMode.reencode)
+                    Text("Off").tag(ChannelMode.disabled)
+                }
+                .labelsHidden()
+                .frame(width: 140, alignment: .leading)
+                HStack {
+                    Text(audioDescriptor)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Spacer()
+                    Button("Settings…") { showAudioSettings = true }
+                }
+            }
+            // Trimming row.
+            GridRow {
+                Text("Trimming:").foregroundStyle(.secondary)
+                Picker("", selection: $editableOptions.trimming) {
+                    Text("None").tag(Trimming.none)
+                    Text("In - Out").tag(Trimming.inToOut)
+                }
+                .labelsHidden()
+                .frame(width: 140, alignment: .leading)
+                Text(editableOptions.trimming == .inToOut
+                      ? "Use clip In/Out marks (if set)"
+                      : "No in/out trim applied")
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         }
         .font(.callout)
     }
 
-    /// One row of the per-channel grid: label + current value + a
-    /// short descriptor + (stubbed) Settings… button. Disabled
-    /// settings button + tooltip flags this as a C5 deliverable.
-    @ViewBuilder
-    private func channelRow(label: String,
-                             value: String,
-                             descriptor: String) -> some View {
-        GridRow {
-            Text(label).foregroundStyle(.secondary)
-            HStack(spacing: 8) {
-                Text(value)
-                    .frame(minWidth: 90, alignment: .leading)
-                Text(descriptor)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+    // MARK: - Channel mode (Copy / Re-Encode / Off) bindings
+
+    enum ChannelMode: Hashable { case copy, reencode, disabled }
+
+    private var videoChannelModeBinding: Binding<ChannelMode> {
+        Binding(
+            get: {
+                switch editableOptions.video {
+                case .copy:        return .copy
+                case .disabled:    return .disabled
+                case .reencode(_): return .reencode
+                }
+            },
+            set: { newMode in
+                switch newMode {
+                case .copy:     editableOptions.video = .copy
+                case .disabled: editableOptions.video = .disabled
+                case .reencode:
+                    // Switching back to Re-Encode restores the baseline's
+                    // VideoEncoding if it had one, else defaults to H.264.
+                    if case .reencode(let prior) = optionsBaseline.video {
+                        editableOptions.video = .reencode(prior)
+                    } else {
+                        editableOptions.video = .reencode(.defaultH264)
+                    }
+                }
             }
-            Button("Settings…") {}
-                .disabled(true)
-                .help("Per-channel editing — Encoding / Filters / LUTs / Overlays tabs land in C5")
-        }
+        )
     }
 
-    /// Whether any user-edited fields diverge from the preset's
-    /// defaults. Today the only divergence the dialog can express is
-    /// the filename pattern (everything else is read-only); the
-    /// (edited) indicator stays accurate for the C5 rollout of the
-    /// full options editor.
-    private var isEdited: Bool {
-        state.filenamePattern != .originalPlusSuffix
+    private var audioChannelModeBinding: Binding<ChannelMode> {
+        Binding(
+            get: {
+                switch editableOptions.audio {
+                case .copy:        return .copy
+                case .disabled:    return .disabled
+                case .reencode(_): return .reencode
+                }
+            },
+            set: { newMode in
+                switch newMode {
+                case .copy:     editableOptions.audio = .copy
+                case .disabled: editableOptions.audio = .disabled
+                case .reencode:
+                    if case .reencode(let prior) = optionsBaseline.audio {
+                        editableOptions.audio = .reencode(prior)
+                    } else {
+                        editableOptions.audio = .reencode(.defaultAAC)
+                    }
+                }
+            }
+        )
+    }
+
+    private var containerBinding: Binding<ContainerFormat> {
+        $editableOptions.container
+    }
+
+    // MARK: - Edited detection + descriptors
+
+    /// True when the user has touched the composable options or the
+    /// filename pattern. Drives the (edited) indicator + the runtime
+    /// routing decision in confirmConvert.
+    var isEdited: Bool {
+        editableOptions != optionsBaseline
+            || state.filenamePattern != .originalPlusSuffix
     }
 
     private var fileFormatDescriptor: String {
-        let bits: [String] = state.preset.isFFmpeg
-            ? ["ffmpeg", state.preset.category.displayName]
-            : ["Streamable", "Source Timecode"]
-        return bits.joined(separator: ", ")
-    }
-
-    /// "Copy" when the preset rewraps without re-encoding; "Re-Encode"
-    /// otherwise. Derived from the AVAssetExportSession preset name
-    /// because that's the cleanest signal we have today.
-    private var videoChannelLabel: String {
-        state.preset.avPresetName == "AVAssetExportPresetPassthrough"
-            ? "Copy" : "Re-Encode"
-    }
-
-    private var audioChannelLabel: String {
-        // Mirror the video channel — pass-through preset copies both
-        // streams; every re-encode preset re-encodes audio too.
-        videoChannelLabel
+        switch editableOptions.container {
+        case .mov:       return "Streamable, Source Timecode"
+        case .mp4:       return "Streamable, Source Timecode"
+        case .mkv:       return "Matroska container"
+        case .mxf:       return "Broadcast container"
+        case .audioOnly: return "Audio-only output"
+        }
     }
 
     private var videoDescriptor: String {
-        if state.preset.avPresetName == "AVAssetExportPresetPassthrough" {
-            return "Do not re-encode"
+        switch editableOptions.video {
+        case .copy:     return "Do not re-encode"
+        case .disabled: return "Video disabled"
+        case .reencode(let e):
+            var bits: [String] = [e.codec.displayName]
+            switch e.size {
+            case .likeSource:                  bits.append("Size Like Source")
+            case .fixed(let w, let h):         bits.append("\(w)×\(h)")
+            case .scale(let f):                bits.append(String(format: "%g×", f))
+            }
+            if case .bitrate(let kbps) = e.quality {
+                bits.append("\(kbps) kbit/s")
+            }
+            return bits.joined(separator: ", ")
         }
-        // Surface the effective codec + size based on the preset's
-        // AVAssetExportSession constant; ffmpeg presets use the
-        // preset's display name as the descriptor.
-        if state.preset.isFFmpeg {
-            return state.preset.name
-        }
-        return "\(state.preset.name), Size Like Source"
     }
 
     private var audioDescriptor: String {
-        if state.preset.avPresetName == "AVAssetExportPresetPassthrough" {
-            return "Do not re-encode"
+        switch editableOptions.audio {
+        case .copy:     return "Do not re-encode"
+        case .disabled: return "Audio disabled"
+        case .reencode(let a):
+            return "\(a.codec.displayName), \(a.sampleRate / 1000) kHz, \(a.bitrateKbps) kbit/s"
         }
-        return "AAC, 48 kHz, 192 kbit/s"
     }
 
     private var summaryLine: some View {
@@ -371,9 +501,17 @@ struct ConvertSheet: View {
             Spacer()
             Button("Cancel") { appState.convertSheet = nil }
                 .keyboardShortcut(.cancelAction)
-            Button("Start") { appState.confirmConvert(state) }
-                .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
+            Button("Start") {
+                // Pass the live editableOptions through if the user
+                // has diverged from the preset's defaults — confirmConvert
+                // routes the job through the composable runtime in that
+                // case. If unchanged, the legacy preset path runs.
+                let optionsArg = editableOptions == optionsBaseline
+                    ? nil : editableOptions
+                appState.confirmConvert(state, editedOptions: optionsArg)
+            }
+            .keyboardShortcut(.defaultAction)
+            .buttonStyle(.borderedProminent)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)

@@ -1595,7 +1595,12 @@ final class AppState: ObservableObject {
 
     /// Enqueue the configured jobs from the Convert dialog. Called
     /// from `ConvertSheet` when the user confirms.
-    func confirmConvert(_ state: ConvertSheetState) {
+    /// Convert-dialog Start handler. When `editedOptions` is nil the
+    /// runner takes the legacy preset path; when non-nil the user has
+    /// touched the per-channel composable options and the job runs
+    /// through the C3 resolver (`TranscodeJob(source:options:...)`).
+    func confirmConvert(_ state: ConvertSheetState,
+                         editedOptions: TranscodeOptions? = nil) {
         // Persist sticky settings.
         UserDefaults.standard.set(state.destinationDir, forKey: "convertOutputDir")
         UserDefaults.standard.set(state.keepFolderStructure, forKey: "convertKeepFolderStructure")
@@ -1640,14 +1645,32 @@ final class AppState: ObservableObject {
             if state.skipExisting, FileManager.default.fileExists(atPath: dest.path) {
                 continue
             }
-            let job = TranscodeJob(
-                source: srcURL,
-                preset: state.preset,
-                outputURL: dest,
-                fadeInSeconds: state.fadeInSeconds,
-                fadeOutSeconds: state.fadeOutSeconds,
-                tcBurnIn: state.tcBurnIn
-            )
+            let job: TranscodeJob
+            if let opts = editedOptions {
+                // Composable path — user edited the per-channel
+                // settings; route through the C3 resolver. Carry the
+                // user-visible preset name onto the synthetic preset
+                // so the queue UI shows a meaningful label instead of
+                // "Custom".
+                job = TranscodeJob(
+                    source: srcURL,
+                    options: opts,
+                    outputURL: dest,
+                    displayName: state.preset.name,
+                    fadeInSeconds: state.fadeInSeconds,
+                    fadeOutSeconds: state.fadeOutSeconds,
+                    tcBurnIn: state.tcBurnIn
+                )
+            } else {
+                job = TranscodeJob(
+                    source: srcURL,
+                    preset: state.preset,
+                    outputURL: dest,
+                    fadeInSeconds: state.fadeInSeconds,
+                    fadeOutSeconds: state.fadeOutSeconds,
+                    tcBurnIn: state.tcBurnIn
+                )
+            }
             transcodeQueue.enqueue(job)
             enqueued += 1
         }
