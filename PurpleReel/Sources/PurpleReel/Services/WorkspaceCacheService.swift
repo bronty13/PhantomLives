@@ -209,6 +209,81 @@ enum WorkspaceCacheService {
         writePayload(payload, for: asset.path)
     }
 
+    // MARK: - Prune orphans + age (C32 G1 / C35 G3)
+
+    /// Result of a single `pruneOrphans(under:)` sweep.
+    struct PruneResult: Equatable {
+        var scanned: Int       // total `.purplereel/*.json` files inspected
+        var deleted: [URL]     // sidecars deleted (orphan OR over-age)
+        var failed: [(URL, String)]
+
+        static func == (lhs: PruneResult, rhs: PruneResult) -> Bool {
+            lhs.scanned == rhs.scanned
+                && lhs.deleted == rhs.deleted
+                && lhs.failed.count == rhs.failed.count
+                && zip(lhs.failed, rhs.failed).allSatisfy { $0.0 == $1.0 && $0.1 == $1.1 }
+        }
+    }
+
+    /// Walk `<root>` recursively, find every `.purplereel/<file>.json`
+    /// sidecar, and delete any that match either:
+    ///   - **Orphan**: corresponding source file no longer exists.
+    ///   - **Over-age** (C35): sidecar's mtime is older than
+    ///     `maxAgeDays` days. nil = no age limit (orphan-only sweep,
+    ///     same behavior as pre-C35).
+    ///
+    /// The reader's modtime gate already protects against stale
+    /// payloads for files that DO exist; this sweeps the other cases
+    /// — files that are gone OR sidecars that have aged out (likely
+    /// stale even if their source still exists) — so `.purplereel/`
+    /// directories don't accumulate dead weight over a NAS's
+    /// lifetime. Best-effort; permission errors get reported via
+    /// `PruneResult.failed`.
+    static func pruneOrphans(under root: URL,
+                              maxAgeDays: Int? = nil) -> PruneResult {
+        let fm = FileManager.default
+        var result = PruneResult(scanned: 0, deleted: [], failed: [])
+        // Note: NO `.skipsHiddenFiles` here — sidecars live under
+        // `.purplereel/` which is hidden by convention. Skipping
+        // hidden entries would skip the entire directory.
+        guard let walker = fm.enumerator(at: root,
+            includingPropertiesForKeys: [.isDirectoryKey]
+        ) else { return result }
+        for case let url as URL in walker {
+            // Sidecars are exactly `.json` under a `.purplereel` dir.
+            guard url.pathExtension == "json",
+                  url.deletingLastPathComponent().lastPathComponent == ".purplereel"
+            else { continue }
+            result.scanned += 1
+            // The source file lives one level up at
+            // `<parent-of-.purplereel>/<filename-without-.json>`.
+            let sourceName = (url.lastPathComponent as NSString)
+                .deletingPathExtension
+            let sourcePath = url.deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent(sourceName).path
+            // C35 — two reasons to delete: orphan (source gone) OR
+            // over-age (sidecar mtime older than maxAgeDays).
+            let orphan = !fm.fileExists(atPath: sourcePath)
+            let overAge: Bool = {
+                guard let days = maxAgeDays, days > 0 else { return false }
+                guard let attrs = try? fm.attributesOfItem(atPath: url.path),
+                      let mod = attrs[.modificationDate] as? Date
+                else { return false }
+                let cutoff = Date().addingTimeInterval(-Double(days) * 86400)
+                return mod < cutoff
+            }()
+            if !orphan && !overAge { continue }
+            do {
+                try fm.removeItem(at: url)
+                result.deleted.append(url)
+            } catch {
+                result.failed.append((url, error.localizedDescription))
+            }
+        }
+        return result
+    }
+
     // MARK: - Hydrate
 
     /// Apply the user-metadata portion of a sidecar payload to the

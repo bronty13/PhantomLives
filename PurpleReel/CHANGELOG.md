@@ -17,6 +17,42 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C35 — Workspace cache: age-based eviction
+
+Deferred G3. The C32 orphan-prune handles sidecars whose source
+file is gone, but a long-lived NAS workspace also accumulates
+sidecars that are technically "live" (source still exists) yet
+genuinely stale — the user hasn't touched that clip in 18 months,
+the cached log fields haven't changed in years, etc. Pre-C35
+these stayed forever; C35 adds a per-installation "delete sidecars
+older than N days" policy.
+
+**Service** — `WorkspaceCacheService.pruneOrphans(under:maxAgeDays:)`:
+- New optional `maxAgeDays: Int?` parameter (default nil = no
+  age limit, orphan-only sweep matching pre-C35 behavior).
+- Per-sidecar decision: delete if **orphan OR over-age**. Either
+  reason fires, both rules compose. A live + young sidecar
+  survives both filters.
+- Age check reads `attributesOfItem(atPath:)[.modificationDate]`;
+  cutoff = `now - days * 86400`. Older = delete.
+
+**Settings** — General → Workspace Cache:
+- New Stepper "Also delete sidecars older than N day(s)" (0-365).
+  0 disables the cap (orphan-only). Persists via
+  `@AppStorage("sidecarMaxAgeDays")`.
+- `pruneOrphanedSidecars()` reads the stepper value and passes
+  through to the service; the Settings UI now controls both the
+  trigger (button) AND the policy (age cap).
+
+**Tests** — `WorkspaceCacheServiceTests` (3 new, 14 total):
+- `testPruneWithoutAgeCapKeepsOldButLiveSidecars` — a 100-day
+  old sidecar with a live source survives when nil is passed.
+- `testPruneWithAgeCapDeletesOverAgeSidecars` — same setup with
+  `maxAgeDays = 30` deletes the over-age but keeps a fresh
+  sibling.
+- `testPruneWithZeroAgeCapIsOrphanOnly` — 0 behaves the same as
+  nil (matches the Settings stepper's "off" semantics).
+
 ### C34 — Workflow chain run resumption across app launches
 
 Deferred from C33's E3. A workflow-chain run can be 30+ minutes

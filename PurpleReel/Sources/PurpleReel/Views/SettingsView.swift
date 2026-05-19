@@ -31,6 +31,7 @@ struct SettingsView: View {
 // MARK: - General
 
 struct GeneralSettingsView: View {
+    @EnvironmentObject var appState: AppState
     @AppStorage("lutFolderPath") private var lutFolderPath: String = ""
     @AppStorage("importLUTsFromFCP") private var importLUTsFromFCP: Bool = true
     @AppStorage("importLUTsFromResolve") private var importLUTsFromResolve: Bool = true
@@ -42,6 +43,9 @@ struct GeneralSettingsView: View {
     @AppStorage(KynoCompatibility.modeKey) private var kynoMode: Bool = false
     @AppStorage(WorkspaceCacheService.enabledDefaultsKey)
     private var workspaceCacheEnabled: Bool = false
+    /// C35 — age cap (days) for the workspace-cache sidecar prune.
+    /// 0 disables age-based eviction so prune is orphan-only.
+    @AppStorage("sidecarMaxAgeDays") private var sidecarMaxAgeDays: Int = 0
 
     var body: some View {
         Form {
@@ -102,6 +106,46 @@ struct GeneralSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                // C32 (G1) — orphan-sidecar prune. Walks each
+                // workspace root and deletes any `.purplereel/*.json`
+                // whose source file no longer exists. C35 — also
+                // accepts an age cap so sidecars that have aged out
+                // get pruned even when their source file still
+                // exists (stale-by-time, not stale-by-orphan).
+                if !appState.workspaceRoots.isEmpty {
+                    HStack {
+                        Button("Prune Orphaned Sidecars…") {
+                            pruneOrphanedSidecars()
+                        }
+                        Spacer()
+                        Text("Walks each workspace root and deletes .purplereel/ entries whose source file is gone.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    // C35 — age-based eviction policy. 0 disables
+                    // the age cap so prune-by-orphan-only stays the
+                    // default. Non-zero values combine with the
+                    // orphan check — either reason deletes.
+                    HStack {
+                        Stepper(value: $sidecarMaxAgeDays, in: 0...365) {
+                            HStack(spacing: 4) {
+                                Text("Also delete sidecars older than")
+                                Text("\(sidecarMaxAgeDays)")
+                                    .monospacedDigit()
+                                Text("day(s)")
+                            }
+                            .font(.callout)
+                        }
+                        Spacer()
+                        Text(sidecarMaxAgeDays == 0
+                              ? "0 disables age-based eviction (orphan-only)."
+                              : "Older sidecars are deleted on the next prune run.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
             }
             Section("LUTs") {
                 HStack {
@@ -152,6 +196,45 @@ struct GeneralSettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// C32 (G1) — sweep each workspace root for `.purplereel/*.json`
+    /// sidecars whose source file is gone and delete them. Reports
+    /// the aggregated result in an NSAlert. Runs on a background
+    /// Task so a large NAS scan doesn't freeze Settings.
+    private func pruneOrphanedSidecars() {
+        let roots = appState.workspaceRoots
+        // C35 — age cap passed by value into the detached task;
+        // 0 disables age-based eviction (caller-side nil is the
+        // service-level "no age limit", expressed here as 0 →
+        // `nil` so the same Settings stepper handles both).
+        let ageDays = sidecarMaxAgeDays > 0 ? sidecarMaxAgeDays : nil
+        Task.detached(priority: .userInitiated) {
+            var totalScanned = 0
+            var totalDeleted = 0
+            var totalFailed = 0
+            for root in roots {
+                let r = WorkspaceCacheService.pruneOrphans(
+                    under: root, maxAgeDays: ageDays
+                )
+                totalScanned += r.scanned
+                totalDeleted += r.deleted.count
+                totalFailed += r.failed.count
+            }
+            await MainActor.run {
+                let alert = NSAlert()
+                alert.messageText = "Pruned \(totalDeleted) orphaned sidecar(s)"
+                var lines: [String] = []
+                lines.append("Scanned: \(totalScanned)")
+                lines.append("Deleted: \(totalDeleted)")
+                if totalFailed > 0 {
+                    lines.append("Failed: \(totalFailed) (likely permission denied)")
+                }
+                lines.append("Across \(roots.count) workspace root(s).")
+                alert.informativeText = lines.joined(separator: "\n")
+                alert.runModal()
+            }
+        }
     }
 }
 
