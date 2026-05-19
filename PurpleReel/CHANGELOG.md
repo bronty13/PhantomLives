@@ -17,6 +17,82 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C3 — Composable runtime (TranscodeOptions → executable backend)
+
+Bridge between the new composable spec (C1 / `TranscodeOptions`) and
+the existing `TranscodeJob` runner. The smallest possible change:
+
+- **New file** `Sources/PurpleReel/Services/TranscodeOptionsResolver.swift`
+  ships a `TranscodeOptions.resolveBackend() -> ResolvedBackend` that
+  picks the right executor.
+- **`ResolvedBackend` enum** matches the two paths `TranscodeJob` already
+  handles: `.avAssetExport(presetName, ext, alwaysAvailable)` or
+  `.ffmpeg(args, ext)`.
+
+Routing strategy:
+
+1. **video = .copy + audio = .copy** → `AVAssetExportPresetPassthrough`
+   (container rewrap; always available).
+2. **container = .audioOnly OR video = .disabled** → ffmpeg with `-vn`
+   + audio codec args. Extension follows the codec (Wav, AIFF, M4A,
+   MP3, MP2 → wav / aiff / m4a / mp3 / mp2).
+3. **video = .reencode(VideoEncoding) + codec.isAppleNative**:
+   - H.264 → size-keyed `AVAssetExportPreset…` (likeSource →
+     HighestQuality; 1280×720 → 1280x720; 1920×1080 → 1920x1080;
+     3840×2160 → 3840x2160; sub-720 → 640x480)
+   - HEVC → likeSource → HEVCHighestQuality; 4K → HEVC3840x2160;
+     else HEVC1920x1080
+   - ProRes 422 / 4444 → the matching `AppleProRes…LPCM` constant
+   - ProRes 422 HQ / LT / Proxy → **fall through** to ffmpeg
+     (`prores_ks` profile 3/1/0); no Apple constants on macOS
+4. **video = .reencode** otherwise → ffmpeg with codec-specific recipe.
+   DNxHR → `-c:v dnxhd -profile:v dnxhr_*` + `yuv422p` (HQ) or
+   `yuv422p10le` (HQX) or `yuv444p10le` (444). VP8/VP9 → `libvpx` /
+   `libvpx-vp9` → `webm`. FLV → `flv`. WMV → `wmv2`.
+5. **video = .copy + audio = .reencode** → ffmpeg with `-c:v copy` +
+   audio recipe.
+
+Filter chain limited for now to `-vf scale=…` when size is fixed or
+fractional. Denoise / sharpen / fade-in-out / TC overlay all stay on
+the AVFoundation composition path (`TranscodeJob.applyComposition`)
+and are NOT yet baked into the ffmpeg argv. C5 will add the full
+`-vf` chain.
+
+**New `TranscodeJob` convenience init** accepts `TranscodeOptions`
+directly:
+
+    TranscodeJob(source: url, options: opts, outputURL: out,
+                 displayName: "DNxHR HQ 23.98")
+
+Builds a synthetic single-use `TranscodePreset` wrapping the
+resolved backend, then defers to the existing designated initializer.
+Synthetic preset is never persisted — it's a one-shot adapter so the
+AVAssetExportSession branch / ffmpeg branch / progress polling /
+cancellation flow downstream unchanged.
+
+14 new tests (`TranscodeOptionsResolverTests`):
+- Pass-through routing for copy/copy in MOV + MP4
+- H.264 size routing (1080p → 1920x1080 preset; 4K → 3840x2160;
+  likeSource → HighestQuality)
+- HEVC 4K routing → HEVC3840x2160
+- ProRes 422 → AppleProRes422LPCM (alwaysAvailable = true)
+- ProRes 422 HQ falls through to ffmpeg `prores_ks` profile 3
+- DNxHR routes to ffmpeg `dnxhd` encoder with `dnxhr_hq` profile +
+  `yuv422p`
+- VP9 routes to `libvpx-vp9` with webm extension + carries -b:v
+- Audio-only PCM 16-bit routes to ffmpeg with `-vn` + `pcm_s16le` +
+  wav extension
+- Audio-only MP3 routes to `libmp3lame` + carries bitrate + mp3
+  extension
+- Fixed size emits `-vf scale=W:H`
+- Half-scale emits `-vf scale='trunc(iw/2.0/2)*2':-2` (even-rounding)
+
+Foundation for C4 (new Convert dialog) and C5 (tabbed Settings…
+editor). No user-visible behavior change in this commit — the new
+init is dormant until C4 surfaces it.
+
+---
+
 ### C2 — Extended preset catalog (~50 new presets)
 
 `Sources/PurpleReel/Models/PresetCatalog.swift` ships a curated

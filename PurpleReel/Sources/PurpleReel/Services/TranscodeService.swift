@@ -55,6 +55,55 @@ final class TranscodeJob: ObservableObject, Identifiable {
         self.tcBurnIn = tcBurnIn
     }
 
+    /// Composable initializer (C3). Builds a synthetic
+    /// `TranscodePreset` from the resolved backend so the existing
+    /// AVAssetExportSession / ffmpeg branch + progress polling +
+    /// cancellation flow downstream unchanged. The synthetic preset
+    /// is never persisted — it's a one-shot adapter from the new
+    /// composable `TranscodeOptions` shape to today's runner.
+    ///
+    /// `displayName` lands on the synthetic preset's `name` so the
+    /// queue UI shows something meaningful instead of an opaque
+    /// "options-<uuid>". `category` defaults to `.editing` because
+    /// the composable Convert dialog doesn't push category back into
+    /// the model — but the queue UI doesn't currently render it.
+    convenience init(source: URL, options: TranscodeOptions,
+                     outputURL: URL, displayName: String = "Custom",
+                     fadeInSeconds: Double = 0,
+                     fadeOutSeconds: Double = 0,
+                     tcBurnIn: Bool = false) {
+        let backend = options.resolveBackend()
+        let synthetic: TranscodePreset
+        switch backend {
+        case .avAssetExport(let presetName, let ext, let alwaysAvailable):
+            synthetic = TranscodePreset(
+                id: "options-\(UUID().uuidString)",
+                name: displayName,
+                avPresetName: presetName,
+                fileExtension: ext,
+                suffix: "_custom",
+                category: .editing,
+                alwaysAvailable: alwaysAvailable,
+                ffmpegArgs: nil
+            )
+        case .ffmpeg(let args, let ext):
+            synthetic = TranscodePreset(
+                id: "options-\(UUID().uuidString)",
+                name: displayName,
+                avPresetName: "",
+                fileExtension: ext,
+                suffix: "_custom",
+                category: .editing,
+                alwaysAvailable: true,
+                ffmpegArgs: args
+            )
+        }
+        self.init(source: source, preset: synthetic, outputURL: outputURL,
+                  fadeInSeconds: fadeInSeconds,
+                  fadeOutSeconds: fadeOutSeconds,
+                  tcBurnIn: tcBurnIn)
+    }
+
     func run() async {
         state = .running
         progress = 0
