@@ -3,6 +3,12 @@
 > First read on every new working session. Keep this file current with
 > material architecture changes.
 
+**Status: v1.0 milestone (2026-05-19).** Sprint 1-4 Kyno parity +
+post-parity polish (C21-C39) shipped. The remaining backlog is
+explicitly deferred to v2 — see CHANGELOG.md's v1.0 section for
+the full "deferred" list (Tahoe AV migration, real Frame.io
+upload, mid-step run resumption, Category J Beyond-Kyno features).
+
 ## What it is
 
 A native macOS SwiftUI app for media management focused on Final Cut Pro:
@@ -111,18 +117,39 @@ type with a narrow public API; the `View` layer doesn't talk to
 ./run-tests.sh
 ```
 
-28 unit tests across 8 files. Coverage map:
+**v1.0 totals**: 325+ XCTest cases across 45 test files. Service /
+model / view-state computed coverage is broad; UI integration
+(SwiftUI sheets, alerts, etc.) is manual QA per CHANGELOG entry.
 
-| File | Coverage |
-|---|---|
-| `BatchRenameTests` | 6 cases: token expansion (orig/ext/date/counter/codec/fps/technical), unknown-token preservation, within-batch collision detection. |
-| `HashingTests` | 6 cases: FIPS 180-4 vectors for SHA-1/MD5/SHA-256 (empty + "abc"), chunked-matches-single-shot on 9 MB pseudo-random data, progress callback total. |
-| `MHLWriterTests` | 2 cases: XML well-formedness round-trip through `XMLDocument`, special-char escape, per-algorithm element name (sha1/md5/sha256). |
-| `FCPXMLWriterTests` | 5 cases: well-formedness, NTSC format selection at 29.97, marker/subclip/tag/rating render, XML escape of attribute values + percent-encoding of paths, low-rating no-Favorite. |
-| `WhisperSRTTests` | 5 cases: basic shape, multi-line body, CRLF endings, millisecond timestamp precision, empty input. |
-| `WindowStateGuardTests` | 2 cases: split-view key sweep, window-frame keys survive preflight. |
-| `BKTreeTests` | 4 cases: exact-match, within-threshold set membership, brute-force agreement on 500 synthetic hashes at 4 thresholds, insertion count. |
-| `SmokeTests` | 1 case: `AssetKind.from(extension:)`. |
+Coverage groups (not exhaustive — read the file headers for the
+specific rules each test pins):
+
+- **Hashing + verification**: HashingTests, MHLWriterTests,
+  BackupJobCancelTests (C37).
+- **FCPXML round-trip**: FCPXMLWriterTests, FCPXMLImportServiceTests,
+  FCPProjectUsageTests (C25).
+- **Batch rename + tokens**: BatchRenameTests, MarkerTitleTokenTests
+  (C22), FilenameRenamePresetTests.
+- **Combine Clips (C16-C36)**: CombineSourceTests,
+  CombineSourceMarkerPreservationTests, CombineDimensionModeTests,
+  CombineCrossfadeTests, EdgeFadeTests, PerPairCrossfadeTests,
+  CrossfadeEasingTests.
+- **Workflow chains (C32-C37)**: WorkflowChainTests,
+  ActiveRunPersistenceTests, BackupJobCancelTests.
+- **Workspace cache (C32, C35, C36)**: WorkspaceCacheServiceTests
+  (14 cases covering round-trip, schema versioning, multi-root,
+  orphan prune, age-based eviction).
+- **Browser state (C21, C29, C31)**: FolderCountsTests,
+  NilHandlingComparatorTests, ReplaceFilterTests.
+- **Report writers**: ReportSectionsTests, XLSXReportWriterTests
+  (C12, C26).
+- **Misc service helpers**: BKTreeTests, RecentDestinationsTests
+  (C22), DatabaseServiceInsertIDTests, RejectedRatingTests,
+  SpanDetectionServiceTests, WhisperSRTTests, WindowStateGuardTests,
+  PresetCatalogTests, PresetDefaultOptionsTests,
+  TranscodeOptionsTests, TranscodeOptionsResolverTests,
+  TagEditorRouterTests, KynoImportServiceTests, ClipMetadataLUTTests
+  (C30), AudioOnlyPresetTests (C18), SmokeTests.
 
 ## Build / install / version
 
@@ -132,13 +159,18 @@ type with a narrow public API; the `View` layer doesn't talk to
 
 - `build-app.sh` regenerates the icon (`Scripts/generate-icon.swift` →
   asset catalog), runs `xcodegen generate`, derives
-  `CFBundleShortVersionString = 0.1.<commit-count>` and
+  `CFBundleShortVersionString = 1.0.<commit-count - 422>` (v1.0
+  milestone baseline; see CHANGELOG v1.0 entry) and
   `CFBundleVersion = <count>.<short-sha>`, builds Release in
   `mktemp -d`, signs (Developer ID Application if a cert is in the
-  keychain, ad-hoc otherwise).
+  keychain, ad-hoc otherwise). The `MAJOR_BASE_COMMIT_COUNT` const
+  at the top of the script is the baseline; bumping the major
+  version means updating that constant.
 - `install.sh` quits any running copy via osascript, `ditto
   --noextattr` to `/Applications/PurpleReel.app`, relaunches via
-  `open`. `--no-open` skips the relaunch.
+  `open`. `--no-open` skips the relaunch. `build-app.sh` chains
+  into it automatically (since the 2026-05-19 PhantomLives
+  standardization) — opt out with `--no-install` or `BUILD_ONLY=1`.
 
 ## Output paths
 

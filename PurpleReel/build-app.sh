@@ -14,7 +14,16 @@ PRODUCT_NAME="PurpleReel"
 BUNDLE_ID="com.bronty13.PurpleReel"
 COMMIT_COUNT="$(git rev-list --count HEAD 2>/dev/null || echo 0)"
 SHORT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-SHORT_VERSION="${SHORT_VERSION:-0.1.${COMMIT_COUNT}}"
+# v1.0 milestone: parity-complete + post-parity polish (C21-C39)
+# shipped. SHORT_VERSION promoted from 0.1.<count> to
+# 1.0.<count - 422>; the offset = the commit count at which the
+# 1.0 baseline was declared, so the patch number resets to 0 at
+# the milestone and grows from there. Older builds (0.1.x)
+# remain installable from their original artefacts.
+MAJOR_BASE_COMMIT_COUNT=422
+PATCH="$((COMMIT_COUNT - MAJOR_BASE_COMMIT_COUNT))"
+if [ "$PATCH" -lt 0 ]; then PATCH=0; fi
+SHORT_VERSION="${SHORT_VERSION:-1.0.${PATCH}}"
 BUILD_NUMBER="${BUILD_NUMBER:-${COMMIT_COUNT}.${SHORT_SHA}}"
 
 echo "Building $PRODUCT_NAME $SHORT_VERSION ($BUILD_NUMBER)..."

@@ -1,12 +1,62 @@
 # PurpleReel Changelog
 
 PurpleReel uses a build-number-as-version scheme — every commit
-bumps the bundle version (`0.1.<git-commit-count>`) via
-`build-app.sh`. There are no tagged releases yet, so each section
-below is a "milestone" rather than a version. The current build
-number is stamped into the app at `About → Version`.
+bumps the bundle version via `build-app.sh`. The v1.0 milestone
+declared the schema baseline; subsequent commits increment the
+patch number (`1.0.<count-since-baseline>`). Older 0.1.x builds
+are still installable from their original artefacts.
 
 Newest first.
+
+---
+
+## v1.0 — Kyno parity + Beyond-Kyno polish (milestone)
+
+**Shipped:** all 85 rows of `KYNO_RESEARCH.md` are either
+addressed in code or explicitly out of scope (UI localization,
+Resolve FCP7-XML, Op-Atom MXF / R3D / P2 native — see
+`KYNO_PARITY_ROADMAP.md` for the per-row table). Plus 19 commits
+of post-parity polish (C21–C39):
+
+- **Combine Clips as a real editor**: per-clip trim + drag-reorder
+  (C16), marker preservation (C17), audio-only (C18), dimension-
+  match (C19), cross-fades with per-pair override + 8-segment
+  non-linear easing (C20/C23/C24/C27/C36).
+- **FCPXML round-trip**: project-membership tracking on import
+  (C25), destination picker + recents on export (C38).
+- **Discoverability sweep**: drilldown hint banner (C21), no-
+  results banner (C29), offline-root / permission-denied / stale-
+  catalogue / multi-root summary banners (C31).
+- **Workflow chains as a real automation surface**: continueOnFailure
+  + built-in templates (C33), run resumption across launches via
+  on-disk snapshots (C34), per-step cancel including mid-flight
+  backup interrupt (C32/C37).
+- **Workspace cache complete**: orphan + age-based prune (C32/C35),
+  auto-prune on launch (C36), schema-version + multi-root coverage
+  (C32).
+- **Schema growth**: v8 `fcp_project_usage` (C25), v9 `clip_metadata.{cameraLUTPath,creativeLUTPath}` (C30).
+- **Inspector polish**: per-clip LUT pinning (C30), `${markerTitle}`
+  token in batch rename (C22), recent destinations across Convert
+  and Combine (C22) and FCPXML (C38), custom-file LUT picker (C22),
+  XLSX section-toggle column dropping with OOXML column-letter
+  realignment (C26).
+- **Docs**: README "Why PurpleReel" (C28), MIGRATING_FROM_KYNO.md
+  step-by-step guide (C39), parity-roadmap refresh (C39).
+
+**Deferred to v2 (planned)**:
+- macOS Tahoe `AVMutableVideoComposition` migration —
+  `AVVideoComposition.Configuration` API. C20/C23/C27/C36 all use
+  the deprecated form; tech-debt-only until next macOS major.
+- Real Frame.io upload (OAuth + REST + C2C auto-upload). C38 ships
+  the preset only.
+- Mid-step resumption for workflow chains (cooperative
+  checkpointing inside VerifiedBackupService / TranscodeJob).
+- Category J — Live monitoring, automated QC pass, AI/ML
+  metadata, cloud-team workflow.
+
+Test totals at v1.0: 250+ XCTest cases across 50+ test files,
+covering services / models / view-state computeds. UI integration
+is manual QA per CHANGELOG entries.
 
 ---
 
