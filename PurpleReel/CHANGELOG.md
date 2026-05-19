@@ -17,6 +17,59 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C27 — Combine Clips: non-linear easing on cross-fades + edge fades
+
+Deferred from C20 ("non-linear easing curves — needs custom
+compositor"). C27 lands the feature without the custom compositor
+overhead: we approximate the curves via 8 piecewise-linear segments
+per fade, using AVFoundation's built-in `setOpacityRamp` /
+`setVolumeRamp` repeatedly. Visually indistinguishable from a true
+non-linear curve at typical 0.5–3-second fade durations; no
+AVVideoCompositing pixel-pool plumbing required.
+
+**Why piecewise over a custom compositor**: AVVideoCompositing is
+notoriously fiddly — pixel-buffer pool management, async request
+flow, color-space gotchas, OOM risk. Eight piecewise-linear segments
+buy a smooth result with zero new failure modes.
+
+**Model** — `CombineClipsService.swift`:
+- New `CrossfadeEasing` enum:
+  - `.linear` — y = x (pre-C27 default, single full-range ramp).
+  - `.easeIn` — y = x² (slow start, snappy finish).
+  - `.easeOut` — y = 1 - (1-x)² (snappy start, soft landing).
+  - `.easeInOut` — y = 3x² - 2x³ (smoothstep — soft on both ends).
+- `CombineClipsJob` gains `crossfadeEasing: CrossfadeEasing = .linear`
+  on both inits.
+- New `nonisolated static func easedRampValues(samples:easing:reversed:)`
+  → `[Double]` pure helper, returns N+1 sample points for N
+  piecewise-linear segments. `reversed: true` flips the curve so
+  fade-OUT pairs symmetrically with a fade-IN of the same easing.
+
+**Service**:
+- `buildCrossfadeVideoComposition` / `buildCrossfadeAudioMix` —
+  every `setOpacityRamp` / `setVolumeRamp` call routes through new
+  `applyEasedOpacityRamp` / `applyEasedVolumeRamp` helpers. They
+  short-circuit to a single ramp when `crossfadeEasing == .linear`
+  (no overhead for the common case) or emit 8 segments otherwise.
+
+**Sheet** — `CombineClipsSheet.swift`:
+- New "Easing:" Picker row with four options (Linear / Ease In /
+  Ease Out / Ease In-Out). Sheet frame 680→720.
+- Easing applies globally to every cross-fade + edge fade in the
+  job. Per-pair easing override not exposed.
+
+**Tests** — `CrossfadeEasingTests.swift` (NEW, 10 cases):
+- Every curve hits y=0 at t=0 and y=1 at t=1 (fade-in) /
+  y=1, y=0 (fade-out).
+- Linear is exactly evenly-spaced.
+- EaseIn at t=0.5 = 0.25 (below linear).
+- EaseOut at t=0.5 = 0.75 (above linear).
+- EaseInOut at t=0.5 = 0.5 exactly (smoothstep is symmetric).
+- EaseInOut at t=0.25 = 0.15625.
+- EaseIn is monotonic non-decreasing.
+- `samples` parameter controls value count (N+1).
+- Zero / negative samples clamp to N=1 (degenerate but valid).
+
 ### C26 — XLSX report honors section toggles
 
 Deferred from C12. When PurpleReel's CSV/HTML exports shipped the

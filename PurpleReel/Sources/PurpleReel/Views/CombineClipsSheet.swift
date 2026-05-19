@@ -68,6 +68,10 @@ struct CombineClipsSheet: View {
     /// clip's trimmed duration.
     @State private var fadeFromBlackText: String = "0"
     @State private var fadeToBlackText: String = "0"
+    /// C27 — easing curve applied to all cross-fade + edge ramps.
+    /// `.linear` matches pre-C27 behavior; others approximate via
+    /// 8 piecewise-linear segments per fade.
+    @State private var crossfadeEasing: CrossfadeEasing = .linear
 
     init(initialSources: [Asset]) {
         _rows = State(initialValue: initialSources.map {
@@ -90,7 +94,7 @@ struct CombineClipsSheet: View {
             footer
         }
         .padding(20)
-        .frame(width: 640, height: 680)
+        .frame(width: 640, height: 720)
         .onAppear { loadSourceMarkers() }
     }
 
@@ -341,6 +345,25 @@ struct CombineClipsSheet: View {
                     .foregroundStyle(.secondary)
                 Spacer()
             }
+            // C27 — easing curve picker. Hidden when no cross-fade
+            // or edge fade is active (nothing to ease).
+            HStack(spacing: 8) {
+                Text("Easing:")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 80, alignment: .trailing)
+                Picker("", selection: $crossfadeEasing) {
+                    Text("Linear").tag(CrossfadeEasing.linear)
+                    Text("Ease In").tag(CrossfadeEasing.easeIn)
+                    Text("Ease Out").tag(CrossfadeEasing.easeOut)
+                    Text("Ease In-Out (smoothstep)").tag(CrossfadeEasing.easeInOut)
+                }
+                .labelsHidden()
+                .frame(maxWidth: 220)
+                Text("curve for all fades")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
             // C17 — preserve-markers toggle. Hidden when no source
             // has any markers (nothing to preserve, no need to
             // surface the option).
@@ -532,7 +555,8 @@ struct CombineClipsSheet: View {
                                  dimensionMode: resolvedDimensionMode(),
                                  crossfadeSeconds: Double(crossfadeText) ?? 0,
                                  fadeFromBlackSeconds: Double(fadeFromBlackText) ?? 0,
-                                 fadeToBlackSeconds: Double(fadeToBlackText) ?? 0)
+                                 fadeToBlackSeconds: Double(fadeToBlackText) ?? 0,
+                                 crossfadeEasing: crossfadeEasing)
         self.job = j
         Task {
             await j.run()
