@@ -17,6 +17,32 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C8 — Edit Multiple Items dialog Keep-dropdown redesign
+
+`BatchMetadataSheet` rebuilt to match Kyno's "Edit Multiple Items"
+flyout (Image #87). Each row now leads with a **Keep / Set** Picker
+on the left instead of a checkbox.
+
+- Layout switched to a 3-column Grid: `[Keep dropdown] [Label]
+  [Value editor]`. Every row aligns vertically; Picker width fixed
+  at 90pt.
+- Underlying `BatchMetadataChange` model unchanged — `applyX: Bool`
+  flags stay, bridged to the new `FieldMode` enum (.keep / .set) via
+  a translating Binding so `AppState.applyBatchMetadata(_:)` is not
+  touched.
+- **Rating row** gains a Rejected (Ø) button next to the 5 stars,
+  using the C7 sentinel (`stars = -1`). Visual: gray when inactive,
+  red when selected.
+- **Tags row** renamed from "Add Tags" → "Tags" and prompt text
+  switched to Kyno's "Select or Create Tag". Chips list still
+  click-to-remove.
+- Description gets full TextEditor row; OK button enabled only when
+  any field is in `.set` mode.
+- Default sheet size bumped 620×600 → 720×640 to fit Kyno's wider
+  per-row layout cleanly.
+
+---
+
 ### C7 — Right-click polish (Rejected / Send to Resolve / Pre-analyze / richer Open With)
 
 Closes 4 of 5 Kyno-parity gaps surfaced by the right-click screenshots

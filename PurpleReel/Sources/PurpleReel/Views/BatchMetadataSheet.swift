@@ -6,7 +6,10 @@ import SwiftUI
 struct BatchMetadataChange {
     // Per-field opt-in toggles — only ticked fields are written. Lets
     // the user batch-set Scene and Camera while leaving Description
-    // untouched, for example.
+    // untouched, for example. C8 swapped the UI's checkboxes for
+    // "Keep / Set" Pickers (Kyno-parity, Image #87) but the model
+    // shape is unchanged so `AppState.applyBatchMetadata(_:)` stays
+    // identical downstream.
     var applyRating     = false
     var applyTags       = false
     var applyTitle      = false
@@ -18,7 +21,7 @@ struct BatchMetadataChange {
     var applyAngle      = false
     var applyCamera     = false
 
-    var rating: Int = 0          // 0…5
+    var rating: Int = 0          // 0…5, or -1 for Rejected (C7 sentinel)
     var tagsToAdd: [String] = []  // additive — never clears existing
     var title: String        = ""
     var description: String  = ""
@@ -30,20 +33,33 @@ struct BatchMetadataChange {
     var camera: String       = ""
 }
 
-/// "Edit Multiple…" sheet (⌘⇧M) — applies log fields, rating, and
-/// additive tags across the current multi-selection (or the primary
-/// single selection if nothing is multi-selected).
+/// "Edit Multiple Items…" sheet (⌘⇧M) — applies log fields, rating,
+/// and additive tags across the current multi-selection (or the
+/// primary single selection if nothing is multi-selected).
 ///
-/// Each row has an **Apply** checkbox in front of the field — only
-/// ticked rows are written. Unticked rows leave that field untouched
-/// on every target clip, so the user can batch Scene+Camera without
-/// blowing away the per-clip Description.
+/// Per-field **Keep / Set** Picker on the left (Kyno-parity,
+/// Image #87). Only `.set` rows are written; `.keep` rows leave that
+/// field untouched on every target clip. Lets the user batch
+/// Scene+Camera without blowing away the per-clip Description.
 struct BatchMetadataSheet: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @State private var change = BatchMetadataChange()
     @State private var tagDraft: String = ""
     @State private var appliedSummary: String?
+
+    /// Per-field mode driving the Keep/Set Picker. Bound to the
+    /// existing `applyX: Bool` flags via a translating Binding so the
+    /// transport struct stays untouched.
+    enum FieldMode: String, CaseIterable, Hashable {
+        case keep, set
+        var displayName: String {
+            switch self {
+            case .keep: return "Keep"
+            case .set:  return "Set"
+            }
+        }
+    }
 
     private var targetCount: Int {
         appState.selectedAssetPaths.isEmpty
@@ -56,118 +72,57 @@ struct BatchMetadataSheet: View {
             header
             Divider()
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                Grid(alignment: .leading,
+                      horizontalSpacing: 12, verticalSpacing: 10) {
+                    titleRow
+                    descriptionRow
+                    GridRow {
+                        Color.clear.frame(height: 6)
+                            .gridCellColumns(3)
+                    }
                     ratingRow
+                    logFieldRow("Reel",   binding: $change.reel,
+                                  apply: \.applyReel)
+                    logFieldRow("Scene",  binding: $change.scene,
+                                  apply: \.applyScene)
+                    logFieldRow("Shot",   binding: $change.shot,
+                                  apply: \.applyShot)
+                    logFieldRow("Take",   binding: $change.take,
+                                  apply: \.applyTake)
+                    logFieldRow("Angle",  binding: $change.angle,
+                                  apply: \.applyAngle)
+                    logFieldRow("Camera", binding: $change.camera,
+                                  apply: \.applyCamera)
                     tagsRow
-                    Divider()
-                    Text("Log fields").font(.headline)
-                    logFieldsGrid
-                    Divider()
-                    helpText
                 }
                 .padding(20)
+                if let summary = appliedSummary {
+                    Text(summary)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.green)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 12)
+                }
             }
             Divider()
             footer
         }
-        .frame(width: 620, height: 600)
+        .frame(width: 720, height: 640)
     }
 
-    // MARK: - Sections
+    // MARK: - Header / footer
 
     private var header: some View {
         HStack {
-            Text("Edit Metadata for \(targetCount) clip\(targetCount == 1 ? "" : "s")")
-                .font(.headline)
+            Text("Edit Multiple Items").font(.headline)
             Spacer()
+            Text("\(targetCount) clip\(targetCount == 1 ? "" : "s")")
+                .foregroundStyle(.secondary)
+                .font(.caption)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
         .background(.bar)
-    }
-
-    private var ratingRow: some View {
-        HStack(spacing: 10) {
-            applyToggle(\.applyRating, label: "Rating")
-            HStack(spacing: 2) {
-                ForEach(1...5, id: \.self) { star in
-                    Button {
-                        change.applyRating = true
-                        change.rating = star == change.rating ? 0 : star
-                    } label: {
-                        Image(systemName: star <= change.rating ? "star.fill" : "star")
-                            .foregroundStyle(star <= change.rating ? .yellow : .secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-                Button {
-                    change.applyRating = true
-                    change.rating = 0
-                } label: {
-                    Image(systemName: "circle.slash")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Clear rating")
-            }
-            .disabled(!change.applyRating)
-            .opacity(change.applyRating ? 1 : 0.5)
-            Spacer()
-        }
-    }
-
-    @ViewBuilder
-    private var tagsRow: some View {
-        HStack(alignment: .top, spacing: 10) {
-            applyToggle(\.applyTags, label: "Add Tags")
-            VStack(alignment: .leading, spacing: 6) {
-                if !change.tagsToAdd.isEmpty {
-                    FlowChips(tags: change.tagsToAdd) { tag in
-                        change.tagsToAdd.removeAll { $0 == tag }
-                        if change.tagsToAdd.isEmpty { change.applyTags = false }
-                    }
-                }
-                HStack(spacing: 6) {
-                    TextField("Type a tag and press Return", text: $tagDraft)
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit { commitTagDraft() }
-                    Button("Add") { commitTagDraft() }
-                        .disabled(tagDraft.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-                Text("Tags are added to every selected clip — existing tags stay.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            .disabled(!change.applyTags && change.tagsToAdd.isEmpty)
-            .opacity((change.applyTags || !change.tagsToAdd.isEmpty) ? 1 : 0.5)
-        }
-    }
-
-    @ViewBuilder
-    private var logFieldsGrid: some View {
-        labelledLogField("Title",       binding: $change.title,       apply: \.applyTitle)
-        labelledLogField("Description", binding: $change.description, apply: \.applyDescription, multiline: true)
-        labelledLogField("Reel",        binding: $change.reel,        apply: \.applyReel)
-        labelledLogField("Scene",       binding: $change.scene,       apply: \.applyScene)
-        labelledLogField("Shot",        binding: $change.shot,        apply: \.applyShot)
-        labelledLogField("Take",        binding: $change.take,        apply: \.applyTake)
-        labelledLogField("Angle",       binding: $change.angle,       apply: \.applyAngle)
-        labelledLogField("Camera",      binding: $change.camera,      apply: \.applyCamera)
-    }
-
-    private var helpText: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Only fields with the Apply checkbox ticked are written. "
-                 + "Leaving a ticked field empty clears the value on every "
-                 + "selected clip.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            if let summary = appliedSummary {
-                Text(summary)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.green)
-            }
-        }
     }
 
     private var footer: some View {
@@ -175,61 +130,167 @@ struct BatchMetadataSheet: View {
             Spacer()
             Button("Cancel") { dismiss() }
                 .keyboardShortcut(.cancelAction)
-            Button("Apply") { apply() }
+            Button("OK") { apply() }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
-                .disabled(!anyFieldTicked || targetCount == 0)
+                .disabled(!anyFieldSet || targetCount == 0)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
         .background(.bar)
     }
 
-    // MARK: - Helpers
+    // MARK: - Row builders
 
-    private var anyFieldTicked: Bool {
+    private var titleRow: some View {
+        GridRow {
+            keepPicker(apply: \.applyTitle)
+            Text("Title:").foregroundStyle(.secondary)
+            TextField("", text: $change.title)
+                .textFieldStyle(.roundedBorder)
+                .disabled(!change.applyTitle)
+        }
+    }
+
+    private var descriptionRow: some View {
+        GridRow(alignment: .top) {
+            keepPicker(apply: \.applyDescription)
+            Text("Description:").foregroundStyle(.secondary)
+            TextEditor(text: $change.description)
+                .frame(minHeight: 60, maxHeight: 90)
+                .padding(4)
+                .background(Color.secondary.opacity(0.08),
+                              in: RoundedRectangle(cornerRadius: 4))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(Color.secondary.opacity(0.25))
+                )
+                .disabled(!change.applyDescription)
+                .opacity(change.applyDescription ? 1 : 0.55)
+        }
+    }
+
+    /// Rating row — 5 stars + a Rejected (Ø) button per Image #87.
+    /// Rejected stores `stars = -1` (C7 sentinel); the Star buttons
+    /// store 1…5 and the Ø button stores -1.
+    private var ratingRow: some View {
+        GridRow {
+            keepPicker(apply: \.applyRating)
+            Text("Rating:").foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                ForEach(1...5, id: \.self) { star in
+                    Button {
+                        change.applyRating = true
+                        change.rating = star == change.rating ? 0 : star
+                    } label: {
+                        Image(systemName: star <= change.rating
+                              && change.rating > 0
+                                ? "star.fill" : "star")
+                            .foregroundStyle(star <= change.rating
+                                              && change.rating > 0
+                                                ? .yellow : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                // Rejected (Ø) — sentinel `stars = -1`. Visual treatment
+                // matches Kyno's Image #87 "circle-slash" icon next to
+                // the stars.
+                Button {
+                    change.applyRating = true
+                    change.rating = change.rating == -1 ? 0 : -1
+                } label: {
+                    Image(systemName: "nosign")
+                        .foregroundStyle(change.rating == -1
+                                          ? .red : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Rejected")
+                Spacer()
+            }
+            .disabled(!change.applyRating)
+            .opacity(change.applyRating ? 1 : 0.55)
+        }
+    }
+
+    /// Generic single-line log-field row.
+    @ViewBuilder
+    private func logFieldRow(_ label: String,
+                              binding: Binding<String>,
+                              apply: WritableKeyPath<BatchMetadataChange, Bool>)
+        -> some View {
+        GridRow {
+            keepPicker(apply: apply)
+            Text("\(label):").foregroundStyle(.secondary)
+            TextField("", text: binding)
+                .textFieldStyle(.roundedBorder)
+                .disabled(!change[keyPath: apply])
+                .opacity(change[keyPath: apply] ? 1 : 0.55)
+        }
+    }
+
+    /// Tags row — Kyno's pattern has the picker + a list below with a
+    /// Remove button. We mirror it: type-or-pick tag, accumulate
+    /// chips, click any chip to remove.
+    private var tagsRow: some View {
+        GridRow(alignment: .top) {
+            keepPicker(apply: \.applyTags)
+            Text("Tags:").foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    TextField("Select or Create Tag", text: $tagDraft)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit { commitTagDraft() }
+                    Button("Add") { commitTagDraft() }
+                        .disabled(tagDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                if !change.tagsToAdd.isEmpty {
+                    FlowChips(tags: change.tagsToAdd) { tag in
+                        change.tagsToAdd.removeAll { $0 == tag }
+                        if change.tagsToAdd.isEmpty {
+                            change.applyTags = false
+                        }
+                    }
+                }
+                Text("Tags are added to every selected clip — existing tags stay. Click any chip to remove it from the list.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .disabled(!change.applyTags && change.tagsToAdd.isEmpty)
+            .opacity((change.applyTags || !change.tagsToAdd.isEmpty)
+                      ? 1 : 0.55)
+        }
+    }
+
+    // MARK: - Keep/Set picker helper
+
+    /// Bridges the existing `applyX: Bool` model to the Kyno-shaped
+    /// `Keep | Set` Picker. Selecting Set ticks the apply flag; Keep
+    /// clears it. The Picker is the standard `.menu` style with a
+    /// fixed-width frame so every row aligns vertically (Image #87).
+    private func keepPicker(
+        apply key: WritableKeyPath<BatchMetadataChange, Bool>
+    ) -> some View {
+        let binding = Binding<FieldMode>(
+            get: { change[keyPath: key] ? .set : .keep },
+            set: { change[keyPath: key] = ($0 == .set) }
+        )
+        return Picker("", selection: binding) {
+            ForEach(FieldMode.allCases, id: \.self) { mode in
+                Text(mode.displayName).tag(mode)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .frame(width: 90, alignment: .leading)
+    }
+
+    // MARK: - Apply
+
+    private var anyFieldSet: Bool {
         change.applyRating || change.applyTags || change.applyTitle
             || change.applyDescription || change.applyReel
             || change.applyScene || change.applyShot || change.applyTake
             || change.applyAngle || change.applyCamera
-    }
-
-    private func applyToggle(_ key: WritableKeyPath<BatchMetadataChange, Bool>,
-                              label: String) -> some View {
-        Toggle(isOn: Binding(
-            get: { change[keyPath: key] },
-            set: { change[keyPath: key] = $0 }
-        )) {
-            Text(label)
-                .frame(width: 100, alignment: .trailing)
-        }
-        .toggleStyle(.checkbox)
-    }
-
-    @ViewBuilder
-    private func labelledLogField(_ label: String,
-                                  binding: Binding<String>,
-                                  apply: WritableKeyPath<BatchMetadataChange, Bool>,
-                                  multiline: Bool = false) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            applyToggle(apply, label: label)
-            if multiline {
-                TextEditor(text: binding)
-                    .frame(minHeight: 50, maxHeight: 90)
-                    .padding(4)
-                    .background(Color.secondary.opacity(0.08),
-                                  in: RoundedRectangle(cornerRadius: 4))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(Color.secondary.opacity(0.25))
-                    )
-            } else {
-                TextField("", text: binding)
-                    .textFieldStyle(.roundedBorder)
-            }
-        }
-        .disabled(!change[keyPath: apply])
-        .opacity(change[keyPath: apply] ? 1 : 0.5)
     }
 
     private func commitTagDraft() {
@@ -246,12 +307,10 @@ struct BatchMetadataSheet: View {
 
     private func apply() {
         // Bring the typed-but-not-Returned tag draft into the set if
-        // the user clicked Apply while it was still in the field.
+        // the user clicked OK while it was still in the field.
         commitTagDraft()
         let n = appState.applyBatchMetadata(change)
         appliedSummary = "Applied to \(n) clip\(n == 1 ? "" : "s")."
-        // Auto-dismiss after a beat — feels snappier than making the
-        // user reach for Cancel.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
             dismiss()
         }
