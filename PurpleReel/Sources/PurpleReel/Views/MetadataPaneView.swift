@@ -44,6 +44,7 @@ struct MetadataPaneView: View {
                 logFieldsGrid
                 audioChannelsBlock
                 tagsBlock
+                fcpProjectsBlock
                 markersBlock
             }
             .padding(14)
@@ -53,6 +54,57 @@ struct MetadataPaneView: View {
         .onChange(of: appState.clipMetadata) { _, _ in hydrate() }
         .onReceive(NotificationCenter.default.publisher(for: .focusMetadataInput)) { _ in
             titleFocused = true
+        }
+    }
+
+    /// C25 — surfaces FCP project memberships catalogued for this
+    /// asset. Hidden when there are none (avoids dead UI for users
+    /// who don't round-trip through FCPXML). Each badge is the
+    /// project name with the event name as a tooltip; rows are
+    /// most-recently-imported first.
+    @ViewBuilder
+    private var fcpProjectsBlock: some View {
+        if !appState.fcpProjectUsage.isEmpty {
+            Divider()
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "film.stack")
+                        .foregroundStyle(.tint)
+                    Text("FCP Projects")
+                        .font(.callout.weight(.semibold))
+                    Spacer()
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(appState.fcpProjectUsage) { usage in
+                        HStack(spacing: 4) {
+                            Image(systemName: "film")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Text(usage.projectName)
+                                .font(.caption)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            if let event = usage.eventName, !event.isEmpty {
+                                Text("· \(event)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule().fill(Color.accentColor.opacity(0.12))
+                        )
+                        .help(
+                            "Imported \(usage.importedAt.formatted(date: .abbreviated, time: .shortened))"
+                            + (usage.libraryPath.map { "\n\($0)" } ?? "")
+                        )
+                    }
+                }
+            }
         }
     }
 

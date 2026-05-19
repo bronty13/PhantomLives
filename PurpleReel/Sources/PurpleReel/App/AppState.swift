@@ -803,6 +803,11 @@ final class AppState: ObservableObject {
     @Published private(set) var tags: [Tag] = []
     @Published private(set) var rating: Rating?
     @Published private(set) var clipMetadata: ClipMetadata = .empty
+    /// C25 — FCP project memberships catalogued for the currently-
+    /// selected asset. Populated from `fcp_project_usage` on each
+    /// selection change; empty when the asset hasn't been seen in
+    /// any imported FCPXML's `<project>` context.
+    @Published private(set) var fcpProjectUsage: [FCPProjectUsage] = []
 
     private let scanner = MediaScanner()
     let db: DatabaseService
@@ -1077,6 +1082,7 @@ final class AppState: ObservableObject {
         transcript = nil
         selectedAsset = nil
         clipMetadata = .empty
+        fcpProjectUsage = []
         guard let path = selectedAssetPath else { return }
         do {
             guard let asset = try db.asset(forPath: path),
@@ -1088,6 +1094,10 @@ final class AppState: ObservableObject {
             rating = try db.rating(assetId: id)
             transcript = try db.transcript(assetId: id)
             clipMetadata = try db.clipMetadata(assetId: id)
+            // C25 — FCP project memberships catalogued from prior
+            // FCPXML imports. Empty list when the asset has never
+            // been referenced from an imported project.
+            fcpProjectUsage = try db.fcpProjectUsage(assetId: id)
         } catch {
             NSLog("[PurpleReel] selection load failed: \(error)")
         }

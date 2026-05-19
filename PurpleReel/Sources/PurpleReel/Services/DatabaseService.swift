@@ -178,6 +178,32 @@ final class DatabaseService {
                 """)
         }
 
+        // C25 — FCP project membership. Records which Final Cut Pro
+        // events/projects an asset has been referenced from, learned
+        // by the FCPXML importer at import time. Many-to-many in
+        // theory (one asset across many projects), so composite PK
+        // rather than a single nullable column on asset. libraryPath
+        // optional — the FCPXML file's own URL is captured as
+        // provenance but doesn't have to match a real .fcpbundle on
+        // disk (the user may have exported the FCPXML from a library
+        // that's since moved).
+        m.registerMigration("v8_fcp_project_usage") { db in
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS fcp_project_usage (
+                    assetId      INTEGER NOT NULL,
+                    projectName  TEXT    NOT NULL,
+                    eventName    TEXT,
+                    libraryPath  TEXT,
+                    importedAt   DATETIME NOT NULL,
+                    PRIMARY KEY (assetId, projectName)
+                )
+                """)
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS fcp_project_usage_assetId
+                ON fcp_project_usage(assetId)
+                """)
+        }
+
         return m
     }
 
@@ -485,6 +511,42 @@ final class DatabaseService {
             let r = Rating(assetId: assetId, stars: stars,
                             colorLabel: colorLabel, description: description)
             try r.save(db)
+        }
+    }
+
+    // MARK: - FCP project usage (C25)
+
+    /// Insert-or-replace a single (asset, project) membership row.
+    /// Re-importing the same FCPXML refreshes `importedAt` so the
+    /// inspector can sort by "most recently seen" if it wants.
+    func recordFCPProjectUsage(assetId: Int64,
+                                projectName: String,
+                                eventName: String?,
+                                libraryPath: String?) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: """
+                INSERT INTO fcp_project_usage
+                    (assetId, projectName, eventName, libraryPath, importedAt)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(assetId, projectName) DO UPDATE SET
+                    eventName = excluded.eventName,
+                    libraryPath = excluded.libraryPath,
+                    importedAt = excluded.importedAt
+                """, arguments: [
+                    assetId, projectName, eventName, libraryPath, Date()
+                ])
+        }
+    }
+
+    /// Returns all FCP project memberships catalogued for an asset.
+    /// Sorted by most-recently-imported first so the inspector can
+    /// surface the latest project at the top.
+    func fcpProjectUsage(assetId: Int64) throws -> [FCPProjectUsage] {
+        try dbQueue.read { db in
+            try FCPProjectUsage
+                .filter(Column("assetId") == assetId)
+                .order(Column("importedAt").desc)
+                .fetchAll(db)
         }
     }
 }

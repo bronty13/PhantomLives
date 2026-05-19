@@ -17,6 +17,69 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C25 — FCPXML project-membership tracking
+
+Deferred from C11. The FCPXML round-trip importer already pulls
+markers, keywords (→ tags), favorites (→ 5★), and clip log fields
+back into the catalogue when an editor re-exports an FCPXML after
+their cut. C25 captures the *other* signal in that file: which
+project(s) each clip is referenced from.
+
+Doesn't introspect `.fcpbundle` packages directly — those are
+sealed CoreData / binary plist boxes, brittle to parse, FCP-
+version-specific. Leveraging the already-supported FCPXML export
+gives us the same signal through a documented format.
+
+**Schema** — `DatabaseService.swift` migration v8:
+- New `fcp_project_usage(assetId, projectName, eventName?,
+  libraryPath?, importedAt)` table, composite PK on
+  `(assetId, projectName)` so re-importing the same FCPXML
+  upserts rather than duplicates.
+- Index on `assetId` for the inspector's per-asset lookup.
+
+**Model** — `Models/FCPProjectUsage.swift` (NEW):
+- GRDB-backed value type. Identifiable via `"\(assetId)#\(projectName)"`
+  composite so SwiftUI lists render uniquely.
+
+**DatabaseService** API:
+- `recordFCPProjectUsage(assetId:projectName:eventName:libraryPath:)`
+  — upserts via `ON CONFLICT(...) DO UPDATE` on the composite PK.
+- `fcpProjectUsage(assetId:) -> [FCPProjectUsage]` —
+  most-recently-imported first.
+
+**Importer** — `FCPXMLImportService.swift`:
+- New parser state: `eventNameStack` and `projectNameStack` that
+  push/pop on `<event>` / `<project>` start/end. The innermost
+  name is stamped on each clip as it's finalized.
+- `ClipRecord` gains `projectName: String?` and `eventName: String?`.
+- `importXML(at:db:)` writes a usage row per clip whose surrounding
+  context named a `<project>`. Clips that sit directly under an
+  `<event>` without a `<project>` (FCP's "event browser" layout)
+  are skipped — they're not part of a cut.
+- `Result.projectUsageRecorded` count surfaced for the alert.
+- libraryPath records the FCPXML file's URL (provenance), not
+  the underlying `.fcpbundle`.
+
+**AppState**:
+- New `@Published var fcpProjectUsage: [FCPProjectUsage]` populated
+  on each selection change alongside markers / tags / rating /
+  clipMetadata.
+
+**Inspector** — `MetadataPaneView.swift`:
+- New `fcpProjectsBlock` section: shows a "FCP Projects" header
+  with film.stack icon, then one capsule per project membership
+  (project name + event name as caption). Tooltip shows
+  importedAt date + the FCPXML's libraryPath. Hidden when the
+  list is empty (no FCPXML has been imported yet for this asset).
+
+**Tests** — `FCPProjectUsageTests.swift` (NEW, 5 cases):
+- Clip inside `<project>` records usage row with eventName +
+  projectName.
+- Clip outside `<project>` (bare event browser) does NOT record.
+- Re-import is idempotent via composite-PK upsert.
+- Two distinct projects across two FCPXML files both recorded.
+- libraryPath captures the FCPXML's own path.
+
 ### C24 — Combine Clips: per-clip cross-fade override
 
 C20 shipped a global cross-fade scalar applied uniformly to every

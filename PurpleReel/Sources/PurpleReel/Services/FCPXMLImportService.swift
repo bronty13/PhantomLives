@@ -34,6 +34,10 @@ enum FCPXMLImportService {
         var tagsAdded: Int = 0
         var ratingsApplied: Int = 0
         var metadataFieldsApplied: Int = 0
+        /// C25 — count of (asset, project) usage rows recorded in
+        /// the catalogue this import. Sums new + refreshed rows;
+        /// the DB upsert doesn't distinguish.
+        var projectUsageRecorded: Int = 0
         /// Filenames the importer pulled out of the FCPXML but
         /// couldn't reconcile with a catalogue asset. Capped at 50
         /// for the alert.
@@ -78,6 +82,26 @@ enum FCPXMLImportService {
                   fps: asset.frameRate ?? 30,
                   db: db,
                   result: &result)
+            // C25 — record project membership when the FCPXML's
+            // surrounding `<project>` named the source. Skipped when
+            // the clip was found outside any project (e.g. raw
+            // event-level clip browse).
+            if let projectName = clip.projectName, !projectName.isEmpty {
+                do {
+                    try db.recordFCPProjectUsage(
+                        assetId: aid,
+                        projectName: projectName,
+                        eventName: clip.eventName,
+                        libraryPath: url.path
+                    )
+                    result.projectUsageRecorded += 1
+                } catch {
+                    // Non-fatal — the rest of the import still
+                    // succeeded. Log so a power user inspecting
+                    // Console can see what broke.
+                    NSLog("[PurpleReel] FCP project usage record failed: \(error)")
+                }
+            }
         }
 
         result.unmatchedFilenames = Array(
@@ -207,6 +231,12 @@ fileprivate struct ClipRecord {
     var favorite: Bool = false
     var metadata: [String: String] = [:]
     var note: String? = nil
+    /// C25 — name of the containing FCP `<project>` element (if
+    /// any) and its `<event>` parent. Stamped at parse time from
+    /// the enclosing-element stack so the importer can record
+    /// (assetId, projectName) usage rows after the merge.
+    var projectName: String? = nil
+    var eventName: String? = nil
 }
 
 /// Permissive FCPXML 1.8-1.11 parser. We only care about the
@@ -227,6 +257,14 @@ fileprivate final class FCPXMLParser: NSObject, XMLParserDelegate {
     private var inMetadata: Bool = false
     private var noteText: String = ""
     private var inNote: Bool = false
+    /// C25 — stack of the FCPXML event/project ancestors the parser
+    /// is currently inside. The topmost name is stamped on each
+    /// clip as it's finalized so the importer can record (assetId,
+    /// projectName) usage rows. Both `<event>` and `<project>` push
+    /// onto these stacks; we record the innermost name at clip
+    /// finalize time. Cleared in the corresponding endElement.
+    private var eventNameStack: [String] = []
+    private var projectNameStack: [String] = []
 
     func parser(_ parser: XMLParser,
                 didStartElement elementName: String,
@@ -248,12 +286,29 @@ fileprivate final class FCPXMLParser: NSObject, XMLParserDelegate {
                     currentAssetPath = src.removingPercentEncoding ?? src
                 }
             }
+        case "event":
+            // C25 — track the FCPXML event name so we can stamp it on
+            // contained clips. Pushed regardless of whether the event
+            // has a name attribute (anonymous events are rare but
+            // legal; we push "" so the pop balances).
+            eventNameStack.append(attributeDict["name"] ?? "")
+        case "project":
+            projectNameStack.append(attributeDict["name"] ?? "")
         case "asset-clip", "clip", "mc-clip", "sync-clip":
             // Only `asset-clip` and the multi-cam variants carry a
             // `ref` directly. `<clip>` may also have a `ref` in
             // newer FCPXML versions.
             if let ref = attributeDict["ref"] {
-                let record = ClipRecord(assetRef: ref)
+                var record = ClipRecord(assetRef: ref)
+                // C25 — stamp with the innermost project/event
+                // context. Empty strings collapse to nil so the
+                // DB row doesn't carry meaningless empty values.
+                record.projectName = projectNameStack.last.flatMap {
+                    $0.isEmpty ? nil : $0
+                }
+                record.eventName = eventNameStack.last.flatMap {
+                    $0.isEmpty ? nil : $0
+                }
                 clipStack.append(record)
             }
         case "marker", "chapter-marker":
@@ -328,6 +383,10 @@ fileprivate final class FCPXMLParser: NSObject, XMLParserDelegate {
                 let finished = clipStack.removeLast()
                 clips.append(finished)
             }
+        case "event":
+            if !eventNameStack.isEmpty { eventNameStack.removeLast() }
+        case "project":
+            if !projectNameStack.isEmpty { projectNameStack.removeLast() }
         case "metadata":
             inMetadata = false
         case "note":
