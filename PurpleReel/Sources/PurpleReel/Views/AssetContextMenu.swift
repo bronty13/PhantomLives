@@ -179,10 +179,15 @@ struct AssetContextMenu: View {
         // before the user fixed the camera's clock) or when the user
         // wants to force a re-derive after editing the source file
         // out-of-band.
-        Button("Pre-analyze") {
-            appState.preAnalyzeSelected()
+        Button("Pre-analyze…") {
+            // C13 — open the Analysis Scope dialog (Kyno-parity).
+            // The dialog's Start button calls preAnalyzeSelected(scope:)
+            // with the user's pick of Technical metadata / Thumbnails /
+            // Key frames. The ellipsis follows Apple HIG for menu
+            // items that present a dialog.
+            appState.openAnalysisScopeDialog()
         }
-        .help("Re-runs AVAsset probe (duration, codec, dims, fps) on the selected clip(s) and refreshes the catalog. Useful after fixing source-file metadata out-of-band.")
+        .help("Opens the Analysis Scope dialog so you can pick which work to redo: AVAsset probe (duration / codec / dims / fps), thumbnail regeneration, and (reserved) keyframe extraction.")
     }
 
     // MARK: - DaVinci Resolve send-to helpers

@@ -1364,16 +1364,40 @@ final class AppState: ObservableObject {
         return removed
     }
 
-    // MARK: - Pre-analyze (Kyno-parity, C7)
+    // MARK: - Pre-analyze (Kyno-parity, C7 + C13)
 
-    /// Re-run the AVAsset probe on the multi-selection (or the single
-    /// active clip), refreshing duration / codec / dims / fps / audio
-    /// codec / recordedAt / isVFR in the catalog. Useful after the
-    /// user has fixed source-file metadata out-of-band (e.g. corrected
-    /// the camera's clock, repaired a partial container) and wants
-    /// PurpleReel to pick up the new values without doing a full
-    /// workspace rescan.
-    func preAnalyzeSelected() {
+    /// Dialog state for the C13 Analysis Scope sheet. nil = closed.
+    @Published var analysisScopeState: AnalysisScopeState?
+
+    struct AnalysisScopeState: Identifiable {
+        let id = UUID()
+        let scope: AnalysisScope
+    }
+
+    /// Right-click → Pre-analyze handler. Opens the Analysis Scope
+    /// dialog so the user can pick which work to redo (Technical
+    /// metadata, Thumbnails, Key frames). Replaces C7's
+    /// fire-everything path with Kyno's pick-and-start UX.
+    func openAnalysisScopeDialog() {
+        // Refuse to open the dialog when no clips are in scope —
+        // avoids a confusing "Start" that no-ops.
+        let inScope = selectedAssetPaths.isEmpty
+            ? (selectedAsset == nil ? 0 : 1)
+            : selectedAssetPaths.count
+        guard inScope > 0 else { return }
+        analysisScopeState = AnalysisScopeState(scope: .default)
+    }
+
+    /// Re-run the chosen analysis steps across the multi-selection
+    /// (or the single active clip). Called by the dialog's "Start"
+    /// button.
+    /// - `.technicalMetadata` → runs `MediaScanner.loadAVTech` for
+    ///   each asset and writes the refreshed values to the catalog.
+    /// - `.thumbnails` → purges the asset's strip-cache directory so
+    ///   the next render regenerates it.
+    /// - `.keyFrames` → reserved; no-op until scene-change
+    ///   extraction lands.
+    func preAnalyzeSelected(scope: AnalysisScope = .default) {
         let targets: [Asset]
         if !selectedAssetPaths.isEmpty {
             targets = displayedAssets.filter { selectedAssetPaths.contains($0.path) }
@@ -1382,17 +1406,25 @@ final class AppState: ObservableObject {
         } else {
             return
         }
-        guard !targets.isEmpty else { return }
+        guard !targets.isEmpty, !scope.isEmpty else { return }
         Task { @MainActor in
-            for var asset in targets {
-                let url = URL(fileURLWithPath: asset.path)
-                guard FileManager.default.fileExists(atPath: url.path) else {
-                    continue
+            if scope.contains(.technicalMetadata) {
+                for var asset in targets {
+                    let url = URL(fileURLWithPath: asset.path)
+                    guard FileManager.default.fileExists(atPath: url.path) else {
+                        continue
+                    }
+                    let tech = await MediaScanner.loadAVTech(url: url)
+                    MediaScanner.applyAVTech(tech, to: &asset)
+                    try? db.upsertAssets([asset])
                 }
-                let tech = await MediaScanner.loadAVTech(url: url)
-                MediaScanner.applyAVTech(tech, to: &asset)
-                try? db.upsertAssets([asset])
             }
+            if scope.contains(.thumbnails) {
+                for asset in targets {
+                    await ThumbnailService.purgeStripCache(for: asset)
+                }
+            }
+            // .keyFrames reserved — see AnalysisScope docs.
             await rescan()
         }
     }

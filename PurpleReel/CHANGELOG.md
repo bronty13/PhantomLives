@@ -17,6 +17,59 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C13 — Pre-analyze Analysis Scope dialog
+
+C7 shipped Pre-analyze that always re-ran the AVAsset probe; Kyno's
+pattern (Image #90) pops an intermediate dialog letting the user
+pick which work to redo. C13 inserts that dialog between the right-
+click menu pick and the actual probe run.
+
+**New model** — `Models/AnalysisScope.swift`:
+- `AnalysisScope` OptionSet (`.technicalMetadata`, `.thumbnails`,
+  `.keyFrames`).
+- `.default` = `[.technicalMetadata, .thumbnails]` matching Kyno's
+  Image #90 checked state.
+
+**New view** — `Views/AnalysisScopeSheet.swift`:
+- Three Toggle rows with tooltip-style `.help` on each.
+- Key frames Toggle disabled with explanatory tooltip — reserved
+  for a future build (scene-change extraction; the existing strip
+  uses evenly-distributed frames).
+- Cancel / Start footer; Start disabled when scope is empty.
+
+**AppState changes**:
+- `analysisScopeState: AnalysisScopeState?` — dialog open flag.
+- `openAnalysisScopeDialog()` — refuses to open with empty
+  selection, then publishes the state with `.default` scope.
+- `preAnalyzeSelected(scope:)` replaces the zero-arg variant.
+  Branches on the scope: `.technicalMetadata` runs the C7
+  `MediaScanner.loadAVTech` path; `.thumbnails` calls the new
+  `ThumbnailService.purgeStripCache(for:)`; `.keyFrames` no-ops
+  for now (placeholder for future scene-change extraction).
+
+**ThumbnailService changes**:
+- New `purgeStripCache(for:)` actor-call. Re-derives the same
+  `cacheDirectory(for:count:)` hash the generator uses, then nukes
+  the on-disk directory for each known strip-count bucket
+  (12 / 20 / 30). Follows with `inMemoryCache.purgeAll()` so the
+  next render misses cache and regenerates.
+- New `InMemoryCache.purgeAll()` actor method.
+
+**Right-click menu**: AssetContextMenu's "Pre-analyze" button
+becomes "Pre-analyze…" (Apple HIG: ellipsis for items that present
+a dialog) and now calls `appState.openAnalysisScopeDialog()`.
+
+**ContentView**: new `.sheet(item:)` for `AnalysisScopeSheet`.
+
+4 new tests (`AnalysisScopeTests`):
+- `.default` matches Kyno's Image #90 (Tech + Thumbnails on, Key
+  frames off)
+- Individual options use disjoint bits
+- `.isEmpty` is honest (insert/remove round-trip)
+- Codable round-trip through JSON
+
+---
+
 ### C12 — Report Definition section toggles
 
 Inserted Kyno's "Report Definition" dialog (Image #89) between

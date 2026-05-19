@@ -83,6 +83,13 @@ enum ThumbnailService {
             }
             store[key] = urls
         }
+
+        /// Drop every cached entry. Used by `purgeStripCache(for:)`
+        /// so a per-asset on-disk purge isn't undone by a stale
+        /// in-memory hit. Cheap — the store is at most ~4000 keys.
+        func purgeAll() {
+            store.removeAll(keepingCapacity: false)
+        }
     }
     private static let inMemoryCache = InMemoryCache()
 
@@ -132,6 +139,30 @@ enum ThumbnailService {
     static func purgeCache() {
         guard let root = try? cacheRoot() else { return }
         try? FileManager.default.removeItem(at: root)
+    }
+
+    /// Purge just one asset's strip cache. Used by the C13
+    /// Pre-analyze Analysis Scope dialog ("Thumbnails" toggle) so a
+    /// single clip's strip can be rebuilt without nuking every other
+    /// asset's cached frames. Walks every count-bucket directory
+    /// because each strip count (12, 20, 30) caches under its own
+    /// subdir; we don't know which counts have been generated.
+    static func purgeStripCache(for asset: Asset) async {
+        // The cache key is hashed from (path, modtime, count). We
+        // can't reverse the hash from the directory side, but we
+        // CAN re-derive the hash for each count bucket and nuke
+        // the matching directory. Covers every count the strip
+        // generator emits today.
+        for count in [12, 20, 30] {
+            if let dir = try? cacheDirectory(for: asset, count: count) {
+                try? FileManager.default.removeItem(at: dir)
+            }
+        }
+        // Drop in-memory cache entries too so the next render
+        // actually regenerates (in-memory is keyed by directory
+        // name; once the on-disk dir is gone the next read miss
+        // triggers regeneration).
+        await inMemoryCache.purgeAll()
     }
 
     /// Render a single thumbnail at the user's poster-frame time

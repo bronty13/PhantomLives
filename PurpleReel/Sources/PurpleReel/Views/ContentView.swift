@@ -241,6 +241,10 @@ struct ContentView: View {
             ReportDefinitionSheet(sections: state.sections, format: state.format)
                 .environmentObject(appState)
         }
+        .sheet(item: $appState.analysisScopeState) { state in
+            AnalysisScopeSheet(scope: state.scope)
+                .environmentObject(appState)
+        }
         .sheet(isPresented: $appState.shortcutsCheatSheetVisible) {
             ShortcutsCheatSheet()
         }
