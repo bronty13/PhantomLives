@@ -200,6 +200,15 @@ struct ContentView: View {
             openWindow(id: "transcode-queue")
             appState.transcodeSheetVisible = false
         }
+        // C12 — Report Definition dialog → run handoff. When the
+        // dialog publishes a request, drive the existing NSSavePanel
+        // + writer flow with the user's chosen format + sections.
+        .onChange(of: appState.reportRunRequest) { _, req in
+            guard let req else { return }
+            appState.reportRunRequest = nil
+            appState.runReportExport(format: req.format,
+                                       sections: req.sections)
+        }
         .sheet(isPresented: $appState.backupSheetVisible) {
             BackupView()
                 .environmentObject(appState)
@@ -226,6 +235,10 @@ struct ContentView: View {
         }
         .sheet(item: $appState.fcpxmlExportSheetState) { state in
             FCPXMLExportSheet(options: state.options, scope: state.scope)
+                .environmentObject(appState)
+        }
+        .sheet(item: $appState.reportDefinitionState) { state in
+            ReportDefinitionSheet(sections: state.sections, format: state.format)
                 .environmentObject(appState)
         }
         .sheet(isPresented: $appState.shortcutsCheatSheetVisible) {

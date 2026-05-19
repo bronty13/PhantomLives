@@ -1527,6 +1527,117 @@ final class AppState: ObservableObject {
     /// the dialog instead of writing the file directly.
     @Published var fcpxmlExportSheetState: FCPXMLExportSheetState?
 
+    // MARK: - Report Definition (C12)
+
+    /// "Report Definition" dialog state — the intermediate Kyno-shape
+    /// step between menu-pick and NSSavePanel. nil = closed.
+    @Published var reportDefinitionState: ReportDefinitionState?
+
+    struct ReportDefinitionState: Identifiable {
+        let id = UUID()
+        let format: ReportDefinitionSheet.ReportFormat
+        let sections: ReportSections
+    }
+
+    /// Format + sections handoff from the dialog back to the App
+    /// shell. PurpleReelApp.body observes this; when non-nil it pops
+    /// the NSSavePanel and runs the report writer with the user's
+    /// section selection.
+    @Published var reportRunRequest: ReportRunRequest?
+
+    struct ReportRunRequest: Equatable {
+        let format: ReportDefinitionSheet.ReportFormat
+        let sections: ReportSections
+    }
+
+    /// Right-click / menu → "Create Report…" handler. Opens the
+    /// Report Definition dialog with the chosen format pre-selected
+    /// (CSV / HTML / XLSX) and all sections ticked.
+    func openReportDefinition(format: ReportDefinitionSheet.ReportFormat) {
+        reportDefinitionState = ReportDefinitionState(
+            format: format, sections: .all
+        )
+    }
+
+    /// Dialog's "Create Report" button calls this. Publishes the
+    /// format + section selection; ContentView's onChange picks it
+    /// up and drives the NSSavePanel + writer.
+    func runReportExportFromDialog(format: ReportDefinitionSheet.ReportFormat,
+                                     sections: ReportSections) {
+        reportRunRequest = ReportRunRequest(format: format, sections: sections)
+    }
+
+    /// Actual run — invoked by ContentView's `onChange` observer
+    /// once the dialog requests an export. Builds the scope, pops
+    /// the NSSavePanel, calls into the right writer with the
+    /// section filter, and surfaces any error / success summary.
+    @MainActor
+    func runReportExport(format: ReportDefinitionSheet.ReportFormat,
+                          sections: ReportSections) {
+        let scope = !selectedAssetPaths.isEmpty
+            ? displayedAssets.filter { selectedAssetPaths.contains($0.path) }
+            : displayedAssets
+        guard !scope.isEmpty else { return }
+        let panel = NSSavePanel()
+        let suffix: String
+        switch format {
+        case .csv:  suffix = "csv"
+        case .html: suffix = "html"
+        case .xlsx: suffix = "xlsx"
+        }
+        panel.allowedContentTypes = [
+            .init(filenameExtension: suffix) ?? .data
+        ]
+        panel.nameFieldStringValue =
+            "PurpleReel_Report_\(ReportExporter.filenameTimestamp()).\(suffix)"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let appState = self
+        Task { @MainActor in
+            do {
+                switch format {
+                case .csv:
+                    try ReportExporter.writeCSV(
+                        assets: scope, to: url, appState: appState,
+                        sections: sections
+                    )
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                case .html:
+                    let r = try await ReportExporter.writeHTML(
+                        assets: scope, to: url, appState: appState,
+                        sections: sections
+                    )
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                    if r.skipped > 0 {
+                        let alert = NSAlert()
+                        alert.messageText = "Report written with \(r.skipped) missing preview(s)."
+                        alert.informativeText = "Wrote thumbnails for \(r.written) clip(s); \(r.skipped) had no extractable preview."
+                        alert.runModal()
+                    }
+                case .xlsx:
+                    // XLSX still emits the full 23-col schema for
+                    // now; OOXML column-letter realignment when
+                    // sections drop is a follow-up. Section toggles
+                    // affect CSV / HTML today.
+                    let r = try await XLSXReportWriter.writeXLSX(
+                        assets: scope, to: url, appState: appState
+                    )
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                    if r.skipped > 0 {
+                        let alert = NSAlert()
+                        alert.messageText = "Workbook written with \(r.skipped) missing preview(s)."
+                        alert.informativeText = "Embedded thumbnails for \(r.written) clip(s); \(r.skipped) had no extractable preview."
+                        alert.runModal()
+                    }
+                }
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "Couldn't write report"
+                alert.informativeText = error.localizedDescription
+                alert.runModal()
+            }
+        }
+    }
+
     struct FCPXMLExportSheetState: Identifiable {
         let id = UUID()
         let scope: FCPXMLExportScope

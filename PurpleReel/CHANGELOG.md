@@ -17,6 +17,67 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C12 — Report Definition section toggles
+
+Inserted Kyno's "Report Definition" dialog (Image #89) between
+Export Report menu pick and the NSSavePanel. User picks which
+section groups to include — File size + File type are locked-on
+(every row keeps the minimum identification columns), the other
+three (Duration / Format Details / Descriptive Metadata) are
+toggles. CSV and HTML reports drop the gated columns entirely
+(headers + cells); XLSX still ships the full schema for now
+(rebuilding OOXML column-letter alignment per-section is a
+follow-up).
+
+**New model** — `Models/ReportDefinition.swift`:
+- `ReportSections` OptionSet with `.fileSize`, `.fileType`,
+  `.duration`, `.formatDetails`, `.descriptiveMetadata`.
+- `.locked` static = `[.fileSize, .fileType]` (the two grayed
+  checkboxes in Kyno's dialog).
+- `.all` static = the full set (default ticked state).
+
+**ReportExporter changes**:
+- `writeCSV` + `writeHTML` gained an optional `sections:` parameter
+  defaulting to `.all` (existing callers unchanged).
+- `csvHeader` / `csvRow` / `htmlHeader` / `htmlRow` rebuilt to gate
+  column blocks by section: Filename + Codec + Size always emit;
+  Resolution/Display/Aspect/FPS + dates gated by `.formatDetails`;
+  Duration gated by `.duration`; Rating + log fields + tags gated
+  by `.descriptiveMetadata`.
+
+**New file** — `Views/ReportDefinitionSheet.swift`:
+- Format Picker (CSV / HTML / XLSX) at the top — PurpleReel has
+  three formats vs Kyno's one, so the dialog also picks format.
+- Sections section with the 5 checkboxes; locked rows render
+  disabled at 60% opacity so users see them as "always included".
+- Footer: Cancel / Create Report. Create handoff via
+  `appState.runReportExportFromDialog(format:sections:)` which
+  publishes a `ReportRunRequest`; ContentView observes and drives
+  the NSSavePanel + writer.
+
+**AppState plumbing**:
+- New `reportDefinitionState: ReportDefinitionState?` — opens the
+  dialog when non-nil.
+- New `reportRunRequest: ReportRunRequest?` — handoff between
+  dialog Create button and the actual writer run.
+- `openReportDefinition(format:)` — used by File menu's CSV /
+  HTML / XLSX leaves.
+- `runReportExport(format:sections:)` — relocated from
+  `PurpleReelApp` (private) to AppState so ContentView's onChange
+  observer can drive it.
+
+**ContentView**: new `.sheet(item:)` presentation for the dialog +
+`.onChange(of: appState.reportRunRequest)` observer that fires the
+writer with the chosen format + sections.
+
+4 new tests (`ReportSectionsTests`):
+- `.locked` contains fileSize + fileType only
+- `.all` covers every defined section
+- `writeCSV(sections: .all)` emits the full column list
+- `writeCSV(sections: .locked)` drops Duration / Resolution / Title
+
+---
+
 ### C11 — Export FCPX XML dialog redesign
 
 Inserted Kyno's options dialog (Image #88) between the menu click
