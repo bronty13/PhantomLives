@@ -130,4 +130,98 @@ final class WorkflowChainTests: XCTestCase {
             "doc.text"
         )
     }
+
+    // MARK: - continueOnFailure (C33 E2)
+
+    func testContinueOnFailureDefaultsToFalse() {
+        let chain = WorkflowChain(name: "Default", steps: [])
+        XCTAssertFalse(chain.continueOnFailure,
+                        "Pre-C33 chains and the default initializer "
+                        + "must keep abort-on-first-failure behavior")
+    }
+
+    /// Pre-C33 JSON didn't carry the `continueOnFailure` field. The
+    /// custom decoder defaults missing values to false so upgraded
+    /// users don't lose their saved chains.
+    func testLegacyJSONWithoutContinueOnFailureDecodesAsFalse() throws {
+        let legacy = """
+        {
+          "id": "11111111-1111-1111-1111-111111111111",
+          "name": "Legacy",
+          "notes": "",
+          "steps": [],
+          "runOnCameraMediaMount": false
+        }
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(WorkflowChain.self, from: legacy)
+        XCTAssertEqual(decoded.name, "Legacy")
+        XCTAssertFalse(decoded.continueOnFailure,
+                        "Missing continueOnFailure field must decode as false")
+    }
+
+    func testContinueOnFailureSurvivesRoundTrip() throws {
+        let original = WorkflowChain(
+            name: "Best-effort",
+            steps: [.transcode(.defaults)],
+            continueOnFailure: true
+        )
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(WorkflowChain.self, from: data)
+        XCTAssertTrue(decoded.continueOnFailure)
+    }
+
+    // MARK: - Templates catalogue (C33 E4)
+
+    func testEveryTemplateBuildsAValidChain() {
+        // Catch a future template-author mistake that ships a
+        // template whose `build()` factory produces an invalid
+        // chain (empty steps, etc.).
+        //
+        // Templates that include a Verified Backup step
+        // intentionally leave `destinationPaths` empty — that's the
+        // user-customisable hook (forces a deliberate choice of
+        // where to back up to). validate() rejects that with a
+        // "no destinations" message, which is expected here.
+        for template in WorkflowChainTemplates.catalogue {
+            let chain = template.build()
+            XCTAssertFalse(chain.steps.isEmpty,
+                "Template \(template.id) must contain at least one step")
+            let err = WorkflowChainsService.validate(chain)
+            if let err {
+                XCTAssertTrue(err.contains("no destinations"),
+                    "Template \(template.id) failed validation for an unexpected reason: \(err)")
+            }
+        }
+    }
+
+    func testTemplateBuildsAreNotAliased() {
+        // Each invocation of `build()` must mint a fresh UUID so
+        // two "Add from template" clicks don't produce two rows
+        // with the same id (would break Identifiable / List
+        // selection).
+        guard let template = WorkflowChainTemplates.catalogue.first
+        else { return XCTFail("Catalogue is empty") }
+        let a = template.build()
+        let b = template.build()
+        XCTAssertNotEqual(a.id, b.id,
+            "Each template build must mint a fresh UUID")
+    }
+
+    func testDailyDeliveryTemplateHasContinueOnFailureOn() {
+        // Specific contract: the "Daily Delivery" template
+        // documents itself as best-effort. If a future edit
+        // accidentally flips this, the template's own description
+        // would be a lie.
+        guard let t = WorkflowChainTemplates.catalogue
+            .first(where: { $0.id == "daily-delivery" })
+        else { return XCTFail("Missing daily-delivery template") }
+        XCTAssertTrue(t.build().continueOnFailure)
+    }
+
+    func testCardOffloadTemplateAutoTriggersOnMount() {
+        guard let t = WorkflowChainTemplates.catalogue
+            .first(where: { $0.id == "card-offload" })
+        else { return XCTFail("Missing card-offload template") }
+        XCTAssertTrue(t.build().runOnCameraMediaMount)
+    }
 }

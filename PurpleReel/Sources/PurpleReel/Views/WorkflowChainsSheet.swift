@@ -111,6 +111,26 @@ struct WorkflowChainsSheet: View {
             }
             HStack(spacing: 4) {
                 Button { addChain() } label: { Image(systemName: "plus") }
+                    .help("Create a new empty chain")
+                // C33 (E4) — built-in chain templates. Picking one
+                // appends a pre-configured chain (fresh UUID) and
+                // selects it so the user lands on the editor with
+                // everything filled in.
+                Menu {
+                    ForEach(WorkflowChainTemplates.catalogue) { template in
+                        Button {
+                            addChainFromTemplate(template)
+                        } label: {
+                            Label(template.name, systemImage: template.icon)
+                        }
+                        .help(template.description)
+                    }
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                .menuStyle(.borderlessButton)
+                .frame(width: 24)
+                .help("Start from a built-in template")
                 Button { deleteSelected() } label: { Image(systemName: "minus") }
                     .disabled(selectedID == nil)
                 Spacer()
@@ -118,6 +138,15 @@ struct WorkflowChainsSheet: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
         }
+    }
+
+    /// C33 (E4) — append a chain pre-built from a template and
+    /// select it. The template's `build()` factory mints a fresh
+    /// UUID so each instantiation is its own row (no aliasing).
+    private func addChainFromTemplate(_ template: WorkflowChainTemplates.Template) {
+        let chain = template.build()
+        chains.append(chain)
+        selectedID = chain.id
     }
 
     // MARK: - Detail (step editor)
@@ -327,6 +356,11 @@ private struct ChainEditor: View {
             Toggle("Offer to run automatically when a camera card mounts",
                    isOn: $chain.runOnCameraMediaMount)
                 .padding(.leading, 84)
+            // C33 (E2) — chain-wide failure policy. Default abort.
+            Toggle("Continue running remaining steps when one fails (best-effort)",
+                   isOn: $chain.continueOnFailure)
+                .padding(.leading, 84)
+                .help("Off: the chain stops as soon as any step fails. On: the failure is recorded and the chain keeps running — the overall run is still reported as failed when at least one step failed, but every step gets its chance.")
         }
     }
 

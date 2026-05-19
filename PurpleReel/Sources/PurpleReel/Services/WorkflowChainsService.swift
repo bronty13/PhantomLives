@@ -98,12 +98,37 @@ final class WorkflowChainRun: ObservableObject, Identifiable {
                                 appState: appState)
             }
             if case .failed = stepState.status {
-                state = .failed("Step \(idx + 1): \(stepState.detail)")
-                return
+                // C33 (E2) — abort vs continue depends on the
+                // chain's `continueOnFailure` flag. Default false
+                // (abort) matches pre-C33 behavior. When true, the
+                // failed step stays marked .failed; the run keeps
+                // executing the remaining steps. The overall run
+                // state at the end is .failed iff ANY step failed.
+                if !chain.continueOnFailure {
+                    state = .failed("Step \(idx + 1): \(stepState.detail)")
+                    return
+                }
+                // Continuing — leave state at .running; the loop
+                // will land on the next step.
             }
         }
         if state != .cancelled {
-            state = .finished
+            // C33 (E2) — when continueOnFailure is on, a chain
+            // with any failed step still terminates as .failed (so
+            // the user gets the "X step(s) failed" alert), but only
+            // after every step has had its chance. Otherwise this
+            // path runs only on full success.
+            let anyFailed = steps.contains {
+                if case .failed = $0.status { return true }; return false
+            }
+            if anyFailed {
+                let failedCount = steps.filter {
+                    if case .failed = $0.status { return true }; return false
+                }.count
+                state = .failed("\(failedCount) of \(steps.count) step(s) failed (chain ran to completion).")
+            } else {
+                state = .finished
+            }
         }
         currentStep = steps.count
     }

@@ -209,65 +209,6 @@ enum WorkspaceCacheService {
         writePayload(payload, for: asset.path)
     }
 
-    // MARK: - Prune orphans (C32 G1)
-
-    /// Result of a single `pruneOrphans(under:)` sweep.
-    struct PruneResult: Equatable {
-        var scanned: Int       // total `.purplereel/*.json` files inspected
-        var deleted: [URL]     // sidecars whose source no longer exists
-        var failed: [(URL, String)]
-
-        static func == (lhs: PruneResult, rhs: PruneResult) -> Bool {
-            lhs.scanned == rhs.scanned
-                && lhs.deleted == rhs.deleted
-                && lhs.failed.count == rhs.failed.count
-                && zip(lhs.failed, rhs.failed).allSatisfy { $0.0 == $1.0 && $0.1 == $1.1 }
-        }
-    }
-
-    /// Walk `<root>` recursively, find every `.purplereel/<file>.json`
-    /// sidecar, and delete any whose corresponding source file is no
-    /// longer present (i.e. orphaned by a delete/move that happened
-    /// without re-saving the sidecar).
-    ///
-    /// The reader's modtime gate already protects against stale
-    /// payloads for files that DO exist; this sweeps the other case
-    /// — files that are gone — so `.purplereel/` directories don't
-    /// accumulate dead weight over a NAS's lifetime. Best-effort;
-    /// permission errors get reported via `PruneResult.failed`.
-    static func pruneOrphans(under root: URL) -> PruneResult {
-        let fm = FileManager.default
-        var result = PruneResult(scanned: 0, deleted: [], failed: [])
-        // Note: NO `.skipsHiddenFiles` here — sidecars live under
-        // `.purplereel/` which is hidden by convention. Skipping
-        // hidden entries would skip the entire directory.
-        guard let walker = fm.enumerator(at: root,
-            includingPropertiesForKeys: [.isDirectoryKey]
-        ) else { return result }
-        for case let url as URL in walker {
-            // Sidecars are exactly `.json` under a `.purplereel` dir.
-            guard url.pathExtension == "json",
-                  url.deletingLastPathComponent().lastPathComponent == ".purplereel"
-            else { continue }
-            result.scanned += 1
-            // The source file lives one level up at
-            // `<parent-of-.purplereel>/<filename-without-.json>`.
-            let sourceName = (url.lastPathComponent as NSString)
-                .deletingPathExtension
-            let sourcePath = url.deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .appendingPathComponent(sourceName).path
-            if fm.fileExists(atPath: sourcePath) { continue }
-            do {
-                try fm.removeItem(at: url)
-                result.deleted.append(url)
-            } catch {
-                result.failed.append((url, error.localizedDescription))
-            }
-        }
-        return result
-    }
-
     // MARK: - Hydrate
 
     /// Apply the user-metadata portion of a sidecar payload to the

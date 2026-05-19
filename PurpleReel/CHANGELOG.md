@@ -17,6 +17,62 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C33 — Workflow chains: continueOnFailure + templates library
+
+Two more Category E deferrals. Skip-failed-step opens the
+"best-effort" pipeline pattern (where one codec-quirky source
+shouldn't terminate the whole chain), and templates eliminate the
+"empty editor with no idea what to build" cold-start.
+
+**E2 — Skip-failed-step option** (`WorkflowChain` + runner):
+- `WorkflowChain.continueOnFailure: Bool = false` field. Default
+  matches pre-C33 abort-on-first-failure behavior; explicit `true`
+  opts into best-effort.
+- Custom `Codable` decoder (`decodeIfPresent` for every field
+  except `id`/`name`) so chain JSON saved before C33 still loads
+  cleanly — users don't lose their saved chains on upgrade.
+- `WorkflowChainRun.run(...)` checks the flag on per-step
+  failure; aborts when off, marks-and-continues when on. Final
+  run state is `.failed("X of N step(s) failed")` if any step
+  failed regardless of mode — the user always sees a clear
+  outcome.
+- Sheet adds "Continue running remaining steps when one fails
+  (best-effort)" toggle in the editor topRow.
+
+**E4 — Chain templates library** (`WorkflowChain.swift` +
+sheet):
+- New `WorkflowChainTemplates` enum with four built-in
+  templates:
+  - **Camera Card Offload** — Verified Backup only;
+    `runOnCameraMediaMount: true` baked in for DIT set workflow.
+  - **Daily Delivery (Backup + H.264 + CSV)** — three-step
+    end-of-day pipeline; `continueOnFailure: true` so a codec-
+    quirky source doesn't block the report.
+  - **Proxy Generation Only** — single Transcode step, ProRes
+    Proxy preset; useful when the backup lives elsewhere.
+  - **Catalogue Report Only** — single HTML report;
+    no-render shortcut for producer/director clip-list shares.
+- Each template carries `id`, `name`, `description`, `icon`,
+  and a `build()` factory that mints a fresh UUID per call (so
+  two "Add from template" clicks produce two distinct rows).
+- Sheet's chain-management toolbar gains a "doc.on.doc" Menu
+  next to the existing "+" button. Each template surfaces as a
+  Label with its icon + tooltip carrying the description.
+
+**Tests** — 7 new in `WorkflowChainTests` (total 13):
+- continueOnFailure defaults to false.
+- Legacy JSON (pre-C33, no continueOnFailure field) decodes as
+  false — explicit back-compat coverage.
+- continueOnFailure survives Codable round-trip.
+- Every template builds a chain with at least one step + only
+  fails validation for the expected "no destinations" reason
+  (templates intentionally leave backup destinations empty for
+  the user to fill in).
+- Template builds are not aliased (each call → fresh UUID).
+- Daily Delivery template carries continueOnFailure=true
+  (per its self-description).
+- Camera Card Offload template auto-triggers on mount.
+
 ### C32 — Workflow chain + workspace cache polish bundle
 
 Five small deferrals from Categories E and F bundled together.

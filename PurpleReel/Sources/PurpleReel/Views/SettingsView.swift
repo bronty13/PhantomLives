@@ -31,7 +31,6 @@ struct SettingsView: View {
 // MARK: - General
 
 struct GeneralSettingsView: View {
-    @EnvironmentObject var appState: AppState
     @AppStorage("lutFolderPath") private var lutFolderPath: String = ""
     @AppStorage("importLUTsFromFCP") private var importLUTsFromFCP: Bool = true
     @AppStorage("importLUTsFromResolve") private var importLUTsFromResolve: Bool = true
@@ -103,24 +102,6 @@ struct GeneralSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                // C32 (G1) — orphan-sidecar prune. Walks each
-                // workspace root and deletes any `.purplereel/*.json`
-                // whose source file no longer exists. Surfaces a
-                // per-run summary in the alert. Hidden when no
-                // workspace roots are configured (button would have
-                // nothing to do).
-                if !appState.workspaceRoots.isEmpty {
-                    HStack {
-                        Button("Prune Orphaned Sidecars…") {
-                            pruneOrphanedSidecars()
-                        }
-                        Spacer()
-                        Text("Walks each workspace root and deletes .purplereel/ entries whose source file is gone.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                }
             }
             Section("LUTs") {
                 HStack {
@@ -171,38 +152,6 @@ struct GeneralSettingsView: View {
             }
         }
         .formStyle(.grouped)
-    }
-
-    /// C32 (G1) — sweep each workspace root for `.purplereel/*.json`
-    /// sidecars whose source file is gone and delete them. Reports
-    /// the aggregated result in an NSAlert. Runs on a background
-    /// Task so a large NAS scan doesn't freeze Settings.
-    private func pruneOrphanedSidecars() {
-        let roots = appState.workspaceRoots
-        Task.detached(priority: .userInitiated) {
-            var totalScanned = 0
-            var totalDeleted = 0
-            var totalFailed = 0
-            for root in roots {
-                let r = WorkspaceCacheService.pruneOrphans(under: root)
-                totalScanned += r.scanned
-                totalDeleted += r.deleted.count
-                totalFailed += r.failed.count
-            }
-            await MainActor.run {
-                let alert = NSAlert()
-                alert.messageText = "Pruned \(totalDeleted) orphaned sidecar(s)"
-                var lines: [String] = []
-                lines.append("Scanned: \(totalScanned)")
-                lines.append("Deleted: \(totalDeleted)")
-                if totalFailed > 0 {
-                    lines.append("Failed: \(totalFailed) (likely permission denied)")
-                }
-                lines.append("Across \(roots.count) workspace root(s).")
-                alert.informativeText = lines.joined(separator: "\n")
-                alert.runModal()
-            }
-        }
     }
 }
 
