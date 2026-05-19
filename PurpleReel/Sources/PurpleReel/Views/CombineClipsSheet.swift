@@ -15,17 +15,29 @@ struct CombineClipsSheet: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
 
-    /// Sources to combine — initialised from the user's
-    /// multi-selection. State so the sheet can reorder without
-    /// mutating AppState.
-    @State private var sources: [Asset]
+    /// Sources to combine, in play order. C16 — switched from
+    /// `[Asset]` to per-row state so the user can set trim in/out
+    /// per clip and drag rows around. Each row carries the source
+    /// asset plus its current trim text (separate from the parsed
+    /// seconds — kept as strings so the user can type freely before
+    /// validation runs at Combine time).
+    struct Row: Identifiable {
+        let id = UUID()
+        let asset: Asset
+        var trimInText: String = ""
+        var trimOutText: String = ""
+    }
+
+    @State private var rows: [Row]
     @State private var presetID: String = "prores-422"
     @State private var dest: URL?
     @State private var filename: String = "combined.mov"
     @State private var job: CombineClipsJob?
 
     init(initialSources: [Asset]) {
-        _sources = State(initialValue: initialSources)
+        _rows = State(initialValue: initialSources.map {
+            Row(asset: $0)
+        })
     }
 
     var body: some View {
@@ -50,7 +62,7 @@ struct CombineClipsSheet: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Combine Clips")
                 .font(.title3.weight(.semibold))
-            Text("Renders the listed clips head-to-tail into a single file. Drag-free reordering — use the arrows. Resolution comes from the first clip; mixed sizes will letterbox.")
+            Text("Renders the listed clips head-to-tail into a single file. Drag rows to reorder. Set in/out trim per clip (HH:MM:SS or seconds; blank = full clip). Resolution comes from the first clip; mixed sizes will letterbox.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -59,62 +71,82 @@ struct CombineClipsSheet: View {
 
     @ViewBuilder
     private var sourcesList: some View {
-        if sources.count < 2 {
+        if rows.count < 2 {
             Text("Select two or more clips before opening this sheet.")
                 .foregroundStyle(.secondary)
         } else {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Order (top → bottom = first → last)")
+                Text("Order (top → bottom = first → last). Drag rows to reorder.")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 2) {
-                        ForEach(Array(sources.enumerated()), id: \.element.path) { idx, asset in
-                            HStack(spacing: 8) {
-                                Text("\(idx + 1).")
-                                    .font(.caption.monospaced())
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 28, alignment: .trailing)
-                                Text(asset.filename)
-                                    .font(.callout)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                Spacer()
-                                Text(durationLabel(asset))
-                                    .font(.caption.monospaced())
-                                    .foregroundStyle(.secondary)
-                                Button {
-                                    move(idx, by: -1)
-                                } label: { Image(systemName: "arrow.up") }
-                                .buttonStyle(.borderless)
-                                .disabled(idx == 0)
-                                Button {
-                                    move(idx, by: 1)
-                                } label: { Image(systemName: "arrow.down") }
-                                .buttonStyle(.borderless)
-                                .disabled(idx == sources.count - 1)
-                                Button {
-                                    sources.remove(at: idx)
-                                } label: { Image(systemName: "xmark.circle") }
-                                .buttonStyle(.borderless)
-                                .help("Remove from combine list")
-                            }
-                            .padding(.vertical, 2)
-                            .padding(.horizontal, 6)
-                            .background(
-                                idx % 2 == 0
-                                ? Color.secondary.opacity(0.05)
-                                : Color.clear
-                            )
-                        }
+                // C16 — native List with .onMove for drag-reorder.
+                // Each row now carries inline in/out trim fields so
+                // the user can clip the leading/trailing slop off
+                // each source before the head-to-tail render.
+                List {
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { idx, _ in
+                        rowView(at: idx)
                     }
+                    .onMove { src, dst in rows.move(fromOffsets: src, toOffset: dst) }
+                    .onDelete { offsets in rows.remove(atOffsets: offsets) }
                 }
-                .frame(maxHeight: 220)
-                Text("Total: \(totalDurationLabel) · \(sources.count) clip(s)")
+                .listStyle(.bordered)
+                .frame(minHeight: 200, maxHeight: 260)
+                Text("Total: \(totalDurationLabel) · \(rows.count) clip(s)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    @ViewBuilder
+    private func rowView(at idx: Int) -> some View {
+        let row = rows[idx]
+        HStack(spacing: 8) {
+            Text("\(idx + 1).")
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .frame(width: 22, alignment: .trailing)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(row.asset.filename)
+                    .font(.callout)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                HStack(spacing: 6) {
+                    Text("In")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    TextField("00:00:00", text: Binding(
+                        get: { rows[idx].trimInText },
+                        set: { rows[idx].trimInText = $0 }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption.monospaced())
+                    .frame(width: 90)
+                    Text("Out")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    TextField(durationLabel(row.asset),
+                              text: Binding(
+                                get: { rows[idx].trimOutText },
+                                set: { rows[idx].trimOutText = $0 }
+                              ))
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption.monospaced())
+                    .frame(width: 90)
+                    Text("full \(durationLabel(row.asset))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            Button {
+                rows.remove(at: idx)
+            } label: { Image(systemName: "xmark.circle") }
+            .buttonStyle(.borderless)
+            .help("Remove from combine list")
+        }
+        .padding(.vertical, 4)
     }
 
     @ViewBuilder
@@ -198,7 +230,7 @@ struct CombineClipsSheet: View {
     // MARK: - Helpers
 
     private var canRun: Bool {
-        sources.count >= 2
+        rows.count >= 2
             && dest != nil
             && !filename.isEmpty
             && job?.state != .running
@@ -220,11 +252,8 @@ struct CombineClipsSheet: View {
             ?? combinePresets.first
     }
 
-    private func move(_ index: Int, by delta: Int) {
-        let target = index + delta
-        guard target >= 0, target < sources.count else { return }
-        sources.swapAt(index, target)
-    }
+    // C16 — drag-reorder via List/.onMove replaces the up/down
+    // arrows. The legacy `move(_:by:)` helper is no longer needed.
 
     private func pickDest() {
         let panel = NSOpenPanel()
@@ -262,8 +291,18 @@ struct CombineClipsSheet: View {
     private func runCombine() {
         guard let preset = selectedPreset, let dest else { return }
         let outURL = dest.appendingPathComponent(filename)
-        let urls = sources.map { URL(fileURLWithPath: $0.path) }
-        let j = CombineClipsJob(sources: urls,
+        // C16 — translate each row's trim text into the
+        // CombineSource model. Empty / unparseable text falls back
+        // to nil (= use the clip's natural start / end), keeping
+        // the pre-C16 whole-clip path available without ceremony.
+        let combineSources = rows.map { row in
+            CombineSource(
+                url: URL(fileURLWithPath: row.asset.path),
+                trimInSeconds: parseTrim(row.trimInText),
+                trimOutSeconds: parseTrim(row.trimOutText)
+            )
+        }
+        let j = CombineClipsJob(sources: combineSources,
                                  outputURL: outURL,
                                  preset: preset)
         self.job = j
@@ -278,13 +317,46 @@ struct CombineClipsSheet: View {
         }
     }
 
+    /// Accept `HH:MM:SS`, `MM:SS`, or plain seconds; empty input
+    /// returns nil so the row falls back to the clip's natural
+    /// in/out. Same shape as `parseHHMMSS` in InlineFilterRow but
+    /// kept local — these are small enough that sharing isn't worth
+    /// the cross-view dependency.
+    private func parseTrim(_ text: String) -> Double? {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        let parts = trimmed.split(separator: ":").map(String.init)
+        switch parts.count {
+        case 3:
+            guard let h = Int(parts[0]), let m = Int(parts[1]),
+                  let s = Double(parts[2]) else { return nil }
+            return Double(h * 3600 + m * 60) + s
+        case 2:
+            guard let m = Int(parts[0]),
+                  let s = Double(parts[1]) else { return nil }
+            return Double(m * 60) + s
+        case 1:
+            return Double(parts[0])
+        default:
+            return nil
+        }
+    }
+
     private func durationLabel(_ asset: Asset) -> String {
         let s = asset.durationSeconds ?? 0
         let total = Int(s)
         return String(format: "%d:%02d", total / 60, total % 60)
     }
+    /// Sums each row's effective duration (after applying trim) so
+    /// the "Total: m:ss" readout reflects what'll actually render
+    /// rather than the full source durations.
     private var totalDurationLabel: String {
-        let total = Int(sources.reduce(0.0) { $0 + ($1.durationSeconds ?? 0) })
+        let total = Int(rows.reduce(0.0) { sum, row in
+            let dur = row.asset.durationSeconds ?? 0
+            let inS = parseTrim(row.trimInText) ?? 0
+            let outS = parseTrim(row.trimOutText) ?? dur
+            return sum + max(0, outS - inS)
+        })
         return String(format: "%d:%02d", total / 60, total % 60)
     }
 }

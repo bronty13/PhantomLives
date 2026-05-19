@@ -17,6 +17,56 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C16 — Combine Clips: per-clip in/out trim + drag-reorder
+
+Category F follow-up. The original Combine Clips MVP (Sprint 3-4)
+shipped whole-clip head-to-tail concat only with up/down arrows for
+reordering. C16 lands the two highest-leverage follow-ups: per-clip
+in/out trim and native drag-reorder.
+
+**Service layer** — `CombineClipsService.swift`:
+- New `CombineSource` struct: `(url, trimInSeconds: Double?,
+  trimOutSeconds: Double?)`. Nil on both sides = whole-clip
+  (pre-C16 MVP path).
+- `CombineClipsJob.sources` switched from `[URL]` to
+  `[CombineSource]`. Legacy URL-only `init` becomes a
+  `convenience init` that wraps each URL into an un-trimmed
+  CombineSource — so workflow-chain and scripted call sites keep
+  compiling without migration.
+- `run()` resolves each source's trim points into a
+  `CMTimeRange(start: in, duration: out - in)`, clamps to the
+  asset's actual duration so an out-of-bounds trimOut clips to
+  the end rather than failing, and refuses an empty trim range
+  with a clear "X has an empty trim range (Ys → Zs)" error.
+
+**Dialog layer** — `CombineClipsSheet.swift`:
+- `sources: [Asset]` → `rows: [Row]` where Row carries the asset
+  + two trim text fields. Text-not-Double so the user can type
+  freely; parsing happens at Combine time.
+- Reordering switched from up/down `arrow.up`/`arrow.down`
+  buttons to native SwiftUI `List` + `.onMove(fromOffsets:toOffset:)`.
+  Free drag handles + free swipe-to-delete via `.onDelete`. The
+  legacy `move(_:by:)` helper deleted.
+- Each row now has inline `In` + `Out` TextFields (90pt monospace)
+  accepting `HH:MM:SS`, `MM:SS`, or plain seconds. Empty = use
+  the clip's natural in/out. Placeholder text in the Out field
+  shows the source's full duration.
+- "Total: m:ss" readout now sums each row's *effective* duration
+  (after trim) so the user sees what'll actually render.
+
+4 new tests (`CombineSourceTests`):
+- Default trim is nil on both sides
+- Trim range round-trips
+- Equatable conformance via stored properties (incl. id)
+- Legacy URL-only init wraps each URL into an un-trimmed
+  CombineSource (no behavior drift for workflow chains)
+
+Still queued for Category F: cross-fades, audio-only output,
+dimension match (override the first-clip-wins default), marker
+preservation. Sequenced for follow-up commits.
+
+---
+
 ### C15 — List view column-header click-to-sort
 
 List view's Table headers are now clickable to sort, with the native
