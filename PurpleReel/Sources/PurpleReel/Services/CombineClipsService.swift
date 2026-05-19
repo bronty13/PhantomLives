@@ -82,6 +82,12 @@ final class CombineClipsJob: ObservableObject, Identifiable {
     /// C19 — canvas-size policy for the combined output. Default
     /// stays `.firstClip` so existing callers keep behaving the same.
     let dimensionMode: CombineDimensionMode
+    /// C20 — global cross-fade duration in seconds. 0 = hard cut
+    /// (pre-C20 behavior; takes the simpler single-track path).
+    /// Anything > 0 takes the dual-track + AVMutableVideoComposition
+    /// path with opacity & volume ramps. Clamped at run time so it
+    /// can't exceed half of the shortest trimmed segment.
+    let crossfadeSeconds: Double
 
     @Published var state: State = .queued
     @Published var progress: Double = 0
@@ -95,26 +101,50 @@ final class CombineClipsJob: ObservableObject, Identifiable {
     private var progressTimer: Timer?
 
     init(sources: [CombineSource], outputURL: URL, preset: TranscodePreset,
-         dimensionMode: CombineDimensionMode = .firstClip) {
+         dimensionMode: CombineDimensionMode = .firstClip,
+         crossfadeSeconds: Double = 0) {
         self.sources = sources
         self.outputURL = outputURL
         self.preset = preset
         self.dimensionMode = dimensionMode
+        self.crossfadeSeconds = max(0, crossfadeSeconds)
     }
 
     /// Convenience init for the pre-C16 URL-only call sites. Wraps
     /// each URL into a `CombineSource` with no trim — same behavior
     /// as before. Kept so non-dialog callers (workflow chains,
     /// scripted invocations) don't have to migrate at the same time.
-    /// C19 — defaults `dimensionMode` to `.firstClip` so legacy
-    /// callers keep producing the same output.
+    /// Defaults `dimensionMode` to `.firstClip` and `crossfadeSeconds`
+    /// to 0 so legacy callers keep producing the same output.
     convenience init(sources: [URL], outputURL: URL, preset: TranscodePreset,
-                     dimensionMode: CombineDimensionMode = .firstClip) {
+                     dimensionMode: CombineDimensionMode = .firstClip,
+                     crossfadeSeconds: Double = 0) {
         self.init(
             sources: sources.map { CombineSource(url: $0) },
             outputURL: outputURL, preset: preset,
-            dimensionMode: dimensionMode
+            dimensionMode: dimensionMode,
+            crossfadeSeconds: crossfadeSeconds
         )
+    }
+
+    /// C20 — pure helper that clamps the requested cross-fade so
+    /// it can't exceed half of the shortest trimmed segment. Two
+    /// neighbors with a 3-second cross-fade against a 4-second
+    /// middle clip would consume 6 seconds of a 4-second source,
+    /// leaving nothing in the middle (and the dual-track inserts
+    /// would underflow). Half-of-shortest is the conservative
+    /// rule that keeps every clip's solo region non-negative.
+    ///
+    /// `trimmedDurations` is in render order. Empty list (no
+    /// sources) → 0. Single source → 0 (nothing to fade between).
+    nonisolated static func clampCrossfadeSeconds(
+        _ requested: Double,
+        trimmedDurations: [Double]
+    ) -> Double {
+        guard requested > 0, trimmedDurations.count >= 2 else { return 0 }
+        let shortest = trimmedDurations.min() ?? 0
+        let maxAllowed = shortest / 2
+        return max(0, min(requested, maxAllowed))
     }
 
     /// C19 — pure helper that resolves the target canvas size for
@@ -199,73 +229,127 @@ final class CombineClipsJob: ObservableObject, Identifiable {
         state = .running
         progress = 0
 
-        // Build the head-to-tail composition. Tracks are added once;
-        // each source is inserted at the running cursor. C18 — for
-        // audio-only output we skip the video track entirely so the
-        // export session doesn't try to encode video into an m4a
-        // container (it'd fail with "no compatible video").
-        let comp = AVMutableComposition()
-        let vTrack: AVMutableCompositionTrack? = preset.isAudioOnly ? nil
-            : comp.addMutableTrack(
-                withMediaType: .video,
-                preferredTrackID: kCMPersistentTrackID_Invalid)
-        guard let aTrack = comp.addMutableTrack(
-                withMediaType: .audio,
-                preferredTrackID: kCMPersistentTrackID_Invalid)
-        else {
-            state = .failed("Couldn't create composition tracks")
-            return
+        // C20 — phase 1: pre-resolve each source's trim metadata so
+        // we know all trimmed durations *before* clamping the cross-
+        // fade (clamp = half of shortest segment). The pre-pass only
+        // touches `.duration`, not the heavier tracks load, so it's
+        // cheap relative to the export itself.
+        struct Resolved {
+            let url: URL
+            let trimRange: CMTimeRange
+            let trimmedSeconds: Double
+            let timescale: CMTimeScale
+            let sourceMarkers: [Marker]
+            let trimInSec: Double
+            let trimOutSec: Double
         }
-        if !preset.isAudioOnly && vTrack == nil {
-            state = .failed("Couldn't create composition tracks")
-            return
-        }
-
-        var cursor: CMTime = .zero
-        var collectedMarkers: [PreservedMarker] = []
-        // C19 — collect per-source natural sizes so we can resolve
-        // the target canvas size after the loop. Audio-only outputs
-        // skip the lookup (no video tracks to read), but it's cheap
-        // to keep the code path uniform.
-        var sourceSizes: [CGSize] = []
-        var firstVideoTransform: CGAffineTransform?
+        var resolved: [Resolved] = []
         for source in sources {
-            let url = source.url
-            let asset = AVURLAsset(url: url)
+            let asset = AVURLAsset(url: source.url)
             do {
                 let assetDuration = try await asset.load(.duration)
-                // Resolve trim points → CMTimeRange against the
-                // asset's natural timeline. Clamp to the asset's
-                // actual duration so an out-of-bounds trimOut just
-                // takes us to the end rather than failing.
                 let durSeconds = CMTimeGetSeconds(assetDuration)
-                let inSec = source.trimInSeconds.map {
-                    max(0, min($0, durSeconds))
-                } ?? 0
-                let outSec = source.trimOutSeconds.map {
-                    max(0, min($0, durSeconds))
-                } ?? durSeconds
+                let inSec = source.trimInSeconds.map { max(0, min($0, durSeconds)) } ?? 0
+                let outSec = source.trimOutSeconds.map { max(0, min($0, durSeconds)) } ?? durSeconds
                 let trimmedSeconds = max(0, outSec - inSec)
                 if trimmedSeconds <= 0 {
-                    state = .failed("\(url.lastPathComponent) has an empty trim range (\(inSec)s → \(outSec)s).")
+                    state = .failed("\(source.url.lastPathComponent) has an empty trim range (\(inSec)s → \(outSec)s).")
                     return
                 }
                 let start = CMTime(seconds: inSec,
                                     preferredTimescale: assetDuration.timescale)
                 let dur = CMTime(seconds: trimmedSeconds,
                                   preferredTimescale: assetDuration.timescale)
-                let range = CMTimeRange(start: start, duration: dur)
-                let aSources = try await asset.loadTracks(withMediaType: .audio)
-                if let vTrack {
+                resolved.append(Resolved(
+                    url: source.url,
+                    trimRange: CMTimeRange(start: start, duration: dur),
+                    trimmedSeconds: trimmedSeconds,
+                    timescale: assetDuration.timescale,
+                    sourceMarkers: source.sourceMarkers,
+                    trimInSec: inSec,
+                    trimOutSec: outSec
+                ))
+            } catch {
+                state = .failed("Couldn't read \(source.url.lastPathComponent): \(error.localizedDescription)")
+                return
+            }
+        }
+
+        // C20 — clamp the cross-fade against the trimmed durations.
+        // useDual is the load-bearing branch — when true we allocate
+        // two video / audio tracks and build an
+        // AVMutableVideoComposition + AVMutableAudioMix for the
+        // opacity & volume ramps.
+        let clampedCF = Self.clampCrossfadeSeconds(
+            crossfadeSeconds,
+            trimmedDurations: resolved.map(\.trimmedSeconds)
+        )
+        let useDual = clampedCF > 0 && resolved.count >= 2
+
+        // Build the composition. C18 — audio-only outputs skip the
+        // video track entirely so the export session doesn't fail
+        // trying to encode video into an m4a container.
+        let comp = AVMutableComposition()
+        var vTracks: [AVMutableCompositionTrack] = []
+        var aTracks: [AVMutableCompositionTrack] = []
+        if !preset.isAudioOnly {
+            if let t = comp.addMutableTrack(withMediaType: .video,
+                                             preferredTrackID: kCMPersistentTrackID_Invalid) {
+                vTracks.append(t)
+            }
+            if useDual,
+               let t = comp.addMutableTrack(withMediaType: .video,
+                                             preferredTrackID: kCMPersistentTrackID_Invalid) {
+                vTracks.append(t)
+            }
+        }
+        if let t = comp.addMutableTrack(withMediaType: .audio,
+                                         preferredTrackID: kCMPersistentTrackID_Invalid) {
+            aTracks.append(t)
+        }
+        if useDual,
+           let t = comp.addMutableTrack(withMediaType: .audio,
+                                         preferredTrackID: kCMPersistentTrackID_Invalid) {
+            aTracks.append(t)
+        }
+        if (preset.isAudioOnly && aTracks.isEmpty)
+            || (!preset.isAudioOnly && vTracks.isEmpty) {
+            state = .failed("Couldn't create composition tracks")
+            return
+        }
+
+        // C20 — per-clip insertion offsets. With cross-fade, clip i
+        // starts at `sum(durs[0..<i]) - i * cf` so consecutive
+        // segments overlap by `cf`. With cf=0 this degenerates to
+        // the pre-C20 cursor sum.
+        var offsets: [Double] = []
+        var running: Double = 0
+        for (i, r) in resolved.enumerated() {
+            offsets.append(i == 0 ? 0 : running - Double(i) * clampedCF)
+            running += r.trimmedSeconds
+        }
+
+        // Insertion pass. With useDual=true clips alternate across
+        // the two video / audio tracks (i % 2 == 0 → track A) so
+        // the overlap region carries two visible layers; the video
+        // composition then ramps the opacity. With useDual=false
+        // there's exactly one of each track and trackIndex collapses
+        // to 0.
+        var collectedMarkers: [PreservedMarker] = []
+        var sourceSizes: [CGSize] = []
+        var firstVideoTransform: CGAffineTransform?
+        let trackStride = useDual ? 2 : 1
+        for (i, r) in resolved.enumerated() {
+            let asset = AVURLAsset(url: r.url)
+            let trackIdx = i % trackStride
+            let insertAt = CMTime(seconds: offsets[i],
+                                   preferredTimescale: r.timescale)
+            do {
+                if !preset.isAudioOnly, !vTracks.isEmpty {
                     let vSources = try await asset.loadTracks(withMediaType: .video)
                     if let v = vSources.first {
-                        try vTrack.insertTimeRange(range, of: v, at: cursor)
-                        // C19 — record natural size for each video
-                        // source so we can pick a target canvas
-                        // after the loop. naturalSize is the encoded
-                        // dimensions (not the preferredTransform-
-                        // applied display size), which is what
-                        // `comp.naturalSize` expects.
+                        try vTracks[min(trackIdx, vTracks.count - 1)]
+                            .insertTimeRange(r.trimRange, of: v, at: insertAt)
                         if let size = try? await v.load(.naturalSize) {
                             sourceSizes.append(size)
                         }
@@ -275,44 +359,61 @@ final class CombineClipsJob: ObservableObject, Identifiable {
                         }
                     }
                 }
-                if let a = aSources.first {
-                    try aTrack.insertTimeRange(range, of: a, at: cursor)
+                let aSources = try await asset.loadTracks(withMediaType: .audio)
+                if let a = aSources.first, !aTracks.isEmpty {
+                    try aTracks[min(trackIdx, aTracks.count - 1)]
+                        .insertTimeRange(r.trimRange, of: a, at: insertAt)
                 }
-                // C17 — copy this source's markers onto the
-                // combined timeline. cursor is captured *before* we
-                // advance it for this clip, so it points at the
-                // segment's start in the output.
                 let preserved = Self.offsetMarkers(
-                    source.sourceMarkers,
-                    trimInSec: inSec,
-                    trimOutSec: outSec,
-                    cursorSec: CMTimeGetSeconds(cursor)
+                    r.sourceMarkers,
+                    trimInSec: r.trimInSec,
+                    trimOutSec: r.trimOutSec,
+                    cursorSec: offsets[i]
                 )
                 collectedMarkers.append(contentsOf: preserved)
-                cursor = CMTimeAdd(cursor, dur)
             } catch {
-                state = .failed("Couldn't read \(url.lastPathComponent): \(error.localizedDescription)")
+                state = .failed("Couldn't read \(r.url.lastPathComponent): \(error.localizedDescription)")
                 return
             }
         }
-        // Publish the collected markers now so the sheet can see
-        // them as soon as the loop has run, even before the export
-        // session finishes. (The sheet still gates the DB write on
-        // .finished — published-early just helps the UI badge.)
         preservedMarkers = collectedMarkers
 
-        // C19 — pick the target canvas size from the chosen policy.
-        // Default `.firstClip` keeps pre-C19 behavior (canvas matches
-        // the first clip's natural size). `.largestSource` widens to
-        // the union of source dimensions; `.explicit` clamps to the
-        // user-specified WxH. Skipped on audio-only — no video track.
-        if let vTrack,
+        // C19 — apply the target canvas size policy.
+        if !vTracks.isEmpty,
            let target = Self.resolveTargetSize(mode: dimensionMode,
                                                 sourceSizes: sourceSizes) {
             comp.naturalSize = target
             if let xform = firstVideoTransform {
-                vTrack.preferredTransform = xform
+                for vt in vTracks { vt.preferredTransform = xform }
             }
+        }
+
+        // C20 — build the optional video composition + audio mix
+        // for the cross-fade path. Hard-cut path leaves both nil so
+        // AVAssetExportSession takes its default "play all tracks at
+        // full volume / opacity" behavior.
+        var videoComposition: AVMutableVideoComposition?
+        var audioMix: AVMutableAudioMix?
+        if useDual {
+            let durations = resolved.map(\.trimmedSeconds)
+            let timescale = resolved.first?.timescale ?? 600
+            if !vTracks.isEmpty {
+                videoComposition = buildCrossfadeVideoComposition(
+                    tracks: vTracks,
+                    canvasSize: comp.naturalSize,
+                    durations: durations,
+                    offsets: offsets,
+                    crossfade: clampedCF,
+                    timescale: timescale
+                )
+            }
+            audioMix = buildCrossfadeAudioMix(
+                tracks: aTracks,
+                durations: durations,
+                offsets: offsets,
+                crossfade: clampedCF,
+                timescale: timescale
+            )
         }
 
         // Pre-create the destination directory and clobber any prior
@@ -333,6 +434,8 @@ final class CombineClipsJob: ObservableObject, Identifiable {
         session.outputURL = outputURL
         session.outputFileType = containerType()
         session.shouldOptimizeForNetworkUse = true
+        session.videoComposition = videoComposition
+        session.audioMix = audioMix
         self.exportSession = session
 
         progressTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
@@ -361,6 +464,140 @@ final class CombineClipsJob: ObservableObject, Identifiable {
         default:
             state = .failed("Export ended in unexpected state \(session.status.rawValue)")
         }
+    }
+
+    /// C20 — pure helper that computes per-clip insertion offsets
+    /// for a head-to-tail composition with optional cross-fades.
+    /// Each clip's offset is `sum(durs[0..<i]) - i * crossfade`, so
+    /// clip i overlaps clip i-1 by `crossfade` seconds. With
+    /// crossfade=0 this degenerates to the cumulative-sum cursor of
+    /// the pre-C20 hard-cut path.
+    ///
+    /// Combined output's total duration is
+    /// `sum(durs) - (n-1) * crossfade` (or 0 for empty input).
+    nonisolated static func combinedOffsets(
+        trimmedDurations: [Double],
+        crossfade: Double
+    ) -> [Double] {
+        var offsets: [Double] = []
+        var running: Double = 0
+        for (i, dur) in trimmedDurations.enumerated() {
+            offsets.append(i == 0 ? 0 : running - Double(i) * crossfade)
+            running += dur
+        }
+        return offsets
+    }
+
+    /// C20 — build the AVMutableVideoComposition that drives the
+    /// cross-fade. For each clip i we emit:
+    ///   - **Solo region**: when only clip i is visible. One layer
+    ///     at opacity 1.
+    ///   - **Overlap region** with clip i+1 (when i < n-1): a `cf`-
+    ///     second window starting at offsets[i+1], with clip i at
+    ///     opacity ramp 1→0 and clip i+1 at opacity ramp 0→1.
+    /// Track alternation: clip i lives on `tracks[i % tracks.count]`.
+    private func buildCrossfadeVideoComposition(
+        tracks: [AVMutableCompositionTrack],
+        canvasSize: CGSize,
+        durations: [Double],
+        offsets: [Double],
+        crossfade: Double,
+        timescale: CMTimeScale
+    ) -> AVMutableVideoComposition {
+        let vc = AVMutableVideoComposition()
+        // Falls back to 1920×1080 when comp.naturalSize is .zero —
+        // can happen on audio-only call sites that wrongly land
+        // here (caller already guards but defense-in-depth is cheap).
+        vc.renderSize = canvasSize == .zero ? CGSize(width: 1920, height: 1080) : canvasSize
+        vc.frameDuration = CMTime(value: 1, timescale: 30)
+
+        var instructions: [AVMutableVideoCompositionInstruction] = []
+        let n = durations.count
+        for i in 0..<n {
+            let track = tracks[i % tracks.count]
+            let segStart = offsets[i]
+            let segEnd = offsets[i] + durations[i]
+            let soloStart = segStart + (i > 0 ? crossfade : 0)
+            let soloEnd = segEnd - (i < n - 1 ? crossfade : 0)
+
+            if soloEnd > soloStart {
+                let inst = AVMutableVideoCompositionInstruction()
+                inst.timeRange = CMTimeRange(
+                    start: CMTime(seconds: soloStart, preferredTimescale: timescale),
+                    duration: CMTime(seconds: soloEnd - soloStart, preferredTimescale: timescale)
+                )
+                let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
+                inst.layerInstructions = [layer]
+                instructions.append(inst)
+            }
+
+            if i < n - 1 {
+                let overlapStart = offsets[i + 1]
+                let overlapRange = CMTimeRange(
+                    start: CMTime(seconds: overlapStart, preferredTimescale: timescale),
+                    duration: CMTime(seconds: crossfade, preferredTimescale: timescale)
+                )
+                let outTrack = tracks[i % tracks.count]
+                let inTrack = tracks[(i + 1) % tracks.count]
+                let outLayer = AVMutableVideoCompositionLayerInstruction(assetTrack: outTrack)
+                outLayer.setOpacityRamp(fromStartOpacity: 1, toEndOpacity: 0,
+                                         timeRange: overlapRange)
+                let inLayer = AVMutableVideoCompositionLayerInstruction(assetTrack: inTrack)
+                inLayer.setOpacityRamp(fromStartOpacity: 0, toEndOpacity: 1,
+                                        timeRange: overlapRange)
+                let inst = AVMutableVideoCompositionInstruction()
+                inst.timeRange = overlapRange
+                // Outgoing layer must come first (top of stack) so
+                // its 1→0 opacity actually reveals the incoming one
+                // underneath. AVFoundation renders layer 0 last.
+                inst.layerInstructions = [outLayer, inLayer]
+                instructions.append(inst)
+            }
+        }
+        vc.instructions = instructions
+        return vc
+    }
+
+    /// C20 — build the AVMutableAudioMix paired with the cross-fade
+    /// video composition. Each audio track carries the alternating
+    /// clips; volume ramps mirror the video opacity ramps so the
+    /// audio fades in and out alongside the picture.
+    private func buildCrossfadeAudioMix(
+        tracks: [AVMutableCompositionTrack],
+        durations: [Double],
+        offsets: [Double],
+        crossfade: Double,
+        timescale: CMTimeScale
+    ) -> AVMutableAudioMix {
+        let mix = AVMutableAudioMix()
+        var paramsByTrack: [Int: AVMutableAudioMixInputParameters] = [:]
+        for (idx, track) in tracks.enumerated() {
+            paramsByTrack[idx] = AVMutableAudioMixInputParameters(track: track)
+        }
+        let n = durations.count
+        for i in 0..<n {
+            let trackIdx = i % tracks.count
+            guard let p = paramsByTrack[trackIdx] else { continue }
+            // Leading fade-in for every clip except the first.
+            if i > 0 {
+                let r = CMTimeRange(
+                    start: CMTime(seconds: offsets[i], preferredTimescale: timescale),
+                    duration: CMTime(seconds: crossfade, preferredTimescale: timescale)
+                )
+                p.setVolumeRamp(fromStartVolume: 0, toEndVolume: 1, timeRange: r)
+            }
+            // Trailing fade-out for every clip except the last.
+            if i < n - 1 {
+                let r = CMTimeRange(
+                    start: CMTime(seconds: offsets[i] + durations[i] - crossfade,
+                                   preferredTimescale: timescale),
+                    duration: CMTime(seconds: crossfade, preferredTimescale: timescale)
+                )
+                p.setVolumeRamp(fromStartVolume: 1, toEndVolume: 0, timeRange: r)
+            }
+        }
+        mix.inputParameters = Array(paramsByTrack.values)
+        return mix
     }
 
     /// Match the file type to the chosen preset. ProRes wants `.mov`,

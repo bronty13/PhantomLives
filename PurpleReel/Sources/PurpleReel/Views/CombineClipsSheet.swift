@@ -52,6 +52,11 @@ struct CombineClipsSheet: View {
     @State private var dimensionModeKind: Int = 0
     @State private var explicitWidthText: String = "1920"
     @State private var explicitHeightText: String = "1080"
+    /// C20 — cross-fade duration in seconds; 0 = hard cut (default,
+    /// pre-C20 behavior). Stored as String so the user can type
+    /// freely; parsed at runCombine time. Service clamps to half
+    /// of the shortest trimmed segment.
+    @State private var crossfadeText: String = "0"
 
     init(initialSources: [Asset]) {
         _rows = State(initialValue: initialSources.map {
@@ -74,7 +79,7 @@ struct CombineClipsSheet: View {
             footer
         }
         .padding(20)
-        .frame(width: 640, height: 580)
+        .frame(width: 640, height: 620)
         .onAppear { loadSourceMarkers() }
     }
 
@@ -256,6 +261,23 @@ struct CombineClipsSheet: View {
                     Spacer()
                 }
             }
+            // C20 — cross-fade duration. 0 = hard cut (default,
+            // pre-C20 behavior). Audio-only outputs cross-fade the
+            // audio; video presets cross-fade both video & audio.
+            // Service clamps to half of shortest segment at run time.
+            HStack(spacing: 8) {
+                Text("Cross-fade:")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 80, alignment: .trailing)
+                TextField("0", text: $crossfadeText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption.monospaced())
+                    .frame(width: 70)
+                Text("seconds (0 = hard cut)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
             // C17 — preserve-markers toggle. Hidden when no source
             // has any markers (nothing to preserve, no need to
             // surface the option).
@@ -414,7 +436,8 @@ struct CombineClipsSheet: View {
         let j = CombineClipsJob(sources: combineSources,
                                  outputURL: outURL,
                                  preset: preset,
-                                 dimensionMode: resolvedDimensionMode())
+                                 dimensionMode: resolvedDimensionMode(),
+                                 crossfadeSeconds: Double(crossfadeText) ?? 0)
         self.job = j
         Task {
             await j.run()

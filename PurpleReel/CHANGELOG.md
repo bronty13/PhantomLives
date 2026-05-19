@@ -17,6 +17,72 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C20 — Combine Clips: cross-fades
+
+Category F follow-up #5 — the medium-effort one that closes out
+Category F. Previously every clip boundary was a hard cut; now a
+global cross-fade duration (seconds) ramps both video opacity and
+audio volume across every clip boundary. Doc / interview workflow
+gets the natural-feeling A/B-roll dissolves; podcast workflow gets
+audio cross-fades free.
+
+**Service layer** — `CombineClipsService.swift`:
+- `CombineClipsJob` gains `crossfadeSeconds: Double = 0` on both
+  inits. 0 = hard cut (default, pre-C20 behavior).
+- New `nonisolated static func clampCrossfadeSeconds(_:trimmedDurations:)`
+  — pure helper that clamps the requested cross-fade to half of
+  the shortest trimmed segment so consecutive segments never
+  overlap to the point of swallowing a clip's solo region whole.
+  Returns 0 for empty input, single source, or negative request.
+- New `nonisolated static func combinedOffsets(trimmedDurations:crossfade:)`
+  — pure helper for the per-clip insertion offsets:
+  `offset[i] = sum(durs[0..<i]) - i * cf`. Degenerates to the
+  cumulative-sum cursor of the hard-cut path when cf=0.
+- `run()` restructured into three phases:
+  1. **Pre-pass**: load each source's `.duration` so we can clamp
+     cross-fade against trimmed durations *before* committing to
+     a track topology.
+  2. **Build composition**: allocate 1 or 2 video tracks and 1 or
+     2 audio tracks depending on `useDual = cf > 0 && n >= 2`.
+     Clips alternate across the dual tracks (i % 2 → track A or B)
+     so the cross-fade overlap region carries two visible layers.
+  3. **Build video composition + audio mix** (cross-fade path
+     only). The hard-cut path leaves both nil so
+     `AVAssetExportSession` takes its default "play all tracks
+     at full volume / opacity" behavior.
+- New `buildCrossfadeVideoComposition(...)` — emits per-clip
+  *solo region* instructions (single-layer, opacity 1) and
+  *overlap region* instructions (two-layer, opacity-ramp 1→0
+  outgoing + 0→1 incoming).
+- New `buildCrossfadeAudioMix(...)` — mirrors with `setVolumeRamp`
+  calls on per-track `AVMutableAudioMixInputParameters`. Each
+  clip gets a leading fade-in (skipped for the first clip) and
+  trailing fade-out (skipped for the last).
+- Audio-only outputs (m4a) still cross-fade audio via the same
+  audio-mix path; video composition is skipped.
+
+**Sheet layer** — `CombineClipsSheet.swift`:
+- New row "Cross-fade: [N] seconds (0 = hard cut)" in the
+  output-controls block. Stored as text so the user can type
+  freely; parsed at runCombine time. Defaults to 0.
+- Frame height bumped to 620 to accommodate the new row.
+
+**Tests** — `CombineCrossfadeTests.swift` (NEW, 13 cases):
+- Clamp: zero stays zero, negative → zero, single-source / empty
+  → zero, request under half-shortest passes through, request
+  over half-shortest clamps to half-shortest, request exactly
+  half-shortest passes through.
+- Offsets: cf=0 yields cumulative sum, cf>0 reduces each index
+  by `i * cf`, heterogeneous durations resolve correctly, total
+  output duration matches `tail = last_offset + last_dur`,
+  empty list yields empty, single-clip lands at 0.
+
+**Deferred** — per-clip individual cross-fade durations (vs the
+current global), fade-from-black on the first clip / fade-to-black
+on the last (separate Kyno feature, will get its own commit), and
+non-linear easing curves on the ramps (AVFoundation only does
+linear out of the box; would need a custom video compositor).
+
 ### C19 — Combine Clips: dimension-match override
 
 Category F follow-up #4. The pre-C19 path always picked the first
