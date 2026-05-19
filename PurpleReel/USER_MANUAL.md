@@ -390,6 +390,41 @@ failures, reveals the folder in Finder when anything wrote.
 
 ---
 
+## Reports — Producer / AE deliverables
+
+File menu → **Export Report**. Scope = your current selection
+if non-empty, otherwise every catalogued clip in the displayed
+list. Three formats:
+
+- **CSV…** — every row, every column, no images. Importable
+  into Excel, Numbers, Google Sheets. Fastest of the three.
+- **HTML (with thumbnails)…** — same columns plus a
+  thumbnail column at the front, each cell carrying a
+  base64-embedded JPEG so the resulting `.html` is a single
+  self-contained attachment. Best for e-mail / Slack.
+- **Excel (XLSX, with thumbnails)…** — real `.xlsx` workbook
+  with one row per clip and a JPEG thumbnail anchored over a
+  120px-wide first column. Opens in Excel, Numbers, Google
+  Sheets. Best for handing off to a producer / AE who wants
+  to filter, sort, or layer formulas on top.
+
+The 23 columns covered by every format: Thumbnail (HTML / XLSX
+only), Filename, Codec, Resolution, Display Size, Aspect
+Ratio, FPS, Duration, Size, Date Modified, Date Created
+(filesystem birth time), Date Recorded (camera/container
+metadata), Rating, Title, Description, Reel, Scene, Shot,
+Take, Angle, Camera, Audio Channels, Tags. Empty cells stay
+empty rather than rendering "—" in CSV / XLSX so the
+spreadsheet doesn't fight your filters.
+
+If any clip has no extractable preview (image-only asset
+without a thumbnail path, missing source file, etc.) an alert
+flashes "Wrote thumbnails for N clip(s); M had no extractable
+preview"; XLSX leaves those rows with an empty thumbnail
+column, HTML shows "no preview" in italic.
+
+---
+
 ## Combine Clips (assembly-cut without an NLE)
 
 Convert menu → **Combine Clips…** (⌘⇧J). Renders two or more
@@ -458,8 +493,9 @@ against any folder.
   folder. Every media file under the source is enqueued; the
   global "Maximum parallel conversions" setting controls
   concurrency.
-- **Export Report** — HTML (with embedded base64 thumbnails)
-  or CSV. Defaults to
+- **Export Report** — HTML (with embedded base64 thumbnails),
+  CSV (text only — no images), or Excel XLSX (with embedded
+  thumbnails). Defaults to
   `~/Downloads/PurpleReel/<chain>-<stamp>.<ext>`.
 
 **The sheet has two panes** — chain list on the left (add /

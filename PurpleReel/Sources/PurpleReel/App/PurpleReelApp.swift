@@ -38,7 +38,7 @@ struct PurpleReelApp: App {
     /// an alert — these are user-driven file writes so we want to
     /// be explicit when they fail (vs the silent NSLog the
     /// scanner / queue use).
-    private enum ReportFormat { case csv, html }
+    private enum ReportFormat { case csv, html, xlsx }
 
     @MainActor
     private func runReportExport(_ format: ReportFormat) {
@@ -49,7 +49,12 @@ struct PurpleReelApp: App {
             : appState.displayedAssets
         guard !scope.isEmpty else { return }
         let panel = NSSavePanel()
-        let suffix = format == .csv ? "csv" : "html"
+        let suffix: String
+        switch format {
+        case .csv:  suffix = "csv"
+        case .html: suffix = "html"
+        case .xlsx: suffix = "xlsx"
+        }
         panel.allowedContentTypes = [
             .init(filenameExtension: suffix) ?? .data
         ]
@@ -73,6 +78,17 @@ struct PurpleReelApp: App {
                         let alert = NSAlert()
                         alert.messageText = "Report written with \(r.skipped) missing preview(s)."
                         alert.informativeText = "Wrote thumbnails for \(r.written) clip(s); \(r.skipped) clip(s) had no extractable preview (image-only assets without a thumbnail path, missing source files, etc.) and show as 'no preview' in the report."
+                        alert.runModal()
+                    }
+                case .xlsx:
+                    let r = try await XLSXReportWriter.writeXLSX(
+                        assets: scope, to: url, appState: appState
+                    )
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                    if r.skipped > 0 {
+                        let alert = NSAlert()
+                        alert.messageText = "Workbook written with \(r.skipped) missing preview(s)."
+                        alert.informativeText = "Embedded thumbnails for \(r.written) clip(s); \(r.skipped) clip(s) had no extractable preview (image-only assets without a thumbnail path, missing source files, etc.) and show as an empty thumbnail column."
                         alert.runModal()
                     }
                 }
@@ -181,6 +197,9 @@ struct PurpleReelApp: App {
                     }
                     Button("HTML (with thumbnails)…") {
                         runReportExport(.html)
+                    }
+                    Button("Excel (XLSX, with thumbnails)…") {
+                        runReportExport(.xlsx)
                     }
                 }
                 .disabled(appState.displayedAssets.isEmpty)

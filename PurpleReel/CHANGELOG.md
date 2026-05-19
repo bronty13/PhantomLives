@@ -10,6 +10,40 @@ Newest first.
 
 ---
 
+## Sprint 9 — Excel (XLSX) report with embedded thumbnails
+
+File → Export Report → **Excel (XLSX, with thumbnails)…** —
+producer / AE deliverable with one row per clip and a JPEG
+thumbnail anchored over the first column. Closes Kyno-parity
+rows 16/24 (Excel report with thumbnails was the single most
+common producer ask in the Kyno feature surveys).
+
+- New `Services/XLSXReportWriter.swift` builds the OOXML structure
+  (the 8 XML parts + `xl/media/imageN.jpeg`) into a temp directory
+  and shells out to `/usr/bin/zip -r -X -q` to seal the `.xlsx`.
+  Pure Swift otherwise — no XLSX library dependency.
+- Cell strings inlined via `<c t="inlineStr">` so there's no
+  `sharedStrings.xml` to maintain.
+- Image anchors via `<xdr:oneCellAnchor>` in `drawing1.xml` —
+  each thumbnail pinned to its asset's row at the top-left, sized
+  in EMU (9525 EMU per pixel at 96dpi). 120px-wide thumbnails;
+  height computed from the asset's actual pixel aspect ratio
+  (falls back to 16:9). Row heights bumped to ~51pt so the image
+  doesn't crowd the gridlines.
+- Filenames XML-escaped (`&`, `<`, `>`, `"`, `'`) so a clip named
+  `weird<&>name.mov` produces valid XML, not garbage.
+- 5 new tests (`XLSXReportWriterTests`) covering: empty-list valid
+  workbook, content-types declares spreadsheetml MIME, sheet
+  contains header + asset filenames, special characters escape
+  correctly, no drawing reference when there are no thumbs.
+- File menu → Export Report submenu now lists three formats:
+  CSV, HTML (with thumbnails), Excel (XLSX, with thumbnails).
+- USER_MANUAL gets a new "## Reports — Producer / AE
+  deliverables" section documenting all three formats and the
+  23-column schema.
+
+---
+
 ## Sprint 8 — Hover-scrub polish (more frames + SMPTE TC tooltip)
 
 Hover-scrub thumbnails (Kyno-parity row 67) were already shipped in
