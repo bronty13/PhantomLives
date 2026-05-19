@@ -195,7 +195,7 @@ actor MediaScanner {
     /// Tech fields produced by `loadAVTech`. Decoupled from `Asset`
     /// so it crosses the TaskGroup boundary without needing the
     /// caller's actor isolation.
-    fileprivate struct AVTech: Sendable {
+    struct AVTech: Sendable {
         var codec: String?
         var widthPx: Int?
         var heightPx: Int?
@@ -209,7 +209,7 @@ actor MediaScanner {
     /// Static so the TaskGroup child task can call it without
     /// reaching back into the actor. All work is on AVAsset which
     /// has its own internal concurrency.
-    private static func loadAVTech(url: URL) async -> AVTech {
+    static func loadAVTech(url: URL) async -> AVTech {
         var tech = AVTech()
         let avAsset = AVURLAsset(url: url)
         do {
@@ -260,7 +260,7 @@ actor MediaScanner {
         return tech
     }
 
-    fileprivate static func applyAVTech(_ tech: AVTech, to asset: inout Asset) {
+    static func applyAVTech(_ tech: AVTech, to asset: inout Asset) {
         asset.codec            = tech.codec
         asset.widthPx          = tech.widthPx
         asset.heightPx         = tech.heightPx

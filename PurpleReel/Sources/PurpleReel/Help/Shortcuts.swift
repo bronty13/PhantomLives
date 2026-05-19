@@ -122,6 +122,8 @@ enum Shortcuts {
         .init(.logging, "⌥S",    "Remove most-recent subclip",
               source: "AppState.removeLastSubclipForSelection"),
         .init(.logging, "⌘0…⌘5", "Set rating (0 = unrated)"),
+        .init(.logging, "Rejected", "Mark clip as Rejected (right-click → Rating → Rejected; Metadata menu)",
+              source: "AppState.setRating(stars: -1)"),
         .init(.logging, "⌘⇧T",  "Edit Tags sheet (batch tag editor)",
               source: "AppState.batchTagSheetVisible"),
         .init(.logging, "⌘⇧M",  "Edit Multiple metadata across selection",
@@ -158,6 +160,8 @@ enum Shortcuts {
               source: "File menu → Open with Default App"),
         .init(.view, "⌘⇧D", "Toggle drilldown for selected folder (Kyno-compat)",
               source: "BrowserView (drilldown toolbar)"),
+        .init(.convert, "Menu",  "Send to DaVinci Resolve (right-click → Send To → DaVinci Resolve)",
+              source: "AssetContextMenu (Send To submenu); ⌘⇧D collides with drilldown so ships menu-only"),
 
         // ---- Window ----
         .init(.window, "⌘,",  "Open Settings",

@@ -64,6 +64,20 @@ struct AssetContextMenu: View {
         Menu("Send To") {
             Button("SFTP Delivery…") { appState.sftpSheetVisible = true }
             Button("Verified Backup…") { appState.backupSheetVisible = true }
+            // Send → DaVinci Resolve (Kyno-parity, Image #100). The
+            // Resolve / Resolve Studio bundle IDs are tried in turn;
+            // disable the button when neither is installed so the
+            // menu doesn't lie about what'll happen.
+            if let resolve = resolveAppURL {
+                // Kyno's binding (⌘⇧D) collides with PurpleReel's
+                // Sprint-1 Kyno-compat alias for drilldown toggle.
+                // Ship without a shortcut — menu-only — and let the
+                // user discover it through the menu. Pinning the
+                // shortcut would silently break one of the two.
+                Button("DaVinci Resolve…") {
+                    sendSelectionToResolve(via: resolve)
+                }
+            }
         }
         if kind == .video || kind == .audio {
             Menu("Convert") {
@@ -108,12 +122,24 @@ struct AssetContextMenu: View {
 
     @ViewBuilder private var metadataSection: some View {
         Menu("Rating") {
-            ForEach(0...5, id: \.self) { stars in
-                Button(stars == 0 ? "Unrated"
-                                   : String(repeating: "★", count: stars)) {
+            // 5..1 stars, then Unrated (0), then Rejected (-1) per
+            // Kyno's right-click rating submenu (Image #98). Rejected
+            // is a sentinel value (`stars = -1`) rather than a new
+            // column — the rating table's stars Int already accepts
+            // any value, so no schema migration needed.
+            ForEach((1...5).reversed(), id: \.self) { stars in
+                Button(String(repeating: "★", count: stars)) {
                     appState.selectedAssetPath = asset.path
                     appState.setRating(stars: stars)
                 }
+            }
+            Button("Unrated") {
+                appState.selectedAssetPath = asset.path
+                appState.setRating(stars: 0)
+            }
+            Button("Rejected") {
+                appState.selectedAssetPath = asset.path
+                appState.setRating(stars: -1)
             }
         }
         Button("Tags…") {
@@ -145,6 +171,58 @@ struct AssetContextMenu: View {
             appState.selectedAssetPath = asset.path
             appState.autoDescribeSelected()
         }
+        Divider()
+        // Pre-analyze (Kyno-parity, Image #97). Re-runs the AVAsset
+        // probe (duration / codec / dims / fps / audio codec) on the
+        // selected clip(s) and writes the refreshed values to the DB.
+        // Useful when a clip was scanned with stale metadata (e.g.
+        // before the user fixed the camera's clock) or when the user
+        // wants to force a re-derive after editing the source file
+        // out-of-band.
+        Button("Pre-analyze") {
+            appState.preAnalyzeSelected()
+        }
+        .help("Re-runs AVAsset probe (duration, codec, dims, fps) on the selected clip(s) and refreshes the catalog. Useful after fixing source-file metadata out-of-band.")
+    }
+
+    // MARK: - DaVinci Resolve send-to helpers
+
+    /// Resolved URL of either DaVinci Resolve or DaVinci Resolve
+    /// Studio, whichever is installed first. nil = neither found,
+    /// so we hide the menu item instead of letting the user click a
+    /// no-op.
+    private var resolveAppURL: URL? {
+        // The free-tier and Studio bundles ship under different
+        // bundle IDs; check both. Order matters only for the disabled-
+        // menu fallback — we never need both at once.
+        let bundles = [
+            "com.blackmagic-design.DaVinciResolve",
+            "com.blackmagic-design.DaVinciResolveStudio",
+        ]
+        for id in bundles {
+            if let url = NSWorkspace.shared
+                .urlForApplication(withBundleIdentifier: id) {
+                return url
+            }
+        }
+        return nil
+    }
+
+    /// Hand the selection off to DaVinci. Multi-selection lands as
+    /// one `open` call so Resolve imports them into the same Media
+    /// Pool batch.
+    private func sendSelectionToResolve(via app: URL) {
+        let urls: [URL]
+        if appState.selectedAssetPaths.contains(asset.path),
+           appState.selectedAssetPaths.count > 1 {
+            urls = appState.selectedAssetPaths.map {
+                URL(fileURLWithPath: $0)
+            }
+        } else {
+            urls = [URL(fileURLWithPath: asset.path)]
+        }
+        NSWorkspace.shared.open(urls, withApplicationAt: app,
+                                  configuration: NSWorkspace.OpenConfiguration())
     }
 
     /// Categorized Convert submenu (Kyno-parity). Recently-used presets
@@ -195,7 +273,12 @@ struct AssetContextMenu: View {
         if handlers.isEmpty {
             Text("No registered handlers").foregroundStyle(.secondary)
         } else {
-            ForEach(handlers.prefix(8), id: \.self) { app in
+            // Kyno-parity (Image #99): show every registered handler,
+            // not just the first 8. The 8-cap was leaving common apps
+            // (Compressor, Pixelmator Pro, VLC) off the list when a
+            // user had a dozen+ video apps installed. NSWorkspace
+            // returns them already sorted by relevance.
+            ForEach(handlers.prefix(20), id: \.self) { app in
                 Button(app.deletingPathExtension().lastPathComponent) {
                     NSWorkspace.shared.open([url], withApplicationAt: app,
                                               configuration: NSWorkspace.OpenConfiguration())

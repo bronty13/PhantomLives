@@ -17,6 +17,73 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C7 — Right-click polish (Rejected / Send to Resolve / Pre-analyze / richer Open With)
+
+Closes 4 of 5 Kyno-parity gaps surfaced by the right-click screenshots
+(Images #94-#102). Camera/Creative LUT split deferred to a follow-up
+because it needs a real `clip_metadata` schema migration.
+
+**Rejected rating state** (Image #98). Sentinel `stars = -1` rather
+than a schema migration — the `rating` table's `stars: Int` column
+already accepts any value, so the existing row layout carries it
+straight through.
+
+- `AssetContextMenu.metadataSection` Rating submenu adds a
+  Rejected entry alongside the 5 stars + Unrated.
+- `PurpleReelApp.swift` Metadata → Rating menu mirrors the new shape.
+- `BrowserView.ratingDots(_:)` renders rejected clips as a single
+  red `xmark.circle.fill` instead of a star row.
+- `ReportExporter.csvRow` / `htmlRow` emit the literal `Rejected`
+  string when stars < 0, preventing
+  `String(repeating: "★", count: -1)` crashes.
+- `≥ N stars` filters naturally exclude rejected clips because any
+  positive threshold rejects -1.
+- 3 new tests (`RejectedRatingTests`) covering label rendering,
+  Codable round-trip with negative stars, and filter exclusion.
+
+**Send To → DaVinci Resolve** (Image #100). New entry in the right-
+click Send To submenu. Looks up the Resolve bundle ID
+(`com.blackmagic-design.DaVinciResolve` or `.DaVinciResolveStudio`)
+via `NSWorkspace.urlForApplication(withBundleIdentifier:)` and hides
+the entry when neither is installed. Multi-selection lands as a
+single `open` call so Resolve imports them as one batch into the
+Media Pool.
+
+Ships menu-only (no shortcut). Kyno binds ⌘⇧D to this but
+PurpleReel's Sprint-1 Kyno-compat alias already wires ⌘⇧D to the
+drilldown toggle — pinning the same combo here would silently break
+one of the two.
+
+**Pre-analyze** (Image #97). New menu item under the AI section in
+the right-click menu (mirrors Kyno's bottom-of-menu placement).
+Walks the multi-selection (or the single active clip), re-runs
+`MediaScanner.loadAVTech` for each, applies the refreshed
+duration / codec / dims / fps / audio codec / recordedAt / isVFR
+fields, and writes the updated rows back to the DB. Useful after the
+user has fixed source-file metadata out-of-band (corrected the
+camera clock, repaired a partial container, etc.) without doing a
+full workspace rescan.
+
+`MediaScanner.loadAVTech` / `applyAVTech` / `AVTech` struct dropped
+their `fileprivate` keywords so `AppState.preAnalyzeSelected()` can
+call into them without duplicating probe logic.
+
+**Richer Open With** (Image #99). The 8-handler cap was clipping
+common video apps (Compressor, Pixelmator Pro, VLC) when a user had
+a dozen+ installed. Bumped to 20 — NSWorkspace already sorts by
+relevance, so the most likely-useful apps still appear first.
+
+**Camera LUT + Creative LUT split** — *deferred*. The dual-slot UI
+already lives in C5's VideoSettingsSheet LUTs tab, but persisting
+per-clip Camera vs Creative selections needs a `clip_metadata`
+schema migration (two new columns) plus repath through the player /
+transcode pipelines. Tracked as the C7 follow-up; right-click
+Camera LUT / Creative LUT submenus will ship alongside it.
+
+3 new tests (RejectedRatingTests); full suite green.
+
+---
+
 ### C6 — Non-modal Transcode Queue window
 
 Original complaint that kicked off this whole reshape (Image #77 →

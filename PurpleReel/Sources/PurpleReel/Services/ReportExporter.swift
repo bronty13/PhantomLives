@@ -223,8 +223,14 @@ enum ReportExporter {
         let meta = asset.rowId.flatMap { appState.clipMetadataIndex[$0] }
         let tags = appState.tagIndex[asset.path]?.sorted()
             .joined(separator: ", ") ?? ""
-        let rating = appState.ratingIndex[asset.path]
-            .map { String(repeating: "★", count: $0) } ?? ""
+        // `stars = -1` means Rejected (Kyno-parity, C7); render as
+        // an explicit label so the HTML report carries the intent.
+        // Anything else is a non-negative star count.
+        let rating: String = {
+            guard let s = appState.ratingIndex[asset.path] else { return "" }
+            if s < 0 { return "Rejected" }
+            return String(repeating: "★", count: s)
+        }()
         let duration = asset.durationSeconds.map(formatDuration) ?? "—"
         let createdStr = asset.createdAt.map(dateString) ?? "—"
         let recordedStr = asset.recordedAt.map(dateString) ?? "—"

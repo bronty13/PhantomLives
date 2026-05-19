@@ -57,6 +57,7 @@ Generated from `Sources/PurpleReel/Help/Shortcuts.swift` — do not edit by hand
 | `S` | Save subclip from I/O range |
 | `⌥S` | Remove most-recent subclip |
 | `⌘0…⌘5` | Set rating (0 = unrated) |
+| `Rejected` | Mark clip as Rejected (right-click → Rating → Rejected; Metadata menu) |
 | `⌘⇧T` | Edit Tags sheet (batch tag editor) |
 | `⌘⇧M` | Edit Multiple metadata across selection |
 | `⌘⌥M` | Focus Metadata pane Title field (Kyno-compat) |
@@ -73,6 +74,7 @@ Generated from `Sources/PurpleReel/Help/Shortcuts.swift` — do not edit by hand
 | `⌘⇧J` | Combine Clips — assembly-cut head-to-tail |
 | `⌘⇧Y` | Workflow Chains — offload → transcode → report |
 | `⌘⇧C` | Copy and Verify (open Verified Backup sheet) |
+| `Menu` | Send to DaVinci Resolve (right-click → Send To → DaVinci Resolve) |
 
 ## View
 
@@ -94,4 +96,4 @@ Generated from `Sources/PurpleReel/Help/Shortcuts.swift` — do not edit by hand
 
 ---
 
-Total: **58** documented shortcuts.
+Total: **60** documented shortcuts.

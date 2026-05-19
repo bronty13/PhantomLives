@@ -1347,6 +1347,39 @@ final class AppState: ObservableObject {
         return removed
     }
 
+    // MARK: - Pre-analyze (Kyno-parity, C7)
+
+    /// Re-run the AVAsset probe on the multi-selection (or the single
+    /// active clip), refreshing duration / codec / dims / fps / audio
+    /// codec / recordedAt / isVFR in the catalog. Useful after the
+    /// user has fixed source-file metadata out-of-band (e.g. corrected
+    /// the camera's clock, repaired a partial container) and wants
+    /// PurpleReel to pick up the new values without doing a full
+    /// workspace rescan.
+    func preAnalyzeSelected() {
+        let targets: [Asset]
+        if !selectedAssetPaths.isEmpty {
+            targets = displayedAssets.filter { selectedAssetPaths.contains($0.path) }
+        } else if let a = selectedAsset {
+            targets = [a]
+        } else {
+            return
+        }
+        guard !targets.isEmpty else { return }
+        Task { @MainActor in
+            for var asset in targets {
+                let url = URL(fileURLWithPath: asset.path)
+                guard FileManager.default.fileExists(atPath: url.path) else {
+                    continue
+                }
+                let tech = await MediaScanner.loadAVTech(url: url)
+                MediaScanner.applyAVTech(tech, to: &asset)
+                try? db.upsertAssets([asset])
+            }
+            await rescan()
+        }
+    }
+
     // MARK: - Rating + description
 
     func setRating(stars: Int) {

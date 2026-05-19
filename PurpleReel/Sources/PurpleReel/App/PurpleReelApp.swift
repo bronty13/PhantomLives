@@ -387,6 +387,13 @@ struct PurpleReelApp: App {
                         .keyboardShortcut(KeyEquivalent(Character("\(stars)")),
                                           modifiers: [.command])
                     }
+                    // Kyno-parity (Image #98). Rejected = stars < 0
+                    // sentinel; filters that gate on "≥ N stars"
+                    // naturally exclude rejected clips.
+                    Button("Rejected") {
+                        appState.setRating(stars: -1)
+                    }
+                    .disabled(appState.selectedAsset == nil)
                 }
                 Button("Tags…") {
                     appState.batchTagSheetVisible = true

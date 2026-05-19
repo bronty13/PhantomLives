@@ -565,11 +565,20 @@ struct BrowserView: View {
     @ViewBuilder
     private func ratingDots(_ asset: Asset) -> some View {
         let stars = starsForRow(asset.rowId)
-        HStack(spacing: 1) {
-            ForEach(0..<5) { i in
-                Image(systemName: i < stars ? "star.fill" : "star")
-                    .font(.system(size: 9))
-                    .foregroundStyle(i < stars ? .yellow : .secondary.opacity(0.4))
+        if stars < 0 {
+            // Rejected sentinel (Kyno-parity, C7). One red "no" badge
+            // instead of the star row so the state reads at a glance.
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(.red)
+                .help("Rejected")
+        } else {
+            HStack(spacing: 1) {
+                ForEach(0..<5) { i in
+                    Image(systemName: i < stars ? "star.fill" : "star")
+                        .font(.system(size: 9))
+                        .foregroundStyle(i < stars ? .yellow : .secondary.opacity(0.4))
+                }
             }
         }
     }
