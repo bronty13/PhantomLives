@@ -95,15 +95,28 @@ signs (Developer ID if available, ad-hoc otherwise). `install.sh`
 quits any running copy and ditto-copies into `/Applications/` so TCC
 permissions stick across rebuilds.
 
+## macOS permissions
+
+PurpleReel needs four distinct TCC permissions: Files & Folders
+(Movies / Downloads / Documents), optional Full Disk Access,
+Removable Volumes, and Network Volumes. On macOS 15+ the last two
+use consent-on-first-use — macOS prompts inline the first time
+PurpleReel touches a USB drive or NAS share; there's nothing to
+configure ahead of time in System Settings. The first-launch
+**Privacy & Security check** wizard explains the model and offers
+a *Trigger prompt…* action for users who want to grant proactively.
+See [`USER_MANUAL.md`](USER_MANUAL.md#privacy--security-on-macos-15-sequoia--tahoe) for the full walk-through.
+
 ## Test
 
 ```sh
 ./run-tests.sh
 ```
 
-28 unit tests across hashing (FIPS vectors), MHL/FCPXML writers
+250+ unit tests across hashing (FIPS vectors), MHL/FCPXML writers
 (well-formedness + escape), Whisper SRT parser, batch-rename token
-expansion, BK-tree clustering, window-state guard. ~2s wall time.
+expansion, BK-tree clustering, window-state guard, Privacy &
+Security probes. ~2s wall time.
 
 ## Docs
 

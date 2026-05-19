@@ -10,6 +10,44 @@ Newest first.
 
 ---
 
+## C40 — Tahoe-correct Privacy & Security wizard
+
+The first-launch Privacy & Security wizard previously told users to
+grant Removable Volumes and Network Volumes in System Settings, then
+tick a checkbox. On macOS 15+ (Sequoia / Tahoe) those rows in System
+Settings → Privacy & Security don't exist until an app has actually
+attempted to read from a real mount and triggered a TCC prompt —
+there is no "Add app" affordance, so the instructions were
+unfollowable. The wizard now reflects the consent-on-first-use model:
+
+- Header subtitle and per-row blurbs explain that macOS will prompt
+  inline when PurpleReel first touches a USB drive / SD card / NAS
+  share — no preparation in System Settings is needed.
+- The **Trigger prompt…** button on each row fires the OS dialog on
+  demand: Removable opens an `NSOpenPanel` rooted at `/Volumes/`,
+  Network kicks Finder's Connect-to-Server panel plus the same
+  picker, then PurpleReel attempts the read against the chosen
+  volume so macOS will Allow/Deny inline.
+- The checkbox is now **Don't remind me** — purely a nag-dismiss
+  flag. It auto-checks when a Trigger prompt succeeds, and a tooltip
+  makes clear it grants nothing on its own.
+- Per-row status line echoes the outcome (granted / cancelled /
+  denied + reason) without an extra alert.
+- Auto-detected rows (Files & Folders, Full Disk Access) and the
+  Re-check / Quit / Done footer are unchanged.
+
+New `Tests/PurpleReelTests/PermissionsCheckTests.swift` covers
+`canRead`, the new `attemptRead(at:)` shared helper, `Result`'s
+`hasMinimumViable` short-circuit, and parseability of the deep-link
+URLs. UserDefaults keys changed from `permissionsRemovableConfirmed`
+/ `permissionsNetworkConfirmed` to `…Dismissed` to match the new
+semantics — users who'd previously ticked the boxes will see the
+rows re-appear once. Docs: USER_MANUAL.md gains a *Privacy &
+Security on macOS 15+* subsection; README.md mentions it under
+*macOS permissions*.
+
+---
+
 ## v1.0 — Kyno parity + Beyond-Kyno polish (milestone)
 
 **Shipped:** all 85 rows of `KYNO_RESEARCH.md` are either

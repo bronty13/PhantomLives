@@ -844,6 +844,64 @@ directory. Restart for full effect.
 
 ---
 
+## Privacy & Security on macOS 15+ (Sequoia / Tahoe)
+
+PurpleReel reads from four distinct TCC permission classes. The
+first-launch **Privacy & Security check** wizard (also reachable any
+time from **PurpleReel → Re-check Privacy & Security…**) explains
+where each one lives and walks you through them.
+
+**Auto-detected** (PurpleReel probes by attempting a directory
+listing):
+
+- **Movies / Downloads / Documents folders** — Files & Folders class.
+  Granted via the standard macOS *Files & Folders* pane.
+- **Full Disk Access** — optional catch-all. Covers the three folder
+  grants above but does **not** cover Removable or Network Volumes
+  on macOS 15+.
+
+**Consent-on-first-use** (no preparation in System Settings is
+possible — macOS prompts inline):
+
+- **Removable Volumes** — USB sticks, SD cards, camera-card mounts.
+- **Network Volumes** — SMB / AFP / NFS shares.
+
+On macOS 15+ the *Removable Volumes* and *Network Volumes* rows in
+System Settings → Privacy & Security only come into existence after
+PurpleReel has already tried to read from a real mount and macOS
+issued an Allow/Deny dialog. There is no way to grant these
+proactively from System Settings, so the older "open Settings →
+toggle the app → confirm in the wizard" flow simply doesn't work
+on Tahoe.
+
+The wizard handles this with two affordances:
+
+- **Trigger prompt…** — fires the OS dialog on demand without
+  waiting until you happen to plug a drive in. For Removable, this
+  opens an open-panel rooted at `/Volumes/` where you pick a USB /
+  SD mount; PurpleReel attempts to read it and macOS asks you to
+  Allow. For Network, the wizard kicks Finder's Connect-to-Server
+  panel so you can mount your NAS, then the same picker so
+  PurpleReel can attempt the read.
+- **Don't remind me** — hides the row on future launches. This is
+  purely a UI flag; it grants nothing and won't stop the inline
+  OS prompt from appearing the first time PurpleReel touches that
+  volume class. The checkbox auto-ticks when a Trigger prompt
+  succeeds.
+
+If macOS denies the read, the wizard echoes the failure reason next
+to the row. Re-run *Trigger prompt…* once you've fixed the
+underlying issue (re-mounted the volume, granted from the Files &
+Folders pane, etc).
+
+After granting an *auto-detected* permission while PurpleReel is
+running, you may need to quit and relaunch — macOS doesn't always
+apply TCC changes to a live process. The wizard's **Re-check**
+button refreshes the auto-detected rows; the **Quit PurpleReel**
+button is there for the relaunch case.
+
+---
+
 ## Where things land
 
 | What | Where |
