@@ -17,6 +17,67 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C11 — Export FCPX XML dialog redesign
+
+Inserted Kyno's options dialog (Image #88) between the menu click
+and the actual file write. Every FCPXML export path (File menu,
+right-click Send To, AssetContextMenu) now lands on the same dialog,
+which collects the user's preferences before `FCPXMLWriter` writes.
+
+**New model** — `Models/FCPXMLExportOptions.swift`:
+- `eventName` — editable string; defaults to `PurpleReel Library
+  <timestamp>` for all-catalogued exports or `PurpleReel — <name>`
+  for single-clip exports.
+- `fileReference: .copyToLibrary` / `.leaveInPlace` — controls
+  whether the FCPXML embeds copy-to-library hints.
+- `useRelativePaths: Bool` — emit `<media-rep>` URLs relative to the
+  FCPXML's directory (for when the user is handing off the XML +
+  source folder together).
+- `openExportedFile: Bool` — `NSWorkspace.open` to FCP after write.
+- **Keywords**: `keywordsFromTags` (default on), `keywordsFromSubclips`,
+  `keywordsFromFolders` + a `folderKeywordScope`
+  (`.containingFolder` / `.allParents`).
+- **Favorites**: `favoritesFromSubclips`, `favoritesFromInOutPoints`,
+  `favoritesFromRating` (default on) + `favoritesMinStars` (default
+  1, threshold "any rated clip is a Favorite").
+
+**Writer changes** — `FCPXMLWriter.makeXML` / `.write` gained an
+optional `options:` parameter; `assetClipElement` reads it to decide
+which keyword sources concatenate (one comma-joined `<keyword>`
+element per clip) and which Favorite `<rating>` ranges emit (whole-
+clip vs per-subclip). Rejected clips (`stars = -1`, C7 sentinel) are
+explicitly excluded from Favorite emission regardless of threshold.
+
+**New file** — `Views/FCPXMLExportSheet.swift`. Two-section layout
+matching Image #88: Library / Event / Files at the top, Metadata
+Mapping with Keywords + Favorites checkboxes below. The "From
+folders" / "From rating" rows reveal their scope/threshold Picker
+inline when ticked (no flicker on toggle).
+
+**AppState plumbing** — the legacy
+`exportFCPXML(scope:openInFCP:)` signature still exists but now opens
+the dialog instead of writing immediately; the actual write moved to
+a new overload `exportFCPXML(scope:options:)` that the dialog's
+Export button calls. ContentView gains an `.sheet(item:)`
+presentation bound to `appState.fcpxmlExportSheetState`.
+
+7 new tests (`FCPXMLExportOptionsTests`):
+- Keywords from tags only (default) emit one comma-joined value
+- Keywords from folders / containing-folder scope emits only parent
+- Keywords from folders / all-parents scope walks the ancestor chain
+- All keyword sources off → no `<keyword>` element emitted
+- Favorites threshold honors `favoritesMinStars` (3★ + threshold 4
+  doesn't emit; 4★ + threshold 4 does)
+- Rejected clips (-1★) are never Favorited
+- `favoritesFromSubclips` emits a Favorite range per subclip
+
+One existing test updated (`FCPXMLWriterTests.testLowRatingDoesNotEmitFavorite`)
+to pin the strict-threshold path explicitly with `favoritesMinStars
+= 4`, since the default changed from a hard-coded 4 to a dialog-
+exposed 1.
+
+---
+
 ### C10 — Batch Rename redesign + Manage Filename Presets
 
 Layered a named-preset system on top of the existing token engine

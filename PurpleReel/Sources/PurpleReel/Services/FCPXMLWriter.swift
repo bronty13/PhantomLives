@@ -42,7 +42,8 @@ enum FCPXMLWriter {
     }
 
     static func makeXML(eventName: String, items: [FCPXMLExportInput],
-                        toolVersion: String) -> String {
+                        toolVersion: String,
+                        options: FCPXMLExportOptions = .defaults) -> String {
         var ids = IDs()
         var resources = ""
         var clips = ""
@@ -83,11 +84,14 @@ enum FCPXMLWriter {
             clips += assetClipElement(
                 assetRef: assetID, formatID: formatID,
                 name: item.asset.filename,
+                assetPath: item.asset.path,
                 duration: duration, fps: fps,
                 markers: item.markers,
                 tags: item.tags,
                 rating: item.rating,
-                clipMetadata: item.clipMetadata
+                subclips: item.subclips,
+                clipMetadata: item.clipMetadata,
+                options: options
             )
 
             for sub in item.subclips {
@@ -115,9 +119,31 @@ enum FCPXMLWriter {
     static func write(eventName: String,
                       items: [FCPXMLExportInput],
                       toolVersion: String,
-                      to url: URL) throws {
-        let xml = makeXML(eventName: eventName, items: items, toolVersion: toolVersion)
+                      to url: URL,
+                      options: FCPXMLExportOptions = .defaults) throws {
+        let xml = makeXML(eventName: eventName, items: items,
+                           toolVersion: toolVersion, options: options)
         try xml.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    /// Emit one keyword per directory component along the asset's
+    /// path according to the dialog's "containing folder" vs "all
+    /// parent folders" pick. The drive root + leading slash are
+    /// stripped so the keywords stay readable.
+    private static func folderKeywords(forAssetPath path: String,
+                                        scope: FCPXMLExportOptions.FolderKeywordScope)
+        -> [String]
+    {
+        let nsPath = (path as NSString)
+            .deletingLastPathComponent
+        let trimmed = nsPath.hasPrefix("/") ? String(nsPath.dropFirst()) : nsPath
+        let parts = trimmed.split(separator: "/").map(String.init)
+        switch scope {
+        case .containingFolder:
+            return parts.last.map { [$0] } ?? []
+        case .allParents:
+            return parts
+        }
     }
 
     // MARK: - Element builders
@@ -144,11 +170,17 @@ enum FCPXMLWriter {
     }
 
     private static func assetClipElement(assetRef: String, formatID: String,
-                                          name: String, duration: Double,
+                                          name: String,
+                                          assetPath: String,
+                                          duration: Double,
                                           fps: Double,
                                           markers: [Marker], tags: [Tag],
                                           rating: Rating?,
-                                          clipMetadata: ClipMetadata? = nil) -> String {
+                                          subclips: [Subclip] = [],
+                                          clipMetadata: ClipMetadata? = nil,
+                                          options: FCPXMLExportOptions = .defaults)
+        -> String
+    {
         let dur = rationalTime(seconds: duration, fps: fps)
         var s = #"    <asset-clip ref="\#(assetRef)" name="\#(escape(name))" "#
         s += #"offset="0s" start="0s" duration="\#(dur)" format="\#(formatID)">"# + "\n"
@@ -160,15 +192,52 @@ enum FCPXMLWriter {
             s += #"      <marker start="\#(mStart)" duration="\#(mDur)" value="\#(escape(note))"/>"# + "\n"
         }
 
-        if !tags.isEmpty {
-            let joined = tags.map { $0.name }.joined(separator: ", ")
+        // Keywords. Sources opt-in via options (Kyno-parity Image #88).
+        // Concatenate every enabled source's keywords into one <keyword>
+        // element so FCP sees them as a single comma-joined annotation —
+        // matches the previous PurpleReel behavior for tags-only.
+        var keywordParts: [String] = []
+        if options.keywordsFromTags, !tags.isEmpty {
+            keywordParts.append(contentsOf: tags.map(\.name))
+        }
+        if options.keywordsFromSubclips, !subclips.isEmpty {
+            keywordParts.append(contentsOf: subclips.map(\.name))
+        }
+        if options.keywordsFromFolders {
+            keywordParts.append(contentsOf:
+                folderKeywords(forAssetPath: assetPath,
+                                scope: options.folderKeywordScope))
+        }
+        if !keywordParts.isEmpty {
+            let joined = keywordParts.joined(separator: ", ")
             s += #"      <keyword start="0s" duration="\#(dur)" value="\#(escape(joined))"/>"# + "\n"
         }
 
-        if let rating, rating.stars >= 4 {
-            // FCP's rating system only has "favorite" (no star ratings);
-            // map 4-5 stars to favorite, others to no rating.
+        // Favorites. Each enabled source emits its own <rating> range —
+        // FCP collapses overlapping ranges in the browser, so emitting
+        // multiple non-overlapping ones (rating-wide + per-subclip)
+        // gives the editor fine-grained Favorite scopes.
+        if options.favoritesFromRating,
+           let rating, rating.stars >= options.favoritesMinStars,
+           rating.stars > 0 {
             s += #"      <rating name="Favorite" start="0s" duration="\#(dur)" value="favorite"/>"# + "\n"
+        }
+        if options.favoritesFromInOutPoints {
+            // Treat the whole clip as the in/out range when we don't
+            // have explicit per-clip in/out marks (PurpleReel stores
+            // those on subclips, not the parent). One Favorite range
+            // covering the full asset is the conservative emit.
+            s += #"      <rating name="Favorite" start="0s" duration="\#(dur)" value="favorite"/>"# + "\n"
+        }
+        if options.favoritesFromSubclips {
+            for sub in subclips {
+                let subStart = rationalTime(seconds: sub.timecodeIn, fps: fps)
+                let subDur = rationalTime(
+                    seconds: max(0.0, sub.timecodeOut - sub.timecodeIn),
+                    fps: fps
+                )
+                s += #"      <rating name="Favorite" start="\#(subStart)" duration="\#(subDur)" value="favorite"/>"# + "\n"
+            }
         }
 
         // Kyno log fields → FCPXML `<metadata>` block. FCP shows these

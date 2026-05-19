@@ -1522,13 +1522,48 @@ final class AppState: ObservableObject {
     }
 
     @Published var lastFCPXMLExportPath: URL?
+    /// C11 — dialog state for `FCPXMLExportSheet`. When non-nil the
+    /// sheet is presented; the menu / right-click actions now open
+    /// the dialog instead of writing the file directly.
+    @Published var fcpxmlExportSheetState: FCPXMLExportSheetState?
 
-    /// Build a Send-to-FCP package: gather every asset (or just the
-    /// selection) plus its markers, subclips, tags, and rating, write
-    /// the FCPXML to `~/Downloads/PurpleReel/exports/`, and (optionally)
-    /// hand it to Final Cut Pro via `open -a`.
+    struct FCPXMLExportSheetState: Identifiable {
+        let id = UUID()
+        let scope: FCPXMLExportScope
+        let options: FCPXMLExportOptions
+    }
+
+    /// Open the Export FCPX XML dialog. The legacy
+    /// `exportFCPXML(scope:openInFCP:)` signature becomes this dialog
+    /// opener so every callsite (menu, right-click, drag-to-FCP) goes
+    /// through Kyno's options screen.
+    func exportFCPXML(scope: FCPXMLExportScope, openInFCP: Bool) {
+        let stamp = exportTimestamp()
+        let eventName: String
+        switch scope {
+        case .allCatalogued:
+            eventName = "PurpleReel Library \(stamp)"
+        case .selectedOnly:
+            if let a = selectedAsset {
+                eventName = "PurpleReel — \(a.filename)"
+            } else {
+                eventName = "PurpleReel Export \(stamp)"
+            }
+        }
+        var opts = FCPXMLExportOptions.defaults
+        opts.eventName = eventName
+        opts.openExportedFile = openInFCP
+        fcpxmlExportSheetState = FCPXMLExportSheetState(
+            scope: scope, options: opts
+        )
+    }
+
+    /// Actual write — called by `FCPXMLExportSheet`'s Export button
+    /// once the user has picked options. Builds the package, writes
+    /// the XML, and (when `openExportedFile`) hands it to Final Cut.
     @discardableResult
-    func exportFCPXML(scope: FCPXMLExportScope, openInFCP: Bool) -> URL? {
+    func exportFCPXML(scope: FCPXMLExportScope,
+                       options: FCPXMLExportOptions) -> URL? {
         let targetAssets: [Asset]
         switch scope {
         case .allCatalogued: targetAssets = assets
@@ -1555,18 +1590,16 @@ final class AppState: ObservableObject {
         do {
             let dir = try fcpxmlExportDirectory()
             let stamp = exportTimestamp()
-            let eventName = scope == .allCatalogued
-                ? "PurpleReel Library \(stamp)"
-                : "PurpleReel — \(targetAssets[0].filename)"
             let url = dir.appendingPathComponent("PurpleReel_\(stamp).fcpxml")
             try FCPXMLWriter.write(
-                eventName: eventName,
+                eventName: options.eventName,
                 items: items,
                 toolVersion: AppVersion.marketing,
-                to: url
+                to: url,
+                options: options
             )
             lastFCPXMLExportPath = url
-            if openInFCP {
+            if options.openExportedFile {
                 let fcpURL = URL(fileURLWithPath: "/Applications/Final Cut Pro.app")
                 if FileManager.default.fileExists(atPath: fcpURL.path) {
                     NSWorkspace.shared.open([url], withApplicationAt: fcpURL,

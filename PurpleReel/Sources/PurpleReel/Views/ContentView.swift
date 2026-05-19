@@ -224,6 +224,10 @@ struct ContentView: View {
             ConvertSheet(state: state)
                 .environmentObject(appState)
         }
+        .sheet(item: $appState.fcpxmlExportSheetState) { state in
+            FCPXMLExportSheet(options: state.options, scope: state.scope)
+                .environmentObject(appState)
+        }
         .sheet(isPresented: $appState.shortcutsCheatSheetVisible) {
             ShortcutsCheatSheet()
         }

@@ -88,6 +88,10 @@ final class FCPXMLWriterTests: XCTestCase {
     }
 
     func testLowRatingDoesNotEmitFavorite() {
+        // C11 changed the default `favoritesMinStars` from a hard-
+        // coded 4 to 1 (Kyno-parity dialog default). This test pins
+        // the strict-threshold path explicitly: a 2★ clip exported
+        // with min = 4 should NOT mark Favorite.
         var inputs = makeInputs()
         inputs[0] = FCPXMLExportInput(
             asset: inputs[0].asset,
@@ -96,8 +100,11 @@ final class FCPXMLWriterTests: XCTestCase {
             tags: inputs[0].tags,
             rating: Rating(assetId: 1, stars: 2, colorLabel: nil, description: nil)
         )
+        var opts = FCPXMLExportOptions.defaults
+        opts.favoritesMinStars = 4
         let xml = FCPXMLWriter.makeXML(eventName: "T", items: inputs,
-                                         toolVersion: "0.1.0")
+                                         toolVersion: "0.1.0",
+                                         options: opts)
         XCTAssertFalse(xml.contains(#"<rating name="Favorite""#))
     }
 }
