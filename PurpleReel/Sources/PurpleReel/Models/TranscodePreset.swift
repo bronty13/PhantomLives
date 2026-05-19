@@ -242,6 +242,21 @@ struct TranscodePreset: Identifiable, Hashable, Codable {
                             "{OUT}",
                         ]),
 
+        // ---- Frame.io review (C38) -------------------------------
+        // H.264 1080p MP4 is Frame.io's recommended ingest format:
+        // streams cleanly in their player, no transcoding cost on
+        // upload, AAC audio is universally supported in their review
+        // UI. The TranscodePreset stops at producing the file —
+        // real "auto-upload to my Frame.io project" integration is a
+        // separate feature that needs OAuth + their REST API, and
+        // is deliberately not bundled here.
+        TranscodePreset(id: "frameio-review",
+                        name: "Frame.io Review (H.264 1080p MP4)",
+                        avPresetName: AVAssetExportPreset1920x1080,
+                        fileExtension: "mp4", suffix: "_frameio",
+                        category: .web,
+                        alwaysAvailable: false, ffmpegArgs: nil),
+
         // ---- Audio-only -----------------------------------------
         // C18 — extract the audio track only, AAC in an m4a
         // container. Combine Clips uses this for "glue dialogue

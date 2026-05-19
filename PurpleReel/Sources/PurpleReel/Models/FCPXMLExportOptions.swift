@@ -77,6 +77,12 @@ struct FCPXMLExportOptions: Equatable, Hashable {
     /// "At least: ★…" picker maps onto this; default to 1 (any rated
     /// clip is a Favorite).
     var favoritesMinStars: Int = 1
+    /// C38 — destination folder for the resulting `.fcpxml` file.
+    /// nil = fall back to the legacy `~/Downloads/PurpleReel/exports/`
+    /// path the writer used pre-C38. Non-nil records the user's
+    /// chosen folder; AppState pushes it onto
+    /// `RecentDestinations.Scope.fcpxml` after a successful write.
+    var outputDir: URL? = nil
 }
 
 extension FCPXMLExportOptions {

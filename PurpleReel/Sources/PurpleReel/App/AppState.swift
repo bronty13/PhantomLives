@@ -1907,7 +1907,19 @@ final class AppState: ObservableObject {
         guard !items.isEmpty else { return nil }
 
         do {
-            let dir = try fcpxmlExportDirectory()
+            // C38 — honor the user-picked destination when set;
+            // fall back to the legacy ~/Downloads/PurpleReel/exports/
+            // path when the option is nil (matches pre-C38 default).
+            let dir: URL
+            if let userDir = options.outputDir {
+                try FileManager.default.createDirectory(
+                    at: userDir, withIntermediateDirectories: true
+                )
+                dir = userDir
+                RecentDestinations.push(userDir, scope: .fcpxml)
+            } else {
+                dir = try fcpxmlExportDirectory()
+            }
             let stamp = exportTimestamp()
             let url = dir.appendingPathComponent("PurpleReel_\(stamp).fcpxml")
             try FCPXMLWriter.write(

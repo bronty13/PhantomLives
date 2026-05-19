@@ -17,6 +17,46 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C38 — FCPXML destination picker + Frame.io review preset
+
+Two unrelated mediums bundled.
+
+**Item 10 — Recent destinations for FCPXML export.** Pre-C38 the
+FCPXML export sheet had no destination picker — every export
+landed in the hardcoded `~/Downloads/PurpleReel/exports/` path.
+Users couldn't redirect a one-off export to (say) the production's
+delivery share, and there was no "recent destinations" memory
+across sessions.
+
+- New `RecentDestinations.Scope.fcpxml` enum case alongside
+  `.convert` and `.combine` (matches C22's per-scope pattern).
+- `FCPXMLExportOptions.outputDir: URL?` (nil = legacy default).
+- `AppState.exportFCPXML(scope:options:)` honors the new field:
+  when set, uses it + pushes onto recents; when nil, falls back
+  to the legacy `fcpxmlExportDirectory()` path.
+- `FCPXMLExportSheet` adds a `destinationRow` between the event
+  name and file-reference rows: "Save to:" label + path + a
+  Choose… button + a clock-arrow Menu listing recents (with a
+  "Use Default" item at the top to clear the override). Menu
+  hidden when recents list is empty (first-run UX matches
+  pre-C38).
+
+**Item 11 — Frame.io review preset.** Adds a built-in transcode
+preset that produces Frame.io's recommended ingest format:
+H.264 1080p MP4, AAC audio. Streams cleanly in their player + no
+re-transcode cost on upload + universal audio support in their
+review UI.
+
+- New `frameio-review` preset in `TranscodePreset.all` (web
+  category, suffix `_frameio`).
+- Note: the preset stops at producing the file. Real auto-upload
+  via Frame.io's OAuth + REST API is intentionally deferred —
+  that's a separate feature decision (credentials storage, the
+  C2C "auto-upload as soon as ingested" question, project /
+  workspace mapping). Surfaces as a marketing bullet for now
+  ("PurpleReel exports to Frame.io's recommended format"); real
+  integration is a future commit when there's user demand.
+
 ### C37 — Real backup-step cancel for workflow chains
 
 C32 noted that VerifiedBackupService didn't honor mid-flight

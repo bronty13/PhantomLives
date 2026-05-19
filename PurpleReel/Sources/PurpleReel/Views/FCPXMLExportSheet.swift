@@ -24,6 +24,7 @@ struct FCPXMLExportSheet: View {
                       horizontalSpacing: 12, verticalSpacing: 12) {
                     libraryRow
                     eventNameRow
+                    destinationRow
                     filesRow
                     Divider().gridCellColumns(2)
                     metadataMappingHeader
@@ -72,6 +73,56 @@ struct FCPXMLExportSheet: View {
             TextField("", text: $options.eventName)
                 .textFieldStyle(.roundedBorder)
                 .frame(maxWidth: 320, alignment: .leading)
+        }
+    }
+
+    /// C38 — explicit destination picker + recents dropdown.
+    /// Defaults to "(default: ~/Downloads/PurpleReel/exports/)";
+    /// once the user picks a folder, the recents list grows.
+    private var destinationRow: some View {
+        GridRow {
+            Text("Save to:").foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Text(options.outputDir?.path
+                      ?? "(default: ~/Downloads/PurpleReel/exports/)")
+                    .font(.callout)
+                    .foregroundStyle(options.outputDir == nil ? .secondary : .primary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button("Choose…") { pickOutputDir() }
+                let recents = RecentDestinations.list(.fcpxml)
+                if !recents.isEmpty {
+                    Menu {
+                        Button("Use Default") {
+                            options.outputDir = nil
+                        }
+                        Divider()
+                        ForEach(recents, id: \.path) { url in
+                            Button(url.path) {
+                                options.outputDir = url
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "clock.arrow.circlepath")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .frame(width: 28)
+                    .help("Recent FCPXML destinations")
+                }
+            }
+            .frame(maxWidth: 460, alignment: .leading)
+        }
+    }
+
+    private func pickOutputDir() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = options.outputDir
+        if panel.runModal() == .OK, let url = panel.url {
+            options.outputDir = url
         }
     }
 

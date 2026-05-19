@@ -18,6 +18,11 @@ enum RecentDestinations {
     enum Scope: String {
         case convert  = "recentDestinations.convert"
         case combine  = "recentDestinations.combine"
+        /// C38 — destination folder for FCPXML export. Pre-C38 the
+        /// path was hardcoded; the picker now records each chosen
+        /// folder so subsequent exports can pull from a dropdown
+        /// rather than re-traversing the picker.
+        case fcpxml   = "recentDestinations.fcpxml"
     }
 
     private static let cap = 6
