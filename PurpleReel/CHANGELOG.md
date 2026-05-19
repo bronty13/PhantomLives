@@ -10,6 +10,37 @@ Newest first.
 
 ---
 
+## Sprint 6 — Sprint 2 verification + zero-based TC honesty
+
+Sweep of the 15 items in `KYNO_RESEARCH.md`'s Sprint-2 ("Migration
+safety net + standalone Smalls") block. Reconnaissance confirmed
+all 15 are already wired in trunk:
+
+- Find Lost Metadata, Paste Metadata, Play-All-Selected, Incremental
+  transcoding (`AppState.confirmConvert` skip-existing check), shift-
+  click hard refresh (`ContentView.swift` modifier detect), smart
+  proxy auto-scale presets, Date Recorded/Created columns, Display
+  size + Aspect ratio columns, LUT-on-frame-export default, audio
+  channel names field, subclip name-collision auto-disambiguate,
+  file-count safety-limit warning, transcoder file-timestamp
+  preservation, fade in/out.
+
+Only honesty gap was the Settings → Advanced → "Use zero-based
+timecode" toggle, which read its UserDefaults key into `_`
+(literally discarded the result) in `Timecode.format(seconds:fps:)`.
+Today every clip already starts at 00:00:00:00 because the formatter
+gets seconds-from-start as input — so the toggle had no observable
+effect. Surprises users who flip it expecting a behavior change.
+
+- **Timecode.swift**: removed the dead `_ = UserDefaults...` placeholder
+  read; trimmed the surrounding comment to clarify that
+  `useZeroBasedTimecode` is reserved for a future container-TC build.
+- **SettingsView (Advanced → Timecode)**: added a caption under the
+  toggle telling users it's reserved for container-embedded source TC
+  surfacing, so they don't think it's broken.
+
+---
+
 ## Sprint 5 — Coming-from-Kyno polish
 
 Verification + final polish on the Kyno compatibility bundle that

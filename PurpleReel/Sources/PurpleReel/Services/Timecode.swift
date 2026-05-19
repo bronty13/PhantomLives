@@ -11,13 +11,10 @@ enum Timecode {
         guard seconds.isFinite, seconds >= 0 else { return "00:00:00:00" }
         let dropFrameOn = UserDefaults.standard.bool(forKey: "useDropFrameTimecode")
         let isDropRate = abs(fps - 29.97) < 0.05 || abs(fps - 59.94) < 0.05
-        // `useZeroBasedTimecode` (Kyno-parity) keeps the start of
-        // every clip at 00:00:00:00 regardless of any container-
-        // embedded start TC. PurpleReel already normalizes from
-        // seconds-from-start, so the flag is a no-op for the
-        // common case but stays here so future container-TC paths
-        // can branch on the same key.
-        _ = UserDefaults.standard.bool(forKey: "useZeroBasedTimecode")
+        // `useZeroBasedTimecode` (Kyno-parity) is reserved for a
+        // future build that surfaces container-embedded source TC.
+        // Today every clip already starts at 00:00:00:00 because
+        // this formatter receives seconds-from-start.
         if dropFrameOn && isDropRate {
             return formatDropFrame(seconds: seconds, fps: fps)
         }

@@ -23,9 +23,9 @@
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.365</string>
+	<string>0.1.366</string>
 	<key>CFBundleVersion</key>
-	<string>365.122c860</string>
+	<string>366.1044488</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSHumanReadableCopyright</key>

@@ -483,6 +483,10 @@ struct AdvancedSettingsView: View {
             Section("Timecode") {
                 Toggle("Use drop-frame timecode", isOn: $dropFrameTC)
                 Toggle("Use zero-based timecode", isOn: $zeroBasedTC)
+                Text("PurpleReel currently normalizes every clip to start at 00:00:00:00, so this toggle's display effect is the same either way. It's reserved for a future build that surfaces container-embedded source timecode (e.g. ARRI / RED / camera-card TC tracks).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Section("Behavior") {
                 Toggle("Confirm copy and move in Navigator",
