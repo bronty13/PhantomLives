@@ -6,6 +6,19 @@ struct PurpleReelApp: App {
     @StateObject private var appState = AppState()
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
+    /// Settings → General → Appearance. "system" = nil ColorScheme
+    /// (follow macOS); "light"/"dark" = force that scheme on every
+    /// scene's root.
+    @AppStorage("appearance") private var appearance: String = "system"
+
+    private var preferredColorScheme: ColorScheme? {
+        switch appearance {
+        case "light": return .light
+        case "dark":  return .dark
+        default:      return nil
+        }
+    }
+
     /// One-shot first-launch sheet. Sticks via
     /// `KynoCompatibility.promptShownKey` so the user only sees it
     /// once per installation; mid-life flips are via Settings →
@@ -77,6 +90,7 @@ struct PurpleReelApp: App {
             ContentView()
                 .environmentObject(appState)
                 .frame(minWidth: 1100, minHeight: 700)
+                .preferredColorScheme(preferredColorScheme)
                 .sheet(isPresented: $showComingFromKyno) {
                     ComingFromKynoSheet()
                 }
@@ -640,6 +654,7 @@ struct PurpleReelApp: App {
             SettingsView()
                 .environmentObject(appState)
                 .frame(minWidth: 640, minHeight: 420)
+                .preferredColorScheme(preferredColorScheme)
         }
     }
 }

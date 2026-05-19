@@ -25,10 +25,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     //   user's window snaps back to defaults on next launch.
     static let windowResetVersion = 3
 
+    private var appearanceCurrent: String = ""
+
     func applicationWillFinishLaunching(_ notification: Notification) {
         WindowStateGuard.applyOnLaunch(
             appName: "PurpleReel",
             resetVersion: Self.windowResetVersion
         )
+        applyAppearance()
+        // SwiftUI's `.preferredColorScheme(...)` only retints SwiftUI
+        // surfaces — title bars, NSOpenPanel, NSAlert, and any AppKit
+        // chrome continue to follow `NSApp.appearance`. Mirror the
+        // Settings → Appearance pick onto the process-wide AppKit
+        // appearance so chrome and content stay consistent. Defaults
+        // change fires on every `set(_:forKey:)` against any key, so
+        // gate the apply on a value-changed check.
+        NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in self?.applyAppearance() }
+    }
+
+    private func applyAppearance() {
+        let key = UserDefaults.standard.string(forKey: "appearance") ?? "system"
+        guard key != appearanceCurrent else { return }
+        appearanceCurrent = key
+        switch key {
+        case "light":
+            NSApp.appearance = NSAppearance(named: .aqua)
+        case "dark":
+            NSApp.appearance = NSAppearance(named: .darkAqua)
+        default:
+            NSApp.appearance = nil
+        }
     }
 }

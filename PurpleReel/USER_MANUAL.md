@@ -727,6 +727,11 @@ Open with ⌘, (standard macOS shortcut).
   toggle — the mode just changes opinionated defaults.
 - **Default view on launch** — List / Grid / Detail. Mid-
   session switches still stick within that session.
+- **Appearance** — Match System / Light / Dark. "Match System"
+  follows macOS Appearance (System Settings → Appearance). The
+  pick applies to SwiftUI content AND AppKit chrome (title bar,
+  Open / Save panels, alerts) — the app stays consistent across
+  both layers.
 - **Workspace Cache (Shared NAS / SAN)** — drops a hidden
   `.purplereel/<file>.json` sidecar next to each clip carrying
   rating, tags, markers, subclips, and log fields. A second

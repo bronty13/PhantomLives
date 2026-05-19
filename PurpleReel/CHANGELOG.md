@@ -10,6 +10,30 @@ Newest first.
 
 ---
 
+## Sprint 7 — Dark mode (Settings → Appearance)
+
+User-facing appearance picker in Settings → General → Appearance:
+**Match System / Light / Dark** (segmented Picker). The pick lives
+in UserDefaults under the `appearance` key.
+
+Applied on two layers so the entire window stays consistent —
+SwiftUI's `.preferredColorScheme(...)` only retints SwiftUI surfaces;
+title bars, NSOpenPanel, NSSavePanel, NSAlert, and any AppKit chrome
+keep following `NSApp.appearance`.
+
+- **SwiftUI**: `.preferredColorScheme(preferredColorScheme)` applied
+  to the WindowGroup root AND the Settings scene root. The shared
+  helper maps `"light" → .light`, `"dark" → .dark`, `"system" → nil`.
+- **AppKit**: `AppDelegate.applyAppearance()` mirrors the same pick
+  onto `NSApp.appearance` (`.aqua` / `.darkAqua` / `nil`). Observes
+  `UserDefaults.didChangeNotification` and re-applies on every flip,
+  gated on a value-changed check so unrelated defaults writes don't
+  thrash the appearance.
+
+USER_MANUAL: documented under Settings → General → Appearance.
+
+---
+
 ## Sprint 6 — Sprint 2 verification + zero-based TC honesty
 
 Sweep of the 15 items in `KYNO_RESEARCH.md`'s Sprint-2 ("Migration

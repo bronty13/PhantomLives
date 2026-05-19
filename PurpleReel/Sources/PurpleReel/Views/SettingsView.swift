@@ -38,6 +38,7 @@ struct GeneralSettingsView: View {
     @AppStorage("applyLUTToExportedFrames") private var applyLUTToExports: Bool = true
     @AppStorage("autoApplySuggestedLUT") private var autoApplySuggestedLUT: Bool = true
     @AppStorage("defaultViewOnLaunch") private var defaultViewOnLaunch: String = "list"
+    @AppStorage("appearance") private var appearance: String = "system"
     @AppStorage(KynoCompatibility.modeKey) private var kynoMode: Bool = false
     @AppStorage(WorkspaceCacheService.enabledDefaultsKey)
     private var workspaceCacheEnabled: Bool = false
@@ -73,6 +74,17 @@ struct GeneralSettingsView: View {
                     Text("Detail").tag("detail")
                 }
                 Text("Mid-session switches still work; this decides what to land on every time the app opens.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Section("Appearance") {
+                Picker("Theme", selection: $appearance) {
+                    Text("Match System").tag("system")
+                    Text("Light").tag("light")
+                    Text("Dark").tag("dark")
+                }
+                .pickerStyle(.segmented)
+                Text("Match System follows macOS Appearance (System Settings → Appearance). Pick Light or Dark to override.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
