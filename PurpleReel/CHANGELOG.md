@@ -17,6 +17,54 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C30 — Per-clip Camera + Creative LUT pinning
+
+Deferred from C5. Camera LUT and Creative LUT are conceptually
+distinct roles — Camera LUT inverts log-encoded source back to
+scene-linear (e.g. SLog3 → Rec.709), Creative LUT layers a
+stylistic grade on top. C5 split them at the
+`TranscodeOptions` layer but the choice was transient — every
+transcode required re-picking. C30 lands per-clip persistence so
+the same look re-applies across sessions automatically.
+
+**Schema** — `DatabaseService.swift` migration v9:
+- Adds `cameraLUTPath TEXT` and `creativeLUTPath TEXT` columns to
+  `clip_metadata` (both NULL by default for existing rows).
+
+**Model** — `ClipMetadata.swift`:
+- Two new nullable fields:
+  `cameraLUTPath: String?` and `creativeLUTPath: String?`.
+- `ClipMetadata.empty` initializer updated to pass nil for both
+  (back-compat default).
+
+**UI** — `MetadataPaneView.swift`:
+- New "LUTs" inspector section with two rows:
+  - Camera row: shows pinned LUT filename + Change… / clear (×),
+    or "None" + Pick… when unset.
+  - Creative row: same affordances.
+- `pickLUT(...)` helper opens NSOpenPanel filtered to
+  `.cube` / `.3dl` / `.dat` / `.lut`.
+- Setting via `appState.updateClipMetadata(\.cameraLUTPath,
+  value:)` reuses the existing string-trim-to-nil persistence
+  pattern; empty string clears.
+
+**Tests** — `ClipMetadataLUTTests.swift` (NEW, 6 cases):
+- `ClipMetadata.empty` has both LUT paths nil.
+- Camera LUT round-trips through DB; creative stays nil
+  independently.
+- Creative LUT round-trips; camera stays nil.
+- Both LUTs persist independently when set together.
+- Replacing a LUT path overwrites the prior value.
+- Nil round-trips correctly (verifies v9 migration's NULL
+  default works).
+
+**Deferred follow-up**: when a single clip is selected in the
+Convert dialog, default the LUT pickers to the pinned paths. That
+requires plumbing `clipMetadata` through `ConvertSheetState` and
+isn't strictly required for the persistence story to be useful
+(users can still pick once and re-pick from Recent the next
+session). Separate commit.
+
 ### C29 — Silent-gotcha sweep: "no results" banner for active filters
 
 Sibling of C21's drilldown-hint banner. When the user lands on a

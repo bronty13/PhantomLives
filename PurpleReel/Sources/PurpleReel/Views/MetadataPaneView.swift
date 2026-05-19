@@ -43,6 +43,7 @@ struct MetadataPaneView: View {
                 titleAndDescription
                 logFieldsGrid
                 audioChannelsBlock
+                lutsBlock
                 tagsBlock
                 fcpProjectsBlock
                 markersBlock
@@ -54,6 +55,94 @@ struct MetadataPaneView: View {
         .onChange(of: appState.clipMetadata) { _, _ in hydrate() }
         .onReceive(NotificationCenter.default.publisher(for: .focusMetadataInput)) { _ in
             titleFocused = true
+        }
+    }
+
+    /// C30 — per-clip Camera + Creative LUT pickers. Pinning a LUT
+    /// on a clip means the Convert dialog defaults its picker to
+    /// that path for any transcode of this asset. The two roles
+    /// compose: camera LUT first (inverse log → scene-linear),
+    /// creative LUT second (stylistic look). Hidden when no asset
+    /// is selected.
+    @ViewBuilder
+    private var lutsBlock: some View {
+        if appState.selectedAsset != nil {
+            Divider()
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "paintpalette")
+                        .foregroundStyle(.tint)
+                    Text("LUTs")
+                        .font(.callout.weight(.semibold))
+                    Spacer()
+                }
+                lutRow(role: "Camera",
+                       path: appState.clipMetadata.cameraLUTPath,
+                       set: { path in
+                           appState.updateClipMetadata(\.cameraLUTPath,
+                                                        value: path ?? "")
+                       })
+                lutRow(role: "Creative",
+                       path: appState.clipMetadata.creativeLUTPath,
+                       set: { path in
+                           appState.updateClipMetadata(\.creativeLUTPath,
+                                                        value: path ?? "")
+                       })
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func lutRow(role: String,
+                         path: String?,
+                         set: @escaping (String?) -> Void) -> some View {
+        HStack(spacing: 8) {
+            Text("\(role):")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 65, alignment: .trailing)
+            if let path, !path.isEmpty {
+                Image(systemName: "doc.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text((path as NSString).lastPathComponent)
+                    .font(.caption.monospaced())
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 0)
+                Button("Change…") { pickLUT(set: set) }
+                    .controlSize(.small)
+                Button {
+                    set(nil)
+                } label: {
+                    Image(systemName: "xmark.circle")
+                }
+                .buttonStyle(.borderless)
+                .help("Clear the saved \(role.lowercased()) LUT for this clip")
+            } else {
+                Text("None")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Button("Pick…") { pickLUT(set: set) }
+                    .controlSize(.small)
+            }
+        }
+    }
+
+    /// C30 — open-panel helper for the per-clip LUT pickers. Same
+    /// allowedFileTypes (.cube/.3dl/.dat/.lut) as the C22 transcode-
+    /// options picker so users can't pick a file LUTService.load
+    /// won't understand.
+    private func pickLUT(set: @escaping (String?) -> Void) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedFileTypes = ["cube", "3dl", "dat", "lut"]
+        panel.message = "Pick a LUT file to pin to this clip."
+        if panel.runModal() == .OK, let url = panel.url {
+            set(url.path)
         }
     }
 

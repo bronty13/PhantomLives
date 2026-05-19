@@ -204,6 +204,19 @@ final class DatabaseService {
                 """)
         }
 
+        // C30 — per-clip Camera/Creative LUT paths on clip_metadata.
+        // Both nullable; when set, the Convert dialog's LUT picker
+        // defaults to them for that asset (persistent looks across
+        // transcode sessions without re-picking each time). The two
+        // roles compose — camera LUT first (inverse log → scene-
+        // linear), creative LUT second (stylistic grade).
+        m.registerMigration("v9_clip_lut_paths") { db in
+            try db.alter(table: "clip_metadata") { t in
+                t.add(column: "cameraLUTPath", .text)
+                t.add(column: "creativeLUTPath", .text)
+            }
+        }
+
         return m
     }
 

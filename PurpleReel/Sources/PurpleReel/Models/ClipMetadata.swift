@@ -22,18 +22,33 @@ struct ClipMetadata: Codable, Equatable, FetchableRecord, PersistableRecord {
     /// channels yet. Default = nil keeps the old memberwise
     /// initializer's call-site compatible at every existing site.
     var audioChannelNames: String? = nil
+    /// C30 — saved per-clip Camera LUT file path. When set, the
+    /// Convert dialog defaults its Camera LUT picker to this path
+    /// for any transcode of this asset (consistent looks across
+    /// sessions without re-picking each time). Camera LUT semantics
+    /// = inverse transform back to scene-linear from a log-encoded
+    /// source (e.g. SLog3 → Rec.709).
+    var cameraLUTPath: String? = nil
+    /// C30 — saved per-clip Creative LUT path. Stylistic look
+    /// graded on top of the camera LUT (e.g. "warm interior teal").
+    /// Separate from cameraLUTPath because the two roles compose —
+    /// camera first, creative second.
+    var creativeLUTPath: String? = nil
 
     static let databaseTableName = "clip_metadata"
 
     enum CodingKeys: String, CodingKey {
         case assetId, title, description, reel, scene, shot, take, angle, camera
         case audioChannelNames
+        case cameraLUTPath, creativeLUTPath
     }
 
     static let empty = ClipMetadata(
         assetId: 0,
         title: nil, description: nil,
         reel: nil, scene: nil, shot: nil, take: nil, angle: nil, camera: nil,
-        audioChannelNames: nil
+        audioChannelNames: nil,
+        cameraLUTPath: nil,
+        creativeLUTPath: nil
     )
 }
