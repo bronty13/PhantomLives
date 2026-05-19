@@ -47,6 +47,10 @@ final class WorkflowChainRun: ObservableObject, Identifiable {
     /// In-flight backup job (so the user can cancel). Cleared
     /// between steps.
     private weak var activeBackup: BackupJob?
+    /// C32 (E1) — in-flight transcode jobs for the current step,
+    /// so `cancel()` can propagate to every queued sub-job. Cleared
+    /// between steps.
+    private var activeTranscodes: [TranscodeJob] = []
 
     init(chain: WorkflowChain, source: URL) {
         self.chain = chain
@@ -55,11 +59,18 @@ final class WorkflowChainRun: ObservableObject, Identifiable {
     }
 
     func cancel() {
-        // Backup is the only step kind that exposes a live cancel
-        // today. Transcode jobs each have their own cancel that
-        // the user can hit from the queue sheet.
-        // TODO: extend per-step cancel as the chain library grows.
+        // C32 (E1) — propagate cancel to every step kind we can
+        // reach right now. Transcode sub-jobs each respond to
+        // `cancel()` (TranscodeJob has its own AVAssetExportSession
+        // / Process termination). Report export checks the run's
+        // `state` at await boundaries. VerifiedBackupService doesn't
+        // currently expose mid-flight cancellation — the backup
+        // step still respects step-boundary cancel (state check at
+        // top of loop) but won't interrupt an in-flight verify of
+        // a large file. Documented as a known gap pending a
+        // BackupJob.cancel API.
         state = .cancelled
+        for j in activeTranscodes { j.cancel() }
     }
 
     func run(toolVersion: String, transcodeQueue: TranscodeQueue,
@@ -184,11 +195,26 @@ final class WorkflowChainRun: ObservableObject, Identifiable {
             jobs.append(job)
             queue.enqueue(job)
         }
+        // C32 (E1) — publish the in-flight jobs so `cancel()` can
+        // reach them. Cleared in `defer` below regardless of how
+        // we exit this scope.
+        activeTranscodes = jobs
+        defer { activeTranscodes = [] }
         // Wait for every job we enqueued to terminate. We poll the
         // job's `state` rather than touching the queue's internals,
         // so a user-triggered cancellation from the queue sheet
         // surfaces as `.cancelled` for that job.
         while jobs.contains(where: { !$0.state.isTerminal }) {
+            // C32 (E1) — break out promptly when the run is
+            // cancelled; the sub-jobs already had `.cancel()`
+            // called from the outer `cancel()`, but we don't want
+            // to block here waiting for AVAssetExportSession to
+            // notice (it can take a beat).
+            if state == .cancelled {
+                stepState.status = .cancelled
+                stepState.detail = "Cancelled mid-transcode"
+                return
+            }
             let done = jobs.filter { $0.state.isTerminal }.count
             stepState.progress = Double(done) / Double(jobs.count)
             stepState.detail = "\(done) / \(jobs.count) transcoded"
@@ -242,6 +268,16 @@ final class WorkflowChainRun: ObservableObject, Identifiable {
         } else {
             outURL = URL(fileURLWithPath: params.outputPath)
         }
+        // C32 (E1) — cancel guard before kicking off the export.
+        // The HTML writer is async and can take seconds on a large
+        // workspace; CSV is sync but cheap. Either way, a user
+        // hitting Cancel before the write starts shouldn't pay for
+        // a doomed report.
+        if state == .cancelled {
+            stepState.status = .cancelled
+            stepState.detail = "Cancelled before report started"
+            return
+        }
         do {
             let written: Int
             if params.format == "csv" {
@@ -254,6 +290,15 @@ final class WorkflowChainRun: ObservableObject, Identifiable {
                     assets: inScope, to: outURL, appState: appState
                 )
                 written = summary.written
+            }
+            // Post-export cancel check — the user might have hit
+            // cancel during the HTML write. If so, throw away the
+            // (potentially partial) output.
+            if state == .cancelled {
+                try? FileManager.default.removeItem(at: outURL)
+                stepState.status = .cancelled
+                stepState.detail = "Cancelled — partial output removed"
+                return
             }
             stepState.status = .finished
             stepState.detail = "Wrote \(written) row(s) → \(outURL.lastPathComponent)"

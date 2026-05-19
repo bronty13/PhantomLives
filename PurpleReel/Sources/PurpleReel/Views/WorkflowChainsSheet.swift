@@ -332,23 +332,41 @@ private struct ChainEditor: View {
 
     private var stepsList: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Steps")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            ForEach(Array(chain.steps.enumerated()), id: \.offset) { idx, _ in
-                StepRow(
-                    index: idx,
-                    step: Binding(
-                        get: { chain.steps[idx] },
-                        set: { chain.steps[idx] = $0 }
-                    ),
-                    onMoveUp: { move(idx, by: -1) },
-                    onMoveDown: { move(idx, by: 1) },
-                    onDelete: { chain.steps.remove(at: idx) },
-                    canMoveUp: idx > 0,
-                    canMoveDown: idx < chain.steps.count - 1
-                )
+            HStack(spacing: 6) {
+                Text("Steps")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                if chain.steps.count >= 2 {
+                    Text("· drag rows to reorder")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
             }
+            // C32 (E5) — native drag-reorder via List + .onMove
+            // replaces the legacy up/down arrow buttons. The
+            // List has a fixed minimum height + maxHeight that
+            // grows with content so 2-3-step chains feel compact
+            // and 8-step chains stay readable.
+            List {
+                ForEach(Array(chain.steps.enumerated()), id: \.offset) { idx, _ in
+                    StepRow(
+                        index: idx,
+                        step: Binding(
+                            get: { chain.steps[idx] },
+                            set: { chain.steps[idx] = $0 }
+                        ),
+                        onDelete: { chain.steps.remove(at: idx) }
+                    )
+                    .padding(.vertical, 2)
+                }
+                .onMove { src, dst in
+                    chain.steps.move(fromOffsets: src, toOffset: dst)
+                }
+            }
+            .listStyle(.bordered)
+            .frame(minHeight: 80,
+                    maxHeight: max(80, CGFloat(chain.steps.count) * 64 + 24))
             if chain.steps.isEmpty {
                 Text("No steps yet — add one below.")
                     .foregroundStyle(.secondary)
@@ -374,11 +392,6 @@ private struct ChainEditor: View {
         }
     }
 
-    private func move(_ index: Int, by delta: Int) {
-        let target = index + delta
-        guard target >= 0, target < chain.steps.count else { return }
-        chain.steps.swapAt(index, target)
-    }
 }
 
 // MARK: - Step row
@@ -386,11 +399,7 @@ private struct ChainEditor: View {
 private struct StepRow: View {
     let index: Int
     @Binding var step: WorkflowChain.Step
-    let onMoveUp: () -> Void
-    let onMoveDown: () -> Void
     let onDelete: () -> Void
-    let canMoveUp: Bool
-    let canMoveDown: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -403,10 +412,6 @@ private struct StepRow: View {
                     .frame(width: 18)
                 Text(step.displayName).font(.callout.weight(.semibold))
                 Spacer()
-                Button { onMoveUp() } label: { Image(systemName: "arrow.up") }
-                    .buttonStyle(.borderless).disabled(!canMoveUp)
-                Button { onMoveDown() } label: { Image(systemName: "arrow.down") }
-                    .buttonStyle(.borderless).disabled(!canMoveDown)
                 Button { onDelete() } label: { Image(systemName: "xmark.circle") }
                     .buttonStyle(.borderless)
             }

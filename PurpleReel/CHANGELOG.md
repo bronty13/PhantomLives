@@ -17,6 +17,61 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C32 — Workflow chain + workspace cache polish bundle
+
+Five small deferrals from Categories E and F bundled together.
+
+**E1 — Per-step cancel for Transcode + Report** (WorkflowChainsService):
+- `WorkflowChainRun.cancel()` now propagates beyond setting the
+  run-state flag. Holds an `activeTranscodes: [TranscodeJob]`
+  field that the Transcode step populates while its jobs are in
+  flight; cancel calls `.cancel()` on each sub-job and the loop
+  breaks promptly on the next poll tick.
+- Report-export step (CSV + HTML) checks the run's `state` at
+  await boundaries: pre-export (skip the export entirely if
+  already cancelled) and post-export (remove partial output if
+  the user hit cancel during the HTML write).
+- Backup step still respects step-boundary cancel only —
+  `VerifiedBackupService` doesn't currently expose mid-flight
+  interruption; documented as a known gap for a future
+  BackupJob.cancel() API.
+
+**E5 — Drag-reorder steps in editor** (WorkflowChainsSheet):
+- Replaced the up/down arrow buttons with a native `List + .onMove`.
+- Step rows lose `canMoveUp`/`canMoveDown` props; the list takes
+  care of drag-handle rendering and reorder math.
+- Caption added: "drag rows to reorder" when 2+ steps present.
+
+**G1 — Orphan-sidecar prune** (WorkspaceCacheService):
+- New `pruneOrphans(under: URL) -> PruneResult` walks
+  `.purplereel/*.json` sidecars and deletes any whose source
+  file is gone. Walker explicitly does NOT use
+  `.skipsHiddenFiles` (we need to descend into the `.purplereel/`
+  directory).
+- New "Prune Orphaned Sidecars…" button in Settings → General →
+  Workspace Cache. Shown only when workspaceRoots is non-empty;
+  runs on a detached Task; reports aggregated scanned/deleted/
+  failed counts in an NSAlert.
+
+**G2 — Schema versioning regression guard**
+(WorkspaceCacheServiceTests):
+- `testLoadReturnsNilWhenVersionExceedsCurrent` — writes a
+  hand-crafted v99 sidecar and verifies `loadIfFresh` returns
+  nil. Pins the rejection rule so a future schema bump can't
+  silently break older builds.
+- `testCurrentVersionIsLockedAtOne` — lock current version at 1
+  to prevent accidental bumps without a migration path.
+
+**G4 — Multi-root workspace coverage**:
+- `testTwoRootsEachWriteToOwnPurplereelDirectory` — two assets
+  on two different roots each get their own `.purplereel/`
+  directory; both load back independently. Pins the per-asset
+  path math against future regressions toward a global cache
+  index.
+
+**Tests added/modified**: 4 new + 1 baseline = 11 total in
+WorkspaceCacheServiceTests (was 7).
+
 ### C31 — Silent-gotcha sweep #2: workspace + catalogue banners
 
 Sibling of C21 / C29. Surfaces four more "the UI is technically
