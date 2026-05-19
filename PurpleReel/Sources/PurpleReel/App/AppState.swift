@@ -108,6 +108,23 @@ final class AppState: ObservableObject {
         activeFilters.removeAll { $0 == c }
     }
 
+    /// Replace one criterion with another in-place — the inline
+    /// Filter rows (Kyno-parity, Image #87 / new screenshot) use
+    /// this to edit a criterion's value or operator without
+    /// removing-then-re-adding (which would also lose position).
+    /// No-op when `old` isn't present.
+    func replaceFilter(_ old: FilterCriterion, with new: FilterCriterion) {
+        guard let idx = activeFilters.firstIndex(of: old) else { return }
+        // Avoid duplicates — if `new` already exists elsewhere in
+        // the list, just remove `old` rather than ending up with
+        // two copies of the same criterion.
+        if let dup = activeFilters.firstIndex(of: new), dup != idx {
+            activeFilters.remove(at: idx)
+        } else {
+            activeFilters[idx] = new
+        }
+    }
+
     func clearFilters() { activeFilters.removeAll() }
 
     private func refreshClipMetadataIndex() {

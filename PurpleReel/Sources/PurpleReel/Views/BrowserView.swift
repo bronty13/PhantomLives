@@ -179,65 +179,102 @@ struct BrowserView: View {
             }
     }
 
-    /// Active-filter pills bar — one capsule per `FilterCriterion`,
-    /// each tappable to remove. Trailing "Clear all" removes
-    /// everything.
+    /// Kyno-shaped active-filter bar. Editable criteria (Duration,
+    /// Size, Rating) render as full inline rows with operator +
+    /// value editors + a remove (⊖) button. Discrete criteria (codec,
+    /// resolution, tag, folder, online status, etc.) stack below as
+    /// compact pills since they have nothing to edit beyond their
+    /// presence.
     @ViewBuilder
     private var activeFiltersBar: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "line.3.horizontal.decrease.circle.fill")
-                .foregroundStyle(.orange)
-                .font(.caption)
-            // Match-mode toggle. Tap the chip to flip AND ↔ OR
-            // without diving back into the Filter menu. Only shown
-            // when there are 2+ criteria (single-criterion case
-            // is degenerate).
-            if appState.activeFilters.count >= 2 {
-                Button {
-                    appState.filterMatchMode = (appState.filterMatchMode == "all" ? "any" : "all")
-                } label: {
-                    Text(appState.filterMatchMode == "all" ? "AND" : "OR")
-                        .font(.caption2.weight(.bold))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.orange.opacity(0.35), in: Capsule())
-                        .foregroundStyle(.primary)
-                }
-                .buttonStyle(.plain)
-                .help("Tap to switch between match-all (AND) and match-any (OR).")
-            }
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(appState.activeFilters) { criterion in
-                        Button {
-                            appState.removeFilter(criterion)
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text(criterion.displayLabel)
-                                    .font(.caption)
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Color.orange.opacity(0.20), in: Capsule())
+        VStack(alignment: .leading, spacing: 0) {
+            // Top chrome — filter icon + match-mode toggle +
+            // Clear All button. Always renders when filters exist;
+            // matches the pre-redesign behavior.
+            HStack(spacing: 6) {
+                Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                    .foregroundStyle(.orange)
+                    .font(.caption)
+                if appState.activeFilters.count >= 2 {
+                    Button {
+                        appState.filterMatchMode = (appState.filterMatchMode == "all" ? "any" : "all")
+                    } label: {
+                        Text(appState.filterMatchMode == "all" ? "AND" : "OR")
+                            .font(.caption2.weight(.bold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.35), in: Capsule())
                             .foregroundStyle(.primary)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Remove this filter")
                     }
+                    .buttonStyle(.plain)
+                    .help("Tap to switch between match-all (AND) and match-any (OR).")
+                }
+                Spacer()
+                Button("Clear All") { appState.clearFilters() }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+
+            // Editable inline rows — one per continuous-value criterion.
+            ForEach(appState.activeFilters.filter(isInlineEditable)) { criterion in
+                InlineFilterRow(
+                    criterion: criterion,
+                    onReplace: { new in
+                        appState.replaceFilter(criterion, with: new)
+                    },
+                    onRemove: { appState.removeFilter(criterion) }
+                )
+            }
+
+            // Discrete pills — codec, tag, resolution preset, etc.
+            let discrete = appState.activeFilters.filter { !isInlineEditable($0) }
+            if !discrete.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(discrete) { criterion in
+                            Button {
+                                appState.removeFilter(criterion)
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text(criterion.displayLabel)
+                                        .font(.caption)
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Color.orange.opacity(0.20),
+                                              in: Capsule())
+                                .foregroundStyle(.primary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Remove this filter")
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 5)
                 }
             }
-            Spacer()
-            Button("Clear All") { appState.clearFilters() }
-                .buttonStyle(.borderless)
-                .controlSize(.small)
-                .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 5)
         .background(Color.orange.opacity(0.08))
+    }
+
+    /// True for criteria with continuous values that warrant a full
+    /// inline row (operator + value + unit editors). Everything else
+    /// stays as a pill.
+    private func isInlineEditable(_ c: FilterCriterion) -> Bool {
+        switch c {
+        case .durationAtLeastSeconds, .durationAtMostSeconds,
+             .sizeAtLeastMB, .sizeAtMostMB,
+             .ratingAtLeast:
+            return true
+        default:
+            return false
+        }
     }
 
     // MARK: - List view (Kyno ⌘2)

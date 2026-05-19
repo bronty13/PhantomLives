@@ -17,6 +17,52 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C9 — Inline filter rows (operator + value + unit editors)
+
+Active-filter bar restructured to match Kyno's full-width inline rows
+(per user screenshot). Continuous-value criteria (Duration, Size,
+Rating) now render as editable rows with operator dropdown + value
+field + unit dropdown + remove (⊖) button; discrete criteria (codec,
+resolution preset, tag, folder, online status, etc.) keep the
+compact pill shape since there's nothing to edit beyond presence.
+
+**Editable rows**:
+
+- **Duration**: `[Duration] [is at least ⇅] [HH:MM:SS] [hh:mm:ss] [⊖]`.
+  Operator dropdown swaps between `.durationAtLeastSeconds` ↔
+  `.durationAtMostSeconds`. Value parser accepts `H:MM:SS` /
+  `MM:SS` / plain `SS` (typing "120" lands as 120 seconds; next
+  render reformats to `00:02:00`).
+- **Size**: `[Size] [is greater than ⇅] [100] [MB ⇅] [⊖]`. Unit
+  dropdown switches MB ↔ GB (GB normalizes to nearest MB multiple).
+- **Rating**: `[Rating] is at least [★★★ stepper] [⊖]`. Stepper
+  clamped to 1…5.
+
+**Plumbing**:
+
+- New `Views/InlineFilterRow.swift` — pure-SwiftUI row, reads the
+  current criterion, calls `onReplace(new)` on every edit. Falls
+  back to a pill display for cases it doesn't recognize (so an
+  unknown criterion never breaks the bar).
+- New `AppState.replaceFilter(_:with:)` — finds the old criterion
+  by equality, replaces it in-place at the same index. De-dupes
+  when the new criterion already exists elsewhere in the list
+  (replacing one row's value with another row's value collapses to
+  one).
+- `BrowserView.activeFiltersBar` restructured from horizontal
+  ScrollView-of-pills to a VStack: top chrome (filter icon +
+  AND/OR toggle + Clear All) → editable rows → pill ScrollView for
+  the discrete criteria.
+
+4 new tests (`ReplaceFilterTests`):
+- In-place replacement preserves position
+- Operator swap across enum cases (.durationAtLeastSeconds →
+  .durationAtMostSeconds) lands cleanly
+- No-op when the old criterion isn't present
+- Dedup when the new criterion would duplicate an existing row
+
+---
+
 ### Dark mode — Help / User Manual viewer contrast fix
 
 User-reported regression: the User Manual window (Help → User Manual
