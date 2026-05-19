@@ -195,6 +195,50 @@ final class AppState: ObservableObject {
         var direct: Int
         var nested: Int
     }
+    // MARK: - Workspace cache auto-prune (C36)
+
+    /// AppStorage key (Settings → Workspace Cache stepper). 0 =
+    /// disabled (manual button only). Non-zero = check on each
+    /// launch; if `now - lastPruneAt >= interval`, run a prune
+    /// across every workspace root in the background. Auto-prune
+    /// uses the same `sidecarMaxAgeDays` cap the manual button
+    /// honors, so a user can have a single 30-day policy that
+    /// fires automatically at a weekly cadence.
+    static let autoPruneIntervalKey = "sidecarAutoPruneIntervalDays"
+    /// AppStorage key for the last-run timestamp (epoch seconds).
+    static let autoPruneLastRunKey = "sidecarLastPruneAt"
+
+    /// Decide whether to fire the prune now, and if so, kick a
+    /// detached Task. Reads `workspaceRoots` from UserDefaults
+    /// directly because AppState isn't fully constructed yet when
+    /// this is called from `init`.
+    static func runWorkspaceCacheAutoPruneIfNeeded() {
+        let defaults = UserDefaults.standard
+        let intervalDays = defaults.integer(forKey: autoPruneIntervalKey)
+        guard intervalDays > 0 else { return }
+        let lastRunEpoch = defaults.double(forKey: autoPruneLastRunKey)
+        let now = Date().timeIntervalSince1970
+        let intervalSec = Double(intervalDays) * 86400
+        if now - lastRunEpoch < intervalSec { return }
+        // Read workspace roots from defaults (init hasn't populated
+        // self.workspaceRoots yet at the call site).
+        guard let savedArray = defaults.array(forKey: "workspaceRoots") as? [String],
+              !savedArray.isEmpty else { return }
+        let roots = savedArray.map { URL(fileURLWithPath: $0) }
+        let maxAgeDays = defaults.integer(forKey: "sidecarMaxAgeDays")
+        let ageCap = maxAgeDays > 0 ? maxAgeDays : nil
+        Task.detached(priority: .background) {
+            for root in roots {
+                _ = WorkspaceCacheService.pruneOrphans(
+                    under: root, maxAgeDays: ageCap
+                )
+            }
+            await MainActor.run {
+                defaults.set(now, forKey: autoPruneLastRunKey)
+            }
+        }
+    }
+
     // MARK: - Silent-gotcha computeds (C29 / C31)
 
     /// C31 — workspace roots whose paths don't resolve on the
@@ -883,6 +927,13 @@ final class AppState: ObservableObject {
         // resume prompt is a SwiftUI alert wired up in ContentView
         // (so it only fires once the UI is on screen).
         self.interruptedRuns = ActiveRunPersistence.loadAll()
+        // C36 — workspace-cache auto-prune. Runs on a background
+        // task so it doesn't block the launch window; gated by
+        // `sidecarAutoPruneIntervalDays` (0 = disabled, default).
+        // Static call sits outside `init` flow so this can fire
+        // and-forget without holding the AppState reference past
+        // the launch.
+        Self.runWorkspaceCacheAutoPruneIfNeeded()
         // Hydrate per-folder drilldown set from defaults.
         if let arr = UserDefaults.standard.array(forKey: "drilldownPaths") as? [String] {
             self.drilldownPaths = Set(arr)

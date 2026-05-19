@@ -46,6 +46,10 @@ struct GeneralSettingsView: View {
     /// C35 — age cap (days) for the workspace-cache sidecar prune.
     /// 0 disables age-based eviction so prune is orphan-only.
     @AppStorage("sidecarMaxAgeDays") private var sidecarMaxAgeDays: Int = 0
+    /// C36 — auto-prune-on-launch interval (days). 0 disables auto-
+    /// prune so the button-only flow is the entire prune story.
+    @AppStorage(AppState.autoPruneIntervalKey)
+    private var sidecarAutoPruneIntervalDays: Int = 0
 
     var body: some View {
         Form {
@@ -141,6 +145,27 @@ struct GeneralSettingsView: View {
                         Text(sidecarMaxAgeDays == 0
                               ? "0 disables age-based eviction (orphan-only)."
                               : "Older sidecars are deleted on the next prune run.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    // C36 — auto-prune-on-launch cadence. 0 = button-
+                    // only. Non-zero fires the same prune the button
+                    // does, scheduled to run at most once per N days.
+                    HStack {
+                        Stepper(value: $sidecarAutoPruneIntervalDays, in: 0...90) {
+                            HStack(spacing: 4) {
+                                Text("Auto-prune on launch every")
+                                Text("\(sidecarAutoPruneIntervalDays)")
+                                    .monospacedDigit()
+                                Text("day(s)")
+                            }
+                            .font(.callout)
+                        }
+                        Spacer()
+                        Text(sidecarAutoPruneIntervalDays == 0
+                              ? "0 disables auto-prune (manual button only)."
+                              : "Runs in the background after launch when due. Same rules as the button.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)

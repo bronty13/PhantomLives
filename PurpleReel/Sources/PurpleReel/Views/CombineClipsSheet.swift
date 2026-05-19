@@ -36,6 +36,10 @@ struct CombineClipsSheet: View {
         /// clamps to half of `min(thisDur, nextDur)`. Ignored on
         /// the last row.
         var crossfadeAfterText: String = ""
+        /// C36 — per-pair easing override. nil = inherit the
+        /// sheet's global crossfadeEasing. Ignored on the last
+        /// row + when this pair's cross-fade duration is 0.
+        var crossfadeEasingAfter: CrossfadeEasing? = nil
     }
 
     @State private var rows: [Row]
@@ -68,6 +72,10 @@ struct CombineClipsSheet: View {
     /// clip's trimmed duration.
     @State private var fadeFromBlackText: String = "0"
     @State private var fadeToBlackText: String = "0"
+    /// C27 — easing curve applied to all cross-fade + edge ramps.
+    /// `.linear` matches pre-C27 behavior; others approximate via
+    /// 8 piecewise-linear segments per fade.
+    @State private var crossfadeEasing: CrossfadeEasing = .linear
 
     init(initialSources: [Asset]) {
         _rows = State(initialValue: initialSources.map {
@@ -90,7 +98,7 @@ struct CombineClipsSheet: View {
             footer
         }
         .padding(20)
-        .frame(width: 640, height: 680)
+        .frame(width: 640, height: 720)
         .onAppear { loadSourceMarkers() }
     }
 
@@ -203,6 +211,34 @@ struct CombineClipsSheet: View {
                         .font(.caption.monospaced())
                         .frame(width: 50)
                         .help("Cross-fade duration in seconds after this clip. Empty = use the default below.")
+                        // C36 — per-pair easing override Menu. Default
+                        // "Inherit" leaves the global crossfadeEasing
+                        // to drive this pair's curve.
+                        Menu {
+                            Button("Inherit (default)") {
+                                rows[idx].crossfadeEasingAfter = nil
+                            }
+                            Divider()
+                            ForEach(
+                                [CrossfadeEasing.linear, .easeIn, .easeOut, .easeInOut],
+                                id: \.self
+                            ) { e in
+                                Button(easingLabel(e)) {
+                                    rows[idx].crossfadeEasingAfter = e
+                                }
+                            }
+                        } label: {
+                            Image(systemName: rows[idx].crossfadeEasingAfter == nil
+                                  ? "function" : "function.fill")
+                                .foregroundStyle(rows[idx].crossfadeEasingAfter == nil
+                                                  ? AnyShapeStyle(HierarchicalShapeStyle.secondary)
+                                                  : AnyShapeStyle(TintShapeStyle.tint))
+                        }
+                        .menuStyle(.borderlessButton)
+                        .frame(width: 24)
+                        .help(rows[idx].crossfadeEasingAfter
+                              .map { "Curve: \(easingLabel($0))" }
+                              ?? "Curve: inherit global default")
                     }
                     if preserveMarkers, !row.sourceMarkers.isEmpty {
                         // C17 — badge counts the markers about to be
@@ -337,6 +373,25 @@ struct CombineClipsSheet: View {
                     .font(.caption.monospaced())
                     .frame(width: 70)
                 Text("sec to black on last clip")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            // C27 — easing curve picker. Hidden when no cross-fade
+            // or edge fade is active (nothing to ease).
+            HStack(spacing: 8) {
+                Text("Easing:")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 80, alignment: .trailing)
+                Picker("", selection: $crossfadeEasing) {
+                    Text("Linear").tag(CrossfadeEasing.linear)
+                    Text("Ease In").tag(CrossfadeEasing.easeIn)
+                    Text("Ease Out").tag(CrossfadeEasing.easeOut)
+                    Text("Ease In-Out (smoothstep)").tag(CrossfadeEasing.easeInOut)
+                }
+                .labelsHidden()
+                .frame(maxWidth: 220)
+                Text("curve for all fades")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -523,7 +578,9 @@ struct CombineClipsSheet: View {
                 sourceMarkers: preserveMarkers ? row.sourceMarkers : [],
                 // C24 — empty text → nil (inherit global); a
                 // parseable non-empty value → the per-pair override.
-                crossfadeAfterSeconds: Double(row.crossfadeAfterText)
+                crossfadeAfterSeconds: Double(row.crossfadeAfterText),
+                // C36 — per-pair easing override; nil = inherit.
+                crossfadeEasingAfter: row.crossfadeEasingAfter
             )
         }
         let j = CombineClipsJob(sources: combineSources,
@@ -532,7 +589,8 @@ struct CombineClipsSheet: View {
                                  dimensionMode: resolvedDimensionMode(),
                                  crossfadeSeconds: Double(crossfadeText) ?? 0,
                                  fadeFromBlackSeconds: Double(fadeFromBlackText) ?? 0,
-                                 fadeToBlackSeconds: Double(fadeToBlackText) ?? 0)
+                                 fadeToBlackSeconds: Double(fadeToBlackText) ?? 0,
+                                 crossfadeEasing: crossfadeEasing)
         self.job = j
         Task {
             await j.run()
@@ -583,6 +641,18 @@ struct CombineClipsSheet: View {
             return Double(parts[0])
         default:
             return nil
+        }
+    }
+
+    /// C36 — short human-readable name for the per-row easing
+    /// Menu. Mirrors the global picker's labels in the output-
+    /// controls block.
+    private func easingLabel(_ e: CrossfadeEasing) -> String {
+        switch e {
+        case .linear:    return "Linear"
+        case .easeIn:    return "Ease In"
+        case .easeOut:   return "Ease Out"
+        case .easeInOut: return "Ease In-Out"
         }
     }
 

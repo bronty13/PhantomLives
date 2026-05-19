@@ -24,6 +24,25 @@ struct CombineSource: Identifiable, Equatable {
     /// Service clamps to half of `min(thisDur, nextDur)` so an
     /// override can't underflow consecutive segments.
     var crossfadeAfterSeconds: Double?
+    /// C36 — per-pair easing override. Controls the opacity /
+    /// volume curve applied to the cross-fade AFTER this clip
+    /// (same "ownership" rule as `crossfadeAfterSeconds`). nil =
+    /// inherit the job's global `crossfadeEasing`. Ignored on the
+    /// last clip (no neighbor) and on pairs whose cross-fade
+    /// duration is 0.
+    var crossfadeEasingAfter: CrossfadeEasing?
+}
+
+/// C27 — easing curve applied to cross-fade opacity / volume
+/// ramps. AVFoundation's `setOpacityRamp` / `setVolumeRamp` are
+/// linear-only; we approximate non-linear curves via N piecewise-
+/// linear segments (8 samples per cross-fade — eyeball-smooth, no
+/// visible stepping at typical 0.5–3 second durations).
+enum CrossfadeEasing: String, Equatable {
+    case linear
+    case easeIn      // slow start — y = x²
+    case easeOut     // slow end   — y = 1 - (1-x)²
+    case easeInOut   // smoothstep — y = 3x² - 2x³
 }
 
 /// C19 — picks the target canvas size for a combined output. The
@@ -103,6 +122,11 @@ final class CombineClipsJob: ObservableObject, Identifiable {
     let fadeFromBlackSeconds: Double
     /// C23 — symmetric trailing ramp on the last clip. Same rules.
     let fadeToBlackSeconds: Double
+    /// C27 — curve applied to every opacity / volume ramp the
+    /// composition emits (cross-fades + edge fades). `.linear`
+    /// keeps pre-C27 behavior; the other three approximate non-
+    /// linear curves via 8 piecewise-linear segments per fade.
+    let crossfadeEasing: CrossfadeEasing
 
     @Published var state: State = .queued
     @Published var progress: Double = 0
@@ -119,7 +143,8 @@ final class CombineClipsJob: ObservableObject, Identifiable {
          dimensionMode: CombineDimensionMode = .firstClip,
          crossfadeSeconds: Double = 0,
          fadeFromBlackSeconds: Double = 0,
-         fadeToBlackSeconds: Double = 0) {
+         fadeToBlackSeconds: Double = 0,
+         crossfadeEasing: CrossfadeEasing = .linear) {
         self.sources = sources
         self.outputURL = outputURL
         self.preset = preset
@@ -127,26 +152,29 @@ final class CombineClipsJob: ObservableObject, Identifiable {
         self.crossfadeSeconds = max(0, crossfadeSeconds)
         self.fadeFromBlackSeconds = max(0, fadeFromBlackSeconds)
         self.fadeToBlackSeconds = max(0, fadeToBlackSeconds)
+        self.crossfadeEasing = crossfadeEasing
     }
 
     /// Convenience init for the pre-C16 URL-only call sites. Wraps
     /// each URL into a `CombineSource` with no trim — same behavior
     /// as before. Kept so non-dialog callers (workflow chains,
     /// scripted invocations) don't have to migrate at the same time.
-    /// Defaults all fade durations to 0 so legacy callers keep
+    /// Defaults all fade params to 0/linear so legacy callers keep
     /// producing the same output.
     convenience init(sources: [URL], outputURL: URL, preset: TranscodePreset,
                      dimensionMode: CombineDimensionMode = .firstClip,
                      crossfadeSeconds: Double = 0,
                      fadeFromBlackSeconds: Double = 0,
-                     fadeToBlackSeconds: Double = 0) {
+                     fadeToBlackSeconds: Double = 0,
+                     crossfadeEasing: CrossfadeEasing = .linear) {
         self.init(
             sources: sources.map { CombineSource(url: $0) },
             outputURL: outputURL, preset: preset,
             dimensionMode: dimensionMode,
             crossfadeSeconds: crossfadeSeconds,
             fadeFromBlackSeconds: fadeFromBlackSeconds,
-            fadeToBlackSeconds: fadeToBlackSeconds
+            fadeToBlackSeconds: fadeToBlackSeconds,
+            crossfadeEasing: crossfadeEasing
         )
     }
 
@@ -226,6 +254,46 @@ final class CombineClipsJob: ObservableObject, Identifiable {
             }
         }
         return offsets
+    }
+
+    /// C27 — sample a fade curve at evenly-spaced points along its
+    /// duration. Returns N+1 values where each value is the opacity
+    /// (or volume) at that fraction of the cross-fade. Caller turns
+    /// these into N piecewise-linear ramps via
+    /// `setOpacityRamp(start, end, range)`.
+    ///
+    /// For a fade-IN the values go 0 → 1; for fade-OUT, 1 → 0. The
+    /// caller flips the orientation by passing `reversed: true`.
+    ///
+    /// Curves:
+    ///   - `.linear`     — y = x  (degenerates to a single ramp)
+    ///   - `.easeIn`     — y = x² (slow start, snappy finish)
+    ///   - `.easeOut`    — y = 1 - (1-x)² (snappy start, soft landing)
+    ///   - `.easeInOut`  — y = 3x² - 2x³ (smoothstep — soft on both ends)
+    ///
+    /// `samples` = 8 gives 8 ramps spanning the fade. Eyeball-smooth
+    /// at typical 0.5–3 second durations; bumping to 16 doubles the
+    /// AVMutableComposition workload for no perceptible benefit.
+    nonisolated static func easedRampValues(
+        samples: Int = 8,
+        easing: CrossfadeEasing,
+        reversed: Bool = false
+    ) -> [Double] {
+        let n = max(1, samples)
+        var values: [Double] = []
+        values.reserveCapacity(n + 1)
+        for i in 0...n {
+            let t = Double(i) / Double(n)
+            let raw: Double
+            switch easing {
+            case .linear:    raw = t
+            case .easeIn:    raw = t * t
+            case .easeOut:   raw = 1 - (1 - t) * (1 - t)
+            case .easeInOut: raw = (3 * t * t) - (2 * t * t * t)
+            }
+            values.append(reversed ? (1 - raw) : raw)
+        }
+        return values
     }
 
     /// C23 — pure helper that clamps a fade-from-black or fade-to-
@@ -516,6 +584,13 @@ final class CombineClipsJob: ObservableObject, Identifiable {
         if useVideoComp || useAudioMix {
             let durations = resolved.map(\.trimmedSeconds)
             let timescale = resolved.first?.timescale ?? 600
+            // C36 — collect per-pair easing overrides (parallel to
+            // perPairCFs). nil entries fall back to the job's
+            // global crossfadeEasing inside the apply helpers.
+            let perPairEasings: [CrossfadeEasing?] = (0..<max(0, sources.count - 1))
+                .map { i in
+                    i < sources.count ? sources[i].crossfadeEasingAfter : nil
+                }
             if useVideoComp, !vTracks.isEmpty {
                 videoComposition = buildCrossfadeVideoComposition(
                     tracks: vTracks,
@@ -523,6 +598,7 @@ final class CombineClipsJob: ObservableObject, Identifiable {
                     durations: durations,
                     offsets: offsets,
                     crossfades: perPairCFs,
+                    easings: perPairEasings,
                     fadeFromBlack: clampedFadeIn,
                     fadeToBlack: clampedFadeOut,
                     timescale: timescale
@@ -534,6 +610,7 @@ final class CombineClipsJob: ObservableObject, Identifiable {
                     durations: durations,
                     offsets: offsets,
                     crossfades: perPairCFs,
+                    easings: perPairEasings,
                     fadeFromBlack: clampedFadeIn,
                     fadeToBlack: clampedFadeOut,
                     timescale: timescale
@@ -637,6 +714,7 @@ final class CombineClipsJob: ObservableObject, Identifiable {
         durations: [Double],
         offsets: [Double],
         crossfades: [Double],
+        easings: [CrossfadeEasing?],
         fadeFromBlack: Double,
         fadeToBlack: Double,
         timescale: CMTimeScale
@@ -684,7 +762,9 @@ final class CombineClipsJob: ObservableObject, Identifiable {
                     duration: CMTime(seconds: fadeFromBlack, preferredTimescale: timescale)
                 )
                 let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
-                layer.setOpacityRamp(fromStartOpacity: 0, toEndOpacity: 1, timeRange: r)
+                applyEasedOpacityRamp(to: layer,
+                                       timeRange: r,
+                                       reversed: false)
                 let inst = AVMutableVideoCompositionInstruction()
                 inst.timeRange = r
                 inst.layerInstructions = [layer]
@@ -697,7 +777,9 @@ final class CombineClipsJob: ObservableObject, Identifiable {
                     duration: CMTime(seconds: fadeToBlack, preferredTimescale: timescale)
                 )
                 let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
-                layer.setOpacityRamp(fromStartOpacity: 1, toEndOpacity: 0, timeRange: r)
+                applyEasedOpacityRamp(to: layer,
+                                       timeRange: r,
+                                       reversed: true)
                 let inst = AVMutableVideoCompositionInstruction()
                 inst.timeRange = r
                 inst.layerInstructions = [layer]
@@ -713,12 +795,20 @@ final class CombineClipsJob: ObservableObject, Identifiable {
                 )
                 let outTrack = tracks[i % tracks.count]
                 let inTrack = tracks[(i + 1) % tracks.count]
+                // C36 — per-pair easing override. nil at the pair
+                // index falls through to the global crossfadeEasing
+                // inside applyEasedOpacityRamp.
+                let pairEasing: CrossfadeEasing? = i < easings.count ? easings[i] : nil
                 let outLayer = AVMutableVideoCompositionLayerInstruction(assetTrack: outTrack)
-                outLayer.setOpacityRamp(fromStartOpacity: 1, toEndOpacity: 0,
-                                         timeRange: overlapRange)
+                applyEasedOpacityRamp(to: outLayer,
+                                       timeRange: overlapRange,
+                                       reversed: true,   // 1 → 0
+                                       easing: pairEasing)
                 let inLayer = AVMutableVideoCompositionLayerInstruction(assetTrack: inTrack)
-                inLayer.setOpacityRamp(fromStartOpacity: 0, toEndOpacity: 1,
-                                        timeRange: overlapRange)
+                applyEasedOpacityRamp(to: inLayer,
+                                       timeRange: overlapRange,
+                                       reversed: false,  // 0 → 1
+                                       easing: pairEasing)
                 let inst = AVMutableVideoCompositionInstruction()
                 inst.timeRange = overlapRange
                 // Outgoing layer must come first (top of stack) so
@@ -736,6 +826,98 @@ final class CombineClipsJob: ObservableObject, Identifiable {
         return vc
     }
 
+    /// C27 — emit N piecewise-linear `setOpacityRamp` calls along
+    /// `timeRange` approximating the chosen non-linear easing
+    /// curve. `.linear` collapses to a single full-range ramp
+    /// (no behavior change vs pre-C27).
+    ///
+    /// C36 — `easing` parameter lets callers pick a per-pair
+    /// override rather than always reading `self.crossfadeEasing`.
+    /// Default falls back to the global so existing callers stay
+    /// behavior-compatible.
+    private func applyEasedOpacityRamp(
+        to layer: AVMutableVideoCompositionLayerInstruction,
+        timeRange: CMTimeRange,
+        reversed: Bool,
+        easing: CrossfadeEasing? = nil
+    ) {
+        let effective = easing ?? crossfadeEasing
+        // Linear shortcuts to a single ramp — same shape as pre-C27
+        // and avoids the N-segment overhead for the common case.
+        if effective == .linear {
+            layer.setOpacityRamp(
+                fromStartOpacity: Float(reversed ? 1 : 0),
+                toEndOpacity:    Float(reversed ? 0 : 1),
+                timeRange: timeRange
+            )
+            return
+        }
+        let values = Self.easedRampValues(
+            samples: 8, easing: effective, reversed: reversed
+        )
+        let total = CMTimeGetSeconds(timeRange.duration)
+        let baseSec = CMTimeGetSeconds(timeRange.start)
+        let timescale = timeRange.start.timescale
+        let n = values.count - 1
+        for i in 0..<n {
+            let t0 = Double(i) / Double(n)
+            let t1 = Double(i + 1) / Double(n)
+            let segRange = CMTimeRange(
+                start: CMTime(seconds: baseSec + t0 * total,
+                               preferredTimescale: timescale),
+                duration: CMTime(seconds: (t1 - t0) * total,
+                                  preferredTimescale: timescale)
+            )
+            layer.setOpacityRamp(
+                fromStartOpacity: Float(values[i]),
+                toEndOpacity:    Float(values[i + 1]),
+                timeRange: segRange
+            )
+        }
+    }
+
+    /// C27 — eased volume-ramp counterpart, called from the audio
+    /// mix builder. Same N-segment approximation strategy. C36 —
+    /// `easing` parameter lets callers pick a per-pair override.
+    private func applyEasedVolumeRamp(
+        to params: AVMutableAudioMixInputParameters,
+        timeRange: CMTimeRange,
+        reversed: Bool,
+        easing: CrossfadeEasing? = nil
+    ) {
+        let effective = easing ?? crossfadeEasing
+        if effective == .linear {
+            params.setVolumeRamp(
+                fromStartVolume: Float(reversed ? 1 : 0),
+                toEndVolume:    Float(reversed ? 0 : 1),
+                timeRange: timeRange
+            )
+            return
+        }
+        let values = Self.easedRampValues(
+            samples: 8, easing: effective, reversed: reversed
+        )
+        let total = CMTimeGetSeconds(timeRange.duration)
+        let baseSec = CMTimeGetSeconds(timeRange.start)
+        let timescale = timeRange.start.timescale
+        let n = values.count - 1
+        for i in 0..<n {
+            let t0 = Double(i) / Double(n)
+            let t1 = Double(i + 1) / Double(n)
+            let segRange = CMTimeRange(
+                start: CMTime(seconds: baseSec + t0 * total,
+                               preferredTimescale: timescale),
+                duration: CMTime(seconds: (t1 - t0) * total,
+                                  preferredTimescale: timescale)
+            )
+            params.setVolumeRamp(
+                fromStartVolume: Float(values[i]),
+                toEndVolume:    Float(values[i + 1]),
+                timeRange: segRange
+            )
+        }
+    }
+
     /// C20 + C23 — build the AVMutableAudioMix paired with the
     /// cross-fade video composition. Each audio track carries the
     /// alternating clips; volume ramps mirror the video opacity
@@ -748,6 +930,7 @@ final class CombineClipsJob: ObservableObject, Identifiable {
         durations: [Double],
         offsets: [Double],
         crossfades: [Double],
+        easings: [CrossfadeEasing?],
         fadeFromBlack: Double,
         fadeToBlack: Double,
         timescale: CMTimeScale
@@ -763,6 +946,13 @@ final class CombineClipsJob: ObservableObject, Identifiable {
             guard let p = paramsByTrack[trackIdx] else { continue }
             let leadingCF = i > 0 ? crossfades[i - 1] : 0
             let trailingCF = i < n - 1 ? crossfades[i] : 0
+            // C36 — pair easing: leading fade-in uses the easing
+            // of the pair BEFORE this clip (pair i-1); trailing
+            // fade-out uses the pair AFTER (pair i).
+            let leadingEasing: CrossfadeEasing? = (i > 0 && (i - 1) < easings.count)
+                ? easings[i - 1] : nil
+            let trailingEasing: CrossfadeEasing? = (i < easings.count)
+                ? easings[i] : nil
             // Leading fade-in for every clip with a non-zero
             // leading cross-fade (i.e. not the first, and the pair
             // before this clip carries a fade).
@@ -771,7 +961,9 @@ final class CombineClipsJob: ObservableObject, Identifiable {
                     start: CMTime(seconds: offsets[i], preferredTimescale: timescale),
                     duration: CMTime(seconds: leadingCF, preferredTimescale: timescale)
                 )
-                p.setVolumeRamp(fromStartVolume: 0, toEndVolume: 1, timeRange: r)
+                applyEasedVolumeRamp(to: p, timeRange: r,
+                                      reversed: false,
+                                      easing: leadingEasing)
             }
             // Trailing fade-out symmetric.
             if trailingCF > 0 {
@@ -780,7 +972,9 @@ final class CombineClipsJob: ObservableObject, Identifiable {
                                    preferredTimescale: timescale),
                     duration: CMTime(seconds: trailingCF, preferredTimescale: timescale)
                 )
-                p.setVolumeRamp(fromStartVolume: 1, toEndVolume: 0, timeRange: r)
+                applyEasedVolumeRamp(to: p, timeRange: r,
+                                      reversed: true,
+                                      easing: trailingEasing)
             }
             // C23 — edge fades.
             if i == 0, fadeFromBlack > 0 {
@@ -788,7 +982,7 @@ final class CombineClipsJob: ObservableObject, Identifiable {
                     start: CMTime(seconds: offsets[i], preferredTimescale: timescale),
                     duration: CMTime(seconds: fadeFromBlack, preferredTimescale: timescale)
                 )
-                p.setVolumeRamp(fromStartVolume: 0, toEndVolume: 1, timeRange: r)
+                applyEasedVolumeRamp(to: p, timeRange: r, reversed: false)
             }
             if i == n - 1, fadeToBlack > 0 {
                 let r = CMTimeRange(
@@ -796,7 +990,7 @@ final class CombineClipsJob: ObservableObject, Identifiable {
                                    preferredTimescale: timescale),
                     duration: CMTime(seconds: fadeToBlack, preferredTimescale: timescale)
                 )
-                p.setVolumeRamp(fromStartVolume: 1, toEndVolume: 0, timeRange: r)
+                applyEasedVolumeRamp(to: p, timeRange: r, reversed: true)
             }
         }
         mix.inputParameters = Array(paramsByTrack.values)

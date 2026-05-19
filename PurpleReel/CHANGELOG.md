@@ -17,6 +17,52 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C36 — Polish bundle: auto-prune-on-launch + ConvertSheet LUT defaults + per-pair easing
+
+Three smalls bundled.
+
+**Item 2 — Auto-prune-on-launch for workspace cache.** C32 + C35
+shipped the prune logic but it was manual-button-only. C36 adds
+an interval-based auto-run on app launch:
+- New `@AppStorage("sidecarAutoPruneIntervalDays")`. 0 disables;
+  1-90 enables.
+- AppState's static `runWorkspaceCacheAutoPruneIfNeeded()` reads
+  workspace roots + maxAge cap from UserDefaults (works pre-init
+  fully populating self), checks `now - sidecarLastPruneAt`
+  against the interval, and kicks a detached background Task if
+  due. Persists `sidecarLastPruneAt` on completion.
+- Settings → Workspace Cache adds a Stepper "Auto-prune on
+  launch every N day(s)" alongside the existing age-cap stepper.
+
+**Item 9 — Convert dialog auto-defaults from pinned LUTs.** C30
+shipped per-clip Camera + Creative LUT pinning on
+`clip_metadata`, but the Convert dialog still picked defaults
+from `TranscodePreset.defaultOptions()` regardless. C36 wires
+the pinned paths through:
+- `ConvertSheet.onAppear` checks if `state.assets.count == 1`
+  and the asset has `clipMetadata.cameraLUTPath` /
+  `creativeLUTPath` set, then patches `editableOptions.cameraLUT`
+  / `creativeLUT` to `.file(path:)` before stashing the baseline.
+- Batch jobs (2+ assets) skip — ambiguous which clip's LUT
+  should win.
+
+**Item 12 — Per-pair easing override in Combine.** C27 shipped a
+chain-wide easing curve. C36 lets each pair carry its own:
+- `CombineSource.crossfadeEasingAfter: CrossfadeEasing?` (nil =
+  inherit job's global `crossfadeEasing`). Same "ownership" rule
+  as the C24 per-pair cross-fade duration override — owned by
+  the clip BEFORE the transition.
+- `applyEasedOpacityRamp` and `applyEasedVolumeRamp` accept an
+  `easing: CrossfadeEasing?` parameter that takes precedence
+  over `self.crossfadeEasing`. Nil falls through to the global.
+- Video composition + audio mix builders take a parallel
+  `easings: [CrossfadeEasing?]` array threaded from the source
+  list, mirroring the C24 `crossfades: [Double]` shape.
+- Sheet row gets a small "function" / "function.fill" Menu next
+  to the per-row CF→ field with Inherit + Linear + Ease In +
+  Ease Out + Ease In-Out options. Filled icon + tint when an
+  override is set; outline + secondary when inheriting.
+
 ### C35 — Workspace cache: age-based eviction
 
 Deferred G3. The C32 orphan-prune handles sidecars whose source

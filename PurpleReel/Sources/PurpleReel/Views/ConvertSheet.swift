@@ -94,7 +94,22 @@ struct ConvertSheet: View {
         .frame(width: 720, height: 580)
         .onAppear {
             guard !didInitOptions else { return }
-            let base = state.preset.defaultOptions()
+            var base = state.preset.defaultOptions()
+            // C36 — auto-default LUT pickers from the pinned per-
+            // clip Camera / Creative LUT paths (C30). Only fires
+            // when exactly one asset is being transcoded — for
+            // batch jobs the right policy is ambiguous (which
+            // clip's LUT wins?) so leave it manual.
+            if state.assets.count == 1,
+               let rowId = state.assets.first?.rowId,
+               let meta = appState.clipMetadataIndex[rowId] {
+                if let cam = meta.cameraLUTPath, !cam.isEmpty {
+                    base.cameraLUT = .file(path: cam)
+                }
+                if let creative = meta.creativeLUTPath, !creative.isEmpty {
+                    base.creativeLUT = .file(path: creative)
+                }
+            }
             editableOptions = base
             optionsBaseline = base
             didInitOptions = true
