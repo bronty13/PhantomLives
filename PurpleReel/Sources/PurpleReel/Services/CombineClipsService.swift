@@ -17,6 +17,13 @@ struct CombineSource: Identifiable, Equatable {
     /// copied onto the combined timeline at the right offset; the
     /// rest are dropped. Default empty = nothing to carry across.
     var sourceMarkers: [Marker] = []
+    /// C24 — per-pair cross-fade override. Represents the cross-
+    /// fade duration *after* this clip (i.e. between this and the
+    /// next). nil = inherit the job's global `crossfadeSeconds`.
+    /// Ignored on the last clip (no neighbor on that side).
+    /// Service clamps to half of `min(thisDur, nextDur)` so an
+    /// override can't underflow consecutive segments.
+    var crossfadeAfterSeconds: Double?
 }
 
 /// C19 — picks the target canvas size for a combined output. The
@@ -163,6 +170,64 @@ final class CombineClipsJob: ObservableObject, Identifiable {
         return max(0, min(requested, maxAllowed))
     }
 
+    /// C24 — resolve per-pair cross-fades. Inputs:
+    ///   - `perPairRequested` — length n (one entry per clip). Each
+    ///     entry is the override for the fade *after* that clip; nil
+    ///     means inherit the global default. The last entry is
+    ///     ignored (no neighbor after the last clip).
+    ///   - `globalDefault` — fallback used wherever `perPairRequested`
+    ///     is nil.
+    ///   - `trimmedDurations` — length n.
+    /// Returns a `[Double]` of length n-1 (one per pair) with each
+    /// fade clamped to half of `min(durs[i], durs[i+1])` so neither
+    /// neighbor's solo region underflows. Empty / single-clip input
+    /// returns an empty array (nothing to fade between).
+    ///
+    /// Replaces C20's `clampCrossfadeSeconds` for the per-pair path
+    /// — the global clamp helper still exists for the legacy single-
+    /// value API but `run()` now goes through this.
+    nonisolated static func clampPerPairCrossfades(
+        perPairRequested: [Double?],
+        globalDefault: Double,
+        trimmedDurations: [Double]
+    ) -> [Double] {
+        guard trimmedDurations.count >= 2 else { return [] }
+        var out: [Double] = []
+        out.reserveCapacity(trimmedDurations.count - 1)
+        for i in 0..<(trimmedDurations.count - 1) {
+            let requested = (i < perPairRequested.count
+                              ? perPairRequested[i] : nil) ?? globalDefault
+            guard requested > 0 else {
+                out.append(0)
+                continue
+            }
+            let pairMin = min(trimmedDurations[i], trimmedDurations[i + 1])
+            out.append(max(0, min(requested, pairMin / 2)))
+        }
+        return out
+    }
+
+    /// C24 — per-pair variant of `combinedOffsets`. Each clip's
+    /// offset subtracts the running total of *all preceding* pair
+    /// cross-fades, not a single scalar times the index. Degenerates
+    /// to the C20 helper when every pair carries the same value.
+    nonisolated static func combinedOffsetsPerPair(
+        trimmedDurations: [Double],
+        perPairCrossfades: [Double]
+    ) -> [Double] {
+        var offsets: [Double] = []
+        var running: Double = 0
+        var runningCF: Double = 0
+        for (i, dur) in trimmedDurations.enumerated() {
+            offsets.append(i == 0 ? 0 : running - runningCF)
+            running += dur
+            if i < perPairCrossfades.count {
+                runningCF += perPairCrossfades[i]
+            }
+        }
+        return offsets
+    }
+
     /// C23 — pure helper that clamps a fade-from-black or fade-to-
     /// black duration so it can't exceed the corresponding edge
     /// clip's trimmed duration. Symmetric on both sides of the
@@ -305,16 +370,23 @@ final class CombineClipsJob: ObservableObject, Identifiable {
             }
         }
 
-        // C20 — clamp the cross-fade against the trimmed durations.
-        // useDual is the load-bearing branch — when true we allocate
-        // two video / audio tracks and build an
-        // AVMutableVideoComposition + AVMutableAudioMix for the
-        // opacity & volume ramps.
-        let clampedCF = Self.clampCrossfadeSeconds(
-            crossfadeSeconds,
+        // C20 + C24 — per-pair cross-fades. C20 used a single scalar
+        // applied to every pair; C24 lets each source carry an
+        // override (`CombineSource.crossfadeAfterSeconds`) so a doc
+        // editor can ask for a 3-second dissolve after one cut and
+        // a hard cut after the next. `crossfadeSeconds` becomes the
+        // fallback when an override is nil.
+        let perPairRequested = sources.map(\.crossfadeAfterSeconds)
+        let perPairCFs = Self.clampPerPairCrossfades(
+            perPairRequested: perPairRequested,
+            globalDefault: crossfadeSeconds,
             trimmedDurations: resolved.map(\.trimmedSeconds)
         )
-        let useDual = clampedCF > 0 && resolved.count >= 2
+        // useDual flips on if ANY pair has a non-zero cross-fade.
+        // The dual-track machinery + AVMutableVideoComposition
+        // overhead applies once for any cross-fade, so the per-pair
+        // mix doesn't change the topology decision.
+        let useDual = perPairCFs.contains(where: { $0 > 0 })
         // C23 — clamp edge fades against the first / last clip's
         // trimmed duration. fadeIn / fadeOut may be non-zero even
         // when cross-fade is zero; in that case we still build a
@@ -366,16 +438,14 @@ final class CombineClipsJob: ObservableObject, Identifiable {
             return
         }
 
-        // C20 — per-clip insertion offsets. With cross-fade, clip i
-        // starts at `sum(durs[0..<i]) - i * cf` so consecutive
-        // segments overlap by `cf`. With cf=0 this degenerates to
-        // the pre-C20 cursor sum.
-        var offsets: [Double] = []
-        var running: Double = 0
-        for (i, r) in resolved.enumerated() {
-            offsets.append(i == 0 ? 0 : running - Double(i) * clampedCF)
-            running += r.trimmedSeconds
-        }
+        // C24 — per-pair insertion offsets. Subtracts the running
+        // total of all preceding pair cross-fades rather than a
+        // single scalar times the index. Degenerates to the C20
+        // path when every pair carries the same value.
+        let offsets = Self.combinedOffsetsPerPair(
+            trimmedDurations: resolved.map(\.trimmedSeconds),
+            perPairCrossfades: perPairCFs
+        )
 
         // Insertion pass. With useDual=true clips alternate across
         // the two video / audio tracks (i % 2 == 0 → track A) so
@@ -452,7 +522,7 @@ final class CombineClipsJob: ObservableObject, Identifiable {
                     canvasSize: comp.naturalSize,
                     durations: durations,
                     offsets: offsets,
-                    crossfade: clampedCF,
+                    crossfades: perPairCFs,
                     fadeFromBlack: clampedFadeIn,
                     fadeToBlack: clampedFadeOut,
                     timescale: timescale
@@ -463,7 +533,7 @@ final class CombineClipsJob: ObservableObject, Identifiable {
                     tracks: aTracks,
                     durations: durations,
                     offsets: offsets,
-                    crossfade: clampedCF,
+                    crossfades: perPairCFs,
                     fadeFromBlack: clampedFadeIn,
                     fadeToBlack: clampedFadeOut,
                     timescale: timescale
@@ -566,7 +636,7 @@ final class CombineClipsJob: ObservableObject, Identifiable {
         canvasSize: CGSize,
         durations: [Double],
         offsets: [Double],
-        crossfade: Double,
+        crossfades: [Double],
         fadeFromBlack: Double,
         fadeToBlack: Double,
         timescale: CMTimeScale
@@ -584,15 +654,15 @@ final class CombineClipsJob: ObservableObject, Identifiable {
             let track = tracks[i % tracks.count]
             let segStart = offsets[i]
             let segEnd = offsets[i] + durations[i]
-            // C23 — edge fades trim the first/last clip's solo
-            // region further (they get their own ramp instructions
-            // below). Middle clips ignore both.
+            // C23/C24 — edge fades trim the first/last clip's solo
+            // region; per-pair cross-fades trim each clip's leading
+            // and trailing edges by the corresponding pair value.
             let isFirst = i == 0
             let isLast = i == n - 1
-            let leadingTrim = (isFirst ? fadeFromBlack : 0)
-                + (i > 0 ? crossfade : 0)
-            let trailingTrim = (isLast ? fadeToBlack : 0)
-                + (i < n - 1 ? crossfade : 0)
+            let leadingCF = i > 0 ? crossfades[i - 1] : 0
+            let trailingCF = i < n - 1 ? crossfades[i] : 0
+            let leadingTrim = (isFirst ? fadeFromBlack : 0) + leadingCF
+            let trailingTrim = (isLast ? fadeToBlack : 0) + trailingCF
             let soloStart = segStart + leadingTrim
             let soloEnd = segEnd - trailingTrim
 
@@ -634,11 +704,12 @@ final class CombineClipsJob: ObservableObject, Identifiable {
                 instructions.append(inst)
             }
 
-            if i < n - 1 {
+            if i < n - 1, crossfades[i] > 0 {
+                let pairCF = crossfades[i]
                 let overlapStart = offsets[i + 1]
                 let overlapRange = CMTimeRange(
                     start: CMTime(seconds: overlapStart, preferredTimescale: timescale),
-                    duration: CMTime(seconds: crossfade, preferredTimescale: timescale)
+                    duration: CMTime(seconds: pairCF, preferredTimescale: timescale)
                 )
                 let outTrack = tracks[i % tracks.count]
                 let inTrack = tracks[(i + 1) % tracks.count]
@@ -676,7 +747,7 @@ final class CombineClipsJob: ObservableObject, Identifiable {
         tracks: [AVMutableCompositionTrack],
         durations: [Double],
         offsets: [Double],
-        crossfade: Double,
+        crossfades: [Double],
         fadeFromBlack: Double,
         fadeToBlack: Double,
         timescale: CMTimeScale
@@ -690,20 +761,24 @@ final class CombineClipsJob: ObservableObject, Identifiable {
         for i in 0..<n {
             let trackIdx = i % tracks.count
             guard let p = paramsByTrack[trackIdx] else { continue }
-            // Leading fade-in for every clip except the first.
-            if i > 0 {
+            let leadingCF = i > 0 ? crossfades[i - 1] : 0
+            let trailingCF = i < n - 1 ? crossfades[i] : 0
+            // Leading fade-in for every clip with a non-zero
+            // leading cross-fade (i.e. not the first, and the pair
+            // before this clip carries a fade).
+            if leadingCF > 0 {
                 let r = CMTimeRange(
                     start: CMTime(seconds: offsets[i], preferredTimescale: timescale),
-                    duration: CMTime(seconds: crossfade, preferredTimescale: timescale)
+                    duration: CMTime(seconds: leadingCF, preferredTimescale: timescale)
                 )
                 p.setVolumeRamp(fromStartVolume: 0, toEndVolume: 1, timeRange: r)
             }
-            // Trailing fade-out for every clip except the last.
-            if i < n - 1 {
+            // Trailing fade-out symmetric.
+            if trailingCF > 0 {
                 let r = CMTimeRange(
-                    start: CMTime(seconds: offsets[i] + durations[i] - crossfade,
+                    start: CMTime(seconds: offsets[i] + durations[i] - trailingCF,
                                    preferredTimescale: timescale),
-                    duration: CMTime(seconds: crossfade, preferredTimescale: timescale)
+                    duration: CMTime(seconds: trailingCF, preferredTimescale: timescale)
                 )
                 p.setVolumeRamp(fromStartVolume: 1, toEndVolume: 0, timeRange: r)
             }

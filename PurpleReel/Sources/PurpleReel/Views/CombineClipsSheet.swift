@@ -31,6 +31,11 @@ struct CombineClipsSheet: View {
         /// runCombine pass forwards them into `CombineSource` so the
         /// service can offset them onto the combined timeline.
         var sourceMarkers: [Marker] = []
+        /// C24 — per-pair cross-fade override (seconds). Empty
+        /// string = inherit the sheet's global crossfade. Service
+        /// clamps to half of `min(thisDur, nextDur)`. Ignored on
+        /// the last row.
+        var crossfadeAfterText: String = ""
     }
 
     @State private var rows: [Row]
@@ -180,6 +185,25 @@ struct CombineClipsSheet: View {
                     Text("full \(durationLabel(row.asset))")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+                    // C24 — per-pair cross-fade override. Hidden on
+                    // the last row (no neighbor to fade into) and
+                    // when there's only one source (nothing to
+                    // fade). Empty text = inherit global default.
+                    if idx < rows.count - 1, rows.count >= 2 {
+                        Text("·").foregroundStyle(.secondary).font(.caption2)
+                        Text("CF→")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        TextField("",
+                                   text: Binding(
+                                    get: { rows[idx].crossfadeAfterText },
+                                    set: { rows[idx].crossfadeAfterText = $0 }
+                                   ))
+                        .textFieldStyle(.roundedBorder)
+                        .font(.caption.monospaced())
+                        .frame(width: 50)
+                        .help("Cross-fade duration in seconds after this clip. Empty = use the default below.")
+                    }
                     if preserveMarkers, !row.sourceMarkers.isEmpty {
                         // C17 — badge counts the markers about to be
                         // carried across. Filter/offset happens in the
@@ -282,7 +306,7 @@ struct CombineClipsSheet: View {
                     .textFieldStyle(.roundedBorder)
                     .font(.caption.monospaced())
                     .frame(width: 70)
-                Text("seconds (0 = hard cut)")
+                Text("default seconds — per-clip CF→ overrides above")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -496,7 +520,10 @@ struct CombineClipsSheet: View {
                 url: URL(fileURLWithPath: row.asset.path),
                 trimInSeconds: parseTrim(row.trimInText),
                 trimOutSeconds: parseTrim(row.trimOutText),
-                sourceMarkers: preserveMarkers ? row.sourceMarkers : []
+                sourceMarkers: preserveMarkers ? row.sourceMarkers : [],
+                // C24 — empty text → nil (inherit global); a
+                // parseable non-empty value → the per-pair override.
+                crossfadeAfterSeconds: Double(row.crossfadeAfterText)
             )
         }
         let j = CombineClipsJob(sources: combineSources,

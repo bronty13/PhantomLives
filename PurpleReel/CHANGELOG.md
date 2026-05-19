@@ -17,6 +17,54 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C24 — Combine Clips: per-clip cross-fade override
+
+C20 shipped a global cross-fade scalar applied uniformly to every
+pair of consecutive clips; C24 lets each source carry its own
+override so the user can mix dissolve sections with hard cuts
+(e.g. cross-fade between interview takes A and B, hard cut into
+B-roll for clip C, cross-fade again between C and D).
+
+**Model** — `CombineClipsService.swift`:
+- `CombineSource` gains
+  `crossfadeAfterSeconds: Double?` — the cross-fade duration after
+  this clip. `nil` = inherit the job's global default. The last
+  source's value is ignored (no neighbor after).
+- New `nonisolated static func clampPerPairCrossfades(perPairRequested:globalDefault:trimmedDurations:)`
+  → `[Double]` of length `n-1`. Resolves each pair against
+  `min(durs[i], durs[i+1]) / 2`, falling back to `globalDefault`
+  for nil entries. Explicit `0` stays `0` (so a user can mix
+  cross-fade and hard-cut in one batch); negative requests clamp
+  to `0`.
+- New `nonisolated static func combinedOffsetsPerPair(trimmedDurations:perPairCrossfades:)`
+  — per-clip insertion offsets accounting for the running total
+  of preceding pair fades. Degenerates to C20's scalar helper
+  when every pair carries the same value.
+
+**Service** — `CombineClipsService.swift`:
+- `run()` now resolves cross-fades via the per-pair clamp and
+  offsets via the per-pair helper. `useDual` flips on whenever
+  any pair carries a non-zero fade (was: a single non-zero scalar).
+- `buildCrossfadeVideoComposition` and `buildCrossfadeAudioMix`
+  swap their scalar `crossfade: Double` parameter for
+  `crossfades: [Double]`. Each clip's leading and trailing
+  cross-fade come from `crossfades[i-1]` / `crossfades[i]`
+  (first/last clip's outer side is 0). Overlap-region
+  instructions only emit when the corresponding pair's fade > 0.
+
+**Sheet** — `CombineClipsSheet.swift`:
+- Per-row `CF→` text field next to the trim fields. Hidden on
+  the last row and when there are fewer than 2 sources. Empty =
+  inherit; explicit value = override.
+- Global "Cross-fade:" label re-captioned to "default seconds —
+  per-clip CF→ overrides above" to make the precedence explicit.
+
+**Tests** — `PerPairCrossfadeTests.swift` (NEW, 12 cases):
+- Clamp: empty / single / all-nil / mixed overrides / pair-half-
+  min / explicit-zero-stays-zero / negative-clamps-to-zero.
+- Offsets: all-zero degenerates to cumulative sum / uniform
+  matches C20 helper / mixed per-pair accumulates / empty / single.
+
 ### C23 — Combine Clips: fade-from / fade-to black
 
 Edge-fade follow-up deferred from C20. The cross-fade work landed
