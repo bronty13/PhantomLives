@@ -12,6 +12,23 @@ struct CombineSource: Identifiable, Equatable {
     var trimInSeconds: Double?
     /// Seconds from clip start. nil = clip's natural end (duration).
     var trimOutSeconds: Double?
+    /// C17 — PurpleReel-DB markers attached to this source clip.
+    /// Whatever subset falls inside the resolved trim range will be
+    /// copied onto the combined timeline at the right offset; the
+    /// rest are dropped. Default empty = nothing to carry across.
+    var sourceMarkers: [Marker] = []
+}
+
+/// C17 — value-type description of one marker that survived the
+/// trim/offset pass and should land on the combined output. Carries
+/// timecode + note only; no `assetId` yet (the output asset is
+/// rescanned-into-existence after export) and no GRDB conformance
+/// (no rowid to round-trip). The sheet converts these into real
+/// `Marker` rows once it has the new asset's id.
+struct PreservedMarker: Equatable {
+    var timecodeIn: Double
+    var timecodeOut: Double?
+    var note: String?
 }
 
 /// "Combine clips" — Kyno-parity row 8. Builds an
@@ -52,6 +69,11 @@ final class CombineClipsJob: ObservableObject, Identifiable {
 
     @Published var state: State = .queued
     @Published var progress: Double = 0
+    /// C17 — markers (filtered + offset) that should land on the
+    /// combined output. Populated during the source-loop pass; the
+    /// sheet writes them to DB after the export succeeds and the
+    /// output asset has been catalogued.
+    @Published var preservedMarkers: [PreservedMarker] = []
 
     private var exportSession: AVAssetExportSession?
     private var progressTimer: Timer?
@@ -71,6 +93,44 @@ final class CombineClipsJob: ObservableObject, Identifiable {
             sources: sources.map { CombineSource(url: $0) },
             outputURL: outputURL, preset: preset
         )
+    }
+
+    /// C17 — pure offset/filter helper, extracted so the marker
+    /// preservation rules are testable without spinning up
+    /// `AVAssetExportSession`. Given a source's markers and its
+    /// resolved trim range, returns the subset that falls inside
+    /// the range (timecodeIn anywhere within [inSec, outSec]),
+    /// shifted so they land at `cursorSec + (originalTC - inSec)`
+    /// on the combined timeline.
+    ///
+    /// - `timecodeOut` is clamped to the trim window: a marker that
+    ///   ends past `outSec` is truncated to the window's end so the
+    ///   output doesn't carry a marker pointing beyond the combined
+    ///   timeline's natural duration.
+    /// - The note is left untouched. Provenance ("from clipA.mov")
+    ///   is the sheet's call, not the service's — the service
+    ///   doesn't know the source's filename in a way that's stable
+    ///   across calls.
+    nonisolated static func offsetMarkers(_ markers: [Marker],
+                                          trimInSec: Double,
+                                          trimOutSec: Double,
+                                          cursorSec: Double) -> [PreservedMarker] {
+        guard trimOutSec > trimInSec else { return [] }
+        return markers.compactMap { m -> PreservedMarker? in
+            guard m.timecodeIn >= trimInSec, m.timecodeIn <= trimOutSec else {
+                return nil
+            }
+            let shiftedIn = cursorSec + (m.timecodeIn - trimInSec)
+            let shiftedOut: Double? = m.timecodeOut.map { rawOut in
+                let clamped = min(rawOut, trimOutSec)
+                return cursorSec + (clamped - trimInSec)
+            }
+            return PreservedMarker(
+                timecodeIn: shiftedIn,
+                timecodeOut: shiftedOut,
+                note: m.note
+            )
+        }
     }
 
     func cancel() {
@@ -99,6 +159,7 @@ final class CombineClipsJob: ObservableObject, Identifiable {
         }
 
         var cursor: CMTime = .zero
+        var collectedMarkers: [PreservedMarker] = []
         for source in sources {
             let url = source.url
             let asset = AVURLAsset(url: url)
@@ -133,12 +194,28 @@ final class CombineClipsJob: ObservableObject, Identifiable {
                 if let a = aSources.first {
                     try aTrack.insertTimeRange(range, of: a, at: cursor)
                 }
+                // C17 — copy this source's markers onto the
+                // combined timeline. cursor is captured *before* we
+                // advance it for this clip, so it points at the
+                // segment's start in the output.
+                let preserved = Self.offsetMarkers(
+                    source.sourceMarkers,
+                    trimInSec: inSec,
+                    trimOutSec: outSec,
+                    cursorSec: CMTimeGetSeconds(cursor)
+                )
+                collectedMarkers.append(contentsOf: preserved)
                 cursor = CMTimeAdd(cursor, dur)
             } catch {
                 state = .failed("Couldn't read \(url.lastPathComponent): \(error.localizedDescription)")
                 return
             }
         }
+        // Publish the collected markers now so the sheet can see
+        // them as soon as the loop has run, even before the export
+        // session finishes. (The sheet still gates the DB write on
+        // .finished — published-early just helps the UI badge.)
+        preservedMarkers = collectedMarkers
 
         // Pick a sensible orientation for the output composition. We
         // copy the first video source's `preferredTransform` so the

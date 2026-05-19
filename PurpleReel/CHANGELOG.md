@@ -17,6 +17,83 @@ Subclips UX (per user screenshots showing ~120 presets across 8
 buckets + per-channel Copy/Re-encode controls + tabbed Settings…
 editor for Encoding / Filters / LUTs / Overlays / Container).
 
+### C17 — Combine Clips: marker preservation
+
+Category F follow-up #2. Builds on the C16 trim/reorder pass.
+Markers that PurpleReel has catalogued against each source clip now
+ride onto the combined output at the right segment offset, so a
+doc editor who's tagged "good answer at 4:12" on clip A and "B-roll
+cue at 2:30" on clip B sees both markers reappear at the right
+times on the combined file's timeline.
+
+**Service layer** — `CombineClipsService.swift`:
+- `CombineSource` gains `sourceMarkers: [Marker] = []`. Callers
+  pre-populate the list with the source clip's catalogued markers
+  (or leave empty if they don't want preservation).
+- New `nonisolated static func offsetMarkers(_:trimInSec:trimOutSec:cursorSec:)`
+  — pure helper that filters markers to those inside the trim
+  window and shifts them by `cursor + (originalTC - trimIn)`. Extracted
+  as a free function so the rule is testable without spinning up
+  `AVAssetExportSession`. `nonisolated` because the service is
+  `@MainActor` but the helper is referentially-transparent and the
+  tests don't want to hop the actor.
+- `CombineClipsJob.run()` now calls `offsetMarkers` once per source
+  inside its existing source-loop (cursor is captured *before* the
+  advance, so the offset lines up with the segment's start in the
+  output), accumulates the results into a new `@Published var
+  preservedMarkers: [PreservedMarker]`, and republishes the array
+  after the loop.
+- New value type `PreservedMarker(timecodeIn, timecodeOut?, note?)`
+  — no GRDB conformance, no assetId yet. The sheet attaches it to
+  the freshly-catalogued output asset's id after rescan.
+
+**Filter & offset rules** — covered by
+`CombineSourceMarkerPreservationTests`:
+- Marker inside the trim window: kept, shifted by
+  `cursor + (originalTC - trimIn)`.
+- Marker before trim-in: dropped (points at footage clipped off the
+  front).
+- Marker after trim-out: dropped (same on the trailing side).
+- Marker `timecodeIn` inside but `timecodeOut` past the window:
+  the in-point survives, the out clamps to the trim's end so the
+  output doesn't carry a marker pointing past the combined
+  timeline's natural duration.
+- Empty / inverted range (trimOut ≤ trimIn): zero markers.
+- Markers exactly on either boundary are kept (inclusive — the
+  segment renders that frame, so the marker on it should ride
+  along).
+- Whole-clip path (trimIn = 0, cursor = 0): markers keep their
+  absolute positions. Most-common case.
+
+**Sheet layer** — `CombineClipsSheet.swift`:
+- `Row` struct gains `sourceMarkers: [Marker] = []`; populated at
+  sheet open by `loadSourceMarkers()` via
+  `appState.db.markers(assetId:)` against `Asset.rowId`.
+- Per-row badge ("🔖 N") rendered next to the trim fields when a
+  source has markers and preservation is on. Tooltip notes that
+  some may still drop based on the trim window. Hidden when
+  preservation is off or the row has no markers.
+- Master toggle "Preserve markers on combined output" in the
+  output-controls block, default **on**. Hidden when no source
+  has any markers (no point asking).
+- `runCombine()` forwards `preserveMarkers ? row.sourceMarkers : []`
+  into each `CombineSource`. After the job finishes and the rescan
+  has catalogued the output, it looks up the new asset via
+  `db.asset(forPath:)` and writes each preserved marker via
+  `db.addMarker(...)` against the new asset's `rowId`. Lookup
+  failures fail silently rather than nuking the combine.
+
+**Why opt-out, not opt-in**: the dominant use case (gluing
+interview takes, doc-shooter "review notes at the right spot")
+wants markers carried. The off branch exists for delivering a
+fresh output to a client who shouldn't see the editor's review
+notes; surfacing the toggle solves that without blocking the
+default path.
+
+**Tests** — `CombineSourceMarkerPreservationTests.swift` (NEW, 7
+cases covering the filter/offset/clamp/boundary/empty-range/
+whole-clip-path rules above).
+
 ### C16 — Combine Clips: per-clip in/out trim + drag-reorder
 
 Category F follow-up. The original Combine Clips MVP (Sprint 3-4)

@@ -26,6 +26,11 @@ struct CombineClipsSheet: View {
         let asset: Asset
         var trimInText: String = ""
         var trimOutText: String = ""
+        /// C17 — cached marker rows for this source, fetched at
+        /// sheet open. The badge in `rowView` counts these; the
+        /// runCombine pass forwards them into `CombineSource` so the
+        /// service can offset them onto the combined timeline.
+        var sourceMarkers: [Marker] = []
     }
 
     @State private var rows: [Row]
@@ -33,6 +38,12 @@ struct CombineClipsSheet: View {
     @State private var dest: URL?
     @State private var filename: String = "combined.mov"
     @State private var job: CombineClipsJob?
+    /// C17 — opt-out switch. Defaults to on because the dominant
+    /// use case ("glue interview takes") wants markers carried; the
+    /// off branch exists for users who want a totally fresh output
+    /// (e.g. delivering to a client who shouldn't see the editor's
+    /// review notes).
+    @State private var preserveMarkers: Bool = true
 
     init(initialSources: [Asset]) {
         _rows = State(initialValue: initialSources.map {
@@ -55,14 +66,27 @@ struct CombineClipsSheet: View {
             footer
         }
         .padding(20)
-        .frame(width: 640, height: 560)
+        .frame(width: 640, height: 580)
+        .onAppear { loadSourceMarkers() }
+    }
+
+    /// C17 — fetch each source asset's catalogued markers up-front
+    /// so the badge can render immediately and the runCombine pass
+    /// has them ready without an extra DB round-trip. Errors fall
+    /// back to `[]` (no badge, no preservation) rather than blocking
+    /// the sheet.
+    private func loadSourceMarkers() {
+        for i in rows.indices {
+            guard let aid = rows[i].asset.rowId else { continue }
+            rows[i].sourceMarkers = (try? appState.db.markers(assetId: aid)) ?? []
+        }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Combine Clips")
                 .font(.title3.weight(.semibold))
-            Text("Renders the listed clips head-to-tail into a single file. Drag rows to reorder. Set in/out trim per clip (HH:MM:SS or seconds; blank = full clip). Resolution comes from the first clip; mixed sizes will letterbox.")
+            Text("Renders the listed clips head-to-tail into a single file. Drag rows to reorder. Set in/out trim per clip (HH:MM:SS or seconds; blank = full clip). Resolution comes from the first clip; mixed sizes will letterbox. Markers on each clip are carried onto the combined timeline.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -137,6 +161,17 @@ struct CombineClipsSheet: View {
                     Text("full \(durationLabel(row.asset))")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+                    if preserveMarkers, !row.sourceMarkers.isEmpty {
+                        // C17 — badge counts the markers about to be
+                        // carried across. Filter/offset happens in the
+                        // service; this count is just the upper bound
+                        // (markers fully outside trim drop later).
+                        Label("\(row.sourceMarkers.count)", systemImage: "bookmark.fill")
+                            .labelStyle(.titleAndIcon)
+                            .font(.caption2)
+                            .foregroundStyle(.tint)
+                            .help("\(row.sourceMarkers.count) marker(s) on this clip will be carried into the combined output (some may drop if outside the trim range).")
+                    }
                 }
             }
             Spacer()
@@ -183,7 +218,24 @@ struct CombineClipsSheet: View {
                 TextField("", text: $filename)
                     .textFieldStyle(.roundedBorder)
             }
+            // C17 — preserve-markers toggle. Hidden when no source
+            // has any markers (nothing to preserve, no need to
+            // surface the option).
+            if anySourceHasMarkers {
+                Toggle(isOn: $preserveMarkers) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "bookmark.fill")
+                        Text("Preserve markers on combined output")
+                    }
+                }
+                .toggleStyle(.checkbox)
+                .help("Carry each source clip's markers onto the combined timeline, offset to the right segment. Markers outside the trim range are dropped.")
+            }
         }
+    }
+
+    private var anySourceHasMarkers: Bool {
+        rows.contains { !$0.sourceMarkers.isEmpty }
     }
 
     private func progressRow(job: CombineClipsJob) -> some View {
@@ -299,7 +351,8 @@ struct CombineClipsSheet: View {
             CombineSource(
                 url: URL(fileURLWithPath: row.asset.path),
                 trimInSeconds: parseTrim(row.trimInText),
-                trimOutSeconds: parseTrim(row.trimOutText)
+                trimOutSeconds: parseTrim(row.trimOutText),
+                sourceMarkers: preserveMarkers ? row.sourceMarkers : []
             )
         }
         let j = CombineClipsJob(sources: combineSources,
@@ -313,6 +366,22 @@ struct CombineClipsSheet: View {
             if case .finished(let url) = j.state {
                 NSWorkspace.shared.activateFileViewerSelecting([url])
                 await appState.rescan()
+                // C17 — write preserved markers against the freshly
+                // catalogued output asset. Lookup runs after rescan
+                // so the new row is in `asset`; if for any reason it
+                // isn't (rescan filtered it, race), we just skip the
+                // DB write rather than fail the whole combine.
+                if let newAsset = try? appState.db.asset(forPath: url.path),
+                   let newId = newAsset.rowId {
+                    for m in j.preservedMarkers {
+                        _ = try? appState.db.addMarker(
+                            assetId: newId,
+                            timecodeIn: m.timecodeIn,
+                            timecodeOut: m.timecodeOut,
+                            note: m.note
+                        )
+                    }
+                }
             }
         }
     }
