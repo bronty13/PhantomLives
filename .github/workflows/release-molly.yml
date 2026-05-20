@@ -91,17 +91,17 @@ jobs:
       - name: Install pnpm dependencies
         run: pnpm install --no-frozen-lockfile
 
-      # Build only — no `tagName`/`releaseId` => tauri-action won't try to
-      # upload (and won't clean up the .sig files it just produced). We
-      # handle the upload ourselves below so the sigs survive.
-      - name: Build Tauri bundles
-        uses: tauri-apps/tauri-action@v0
+      # Run `tauri build` directly. tauri-action @v0 with no tagName
+      # builds without signing (signing is gated on its release flow),
+      # which is the exact opposite of what we need. The CLI honors
+      # TAURI_SIGNING_PRIVATE_KEY itself and leaves .sig files in the
+      # bundle dir — that's what we want.
+      - name: Build Tauri bundles (with signing)
+        shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          projectPath: Molly
-          args: ${{ matrix.args }}
+        run: pnpm tauri build ${{ matrix.args }}
 
       - name: Upload bundles + signatures (mac)
         if: matrix.platform == 'macos-14'
