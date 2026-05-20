@@ -1,8 +1,12 @@
-# Molly — User Manual
+# Molly — User Manual 💕
 
-This guide is written for the creator using Molly day to day, not for developers. If you ever get stuck, send Robert a screenshot in Slack and he can usually figure it out.
+Hi Sallie. This is your guide to using Molly. It's written for you, not for engineers — if anything's unclear, screenshot it and send it my way in Slack.
 
-> Phase 5 is live — and that's all five phases shipped. **Data export**, **Updates**, plus everything before them.
+> **Molly is now at version 1.0** — every planned feature is in. 💕
+
+## Your little inspiration
+
+The pastel card at the top of the Home page (and the sayings under "Molly" in the sidebar) cycle through 1000 hand-picked encouragements just for you. Click **✨ another** on the big card, or click the saying itself in the sidebar, to reroll. The font shuffles too — 10 cute display fonts. You'll see something different every time you open the app.
 
 ## Opening Molly
 

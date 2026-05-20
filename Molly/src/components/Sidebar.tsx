@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { getVersion } from '@tauri-apps/api/app';
+import { SayingsBanner } from './SayingsBanner';
 
 export type ViewKey = 'home' | 'reminders' | 'calendar' | 'clips' | 'customers' | 'helper' | 'promos' | 'income' | 'expenses' | 'reports' | 'settings';
 
@@ -49,7 +50,9 @@ export function Sidebar({ active, onSelect, visible, pendingCount = 0 }: Sidebar
     >
       <div className="px-5 pt-5 pb-3">
         <div className="display-font text-2xl font-semibold persona-accent">Molly</div>
-        <div className="text-xs opacity-60 mt-1">your work, your way 💕</div>
+        <div className="mt-1.5">
+          <SayingsBanner variant="compact" />
+        </div>
       </div>
       <nav className="flex-1 px-3 pb-4 overflow-y-auto">
         {NAV.map((item) => {

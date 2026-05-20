@@ -3,6 +3,7 @@ import type { Persona } from '../../state/personas';
 import { clipCounts, countByPersona, detectReuse, recentImports, type ClipCounts, type ClipImportLog, type PersonaCount, type ReuseGroup } from '../../data/clips';
 import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
 import { listOverdue, listToday, describeDueDate, type Occurrence } from '../../data/occurrences';
+import { SayingsBanner } from '../../components/SayingsBanner';
 
 interface Props {
   active: Persona;
@@ -52,6 +53,8 @@ export function HomeDashboard({ active, onGoTo }: Props) {
 
   return (
     <div className="p-8 space-y-4 max-w-5xl">
+      <SayingsBanner variant="hero" rerollKey={active.code} />
+
       <div className="pretty-card">
         <div className="text-xs uppercase tracking-wider opacity-60">welcome back</div>
         <h2 className="display-font text-3xl font-bold persona-accent mt-1">Hi, I'm Molly 💕</h2>

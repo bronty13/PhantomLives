@@ -4,6 +4,28 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] — 2026-05-20
+
+### 🎁 First-gift release for Sallie
+
+This is the v1.0.0 milestone — Molly is feature-complete for the use case it was designed for. From here, work is bug-fix + the deferred scope items in `PHASE_8_PARSERS.md`.
+
+### Added
+
+- **Cute sayings banner.** 1000 hand-picked encouragements from `~/Downloads/sayings.md` baked into `src/data/sayings.ts`. Two display variants:
+  - **Hero**: gradient card at the top of the Home dashboard with a 💕 emoji + the saying in one of 10 rotating cute display fonts (Pacifico / Caveat / Dancing Script / Sacramento / Indie Flower / Shadows Into Light / Patrick Hand / Kalam / Chewy / Comfortaa) + an `✨ another` button to re-roll.
+  - **Compact**: replaces the static "your work, your way 💕" subtitle in the sidebar. Click the saying itself to re-roll.
+- **HANDOFF.md** (project architecture map for future developers).
+- **DESIGN.md** (UX / theming / persona engine notes).
+- **INSTALL.md** (Sallie-friendly Windows install + data-export walkthrough, plus the developer-side dev-import counterpart).
+- **PHASE_8_PARSERS.md** (scope doc for the deferred per-site sales-report parsers, modeled on PurpleLife's PurpleImport engine).
+- **OUT_OF_SCOPE.md** (Apple Developer ID + Windows EV cert signing intentionally deferred — single-user gift app).
+
+### Changed
+
+- Version bumped to 1.0.0 across `tauri.conf.json`, `Cargo.toml`, `package.json`, and the sidebar footer (which reads from `getVersion()`).
+- README, USER_MANUAL refreshed for the 1.0.0 milestone and final feature set.
+
 ## [0.7.1] — 2026-05-20
 
 ### Added / Changed
