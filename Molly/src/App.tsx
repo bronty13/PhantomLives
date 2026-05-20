@@ -6,6 +6,9 @@ import { useApplyPersonaTheme } from './state/theme';
 import { SettingsView } from './views/Settings/SettingsView';
 import { CustomerListView } from './views/Customers/CustomerListView';
 import { MollyHelper } from './views/MollyHelper/MollyHelper';
+import { HomeDashboard } from './views/Home/HomeDashboard';
+import { CalendarView } from './views/Calendar/CalendarView';
+import { ClipsListView } from './views/Clips/ClipsListView';
 
 function PlaceholderView({ title, blurb, active }: { title: string; blurb: string; active: Persona }) {
   return (
@@ -21,38 +24,7 @@ function PlaceholderView({ title, blurb, active }: { title: string; blurb: strin
   );
 }
 
-function HomeView({ active }: { active: Persona }) {
-  return (
-    <div className="p-8 space-y-4 max-w-4xl">
-      <div className="pretty-card">
-        <div className="text-xs uppercase tracking-wider opacity-60">welcome back</div>
-        <h2 className="display-font text-3xl font-bold persona-accent mt-1">Hi, I'm Molly 💕</h2>
-        <p className="opacity-80 mt-2">
-          Pick a persona at the top to filter the whole app to that vibe, or stay on <strong>★ All</strong> for the
-          cross-persona view. Customers, sites and the launcher are live in Phase 1.
-        </p>
-        <div className="mt-4 grid grid-cols-3 gap-3">
-          <div className="p-3 rounded-xl persona-tint border border-black/5">
-            <div className="text-xs opacity-60">Active persona</div>
-            <div className="font-semibold persona-text mt-1">{active.name}</div>
-          </div>
-          <div className="p-3 rounded-xl persona-tint border border-black/5">
-            <div className="text-xs opacity-60">Coming up</div>
-            <div className="font-semibold persona-text mt-1">Scheduler in Phase 3</div>
-          </div>
-          <div className="p-3 rounded-xl persona-tint border border-black/5">
-            <div className="text-xs opacity-60">Clips imported</div>
-            <div className="font-semibold persona-text mt-1">MasterClipper import in Phase 2</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const COPY: Record<Exclude<ViewKey, 'home' | 'settings' | 'customers' | 'helper'>, { title: string; blurb: string }> = {
-  calendar: { title: 'Calendar', blurb: 'Clip releases on a month grid, color-dotted per persona. Arrives in Phase 2.' },
-  clips:    { title: 'Clips',    blurb: 'Imported from MasterClipper CSV exports. Arrives in Phase 2.' },
+const COPY: Record<Exclude<ViewKey, 'home' | 'settings' | 'customers' | 'helper' | 'calendar' | 'clips'>, { title: string; blurb: string }> = {
   income:   { title: 'Income',   blurb: 'Adhoc one-offs + per-site monthly wizard. Arrives in Phase 4.' },
   expenses: { title: 'Expenses', blurb: 'One-off + recurring expenses, attachments, MTD/YTD. Arrives in Phase 4.' },
   reports:  { title: 'Reports',  blurb: 'MTD / Prior MTD / YTD per persona and ALL. Arrives in Phase 4.' },
@@ -94,10 +66,12 @@ export default function App() {
 
   let body: React.ReactNode;
   switch (view) {
-    case 'home':      body = <HomeView active={active} />; break;
-    case 'settings':  body = <SettingsView active={active} onPersonasChanged={refresh} />; break;
+    case 'home':      body = <HomeDashboard active={active} />; break;
+    case 'calendar':  body = <CalendarView active={active} />; break;
+    case 'clips':     body = <ClipsListView active={active} />; break;
     case 'customers': body = <CustomerListView active={active} />; break;
     case 'helper':    body = <MollyHelper active={active} />; break;
+    case 'settings':  body = <SettingsView active={active} onPersonasChanged={refresh} />; break;
     default:          body = <PlaceholderView title={COPY[view].title} blurb={COPY[view].blurb} active={active} />;
   }
 

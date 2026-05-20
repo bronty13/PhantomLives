@@ -29,6 +29,12 @@ pub fn run() {
             sql: include_str!("../migrations/004_customers.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 5,
+            description: "clips",
+            sql: include_str!("../migrations/005_clips.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

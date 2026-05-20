@@ -2,7 +2,7 @@
 
 This guide is written for the creator using Molly day to day, not for developers. If you ever get stuck, send Robert a screenshot in Slack and he can usually figure it out.
 
-> Phase 1 is live: settings (personas, sites, products, interests, backup), the customer tracker, and **Molly Helper** (the site launcher). Calendar, Clips, Income, Expenses and Reports remain placeholders for now.
+> Phase 2 is live: Home dashboard, **Calendar**, **Clips** (with MasterClipper CSV import), plus everything from Phase 1 (settings, customers, Molly Helper). Income, Expenses and Reports remain placeholders for now.
 
 ## Opening Molly
 
@@ -55,6 +55,28 @@ The list view filters by the active persona (top bar) and supports search across
 ## Molly Helper
 
 The **Molly Helper** tab is your one-click site launcher. Each persona gets a row of color-tinted cards showing the site name, short code, your username, and any note. Click **Open** to launch the site in your default browser; click **Copy user** to copy the username to your clipboard. The 🔗 chip shows when a site shares its login with another (use it once for OnlyFans, then switch stores after sign-in).
+
+## Clips & MasterClipper import
+
+Click **Clips** in the sidebar. The list shows everything you've imported, filtered by the active persona, sortable by go-live date / title / status / persona. Search across UID / title / keywords.
+
+To bring in a new export from MasterClipper:
+
+1. In MasterClipper, run an export → CSV.
+2. Email/AirDrop/Slack the `.csv` to whichever machine has Molly.
+3. In Molly, **Clips → 📂 Import CSV**.
+4. Pick the file. You'll see a preview and a small mapping panel: for each persona value found in the file (e.g. `coc`, `poa`), pick the matching Molly persona. Personas not mapped get skipped.
+5. Click **Run import**. Re-running the same file is safe — Molly UPSERTs on the MasterClipper UID, so duplicates won't pile up.
+
+Any notes you've added inside Molly (the "Molly notes" field on a clip) are kept across re-imports.
+
+## Calendar
+
+Click **Calendar**. The month grid shows every imported clip on its go-live date as a colored pill (one per persona). Click any pill to open the detail panel; you can read every imported field and write your own rich-text notes that survive future imports. Use **Prev** / **Next** / **Today** to move around.
+
+## Home dashboard
+
+Click **Home**. Four cards: clips this month vs last month, year-to-date, and all-time. Below that, a bar chart of clips per persona, a **reuse detection** panel that flags possible duplicate posts (same external ID, or same title within ~2 weeks), and a recent-imports log.
 
 ## The sidebar
 
