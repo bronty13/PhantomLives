@@ -20,13 +20,21 @@ packages:
   # PROVENANCE.md for the SHA-256 + build recipe.
   SQLCipher:
     path: Vendor/SQLCipher
-  # CoreXLSX — read-only .xlsx parsing, MIT-licensed, no transitive
-  # dependencies. Powers the Purple Import Phase 3 Excel reader. Pinned
-  # to a specific version so a future SPM resolve can't silently change
+  # CoreXLSX — read-only .xlsx parsing, MIT-licensed. Pulls in XMLCoder
+  # and ZIPFoundation transitively. Powers the Purple Import Phase 3
+  # Excel reader. Pinned so a future SPM resolve can't silently change
   # the .xlsx wire format expectations.
   CoreXLSX:
     url: https://github.com/CoreOffice/CoreXLSX
     from: "0.14.2"
+  # ZIPFoundation — direct dep so Phase-4.5 XLSXWriter can `import` it
+  # to pack the minimal OOXML emitter's output into a .xlsx file.
+  # CoreXLSX already pins this transitively at the same major version,
+  # so this only promotes the existing transitive choice to a direct
+  # one.
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation.git
+    from: "0.9.20"
 
 targets:
   PurpleLife:
@@ -61,6 +69,7 @@ targets:
       - package: SQLCipher
       - package: GRDB
       - package: CoreXLSX
+      - package: ZIPFoundation
     scheme:
       testTargets:
         - PurpleLifeTests
@@ -75,6 +84,7 @@ targets:
       - package: SQLCipher
       - package: GRDB
       - package: CoreXLSX
+      - package: ZIPFoundation
     settings:
       base:
         SWIFT_VERSION: "5.10"

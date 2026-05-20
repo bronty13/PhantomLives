@@ -37,17 +37,8 @@ struct PickFormatStep: View {
             case .json:     jsonSection
             case .markdown: markdownSection
             case .xml:      xmlSection
-            case .html, .pdf:
+            case .html, .pdf, .xlsx, .docx:
                 Section { Text("No additional options.").font(.caption).foregroundStyle(.secondary) }
-            case .xlsx, .docx:
-                Section {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Label("Writer not yet wired", systemImage: "hourglass")
-                            .font(.headline)
-                        Text("\(model.draft.format.displayName) export lands in a later phase. Pick CSV / JSON / Markdown / XML / HTML / PDF for now.")
-                            .foregroundStyle(.secondary)
-                    }
-                }
             }
         }
         .formStyle(.grouped)
@@ -70,8 +61,8 @@ struct PickFormatStep: View {
         case .xml:      return "XML. Root + record element names are configurable below."
         case .html:     return "Standalone HTML document with inline CSS. Open in any browser; print to share."
         case .pdf:      return "PDF rendered from the same HTML pipeline as legacy exports."
-        case .xlsx:     return "Phase 4.5 — minimal OOXML emitter on top of ZIPFoundation."
-        case .docx:     return "Phase 5 — text-only single-document write."
+        case .xlsx:     return "Excel workbook (.xlsx). One sheet per export with typed numbers, booleans, and Excel-serial dates; round-trips through the importer."
+        case .docx:     return "Word document (.docx). One section per record with bold field labels. Text-only — tables / images aren't written in v1 (Phase 7)."
         }
     }
 

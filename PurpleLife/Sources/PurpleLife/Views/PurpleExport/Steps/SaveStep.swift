@@ -42,8 +42,14 @@ struct SaveStep: View {
                             .font(.body.monospaced())
                             .frame(maxWidth: 360)
                     }
-                    Text("Tokens: {type-plural}, {type-name}, {stamp}, {ext}.")
-                        .font(.caption).foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Tokens you can use:").bold()
+                        Text("• \u{200B}{type-plural} — the type's plural name (e.g. \u{201C}Books\u{201D})")
+                        Text("• \u{200B}{type-name} — the type's singular name (e.g. \u{201C}Book\u{201D})")
+                        Text("• \u{200B}{stamp} — current timestamp \u{201C}YYYY-MM-DD-HHmmss\u{201D}")
+                        Text("• \u{200B}{ext} — file extension for the chosen format")
+                    }
+                    .font(.caption).foregroundStyle(.secondary)
                 }
                 Section {
                     HStack(spacing: 6) {

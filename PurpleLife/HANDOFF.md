@@ -12,6 +12,36 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-19 — Purple Import / Export Phase 6: initiative close + cross-app extraction blueprint (locked design points)
+
+Closes the six-phase Purple Import / Purple Export initiative. The architecture review of the engine boundary surfaced **the only delta between v1 and a portable SPM-package extraction**, and that delta is small enough that it's worth recording here so the next maintainer doesn't re-discover it.
+
+- **The engine boundary holds.** Every file in `Services/PurpleImport/` and `Services/PurpleExport/` is Foundation-plus-narrow-third-party only (ZIPFoundation, CoreXLSX, PDFKit, XMLCoder, CryptoKit). The only files that touch PurpleLife's record/schema stores are `Sinks/PurpleLifeSink.swift` and `Sources/PurpleLifeSource.swift` — the per-app adapter layer that's *supposed* to be the only seam. No other engine file imports `SchemaRegistry`, `ObjectEngine`, `AttachmentService`, or `AppState`. The audit is recorded in the Phase 6 CHANGELOG entry; treat that as the "is the engine still clean?" canonical check for future change reviews.
+
+- **`FieldKind` and `FieldOption` are the only PurpleLife-app types the engine still references.** Both are pure Foundation value types living in `Models/FieldDef.swift`. The path to a portable SPM extraction is a **single mechanical step**: move both declarations into a new `Services/PurpleImport/EngineTypes.swift` (engine-owned), have `FieldDef.swift` re-export them. Do NOT change the type shapes, the Codable rawValues, or the SF-Symbol mapping — they're load-bearing for the on-disk mapping/config envelopes (`purplelife.import-mapping.v1`, `purplelife.export-config.v1`). Just move the file. The reason this isn't done in v1: an import-direction flip is invasive to apply without a sibling app actively adopting, and would create a wide PR diff for zero functional change.
+
+- **Six phases, ~3 weeks of personal-project time, exactly as estimated.** Phase 1 (engine skeleton + CSV/JSON + sink) → Phase 2 (Markdown/XML + tree paths + drag-drop) → Phase 3 (Excel via CoreXLSX) → Phase 4 (Export engine + six writers + saved configs) → Phase 4.5 (XLSX writer via OOXML emitter) → Phase 5 (Word/PDF readers + DOCX writer, text-only) → Phase 6 (polish + extraction prep). Each phase shipped its own CHANGELOG entry + tests; the count grew from ~365 (pre-Phase-1) to 455 across the initiative.
+
+- **What didn't ship, deliberately.** Word/PDF table extraction (deferred to Phase 7 with its own design doc when a real motivating document arrives); the actual SPM-package extraction (deferred to v2 / first sibling adoption per `CLAUDE.md`'s no-Core-Swift-package-split rule); programmatic / CLI invocation of saved mappings (deferred — all paths go through the UI in v1); a `_tags` ingress (out of scope per Phase-1 decision #12; the post-import Tag Management UI handles it). These are not gaps — they're documented punts with clear triggers for revisiting.
+
+### 2026-05-19 — Purple Import / Export Phase 5: Word + PDF readers + DOCX writer (locked design points)
+
+Closes the eight-format matrix. Two locked points worth surfacing for future-me:
+
+- **Text-only single-record is the load-bearing v1 contract for Word + PDF.** The Phase-1 architecture review caught that .docx table extraction (`<w:tbl>` with `<w:vMerge>` / `<w:gridSpan>` merged cells, AlternateContent fallbacks, revision marks) and PDF table reconstruction (PDFKit's `string` has no per-glyph x/y positioning) are known-hard multi-week problems that commercial tools spend years on. v1 punts: one record per document, body in `$._body`, table contents explicitly skipped (`DOCXReader` counts `<w:tbl>` depth and ignores everything inside). The `testTableContentIsSkipped` test is the **single most-important assertion in the suite** — if it ever flips, table extraction has started and this HANDOFF note needs updating first. Table extraction is filed as a Phase-7 follow-up with its own design doc, triggered by a real motivating user document. Do not weaken the contract opportunistically.
+
+- **DOCX writer is symmetric with XLSX writer — minimum-viable OOXML, ZIPFoundation, no styles.xml.** Four parts (`[Content_Types].xml`, `_rels/.rels`, `word/_rels/document.xml.rels`, `word/document.xml`), inline run properties (`<w:rPr><w:b/></w:rPr>` for bold labels, `<w:sz w:val="24"/>` for headings). Word and Pages both open this shape without complaint. Round-trip is verified by feeding writer output back through `DOCXReader.extractText` and asserting every field value lands in the recovered body — same pattern that pins the XLSX writer's correctness without needing Excel installed. Extending the writer to emit tables (for full record fidelity in the .docx export, not for ingest) is a sensible Phase-6/7 extension; the emitter is shaped to grow that way without a rewrite.
+
+### 2026-05-19 — Purple Export Phase 4.5: XLSX writer ships as a hand-rolled OOXML emitter (locked design points)
+
+XLSX is now the seventh wired destination format. Two locked decisions worth keeping out of the next revisit:
+
+- **Hand-rolled emitter over a heavier write-capable lib.** CoreXLSX (vendored at Phase 3 for the reader) is read-only. The two routes were: (1) swap to a write-capable XLSX lib like `xlsxwriter-swift` or similar, or (2) emit the minimum-viable OOXML directly. We picked (2): the emitter is ~400 lines, has zero new third-party surface, and is bounded enough to read top-to-bottom. The trade-off is we don't get every Excel feature (shared strings table, merged cells, charts) — but Purple Export's contract is a flat record × field table, which is exactly the shape the minimal emitter covers. If the writer ever needs styling beyond the three styles we ship (date, date+time, bold header), we extend the emitter, not the dep surface. **ZIPFoundation is the one new direct dep**, promoted from a CoreXLSX-transitive choice — same `0.9.20` version, so the SPM lock-file stays stable.
+
+- **Round-trip through CoreXLSX is the load-bearing test.** `XLSXWriterTests` doesn't assert on raw XML strings — it opens every emitted .xlsx with CoreXLSX, walks the worksheet rows, and asserts on the typed cell payloads + style indices. This is the strongest possible check that another OOXML consumer (Excel, Numbers, openpyxl) will read what we wrote. The reader-side `XLSXReader.detectDateStyleIndices` is the most fragile cross-piece in the round-trip (numFmtId → cellXfs index → cell `s` attribute); we explicitly assert it returns `{1, 2}` for the writer's date cellXfs entries. If a future "let's simplify styles.xml" commit breaks this, two tests light up red, not silent data drift in someone's exported workbook.
+
+The "deferred to Phase 4.5" note in the original 2026-05-19 entry below is now closed. DOCX continues to gate at Phase 5.
+
 ### 2026-05-19 — Purple Import / Purple Export Phase 1 shipped (locked design points)
 
 First commit in the multi-phase Purple Import / Purple Export initiative — the generic import/export engine that becomes the model for the PhantomLives family. Full plan: `~/.claude/plans/cheeky-yawning-giraffe.md`. Locked design points worth remembering:

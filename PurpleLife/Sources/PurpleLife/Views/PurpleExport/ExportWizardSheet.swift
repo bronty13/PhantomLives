@@ -211,12 +211,9 @@ final class ExportWizardModel: ObservableObject, Identifiable {
         case .pickRecords: return true
         case .pickFields:  return !effectiveFieldKeys.isEmpty
         case .pickFormat:
-            // Phase 4 wires six writers; xlsx + docx are intentional
-            // greys until Phase 4.5 / 5.
-            switch draft.format {
-            case .xlsx, .docx: return false
-            default: return true
-            }
+            // Phase 5 wires the eighth writer (DOCX); all formats now
+            // advance from the picker.
+            return true
         case .preview:     return true
         case .save:        return true
         case .running, .done, .error: return false

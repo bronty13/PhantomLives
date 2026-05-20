@@ -130,9 +130,9 @@ final class ExportRunner {
         return f.string(from: Date())
     }
 
-    /// Pick the writer concrete for a destination format. Phase 4
-    /// wires six; xlsx + docx throw `.formatNotSupported` until
-    /// Phase 4.5 / Phase 5.
+    /// Pick the writer concrete for a destination format. All eight
+    /// formats are wired as of Phase 5; the wizard's format picker
+    /// surfaces every option without grey-outs.
     static func writer(for format: PurpleExport.DestinationFormat) throws -> PurpleExportWriter? {
         switch format {
         case .csv:      return CSVWriter()
@@ -141,8 +141,8 @@ final class ExportRunner {
         case .xml:      return XMLWriter()
         case .html:     return HTMLWriter()
         case .pdf:      return PDFWriter()
-        case .xlsx, .docx:
-            throw PurpleExportError.formatNotSupported(format)
+        case .xlsx:     return XLSXWriter()
+        case .docx:     return DOCXWriter()
         }
     }
 }

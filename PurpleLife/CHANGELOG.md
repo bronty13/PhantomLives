@@ -4,6 +4,65 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-19 — Purple Import / Export Phase 6: initiative close (polish + cross-app extraction prep)
+
+Closes the Purple Import / Purple Export initiative. The six-phase plan from `~/.claude/plans/cheeky-yawning-giraffe.md` is now fully shipped: a generic, wizard-driven, cross-app-reusable import + export engine covering seven import formats and eight export formats, with saved configurations per-file, encrypted-at-rest, and round-trip-verified between every reader/writer pair.
+
+**Polish.**
+
+- Preview step learnt about binary outputs. PDF, XLSX, and DOCX no longer dump mojibake into the preview pane — each shows a "binary format — Continue to write the actual file" message with the byte count. The other five formats (CSV, JSON, XML, Markdown, HTML) still show the first 4 KB of text inline.
+- Filename-template help in the Save step expanded from a single-line caption into a 4-line per-token explainer (`{type-plural}`, `{type-name}`, `{stamp}`, `{ext}` with examples). Reduces the "what do I type here?" moment.
+
+**Cross-app extraction interface review.** Auditing every file under `Services/PurpleImport/` and `Services/PurpleExport/` confirms the engine boundary holds:
+
+- The only files that import `SchemaRegistry`, `ObjectEngine`, or `AttachmentService` are `Sinks/PurpleLifeSink.swift` and `Sources/PurpleLifeSource.swift` — exactly the per-app adapters that are *supposed* to. Every reader, writer, runner, protocol file is Foundation-plus-narrow-third-party only.
+- **Two PurpleLife-app types remain in the engine surface: `FieldKind` and `FieldOption`** (from `Models/FieldDef.swift`). Both are pure-Foundation value types — Codable, Hashable, no app-specific computed properties on the type itself. The path to true extraction is **a single file move**: relocate the `FieldKind` and `FieldOption` declarations into `Services/PurpleImport/EngineTypes.swift`, update `FieldDef.swift` to import from there. Not done in v1 because the import-direction flip is invasive without a sibling app actively adopting; documented as the only mechanical step needed for the v2 extraction.
+- Conclusion: when a sibling app (Timeliner, MasterClipper, …) wants to adopt, the extraction is mechanical — copy `Services/PurpleImport/` and `Services/PurpleExport/` plus `EngineTypes.swift` into a Swift Package, write a new `Sink` and `Source` against the sibling's record store, done. No engine refactor needed.
+
+**Tests.** 455/455 holding. No new tests in Phase 6 — every change was either documentation or a wizard polish line that doesn't reach a writer/reader contract.
+
+### 2026-05-19 — Purple Import / Export Phase 5: Word (.docx) + PDF readers + DOCX writer (text-only single-record)
+
+Closes the format matrix. All seven import formats and all eight export formats are now wired end-to-end. Word + PDF v1 scope is intentionally narrow per the architecture review locked at Phase 1: **text-only, one record per document, body in `$._body`.**
+
+**`PDFReader` — PDFKit.** Opens via `PDFDocument(url:)` / `(data:)`, walks each page, joins page text with a configurable separator (default `\u{000C}` form-feed so the page boundary survives intact). Encrypted / scanned-image-only PDFs surface `PDFReaderError.openFailed`. No table extraction — PDFKit has no per-glyph x/y positioning suitable for column reconstruction, and Phase-7 is when that work begins behind a proper design doc.
+
+**`DOCXReader` — unzip + XMLParser.** Reads `word/document.xml` out of the .docx zip via ZIPFoundation, walks the WordprocessingML body with `XMLParser`, captures only what falls inside `<w:p>` (`<w:t>` text, `<w:br/>` → `\n`, `<w:tab/>` → `\t`). Counts `<w:tbl>` depth and skips everything inside — load-bearing per the v1 contract. Custom paragraph separator option for users who want `" | "` instead of `\n\n`.
+
+**`DOCXWriter` — minimum-viable OOXML.** Symmetric with the XLSX writer: four-part package (`[Content_Types].xml`, `_rels/.rels`, `word/_rels/document.xml.rels`, `word/document.xml`) packed via ZIPFoundation. Each record renders as a heading paragraph ("Record `<id>`") followed by one paragraph per field formatted `**<Header>:** <value>`. Field labels are bold via `<w:rPr><w:b/></w:rPr>`. Type's plural name leads the document as a 16pt heading. Other field kinds (links, attachments, select, rich text) stringify through `ExportService.renderCell`, same as the CSV/MD/HTML writers.
+
+**Round-trip is load-bearing again.** `DOCXWriterTests` writes a fixture, feeds the bytes back through `DOCXReader.extractText`, and asserts every field value lands in the recovered body. Both writer and reader pin to the same OOXML contract without needing Word installed.
+
+**Wizard wiring.** ImportRunner's reader dispatch lights up `.docx` → `DOCXReader()` and `.pdf` → `PDFReader()` (was `throw .noReaderForFormat`). ExportRunner's writer dispatch returns `DOCXWriter()` for `.docx`. The Export wizard's PickFormat step now accepts every format with no grey-outs; the help text for docx + pdf calls out the text-only contract.
+
+**ZIPFoundation now backs three writers + one reader** (XLSX writer, DOCX writer, DOCX reader, future PDF metadata). Stays at the direct-dep `0.9.20` introduced in Phase 4.5.
+
+**Tests.** +18 new across three files:
+
+- `PDFReaderTests` (6) — PDF-generation-via-PDFKit fixture, probe returns `.document`, preview single row at `$._body`, read streams exactly one row, multi-page form-feed default, custom page separator option, corrupt-bytes error path.
+- `DOCXReaderTests` (6) — two-paragraph concat, `<w:br/>` → newline, `<w:tab/>` → tab, **`<w:tbl>` contents skipped** (locked-scope pinning test), custom paragraph separator, missing-`document.xml` error.
+- `DOCXWriterTests` (5) — format ID, XML escape, full round-trip through DOCXReader covering text/number/boolean fields + created_at/updated_at, XML special-char escape via round-trip, empty record set still produces a valid heading-only document.
+
+### 2026-05-19 — Purple Export Phase 4.5: XLSX writer via minimal OOXML emitter on ZIPFoundation
+
+Excel (.xlsx) is now a fully wired destination format. The writer emits a minimal but spec-valid OOXML workbook (one sheet, six parts: `[Content_Types].xml`, `_rels/.rels`, `xl/workbook.xml`, `xl/_rels/workbook.xml.rels`, `xl/styles.xml`, `xl/worksheets/sheet1.xml`) and packs it via ZIPFoundation's in-memory archive.
+
+**Why a hand-rolled emitter:** CoreXLSX (vendored in Phase 3 for the Excel *reader*) is read-only by design. Rather than adopt a heavier write-capable lib, Phase 4.5 ships a ~400-line emitter that only does what we need — typed cells, three styles (date, date-time, bold header), inline strings, and `.deflate`-compressed parts.
+
+**Typed cell shapes.** Numbers and ratings emit as `<c><v>n</v></c>` so a downstream `XLSXReader.preview(…)` infers them as `.number` rather than `.text`. Booleans use Excel's native `t="b"` shape with `0`/`1` payloads. Dates and date-times convert to Excel serials (days since 1899-12-30) and reference cellXfs indices whose `numFmtId` is 14 (`m/d/yyyy`) or 22 (`m/d/yyyy h:mm`) — both in the OOXML built-in date format set, so `XLSXReader.detectDateStyleIndices` lights them up during round-trip import. Text cells use inline strings (`t="inlineStr"`) — slightly larger files than a sharedStrings table, but the emitter stays stateless and one-pass.
+
+**Header row is bold.** cellXfs index 3 references a bold font; Excel and Numbers both honor it. The id / created_at / updated_at columns still bracket the user-chosen field columns to match the CSV / Markdown writers' shape.
+
+**Sheet tab name is the type's plural.** "Books" not "Sheet1" — sanitized to OOXML's 31-char limit and forbidden-char rules.
+
+**ZIPFoundation as direct dep.** Promoted from a CoreXLSX-transitive choice to a direct entry in `project.yml`. Same version (`0.9.20`) so the SPM lock-file stays stable.
+
+**Wizard.** Continue now activates when XLSX is the picked format (it stayed disabled in Phase 4). DOCX continues to gate-keep until Phase 5.
+
+**Round-trip is load-bearing.** The new `XLSXWriterTests` opens every emitter output with CoreXLSX and asserts header labels, typed cell shapes, the exact Excel serials for known dates, and that `XLSXReader.detectDateStyleIndices` returns indices `{1, 2}` for the writer's date cellXfs entries. This is the strongest cross-engine validation we can do without booting Excel.
+
+**Tests.** +9 new (`XLSXWriterTests`): format identifier, column-letter math (A→Z→AA→AZ→BA), XML escape coverage, full CoreXLSX round-trip, date-style detector, date-time fractional serial + style 2, missing-field empty cell, inline-string XML un-escape round-trip.
+
 ### 2026-05-19 — Purple Export Phase 4: full export wizard + CSV/JSON/XML/Markdown/HTML/PDF writers + saved configs
 
 The symmetric counterpart of Purple Import. Wizard-driven engine for pulling records out of PurpleLife and writing them in any of six destination formats, with saved configurations that re-run end-to-end.

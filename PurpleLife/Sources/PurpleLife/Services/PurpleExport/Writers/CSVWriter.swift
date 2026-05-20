@@ -31,7 +31,7 @@ final class CSVWriter: PurpleExportWriter {
         // Matches the column shape ExportService.formatCSV produces
         // for the legacy all-fields export, so a user who's mentally
         // modeling the output stays oriented.
-        var headers = ["id"] + selections.map(\.header) + ["created_at", "updated_at"]
+        let headers = ["id"] + selections.map(\.header) + ["created_at", "updated_at"]
         var rows: [[String]] = [headers]
 
         for record in records {

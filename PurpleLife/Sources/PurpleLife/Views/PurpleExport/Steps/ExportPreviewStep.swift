@@ -72,14 +72,22 @@ struct ExportPreviewStep: View {
                 attachmentResolver: { model.source.resolveAttachmentLabel(sha256: $0) },
                 to: tmp
             )
-            // For PDF / binary outputs the on-disk text is not
-            // human-readable; show a placeholder.
-            if model.draft.format == .pdf {
-                sample = "(PDF binary — \(bytes) bytes generated; preview not shown here. The Save step writes the real file.)"
-            } else if let text = try? String(contentsOf: tmp, encoding: .utf8) {
-                sample = text
-            } else {
-                sample = "(non-text output — \(bytes) bytes)"
+            // For binary outputs (PDF / XLSX / DOCX) the on-disk text
+            // is not human-readable; show a placeholder rather than
+            // dumping mojibake into the preview pane.
+            switch model.draft.format {
+            case .pdf:
+                sample = "(PDF binary — \(bytes) bytes generated. Preview not shown here; Continue to write the actual file.)"
+            case .xlsx:
+                sample = "(Excel workbook — \(bytes) bytes generated. The .xlsx is a ZIP package, so preview text would be gibberish; Continue to write the actual file and open it in Excel / Numbers.)"
+            case .docx:
+                sample = "(Word document — \(bytes) bytes generated. The .docx is a ZIP package, so preview text would be gibberish; Continue to write the actual file and open it in Word / Pages.)"
+            default:
+                if let text = try? String(contentsOf: tmp, encoding: .utf8) {
+                    sample = text
+                } else {
+                    sample = "(non-text output — \(bytes) bytes)"
+                }
             }
             sampleBytes = bytes
             try? FileManager.default.removeItem(at: tmp)

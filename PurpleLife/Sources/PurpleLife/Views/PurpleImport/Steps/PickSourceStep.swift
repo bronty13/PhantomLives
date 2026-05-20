@@ -84,8 +84,8 @@ struct PickSourceStep: View {
         case .markdown: return "Supported. GFM pipe tables, YAML/TOML frontmatter, or plain document."
         case .xml:      return "Supported. Tree-shaped; the largest repeating child element becomes the row collection (override via root path in the next step)."
         case .xlsx:     return "Supported. Picks the first sheet by default; sheet, header row, and column range are tunable in the next step."
-        case .docx:     return "Phase 5 — readers land soon (text-only, single record)."
-        case .pdf:      return "Phase 5 — readers land soon (text-only, single record)."
+        case .docx:     return "Supported (text-only). One record per document, body in $._body. Tables / track-changes / comments aren't parsed in v1."
+        case .pdf:      return "Supported (text-only). One record per document, body in $._body. Pages joined with a form-feed separator; configurable in the next step."
         }
     }
 

@@ -318,8 +318,8 @@ enum PurpleImportReaderRegistry {
         case .markdown: return MarkdownReader()
         case .xml:      return XMLReader()
         case .xlsx:     return XLSXReader()
-        case .docx, .pdf:
-            throw PurpleImportError.noReaderForFormat(format)
+        case .docx:     return DOCXReader()
+        case .pdf:      return PDFReader()
         }
     }
 }

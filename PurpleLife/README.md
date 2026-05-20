@@ -2,7 +2,7 @@
 
 A native macOS "Life OS" — one app for planner, notes, hobbies (WoW, photography), extended contacts, reading log, and weight, organized as configurable object types with relations. Data lives in CloudKit, end-to-end encrypted with keys the user controls (`CKRecord.encryptedValues`), mirrored across the user's Macs. Restorable backups land in `~/Downloads/PurpleLife backup/`.
 
-External data flows through **Purple Import** — a wizard-driven engine that brings CSV, JSON, Markdown, XML, Excel, Word, and PDF files in by graphically mapping source columns or path expressions to schema fields, with inline schema authoring. Saved mappings live as portable `.purplelifemapping.json` files under `~/Library/Application Support/PurpleLife/mappings/`. (Phase 1 ships CSV + JSON; the rest follow.)
+External data flows through **Purple Import** and **Purple Export** — a wizard-driven engine pair that brings external files in (CSV, JSON, Markdown, XML, Excel, Word, PDF) and writes records back out (CSV, JSON, Markdown, XML, HTML, PDF, Excel, Word) with graphical column / path-expression mapping, inline schema authoring, header overrides, and named saved mappings + configs. Per-file persistence under `~/Library/Application Support/PurpleLife/mappings/` and `…/export-configs/` (encrypted, per-file so a malformed mapping can't poison others). Engine code is app-agnostic — `PurpleImportSink` / `PurpleExportSource` protocols make the layer reusable across the PhantomLives family.
 
 Part of the **PhantomLives** family of personal macOS apps (Timeliner, PurpleTracker, PurpleIRC, PurpleDedup, WeightTracker).
 

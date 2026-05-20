@@ -370,7 +370,7 @@ The button **Export plaintext snapshot…** writes your entire dataset, decrypte
 
 ### Import
 
-**Purple Import** is the generic, wizard-driven import engine. Bring data in from external files and graphically map source columns or path expressions to schema fields, with inline schema authoring along the way. Phase 1 ships **CSV** and **JSON** end-to-end; Markdown, XML, Excel, Word, and PDF land in later phases.
+**Purple Import** is the generic, wizard-driven import engine. Bring data in from external files and graphically map source columns or path expressions to schema fields, with inline schema authoring along the way. All seven formats are wired end-to-end: **CSV / JSON / Markdown / XML / Excel** ship as full multi-row sources; **Word / PDF** ship as text-only single-record sources per the locked v1 scope (no table parsing — see Phase 7).
 
 #### Saved import mappings
 
@@ -409,6 +409,8 @@ Save the mapping any time via the footer's **Save Mapping** button (available fr
 | **Markdown** | Phase 2 | Auto-detects three shapes: GFM pipe tables (header + separator + data rows; pick which table via `tableIndex` when the file has more than one), YAML/TOML frontmatter (`---` or `+++` delimited, scalar values only — keys become `$.key`, the body lives at `$._body`), or plain document (whole text as a single `$._body` field). Mode override available in the source-configure step. |
 | **XML** | Phase 2 | Tree-shaped. The largest repeating child element under the root becomes the row collection automatically; override via a JSONPath-lite root path (`$.catalog.books[*]`). Attributes surface as top-level keys on each record. |
 | **Excel (.xlsx)** | Phase 3 | Read-only via CoreXLSX. Sheet picker (populated from the workbook), header-row stepper (0 = no header → columns become col_A, col_B, …), optional A/B/C-style start/end column window. |
+| **Word (.docx)** | Phase 5 | Text-only single-record. Pulls every `<w:p>` paragraph from `word/document.xml`; soft line breaks become `\n`, tab marks become `\t`. Tables, track-changes, comments, and embedded images are **not** parsed in v1 (Phase 7 scope). The body lands at the JSONPath `$._body` so any text-shaped field can receive it. |
+| **PDF** | Phase 5 | Text-only single-record via PDFKit. Joins every page's text with a form-feed (`\u{000C}`) separator by default; configurable via the `pageSeparator` option in the next step. Tables, columns, and scanned-image-only PDFs are **not** OCR'd in v1. The body lands at `$._body`. |
 | Word (.docx) | Phase 5 | Text-only single record (no table extraction in v1). |
 | PDF | Phase 5 | Text-only single record (no table extraction in v1). |
 
@@ -454,7 +456,7 @@ Click **+ New config…** to walk:
 1. **Pick type** — pick which schema type to export from. Vault types appear when the Vault is unlocked.
 2. **Pick records** — Phase 4 supports "all records of this type"; "saved search" is staged grey for Phase 4.5.
 3. **Pick fields + headers** — table of every field on the type with a header (column / property name) override per field. Defaults to all fields in schema order, headers matching field names. Uncheck rows to omit fields; **Reset to all fields** restores.
-4. **Pick format** — segmented picker of all seven formats. Per-format options surface below: CSV delimiter + always-quote toggle; JSON shape (array / NDJSON / nested envelope) + pretty-print; Markdown shape (table / list-per-record); XML root + record element names. HTML and PDF have no extra options. XLSX and DOCX are visible but greyed (Phase 4.5 / 5).
+4. **Pick format** — segmented picker of all eight formats. Per-format options surface below: CSV delimiter + always-quote toggle; JSON shape (array / NDJSON / nested envelope) + pretty-print; Markdown shape (table / list-per-record); XML root + record element names. HTML, PDF, XLSX, and DOCX have no extra options.
 5. **Preview** — renders the chosen writer to a tempfile, shows the first ~4 KB of output so you can spot-check formatting before committing.
 6. **Save** — destination mode (default `~/Downloads/PurpleLife/` or custom path), filename template (tokens `{type-plural}`, `{type-name}`, `{stamp}`, `{ext}`), resolved-path preview. **Save Config** persists the wizard's choices for re-runs; **Export** writes the actual file.
 
@@ -470,8 +472,8 @@ After **Run**, the Done screen shows Reveal in Finder + Open buttons.
 | **Markdown** | Phase 4 | GFM pipe table (round-trips through Purple Import's MarkdownReader) or list-per-record (`## Record id \n - **Header:** value`). |
 | **HTML** | Phase 4 | Standalone document with inline CSS matching the legacy purple palette. Open in any browser; print to share. |
 | **PDF** | Phase 4 | Rendered from the HTML pipeline via WKWebView. US Letter portrait. |
-| Excel (.xlsx) | Phase 4.5 | Minimal OOXML emitter on top of ZIPFoundation. Wizard greys until shipped. |
-| Word (.docx) | Phase 5 | Paired with the .docx reader effort. Wizard greys until shipped. |
+| **Excel (.xlsx)** | Phase 4.5 | Minimal OOXML emitter via ZIPFoundation. One sheet per type (sheet tab uses the type's plural name). Header row is bold. Numbers and ratings emit as native Excel numbers, booleans as `TRUE`/`FALSE` cells, and date / date-time fields convert to Excel serials with the built-in date formats (so Excel + Numbers display them as dates, not raw numbers). Other field kinds — links, attachments, select, rich text — stringify through the same renderer the CSV / Markdown writers use. |
+| **Word (.docx)** | Phase 5 | Minimum-viable OOXML emitter via ZIPFoundation. The type's plural name leads as a 16pt heading. Each record is a 12pt heading paragraph ("Record `<id>`") followed by one paragraph per field formatted `**<Header>:** <value>`. created_at / updated_at land as the closing two paragraphs. Field values stringify through the same renderer as the CSV / Markdown writers. Round-trips through Purple Import's DOCX reader. |
 
 ### Default export directory
 
