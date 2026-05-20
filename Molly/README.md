@@ -2,7 +2,7 @@
 
 Molly is the central hub for a content creator's day — personas, clips, schedules, customers, income and expenses, all in one cute little app. It runs on **macOS** and **Windows**, with the same database format on both, so a Windows export can be opened on a Mac dev machine and vice-versa.
 
-> **Phase 3.** Scheduling engine (no cron), Reminders with satisfying check-off, and a bell badge in the sidebar. Income/expense tracking lands in Phase 4 (see [roadmap](#roadmap)).
+> **Phase 4.** Income tracking (adhoc + per-site wizard), expenses (one-off + recurring with attachments), and reports with CSV export. Phase 5 (export round-trip + auto-update polish) is next (see [roadmap](#roadmap)).
 
 ## Quick start (Mac dev)
 
@@ -63,8 +63,8 @@ Molly zips its app-data directory on launch into `~/Downloads/Molly backup/Molly
 | 0     | App shell, icon, persona theming, backup-on-launch, CI release pipeline. |
 | 1     | Settings (personas/sites/products/interests) + Customer tracker + Molly Helper. |
 | 2     | Calendar + MasterClipper import + dashboard widgets. |
-| 3     | Scheduling engine + reminders + check-off. *(this build)* |
-| 4     | Income (adhoc + per-site) + expenses (one-off + recurring) + reports |
+| 3     | Scheduling engine + reminders + check-off. |
+| 4     | Income (adhoc + per-site) + expenses (one-off + recurring) + reports. *(this build)* |
 | 5     | Full export → dev / import on dev / auto-update polish |
 
 ## Layout

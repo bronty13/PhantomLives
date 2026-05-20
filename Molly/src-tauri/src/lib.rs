@@ -1,3 +1,4 @@
+mod attachments;
 mod backup;
 mod fsutil;
 
@@ -41,6 +42,18 @@ pub fn run() {
             sql: include_str!("../migrations/006_schedules.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 7,
+            description: "income",
+            sql: include_str!("../migrations/007_income.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 8,
+            description: "expenses",
+            sql: include_str!("../migrations/008_expenses.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -72,6 +85,10 @@ pub fn run() {
             backup::reveal_path,
             backup::get_backup_settings,
             backup::set_backup_settings,
+            attachments::save_attachment,
+            attachments::delete_attachment,
+            attachments::reveal_attachment,
+            attachments::open_attachment,
         ])
         .run(tauri::generate_context!())
         .expect("error while running molly");

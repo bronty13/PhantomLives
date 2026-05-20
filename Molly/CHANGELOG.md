@@ -4,6 +4,21 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-05-20
+
+### Added
+
+- **Phase 4 — Income + Expenses + Reports.**
+- Migrations `007_income.sql` (`income_adhoc`, `income_site` unique on year+month+site) and `008_expenses.sql` (`expenses`, `expenses_recurring`, unique on `(recurring_id, effective_date)` so materialization is idempotent).
+- **Adhoc income** view (`💖 Adhoc income`) with year + month filter, persona scoping, add/edit/delete, total readout. Backfill to any past date for tax prep.
+- **Site income wizard** (`🌐 Site income wizard`): pick year + month → wizard walks every site grouped by persona → one dollar field per site → save. Reopenable for any past month. Per-persona subtotals + grand total update live.
+- **Expense list + editor** with actual + effective dates, persona, description, note, **receipt attachment** (Tauri-backed copy into `<app_data>/attachments/expenses/<YYYY>/<MM>/<uuid>_<basename>`), and exclude/partial-exclude controls (e.g. "this $100 was $30 personal, $70 business").
+- **Attachment field** with Open / Reveal in Finder / Remove via new Rust commands (`save_attachment`, `delete_attachment`, `reveal_attachment`, `open_attachment` in `src-tauri/src/attachments.rs`).
+- **Recurring expenses** reusing the Phase 3 Cadence engine: name + amount + persona + anchor + cadence (weekly with day mask / monthly Nth / N days before next month / N days after EOM / every-N-days / daily) + Pause/Resume. Live "Reads as" + next-5-dates preview, just like the schedule wizard.
+- **Recurring materializer** runs on launch + every 30 min, walks each active recurring expense from its `last_material` to today, INSERTs into the journal via `INSERT OR IGNORE` (idempotent), then bumps `last_material`.
+- **Reports view**: 3 period cards (MTD vs Prior MTD vs YTD) showing income, expenses (net), profit. Income breakdown bars (Adhoc vs Site). Per-site YTD income chart grouped by persona, sized by site color. **Export CSV** button writes a year-stamped report file.
+- App.tsx wires `income`, `expenses`, `reports` to real views; placeholder `PlaceholderView` is finally removed.
+
 ## [0.3.0] — 2026-05-20
 
 ### Added

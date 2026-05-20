@@ -2,7 +2,7 @@
 
 This guide is written for the creator using Molly day to day, not for developers. If you ever get stuck, send Robert a screenshot in Slack and he can usually figure it out.
 
-> Phase 3 is live: **Reminders** (the scheduler/check-off page) plus everything before it. Income, Expenses and Reports remain placeholders for now.
+> Phase 4 is live: **Income**, **Expenses**, **Reports**, plus everything before them. The next phase is export round-trip + auto-update polish.
 
 ## Opening Molly
 
@@ -55,6 +55,46 @@ The list view filters by the active persona (top bar) and supports search across
 ## Molly Helper
 
 The **Molly Helper** tab is your one-click site launcher. Each persona gets a row of color-tinted cards showing the site name, short code, your username, and any note. Click **Open** to launch the site in your default browser; click **Copy user** to copy the username to your clipboard. The 🔗 chip shows when a site shares its login with another (use it once for OnlyFans, then switch stores after sign-in).
+
+## Income
+
+Click **Income** in the sidebar. Two tabs:
+
+### 💖 Adhoc income
+
+Where one-off sales go. Add anything — a custom for a fan, a tip on a phone call, a one-time payment. Each entry has a date, amount, persona (or unassigned), source label, and an optional note. The year + month filter at the top lets you backfill any past month (set it to last March for tax prep, etc.).
+
+### 🌐 Site income wizard
+
+Once per month — typically right after the "Income update" reminder fires — open this wizard, pick the month you're entering for, and walk down the list. Sites are grouped by persona; type the dollar amount each site earned for that month. Per-persona subtotals and the grand total update live. You can reopen any past month and edit.
+
+## Expenses
+
+Click **Expenses**. Two tabs:
+
+### 🧾 All expenses
+
+The journal — both your one-off purchases and the materialized rows from recurring expenses live here. Each row has:
+
+- **Actual date** (when the charge hit) and **Effective date** (what month it counts for in reports). Most of the time they're the same.
+- Description and note.
+- Amount and persona (or unassigned).
+- An **attachment** — pick a receipt or invoice; Molly copies it into its own folder so it sticks around even if you move the original. Open / Reveal in Finder / Remove from the editor.
+- **Exclude from reports** — fully exclude (personal purchase that doesn't count) or partially exclude (a $100 receipt where $30 was personal: set partial = $30, and reports use $70). The list view shows the gross, net, and excluded totals at the top.
+
+### 🔁 Recurring
+
+Subscriptions and repeating fees. Each entry has a name, amount, persona, anchor date (when it starts), and a cadence (same shapes as the scheduler — Weekly with day mask / Monthly Nth / N days before next month / N days after EOM / Every-N-days / Daily). The "Reads as" + next-5-dates preview match the schedule wizard exactly. Active entries materialize new rows in **All expenses** automatically on app launch + every 30 minutes.
+
+## Reports
+
+Click **Reports**. Three big cards across the top: **MTD** (this month so far), **Prior MTD** (same window in the previous month, for an apples-to-apples comparison), and **YTD**. Each card shows profit, with income and expenses (net of exclusions) underneath.
+
+Below that:
+- **Income breakdown (MTD)** — bar chart of Adhoc vs Site income.
+- **Site income (YTD)** — per-persona grouped chart of every site's contribution to the year, sized by the site's color.
+
+Click **📄 Export CSV** to write a Year+Month+Persona-stamped CSV next to your other downloads.
 
 ## Reminders
 
