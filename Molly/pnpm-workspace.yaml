@@ -1,2 +1,8 @@
+# Molly is single-package, not a real workspace — but pnpm needs this
+# file to parse `allowBuilds` (its canonical place for trusting native
+# postinstall scripts since pnpm 10). `packages: []` is required by
+# pnpm's parser even when there are no workspace packages.
+packages: []
+
 allowBuilds:
   esbuild: true
