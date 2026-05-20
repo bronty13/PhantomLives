@@ -112,29 +112,35 @@ export async function getClip(id: string): Promise<Clip | null> {
  * Insert a fresh import, or update existing row by id. Preserves the
  * existing `molly_notes_html` (never overwritten by import). Returns
  * "inserted" or "updated".
+ *
+ * Implementation: `INSERT OR IGNORE` first; if `rowsAffected` is 0 the
+ * row already existed and we do a targeted UPDATE. Fresh-import rows
+ * cost one IPC round-trip; re-imports cost two. (Previous design did a
+ * SELECT-first and always took two — that compounded into multi-second
+ * stalls on large exports.) We intentionally leave `molly_notes_html`
+ * untouched on UPDATE so user edits survive re-import.
  */
 export async function upsertClip(c: Omit<Clip, 'mollyNotesHtml' | 'importedAt'>): Promise<'inserted' | 'updated'> {
   const conn = await db();
-  const existing = await conn.select<{ id: string }[]>('SELECT id FROM clips WHERE id = $1', [c.id]);
-  if (existing.length > 0) {
-    await conn.execute(
-      `UPDATE clips SET external_clip_id = $1, persona_code = $2, title = $3, status = $4, content_date = $5, go_live_date = $6, length = $7, price = $8, categories = $9, keywords = $10, performers = $11, notes = $12, imported_at = datetime('now') WHERE id = $13`,
-      [
-        c.externalClipId, c.personaCode, c.title, c.status, c.contentDate, c.goLiveDate,
-        c.length, c.price, c.categories, c.keywords, c.performers, c.notes, c.id,
-      ],
-    );
-    return 'updated';
-  }
-  await conn.execute(
-    `INSERT INTO clips (id, external_clip_id, persona_code, title, status, content_date, go_live_date, length, price, categories, keywords, performers, notes)
+  const ins = await conn.execute(
+    `INSERT OR IGNORE INTO clips (id, external_clip_id, persona_code, title, status, content_date, go_live_date, length, price, categories, keywords, performers, notes)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
     [
       c.id, c.externalClipId, c.personaCode, c.title, c.status, c.contentDate, c.goLiveDate,
       c.length, c.price, c.categories, c.keywords, c.performers, c.notes,
     ],
   );
-  return 'inserted';
+  if (ins.rowsAffected && ins.rowsAffected > 0) {
+    return 'inserted';
+  }
+  await conn.execute(
+    `UPDATE clips SET external_clip_id = $1, persona_code = $2, title = $3, status = $4, content_date = $5, go_live_date = $6, length = $7, price = $8, categories = $9, keywords = $10, performers = $11, notes = $12, imported_at = datetime('now') WHERE id = $13`,
+    [
+      c.externalClipId, c.personaCode, c.title, c.status, c.contentDate, c.goLiveDate,
+      c.length, c.price, c.categories, c.keywords, c.performers, c.notes, c.id,
+    ],
+  );
+  return 'updated';
 }
 
 export async function updateClipNotes(id: string, mollyNotesHtml: string): Promise<void> {

@@ -21,9 +21,11 @@ interface RunReport {
   updated: number;
   skipped: number;
   total: number;
+  errors: { id: string; message: string }[];
 }
 
 const REQUIRED_COLUMNS = ['id', 'persona', 'title'] as const;
+const YIELD_EVERY = 25; // give the event loop a tick to repaint the progress counter
 
 export function MasterClipperImport({ personas, onDone }: Props) {
   const fileInput = useRef<HTMLInputElement | null>(null);
@@ -32,6 +34,13 @@ export function MasterClipperImport({ personas, onDone }: Props) {
   const [mapping, setMapping] = useState<Record<string, string>>({}); // sourcePersona -> mollyPersona code or ''
   const [report, setReport] = useState<RunReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number; inserted: number; updated: number; skipped: number }>({
+    done: 0,
+    total: 0,
+    inserted: 0,
+    updated: 0,
+    skipped: 0,
+  });
 
   async function onFileChosen(file: File) {
     try {
@@ -61,46 +70,75 @@ export function MasterClipperImport({ personas, onDone }: Props) {
   async function run() {
     if (!parsed) return;
     setStage('running');
+    setError(null);
+    setProgress({ done: 0, total: parsed.rows.length, inserted: 0, updated: 0, skipped: 0 });
+
     let inserted = 0, updated = 0, skipped = 0;
-    for (const r of parsed.rows) {
-      const id = (r.id ?? '').trim();
-      if (!id) { skipped++; continue; }
-      const sourcePersona = (r.persona ?? '').trim();
-      const personaCode = mapping[sourcePersona] || null;
-      const clip: Omit<Clip, 'mollyNotesHtml' | 'importedAt'> = {
-        id,
-        externalClipId: (r.external_clip_id ?? '').trim(),
-        personaCode,
-        title:        (r.title ?? '').trim(),
-        status:       (r.status ?? '').trim(),
-        contentDate:  (r.content_date ?? '').trim() || null,
-        goLiveDate:   (r.go_live_date ?? '').trim() || null,
-        length:       (r.length ?? '').trim(),
-        price:        (r.price ?? '').trim(),
-        categories:   (r.categories ?? '').trim(),
-        keywords:     (r.keywords ?? '').trim(),
-        performers:   (r.performers ?? '').trim(),
-        notes:        r.notes ?? '',
-      };
+    const errors: { id: string; message: string }[] = [];
+
+    try {
+      for (let i = 0; i < parsed.rows.length; i++) {
+        const r = parsed.rows[i];
+        const id = (r.id ?? '').trim();
+        if (!id) { skipped++; }
+        else {
+          const sourcePersona = (r.persona ?? '').trim();
+          const personaCode = mapping[sourcePersona] || null;
+          const clip: Omit<Clip, 'mollyNotesHtml' | 'importedAt'> = {
+            id,
+            externalClipId: (r.external_clip_id ?? '').trim(),
+            personaCode,
+            title:        (r.title ?? '').trim(),
+            status:       (r.status ?? '').trim(),
+            contentDate:  (r.content_date ?? '').trim() || null,
+            goLiveDate:   (r.go_live_date ?? '').trim() || null,
+            length:       (r.length ?? '').trim(),
+            price:        (r.price ?? '').trim(),
+            categories:   (r.categories ?? '').trim(),
+            keywords:     (r.keywords ?? '').trim(),
+            performers:   (r.performers ?? '').trim(),
+            notes:        r.notes ?? '',
+          };
+          try {
+            const result = await upsertClip(clip);
+            if (result === 'inserted') inserted++; else updated++;
+          } catch (e) {
+            const message = e instanceof Error ? e.message : String(e);
+            console.warn('upsert failed', id, e);
+            errors.push({ id, message });
+            skipped++;
+          }
+        }
+        const done = i + 1;
+        // Update progress every row, but yield to the event loop every
+        // YIELD_EVERY rows so React can actually repaint the counter.
+        setProgress({ done, total: parsed.rows.length, inserted, updated, skipped });
+        if (done % YIELD_EVERY === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+      }
+    } finally {
+      // Log even if the loop threw — and never leave the UI stuck on "running".
       try {
-        const result = await upsertClip(clip);
-        if (result === 'inserted') inserted++; else updated++;
+        await logImport({
+          sourceFile: parsed.filename,
+          rowsTotal: parsed.rows.length,
+          rowsInserted: inserted,
+          rowsUpdated: updated,
+          rowsSkipped: skipped,
+          note: errors.length > 0 ? `${errors.length} row error(s) — see console` : '',
+        });
       } catch (e) {
-        console.warn('upsert failed', id, e);
-        skipped++;
+        console.warn('logImport failed', e);
+      }
+      setReport({ inserted, updated, skipped, total: parsed.rows.length, errors });
+      setStage('done');
+      try {
+        await onDone();
+      } catch (e) {
+        console.warn('onDone refresh failed', e);
       }
     }
-    await logImport({
-      sourceFile: parsed.filename,
-      rowsTotal: parsed.rows.length,
-      rowsInserted: inserted,
-      rowsUpdated: updated,
-      rowsSkipped: skipped,
-      note: '',
-    });
-    setReport({ inserted, updated, skipped, total: parsed.rows.length });
-    setStage('done');
-    await onDone();
   }
 
   const distinctSourcePersonas = useMemo(() => {
@@ -232,7 +270,22 @@ export function MasterClipperImport({ personas, onDone }: Props) {
       )}
 
       {stage === 'running' && (
-        <div className="text-sm opacity-80">⏳ Importing… don't close the app.</div>
+        <div className="space-y-2">
+          <div className="text-sm opacity-80">
+            ⏳ Importing… <strong>{progress.done}</strong> of {progress.total}
+            {' · '}{progress.inserted} added, {progress.updated} updated{progress.skipped > 0 && <>, {progress.skipped} skipped</>}
+          </div>
+          <div className="h-2 rounded-full bg-black/5 overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all"
+              style={{
+                width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%`,
+                background: 'rgb(var(--persona-accent))',
+              }}
+            />
+          </div>
+          <div className="text-xs opacity-60">Don't close Molly until this finishes.</div>
+        </div>
       )}
 
       {stage === 'done' && report && (
@@ -240,6 +293,17 @@ export function MasterClipperImport({ personas, onDone }: Props) {
           <div className="text-sm">
             ✨ Done. <strong>{report.inserted}</strong> added, <strong>{report.updated}</strong> updated, <strong>{report.skipped}</strong> skipped (out of {report.total}).
           </div>
+          {report.errors.length > 0 && (
+            <details className="text-xs">
+              <summary className="cursor-pointer opacity-70">{report.errors.length} row error{report.errors.length === 1 ? '' : 's'} (click to expand)</summary>
+              <ul className="mt-1 space-y-0.5 max-h-40 overflow-y-auto font-mono">
+                {report.errors.slice(0, 50).map((err, idx) => (
+                  <li key={idx}><strong>{err.id}</strong>: {err.message}</li>
+                ))}
+                {report.errors.length > 50 && <li className="opacity-60">…and {report.errors.length - 50} more</li>}
+              </ul>
+            </details>
+          )}
           <button type="button" className="pretty-button secondary" onClick={() => { setParsed(null); setReport(null); setStage('pick'); }}>
             Import another file
           </button>
