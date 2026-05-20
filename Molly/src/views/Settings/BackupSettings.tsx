@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 
 interface BackupSettingsDto {
   autoBackupEnabled: boolean;
@@ -37,16 +38,25 @@ export function BackupSettings() {
   const [status, setStatus] = useState<string>('');
   const [busy, setBusy] = useState(false);
 
-  async function refresh() {
+  useAsyncRefresh(async (alive) => {
     const s = await invoke<BackupSettingsDto>('get_backup_settings');
+    if (!alive()) return;
     setSettings(s);
     const r = await invoke<BackupRow[]>('list_backups');
+    if (!alive()) return;
     setRows(r);
-  }
-
-  useEffect(() => {
-    refresh().catch((e: unknown) => setStatus(`Couldn't load backup info: ${String(e)}`));
   }, []);
+
+  async function refresh() {
+    try {
+      const s = await invoke<BackupSettingsDto>('get_backup_settings');
+      setSettings(s);
+      const r = await invoke<BackupRow[]>('list_backups');
+      setRows(r);
+    } catch (e) {
+      setStatus(`Couldn't load backup info: ${String(e)}`);
+    }
+  }
 
   if (!settings) return <div className="pretty-card">Loading backup settings…</div>;
 

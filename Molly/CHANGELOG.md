@@ -4,6 +4,31 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] — 2026-05-20
+
+### Added / Changed
+
+- **Race-protected refresh hook + visible loading states.** Extracted `src/lib/useAsyncRefresh.ts` — a small hook that wraps the `useEffect → refresh()` pattern every list view was hand-rolling, adding per-effect-run alive guards (writes from the previous load are suppressed once the user switches persona or deps change) plus a `loading` flag.
+- Applied across 14 views: Customers / Clips / Calendar / Promos / AdhocIncome / Expenses / SiteIncomeWizard / Reports / Reminders / MollyHelper / SalesReportImport / RecurringExpenses + the 4 Settings tabs (Personas / Sites / Taxonomy / Platforms / Backup).
+- High-traffic list views now show `Loading …` while data is fetching, instead of flashing the misleading "Nothing here yet" empty state.
+- `onClose` async refresh handlers (Customers / Clips / Calendar / Promos) now `try/catch` so post-close fetch errors surface instead of being swallowed.
+
+### Quality
+
+- All bugs were from a static code audit, not user-visible incidents — the previous code was technically correct but had latent race windows on persona switch and inconsistent loading vs empty-state UX. Building it into a single hook means future views get the right behavior by default.
+
+## [0.7.0] — 2026-05-20
+
+### Added
+
+- **Phase 7 — Social promotion tracker.**
+- Migration `009_social.sql` adds `social_platforms` (Reddit / X / Instagram / TikTok preloaded; editable in Settings → Platforms) and `social_promos` (persona, platform, handle, posted_at, url, title, body, optional clip link, rich-text notes).
+- New sidebar entry **📣 Promos** between Molly Helper and Income.
+- Promos list with platform / year / month / search filters; click **Open** to launch the post URL via `plugin-opener`.
+- Promo editor wizard threading persona → platform → handle → posted-at (datetime-local) → URL → title → body → optional linked clip → Tiptap rich-text notes.
+- Settings → Platforms tab with full CRUD (icon emoji + color + short code + sort + archive).
+- Reports gains a Promos section: MTD + YTD counts + per-platform bar chart sized by each platform's color.
+
 ## [0.6.1] — 2026-05-20
 
 ### Fixed

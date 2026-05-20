@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { Persona } from '../../state/personas';
 import { listClips, type Clip } from '../../data/clips';
 import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
 import { ClipDetail } from '../Calendar/ClipDetail';
 import { MasterClipperImport } from '../Import/MasterClipperImport';
+import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 
 interface Props {
   active: Persona;
@@ -20,18 +21,14 @@ export function ClipsListView({ active }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>('go_live');
   const [status, setStatus] = useState('');
 
-  async function refresh() {
+  const { loading, refresh } = useAsyncRefresh(async (alive) => {
     const [c, p] = await Promise.all([
       listClips({ personaCode: active.code, search, limit: 500 }),
       listPersonas(),
     ]);
+    if (!alive()) return;
     setClips(c);
     setPersonas(p);
-  }
-
-  useEffect(() => {
-    refresh().catch((e) => setStatus(String(e)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active.code]);
 
   const personaByCode = useMemo(() => new Map(personas.map((p) => [p.code, p])), [personas]);
@@ -103,7 +100,8 @@ export function ClipsListView({ active }: Props) {
           </div>
         </div>
 
-        {sorted.length === 0 && (
+        {loading && <div className="text-sm opacity-60 italic">Loading clips…</div>}
+        {!loading && sorted.length === 0 && (
           <div className="text-sm opacity-70 italic">No clips yet. Click <strong>Import CSV</strong> to bring in a MasterClipper export.</div>
         )}
 
@@ -142,7 +140,7 @@ export function ClipsListView({ active }: Props) {
           personas={personas}
           onClose={async () => {
             setSelected(null);
-            await refresh();
+            try { await refresh(); } catch (e) { setStatus(String(e)); }
           }}
         />
       )}

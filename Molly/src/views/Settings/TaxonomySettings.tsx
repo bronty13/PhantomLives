@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { interests, products, type TaxonomyItem } from '../../data/taxonomy';
 import { ColorPicker } from '../../components/ColorPicker';
 import { ConfirmButton } from '../../components/ConfirmButton';
+import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 
 interface Props {
   kind: 'products' | 'interests';
@@ -28,12 +29,10 @@ export function TaxonomySettings({ kind }: Props) {
   const [editing, setEditing] = useState<TaxonomyItem | null>(null);
   const [status, setStatus] = useState<string>('');
 
-  async function refresh() {
-    setItems(await api.list());
-  }
-  useEffect(() => {
-    refresh().catch((e) => setStatus(String(e)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const { refresh } = useAsyncRefresh(async (alive) => {
+    const items = await api.list();
+    if (!alive()) return;
+    setItems(items);
   }, [kind]);
 
   async function saveDraft() {

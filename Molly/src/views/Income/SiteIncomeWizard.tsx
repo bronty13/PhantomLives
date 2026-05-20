@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { listSiteIncome, upsertSiteIncome, type SiteIncome } from '../../data/income';
 import { listSites, type Site } from '../../data/sites';
 import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
 import { fmtMoney, MONTH_NAMES, parseMoney, todayParts } from '../../lib/money';
+import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 
 interface Props {
   onClose: () => void;
@@ -18,8 +19,9 @@ export function SiteIncomeWizard({ onClose }: Props) {
   const [edits, setEdits] = useState<Map<number, { amount: number; note: string }>>(new Map());
   const [status, setStatus] = useState<string>('');
 
-  async function refresh() {
+  const { loading, refresh } = useAsyncRefresh(async (alive) => {
     const [s, p, ex] = await Promise.all([listSites(), listPersonas(), listSiteIncome(year, month)]);
+    if (!alive()) return;
     setSites(s);
     setPersonas(p);
     const exMap = new Map<number, SiteIncome>();
@@ -29,11 +31,6 @@ export function SiteIncomeWizard({ onClose }: Props) {
     const editMap = new Map<number, { amount: number; note: string }>();
     for (const row of ex) editMap.set(row.siteId, { amount: row.amount, note: row.note });
     setEdits(editMap);
-  }
-
-  useEffect(() => {
-    refresh().catch((e) => setStatus(String(e)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, month]);
 
   const grouped = useMemo(() => {
@@ -182,7 +179,8 @@ export function SiteIncomeWizard({ onClose }: Props) {
         );
       })}
 
-      {grouped.size === 0 && <div className="pretty-card text-sm opacity-70 italic">No sites yet — add some in Settings → Sites first.</div>}
+      {loading && <div className="pretty-card text-sm opacity-60 italic">Loading…</div>}
+      {!loading && grouped.size === 0 && <div className="pretty-card text-sm opacity-70 italic">No sites yet — add some in Settings → Sites first.</div>}
       {status && <div className="pretty-card text-sm"><strong>Status:</strong> {status}</div>}
     </div>
   );

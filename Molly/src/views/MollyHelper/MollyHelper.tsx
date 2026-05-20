@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import type { Persona } from '../../state/personas';
 import { listSites, type Site } from '../../data/sites';
 import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
+import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 
 interface Props {
   active: Persona;
@@ -13,13 +14,11 @@ export function MollyHelper({ active }: Props) {
   const [personas, setPersonas] = useState<PersonaRow[]>([]);
   const [status, setStatus] = useState<string>('');
 
-  useEffect(() => {
-    Promise.all([listSites(), listPersonas()])
-      .then(([s, p]) => {
-        setSites(s);
-        setPersonas(p);
-      })
-      .catch((e) => setStatus(String(e)));
+  const { loading } = useAsyncRefresh(async (alive) => {
+    const [s, p] = await Promise.all([listSites(), listPersonas()]);
+    if (!alive()) return;
+    setSites(s);
+    setPersonas(p);
   }, []);
 
   const grouped = useMemo(() => {
@@ -62,7 +61,10 @@ export function MollyHelper({ active }: Props) {
         </p>
       </div>
 
-      {grouped.size === 0 && (
+      {loading && (
+        <div className="pretty-card text-sm opacity-60 italic">Loading sites…</div>
+      )}
+      {!loading && grouped.size === 0 && (
         <div className="pretty-card text-sm opacity-70 italic">
           No sites for this persona yet — add some in Settings → Sites.
         </div>

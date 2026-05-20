@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   createRecurring,
   deleteRecurring,
@@ -19,6 +19,7 @@ import {
 } from '../../lib/cadence';
 import { fmtMoney, parseMoney } from '../../lib/money';
 import { ConfirmButton } from '../../components/ConfirmButton';
+import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 
 type Family = 'weekly' | 'monthly' | 'every_n_days' | 'daily';
 type MonthlyFlavor = 'dom' | 'days_before_next' | 'days_after_eom';
@@ -43,14 +44,11 @@ export function RecurringExpensesView({ onChanged }: Props) {
   const [draft, setDraft] = useState<(Omit<RecurringExpense, 'id' | 'lastMaterial'> & { id?: number }) | null>(null);
   const [status, setStatus] = useState('');
 
-  async function refresh() {
+  const { loading, refresh } = useAsyncRefresh(async (alive) => {
     const [list, p] = await Promise.all([listRecurring(), listPersonas()]);
+    if (!alive()) return;
     setRows(list);
     setPersonas(p);
-  }
-
-  useEffect(() => {
-    refresh().catch((e) => setStatus(String(e)));
   }, []);
 
   async function save() {
@@ -145,7 +143,10 @@ export function RecurringExpensesView({ onChanged }: Props) {
             </div>
           );
         })}
-        {rows.length === 0 && !draft && (
+        {loading && rows.length === 0 && (
+          <div className="pretty-card text-sm opacity-60 italic">Loading recurring expenses…</div>
+        )}
+        {!loading && rows.length === 0 && !draft && (
           <div className="pretty-card text-sm opacity-70 italic">No recurring expenses yet — click <strong>Add recurring</strong>.</div>
         )}
       </div>

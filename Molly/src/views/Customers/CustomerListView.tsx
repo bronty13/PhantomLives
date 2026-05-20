@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { Persona } from '../../state/personas';
 import {
   createCustomer,
@@ -13,6 +13,7 @@ import { CustomerEditor } from './CustomerEditor';
 import { nextCustomerUid } from '../../lib/uid';
 import { interests as interestsApi, products as productsApi, type TaxonomyItem } from '../../data/taxonomy';
 import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
+import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 
 interface Props {
   active: Persona;
@@ -39,22 +40,18 @@ export function CustomerListView({ active }: Props) {
   const [editor, setEditor] = useState<{ customer: Customer; productIds: number[]; interestIds: number[] } | null>(null);
   const [status, setStatus] = useState<string>('');
 
-  async function refresh() {
+  const { loading, refresh } = useAsyncRefresh(async (alive) => {
     const [s, p, i, pe] = await Promise.all([
       listCustomers({ personaCode: active.code, search }),
       productsApi.list(),
       interestsApi.list(),
       listPersonas(),
     ]);
+    if (!alive()) return;
     setSummaries(s);
     setProducts(p);
     setInterests(i);
     setPersonas(pe);
-  }
-
-  useEffect(() => {
-    refresh().catch((e) => setStatus(String(e)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active.code]);
 
   async function addCustomer() {
@@ -88,7 +85,7 @@ export function CustomerListView({ active }: Props) {
         personas={personas}
         onClose={async () => {
           setEditor(null);
-          await refresh();
+          try { await refresh(); } catch (e) { setStatus(String(e)); }
         }}
       />
     );
@@ -117,7 +114,10 @@ export function CustomerListView({ active }: Props) {
       </div>
 
       <div className="pretty-card">
-        {summaries.length === 0 && (
+        {loading && (
+          <div className="text-sm opacity-60 italic">Loading customers…</div>
+        )}
+        {!loading && summaries.length === 0 && (
           <div className="text-sm opacity-70 italic">No customers yet. Click <strong>Add customer</strong> to create one.</div>
         )}
         <div className="space-y-1.5">

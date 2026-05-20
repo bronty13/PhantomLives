@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { createSite, deleteSite, listSites, updateSite, type Site } from '../../data/sites';
 import { listPersonas, type Persona } from '../../data/personas';
 import type { Persona as ActivePersona } from '../../state/personas';
 import { ColorPicker } from '../../components/ColorPicker';
 import { ConfirmButton } from '../../components/ConfirmButton';
+import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 
 interface Props {
   activePersona: ActivePersona;
@@ -30,14 +31,11 @@ export function SitesSettings({ activePersona }: Props) {
   const [editing, setEditing] = useState<Site | null>(null);
   const [status, setStatus] = useState<string>('');
 
-  async function refresh() {
+  const { refresh } = useAsyncRefresh(async (alive) => {
     const [s, p] = await Promise.all([listSites(), listPersonas()]);
+    if (!alive()) return;
     setSites(s);
     setPersonas(p);
-  }
-
-  useEffect(() => {
-    refresh().catch((e) => setStatus(String(e)));
   }, []);
 
   const grouped = useMemo(() => {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   createPlatform,
   deletePlatform,
@@ -8,6 +8,7 @@ import {
 } from '../../data/socialPlatforms';
 import { ColorPicker } from '../../components/ColorPicker';
 import { ConfirmButton } from '../../components/ConfirmButton';
+import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 
 const EMPTY = (): Omit<SocialPlatform, 'id'> => ({
   name: '',
@@ -23,12 +24,10 @@ export function PlatformsSettings() {
   const [draft, setDraft] = useState<(Omit<SocialPlatform, 'id'> & { id?: number }) | null>(null);
   const [status, setStatus] = useState('');
 
-  async function refresh() {
-    setRows(await listPlatforms());
-  }
-
-  useEffect(() => {
-    refresh().catch((e) => setStatus(String(e)));
+  const { refresh } = useAsyncRefresh(async (alive) => {
+    const list = await listPlatforms();
+    if (!alive()) return;
+    setRows(list);
   }, []);
 
   async function save() {

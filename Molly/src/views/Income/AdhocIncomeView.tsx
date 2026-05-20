@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { Persona } from '../../state/personas';
 import {
   createAdhoc,
@@ -10,6 +10,7 @@ import {
 import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
 import { fmtMoney, MONTH_NAMES, parseMoney, todayParts } from '../../lib/money';
 import { ConfirmButton } from '../../components/ConfirmButton';
+import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 
 interface Props {
   active: Persona;
@@ -30,7 +31,7 @@ export function AdhocIncomeView({ active }: Props) {
   const [draft, setDraft] = useState<(Omit<AdhocIncome, 'id' | 'createdAt' | 'updatedAt'> & { id?: number }) | null>(null);
   const [status, setStatus] = useState('');
 
-  async function refresh() {
+  const { loading, refresh } = useAsyncRefresh(async (alive) => {
     const filter: { year?: number; month?: number; personaCode?: string } = {
       year, personaCode: active.code,
     };
@@ -39,13 +40,9 @@ export function AdhocIncomeView({ active }: Props) {
       listAdhoc(filter),
       listPersonas(),
     ]);
+    if (!alive()) return;
     setRows(list);
     setPersonas(p);
-  }
-
-  useEffect(() => {
-    refresh().catch((e) => setStatus(String(e)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, month, active.code]);
 
   const total = useMemo(() => rows.reduce((acc, r) => acc + r.amount, 0), [rows]);
@@ -121,7 +118,8 @@ export function AdhocIncomeView({ active }: Props) {
           />
         )}
 
-        {rows.length === 0 && !draft && (
+        {loading && <div className="text-sm opacity-60 italic">Loading…</div>}
+        {!loading && rows.length === 0 && !draft && (
           <div className="text-sm opacity-70 italic">Nothing here yet — click <strong>Add income</strong>.</div>
         )}
 

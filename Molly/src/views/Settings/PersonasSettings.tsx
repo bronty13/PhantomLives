@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { listPersonas, updatePersona, type Persona } from '../../data/personas';
 import { ColorPicker } from '../../components/ColorPicker';
+import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 
 interface Props {
   onChanged: () => void | Promise<void>;
@@ -11,12 +12,10 @@ export function PersonasSettings({ onChanged }: Props) {
   const [editing, setEditing] = useState<Persona | null>(null);
   const [status, setStatus] = useState<string>('');
 
-  async function refresh() {
-    setPersonas(await listPersonas());
-  }
-
-  useEffect(() => {
-    refresh().catch((e) => setStatus(String(e)));
+  const { refresh } = useAsyncRefresh(async (alive) => {
+    const p = await listPersonas();
+    if (!alive()) return;
+    setPersonas(p);
   }, []);
 
   async function save() {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import type { Persona } from '../../state/personas';
 import {
@@ -11,6 +11,7 @@ import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import { PromoEditor } from './PromoEditor';
 import { MONTH_NAMES, todayParts } from '../../lib/money';
+import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 
 interface Props {
   active: Persona;
@@ -37,7 +38,7 @@ export function PromosListView({ active }: Props) {
   const [editing, setEditing] = useState<SocialPromo | 'new' | null>(null);
   const [status, setStatus] = useState<string>('');
 
-  async function refresh() {
+  const { loading, refresh } = useAsyncRefresh(async (alive) => {
     const filter: Parameters<typeof listPromos>[0] = {
       personaCode: active.code,
       search,
@@ -46,14 +47,10 @@ export function PromosListView({ active }: Props) {
     if (month !== 'all') filter.month = month;
     if (platformFilter !== 'all') filter.platformId = platformFilter;
     const [r, p, pe] = await Promise.all([listPromos(filter), listPlatforms(), listPersonas()]);
+    if (!alive()) return;
     setRows(r);
     setPlatforms(p);
     setPersonas(pe);
-  }
-
-  useEffect(() => {
-    refresh().catch((e) => setStatus(String(e)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active.code, year, month, platformFilter]);
 
   const platformsById = useMemo(() => new Map(platforms.map((p) => [p.id, p])), [platforms]);
@@ -83,7 +80,7 @@ export function PromosListView({ active }: Props) {
         personas={personas}
         onClose={async () => {
           setEditing(null);
-          await refresh();
+          try { await refresh(); } catch (e) { setStatus(String(e)); }
         }}
       />
     );
@@ -126,7 +123,8 @@ export function PromosListView({ active }: Props) {
       </div>
 
       <div className="pretty-card">
-        {rows.length === 0 && (
+        {loading && <div className="text-sm opacity-60 italic">Loading promos…</div>}
+        {!loading && rows.length === 0 && (
           <div className="text-sm opacity-70 italic">No promos here yet. Click <strong>New promo</strong>.</div>
         )}
         <div className="divide-y divide-black/5">

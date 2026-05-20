@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Persona } from '../../state/personas';
 import {
   checkOff,
@@ -23,6 +23,7 @@ import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
 import { ScheduleWizard } from './ScheduleWizard';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import { CheckOffBurst } from '../../components/CheckOffBurst';
+import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 
 interface Props {
   active: Persona;
@@ -47,7 +48,7 @@ export function RemindersView({ active, onCountsChanged }: Props) {
   const [undo, setUndo] = useState<{ occurrenceId: number; deadline: number } | null>(null);
   const [status, setStatus] = useState<string>('');
 
-  const refresh = useCallback(async () => {
+  const { loading, refresh } = useAsyncRefresh(async (alive) => {
     const opts = active.code === 'ALL' ? undefined : { personaCode: active.code };
     const [t, u, o, r, s, p] = await Promise.all([
       listToday(opts),
@@ -57,18 +58,15 @@ export function RemindersView({ active, onCountsChanged }: Props) {
       listSchedules(),
       listPersonas(),
     ]);
+    if (!alive()) return;
     setToday(t);
     setUpcoming(u);
     setOverdue(o);
     setRecent(r);
     setSchedules(s);
     setPersonas(p);
-    await onCountsChanged();
-  }, [active.code, onCountsChanged]);
-
-  useEffect(() => {
-    refresh().catch((e) => setStatus(String(e)));
-  }, [refresh]);
+    try { await onCountsChanged(); } catch (e) { console.warn('onCountsChanged failed', e); }
+  }, [active.code]);
 
   // Auto-clear the undo toast.
   useEffect(() => {
@@ -174,6 +172,9 @@ export function RemindersView({ active, onCountsChanged }: Props) {
         </div>
       </div>
 
+      {tab === 'reminders' && loading && overdue.length === 0 && today.length === 0 && upcoming.length === 0 && recent.length === 0 && (
+        <div className="pretty-card text-sm opacity-60 italic">Loading reminders…</div>
+      )}
       {tab === 'reminders' && (
         <>
           <Section title={overdue.length > 0 ? `⏰ Overdue (${overdue.length})` : '⏰ Overdue'} items={overdue} personaByCode={personaByCode} onCheckOff={onCheckOff} emptyText="Nothing overdue. You're winning." overdue />

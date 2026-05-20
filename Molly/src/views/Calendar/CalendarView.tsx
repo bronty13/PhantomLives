@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { Persona } from '../../state/personas';
 import { listClips, type Clip } from '../../data/clips';
 import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
 import { ClipDetail } from './ClipDetail';
+import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 
 interface Props {
   active: Persona;
@@ -35,7 +36,7 @@ export function CalendarView({ active }: Props) {
 
   const monthEnd = useMemo(() => addMonths(month, 1), [month]);
 
-  async function refresh() {
+  const { loading, refresh } = useAsyncRefresh(async (alive) => {
     const from = isoDateKey(month);
     const last = new Date(monthEnd.getTime() - 86_400_000); // last day of month
     const to = isoDateKey(last);
@@ -49,13 +50,9 @@ export function CalendarView({ active }: Props) {
       }),
       listPersonas(),
     ]);
+    if (!alive()) return;
     setClips(c);
     setPersonas(p);
-  }
-
-  useEffect(() => {
-    refresh().catch((e) => setStatus(String(e)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active.code, month]);
 
   const personaByCode = useMemo(() => new Map(personas.map((p) => [p.code, p])), [personas]);
@@ -166,7 +163,10 @@ export function CalendarView({ active }: Props) {
         </div>
       </div>
 
-      {clips.length === 0 && (
+      {loading && (
+        <div className="pretty-card text-sm opacity-60 italic">Loading clips for this month…</div>
+      )}
+      {!loading && clips.length === 0 && (
         <div className="pretty-card text-sm opacity-70 italic">
           No clips in this month. Import a MasterClipper CSV from the <strong>Clips</strong> page.
         </div>
@@ -179,7 +179,7 @@ export function CalendarView({ active }: Props) {
           personas={personas}
           onClose={async () => {
             setSelectedClipId(null);
-            await refresh();
+            try { await refresh(); } catch (e) { setStatus(String(e)); }
           }}
         />
       )}

@@ -5,6 +5,7 @@ import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
 import { listSiteIncome, upsertSiteIncome } from '../../data/income';
 import { parseSalesReport, type ParseResult } from '../../lib/salesReport';
 import { fmtMoney, MONTH_NAMES } from '../../lib/money';
+import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 
 interface Props {
   active: Persona;
@@ -26,18 +27,15 @@ export function SalesReportImport({ active }: Props) {
   const [status, setStatus] = useState<string>('');
   const [existing, setExisting] = useState<Map<string, number>>(new Map()); // "YYYY-MM" -> existing amount
 
-  useEffect(() => {
-    Promise.all([listSites(), listPersonas()])
-      .then(([s, p]) => {
-        setSites(s);
-        setPersonas(p);
-        // Pre-select first site for the active persona (or any first site).
-        const filter = active.code === 'ALL' ? null : active.code;
-        const candidate = filter ? s.find((x) => x.personaCode === filter) : s[0];
-        if (candidate) setSiteId(candidate.id);
-      })
-      .catch((e) => setStatus(String(e)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  useAsyncRefresh(async (alive) => {
+    const [s, p] = await Promise.all([listSites(), listPersonas()]);
+    if (!alive()) return;
+    setSites(s);
+    setPersonas(p);
+    // Pre-select first site for the active persona (or any first site).
+    const filter = active.code === 'ALL' ? null : active.code;
+    const candidate = filter ? s.find((x) => x.personaCode === filter) : s[0];
+    if (candidate) setSiteId(candidate.id);
   }, [active.code]);
 
   // Re-parse whenever raw text or overrides change.

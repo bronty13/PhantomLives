@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { Persona } from '../../state/personas';
 import {
   perSiteForYear,
@@ -11,6 +11,7 @@ import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
 import { countByPlatform, countTotal, type PromoCount } from '../../data/socialPromos';
 import { listPlatforms, type SocialPlatform } from '../../data/socialPlatforms';
 import { fmtMoney, MONTH_NAMES, prevMonth, todayParts } from '../../lib/money';
+import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 
 interface Props {
   active: Persona;
@@ -31,13 +32,11 @@ export function ReportsView({ active }: Props) {
   const [promosYtd, setPromosYtd] = useState(0);
   const [promosByPlatform, setPromosByPlatform] = useState<PromoCount[]>([]);
   const [platforms, setPlatforms] = useState<SocialPlatform[]>([]);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let alive = true;
+  const { loading, error } = useAsyncRefresh(async (alive) => {
     const persona = active.code === 'ALL' ? undefined : active.code;
     const prior = prevMonth(t.year, t.month);
-    Promise.all([
+    const [p, mIn, pIn, yIn, mEx, pEx, yEx, ps, pMtd, pYtd, pByPlat, plats] = await Promise.all([
       listPersonas(),
       totalsForPeriod({ year: t.year, month: t.month, dayCap: t.day, personaCode: persona }),
       totalsForPeriod({ year: prior.year, month: prior.month, dayCap: t.day, personaCode: persona }),
@@ -50,24 +49,20 @@ export function ReportsView({ active }: Props) {
       countTotal({ year, personaCode: persona }),
       countByPlatform({ year, personaCode: persona }),
       listPlatforms(),
-    ])
-      .then(([p, mIn, pIn, yIn, mEx, pEx, yEx, ps, pMtd, pYtd, pByPlat, plats]) => {
-        if (!alive) return;
-        setPersonas(p);
-        setMtdIncome(mIn);
-        setPriorMtdIncome(pIn);
-        setYtdIncome(yIn);
-        setMtdExp(mEx);
-        setPriorMtdExp(pEx);
-        setYtdExp(yEx);
-        setPerSite(ps);
-        setPromosMtd(pMtd);
-        setPromosYtd(pYtd);
-        setPromosByPlatform(pByPlat);
-        setPlatforms(plats);
-      })
-      .catch((e) => setError(String(e)));
-    return () => { alive = false; };
+    ]);
+    if (!alive()) return;
+    setPersonas(p);
+    setMtdIncome(mIn);
+    setPriorMtdIncome(pIn);
+    setYtdIncome(yIn);
+    setMtdExp(mEx);
+    setPriorMtdExp(pEx);
+    setYtdExp(yEx);
+    setPerSite(ps);
+    setPromosMtd(pMtd);
+    setPromosYtd(pYtd);
+    setPromosByPlatform(pByPlat);
+    setPlatforms(plats);
   }, [year, active.code, t.year, t.month, t.day]);
 
   const yearOptions: number[] = [];
@@ -128,6 +123,8 @@ export function ReportsView({ active }: Props) {
           <button type="button" className="pretty-button" onClick={exportCsv}>📄 Export CSV</button>
         </div>
       </div>
+
+      {loading && <div className="pretty-card text-sm opacity-60 italic">Loading reports…</div>}
 
       <div className="grid grid-cols-3 gap-3">
         <PeriodCard

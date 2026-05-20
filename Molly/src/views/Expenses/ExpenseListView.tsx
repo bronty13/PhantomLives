@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { Persona } from '../../state/personas';
 import {
   createExpense,
@@ -12,6 +12,7 @@ import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
 import { fmtMoney, MONTH_NAMES, parseMoney, todayParts } from '../../lib/money';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import { AttachmentField } from '../../components/AttachmentField';
+import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 
 interface Props {
   active: Persona;
@@ -43,19 +44,15 @@ export function ExpenseListView({ active }: Props) {
   const [draft, setDraft] = useState<(Omit<Expense, 'id' | 'createdAt' | 'updatedAt'> & { id?: number }) | null>(null);
   const [status, setStatus] = useState('');
 
-  async function refresh() {
+  const { loading, refresh } = useAsyncRefresh(async (alive) => {
     const filter: { year?: number; month?: number; personaCode?: string } = {
       year, personaCode: active.code,
     };
     if (month !== 'all') filter.month = month;
     const [list, p] = await Promise.all([listExpenses(filter), listPersonas()]);
+    if (!alive()) return;
     setRows(list);
     setPersonas(p);
-  }
-
-  useEffect(() => {
-    refresh().catch((e) => setStatus(String(e)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, month, active.code]);
 
   const gross = useMemo(() => rows.reduce((acc, r) => acc + r.amount, 0), [rows]);
@@ -132,7 +129,8 @@ export function ExpenseListView({ active }: Props) {
       )}
 
       <div className="pretty-card">
-        {rows.length === 0 && <div className="text-sm opacity-70 italic">Nothing here yet. Click <strong>Add expense</strong>.</div>}
+        {loading && <div className="text-sm opacity-60 italic">Loading expenses…</div>}
+        {!loading && rows.length === 0 && <div className="text-sm opacity-70 italic">Nothing here yet. Click <strong>Add expense</strong>.</div>}
         <div className="divide-y divide-black/5">
           {rows.map((r) => {
             const p = r.personaCode ? personaByCode.get(r.personaCode) : null;
