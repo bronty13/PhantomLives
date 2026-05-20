@@ -104,3 +104,83 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running molly");
 }
+
+// ---------------------------------------------------------------------------
+// Regression test: every type that crosses the Tauri boundary must serialize
+// as camelCase.
+//
+// The v0.6.1 release shipped with BackupRow / VerifyResult / ExportResult /
+// AttachmentInfo missing `#[serde(rename_all = "camelCase")]`, which made
+// the frontend read `undefined` for every field ("NaN MB", "no molly.db
+// inside", "undefined files"). This test pins the contract — if anyone
+// adds a new boundary type without the attribute, `cargo test` fails.
+//
+// Add new response types here as the surface grows.
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod camel_case_contract {
+    use crate::attachments::AttachmentInfo;
+    use crate::backup::{BackupRow, Settings, VerifyResult};
+    use crate::export::ExportResult;
+    use serde_json::Value;
+
+    fn assert_camel(value: &Value, type_name: &'static str) {
+        let object = value.as_object().unwrap_or_else(|| panic!("{type_name} should serialize to a JSON object"));
+        for key in object.keys() {
+            assert!(
+                !key.contains('_'),
+                "{type_name}: serialized field `{key}` is snake_case — add #[serde(rename_all = \"camelCase\")] to the struct",
+            );
+        }
+    }
+
+    #[test]
+    fn settings_is_camel_case() {
+        let v = serde_json::to_value(Settings::default()).unwrap();
+        assert_camel(&v, "Settings");
+    }
+
+    #[test]
+    fn backup_row_is_camel_case() {
+        let v = serde_json::to_value(BackupRow {
+            path: String::new(),
+            filename: String::new(),
+            modified_at: String::new(),
+            size_bytes: 0,
+        }).unwrap();
+        assert_camel(&v, "BackupRow");
+    }
+
+    #[test]
+    fn verify_result_is_camel_case() {
+        let v = serde_json::to_value(VerifyResult {
+            archive_path: String::new(),
+            archive_size: 0,
+            file_count: 0,
+            total_bytes: 0,
+            has_database: false,
+            entries: vec![],
+        }).unwrap();
+        assert_camel(&v, "VerifyResult");
+    }
+
+    #[test]
+    fn attachment_info_is_camel_case() {
+        let v = serde_json::to_value(AttachmentInfo {
+            relative_path: String::new(),
+            absolute_path: String::new(),
+            size_bytes: 0,
+        }).unwrap();
+        assert_camel(&v, "AttachmentInfo");
+    }
+
+    #[test]
+    fn export_result_is_camel_case() {
+        let v = serde_json::to_value(ExportResult {
+            path: String::new(),
+            size_bytes: 0,
+            file_count: 0,
+        }).unwrap();
+        assert_camel(&v, "ExportResult");
+    }
+}
