@@ -15,6 +15,7 @@ permissions:
 jobs:
   create-release:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       release_id: ${{ steps.create.outputs.release_id }}
     steps:
@@ -59,6 +60,11 @@ jobs:
             args: ""
 
     runs-on: ${{ matrix.platform }}
+    # Hard cap so a stuck Rust compile / cargo cache hang doesn't burn
+    # 6 hours of runner minutes. A successful build is ~5-12 min hot,
+    # ~12-20 cold. 25 leaves comfortable headroom; anything past that
+    # is hung and should be killed.
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: Molly
@@ -91,17 +97,54 @@ jobs:
       - name: Install pnpm dependencies
         run: pnpm install --no-frozen-lockfile
 
-      # Run `tauri build` directly. tauri-action @v0 with no tagName
-      # builds without signing (signing is gated on its release flow),
-      # which is the exact opposite of what we need. The CLI honors
-      # TAURI_SIGNING_PRIVATE_KEY itself and leaves .sig files in the
-      # bundle dir — that's what we want.
-      - name: Build Tauri bundles (with signing)
+      - name: Build Tauri bundles
+        shell: bash
+        run: pnpm tauri build ${{ matrix.args }}
+
+      # `tauri build` produces platform installers (.dmg, .nsis, .msi)
+      # but NOT the updater bundles (.app.tar.gz / .nsis.zip). That's
+      # historically tauri-action's job and the action only does it when
+      # configured to release. We do it ourselves so we don't have to
+      # depend on tauri-action's hidden state. `tauri signer sign` reads
+      # TAURI_SIGNING_PRIVATE_KEY from env and writes <FILE>.sig next to
+      # the input.
+      - name: Pack + sign mac updater bundle
+        if: matrix.platform == 'macos-14'
         shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: pnpm tauri build ${{ matrix.args }}
+        run: |
+          set -e
+          BUNDLE=src-tauri/target/release/bundle/macos
+          if [ ! -d "$BUNDLE/Molly.app" ]; then
+            echo "$BUNDLE/Molly.app not found"
+            ls -la "$BUNDLE" || true
+            exit 1
+          fi
+          (cd "$BUNDLE" && tar czf "Molly_aarch64.app.tar.gz" "Molly.app")
+          pnpm tauri signer sign "$BUNDLE/Molly_aarch64.app.tar.gz"
+          ls -la "$BUNDLE"
+
+      - name: Pack + sign windows updater bundle
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $bundle = "src-tauri/target/release/bundle/nsis"
+          $exe = Join-Path $bundle "Molly_${version}_x64-setup.exe"
+          $zip = Join-Path $bundle "Molly_${version}_x64-setup.nsis.zip"
+          if (-not (Test-Path $exe)) {
+            Write-Host "$exe not found"
+            Get-ChildItem -Path $bundle -ErrorAction SilentlyContinue
+            exit 1
+          }
+          Compress-Archive -Path $exe -DestinationPath $zip -Force
+          pnpm tauri signer sign $zip
+          Get-ChildItem -Path $bundle
 
       - name: Upload bundles + signatures (mac)
         if: matrix.platform == 'macos-14'
@@ -151,6 +194,7 @@ jobs:
   publish-feed:
     needs: [create-release, build]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: write
     steps:
