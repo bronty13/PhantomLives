@@ -20,33 +20,58 @@ jobs:
       release_id: ${{ steps.create.outputs.release_id }}
     steps:
       - uses: actions/checkout@v4
-      - name: Create empty draft release
+      - name: Create or reuse draft release
         id: create
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
-        shell: bash
-        run: |
-          VERSION="${TAG#molly-v}"
-          # Idempotent: if a draft for this tag already exists, reuse it.
-          ID=$(gh api repos/${GITHUB_REPOSITORY}/releases --jq ".[] | select(.tag_name == \"${TAG}\") | .id" | head -1)
-          if [ -z "$ID" ]; then
-            ID=$(gh release create "${TAG}" \
-              --draft \
-              --title "Molly ${TAG}" \
-              --notes "Auto-built from tag ${TAG}.
-
-          **Updater**: signed feed at \`latest.json\`. Users on prior versions get this through Settings → Updates.
-
-          Note: until Apple Developer ID + Windows code-sign certs are wired, the \`.dmg\` is unsigned (Gatekeeper warns on first launch — right-click → Open) and the \`.exe\` may trigger SmartScreen (More info → Run anyway). Updater verification still works — bundles are signed with our minisign key." \
-              --target main 2>&1 | tee /tmp/create.out | grep -oE '[0-9]+$' | tail -1)
-            # Fallback: read id from the API in case parsing the URL failed.
-            if [ -z "$ID" ]; then
-              ID=$(gh api repos/${GITHUB_REPOSITORY}/releases --jq ".[] | select(.tag_name == \"${TAG}\") | .id" | head -1)
-            fi
-          fi
-          echo "release_id=$ID" >> "$GITHUB_OUTPUT"
-          echo "Using release id: $ID (version $VERSION)"
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            const version = tag.replace(/^molly-v/, '');
+            // If a release for this tag already exists (rerun, retried tag),
+            // reuse it rather than fail.
+            let release;
+            try {
+              const { data } = await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag,
+              });
+              release = data;
+              core.info(`Reusing existing release ${release.id}`);
+            } catch (e) {
+              if (e.status !== 404) throw e;
+              // Drafts aren't returned by getReleaseByTag — scan listReleases.
+              const { data: list } = await github.rest.repos.listReleases({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100,
+              });
+              release = list.find((r) => r.tag_name === tag);
+              if (release) {
+                core.info(`Reusing existing draft release ${release.id}`);
+              }
+            }
+            if (!release) {
+              const body = [
+                `Auto-built from tag ${tag}.`,
+                ``,
+                `**Updater**: signed feed at \`latest.json\`. Users on prior versions get this through Settings → Updates.`,
+                ``,
+                `Note: until Apple Developer ID + Windows code-sign certs are wired, the \`.dmg\` is unsigned (Gatekeeper warns on first launch — right-click → Open) and the \`.exe\` may trigger SmartScreen (More info → Run anyway). Updater verification still works — bundles are signed with our minisign key.`,
+              ].join('\n');
+              const { data } = await github.rest.repos.createRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_name: tag,
+                name: `Molly ${tag}`,
+                body,
+                draft: true,
+                prerelease: false,
+              });
+              release = data;
+              core.info(`Created draft release ${release.id} (version ${version})`);
+            }
+            core.setOutput('release_id', String(release.id));
 
   build:
     needs: create-release
