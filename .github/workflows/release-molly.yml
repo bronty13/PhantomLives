@@ -106,8 +106,16 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -e
+          echo "::group::find .sig files"
+          find src-tauri/target -name "*.sig" -type f 2>&1 || true
+          echo "::endgroup::"
           shopt -s nullglob
-          for f in src-tauri/target/release/bundle/macos/*.sig; do
+          mapfile -t sigs < <(find src-tauri/target/release/bundle -name "*.sig" -type f)
+          if [ "${#sigs[@]}" -eq 0 ]; then
+            echo "no .sig files found under src-tauri/target/release/bundle"
+            exit 1
+          fi
+          for f in "${sigs[@]}"; do
             echo "Uploading $f"
             gh release upload "$TAG" "$f" --clobber
           done
@@ -119,9 +127,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: |
-          $sigs = @()
-          $sigs += Get-ChildItem -Path "src-tauri/target/release/bundle/nsis" -Filter "*.sig" -ErrorAction SilentlyContinue
-          $sigs += Get-ChildItem -Path "src-tauri/target/release/bundle/msi"  -Filter "*.sig" -ErrorAction SilentlyContinue
+          Write-Host "::group::find .sig files"
+          Get-ChildItem -Path "src-tauri/target" -Filter "*.sig" -Recurse -ErrorAction SilentlyContinue | Select-Object FullName
+          Write-Host "::endgroup::"
+          $sigs = Get-ChildItem -Path "src-tauri/target/release/bundle" -Filter "*.sig" -Recurse -ErrorAction SilentlyContinue
+          if (-not $sigs -or $sigs.Count -eq 0) {
+            Write-Host "no .sig files found under src-tauri/target/release/bundle"
+            exit 1
+          }
           foreach ($f in $sigs) {
             Write-Host "Uploading $($f.FullName)"
             gh release upload "$env:TAG" "$($f.FullName)" --clobber
