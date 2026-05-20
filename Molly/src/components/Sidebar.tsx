@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
 
-export type ViewKey = 'home' | 'calendar' | 'clips' | 'customers' | 'helper' | 'income' | 'expenses' | 'reports' | 'settings';
+export type ViewKey = 'home' | 'reminders' | 'calendar' | 'clips' | 'customers' | 'helper' | 'income' | 'expenses' | 'reports' | 'settings';
 
 interface SidebarProps {
   active: ViewKey;
   onSelect: (key: ViewKey) => void;
   visible: boolean;
+  pendingCount?: number;     // overdue + today; shows red badge on Reminders
 }
 
 interface NavItem {
@@ -17,6 +18,7 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { key: 'home',      label: 'Home',      icon: <span>🏠</span>, hint: "Today's reminders + dashboards" },
+  { key: 'reminders', label: 'Reminders', icon: <span>🔔</span>, hint: 'Today, overdue, coming up' },
   { key: 'calendar',  label: 'Calendar',  icon: <span>📅</span>, hint: 'Clip releases + schedule overlay' },
   { key: 'clips',     label: 'Clips',     icon: <span>🎬</span>, hint: 'Imported from MasterClipper' },
   { key: 'customers', label: 'Customers', icon: <span>👯‍♀️</span>, hint: 'Customer tracker' },
@@ -27,7 +29,7 @@ const NAV: NavItem[] = [
   { key: 'settings',  label: 'Settings',  icon: <span>⚙️</span>, hint: 'Personas, sites, backup' },
 ];
 
-export function Sidebar({ active, onSelect, visible }: SidebarProps) {
+export function Sidebar({ active, onSelect, visible, pendingCount = 0 }: SidebarProps) {
   if (!visible) return null;
   return (
     <aside
@@ -61,7 +63,15 @@ export function Sidebar({ active, onSelect, visible }: SidebarProps) {
               title={item.hint}
             >
               <span className="text-lg">{item.icon}</span>
-              <span>{item.label}</span>
+              <span className="flex-1">{item.label}</span>
+              {item.key === 'reminders' && pendingCount > 0 && (
+                <span
+                  className="text-[11px] font-semibold rounded-full px-1.5 py-0.5"
+                  style={{ background: '#E5527A', color: 'white', minWidth: 22, textAlign: 'center' }}
+                >
+                  {pendingCount > 99 ? '99+' : pendingCount}
+                </span>
+              )}
             </button>
           );
         })}

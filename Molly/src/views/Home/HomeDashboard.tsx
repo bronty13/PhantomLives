@@ -2,35 +2,44 @@ import { useEffect, useState } from 'react';
 import type { Persona } from '../../state/personas';
 import { clipCounts, countByPersona, detectReuse, recentImports, type ClipCounts, type ClipImportLog, type PersonaCount, type ReuseGroup } from '../../data/clips';
 import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
+import { listOverdue, listToday, describeDueDate, type Occurrence } from '../../data/occurrences';
 
 interface Props {
   active: Persona;
+  onGoTo: (view: 'reminders') => void;
 }
 
-export function HomeDashboard({ active }: Props) {
+export function HomeDashboard({ active, onGoTo }: Props) {
   const [counts, setCounts] = useState<ClipCounts | null>(null);
   const [byPersona, setByPersona] = useState<PersonaCount[]>([]);
   const [reuse, setReuse] = useState<ReuseGroup[]>([]);
   const [imports, setImports] = useState<ClipImportLog[]>([]);
   const [personas, setPersonas] = useState<PersonaRow[]>([]);
+  const [today, setToday] = useState<Occurrence[]>([]);
+  const [overdue, setOverdue] = useState<Occurrence[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
+    const opts = active.code === 'ALL' ? undefined : { personaCode: active.code };
     Promise.all([
       clipCounts(active.code === 'ALL' ? undefined : active.code),
       countByPersona(),
       detectReuse(),
       recentImports(5),
       listPersonas(),
+      listToday(opts),
+      listOverdue(opts),
     ])
-      .then(([c, bp, r, im, p]) => {
+      .then(([c, bp, r, im, p, t, o]) => {
         if (!alive) return;
         setCounts(c);
         setByPersona(bp);
         setReuse(r);
         setImports(im);
         setPersonas(p);
+        setToday(t);
+        setOverdue(o);
       })
       .catch((e) => setError(String(e)));
     return () => {
@@ -52,6 +61,43 @@ export function HomeDashboard({ active }: Props) {
             : `Dashboard filtered to ${active.name}. Pick ★ All to see everything.`}
         </p>
       </div>
+
+      {(overdue.length > 0 || today.length > 0) && (
+        <div className="pretty-card">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="display-font text-lg font-semibold persona-accent">
+              {overdue.length > 0 ? `⏰ ${overdue.length} overdue, ${today.length} today` : `💖 ${today.length} due today`}
+            </h3>
+            <button type="button" className="pretty-button secondary" onClick={() => onGoTo('reminders')}>Open Reminders →</button>
+          </div>
+          <div className="space-y-1.5">
+            {[...overdue.slice(0, 4), ...today.slice(0, Math.max(0, 4 - Math.min(overdue.length, 4)))].map((o) => {
+              const p = o.personaCode ? personaByCode.get(o.personaCode) : null;
+              const isOverdue = overdue.some((x) => x.id === o.id);
+              return (
+                <div
+                  key={o.id}
+                  className="flex items-center gap-2 text-sm p-2 rounded-lg"
+                  style={{
+                    background: isOverdue ? 'rgba(254, 226, 226, 0.4)' : 'rgb(var(--persona-tint))',
+                    border: `1px solid ${isOverdue ? '#fca5a5' : 'rgb(var(--persona-primary) / 0.35)'}`,
+                  }}
+                >
+                  {p ? (
+                    <span className="px-1.5 py-0.5 rounded-md text-[11px] font-semibold" style={{ background: p.primaryColor, color: p.textColor }}>
+                      {p.code}
+                    </span>
+                  ) : (
+                    <span className="px-1.5 py-0.5 rounded-md text-[11px] font-semibold bg-black/10">ALL</span>
+                  )}
+                  <span className="font-semibold flex-1 truncate">{o.scheduleName}</span>
+                  <span className="text-xs opacity-70">{describeDueDate(o.dueAt)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-3 gap-3">
         <Stat title="This month" value={counts?.mtd ?? 0} sub={`vs ${counts?.priorMtd ?? 0} last month`} />

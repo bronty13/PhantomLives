@@ -2,7 +2,7 @@
 
 This guide is written for the creator using Molly day to day, not for developers. If you ever get stuck, send Robert a screenshot in Slack and he can usually figure it out.
 
-> Phase 2 is live: Home dashboard, **Calendar**, **Clips** (with MasterClipper CSV import), plus everything from Phase 1 (settings, customers, Molly Helper). Income, Expenses and Reports remain placeholders for now.
+> Phase 3 is live: **Reminders** (the scheduler/check-off page) plus everything before it. Income, Expenses and Reports remain placeholders for now.
 
 ## Opening Molly
 
@@ -55,6 +55,35 @@ The list view filters by the active persona (top bar) and supports search across
 ## Molly Helper
 
 The **Molly Helper** tab is your one-click site launcher. Each persona gets a row of color-tinted cards showing the site name, short code, your username, and any note. Click **Open** to launch the site in your default browser; click **Copy user** to copy the username to your clipboard. The 🔗 chip shows when a site shares its login with another (use it once for OnlyFans, then switch stores after sign-in).
+
+## Reminders
+
+Click **Reminders** in the sidebar. The page has two tabs:
+
+### Reminders tab
+
+Four sections, top to bottom:
+
+- **⏰ Overdue** — anything that was due before today and isn't checked off yet. Highlighted in soft red.
+- **💖 Today** — what's due today.
+- **🌷 Coming up** — the next 7 days.
+- **✨ Recently done** — what you've checked off (so you can feel the dopamine).
+
+The little circle on the left of any reminder is the check-off button. Click it once → confetti burst, the item disappears from the list, and a **Undo** toast pops up in the bottom-right for 10 seconds.
+
+### Schedules tab
+
+Five schedules are preloaded, per the original spec:
+
+- *Fan Site Posting — CoC* — monthly, 10 days before next month starts.
+- *Fan Site Posting — PoA* — same cadence, PoA.
+- *Income update* — monthly, 3 days after the month ends.
+- *CoC content release* — weekly, Mondays and Thursdays.
+- *PoA content release* — weekly, Wednesdays and Fridays.
+
+You can **Pause** any of them, edit cadence/persona/notes, or delete. Click **✨ New schedule** to add your own. The wizard speaks English, never cron — choose a family (Weekly / Monthly / Every N days / Daily), tweak the specifics, and the "Reads as" line plus "Next 5 dates" preview update live.
+
+The sidebar's 🔔 **Reminders** row shows a red badge with the count of overdue + today items. Click it to jump there.
 
 ## Clips & MasterClipper import
 

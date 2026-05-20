@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Sidebar, type ViewKey } from './components/Sidebar';
 import { PersonaSwitcher } from './components/PersonaSwitcher';
 import { usePersonas, type Persona } from './state/personas';
@@ -9,6 +9,8 @@ import { MollyHelper } from './views/MollyHelper/MollyHelper';
 import { HomeDashboard } from './views/Home/HomeDashboard';
 import { CalendarView } from './views/Calendar/CalendarView';
 import { ClipsListView } from './views/Clips/ClipsListView';
+import { RemindersView } from './views/Reminders/RemindersView';
+import { materializeOccurrences, pendingCounts } from './data/occurrences';
 
 function PlaceholderView({ title, blurb, active }: { title: string; blurb: string; active: Persona }) {
   return (
@@ -24,7 +26,7 @@ function PlaceholderView({ title, blurb, active }: { title: string; blurb: strin
   );
 }
 
-const COPY: Record<Exclude<ViewKey, 'home' | 'settings' | 'customers' | 'helper' | 'calendar' | 'clips'>, { title: string; blurb: string }> = {
+const COPY: Record<Exclude<ViewKey, 'home' | 'settings' | 'customers' | 'helper' | 'calendar' | 'clips' | 'reminders'>, { title: string; blurb: string }> = {
   income:   { title: 'Income',   blurb: 'Adhoc one-offs + per-site monthly wizard. Arrives in Phase 4.' },
   expenses: { title: 'Expenses', blurb: 'One-off + recurring expenses, attachments, MTD/YTD. Arrives in Phase 4.' },
   reports:  { title: 'Reports',  blurb: 'MTD / Prior MTD / YTD per persona and ALL. Arrives in Phase 4.' },
@@ -36,6 +38,40 @@ export default function App() {
 
   const [view, setView] = useState<ViewKey>('home');
   const [sidebarVisible, setSidebarVisible] = useState(true);
+  const [pendingTotal, setPendingTotal] = useState(0);
+
+  const refreshCounts = useCallback(async () => {
+    try {
+      const c = await pendingCounts(active.code === 'ALL' ? undefined : { personaCode: active.code });
+      setPendingTotal(c.todayCount + c.overdueCount);
+    } catch (e) {
+      console.warn('pendingCounts failed', e);
+    }
+  }, [active.code]);
+
+  // Materialize occurrences on app launch + every 30 min, then refresh count.
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      try {
+        await materializeOccurrences();
+        if (alive) await refreshCounts();
+      } catch (e) {
+        console.warn('materialize failed', e);
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 30 * 60_000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [refreshCounts]);
+
+  // Refresh count when active persona changes.
+  useEffect(() => {
+    refreshCounts();
+  }, [refreshCounts]);
 
   // Cmd/Ctrl+S toggles the sidebar (PhantomLives convention).
   useEffect(() => {
@@ -66,7 +102,8 @@ export default function App() {
 
   let body: React.ReactNode;
   switch (view) {
-    case 'home':      body = <HomeDashboard active={active} />; break;
+    case 'home':      body = <HomeDashboard active={active} onGoTo={(v) => setView(v)} />; break;
+    case 'reminders': body = <RemindersView active={active} onCountsChanged={refreshCounts} />; break;
     case 'calendar':  body = <CalendarView active={active} />; break;
     case 'clips':     body = <ClipsListView active={active} />; break;
     case 'customers': body = <CustomerListView active={active} />; break;
@@ -77,7 +114,7 @@ export default function App() {
 
   return (
     <div className="h-screen flex" style={{ background: 'rgb(var(--persona-tint))' }}>
-      <Sidebar active={view} onSelect={setView} visible={sidebarVisible} />
+      <Sidebar active={view} onSelect={setView} visible={sidebarVisible} pendingCount={pendingTotal} />
       <div className="flex-1 flex flex-col min-w-0">
         <PersonaSwitcher
           personas={personas}
