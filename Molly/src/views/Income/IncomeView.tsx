@@ -2,12 +2,13 @@ import { useState } from 'react';
 import type { Persona } from '../../state/personas';
 import { AdhocIncomeView } from './AdhocIncomeView';
 import { SiteIncomeWizard } from './SiteIncomeWizard';
+import { SalesReportImport } from './SalesReportImport';
 
 interface Props {
   active: Persona;
 }
 
-type Tab = 'adhoc' | 'site';
+type Tab = 'adhoc' | 'site' | 'salesreport';
 
 export function IncomeView({ active }: Props) {
   const [tab, setTab] = useState<Tab>('adhoc');
@@ -15,8 +16,11 @@ export function IncomeView({ active }: Props) {
   return (
     <div className="space-y-3">
       <div className="px-8 pt-6 flex items-center gap-2">
-        {(['adhoc', 'site'] as Tab[]).map((t) => {
+        {(['adhoc', 'site', 'salesreport'] as Tab[]).map((t) => {
           const isOn = tab === t;
+          const label = t === 'adhoc' ? '💖 Adhoc income'
+                      : t === 'site' ? '🌐 Site income wizard'
+                      : '📊 Sales report import';
           return (
             <button
               key={t}
@@ -29,12 +33,14 @@ export function IncomeView({ active }: Props) {
                 border: '1px solid rgb(var(--persona-primary) / 0.45)',
               }}
             >
-              {t === 'adhoc' ? '💖 Adhoc income' : '🌐 Site income wizard'}
+              {label}
             </button>
           );
         })}
       </div>
-      {tab === 'adhoc' ? <AdhocIncomeView active={active} /> : <SiteIncomeWizard onClose={() => setTab('adhoc')} />}
+      {tab === 'adhoc' && <AdhocIncomeView active={active} />}
+      {tab === 'site' && <SiteIncomeWizard onClose={() => setTab('adhoc')} />}
+      {tab === 'salesreport' && <SalesReportImport active={active} />}
     </div>
   );
 }

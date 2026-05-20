@@ -4,6 +4,16 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — 2026-05-20
+
+### Added
+
+- **Phase 6 — Sales report importer (v1).** Each site (Clips4Sale, IWantClips, OnlyFans, …) exports a different CSV but they all reduce to "date + amount" rows. Instead of N hard-coded parsers, Molly auto-detects the date and amount columns by header name, allows manual override, totals by month, and upserts into the `income_site` table — same shape the monthly wizard touches.
+- **New tab**: Income → **📊 Sales report import**.
+- **Generic parser** (`src/lib/salesReport.ts`): header-keyword-based column detection (`date|day|earned|period|sale date|transaction date|earning date` for dates; `payout|net|amount|total|earned|gross|usd|payment` for amounts); robust money parser stripping `$`, commas, and preserving sign; date parser covering ISO, US, EU, `Mon DD YYYY` formats with EOM-safe range checks; per-`(year, month)` aggregation.
+- **Wizard UI**: site dropdown → CSV file pick → auto-detected columns (with override) → per-month totals preview showing CSV total vs existing site_income vs what the row will become → **Replace** or **Add** mode → run.
+- Unparseable rows are surfaced in an expandable list at the bottom of the preview so the user knows exactly what got skipped and why.
+
 ## [0.5.0] — 2026-05-20
 
 ### Added

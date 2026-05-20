@@ -68,6 +68,12 @@ Where one-off sales go. Add anything — a custom for a fan, a tip on a phone ca
 
 Once per month — typically right after the "Income update" reminder fires — open this wizard, pick the month you're entering for, and walk down the list. Sites are grouped by persona; type the dollar amount each site earned for that month. Per-persona subtotals and the grand total update live. You can reopen any past month and edit.
 
+### 📊 Sales report import
+
+For sites that give you a CSV of every sale (Clips4Sale, IWantClips, etc.) — pick the site at the top, choose the CSV, and Molly figures out which column is the date and which is the amount, then totals by month. You'll see a preview with: rows it found, the CSV total, what was already in Molly for that month, and what it'll become after import. Pick **Replace** (overwrite the month's value) or **Add** (sum into the existing value). Click **Run import**.
+
+If a row can't be parsed, the importer lists it at the bottom so you know what got skipped.
+
 ## Expenses
 
 Click **Expenses**. Two tabs:
