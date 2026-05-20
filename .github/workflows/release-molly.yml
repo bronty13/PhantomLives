@@ -106,19 +106,23 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -e
-          echo "::group::find .sig files"
-          find src-tauri/target -name "*.sig" -type f 2>&1 || true
+          echo "::group::find .sig files anywhere under the project"
+          find "$GITHUB_WORKSPACE" -name "*.sig" -type f 2>&1 || true
           echo "::endgroup::"
-          shopt -s nullglob
-          mapfile -t sigs < <(find src-tauri/target/release/bundle -name "*.sig" -type f)
-          if [ "${#sigs[@]}" -eq 0 ]; then
-            echo "no .sig files found under src-tauri/target/release/bundle"
-            exit 1
-          fi
-          for f in "${sigs[@]}"; do
+          # macOS runner uses bash 3.2 — no `mapfile`. Use a portable
+          # while-read loop, and walk the cargo target dir top-down so
+          # any nested bundle layout still gets covered.
+          count=0
+          while IFS= read -r -d '' f; do
             echo "Uploading $f"
             gh release upload "$TAG" "$f" --clobber
-          done
+            count=$((count + 1))
+          done < <(find src-tauri/target -name "*.sig" -type f -print0)
+          if [ "$count" -eq 0 ]; then
+            echo "no .sig files found under src-tauri/target"
+            exit 1
+          fi
+          echo "Uploaded $count signature(s)."
 
       - name: Upload updater signatures (windows)
         if: matrix.platform == 'windows-latest'
@@ -127,18 +131,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: |
-          Write-Host "::group::find .sig files"
-          Get-ChildItem -Path "src-tauri/target" -Filter "*.sig" -Recurse -ErrorAction SilentlyContinue | Select-Object FullName
+          Write-Host "::group::find .sig files anywhere under the project"
+          Get-ChildItem -Path $env:GITHUB_WORKSPACE -Filter "*.sig" -Recurse -ErrorAction SilentlyContinue | Select-Object FullName
           Write-Host "::endgroup::"
-          $sigs = Get-ChildItem -Path "src-tauri/target/release/bundle" -Filter "*.sig" -Recurse -ErrorAction SilentlyContinue
+          $sigs = Get-ChildItem -Path "src-tauri/target" -Filter "*.sig" -Recurse -ErrorAction SilentlyContinue
           if (-not $sigs -or $sigs.Count -eq 0) {
-            Write-Host "no .sig files found under src-tauri/target/release/bundle"
+            Write-Host "no .sig files found under src-tauri/target"
             exit 1
           }
           foreach ($f in $sigs) {
             Write-Host "Uploading $($f.FullName)"
             gh release upload "$env:TAG" "$($f.FullName)" --clobber
           }
+          Write-Host ("Uploaded {0} signature(s)." -f $sigs.Count)
 
   publish-feed:
     # Compose latest.json from the freshly-uploaded .sig files. This runs
