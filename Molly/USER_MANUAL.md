@@ -2,7 +2,7 @@
 
 This guide is written for the creator using Molly day to day, not for developers. If you ever get stuck, send Robert a screenshot in Slack and he can usually figure it out.
 
-> Phase 0 ships only the shell, persona switcher, theme engine, and backup. The other features in the menu (Calendar, Clips, Customers, Helper, Income, Expenses, Reports) are placeholders for now.
+> Phase 1 is live: settings (personas, sites, products, interests, backup), the customer tracker, and **Molly Helper** (the site launcher). Calendar, Clips, Income, Expenses and Reports remain placeholders for now.
 
 ## Opening Molly
 
@@ -26,6 +26,35 @@ The pills at the top right are the personas:
 - **★ All** — show everything together
 
 Click a pill. The whole app recolors to match. Your choice is remembered between launches.
+
+## Settings
+
+The Settings page has five tabs:
+
+- **Personas** — rename, redescribe, and recolor any of CoC / PoA / Sa. There are five swatches per persona (primary, secondary, tint, accent, text); changing them recolors the whole app instantly.
+- **Sites** — add, edit, delete sites. Each site belongs to a persona, has a name, short-code, URL, your username, an optional note, a color, and an optional "login group" (used to mark sites that share the same login — the preloaded OnlyFans rows for CoC and PoA share `of-shared`).
+- **Products** — what customers buy from you (Phone, Cam, Customs, Physical merch…). Tagged on customers; will drive sales reports in a later phase.
+- **Interests** — what customers like (Feet, Pantyhose, Panties, Humiliation…). Tagged on customers.
+- **Backup** — covered below.
+
+Add/edit/delete every list from inside Molly — nothing requires Robert to change code.
+
+## Customers
+
+The **Customers** tab is your little CRM. Each customer has:
+
+- An automatic UID (`YYYY-MM-DD-#####` — resets daily).
+- Username, real name.
+- Up to five email addresses.
+- A persona binding (or no persona for cross-persona contacts).
+- Product chips and interest chips (multi-select).
+- Rich-text notes — bold, italic, headings, bullet/ordered lists, blockquote, links, horizontal rule.
+
+The list view filters by the active persona (top bar) and supports search across UID / username / real name. Click any customer to open the editor. **Save** only enables when there are unsaved edits. **Delete** is two-tap (click once, confirm within 3 seconds).
+
+## Molly Helper
+
+The **Molly Helper** tab is your one-click site launcher. Each persona gets a row of color-tinted cards showing the site name, short code, your username, and any note. Click **Open** to launch the site in your default browser; click **Copy user** to copy the username to your clipboard. The 🔗 chip shows when a site shares its login with another (use it once for OnlyFans, then switch stores after sign-in).
 
 ## The sidebar
 

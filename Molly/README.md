@@ -2,7 +2,7 @@
 
 Molly is the central hub for a content creator's day — personas, clips, schedules, customers, income and expenses, all in one cute little app. It runs on **macOS** and **Windows**, with the same database format on both, so a Windows export can be opened on a Mac dev machine and vice-versa.
 
-> **Phase 0.** Only the app shell, persona switching, theme engine, and backup-on-launch are wired up. Calendar, scheduler, income/expense tracking, customer tracker and Molly Helper land in later phases (see `../jiggly-sparking-panda.md` plan file or the [project plan summary](#roadmap) below).
+> **Phase 1.** Settings (personas / sites / products / interests / backup), Customer tracker with rich-text notes, and Molly Helper are live. Calendar, scheduler, and income/expense tracking land in later phases (see [roadmap](#roadmap)).
 
 ## Quick start (Mac dev)
 
@@ -60,8 +60,8 @@ Molly zips its app-data directory on launch into `~/Downloads/Molly backup/Molly
 
 | Phase | Scope |
 |-------|-------|
-| 0     | App shell, icon, persona theming, backup-on-launch, CI release pipeline. *(this build)* |
-| 1     | Settings (personas/sites/products/interests) + Customer tracker + Molly Helper |
+| 0     | App shell, icon, persona theming, backup-on-launch, CI release pipeline. |
+| 1     | Settings (personas/sites/products/interests) + Customer tracker + Molly Helper. *(this build)* |
 | 2     | Calendar + MasterClipper import + dashboard widgets |
 | 3     | Scheduling engine + reminders + check-off |
 | 4     | Income (adhoc + per-site) + expenses (one-off + recurring) + reports |

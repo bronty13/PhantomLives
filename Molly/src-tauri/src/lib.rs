@@ -4,12 +4,32 @@ mod fsutil;
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 pub fn run() {
-    let migrations = vec![Migration {
-        version: 1,
-        description: "init",
-        sql: include_str!("../migrations/001_init.sql"),
-        kind: MigrationKind::Up,
-    }];
+    let migrations = vec![
+        Migration {
+            version: 1,
+            description: "init",
+            sql: include_str!("../migrations/001_init.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 2,
+            description: "sites",
+            sql: include_str!("../migrations/002_sites.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 3,
+            description: "taxonomy",
+            sql: include_str!("../migrations/003_taxonomy.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 4,
+            description: "customers",
+            sql: include_str!("../migrations/004_customers.sql"),
+            kind: MigrationKind::Up,
+        },
+    ];
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())

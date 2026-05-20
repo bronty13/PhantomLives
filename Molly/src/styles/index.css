@@ -81,4 +81,25 @@
   }
 
   .display-font { font-family: 'Comfortaa', 'SF Pro Rounded', system-ui, sans-serif; }
+
+  /* Tiptap "lite prose" — avoids pulling in the typography plugin. */
+  .molly-richtext { font-size: 0.92rem; line-height: 1.6; }
+  .molly-richtext p { margin: 0 0 0.6rem; }
+  .molly-richtext h2 { font-family: 'Comfortaa', system-ui, sans-serif; font-size: 1.15rem; font-weight: 700; margin: 0.6rem 0 0.4rem; color: rgb(var(--persona-accent)); }
+  .molly-richtext h3 { font-family: 'Comfortaa', system-ui, sans-serif; font-size: 1.02rem; font-weight: 700; margin: 0.6rem 0 0.3rem; color: rgb(var(--persona-accent)); }
+  .molly-richtext ul, .molly-richtext ol { padding-left: 1.4rem; margin: 0 0 0.6rem; }
+  .molly-richtext ul { list-style: disc; }
+  .molly-richtext ol { list-style: decimal; }
+  .molly-richtext li { margin: 0.15rem 0; }
+  .molly-richtext blockquote { border-left: 3px solid rgb(var(--persona-accent) / 0.45); padding: 0.1rem 0 0.1rem 0.7rem; color: rgb(var(--persona-text) / 0.78); margin: 0 0 0.6rem; }
+  .molly-richtext hr { border: none; border-top: 1px dashed rgb(var(--persona-primary) / 0.6); margin: 0.8rem 0; }
+  .molly-richtext a { color: rgb(var(--persona-accent)); text-decoration: underline; }
+  .molly-richtext code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: rgb(var(--persona-tint)); padding: 0 0.25rem; border-radius: 0.3rem; }
+  .molly-richtext p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    color: rgb(var(--persona-text) / 0.4);
+    float: left;
+    height: 0;
+    pointer-events: none;
+  }
 }

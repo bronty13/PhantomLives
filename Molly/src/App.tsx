@@ -3,7 +3,9 @@ import { Sidebar, type ViewKey } from './components/Sidebar';
 import { PersonaSwitcher } from './components/PersonaSwitcher';
 import { usePersonas, type Persona } from './state/personas';
 import { useApplyPersonaTheme } from './state/theme';
-import { BackupSettings } from './views/Settings/BackupSettings';
+import { SettingsView } from './views/Settings/SettingsView';
+import { CustomerListView } from './views/Customers/CustomerListView';
+import { MollyHelper } from './views/MollyHelper/MollyHelper';
 
 function PlaceholderView({ title, blurb, active }: { title: string; blurb: string; active: Persona }) {
   return (
@@ -12,8 +14,7 @@ function PlaceholderView({ title, blurb, active }: { title: string; blurb: strin
         <h2 className="display-font text-2xl font-bold persona-accent">{title}</h2>
         <p className="mt-2 opacity-80">{blurb}</p>
         <p className="mt-4 text-sm opacity-60">
-          Currently filtered by <span className="font-semibold">{active.name}</span>. This view ships in a later
-          phase — Phase 0 ships the shell, theming, and backup only.
+          Currently filtered by <span className="font-semibold">{active.name}</span>.
         </p>
       </div>
     </div>
@@ -27,8 +28,8 @@ function HomeView({ active }: { active: Persona }) {
         <div className="text-xs uppercase tracking-wider opacity-60">welcome back</div>
         <h2 className="display-font text-3xl font-bold persona-accent mt-1">Hi, I'm Molly 💕</h2>
         <p className="opacity-80 mt-2">
-          I'm your little command center for everything you make. Pick a persona at the top to filter the whole app
-          to that vibe, or stay on <strong>★ All</strong> for the cross-persona view.
+          Pick a persona at the top to filter the whole app to that vibe, or stay on <strong>★ All</strong> for the
+          cross-persona view. Customers, sites and the launcher are live in Phase 1.
         </p>
         <div className="mt-4 grid grid-cols-3 gap-3">
           <div className="p-3 rounded-xl persona-tint border border-black/5">
@@ -49,35 +50,16 @@ function HomeView({ active }: { active: Persona }) {
   );
 }
 
-function SettingsView({ active }: { active: Persona }) {
-  return (
-    <div className="p-8 space-y-4 max-w-3xl">
-      <div>
-        <h2 className="display-font text-2xl font-bold persona-accent">Settings</h2>
-        <p className="opacity-70 text-sm">Persona ({active.name}) · Sites · Products · Interests · Backup</p>
-      </div>
-      <BackupSettings />
-      <div className="pretty-card text-sm opacity-70">
-        Other settings tabs (personas, sites, products, interests) arrive in Phase 1.
-      </div>
-    </div>
-  );
-}
-
-const COPY: Record<ViewKey, { title: string; blurb: string }> = {
-  home:      { title: 'Home',           blurb: '' },
-  calendar:  { title: 'Calendar',       blurb: 'Clip releases on a month grid, color-dotted per persona. Arrives in Phase 2.' },
-  clips:     { title: 'Clips',          blurb: 'Imported from MasterClipper CSV exports. Arrives in Phase 2.' },
-  customers: { title: 'Customers',      blurb: 'UID, names, multi-email, products, interests, rich-text notes. Arrives in Phase 1.' },
-  helper:    { title: 'Molly Helper',   blurb: "A persona-aware site launcher with username reminders. Arrives in Phase 1." },
-  income:    { title: 'Income',         blurb: 'Adhoc one-offs + per-site monthly wizard. Arrives in Phase 4.' },
-  expenses:  { title: 'Expenses',       blurb: 'One-off + recurring expenses, attachments, MTD/YTD. Arrives in Phase 4.' },
-  reports:   { title: 'Reports',        blurb: 'MTD / Prior MTD / YTD per persona and ALL. Arrives in Phase 4.' },
-  settings:  { title: 'Settings',       blurb: '' },
+const COPY: Record<Exclude<ViewKey, 'home' | 'settings' | 'customers' | 'helper'>, { title: string; blurb: string }> = {
+  calendar: { title: 'Calendar', blurb: 'Clip releases on a month grid, color-dotted per persona. Arrives in Phase 2.' },
+  clips:    { title: 'Clips',    blurb: 'Imported from MasterClipper CSV exports. Arrives in Phase 2.' },
+  income:   { title: 'Income',   blurb: 'Adhoc one-offs + per-site monthly wizard. Arrives in Phase 4.' },
+  expenses: { title: 'Expenses', blurb: 'One-off + recurring expenses, attachments, MTD/YTD. Arrives in Phase 4.' },
+  reports:  { title: 'Reports',  blurb: 'MTD / Prior MTD / YTD per persona and ALL. Arrives in Phase 4.' },
 };
 
 export default function App() {
-  const { personas, active, choose, loading, error } = usePersonas();
+  const { personas, active, choose, loading, error, refresh } = usePersonas();
   useApplyPersonaTheme(active);
 
   const [view, setView] = useState<ViewKey>('home');
@@ -110,6 +92,15 @@ export default function App() {
     );
   }
 
+  let body: React.ReactNode;
+  switch (view) {
+    case 'home':      body = <HomeView active={active} />; break;
+    case 'settings':  body = <SettingsView active={active} onPersonasChanged={refresh} />; break;
+    case 'customers': body = <CustomerListView active={active} />; break;
+    case 'helper':    body = <MollyHelper active={active} />; break;
+    default:          body = <PlaceholderView title={COPY[view].title} blurb={COPY[view].blurb} active={active} />;
+  }
+
   return (
     <div className="h-screen flex" style={{ background: 'rgb(var(--persona-tint))' }}>
       <Sidebar active={view} onSelect={setView} visible={sidebarVisible} />
@@ -121,11 +112,7 @@ export default function App() {
           onToggleSidebar={() => setSidebarVisible((v) => !v)}
         />
         <main className="flex-1 overflow-y-auto">
-          {view === 'home' && <HomeView active={active} />}
-          {view === 'settings' && <SettingsView active={active} />}
-          {view !== 'home' && view !== 'settings' && (
-            <PlaceholderView title={COPY[view].title} blurb={COPY[view].blurb} active={active} />
-          )}
+          {body}
         </main>
       </div>
     </div>
