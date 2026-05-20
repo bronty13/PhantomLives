@@ -52,6 +52,25 @@ The **Customers** tab is your little CRM. Each customer has:
 
 The list view filters by the active persona (top bar) and supports search across UID / username / real name. Click any customer to open the editor. **Save** only enables when there are unsaved edits. **Delete** is two-tap (click once, confirm within 3 seconds).
 
+## Promos
+
+Click **📣 Promos** in the sidebar. This is where every Reddit thread, X post, IG story, TikTok video you put up to drive traffic gets logged.
+
+Click **✨ New promo** to add one. Fields:
+
+- **Persona** — which version of you is posting.
+- **Platform** — Reddit / X / Instagram / TikTok come preloaded; add more in Settings → Platforms.
+- **Handle** — your username on that platform (`u/coc`, `@curse_of_curves`, etc.).
+- **Posted at** — local date + time picker.
+- **URL** — link to the post. Use **Open** in the list to launch it later.
+- **Title** + **body** — what you posted.
+- **Linked clip** (optional) — pick from a dropdown of recent clips for the active persona.
+- **Notes** — rich-text. Note hashtags that worked, time-of-day, comments that came in.
+
+The list filters by platform, year, month, and free-text search across title/handle/body. The active persona at the top further narrows.
+
+The Reports page now has a **Promos** section: MTD + YTD post counts and a per-platform bar chart sized by platform color.
+
 ## Molly Helper
 
 The **Molly Helper** tab is your one-click site launcher. Each persona gets a row of color-tinted cards showing the site name, short code, your username, and any note. Click **Open** to launch the site in your default browser; click **Copy user** to copy the username to your clipboard. The 🔗 chip shows when a site shares its login with another (use it once for OnlyFans, then switch stores after sign-in).

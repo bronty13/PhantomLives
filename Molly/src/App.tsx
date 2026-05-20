@@ -6,6 +6,7 @@ import { useApplyPersonaTheme } from './state/theme';
 import { SettingsView } from './views/Settings/SettingsView';
 import { CustomerListView } from './views/Customers/CustomerListView';
 import { MollyHelper } from './views/MollyHelper/MollyHelper';
+import { PromosListView } from './views/Promos/PromosListView';
 import { HomeDashboard } from './views/Home/HomeDashboard';
 import { CalendarView } from './views/Calendar/CalendarView';
 import { ClipsListView } from './views/Clips/ClipsListView';
@@ -92,6 +93,7 @@ export default function App() {
     case 'clips':     body = <ClipsListView active={active} />; break;
     case 'customers': body = <CustomerListView active={active} />; break;
     case 'helper':    body = <MollyHelper active={active} />; break;
+    case 'promos':    body = <PromosListView active={active} />; break;
     case 'income':    body = <IncomeView active={active} />; break;
     case 'expenses':  body = <ExpensesView active={active} onChanged={refreshCounts} />; break;
     case 'reports':   body = <ReportsView active={active} />; break;

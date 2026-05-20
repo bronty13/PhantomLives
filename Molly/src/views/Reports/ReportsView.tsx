@@ -8,6 +8,8 @@ import {
 } from '../../data/income';
 import { expenseTotalsForPeriod, type ExpenseTotals } from '../../data/expenses';
 import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
+import { countByPlatform, countTotal, type PromoCount } from '../../data/socialPromos';
+import { listPlatforms, type SocialPlatform } from '../../data/socialPlatforms';
 import { fmtMoney, MONTH_NAMES, prevMonth, todayParts } from '../../lib/money';
 
 interface Props {
@@ -25,6 +27,10 @@ export function ReportsView({ active }: Props) {
   const [priorMtdExp, setPriorMtdExp] = useState<ExpenseTotals | null>(null);
   const [ytdExp, setYtdExp] = useState<ExpenseTotals | null>(null);
   const [perSite, setPerSite] = useState<PerSiteIncome[]>([]);
+  const [promosMtd, setPromosMtd] = useState(0);
+  const [promosYtd, setPromosYtd] = useState(0);
+  const [promosByPlatform, setPromosByPlatform] = useState<PromoCount[]>([]);
+  const [platforms, setPlatforms] = useState<SocialPlatform[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -40,8 +46,12 @@ export function ReportsView({ active }: Props) {
       expenseTotalsForPeriod({ year: prior.year, month: prior.month, dayCap: t.day, personaCode: persona }),
       expenseTotalsForPeriod({ year: year, personaCode: persona }),
       perSiteForYear(year, persona),
+      countTotal({ year: t.year, month: t.month, personaCode: persona }),
+      countTotal({ year, personaCode: persona }),
+      countByPlatform({ year, personaCode: persona }),
+      listPlatforms(),
     ])
-      .then(([p, mIn, pIn, yIn, mEx, pEx, yEx, ps]) => {
+      .then(([p, mIn, pIn, yIn, mEx, pEx, yEx, ps, pMtd, pYtd, pByPlat, plats]) => {
         if (!alive) return;
         setPersonas(p);
         setMtdIncome(mIn);
@@ -51,6 +61,10 @@ export function ReportsView({ active }: Props) {
         setPriorMtdExp(pEx);
         setYtdExp(yEx);
         setPerSite(ps);
+        setPromosMtd(pMtd);
+        setPromosYtd(pYtd);
+        setPromosByPlatform(pByPlat);
+        setPlatforms(plats);
       })
       .catch((e) => setError(String(e)));
     return () => { alive = false; };
@@ -173,6 +187,47 @@ export function ReportsView({ active }: Props) {
             </div>
           );
         })}
+      </div>
+
+      <div className="pretty-card">
+        <h3 className="display-font text-lg font-semibold persona-accent mb-1">Promos</h3>
+        <p className="text-xs opacity-60 mb-3">Post counts. (Sales attribution lands in a later phase.)</p>
+        <div className="grid grid-cols-3 gap-3 mb-3">
+          <div className="p-3 rounded-xl persona-tint border border-black/5">
+            <div className="text-xs uppercase tracking-wider opacity-60">{MONTH_NAMES[t.month - 1]} MTD</div>
+            <div className="display-font text-2xl font-bold persona-accent mt-1">{promosMtd}</div>
+          </div>
+          <div className="p-3 rounded-xl persona-tint border border-black/5">
+            <div className="text-xs uppercase tracking-wider opacity-60">YTD {year}</div>
+            <div className="display-font text-2xl font-bold persona-accent mt-1">{promosYtd}</div>
+          </div>
+          <div className="p-3 rounded-xl persona-tint border border-black/5">
+            <div className="text-xs uppercase tracking-wider opacity-60">Platforms tracked</div>
+            <div className="display-font text-2xl font-bold persona-accent mt-1">{platforms.length}</div>
+          </div>
+        </div>
+        {promosByPlatform.length === 0 ? (
+          <div className="text-sm opacity-70 italic">No promos in {year} yet — start logging on the Promos page.</div>
+        ) : (
+          <div className="space-y-1.5">
+            {promosByPlatform.map((row) => {
+              const plat = platforms.find((p) => p.id === row.platformId);
+              const max = Math.max(1, ...promosByPlatform.map((r) => r.count));
+              return (
+                <div key={row.platformId} className="flex items-center gap-3 text-sm">
+                  <div className="w-36 flex items-center gap-2">
+                    <span className="text-base">{plat?.icon ?? '📣'}</span>
+                    <span>{plat?.name ?? '(deleted)'}</span>
+                  </div>
+                  <div className="flex-1 h-3 rounded-full bg-black/5 overflow-hidden">
+                    <div className="h-full" style={{ width: `${(row.count / max) * 100}%`, background: plat?.color ?? '#A16D9C' }} />
+                  </div>
+                  <div className="w-12 text-right font-mono">{row.count}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {error && <div className="pretty-card text-sm text-red-700"><strong>Error:</strong> {error}</div>}

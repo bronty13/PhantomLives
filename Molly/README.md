@@ -2,7 +2,7 @@
 
 Molly is the central hub for a content creator's day — personas, clips, schedules, customers, income and expenses, all in one cute little app. It runs on **macOS** and **Windows**, with the same database format on both, so a Windows export can be opened on a Mac dev machine and vice-versa.
 
-> **Phase 6 (post-roadmap).** Generic sales-report CSV importer added on top of the original five-phase plan. Income → 📊 Sales report import lets you drop in any site's monthly CSV and Molly figures out the columns + totals.
+> **Phase 7 (post-roadmap).** Social promotion tracker (Reddit / X / Instagram / TikTok). 📣 Promos sidebar entry, Settings → Platforms tab for managing them, optional clip linking, and a Promos breakdown in Reports.
 
 ## Quick start (Mac dev)
 
@@ -66,7 +66,8 @@ Molly zips its app-data directory on launch into `~/Downloads/Molly backup/Molly
 | 3     | Scheduling engine + reminders + check-off. |
 | 4     | Income (adhoc + per-site) + expenses (one-off + recurring) + reports. |
 | 5     | Full export → dev / import on dev / auto-update polish. |
-| 6     | Sales-report CSV importer (per-site monthly totals). *(this build)* |
+| 6     | Sales-report CSV importer (per-site monthly totals). |
+| 7     | Social promotion tracker (Reddit / X / Instagram / TikTok). *(this build)* |
 
 ## Layout
 

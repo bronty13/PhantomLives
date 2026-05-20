@@ -3,11 +3,12 @@ import type { Persona } from '../../state/personas';
 import { BackupSettings } from './BackupSettings';
 import { DataSettings } from './DataSettings';
 import { PersonasSettings } from './PersonasSettings';
+import { PlatformsSettings } from './PlatformsSettings';
 import { SitesSettings } from './SitesSettings';
 import { TaxonomySettings } from './TaxonomySettings';
 import { UpdatesSettings } from './UpdatesSettings';
 
-type Tab = 'personas' | 'sites' | 'products' | 'interests' | 'data' | 'updates' | 'backup';
+type Tab = 'personas' | 'sites' | 'products' | 'interests' | 'platforms' | 'data' | 'updates' | 'backup';
 
 interface Props {
   active: Persona;
@@ -15,13 +16,14 @@ interface Props {
 }
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
-  { key: 'personas',  label: 'Personas',  icon: '👯‍♀️' },
-  { key: 'sites',     label: 'Sites',     icon: '💻' },
-  { key: 'products',  label: 'Products',  icon: '📦' },
-  { key: 'interests', label: 'Interests', icon: '🌷' },
-  { key: 'data',      label: 'Data',      icon: '📦' },
-  { key: 'updates',   label: 'Updates',   icon: '⬇️' },
-  { key: 'backup',    label: 'Backup',    icon: '💾' },
+  { key: 'personas',  label: 'Personas',   icon: '👯‍♀️' },
+  { key: 'sites',     label: 'Sites',      icon: '💻' },
+  { key: 'platforms', label: 'Platforms',  icon: '📣' },
+  { key: 'products',  label: 'Products',   icon: '📦' },
+  { key: 'interests', label: 'Interests',  icon: '🌷' },
+  { key: 'data',      label: 'Data',       icon: '📦' },
+  { key: 'updates',   label: 'Updates',    icon: '⬇️' },
+  { key: 'backup',    label: 'Backup',     icon: '💾' },
 ];
 
 export function SettingsView({ active, onPersonasChanged }: Props) {
@@ -31,6 +33,7 @@ export function SettingsView({ active, onPersonasChanged }: Props) {
   switch (tab) {
     case 'personas':  body = <PersonasSettings onChanged={onPersonasChanged} />; break;
     case 'sites':     body = <SitesSettings activePersona={active} />; break;
+    case 'platforms': body = <PlatformsSettings />; break;
     case 'products':  body = <TaxonomySettings kind="products" />; break;
     case 'interests': body = <TaxonomySettings kind="interests" />; break;
     case 'data':      body = <DataSettings />; break;
