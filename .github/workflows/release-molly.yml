@@ -92,3 +92,106 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+      # tauri-action @v0 doesn't upload .sig files in matrix mode (each
+      # runner only has its own platform's sigs, so its latest.json build
+      # aborts with "Signature not found" and the sigs go up with it).
+      # We upload them explicitly so the publish-feed job can compose a
+      # cross-platform latest.json afterwards.
+      - name: Upload updater signatures (mac)
+        if: matrix.platform == 'macos-14'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -e
+          shopt -s nullglob
+          for f in src-tauri/target/release/bundle/macos/*.sig; do
+            echo "Uploading $f"
+            gh release upload "$TAG" "$f" --clobber
+          done
+
+      - name: Upload updater signatures (windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $sigs = @()
+          $sigs += Get-ChildItem -Path "src-tauri/target/release/bundle/nsis" -Filter "*.sig" -ErrorAction SilentlyContinue
+          $sigs += Get-ChildItem -Path "src-tauri/target/release/bundle/msi"  -Filter "*.sig" -ErrorAction SilentlyContinue
+          foreach ($f in $sigs) {
+            Write-Host "Uploading $($f.FullName)"
+            gh release upload "$env:TAG" "$($f.FullName)" --clobber
+          }
+
+  publish-feed:
+    # Compose latest.json from the freshly-uploaded .sig files. This runs
+    # after both build matrix jobs so it sees every platform's signature.
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download .sig files from the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir -p sigs
+          gh release download "$TAG" --pattern "*.sig" --dir sigs
+
+      - name: Compose latest.json
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -e
+          VERSION="${TAG#molly-v}"
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+
+          # Mac signature is for the .app.tar.gz updater bundle.
+          MAC_SIG_FILE=$(ls sigs/*aarch64.app.tar.gz.sig 2>/dev/null || true)
+          if [ -z "$MAC_SIG_FILE" ]; then
+            # Fall back to non-arch-suffixed name (tauri-action sometimes uploads it
+            # without the arch in the sig basename).
+            MAC_SIG_FILE=$(ls sigs/*.app.tar.gz.sig 2>/dev/null || true)
+          fi
+          MAC_SIG=$(cat "$MAC_SIG_FILE" 2>/dev/null || echo "")
+
+          # Windows updater bundle is the NSIS .zip.
+          WIN_SIG_FILE=$(ls sigs/*x64-setup.nsis.zip.sig 2>/dev/null || true)
+          WIN_SIG=$(cat "$WIN_SIG_FILE" 2>/dev/null || echo "")
+
+          echo "Mac sig file: $MAC_SIG_FILE"
+          echo "Win sig file: $WIN_SIG_FILE"
+
+          cat > latest.json <<EOF
+          {
+            "version": "${VERSION}",
+            "notes": "Auto-built from tag ${TAG}. See the GitHub release page for details.",
+            "pub_date": "${DATE}",
+            "platforms": {
+              "darwin-aarch64": {
+                "signature": "${MAC_SIG}",
+                "url": "${BASE}/Molly_aarch64.app.tar.gz"
+              },
+              "windows-x86_64": {
+                "signature": "${WIN_SIG}",
+                "url": "${BASE}/Molly_${VERSION}_x64-setup.exe"
+              }
+            }
+          }
+          EOF
+          cat latest.json
+
+      - name: Upload latest.json to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release upload "$TAG" latest.json --clobber
