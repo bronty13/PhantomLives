@@ -55,16 +55,35 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Set these in repo secrets before signed releases (Phase 5):
+          # Updater signing — required for the auto-update flow to verify
+          # bundles. Generated locally via `pnpm tauri signer generate`;
+          # public key sits in Molly/src-tauri/tauri.conf.json.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # macOS Developer ID + notarization (optional — without these the .dmg is
+          # unsigned and Gatekeeper will warn on first launch). Set these in repo
+          # secrets when an Apple Developer cert is available:
           #   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD,
-          #   APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID,
-          #   TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD,
-          #   WINDOWS_CERTIFICATE, WINDOWS_CERTIFICATE_PASSWORD
+          #   APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID.
+          # Windows code-signing (optional — without these the .exe will trigger
+          # SmartScreen warnings):
+          #   WINDOWS_CERTIFICATE, WINDOWS_CERTIFICATE_PASSWORD.
         with:
           projectPath: Molly
           tagName: ${{ github.ref_name }}
           releaseName: "Molly ${{ github.ref_name }}"
-          releaseBody: "Automatically built from tag ${{ github.ref_name }}. Updater feed lives at latest.json."
+          releaseBody: |
+            Auto-built from tag ${{ github.ref_name }}.
+
+            **Updater**: signed feed available as `latest.json`. macOS and Windows
+            users on prior versions will get this update automatically through
+            Settings → Updates.
+
+            Note: until an Apple Developer ID cert and Windows code-signing cert
+            are wired up, the `.dmg` is unsigned (Gatekeeper warns on first
+            launch — right-click → Open) and the `.exe` may trigger SmartScreen
+            (More info → Run anyway). Updater verification itself works because
+            the updater bundles are signed with our minisign key.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
