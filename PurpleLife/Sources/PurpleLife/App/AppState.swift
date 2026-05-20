@@ -719,7 +719,10 @@ final class AppState: ObservableObject {
     /// the menu item itself is the user's affordance to try again.
     func revealVault() async {
         guard !vaultRevealed else { return }
-        let result = await VaultAuthService.authenticate(reason: "Show the Vault")
+        let result = await VaultAuthService.authenticate(
+            reason: "Show the Vault",
+            biometryOnly: settings.biometryOnlyMode
+        )
         if case .success = result {
             // Reset the inactivity stamp on every reveal so the auto-
             // lock timer starts fresh and a stale `lastActivityAt`

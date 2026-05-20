@@ -12,6 +12,18 @@ The durable log of decisions and design-handoff deviations for PurpleLife. Appen
 
 ## Decisions
 
+### 2026-05-20 — Vault UX hardening (locked design points)
+
+Plan: `~/.claude/plans/patient-watchful-keystone.md`. Surfaces the existing Vault auth machinery (resilience tiers 0–5, NSEvent-driven auto-lock, session-scoped reveal) with user-facing controls. Four locked points worth keeping:
+
+- **The biometry-only escape hatch is the 24-word recovery key, not a "Use password instead" soft fallback.** Asked, confirmed: hard biometry-only mode. If a user enables biometry-only and Touch ID hardware fails, recovery is to quit the app, relaunch (the `appLocked` state is runtime-only, so the next launch is unlocked by default), and disable the toggle from Settings → Security. The AppLockScreen surfaces this path explicitly via the `biometryOnlyMode`-gated "Stuck without Touch ID?" caption that appears after the auto-prompt suppression kicks in (3 failed attempts). No new code path built — the existing 24-word recovery key still covers full DEK-loss recovery and remains the always-available escape hatch.
+
+- **The pre-flight `canEvaluatePolicy` check on the biometry-only toggle is load-bearing — never remove it.** Two reasons. (a) **First-entry guard:** disables the toggle on Macs without enrolled biometrics so a user can't lock themselves out of the Vault by enabling biometry-only on a Touch-ID-less Mac. (b) **Self-heal:** runs on every `Settings → Security` tab `onAppear`, and if the policy is unavailable while `biometryOnlyMode == true` (e.g. fingerprint removed in System Settings while PurpleLife was running), it flips the setting back off. Without that self-heal, the user would be stranded with a setting they can't reach the UI to disable.
+
+- **`VaultAuthService.policy(biometryOnly:)` is a pure function on purpose — testability seam.** `LAContext.evaluatePolicy` itself has no XCTest hook (real device prompt required), so `VaultTests.swift` documents that the LA path stays untested. The pure policy mapping isolates the one piece we *can* unit-test from the one we can't. Do not fold `policy` back into `authenticate(reason:biometryOnly:)` for "simplicity" — the test surface goes with it.
+
+- **Schema-editor detail-pane Vault toggle + right-click context menu both go through `SchemaRegistry.setVault(...)`.** Both paths must keep working. The detail toggle is the discoverable surface for new users; the context menu is the muscle-memory surface for the existing keyboard-driven flow. Both replicate the `selectedTypeId`-clearing logic (snap to Today when moving the selected type into a locked Vault) — neither is the canonical implementation; the mutation is purely in `SchemaRegistry.setVault`, the post-mutation UI cleanup is purely in the per-call-site binding. Don't try to fold the cleanup into `setVault` itself — that would put view-layer concerns into the model layer.
+
 ### 2026-05-19 — Purple Import / Export Phase 6: initiative close + cross-app extraction blueprint (locked design points)
 
 Closes the six-phase Purple Import / Purple Export initiative. The architecture review of the engine boundary surfaced **the only delta between v1 and a portable SPM-package extraction**, and that delta is small enough that it's worth recording here so the next maintainer doesn't re-discover it.

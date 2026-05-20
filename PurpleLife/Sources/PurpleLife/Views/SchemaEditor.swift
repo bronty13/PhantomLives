@@ -223,6 +223,7 @@ struct SchemaEditorScreen: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Spacer()
+                    vaultToggle(for: type)
                 }
                 .padding(.horizontal, 20).padding(.vertical, 14)
                 Divider()
@@ -386,6 +387,43 @@ struct SchemaEditorScreen: View {
 
     /// Tag chips that apply to every record of this type. Distinct from
     /// per-record tags (Detail.swift's `TagPillRow`) — these are stored
+    /// Vault membership toggle for the detail-pane header. Mirrors the
+    /// type-rail context-menu's "Move to Vault" / "Move out of Vault"
+    /// action — both paths funnel through `SchemaRegistry.setVault(...)`
+    /// so undo / CloudKit fan-out / persistence stay identical. Two
+    /// discoverability paths is intentional; the context menu remains
+    /// for muscle memory.
+    private func vaultToggle(for type: ObjectType) -> some View {
+        let binding = Binding(
+            get: { type.isVault },
+            set: { newValue in
+                guard newValue != type.isVault else { return }
+                appState.schema.setVault(type.id, isVault: newValue)
+                // Same clean-up the context menu does: if we're moving a
+                // type into the Vault while it's locked AND the user is
+                // looking at this type, snap them to Today so they're
+                // not staring at a header for a now-hidden type.
+                if newValue,
+                   !appState.vaultRevealed,
+                   appState.selectedTypeId == type.id {
+                    appState.selectedTypeId = nil
+                    appState.showTodayInDetail = true
+                }
+            }
+        )
+        return Toggle(isOn: binding) {
+            Label("Vault item", systemImage: type.isVault ? "lock.fill" : "lock.open")
+                .labelStyle(.titleAndIcon)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .toggleStyle(.switch)
+        .controlSize(.small)
+        .help(type.isVault
+              ? "This type is in the Vault. Toggle off to move it back to the regular sidebar."
+              : "Move this type into the Vault — it'll only appear when the Vault is unlocked (⇧⌘V).")
+    }
+
     /// on `ObjectType.tags` and resolved alongside per-record tags via
     /// `TagService.effectiveTagIds(for:in:)`.
     private func typeTagsRow(type: ObjectType) -> some View {

@@ -4,6 +4,41 @@ Newest at the top. Follows the PhantomLives convention: every behavior-changing 
 
 ## Unreleased — Phase 5 starter (0.1.x)
 
+### 2026-05-20 — Vault UX hardening: biometry-only mode + detail toggle + Lock Vault Now + AppLockScreen polish
+
+Plan: `~/.claude/plans/patient-watchful-keystone.md`. Adds the user-facing controls that turn the existing Vault auth machinery (resilience tiers 0–5, session-scoped Vault, NSEvent-driven auto-lock) into a configurable surface. No new dependencies, no schema migration, no CloudKit changes.
+
+**Settings → Security additions.**
+
+- **"Lock Vault now"** button — unconditional immediate-lock, mirrors the Settings → Backup "Run Backup Now" pattern. Distinct from the keystore-level "Lock now" above it (that one clears the in-memory DEK; this one just hides the Vault for the session). Disabled when the Vault is already locked, with a one-line explanation.
+- **"Require Touch ID — no Mac-password fallback"** toggle — opt-in biometry-only mode. When on, the Vault unlock prompt refuses the password-entry fallback path entirely. A shoulder-surfer who knows your Mac password can't open the Vault. Default off (preserves historical behavior for existing installs).
+- **Pre-flight `canEvaluatePolicy` check** for the biometry-only toggle. The toggle is disabled with an orange caption ("This Mac doesn't have Touch ID configured…") when the policy can't even attempt. Re-runs on every tab-appear, so removing the fingerprint in System Settings while PurpleLife is running surfaces the disabled state on next visit. Self-heal: if biometry-only mode is on but the policy just became unavailable, the setting flips back to off automatically — no user gets stranded with a setting they can't reach the UI to disable.
+
+**Schema Editor detail-pane Vault toggle.** A `Vault item` Toggle now lives in the type-detail header (between the field count and the trailing edge). Same code path as the existing right-click "Move to / out of Vault" context menu — `SchemaRegistry.setVault(...)` still drives undo / CloudKit fan-out / persistence. Two discoverability paths is intentional; the context menu stays for muscle memory. Same `selectedTypeId`-clearing logic too — moving a type into the Vault while the Vault is locked snaps you to Today instead of stranding the header.
+
+**`VaultAuthService` policy switch.**
+
+- New pure function `policy(biometryOnly:) -> LAPolicy` — `.deviceOwnerAuthenticationWithBiometrics` when true, `.deviceOwnerAuthentication` otherwise. Extracted on purpose so unit tests can verify the mapping without an `LAContext` prompt (which has no XCTest hook).
+- `authenticate(reason:)` is now `authenticate(reason:biometryOnly:)`. Both call sites (`AppState.revealVault()`, `AppLockScreen.authenticate()`) plumb `AppSettings.biometryOnlyMode` through explicitly rather than reading a singleton. Keeps the call graph local and the function easy to test.
+
+**`AppLockScreen` polish.**
+
+- **Typed `LockScreenError` enum** — five cases (`.cancelled`, `.failed`, `.unavailable`, `.biometryFailed`, `.biometryUnavailable`), each carrying its own SF Symbol + user-facing copy. Replaces the previous single `.orange` caption that conflated cancel / fail / unavailable into one message.
+- **Per-session retry counter + 30 s cooldown.** After 5 consecutive failures, the Unlock button disables and a countdown caption appears. Mitigates a casual shoulder-surfer guessing the Mac password. In-memory only — quitting the app resets the counter (a bad actor with quit-relaunch access has bigger problems).
+- **Auto-prompt suppression after 3 failures.** The screen used to re-prompt on every `onAppear`; after enough failures it now waits for an explicit Unlock tap so the user can read the error. Tap Unlock to re-enter the loop.
+- **Biometry-only stuck-help text.** When biometry-only mode is on and the user has hit the suppression threshold, surface the recovery path: "Quit PurpleLife (⌘Q), relaunch, then open Settings → Security to disable biometry-only mode." The `appLocked` state is runtime-only, so a relaunch lands the user in the regular UI with access to the toggle. No new escape hatch built — the existing 24-word recovery key still covers full DEK-loss recovery.
+
+**Tests.** +6 in `Tests/PurpleLifeTests/VaultUXTests.swift`:
+
+- Lenient decode of `biometryOnlyMode` from a pre-2026-05-20 settings.json falls back to `false` (load-bearing backward-compat).
+- `biometryOnlyMode = true` round-trips through `JSONEncoder` / `JSONDecoder`.
+- `VaultAuthService.policy(biometryOnly: false)` returns `.deviceOwnerAuthentication`.
+- `VaultAuthService.policy(biometryOnly: true)` returns `.deviceOwnerAuthenticationWithBiometrics`.
+- Every `LockScreenError` case carries a non-empty, distinct message — and the detail-carrying cases interpolate their detail string.
+- `LockScreenError` symbol mapping locks the biometry-vs-generic distinction (`touchid` vs `exclamationmark.triangle.fill`) without LA roundtrip.
+
+`LAContext.evaluatePolicy` itself remains unmocked / untested per the existing `VaultTests.swift` convention.
+
 ### 2026-05-19 — Purple Import / Export Phase 6: initiative close (polish + cross-app extraction prep)
 
 Closes the Purple Import / Purple Export initiative. The six-phase plan from `~/.claude/plans/cheeky-yawning-giraffe.md` is now fully shipped: a generic, wizard-driven, cross-app-reusable import + export engine covering seven import formats and eight export formats, with saved configurations per-file, encrypted-at-rest, and round-trip-verified between every reader/writer pair.

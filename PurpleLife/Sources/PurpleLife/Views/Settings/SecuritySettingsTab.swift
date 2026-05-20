@@ -1,4 +1,5 @@
 import SwiftUI
+import LocalAuthentication
 
 /// Settings → Security tab. Surfaces the `KeyStore` state and exposes the
 /// passphrase-management actions that go with each mode.
@@ -23,6 +24,13 @@ struct SecuritySettingsTab: View {
     @State private var showChangeSheet = false
     @State private var showRemoveSheet = false
     @State private var showResetConfirm = false
+
+    /// Cached result of the most recent biometry pre-flight check.
+    /// Refreshed on `.onAppear` so removing the fingerprint in System
+    /// Settings while PurpleLife is running surfaces here on next
+    /// tab visit. Nil while unchecked.
+    @State private var biometryAvailable: Bool? = nil
+    @State private var biometryUnavailableReason: String? = nil
 
     private var store: KeyStore { appState.keyStore }
 
@@ -50,6 +58,7 @@ struct SecuritySettingsTab: View {
         }
         .formStyle(.grouped)
         .padding()
+        .onAppear { refreshBiometryAvailability() }
         .sheet(isPresented: $showAddSheet)    { addPassphraseSheet }
         .sheet(isPresented: $showChangeSheet) { changePassphraseSheet }
         .sheet(isPresented: $showRemoveSheet) { removePassphraseSheet }
@@ -150,6 +159,9 @@ struct SecuritySettingsTab: View {
             // mouse / scroll input. Persisted in settings.json so
             // the choice survives relaunches.
             vaultAutoLockStepper
+            lockVaultNowRow
+            Divider()
+            biometryOnlyToggle
             Divider()
             Button("Reset (destroys all data)…", role: .destructive) {
                 showResetConfirm = true
@@ -183,6 +195,85 @@ struct SecuritySettingsTab: View {
             }
             Text("When the Vault is open, idle keyboard / mouse / scroll input longer than this triggers an instant re-lock. Set to 0 to disable.")
                 .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    /// "Lock Vault now" — unconditional immediate-lock action, mirroring
+    /// the "Run Backup Now" pattern in Settings → Backup. Distinct from
+    /// the keystore-level "Lock now" button above (that one clears the
+    /// in-memory DEK; this one just hides the Vault for the session).
+    /// Shown regardless of whether the Vault is currently revealed —
+    /// when locked it's a harmless no-op the user can confirm worked
+    /// from the sidebar.
+    @ViewBuilder
+    private var lockVaultNowRow: some View {
+        HStack {
+            Button("Lock Vault now") {
+                appState.lockVault()
+                statusMessage = appState.vaultRevealed
+                    ? "Vault locked."
+                    : "Vault is already locked."
+                errorMessage = nil
+            }
+            .disabled(!appState.vaultRevealed)
+            Text(appState.vaultRevealed
+                 ? "Hides every Vault type from the sidebar until the next ⇧⌘V unlock."
+                 : "The Vault is already locked. Use ⇧⌘V to unlock when you need it.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    /// Biometry-only mode toggle. When on, the Vault unlock prompt
+    /// refuses to fall back to the Mac login password — a shoulder-
+    /// surfer who knows your password can't open the Vault. Disabled
+    /// (with explanatory caption) when this Mac has no enrolled Touch
+    /// ID fingerprint; we never let a user lock themselves out by
+    /// enabling biometry-only mode without a working biometry sensor.
+    @ViewBuilder
+    private var biometryOnlyToggle: some View {
+        let available = biometryAvailable ?? false
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle("Require Touch ID — no Mac-password fallback", isOn: Binding(
+                get: { appState.settings.biometryOnlyMode },
+                set: { newValue in
+                    var s = appState.settings
+                    s.biometryOnlyMode = newValue
+                    appState.settings = s
+                }
+            ))
+            .disabled(!available)
+            if available {
+                Text("When on, the Vault unlock prompt only accepts a fingerprint. Recovery if your Touch ID sensor fails: quit PurpleLife, relaunch (the app-lock state is runtime-only), and disable this toggle here.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                Text("This Mac doesn't have Touch ID configured. Add a fingerprint in System Settings → Touch ID & Password to enable biometry-only mode. \(biometryUnavailableReason ?? "")")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+        }
+    }
+
+    /// Probe whether `.deviceOwnerAuthenticationWithBiometrics` will
+    /// even attempt to evaluate on this Mac. Sets the cached state
+    /// used by `biometryOnlyToggle`. Cheap to run — fresh `LAContext`
+    /// + one `canEvaluatePolicy` call.
+    private func refreshBiometryAvailability() {
+        let context = LAContext()
+        var err: NSError?
+        let ok = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &err)
+        biometryAvailable = ok
+        biometryUnavailableReason = ok ? nil : (err?.localizedDescription ?? "")
+        // If biometry-only mode is currently on but the policy just
+        // became unavailable, flip the setting back off. Don't strand
+        // the user — this is the same trap the toggle's `.disabled`
+        // state prevents on first entry, but a fingerprint removed
+        // *while* PurpleLife is running would otherwise leave the
+        // setting stuck on with no UI affordance to turn it back off
+        // (the toggle would be greyed). Resetting here is the safe
+        // self-heal.
+        if !ok && appState.settings.biometryOnlyMode {
+            var s = appState.settings
+            s.biometryOnlyMode = false
+            appState.settings = s
         }
     }
 

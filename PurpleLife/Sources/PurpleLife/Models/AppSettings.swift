@@ -65,6 +65,21 @@ struct AppSettings: Codable {
     /// on the same 4 Hz timer that drives the vault-menu visibility.
     var vaultAutoLockAfterSeconds: Int = 120
 
+    /// Require Touch ID for Vault / app unlock — no Mac-password
+    /// fallback. Default `false` preserves the historical behavior
+    /// (Touch ID with device-password fallback via
+    /// `.deviceOwnerAuthentication`). When `true`, `VaultAuthService`
+    /// switches to `.deviceOwnerAuthenticationWithBiometrics`, which
+    /// refuses the password-entry fallback path entirely. The
+    /// Security-tab toggle that flips this also runs a pre-flight
+    /// `canEvaluatePolicy` check so we never let a user enable it on
+    /// a Mac without enrolled biometrics — that would lock them out
+    /// of unlocking. Recovery for a broken Touch ID sensor while
+    /// this is on is to quit the app, relaunch (the `appLocked`
+    /// state is runtime-only), and disable the toggle from Settings
+    /// → Security.
+    var biometryOnlyMode: Bool = false
+
     init() {}
 
     /// Lenient decoder: every key is read via `decodeIfPresent` so a
@@ -93,6 +108,7 @@ struct AppSettings: Codable {
         userThemes              = try c.decodeIfPresent([UserTheme].self,     forKey: .userThemes)              ?? userThemes
         tagVocabulary           = try c.decodeIfPresent([TagDef].self,        forKey: .tagVocabulary)           ?? tagVocabulary
         vaultAutoLockAfterSeconds = try c.decodeIfPresent(Int.self,           forKey: .vaultAutoLockAfterSeconds) ?? vaultAutoLockAfterSeconds
+        biometryOnlyMode        = try c.decodeIfPresent(Bool.self,            forKey: .biometryOnlyMode)        ?? biometryOnlyMode
     }
 }
 
