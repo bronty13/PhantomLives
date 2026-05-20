@@ -2,7 +2,7 @@
 
 This guide is written for the creator using Molly day to day, not for developers. If you ever get stuck, send Robert a screenshot in Slack and he can usually figure it out.
 
-> Phase 4 is live: **Income**, **Expenses**, **Reports**, plus everything before them. The next phase is export round-trip + auto-update polish.
+> Phase 5 is live — and that's all five phases shipped. **Data export**, **Updates**, plus everything before them.
 
 ## Opening Molly
 
@@ -183,6 +183,14 @@ If Robert asks for a copy of your data:
 3. Drag it into our Slack DM.
 
 That's it. He'll import it on his side to look at what's going on.
+
+## Sending Robert a copy of your data
+
+Open **Settings → Data**, then **📦 Export everything**. Molly zips its whole brain — database, every receipt you've attached, your settings, plus a small manifest — into a single file in `~/Downloads/Molly export/` (Mac) or `%USERPROFILE%\Downloads\Molly export\` (Windows). The screen shows where the file landed; click **Reveal in Finder** to find it.
+
+Drop that .zip into our Slack DM. Robert will import it on his dev machine and see exactly what you see.
+
+Re-exporting just adds a fresh file next to the older ones. Nothing is overwritten or deleted.
 
 ## Updating Molly
 

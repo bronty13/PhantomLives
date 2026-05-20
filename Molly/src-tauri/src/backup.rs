@@ -279,7 +279,7 @@ pub(crate) fn verify_archive(archive_path: &Path) -> Result<VerifyResult, Backup
 
 /// Destructive: write a safety pre-restore backup, then unpack the archive
 /// over the support directory. Caller must close DB connections first.
-pub(crate) fn restore_archive(archive_path: &Path, support_dir: &Path) -> Result<PathBuf, BackupError> {
+pub fn restore_archive(archive_path: &Path, support_dir: &Path) -> Result<PathBuf, BackupError> {
     let verify = verify_archive(archive_path)?;
     if !verify.has_database {
         return Err(BackupError::MissingDatabase);

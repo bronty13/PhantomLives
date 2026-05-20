@@ -1,5 +1,6 @@
 mod attachments;
 mod backup;
+mod export;
 mod fsutil;
 
 use tauri_plugin_sql::{Migration, MigrationKind};
@@ -59,6 +60,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
@@ -89,6 +91,9 @@ pub fn run() {
             attachments::delete_attachment,
             attachments::reveal_attachment,
             attachments::open_attachment,
+            export::export_full_data,
+            export::reveal_export_dir,
+            export::import_full_export,
         ])
         .run(tauri::generate_context!())
         .expect("error while running molly");

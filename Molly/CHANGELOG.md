@@ -4,6 +4,22 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-05-20
+
+### Added
+
+- **Phase 5 — Data round-trip + Auto-update.**
+- **Full data export** (`src-tauri/src/export.rs::export_full_data`) zips the entire `app_data_dir` (database + attachments + settings) plus a `manifest.json` (app name, version, exported_at, schema_version, format tag) into `~/Downloads/Molly export/Molly-export-YYYY-MM-DD-HHmmss.zip` (`%USERPROFILE%\Downloads\Molly export\…` on Windows). Re-exporting just makes a new file; old ones are untouched.
+- **Settings → Data tab** with **Export everything** button, **Reveal export folder**, last-export readout, **Reveal in Finder**, and a "Sending to Robert? Drop this in our Slack DM" hint card.
+- **Dev-only import** (`import_full_export`) reuses `backup::restore_archive`'s safety-pre-import-backup + wipe + unpack flow. Gated by `VITE_MOLLY_DEV=1` at the JS layer so it never appears for the end user.
+- **Updater public key generated** — `tauri.conf.json` now ships a real minisign pubkey. Private key lives in `~/.config/molly-secrets/updater.key` (not committed) and is the source for the `TAURI_SIGNING_PRIVATE_KEY` secret CI signs releases with.
+- **Settings → Updates tab** with current version (from `@tauri-apps/api/app`), last-checked timestamp, **Check for updates**, **Download v…** action with a progress bar, and an auto-relaunch via `@tauri-apps/plugin-process`. Graceful "couldn't check" panel that points at the GitHub Releases page when no feed is published yet for this version.
+- Two new settings tabs (`Data`, `Updates`) — Settings is now Personas / Sites / Products / Interests / **Data** / **Updates** / Backup.
+
+### Changed
+
+- `backup::restore_archive` visibility bumped from `pub(crate)` to `pub` so the export module can reuse it for the dev-import flow.
+
 ## [0.4.0] — 2026-05-20
 
 ### Added

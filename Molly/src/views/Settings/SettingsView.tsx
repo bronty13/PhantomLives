@@ -1,11 +1,13 @@
 import { useState, type ReactNode } from 'react';
 import type { Persona } from '../../state/personas';
 import { BackupSettings } from './BackupSettings';
+import { DataSettings } from './DataSettings';
 import { PersonasSettings } from './PersonasSettings';
 import { SitesSettings } from './SitesSettings';
 import { TaxonomySettings } from './TaxonomySettings';
+import { UpdatesSettings } from './UpdatesSettings';
 
-type Tab = 'personas' | 'sites' | 'products' | 'interests' | 'backup';
+type Tab = 'personas' | 'sites' | 'products' | 'interests' | 'data' | 'updates' | 'backup';
 
 interface Props {
   active: Persona;
@@ -17,6 +19,8 @@ const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'sites',     label: 'Sites',     icon: '💻' },
   { key: 'products',  label: 'Products',  icon: '📦' },
   { key: 'interests', label: 'Interests', icon: '🌷' },
+  { key: 'data',      label: 'Data',      icon: '📦' },
+  { key: 'updates',   label: 'Updates',   icon: '⬇️' },
   { key: 'backup',    label: 'Backup',    icon: '💾' },
 ];
 
@@ -29,6 +33,8 @@ export function SettingsView({ active, onPersonasChanged }: Props) {
     case 'sites':     body = <SitesSettings activePersona={active} />; break;
     case 'products':  body = <TaxonomySettings kind="products" />; break;
     case 'interests': body = <TaxonomySettings kind="interests" />; break;
+    case 'data':      body = <DataSettings />; break;
+    case 'updates':   body = <UpdatesSettings />; break;
     case 'backup':    body = <BackupSettings />; break;
   }
 
