@@ -4,6 +4,13 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] — 2026-05-20
+
+### Fixed
+
+- **Backup Test / size / mtime were all undefined.** The Rust structs returned by `list_backups`, `test_backup`, `export_full_data`, and `save_attachment` were serializing field names as snake_case (`size_bytes`, `has_database`, `modified_at`, `file_count`, `total_bytes`, `relative_path`, …) but the TS callers expected camelCase. That made every Test result claim "no molly.db inside, undefined files, NaN MB unpacked" and every recent-backup row read "· NaN MB". Added `#[serde(rename_all = "camelCase")]` to `BackupRow`, `VerifyResult`, `ExportResult`, and `AttachmentInfo`.
+- **Sidebar footer was frozen at "Phase 0 · v0.0.1"** — now pulls the live version from `@tauri-apps/api/app::getVersion()` and reads simply "Molly · v0.6.1".
+
 ## [0.6.0] — 2026-05-20
 
 ### Added

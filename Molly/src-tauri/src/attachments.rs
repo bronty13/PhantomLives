@@ -54,6 +54,7 @@ fn sanitize_category(s: &str) -> String {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AttachmentInfo {
     pub relative_path: String,
     pub absolute_path: String,

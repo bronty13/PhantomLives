@@ -68,6 +68,7 @@ fn write_manifest(zip: &mut zip::ZipWriter<fs::File>, app_version: &str) -> Resu
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExportResult {
     pub path: String,
     pub size_bytes: u64,

@@ -201,6 +201,7 @@ pub(crate) fn trim_old_backups(backup_dir: &Path, retention_days: u32) -> usize 
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BackupRow {
     pub path: String,
     pub filename: String,
@@ -237,6 +238,7 @@ pub(crate) fn list_backups_in(backup_dir: &Path) -> Vec<BackupRow> {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VerifyResult {
     pub archive_path: String,
     pub archive_size: u64,

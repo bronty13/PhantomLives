@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { getVersion } from '@tauri-apps/api/app';
 
 export type ViewKey = 'home' | 'reminders' | 'calendar' | 'clips' | 'customers' | 'helper' | 'income' | 'expenses' | 'reports' | 'settings';
 
@@ -30,6 +31,10 @@ const NAV: NavItem[] = [
 ];
 
 export function Sidebar({ active, onSelect, visible, pendingCount = 0 }: SidebarProps) {
+  const [version, setVersion] = useState<string>('');
+  useEffect(() => {
+    getVersion().then(setVersion).catch(() => setVersion(''));
+  }, []);
   if (!visible) return null;
   return (
     <aside
@@ -77,7 +82,7 @@ export function Sidebar({ active, onSelect, visible, pendingCount = 0 }: Sidebar
         })}
       </nav>
       <div className="px-5 py-3 text-[11px] opacity-50 border-t border-white/40">
-        Phase 0 · v0.0.1
+        Molly{version ? ` · v${version}` : ''}
       </div>
     </aside>
   );
