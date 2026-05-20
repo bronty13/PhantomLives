@@ -1,9 +1,12 @@
 name: Release Molly
 
+# Subproject-scoped tag (Molly is one of many subprojects in PhantomLives —
+# this trigger is intentionally narrow so future subprojects can release
+# under their own prefix without colliding).
 on:
   push:
     tags:
-      - "v*"
+      - "molly-v*"
   workflow_dispatch:
 
 permissions:
