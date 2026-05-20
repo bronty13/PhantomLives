@@ -1,0 +1,26 @@
+use std::path::{Path, PathBuf};
+
+/// Resolve `~/Downloads/<sub>` cross-platform (Mac, Windows).
+pub fn downloads_subdir(sub: &str) -> PathBuf {
+    let base = dirs::download_dir()
+        .or_else(|| dirs::home_dir().map(|h| h.join("Downloads")))
+        .unwrap_or_else(|| PathBuf::from("."));
+    base.join(sub)
+}
+
+/// Open a path in the OS file browser (Finder on Mac, Explorer on Windows).
+pub fn reveal_in_file_browser(path: &Path) -> std::io::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open").arg(path).status()?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer").arg(path).status()?;
+    }
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    {
+        std::process::Command::new("xdg-open").arg(path).status()?;
+    }
+    Ok(())
+}

@@ -1,0 +1,84 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* ALL personas — soft lavender-cream neutral palette. */
+    --persona-primary: 232 184 217;
+    --persona-secondary: 245 226 240;
+    --persona-tint: 252 245 250;
+    --persona-accent: 161 109 156;
+    --persona-text: 60 40 60;
+  }
+
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    font-family: 'Nunito', 'SF Pro Rounded', system-ui, sans-serif;
+    color: rgb(var(--persona-text));
+    background: rgb(var(--persona-tint));
+    -webkit-font-smoothing: antialiased;
+    transition: background-color 240ms ease, color 240ms ease;
+  }
+}
+
+@layer components {
+  .persona-tint   { background-color: rgb(var(--persona-tint)); }
+  .persona-bg     { background-color: rgb(var(--persona-primary)); }
+  .persona-text   { color: rgb(var(--persona-text)); }
+  .persona-accent { color: rgb(var(--persona-accent)); }
+
+  .pretty-card {
+    background: white;
+    border-radius: 1.25rem;
+    box-shadow: 0 4px 14px -6px rgb(var(--persona-primary) / 0.45);
+    padding: 1.25rem 1.5rem;
+  }
+
+  .pretty-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1.1rem;
+    border-radius: 999px;
+    background: rgb(var(--persona-accent));
+    color: white;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+    box-shadow: 0 4px 12px -4px rgb(var(--persona-accent) / 0.55);
+  }
+  .pretty-button:hover { transform: translateY(-1px); filter: brightness(1.05); }
+  .pretty-button:active { transform: translateY(0); }
+  .pretty-button.secondary {
+    background: white;
+    color: rgb(var(--persona-accent));
+    border: 1px solid rgb(var(--persona-accent) / 0.25);
+    box-shadow: 0 2px 6px rgb(var(--persona-primary) / 0.25);
+  }
+  .pretty-button.danger {
+    background: #d94a6a;
+    box-shadow: 0 4px 12px -4px #d94a6a88;
+  }
+
+  .pretty-input {
+    border-radius: 0.75rem;
+    border: 1px solid rgb(var(--persona-primary) / 0.4);
+    padding: 0.5rem 0.85rem;
+    background: white;
+    font-size: 0.9rem;
+    color: rgb(var(--persona-text));
+    outline: none;
+    transition: border 120ms ease, box-shadow 120ms ease;
+  }
+  .pretty-input:focus {
+    border-color: rgb(var(--persona-accent));
+    box-shadow: 0 0 0 4px rgb(var(--persona-accent) / 0.18);
+  }
+
+  .display-font { font-family: 'Comfortaa', 'SF Pro Rounded', system-ui, sans-serif; }
+}

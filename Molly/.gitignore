@@ -1,0 +1,23 @@
+node_modules
+dist
+dist-ssr
+*.local
+.vite
+*.tsbuildinfo
+
+# Tauri
+src-tauri/target
+src-tauri/gen
+
+# (Icons in src-tauri/icons/ are committed; they're generated from molly.svg
+# via scripts/gen-icons.sh but kept in source control so first builds work.)
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea
+.vscode/*
+!.vscode/extensions.json
+*.swp

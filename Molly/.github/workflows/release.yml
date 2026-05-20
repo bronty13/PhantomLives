@@ -1,0 +1,70 @@
+name: Release Molly
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-14
+            args: ""
+          - platform: windows-latest
+            args: ""
+
+    runs-on: ${{ matrix.platform }}
+    defaults:
+      run:
+        working-directory: Molly
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: Molly/pnpm-lock.yaml
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "Molly/src-tauri -> target"
+
+      - name: Install pnpm dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build + publish (tauri-action)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Set these in repo secrets before signed releases (Phase 5):
+          #   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD,
+          #   APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID,
+          #   TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD,
+          #   WINDOWS_CERTIFICATE, WINDOWS_CERTIFICATE_PASSWORD
+        with:
+          projectPath: Molly
+          tagName: ${{ github.ref_name }}
+          releaseName: "Molly ${{ github.ref_name }}"
+          releaseBody: "Automatically built from tag ${{ github.ref_name }}. Updater feed lives at latest.json."
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFE4F0"/>
+      <stop offset="0.55" stop-color="#FFC9DF"/>
+      <stop offset="1" stop-color="#F0B6CF"/>
+    </linearGradient>
+    <linearGradient id="m-fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFCF8"/>
+      <stop offset="1" stop-color="#FFE8F1"/>
+    </linearGradient>
+    <radialGradient id="sparkle" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FFF8D9"/>
+      <stop offset="0.4" stop-color="#FFEFAB"/>
+      <stop offset="1" stop-color="#FFEFAB" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="14"/>
+      <feOffset dx="0" dy="10"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.32"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Rounded-square icon canvas (matches macOS icon mask) -->
+  <rect x="80" y="80" width="864" height="864" rx="200" ry="200" fill="url(#bg)"/>
+
+  <!-- subtle inner highlight -->
+  <rect x="80" y="80" width="864" height="864" rx="200" ry="200" fill="none" stroke="#FFFFFF" stroke-opacity="0.45" stroke-width="6"/>
+
+  <!-- Sparkles behind the M -->
+  <g opacity="0.95">
+    <circle cx="240" cy="260" r="40" fill="url(#sparkle)"/>
+    <circle cx="800" cy="320" r="32" fill="url(#sparkle)"/>
+    <circle cx="820" cy="720" r="46" fill="url(#sparkle)"/>
+    <circle cx="220" cy="780" r="28" fill="url(#sparkle)"/>
+  </g>
+
+  <!-- Tiny 4-point sparkle stars -->
+  <g fill="#FFFFFF" opacity="0.85">
+    <path d="M 280 240 L 286 258 L 304 264 L 286 270 L 280 288 L 274 270 L 256 264 L 274 258 Z"/>
+    <path d="M 776 340 L 780 352 L 792 356 L 780 360 L 776 372 L 772 360 L 760 356 L 772 352 Z"/>
+    <path d="M 780 700 L 786 718 L 804 724 L 786 730 L 780 748 L 774 730 L 756 724 L 774 718 Z"/>
+  </g>
+
+  <!-- The M -->
+  <g filter="url(#soft-shadow)">
+    <path d="
+      M 250 740
+      L 250 290
+      Q 250 270 270 270
+      L 340 270
+      Q 360 270 372 286
+      L 512 478
+      L 652 286
+      Q 664 270 684 270
+      L 754 270
+      Q 774 270 774 290
+      L 774 740
+      Q 774 760 754 760
+      L 690 760
+      Q 670 760 670 740
+      L 670 442
+      L 552 600
+      Q 540 614 524 614
+      L 500 614
+      Q 484 614 472 600
+      L 354 442
+      L 354 740
+      Q 354 760 334 760
+      L 270 760
+      Q 250 760 250 740 Z
+    " fill="url(#m-fill)" stroke="#E89AB4" stroke-width="8" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Heart dot beneath the M -->
+  <g transform="translate(512 808)">
+    <path d="M 0 14
+             C -22 -10 -56 -10 -56 18
+             C -56 42 -34 60 0 88
+             C 34 60 56 42 56 18
+             C 56 -10 22 -10 0 14 Z"
+          fill="#E5527A" opacity="0.95"/>
+    <path d="M 0 14
+             C -22 -10 -56 -10 -56 18
+             C -56 42 -34 60 0 88
+             C 34 60 56 42 56 18
+             C 56 -10 22 -10 0 14 Z"
+          fill="none" stroke="#FFFFFF" stroke-opacity="0.6" stroke-width="3"/>
+  </g>
+</svg>
