@@ -80,14 +80,23 @@ export function MasterClipperImport({ personas, onDone }: Props) {
       for (let i = 0; i < parsed.rows.length; i++) {
         const r = parsed.rows[i];
         const id = (r.id ?? '').trim();
-        if (!id) { skipped++; }
-        else {
-          const sourcePersona = (r.persona ?? '').trim();
-          const personaCode = mapping[sourcePersona] || null;
+        const sourcePersona = (r.persona ?? '').trim();
+        // Resolve the persona:
+        //   - CSV row has no persona at all → import with null persona
+        //     (these rows don't appear in the mapping UI; legacy behavior).
+        //   - source persona is mapped to '' → user picked "skip rows with
+        //     this persona" → skip the row entirely (count as skipped).
+        //   - source persona is mapped to a Molly code → use that code.
+        const mappedTo = sourcePersona === '' ? null : mapping[sourcePersona];
+        const isExplicitSkip = sourcePersona !== '' && mappedTo === '';
+
+        if (!id || isExplicitSkip) {
+          skipped++;
+        } else {
           const clip: Omit<Clip, 'mollyNotesHtml' | 'importedAt'> = {
             id,
             externalClipId: (r.external_clip_id ?? '').trim(),
-            personaCode,
+            personaCode:  mappedTo || null,
             title:        (r.title ?? '').trim(),
             status:       (r.status ?? '').trim(),
             contentDate:  (r.content_date ?? '').trim() || null,
@@ -147,7 +156,25 @@ export function MasterClipperImport({ personas, onDone }: Props) {
   }, [parsed]);
 
   const previewRows = useMemo(() => parsed?.rows.slice(0, 5) ?? [], [parsed]);
-  const allMapped = distinctSourcePersonas.every((src) => mapping[src] !== undefined && mapping[src] !== '');
+  // Empty-string is a legitimate value here: it means "skip rows with this
+  // source persona" (matches the placeholder option). Mapping is always
+  // initialized for every distinct source persona on file load, so the
+  // only thing we actually need to guard against is `undefined`.
+  const allMapped = distinctSourcePersonas.every((src) => mapping[src] !== undefined);
+  // How many CSV rows would be imported vs. skipped under the current
+  // mapping. Mirrors run()'s "explicit skip" semantic: a row is skipped
+  // when its source persona is non-empty AND mapped to '' (i.e. the user
+  // picked "skip rows with this persona"). Rows with an empty persona in
+  // the CSV are NOT counted as skips here; they still import with
+  // personaCode = null. The pre-flight count won't catch id-missing rows
+  // (those also skip), but those are rare and surface in the final report.
+  const rowsToSkip = parsed
+    ? parsed.rows.filter((r) => {
+        const sp = (r.persona ?? '').trim();
+        return sp !== '' && mapping[sp] === '';
+      }).length
+    : 0;
+  const rowsToImport = (parsed?.rows.length ?? 0) - rowsToSkip;
 
   return (
     <div className="pretty-card space-y-4">
@@ -220,7 +247,12 @@ export function MasterClipperImport({ personas, onDone }: Props) {
             </div>
           </div>
 
-          <div className="flex gap-2 justify-end">
+          <div className="flex items-center gap-2 justify-end">
+            {parsed && (
+              <span className="text-xs opacity-60">
+                {rowsToImport} to import · {rowsToSkip} to skip
+              </span>
+            )}
             <button type="button" className="pretty-button secondary" onClick={() => setStage('preview')}>Preview rows →</button>
             <button type="button" className="pretty-button" onClick={run} disabled={!allMapped}>Run import</button>
           </div>

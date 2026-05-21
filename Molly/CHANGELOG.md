@@ -4,6 +4,18 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] — 2026-05-21
+
+### Fixed
+
+- **MasterClipper CSV import was unrunnable when any persona was mapped to "skip".** Two stacked bugs in `src/views/Import/MasterClipperImport.tsx`:
+  1. The `allMapped` gate guarded `mapping[src] !== ''`, but `''` is the *value of the actual "(skip rows with this persona)" dropdown option*. So picking "skip" on any persona left the Run import button permanently disabled — the symptom Sallie hit. Lifted the `!== ''` check; mapping is always initialized for every distinct source persona on file load, so the only thing the gate needs to guard against is `undefined`.
+  2. Even if Run could fire, the loop's `personaCode = mapping[sourcePersona] || null` would have *imported* those rows with `personaCode = null`, not skipped them. Reworked the row resolution: when the source persona is non-empty and explicitly mapped to `''`, the row now increments the `skipped` counter and is left out of the upsert. Empty-persona-in-CSV rows still import with `null` persona (legacy behavior preserved).
+
+### Added
+
+- **Pre-flight import counter.** A small "`N to import · M to skip`" readout next to the Run button on the mapping screen, matching the row resolution above so an all-skips mapping doesn't look broken.
+
 ## [1.5.0] — 2026-05-21
 
 ### Added
