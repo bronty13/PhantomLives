@@ -21,7 +21,9 @@ Molly/
 │   │   ├── SayingsBanner.tsx             # Cute rotating sayings (hero + compact)
 │   │   ├── RichTextNotes.tsx             # Tiptap wrapper
 │   │   ├── ColorPicker.tsx               # color input + swatch row
-│   │   ├── ChipMultiSelect.tsx           # multi-select chip group
+│   │   ├── ChipMultiSelect.tsx           # multi-select chip group (products, interests)
+│   │   ├── KinkChipPicker.tsx            # MasterClipper-style picker for the 349-row kink catalog
+│   │   ├── MoneyInput.tsx                # uncontrolled-display $ input (used by Adhoc, Expenses, Site Wizard)
 │   │   ├── ConfirmButton.tsx             # two-tap delete guard
 │   │   ├── CheckOffBurst.tsx             # CSS confetti for reminders
 │   │   └── AttachmentField.tsx           # File picker + Tauri-backed copy
@@ -32,15 +34,18 @@ Molly/
 │   │   ├── db.ts                         # Shared Database singleton
 │   │   ├── personas.ts
 │   │   ├── sites.ts
-│   │   ├── taxonomy.ts                   # products + interests + kinks
-│   │   ├── customers.ts
+│   │   ├── taxonomy.ts                   # products (+ price/unit) + interests + kinks
+│   │   ├── customers.ts                  # VIP, primary_email_index, address, phones, etc.
+│   │   ├── customerHistory.ts            # per-customer journal log (BLOB attachments)
+│   │   ├── customerSales.ts              # per-customer sale rows (full CRUD)
 │   │   ├── clips.ts
 │   │   ├── schedules.ts
-│   │   ├── occurrences.ts                # + materializer
-│   │   ├── income.ts                     # adhoc + site
+│   │   ├── occurrences.ts                # + materializer + listOccurrencesInRange (calendar)
+│   │   ├── income.ts                     # adhoc + site + listAdhocUnified (customer sales merge)
 │   │   ├── expenses.ts                   # one-off + recurring + materializer
 │   │   ├── socialPlatforms.ts
 │   │   ├── socialPromos.ts
+│   │   ├── mollysLog.ts                  # global creator journal (BLOB attachments)
 │   │   └── sayings.ts                    # 1000 strings, generated from sayings.md
 │   ├── lib/
 │   │   ├── csv.ts                        # RFC 4180 parser (60 lines, no papaparse)
@@ -51,17 +56,18 @@ Molly/
 │   │   └── useAsyncRefresh.ts            # Race-safe data-loading hook
 │   └── views/
 │       ├── Home/                         # Dashboard
+│       ├── MollysLog/                    # 📔 Captain's-log-style personal journal (1.7.0+)
 │       ├── Reminders/                    # Today / Upcoming / Overdue + Schedules tab
-│       ├── Calendar/                     # Month grid + Clip detail modal
-│       ├── Clips/                        # Imported clip list
-│       ├── Customers/                    # CRM
+│       ├── Calendar/                     # Month grid (clips + 🔔 reminders) + Clip detail modal
+│       ├── Clips/                        # Imported clip list (sort dir + status filter + regex search)
+│       ├── Customers/                    # CRM — editor + history+sales timeline
 │       ├── MollyHelper/                  # Site launcher
 │       ├── Promos/                       # Social promo tracker
-│       ├── Income/                       # Adhoc / Site wizard / Sales report
+│       ├── Income/                       # Adhoc (now unifies customer sales) / Site wizard / Sales report
 │       ├── Expenses/                     # List / Recurring
 │       ├── Reports/                      # MTD / YTD / Promos
 │       ├── Import/                       # MasterClipper CSV importer
-│       └── Settings/                     # Personas / Sites / Platforms / Products / Interests / Data / Updates / Backup
+│       └── Settings/                     # Personas / Sites / Platforms / Products / Interests / Kinks / Data / Updates / Backup
 ├── src-tauri/                            # Rust backend
 │   ├── src/
 │   │   ├── main.rs                       # Windows-subsystem shim, calls run()
@@ -159,8 +165,16 @@ Updater is wired against `https://github.com/bronty13/PhantomLives/releases/late
 
 ## Tests
 
-- **Rust**: `./run-tests.sh` → 14 tests (7 backup + 7 camelCase contract).
-- **TypeScript**: no frontend test suite yet; deferred to a Phase 8.5 hygiene pass.
+- **Rust**: `./run-tests.sh` → 16 tests (7 backup + 7 camelCase contract + 1 migration smoke + 1 fsutil).
+  - `backup.rs::tests` — debounce, retention prefix guard, listing order, verify-missing-DB, auto-create target dir.
+  - `lib.rs::camel_case_contract` — every boundary struct serializes camelCase (Settings / BackupRow / VerifyResult / AttachmentInfo / ExportResult / HistoryEntryRef / LogEntryRef).
+  - `lib.rs::migration_smoke::all_migrations_apply_cleanly` — applies every shipped migration to a fresh in-memory SQLite and asserts the expected tables exist. Catches future schema regressions before they touch Sallie's DB.
+  - `fsutil::tests::downloads_subdir_resolves_with_sub` — pins the cross-platform `~/Downloads/<sub>` resolution.
+- **Known untested surface** (deliberate; see `OUT_OF_SCOPE.md`):
+  - `history.rs` / `log.rs` BLOB round-trip behavior (only the return-type contract is tested).
+  - `attachments.rs` file save / reveal / open.
+  - `export.rs` zip composition + dev-only import.
+  - All frontend code — `OUT_OF_SCOPE.md` says deferred to Phase 8.5 hygiene pass.
 
 ## Reference patterns from elsewhere in PhantomLives
 

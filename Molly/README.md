@@ -2,14 +2,14 @@
 
 > A cute, pretty, girly desktop app for a content creator who works across multiple personas — clips, customers, schedules, money, promos, all in one warm little place. Runs on macOS and Windows.
 
-This is a single-user gift app, built for Sallie. The 1.0.0 milestone is feature-complete; everything below is shipped.
+This is a single-user gift app, built for Sallie. 1.0.0 was the original gift release; the app has grown substantially since — customer expansion (kinks taxonomy, addresses, phones, VIP), per-customer history log + sales transactions, customer-sales → adhoc-income union, calendar reminders, money-input refactor, and a personal journal (📔 Molly's Log). See [CHANGELOG.md](CHANGELOG.md) for the full sweep.
 
 ## What's in the app
 
 | Tab | What it does |
 |---|---|
 | 🏠 **Home** | A rotating cute saying + a dashboard: clips MTD, per-persona breakdown, reuse detection, recent imports, today's reminders. |
-| 📔 **Molly's Log** | Captain's-log-style personal journal. Append timestamped entries with optional file attachments; edit/delete any past entry; grep-toggle filter. |
+| 📔 **Molly's Log** | Personal journal — timestamped notes to self with optional file attachments. Edit/delete any past entry. Past entries render in a handwritten font (Caveat). `grep` checkbox toggles regex search. |
 | 🔔 **Reminders** | Overdue / Today / Coming-up-7d with a satisfying check-off + 10-second undo. Schedules tab for the rules (no-cron wizard, six cadence kinds). Five reminders preloaded. |
 | 📅 **Calendar** | Month grid with persona-colored clip pills imported from MasterClipper. Click a pill for the clip detail + your own Tiptap notes. |
 | 🎬 **Clips** | Searchable, sortable clip list. **📂 Import CSV** sucks in a MasterClipper export with persona-code mapping; idempotent on re-import. |
@@ -37,7 +37,7 @@ cd Molly
 pnpm install
 pnpm tauri dev                                 # hot-reload dev
 ./build-app.sh                                  # build + install to /Applications/
-./run-tests.sh                                  # cargo test --lib  (12 tests)
+./run-tests.sh                                  # cargo test --lib  (15 tests as of 1.7.2: backup + camelCase contract + migration smoke + fsutil)
 ```
 
 To cut a signed release: `git tag -a molly-vX.Y.Z -m "…" && git push origin molly-vX.Y.Z`. CI builds + signs both platforms, drops a draft GitHub release with `latest.json` for the auto-updater.
@@ -77,8 +77,8 @@ Molly/
 │   ├── lib/                Pure helpers: cadence, csv, money, useAsyncRefresh, uid, salesReport
 │   └── state/              React hooks (personas, theme)
 ├── src-tauri/              Rust backend
-│   ├── src/                backup.rs, attachments.rs, export.rs, fsutil.rs, lib.rs
-│   ├── migrations/         9 SQL migrations
+│   ├── src/                backup.rs, attachments.rs, export.rs, fsutil.rs, history.rs, log.rs, lib.rs
+│   ├── migrations/         15 SQL migrations (001 init → 015 mollys_log)
 │   └── icons/              Generated icon set
 ├── install.sh              Mac: copy .app to /Applications + relaunch
 ├── build-app.sh            Mac: build + install + relaunch
@@ -106,7 +106,14 @@ Molly/
 | 5 | Full export → dev / import on dev / auto-update polish. |
 | 6 | Generic sales-report CSV importer. |
 | 7 | Social promotion tracker (Reddit / X / Instagram / TikTok). |
-| 1.0 | **🎁 Gift release: cute sayings banner + cascade docs.** *(this build)* |
+| 1.0 | 🎁 Gift release: cute sayings banner + cascade docs. |
+| 1.1 | Kinks taxonomy (349 preloaded + searchable picker w/ drag-to-reorder + inline create). |
+| 1.2 | Products price + unit, customer fields (VIP, primary email, mailing address w/ ISO country, US states, two phones w/ format-as-you-type). |
+| 1.3 | Per-customer history log (inline BLOB attachments via rusqlite). |
+| 1.4 | Customer sales (full CRUD; lifetime pill; interleaved timeline; date picker). |
+| 1.5 | Customer sales → Adhoc Income union + import-skip fix. |
+| 1.6 | Calendar reminders + Clips grid sort/filter + reusable MoneyInput across 5 spots. |
+| 1.7 | 📔 Molly's Log (Captain's-log-style personal journal w/ Caveat handwritten font). |
 | ⏸ 8 | Per-site sales-report parsers (deferred — see [PHASE_8_PARSERS.md](PHASE_8_PARSERS.md)). |
 
 ## Built with love

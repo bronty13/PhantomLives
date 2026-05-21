@@ -240,3 +240,85 @@ mod camel_case_contract {
         assert_camel(&v, "LogEntryRef");
     }
 }
+
+// ---------------------------------------------------------------------------
+// Migration smoke test: applies every shipped migration to a fresh in-memory
+// SQLite database in source order and verifies the expected tables exist.
+// This catches future schema regressions (bad ALTER, missing FK target, SQL
+// syntax errors) before they touch Sallie's real DB on launch — the
+// migration runner there is fail-loud but you don't want to find out
+// post-shipping.
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod migration_smoke {
+    use rusqlite::Connection;
+
+    #[test]
+    fn all_migrations_apply_cleanly() {
+        let conn = Connection::open_in_memory().expect("open :memory:");
+        // Match the running app's FK enforcement so CASCADE / RESTRICT clauses
+        // are actually validated, not just parsed.
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+
+        // Each entry mirrors the `migrations` Vec in run(). Adding a
+        // migration there means appending one line here.
+        let migrations: &[(u32, &str, &str)] = &[
+            (1,  "init",                         include_str!("../migrations/001_init.sql")),
+            (2,  "sites",                        include_str!("../migrations/002_sites.sql")),
+            (3,  "taxonomy",                     include_str!("../migrations/003_taxonomy.sql")),
+            (4,  "customers",                    include_str!("../migrations/004_customers.sql")),
+            (5,  "clips",                        include_str!("../migrations/005_clips.sql")),
+            (6,  "schedules",                    include_str!("../migrations/006_schedules.sql")),
+            (7,  "income",                       include_str!("../migrations/007_income.sql")),
+            (8,  "expenses",                     include_str!("../migrations/008_expenses.sql")),
+            (9,  "social",                       include_str!("../migrations/009_social.sql")),
+            (10, "kinks",                        include_str!("../migrations/010_kinks.sql")),
+            (11, "kinks-preload",                include_str!("../migrations/011_kinks_preload.sql")),
+            (12, "products-and-customer-fields", include_str!("../migrations/012_products_and_customer_fields.sql")),
+            (13, "customer-history",             include_str!("../migrations/013_customer_history.sql")),
+            (14, "customer-sales",               include_str!("../migrations/014_customer_sales.sql")),
+            (15, "mollys-log",                   include_str!("../migrations/015_mollys_log.sql")),
+        ];
+
+        for (v, name, sql) in migrations {
+            conn.execute_batch(sql)
+                .unwrap_or_else(|e| panic!("migration {v} ({name}) failed: {e}"));
+        }
+
+        // Anchor table existence so a future migration that accidentally
+        // DROPs one of these is caught immediately.
+        let expected_tables: &[&str] = &[
+            "personas", "app_settings",
+            "sites",
+            "products", "interests", "kinks",
+            "customers", "customer_products", "customer_interests", "customer_kinks",
+            "customer_history", "customer_sales",
+            "clips", "clip_imports",
+            "schedules", "occurrences",
+            "income_adhoc", "income_site",
+            "expenses", "expenses_recurring",
+            "social_platforms", "social_promos",
+            "mollys_log",
+        ];
+        for t in expected_tables {
+            let count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name = ?1",
+                    rusqlite::params![t],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 1, "table `{t}` should exist after all migrations");
+        }
+
+        // Migration 011 preloads 349 kinks; if that ever silently drops to
+        // zero, catch it here before the app's KinkChipPicker shows empty.
+        let kink_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM kinks", [], |row| row.get(0))
+            .unwrap();
+        assert!(
+            kink_count >= 349,
+            "migration 011 should preload at least 349 kinks; got {kink_count}",
+        );
+    }
+}

@@ -4,6 +4,19 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.2] — 2026-05-21
+
+### Tests
+
+- **Migration smoke test.** New `lib.rs::migration_smoke::all_migrations_apply_cleanly` opens an in-memory SQLite with `PRAGMA foreign_keys = ON`, runs every shipped migration (001 → 015) in order via `include_str!`, asserts 23 anchor tables exist, and asserts `kinks` was preloaded with ≥349 rows by migration 011. Catches schema regressions (bad ALTER, missing FK target, SQL syntax errors, accidental `DROP TABLE`, broken preload INSERT) before they touch Sallie's DB.
+- **`fsutil::downloads_subdir` contract pinned.** Tiny test asserting the path ends with the requested sub and is absolute (or `.`-rooted fallback). Holds the contract that all the "where do I put this?" code paths depend on.
+- Total cargo tests: **16** (7 backup + 7 camelCase contract + 1 migration smoke + 1 fsutil).
+
+### Docs
+
+- **README.md** — updated to reflect 1.7.x reality: new "feature growth since 1.0.0" lede, Molly's Log row de-Trekkified, test count 12 → 16, migration count 9 → 15, source-file list includes `history.rs` + `log.rs`, phases table extended from 1.0 through 1.7.
+- **HANDOFF.md** — `src/components/` now lists `KinkChipPicker` + `MoneyInput`; `src/data/` lists `customerHistory`, `customerSales`, `mollysLog`; `src/views/` adds `MollysLog`; Tests section documents the four kinds of cargo tests and notes the known untested surface (history/log/attachments/export Rust I/O, all frontend) with the rationale (deferred per `OUT_OF_SCOPE.md`).
+
 ## [1.7.1] — 2026-05-21
 
 ### Changed — Molly's Log polish
