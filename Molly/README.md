@@ -37,7 +37,7 @@ cd Molly
 pnpm install
 pnpm tauri dev                                 # hot-reload dev
 ./build-app.sh                                  # build + install to /Applications/
-./run-tests.sh                                  # cargo test --lib  (15 tests as of 1.7.2: backup + camelCase contract + migration smoke + fsutil)
+./run-tests.sh                                  # cargo (22) + vitest (44) = 66 tests as of 1.7.3
 ```
 
 To cut a signed release: `git tag -a molly-vX.Y.Z -m "…" && git push origin molly-vX.Y.Z`. CI builds + signs both platforms, drops a draft GitHub release with `latest.json` for the auto-updater.

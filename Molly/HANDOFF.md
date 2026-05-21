@@ -165,16 +165,26 @@ Updater is wired against `https://github.com/bronty13/PhantomLives/releases/late
 
 ## Tests
 
-- **Rust**: `./run-tests.sh` → 16 tests (7 backup + 7 camelCase contract + 1 migration smoke + 1 fsutil).
-  - `backup.rs::tests` — debounce, retention prefix guard, listing order, verify-missing-DB, auto-create target dir.
-  - `lib.rs::camel_case_contract` — every boundary struct serializes camelCase (Settings / BackupRow / VerifyResult / AttachmentInfo / ExportResult / HistoryEntryRef / LogEntryRef).
-  - `lib.rs::migration_smoke::all_migrations_apply_cleanly` — applies every shipped migration to a fresh in-memory SQLite and asserts the expected tables exist. Catches future schema regressions before they touch Sallie's DB.
-  - `fsutil::tests::downloads_subdir_resolves_with_sub` — pins the cross-platform `~/Downloads/<sub>` resolution.
-- **Known untested surface** (deliberate; see `OUT_OF_SCOPE.md`):
-  - `history.rs` / `log.rs` BLOB round-trip behavior (only the return-type contract is tested).
-  - `attachments.rs` file save / reveal / open.
-  - `export.rs` zip composition + dev-only import.
-  - All frontend code — `OUT_OF_SCOPE.md` says deferred to Phase 8.5 hygiene pass.
+`./run-tests.sh` runs **Rust + frontend** end-to-end (`cargo test --lib` then `pnpm test`). 22 Rust + 44 TS = **66 tests total** as of 1.7.3.
+
+**Rust (22)**:
+- `backup.rs::tests` (7) — debounce, retention prefix guard, listing order, verify-missing-DB, auto-create target dir.
+- `lib.rs::camel_case_contract` (7) — every boundary struct serializes camelCase (Settings / BackupRow / VerifyResult / AttachmentInfo / ExportResult / HistoryEntryRef / LogEntryRef).
+- `lib.rs::migration_smoke::all_migrations_apply_cleanly` (1) — applies every shipped migration to a fresh in-memory SQLite, asserts 23 anchor tables exist, asserts migration 011 preloaded ≥349 kinks.
+- `history.rs::tests` (3) — BLOB round-trips byte-for-byte; missing-id errors out; FK enforcement rejects orphan rows. Pure helpers (`insert_history_row`, `read_history_blob`) are extracted from the Tauri commands so they're testable without `AppHandle`.
+- `log.rs::tests` (3) — same shape: round-trip + missing-id + empty-body/zero-byte BLOB edge case.
+- `fsutil::tests` (1) — `downloads_subdir` resolution contract.
+
+**Frontend (44, vitest)**:
+- `src/lib/money.test.ts` (10) — `parseMoney` / `fmtMoney` incl. the trailing-decimal-point case the MoneyInput pattern depends on.
+- `src/lib/phone.test.ts` (12) — `formatUSPhone` partials + canonical + extension; `isValidUSPhone` + `usPhoneDigits` covering the +1 strip.
+- `src/lib/cadence.test.ts` (18) — `nextOccurrencesAfter` across all six cadence kinds (daily, weekly, biweekly w/ anchor, monthly_dom w/ clamp, monthly_days_before_next, monthly_days_after_eom, every_n_days) + the date helpers (`isoDate`, `parseIso`, `addDays`, `startOfMonth` / `endOfMonth` / `startOfNextMonth`).
+- `src/lib/uid.test.ts` (3) — `formatDateKey` Y-M-D shape + zero-pad.
+
+**Still untested** (deliberate per `OUT_OF_SCOPE.md`):
+- `attachments.rs` file save / reveal / open.
+- `export.rs` zip composition + dev-only import.
+- React component rendering / state transitions (e.g. `CustomerEditor`, `MollysLogView`, `AdhocIncomeView`).
 
 ## Reference patterns from elsewhere in PhantomLives
 

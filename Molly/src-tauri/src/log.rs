@@ -58,6 +58,32 @@ fn guess_mime(filename: &str) -> String {
     }
 }
 
+// ---------- Pure SQL helpers (testable) ----------------------------------
+
+pub fn insert_log_row(
+    conn: &Connection,
+    body: &str,
+    filename: &str,
+    mime: &str,
+    bytes: &[u8],
+) -> rusqlite::Result<i64> {
+    conn.execute(
+        "INSERT INTO mollys_log
+            (body, attachment_filename, attachment_mime, attachment_size, attachment_data)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![body, filename, mime, bytes.len() as i64, bytes],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn read_log_blob(conn: &Connection, log_id: i64) -> rusqlite::Result<Vec<u8>> {
+    conn.query_row(
+        "SELECT attachment_data FROM mollys_log WHERE id = ?1",
+        params![log_id],
+        |row| row.get::<_, Vec<u8>>(0),
+    )
+}
+
 #[tauri::command]
 pub fn add_log_entry_with_attachment<R: Runtime>(
     handle: AppHandle<R>,
@@ -70,18 +96,11 @@ pub fn add_log_entry_with_attachment<R: Runtime>(
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
     let mime = guess_mime(&filename);
-    let size = bytes.len() as i64;
 
     let conn = open_conn(&handle)?;
-    conn.execute(
-        "INSERT INTO mollys_log
-            (body, attachment_filename, attachment_mime, attachment_size, attachment_data)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![body, filename, mime, size, bytes],
-    )
-    .map_err(|e| format!("insert: {e}"))?;
-
-    Ok(LogEntryRef { id: conn.last_insert_rowid() })
+    let id = insert_log_row(&conn, &body, &filename, &mime, &bytes)
+        .map_err(|e| format!("insert: {e}"))?;
+    Ok(LogEntryRef { id })
 }
 
 #[tauri::command]
@@ -91,13 +110,70 @@ pub fn download_log_attachment<R: Runtime>(
     target_path: String,
 ) -> Result<(), String> {
     let conn = open_conn(&handle)?;
-    let bytes: Vec<u8> = conn
-        .query_row(
-            "SELECT attachment_data FROM mollys_log WHERE id = ?1",
-            params![log_id],
-            |row| row.get::<_, Vec<u8>>(0),
-        )
+    let bytes = read_log_blob(&conn, log_id)
         .map_err(|e| format!("read row {log_id}: {e}"))?;
     fs::write(&target_path, &bytes).map_err(|e| format!("write {target_path}: {e}"))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    fn fresh_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        for sql in [
+            include_str!("../migrations/001_init.sql"),
+            include_str!("../migrations/002_sites.sql"),
+            include_str!("../migrations/003_taxonomy.sql"),
+            include_str!("../migrations/004_customers.sql"),
+            include_str!("../migrations/005_clips.sql"),
+            include_str!("../migrations/006_schedules.sql"),
+            include_str!("../migrations/007_income.sql"),
+            include_str!("../migrations/008_expenses.sql"),
+            include_str!("../migrations/009_social.sql"),
+            include_str!("../migrations/010_kinks.sql"),
+            include_str!("../migrations/011_kinks_preload.sql"),
+            include_str!("../migrations/012_products_and_customer_fields.sql"),
+            include_str!("../migrations/013_customer_history.sql"),
+            include_str!("../migrations/014_customer_sales.sql"),
+            include_str!("../migrations/015_mollys_log.sql"),
+        ] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn
+    }
+
+    #[test]
+    fn blob_round_trips_exactly() {
+        let conn = fresh_db();
+        let original: &[u8] = &[
+            0x00, 0xFF, 0xAB, 0xCD,
+            b'%', b'P', b'D', b'F', b'-',
+        ];
+        let id = insert_log_row(&conn, "Log with attachment", "doc.pdf", "application/pdf", original)
+            .expect("insert");
+        assert!(id > 0);
+        let read_back = read_log_blob(&conn, id).expect("read");
+        assert_eq!(read_back.as_slice(), original);
+    }
+
+    #[test]
+    fn read_log_blob_returns_error_for_missing_id() {
+        let conn = fresh_db();
+        assert!(read_log_blob(&conn, 9999).is_err());
+    }
+
+    /// Empty body + empty bytes is a valid edge case (e.g. user attaches a
+    /// 0-byte file for some reason) — should still insert cleanly.
+    #[test]
+    fn empty_body_and_zero_byte_blob_are_allowed() {
+        let conn = fresh_db();
+        let id = insert_log_row(&conn, "", "empty.txt", "text/plain", &[])
+            .expect("insert");
+        assert!(id > 0);
+        assert_eq!(read_log_blob(&conn, id).unwrap(), Vec::<u8>::new());
+    }
 }

@@ -4,6 +4,30 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.3] — 2026-05-21
+
+### Tests
+
+Closed the two highest-value gaps the 1.7.2 audit identified.
+
+**Rust BLOB round-trip (16 → 22)** — extracted `insert_history_row` / `read_history_blob` (`history.rs`) and `insert_log_row` / `read_log_blob` (`log.rs`) as pure functions of `&Connection`; the Tauri commands are now thin wrappers. Six new tests against in-memory SQLite with migrations 001–015 applied:
+- `history::tests::blob_round_trips_exactly` — bytes including nulls + high-bytes survive write→read.
+- `history::tests::read_history_blob_returns_error_for_missing_id`.
+- `history::tests::insert_with_unknown_customer_uid_fails` — FK enforcement.
+- `log::tests::blob_round_trips_exactly` — same for `mollys_log`.
+- `log::tests::read_log_blob_returns_error_for_missing_id`.
+- `log::tests::empty_body_and_zero_byte_blob_are_allowed` — edge case.
+
+**Frontend pure-function suite (vitest, 0 → 44)** — `OUT_OF_SCOPE.md`'s "frontend tests deferred" stance is partially lifted. Added `vitest@4.1.7` as a dev dep, `vitest.config.ts` (node env, `src/**/*.test.ts` discovery), and `pnpm test` / `pnpm test:watch` scripts. Four test files:
+- `src/lib/money.test.ts` (10) — `parseMoney` / `fmtMoney` incl. trailing-decimal handling that the `MoneyInput` pattern depends on.
+- `src/lib/phone.test.ts` (12) — `formatUSPhone` partials + canonical + extension; `isValidUSPhone` + `usPhoneDigits` covering the leading-`1` strip.
+- `src/lib/cadence.test.ts` (18) — `nextOccurrencesAfter` for all six cadence kinds (daily / weekly + biweekly anchor / monthly_dom + EoM clamp / monthly_days_before_next / monthly_days_after_eom / every_n_days) + every exported date helper.
+- `src/lib/uid.test.ts` (3) — `formatDateKey` Y-M-D shape + zero-pad.
+
+**`run-tests.sh`** now chains both: `cargo test --lib` then `pnpm test`. **66 tests total** in well under 5 seconds wall-clock.
+
+Component / rendering tests, `attachments.rs`, and `export.rs` stay untested — see `OUT_OF_SCOPE.md` for the updated rationale.
+
 ## [1.7.2] — 2026-05-21
 
 ### Tests

@@ -62,6 +62,39 @@ fn guess_mime(filename: &str) -> String {
     }
 }
 
+// ---------- Pure SQL helpers (testable; the Tauri commands wrap these) ----
+
+/// Insert a history row with the bytes stored inline as a BLOB; returns
+/// the new row id. Extracted from the Tauri command so it can be tested
+/// against an in-memory SQLite without needing a `tauri::AppHandle`.
+pub fn insert_history_row(
+    conn: &Connection,
+    customer_uid: &str,
+    body: &str,
+    filename: &str,
+    mime: &str,
+    bytes: &[u8],
+) -> rusqlite::Result<i64> {
+    conn.execute(
+        "INSERT INTO customer_history
+            (customer_uid, body, attachment_filename, attachment_mime,
+             attachment_size, attachment_data)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![customer_uid, body, filename, mime, bytes.len() as i64, bytes],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+/// Read just the BLOB for a given history row. Returns `Err(QueryReturnedNoRows)`
+/// when the id doesn't exist — callers translate to a user-facing string.
+pub fn read_history_blob(conn: &Connection, history_id: i64) -> rusqlite::Result<Vec<u8>> {
+    conn.query_row(
+        "SELECT attachment_data FROM customer_history WHERE id = ?1",
+        params![history_id],
+        |row| row.get::<_, Vec<u8>>(0),
+    )
+}
+
 /// Inserts a history row with the file at `src_path` stored inline as a
 /// SQLite BLOB. Returns the new row id so the frontend can refresh.
 #[tauri::command]
@@ -77,19 +110,11 @@ pub fn add_history_entry_with_attachment<R: Runtime>(
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
     let mime = guess_mime(&filename);
-    let size = bytes.len() as i64;
 
     let conn = open_conn(&handle)?;
-    conn.execute(
-        "INSERT INTO customer_history
-            (customer_uid, body, attachment_filename, attachment_mime,
-             attachment_size, attachment_data)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![customer_uid, body, filename, mime, size, bytes],
-    )
-    .map_err(|e| format!("insert: {e}"))?;
-
-    Ok(HistoryEntryRef { id: conn.last_insert_rowid() })
+    let id = insert_history_row(&conn, &customer_uid, &body, &filename, &mime, &bytes)
+        .map_err(|e| format!("insert: {e}"))?;
+    Ok(HistoryEntryRef { id })
 }
 
 /// Streams the BLOB for a given history row out to `target_path`. The
@@ -101,13 +126,78 @@ pub fn download_history_attachment<R: Runtime>(
     target_path: String,
 ) -> Result<(), String> {
     let conn = open_conn(&handle)?;
-    let bytes: Vec<u8> = conn
-        .query_row(
-            "SELECT attachment_data FROM customer_history WHERE id = ?1",
-            params![history_id],
-            |row| row.get::<_, Vec<u8>>(0),
-        )
+    let bytes = read_history_blob(&conn, history_id)
         .map_err(|e| format!("read row {history_id}: {e}"))?;
     fs::write(&target_path, &bytes).map_err(|e| format!("write {target_path}: {e}"))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    /// Open an in-memory DB with every migration up through 013 applied
+    /// (so the customer_history table exists) and one customer row to
+    /// satisfy the FK. Returns (conn, customer_uid).
+    fn fresh_db_with_customer() -> (Connection, &'static str) {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        for sql in [
+            include_str!("../migrations/001_init.sql"),
+            include_str!("../migrations/002_sites.sql"),
+            include_str!("../migrations/003_taxonomy.sql"),
+            include_str!("../migrations/004_customers.sql"),
+            include_str!("../migrations/005_clips.sql"),
+            include_str!("../migrations/006_schedules.sql"),
+            include_str!("../migrations/007_income.sql"),
+            include_str!("../migrations/008_expenses.sql"),
+            include_str!("../migrations/009_social.sql"),
+            include_str!("../migrations/010_kinks.sql"),
+            include_str!("../migrations/011_kinks_preload.sql"),
+            include_str!("../migrations/012_products_and_customer_fields.sql"),
+            include_str!("../migrations/013_customer_history.sql"),
+        ] {
+            conn.execute_batch(sql).unwrap();
+        }
+        let uid = "2026-05-21-test1";
+        conn.execute(
+            "INSERT INTO customers (uid) VALUES (?1)",
+            params![uid],
+        ).unwrap();
+        (conn, uid)
+    }
+
+    /// The whole point of inline BLOB attachments: bytes-in == bytes-out,
+    /// including null bytes and high bytes that would otherwise be mangled
+    /// by a TEXT column or base64 round-trip.
+    #[test]
+    fn blob_round_trips_exactly() {
+        let (conn, uid) = fresh_db_with_customer();
+        let original: &[u8] = &[
+            0x00, 0x01, 0x02, 0x7F, 0x80, 0xFE, 0xFF,
+            b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A,
+        ];
+        let id = insert_history_row(&conn, uid, "round-trip test", "test.bin", "application/octet-stream", original)
+            .expect("insert");
+        assert!(id > 0);
+        let read_back = read_history_blob(&conn, id).expect("read");
+        assert_eq!(read_back.as_slice(), original);
+    }
+
+    #[test]
+    fn read_history_blob_returns_error_for_missing_id() {
+        let (conn, _) = fresh_db_with_customer();
+        assert!(read_history_blob(&conn, 9999).is_err());
+    }
+
+    /// FK enforcement should reject orphan history entries — confirms the
+    /// schema matches what the data layer expects (customer_uid REFERENCES
+    /// customers(uid) ON DELETE CASCADE).
+    #[test]
+    fn insert_with_unknown_customer_uid_fails() {
+        let (conn, _) = fresh_db_with_customer();
+        let result = insert_history_row(&conn, "nobody-here", "note", "f.txt", "text/plain", b"x");
+        assert!(result.is_err(), "expected FK violation; got {result:?}");
+    }
 }

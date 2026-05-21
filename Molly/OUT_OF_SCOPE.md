@@ -22,11 +22,21 @@ If she ever needs to move machines, the `Settings → Data → Export everything
 
 ## Frontend test suite
 
-**Decision:** deferred (not out of scope), but not blocking 1.0.
+**Decision (1.7.3):** **partially lifted.** Pure-function unit tests are now in via vitest:
 
-**Why:** TypeScript catches the majority of type-level mistakes. The Rust unit tests cover the bridge contract (camelCase) and backup safety. The remaining bug surface (React rendering, state transitions) historically gets caught in real use faster than tests would catch it — Sallie's bug-bash on v0.6.0 found the camelCase issue, the loading-state UX, and the missing CHANGELOG entry, all in one afternoon.
+- `src/lib/money.test.ts` — `parseMoney`, `fmtMoney`
+- `src/lib/phone.test.ts` — `formatUSPhone`, `isValidUSPhone`, `usPhoneDigits`
+- `src/lib/cadence.test.ts` — `nextOccurrencesAfter` across all six cadence kinds + date helpers
+- `src/lib/uid.test.ts` — `formatDateKey`
 
-If we ever ship to a wider audience, add Playwright e2e tests covering the persona-switch round trip and the import wizard.
+44 tests, runs in ~100ms via `pnpm test`. `run-tests.sh` chains cargo + vitest, so `./run-tests.sh` runs everything.
+
+**Still out of scope:**
+
+- **Component / rendering tests** for the React views (`CustomerEditor`, `MollysLogView`, `AdhocIncomeView`, etc.). These have a lot of state-machine surface and would benefit from `@testing-library/react`, but the cost (jsdom env, mock Tauri IPC, mock SQL plugin) is real and the historical bug rate has been bearable without them.
+- **E2E**. The original "Playwright if we ever ship to a wider audience" rationale still holds.
+
+The original v0.6.0 rationale (typecheck + Rust contract + real use bug-bash) still does most of the work; we just plugged the cheapest hole.
 
 ## Mobile / web companion
 
