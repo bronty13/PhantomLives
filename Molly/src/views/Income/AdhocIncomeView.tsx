@@ -9,8 +9,9 @@ import {
   type UnifiedAdhocRow,
 } from '../../data/income';
 import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
-import { fmtMoney, MONTH_NAMES, parseMoney, todayParts } from '../../lib/money';
+import { fmtMoney, MONTH_NAMES, todayParts } from '../../lib/money';
 import { ConfirmButton } from '../../components/ConfirmButton';
+import { MoneyInput } from '../../components/MoneyInput';
 import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 
 interface Props {
@@ -198,11 +199,10 @@ function AdhocEditor({
       </label>
       <label className="flex flex-col gap-1 col-span-2">
         <span className="text-xs uppercase tracking-wider opacity-60">Amount</span>
-        <input
+        <MoneyInput
           className="pretty-input font-mono"
-          inputMode="decimal"
-          value={String(draft.amount)}
-          onChange={(e) => onChange({ ...draft, amount: parseMoney(e.target.value) })}
+          value={draft.amount}
+          onChange={(amount) => onChange({ ...draft, amount })}
         />
       </label>
       <label className="flex flex-col gap-1 col-span-3">

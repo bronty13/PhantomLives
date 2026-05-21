@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { listSiteIncome, upsertSiteIncome, type SiteIncome } from '../../data/income';
 import { listSites, type Site } from '../../data/sites';
 import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
-import { fmtMoney, MONTH_NAMES, parseMoney, todayParts } from '../../lib/money';
+import { fmtMoney, MONTH_NAMES, todayParts } from '../../lib/money';
+import { MoneyInput } from '../../components/MoneyInput';
 import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 
 interface Props {
@@ -160,11 +161,10 @@ export function SiteIncomeWizard({ onClose }: Props) {
                     </div>
                     <label className="col-span-2 flex flex-col gap-0.5">
                       <span className="text-[10px] uppercase tracking-wider opacity-60">Amount</span>
-                      <input
+                      <MoneyInput
                         className="pretty-input font-mono text-right"
-                        inputMode="decimal"
-                        value={String(entry.amount)}
-                        onChange={(e) => setAmount(s.id, parseMoney(e.target.value))}
+                        value={entry.amount}
+                        onChange={(amount) => setAmount(s.id, amount)}
                       />
                     </label>
                     <label className="col-span-6 flex flex-col gap-0.5">

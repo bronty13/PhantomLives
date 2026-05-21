@@ -9,9 +9,10 @@ import {
   type Expense,
 } from '../../data/expenses';
 import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
-import { fmtMoney, MONTH_NAMES, parseMoney, todayParts } from '../../lib/money';
+import { fmtMoney, MONTH_NAMES, todayParts } from '../../lib/money';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import { AttachmentField } from '../../components/AttachmentField';
+import { MoneyInput } from '../../components/MoneyInput';
 import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 
 interface Props {
@@ -208,11 +209,10 @@ function ExpenseEditor({
       </label>
       <label className="flex flex-col gap-1 col-span-3">
         <span className="text-xs uppercase tracking-wider opacity-60">Amount</span>
-        <input
+        <MoneyInput
           className="pretty-input font-mono"
-          inputMode="decimal"
-          value={String(draft.amount)}
-          onChange={(e) => onChange({ ...draft, amount: parseMoney(e.target.value) })}
+          value={draft.amount}
+          onChange={(amount) => onChange({ ...draft, amount })}
         />
       </label>
       <label className="flex flex-col gap-1 col-span-6">
@@ -246,12 +246,13 @@ function ExpenseEditor({
         {!draft.excluded && (
           <label className="flex items-center gap-2 text-sm">
             <span className="opacity-60">…or partial exclusion:</span>
-            <input
+            <MoneyInput
               className="pretty-input font-mono w-32"
-              inputMode="decimal"
-              placeholder="$"
-              value={draft.exclusionAmount === null ? '' : String(draft.exclusionAmount)}
-              onChange={(e) => onChange({ ...draft, exclusionAmount: e.target.value.trim() === '' ? null : parseMoney(e.target.value) })}
+              value={draft.exclusionAmount ?? 0}
+              // 0 is the "no partial exclusion" sentinel; map back to null
+              // so the schema's nullable column stays semantically distinct
+              // from "$0 excluded." Sallie isn't going to enter a $0 partial.
+              onChange={(n) => onChange({ ...draft, exclusionAmount: n === 0 ? null : n })}
             />
           </label>
         )}

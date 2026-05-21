@@ -17,8 +17,9 @@ import {
   nextOccurrencesAfter,
   WEEKDAY_LABELS,
 } from '../../lib/cadence';
-import { fmtMoney, parseMoney } from '../../lib/money';
+import { fmtMoney } from '../../lib/money';
 import { ConfirmButton } from '../../components/ConfirmButton';
+import { MoneyInput } from '../../components/MoneyInput';
 import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 
 type Family = 'weekly' | 'monthly' | 'every_n_days' | 'daily';
@@ -230,11 +231,10 @@ function RecurringEditor({
       </label>
       <label className="flex flex-col gap-1 col-span-2">
         <span className="text-xs uppercase tracking-wider opacity-60">Amount</span>
-        <input
+        <MoneyInput
           className="pretty-input font-mono"
-          inputMode="decimal"
-          value={String(draft.amount)}
-          onChange={(e) => onChange({ ...draft, amount: parseMoney(e.target.value) })}
+          value={draft.amount}
+          onChange={(amount) => onChange({ ...draft, amount })}
         />
       </label>
       <label className="flex flex-col gap-1 col-span-3">

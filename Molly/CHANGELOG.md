@@ -4,6 +4,13 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] — 2026-05-21
+
+### Fixed
+
+- **Money inputs across the app now accept dollars and cents.** Same root cause we hit on Settings → Products in 1.2.1: `<input value={String(amount)} onChange={parseMoney(e.target.value)}>` re-renders on every keystroke, so typing `5.` parses to `5`, strips the trailing dot, and the user can never reach the cents. Refactored into a reusable `src/components/MoneyInput.tsx` that keeps the *display* as a local string buffer while emitting the parsed number to the parent — and uses a ref to ignore re-renders triggered by its own emit so the buffer doesn't get clobbered mid-typing. Re-init only happens when the value changes from outside (caller switched rows).
+- **Sites swapped:** Adhoc Income (the user-reported regression), Expenses (amount + partial-exclusion amount), Recurring Expenses, Site Income Wizard. All four were sharing the same broken pattern.
+
 ## [1.6.0] — 2026-05-21
 
 ### Added
