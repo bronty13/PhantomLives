@@ -145,9 +145,9 @@ export function AdhocIncomeView({ active }: Props) {
                   {isSale && <span className="mr-1" aria-label="From customer sale">🛒</span>}
                   {r.sourceLabel || '(no source)'}
                 </div>
-                <div className="col-span-4 text-xs opacity-70 truncate">{noteText}</div>
-                <div className="col-span-1 font-mono text-right">{fmtMoney(r.amount)}</div>
-                <div className="col-span-1 flex justify-end gap-1">
+                <div className="col-span-3 text-xs opacity-70 truncate">{noteText}</div>
+                <div className="col-span-1 font-mono text-right whitespace-nowrap">{fmtMoney(r.amount)}</div>
+                <div className="col-span-2 flex justify-end items-center gap-1">
                   {isSale ? (
                     <span className="text-[11px] opacity-50 italic" title="Edit this sale from the customer's history">on customer</span>
                   ) : (

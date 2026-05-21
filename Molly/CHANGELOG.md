@@ -4,6 +4,12 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.2] — 2026-05-21
+
+### Fixed
+
+- **Adhoc Income row layout — Edit/✕ buttons no longer overlap the amount.** The actions cell on adhoc rows was `col-span-1` but had to hold *two* pill buttons (Edit + ConfirmButton), which collectively were wider than 1/12 of the table and overflowed leftward, visually clobbering the amount column (you'd see something like `$66.32` truncated to `$66`). The sale row's tiny "on customer" hint fit fine in 1 col so this only bit adhoc rows. Widened the actions column to `col-span-2` and reclaimed the col from the note. Also added `whitespace-nowrap` to the amount cell so totals like `$1,234.56` can't wrap.
+
 ## [1.6.1] — 2026-05-21
 
 ### Fixed
