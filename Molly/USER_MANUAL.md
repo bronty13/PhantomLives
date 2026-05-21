@@ -187,13 +187,13 @@ Any notes you've added inside Molly (the "Molly notes" field on a clip) are kept
 
 ## Molly's Log
 
-Click **📔 Molly's Log** in the sidebar. This is your captain's-log-style personal journal — append timestamped entries about whatever (today's mood, end-of-day reflection, an idea you don't want to forget). Optional file attachment per entry (image, PDF, anything). Stored in Molly's database, so attachments travel with the auto-backup zip.
+Click **📔 Molly's Log** in the sidebar. This is your personal journal — append timestamped notes to yourself about whatever (today's mood, end-of-day reflection, an idea you don't want to forget). Optional file attachment per entry (image, PDF, anything). Stored in Molly's database, so attachments travel with the auto-backup zip.
 
-- **Log entry** — type into the composer and click **🖖 Log entry**. Attach a file via **📎 Attach file…** first if you want one stored with this entry.
+Past entries render in a handwritten font (Caveat) for that journal-page feel; the composer stays in the regular UI font so typing is crisp.
+
+- **Log entry** — type into the composer and click **✨ Log entry**. Attach a file via **📎 Attach file…** first if you want one stored with this entry.
 - **Edit / Delete** — each past entry has Edit + Delete buttons. Edit reveals an inline textarea (Save / Cancel); Delete is two-tap-confirmed and removes the row plus any attached file.
 - **Filter** the list with the search box; tick **grep** for regex mode. Searches across the entry body and attachment filename. Shows "N of M" while filtering.
-
-The composer placeholder rotates Trek-flavored openers ("Captain's log…", "Personal log, supplemental…") just for fun — your entry is plain text and can be whatever you want.
 
 ## Calendar
 

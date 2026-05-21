@@ -4,6 +4,17 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] — 2026-05-21
+
+### Changed — Molly's Log polish
+
+- **Past entries render in a handwritten font.** Caveat (already loaded via the Google Fonts link for the sayings banner) is now applied to the body of each saved entry at `fontSize: 1.25rem`, `lineHeight: 1.4`. Composer textarea + edit-mode textarea stay in the regular UI font so typing is crisp; only the read-only render gets the journal look.
+- **Dropped the Trek references.** Sallie isn't into Star Trek, so:
+  - Placeholder is now just **"Note to self…"** (no more "Captain's log…" / "Stardate today…" rotation; removed the `PROMPTS` array entirely).
+  - Submit button is **"✨ Log entry"** (no 🖖 Vulcan salute).
+  - Page subtitle reads "Your personal journal — notes to self with optional file attachments…" (was "captain's-log style journal").
+  - Sidebar hint and USER_MANUAL section updated to match.
+
 ## [1.7.0] — 2026-05-21
 
 ### Added

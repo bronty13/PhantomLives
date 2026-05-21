@@ -20,7 +20,7 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { key: 'home',      label: 'Home',      icon: <span>🏠</span>, hint: "Today's reminders + dashboards" },
-  { key: 'log',       label: "Molly's Log", icon: <span>📔</span>, hint: "Captain's-log style journal entries" },
+  { key: 'log',       label: "Molly's Log", icon: <span>📔</span>, hint: 'Personal journal — notes to self with optional attachments' },
   { key: 'reminders', label: 'Reminders', icon: <span>🔔</span>, hint: 'Today, overdue, coming up' },
   { key: 'calendar',  label: 'Calendar',  icon: <span>📅</span>, hint: 'Clip releases + schedule overlay' },
   { key: 'clips',     label: 'Clips',     icon: <span>🎬</span>, hint: 'Imported from MasterClipper' },

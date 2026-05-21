@@ -37,15 +37,11 @@ function basename(path: string): string {
   return parts[parts.length - 1] || path;
 }
 
-// Captain's-log opener for fun — stardate-style preamble when the
-// composer is empty. Encourages writing without dictating a format.
-const PROMPTS = [
-  "Captain's log…",
-  "Personal log, supplemental…",
-  "First officer's log…",
-  "Stardate today — note to self…",
-  "End-of-day reflection…",
-];
+// Caveat (already loaded via index.html with the other Google Fonts)
+// gives entries a handwritten journal look. We keep the composer in the
+// regular font for typing precision and only switch to Caveat when
+// rendering past entries — same trick a lot of journal apps use.
+const JOURNAL_FONT = '"Caveat", "Indie Flower", "Patrick Hand", cursive';
 
 export function MollysLogView() {
   const [entries, setEntries] = useState<LogEntry[]>([]);
@@ -57,8 +53,6 @@ export function MollysLogView() {
   const [editingBody, setEditingBody] = useState('');
   const [filter, setFilter] = useState('');
   const [useRegex, setUseRegex] = useState(false);
-  // Rotates the placeholder on each mount — small touch.
-  const [prompt] = useState(() => PROMPTS[Math.floor(Math.random() * PROMPTS.length)]);
 
   const { loading, refresh } = useAsyncRefresh(async (alive) => {
     const list = await listEntries();
@@ -166,7 +160,7 @@ export function MollysLogView() {
       <div>
         <h2 className="display-font text-2xl font-bold persona-accent">📔 Molly's Log</h2>
         <p className="opacity-70 text-sm">
-          Your captain's-log style journal. Append entries with optional file attachments; edit or delete any past entry. Persists in Molly's database (auto-backed-up nightly).
+          Your personal journal — notes to self with optional file attachments. Edit or delete any past entry. Persists in Molly's database (auto-backed up).
         </p>
       </div>
 
@@ -175,7 +169,7 @@ export function MollysLogView() {
           <textarea
             className="pretty-input w-full"
             rows={4}
-            placeholder={prompt}
+            placeholder="Note to self…"
             value={body}
             onChange={(e) => setBody(e.target.value)}
             disabled={busy}
@@ -204,7 +198,7 @@ export function MollysLogView() {
             )}
             <span className="flex-1" />
             <button type="button" className="pretty-button" onClick={add} disabled={!canSubmit}>
-              {busy ? 'Logging…' : '🖖 Log entry'}
+              {busy ? 'Logging…' : '✨ Log entry'}
             </button>
           </div>
         </div>
@@ -265,7 +259,14 @@ export function MollysLogView() {
                         disabled={busy}
                       />
                     ) : (
-                      e.body && <div className="text-sm whitespace-pre-wrap">{e.body}</div>
+                      e.body && (
+                        <div
+                          className="whitespace-pre-wrap"
+                          style={{ fontFamily: JOURNAL_FONT, fontSize: '1.25rem', lineHeight: 1.4 }}
+                        >
+                          {e.body}
+                        </div>
+                      )
                     )}
                     {e.hasAttachment && (
                       <div className="mt-2">
