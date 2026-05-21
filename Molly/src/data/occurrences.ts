@@ -109,6 +109,22 @@ export async function listOverdue(opts?: ListOpts): Promise<Occurrence[]> {
   return rows.map(rowToOccurrence);
 }
 
+/**
+ * Pending occurrences whose due date falls within an inclusive [from, to]
+ * range. Used by the calendar to dot reminder pills onto the month grid.
+ * Completed occurrences are excluded by design — the calendar shows what's
+ * upcoming, not what's already done.
+ */
+export async function listOccurrencesInRange(from: string, to: string, opts?: ListOpts): Promise<Occurrence[]> {
+  const conn = await db();
+  const pw = personaWhereAndParams(opts, 3);
+  const rows = await conn.select<OccurrenceRow[]>(
+    `${OCC_SELECT} AND o.due_at >= $1 AND o.due_at <= $2 AND o.completed_at IS NULL${pw.whereSql} ORDER BY o.due_at ASC, s.name`,
+    [from, to, ...pw.params],
+  );
+  return rows.map(rowToOccurrence);
+}
+
 export async function listComingUp(opts?: ListOpts, days = 7): Promise<Occurrence[]> {
   const conn = await db();
   const today = isoDate(new Date());

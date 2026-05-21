@@ -95,7 +95,9 @@ export function MasterClipperImport({ personas, onDone }: Props) {
         } else {
           const clip: Omit<Clip, 'mollyNotesHtml' | 'importedAt'> = {
             id,
-            externalClipId: (r.external_clip_id ?? '').trim(),
+            // Legacy columns kept on the schema for old data; not imported anymore
+            // and not surfaced in the UI. See CHANGELOG 1.6.0.
+            externalClipId: '',
             personaCode:  mappedTo || null,
             title:        (r.title ?? '').trim(),
             status:       (r.status ?? '').trim(),
@@ -104,8 +106,8 @@ export function MasterClipperImport({ personas, onDone }: Props) {
             length:       (r.length ?? '').trim(),
             price:        (r.price ?? '').trim(),
             categories:   (r.categories ?? '').trim(),
-            keywords:     (r.keywords ?? '').trim(),
-            performers:   (r.performers ?? '').trim(),
+            keywords:     '',
+            performers:   '',
             notes:        r.notes ?? '',
           };
           try {
@@ -213,7 +215,7 @@ export function MasterClipperImport({ personas, onDone }: Props) {
             📂 Choose CSV…
           </button>
           <p className="text-xs opacity-60 mt-2">
-            Expected columns (from MasterClipper's CSV export): <span className="font-mono">id, external_clip_id, persona, title, status, content_date, go_live_date, length, price, categories, keywords, performers, notes</span>.
+            Expected columns (from MasterClipper's CSV export): <span className="font-mono">id, persona, title, status, content_date, go_live_date, length, price, categories, notes</span>. Other columns (external_clip_id, keywords, performers) are ignored.
           </p>
         </div>
       )}

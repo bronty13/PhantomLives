@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Persona } from '../../state/personas';
 import { listClips, type Clip } from '../../data/clips';
+import { listOccurrencesInRange, type Occurrence } from '../../data/occurrences';
 import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
 import { ClipDetail } from './ClipDetail';
 import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
@@ -30,6 +31,7 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export function CalendarView({ active }: Props) {
   const [month, setMonth] = useState<Date>(startOfMonth(new Date()));
   const [clips, setClips] = useState<Clip[]>([]);
+  const [occurrences, setOccurrences] = useState<Occurrence[]>([]);
   const [personas, setPersonas] = useState<PersonaRow[]>([]);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>('');
@@ -40,7 +42,7 @@ export function CalendarView({ active }: Props) {
     const from = isoDateKey(month);
     const last = new Date(monthEnd.getTime() - 86_400_000); // last day of month
     const to = isoDateKey(last);
-    const [c, p] = await Promise.all([
+    const [c, o, p] = await Promise.all([
       listClips({
         personaCode: active.code,
         from,
@@ -48,10 +50,12 @@ export function CalendarView({ active }: Props) {
         withGoLiveOnly: true,
         limit: 500,
       }),
+      listOccurrencesInRange(from, to, { personaCode: active.code }),
       listPersonas(),
     ]);
     if (!alive()) return;
     setClips(c);
+    setOccurrences(o);
     setPersonas(p);
   }, [active.code, month]);
 
@@ -68,6 +72,17 @@ export function CalendarView({ active }: Props) {
     }
     return m;
   }, [clips]);
+
+  const occurrencesByDay = useMemo(() => {
+    const m = new Map<string, Occurrence[]>();
+    for (const o of occurrences) {
+      const key = o.dueAt.slice(0, 10);
+      const list = m.get(key) ?? [];
+      list.push(o);
+      m.set(key, list);
+    }
+    return m;
+  }, [occurrences]);
 
   // Build 6×7 grid starting from the Sunday on/before month start.
   const gridStart = useMemo(() => {
@@ -90,7 +105,7 @@ export function CalendarView({ active }: Props) {
         <div>
           <h2 className="display-font text-2xl font-bold persona-accent">Calendar</h2>
           <p className="opacity-70 text-sm">
-            Clip releases by go-live date. {active.code !== 'ALL' && <>Filtered to <strong>{active.name}</strong>.</>}
+            Clip releases by go-live date, plus pending reminders 🔔. {active.code !== 'ALL' && <>Filtered to <strong>{active.name}</strong>.</>}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -113,6 +128,13 @@ export function CalendarView({ active }: Props) {
             const inMonth = d.getMonth() === month.getMonth();
             const isToday = isoDateKey(new Date()) === key;
             const dayClips = clipsByDay.get(key) ?? [];
+            const dayOccs  = occurrencesByDay.get(key) ?? [];
+            const totalCount = dayClips.length + dayOccs.length;
+            // Reminder pills come first (chronological prompt), then clips.
+            const clipBudget = Math.max(0, 4 - dayOccs.length);
+            const clipsToShow = dayClips.slice(0, clipBudget);
+            const occsToShow  = dayOccs.slice(0, 4);
+            const hidden = totalCount - clipsToShow.length - occsToShow.length;
             return (
               <div
                 key={key}
@@ -127,12 +149,31 @@ export function CalendarView({ active }: Props) {
                   <span style={{ fontWeight: isToday ? 700 : 500, color: isToday ? 'rgb(var(--persona-accent))' : undefined }}>
                     {d.getDate()}
                   </span>
-                  {dayClips.length > 0 && (
-                    <span className="text-[10px] opacity-70">{dayClips.length}</span>
+                  {totalCount > 0 && (
+                    <span className="text-[10px] opacity-70">{totalCount}</span>
                   )}
                 </div>
                 <div className="flex flex-col gap-0.5 mt-1">
-                  {dayClips.slice(0, 4).map((c) => {
+                  {occsToShow.map((o) => {
+                    const persona = o.personaCode ? personaByCode.get(o.personaCode) : null;
+                    const tint = persona?.primaryColor ?? '#A16D9C';
+                    const text = persona?.textColor ?? '#3C283C';
+                    return (
+                      <div
+                        key={`o-${o.id}`}
+                        className="text-left px-1.5 py-0.5 rounded text-[10px] truncate"
+                        style={{
+                          background: 'rgba(255,255,255,0.7)',
+                          color: text,
+                          border: `1px dashed ${tint}`,
+                        }}
+                        title={`Reminder: ${o.scheduleName}${persona ? ` (${persona.code})` : ''}`}
+                      >
+                        🔔 {o.scheduleName}
+                      </div>
+                    );
+                  })}
+                  {clipsToShow.map((c) => {
                     const persona = c.personaCode ? personaByCode.get(c.personaCode) : null;
                     const color = persona?.primaryColor ?? '#A16D9C';
                     const text = persona?.textColor ?? '#3C283C';
@@ -153,8 +194,8 @@ export function CalendarView({ active }: Props) {
                       </button>
                     );
                   })}
-                  {dayClips.length > 4 && (
-                    <div className="text-[10px] opacity-70 italic">+{dayClips.length - 4} more</div>
+                  {hidden > 0 && (
+                    <div className="text-[10px] opacity-70 italic">+{hidden} more</div>
                   )}
                 </div>
               </div>
@@ -166,9 +207,9 @@ export function CalendarView({ active }: Props) {
       {loading && (
         <div className="pretty-card text-sm opacity-60 italic">Loading clips for this month…</div>
       )}
-      {!loading && clips.length === 0 && (
+      {!loading && clips.length === 0 && occurrences.length === 0 && (
         <div className="pretty-card text-sm opacity-70 italic">
-          No clips in this month. Import a MasterClipper CSV from the <strong>Clips</strong> page.
+          No clips or reminders in this month. Import a MasterClipper CSV from the <strong>Clips</strong> page, or add a schedule from <strong>Reminders</strong>.
         </div>
       )}
       {status && <div className="pretty-card text-sm"><strong>Status:</strong> {status}</div>}

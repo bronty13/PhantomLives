@@ -4,6 +4,18 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] — 2026-05-21
+
+### Added
+
+- **Reminders on the calendar.** Pending occurrences from active schedules now render as 🔔 pills on the day grid in `src/views/Calendar/CalendarView.tsx`. New `listOccurrencesInRange(from, to, personaCode)` in `src/data/occurrences.ts` runs alongside the existing `listClips` query (parallel `Promise.all`). Reminder pills use a dashed border in the schedule's persona color (or neutral when no persona is bound) and prefix with 🔔 to distinguish from clip pills (solid borders). Tooltip shows the schedule name. Completed occurrences are excluded by design — the calendar shows what's upcoming.
+- **Sort direction + status filter on Clips grid.** Existing sort buttons (go-live / title / status / persona) now toggle direction: click an already-active key to flip between ↑ and ↓. Each key has a sensible default direction on first click (date desc, text asc). New Status dropdown filters to a single distinct value found in the loaded clips. Combined with the existing search, the grid is now actually navigable for a large library.
+- **Clips grid search is now as-you-type with a regex toggle.** Matches `CustomerListView` / `CustomerHistoryCard` patterns. Filters client-side over the persona-scoped clip set across id / title / status. Invalid regex shows an inline amber hint; "N of M" count + Clear button when active. No more Enter/blur to trigger refresh.
+
+### Changed
+
+- **Dropped legacy fields from clip import + display.** `external_clip_id`, `keywords`, and `performers` are no longer read from the MasterClipper CSV (new imports write empty strings to those columns) and no longer shown in the Clip Detail modal. The DB columns and `Clip` type are preserved so older imported data isn't lost; you can still see it via direct SQL if needed. The clip-list search dropped the now-empty `keywords LIKE` clause and the import view's expected-columns hint was updated accordingly. Reuse detection on `external_clip_id` continues to fire for legacy rows but will naturally degrade as new imports stop populating it.
+
 ## [1.5.1] — 2026-05-21
 
 ### Fixed

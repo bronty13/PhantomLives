@@ -85,9 +85,11 @@ export async function listClips(opts: ListClipsOpts = {}): Promise<Clip[]> {
     sql += ` AND substr(go_live_date, 1, 10) <= $${params.length}`;
   }
   if (opts.search?.trim()) {
+    // Search dropped the keywords field as of 1.6.0 — that column is no
+    // longer imported, so OR-ing it against an empty string was dead code.
     const like = `%${opts.search.trim()}%`;
-    params.push(like, like, like);
-    sql += ` AND (id LIKE $${params.length - 2} OR title LIKE $${params.length - 1} OR keywords LIKE $${params.length})`;
+    params.push(like, like);
+    sql += ` AND (id LIKE $${params.length - 1} OR title LIKE $${params.length})`;
   }
   sql += ' ORDER BY COALESCE(go_live_date, content_date, imported_at) DESC';
   if (opts.limit) {

@@ -187,7 +187,7 @@ Any notes you've added inside Molly (the "Molly notes" field on a clip) are kept
 
 ## Calendar
 
-Click **Calendar**. The month grid shows every imported clip on its go-live date as a colored pill (one per persona). Click any pill to open the detail panel; you can read every imported field and write your own rich-text notes that survive future imports. Use **Prev** / **Next** / **Today** to move around.
+Click **Calendar**. The month grid shows every imported clip on its go-live date as a colored pill (one per persona), and every pending reminder on its due date as a 🔔 pill with a dashed border (color-matched to the schedule's persona, or neutral when the schedule isn't bound to one). Completed reminders drop off automatically. Click any clip pill to open its detail panel — read every imported field and write your own rich-text notes that survive future imports. Use **Prev** / **Next** / **Today** to move around.
 
 ## Home dashboard
 

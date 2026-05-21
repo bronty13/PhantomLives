@@ -80,10 +80,7 @@ export function ClipDetail({ clipId, personas, onClose }: Props) {
             ['Go-live',       clip.goLiveDate ?? '—'],
             ['Content date',  clip.contentDate ?? '—'],
             ['Price',         clip.price || '—'],
-            ['External ID',   clip.externalClipId || '—'],
             ['Categories',    clip.categories || '—'],
-            ['Keywords',      clip.keywords || '—'],
-            ['Performers',    clip.performers || '—'],
             ['Imported',      clip.importedAt],
           ].map(([k, v]) => (
             <div key={k}>
