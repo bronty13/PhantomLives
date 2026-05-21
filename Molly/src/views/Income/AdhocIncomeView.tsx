@@ -3,9 +3,10 @@ import type { Persona } from '../../state/personas';
 import {
   createAdhoc,
   deleteAdhoc,
-  listAdhoc,
+  listAdhocUnified,
   updateAdhoc,
   type AdhocIncome,
+  type UnifiedAdhocRow,
 } from '../../data/income';
 import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
 import { fmtMoney, MONTH_NAMES, parseMoney, todayParts } from '../../lib/money';
@@ -26,7 +27,7 @@ export function AdhocIncomeView({ active }: Props) {
   const t = todayParts();
   const [year, setYear] = useState<number>(t.year);
   const [month, setMonth] = useState<number | 'all'>(t.month);
-  const [rows, setRows] = useState<AdhocIncome[]>([]);
+  const [rows, setRows] = useState<UnifiedAdhocRow[]>([]);
   const [personas, setPersonas] = useState<PersonaRow[]>([]);
   const [draft, setDraft] = useState<(Omit<AdhocIncome, 'id' | 'createdAt' | 'updatedAt'> & { id?: number }) | null>(null);
   const [status, setStatus] = useState('');
@@ -37,7 +38,7 @@ export function AdhocIncomeView({ active }: Props) {
     };
     if (month !== 'all') filter.month = month;
     const [list, p] = await Promise.all([
-      listAdhoc(filter),
+      listAdhocUnified(filter),
       listPersonas(),
     ]);
     if (!alive()) return;
@@ -63,7 +64,8 @@ export function AdhocIncomeView({ active }: Props) {
     }
   }
 
-  async function remove(row: AdhocIncome) {
+  async function remove(row: UnifiedAdhocRow) {
+    if (row.source !== 'adhoc') return; // sales are managed from the customer view
     try {
       await deleteAdhoc(row.id);
       await refresh();
@@ -80,7 +82,7 @@ export function AdhocIncomeView({ active }: Props) {
       <div className="flex items-end justify-between gap-3">
         <div>
           <h2 className="display-font text-2xl font-bold persona-accent">Adhoc income</h2>
-          <p className="opacity-70 text-sm">One-off sales, tips, customs. Backfill to any past month for tax prep.</p>
+          <p className="opacity-70 text-sm">One-off sales, tips, customs — plus sales recorded on customer records, marked 🛒. Backfill to any past month for tax prep.</p>
         </div>
         <div className="flex items-end gap-2">
           <label className="flex flex-col gap-1">
@@ -126,20 +128,40 @@ export function AdhocIncomeView({ active }: Props) {
         <div className="divide-y divide-black/5">
           {rows.map((r) => {
             const p = r.personaCode ? personaByCode.get(r.personaCode) : null;
+            const isSale = r.source === 'sale';
+            const noteText = isSale
+              ? [`${r.quantity} ${r.unit}${r.quantity === 1 ? '' : 's'}`, r.note].filter(Boolean).join(' · ')
+              : r.note;
             return (
-              <div key={r.id} className="grid grid-cols-12 gap-2 items-center py-2 text-sm">
+              <div key={`${r.source}-${r.id}`} className="grid grid-cols-12 gap-2 items-center py-2 text-sm">
                 <div className="col-span-2 font-mono opacity-70">{r.dateEarned}</div>
                 <div className="col-span-1">
                   {p ? (
                     <span className="px-1.5 py-0.5 rounded-md text-[11px] font-semibold" style={{ background: p.primaryColor, color: p.textColor }}>{p.code}</span>
                   ) : <span className="text-[11px] opacity-50">—</span>}
                 </div>
-                <div className="col-span-3 truncate font-semibold">{r.sourceLabel || '(no source)'}</div>
-                <div className="col-span-4 text-xs opacity-70 truncate">{r.note}</div>
+                <div className="col-span-3 truncate font-semibold" title={isSale ? 'From a customer sale — edit on the customer record' : undefined}>
+                  {isSale && <span className="mr-1" aria-label="From customer sale">🛒</span>}
+                  {r.sourceLabel || '(no source)'}
+                </div>
+                <div className="col-span-4 text-xs opacity-70 truncate">{noteText}</div>
                 <div className="col-span-1 font-mono text-right">{fmtMoney(r.amount)}</div>
                 <div className="col-span-1 flex justify-end gap-1">
-                  <button type="button" className="pretty-button secondary" onClick={() => setDraft({ ...r })}>Edit</button>
-                  <ConfirmButton label="✕" confirmLabel="✕?" onConfirm={() => remove(r)} />
+                  {isSale ? (
+                    <span className="text-[11px] opacity-50 italic" title="Edit this sale from the customer's history">on customer</span>
+                  ) : (
+                    <>
+                      <button type="button" className="pretty-button secondary" onClick={() => setDraft({
+                        id: r.id,
+                        dateEarned: r.dateEarned,
+                        amount: r.amount,
+                        personaCode: r.personaCode,
+                        sourceLabel: r.sourceLabel,
+                        note: r.note,
+                      })}>Edit</button>
+                      <ConfirmButton label="✕" confirmLabel="✕?" onConfirm={() => remove(r)} />
+                    </>
+                  )}
                 </div>
               </div>
             );

@@ -4,6 +4,14 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] — 2026-05-21
+
+### Added
+
+- **Customer sales flow into the Adhoc Income view.** `customer_sales` rows now surface in `src/views/Income/AdhocIncomeView.tsx` alongside typed adhoc entries — same year/month/persona filters, same running total. Sale rows are marked with a 🛒 glyph and show `<customer> — <product>` as the source label and `<quantity> <unit> · <sale notes>` in the note column. Read-only here (no Edit/Delete buttons; the "on customer" hint points back to the customer's history timeline for changes).
+- **Implementation is a read-side union, not a copy.** A new `listAdhocUnified(filter)` in `src/data/income.ts` runs both queries with matching year/month/persona predicates, builds a `UnifiedAdhocRow` discriminated union (`source: 'adhoc' | 'sale'`), and sorts by `dateEarned DESC`. Customer sales stay in `customer_sales` as the single source of truth — no schema changes, no duplication, no sync hazard. Editing/deleting a sale on the customer side updates the income view on next render.
+- **Reports + Home dashboard totals now include sales.** `totalsForPeriod` adds a `SUM(customer_sales.total_cents)/100` to `adhocTotal` (with the same period + persona filters), so MTD/YTD income figures reflect sales without making them invisible income.
+
 ## [1.4.2] — 2026-05-21
 
 ### Changed

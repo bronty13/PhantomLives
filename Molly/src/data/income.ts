@@ -87,6 +87,119 @@ export async function deleteAdhoc(id: number): Promise<void> {
   await conn.execute('DELETE FROM income_adhoc WHERE id = $1', [id]);
 }
 
+// ---------- Unified adhoc income (adhoc + customer sales) -----------------
+//
+// 1.5.0: surface customer_sales rows in the Adhoc Income view so all
+// one-off income lives in one place. Sales stay in customer_sales as the
+// source of truth — this is a read-only union at query time, not a copy.
+// Sale rows on the income side are NOT editable; the customer's history
+// timeline owns their lifecycle.
+
+export interface UnifiedAdhocAdhoc {
+  source: 'adhoc';
+  /** income_adhoc row id */
+  id: number;
+  dateEarned: string;
+  amount: number;
+  personaCode: string | null;
+  sourceLabel: string;
+  note: string;
+}
+
+export interface UnifiedAdhocSale {
+  source: 'sale';
+  /** customer_sales row id */
+  id: number;
+  dateEarned: string;            // sale_date, normalized to YYYY-MM-DD
+  amount: number;                // total_cents / 100
+  personaCode: string | null;    // customer's persona
+  sourceLabel: string;           // "Customer username — Product name"
+  note: string;                  // sale.notes
+  customerUid: string;
+  quantity: number;
+  unit: string;
+}
+
+export type UnifiedAdhocRow = UnifiedAdhocAdhoc | UnifiedAdhocSale;
+
+interface SaleAsIncomeRow {
+  id: number;
+  sale_date: string;
+  total_cents: number;
+  persona_code: string | null;
+  customer_uid: string;
+  customer_username: string;
+  customer_real_name: string;
+  product_name: string;
+  product_unit: string;
+  quantity: number;
+  notes: string;
+}
+
+export async function listAdhocUnified(filter: AdhocFilter = {}): Promise<UnifiedAdhocRow[]> {
+  const conn = await db();
+  const adhoc = await listAdhoc(filter);
+
+  // Mirror the same year/month/persona predicates as listAdhoc, but
+  // against customer_sales joined with customers + products.
+  const saleParams: unknown[] = [];
+  let saleSql = `
+    SELECT s.id, s.sale_date, s.total_cents, s.quantity, s.notes,
+           c.persona_code, c.uid AS customer_uid, c.username AS customer_username,
+           c.real_name AS customer_real_name,
+           p.name AS product_name, p.unit AS product_unit
+      FROM customer_sales s
+      JOIN customers c ON c.uid = s.customer_uid
+      JOIN products  p ON p.id  = s.product_id
+     WHERE 1=1`;
+  if (filter.year) {
+    saleParams.push(`${filter.year}-`);
+    saleSql += ` AND substr(s.sale_date, 1, 5) = $${saleParams.length}`;
+  }
+  if (filter.year && filter.month) {
+    const prefix = `${filter.year}-${filter.month.toString().padStart(2, '0')}-`;
+    saleParams.push(prefix);
+    saleSql += ` AND substr(s.sale_date, 1, 8) = $${saleParams.length}`;
+  }
+  if (filter.personaCode && filter.personaCode !== 'ALL') {
+    saleParams.push(filter.personaCode);
+    saleSql += ` AND c.persona_code = $${saleParams.length}`;
+  }
+  saleSql += ` ORDER BY s.sale_date DESC, s.id DESC`;
+  const saleRows = await conn.select<SaleAsIncomeRow[]>(saleSql, saleParams);
+
+  const sales: UnifiedAdhocSale[] = saleRows.map((r) => {
+    const name = r.customer_username?.trim() || r.customer_real_name?.trim() || '(unnamed)';
+    return {
+      source: 'sale',
+      id: r.id,
+      dateEarned: (r.sale_date ?? '').split(/[ T]/)[0] ?? '',
+      amount: (r.total_cents ?? 0) / 100,
+      personaCode: r.persona_code,
+      sourceLabel: `${name} — ${r.product_name}`,
+      note: r.notes ?? '',
+      customerUid: r.customer_uid,
+      quantity: r.quantity,
+      unit: r.product_unit ?? 'item',
+    };
+  });
+
+  const adhocs: UnifiedAdhocAdhoc[] = adhoc.map((a) => ({
+    source: 'adhoc',
+    id: a.id,
+    dateEarned: a.dateEarned,
+    amount: a.amount,
+    personaCode: a.personaCode,
+    sourceLabel: a.sourceLabel,
+    note: a.note,
+  }));
+
+  return [...adhocs, ...sales].sort((a, b) => {
+    if (a.dateEarned === b.dateEarned) return b.id - a.id;
+    return b.dateEarned.localeCompare(a.dateEarned);
+  });
+}
+
 // ---------- Site income ---------------------------------------------------
 
 export interface SiteIncome {
@@ -191,7 +304,40 @@ export async function totalsForPeriod(opts: { year: number; month?: number; dayC
 
   const adhocTotal = await sumAdhoc(conn, adhocWhere + adhocP.where, [...adhocParams, ...adhocP.params]);
   const siteTotal  = await sumSite(conn,  siteWhere  + siteP.where,  [...siteParams,  ...siteP.params]);
-  return { adhocTotal, siteTotal, total: adhocTotal + siteTotal };
+
+  // customer_sales also contributes to the "adhoc" bucket — same conceptual
+  // category (one-off income tied to a date), just sourced from customer
+  // records instead of typed into the Adhoc Income view directly. We sum
+  // total_cents (stored as INTEGER cents) and divide by 100 to land in the
+  // same dollars-as-REAL space as income_adhoc.amount.
+  const salesParams: unknown[] = [];
+  let salesWhere: string;
+  if (opts.month) {
+    const monthPrefix = `${opts.year}-${opts.month.toString().padStart(2, '0')}-`;
+    salesParams.push(monthPrefix);
+    salesWhere = `substr(s.sale_date, 1, 8) = $1`;
+    if (opts.dayCap) {
+      salesParams.push(opts.dayCap.toString().padStart(2, '0'));
+      salesWhere += ` AND substr(s.sale_date, 9, 2) <= $2`;
+    }
+  } else {
+    salesParams.push(yearPrefix);
+    salesWhere = `substr(s.sale_date, 1, 5) = $1`;
+  }
+  if (opts.personaCode && opts.personaCode !== 'ALL') {
+    salesParams.push(opts.personaCode);
+    salesWhere += ` AND c.persona_code = $${salesParams.length}`;
+  }
+  const salesRows = await conn.select<{ s: number | null }[]>(
+    `SELECT COALESCE(SUM(s.total_cents), 0) AS s
+       FROM customer_sales s JOIN customers c ON c.uid = s.customer_uid
+      WHERE ${salesWhere}`,
+    salesParams,
+  );
+  const salesTotal = (salesRows[0]?.s ?? 0) / 100;
+
+  const combinedAdhoc = adhocTotal + salesTotal;
+  return { adhocTotal: combinedAdhoc, siteTotal, total: combinedAdhoc + siteTotal };
 }
 
 export interface PerSiteIncome {
