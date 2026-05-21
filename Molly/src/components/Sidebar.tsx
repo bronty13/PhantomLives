@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { getVersion } from '@tauri-apps/api/app';
 import { SayingsBanner } from './SayingsBanner';
 
-export type ViewKey = 'home' | 'reminders' | 'calendar' | 'clips' | 'customers' | 'helper' | 'promos' | 'income' | 'expenses' | 'reports' | 'settings';
+export type ViewKey = 'home' | 'log' | 'reminders' | 'calendar' | 'clips' | 'customers' | 'helper' | 'promos' | 'income' | 'expenses' | 'reports' | 'settings';
 
 interface SidebarProps {
   active: ViewKey;
@@ -20,6 +20,7 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { key: 'home',      label: 'Home',      icon: <span>🏠</span>, hint: "Today's reminders + dashboards" },
+  { key: 'log',       label: "Molly's Log", icon: <span>📔</span>, hint: "Captain's-log style journal entries" },
   { key: 'reminders', label: 'Reminders', icon: <span>🔔</span>, hint: 'Today, overdue, coming up' },
   { key: 'calendar',  label: 'Calendar',  icon: <span>📅</span>, hint: 'Clip releases + schedule overlay' },
   { key: 'clips',     label: 'Clips',     icon: <span>🎬</span>, hint: 'Imported from MasterClipper' },

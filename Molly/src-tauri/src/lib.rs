@@ -3,6 +3,7 @@ mod backup;
 mod export;
 mod fsutil;
 mod history;
+mod log;
 
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -92,6 +93,12 @@ pub fn run() {
             sql: include_str!("../migrations/014_customer_sales.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 15,
+            description: "mollys-log",
+            sql: include_str!("../migrations/015_mollys_log.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -133,6 +140,8 @@ pub fn run() {
             export::import_full_export,
             history::add_history_entry_with_attachment,
             history::download_history_attachment,
+            log::add_log_entry_with_attachment,
+            log::download_log_attachment,
         ])
         .run(tauri::generate_context!())
         .expect("error while running molly");
@@ -156,6 +165,7 @@ mod camel_case_contract {
     use crate::backup::{BackupRow, Settings, VerifyResult};
     use crate::export::ExportResult;
     use crate::history::HistoryEntryRef;
+    use crate::log::LogEntryRef;
     use serde_json::Value;
 
     fn assert_camel(value: &Value, type_name: &'static str) {
@@ -222,5 +232,11 @@ mod camel_case_contract {
     fn history_entry_ref_is_camel_case() {
         let v = serde_json::to_value(HistoryEntryRef { id: 0 }).unwrap();
         assert_camel(&v, "HistoryEntryRef");
+    }
+
+    #[test]
+    fn log_entry_ref_is_camel_case() {
+        let v = serde_json::to_value(LogEntryRef { id: 0 }).unwrap();
+        assert_camel(&v, "LogEntryRef");
     }
 }

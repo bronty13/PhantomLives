@@ -13,6 +13,7 @@ import { ClipsListView } from './views/Clips/ClipsListView';
 import { RemindersView } from './views/Reminders/RemindersView';
 import { IncomeView } from './views/Income/IncomeView';
 import { ExpensesView } from './views/Expenses/ExpensesView';
+import { MollysLogView } from './views/MollysLog/MollysLogView';
 import { ReportsView } from './views/Reports/ReportsView';
 import { materializeOccurrences, pendingCounts } from './data/occurrences';
 import { materializeRecurringExpenses } from './data/expenses';
@@ -88,6 +89,7 @@ export default function App() {
   let body: React.ReactNode;
   switch (view) {
     case 'home':      body = <HomeDashboard active={active} onGoTo={(v) => setView(v)} />; break;
+    case 'log':       body = <MollysLogView />; break;
     case 'reminders': body = <RemindersView active={active} onCountsChanged={refreshCounts} />; break;
     case 'calendar':  body = <CalendarView active={active} />; break;
     case 'clips':     body = <ClipsListView active={active} />; break;

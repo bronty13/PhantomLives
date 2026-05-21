@@ -70,6 +70,7 @@ Molly/
 │   │   ├── export.rs                     # Full-data zip export + dev-only import
 │   │   ├── attachments.rs                # Receipt file save / reveal / open
 │   │   ├── history.rs                    # add_history_entry_with_attachment + download_history_attachment (rusqlite BLOB I/O)
+│   │   ├── log.rs                        # add_log_entry_with_attachment + download_log_attachment (Molly's Log)
 │   │   └── fsutil.rs                     # ~/Downloads/<sub> resolution + Finder reveal
 │   ├── migrations/                       # 12 migrations (run automatically on launch)
 │   │   ├── 001_init.sql                  # personas + app_settings
@@ -85,7 +86,8 @@ Molly/
 │   │   ├── 011_kinks_preload.sql         # description col + customer_kinks.position + 349 default kinks
 │   │   ├── 012_products_and_customer_fields.sql  # products: price_cents+unit; customers: VIP, primary_email_index, address, phones
 │   │   ├── 013_customer_history.sql      # customer_history (append-only) + BLOB attachment column
-│   │   └── 014_customer_sales.sql        # customer_sales (editable) — product_id RESTRICT, customer_uid CASCADE
+│   │   ├── 014_customer_sales.sql        # customer_sales (editable) — product_id RESTRICT, customer_uid CASCADE
+│   │   └── 015_mollys_log.sql            # mollys_log (global journal) + BLOB attachment column
 │   ├── icons/                            # Generated icon set (from molly.svg)
 │   ├── capabilities/default.json         # Tauri ACL — which plugin commands the frontend can invoke
 │   ├── tauri.conf.json
@@ -123,6 +125,7 @@ All cross-boundary types use `#[serde(rename_all = "camelCase")]` — enforced b
 | attachments | `save_attachment`, `delete_attachment`, `reveal_attachment`, `open_attachment` |
 | export | `export_full_data`, `reveal_export_dir`, `import_full_export` |
 | history | `add_history_entry_with_attachment`, `download_history_attachment` (rusqlite BLOB I/O — bytes never cross IPC) |
+| log | `add_log_entry_with_attachment`, `download_log_attachment` (rusqlite BLOB I/O for Molly's Log) |
 
 ACL is in `src-tauri/capabilities/default.json`; this is the file that bit us in v0.6.0 (SQL `execute` was missing from the allowlist and writes failed silently).
 
@@ -156,7 +159,7 @@ Updater is wired against `https://github.com/bronty13/PhantomLives/releases/late
 
 ## Tests
 
-- **Rust**: `./run-tests.sh` → 13 tests (7 backup + 6 camelCase contract).
+- **Rust**: `./run-tests.sh` → 14 tests (7 backup + 7 camelCase contract).
 - **TypeScript**: no frontend test suite yet; deferred to a Phase 8.5 hygiene pass.
 
 ## Reference patterns from elsewhere in PhantomLives

@@ -9,6 +9,7 @@ This is a single-user gift app, built for Sallie. The 1.0.0 milestone is feature
 | Tab | What it does |
 |---|---|
 | 🏠 **Home** | A rotating cute saying + a dashboard: clips MTD, per-persona breakdown, reuse detection, recent imports, today's reminders. |
+| 📔 **Molly's Log** | Captain's-log-style personal journal. Append timestamped entries with optional file attachments; edit/delete any past entry; grep-toggle filter. |
 | 🔔 **Reminders** | Overdue / Today / Coming-up-7d with a satisfying check-off + 10-second undo. Schedules tab for the rules (no-cron wizard, six cadence kinds). Five reminders preloaded. |
 | 📅 **Calendar** | Month grid with persona-colored clip pills imported from MasterClipper. Click a pill for the clip detail + your own Tiptap notes. |
 | 🎬 **Clips** | Searchable, sortable clip list. **📂 Import CSV** sucks in a MasterClipper export with persona-code mapping; idempotent on re-import. |

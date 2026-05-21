@@ -185,6 +185,16 @@ To bring in a new export from MasterClipper:
 
 Any notes you've added inside Molly (the "Molly notes" field on a clip) are kept across re-imports.
 
+## Molly's Log
+
+Click **📔 Molly's Log** in the sidebar. This is your captain's-log-style personal journal — append timestamped entries about whatever (today's mood, end-of-day reflection, an idea you don't want to forget). Optional file attachment per entry (image, PDF, anything). Stored in Molly's database, so attachments travel with the auto-backup zip.
+
+- **Log entry** — type into the composer and click **🖖 Log entry**. Attach a file via **📎 Attach file…** first if you want one stored with this entry.
+- **Edit / Delete** — each past entry has Edit + Delete buttons. Edit reveals an inline textarea (Save / Cancel); Delete is two-tap-confirmed and removes the row plus any attached file.
+- **Filter** the list with the search box; tick **grep** for regex mode. Searches across the entry body and attachment filename. Shows "N of M" while filtering.
+
+The composer placeholder rotates Trek-flavored openers ("Captain's log…", "Personal log, supplemental…") just for fun — your entry is plain text and can be whatever you want.
+
 ## Calendar
 
 Click **Calendar**. The month grid shows every imported clip on its go-live date as a colored pill (one per persona), and every pending reminder on its due date as a 🔔 pill with a dashed border (color-matched to the schedule's persona, or neutral when the schedule isn't bound to one). Completed reminders drop off automatically. Click any clip pill to open its detail panel — read every imported field and write your own rich-text notes that survive future imports. Use **Prev** / **Next** / **Today** to move around.

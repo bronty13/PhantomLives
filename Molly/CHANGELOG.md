@@ -4,6 +4,26 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] — 2026-05-21
+
+### Added
+
+- **📔 Molly's Log** — new top-level sidebar entry (right below Home) for a Captain's-log-style personal journal. Compose freeform text entries with an optional inline file attachment; each entry is timestamped and editable / deletable.
+  - Mirrors the customer-history pattern: `customer_history` minus the customer FK and persona binding. Inline BLOB attachments via a parallel `src-tauri/src/log.rs` rusqlite module (`add_log_entry_with_attachment`, `download_log_attachment`) so binary bytes never round-trip through JS IPC.
+  - Filter input above the list with a **grep** checkbox (regex toggle); substring by default, real `RegExp` when toggled. "N of M" count + Clear button + inline amber warning on invalid regex. Filter searches across body + attachment filename.
+  - Editing reveals an inline textarea (Save / Cancel); deletion is two-tap-confirmed via `ConfirmButton` and removes the row + its inline BLOB.
+  - Composer placeholder rotates a short list of Trek-flavored openers ("Captain's log…", "Stardate today — note to self…") for vibes; doesn't constrain the actual entry format.
+
+### Schema
+
+- Migration `015_mollys_log.sql` adds the `mollys_log` table (id, ts, body, attachment_filename/mime/size, attachment_data BLOB, updated_at) + index on `ts DESC`.
+
+### Tauri command surface
+
+- `log::add_log_entry_with_attachment` — reads the file, INSERTs the row with the BLOB, returns the new id.
+- `log::download_log_attachment` — streams the BLOB by id out to a target path.
+- New `LogEntryRef` boundary struct + matching `camel_case_contract` test; total now 14.
+
 ## [1.6.2] — 2026-05-21
 
 ### Fixed
