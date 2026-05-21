@@ -2,6 +2,7 @@ mod attachments;
 mod backup;
 mod export;
 mod fsutil;
+mod history;
 
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -61,6 +62,36 @@ pub fn run() {
             sql: include_str!("../migrations/009_social.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 10,
+            description: "kinks",
+            sql: include_str!("../migrations/010_kinks.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 11,
+            description: "kinks-preload",
+            sql: include_str!("../migrations/011_kinks_preload.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 12,
+            description: "products-and-customer-fields",
+            sql: include_str!("../migrations/012_products_and_customer_fields.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 13,
+            description: "customer-history",
+            sql: include_str!("../migrations/013_customer_history.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 14,
+            description: "customer-sales",
+            sql: include_str!("../migrations/014_customer_sales.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -100,6 +131,8 @@ pub fn run() {
             export::export_full_data,
             export::reveal_export_dir,
             export::import_full_export,
+            history::add_history_entry_with_attachment,
+            history::download_history_attachment,
         ])
         .run(tauri::generate_context!())
         .expect("error while running molly");
@@ -122,6 +155,7 @@ mod camel_case_contract {
     use crate::attachments::AttachmentInfo;
     use crate::backup::{BackupRow, Settings, VerifyResult};
     use crate::export::ExportResult;
+    use crate::history::HistoryEntryRef;
     use serde_json::Value;
 
     fn assert_camel(value: &Value, type_name: &'static str) {
@@ -182,5 +216,11 @@ mod camel_case_contract {
             file_count: 0,
         }).unwrap();
         assert_camel(&v, "ExportResult");
+    }
+
+    #[test]
+    fn history_entry_ref_is_camel_case() {
+        let v = serde_json::to_value(HistoryEntryRef { id: 0 }).unwrap();
+        assert_camel(&v, "HistoryEntryRef");
     }
 }

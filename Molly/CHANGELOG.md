@@ -4,6 +4,126 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] — 2026-05-21
+
+### Changed
+
+- **History notes are now editable and deletable** — lifting the audit-only restriction set in 1.3.0 at the user's request. Each note row in the timeline now has **Edit** / **Delete** buttons matching the sale-row UX. Edit reveals an inline textarea (Save / Cancel) bound to the note's body; Delete is two-tap-confirmed via `ConfirmButton` and removes the row along with its inline BLOB attachment. The data layer (`src/data/customerHistory.ts`) gains `updateEntry(id, body)` and `deleteEntry(id)` exports; the module-level comment was rewritten to reflect the new contract. Editing a note touches only the body — attachment metadata and BLOB stay put.
+
+## [1.4.1] — 2026-05-21
+
+### Changed
+
+- **Sale Date is now a date picker** (`<input type="date">`) in `CustomerSaleEditor`. Stitches the picked date with `12:00:00` UTC time so the row sorts cleanly alongside history datetimes and timezone shifts can't bump the displayed day. Sale timeline rows now render date-only (`May 21, 2026`) since the time portion was always meaningless noise; history rows still show full datetime.
+- **Customer-list search adds a regex checkbox** and switches to client-side filtering for both substring and regex modes. Filter runs as-you-type now (no more Enter/blur to trigger refresh). Searches across username, real name, UID, and primary email; matches "N of M" count + Clear button + invalid-regex inline amber warning. Persona scoping stays server-side so the fetched dataset stays bounded.
+
+## [1.4.0] — 2026-05-21
+
+Phase 3 of the customer-record expansion: **sales transactions**, interleaved with the history log into one customer timeline. Closes out the three-phase plan started in 1.2.0.
+
+### Added
+
+- **Sales on the customer timeline.** A new **🛒 + Add sale** button on the History card opens an inline composer with: Product (dropdown of unarchived products, shows the default `$X / unit` next to each name), Quantity, Unit price (USD), Total (USD), Date (optional — defaults to now), and a Notes textarea. The three money fields reconcile bidirectionally: edit Quantity or Unit price and Total recalcs; edit Total and Unit price back-solves from `total / quantity` for line-level discounts. Saving lands a row in `customer_sales`.
+- **Sales render in the timeline** alongside notes, sorted by date newest-first. Sale rows look like `🛒 Customs · 10 minutes · $50.00` with the customer-supplied notes below. When the user discounted the line, a tiny breadcrumb shows `(($5.00 / minute × 10 = $50.00, adjusted to $40.00))`. **Sales are editable and deletable** (unlike notes, which stay append-only) — Edit pops the inline composer pre-filled, Delete is two-tap-confirmed via the existing `ConfirmButton`.
+- **Lifetime sales pill** in the customer editor header (`💖 $X.XX`) shows `SUM(total_cents)` across all sales for the customer; hidden when zero. Refreshes on any add/edit/delete via a parent callback (`onSalesChanged`).
+- **Timeline filter** (added per follow-up request): a search input above the timeline filters notes + sale notes + product names. Substring match by default (case-insensitive); a small `regex` checkbox switches to a real `RegExp`. Invalid regex shows an inline amber error; valid filters show "N of M" while active with a Clear button.
+
+### Schema
+
+- New migration `014_customer_sales.sql` adds the `customer_sales` table (id, customer_uid FK CASCADE, product_id FK RESTRICT, sale_date, quantity REAL, unit_price_cents, total_cents, notes, created_at, updated_at) plus an index on `(customer_uid, sale_date DESC)`. `product_id` uses `ON DELETE RESTRICT` so historical sales can never be silently orphaned — archive a product instead of deleting it when it goes out of rotation.
+
+## [1.3.0] — 2026-05-21
+
+Phase 2 of the customer-record expansion: per-customer immutable **history log** with optional inline file attachments. Phase 3 (sales transactions) builds on top of this and lands in 1.4.0.
+
+### Added
+
+- **Customer history card** below the existing Notes section in the customer editor. Composer at the top (textarea + 📎 attach + ➕ Add to history) with a reverse-chronological list of entries below. Each entry shows a timestamp + the body text (newlines preserved) + a clickable 📎 chip for the optional attachment. Footer: *"Audit-only — entries cannot be edited or deleted."*
+- **Audit-only by design.** `src/data/customerHistory.ts` deliberately exports only `addEntry`, `addEntryWithAttachment`, `listEntries`, and `downloadAttachment` — no `updateEntry` / `deleteEntry`. The UX contract is enforced at the data layer rather than via UI hiding.
+- **Inline BLOB attachments.** Picking a file via the OS dialog stores the bytes directly into `customer_history.attachment_data` as a SQLite BLOB; downloading streams them back out via a save dialog. Files never round-trip through the JS layer — both directions go through new Rust commands (`add_history_entry_with_attachment`, `download_history_attachment`) backed by `rusqlite` for clean BLOB binding. Auto-detected MIME by extension.
+
+### Schema
+
+- New migration `013_customer_history.sql` adds the `customer_history` table (id, customer_uid FK, ts, body, attachment_filename/mime/size, attachment_data BLOB) plus an index on `(customer_uid, ts DESC)`. List queries deliberately exclude the BLOB column to keep page render cheap.
+
+### Tauri command surface
+
+- `history::add_history_entry_with_attachment` — reads the file, inserts the row, returns the new id.
+- `history::download_history_attachment` — reads the BLOB by id, writes to a target path.
+- 1 new `camel_case_contract` test (`HistoryEntryRef`); total now 13.
+
+### Dependencies
+
+- Added `rusqlite = "0.31"` with the `bundled` SQLite feature. The `tauri-plugin-sql` JSON parameter marshaller doesn't bind raw byte arrays cleanly; rusqlite opens the same `molly.db` file with `busy_timeout(5s)` so writes from both connection paths cooperate via SQLite's WAL.
+
+## [1.2.2] — 2026-05-21
+
+### Added
+
+- **Phone number formatting + validation.** When the customer's country is US, both phone inputs format-as-you-type into the canonical `(XXX) XXX-XXXX` form and tolerate paste of any common variant (`555-123-4567`, `+1 555 123 4567`, `5551234567`, `1-5551234567`, etc. — `formatUSPhone` strips non-digits and drops a leading `1` country code). Numbers with fewer than 10 digits get an amber border and a "10 digits required for a US number." hint below the input. Non-US countries bypass the formatter entirely (free text), since global phone formats vary too widely to coerce reliably. Logic lives in `src/lib/phone.ts`.
+
+## [1.2.1] — 2026-05-21
+
+### Fixed
+
+- **Product price input is now typeable.** Settings → Products price field was `type="number"` + `step="0.01"` + `.toFixed(2)`-on-every-render, which made typing `$20.03` impossible — the buffer got reformatted on every keystroke, and the browser's number-input enforcement only let you increment by penny via the spinner. Switched to uncontrolled `type="text"` with `inputMode="decimal"`, `defaultValue`, on-change parsing into cents, and on-blur normalization back to 2-decimal form. `key={editing.id}` on the row's edit grid ensures defaults pick up the right row when switching.
+
+### Changed
+
+- **State / Province** in the customer's mailing address renders as a dropdown of the 50 US states + DC + 5 USPS state-equivalent territories when `country === 'US'`. For other countries, falls back to the original free-text input.
+- **Zip+4** field is hidden when country isn't US (it's a US-specific format). Non-US countries see a single "Postal code" field instead.
+
+## [1.2.0] — 2026-05-21
+
+Phase 1 of a three-phase customer-record expansion. Phase 2 (per-customer immutable history log with file attachments) and Phase 3 (sales transactions backed by the new product pricing) follow.
+
+### Added — Products
+
+- **Per-product price and unit.** Settings → Products gains a Price (USD) input and a Unit field (with a datalist of `minute`, `hour`, `session`, `item`, `set`). The 7 preloaded products get sensible default units on migration (`minute` for Phone/Cam/Customs, `item` for the Physical merch); prices start at $0 — set them in Settings. The product display row now reads e.g. `Customs · $5.00 / minute`.
+
+### Added — Customer record
+
+- **VIP toggle** in the customer editor header. Click the `☆ VIP` pill to mark a customer as VIP; the pill turns gold (⭐ VIP), a matching `⭐ VIP` chip appears next to their persona in the customer list, the editor header gets a ⭐, and the list **sorts VIP customers first**.
+- **Primary email selector.** Each of the five email slots gets a radio button. The list-row primary-email picker now follows the user's chosen primary, falling back to the first non-empty slot if the chosen slot is blank.
+- **Mailing address.** New card on the customer editor with: Address line 1, Address line 2, City, State / Province, Zip + +4, and a Country dropdown sourced from the full ISO 3166-1 alpha-2 list (US/CA/GB pinned to the top, separator, then alphabetical). Default country is US.
+- **Two phone numbers** with per-phone **📱 Mobile** checkbox and a shared "Primary phone" radio.
+
+### Schema
+
+- Migration `012_products_and_customer_fields.sql`: `ALTER TABLE products` adds `price_cents` + `unit`; `ALTER TABLE customers` adds 13 new columns (`vip`, `primary_email_index`, `address1/2`, `city`, `state`, `zip`, `zip4`, `country`, `phone1/2`, `phone1/2_is_mobile`, `primary_phone_index`). Lossless — every column has a default; existing customers come out the other side unchanged.
+
+## [1.1.2] — 2026-05-21
+
+### Fixed
+
+- **Drag-to-reorder kink chips actually works now.** Tauri 2's default window setting `dragDropEnabled: true` was intercepting all HTML5 drag events for native file-drop handling, so chip drag-start never reached the React handlers. Set `dragDropEnabled: false` in `tauri.conf.json`. Also hardened the chip itself: switched the wrapping element from `<span>` to `<div>` (more reliable drag surface), added a visible `⋮⋮` grip handle, gave the chip `userSelect: none`, and set `draggable={false}` plus `onMouseDown` stopPropagation on the × remove button so clicking it doesn't accidentally start a drag.
+- **Customer edits no longer vanish when you navigate away.** Two changes:
+  - **Debounced auto-save (800ms idle).** Any change to a customer field, chip selection, persona, emails, or notes schedules an auto-save 800ms after you stop interacting. Successive edits collapse into one save.
+  - **Save-on-Back.** The ← Back button now flushes any pending changes through `save()` before closing the editor. The explicit **💾 Save now** button is still there for users who want a hard commit; "💾 Saving…" / "✏️ Unsaved — auto-saving…" / "✓ Saved" status reads live next to it.
+
+  Root cause of the data loss: `addCustomer` inserts an empty row into the DB the moment you click "Add customer", and the editor opened on top of that empty row. Without auto-save, typed-but-unsaved fields stayed in component state and were dropped on navigation. Auto-save closes the gap end-to-end.
+
+## [1.1.1] — 2026-05-21
+
+### Added
+
+- **Drag-to-reorder kink chips.** Selected kink chips on the customer editor are now draggable. Grab a chip and drop it onto another to insert before it; the numbered position labels (`1.`, `2.`, …) update live and persist via `customer_kinks.position` on save. Matches MasterClipper's `CategoryChipPicker` reorder UX.
+- **Filter input on every Settings taxonomy tab.** Products / Interests / Kinks now have a search box at the top that filters by name *or* description (case-insensitive). Shows "N of M" while filtering; a Clear button resets it. The 349-row Kinks list is now actually navigable.
+- **Description preview on Settings rows.** Each row shows its description (when present, currently kinks-only) as a one-line truncated caption below the name.
+
+### Added
+
+- **Customer "Kinks" field.** A third per-customer list alongside Products and Interests, modeled directly on MasterClipper's `CategoryChipPicker` interaction pattern. Molly ships preloaded with 349 curated kinks (Voyeurism, Exhibitionism, Frotteurism, …, through to Dystopian/Fantasy/Supernatural AU), each with a short description shown in the picker dropdown.
+- **`KinkChipPicker` component (`src/components/KinkChipPicker.tsx`).** Shows only the *selected* kinks as chips (numbered `1.`, `2.`, … with × remove). A **+ Add kink** button opens a searchable dropdown of the unselected catalog; rows show the name + description, and typing a brand-new name surfaces a sticky "Create kink: '…'" row at the top so you can add on the fly without leaving the editor.
+- **Per-customer kink ordering.** `customer_kinks.position` (new column) tracks the order you pick kinks in, mirroring MasterClipper's `clip_categories.position`.
+- **Kink count in the customer list row.** The right-side counter cluster now shows "N kinks" alongside the existing product/interest counts.
+- **Settings → Kinks.** Reuses the existing `TaxonomySettings` UI; the 349 default rows are immediately editable (rename, recolor, archive, delete) without any one-time import step.
+
+### Schema
+
+- New migration `010_kinks.sql` adds the empty `kinks` (catalog) + `customer_kinks` (join) tables.
+- New migration `011_kinks_preload.sql` evolves both: adds `kinks.description`, adds `customer_kinks.position` (with index `customer_kinks_by_pos`), and bulk-inserts the 349 default kinks. Both migrations run automatically on launch; no manual import.
+
 ## [1.0.0] — 2026-05-20
 
 ### 🎁 First-gift release for Sallie

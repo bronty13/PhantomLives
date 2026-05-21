@@ -32,7 +32,7 @@ Molly/
 │   │   ├── db.ts                         # Shared Database singleton
 │   │   ├── personas.ts
 │   │   ├── sites.ts
-│   │   ├── taxonomy.ts                   # products + interests
+│   │   ├── taxonomy.ts                   # products + interests + kinks
 │   │   ├── customers.ts
 │   │   ├── clips.ts
 │   │   ├── schedules.ts
@@ -69,17 +69,23 @@ Molly/
 │   │   ├── backup.rs                     # Auto-backup-on-launch + Test / Restore
 │   │   ├── export.rs                     # Full-data zip export + dev-only import
 │   │   ├── attachments.rs                # Receipt file save / reveal / open
+│   │   ├── history.rs                    # add_history_entry_with_attachment + download_history_attachment (rusqlite BLOB I/O)
 │   │   └── fsutil.rs                     # ~/Downloads/<sub> resolution + Finder reveal
-│   ├── migrations/                       # 9 migrations (run automatically on launch)
+│   ├── migrations/                       # 12 migrations (run automatically on launch)
 │   │   ├── 001_init.sql                  # personas + app_settings
 │   │   ├── 002_sites.sql                 # site entries, preloaded
 │   │   ├── 003_taxonomy.sql              # products + interests
-│   │   ├── 004_customers.sql             # customers + many-to-many joins
+│   │   ├── 004_customers.sql             # customers + many-to-many joins (products, interests, kinks)
 │   │   ├── 005_clips.sql                 # imported clip rows + import audit
 │   │   ├── 006_schedules.sql             # schedules + occurrences
 │   │   ├── 007_income.sql                # income_adhoc + income_site
 │   │   ├── 008_expenses.sql              # expenses + expenses_recurring
-│   │   └── 009_social.sql                # platforms + promos
+│   │   ├── 009_social.sql                # platforms + promos
+│   │   ├── 010_kinks.sql                 # kinks (third taxonomy) + customer_kinks join
+│   │   ├── 011_kinks_preload.sql         # description col + customer_kinks.position + 349 default kinks
+│   │   ├── 012_products_and_customer_fields.sql  # products: price_cents+unit; customers: VIP, primary_email_index, address, phones
+│   │   ├── 013_customer_history.sql      # customer_history (append-only) + BLOB attachment column
+│   │   └── 014_customer_sales.sql        # customer_sales (editable) — product_id RESTRICT, customer_uid CASCADE
 │   ├── icons/                            # Generated icon set (from molly.svg)
 │   ├── capabilities/default.json         # Tauri ACL — which plugin commands the frontend can invoke
 │   ├── tauri.conf.json
@@ -109,13 +115,14 @@ Molly/
 
 ## Tauri command surface
 
-All cross-boundary types use `#[serde(rename_all = "camelCase")]` — enforced by the `camel_case_contract` cargo tests. Five commands by area:
+All cross-boundary types use `#[serde(rename_all = "camelCase")]` — enforced by the `camel_case_contract` cargo tests. Commands by area:
 
 | Module | Commands |
 |---|---|
 | backup | `run_backup_now`, `list_backups`, `test_backup`, `restore_backup`, `reveal_backup_dir`, `reveal_path`, `get_backup_settings`, `set_backup_settings` |
 | attachments | `save_attachment`, `delete_attachment`, `reveal_attachment`, `open_attachment` |
 | export | `export_full_data`, `reveal_export_dir`, `import_full_export` |
+| history | `add_history_entry_with_attachment`, `download_history_attachment` (rusqlite BLOB I/O — bytes never cross IPC) |
 
 ACL is in `src-tauri/capabilities/default.json`; this is the file that bit us in v0.6.0 (SQL `execute` was missing from the allowlist and writes failed silently).
 
@@ -149,7 +156,7 @@ Updater is wired against `https://github.com/bronty13/PhantomLives/releases/late
 
 ## Tests
 
-- **Rust**: `./run-tests.sh` → 12 tests (7 backup + 5 camelCase contract).
+- **Rust**: `./run-tests.sh` → 13 tests (7 backup + 6 camelCase contract).
 - **TypeScript**: no frontend test suite yet; deferred to a Phase 8.5 hygiene pass.
 
 ## Reference patterns from elsewhere in PhantomLives

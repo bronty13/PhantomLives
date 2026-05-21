@@ -8,7 +8,7 @@ import { SitesSettings } from './SitesSettings';
 import { TaxonomySettings } from './TaxonomySettings';
 import { UpdatesSettings } from './UpdatesSettings';
 
-type Tab = 'personas' | 'sites' | 'products' | 'interests' | 'platforms' | 'data' | 'updates' | 'backup';
+type Tab = 'personas' | 'sites' | 'products' | 'interests' | 'kinks' | 'platforms' | 'data' | 'updates' | 'backup';
 
 interface Props {
   active: Persona;
@@ -21,6 +21,7 @@ const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'platforms', label: 'Platforms',  icon: '📣' },
   { key: 'products',  label: 'Products',   icon: '📦' },
   { key: 'interests', label: 'Interests',  icon: '🌷' },
+  { key: 'kinks',     label: 'Kinks',      icon: '💕' },
   { key: 'data',      label: 'Data',       icon: '📦' },
   { key: 'updates',   label: 'Updates',    icon: '⬇️' },
   { key: 'backup',    label: 'Backup',     icon: '💾' },
@@ -36,6 +37,7 @@ export function SettingsView({ active, onPersonasChanged }: Props) {
     case 'platforms': body = <PlatformsSettings />; break;
     case 'products':  body = <TaxonomySettings kind="products" />; break;
     case 'interests': body = <TaxonomySettings kind="interests" />; break;
+    case 'kinks':     body = <TaxonomySettings kind="kinks" />; break;
     case 'data':      body = <DataSettings />; break;
     case 'updates':   body = <UpdatesSettings />; break;
     case 'backup':    body = <BackupSettings />; break;

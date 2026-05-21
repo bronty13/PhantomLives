@@ -37,8 +37,9 @@ The Settings page has five tabs:
 
 - **Personas** — rename, redescribe, and recolor any of CoC / PoA / Sa. There are five swatches per persona (primary, secondary, tint, accent, text); changing them recolors the whole app instantly.
 - **Sites** — add, edit, delete sites. Each site belongs to a persona, has a name, short-code, URL, your username, an optional note, a color, and an optional "login group" (used to mark sites that share the same login — the preloaded OnlyFans rows for CoC and PoA share `of-shared`).
-- **Products** — what customers buy from you (Phone, Cam, Customs, Physical merch…). Tagged on customers; will drive sales reports in a later phase.
+- **Products** — what customers buy from you (Phone, Cam, Customs, Physical merch…). Each product carries a price + unit (e.g. Customs at $5.00 / minute, Physical — Panties at $25.00 / item). Used by the upcoming sales feature; tagged on customers as a quick "what they buy" signal.
 - **Interests** — what customers like (Feet, Pantyhose, Panties, Humiliation…). Tagged on customers.
+- **Kinks** — what customers are into. Ships preloaded with ~350 curated entries, each with a short definition. Rename, recolor, archive, or delete any from this tab — they're regular taxonomy rows. The picker on the customer card is where the real work happens: see the Customers section below.
 - **Backup** — covered below.
 
 Add/edit/delete every list from inside Molly — nothing requires Robert to change code.
@@ -52,6 +53,22 @@ The **Customers** tab is your little CRM. Each customer has:
 - Up to five email addresses.
 - A persona binding (or no persona for cross-persona contacts).
 - Product chips and interest chips (multi-select).
+- A **Kinks** picker (modeled on MasterClipper's category picker): click **+ Add kink** to open a searchable dropdown of the 350-row catalog. Type to filter; click a row to add it as a numbered chip. To create a kink that doesn't exist yet, type its full name and press Enter — a "Create kink: '…'" row appears at the top of the dropdown. Each chip has an × to remove; order is preserved per customer via the `customer_kinks.position` column.
+- **VIP toggle** in the header — click the `☆ VIP` pill to mark a customer as VIP. VIPs sort to the top of the customer list and pick up a ⭐ chip on their row.
+- **Primary email selector** — each of the 5 email slots has a radio button. The radio sets which slot is shown as the customer's primary email everywhere in Molly.
+- **Mailing address** — full address (line 1, line 2, city, state/province, zip + +4, country). Country defaults to US; the dropdown carries the full ISO 3166-1 list with US/CA/GB pinned at the top.
+- **Phone numbers** — two slots, each with a 📱 Mobile checkbox and a shared "primary phone" radio.
+
+### History &amp; sales
+
+Below the main Notes section, every customer has a combined **History & sales** card. It carries two kinds of entries:
+
+- **Notes** — timestamped notes with optional file attachments. Type in the composer, optionally click **📎 Attach file…** to pick any file from disk, then **➕ Add note**. The note appears at the top of the timeline with a current timestamp; attachments are stored inline as BLOBs in Molly's SQLite database (so they travel with the auto-backup zip and the full-data export). Click the **📎 filename** chip on any past entry to save the attachment back out to disk. Each note row has **Edit / Delete** buttons — editing reveals an inline textarea (Save / Cancel), deleting is two-tap-confirmed and removes the row along with any inline attachment.
+- **Sales** — click **🛒 + Add sale** to record a transaction. Pick the product, enter quantity (e.g. `10` for 10 minutes), the unit price defaults from the product but you can override it, and the total auto-computes; editing the total back-solves the unit price for line-level discounts. Add notes describing what was sold. Sales **are editable and deletable** via the Edit / Delete buttons on each row. The customer's lifetime sales total appears as a `💖 $X.XX` pill in the editor header (hidden when zero).
+
+The timeline interleaves both kinds of entries, newest first.
+
+**Filter the timeline** with the search box above the list — filters by note text, attachment filename, sale notes, and product name. Substring match by default (case-insensitive); tick the **regex** checkbox to use a real regular expression. Invalid regex shows an inline warning; valid filters show "N of M" while active with a Clear button.
 - Rich-text notes — bold, italic, headings, bullet/ordered lists, blockquote, links, horizontal rule.
 
 The list view filters by the active persona (top bar) and supports search across UID / username / real name. Click any customer to open the editor. **Save** only enables when there are unsaved edits. **Delete** is two-tap (click once, confirm within 3 seconds).
