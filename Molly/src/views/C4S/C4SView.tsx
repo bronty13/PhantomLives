@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Persona } from '../../state/personas';
 import type { C4SClip } from '../../data/c4sClips';
-import { C4SDashboard } from './C4SDashboard';
+import { C4SDashboard, type DrillFilter } from './C4SDashboard';
 import { C4SGrid } from './C4SGrid';
 import { C4SDetail } from './C4SDetail';
 import { C4SImportWizard } from './C4SImportWizard';
@@ -20,6 +20,15 @@ export function C4SView({ active }: Props) {
   // children so the user sees fresh data immediately after closing
   // the wizard.
   const [refreshToken, setRefreshToken] = useState(0);
+  // The most recent drill-down click on the dashboard. Sent into the
+  // grid via prop on each click; the grid copies into its own state on
+  // change so the user can refine further (or clear via the pill).
+  // Reset to undefined when the user goes back to dashboard or clicks
+  // the Grid tab directly — that's the "show me everything" intent.
+  const [drillFilter, setDrillFilter] = useState<DrillFilter | undefined>(undefined);
+  // Bumping this each time a drill-down fires forces the grid's
+  // useEffect to re-seed even if the user re-clicks the same value.
+  const [drillNonce, setDrillNonce] = useState(0);
 
   return (
     <div className="p-8 max-w-6xl space-y-4">
@@ -38,7 +47,7 @@ export function C4SView({ active }: Props) {
         </button>
         <button
           type="button"
-          onClick={() => { setSelected(null); setSub('grid'); }}
+          onClick={() => { setSelected(null); setDrillFilter(undefined); setSub('grid'); }}
           className="px-3 py-1 rounded-full text-xs font-semibold"
           style={{
             background: sub === 'grid' || sub === 'detail' ? 'rgb(var(--persona-accent))' : 'rgba(255,255,255,0.55)',
@@ -58,7 +67,11 @@ export function C4SView({ active }: Props) {
         <C4SDashboard
           active={active}
           onImport={() => setShowImport(true)}
-          onOpenGrid={() => setSub('grid')}
+          onOpenGrid={(filter) => {
+            setDrillFilter(filter);
+            setDrillNonce((n) => n + 1);
+            setSub('grid');
+          }}
           refreshToken={refreshToken}
         />
       )}
@@ -68,6 +81,10 @@ export function C4SView({ active }: Props) {
           active={active}
           onSelect={(c) => { setSelected(c); setSub('detail'); }}
           refreshToken={refreshToken}
+          // Tag the drill filter with a nonce so the grid sees a fresh
+          // object reference even when the same status/category is
+          // clicked twice in a row.
+          drillFilter={drillFilter && { ...drillFilter, __nonce: drillNonce } as DrillFilter}
         />
       )}
 

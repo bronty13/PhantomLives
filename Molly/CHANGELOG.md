@@ -4,12 +4,19 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] — 2026-05-21
+
+### Added
+
+- **Drill-down from the C4S Dashboard.** Each row of "Clips by status," each entry in "Top 10 categories," and each pill in "Top 10 keywords" is now a clickable button that opens the C4S grid pre-filtered to that value. Category + keyword filters match the comma-split list (so drilling "BBW" doesn't surface "BBW STUFFING" rows), and active filters show as removable pills above the grid alongside the existing search / sort / status controls. Stacks naturally with the search box + status dropdown + regex toggle, so a click into "active" can be narrowed further by typing.
+
+### Fixed
+
+- **Import wizard error message now tells you what's actually in the file you picked.** Previously a wrong-format pick gave a generic "doesn't look like a Clips4Sale export — missing columns: …". Now the error shows the columns the parser *did* see (one giant column when the delimiter was comma, or the first 8 column names if they're just unfamiliar), detects ZIP magic bytes for accidental .xlsx picks, calls out comma-delimited files as "look for Export to CSV, not Excel," and prints the filename + byte size so it's obvious whether the right file landed in the picker. Error block now renders multi-line messages (`whitespace-pre-wrap`).
+- **`build-app.sh` no longer passes `--no-open` to `tauri build`.** The script consumes `--no-open` and `--no-install` for `install.sh`; both were being forwarded to `tauri build` which rejects them. Filtered out before forwarding. Also wrapped the args-array expansion so `set -u` doesn't blow up when no args were passed.
+- **Missing pnpm transitive dep.** Added `postcss-selector-parser` as an explicit dev dep so Vite's PostCSS pipeline can find it under pnpm's strict-hoisted `node_modules` layout (npm's flat layout hid the gap).
+
 ## [1.8.0] — 2026-05-21
-
-### Fixed (post-tag)
-
-- **Import wizard error message now tells you what's actually in the file you picked.** Previously a wrong-format pick gave a generic "doesn't look like a Clips4Sale export — missing columns: …". Now the error shows the columns the parser *did* see (e.g. one giant column when the delimiter was comma, or the first 8 column names if they're just unfamiliar), detects ZIP magic bytes for accidental .xlsx picks, calls out comma-delimited files as "look for Export to CSV, not Excel," and prints the filename + byte size so it's obvious whether the right file landed in the picker. Also flips the error block's CSS to `whitespace-pre-wrap` so multi-line messages actually render.
-- **`build-app.sh` no longer passes `--no-open` to `tauri build`.** The script consumes `--no-open` and `--no-install` for `install.sh`; both were being forwarded to `tauri build` which rejects them. New version filters those two flags before invoking Tauri.
 
 ### Added — 💌 In-app User Manual
 

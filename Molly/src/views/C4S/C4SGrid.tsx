@@ -1,14 +1,21 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Persona } from '../../state/personas';
 import { listC4SClips, type C4SClip } from '../../data/c4sClips';
 import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 import { useC4SPrefs, type C4SColumnPrefs } from '../../state/c4sPrefs';
+import type { DrillFilter } from './C4SDashboard';
 
 interface Props {
   active: Persona;
   onSelect: (clip: C4SClip) => void;
   /** Bumping this triggers a re-fetch (e.g. after a successful import). */
   refreshToken?: number;
+  /**
+   * Filter seeded by a dashboard drill-down. The grid copies these into
+   * its internal state on each change so the user can refine further
+   * (or clear them via the active-filter pills).
+   */
+  drillFilter?: DrillFilter;
 }
 
 type SortKey = 'clipId' | 'clipTitle' | 'clipStatus' | 'personaCode' | 'priceCents' | 'salesCount' | 'income6moCents';
@@ -49,14 +56,27 @@ const PERSONA_TINT: Record<string, { bg: string; fg: string }> = {
   PoA: { bg: '#C8102E', fg: '#FFFFFF' },
 };
 
-export function C4SGrid({ active, onSelect, refreshToken }: Props) {
+export function C4SGrid({ active, onSelect, refreshToken, drillFilter }: Props) {
   const [clips, setClips] = useState<C4SClip[]>([]);
   const [search, setSearch] = useState('');
   const [useRegex, setUseRegex] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [keywordFilter, setKeywordFilter] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('clipId');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [prefs] = useC4SPrefs();
+
+  // Seed internal filters from a drill-down. We replace any previously
+  // set drill filters (so re-clicking the dashboard always lands in a
+  // single-criterion view) but leave the user's `search` and sort key
+  // alone — that's their work, not the dashboard's.
+  useEffect(() => {
+    if (!drillFilter) return;
+    setStatusFilter(drillFilter.status ?? '');
+    setCategoryFilter(drillFilter.category ?? '');
+    setKeywordFilter(drillFilter.keyword ?? '');
+  }, [drillFilter]);
 
   const personaScope = active.code === 'CoC' || active.code === 'PoA' ? active.code : undefined;
 
@@ -89,9 +109,25 @@ export function C4SGrid({ active, onSelect, refreshToken }: Props) {
     return [...s].sort((a, b) => a.localeCompare(b));
   }, [clips]);
 
+  // `cat` / `kw` filters match against the comma-split list of the
+  // clip's categories/keywords (case-insensitive, trimmed) — not a
+  // substring match. Otherwise drilling into "BBW" would also surface
+  // "BBW STUFFING" rows the user didn't ask for.
+  const catLower = categoryFilter.trim().toLowerCase();
+  const kwLower = keywordFilter.trim().toLowerCase();
+  const hasInList = (raw: string, needle: string): boolean => {
+    if (!needle) return true;
+    for (const part of raw.split(',')) {
+      if (part.trim().toLowerCase() === needle) return true;
+    }
+    return false;
+  };
+
   const filtered = useMemo(() => {
     return clips.filter((c) => {
       if (statusFilter && c.clipStatus !== statusFilter) return false;
+      if (catLower && !hasInList(c.categories, catLower)) return false;
+      if (kwLower && !hasInList(c.keywords, kwLower)) return false;
       if (!matcher) return true;
       return (
         matcher(c.clipId) ||
@@ -103,7 +139,7 @@ export function C4SGrid({ active, onSelect, refreshToken }: Props) {
       );
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clips, statusFilter, q, useRegex]);
+  }, [clips, statusFilter, catLower, kwLower, q, useRegex]);
 
   const sorted = useMemo(() => {
     const copy = [...filtered];
@@ -176,14 +212,59 @@ export function C4SGrid({ active, onSelect, refreshToken }: Props) {
           <option value="">(any status)</option>
           {statusOptions.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
-        {(q || statusFilter) && (
-          <button type="button" className="pretty-button secondary" onClick={() => { setSearch(''); setStatusFilter(''); }}>
+        {(q || statusFilter || categoryFilter || keywordFilter) && (
+          <button
+            type="button"
+            className="pretty-button secondary"
+            onClick={() => {
+              setSearch('');
+              setStatusFilter('');
+              setCategoryFilter('');
+              setKeywordFilter('');
+            }}
+          >
             Clear
           </button>
         )}
       </div>
       {regexError && (
         <div className="text-xs" style={{ color: '#B45309' }}>Invalid regex: {regexError}</div>
+      )}
+
+      {(categoryFilter || keywordFilter) && (
+        <div className="flex items-center gap-1.5 flex-wrap text-xs">
+          <span className="opacity-60 uppercase tracking-wider">Filtering by</span>
+          {categoryFilter && (
+            <button
+              type="button"
+              onClick={() => setCategoryFilter('')}
+              className="px-2 py-0.5 rounded-full font-semibold flex items-center gap-1.5 hover:opacity-80 transition"
+              style={{
+                background: 'rgb(var(--persona-tint))',
+                border: '1px solid rgb(var(--persona-primary) / 0.45)',
+                color: 'rgb(var(--persona-accent))',
+              }}
+              title="Clear category filter"
+            >
+              <span className="opacity-60">category:</span> {categoryFilter} <span className="opacity-60">×</span>
+            </button>
+          )}
+          {keywordFilter && (
+            <button
+              type="button"
+              onClick={() => setKeywordFilter('')}
+              className="px-2 py-0.5 rounded-full font-semibold flex items-center gap-1.5 hover:opacity-80 transition"
+              style={{
+                background: 'rgb(var(--persona-tint))',
+                border: '1px solid rgb(var(--persona-primary) / 0.45)',
+                color: 'rgb(var(--persona-accent))',
+              }}
+              title="Clear keyword filter"
+            >
+              <span className="opacity-60">keyword:</span> {keywordFilter} <span className="opacity-60">×</span>
+            </button>
+          )}
+        </div>
       )}
 
       <div className="pretty-card p-0 overflow-x-auto">

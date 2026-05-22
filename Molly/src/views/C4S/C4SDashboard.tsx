@@ -10,10 +10,16 @@ import type { PersonaCode } from '../../lib/c4sClassify';
 import { StaleBanner } from './StaleBanner';
 import { useC4SPrefs } from '../../state/c4sPrefs';
 
+export interface DrillFilter {
+  status?: string;
+  category?: string;
+  keyword?: string;
+}
+
 interface Props {
   active: Persona;
   onImport: () => void;
-  onOpenGrid: () => void;
+  onOpenGrid: (filter?: DrillFilter) => void;
   refreshToken?: number;
 }
 
@@ -101,7 +107,8 @@ export function C4SDashboard({ active, onImport, onOpenGrid, refreshToken }: Pro
           <h2 className="display-font text-2xl font-bold persona-accent">🛍️ C4S Store</h2>
           <p className="opacity-70 text-sm">
             {scope === 'ALL' ? 'All clips across CoC + PoA stores.' : `${PERSONA_TINT[scope].label} store.`}{' '}
-            <button type="button" className="underline opacity-80" onClick={onOpenGrid}>open grid →</button>
+            <button type="button" className="underline opacity-80" onClick={() => onOpenGrid()}>open grid →</button>
+            <span className="opacity-50"> · click any status, category, or keyword below to drill in</span>
           </p>
         </div>
       </div>
@@ -161,13 +168,19 @@ export function C4SDashboard({ active, onImport, onOpenGrid, refreshToken }: Pro
           {(counts?.byStatus ?? []).map((row) => {
             const pct = (row.count / statusTotal) * 100;
             return (
-              <div key={row.status} className="flex items-center gap-3">
-                <div className="w-40 text-xs opacity-80 truncate" title={row.status}>{row.status || '(blank)'}</div>
+              <button
+                type="button"
+                key={row.status}
+                onClick={() => onOpenGrid({ status: row.status })}
+                className="w-full flex items-center gap-3 p-1 -mx-1 rounded-lg hover:bg-white/60 transition text-left"
+                title={`Show ${row.count} clip${row.count === 1 ? '' : 's'} with status "${row.status || '(blank)'}"`}
+              >
+                <div className="w-40 text-xs opacity-80 truncate">{row.status || '(blank)'}</div>
                 <div className="flex-1 h-3 rounded-full bg-black/5 overflow-hidden">
                   <div className="h-full rounded-full" style={{ width: `${pct}%`, background: 'rgb(var(--persona-accent))' }} />
                 </div>
                 <div className="w-12 text-right text-sm font-mono">{row.count}</div>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -179,11 +192,18 @@ export function C4SDashboard({ active, onImport, onOpenGrid, refreshToken }: Pro
           {(counts?.topCategories ?? []).length === 0 ? (
             <div className="text-sm opacity-70 italic">Nothing to show yet.</div>
           ) : (
-            <ol className="space-y-1 text-sm">
+            <ol className="space-y-0.5 text-sm">
               {counts!.topCategories.map((c) => (
-                <li key={c.name} className="flex items-center justify-between gap-2">
-                  <span className="truncate" title={c.name}>{c.name}</span>
-                  <span className="font-mono text-xs opacity-70">{c.count}</span>
+                <li key={c.name}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenGrid({ category: c.name })}
+                    className="w-full flex items-center justify-between gap-2 px-2 py-1 -mx-2 rounded-lg hover:bg-white/60 transition text-left"
+                    title={`Show ${c.count} clip${c.count === 1 ? '' : 's'} in category "${c.name}"`}
+                  >
+                    <span className="truncate">{c.name}</span>
+                    <span className="font-mono text-xs opacity-70">{c.count}</span>
+                  </button>
                 </li>
               ))}
             </ol>
@@ -196,9 +216,15 @@ export function C4SDashboard({ active, onImport, onOpenGrid, refreshToken }: Pro
           ) : (
             <div className="flex flex-wrap gap-1.5">
               {counts!.topKeywords.map((k) => (
-                <span key={k.name} className="px-2 py-0.5 rounded-full text-[11px] bg-black/[0.06]" title={`${k.count}×`}>
+                <button
+                  type="button"
+                  key={k.name}
+                  onClick={() => onOpenGrid({ keyword: k.name })}
+                  className="px-2 py-0.5 rounded-full text-[11px] bg-black/[0.06] hover:bg-white/70 transition"
+                  title={`Show ${k.count} clip${k.count === 1 ? '' : 's'} with keyword "${k.name}"`}
+                >
                   {k.name} <span className="opacity-50 font-mono">·{k.count}</span>
-                </span>
+                </button>
               ))}
             </div>
           )}
