@@ -4,6 +4,33 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] — 2026-05-22
+
+### Added — 📝 Notes (Phase 13)
+
+A full Apple-Notes-style organiser with unlimited-depth folders, tagged
+notes, WYSIWYG editor, attachments, search + body-find with regex,
+export to MD/DOCX/PDF, and per-note font + paper colour overrides on
+top of app-wide defaults.
+
+Sidebar entry 📝 Notes (between Molly's Log and Reminders), three-pane
+layout (folder tree | notes list | editor), autosave, click-to-jump
+Find highlighting, six built-in tags (#ideas #plans #roadmap #promo
+#content #bettereveryday) with user-editable colours, eleven vendored
+fonts (Paper Daisy default + 10 SIL OFL Google Fonts), ten Apple-Notes
+paper colour tints + custom hex, attachments (Open / Download / Delete)
+under app_data/note_attachments/, export to Markdown via turndown,
+Word via html-to-docx, PDF via jsPDF + html2canvas-pro.
+
+Migration 023 adds note_folders, notes, note_tags_def, note_tag_links,
+note_attachments. 28 new Tauri commands. 156 Rust + 136 frontend tests
+still passing (+22 Rust in the notes module).
+
+Late polish during Sallie's testing: replaced window.prompt /
+window.confirm (silently broken in Tauri 2) with in-app NamePromptModal
++ ConfirmModal; added .molly-note-editor CSS to restore H1/H2/H3 + list
+visuals stripped by Tailwind's preflight.
+
 ## [1.13.0] — 2026-05-22
 
 ### Added — 🌀 Background jobs + ATW Repost automation (Phase 12, PR3 of 3)

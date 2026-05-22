@@ -82,6 +82,22 @@
 
   .display-font { font-family: 'Comfortaa', 'SF Pro Rounded', system-ui, sans-serif; }
 
+  /* Phase 13 — bundled handwritten / pretty fonts for the Notes
+   * editor. Loaded as TTF assets so Molly stays offline-first; nothing
+   * fetches from a CDN. License notes in src/assets/fonts/LICENSES.md.
+   * Paper Daisy is Sallie's favourite and the default. */
+  @font-face { font-family: 'Paper Daisy'; src: url('../assets/fonts/paperdaisy-demo.ttf') format('truetype'); font-display: swap; }
+  @font-face { font-family: 'Caveat'; src: url('../assets/fonts/Caveat-Regular.ttf') format('truetype'); font-display: swap; }
+  @font-face { font-family: 'Patrick Hand'; src: url('../assets/fonts/PatrickHand-Regular.ttf') format('truetype'); font-display: swap; }
+  @font-face { font-family: 'Indie Flower'; src: url('../assets/fonts/IndieFlower-Regular.ttf') format('truetype'); font-display: swap; }
+  @font-face { font-family: 'Shadows Into Light'; src: url('../assets/fonts/ShadowsIntoLight-Regular.ttf') format('truetype'); font-display: swap; }
+  @font-face { font-family: 'Architects Daughter'; src: url('../assets/fonts/ArchitectsDaughter-Regular.ttf') format('truetype'); font-display: swap; }
+  @font-face { font-family: 'Kalam'; src: url('../assets/fonts/Kalam-Regular.ttf') format('truetype'); font-display: swap; }
+  @font-face { font-family: 'Sacramento'; src: url('../assets/fonts/Sacramento-Regular.ttf') format('truetype'); font-display: swap; }
+  @font-face { font-family: 'Amatic SC'; src: url('../assets/fonts/AmaticSC-Regular.ttf') format('truetype'); font-display: swap; }
+  @font-face { font-family: 'Comfortaa'; src: url('../assets/fonts/Comfortaa-Regular.ttf') format('truetype'); font-display: swap; }
+  @font-face { font-family: 'Quicksand'; src: url('../assets/fonts/Quicksand-Regular.ttf') format('truetype'); font-display: swap; }
+
   /* Tiptap "lite prose" — avoids pulling in the typography plugin. */
   .molly-richtext { font-size: 0.92rem; line-height: 1.6; }
   .molly-richtext p { margin: 0 0 0.6rem; }

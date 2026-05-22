@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  type Note, type NoteFolder, type NoteSummary, type NoteTag,
+  type Note, type NoteDefaults, type NoteFolder, type NoteSummary, type NoteTag,
   copyNote, createNote, createNoteFolder, deleteNote, deleteNoteFolder,
-  getNote, listNoteFolders, listNoteTags, listNotes, moveNote, moveNoteFolder,
-  renameNoteFolder, setNoteTags, updateNote,
+  getNote, getNoteDefaults, listNoteFolders, listNoteTags, listNotes, moveNote,
+  moveNoteFolder, renameNoteFolder, setNoteStyle, setNoteTags, updateNote,
 } from '../../data/notes';
 import { ConfirmModal } from '../../components/ConfirmModal';
 import { NamePromptModal } from '../../components/NamePromptModal';
@@ -14,6 +14,7 @@ import { FolderTree, type FolderAction } from './FolderTree';
 import { NoteEditor } from './NoteEditor';
 import { NotesList, type NoteAction } from './NotesList';
 import { SearchPanel } from './SearchPanel';
+import { FontPicker, PaperColorPicker } from './StylePickers';
 import { TagChips } from './TagChips';
 
 export function NotesView() {
@@ -21,6 +22,7 @@ export function NotesView() {
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
   const [notes, setNotes] = useState<NoteSummary[]>([]);
   const [tags, setTags] = useState<NoteTag[]>([]);
+  const [defaults, setDefaults] = useState<NoteDefaults>({ defaultFont: 'Paper Daisy', defaultPaperColor: '#fdfcf8' });
   const [tagFilter, setTagFilter] = useState<number[]>([]);
   const [selectedNoteId, setSelectedNoteId] = useState<number | null>(null);
   const [loadedNote, setLoadedNote] = useState<Note | null>(null);
@@ -72,6 +74,11 @@ export function NotesView() {
     catch (e) { setError(String((e as { message?: string })?.message ?? e)); }
   }, []);
 
+  const reloadDefaults = useCallback(async () => {
+    try { setDefaults(await getNoteDefaults()); }
+    catch (e) { setError(String((e as { message?: string })?.message ?? e)); }
+  }, []);
+
   const reloadSelectedNote = useCallback(async () => {
     if (selectedNoteId == null) { setLoadedNote(null); return; }
     try { setLoadedNote(await getNote(selectedNoteId)); }
@@ -81,7 +88,17 @@ export function NotesView() {
   useEffect(() => { reloadFolders(); }, [reloadFolders]);
   useEffect(() => { reloadNotes(); }, [reloadNotes]);
   useEffect(() => { reloadTags(); }, [reloadTags]);
+  useEffect(() => { reloadDefaults(); }, [reloadDefaults]);
   useEffect(() => { reloadSelectedNote(); }, [reloadSelectedNote]);
+  // When the user changes app-wide defaults in Settings → 📝 Notes, the
+  // NotesView keeps using the values it loaded at mount. Re-pull on
+  // window focus so flipping back from Settings picks up the new
+  // default without a full reload.
+  useEffect(() => {
+    const onFocus = () => { void reloadDefaults(); };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [reloadDefaults]);
 
   // Filter notes by selected tag chips. AND semantics: a note must
   // carry ALL active filter tags to remain visible. Empty filter = all.
@@ -203,6 +220,20 @@ export function NotesView() {
     }
   }
 
+  async function onChangeNoteStyle(font: string | null | undefined, color: string | null | undefined) {
+    if (!loadedNote) return;
+    const nextFont = font === undefined ? loadedNote.fontFamily : font;
+    const nextColor = color === undefined ? loadedNote.paperColor : color;
+    setError(null);
+    try {
+      await setNoteStyle(loadedNote.id, nextFont, nextColor);
+      setLoadedNote({ ...loadedNote, fontFamily: nextFont, paperColor: nextColor });
+      await reloadNotes();
+    } catch (e) {
+      setError(String((e as { message?: string })?.message ?? e));
+    }
+  }
+
   const editorBody = useMemo(() => {
     if (!loadedNote) {
       return (
@@ -229,12 +260,24 @@ export function NotesView() {
             className="flex-1 bg-transparent border-none focus:outline-none display-font text-3xl font-semibold persona-accent"
             placeholder="Untitled"
           />
-          <div className="pt-2">
+          <div className="pt-2 flex items-center gap-2 flex-wrap justify-end">
+            <FontPicker
+              value={loadedNote.fontFamily}
+              defaultName={defaults.defaultFont}
+              onChange={(f) => onChangeNoteStyle(f, undefined)}
+              compact
+            />
+            <PaperColorPicker
+              value={loadedNote.paperColor}
+              defaultHex={defaults.defaultPaperColor}
+              onChange={(c) => onChangeNoteStyle(undefined, c)}
+              compact
+            />
             <ExportMenu
               noteTitle={pendingTitle.current ?? loadedNote.title}
               noteHtml={pendingHtml.current ?? loadedNote.contentHtml}
-              fontFamily={loadedNote.fontFamily}
-              paperColor={loadedNote.paperColor}
+              fontFamily={loadedNote.fontFamily ?? defaults.defaultFont}
+              paperColor={loadedNote.paperColor ?? defaults.defaultPaperColor}
             />
           </div>
         </div>
@@ -247,8 +290,8 @@ export function NotesView() {
         <NoteEditor
           noteKey={`${loadedNote.id}-${highlightTick}`}
           initialHtml={loadedNote.contentHtml}
-          fontFamily={loadedNote.fontFamily}
-          paperColor={loadedNote.paperColor}
+          fontFamily={loadedNote.fontFamily ?? defaults.defaultFont}
+          paperColor={loadedNote.paperColor ?? defaults.defaultPaperColor}
           highlightSnippet={highlightTarget}
           onChange={(html, text) => {
             pendingHtml.current = html;

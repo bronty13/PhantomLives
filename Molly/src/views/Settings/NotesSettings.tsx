@@ -2,26 +2,41 @@ import { useCallback, useEffect, useState } from 'react';
 import { ColorPicker } from '../../components/ColorPicker';
 import { ConfirmModal } from '../../components/ConfirmModal';
 import {
-  type NoteTag,
-  createNoteTag, deleteNoteTag, listNoteTags, updateNoteTag,
+  type NoteDefaults, type NoteTag,
+  createNoteTag, deleteNoteTag, getNoteDefaults, listNoteTags,
+  setNoteDefaults, updateNoteTag,
 } from '../../data/notes';
+import { FontPicker, PaperColorPicker } from '../Notes/StylePickers';
 
 /** Settings → 📝 Notes pane. v1 focuses on tag CRUD; per-note style
  *  defaults (font + paper colour) come in commit 7 of the Phase 13
  *  trilogy and add a separate section beneath. */
 export function NotesSettings() {
   const [tags, setTags] = useState<NoteTag[]>([]);
+  const [defaults, setDefaults] = useState<NoteDefaults | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState('#f9a8d4');
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
-    try { setTags(await listNoteTags()); }
-    catch (e) { setError(String((e as { message?: string })?.message ?? e)); }
+    try {
+      setTags(await listNoteTags());
+      setDefaults(await getNoteDefaults());
+    } catch (e) { setError(String((e as { message?: string })?.message ?? e)); }
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  async function saveDefaults(next: NoteDefaults) {
+    setError(null);
+    try {
+      await setNoteDefaults(next);
+      setDefaults(next);
+    } catch (e) {
+      setError(String((e as { message?: string })?.message ?? e));
+    }
+  }
 
   async function addTag() {
     if (!newName.trim()) return;
@@ -37,6 +52,45 @@ export function NotesSettings() {
 
   return (
     <div className="space-y-4">
+      <section className="pretty-card space-y-3">
+        <h3 className="font-semibold">🎨 Appearance defaults</h3>
+        <p className="text-xs opacity-70">
+          New notes inherit these. Existing notes that haven&apos;t set their own font or paper
+          colour pick these up live — change them here and any &ldquo;use default&rdquo; notes
+          re-tint immediately.
+        </p>
+        {defaults && (
+          <div className="flex flex-wrap gap-4 items-start">
+            <div>
+              <label className="text-xs uppercase tracking-wider opacity-60 block mb-1">Default font</label>
+              <FontPicker
+                value={defaults.defaultFont}
+                onChange={(f) => f && saveDefaults({ ...defaults, defaultFont: f })}
+              />
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-wider opacity-60 block mb-1">Default paper colour</label>
+              <PaperColorPicker
+                value={defaults.defaultPaperColor}
+                onChange={(c) => c && saveDefaults({ ...defaults, defaultPaperColor: c })}
+              />
+            </div>
+            <div className="flex-1 min-w-[200px]">
+              <label className="text-xs uppercase tracking-wider opacity-60 block mb-1">Preview</label>
+              <div
+                className="rounded-2xl border border-black/10 p-3 text-base"
+                style={{
+                  background: defaults.defaultPaperColor,
+                  fontFamily: defaults.defaultFont,
+                }}
+              >
+                A new note will look like this 🌷
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
+
       <section className="pretty-card space-y-3">
         <h3 className="font-semibold">🏷 Tags</h3>
         <p className="text-xs opacity-70">
