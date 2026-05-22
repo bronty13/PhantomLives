@@ -1,6 +1,6 @@
 {
   "name": "purple-pdf",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Purple PDF — a full-featured PDF reader and editor",
   "main": "out/main/index.js",
   "author": "Robert Olen",
@@ -17,6 +17,7 @@
     "test:watch": "vitest",
     "icons": "python3 build/make_icon.py",
     "dist": "electron-vite build && electron-builder",
+    "predist:mac": "node scripts/relocate-dist.cjs",
     "dist:mac": "electron-vite build && electron-builder --mac --universal",
     "dist:win": "electron-vite build && electron-builder --win"
   },
@@ -91,6 +92,7 @@
       "entitlementsInherit": "build/entitlements.mac.plist",
       "notarize": false
     },
+    "afterPack": "scripts/strip-xattrs.cjs",
     "afterSign": "scripts/notarize.cjs",
     "fileAssociations": [
       {

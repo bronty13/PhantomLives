@@ -8,6 +8,42 @@ Patch versions increment automatically on every commit that touches
 `PurplePDF/**`, via the `pre-commit` hook installed by
 `scripts/install-git-hooks.sh`. Minor and major bumps are manual.
 
+## [1.0.3] - 2026-05-21 — Developer ID signing on macOS 15 + iCloud-synced trees
+
+### Fixed
+- **`npm run dist:mac` now produces a Developer ID-signed, notarized
+  universal2 DMG.** On macOS 15 (Sequoia) the kernel auto-attaches
+  `com.apple.provenance` to every executable on first run; hardened-runtime
+  `codesign` rejects it as "resource fork, Finder information, or similar
+  detritus not allowed." The standard workaround — `xattr -d com.apple.provenance`
+  before signing — silently no-ops inside iCloud-synced directories because
+  the File Provider intercepts xattr ops. PhantomLives lives under
+  `~/Documents/GitHub/…` which is iCloud-synced on most maintainers'
+  machines, so codesign failed deterministically. v1.0.2 shipped
+  arm64-only adhoc-signed as a workaround.
+
+### Added
+- **`scripts/relocate-dist.cjs`** — `predist:mac` hook that symlinks
+  `dist/` to a fresh `$TMPDIR/PurplePDF-dist-XXXXXX` before each release
+  build. Build output lives on a non-iCloud volume where `xattr -d` works
+  normally. The project tree still exposes the conventional `dist/` path
+  via the symlink, so DX is unchanged. `$TMPDIR` is wiped on reboot — no
+  cleanup needed.
+- **`scripts/strip-xattrs.cjs`** — `afterPack` hook that uses
+  `find -exec xattr -d` per-file rather than `xattr -cr` (the recursive
+  form aborts on the first protected xattr it can't remove). Strips
+  `com.apple.FinderInfo`, `com.apple.ResourceFork`, and
+  `com.apple.provenance`, then runs a belt-and-suspenders `xattr -cr`.
+
+### Changed
+- `dist:mac` script restored to `--mac --universal` (was `--arm64
+  --config.mac.identity=null` in v1.0.2 as the adhoc workaround). With
+  the `predist` relocate hook in place, signing now works on the
+  iCloud-synced tree, so the universal2 release path is the default
+  again. Notarization runs via the existing `scripts/notarize.cjs`
+  `afterSign` hook when `APPLE_ID` / `APPLE_TEAM_ID` /
+  `APPLE_APP_SPECIFIC_PASSWORD` are exported in the build shell.
+
 ## [1.0.2] - 2026-05-21 — Stamps, drag-resize, select-tool fixes
 
 ### Fixed
