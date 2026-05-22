@@ -143,6 +143,7 @@ All cross-boundary types use `#[serde(rename_all = "camelCase")]` — enforced b
 | history | `add_history_entry_with_attachment`, `download_history_attachment` (rusqlite BLOB I/O — bytes never cross IPC) |
 | log | `add_log_entry_with_attachment`, `download_log_attachment` (rusqlite BLOB I/O for Molly's Log) |
 | c4s | `replace_c4s_clips` (atomic overlay-replace + count-verify), `delete_all_c4s_data` |
+| bundles | `create_bundle`, `update_bundle_fields`, `save_bundle_file`, `delete_bundle_file`, `reorder_bundle_files`, `set_bundle_categories`, `list_bundles`, `get_bundle`, `delete_bundle_draft`, `publish_bundle`, `delete_published_bundle`, `list_bundle_archives`, `reveal_bundles_dir`, `open_bundle_archive`, `auto_purge_old_bundles`, `get_bundler_settings`, `set_bundler_settings`, `list_prohibited_words`, `add_prohibited_word`, `remove_prohibited_word` |
 
 ACL is in `src-tauri/capabilities/default.json`; this is the file that bit us in v0.6.0 (SQL `execute` was missing from the allowlist and writes failed silently).
 
@@ -156,6 +157,8 @@ Two recurring jobs run in `App.tsx` on launch + every 30 minutes:
 Both are idempotent (UNIQUE indexes on the target tables) so re-runs are no-ops.
 
 Backup also runs on launch via `setup` in `lib.rs::run()`, deduped to once-per-5-min.
+
+Bundle **auto-purge** also runs on launch (Phase 9). `bundles::auto_purge_on_launch` is spawned alongside the backup task, debounced to once-per-day. Reads `BundlerSettings`; if `auto_purge_enabled && purge_threshold_days > 0`, deletes the on-disk ZIP for any published bundle older than the threshold and flips its `state` to `purged`. Fail-quietly contract: logs via `eprintln!`, never panics. Bundle row is kept for history; only the ZIP goes.
 
 ## Build / install / release
 

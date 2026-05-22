@@ -1,10 +1,13 @@
 mod attachments;
 mod backup;
+mod bundle_zip;
+mod bundles;
 mod c4s;
 mod export;
 mod fsutil;
 mod history;
 mod log;
+mod masterclipper;
 
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -106,6 +109,12 @@ pub fn run() {
             sql: include_str!("../migrations/016_c4s_clips.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 17,
+            description: "bundles",
+            sql: include_str!("../migrations/017_bundles.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -125,6 +134,15 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 if let Err(err) = backup::run_on_launch_if_due(&handle).await {
                     eprintln!("[molly] launch backup failed: {err}");
+                }
+            });
+            let handle2 = app.handle().clone();
+            // Auto-purge old published bundles (Phase 9). Same fail-quietly
+            // contract: log on failure; never crash launch. Debounced to
+            // once-per-day inside auto_purge_on_launch.
+            tauri::async_runtime::spawn(async move {
+                if let Err(err) = bundles::auto_purge_on_launch(&handle2).await {
+                    eprintln!("[molly] launch bundle auto-purge failed: {err}");
                 }
             });
             Ok(())
@@ -151,6 +169,27 @@ pub fn run() {
             log::download_log_attachment,
             c4s::replace_c4s_clips,
             c4s::delete_all_c4s_data,
+            bundles::create_bundle,
+            bundles::update_bundle_fields,
+            bundles::save_bundle_file,
+            bundles::delete_bundle_file,
+            bundles::reorder_bundle_files,
+            bundles::set_bundle_categories,
+            bundles::list_bundles,
+            bundles::get_bundle,
+            bundles::delete_bundle_draft,
+            bundles::publish_bundle,
+            bundles::delete_published_bundle,
+            bundles::list_bundle_archives,
+            bundles::reveal_bundles_dir,
+            bundles::open_bundle_archive,
+            bundles::auto_purge_old_bundles,
+            bundles::get_bundler_settings,
+            bundles::set_bundler_settings,
+            bundles::list_prohibited_words,
+            bundles::add_prohibited_word,
+            bundles::remove_prohibited_word,
+            masterclipper::read_masterclipper_categories,
         ])
         .run(tauri::generate_context!())
         .expect("error while running molly");
@@ -271,6 +310,165 @@ mod camel_case_contract {
         }).unwrap();
         assert_camel(&v, "DeleteAllResult");
     }
+
+    // Phase 9: every Content Bundler boundary type. Asserted here so
+    // adding a new field without #[serde(rename_all = "camelCase")] on
+    // the parent struct fails `cargo test` instead of silently breaking
+    // the frontend's BundleSummary / Bundle render.
+    use crate::bundles::{
+        Bundle, BundleArchiveRow, BundleCategory, BundleFanDay, BundleFileInfo,
+        BundlePublishResult, BundleSummary, BundlerSettings, PurgeResult, Severity,
+        ValidationIssue,
+    };
+
+    fn empty_summary() -> BundleSummary {
+        BundleSummary {
+            uid: String::new(),
+            bundle_type: String::new(),
+            persona_code: None,
+            state: String::new(),
+            title: String::new(),
+            content_date: String::new(),
+            go_live_date: None,
+            published_at: None,
+            bundle_path: None,
+            bundle_size_bytes: None,
+            created_at: String::new(),
+            updated_at: String::new(),
+            aging_flag: String::new(),
+            file_count: 0,
+        }
+    }
+
+    #[test]
+    fn bundler_settings_is_camel_case() {
+        let v = serde_json::to_value(BundlerSettings::default()).unwrap();
+        assert_camel(&v, "BundlerSettings");
+    }
+
+    #[test]
+    fn bundle_summary_is_camel_case() {
+        let v = serde_json::to_value(empty_summary()).unwrap();
+        assert_camel(&v, "BundleSummary");
+    }
+
+    #[test]
+    fn bundle_file_info_is_camel_case() {
+        let v = serde_json::to_value(BundleFileInfo {
+            id: 0,
+            bundle_uid: String::new(),
+            fansite_day_id: None,
+            position: 0,
+            relpath: String::new(),
+            original_name: String::new(),
+            kind: String::new(),
+            size_bytes: 0,
+            sha256: String::new(),
+        })
+        .unwrap();
+        assert_camel(&v, "BundleFileInfo");
+    }
+
+    #[test]
+    fn bundle_fan_day_is_camel_case() {
+        let v = serde_json::to_value(BundleFanDay {
+            id: 0,
+            day_of_month: 1,
+            message: String::new(),
+            file_count: 0,
+        })
+        .unwrap();
+        assert_camel(&v, "BundleFanDay");
+    }
+
+    #[test]
+    fn bundle_category_is_camel_case() {
+        let v = serde_json::to_value(BundleCategory {
+            name: String::new(),
+            position: 1,
+        })
+        .unwrap();
+        assert_camel(&v, "BundleCategory");
+    }
+
+    #[test]
+    fn bundle_full_is_camel_case() {
+        let v = serde_json::to_value(Bundle {
+            summary: empty_summary(),
+            special_instructions: String::new(),
+            description_mode: None,
+            description_text: String::new(),
+            description_audio_relpath: None,
+            description_audio_original_name: None,
+            delivery_kind: None,
+            delivery_site_id: None,
+            delivery_url: None,
+            delivery_recipient: String::new(),
+            price_cents: None,
+            handled_in_platform: false,
+            fansite_year: None,
+            fansite_month: None,
+            outer_sha256: None,
+            inner_sha256: None,
+            files: vec![],
+            categories: vec![],
+            fan_days: vec![],
+        })
+        .unwrap();
+        assert_camel(&v, "Bundle");
+    }
+
+    #[test]
+    fn bundle_publish_result_is_camel_case() {
+        let v = serde_json::to_value(BundlePublishResult {
+            uid: String::new(),
+            path: String::new(),
+            size_bytes: 0,
+            inner_sha256: String::new(),
+            outer_sha256: String::new(),
+            file_count: 0,
+            clip_created: false,
+        })
+        .unwrap();
+        assert_camel(&v, "BundlePublishResult");
+    }
+
+    #[test]
+    fn purge_result_is_camel_case() {
+        let v = serde_json::to_value(PurgeResult {
+            considered: 0,
+            purged: 0,
+            skipped_missing: 0,
+            last_run_at: String::new(),
+        })
+        .unwrap();
+        assert_camel(&v, "PurgeResult");
+    }
+
+    #[test]
+    fn bundle_archive_row_is_camel_case() {
+        let v = serde_json::to_value(BundleArchiveRow {
+            uid: None,
+            path: String::new(),
+            filename: String::new(),
+            modified_at: String::new(),
+            size_bytes: 0,
+        })
+        .unwrap();
+        assert_camel(&v, "BundleArchiveRow");
+    }
+
+    #[test]
+    fn validation_issue_is_camel_case() {
+        let v = serde_json::to_value(ValidationIssue {
+            field_path: String::new(),
+            message: String::new(),
+            severity: Severity::Error,
+            jump_to_field_id: String::new(),
+        })
+        .unwrap();
+        assert_camel(&v, "ValidationIssue");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -311,6 +509,7 @@ mod migration_smoke {
             (14, "customer-sales",               include_str!("../migrations/014_customer_sales.sql")),
             (15, "mollys-log",                   include_str!("../migrations/015_mollys_log.sql")),
             (16, "c4s-clips",                    include_str!("../migrations/016_c4s_clips.sql")),
+            (17, "bundles",                      include_str!("../migrations/017_bundles.sql")),
         ];
 
         for (v, name, sql) in migrations {
@@ -333,6 +532,7 @@ mod migration_smoke {
             "social_platforms", "social_promos",
             "mollys_log",
             "c4s_clips", "c4s_imports",
+            "bundles", "bundle_fan_days", "bundle_files", "bundle_categories", "bundle_prohibited_words",
         ];
         for t in expected_tables {
             let count: i64 = conn
@@ -353,6 +553,19 @@ mod migration_smoke {
         assert!(
             kink_count >= 349,
             "migration 011 should preload at least 349 kinks; got {kink_count}",
+        );
+
+        // Migration 017 seeds four default prohibited words for the
+        // Content Bundler's description validator. The bundler form
+        // assumes the table is non-empty out of the box; if a future
+        // migration accidentally TRUNCATEs it, the validator goes
+        // permissive overnight without warning.
+        let prohibited_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM bundle_prohibited_words", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            prohibited_count, 4,
+            "migration 017 should seed exactly 4 prohibited words; got {prohibited_count}",
         );
     }
 }

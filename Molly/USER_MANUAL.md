@@ -272,6 +272,57 @@ Click **🗂 Grid** at the top of the C4S page to switch to a sortable table. Se
 
 ---
 
+## 🎁 Bundles — packages for Robert
+
+Click **🎁 Bundles** in the sidebar. This is where you compose a delivery package for Robert — everything he needs to post-produce one piece of content, zipped and ready to drop into Slack.
+
+There are three flavors planned:
+
+- **Content Bundle** (live now) — a single piece of content with title, persona, description, categories, files, go-live date, and special instructions.
+- **Custom Bundle** (next release) — a custom video for a specific platform / user / price.
+- **Fan Site Bundle** (next release) — a whole month's worth of fan-site posts on a calendar.
+
+### Creating a Content Bundle
+
+Click **＋ New Content Bundle**. Molly creates an empty draft with a UID like `2026-05-22-0001` and drops you into the form. Everything you type saves on blur — close the tab and come back, your draft is still there.
+
+What to fill in:
+
+- **Persona** — required. CoC, PoA, or Sa.
+- **Title** — at least two words. (Sweet little safeguards: blank, `none`, `blank`, `custom`, or a single word all get gently rejected.)
+- **Description** — pick **📝 Type** to write text, or **🎙️ Upload audio** to attach a voice note. Exactly one is required. Text gets scanned live for prohibited words (defaults: `blackmail`, `mommy`, `addiction`, `addicted` — editable in Settings → Bundler).
+- **Categories** — at least three. Type to filter / create; drag the chips to reorder. They save UPPERCASE. Past categories from any bundle show as suggestions.
+- **Go-live date** — required, no past dates. If today or within 5 days, Molly gently asks *"Are you allowing enough time for editing?"*.
+- **Files** — at least one video or image. Drag rows to reorder. Each file is renamed `00001_…` in the final ZIP so Robert can rely on the order.
+- **Special instructions** — optional free-text for Robert.
+
+### Publishing
+
+When you're ready, click **🎁 Review & Publish…**. A wizard slides in from the right with every field rendered read-only — you can play the audio, scroll through image thumbnails, see categories in their final order. The **Pre-flight checks** section lists anything still missing; click any issue to jump straight to the field that needs love.
+
+When everything's green, click **✨ Approve & Publish**. Molly:
+
+1. Hashes every file (re-reads from disk; refuses if anything's changed since upload).
+2. Writes an inner ZIP with `info.md`, `Molly.log`, plus `Audio/`, `Video/`, `Photos/` folders.
+3. Wraps that inner ZIP plus `hashes.json` into an outer ZIP at `~/Downloads/Molly bundles/<UID>.zip`.
+4. Creates (or updates) a row in **Clips** with status `Bundled` so the go-live date shows on your Calendar.
+
+The success card gives you **Open ZIP** and **Reveal in Finder** buttons, plus both SHA-256 digests in case Robert wants to verify.
+
+### Editing after publish
+
+A published bundle is locked — the form goes read-only. If you need to change something, click **Delete bundle** on the list row (or on the published draft). That removes the ZIP from disk and flips the bundle back to draft state so you can edit and re-publish. **Your linked Clip row survives** — Sallie's `molly_notes_html` is preserved across re-publishes.
+
+### Settings → 🎁 Bundler
+
+- **Output folder** — default `~/Downloads/Molly bundles/`. Override + Reveal.
+- **Warn threshold (days)** — drafts older than this get a soft 🌷 / 🌼 badge on the list.
+- **Auto-purge threshold (days)** — published bundles older than this get their ZIP removed (the bundle row stays as `purged` for history). Runs once per day at launch; **Run purge now** bypasses the debounce.
+- **Auto-purge enabled** — separate toggle from the threshold, so you can flip-test without losing your number.
+- **Prohibited words** — chip list. Add / remove any time.
+
+---
+
 ## 📔 Molly's Log — your personal journal
 
 Click **📔 Molly's Log** in the sidebar. This is your private journal — append timestamped notes to yourself about whatever (today's mood, end-of-day reflection, an idea you don't want to forget). Optional file attachment per entry — image, PDF, anything. Stored inside Molly's database, so attachments travel with your auto-backup zips.
