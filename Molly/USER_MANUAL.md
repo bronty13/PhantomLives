@@ -373,6 +373,47 @@ Use it however you want. Nobody reads it but you. 💕
 
 ---
 
+## 📝 Notes — your little second brain
+
+Click **📝 Notes** in the sidebar (it sits between Molly's Log and Reminders). This is Molly's full Apple-Notes-style organiser — for the ideas, plans, draft captions, weekly to-dos, and anything else that doesn't quite fit anywhere else. Three panes, side-by-side: **Folders** on the left, **Notes** in the middle, **Editor** on the right.
+
+### 📁 Folders
+
+The folder tree on the left holds your notes. Folders can hold sub-folders, sub-sub-folders, as deep as you want — there's no limit. Each folder has a little **⋯** menu beside its name with **＋ New folder**, **＋ New note**, **Rename…**, **Move…**, and **Delete folder**. Use **Move…** to drop a folder (and everything underneath it) into a different parent. Deleting a folder takes its notes with it (two-tap confirmed).
+
+### 🏷️ Tags
+
+Notes can be tagged. Molly ships with six built-in tags ready to go — **#ideas**, **#plans**, **#roadmap**, **#promo**, **#content**, **#bettereveryday** — each with its own colour. Add your own in **Settings → 📝 Notes → Tags**; pick any colour you like. Built-in tags can't be deleted (so a fresh install always has them), but their colours are yours to edit. Tap a tag chip in the sidebar to filter the notes list down to that tag.
+
+### ✍️ The editor
+
+Click any note to open it in the editor on the right. The toolbar gives you **bold / italic / underline / strikethrough**, **H1 / H2 / H3**, **bullet / numbered / quote**, a **horizontal rule**, a **link** button, and a **clear formatting** brush. Everything autosaves as you type — no Save button. The title at the top is its own row; tab into the body and start writing.
+
+- **📎 Attach** — pin a file (photo, PDF, screenshot, anything) to the note. Attachments live under `note_attachments/` inside Molly's app data, so they're included in every auto-backup. Each attachment chip has **Open** (preview), **Download** (save out to disk), and **Delete**.
+- **🗑 Delete note** — two-tap confirmed; removes the note and any attachments.
+
+### 🎨 Fonts + paper colours
+
+Each note is a little postcard. Pick its **paper colour** from a row of ten Apple-Notes-inspired tints (cream, blush, mint, lavender, etc.), or punch in a custom hex if those don't speak to you. Pick its **font** from eleven hand-picked options — **Paper Daisy** (Molly's default — handwritten, warm), plus ten SIL-OFL Google Fonts (Caveat, Patrick Hand, Comic Neue, Indie Flower, Kalam, Architects Daughter, and more). Pick its **size** with the slider — each font has its own baseline so 18 in one font *looks* like 18 in any other.
+
+App-wide defaults are in **Settings → 📝 Notes → Defaults** (so every new note starts in your favourite font/colour/size). Any single note can override the defaults right from the editor — open the **🎨** menu in the top-right of the editor.
+
+### 🔎 Search + find
+
+The search panel has two modes. **🔍 Search** filters the notes list by **title and folder name** (plain substring, case-insensitive — tick **regex** for pattern matching). **Find in note bodies** scans across the contents of every note, capped at 5 hits per note so giant notes don't drown the list. Each match line shows a line number + an ~80-char snippet — click any one to jump straight into the editor with the match highlighted.
+
+### 📤 Export
+
+Each note can be exported to **Markdown** (`.md`), **Word** (`.docx`), or **PDF** (`.pdf`) — pick from the **📤** menu in the editor. The export lands in `~/Downloads/Molly notes/` (Mac) or `%USERPROFILE%\Downloads\Molly notes\` (Windows). Markdown is plain and gist-friendly; Word and PDF keep your font, paper colour, and headings.
+
+### A few small notes about Notes 💕
+
+- Everything autosaves — there's no Save button, and there's no "unsaved changes" trap when you click away.
+- Notes don't have due dates — that's what **Reminders** is for. If a note grows into something with a deadline, jot the deadline in the body and add the reminder over in 🔔 Reminders. ✨
+- Attachments are inside Molly's own database/files — so the **💾 auto-backup** zip contains every note's attachments without you having to think about it.
+
+---
+
 ## 📅 Calendar
 
 Click **Calendar**. The month grid shows every imported clip on its go-live date as a colored pill (one per persona), and every pending reminder on its due date as a 🔔 pill with a dashed border (color-matched to the schedule's persona, or neutral when the schedule isn't bound to one). Completed reminders drop off automatically. Click any clip pill to open its detail panel — read every imported field and write your own rich-text notes that survive future imports. Use **Prev** / **Next** / **Today** to move around.

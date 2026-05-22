@@ -85,8 +85,20 @@ Molly/
 │   │   ├── history.rs                    # add_history_entry_with_attachment + download_history_attachment (rusqlite BLOB I/O)
 │   │   ├── log.rs                        # add_log_entry_with_attachment + download_log_attachment (Molly's Log)
 │   │   ├── c4s.rs                        # replace_c4s_clips (atomic overlay) + delete_all_c4s_data + count-verify
+│   │   ├── masterclipper.rs              # MasterClipper external-DB read helpers (clip dedup feed)
+│   │   ├── bundles.rs                    # Content / Custom / Fan-Site bundle CRUD + validation engine + publish
+│   │   ├── bundle_zip.rs                 # ZIP composition for published bundles (Video/, Photos/, FanSite/, info.md, Molly.log)
+│   │   ├── crypto/                       # Phase 10 keystore: passphrase-derived KEK wrapping per-install DEK
+│   │   │   ├── mod.rs / wrap.rs          # AES-256-GCM wrap/unwrap helpers + roundtrip tests
+│   │   │   └── keystore.rs               # init / unlock / change_passphrase / wipe + rate-limited unlock
+│   │   ├── site_credentials.rs           # Phase 11 primary + sub-credentials per site, encrypted via Phase 10 keystore
+│   │   ├── atw.rs                        # ATW Repost runner + log + status; spawns Sallie's bot binary
+│   │   ├── atw_setup.rs                  # ATW credential capture + tester (idempotent)
+│   │   ├── atw_settings.rs               # ATW preferences (cadence, pause, log path)
+│   │   ├── background_jobs.rs            # Phase 12 generic scheduler (jobs, run-log, next_run_at), powers ATW
+│   │   ├── notes.rs                      # Phase 13 Notes: folders, notes, tags, attachments, search + find, exports
 │   │   └── fsutil.rs                     # ~/Downloads/<sub> resolution + Finder reveal
-│   ├── migrations/                       # 12 migrations (run automatically on launch)
+│   ├── migrations/                       # 24 migrations (run automatically on launch)
 │   │   ├── 001_init.sql                  # personas + app_settings
 │   │   ├── 002_sites.sql                 # site entries, preloaded
 │   │   ├── 003_taxonomy.sql              # products + interests
@@ -102,7 +114,15 @@ Molly/
 │   │   ├── 013_customer_history.sql      # customer_history (append-only) + BLOB attachment column
 │   │   ├── 014_customer_sales.sql        # customer_sales (editable) — product_id RESTRICT, customer_uid CASCADE
 │   │   ├── 015_mollys_log.sql            # mollys_log (global journal) + BLOB attachment column
-│   │   └── 016_c4s_clips.sql             # c4s_clips snapshot + c4s_imports audit; persona_code CHECK-locked to CoC|PoA
+│   │   ├── 016_c4s_clips.sql             # c4s_clips snapshot + c4s_imports audit; persona_code CHECK-locked to CoC|PoA
+│   │   ├── 017_bundles.sql               # bundles, bundle_files, bundle_fan_days, bundle_archives, bundle_categories, bundler_settings, bundle_prohibited_words
+│   │   ├── 018_crypto_keystore.sql       # keystore (wrapped DEK + KDF params + version + failed-unlock counter)
+│   │   ├── 019_site_credentials.sql      # site_credentials (primary + sub) + last_rotated + encrypted password blob
+│   │   ├── 020_background_jobs.sql       # jobs + job_runs + next_run_at index
+│   │   ├── 021_keystore_stay_unlocked.sql # session "stay unlocked" flag for trusted desktops
+│   │   ├── 022_job_run_log_path.sql      # job_runs.log_path (per-run captured stdout/stderr file)
+│   │   ├── 023_notes.sql                 # note_folders, notes, note_tags_def (6 built-in), note_tag_links, note_attachments
+│   │   └── 024_note_font_size.sql        # notes.font_size_pt (user-adjustable per-note + per-app default)
 │   ├── icons/                            # Generated icon set (from molly.svg)
 │   ├── capabilities/default.json         # Tauri ACL — which plugin commands the frontend can invoke
 │   ├── tauri.conf.json
@@ -144,6 +164,12 @@ All cross-boundary types use `#[serde(rename_all = "camelCase")]` — enforced b
 | log | `add_log_entry_with_attachment`, `download_log_attachment` (rusqlite BLOB I/O for Molly's Log) |
 | c4s | `replace_c4s_clips` (atomic overlay-replace + count-verify), `delete_all_c4s_data` |
 | bundles | `create_bundle`, `update_bundle_fields`, `save_bundle_file`, `delete_bundle_file`, `reorder_bundle_files`, `set_bundle_categories`, `list_bundles`, `get_bundle`, `delete_bundle_draft`, `publish_bundle`, `delete_published_bundle`, `list_bundle_archives`, `reveal_bundles_dir`, `open_bundle_archive`, `auto_purge_old_bundles`, `get_bundler_settings`, `set_bundler_settings`, `list_prohibited_words`, `add_prohibited_word`, `remove_prohibited_word`, `create_fan_day`, `update_fan_day_message`, `delete_fan_day` |
+| keystore (crypto) | `keystore_status`, `keystore_init`, `keystore_unlock`, `keystore_lock`, `keystore_change_passphrase`, `keystore_wipe`, `keystore_set_stay_unlocked` — passphrase-derived KEK wrapping a per-install DEK, rate-limited unlock counter. |
+| site_credentials | `list_site_credentials`, `create_site_credential`, `update_site_credential`, `set_site_credential_password`, `clear_site_credential_password`, `set_site_credential_primary`, `delete_site_credential` — primary + sub credentials per site, encrypted via the Phase 10 keystore. |
+| background_jobs | `list_jobs`, `get_job`, `update_job_cadence`, `set_job_paused`, `run_job_now`, `list_job_runs`, `read_job_run_log`. Scheduler ticks in `App.tsx` on launch + every 30 minutes, dispatched into `atw.rs`. |
+| atw | `atw_run_now`, `atw_status`, `atw_capture_credentials`, `atw_test_credentials`, `get_atw_settings`, `set_atw_settings` — wraps Sallie's external `atw-repost-bot` binary; creds come from the keystore. |
+| masterclipper | `read_masterclipper_clips` — dedupes against MasterClipper's external SQLite (used by the import wizard). |
+| notes | 28 commands across folders / notes / tags / attachments / search / find / export. Key ones: `list_folders`, `create_folder`, `rename_folder`, `move_folder`, `delete_folder`; `list_notes`, `get_note`, `create_note`, `update_note`, `delete_note`, `copy_note`; `list_tags`, `create_tag`, `update_tag`, `delete_tag`, `set_note_tags`; `add_note_attachment`, `download_note_attachment`, `delete_note_attachment`; `search_titles`, `find_in_bodies`; `export_note_md`, `export_note_docx`, `export_note_pdf`, `reveal_notes_export_dir`; `get_notes_defaults`, `set_notes_defaults`. |
 
 ACL is in `src-tauri/capabilities/default.json`; this is the file that bit us in v0.6.0 (SQL `execute` was missing from the allowlist and writes failed silently).
 
@@ -179,21 +205,36 @@ Updater is wired against `https://github.com/bronty13/PhantomLives/releases/late
 
 ## Tests
 
-`./run-tests.sh` runs **Rust + frontend** end-to-end (`cargo test --lib` then `pnpm test`). 30 Rust + 75 TS = **105 tests total** as of 1.8.0. In non-TTY environments, prefix with `CI=true` so pnpm's modules-purge prompt is skipped.
+`./run-tests.sh` runs **Rust + frontend** end-to-end (`cargo test --lib` then `pnpm test`). **156 Rust + 136 frontend = 292 tests total** as of 1.14.0. In non-TTY environments, prefix with `CI=true` so pnpm's modules-purge prompt is skipped.
 
-**Rust (22)**:
+**Rust (156)**:
 - `backup.rs::tests` (7) — debounce, retention prefix guard, listing order, verify-missing-DB, auto-create target dir.
-- `lib.rs::camel_case_contract` (7) — every boundary struct serializes camelCase (Settings / BackupRow / VerifyResult / AttachmentInfo / ExportResult / HistoryEntryRef / LogEntryRef).
-- `lib.rs::migration_smoke::all_migrations_apply_cleanly` (1) — applies every shipped migration to a fresh in-memory SQLite, asserts 23 anchor tables exist, asserts migration 011 preloaded ≥349 kinks.
+- `lib.rs::camel_case_contract` — every boundary struct serializes camelCase (Settings / BackupRow / VerifyResult / AttachmentInfo / ExportResult / HistoryEntryRef / LogEntryRef / BundleRef / FanDayRef / JobRow / JobRunRow / NoteRef / NoteFolderRef / NoteTagRef / NoteAttachmentRef / etc.). Every PR adds a contract test for any new return type — see PR-policy in `OUT_OF_SCOPE.md`.
+- `lib.rs::migration_smoke::all_migrations_apply_cleanly` — applies every shipped migration to a fresh in-memory SQLite, asserts anchor tables exist, asserts migration 011 preloaded ≥349 kinks.
 - `history.rs::tests` (3) — BLOB round-trips byte-for-byte; missing-id errors out; FK enforcement rejects orphan rows. Pure helpers (`insert_history_row`, `read_history_blob`) are extracted from the Tauri commands so they're testable without `AppHandle`.
 - `log.rs::tests` (3) — same shape: round-trip + missing-id + empty-body/zero-byte BLOB edge case.
+- `c4s.rs::tests` (3) — atomic replace, per-persona overlay isolation, empty-rows-clears semantics.
+- `bundles.rs::tests` — Content/Custom/FanSite validation + `days_in_month` + custom-delivery mutex + fan_day CRUD/cascade.
+- `bundle_zip.rs::tests` — bundle ZIP layout + path-renaming + safe-name fallback.
+- `masterclipper.rs::tests` (2) — missing-DB returns empty, fixture reads back uppercased + dedup-sorted.
+- `crypto::wrap::tests` — AES-256-GCM roundtrip incl. large blob.
+- `crypto::keystore::tests` (6) — init / unlock happy path, init-twice rejected, wipe → uninitialized, change-passphrase preserves DEK, import rotates + bumps version, wrong-passphrase rate-limited.
+- `site_credentials.rs::tests` (8) — create+list, cannot-delete-last-credential, backfill primary-per-site, cascade on site delete, set-primary clears others + mirrors username, set/clear password, update-primary syncs sites.username, update-secondary doesn't.
+- `background_jobs.rs::tests` — create / list / mark-ran advances `next_run_at`, delete cascades runs, run-log path round-trips.
+- `notes.rs::tests` (22) — six built-in tags seeded, user-tag deletable but built-in not; folder create+list+rename, folder move-into-self rejected, delete-folder cascades notes; note create/update/get round-trip, note copy carries tags; per-note style overrides persist, defaults seeded from migration + save/load round-trip; search titles plain substring + regex; find-in-bodies returns line numbers, caps at 5 per note.
 - `fsutil::tests` (1) — `downloads_subdir` resolution contract.
 
-**Frontend (44, vitest)**:
-- `src/lib/money.test.ts` (10) — `parseMoney` / `fmtMoney` incl. the trailing-decimal-point case the MoneyInput pattern depends on.
-- `src/lib/phone.test.ts` (12) — `formatUSPhone` partials + canonical + extension; `isValidUSPhone` + `usPhoneDigits` covering the +1 strip.
-- `src/lib/cadence.test.ts` (18) — `nextOccurrencesAfter` across all six cadence kinds (daily, weekly, biweekly w/ anchor, monthly_dom w/ clamp, monthly_days_before_next, monthly_days_after_eom, every_n_days) + the date helpers (`isoDate`, `parseIso`, `addDays`, `startOfMonth` / `endOfMonth` / `startOfNextMonth`).
-- `src/lib/uid.test.ts` (3) — `formatDateKey` Y-M-D shape + zero-pad.
+**Frontend (136, vitest)** — 10 test files in `src/lib/*.test.ts`:
+- `money.test.ts` (10) — `parseMoney` / `fmtMoney` incl. the trailing-decimal-point case the MoneyInput pattern depends on.
+- `phone.test.ts` (14) — `formatUSPhone` partials + canonical + extension; `isValidUSPhone` + `usPhoneDigits` covering the +1 strip.
+- `cadence.test.ts` (17) — `nextOccurrencesAfter` across all six cadence kinds (daily, weekly, biweekly w/ anchor, monthly_dom w/ clamp, monthly_days_before_next, monthly_days_after_eom, every_n_days) + the date helpers.
+- `uid.test.ts` (3) — `formatDateKey` Y-M-D shape + zero-pad.
+- `csvPipe.test.ts` (13) — generic CSV pipe parsing used by the sales-report importer.
+- `c4sClassify.test.ts` (6) — C4S category classification rules.
+- `reorderHelpers.test.ts` (7) — array-reorder math used by drag-handles + kinks editor.
+- `bundleValidation.test.ts` (32) — mirror of Phase 9 Rust rules end-to-end (Content / Custom / Fan-Site).
+- `bundleUid.test.ts` (5) — bundle UID generation contract.
+- `markdownLite.test.ts` (12) — markdown-lite renderer used by Notes export to MD + the bundle `info.md` composer.
 
 **Still untested** (deliberate per `OUT_OF_SCOPE.md`):
 - `attachments.rs` file save / reveal / open.

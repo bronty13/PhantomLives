@@ -22,14 +22,17 @@ paper colour tints + custom hex, attachments (Open / Download / Delete)
 under app_data/note_attachments/, export to Markdown via turndown,
 Word via html-to-docx, PDF via jsPDF + html2canvas-pro.
 
-Migration 023 adds note_folders, notes, note_tags_def, note_tag_links,
-note_attachments. 28 new Tauri commands. 156 Rust + 136 frontend tests
-still passing (+22 Rust in the notes module).
+Migrations **023 + 024** — 023 adds note_folders, notes, note_tags_def,
+note_tag_links, note_attachments; 024 adds notes.font_size_pt for the
+user-adjustable size slider. 28 new Tauri commands. **156 Rust + 136
+frontend = 292 tests** still passing (+22 Rust in the notes module).
 
 Late polish during Sallie's testing: replaced window.prompt /
 window.confirm (silently broken in Tauri 2) with in-app NamePromptModal
 + ConfirmModal; added .molly-note-editor CSS to restore H1/H2/H3 + list
-visuals stripped by Tailwind's preflight.
+visuals stripped by Tailwind's preflight; per-font baseline scale so a
+single integer size slider feels the same across all 11 fonts (Caveat,
+Patrick Hand, Indie Flower, etc. all visually match at the same number).
 
 ## [1.13.0] — 2026-05-22
 
