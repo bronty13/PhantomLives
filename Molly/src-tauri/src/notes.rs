@@ -1051,6 +1051,28 @@ fn guess_mime(name: &str) -> String {
     }.into()
 }
 
+// ----- Export sink (writes bytes from the JS exporter to disk) --------------
+
+/// Write a byte array (an exported MD / DOCX / PDF) to the user-chosen
+/// destination path. The frontend produces the bytes via turndown /
+/// html-to-docx / jsPDF and we just persist them. The save-file dialog
+/// (plugin-dialog) gates whether the path is acceptable; we still
+/// create parent directories on demand for paths the dialog returned
+/// with non-existent parents.
+#[tauri::command]
+pub fn write_note_export<R: Runtime>(
+    _handle: AppHandle<R>,
+    dest_path: String,
+    bytes: Vec<u8>,
+) -> Result<(), CryptoError> {
+    let path = PathBuf::from(&dest_path);
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    fs::write(&path, &bytes).map_err(|e| CryptoError::Internal(format!("write: {e}")))?;
+    Ok(())
+}
+
 // ----- Tests -----------------------------------------------------------------
 
 #[cfg(test)]

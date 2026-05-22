@@ -8,6 +8,7 @@ import {
 import { ConfirmModal } from '../../components/ConfirmModal';
 import { NamePromptModal } from '../../components/NamePromptModal';
 import { AttachmentsBar } from './AttachmentsBar';
+import { ExportMenu } from './ExportMenu';
 import { FolderPickerModal } from './FolderPickerModal';
 import { FolderTree, type FolderAction } from './FolderTree';
 import { NoteEditor } from './NoteEditor';
@@ -214,19 +215,29 @@ export function NotesView() {
     }
     return (
       <div className="flex-1 overflow-y-auto p-6">
-        <input
-          type="text"
-          value={pendingTitle.current ?? loadedNote.title}
-          onChange={(e) => {
-            pendingTitle.current = e.target.value;
-            // Force a re-render of the input by mutating loadedNote shallow
-            setLoadedNote({ ...loadedNote, title: e.target.value });
-            scheduleSave();
-          }}
-          onBlur={() => flushPending()}
-          className="w-full bg-transparent border-none focus:outline-none display-font text-3xl font-semibold mb-3 persona-accent"
-          placeholder="Untitled"
-        />
+        <div className="flex items-start gap-3 mb-3">
+          <input
+            type="text"
+            value={pendingTitle.current ?? loadedNote.title}
+            onChange={(e) => {
+              pendingTitle.current = e.target.value;
+              // Force a re-render of the input by mutating loadedNote shallow
+              setLoadedNote({ ...loadedNote, title: e.target.value });
+              scheduleSave();
+            }}
+            onBlur={() => flushPending()}
+            className="flex-1 bg-transparent border-none focus:outline-none display-font text-3xl font-semibold persona-accent"
+            placeholder="Untitled"
+          />
+          <div className="pt-2">
+            <ExportMenu
+              noteTitle={pendingTitle.current ?? loadedNote.title}
+              noteHtml={pendingHtml.current ?? loadedNote.contentHtml}
+              fontFamily={loadedNote.fontFamily}
+              paperColor={loadedNote.paperColor}
+            />
+          </div>
+        </div>
         <div className="text-xs opacity-50 mb-3 font-mono">
           created {fmtDateTime(loadedNote.createdAt)} · edited {fmtDateTime(loadedNote.lastEditedAt)}
         </div>

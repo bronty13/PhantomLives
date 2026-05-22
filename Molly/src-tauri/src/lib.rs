@@ -321,6 +321,7 @@ pub fn run() {
             notes::delete_note_attachment,
             notes::open_note_attachment,
             notes::download_note_attachment,
+            notes::write_note_export,
         ])
         .run(tauri::generate_context!())
         .expect("error while running molly");
