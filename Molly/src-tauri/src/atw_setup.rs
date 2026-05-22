@@ -164,12 +164,18 @@ pub async fn run_npm_install<R: Runtime>(
     let npm = discover_npm()
         .ok_or_else(|| CryptoError::Internal("npm not found on PATH (install Node 18+ from nodejs.org)".into()))?;
 
+    // Augment PATH with the dirs we found npm in + the standard fallbacks
+    // so npm can find its own `node` shebang target. Finder-launched Tauri
+    // apps inherit a stripped PATH; this is the surgical fix.
+    let augmented_path = augment_path_for_node(&npm);
+
     let mut cmd = Command::new(&npm);
     cmd.arg("install")
         .arg("--silent")
         .arg("--no-audit")
         .arg("--no-fund")
         .current_dir(&bot_dir)
+        .env("PATH", &augmented_path)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
@@ -247,16 +253,78 @@ pub async fn run_npm_install<R: Runtime>(
     })
 }
 
+/// Find `npm`. Tauri apps launched from Finder/Dock get a stripped PATH
+/// that omits Homebrew (`/opt/homebrew/bin`, `/usr/local/bin`), nvm,
+/// volta, etc. So we scan PATH first and then fall back to a handful of
+/// standard install locations before giving up.
 fn discover_npm() -> Option<PathBuf> {
     let exe = if cfg!(target_os = "windows") { "npm.cmd" } else { "npm" };
-    let path_var = std::env::var_os("PATH")?;
-    for dir in std::env::split_paths(&path_var) {
-        let candidate = dir.join(exe);
+    if let Some(path_var) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path_var) {
+            let candidate = dir.join(exe);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    for fallback in npm_fallback_dirs() {
+        let candidate = fallback.join(exe);
         if candidate.is_file() {
             return Some(candidate);
         }
     }
     None
+}
+
+/// Build a PATH string that includes the parent's PATH, the dir we
+/// found `npm` in (so `node` likely sits beside it), and all the
+/// standard fallbacks. Used as the env for `npm install` subprocesses.
+pub(crate) fn augment_path_for_node(npm_path: &Path) -> std::ffi::OsString {
+    use std::ffi::OsString;
+    let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(npm_dir) = npm_path.parent() {
+        parts.push(npm_dir.to_string_lossy().to_string());
+    }
+    for dir in npm_fallback_dirs() {
+        parts.push(dir.to_string_lossy().to_string());
+    }
+    if let Some(existing) = std::env::var_os("PATH") {
+        parts.push(existing.to_string_lossy().to_string());
+    }
+    let mut seen = std::collections::HashSet::new();
+    let mut deduped: Vec<String> = Vec::new();
+    for p in parts {
+        if !p.is_empty() && seen.insert(p.clone()) {
+            deduped.push(p);
+        }
+    }
+    OsString::from(deduped.join(sep))
+}
+
+fn npm_fallback_dirs() -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if cfg!(target_os = "macos") {
+        dirs.push(PathBuf::from("/opt/homebrew/bin"));
+        dirs.push(PathBuf::from("/usr/local/bin"));
+        dirs.push(PathBuf::from("/usr/local/opt/node/bin"));
+    }
+    if cfg!(target_os = "linux") {
+        dirs.push(PathBuf::from("/usr/local/bin"));
+        dirs.push(PathBuf::from("/usr/bin"));
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = PathBuf::from(home);
+        if let Ok(entries) = std::fs::read_dir(home.join(".nvm/versions/node")) {
+            for entry in entries.flatten() {
+                dirs.push(entry.path().join("bin"));
+            }
+        }
+        dirs.push(home.join(".volta/bin"));
+        dirs.push(home.join(".fnm/aliases/default/bin"));
+        dirs.push(home.join(".asdf/shims"));
+    }
+    dirs
 }
 
 // ----- Tauri commands --------------------------------------------------------

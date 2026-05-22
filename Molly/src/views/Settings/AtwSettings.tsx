@@ -203,17 +203,29 @@ export function AtwSettingsPane() {
             : 'Click "Install bot dependencies" below to run npm install.'}
         </HealthRow>
         {(!setup.nodeModulesPresent || setup.needsNpmInstall) && health.nodeFound && (
-          <button
-            type="button"
-            onClick={installDeps}
-            disabled={busy}
-            className="pretty-button"
-          >
-            {busy ? 'Installing…' : '⬇ Install bot dependencies (npm install)'}
-          </button>
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={installDeps}
+              disabled={busy}
+              className="pretty-button"
+            >
+              {busy ? '⏳ Installing… (this can take 30-60s)' : '⬇ Install bot dependencies (npm install)'}
+            </button>
+            {busy && (
+              <div className="text-xs bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 font-mono">
+                Running <code>npm install</code> in <span className="opacity-60">{setup.botDir}</span>… you can leave this tab open.
+              </div>
+            )}
+            {!busy && status && (status.startsWith('✓') || status.startsWith('✗') || status.startsWith('Install')) && (
+              <div className={`text-xs rounded-xl px-3 py-2 font-mono ${status.startsWith('✗') || status.startsWith('Install failed') ? 'bg-rose-50 border border-rose-200' : 'bg-emerald-50 border border-emerald-200'}`}>
+                {status}
+              </div>
+            )}
+          </div>
         )}
         {installResult && (
-          <details className="text-xs">
+          <details className="text-xs" open={installResult.status === 'failed'}>
             <summary className="opacity-60 cursor-pointer">npm install log (last lines)</summary>
             <pre className="mt-2 bg-black/5 rounded-xl p-2 max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[10px]">
               {installResult.logExcerpt || '(no output captured)'}

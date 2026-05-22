@@ -57,19 +57,53 @@ pub fn discover_chrome() -> Option<String> {
     None
 }
 
-/// Locate `node` on PATH. Returns None if Node isn't installed; the
-/// settings UI surfaces this with a "install Node 18+ from nodejs.org"
-/// banner so the user knows what's missing.
+/// Locate `node`. Scans PATH first, then falls back to a handful of
+/// standard install locations (Homebrew, nvm, volta, fnm, asdf) — Tauri
+/// apps launched from Finder/Dock get a stripped PATH that often omits
+/// the directories where a developer's Node actually lives.
 pub fn discover_node() -> Option<PathBuf> {
     let exe = if cfg!(target_os = "windows") { "node.exe" } else { "node" };
-    let path_var = std::env::var_os("PATH")?;
-    for dir in std::env::split_paths(&path_var) {
-        let candidate = dir.join(exe);
+    if let Some(path_var) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path_var) {
+            let candidate = dir.join(exe);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    for fallback in node_fallback_dirs() {
+        let candidate = fallback.join(exe);
         if candidate.is_file() {
             return Some(candidate);
         }
     }
     None
+}
+
+/// Common Node install locations. Kept in sync with `atw_setup::npm_fallback_dirs`.
+fn node_fallback_dirs() -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if cfg!(target_os = "macos") {
+        dirs.push(PathBuf::from("/opt/homebrew/bin"));
+        dirs.push(PathBuf::from("/usr/local/bin"));
+        dirs.push(PathBuf::from("/usr/local/opt/node/bin"));
+    }
+    if cfg!(target_os = "linux") {
+        dirs.push(PathBuf::from("/usr/local/bin"));
+        dirs.push(PathBuf::from("/usr/bin"));
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = PathBuf::from(home);
+        if let Ok(entries) = std::fs::read_dir(home.join(".nvm/versions/node")) {
+            for entry in entries.flatten() {
+                dirs.push(entry.path().join("bin"));
+            }
+        }
+        dirs.push(home.join(".volta/bin"));
+        dirs.push(home.join(".fnm/aliases/default/bin"));
+        dirs.push(home.join(".asdf/shims"));
+    }
+    dirs
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -182,9 +216,12 @@ pub async fn run_once<R: Runtime>(
         .clone()
         .or_else(discover_chrome);
 
+    let augmented_path = crate::atw_setup::augment_path_for_node(&node_path);
+
     let mut cmd = Command::new(&node_path);
     cmd.arg("repost.js")
         .current_dir(&bot_path)
+        .env("PATH", &augmented_path)
         .env("ATW_EMAIL", &settings.email)
         .env("ATW_PASSWORD", &password)
         .env("REPOST_DAYS", settings.repost_days.to_string())
