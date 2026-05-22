@@ -18,10 +18,11 @@ interface Props {
   onPublishRequested: () => void;
   onClose: () => void;
   onDeleted?: () => void;
+  onUnlock?: () => void;
   locked?: boolean;
 }
 
-export function FanSiteBundleForm({ uid, onPublishRequested, onClose, onDeleted, locked }: Props) {
+export function FanSiteBundleForm({ uid, onPublishRequested, onClose, onDeleted, onUnlock, locked }: Props) {
   const [bundle, setBundle] = useState<Bundle | null>(null);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [busy, setBusy] = useState(false);
@@ -102,7 +103,7 @@ export function FanSiteBundleForm({ uid, onPublishRequested, onClose, onDeleted,
           <button type="button" onClick={onDeleteDraft} className="pretty-button danger text-xs" disabled={busy}>🗑 Delete draft</button>
         )}
       </div>
-      <header className="space-y-1">
+      <header className="space-y-2">
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="display-font text-2xl font-bold persona-accent">Fan Site Bundle</h2>
           <span className="text-xs font-mono opacity-60">{uid}</span>
@@ -111,6 +112,12 @@ export function FanSiteBundleForm({ uid, onPublishRequested, onClose, onDeleted,
           One whole month of fan-site posts. Click each day to add a message + files.
           Bundle becomes publishable when every day is complete.
         </p>
+        {locked && onUnlock && (
+          <div className="flex items-center gap-3 bg-pink-50 border border-pink-200 rounded-xl px-3 py-2 text-sm">
+            <span className="flex-1">🔒 This bundle is <strong>published</strong> — fields are read-only.</span>
+            <button type="button" onClick={onUnlock} className="pretty-button text-xs">📝 Unlock to edit</button>
+          </div>
+        )}
         {error && (
           <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{error}</div>
         )}
