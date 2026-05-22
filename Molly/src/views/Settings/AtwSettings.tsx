@@ -193,9 +193,26 @@ export function AtwSettingsPane() {
           )}
         </HealthRow>
         <HealthRow ok={setup.filesCopied} label="Bot installed">
-          {setup.filesCopied
-            ? <span className="font-mono">{setup.botDir}</span>
-            : 'Files missing — click "Reset bot install" below.'}
+          {setup.filesCopied ? (
+            <span className="font-mono">{setup.botDir}</span>
+          ) : (
+            <div className="space-y-1">
+              <div>
+                Files missing at <span className="font-mono opacity-60">{setup.botDir}</span>. Clicking
+                "Install bot dependencies" below will copy the bundled bot files here automatically.
+              </div>
+              {settings.botDir && (
+                <button
+                  type="button"
+                  onClick={async () => { await save({ botDir: null }); setStatus('Bot directory reset to default (auto-managed).'); }}
+                  disabled={busy}
+                  className="pretty-button secondary text-xs"
+                >
+                  ↩️ Reset to default location (recommended)
+                </button>
+              )}
+            </div>
+          )}
         </HealthRow>
         <HealthRow ok={setup.nodeModulesPresent} label="Bot dependencies installed">
           {setup.nodeModulesPresent

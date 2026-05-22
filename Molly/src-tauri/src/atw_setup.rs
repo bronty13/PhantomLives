@@ -47,8 +47,13 @@ pub struct InstallResult {
 
 /// Resolve the effective bot directory for this install.
 ///
-/// - If `atw_settings.bot_dir` is set: respect the override (power-user mode).
-/// - Otherwise: `app_data/atw-bot/` (auto-managed).
+/// - If `atw_settings.bot_dir` is set: use that path (power-user override).
+/// - Otherwise: `app_data/atw-bot/` (the default Molly-managed location).
+///
+/// Note: the override is a *location* choice. Molly will still copy the
+/// bundled files into the resolved dir and run `npm install` there.
+/// Treating overrides as an opt-out of management produced an unfixable
+/// state when a stale override pointed at an empty directory.
 pub fn effective_bot_dir<R: Runtime>(handle: &AppHandle<R>) -> Result<PathBuf, CryptoError> {
     let app_data = handle
         .path()
@@ -103,22 +108,20 @@ pub fn inspect<R: Runtime>(handle: &AppHandle<R>) -> Result<SetupState, CryptoEr
     })
 }
 
-/// Copy vendored bot files from the .app bundle to the app-data dir.
-/// Only writes when the bundled VERSION differs from the installed
-/// VERSION (so we don't re-copy on every launch). Does NOT clobber
-/// node_modules — that's the user's npm-install output.
+/// Copy vendored bot files from the .app bundle into the effective bot
+/// dir. Skips when the destination already has the same VERSION marker
+/// as the bundle (the common case). NEVER touches `node_modules` — that
+/// belongs to the user's npm-install output.
+///
+/// We treat override + default dirs the same now: previously we early-
+/// returned on an override, on the theory that "user knows best." That
+/// produced a sharp edge — a stale override pointing at an empty
+/// directory left the user with no way to recover from the UI. The new
+/// behavior just writes the bundled files into whatever effective dir
+/// resolves to, version-gated. The override is a *location* choice, not
+/// an *opt-out* of Molly managing the install.
 pub fn ensure_bot_files_copied<R: Runtime>(handle: &AppHandle<R>) -> Result<(), CryptoError> {
     let dst = effective_bot_dir(handle)?;
-
-    // If the user set a manual override, do NOT touch their directory.
-    let app_data = handle
-        .path()
-        .app_data_dir()
-        .map_err(|e| CryptoError::Internal(format!("app_data_dir: {e}")))?;
-    let settings = atw_settings::load(&app_data);
-    if settings.bot_dir.is_some() {
-        return Ok(());
-    }
 
     let src = bundled_bot_source(handle)?;
     if !src.exists() {
