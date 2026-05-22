@@ -1,8 +1,16 @@
-# Molly is single-package, not a real workspace — but pnpm needs this
-# file to parse `allowBuilds` (its canonical place for trusting native
-# postinstall scripts since pnpm 10). `packages: []` is required by
-# pnpm's parser even when there are no workspace packages.
+# Molly is single-package, not a real workspace, but pnpm requires this
+# file to exist with `packages: []`.
+#
+# `allowBuilds` is pnpm 11's gate for which dependency lifecycle scripts
+# are allowed to run. Setting a package to `false` here does NOT silence
+# the error — it still throws `ERR_PNPM_IGNORED_BUILDS` and exits 1.
+# The values below are the explicit `true` approvals:
+#   • esbuild  — needs to drop platform-native binaries.
+#   • core-js  — postinstall is just a marketing banner; benign + tiny.
+# Mirror this in `package.json -> pnpm.onlyBuiltDependencies` so pnpm
+# treats them as the *only* allowlist (everything else is silent).
 packages: []
 
 allowBuilds:
+  core-js: true
   esbuild: true

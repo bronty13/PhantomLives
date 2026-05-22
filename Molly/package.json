@@ -35,7 +35,7 @@
     "turndown": "^7.2.4"
   },
   "pnpm": {
-    "ignoredBuiltDependencies": ["core-js"]
+    "onlyBuiltDependencies": ["esbuild", "core-js"]
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.1.0",
