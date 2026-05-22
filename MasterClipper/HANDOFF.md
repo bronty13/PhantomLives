@@ -350,3 +350,17 @@ After first launch verify `~/Library/Application Support/MasterClipper/{mastercl
 | OOXML XLSX/DOCX + PDF export pipeline | `WeightTracker/Sources/WeightTracker/Services/ExportService.swift` |
 | Backup with `/usr/bin/zip` + retention | `PurpleIRC/Sources/PurpleIRC/BackupService.swift` |
 | Ollama detection / serve / streaming chat | `SizzleBot/Sources/SizzleBot/Services/{OllamaService,OllamaSetup}.swift` |
+
+## C4S import — retrofit candidates from Molly (2026-05-21)
+
+Molly (sibling app, `Molly/`) shipped its own Clips4Sale catalog import in v1.8.0 and intentionally improved on this app's `C4SHistoricalImportService` + `C4SHistoricalImportSheet` + `C4SHistoricalView`. The CSV parser logic and atomic-replace semantics are mirrored ✅; the items below are deltas worth backporting on MasterClipper v11→v12:
+
+1. **Post-import record-count assertion.** After `replaceC4SHistorical` commits, run `c4sHistoricalCount(store:)` and compare against the parsed row count. Surface mismatch as a UI warning (Molly's success card switches from 🎉 + ✓ to ⚠ + advice to re-export). Today MasterClipper trusts the transaction silently — SQLite shouldn't drop rows, but the explicit gate buys creator trust on 1000+ row imports.
+2. **Per-row error accumulation.** Replace the `compactMap` silent-drop in `C4SHistoricalImportService.parse(...)` with a `[(index: Int, reason: String)]` of skipped rows. Surface them in the success modal under a collapsible `<details>` block. Today empty cells, missing IDs, or unparseable money values disappear without notice.
+3. **Performers-based persona detection.** In addition to the existing filename-prefix detection (`COC_*` → CoC), inspect the `Performers` column of the first non-empty row (`CoC` → CoC, `PrincessOFAddiction` → PoA). The user can rename a CSV; they can't rename the column value. Auto-select the matching store in the picker (Molly shows "Looks like a PoA export — sound right?").
+4. **Parameterized store picker.** Today `C4SHistoricalImportSheet` hardcodes the picker to CoC | PoA via `Picker { Text("Curse Of Curves (CoC)").tag("CoC")… }`. Lift the list from AppState (or accept a free-form text store key) so a third storefront is configurable without a code change.
+5. **Column-visibility toggles.** Add Settings UI for hiding/showing each grid column. Defaults track the data shape: `Clip Tracking Tag` and `Clip Preview Filename` are 0% filled across current exports — default OFF. Persona + Title always-visible.
+6. **Stale-data banner.** Display the age of the snapshot (`MAX(imported_at) per store`) prominently in the C4S Historical view with cute tiered language (🌸 fresh → ✨ → 🌷 → 🌼). Hide-able from Settings.
+7. **Faceted filters.** Add a sidebar in `C4SHistoricalView` for Status / price-range / Store, alongside the existing search-box. The view turns into a navigable workspace once a creator has 1000+ clips.
+
+Reference implementation: `Molly/src-tauri/src/c4s.rs` (Rust atomic-replace + count verify), `Molly/src/views/C4S/*.tsx` (UI), `Molly/src/lib/csvPipe.ts` (parser — direct TypeScript port of `parsePipeCSV` in `C4SHistoricalImportService.swift`). The Molly side handles persona enum-locking via a `CHECK` constraint in migration `016_c4s_clips.sql`; MasterClipper's `store` column is currently a free-form `TEXT`, which fits with parameterized-picker (#4) better than the constraint would.

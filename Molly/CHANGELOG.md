@@ -4,6 +4,59 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] — 2026-05-21
+
+### Fixed (post-tag)
+
+- **Import wizard error message now tells you what's actually in the file you picked.** Previously a wrong-format pick gave a generic "doesn't look like a Clips4Sale export — missing columns: …". Now the error shows the columns the parser *did* see (e.g. one giant column when the delimiter was comma, or the first 8 column names if they're just unfamiliar), detects ZIP magic bytes for accidental .xlsx picks, calls out comma-delimited files as "look for Export to CSV, not Excel," and prints the filename + byte size so it's obvious whether the right file landed in the picker. Also flips the error block's CSS to `whitespace-pre-wrap` so multi-line messages actually render.
+- **`build-app.sh` no longer passes `--no-open` to `tauri build`.** The script consumes `--no-open` and `--no-install` for `install.sh`; both were being forwarded to `tauri build` which rejects them. New version filters those two flags before invoking Tauri.
+
+### Added — 💌 In-app User Manual
+
+- **New sidebar entry** at the bottom of the nav between Settings and footer. Opens `USER_MANUAL.md` rendered in Molly's persona-tinted style — pastel cards, Comfortaa headings, 💕 bullet glyphs, gradient blockquotes, decorative hr dividers. Hand-rolled block parser (`src/lib/markdownLite.ts`) in the spirit of `PurpleLife/Sources/PurpleLife/Views/SecurityDocView.swift` — keeps the bundle library-free (no `react-markdown`) and the styling 100% under our control.
+- **Right-rail TOC** auto-extracts H1/H2 headings; click to jump; the active heading highlights as you scroll (IntersectionObserver). Hidden below `lg` breakpoint.
+- **SayingsBanner** at the top of the manual view so the page opens with a cute encouragement before getting into the how-to.
+- **Cuteness lift on the manual itself.** Rewrote `USER_MANUAL.md` end-to-end with warmer, more Sallie-by-name voice; added section emojis throughout; sprinkled little encouragements between sections; updated the 1.0 intro to reflect 1.8 + C4S Store; closed with a "note from the team". The manual is content, not configuration — the in-app viewer always renders whatever the shipped `USER_MANUAL.md` says.
+- **Vitest coverage**: `markdownLite.test.ts` (12) covers the block parser (headings, lists, blockquotes, fenced code with language hint, horizontal rules, paragraph join, list-flushed-by-heading) + the inline tokenizer (code spans, **bold**, *italic*, links, plain text, no-markdown-inside-code).
+
+### Added — 🛍️ C4S Store
+
+New top-level sidebar entry between Clips and Customers for browsing the **Clips4Sale catalog snapshot**. Sallie exports both stores (CoC + PoA) from C4S as pipe-delimited CSVs and Molly overlays each one atomically (delete + bulk insert + count-verify in a single transaction). The data is read-only reference — no editing.
+
+- **Sub-routes**: Dashboard (summary cards + stale-data banner) → Grid (searchable table) → Detail (full-page row inspector with ← Back that preserves search/sort/filter). Honors the top persona switcher; ★All interleaves both stores, Sa shows a friendly empty state.
+- **Dashboard cards**: total clips, lifetime sales, 6-month income, per-store split bars (★All only), status breakdown bars, top-10 categories, top-10 keyword chips, price min/mean/max.
+- **Stale-data banner**: tiered cute language by age — 🌸 fresh (≤1 day), ✨ still pretty fresh (2–6), 🌷 might be worth a re-import soon (7–29), 🌼 time for a fresh export? (30+), 🌱 nothing on file. Rotates a SayingsBanner-style display font per render. Hideable from Settings.
+- **Import wizard**: one ✨ Import C4S CSV button, file picker → auto-detect persona from the `Performers` column (`CoC` → CoC, `PrincessOFAddiction` → PoA) → confirm-and-override → atomic replace → success card with verified row count. Skips parsing-broken rows (missing Clip ID or Title) and surfaces them in an expandable `<details>` so nothing fails silently.
+- **Grid**: search w/ regex toggle + "N of M" + amber invalid-regex hint + Clear button + status dropdown filter. 13 columns total; Persona + Title always visible, every other column toggleable in Settings. Click any header to sort (re-click flips direction). Click row to open detail.
+
+### Added — Settings → 🛍️ C4S
+
+- Stale-data banner on/off toggle.
+- Per-column on/off toggles. Defaults track the data shape we observed in Sallie's exports: Tracking Tag and Preview Filename default OFF (always empty in current C4S exports); everything else defaults ON.
+- ✨ Import C4S CSV button (same wizard as the dashboard).
+- Last-imports readout (CoC + PoA, with timestamp and row count).
+- 🗑 Delete all C4S data — two-tap `ConfirmButton`. Wipes both stores' clips + audit rows; nothing else is touched.
+
+### Schema
+
+- Migration `016_c4s_clips.sql` adds the `c4s_clips` table (PK `(persona_code, clip_id)`; `persona_code` CHECK-locked to `'CoC' | 'PoA'`) and `c4s_imports` audit table with a persona+time index. No FKs to other Molly tables — this is a reference snapshot, not relational state.
+
+### Tauri command surface
+
+- `c4s::replace_c4s_clips` — atomic `BEGIN → DELETE persona → bulk INSERT → INSERT audit → COMMIT` via `rusqlite`. Returns `ReplaceResult { personaCode, deletedCount, insertedCount, expectedCount, matches, importedAt }` so the UI can warn on count mismatch.
+- `c4s::delete_all_c4s_data` — single-transaction wipe of `c4s_clips` + `c4s_imports`. Returns `DeleteAllResult`.
+- Both DTOs added to `camel_case_contract`; total now 9.
+
+### Tests
+
+- **Rust (+8)**: `c4s::tests` covers (1) insert-then-count-matches, (2) overlay-only-its-own-persona, (3) empty-rows-clears-persona, (4) `delete_all` wipes both stores + audit, (5) invalid-persona CHECK rejection, (6) ISO timestamp format contract. Plus 2 new `camel_case_contract` entries for `ReplaceResult` + `DeleteAllResult`. `migration_smoke` anchor list extended to `c4s_clips` + `c4s_imports`. Cargo test total: 22 → 30.
+- **Frontend (+31)**: `csvPipe.test.ts` (10) covers pipe-delimited parser w/ multi-line quoted descriptions (the C4S edge case), CRLF, BOM, escaped `""`, empty cells, ragged rows. `c4sClassify.test.ts` (9) covers Performers → persona mapping with normalization + `detectPersonaFromRows` walk. `markdownLite.test.ts` (12) covers the in-app manual viewer's block + inline parsers. Vitest total: 44 → 75.
+- **Combined: 30 cargo + 75 vitest = 105 tests** (run via `./run-tests.sh` — `CI=true` in non-TTY environments).
+
+### MasterClipper retrofit notes (filed for later, not implemented here)
+
+MasterClipper has a sibling C4S Historical import that's been in production for a while. While building Molly's version we identified seven improvements to backport. Tracked in `MasterClipper/HANDOFF.md` under a new "C4S import — retrofit candidates from Molly" section.
+
 ## [1.7.3] — 2026-05-21
 
 ### Tests

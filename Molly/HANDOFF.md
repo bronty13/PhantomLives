@@ -23,6 +23,7 @@ Molly/
 │   │   ├── ColorPicker.tsx               # color input + swatch row
 │   │   ├── ChipMultiSelect.tsx           # multi-select chip group (products, interests)
 │   │   ├── KinkChipPicker.tsx            # MasterClipper-style picker for the 349-row kink catalog
+│   │   ├── StaleBanner.tsx               # (in views/C4S/) tiered cute "X days old" banner for C4S snapshot freshness
 │   │   ├── MoneyInput.tsx                # uncontrolled-display $ input (used by Adhoc, Expenses, Site Wizard)
 │   │   ├── ConfirmButton.tsx             # two-tap delete guard
 │   │   ├── CheckOffBurst.tsx             # CSS confetti for reminders
@@ -46,9 +47,13 @@ Molly/
 │   │   ├── socialPlatforms.ts
 │   │   ├── socialPromos.ts
 │   │   ├── mollysLog.ts                  # global creator journal (BLOB attachments)
+│   │   ├── c4sClips.ts                   # C4S snapshot — list / aggregates / last-imports + invoke wrappers
 │   │   └── sayings.ts                    # 1000 strings, generated from sayings.md
 │   ├── lib/
 │   │   ├── csv.ts                        # RFC 4180 parser (60 lines, no papaparse)
+│   │   ├── csvPipe.ts                    # Pipe-delimited variant for C4S exports (multi-line quoted descriptions)
+│   │   ├── c4sClassify.ts                # Performers → persona-code helper for import-wizard auto-detect
+│   │   ├── markdownLite.ts               # Block + inline parser for USER_MANUAL.md (port of PurpleLife SecurityDocView.swift)
 │   │   ├── salesReport.ts                # generic sales-report parser
 │   │   ├── cadence.ts                    # 6 cadence kinds + nextOccurrencesAfter
 │   │   ├── money.ts                      # fmtMoney / parseMoney / month helpers
@@ -60,6 +65,8 @@ Molly/
 │       ├── Reminders/                    # Today / Upcoming / Overdue + Schedules tab
 │       ├── Calendar/                     # Month grid (clips + 🔔 reminders) + Clip detail modal
 │       ├── Clips/                        # Imported clip list (sort dir + status filter + regex search)
+│       ├── C4S/                          # 🛍️ Read-only C4S catalog snapshot (Dashboard / Grid / Detail / Import wizard / StaleBanner)
+│       ├── Manual/                       # 💌 In-app USER_MANUAL.md viewer (markdownLite parser + persona-tinted blocks + right-rail TOC)
 │       ├── Customers/                    # CRM — editor + history+sales timeline
 │       ├── MollyHelper/                  # Site launcher
 │       ├── Promos/                       # Social promo tracker
@@ -77,6 +84,7 @@ Molly/
 │   │   ├── attachments.rs                # Receipt file save / reveal / open
 │   │   ├── history.rs                    # add_history_entry_with_attachment + download_history_attachment (rusqlite BLOB I/O)
 │   │   ├── log.rs                        # add_log_entry_with_attachment + download_log_attachment (Molly's Log)
+│   │   ├── c4s.rs                        # replace_c4s_clips (atomic overlay) + delete_all_c4s_data + count-verify
 │   │   └── fsutil.rs                     # ~/Downloads/<sub> resolution + Finder reveal
 │   ├── migrations/                       # 12 migrations (run automatically on launch)
 │   │   ├── 001_init.sql                  # personas + app_settings
@@ -93,7 +101,8 @@ Molly/
 │   │   ├── 012_products_and_customer_fields.sql  # products: price_cents+unit; customers: VIP, primary_email_index, address, phones
 │   │   ├── 013_customer_history.sql      # customer_history (append-only) + BLOB attachment column
 │   │   ├── 014_customer_sales.sql        # customer_sales (editable) — product_id RESTRICT, customer_uid CASCADE
-│   │   └── 015_mollys_log.sql            # mollys_log (global journal) + BLOB attachment column
+│   │   ├── 015_mollys_log.sql            # mollys_log (global journal) + BLOB attachment column
+│   │   └── 016_c4s_clips.sql             # c4s_clips snapshot + c4s_imports audit; persona_code CHECK-locked to CoC|PoA
 │   ├── icons/                            # Generated icon set (from molly.svg)
 │   ├── capabilities/default.json         # Tauri ACL — which plugin commands the frontend can invoke
 │   ├── tauri.conf.json
@@ -132,6 +141,7 @@ All cross-boundary types use `#[serde(rename_all = "camelCase")]` — enforced b
 | export | `export_full_data`, `reveal_export_dir`, `import_full_export` |
 | history | `add_history_entry_with_attachment`, `download_history_attachment` (rusqlite BLOB I/O — bytes never cross IPC) |
 | log | `add_log_entry_with_attachment`, `download_log_attachment` (rusqlite BLOB I/O for Molly's Log) |
+| c4s | `replace_c4s_clips` (atomic overlay-replace + count-verify), `delete_all_c4s_data` |
 
 ACL is in `src-tauri/capabilities/default.json`; this is the file that bit us in v0.6.0 (SQL `execute` was missing from the allowlist and writes failed silently).
 
@@ -165,7 +175,7 @@ Updater is wired against `https://github.com/bronty13/PhantomLives/releases/late
 
 ## Tests
 
-`./run-tests.sh` runs **Rust + frontend** end-to-end (`cargo test --lib` then `pnpm test`). 22 Rust + 44 TS = **66 tests total** as of 1.7.3.
+`./run-tests.sh` runs **Rust + frontend** end-to-end (`cargo test --lib` then `pnpm test`). 30 Rust + 75 TS = **105 tests total** as of 1.8.0. In non-TTY environments, prefix with `CI=true` so pnpm's modules-purge prompt is skipped.
 
 **Rust (22)**:
 - `backup.rs::tests` (7) — debounce, retention prefix guard, listing order, verify-missing-DB, auto-create target dir.

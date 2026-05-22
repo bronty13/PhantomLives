@@ -83,6 +83,17 @@ Each entry sits where it sits because of how often it gets used in a real day: r
 - **No graph library.** Bar charts are `<div style={{ width: 'X%' }}>` and look better.
 - **No icon library.** Emojis are warmer + cross-platform free + need no licensing.
 
+## Read-only reference data (the C4S Store pattern)
+
+Some data inside Molly is a **snapshot** of an external source, not a live editable entity. Clips4Sale is the first one. The treatment is deliberate:
+
+- **No edit affordances anywhere.** No Save, no Delete, no inline rename. The detail page has 📋 Copy buttons but nothing that mutates.
+- **Atomic overlay-replace, not merge.** Each import is `BEGIN → DELETE persona → bulk INSERT → audit → COMMIT` in a Rust-side `rusqlite` transaction. Users never see half-imported state, and re-importing is the only mental model needed ("the snapshot is whatever I last imported").
+- **Post-commit count verification.** After the transaction commits, we run `SELECT COUNT(*)` and surface a ✓ or ⚠ in the UI. SQLite shouldn't drop rows but the explicit gate buys Sallie's trust on a 600+ row import.
+- **Per-row skip surface.** Rows missing required fields (Clip ID or Title) are collected during normalization and shown in an expandable `<details>` block on the success card. Silent compactMap drops are a footgun we'd rather avoid (MasterClipper's older C4S import has this; Molly fixes it).
+- **Freshness is a first-class UI element.** The `StaleBanner` reads `MAX(imported_at)` for the active persona scope and tiers cute language by age — 🌸 → ✨ → 🌷 → 🌼. Because the data drifts from reality the moment C4S records a new sale, hiding the timestamp would be dishonest. Hide-able from Settings for users who don't want the nudge.
+- **Column visibility is a user pref, not a config table.** Each column has an on/off checkbox in Settings → 🛍️ C4S; defaults track the observed data shape (Tracking Tag and Preview Filename default OFF because C4S never populates them). Persona + Title can't be hidden.
+
 ## Hidden-feature inventory
 
 These are tucked away but worth knowing about:

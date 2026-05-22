@@ -10,6 +10,8 @@ import { PromosListView } from './views/Promos/PromosListView';
 import { HomeDashboard } from './views/Home/HomeDashboard';
 import { CalendarView } from './views/Calendar/CalendarView';
 import { ClipsListView } from './views/Clips/ClipsListView';
+import { C4SView } from './views/C4S/C4SView';
+import { UserManualView } from './views/Manual/UserManualView';
 import { RemindersView } from './views/Reminders/RemindersView';
 import { IncomeView } from './views/Income/IncomeView';
 import { ExpensesView } from './views/Expenses/ExpensesView';
@@ -93,6 +95,7 @@ export default function App() {
     case 'reminders': body = <RemindersView active={active} onCountsChanged={refreshCounts} />; break;
     case 'calendar':  body = <CalendarView active={active} />; break;
     case 'clips':     body = <ClipsListView active={active} />; break;
+    case 'c4s':       body = <C4SView active={active} />; break;
     case 'customers': body = <CustomerListView active={active} />; break;
     case 'helper':    body = <MollyHelper active={active} />; break;
     case 'promos':    body = <PromosListView active={active} />; break;
@@ -100,6 +103,7 @@ export default function App() {
     case 'expenses':  body = <ExpensesView active={active} onChanged={refreshCounts} />; break;
     case 'reports':   body = <ReportsView active={active} />; break;
     case 'settings':  body = <SettingsView active={active} onPersonasChanged={refresh} />; break;
+    case 'manual':    body = <UserManualView />; break;
   }
 
   return (

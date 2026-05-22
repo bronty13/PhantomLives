@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { getVersion } from '@tauri-apps/api/app';
 import { SayingsBanner } from './SayingsBanner';
 
-export type ViewKey = 'home' | 'log' | 'reminders' | 'calendar' | 'clips' | 'customers' | 'helper' | 'promos' | 'income' | 'expenses' | 'reports' | 'settings';
+export type ViewKey = 'home' | 'log' | 'reminders' | 'calendar' | 'clips' | 'c4s' | 'customers' | 'helper' | 'promos' | 'income' | 'expenses' | 'reports' | 'settings' | 'manual';
 
 interface SidebarProps {
   active: ViewKey;
@@ -24,6 +24,7 @@ const NAV: NavItem[] = [
   { key: 'reminders', label: 'Reminders', icon: <span>🔔</span>, hint: 'Today, overdue, coming up' },
   { key: 'calendar',  label: 'Calendar',  icon: <span>📅</span>, hint: 'Clip releases + schedule overlay' },
   { key: 'clips',     label: 'Clips',     icon: <span>🎬</span>, hint: 'Imported from MasterClipper' },
+  { key: 'c4s',       label: 'C4S Store', icon: <span>🛍️</span>, hint: 'Live Clips4Sale catalog snapshot' },
   { key: 'customers', label: 'Customers', icon: <span>👯‍♀️</span>, hint: 'Customer tracker' },
   { key: 'helper',    label: "Molly Helper", icon: <span>💅</span>, hint: 'Site launcher + reminders' },
   { key: 'promos',    label: 'Promos',    icon: <span>📣</span>, hint: 'Reddit / X / Instagram promo posts' },
@@ -31,6 +32,7 @@ const NAV: NavItem[] = [
   { key: 'expenses',  label: 'Expenses',  icon: <span>🧾</span>, hint: 'One-off + recurring' },
   { key: 'reports',   label: 'Reports',   icon: <span>📊</span>, hint: 'MTD / YTD / per persona' },
   { key: 'settings',  label: 'Settings',  icon: <span>⚙️</span>, hint: 'Personas, sites, backup' },
+  { key: 'manual',    label: 'Manual',    icon: <span>💌</span>, hint: 'Sallie’s in-app user guide' },
 ];
 
 export function Sidebar({ active, onSelect, visible, pendingCount = 0 }: SidebarProps) {

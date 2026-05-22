@@ -13,13 +13,15 @@ This is a single-user gift app, built for Sallie. 1.0.0 was the original gift re
 | 🔔 **Reminders** | Overdue / Today / Coming-up-7d with a satisfying check-off + 10-second undo. Schedules tab for the rules (no-cron wizard, six cadence kinds). Five reminders preloaded. |
 | 📅 **Calendar** | Month grid with persona-colored clip pills imported from MasterClipper. Click a pill for the clip detail + your own Tiptap notes. |
 | 🎬 **Clips** | Searchable, sortable clip list. **📂 Import CSV** sucks in a MasterClipper export with persona-code mapping; idempotent on re-import. |
+| 🛍️ **C4S Store** | Read-only Clips4Sale catalog snapshot for both stores (CoC + PoA). ✨ Import C4S CSV auto-detects which store from the `Performers` field, then atomically replaces the snapshot with row-count verification. Dashboard with status breakdown, top categories, top keywords, pricing stats + a tiered cute "X days old" stale-data banner. Sortable, regex-searchable grid; full-page detail view; per-column visibility toggles in Settings. |
 | 👯‍♀️ **Customers** | Auto-UID (`YYYY-MM-DD-#####`), persona binding, 5 email slots (primary picker), full mailing address (ISO country), 2 phones with mobile + primary flags, ⭐ VIP toggle, product/interest/kink chips, rich-text notes. |
 | 💅 **Molly Helper** | Per-persona grid of color-tinted site cards. **Open** launches the site, **Copy user** drops the username on your clipboard. |
 | 📣 **Promos** | Reddit / X / Instagram / TikTok promo tracker. Optional clip-link. Reports the per-platform count. |
 | 💖 **Income** | Adhoc one-offs, monthly site-income wizard grouped by persona, generic sales-report CSV importer with auto-detected date+amount columns. |
 | 🧾 **Expenses** | One-off + recurring (cadence-driven). Attachments (receipts), full or partial exclusion (`$30 of this $100 was personal`). |
 | 📊 **Reports** | MTD vs Prior MTD vs YTD income–expense–profit, per-persona site bars, Promos breakdown, **📄 Export CSV**. |
-| ⚙️ **Settings** | Personas, Sites, Platforms, Products, Interests, Kinks (~350 preloaded), Data export, Updates, Backup. |
+| ⚙️ **Settings** | Personas, Sites, Platforms, Products, Interests, Kinks (~350 preloaded), C4S, Data export, Updates, Backup. |
+| 💌 **Manual** | In-app user guide — `USER_MANUAL.md` rendered with a hand-rolled markdown parser, persona-tinted headings, right-rail table-of-contents that highlights as you scroll. |
 
 The persona switcher at the top right (CoC / PoA / Sa / ★ All) is a global filter — the whole UI recolors per persona via CSS custom properties.
 
@@ -37,7 +39,7 @@ cd Molly
 pnpm install
 pnpm tauri dev                                 # hot-reload dev
 ./build-app.sh                                  # build + install to /Applications/
-./run-tests.sh                                  # cargo (22) + vitest (44) = 66 tests as of 1.7.3
+./run-tests.sh                                  # cargo (30) + vitest (75) = 105 tests as of 1.8.0
 ```
 
 To cut a signed release: `git tag -a molly-vX.Y.Z -m "…" && git push origin molly-vX.Y.Z`. CI builds + signs both platforms, drops a draft GitHub release with `latest.json` for the auto-updater.
@@ -77,8 +79,8 @@ Molly/
 │   ├── lib/                Pure helpers: cadence, csv, money, useAsyncRefresh, uid, salesReport
 │   └── state/              React hooks (personas, theme)
 ├── src-tauri/              Rust backend
-│   ├── src/                backup.rs, attachments.rs, export.rs, fsutil.rs, history.rs, log.rs, lib.rs
-│   ├── migrations/         15 SQL migrations (001 init → 015 mollys_log)
+│   ├── src/                backup.rs, attachments.rs, c4s.rs, export.rs, fsutil.rs, history.rs, log.rs, lib.rs
+│   ├── migrations/         16 SQL migrations (001 init → 016 c4s_clips)
 │   └── icons/              Generated icon set
 ├── install.sh              Mac: copy .app to /Applications + relaunch
 ├── build-app.sh            Mac: build + install + relaunch
@@ -114,6 +116,7 @@ Molly/
 | 1.5 | Customer sales → Adhoc Income union + import-skip fix. |
 | 1.6 | Calendar reminders + Clips grid sort/filter + reusable MoneyInput across 5 spots. |
 | 1.7 | 📔 Molly's Log (Captain's-log-style personal journal w/ Caveat handwritten font). |
+| 1.8 | 🛍️ C4S Store — Clips4Sale catalog import + browser (atomic overlay-replace, count-verify, tiered stale banner, per-column visibility, settings). |
 | ⏸ 8 | Per-site sales-report parsers (deferred — see [PHASE_8_PARSERS.md](PHASE_8_PARSERS.md)). |
 
 ## Built with love

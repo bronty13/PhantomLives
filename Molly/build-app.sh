@@ -28,8 +28,22 @@ fi
 # Make sure node_modules is in sync.
 pnpm install --frozen-lockfile 2>/dev/null || pnpm install
 
-# Build the Tauri bundle.
-pnpm tauri build "$@"
+# `--no-open` and `--no-install` are flags this script consumes for
+# install.sh — they are NOT valid Tauri-build args. Strip them out
+# before forwarding the rest to `tauri build`, otherwise `tauri build`
+# rejects with "Usage: pnpm run tauri build …" and we never produce a
+# bundle. (This bit us once; keep the filter.)
+TAURI_ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        --no-open|--no-install) ;;  # consumed below, do not forward
+        *) TAURI_ARGS+=("$arg") ;;
+    esac
+done
+
+# Build the Tauri bundle. Use the `${ARR[@]+"…"}` form so an empty
+# args array doesn't trip `set -u` (bash's unbound-variable check).
+pnpm tauri build ${TAURI_ARGS[@]+"${TAURI_ARGS[@]}"}
 
 # Chain into install.sh (per PhantomLives standard). Honor escape hatches.
 if [ "${BUILD_ONLY:-0}" != "1" ] && [[ ! " $* " =~ " --no-install " ]]; then

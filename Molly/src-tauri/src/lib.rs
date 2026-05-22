@@ -1,5 +1,6 @@
 mod attachments;
 mod backup;
+mod c4s;
 mod export;
 mod fsutil;
 mod history;
@@ -99,6 +100,12 @@ pub fn run() {
             sql: include_str!("../migrations/015_mollys_log.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 16,
+            description: "c4s-clips",
+            sql: include_str!("../migrations/016_c4s_clips.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -142,6 +149,8 @@ pub fn run() {
             history::download_history_attachment,
             log::add_log_entry_with_attachment,
             log::download_log_attachment,
+            c4s::replace_c4s_clips,
+            c4s::delete_all_c4s_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running molly");
@@ -163,6 +172,7 @@ pub fn run() {
 mod camel_case_contract {
     use crate::attachments::AttachmentInfo;
     use crate::backup::{BackupRow, Settings, VerifyResult};
+    use crate::c4s::{DeleteAllResult, ReplaceResult};
     use crate::export::ExportResult;
     use crate::history::HistoryEntryRef;
     use crate::log::LogEntryRef;
@@ -239,6 +249,28 @@ mod camel_case_contract {
         let v = serde_json::to_value(LogEntryRef { id: 0 }).unwrap();
         assert_camel(&v, "LogEntryRef");
     }
+
+    #[test]
+    fn c4s_replace_result_is_camel_case() {
+        let v = serde_json::to_value(ReplaceResult {
+            persona_code: String::new(),
+            deleted_count: 0,
+            inserted_count: 0,
+            expected_count: 0,
+            matches: true,
+            imported_at: String::new(),
+        }).unwrap();
+        assert_camel(&v, "ReplaceResult");
+    }
+
+    #[test]
+    fn c4s_delete_all_result_is_camel_case() {
+        let v = serde_json::to_value(DeleteAllResult {
+            deleted_clips: 0,
+            deleted_imports: 0,
+        }).unwrap();
+        assert_camel(&v, "DeleteAllResult");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -278,6 +310,7 @@ mod migration_smoke {
             (13, "customer-history",             include_str!("../migrations/013_customer_history.sql")),
             (14, "customer-sales",               include_str!("../migrations/014_customer_sales.sql")),
             (15, "mollys-log",                   include_str!("../migrations/015_mollys_log.sql")),
+            (16, "c4s-clips",                    include_str!("../migrations/016_c4s_clips.sql")),
         ];
 
         for (v, name, sql) in migrations {
@@ -299,6 +332,7 @@ mod migration_smoke {
             "expenses", "expenses_recurring",
             "social_platforms", "social_promos",
             "mollys_log",
+            "c4s_clips", "c4s_imports",
         ];
         for t in expected_tables {
             let count: i64 = conn
