@@ -76,7 +76,19 @@ export async function createSite(s: Omit<Site, 'id'>): Promise<number> {
       s.archived ? 1 : 0,
     ],
   );
-  return Number(result.lastInsertId ?? 0);
+  const id = Number(result.lastInsertId ?? 0);
+  // Mirror the migration 019 backfill: every site needs at least one
+  // primary credential row carrying its username, so subsequent reads
+  // through the site_credentials layer work without special-casing
+  // pre-019 vs post-019 sites.
+  if (id > 0) {
+    await conn.execute(
+      `INSERT INTO site_credentials (site_id, label, username, is_primary, sort_order)
+       VALUES ($1, 'default', $2, 1, 0)`,
+      [id, s.username],
+    );
+  }
+  return id;
 }
 
 export async function updateSite(s: Site): Promise<void> {

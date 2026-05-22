@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { MnemonicGrid } from '../../components/MnemonicGrid';
 import { PassphrasePrompt } from '../../components/PassphrasePrompt';
 import {
   changePassphrase,
@@ -22,9 +23,17 @@ export function SecuritySettings() {
   const { status, refresh, unlock, lock } = useKeystore();
   const [modal, setModal] = useState<Modal>({ kind: 'none' });
   const [mnemonic, setMnemonic] = useState<string[] | null>(null);
-  const [importWords, setImportWords] = useState('');
+  const [importCells, setImportCells] = useState<string[]>(() => Array(24).fill(''));
   const [wipeData, setWipeData] = useState(true);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
+
+  // Live count of how many of the 24 cells are filled (used to enable
+  // the Import button only when all 24 are present; live validation
+  // against the BIP-39 wordlist happens server-side on submit).
+  const filledCellCount = useMemo(
+    () => importCells.filter((w) => w.trim().length > 0).length,
+    [importCells],
+  );
 
   if (!status) {
     return <div className="pretty-card">Loading keystore status…</div>;
@@ -52,10 +61,12 @@ export function SecuritySettings() {
     setModal({ kind: 'reveal' });
   }
   async function doImport(newP: string) {
-    const words = importWords.split(/\s+/).filter((w) => w.length > 0);
+    const words = importCells
+      .map((w) => w.replace(/^\s*\d+\s*[.)]\s*/, '').trim().toLowerCase())
+      .filter((w) => w.length > 0);
     await importKeystoreFromMnemonic(words, newP);
     await refresh();
-    setImportWords('');
+    setImportCells(Array(24).fill(''));
     setModal({ kind: 'none' });
     setSavedNotice('Keystore imported from mnemonic and unlocked.');
   }
@@ -143,25 +154,27 @@ export function SecuritySettings() {
         <section className="pretty-card space-y-3">
           <h3 className="font-semibold">Restore from recovery words</h3>
           <p className="text-xs opacity-70">
-            Paste 24 BIP-39 words below (whitespace-separated, case-insensitive). Then enter a NEW passphrase
-            to wrap the imported key. ⚠️ This replaces your current keystore — any encrypted data already in
-            Molly will become unreadable unless this mnemonic matches what encrypted it.
+            Type or paste your 24 BIP-39 words below — one per cell. Press <strong>space</strong> or
+            <strong> Enter</strong> after each word to jump to the next cell. You can also paste all
+            24 at once into any cell, or use <strong>📋 Paste from clipboard</strong> to fill them in
+            one go. Words are case-insensitive; pasted &ldquo;1. word&rdquo; numbered lists also work.
           </p>
-          <textarea
-            className="pretty-input w-full font-mono text-sm"
-            rows={3}
-            placeholder="word1 word2 word3 ... word24"
-            value={importWords}
-            onChange={(e) => setImportWords(e.target.value)}
-          />
-          <button
-            type="button"
-            onClick={() => setModal({ kind: 'import' })}
-            disabled={importWords.split(/\s+/).filter((w) => w.length > 0).length !== 24}
-            className="pretty-button"
-          >
-            Import keystore from these words
-          </button>
+          <MnemonicGrid value={importCells} onChange={setImportCells} />
+          <div className="flex items-center justify-between text-xs">
+            <span className="opacity-60">{filledCellCount}/24 filled</span>
+            <button
+              type="button"
+              onClick={() => setModal({ kind: 'import' })}
+              disabled={filledCellCount !== 24}
+              className="pretty-button"
+            >
+              Import keystore from these words
+            </button>
+          </div>
+          <div className="text-xs bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-amber-900">
+            ⚠️ Importing replaces your current keystore. Any encrypted data already in Molly will
+            become unreadable unless this mnemonic matches what originally encrypted it.
+          </div>
         </section>
       )}
 
@@ -234,17 +247,18 @@ function MnemonicReveal({ words, onDismiss }: { words: string[]; onDismiss: () =
       <div className="bg-amber-50 border border-amber-300 rounded-xl px-3 py-2 text-sm text-amber-900">
         ⚠️ These 24 words are your master key. Don't email them. Don't screenshot. Don't store in cloud notes.
       </div>
-      <ol className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm font-mono bg-pink-50 rounded-xl p-3">
-        {words.map((w, i) => (
-          <li key={i} className="flex items-baseline gap-2">
-            <span className="opacity-50 w-6 text-right">{i + 1}.</span>
-            <span>{w}</span>
-          </li>
-        ))}
-      </ol>
+      {/* Same grid layout as the import side — identical visual rhythm. */}
+      <MnemonicGrid value={words} onChange={() => {}} readOnly />
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => navigator.clipboard.writeText(words.join(' '))} className="pretty-button secondary">
-          📋 Copy all
+          📋 Copy all (one line)
+        </button>
+        <button
+          type="button"
+          onClick={() => navigator.clipboard.writeText(words.map((w, i) => `${i + 1}. ${w}`).join('\n'))}
+          className="pretty-button secondary"
+        >
+          📝 Copy numbered list
         </button>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} className="w-4 h-4" />

@@ -4,15 +4,21 @@ import type { Persona } from '../../state/personas';
 import { listSites, type Site } from '../../data/sites';
 import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
 import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
+import { useKeystore } from '../../state/keystoreContext';
+import { SiteCredentialsBar } from './SiteCredentialsBar';
 
 interface Props {
   active: Persona;
 }
 
 export function MollyHelper({ active }: Props) {
+  const { status: keystoreStatus, unlock } = useKeystore();
   const [sites, setSites] = useState<Site[]>([]);
   const [personas, setPersonas] = useState<PersonaRow[]>([]);
   const [status, setStatus] = useState<string>('');
+  const [showUnlock, setShowUnlock] = useState(false);
+  const [unlockPassphrase, setUnlockPassphrase] = useState('');
+  const [unlockError, setUnlockError] = useState<string | null>(null);
 
   const { loading } = useAsyncRefresh(async (alive) => {
     const [s, p] = await Promise.all([listSites(), listPersonas()]);
@@ -60,6 +66,55 @@ export function MollyHelper({ active }: Props) {
           {active.code !== 'ALL' && <> Filtered to <strong>{active.name}</strong>.</>}
         </p>
       </div>
+
+      {keystoreStatus?.initialized && !keystoreStatus.unlocked && (
+        <div className="pretty-card border-pink-300 bg-pink-50 text-sm flex items-center gap-3">
+          <span className="text-lg">🔒</span>
+          <span className="flex-1">
+            Keystore is <strong>locked</strong> — site passwords stay hidden until you unlock.
+          </span>
+          {!showUnlock ? (
+            <button type="button" onClick={() => setShowUnlock(true)} className="pretty-button">
+              Unlock now
+            </button>
+          ) : (
+            <form
+              className="flex items-center gap-2"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setUnlockError(null);
+                try {
+                  await unlock(unlockPassphrase);
+                  setShowUnlock(false);
+                  setUnlockPassphrase('');
+                } catch (err: any) {
+                  setUnlockError(String(err?.message ?? err));
+                }
+              }}
+            >
+              <input
+                type="password"
+                autoFocus
+                placeholder="passphrase"
+                value={unlockPassphrase}
+                onChange={(e) => setUnlockPassphrase(e.target.value)}
+                className="pretty-input text-sm font-mono"
+              />
+              <button type="submit" className="pretty-button">Unlock</button>
+              <button
+                type="button"
+                onClick={() => { setShowUnlock(false); setUnlockPassphrase(''); setUnlockError(null); }}
+                className="pretty-button secondary"
+              >
+                Cancel
+              </button>
+            </form>
+          )}
+        </div>
+      )}
+      {unlockError && (
+        <div className="pretty-card border-red-200 bg-red-50 text-xs text-red-700">{unlockError}</div>
+      )}
 
       {loading && (
         <div className="pretty-card text-sm opacity-60 italic">Loading sites…</div>
@@ -120,6 +175,7 @@ export function MollyHelper({ active }: Props) {
                       </button>
                     )}
                   </div>
+                  <SiteCredentialsBar siteId={s.id} onStatus={setStatus} />
                 </div>
               ))}
             </div>

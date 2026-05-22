@@ -5,6 +5,7 @@ import type { Persona as ActivePersona } from '../../state/personas';
 import { ColorPicker } from '../../components/ColorPicker';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
+import { SiteCredentialsEditor } from './SiteCredentialsEditor';
 
 interface Props {
   activePersona: ActivePersona;
@@ -249,6 +250,13 @@ function SiteEditor({
         <button type="button" className="pretty-button secondary" onClick={onCancel}>Cancel</button>
         <button type="button" className="pretty-button" onClick={onSave}>Save</button>
       </div>
+      {site.id > 0 ? (
+        <SiteCredentialsEditor siteId={site.id} />
+      ) : (
+        <div className="col-span-2 text-xs opacity-60 italic">
+          Save the site first to add credentials (logins + encrypted passwords).
+        </div>
+      )}
     </div>
   );
 }
