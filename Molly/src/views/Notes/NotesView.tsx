@@ -1,0 +1,286 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type Note, type NoteFolder, type NoteSummary,
+  copyNote, createNote, createNoteFolder, deleteNote, deleteNoteFolder,
+  getNote, listNoteFolders, listNotes, moveNote, moveNoteFolder, renameNoteFolder,
+  updateNote,
+} from '../../data/notes';
+import { FolderTree, type FolderAction } from './FolderTree';
+import { NoteEditor } from './NoteEditor';
+import { NotesList, type NoteAction } from './NotesList';
+
+export function NotesView() {
+  const [folders, setFolders] = useState<NoteFolder[]>([]);
+  const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
+  const [notes, setNotes] = useState<NoteSummary[]>([]);
+  const [selectedNoteId, setSelectedNoteId] = useState<number | null>(null);
+  const [loadedNote, setLoadedNote] = useState<Note | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Autosave debounce (800ms after stop typing).
+  const saveTimer = useRef<number | null>(null);
+  const pendingTitle = useRef<string | null>(null);
+  const pendingHtml = useRef<string | null>(null);
+  const pendingText = useRef<string | null>(null);
+
+  const reloadFolders = useCallback(async () => {
+    try { setFolders(await listNoteFolders()); }
+    catch (e) { setError(String((e as { message?: string })?.message ?? e)); }
+  }, []);
+
+  const reloadNotes = useCallback(async () => {
+    try { setNotes(await listNotes(selectedFolderId)); }
+    catch (e) { setError(String((e as { message?: string })?.message ?? e)); }
+  }, [selectedFolderId]);
+
+  const reloadSelectedNote = useCallback(async () => {
+    if (selectedNoteId == null) { setLoadedNote(null); return; }
+    try { setLoadedNote(await getNote(selectedNoteId)); }
+    catch (e) { setError(String((e as { message?: string })?.message ?? e)); setLoadedNote(null); }
+  }, [selectedNoteId]);
+
+  useEffect(() => { reloadFolders(); }, [reloadFolders]);
+  useEffect(() => { reloadNotes(); }, [reloadNotes]);
+  useEffect(() => { reloadSelectedNote(); }, [reloadSelectedNote]);
+
+  // Flush any pending edits when the user switches notes (don't lose
+  // last few keystrokes to the debounce window).
+  const flushPending = useCallback(async () => {
+    if (saveTimer.current != null) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    const id = loadedNote?.id;
+    if (id == null) return;
+    const title = pendingTitle.current ?? loadedNote!.title;
+    const html = pendingHtml.current ?? loadedNote!.contentHtml;
+    const text = pendingText.current ?? loadedNote!.contentText;
+    if (
+      title === loadedNote!.title &&
+      html === loadedNote!.contentHtml &&
+      text === loadedNote!.contentText
+    ) {
+      pendingTitle.current = null; pendingHtml.current = null; pendingText.current = null;
+      return;
+    }
+    try {
+      await updateNote(id, title, html, text);
+      pendingTitle.current = null; pendingHtml.current = null; pendingText.current = null;
+      await reloadNotes();
+    } catch (e) {
+      setError(String((e as { message?: string })?.message ?? e));
+    }
+  }, [loadedNote, reloadNotes]);
+
+  // When the selected note changes, flush before swapping.
+  const switchNote = useCallback(async (newId: number) => {
+    await flushPending();
+    setSelectedNoteId(newId);
+  }, [flushPending]);
+
+  const scheduleSave = useCallback(() => {
+    if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => { flushPending(); }, 800);
+  }, [flushPending]);
+
+  // Folder pane handlers
+  async function onFolderAction(folderId: number | null, action: FolderAction) {
+    setError(null);
+    try {
+      if (action === 'new-folder') {
+        const name = window.prompt('New folder name:', 'Untitled folder');
+        if (!name) return;
+        const id = await createNoteFolder(folderId, name);
+        await reloadFolders();
+        setSelectedFolderId(id);
+      } else if (action === 'new-note') {
+        const id = await createNote(folderId, 'Untitled');
+        await reloadFolders();
+        setSelectedFolderId(folderId);
+        await reloadNotes();
+        await switchNote(id);
+      } else if (action === 'rename' && folderId != null) {
+        const current = folders.find((f) => f.id === folderId)?.name ?? '';
+        const name = window.prompt('Rename folder:', current);
+        if (!name) return;
+        await renameNoteFolder(folderId, name);
+        await reloadFolders();
+      } else if (action === 'move' && folderId != null) {
+        const target = await pickFolder(folders, folderId);
+        if (target === 'cancel') return;
+        await moveNoteFolder(folderId, target);
+        await reloadFolders();
+      } else if (action === 'delete' && folderId != null) {
+        if (!window.confirm('Delete this folder + everything inside it? This cannot be undone.')) return;
+        await deleteNoteFolder(folderId);
+        if (selectedFolderId === folderId) setSelectedFolderId(null);
+        await reloadFolders();
+        await reloadNotes();
+      }
+    } catch (e) {
+      setError(String((e as { message?: string })?.message ?? e));
+    }
+  }
+
+  // Note row handlers
+  async function onNoteAction(noteId: number, action: NoteAction) {
+    setError(null);
+    try {
+      if (action === 'copy') {
+        const newId = await copyNote(noteId);
+        await reloadNotes();
+        await switchNote(newId);
+      } else if (action === 'move') {
+        const target = await pickFolder(folders, null);
+        if (target === 'cancel') return;
+        await moveNote(noteId, target);
+        await reloadNotes();
+      } else if (action === 'delete') {
+        if (!window.confirm('Delete this note? This cannot be undone.')) return;
+        await deleteNote(noteId);
+        if (selectedNoteId === noteId) {
+          setSelectedNoteId(null);
+          setLoadedNote(null);
+        }
+        await reloadNotes();
+      }
+    } catch (e) {
+      setError(String((e as { message?: string })?.message ?? e));
+    }
+  }
+
+  const editorBody = useMemo(() => {
+    if (!loadedNote) {
+      return (
+        <div className="flex-1 flex items-center justify-center opacity-60 italic">
+          {selectedFolderId == null && notes.length === 0
+            ? 'Welcome to Notes 🌷 — create your first folder or note from the tree on the left.'
+            : 'Pick a note from the middle pane, or click ＋ Note above to start a new one.'}
+        </div>
+      );
+    }
+    return (
+      <div className="flex-1 overflow-y-auto p-6">
+        <input
+          type="text"
+          value={pendingTitle.current ?? loadedNote.title}
+          onChange={(e) => {
+            pendingTitle.current = e.target.value;
+            // Force a re-render of the input by mutating loadedNote shallow
+            setLoadedNote({ ...loadedNote, title: e.target.value });
+            scheduleSave();
+          }}
+          onBlur={() => flushPending()}
+          className="w-full bg-transparent border-none focus:outline-none display-font text-3xl font-semibold mb-3 persona-accent"
+          placeholder="Untitled"
+        />
+        <div className="text-xs opacity-50 mb-4 font-mono">
+          created {fmtDateTime(loadedNote.createdAt)} · edited {fmtDateTime(loadedNote.lastEditedAt)}
+        </div>
+        <NoteEditor
+          noteKey={loadedNote.id}
+          initialHtml={loadedNote.contentHtml}
+          fontFamily={loadedNote.fontFamily}
+          paperColor={loadedNote.paperColor}
+          onChange={(html, text) => {
+            pendingHtml.current = html;
+            pendingText.current = text;
+            scheduleSave();
+          }}
+        />
+      </div>
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadedNote, selectedFolderId, notes.length, scheduleSave, flushPending]);
+
+  return (
+    <div className="flex h-full">
+      {/* Pane 1: folder tree */}
+      <aside className="w-64 border-r border-black/10 bg-white/40 overflow-y-auto p-3">
+        <div className="display-font text-xl font-semibold persona-accent mb-3 px-1">📝 Notes</div>
+        <FolderTree
+          folders={folders}
+          selectedFolderId={selectedFolderId}
+          onSelect={(id) => { flushPending(); setSelectedFolderId(id); }}
+          onAction={onFolderAction}
+        />
+      </aside>
+
+      {/* Pane 2: notes list */}
+      <section className="w-72 border-r border-black/10 bg-white/20 overflow-y-auto p-3">
+        <div className="flex items-center justify-between mb-3 px-1">
+          <div className="text-sm font-semibold opacity-75">
+            {selectedFolderId == null
+              ? 'All notes (root)'
+              : folders.find((f) => f.id === selectedFolderId)?.name ?? 'Folder'}
+          </div>
+          <button
+            type="button"
+            onClick={() => onFolderAction(selectedFolderId, 'new-note')}
+            className="pretty-button text-xs"
+          >
+            ＋ Note
+          </button>
+        </div>
+        {error && (
+          <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3">{error}</div>
+        )}
+        <NotesList
+          notes={notes}
+          selectedNoteId={selectedNoteId}
+          onSelect={switchNote}
+          onAction={onNoteAction}
+        />
+      </section>
+
+      {/* Pane 3: editor */}
+      <main className="flex-1 flex flex-col overflow-hidden">
+        {editorBody}
+      </main>
+    </div>
+  );
+}
+
+/** Modal-free folder picker via window.prompt: lists folders and asks
+ *  the user to type the destination id (or 0 / blank for root). Cheap
+ *  for v1 — a richer picker can come later. */
+async function pickFolder(folders: NoteFolder[], excludeId: number | null): Promise<number | null | 'cancel'> {
+  if (folders.length === 0) {
+    if (!window.confirm('No folders yet — move to root?')) return 'cancel';
+    return null;
+  }
+  const lines = ['0  →  (root)'];
+  for (const f of folders) {
+    if (excludeId != null && f.id === excludeId) continue;
+    const indent = depthOf(folders, f.id);
+    lines.push(`${f.id}  →  ${'  '.repeat(indent)}${f.name}`);
+  }
+  const reply = window.prompt(
+    `Move to which folder? Type the id from below (0 for root):\n\n${lines.join('\n')}`,
+    '0',
+  );
+  if (reply == null) return 'cancel';
+  const n = parseInt(reply.trim(), 10);
+  if (Number.isNaN(n)) return 'cancel';
+  if (n === 0) return null;
+  return n;
+}
+
+function depthOf(folders: NoteFolder[], id: number): number {
+  let depth = 0;
+  let curr = folders.find((f) => f.id === id);
+  while (curr?.parentId != null) {
+    depth += 1;
+    if (depth > 50) break;
+    const next = folders.find((f) => f.id === curr!.parentId);
+    if (!next) break;
+    curr = next;
+  }
+  return depth;
+}
+
+function fmtDateTime(iso: string): string {
+  const d = new Date(iso.replace(' ', 'T') + 'Z');
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}

@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { getVersion } from '@tauri-apps/api/app';
 import { SayingsBanner } from './SayingsBanner';
 
-export type ViewKey = 'home' | 'log' | 'reminders' | 'calendar' | 'clips' | 'c4s' | 'bundles' | 'jobs' | 'customers' | 'helper' | 'promos' | 'income' | 'expenses' | 'reports' | 'settings' | 'manual';
+export type ViewKey = 'home' | 'log' | 'notes' | 'reminders' | 'calendar' | 'clips' | 'c4s' | 'bundles' | 'jobs' | 'customers' | 'helper' | 'promos' | 'income' | 'expenses' | 'reports' | 'settings' | 'manual';
 
 interface SidebarProps {
   active: ViewKey;
@@ -21,6 +21,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { key: 'home',      label: 'Home',      icon: <span>🏠</span>, hint: "Today's reminders + dashboards" },
   { key: 'log',       label: "Molly's Log", icon: <span>📔</span>, hint: 'Personal journal — notes to self with optional attachments' },
+  { key: 'notes',     label: 'Notes',     icon: <span>📝</span>, hint: 'Folders + tagged notes + WYSIWYG editor + attachments' },
   { key: 'reminders', label: 'Reminders', icon: <span>🔔</span>, hint: 'Today, overdue, coming up' },
   { key: 'calendar',  label: 'Calendar',  icon: <span>📅</span>, hint: 'Clip releases + schedule overlay' },
   { key: 'clips',     label: 'Clips',     icon: <span>🎬</span>, hint: 'Imported from MasterClipper' },
