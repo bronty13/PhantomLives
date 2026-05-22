@@ -34,7 +34,10 @@ function makeRepo(): { root: string; script: string } {
   return { root, script };
 }
 
-describe('bump-and-log', () => {
+// The bump-and-log script is a Unix-only git pre-commit hook (installed by
+// scripts/install-git-hooks.sh). Skip on Windows where path semantics differ
+// and the hook is never used.
+describe.skipIf(process.platform === 'win32')('bump-and-log', () => {
   it('skips when no PurplePDF files are staged', () => {
     const { root, script } = makeRepo();
     writeFileSync(join(root, 'README.md'), '# repo update\n');

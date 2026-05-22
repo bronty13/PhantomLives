@@ -7,6 +7,7 @@ const api = {
     version: string;
     platform: string;
     electron: string;
+    osUser: string;
   }> => ipcRenderer.invoke('purplepdf:ping'),
 
   /** Read a bundled resource (under resources/) as raw bytes. */

@@ -324,6 +324,7 @@ input[type="text"], input[type="search"], input[type="number"] {
   padding: 6px 12px;
   background: var(--surface-2, #f4f1fa);
   border-bottom: 1px solid var(--border, #d9d3e8);
+  position: relative;
 }
 .palette-group {
   display: flex;
@@ -548,6 +549,7 @@ input[type="text"], input[type="search"], input[type="number"] {
 
 /* ----- Forms layer (P5) ----- */
 .form-layer { z-index: 5; }
+.annot-layer { z-index: 6; }
 .form-layer .ff {
   box-sizing: border-box;
   font: inherit;
@@ -1135,4 +1137,84 @@ select:focus-visible,
     #e9dcff 12px
   );
   border: 1px dashed #b18cff;
+}
+
+/* ===== Stamp picker popover ===== */
+.stamp-picker {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 12px;
+  z-index: 50;
+  background: var(--bg-elev, #2a1547);
+  color: var(--text, #f5f3ff);
+  border: 1px solid var(--border-strong, rgba(255,255,255,0.18));
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+  padding: 10px 12px;
+  min-width: 360px;
+  max-width: 480px;
+}
+.stamp-picker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-dim, #c4b5fd);
+  margin-bottom: 8px;
+}
+.stamp-toggles {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.stamp-date-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+.stamp-date-toggle input { margin: 0; }
+.stamp-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.stamp-preset {
+  background: transparent;
+  border: 2px solid currentColor;
+  border-radius: 4px;
+  padding: 8px 6px;
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.06s ease, box-shadow 0.1s ease;
+}
+.stamp-preset:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+}
+.stamp-preset-label { display: inline-block; }
+.stamp-picker-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border, rgba(255,255,255,0.08));
+  font-size: 12px;
+  color: var(--text-dim, #c4b5fd);
+}
+.link-btn {
+  background: transparent;
+  border: none;
+  color: var(--accent, #a78bfa);
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+  font: inherit;
 }

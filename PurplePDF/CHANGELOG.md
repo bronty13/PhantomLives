@@ -8,6 +8,44 @@ Patch versions increment automatically on every commit that touches
 `PurplePDF/**`, via the `pre-commit` hook installed by
 `scripts/install-git-hooks.sh`. Minor and major bumps are manual.
 
+## [1.0.2] - 2026-05-21 — Stamps, drag-resize, select-tool fixes
+
+### Fixed
+- **Select tool can actually move/edit annotations now**. The root cause
+  was the `.form-layer` wrapper (z-index 5) using `pointer-events: auto`
+  across the whole page whenever the select tool was active — it sat
+  invisibly over `.annot-layer` and ate every click before it could
+  reach an annotation. The wrapper is now `pointer-events: none` and
+  individual form fields opt in on their own rect style.
+- **Select tool**: clicking the interior of rectangle, text box, freehand,
+  redaction, or signature annotations now reliably selects them.
+  Previously clicks inside transparent shapes passed through to the page
+  and cleared the selection, making annotations impossible to edit or
+  delete.
+
+### Added
+- **Drag-to-move** and **8-handle resize** for any selected annotation
+  (corners + edge midpoints). Min size 4pt; corners support flipping.
+- **Business Stamp tool** with 10 presets — APPROVED, DENIED, REVIEWED,
+  RECEIVED, DRAFT, FINAL, CONFIDENTIAL, VOID, REVISED, ✓, ✗ — accessible
+  from the ✪ button in the edit palette. Keyboard shortcut: **M**.
+- **Adobe-style dynamic stamps**: rounded corners, tinted color fill
+  (~14% alpha), single thin border, italic bold label (Helvetica Bold
+  Oblique), left-aligned, italic subtitle line
+  (e.g. `By Jane Doe at 6:36 pm, May 21, 2026`).
+- **Include user** checkbox in the stamp picker, independent of the
+  **Include date/time** toggle. The OS username is fetched via the
+  `ping.osUser` IPC and prettified (`jdoe` → "J Doe", `jane.doe` →
+  "Jane Doe").
+- New `purplepdf:ping` field `osUser` and matching preload typing.
+
+### Changed
+- Default stamp size bumped to 200×60pt so two lines fit comfortably.
+- Saved PDFs render the same look as on-screen (tinted fill + italic
+  label + italic subtitle).
+- `bump-and-log` test suite is now skipped on Windows where the hook is
+  never installed.
+
 ## [1.0.1] - 2026-05-20 — Move into PhantomLives monorepo
 
 ### Changed

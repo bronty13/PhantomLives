@@ -8,7 +8,7 @@ import Thumbnails from './Thumbnails';
 import OutlineTree from './OutlineTree';
 import { projectPageOrderDetailed, type ProjectedSlot } from './projectOrder';
 import FindBar from './FindBar';
-import AnnotationLayer from '../annotate/AnnotationLayer';
+import AnnotationLayer, { type ArmedStamp } from '../annotate/AnnotationLayer';
 import AccessibilityPanel from '../a11y/AccessibilityPanel';
 import { runA11yChecks, type A11yReport } from '../a11y/checks';
 import EditPalette from '../annotate/EditPalette';
@@ -48,6 +48,7 @@ export default function PDFViewer({
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [a11yReport, setA11yReport] = useState<A11yReport | null>(null);
   const [a11yLoading, setA11yLoading] = useState(false);
+  const [armedStamp, setArmedStamp] = useState<ArmedStamp | null>(null);
   const [a11yLocalNonce, setA11yLocalNonce] = useState(0);
 
   // Run a11y checks whenever the panel is shown, the doc changes, or an
@@ -324,7 +325,8 @@ export default function PDFViewer({
         r: 'rect',
         t: 'textbox',
         g: 'signature',
-        x: 'redact'
+        x: 'redact',
+        m: 'stamp'
       };
       const k = e.key.toLowerCase();
       if (k in KEY_TO_TOOL) {
@@ -521,9 +523,14 @@ export default function PDFViewer({
         tool={tab.tool}
         color={tab.color}
         strokeWidth={tab.strokeWidth ?? 2}
+        armedStamp={armedStamp}
         onToolChange={setTool}
         onColorChange={setColor}
         onStrokeWidthChange={setStrokeWidth}
+        onArmStamp={(s) => {
+          setArmedStamp(s);
+          if (s) setTool('stamp');
+        }}
         onDeletePage={deletePage}
         onRotatePage={rotatePage}
         onInsertBlank={insertBlank}
@@ -657,6 +664,7 @@ export default function PDFViewer({
                 color={tab.color}
                 strokeWidth={tab.strokeWidth ?? 2}
                 armedSignature={armedSignature}
+                armedStamp={armedStamp}
                 onCreate={createAnnot}
                 onUpdate={updateAnnot}
                 onDelete={deleteAnnot}
@@ -702,6 +710,10 @@ const TOOL_HINTS: Record<Tool, { label: string; how: string }> = {
   redact: {
     label: 'Redact / Whiteout',
     how: 'Drag a rectangle to cover content. On Save, the underlying text/image is permanently removed.'
+  },
+  stamp: {
+    label: 'Stamp',
+    how: 'Pick a preset from the stamp menu (Approved, Denied, ✓, …) then click the page to place it. Toggle "Include date/time" to freeze a timestamp on the stamp.'
   },
   crop: {
     label: 'Crop Page',

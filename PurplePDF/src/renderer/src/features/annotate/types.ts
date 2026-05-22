@@ -11,7 +11,8 @@ export type AnnotKind =
   | 'rect'
   | 'textbox'
   | 'signature'
-  | 'redact';
+  | 'redact'
+  | 'stamp';
 
 export interface PdfRect {
   x: number;
@@ -89,6 +90,25 @@ export interface RedactAnnot extends BaseAnnot {
   h: number;
 }
 
+/** A business-style rubber stamp (e.g. APPROVED / DENIED / ✓ / ✗) placed
+ *  on the page. The label/subtext is rasterized to a bordered box at
+ *  flatten time. */
+export interface StampAnnot extends BaseAnnot {
+  kind: 'stamp';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Big label text, e.g. "APPROVED". */
+  label: string;
+  /** Optional second line (typically a frozen date/time). */
+  subtext?: string;
+  /** "rect" = bordered box with label; "mark" = single glyph (✓ / ✗). */
+  style: 'rect' | 'mark';
+  /** Border + text color (CSS hex). */
+  borderColor: string;
+}
+
 export type Annot =
   | TextMarkupAnnot
   | NoteAnnot
@@ -96,7 +116,8 @@ export type Annot =
   | RectAnnot
   | TextBoxAnnot
   | SignatureAnnot
-  | RedactAnnot;
+  | RedactAnnot
+  | StampAnnot;
 
 export type Tool =
   | 'select'
@@ -109,6 +130,7 @@ export type Tool =
   | 'textbox'
   | 'signature'
   | 'redact'
+  | 'stamp'
   | 'crop';
 
 export const DEFAULT_COLORS: Record<Tool, string> = {
@@ -122,6 +144,7 @@ export const DEFAULT_COLORS: Record<Tool, string> = {
   textbox: '#FFFFFF',
   signature: '#1f1a2e',
   redact: '#000000',
+  stamp: '#16A34A',
   crop: '#A78BFA'
 };
 
@@ -136,6 +159,7 @@ export const DEFAULT_SIZES: Record<Tool, number> = {
   textbox: 4,
   signature: 2,
   redact: 2,
+  stamp: 2,
   crop: 2
 };
 

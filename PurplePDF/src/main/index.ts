@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type MenuItemConstructorOptions } from 'electron';
 import { readFile, writeFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
+import { userInfo } from 'node:os';
 import { electronApp, optimizer, is } from '@electron-toolkit/utils';
 import { addRecent, clearRecents, getRecents } from './recents';
 import { installPdfService, isPdfServiceInstalled, pdfServicePath, captureDir } from './printer';
@@ -588,12 +589,21 @@ app.whenReady().then(() => {
     return assetPath(...safe);
   });
 
-  ipcMain.handle('purplepdf:ping', () => ({
-    pong: true,
-    version: app.getVersion(),
-    platform: process.platform,
-    electron: process.versions.electron
-  }));
+  ipcMain.handle('purplepdf:ping', () => {
+    let osUser = '';
+    try {
+      osUser = userInfo().username || '';
+    } catch {
+      osUser = '';
+    }
+    return {
+      pong: true,
+      version: app.getVersion(),
+      platform: process.platform,
+      electron: process.versions.electron,
+      osUser
+    };
+  });
 
   ipcMain.handle('purplepdf:open-dialog', () => openFilesDialog());
 

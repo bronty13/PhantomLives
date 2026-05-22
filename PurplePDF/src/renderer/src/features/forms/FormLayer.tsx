@@ -25,7 +25,8 @@ function rectStyle(viewport: Viewport, r: FormFieldInfo['rect']): CSSProperties 
     left: Math.min(x1, x2),
     top: Math.min(y1, y2),
     width: Math.abs(x2 - x1),
-    height: Math.abs(y2 - y1)
+    height: Math.abs(y2 - y1),
+    pointerEvents: 'auto'
   };
 }
 
@@ -46,7 +47,7 @@ export default function FormLayer({
         inset: 0,
         width: viewport.width,
         height: viewport.height,
-        pointerEvents: enabled ? 'auto' : 'none'
+        pointerEvents: 'none'
       }}
       aria-hidden={!enabled}
     >

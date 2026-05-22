@@ -51,6 +51,9 @@ export async function buildModifiedPdf(
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.load(original, { updateMetadata: false });
   const font = await doc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const fontOblique = await doc.embedFont(StandardFonts.HelveticaOblique);
+  const fontBoldOblique = await doc.embedFont(StandardFonts.HelveticaBoldOblique);
 
   // Cache PNG embeds per byte-array reference so multi-page signatures reuse one image XObject.
   const pngCache = new Map<Uint8Array, import('pdf-lib').PDFImage>();
@@ -117,7 +120,7 @@ export async function buildModifiedPdf(
           // Bad PNG; skip rather than abort the whole save.
         }
       } else {
-        drawAnnotation(page, a, font);
+        drawAnnotation(page, a, font, fontBold, fontOblique, fontBoldOblique);
       }
     }
   }
@@ -220,7 +223,14 @@ export async function buildModifiedPdf(
 type Page = import('pdf-lib').PDFPage;
 type Font = import('pdf-lib').PDFFont;
 
-function drawAnnotation(page: Page, a: Annot, font: Font): void {
+function drawAnnotation(
+  page: Page,
+  a: Annot,
+  font: Font,
+  fontBold: Font,
+  fontOblique: Font,
+  fontBoldOblique: Font
+): void {
   const c = hexToRgb01(a.color);
   const colorRGB = rgb(c.r, c.g, c.b);
 
@@ -336,6 +346,74 @@ function drawAnnotation(page: Page, a: Annot, font: Font): void {
       color: rgb(0, 0, 0),
       opacity: 1
     });
+    return;
+  }
+  if (a.kind === 'stamp') {
+    const bc = hexToRgb01(a.borderColor);
+    const borderRGB = rgb(bc.r, bc.g, bc.b);
+    if (a.style === 'mark') {
+      // Single glyph (✓ / ✗): center it inside the bounding box, no border.
+      const size = Math.min(a.w, a.h) * 0.9;
+      const tw = fontBold.widthOfTextAtSize(a.label, size);
+      const th = fontBold.heightAtSize(size);
+      page.drawText(a.label, {
+        x: a.x + (a.w - tw) / 2,
+        y: a.y + (a.h - th) / 2 + th * 0.15,
+        size,
+        font: fontBold,
+        color: borderRGB
+      });
+      return;
+    }
+    // Rect-style stamp: tinted fill + single border + italic bold label,
+    // optional italic subtitle line ("By Robert Olen at 6:36 pm, May 21, 2026").
+    page.drawRectangle({
+      x: a.x,
+      y: a.y,
+      width: a.w,
+      height: a.h,
+      color: borderRGB,
+      opacity: 0.14,
+      borderColor: borderRGB,
+      borderWidth: 1.25,
+      borderOpacity: 1
+    });
+    const padX = 10;
+    const hasSub = !!(a.subtext && a.subtext.trim());
+    // Fit the label within (w - 2*padX) at a reasonable size.
+    const targetLabelW = Math.max(10, a.w - padX * 2);
+    let labelSize = hasSub ? Math.min(a.h * 0.40, 22) : Math.min(a.h * 0.55, 26);
+    while (labelSize > 6 && fontBoldOblique.widthOfTextAtSize(a.label, labelSize) > targetLabelW) {
+      labelSize -= 1;
+    }
+    const labelH = fontBoldOblique.heightAtSize(labelSize);
+    // PDF Y axis is up: position label near the top of the box (or vertically centered when no subtext).
+    const labelY = hasSub
+      ? a.y + a.h - labelH - a.h * 0.12
+      : a.y + (a.h - labelH) / 2 + labelH * 0.18;
+    page.drawText(a.label, {
+      x: a.x + padX,
+      y: labelY,
+      size: labelSize,
+      font: fontBoldOblique,
+      color: borderRGB
+    });
+    if (hasSub) {
+      const subSize = Math.max(6, Math.min(a.h * 0.22, 13));
+      // Auto-shrink subtext to fit width.
+      let sSize = subSize;
+      const sub = a.subtext!;
+      while (sSize > 5 && fontOblique.widthOfTextAtSize(sub, sSize) > targetLabelW) {
+        sSize -= 0.5;
+      }
+      page.drawText(sub, {
+        x: a.x + padX,
+        y: a.y + a.h * 0.16,
+        size: sSize,
+        font: fontOblique,
+        color: borderRGB
+      });
+    }
     return;
   }
   // 'signature' is handled separately in the caller because it requires async embedPng.

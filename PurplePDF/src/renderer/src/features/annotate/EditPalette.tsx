@@ -1,12 +1,18 @@
+import { useEffect, useRef, useState } from 'react';
 import type { Tool } from './types';
+import { STAMP_PRESETS } from './stamps';
+import type { ArmedStamp } from './AnnotationLayer';
 
 interface Props {
   tool: Tool;
   color: string;
   strokeWidth: number;
+  armedStamp: ArmedStamp | null;
   onToolChange: (t: Tool) => void;
   onColorChange: (c: string) => void;
   onStrokeWidthChange: (w: number) => void;
+  /** Arm (or disarm) a stamp preset. Passing null disarms. Auto-switches tool to 'stamp'. */
+  onArmStamp: (s: ArmedStamp | null) => void;
   onDeletePage: () => void;
   onRotatePage: () => void;
   onInsertBlank: () => void;
@@ -23,6 +29,7 @@ const TOOLS: { id: Tool; label: string; icon: string; title: string }[] = [
   { id: 'textbox', label: 'Text', icon: 'T', title: 'Text box' },
   { id: 'signature', label: 'Sign', icon: '✍', title: 'Place signature' },
   { id: 'redact', label: 'Redact', icon: '■', title: 'Visual redaction (blackout)' },
+  { id: 'stamp', label: 'Stamp', icon: '✪', title: 'Place a business stamp (Approved, Denied, …)' },
   { id: 'crop', label: 'Crop', icon: '⌗', title: 'Crop current page (drag a rectangle)' }
 ];
 
@@ -49,28 +56,67 @@ export default function EditPalette({
   tool,
   color,
   strokeWidth,
+  armedStamp,
   onToolChange,
   onColorChange,
   onStrokeWidthChange,
+  onArmStamp,
   onDeletePage,
   onRotatePage,
   onInsertBlank
 }: Props): JSX.Element {
+  const [stampPickerOpen, setStampPickerOpen] = useState(false);
+  const [includeDate, setIncludeDate] = useState(true);
+  const [includeUser, setIncludeUser] = useState(true);
+  const stampBtnRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  // Close stamp picker when clicking outside it.
+  useEffect(() => {
+    if (!stampPickerOpen) return;
+    const onDown = (e: MouseEvent): void => {
+      const t = e.target as Node;
+      if (popoverRef.current?.contains(t)) return;
+      if (stampBtnRef.current?.contains(t)) return;
+      setStampPickerOpen(false);
+    };
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [stampPickerOpen]);
+
+  const handleToolClick = (t: Tool): void => {
+    if (t === 'stamp') {
+      // Toggle the picker; selecting a preset both arms it and switches tool.
+      setStampPickerOpen((v) => !v);
+      return;
+    }
+    setStampPickerOpen(false);
+    onToolChange(t);
+  };
+
   return (
     <div className="edit-palette" role="toolbar" aria-label="Annotation tools">
       <div className="palette-group">
-        {TOOLS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            className={`palette-btn${tool === t.id ? ' active' : ''}`}
-            onClick={() => onToolChange(t.id)}
-            title={t.title}
-            aria-pressed={tool === t.id}
-          >
-            <span aria-hidden="true">{t.icon}</span>
-          </button>
-        ))}
+        {TOOLS.map((t) => {
+          const active =
+            tool === t.id ||
+            (t.id === 'stamp' && tool === 'stamp' && !!armedStamp);
+          return (
+            <button
+              key={t.id}
+              ref={t.id === 'stamp' ? stampBtnRef : undefined}
+              type="button"
+              className={`palette-btn${active ? ' active' : ''}`}
+              onClick={() => handleToolClick(t.id)}
+              title={t.title}
+              aria-pressed={active}
+              aria-haspopup={t.id === 'stamp' ? 'menu' : undefined}
+              aria-expanded={t.id === 'stamp' ? stampPickerOpen : undefined}
+            >
+              <span aria-hidden="true">{t.icon}</span>
+            </button>
+          );
+        })}
       </div>
       <div className="palette-group">
         {COLOR_SWATCHES.map((c) => (
@@ -122,6 +168,74 @@ export default function EditPalette({
           ⌫
         </button>
       </div>
+
+      {stampPickerOpen && (
+        <div ref={popoverRef} className="stamp-picker" role="menu" aria-label="Stamp presets">
+          <div className="stamp-picker-header">
+            <span>Choose a stamp</span>
+            <div className="stamp-toggles">
+              <label className="stamp-date-toggle">
+                <input
+                  type="checkbox"
+                  checked={includeUser}
+                  onChange={(e) => setIncludeUser(e.target.checked)}
+                />
+                <span>Include user</span>
+              </label>
+              <label className="stamp-date-toggle">
+                <input
+                  type="checkbox"
+                  checked={includeDate}
+                  onChange={(e) => setIncludeDate(e.target.checked)}
+                />
+                <span>Include date/time</span>
+              </label>
+            </div>
+          </div>
+          <div className="stamp-picker-grid">
+            {STAMP_PRESETS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                role="menuitem"
+                className="stamp-preset"
+                style={{ borderColor: p.color, color: p.color }}
+                title={p.style === 'mark' ? `Mark: ${p.label}` : p.label}
+                onClick={() => {
+                  onArmStamp({
+                    label: p.label,
+                    style: p.style,
+                    color: p.color,
+                    width: p.width,
+                    height: p.height,
+                    includeDate: p.style === 'mark' ? false : includeDate,
+                    includeUser: p.style === 'mark' ? false : includeUser
+                  });
+                  // Switching to the stamp tool happens via onArmStamp in the parent.
+                  setStampPickerOpen(false);
+                }}
+              >
+                <span className="stamp-preset-label">{p.label}</span>
+              </button>
+            ))}
+          </div>
+          {armedStamp && (
+            <div className="stamp-picker-footer">
+              <span>
+                Armed: <strong>{armedStamp.label}</strong>
+                {armedStamp.includeUser || armedStamp.includeDate
+                  ? ` (${[armedStamp.includeUser && 'user', armedStamp.includeDate && 'date']
+                      .filter(Boolean)
+                      .join(' + ')})`
+                  : ''}
+              </span>
+              <button type="button" className="link-btn" onClick={() => onArmStamp(null)}>
+                Disarm
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

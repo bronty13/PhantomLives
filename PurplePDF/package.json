@@ -1,6 +1,6 @@
 {
   "name": "purple-pdf",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Purple PDF — a full-featured PDF reader and editor",
   "main": "out/main/index.js",
   "author": "Robert Olen",
