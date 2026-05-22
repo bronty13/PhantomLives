@@ -14,10 +14,10 @@ Phase 10/11/12 trilogy complete. Molly now runs Sallie's existing `atw-repost-bo
 
 - **New sidebar entry: 🌀 Jobs** — lists registered background jobs + recent run history per job, with status pills (running / success / failed), expandable log excerpts, **▶️ Run now** and **⏸ Disable** controls.
 - **New Settings tab: 🌀 ATW Repost** with:
-  - 🩺 **Health check** block — auto-detects Node.js, Chrome / Chromium, the bot's directory, `repost.js` presence, `node_modules` install. Each row shows ✓ or ✗ with what's missing.
+  - 🩺 **Health check** block — auto-detects Node.js, a Chromium-based browser (preference order: Chromium / ungoogled-chromium → Brave → Edge → Chrome as last resort), the bot's directory, `repost.js` presence, `node_modules` install. Each row shows ✓ or ✗ with what's missing. The "no browser found" row links to ungoogled-chromium + Brave (not Google Chrome).
   - 🔑 **Credentials** — email + password (encrypted via PR1's keystore on save). Password field gated by keystore unlock state.
   - 📂 **Bot installation** — picker for the user's existing `atw-repost-bot` directory. v1 doesn't ship the bot; v2 will vendor it.
-  - Advanced: override Chrome binary path (for non-standard installs).
+  - Advanced: override browser binary path (for non-standard installs of Chromium / Brave / Edge).
   - ⏱ **Schedule + behavior** — cadence (1h / 2h / **4h default** / 6h / 12h / 24h), repost spread days (1-7), waking-hour window (start / end), UTC offset, delay between submissions (1-60s), headless toggle.
   - ▶️ **Run now** button — fires the bot on demand, surface status when done.
 - **Background runner** spawned in `lib.rs::setup` alongside backup + bundle-purge + keystore-idle: polls every 60s, fires jobs whose `next_run_at` has passed, writes run-history rows. Individual job failures are recorded as `status='failed'` rows without breaking the loop.

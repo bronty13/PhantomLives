@@ -95,11 +95,11 @@ export function AtwSettingsPane() {
     setStatus('Password cleared.');
   }
 
-  async function pickChromePath() {
-    const picked = await openDialog({ directory: false, multiple: false, title: 'Pick Chrome / Chromium binary' });
+  async function pickBrowserPath() {
+    const picked = await openDialog({ directory: false, multiple: false, title: 'Pick Chromium / Brave / Edge binary' });
     if (typeof picked === 'string') await save({ browserExecutablePath: picked });
   }
-  async function clearChromePath() { await save({ browserExecutablePath: null }); }
+  async function clearBrowserPath() { await save({ browserExecutablePath: null }); }
 
   async function installDeps() {
     setBusy(true);
@@ -180,16 +180,24 @@ export function AtwSettingsPane() {
             </>
           )}
         </HealthRow>
-        <HealthRow ok={health.chromeFound} label="Chrome / Chromium found">
+        <HealthRow ok={health.chromeFound} label="Chromium-based browser found">
           {health.chromeFound ? (
             <span className="font-mono">{health.chromePath}</span>
           ) : (
-            <>
-              <span>Not found at standard locations. Install Chrome OR set an override below.</span>
-              <button type="button" onClick={() => openUrl('https://www.google.com/chrome/')} className="pretty-button secondary text-xs ml-2">
-                Get Chrome
-              </button>
-            </>
+            <div className="space-y-1">
+              <div>
+                Not found at standard locations. Install any Chromium-based browser
+                (Chromium, Brave, or Edge) OR set an override below.
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <button type="button" onClick={() => openUrl('https://github.com/ungoogled-software/ungoogled-chromium-macos/releases')} className="pretty-button secondary text-xs">
+                  Get ungoogled-chromium (recommended)
+                </button>
+                <button type="button" onClick={() => openUrl('https://brave.com/download/')} className="pretty-button secondary text-xs">
+                  Get Brave
+                </button>
+              </div>
+            </div>
           )}
         </HealthRow>
         <HealthRow ok={setup.filesCopied} label="Bot installed">
@@ -407,9 +415,10 @@ export function AtwSettingsPane() {
         <summary className="font-semibold cursor-pointer">⚙️ Advanced</summary>
         <div className="space-y-4 mt-3">
           <div className="space-y-2">
-            <h4 className="text-sm font-semibold">Override Chrome binary</h4>
+            <h4 className="text-sm font-semibold">Override browser binary</h4>
             <p className="text-xs opacity-70">
-              Use this only if Chrome is installed in a non-standard location and the auto-discover above failed.
+              Use this only if your Chromium-based browser (Chromium, Brave, Edge) is installed in a
+              non-standard location and the auto-discover above failed.
             </p>
             <div className="flex items-center gap-2">
               <input
@@ -419,11 +428,11 @@ export function AtwSettingsPane() {
                 value={settings.browserExecutablePath ?? ''}
                 readOnly
               />
-              <button type="button" onClick={pickChromePath} disabled={busy} className="pretty-button secondary text-xs">
+              <button type="button" onClick={pickBrowserPath} disabled={busy} className="pretty-button secondary text-xs">
                 Choose…
               </button>
               {settings.browserExecutablePath && (
-                <button type="button" onClick={clearChromePath} disabled={busy} className="pretty-button secondary text-xs">
+                <button type="button" onClick={clearBrowserPath} disabled={busy} className="pretty-button secondary text-xs">
                   Clear
                 </button>
               )}

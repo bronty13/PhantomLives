@@ -89,7 +89,13 @@ The bot will fire automatically on its cadence as long as Molly is open. (Molly 
 
 The very first time you open the ATW tab, the bot files don't have `node_modules` yet — that's why the **Install bot dependencies** button is there. You only run it once (and again whenever Molly ships a bot update — Molly will tell you).
 
-You **do** need **Node.js 18+** and **Google Chrome** installed on the Mac. Both are free, both have one-click installers, and Molly's health check links you straight to nodejs.org / chrome.com. Robert can install both if you need a hand.
+You **do** need **Node.js 18+** and **a Chromium-based browser** installed on the Mac. The browser can be any of these (all free, all privacy-respecting — Google Chrome is *not* required and not recommended):
+
+- **ungoogled-chromium** (recommended) — open-source Chromium without Google's tracking.
+- **Brave** — also Chromium-based, easy one-click installer at brave.com.
+- **Microsoft Edge** — if you already have it.
+
+Molly's health check links you straight to nodejs.org and a Chromium download. Robert can install both if you need a hand.
 
 ---
 

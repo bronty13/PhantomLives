@@ -32,20 +32,35 @@ use crate::atw_setup;
 use crate::crypto::keystore::KeystoreState;
 use crate::crypto::CryptoError;
 
-/// Standard install paths for Google Chrome. Returned on a best-effort
-/// basis; None means we couldn't find it and the user must set
-/// `browserExecutablePath` in Settings → ATW manually.
+/// Standard install paths for Chromium-based browsers. Tried in
+/// preference order: Chromium → Brave → Edge → Chrome (last resort).
+/// Returned on a best-effort basis; None means we couldn't find one
+/// and the user must set `browserExecutablePath` in Settings → ATW.
+///
+/// Sallie + Robert specifically don't use Google Chrome (privacy
+/// concerns with Google's data collection). Chromium is the upstream
+/// open-source build; ungoogled-chromium installs as Chromium.app on
+/// macOS so the same path covers both. Brave and Microsoft Edge are
+/// also Chromium-based and work identically for Playwright purposes.
 pub fn discover_chrome() -> Option<String> {
     let candidates: &[&str] = &[
-        // macOS
+        // macOS — Chromium / ungoogled-chromium first
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
         "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
         "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
-        "/Applications/Chromium.app/Contents/MacOS/Chromium",
-        // Linux
+        // Linux — Chromium / Brave / Edge first
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/brave-browser",
+        "/usr/bin/microsoft-edge",
         "/usr/bin/google-chrome",
         "/usr/bin/google-chrome-stable",
-        "/usr/bin/chromium",
         // Windows
+        r"C:\Program Files\Chromium\Application\chrome.exe",
+        r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
         r"C:\Program Files\Google\Chrome\Application\chrome.exe",
         r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
     ];
