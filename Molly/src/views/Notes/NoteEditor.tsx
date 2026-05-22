@@ -3,7 +3,8 @@ import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { NamePromptModal } from '../../components/NamePromptModal';
 
 interface Props {
   /** Current note HTML. Editor reloads when this changes externally
@@ -138,7 +139,28 @@ export function NoteEditor({
   );
 }
 
+function LinkPromptHook({ editor, onClose }: { editor: Editor; onClose: () => void }) {
+  const initial = (editor.getAttributes('link') as { href?: string }).href ?? '';
+  return (
+    <NamePromptModal
+      title={initial ? 'Edit link' : 'Add link'}
+      description="Enter a URL, or leave blank to remove the link."
+      initialValue={initial}
+      placeholder="https://example.com"
+      confirmLabel={initial ? 'Update' : 'Add'}
+      validate={() => null}
+      onCancel={onClose}
+      onSubmit={(url) => {
+        if (url === '') editor.chain().focus().extendMarkRange('link').unsetLink().run();
+        else editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+        onClose();
+      }}
+    />
+  );
+}
+
 function Toolbar({ editor }: { editor: Editor }) {
+  const [linkPromptOpen, setLinkPromptOpen] = useState(false);
   const Btn = ({ label, isActive, onClick, title }: {
     label: string; isActive?: boolean; onClick: () => void; title?: string;
   }) => (
@@ -183,15 +205,10 @@ function Toolbar({ editor }: { editor: Editor }) {
       <Btn label="—" title="Horizontal rule"
         onClick={() => editor.chain().focus().setHorizontalRule().run()} />
       <Btn label="Link" title="Add or edit link" isActive={editor.isActive('link')}
-        onClick={() => {
-          const prev = (editor.getAttributes('link') as { href?: string }).href ?? '';
-          const url = window.prompt('Link URL (blank to remove):', prev);
-          if (url === null) return;
-          if (url === '') editor.chain().focus().extendMarkRange('link').unsetLink().run();
-          else editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
-        }} />
+        onClick={() => setLinkPromptOpen(true)} />
       <Btn label="Clear" title="Clear formatting"
         onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()} />
+      {linkPromptOpen && <LinkPromptHook editor={editor} onClose={() => setLinkPromptOpen(false)} />}
     </div>
   );
 }

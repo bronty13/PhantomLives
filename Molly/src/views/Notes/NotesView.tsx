@@ -5,6 +5,8 @@ import {
   getNote, listNoteFolders, listNoteTags, listNotes, moveNote, moveNoteFolder,
   renameNoteFolder, setNoteTags, updateNote,
 } from '../../data/notes';
+import { ConfirmModal } from '../../components/ConfirmModal';
+import { NamePromptModal } from '../../components/NamePromptModal';
 import { FolderPickerModal } from './FolderPickerModal';
 import { FolderTree, type FolderAction } from './FolderTree';
 import { NoteEditor } from './NoteEditor';
@@ -31,6 +33,19 @@ export function NotesView() {
   const [picker, setPicker] = useState<
     | { kind: 'move-folder'; folderId: number; currentParent: number | null }
     | { kind: 'move-note'; noteId: number; currentFolder: number | null }
+    | null
+  >(null);
+
+  // Tauri 2's WebView silently disables window.prompt and window.confirm,
+  // so every name-entry / confirmation runs through these in-app modals.
+  const [namePrompt, setNamePrompt] = useState<
+    | { kind: 'new-folder'; parentId: number | null }
+    | { kind: 'rename-folder'; folderId: number; current: string }
+    | null
+  >(null);
+  const [confirmModal, setConfirmModal] = useState<
+    | { kind: 'delete-folder'; folderId: number; name: string }
+    | { kind: 'delete-note'; noteId: number; title: string }
     | null
   >(null);
 
@@ -118,11 +133,7 @@ export function NotesView() {
     setError(null);
     try {
       if (action === 'new-folder') {
-        const name = window.prompt('New folder name:', 'Untitled folder');
-        if (!name) return;
-        const id = await createNoteFolder(folderId, name);
-        await reloadFolders();
-        setSelectedFolderId(id);
+        setNamePrompt({ kind: 'new-folder', parentId: folderId });
       } else if (action === 'new-note') {
         const id = await createNote(folderId, 'Untitled');
         await reloadFolders();
@@ -131,19 +142,13 @@ export function NotesView() {
         await switchNote(id);
       } else if (action === 'rename' && folderId != null) {
         const current = folders.find((f) => f.id === folderId)?.name ?? '';
-        const name = window.prompt('Rename folder:', current);
-        if (!name) return;
-        await renameNoteFolder(folderId, name);
-        await reloadFolders();
+        setNamePrompt({ kind: 'rename-folder', folderId, current });
       } else if (action === 'move' && folderId != null) {
         const current = folders.find((f) => f.id === folderId)?.parentId ?? null;
         setPicker({ kind: 'move-folder', folderId, currentParent: current });
       } else if (action === 'delete' && folderId != null) {
-        if (!window.confirm('Delete this folder + everything inside it? This cannot be undone.')) return;
-        await deleteNoteFolder(folderId);
-        if (selectedFolderId === folderId) setSelectedFolderId(null);
-        await reloadFolders();
-        await reloadNotes();
+        const name = folders.find((f) => f.id === folderId)?.name ?? 'this folder';
+        setConfirmModal({ kind: 'delete-folder', folderId, name });
       }
     } catch (e) {
       setError(String((e as { message?: string })?.message ?? e));
@@ -162,13 +167,8 @@ export function NotesView() {
         const note = notes.find((n) => n.id === noteId);
         setPicker({ kind: 'move-note', noteId, currentFolder: note?.folderId ?? null });
       } else if (action === 'delete') {
-        if (!window.confirm('Delete this note? This cannot be undone.')) return;
-        await deleteNote(noteId);
-        if (selectedNoteId === noteId) {
-          setSelectedNoteId(null);
-          setLoadedNote(null);
-        }
-        await reloadNotes();
+        const note = notes.find((n) => n.id === noteId);
+        setConfirmModal({ kind: 'delete-note', noteId, title: note?.title ?? 'this note' });
       }
     } catch (e) {
       setError(String((e as { message?: string })?.message ?? e));
@@ -320,6 +320,92 @@ export function NotesView() {
         {editorBody}
       </main>
 
+      {namePrompt?.kind === 'new-folder' && (
+        <NamePromptModal
+          title="New folder"
+          description={namePrompt.parentId == null
+            ? "Folder will be created at the root."
+            : "Folder will be created inside the selected folder."}
+          initialValue="Untitled folder"
+          placeholder="Folder name"
+          confirmLabel="Create"
+          onCancel={() => setNamePrompt(null)}
+          onSubmit={async (name) => {
+            const parentId = namePrompt.parentId;
+            setNamePrompt(null);
+            try {
+              const id = await createNoteFolder(parentId, name);
+              await reloadFolders();
+              setSelectedFolderId(id);
+            } catch (e) {
+              setError(String((e as { message?: string })?.message ?? e));
+            }
+          }}
+        />
+      )}
+      {namePrompt?.kind === 'rename-folder' && (
+        <NamePromptModal
+          title="Rename folder"
+          initialValue={namePrompt.current}
+          placeholder="Folder name"
+          confirmLabel="Rename"
+          onCancel={() => setNamePrompt(null)}
+          onSubmit={async (name) => {
+            const folderId = namePrompt.folderId;
+            setNamePrompt(null);
+            try {
+              await renameNoteFolder(folderId, name);
+              await reloadFolders();
+            } catch (e) {
+              setError(String((e as { message?: string })?.message ?? e));
+            }
+          }}
+        />
+      )}
+      {confirmModal?.kind === 'delete-folder' && (
+        <ConfirmModal
+          title="Delete folder?"
+          message={`Delete "${confirmModal.name}" + everything inside it (sub-folders, notes, attachments)?\n\nThis cannot be undone.`}
+          confirmLabel="Delete folder"
+          danger
+          onCancel={() => setConfirmModal(null)}
+          onConfirm={async () => {
+            const folderId = confirmModal.folderId;
+            setConfirmModal(null);
+            try {
+              await deleteNoteFolder(folderId);
+              if (selectedFolderId === folderId) setSelectedFolderId(null);
+              await reloadFolders();
+              await reloadNotes();
+            } catch (e) {
+              setError(String((e as { message?: string })?.message ?? e));
+            }
+          }}
+        />
+      )}
+      {confirmModal?.kind === 'delete-note' && (
+        <ConfirmModal
+          title="Delete note?"
+          message={`Delete "${confirmModal.title}"?\n\nThis cannot be undone.`}
+          confirmLabel="Delete note"
+          danger
+          onCancel={() => setConfirmModal(null)}
+          onConfirm={async () => {
+            const noteId = confirmModal.noteId;
+            setConfirmModal(null);
+            try {
+              await deleteNote(noteId);
+              if (selectedNoteId === noteId) {
+                setSelectedNoteId(null);
+                setLoadedNote(null);
+              }
+              await reloadNotes();
+            } catch (e) {
+              setError(String((e as { message?: string })?.message ?? e));
+            }
+          }}
+        />
+      )}
       {picker?.kind === 'move-folder' && (
         <FolderPickerModal
           title="Move folder to…"

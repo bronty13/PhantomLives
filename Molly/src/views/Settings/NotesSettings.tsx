@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ColorPicker } from '../../components/ColorPicker';
+import { ConfirmModal } from '../../components/ConfirmModal';
 import {
   type NoteTag,
   createNoteTag, deleteNoteTag, listNoteTags, updateNoteTag,
@@ -88,6 +89,7 @@ function TagRow({ tag, onChanged, onError }: {
   const [name, setName] = useState(tag.name);
   const [color, setColor] = useState(tag.color);
   const [busy, setBusy] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   async function save() {
     if (name.trim() === tag.name && color === tag.color) return;
@@ -97,7 +99,7 @@ function TagRow({ tag, onChanged, onError }: {
     finally { setBusy(false); }
   }
   async function doDelete() {
-    if (!window.confirm(`Delete tag "${tag.name}"? Notes will lose the link but stay intact.`)) return;
+    setConfirmOpen(false);
     onError(null);
     try { await deleteNoteTag(tag.id); await onChanged(); }
     catch (e) { onError(String((e as { message?: string })?.message ?? e)); }
@@ -129,9 +131,19 @@ function TagRow({ tag, onChanged, onError }: {
         Save
       </button>
       {!tag.isBuiltin && (
-        <button type="button" onClick={doDelete} className="pretty-button danger text-xs">
+        <button type="button" onClick={() => setConfirmOpen(true)} className="pretty-button danger text-xs">
           Delete
         </button>
+      )}
+      {confirmOpen && (
+        <ConfirmModal
+          title="Delete tag?"
+          message={`Delete tag "${tag.name}"?\n\nNotes lose the link but stay intact.`}
+          confirmLabel="Delete"
+          danger
+          onCancel={() => setConfirmOpen(false)}
+          onConfirm={doDelete}
+        />
       )}
     </div>
   );
