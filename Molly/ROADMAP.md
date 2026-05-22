@@ -15,7 +15,9 @@ If an idea graduates from this doc, it earns a proper `PHASE_N_*.md` plan (see `
 
 ---
 
-## 📣 Phase 9 candidate: Promo Scheduler (the explicit ask)
+> **Update 2026-05-22:** Phase 9 shipped as the **🎁 Content Bundler** (v1.9.0–v1.10.0 — see CHANGELOG), not the Promo Scheduler. Bundler was an out-of-band ask that fit the same "biggest single feature" slot. Promo Scheduler remains the strongest standalone candidate below; renumber to Phase 10 if we pick it up next.
+
+## 📣 Phase 10 candidate: Promo Scheduler (the explicit ask)
 
 The Promos tab today is a **tracker** — Sallie posts to Reddit/X/IG/TikTok manually, then comes back to Molly to log it. The natural next step is the inverse: **compose in Molly first, post out from Molly**. Closest reference apps in the niche are Postpone (Reddit), TweetDeck, Buffer, Hootsuite, Later — most refuse adult content via TOS, so there's room.
 
