@@ -1,6 +1,6 @@
 [package]
 name = "molly"
-version = "1.12.0"
+version = "1.13.0"
 description = "Molly — content creator central hub"
 authors = ["Robert Olen <robert.olen@gmail.com>"]
 edition = "2021"
@@ -50,9 +50,11 @@ tiny-bip39 = "1"
 base64 = "0.22"
 # tokio is already pulled in transitively by tauri; declared here as
 # a direct dep so we can `use tokio::time::sleep` in long-running
-# background tasks (e.g. crypto::commands::idle_check_loop). Default
-# features kept off because tauri's runtime configuration handles them.
-tokio = { version = "1", default-features = false, features = ["time"] }
+# background tasks (e.g. crypto::commands::idle_check_loop) and
+# tokio::process::Command for spawning the ATW Node bot subprocess.
+# Default features kept off because tauri's runtime configuration
+# handles them.
+tokio = { version = "1", default-features = false, features = ["time", "process", "io-util", "rt", "sync", "macros"] }
 
 [dev-dependencies]
 tempfile = "3"

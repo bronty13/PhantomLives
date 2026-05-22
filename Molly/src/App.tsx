@@ -13,6 +13,7 @@ import { CalendarView } from './views/Calendar/CalendarView';
 import { ClipsListView } from './views/Clips/ClipsListView';
 import { C4SView } from './views/C4S/C4SView';
 import { BundlesListView } from './views/Bundles/BundlesListView';
+import { JobsView } from './views/Jobs/JobsView';
 import { UserManualView } from './views/Manual/UserManualView';
 import { RemindersView } from './views/Reminders/RemindersView';
 import { IncomeView } from './views/Income/IncomeView';
@@ -99,6 +100,7 @@ export default function App() {
     case 'clips':     body = <ClipsListView active={active} />; break;
     case 'c4s':       body = <C4SView active={active} />; break;
     case 'bundles':   body = <BundlesListView active={active} />; break;
+    case 'jobs':      body = <JobsView />; break;
     case 'customers': body = <CustomerListView active={active} />; break;
     case 'helper':    body = <MollyHelper active={active} />; break;
     case 'promos':    body = <PromosListView active={active} />; break;
