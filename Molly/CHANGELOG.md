@@ -4,6 +4,53 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] — 2026-05-22
+
+### Added — 🔐 Keystore infrastructure (Phase 10, PR1 of 3)
+
+Foundation for encrypted credentials. **No user data is encrypted yet** — that lands in PR2 (site passwords + sub-credentials per site) and PR3 (ATW automation + background jobs). This release ships only the crypto subsystem and the Security settings pane so the keystore can be exercised in isolation before any production data touches it.
+
+#### What's new
+
+- **New Settings → 🔐 Security tab** with: status block, create keystore, change passphrase, reveal 24-word recovery mnemonic with copy-all + warning banner + "I've saved these" gate, restore from mnemonic with destructive-action confirm, wipe.
+- **Lock / unlock UX**: keystore is always locked on app launch; unlocks for the session; auto-locks after 8 hours of inactivity; manual **Lock now** button.
+- **Background idle-checker** spawned alongside backup + bundle-purge in `lib.rs::setup`. Polls every 60s; clears cached DEK on idle; emits `keystore-locked` event.
+
+#### Crypto design (ported from PurpleIRC's KeyStore + EncryptedJSON)
+
+- **KEK derivation**: PBKDF2-HMAC-SHA256, 300k iterations, random 16-byte salt per passphrase change.
+- **DEK**: 256-bit random, generated once on `init_keystore`. Never re-derived; passphrase changes re-wrap.
+- **Wrap format**: AES-GCM combined (12-byte nonce || ciphertext || 16-byte tag).
+- **Field encrypt format**: 1-byte version (0x01) || 12-byte nonce || ciphertext || 16-byte tag, base64-encoded.
+- **Mnemonic format v1**: 24 BIP-39 English words encoding the 32-byte DEK with checksum.
+- **Wrong-passphrase rate limit**: 500ms `tokio::sleep` floor on AEAD tag failure. No counter / lockout.
+- **In-memory hygiene**: `Dek` newtype with `Drop`-time `zeroize`; Debug-format never prints key bytes.
+- **Error messages** intentionally generic — never leak whether a passphrase was "close."
+
+#### Tauri command surface (PR1)
+
+`keystore_status`, `init_keystore`, `unlock_keystore`, `lock_keystore`, `change_passphrase`, `encrypt_field`, `decrypt_field`, `export_keystore_mnemonic`, `import_keystore_from_mnemonic`, `wipe_keystore`. All response structs camelCase + contract-test asserted.
+
+#### Schema
+
+- Migration `018_crypto_keystore.sql` adds the singleton `crypto_keystore` table with salt + KDF params + wrapped DEK. Storing in SQLite (not a sidecar) means Molly's existing backup ZIPs automatically capture the keystore.
+- Migration smoke test extended: anchor-table list + singleton-row assertion.
+
+#### Tests
+
+207 → **243 tests passing** (100 Rust + 143 frontend; +23 Rust from crypto, frontend tests carry over):
+- `crypto::wrap` (10) — round-trip ASCII / UTF-8+emoji / 1MB, fresh-nonce guarantee, tampered tag/nonce/body rejected, wrong-key rejected, unknown-version + truncated + bad-base64 rejected.
+- `crypto::keystore` (8) — init+unlock happy path, wrong-passphrase rate-limited (≥500ms), init-twice rejected, passphrase-too-short rejected, change-passphrase preserves DEK, import rotates + bumps version, wipe returns to uninitialized, Debug doesn't leak bytes.
+- `crypto::mnemonic` (5) — round-trip identity, round-trip 32 random DEKs, wrong-length / unknown-word (with index) / bad-checksum rejected, case+whitespace insensitive.
+- `camel_case_contract` (+3) — `KeystoreStatus`, `EncryptedField`, `MnemonicWords`.
+- `migration_smoke` — `crypto_keystore` table + singleton-row assertion.
+
+#### Known limitations / NOT in this release
+
+- No site passwords are encrypted yet — Molly Helper and the Sites editor are unchanged.
+- No ATW automation yet (PR3).
+- No macOS Keychain integration — by design, keystore is always re-prompted on app launch.
+
 ## [1.10.0] — 2026-05-22
 
 ### Added — 🎁 Content Bundler (Phase 9, part 2 of 2)

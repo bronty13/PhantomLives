@@ -4,13 +4,14 @@ import { BackupSettings } from './BackupSettings';
 import { BundlerSettings } from './BundlerSettings';
 import { C4SSettings } from './C4SSettings';
 import { DataSettings } from './DataSettings';
+import { SecuritySettings } from './SecuritySettings';
 import { PersonasSettings } from './PersonasSettings';
 import { PlatformsSettings } from './PlatformsSettings';
 import { SitesSettings } from './SitesSettings';
 import { TaxonomySettings } from './TaxonomySettings';
 import { UpdatesSettings } from './UpdatesSettings';
 
-type Tab = 'personas' | 'sites' | 'products' | 'interests' | 'kinks' | 'platforms' | 'c4s' | 'bundler' | 'data' | 'updates' | 'backup';
+type Tab = 'personas' | 'sites' | 'products' | 'interests' | 'kinks' | 'platforms' | 'c4s' | 'bundler' | 'security' | 'data' | 'updates' | 'backup';
 
 interface Props {
   active: Persona;
@@ -26,6 +27,7 @@ const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'kinks',     label: 'Kinks',      icon: '💕' },
   { key: 'c4s',       label: 'C4S',        icon: '🛍️' },
   { key: 'bundler',   label: 'Bundler',    icon: '🎁' },
+  { key: 'security',  label: 'Security',   icon: '🔐' },
   { key: 'data',      label: 'Data',       icon: '📦' },
   { key: 'updates',   label: 'Updates',    icon: '⬇️' },
   { key: 'backup',    label: 'Backup',     icon: '💾' },
@@ -44,6 +46,7 @@ export function SettingsView({ active, onPersonasChanged }: Props) {
     case 'kinks':     body = <TaxonomySettings kind="kinks" />; break;
     case 'c4s':       body = <C4SSettings />; break;
     case 'bundler':   body = <BundlerSettings />; break;
+    case 'security':  body = <SecuritySettings />; break;
     case 'data':      body = <DataSettings />; break;
     case 'updates':   body = <UpdatesSettings />; break;
     case 'backup':    body = <BackupSettings />; break;

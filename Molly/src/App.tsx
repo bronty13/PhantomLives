@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { KeystoreProvider } from './state/keystoreContext';
 import { Sidebar, type ViewKey } from './components/Sidebar';
 import { PersonaSwitcher } from './components/PersonaSwitcher';
 import { usePersonas } from './state/personas';
@@ -109,19 +110,21 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen flex" style={{ background: 'rgb(var(--persona-tint))' }}>
-      <Sidebar active={view} onSelect={setView} visible={sidebarVisible} pendingCount={pendingTotal} />
-      <div className="flex-1 flex flex-col min-w-0">
-        <PersonaSwitcher
-          personas={personas}
-          active={active}
-          onChoose={choose}
-          onToggleSidebar={() => setSidebarVisible((v) => !v)}
-        />
-        <main className="flex-1 overflow-y-auto">
-          {body}
-        </main>
+    <KeystoreProvider>
+      <div className="h-screen flex" style={{ background: 'rgb(var(--persona-tint))' }}>
+        <Sidebar active={view} onSelect={setView} visible={sidebarVisible} pendingCount={pendingTotal} />
+        <div className="flex-1 flex flex-col min-w-0">
+          <PersonaSwitcher
+            personas={personas}
+            active={active}
+            onChoose={choose}
+            onToggleSidebar={() => setSidebarVisible((v) => !v)}
+          />
+          <main className="flex-1 overflow-y-auto">
+            {body}
+          </main>
+        </div>
       </div>
-    </div>
+    </KeystoreProvider>
   );
 }

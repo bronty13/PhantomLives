@@ -1,6 +1,6 @@
 [package]
 name = "molly"
-version = "1.10.0"
+version = "1.11.0"
 description = "Molly — content creator central hub"
 authors = ["Robert Olen <robert.olen@gmail.com>"]
 edition = "2021"
@@ -36,6 +36,23 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 # hashed on upload + re-verified at bundle time; inner/outer ZIPs are
 # hashed and the digests recorded in hashes.json).
 sha2 = "0.10"
+
+# Phase 10 keystore. AES-256-GCM wraps a per-install DEK; the DEK is
+# wrapped by a KEK derived from the user's passphrase via PBKDF2.
+# tiny-bip39 encodes the 32-byte DEK as 24 English words for export.
+# Design ported from PurpleIRC/EncryptedJSON; see HANDOFF.
+aes-gcm = "0.10"
+pbkdf2 = { version = "0.12", features = ["hmac", "sha2"] }
+hmac = "0.12"
+rand = "0.8"
+zeroize = { version = "1", features = ["derive"] }
+tiny-bip39 = "1"
+base64 = "0.22"
+# tokio is already pulled in transitively by tauri; declared here as
+# a direct dep so we can `use tokio::time::sleep` in long-running
+# background tasks (e.g. crypto::commands::idle_check_loop). Default
+# features kept off because tauri's runtime configuration handles them.
+tokio = { version = "1", default-features = false, features = ["time"] }
 
 [dev-dependencies]
 tempfile = "3"
