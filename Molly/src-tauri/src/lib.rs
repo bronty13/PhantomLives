@@ -189,6 +189,9 @@ pub fn run() {
             bundles::list_prohibited_words,
             bundles::add_prohibited_word,
             bundles::remove_prohibited_word,
+            bundles::create_fan_day,
+            bundles::update_fan_day_message,
+            bundles::delete_fan_day,
             masterclipper::read_masterclipper_categories,
         ])
         .run(tauri::generate_context!())

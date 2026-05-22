@@ -91,51 +91,100 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
         {stage === 'review' && bundle && (
           <div className="p-6 space-y-5 flex-1">
             <ReviewSection title="Header">
+              <ReviewRow label="Type" value={<span className="font-mono uppercase">{bundle.summary.bundleType}</span>} />
               <ReviewRow label="Persona" value={<span className="font-mono">{persona}</span>} />
               <ReviewRow label="Title" value={<span className="font-medium">{bundle.summary.title || <em className="opacity-50">(blank)</em>}</span>} />
               <ReviewRow label="Content date" value={<span className="font-mono">{bundle.summary.contentDate}</span>} />
-              <ReviewRow label="Go-live date" value={<span className="font-mono">{bundle.summary.goLiveDate ?? '(not set)'}</span>} />
-            </ReviewSection>
-
-            <ReviewSection title="Description">
-              {bundle.descriptionMode === 'audio' && bundle.descriptionAudioRelpath ? (
-                <audio controls className="w-full" src={convertFileSrc(bundle.descriptionAudioRelpath)} />
-              ) : bundle.descriptionMode === 'text' ? (
-                <pre className="whitespace-pre-wrap text-sm bg-pink-50 rounded-xl p-3">{bundle.descriptionText || '(blank)'}</pre>
-              ) : (
-                <span className="opacity-60 italic">No description set.</span>
+              {bundle.summary.bundleType !== 'fansite' && (
+                <ReviewRow label="Go-live date" value={<span className="font-mono">{bundle.summary.goLiveDate ?? '(not set)'}</span>} />
+              )}
+              {bundle.summary.bundleType === 'fansite' && (
+                <ReviewRow label="Month" value={
+                  <span className="font-mono">
+                    {bundle.fansiteYear ?? '(none)'}-{bundle.fansiteMonth != null ? String(bundle.fansiteMonth).padStart(2, '0') : '??'}
+                  </span>
+                } />
               )}
             </ReviewSection>
 
-            <ReviewSection title={`Categories (${bundle.categories.length})`}>
-              {bundle.categories.length === 0 ? (
-                <span className="opacity-60 italic">None selected.</span>
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {bundle.categories.map((c, i) => (
-                    <span key={c.name} className="px-2 py-0.5 rounded-full text-xs font-mono text-white" style={{ background: 'rgb(var(--persona-accent))' }}>
-                      {i + 1}. {c.name}
-                    </span>
+            {bundle.summary.bundleType === 'content' && (
+              <>
+                <ReviewSection title="Description">
+                  {bundle.descriptionMode === 'audio' && bundle.descriptionAudioRelpath ? (
+                    <audio controls className="w-full" src={convertFileSrc(bundle.descriptionAudioRelpath)} />
+                  ) : bundle.descriptionMode === 'text' ? (
+                    <pre className="whitespace-pre-wrap text-sm bg-pink-50 rounded-xl p-3">{bundle.descriptionText || '(blank)'}</pre>
+                  ) : (
+                    <span className="opacity-60 italic">No description set.</span>
+                  )}
+                </ReviewSection>
+                <ReviewSection title={`Categories (${bundle.categories.length})`}>
+                  {bundle.categories.length === 0 ? (
+                    <span className="opacity-60 italic">None selected.</span>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {bundle.categories.map((c, i) => (
+                        <span key={c.name} className="px-2 py-0.5 rounded-full text-xs font-mono text-white" style={{ background: 'rgb(var(--persona-accent))' }}>
+                          {i + 1}. {c.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </ReviewSection>
+              </>
+            )}
+
+            {bundle.summary.bundleType === 'custom' && (
+              <ReviewSection title="Delivery">
+                <ReviewRow label="To" value={bundle.deliveryRecipient || <em className="opacity-50">(not set)</em>} />
+                <ReviewRow label="Platform" value={
+                  bundle.deliveryKind === 'url'
+                    ? <span className="font-mono break-all">{bundle.deliveryUrl ?? '(no URL)'}</span>
+                    : bundle.deliveryKind === 'site'
+                    ? <span className="font-mono">site #{bundle.deliverySiteId ?? '?'}</span>
+                    : <em className="opacity-50">(not set)</em>
+                } />
+                <ReviewRow label="Price" value={
+                  bundle.handledInPlatform
+                    ? <em>handled in delivery platform</em>
+                    : bundle.priceCents != null
+                    ? <span className="font-mono">${(bundle.priceCents / 100).toFixed(2)}</span>
+                    : <em className="opacity-50">(not set)</em>
+                } />
+              </ReviewSection>
+            )}
+
+            {bundle.summary.bundleType === 'fansite' && (
+              <ReviewSection title={`Days (${bundle.fanDays.length})`}>
+                <ul className="space-y-1 text-sm">
+                  {bundle.fanDays.slice().sort((a, b) => a.dayOfMonth - b.dayOfMonth).map((d) => (
+                    <li key={d.id} className="flex items-baseline gap-2">
+                      <span className="font-mono text-xs opacity-60 w-6 text-right">{String(d.dayOfMonth).padStart(2, '0')}</span>
+                      <span className="truncate flex-1">{d.message || <em className="opacity-50">(no message)</em>}</span>
+                      <span className="text-xs opacity-50 font-mono">{d.fileCount} file{d.fileCount === 1 ? '' : 's'}</span>
+                    </li>
                   ))}
-                </div>
-              )}
-            </ReviewSection>
+                </ul>
+              </ReviewSection>
+            )}
 
-            <ReviewSection title={`Files (${bundle.files.filter((f) => f.fansiteDayId === null).length})`}>
-              <ul className="space-y-1">
-                {bundle.files.filter((f) => f.fansiteDayId === null).map((f, i) => (
-                  <li key={f.id} className="flex items-center gap-2 text-sm">
-                    <span className="font-mono text-xs opacity-60 w-6 text-right">{String(i + 1).padStart(5, '0')}</span>
-                    <span>{f.kind === 'video' ? '🎬' : '🖼️'}</span>
-                    {f.kind === 'image' ? (
-                      <img src={convertFileSrc(f.relpath)} alt="" className="w-12 h-12 object-cover rounded" />
-                    ) : null}
-                    <span className="truncate flex-1">{f.originalName}</span>
-                    <span className="text-xs opacity-50 font-mono">{f.sha256.slice(0, 8)}…</span>
-                  </li>
-                ))}
-              </ul>
-            </ReviewSection>
+            {bundle.summary.bundleType !== 'fansite' && (
+              <ReviewSection title={`Files (${bundle.files.filter((f) => f.fansiteDayId === null).length})`}>
+                <ul className="space-y-1">
+                  {bundle.files.filter((f) => f.fansiteDayId === null).map((f, i) => (
+                    <li key={f.id} className="flex items-center gap-2 text-sm">
+                      <span className="font-mono text-xs opacity-60 w-6 text-right">{String(i + 1).padStart(5, '0')}</span>
+                      <span>{f.kind === 'video' ? '🎬' : '🖼️'}</span>
+                      {f.kind === 'image' ? (
+                        <img src={convertFileSrc(f.relpath)} alt="" className="w-12 h-12 object-cover rounded" />
+                      ) : null}
+                      <span className="truncate flex-1">{f.originalName}</span>
+                      <span className="text-xs opacity-50 font-mono">{f.sha256.slice(0, 8)}…</span>
+                    </li>
+                  ))}
+                </ul>
+              </ReviewSection>
+            )}
 
             <ReviewSection title="Special instructions">
               <pre className="whitespace-pre-wrap text-sm bg-amber-50 rounded-xl p-3">
@@ -181,7 +230,7 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
               <dt className="opacity-60">Inner SHA-256</dt><dd className="break-all">{result.innerSha256}</dd>
               <dt className="opacity-60">Outer SHA-256</dt><dd className="break-all">{result.outerSha256}</dd>
             </dl>
-            {result.clipCreated && (
+            {result.clipCreated && bundle?.summary.bundleType === 'content' && (
               <div className="text-sm bg-pink-50 border border-pink-200 rounded-xl px-3 py-2">
                 💖 Clips row created with status <strong>Bundled</strong>.
               </div>
