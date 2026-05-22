@@ -3,6 +3,7 @@ mod backup;
 mod bundle_zip;
 mod bundles;
 mod c4s;
+mod crypto;
 mod export;
 mod fsutil;
 mod history;
@@ -115,9 +116,16 @@ pub fn run() {
             sql: include_str!("../migrations/017_bundles.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 18,
+            description: "crypto-keystore",
+            sql: include_str!("../migrations/018_crypto_keystore.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
+        .manage(crypto::KeystoreState::new_arc())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
@@ -144,6 +152,13 @@ pub fn run() {
                 if let Err(err) = bundles::auto_purge_on_launch(&handle2).await {
                     eprintln!("[molly] launch bundle auto-purge failed: {err}");
                 }
+            });
+            let handle3 = app.handle().clone();
+            // Phase 10 keystore idle-lock checker. Polls every 60s; clears
+            // the cached DEK if it's been idle longer than IDLE_LOCK_SECONDS
+            // (8h default). Same fail-quietly contract.
+            tauri::async_runtime::spawn(async move {
+                crypto::commands::idle_check_loop(handle3).await;
             });
             Ok(())
         })
@@ -193,6 +208,16 @@ pub fn run() {
             bundles::update_fan_day_message,
             bundles::delete_fan_day,
             masterclipper::read_masterclipper_categories,
+            crypto::commands::keystore_status,
+            crypto::commands::init_keystore,
+            crypto::commands::unlock_keystore,
+            crypto::commands::lock_keystore,
+            crypto::commands::change_passphrase,
+            crypto::commands::encrypt_field,
+            crypto::commands::decrypt_field,
+            crypto::commands::export_keystore_mnemonic,
+            crypto::commands::import_keystore_from_mnemonic,
+            crypto::commands::wipe_keystore,
         ])
         .run(tauri::generate_context!())
         .expect("error while running molly");
@@ -472,6 +497,38 @@ mod camel_case_contract {
         .unwrap();
         assert_camel(&v, "ValidationIssue");
     }
+
+    // Phase 10 keystore boundary structs.
+    use crate::crypto::commands::{EncryptedField, MnemonicWords};
+    use crate::crypto::KeystoreStatus;
+
+    #[test]
+    fn keystore_status_is_camel_case() {
+        let v = serde_json::to_value(KeystoreStatus {
+            initialized: false,
+            unlocked: false,
+            version: 1,
+            unlocked_secs: None,
+        })
+        .unwrap();
+        assert_camel(&v, "KeystoreStatus");
+    }
+
+    #[test]
+    fn encrypted_field_is_camel_case() {
+        let v = serde_json::to_value(EncryptedField {
+            ciphertext: String::new(),
+            dek_version: 1,
+        })
+        .unwrap();
+        assert_camel(&v, "EncryptedField");
+    }
+
+    #[test]
+    fn mnemonic_words_is_camel_case() {
+        let v = serde_json::to_value(MnemonicWords { words: vec![] }).unwrap();
+        assert_camel(&v, "MnemonicWords");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -513,6 +570,7 @@ mod migration_smoke {
             (15, "mollys-log",                   include_str!("../migrations/015_mollys_log.sql")),
             (16, "c4s-clips",                    include_str!("../migrations/016_c4s_clips.sql")),
             (17, "bundles",                      include_str!("../migrations/017_bundles.sql")),
+            (18, "crypto-keystore",              include_str!("../migrations/018_crypto_keystore.sql")),
         ];
 
         for (v, name, sql) in migrations {
@@ -536,6 +594,7 @@ mod migration_smoke {
             "mollys_log",
             "c4s_clips", "c4s_imports",
             "bundles", "bundle_fan_days", "bundle_files", "bundle_categories", "bundle_prohibited_words",
+            "crypto_keystore",
         ];
         for t in expected_tables {
             let count: i64 = conn
@@ -569,6 +628,19 @@ mod migration_smoke {
         assert_eq!(
             prohibited_count, 4,
             "migration 017 should seed exactly 4 prohibited words; got {prohibited_count}",
+        );
+
+        // Migration 018 enforces the keystore-singleton contract: the
+        // row with id=1 must exist post-migration even on a fresh DB,
+        // with NULL salt/wrapped_dek meaning "not initialized yet."
+        // Init code paths assume this row is present and UPDATE it
+        // rather than INSERT, so the bootstrap row matters.
+        let keystore_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM crypto_keystore WHERE id = 1", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            keystore_count, 1,
+            "migration 018 should seed exactly one crypto_keystore singleton row; got {keystore_count}",
         );
     }
 }
