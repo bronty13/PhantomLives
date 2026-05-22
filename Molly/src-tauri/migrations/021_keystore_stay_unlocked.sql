@@ -1,0 +1,12 @@
+-- Phase 10 follow-up: "Stay unlocked across restarts" preference.
+--
+-- When stay_unlocked = 1, the unlocked DEK is saved to the OS keychain
+-- on every successful unlock. On app launch, Molly tries to read it
+-- back so the user doesn't have to retype the passphrase. The keychain
+-- entry is purged on manual lock, passphrase change (re-written), wipe,
+-- and when the user turns this setting off.
+--
+-- Default is 0 (locked at launch, 8h idle auto-lock) so existing
+-- installs aren't silently downgraded. New users can opt in from the
+-- Settings → 🔐 Security pane.
+ALTER TABLE crypto_keystore ADD COLUMN stay_unlocked INTEGER NOT NULL DEFAULT 0;

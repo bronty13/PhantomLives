@@ -7,6 +7,7 @@
 
 pub mod commands;
 pub mod errors;
+pub mod keychain;
 pub mod keystore;
 pub mod mnemonic;
 pub mod wrap;

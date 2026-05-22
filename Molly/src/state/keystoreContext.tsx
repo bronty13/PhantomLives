@@ -51,11 +51,13 @@ export function KeystoreProvider({ children }: { children: ReactNode }) {
     const onFocus = () => { void refresh(); };
     window.addEventListener('focus', onFocus);
     const interval = window.setInterval(() => { void refresh(); }, 60_000);
-    const unlistenPromise = listen('keystore-locked', () => { void refresh(); });
+    const lockedUnlisten = listen('keystore-locked', () => { void refresh(); });
+    const unlockedUnlisten = listen('keystore-unlocked', () => { void refresh(); });
     return () => {
       window.removeEventListener('focus', onFocus);
       window.clearInterval(interval);
-      unlistenPromise.then((fn) => fn()).catch(() => {});
+      lockedUnlisten.then((fn) => fn()).catch(() => {});
+      unlockedUnlisten.then((fn) => fn()).catch(() => {});
     };
   }, [refresh]);
 

@@ -4,6 +4,78 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] — 2026-05-22
+
+### Added — 🌀 Background jobs + ATW Repost automation (Phase 12, PR3 of 3)
+
+Phase 10/11/12 trilogy complete. Molly now runs Sallie's existing `atw-repost-bot` on a schedule (default every 4h), with encrypted credentials from PR1's keystore, and full run-history monitoring.
+
+#### What's new
+
+- **New sidebar entry: 🌀 Jobs** — lists registered background jobs + recent run history per job, with status pills (running / success / failed), expandable log excerpts, **▶️ Run now** and **⏸ Disable** controls.
+- **New Settings tab: 🌀 ATW Repost** with:
+  - 🩺 **Health check** block — auto-detects Node.js, a Chromium-based browser (preference order: Chromium / ungoogled-chromium → Brave → Edge → Chrome as last resort), the bot's directory, `repost.js` presence, `node_modules` install. Each row shows ✓ or ✗ with what's missing. The "no browser found" row links to ungoogled-chromium + Brave (not Google Chrome).
+  - 🔑 **Credentials** — email + password (encrypted via PR1's keystore on save). Password field gated by keystore unlock state.
+  - 📂 **Bot installation** — picker for the user's existing `atw-repost-bot` directory. v1 doesn't ship the bot; v2 will vendor it.
+  - Advanced: override browser binary path (for non-standard installs of Chromium / Brave / Edge).
+  - ⏱ **Schedule + behavior** — cadence (1h / 2h / **4h default** / 6h / 12h / 24h), repost spread days (1-7), waking-hour window (start / end), UTC offset, delay between submissions (1-60s), headless toggle.
+  - ▶️ **Run now** button — fires the bot on demand, surface status when done.
+- **Background runner** spawned in `lib.rs::setup` alongside backup + bundle-purge + keystore-idle: polls every 60s, fires jobs whose `next_run_at` has passed, writes run-history rows. Individual job failures are recorded as `status='failed'` rows without breaking the loop.
+
+#### Architecture — why no chromiumoxide port
+
+The original plan called for porting `repost.js` (419 lines of Playwright + playwright-extra stealth) to Rust via `chromiumoxide`. Pragmatic decision: that's a multi-week project on its own with real regression risk (stealth fingerprinting, two-step login, CSS selector drift), and the existing Node bot is **already battle-tested and passing ATW's bot detection**.
+
+v1 takes a different approach: **Molly orchestrates the existing Node bot as a subprocess**. The Rust side:
+- Reads ATW credentials from the keystore-encrypted JSON blob (decrypt happens in Rust, plaintext goes straight into the subprocess env)
+- Discovers Node + Chrome at standard paths (settings can override either)
+- Spawns `node repost.js` from the user's `bot_dir` with all config passed via env vars (`ATW_EMAIL`, `ATW_PASSWORD`, `REPOST_DAYS`, etc.) — overrides whatever's in their `.env`
+- Captures stdout + stderr line-by-line into a 200-line ring buffer
+- Detects the bot's own `Run #N ended (...)` marker → kills the subprocess (the bot loops forever by default; we drive scheduling from Molly)
+- Parses known stdout markers ("Login verification got HTTP", "Run complete — submitted N of M", "Nothing to repost") into a friendly summary
+- Persists status + summary + log_excerpt into `background_job_runs`
+
+Trade-off: user must have Node 18+ installed + their existing `atw-repost-bot` directory accessible. Future versions can vendor the bot files inside Molly's bundle and ship the Rust port if AllThingsWorn's DOM stabilises.
+
+#### Tauri command surface (PR3)
+
+- ATW: `get_atw_settings`, `set_atw_settings`, `atw_health_check`, `atw_run_now`
+- Background jobs: `list_background_jobs`, `list_job_runs`, `upsert_atw_job`, `set_job_enabled`, `set_job_cadence`, `run_job_now`
+
+All response structs `#[serde(rename_all = "camelCase")]` + contract-asserted.
+
+#### Schema
+
+- Migration `020_background_jobs.sql` adds:
+  - `background_jobs` (id, kind, name, enabled, cadence_seconds, params_json, last_run_at, next_run_at, timestamps) + `(enabled, next_run_at)` index for the runner's SELECT
+  - `background_job_runs` (id, job_id FK CASCADE, started_at, finished_at, status CHECK, summary, log_excerpt) + `(job_id, started_at DESC)` index
+- ATW credentials live in `app_data/atw-settings.json` (parallel to bundler-settings.json / backup-settings.json) — single-row config so no SQLite schema needed.
+
+#### Tests
+
+273 → **295 tests passing** (132 Rust + 163 frontend; +22 Rust):
+- `atw::tests` (7): summarize covers all the known stdout markers (login failure wins over run-end, run complete = success, nothing-to-repost, config error, hung subprocess, plus best-effort discover_node / discover_chrome / health_check defaults).
+- `atw_settings::tests` (3): defaults match the existing `.env.example`, round-trip via disk, missing file yields defaults.
+- `background_jobs::tests` (5): upsert creates then updates same row, due_jobs filters correctly, disabled jobs never due, begin → finish run round-trip, mark_job_ran advances next_run_at, deleting job cascades runs.
+- `camel_case_contract` (+5): `AtwSettingsDto`, `AtwHealthCheck`, `RunOutcome`, `BackgroundJob`, `BackgroundJobRun`.
+- `migration_smoke`: `background_jobs` + `background_job_runs` anchor tables.
+
+#### Manual testing required
+
+The ATW bot itself can't be tested in CI — it talks to a real third-party site behind real credentials. Sallie needs to manually verify:
+1. Settings → 🌀 ATW: all 5 health-check rows show ✓
+2. Set ATW email + password (keystore unlocked)
+3. ▶️ Run ATW Repost now → status flips to "Running" → 5-15 min later shows success summary
+4. 🌀 Jobs sidebar: ATW Repost row appears with the run history; click a row to expand the log excerpt
+5. Cadence change: drop to 1h, wait 1 hour with Molly open, verify it fires automatically (or use SQL to set `next_run_at` to 1s ago and wait <60s for the runner tick to pick it up)
+
+#### Known limitations / NOT in this release
+
+- **Bot files not vendored** — user must have an existing `atw-repost-bot/` directory. Vendoring + first-run `npm install` is a v2 feature.
+- **No system tray** — jobs only fire while Molly is open. A tray icon for true background operation is on the roadmap.
+- **No retry-on-failure** — failed runs just sit as `failed` rows until the next scheduled tick.
+- **Single job kind in v1** — only `atw_repost`. The runner is generic enough to add more (OnlyFans repost, email summaries, etc.) by adding a `match` arm.
+
 ## [1.12.0] — 2026-05-22
 
 ### Added — 🔑 Site password manager + sub-credentials per site (Phase 10, PR2 of 3)

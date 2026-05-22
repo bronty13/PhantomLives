@@ -6,6 +6,7 @@ import {
   exportKeystoreMnemonic,
   importKeystoreFromMnemonic,
   initKeystore,
+  setKeystoreStayUnlocked,
   wipeKeystore,
 } from '../../data/keystore';
 import { useKeystore } from '../../state/keystoreContext';
@@ -70,6 +71,15 @@ export function SecuritySettings() {
     setModal({ kind: 'none' });
     setSavedNotice('Keystore imported from mnemonic and unlocked.');
   }
+  async function doToggleStayUnlocked(enabled: boolean) {
+    await setKeystoreStayUnlocked(enabled);
+    await refresh();
+    setSavedNotice(
+      enabled
+        ? 'Stay unlocked enabled — Molly will auto-unlock at launch.'
+        : 'Stay unlocked disabled — passphrase required at next launch.'
+    );
+  }
   async function doWipe() {
     const ok = confirm(
       'Wipe the keystore?\n\n' +
@@ -98,7 +108,9 @@ export function SecuritySettings() {
               {status.unlockedSecs != null && (
                 <span className="opacity-60"> since {fmtElapsed(status.unlockedSecs)} ago</span>
               )}
-              {' '}— auto-locks after 8 hours of inactivity.
+              {' '}— {status.stayUnlocked
+                ? 'stays unlocked across restarts (manual lock still works).'
+                : 'auto-locks after 8 hours of inactivity.'}
             </span>
           )}
           {status.initialized && !status.unlocked && (
@@ -129,6 +141,39 @@ export function SecuritySettings() {
           <div className="text-xs bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">{savedNotice}</div>
         )}
       </section>
+
+      {/* Stay-unlocked preference */}
+      {status.initialized && (
+        <section className="pretty-card space-y-3">
+          <h3 className="font-semibold">Convenience</h3>
+          <label className="flex items-start gap-3 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={status.stayUnlocked}
+              disabled={!status.unlocked && !status.stayUnlocked}
+              onChange={(e) => doToggleStayUnlocked(e.target.checked)}
+              className="w-4 h-4 mt-0.5"
+            />
+            <span className="flex-1 space-y-1">
+              <span className="block">
+                <strong>Stay unlocked across restarts</strong>
+              </span>
+              <span className="block text-xs opacity-70">
+                When on, Molly saves your unlock key to the macOS Keychain so you don&apos;t have to
+                retype your passphrase every time. The 8-hour idle auto-lock is also disabled. Manual
+                <strong> 🔒 Lock now</strong> still works and forces a passphrase prompt next time.
+                The keychain entry is wiped when you lock, change your passphrase&apos;s DEK version,
+                or wipe the keystore.
+              </span>
+              {!status.unlocked && !status.stayUnlocked && (
+                <span className="block text-xs italic opacity-60">
+                  Unlock the keystore first to enable this.
+                </span>
+              )}
+            </span>
+          </label>
+        </section>
+      )}
 
       {/* Backup mnemonic */}
       {status.initialized && status.unlocked && (

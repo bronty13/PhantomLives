@@ -1,5 +1,9 @@
 mod attachments;
+mod atw;
+mod atw_settings;
+mod atw_setup;
 mod backup;
+mod background_jobs;
 mod bundle_zip;
 mod bundles;
 mod c4s;
@@ -129,6 +133,24 @@ pub fn run() {
             sql: include_str!("../migrations/019_site_credentials.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 20,
+            description: "background-jobs",
+            sql: include_str!("../migrations/020_background_jobs.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 21,
+            description: "keystore-stay-unlocked",
+            sql: include_str!("../migrations/021_keystore_stay_unlocked.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 22,
+            description: "job-run-log-path",
+            sql: include_str!("../migrations/022_job_run_log_path.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -160,12 +182,27 @@ pub fn run() {
                     eprintln!("[molly] launch bundle auto-purge failed: {err}");
                 }
             });
+            let handle_kc = app.handle().clone();
+            // Phase 10 follow-up: try to restore the unlocked session from
+            // the OS keychain if the user opted into "Stay unlocked across
+            // restarts." Synchronous, runs once, then we move on.
+            crypto::commands::try_restore_from_keychain(&handle_kc);
             let handle3 = app.handle().clone();
             // Phase 10 keystore idle-lock checker. Polls every 60s; clears
             // the cached DEK if it's been idle longer than IDLE_LOCK_SECONDS
-            // (8h default). Same fail-quietly contract.
+            // (8h default) AND stay_unlocked is OFF. Same fail-quietly
+            // contract.
             tauri::async_runtime::spawn(async move {
                 crypto::commands::idle_check_loop(handle3).await;
+            });
+            let handle4 = app.handle().clone();
+            // Phase 12 background-jobs runner. Polls every 60s; fires any
+            // job whose next_run_at has passed. Only registered kind in v1
+            // is 'atw_repost'. Same fail-quietly contract — individual job
+            // failures are recorded as `status='failed'` rows and the
+            // loop continues.
+            tauri::async_runtime::spawn(async move {
+                background_jobs::run_loop(handle4).await;
             });
             Ok(())
         })
@@ -219,6 +256,7 @@ pub fn run() {
             crypto::commands::init_keystore,
             crypto::commands::unlock_keystore,
             crypto::commands::lock_keystore,
+            crypto::commands::set_keystore_stay_unlocked,
             crypto::commands::change_passphrase,
             crypto::commands::encrypt_field,
             crypto::commands::decrypt_field,
@@ -234,6 +272,21 @@ pub fn run() {
             site_credentials::reveal_credential_password,
             site_credentials::set_credential_primary,
             site_credentials::delete_site_credential,
+            atw_settings::get_atw_settings,
+            atw_settings::set_atw_settings,
+            atw::atw_health_check,
+            atw::atw_run_now,
+            atw_setup::inspect_atw_setup,
+            atw_setup::ensure_atw_bot_files,
+            atw_setup::install_atw_bot_deps,
+            background_jobs::list_background_jobs,
+            background_jobs::list_job_runs,
+            background_jobs::upsert_atw_job,
+            background_jobs::set_job_enabled,
+            background_jobs::set_job_cadence,
+            background_jobs::run_job_now,
+            background_jobs::open_run_log,
+            background_jobs::reveal_run_log,
         ])
         .run(tauri::generate_context!())
         .expect("error while running molly");
@@ -525,6 +578,7 @@ mod camel_case_contract {
             unlocked: false,
             version: 1,
             unlocked_secs: None,
+            stay_unlocked: false,
         })
         .unwrap();
         assert_camel(&v, "KeystoreStatus");
@@ -564,6 +618,94 @@ mod camel_case_contract {
         })
         .unwrap();
         assert_camel(&v, "SiteCredential");
+    }
+
+    // Phase 12 background jobs + ATW.
+    use crate::atw::{AtwHealthCheck, RunOutcome};
+    use crate::atw_settings::AtwSettingsDto;
+    use crate::background_jobs::{BackgroundJob, BackgroundJobRun};
+
+    #[test]
+    fn atw_settings_dto_is_camel_case() {
+        let v = serde_json::to_value(AtwSettingsDto {
+            email: String::new(),
+            has_password: false,
+            password_dek_version: None,
+            bot_dir: None,
+            browser_executable_path: None,
+            cadence_seconds: 0,
+            repost_days: 0,
+            schedule_start_hour: 0,
+            schedule_end_hour: 0,
+            utc_offset: 0,
+            delay_ms: 0,
+            headless: true,
+        })
+        .unwrap();
+        assert_camel(&v, "AtwSettingsDto");
+    }
+
+    #[test]
+    fn atw_health_check_is_camel_case() {
+        let v = serde_json::to_value(AtwHealthCheck {
+            node_found: false,
+            node_path: None,
+            chrome_found: false,
+            chrome_path: None,
+            bot_dir_set: false,
+            bot_dir_exists: false,
+            bot_dir_has_repost_js: false,
+            bot_dir_has_node_modules: false,
+        })
+        .unwrap();
+        assert_camel(&v, "AtwHealthCheck");
+    }
+
+    #[test]
+    fn atw_run_outcome_is_camel_case() {
+        let v = serde_json::to_value(RunOutcome {
+            status: String::new(),
+            summary: String::new(),
+            log_excerpt: String::new(),
+            elapsed_seconds: 0,
+            log_path: None,
+        })
+        .unwrap();
+        assert_camel(&v, "RunOutcome");
+    }
+
+    #[test]
+    fn background_job_is_camel_case() {
+        let v = serde_json::to_value(BackgroundJob {
+            id: 0,
+            kind: String::new(),
+            name: String::new(),
+            enabled: false,
+            cadence_seconds: 0,
+            params_json: String::new(),
+            last_run_at: None,
+            next_run_at: None,
+            created_at: String::new(),
+            updated_at: String::new(),
+        })
+        .unwrap();
+        assert_camel(&v, "BackgroundJob");
+    }
+
+    #[test]
+    fn background_job_run_is_camel_case() {
+        let v = serde_json::to_value(BackgroundJobRun {
+            id: 0,
+            job_id: 0,
+            started_at: String::new(),
+            finished_at: None,
+            status: String::new(),
+            summary: String::new(),
+            log_excerpt: String::new(),
+            log_path: None,
+        })
+        .unwrap();
+        assert_camel(&v, "BackgroundJobRun");
     }
 }
 
@@ -608,6 +750,9 @@ mod migration_smoke {
             (17, "bundles",                      include_str!("../migrations/017_bundles.sql")),
             (18, "crypto-keystore",              include_str!("../migrations/018_crypto_keystore.sql")),
             (19, "site-credentials",             include_str!("../migrations/019_site_credentials.sql")),
+            (20, "background-jobs",              include_str!("../migrations/020_background_jobs.sql")),
+            (21, "keystore-stay-unlocked",       include_str!("../migrations/021_keystore_stay_unlocked.sql")),
+            (22, "job-run-log-path",             include_str!("../migrations/022_job_run_log_path.sql")),
         ];
 
         for (v, name, sql) in migrations {
@@ -633,6 +778,7 @@ mod migration_smoke {
             "bundles", "bundle_fan_days", "bundle_files", "bundle_categories", "bundle_prohibited_words",
             "crypto_keystore",
             "site_credentials",
+            "background_jobs", "background_job_runs",
         ];
         for t in expected_tables {
             let count: i64 = conn

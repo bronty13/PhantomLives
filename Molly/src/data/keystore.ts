@@ -10,6 +10,10 @@ export interface KeystoreStatus {
   unlocked: boolean;
   version: number;
   unlockedSecs: number | null;
+  /** When true, the DEK is persisted to the OS keychain so Molly auto-
+   *  unlocks at launch and the 8h idle auto-lock is disabled. Manual
+   *  Lock still works (and purges the keychain entry). */
+  stayUnlocked: boolean;
 }
 
 export interface EncryptedField {
@@ -45,6 +49,10 @@ export async function unlockKeystore(passphrase: string): Promise<KeystoreStatus
 
 export async function lockKeystore(): Promise<void> {
   await invoke('lock_keystore');
+}
+
+export async function setKeystoreStayUnlocked(enabled: boolean): Promise<KeystoreStatus> {
+  return invoke<KeystoreStatus>('set_keystore_stay_unlocked', { enabled });
 }
 
 export async function changePassphrase(oldPassphrase: string, newPassphrase: string): Promise<void> {

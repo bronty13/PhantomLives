@@ -103,6 +103,7 @@ pub struct KeystoreRecord {
     pub kdf_iterations: u32,
     pub wrapped_dek_b64: Option<String>,
     pub version: i32,
+    pub stay_unlocked: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -113,21 +114,26 @@ pub struct KeystoreStatus {
     pub version: i32,
     /// Seconds elapsed since unlock; None when locked.
     pub unlocked_secs: Option<u64>,
+    /// "Stay unlocked across restarts" preference. When true, the
+    /// unlocked DEK is persisted to the OS keychain and the 8h idle
+    /// auto-lock is skipped. Manual lock still works.
+    pub stay_unlocked: bool,
 }
 
 // ----- Persistence helpers (pure; take `&Connection`) -----------------------
 
 pub(crate) fn load(conn: &Connection) -> Result<KeystoreRecord, CryptoError> {
-    let (salt_b64, kdf_iterations, wrapped_dek_b64, version): (
+    let (salt_b64, kdf_iterations, wrapped_dek_b64, version, stay_unlocked): (
         Option<String>,
         i64,
         Option<String>,
+        i64,
         i64,
     ) = conn.query_row(
-        "SELECT salt_b64, kdf_iterations, wrapped_dek_b64, dek_version
+        "SELECT salt_b64, kdf_iterations, wrapped_dek_b64, dek_version, stay_unlocked
          FROM crypto_keystore WHERE id = 1",
         [],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
     )?;
     Ok(KeystoreRecord {
         initialized: salt_b64.is_some() && wrapped_dek_b64.is_some(),
@@ -135,7 +141,16 @@ pub(crate) fn load(conn: &Connection) -> Result<KeystoreRecord, CryptoError> {
         kdf_iterations: kdf_iterations as u32,
         wrapped_dek_b64,
         version: version as i32,
+        stay_unlocked: stay_unlocked != 0,
     })
+}
+
+pub fn set_stay_unlocked(conn: &Connection, enabled: bool) -> Result<(), CryptoError> {
+    conn.execute(
+        "UPDATE crypto_keystore SET stay_unlocked = ?1, updated_at = datetime('now') WHERE id = 1",
+        params![if enabled { 1 } else { 0 }],
+    )?;
+    Ok(())
 }
 
 fn save_wrapped(
@@ -318,9 +333,11 @@ mod tests {
 
     fn fresh_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        // Just the bits this module touches — load only migration 001 + 018.
+        // Just the bits this module touches — load 001 (base schema),
+        // 018 (singleton table), 021 (stay_unlocked column).
         conn.execute_batch(include_str!("../../migrations/001_init.sql")).unwrap();
         conn.execute_batch(include_str!("../../migrations/018_crypto_keystore.sql")).unwrap();
+        conn.execute_batch(include_str!("../../migrations/021_keystore_stay_unlocked.sql")).unwrap();
         conn
     }
 
