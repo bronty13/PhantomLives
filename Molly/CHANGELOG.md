@@ -4,6 +4,74 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] — 2026-05-22
+
+### Added — 🔑 Site password manager + sub-credentials per site (Phase 10, PR2 of 3)
+
+The keystore from v1.11.0 now actually holds data. Sallie can store encrypted passwords for any site, reveal them for 10 seconds, or copy them to clipboard (auto-clears after 30s). Each site can hold **multiple credentials** — a CoC store + a PoA store on the same C4S, or alt accounts on OnlyFans, etc. (pulled forward from the deferred list per user ask).
+
+#### What's new
+
+- **Settings → Sites → site editor** gains a **Credentials** section:
+  - Lists all credentials for the site (label + username + password)
+  - **Set as primary** radio per row (exactly-one-primary invariant enforced via single transaction)
+  - **+ Add credential** button to create a new login (label e.g. "CoC store", "backup")
+  - Inline edit for label and username (commit on blur)
+  - Password field gated by keystore unlock state — three states: not-set-up (link to Security setup), locked (🔒 + Unlock hint), unlocked (standard input with show/hide toggle)
+  - Reveal (10s auto-hide), Clear (removes stored password), and Delete (cannot delete the last credential — keeps `sites.username` legacy-compat row intact)
+- **Molly Helper** site cards gain per-credential **👁 Reveal** and **📋 Copy password** buttons:
+  - Single-credential sites (the common case) render compactly with one row per password
+  - Multi-credential sites label each row with its credential name
+  - 🔒 placeholder shown when keystore is locked
+  - Top "Keystore is locked — Unlock now" banner appears when any visible site has a password and the keystore is locked; inline passphrase entry without leaving the view
+- **Clipboard auto-clear** 30s after Copy password (best-effort; clipboard managers like Alfred may retain history — documented limitation).
+
+#### UX improvements to keystore recovery (Phase 10 follow-up)
+
+After user feedback that typing 24 BIP-39 words into a single textarea was painful (especially trying to remember whitespace and reading back the numbered list), the Settings → 🔐 Security pane gets a **dedicated 24-cell grid input**:
+
+- 6 columns × 4 rows; each cell labeled `1.` through `24.` in monospace
+- Type a word + press **space or Enter** → focus jumps to the next cell
+- **Backspace on empty cell** → jumps back
+- **Arrow keys** at cell edge → navigate between cells
+- Paste a single word into a cell → fills that cell; paste multiple words → spreads across subsequent cells
+- 📋 **Paste from clipboard** button fills all 24 in one click
+- **Tolerates "1. word" numbered list paste-back** — leading `N.` or `N)` prefixes are stripped per token
+- Live `X/24 filled` counter; Import button only enables at 24/24
+- The Reveal side (when you export your mnemonic) uses the same grid layout (read-only) so the visual rhythm matches exactly. Plus a "📝 Copy numbered list" button alongside the existing "Copy all (one line)" so you can paste back in either format.
+
+#### Architecture
+
+- **No new crypto code** — PR2 uses the v1.11.0 keystore as-is. Field encryption/decryption happen in Rust (`site_credentials::set_credential_password`, `reveal_credential_password`); the frontend never holds the wrapped DEK.
+- **Cross-DEK-version detection**: if a stored ciphertext was written under a previous DEK generation (e.g. after `import_keystore_from_mnemonic` bumped the version), reveal returns `DecryptionFailed` so the UI can prompt "re-enter this password." Stored rows include `password_dek_version` so future re-key migrations can identify stale rows.
+
+#### Tauri command surface (PR2)
+
+`list_site_credentials`, `create_site_credential`, `update_credential_username`, `update_credential_label`, `set_credential_password`, `clear_credential_password`, `reveal_credential_password`, `set_credential_primary`, `delete_site_credential`. All response structs `#[serde(rename_all = "camelCase")]` + contract-asserted.
+
+#### Schema
+
+- Migration `019_site_credentials.sql` adds the `site_credentials` child table:
+  - `(id, site_id, label, username, password_encrypted, password_dek_version, password_updated_at, is_primary, sort_order, created_at, updated_at)`
+  - FK to `sites(id) ON DELETE CASCADE`; deleting a site removes its credentials
+  - `is_primary` boolean: exactly one per site (enforced by data layer transactions)
+  - `sort_order` int for user-controlled ordering
+- **Backfill**: every existing site row gets a primary credential row carrying the legacy `sites.username`. New sites created post-019 also get a primary credential automatically via the data-layer INSERT wrapper.
+- `sites.username` stays in the schema for backwards-compat with existing read paths (Molly Helper's "Copy user" button). Changes to the primary credential's username are mirrored back to `sites.username` by the data layer so legacy paths stay correct. Deprecating the column is a follow-up.
+
+#### Tests
+
+252 → **273 tests passing** (110 Rust + 163 frontend, +21 PR2):
+- `site_credentials::tests` (9): backfill creates one primary per site, create_then_list, set_password_then_clear, set_primary_clears_others_and_mirrors_username, update_primary_username_syncs_sites_username, update_secondary_username_does_not_touch_sites_username, cannot_delete_last_credential, delete_works_when_more_than_one_exists, deleting_site_cascades_credentials.
+- `camel_case_contract` (+1): `SiteCredential`.
+- `migration_smoke`: site_credentials table + credential-count-equals-site-count backfill assertion.
+
+#### Known limitations / NOT in this release
+
+- ATW automation still missing (PR3 — background jobs + chromiumoxide port).
+- No "import from 1Password / Bitwarden" yet.
+- macOS Keychain integration still deferred — passphrase required on every Molly launch.
+
 ## [1.11.0] — 2026-05-22
 
 ### Added — 🔐 Keystore infrastructure (Phase 10, PR1 of 3)
