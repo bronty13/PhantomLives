@@ -118,6 +118,7 @@ Molly/
 ├── DESIGN.md                              # theming + UX choices
 ├── INSTALL.md                             # Sallie-friendly install + export instructions
 ├── PHASE_8_PARSERS.md                     # deferred per-site parser plan
+├── ROADMAP.md                             # living brainstorm of next ideas + opinionated slates
 ├── OUT_OF_SCOPE.md                        # what we won't build
 └── CHANGELOG.md
 ```
