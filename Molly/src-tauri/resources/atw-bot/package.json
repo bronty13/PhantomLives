@@ -1,0 +1,19 @@
+{
+  "name": "molly-atw-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Vendored copy of atw-repost-bot — runs inside Molly via the background-jobs runner. The postinstall script that downloads Chromium is intentionally removed; Molly points Playwright at the user's installed Chrome via BROWSER_EXECUTABLE_PATH at run time.",
+  "scripts": {
+    "start": "node repost.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "playwright": "^1.47.0",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

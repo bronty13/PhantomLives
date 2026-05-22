@@ -28,6 +28,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
 use crate::atw_settings::{self, AtwSettings};
+use crate::atw_setup;
 use crate::crypto::keystore::KeystoreState;
 use crate::crypto::CryptoError;
 
@@ -84,27 +85,26 @@ pub struct AtwHealthCheck {
     pub bot_dir_has_node_modules: bool,
 }
 
-pub(crate) fn health_check(settings: &AtwSettings) -> AtwHealthCheck {
+/// `health_check_with_dir` accepts the effective bot dir so the caller
+/// (`atw_health_check` Tauri command) can resolve it via `atw_setup::
+/// effective_bot_dir` — which auto-resolves to `app_data/atw-bot/` for
+/// the zero-config flow but respects a manual override in settings.
+pub(crate) fn health_check_with_dir(settings: &AtwSettings, bot_dir: &Path) -> AtwHealthCheck {
     let node = discover_node();
     let chrome = settings
         .browser_executable_path
         .clone()
         .or_else(discover_chrome);
-    let bot_dir = settings.bot_dir.as_deref().map(Path::new);
-    let bot_dir_exists = bot_dir.map(|p| p.is_dir()).unwrap_or(false);
-    let bot_dir_has_repost_js = bot_dir
-        .map(|p| p.join("repost.js").is_file())
-        .unwrap_or(false);
-    let bot_dir_has_node_modules = bot_dir
-        .map(|p| p.join("node_modules").is_dir())
-        .unwrap_or(false);
+    let bot_dir_exists = bot_dir.is_dir();
+    let bot_dir_has_repost_js = bot_dir.join("repost.js").is_file();
+    let bot_dir_has_node_modules = bot_dir.join("node_modules").is_dir();
 
     AtwHealthCheck {
         node_found: node.is_some(),
         node_path: node.map(|p| p.to_string_lossy().to_string()),
         chrome_found: chrome.is_some(),
         chrome_path: chrome,
-        bot_dir_set: settings.bot_dir.is_some(),
+        bot_dir_set: true, // always set under the auto-managed model
         bot_dir_exists,
         bot_dir_has_repost_js,
         bot_dir_has_node_modules,
@@ -143,15 +143,21 @@ pub async fn run_once<R: Runtime>(
         .map_err(|e| CryptoError::Internal(format!("app_data_dir: {e}")))?;
     let settings = atw_settings::load(&app_data);
 
-    let bot_dir = settings
-        .bot_dir
-        .as_ref()
-        .ok_or_else(|| CryptoError::Internal("ATW bot directory not set — Settings → 🌀 ATW".into()))?;
-    let bot_path = Path::new(bot_dir);
+    // Auto-managed bot dir: ensure vendored files are copied to app
+    // data before the run (cheap if already done; refreshes after
+    // Molly updates that bump VERSION).
+    atw_setup::ensure_bot_files_copied(handle)?;
+    let bot_path = atw_setup::effective_bot_dir(handle)?;
     if !bot_path.join("repost.js").is_file() {
         return Err(CryptoError::Internal(format!(
-            "repost.js not found at {bot_dir}"
+            "repost.js not found at {}",
+            bot_path.display()
         )));
+    }
+    if !bot_path.join("node_modules").is_dir() {
+        return Err(CryptoError::Internal(
+            "Bot dependencies not installed yet — open Settings → 🌀 ATW Repost and click \"Install bot dependencies\".".into(),
+        ));
     }
 
     let node_path = discover_node()
@@ -178,7 +184,7 @@ pub async fn run_once<R: Runtime>(
 
     let mut cmd = Command::new(&node_path);
     cmd.arg("repost.js")
-        .current_dir(bot_path)
+        .current_dir(&bot_path)
         .env("ATW_EMAIL", &settings.email)
         .env("ATW_PASSWORD", &password)
         .env("REPOST_DAYS", settings.repost_days.to_string())
@@ -324,7 +330,9 @@ pub fn atw_health_check<R: Runtime>(handle: AppHandle<R>) -> Result<AtwHealthChe
         .app_data_dir()
         .map_err(|e| CryptoError::Internal(format!("app_data_dir: {e}")))?;
     let s = atw_settings::load(&app_data);
-    Ok(health_check(&s))
+    // Probe the auto-managed bot dir (or the user's override if set).
+    let bot_dir = atw_setup::effective_bot_dir(&handle)?;
+    Ok(health_check_with_dir(&s, &bot_dir))
 }
 
 /// On-demand "Run now" from the React UI. Returns the same outcome the
@@ -412,11 +420,16 @@ mod tests {
     }
 
     #[test]
-    fn health_check_with_empty_settings_reports_unset() {
+    fn health_check_with_empty_dir_reports_unset() {
+        // The auto-managed model passes the bot dir in directly (the
+        // Tauri command resolves it via atw_setup); test that with a
+        // path we know doesn't exist.
         let s = AtwSettings::defaults();
-        let h = health_check(&s);
-        assert!(!h.bot_dir_set);
+        let tmp = tempfile::tempdir().unwrap();
+        let nonexistent = tmp.path().join("never-created");
+        let h = health_check_with_dir(&s, &nonexistent);
         assert!(!h.bot_dir_exists);
         assert!(!h.bot_dir_has_repost_js);
+        assert!(!h.bot_dir_has_node_modules);
     }
 }

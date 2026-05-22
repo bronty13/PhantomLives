@@ -1,6 +1,7 @@
 mod attachments;
 mod atw;
 mod atw_settings;
+mod atw_setup;
 mod backup;
 mod background_jobs;
 mod bundle_zip;
@@ -256,6 +257,9 @@ pub fn run() {
             atw_settings::set_atw_settings,
             atw::atw_health_check,
             atw::atw_run_now,
+            atw_setup::inspect_atw_setup,
+            atw_setup::ensure_atw_bot_files,
+            atw_setup::install_atw_bot_deps,
             background_jobs::list_background_jobs,
             background_jobs::list_job_runs,
             background_jobs::upsert_atw_job,

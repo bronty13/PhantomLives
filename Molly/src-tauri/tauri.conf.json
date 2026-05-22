@@ -42,6 +42,11 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": [
+      "resources/atw-bot/repost.js",
+      "resources/atw-bot/package.json",
+      "resources/atw-bot/VERSION"
+    ],
     "macOS": {
       "minimumSystemVersion": "10.15"
     },

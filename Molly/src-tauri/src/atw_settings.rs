@@ -32,10 +32,11 @@ pub struct AtwSettings {
     /// the user hasn't set a password yet.
     pub password_ciphertext: Option<String>,
     pub password_dek_version: Option<i32>,
-    /// Absolute path to the user's `atw-repost-bot` directory (the
-    /// folder containing `repost.js` + `package.json` + `node_modules`).
-    /// v1 ships as a "point at your existing install" model; v2 will
-    /// vendor the bot inside Molly's bundle.
+    /// Override path to the bot directory. Normally `None` — Molly
+    /// auto-manages the bot in `app_data/atw-bot/` (vendored from the
+    /// app bundle's resources on first launch). Setting this manually
+    /// is for power users who want to point at a different `atw-repost-bot`
+    /// install (e.g. the original one in their Documents folder).
     pub bot_dir: Option<String>,
     /// Override Chrome path; None = use the standard install location.
     pub browser_executable_path: Option<String>,
