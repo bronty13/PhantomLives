@@ -72,7 +72,13 @@ export function BundlesListView({ active }: Props) {
 
   async function onDeleteBundle(uid: string, state: string) {
     const ok = state === 'published'
-      ? confirm('Delete the published ZIP? The draft becomes editable again (the clip row is preserved).')
+      ? confirm(
+          'Unpublish this bundle?\n\n' +
+          'The ZIP file in ~/Downloads/Molly bundles/ will be removed and ' +
+          'the bundle will become editable again. ' +
+          'Everything you typed in (title, files, categories, etc.) is preserved. ' +
+          'The linked Clips row (if any) also survives.',
+        )
       : confirm('Delete this draft and all uploaded files? This cannot be undone.');
     if (!ok) return;
     try {
@@ -90,12 +96,29 @@ export function BundlesListView({ active }: Props) {
   if (route.kind === 'draft') {
     const b = items.find((it) => it.uid === route.uid);
     const locked = b?.state === 'published';
+    const onUnlock = async () => {
+      const ok = confirm(
+        'Unpublish this bundle?\n\n' +
+        'The ZIP file in ~/Downloads/Molly bundles/ will be removed and ' +
+        'the bundle will become editable again. ' +
+        'Everything you typed in (title, files, categories, etc.) is preserved. ' +
+        'The linked Clips row (if any) also survives.',
+      );
+      if (!ok) return;
+      try {
+        await deletePublishedBundle(route.uid);
+        await refresh();
+      } catch (e) {
+        setError(String(e));
+      }
+    };
     const closeProps = {
       uid: route.uid,
       locked,
       onPublishRequested: () => setRoute({ kind: 'wizard', uid: route.uid }),
       onClose: () => { setRoute({ kind: 'list' }); refresh(); },
       onDeleted: () => refresh(),
+      onUnlock: locked ? onUnlock : undefined,
     };
     switch (b?.bundleType) {
       case 'content': return <ContentBundleForm {...closeProps} />;
@@ -207,9 +230,12 @@ export function BundlesListView({ active }: Props) {
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onDeleteBundle(b.uid, b.state); }}
-                  className="pretty-button danger text-xs"
+                  className={b.state === 'published' ? 'pretty-button secondary text-xs' : 'pretty-button danger text-xs'}
+                  title={b.state === 'published'
+                    ? 'Remove the ZIP and unlock the draft for re-editing (data preserved)'
+                    : 'Delete the draft + all uploaded files (cannot be undone)'}
                 >
-                  {b.state === 'published' ? 'Delete bundle' : 'Delete draft'}
+                  {b.state === 'published' ? '📝 Unpublish & edit' : 'Delete draft'}
                 </button>
               </li>
             );

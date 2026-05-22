@@ -26,10 +26,11 @@ interface Props {
   onPublishRequested: () => void;
   onClose: () => void;                    // back to bundles list (also refreshes parent list)
   onDeleted?: () => void;                  // fires after a successful draft delete
+  onUnlock?: () => void;                   // unpublish + reopen for editing (only set when locked)
   locked?: boolean;          // published bundles render read-only until ZIP deleted
 }
 
-export function ContentBundleForm({ uid, onPublishRequested, onClose, onDeleted, locked }: Props) {
+export function ContentBundleForm({ uid, onPublishRequested, onClose, onDeleted, onUnlock, locked }: Props) {
   const [bundle, setBundle] = useState<Bundle | null>(null);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [prohibited, setProhibited] = useState<string[]>([]);
@@ -182,7 +183,7 @@ export function ContentBundleForm({ uid, onPublishRequested, onClose, onDeleted,
           </button>
         )}
       </div>
-      <header className="space-y-1">
+      <header className="space-y-2">
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="display-font text-2xl font-bold persona-accent">
             Content Bundle
@@ -192,6 +193,12 @@ export function ContentBundleForm({ uid, onPublishRequested, onClose, onDeleted,
         <p className="opacity-70 text-sm">
           Compose a delivery bundle for Robert. Save as you go — drafts persist until you delete them.
         </p>
+        {locked && onUnlock && (
+          <div className="flex items-center gap-3 bg-pink-50 border border-pink-200 rounded-xl px-3 py-2 text-sm">
+            <span className="flex-1">🔒 This bundle is <strong>published</strong> — fields are read-only.</span>
+            <button type="button" onClick={onUnlock} className="pretty-button text-xs">📝 Unlock to edit</button>
+          </div>
+        )}
         {error && (
           <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
             {error}
