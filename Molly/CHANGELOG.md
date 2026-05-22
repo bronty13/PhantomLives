@@ -4,6 +4,48 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] — 2026-05-22
+
+### Added — 🎁 Content Bundler (Phase 9, part 2 of 2)
+
+Completes the Content Bundler. The two remaining bundle types now publish end-to-end:
+
+- **Custom Bundle** — for delivering a custom video to a specific buyer / platform / price.
+  - Fields: persona, title, go-live date (defaults to tomorrow), 1+ videos/images (drag-reorder), **delivery platform** (site picker OR free-text URL; exactly-one rule), recipient, price (or "handled in delivery platform" checkbox).
+  - URL validator requires `http://` or `https://`. Site picker filters to the bundle's persona using the existing `sites` table.
+  - Bundle layout matches Content (`Video/00001_…`, `Photos/00001_…`); `info.md` and `Molly.log` include a `Delivery` section listing recipient / platform / price.
+- **Fan Site Bundle** — a whole month of fan-site posts on a calendar.
+  - Field: persona, title, year + month, per-day message + files.
+  - Renders a 7-column month grid with Sun-Sat labels. Each day cell color-codes:
+    grey (out of month) → empty → amber (partial — message OR file) → persona-accent (complete — both).
+  - Click a day → modal with short-message textarea + per-day file picker. Days are created idempotently on first open. The whole `bundle_fan_days` row + cascaded files can be deleted from the modal.
+  - Live "completion bar" under the calendar: `X/N complete · M partial` with a fill-up progress.
+  - Files in the ZIP are renamed `FanSite/DD_NN_<orig>` where `DD` is calendar day and `NN` is within-day position — order preserved across the whole month.
+- **Validation engine** extended (server + client) with `validate_custom_delivery`, `validate_custom_bundle`, `validate_fansite_completion`, `validate_fansite_bundle`, and the shared `days_in_month` helper (mirrored in TS as `daysInMonth`).
+- **Publish wizard** review pane gets per-type sections — Custom shows recipient + platform + price; Fan Site shows a sorted day-by-day list with message + file counts.
+
+### Schema
+
+No new migration. The `017_bundles.sql` migration shipped in 1.9.0 already declared every Custom + FanSite column; PR2 fills them in with form wiring + Tauri commands.
+
+### Tauri command surface (additions)
+
+- `create_fan_day(bundleUid, dayOfMonth)` — idempotent create-or-return; rejects out-of-1..31 days.
+- `update_fan_day_message(fanDayId, message)` — also bumps parent `bundles.updated_at`.
+- `delete_fan_day(fanDayId)` — cascades to `bundle_files` (DB FK), returns the deleted relpaths so the Tauri layer can unlink the actual files on disk.
+
+### Tests
+
+185 (PR1) → **207 tests passing** (71 Rust + 136 frontend, +22 PR2 coverage):
+
+- `bundles.rs` (+9): `days_in_month` (28/29/30/31 + invalid), custom delivery mutex / URL shape / recipient required / price-required-unless-handled, FanSite completion lists missing days + differentiates message-vs-file, FanSite needs year+month, fan_day CRUD round-trip + cascade.
+- `lib/bundleValidation.test.ts` (+13): mirror of all the new Rust rules end-to-end.
+
+### Known limitations (carried forward from 1.9.0)
+
+- DMG remains unsigned in the Apple-Developer-ID sense.
+- `releases/latest/download/latest.json` is monorepo-shared.
+
 ## [1.9.0] — 2026-05-22
 
 ### Added — 🎁 Content Bundler (Phase 9, part 1 of 2)

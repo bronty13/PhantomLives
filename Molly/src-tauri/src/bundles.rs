@@ -18,7 +18,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use chrono::{DateTime, Local, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, Local, NaiveDate, Utc};
 use rusqlite::{params, types::Value as SqlValue, Connection};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Runtime};
@@ -526,8 +526,7 @@ pub(crate) fn validate_content_files(
     }
 }
 
-/// Top-level validator for the Content bundle type. PR2 adds custom_*
-/// and fansite_* variants.
+/// Top-level validator for the Content bundle type.
 pub(crate) fn validate_content_bundle(
     bundle: &Bundle,
     today: NaiveDate,
@@ -546,6 +545,163 @@ pub(crate) fn validate_content_bundle(
     validate_categories(&bundle.categories, &mut issues);
     validate_content_files(&bundle.files, &mut issues);
     issues
+}
+
+/// Custom-bundle delivery rule: exactly one of (site, url); recipient
+/// required; if delivery_kind == 'url' the URL must look like http(s)://;
+/// price required unless handled-in-platform.
+pub(crate) fn validate_custom_delivery(
+    bundle: &Bundle,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let has_site = bundle.delivery_site_id.is_some();
+    let has_url = bundle
+        .delivery_url
+        .as_deref()
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false);
+
+    if !has_site && !has_url {
+        issues.push(ValidationIssue {
+            field_path: "delivery".into(),
+            message: "Pick a delivery platform (a site or a URL).".into(),
+            severity: Severity::Error,
+            jump_to_field_id: "bundle-delivery".into(),
+        });
+    }
+    if has_site && has_url {
+        issues.push(ValidationIssue {
+            field_path: "delivery".into(),
+            message: "Pick one — a site OR a URL, not both.".into(),
+            severity: Severity::Error,
+            jump_to_field_id: "bundle-delivery".into(),
+        });
+    }
+    if has_url {
+        let url = bundle.delivery_url.as_deref().unwrap_or("").trim();
+        if !(url.starts_with("http://") || url.starts_with("https://")) {
+            issues.push(ValidationIssue {
+                field_path: "delivery.url".into(),
+                message: "URL needs to start with http:// or https://.".into(),
+                severity: Severity::Error,
+                jump_to_field_id: "bundle-delivery-url".into(),
+            });
+        }
+    }
+    if bundle.delivery_recipient.trim().is_empty() {
+        issues.push(ValidationIssue {
+            field_path: "delivery.recipient".into(),
+            message: "Who is this for? Add a recipient name / username.".into(),
+            severity: Severity::Error,
+            jump_to_field_id: "bundle-delivery-recipient".into(),
+        });
+    }
+    if !bundle.handled_in_platform {
+        match bundle.price_cents {
+            None => {
+                issues.push(ValidationIssue {
+                    field_path: "price".into(),
+                    message: "Set a price (or tick \"handled in delivery platform\").".into(),
+                    severity: Severity::Error,
+                    jump_to_field_id: "bundle-price".into(),
+                });
+            }
+            Some(c) if c < 0 => {
+                issues.push(ValidationIssue {
+                    field_path: "price".into(),
+                    message: "Price can't be negative.".into(),
+                    severity: Severity::Error,
+                    jump_to_field_id: "bundle-price".into(),
+                });
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Top-level validator for the Custom bundle type.
+pub(crate) fn validate_custom_bundle(bundle: &Bundle, today: NaiveDate) -> Vec<ValidationIssue> {
+    let mut issues = Vec::new();
+    validate_title(&bundle.summary.title, &mut issues);
+    validate_persona(bundle.summary.persona_code.as_deref(), &mut issues);
+    validate_go_live(bundle.summary.go_live_date.as_deref(), today, &mut issues);
+    validate_content_files(&bundle.files, &mut issues);
+    validate_custom_delivery(bundle, &mut issues);
+    issues
+}
+
+/// FanSite completion check — given a (year, month), every day in that
+/// month must have a `bundle_fan_days` row with a non-empty message AND
+/// at least one file. Days are 1..N where N is days-in-month (28/29/30/31).
+pub(crate) fn validate_fansite_completion(bundle: &Bundle, issues: &mut Vec<ValidationIssue>) {
+    let (Some(y), Some(m)) = (bundle.fansite_year, bundle.fansite_month) else {
+        issues.push(ValidationIssue {
+            field_path: "fansiteMonth".into(),
+            message: "Pick a month and year to plan posts for.".into(),
+            severity: Severity::Error,
+            jump_to_field_id: "bundle-fansite-month".into(),
+        });
+        return;
+    };
+    let days_in_month = days_in_month(y as i32, m as u32);
+    if days_in_month == 0 {
+        issues.push(ValidationIssue {
+            field_path: "fansiteMonth".into(),
+            message: format!("Month {m} doesn't look right (need 1-12)."),
+            severity: Severity::Error,
+            jump_to_field_id: "bundle-fansite-month".into(),
+        });
+        return;
+    }
+    // Index fan_days by day_of_month for fast lookup.
+    let mut day_map: std::collections::HashMap<i64, &BundleFanDay> =
+        std::collections::HashMap::new();
+    for d in &bundle.fan_days {
+        day_map.insert(d.day_of_month, d);
+    }
+    for day in 1..=days_in_month {
+        let entry = day_map.get(&(day as i64));
+        let has_message = entry.map(|d| !d.message.trim().is_empty()).unwrap_or(false);
+        let file_count = entry.map(|d| d.file_count).unwrap_or(0);
+        if !has_message || file_count < 1 {
+            let missing = match (has_message, file_count >= 1) {
+                (false, false) => "needs a message and a file",
+                (false, true) => "needs a message",
+                (true, false) => "needs a file",
+                _ => "ok",
+            };
+            issues.push(ValidationIssue {
+                field_path: format!("fanDay.{:02}", day),
+                message: format!("Day {:02} {}.", day, missing),
+                severity: Severity::Error,
+                jump_to_field_id: format!("bundle-fan-day-{:02}", day),
+            });
+        }
+    }
+}
+
+/// Top-level validator for the FanSite bundle type.
+pub(crate) fn validate_fansite_bundle(bundle: &Bundle) -> Vec<ValidationIssue> {
+    let mut issues = Vec::new();
+    validate_title(&bundle.summary.title, &mut issues);
+    validate_persona(bundle.summary.persona_code.as_deref(), &mut issues);
+    validate_fansite_completion(bundle, &mut issues);
+    issues
+}
+
+/// Calendar days in (year, month). Returns 0 if month is out of 1..=12.
+pub(crate) fn days_in_month(year: i32, month: u32) -> u32 {
+    if month < 1 || month > 12 {
+        return 0;
+    }
+    // First day of next month minus one day = last day of this month.
+    let (ny, nm) = if month == 12 { (year + 1, 1) } else { (year, month + 1) };
+    let first_of_next = match chrono::NaiveDate::from_ymd_opt(ny, nm, 1) {
+        Some(d) => d,
+        None => return 0,
+    };
+    let last = first_of_next - chrono::Duration::days(1);
+    last.day()
 }
 
 // ---------------------------------------------------------------------------
@@ -1437,15 +1593,15 @@ pub fn publish_bundle<R: Runtime>(
     let mut conn = open_conn(&app_data)?;
     let bundle = pure_get_bundle(&conn, &uid, settings.warn_threshold_days)?;
 
-    // Validate (Content only in PR1; Custom + FanSite arrive in PR2).
     let prohibited = pure_list_prohibited(&conn)?;
     let today = Local::now().date_naive();
     let issues = match bundle.summary.bundle_type.as_str() {
         "content" => validate_content_bundle(&bundle, today, &prohibited),
-        // PR2 will add the rest; for now, refuse with a friendly error.
+        "custom" => validate_custom_bundle(&bundle, today),
+        "fansite" => validate_fansite_bundle(&bundle),
         other => {
             return Err(BundleError::Invalid(format!(
-                "Publishing for `{other}` bundles isn't implemented in this build."
+                "Unknown bundle type `{other}`."
             )));
         }
     };
@@ -1607,6 +1763,127 @@ pub fn set_bundler_settings<R: Runtime>(
 ) -> Result<(), BundleError> {
     let app_data = app_data_dir(&handle)?;
     save_settings(&app_data, &settings)
+}
+
+// ---- FanSite day CRUD --------------------------------------------------
+
+pub(crate) fn pure_create_fan_day(
+    conn: &Connection,
+    bundle_uid: &str,
+    day_of_month: i64,
+) -> Result<BundleFanDay, BundleError> {
+    if !(1..=31).contains(&day_of_month) {
+        return Err(BundleError::Invalid(format!(
+            "day_of_month {day_of_month} not in 1..=31"
+        )));
+    }
+    // INSERT OR IGNORE so the UI can call create-on-demand without
+    // worrying about duplicates; existing rows are returned as-is.
+    conn.execute(
+        "INSERT OR IGNORE INTO bundle_fan_days (bundle_uid, day_of_month) VALUES (?1, ?2)",
+        params![bundle_uid, day_of_month],
+    )?;
+    let (id, message): (i64, String) = conn.query_row(
+        "SELECT id, message FROM bundle_fan_days WHERE bundle_uid = ?1 AND day_of_month = ?2",
+        params![bundle_uid, day_of_month],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    let file_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM bundle_files WHERE fansite_day_id = ?1",
+        params![id],
+        |r| r.get(0),
+    )?;
+    conn.execute(
+        "UPDATE bundles SET updated_at = datetime('now') WHERE uid = ?1",
+        params![bundle_uid],
+    )?;
+    Ok(BundleFanDay {
+        id,
+        day_of_month,
+        message,
+        file_count,
+    })
+}
+
+pub(crate) fn pure_update_fan_day_message(
+    conn: &Connection,
+    fan_day_id: i64,
+    message: &str,
+) -> Result<(), BundleError> {
+    let n = conn.execute(
+        "UPDATE bundle_fan_days SET message = ?1, updated_at = datetime('now') WHERE id = ?2",
+        params![message, fan_day_id],
+    )?;
+    if n == 0 {
+        return Err(BundleError::NotFound(format!("fan_day {fan_day_id}")));
+    }
+    // Bubble the touch up to bundles.updated_at so list-view aging
+    // calc + aging-flag refresh notice the activity.
+    conn.execute(
+        "UPDATE bundles SET updated_at = datetime('now')
+         WHERE uid = (SELECT bundle_uid FROM bundle_fan_days WHERE id = ?1)",
+        params![fan_day_id],
+    )?;
+    Ok(())
+}
+
+pub(crate) fn pure_delete_fan_day(
+    conn: &Connection,
+    fan_day_id: i64,
+) -> Result<Vec<String>, BundleError> {
+    // ON DELETE CASCADE removes bundle_files rows, but we need the
+    // relpaths back so the Tauri layer can unlink the actual files.
+    let relpaths: Vec<String> = conn
+        .prepare("SELECT relpath FROM bundle_files WHERE fansite_day_id = ?1")?
+        .query_map(params![fan_day_id], |r| r.get(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let n = conn.execute(
+        "DELETE FROM bundle_fan_days WHERE id = ?1",
+        params![fan_day_id],
+    )?;
+    if n == 0 {
+        return Err(BundleError::NotFound(format!("fan_day {fan_day_id}")));
+    }
+    Ok(relpaths)
+}
+
+#[tauri::command]
+pub fn create_fan_day<R: Runtime>(
+    handle: AppHandle<R>,
+    bundle_uid: String,
+    day_of_month: i64,
+) -> Result<BundleFanDay, BundleError> {
+    let app_data = app_data_dir(&handle)?;
+    let conn = open_conn(&app_data)?;
+    pure_create_fan_day(&conn, &bundle_uid, day_of_month)
+}
+
+#[tauri::command]
+pub fn update_fan_day_message<R: Runtime>(
+    handle: AppHandle<R>,
+    fan_day_id: i64,
+    message: String,
+) -> Result<(), BundleError> {
+    let app_data = app_data_dir(&handle)?;
+    let conn = open_conn(&app_data)?;
+    pure_update_fan_day_message(&conn, fan_day_id, &message)
+}
+
+#[tauri::command]
+pub fn delete_fan_day<R: Runtime>(
+    handle: AppHandle<R>,
+    fan_day_id: i64,
+) -> Result<(), BundleError> {
+    let app_data = app_data_dir(&handle)?;
+    let conn = open_conn(&app_data)?;
+    let relpaths = pure_delete_fan_day(&conn, fan_day_id)?;
+    for rel in relpaths {
+        let abs = app_data.join(&rel);
+        if abs.exists() {
+            let _ = fs::remove_file(&abs);
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1943,4 +2220,261 @@ mod tests {
         assert_eq!(aging_flag(&old, 30), "overdue");
     }
 
+    // ---- PR2: Custom + FanSite validators + fan_day CRUD ---------------
+
+    fn mk_bundle(uid: &str, bundle_type: &str) -> Bundle {
+        Bundle {
+            summary: BundleSummary {
+                uid: uid.into(),
+                bundle_type: bundle_type.into(),
+                persona_code: Some("CoC".into()),
+                state: "draft".into(),
+                title: "Hello World Bundle".into(),
+                content_date: "2026-05-22".into(),
+                go_live_date: Some("2026-06-15".into()),
+                published_at: None,
+                bundle_path: None,
+                bundle_size_bytes: None,
+                created_at: "2026-05-22T00:00:00Z".into(),
+                updated_at: "2026-05-22T00:00:00Z".into(),
+                aging_flag: "fresh".into(),
+                file_count: 0,
+            },
+            special_instructions: String::new(),
+            description_mode: None,
+            description_text: String::new(),
+            description_audio_relpath: None,
+            description_audio_original_name: None,
+            delivery_kind: None,
+            delivery_site_id: None,
+            delivery_url: None,
+            delivery_recipient: String::new(),
+            price_cents: None,
+            handled_in_platform: false,
+            fansite_year: None,
+            fansite_month: None,
+            outer_sha256: None,
+            inner_sha256: None,
+            files: vec![],
+            categories: vec![],
+            fan_days: vec![],
+        }
+    }
+
+    fn mk_video_file() -> BundleFileInfo {
+        BundleFileInfo {
+            id: 1,
+            bundle_uid: "x".into(),
+            fansite_day_id: None,
+            position: 1,
+            relpath: "r".into(),
+            original_name: "v.mp4".into(),
+            kind: "video".into(),
+            size_bytes: 1,
+            sha256: String::new(),
+        }
+    }
+
+    #[test]
+    fn days_in_month_handles_28_29_30_31() {
+        assert_eq!(days_in_month(2026, 1), 31);
+        assert_eq!(days_in_month(2026, 2), 28); // not a leap year
+        assert_eq!(days_in_month(2024, 2), 29); // leap
+        assert_eq!(days_in_month(2026, 4), 30);
+        assert_eq!(days_in_month(2026, 12), 31);
+        assert_eq!(days_in_month(2026, 0), 0); // invalid
+        assert_eq!(days_in_month(2026, 13), 0); // invalid
+    }
+
+    #[test]
+    fn custom_delivery_requires_exactly_one_target() {
+        let mut b = mk_bundle("x", "custom");
+        b.files.push(mk_video_file());
+        b.delivery_recipient = "alice".into();
+        b.handled_in_platform = true; // skip price requirement
+
+        // Neither set → error.
+        let mut i = Vec::new();
+        validate_custom_delivery(&b, &mut i);
+        assert!(i.iter().any(|x| x.field_path == "delivery"));
+
+        // Both set → error.
+        let mut b2 = b.clone();
+        b2.delivery_site_id = Some(1);
+        b2.delivery_url = Some("https://example.com".into());
+        b2.delivery_kind = Some("url".into());
+        let mut i2 = Vec::new();
+        validate_custom_delivery(&b2, &mut i2);
+        assert!(i2.iter().any(|x| x.field_path == "delivery"));
+
+        // Site only → no delivery error.
+        let mut b3 = b.clone();
+        b3.delivery_site_id = Some(1);
+        let mut i3 = Vec::new();
+        validate_custom_delivery(&b3, &mut i3);
+        assert!(!i3.iter().any(|x| x.field_path == "delivery"));
+    }
+
+    #[test]
+    fn custom_url_must_be_http_or_https() {
+        let mut b = mk_bundle("x", "custom");
+        b.delivery_recipient = "alice".into();
+        b.handled_in_platform = true;
+        b.delivery_url = Some("ftp://nope".into());
+        b.delivery_kind = Some("url".into());
+
+        let mut i = Vec::new();
+        validate_custom_delivery(&b, &mut i);
+        assert!(i.iter().any(|x| x.field_path == "delivery.url"));
+
+        b.delivery_url = Some("https://onlyfans.com/foo".into());
+        let mut i2 = Vec::new();
+        validate_custom_delivery(&b, &mut i2);
+        assert!(!i2.iter().any(|x| x.field_path == "delivery.url"));
+    }
+
+    #[test]
+    fn custom_price_required_unless_handled_in_platform() {
+        let mut b = mk_bundle("x", "custom");
+        b.delivery_recipient = "alice".into();
+        b.delivery_site_id = Some(1);
+        b.delivery_kind = Some("site".into());
+
+        // handled_in_platform=false + price=None → error
+        let mut i = Vec::new();
+        validate_custom_delivery(&b, &mut i);
+        assert!(i.iter().any(|x| x.field_path == "price"));
+
+        // handled_in_platform=true → price not required
+        b.handled_in_platform = true;
+        let mut i2 = Vec::new();
+        validate_custom_delivery(&b, &mut i2);
+        assert!(!i2.iter().any(|x| x.field_path == "price"));
+
+        // handled_in_platform=false + negative price → error
+        b.handled_in_platform = false;
+        b.price_cents = Some(-100);
+        let mut i3 = Vec::new();
+        validate_custom_delivery(&b, &mut i3);
+        assert!(i3.iter().any(|x| x.field_path == "price"));
+
+        // valid price → no price error
+        b.price_cents = Some(2500);
+        let mut i4 = Vec::new();
+        validate_custom_delivery(&b, &mut i4);
+        assert!(!i4.iter().any(|x| x.field_path == "price"));
+    }
+
+    #[test]
+    fn fansite_completion_lists_missing_days() {
+        let mut b = mk_bundle("x", "fansite");
+        b.fansite_year = Some(2026);
+        b.fansite_month = Some(2); // 28 days
+        // Fill 25 days; expect 3 missing.
+        for day in 1..=25 {
+            b.fan_days.push(BundleFanDay {
+                id: day,
+                day_of_month: day,
+                message: "post".into(),
+                file_count: 1,
+            });
+        }
+        let mut issues = Vec::new();
+        validate_fansite_completion(&b, &mut issues);
+        let missing: Vec<&ValidationIssue> = issues
+            .iter()
+            .filter(|i| i.field_path.starts_with("fanDay."))
+            .collect();
+        assert_eq!(missing.len(), 3, "expected days 26-28 missing");
+        assert!(missing.iter().all(|i| i.severity == Severity::Error));
+    }
+
+    #[test]
+    fn fansite_completion_differentiates_missing_message_vs_file() {
+        let mut b = mk_bundle("x", "fansite");
+        b.fansite_year = Some(2026);
+        b.fansite_month = Some(1); // 31 days
+        // Day 5: has file but no message
+        b.fan_days.push(BundleFanDay { id: 5, day_of_month: 5, message: "".into(), file_count: 1 });
+        // Day 6: has message but no file
+        b.fan_days.push(BundleFanDay { id: 6, day_of_month: 6, message: "post".into(), file_count: 0 });
+        // Fill the rest so we can target our assertions
+        for day in (1..=31).filter(|d| *d != 5 && *d != 6) {
+            b.fan_days.push(BundleFanDay { id: day + 100, day_of_month: day, message: "p".into(), file_count: 1 });
+        }
+        let mut issues = Vec::new();
+        validate_fansite_completion(&b, &mut issues);
+        let d5 = issues.iter().find(|i| i.field_path == "fanDay.05").unwrap();
+        let d6 = issues.iter().find(|i| i.field_path == "fanDay.06").unwrap();
+        assert!(d5.message.contains("message"));
+        assert!(d6.message.contains("file"));
+    }
+
+    #[test]
+    fn fansite_completion_needs_year_month_first() {
+        let b = mk_bundle("x", "fansite");
+        // fansite_year + fansite_month are None
+        let mut issues = Vec::new();
+        validate_fansite_completion(&b, &mut issues);
+        assert!(issues.iter().any(|i| i.field_path == "fansiteMonth"));
+    }
+
+    #[test]
+    fn fan_day_crud_round_trip() {
+        let conn = fresh_db();
+        let uid = pure_create_bundle(&conn, "2026-05-22", "fansite", Some("CoC")).unwrap();
+
+        let day1 = pure_create_fan_day(&conn, &uid, 5).unwrap();
+        assert_eq!(day1.day_of_month, 5);
+        assert_eq!(day1.message, "");
+        assert_eq!(day1.file_count, 0);
+
+        // Idempotent — second call returns the same row, not a duplicate.
+        let day1_again = pure_create_fan_day(&conn, &uid, 5).unwrap();
+        assert_eq!(day1_again.id, day1.id);
+
+        // Update message.
+        pure_update_fan_day_message(&conn, day1.id, "hello there").unwrap();
+        let after = load_fan_days_for(&conn, &uid).unwrap();
+        assert_eq!(after[0].message, "hello there");
+
+        // Reject out-of-range day.
+        assert!(pure_create_fan_day(&conn, &uid, 0).is_err());
+        assert!(pure_create_fan_day(&conn, &uid, 32).is_err());
+
+        // Delete returns relpaths (empty here since no files attached).
+        let relpaths = pure_delete_fan_day(&conn, day1.id).unwrap();
+        assert!(relpaths.is_empty());
+        assert!(load_fan_days_for(&conn, &uid).unwrap().is_empty());
+
+        // Deleting non-existent fan_day → NotFound.
+        assert!(matches!(
+            pure_delete_fan_day(&conn, 9999),
+            Err(BundleError::NotFound(_))
+        ));
+    }
+
+    #[test]
+    fn fan_day_delete_cascades_files_and_returns_relpaths() {
+        let conn = fresh_db();
+        let uid = pure_create_bundle(&conn, "2026-05-22", "fansite", Some("Sa")).unwrap();
+        let day = pure_create_fan_day(&conn, &uid, 1).unwrap();
+        conn.execute(
+            "INSERT INTO bundle_files (bundle_uid, fansite_day_id, position, relpath, original_name, kind, size_bytes, sha256)
+             VALUES (?1, ?2, 1, 'attachments/bundles/x/files/img.jpg', 'img.jpg', 'image', 100, 'abc')",
+            params![uid, day.id],
+        ).unwrap();
+        let rels = pure_delete_fan_day(&conn, day.id).unwrap();
+        assert_eq!(rels.len(), 1);
+        assert_eq!(rels[0], "attachments/bundles/x/files/img.jpg");
+        // Cascade deleted the file row.
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM bundle_files WHERE bundle_uid = ?1",
+                params![uid],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+    }
 }

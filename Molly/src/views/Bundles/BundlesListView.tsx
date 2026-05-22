@@ -11,6 +11,8 @@ import {
 import { ALL_PERSONAS, type Persona } from '../../data/personas';
 import { listPersonas } from '../../data/personas';
 import { ContentBundleForm } from './ContentBundleForm';
+import { CustomBundleForm } from './CustomBundleForm';
+import { FanSiteBundleForm } from './FanSiteBundleForm';
 import { PublishWizard } from './PublishWizard';
 
 interface Props {
@@ -88,26 +90,25 @@ export function BundlesListView({ active }: Props) {
   if (route.kind === 'draft') {
     const b = items.find((it) => it.uid === route.uid);
     const locked = b?.state === 'published';
-    if (b?.bundleType === 'content') {
-      return (
-        <ContentBundleForm
-          uid={route.uid}
-          locked={locked}
-          onPublishRequested={() => setRoute({ kind: 'wizard', uid: route.uid })}
-          onClose={() => { setRoute({ kind: 'list' }); refresh(); }}
-          onDeleted={() => refresh()}
-        />
-      );
+    const closeProps = {
+      uid: route.uid,
+      locked,
+      onPublishRequested: () => setRoute({ kind: 'wizard', uid: route.uid }),
+      onClose: () => { setRoute({ kind: 'list' }); refresh(); },
+      onDeleted: () => refresh(),
+    };
+    switch (b?.bundleType) {
+      case 'content': return <ContentBundleForm {...closeProps} />;
+      case 'custom':  return <CustomBundleForm {...closeProps} />;
+      case 'fansite': return <FanSiteBundleForm {...closeProps} />;
+      default:
+        return (
+          <div className="p-8 max-w-2xl space-y-3">
+            <button type="button" onClick={() => setRoute({ kind: 'list' })} className="pretty-button secondary">← Back to list</button>
+            <div className="pretty-card text-sm">Unknown bundle type: <code>{b?.bundleType}</code></div>
+          </div>
+        );
     }
-    return (
-      <div className="p-8 max-w-2xl space-y-3">
-        <button type="button" onClick={() => setRoute({ kind: 'list' })} className="pretty-button secondary">← Back to list</button>
-        <div className="pretty-card text-sm">
-          The <strong>{b?.bundleType}</strong> bundle form ships in a later release.
-          Content bundles are fully supported now.
-        </div>
-      </div>
-    );
   }
 
   if (route.kind === 'wizard') {
@@ -144,7 +145,6 @@ export function BundlesListView({ active }: Props) {
           onClick={() => startNew('custom')}
           disabled={creatingType !== null}
           className="pretty-button secondary"
-          title="Custom bundle form ships in a later release; you can already create the draft."
         >
           ＋ New Custom Bundle
         </button>
@@ -153,7 +153,6 @@ export function BundlesListView({ active }: Props) {
           onClick={() => startNew('fansite')}
           disabled={creatingType !== null}
           className="pretty-button secondary"
-          title="Fan Site bundle form ships in a later release; you can already create the draft."
         >
           ＋ New Fan Site Bundle
         </button>

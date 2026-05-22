@@ -1,14 +1,48 @@
 import { describe, it, expect } from 'vitest';
 import {
+  daysInMonth,
   hasBlockingIssues,
   validateCategories,
   validateContentDescription,
   validateContentFiles,
+  validateCustomDelivery,
+  validateFanSiteCompletion,
   validateGoLiveDate,
   validatePersona,
   validateTitle,
 } from './bundleValidation';
-import type { BundleCategory, BundleFileInfo } from '../data/bundles';
+import type { Bundle, BundleCategory, BundleFanDay, BundleFileInfo } from '../data/bundles';
+
+function mkBundle(overrides: Partial<Bundle> = {}): Bundle {
+  const base: Bundle = {
+    summary: {
+      uid: 'x', bundleType: 'custom', personaCode: 'CoC',
+      state: 'draft', title: 'Hello World', contentDate: '2026-05-22',
+      goLiveDate: '2026-06-15', publishedAt: null, bundlePath: null,
+      bundleSizeBytes: null, createdAt: '2026-05-22', updatedAt: '2026-05-22',
+      agingFlag: 'fresh', fileCount: 0,
+    },
+    specialInstructions: '',
+    descriptionMode: null,
+    descriptionText: '',
+    descriptionAudioRelpath: null,
+    descriptionAudioOriginalName: null,
+    deliveryKind: null,
+    deliverySiteId: null,
+    deliveryUrl: null,
+    deliveryRecipient: '',
+    priceCents: null,
+    handledInPlatform: false,
+    fansiteYear: null,
+    fansiteMonth: null,
+    outerSha256: null,
+    innerSha256: null,
+    files: [],
+    categories: [],
+    fanDays: [],
+  };
+  return { ...base, ...overrides };
+}
 
 describe('validateTitle', () => {
   it.each(['', '   ', 'none', 'NONE', 'Blank', 'CUSTOM', 'hello', 'x'])(
@@ -119,6 +153,129 @@ describe('validateContentFiles', () => {
   it('accepts video or image', () => {
     expect(validateContentFiles([mk('image')])).toEqual([]);
     expect(validateContentFiles([mk('video')])).toEqual([]);
+  });
+});
+
+describe('daysInMonth', () => {
+  it('handles 28/29/30/31', () => {
+    expect(daysInMonth(2026, 1)).toBe(31);
+    expect(daysInMonth(2026, 2)).toBe(28);
+    expect(daysInMonth(2024, 2)).toBe(29); // leap
+    expect(daysInMonth(2026, 4)).toBe(30);
+    expect(daysInMonth(2026, 12)).toBe(31);
+  });
+  it('returns 0 on bad month', () => {
+    expect(daysInMonth(2026, 0)).toBe(0);
+    expect(daysInMonth(2026, 13)).toBe(0);
+  });
+});
+
+describe('validateCustomDelivery', () => {
+  const recipientFilled = (b: Bundle) => { b.deliveryRecipient = 'alice'; return b; };
+
+  it('errors when neither site nor URL', () => {
+    const b = recipientFilled(mkBundle({ handledInPlatform: true }));
+    const issues = validateCustomDelivery(b);
+    expect(issues.some((i) => i.fieldPath === 'delivery')).toBe(true);
+  });
+  it('errors when both site and URL', () => {
+    const b = recipientFilled(mkBundle({
+      handledInPlatform: true, deliverySiteId: 1,
+      deliveryUrl: 'https://example.com', deliveryKind: 'url',
+    }));
+    const issues = validateCustomDelivery(b);
+    expect(issues.some((i) => i.fieldPath === 'delivery')).toBe(true);
+  });
+  it('passes with site only', () => {
+    const b = recipientFilled(mkBundle({
+      handledInPlatform: true, deliverySiteId: 1, deliveryKind: 'site',
+    }));
+    expect(validateCustomDelivery(b)).toEqual([]);
+  });
+  it('requires http(s) URL', () => {
+    const bad = recipientFilled(mkBundle({
+      handledInPlatform: true, deliveryUrl: 'ftp://nope', deliveryKind: 'url',
+    }));
+    expect(validateCustomDelivery(bad).some((i) => i.fieldPath === 'delivery.url')).toBe(true);
+    const good = recipientFilled(mkBundle({
+      handledInPlatform: true, deliveryUrl: 'https://ok.com', deliveryKind: 'url',
+    }));
+    expect(validateCustomDelivery(good).some((i) => i.fieldPath === 'delivery.url')).toBe(false);
+  });
+  it('requires recipient', () => {
+    const b = mkBundle({
+      handledInPlatform: true, deliverySiteId: 1, deliveryKind: 'site',
+      deliveryRecipient: '   ',
+    });
+    expect(validateCustomDelivery(b).some((i) => i.fieldPath === 'delivery.recipient')).toBe(true);
+  });
+  it('price required unless handled in platform', () => {
+    const noPrice = recipientFilled(mkBundle({ deliverySiteId: 1, deliveryKind: 'site' }));
+    expect(validateCustomDelivery(noPrice).some((i) => i.fieldPath === 'price')).toBe(true);
+    const withPrice = recipientFilled(mkBundle({
+      deliverySiteId: 1, deliveryKind: 'site', priceCents: 2500,
+    }));
+    expect(validateCustomDelivery(withPrice).some((i) => i.fieldPath === 'price')).toBe(false);
+    const handled = recipientFilled(mkBundle({
+      deliverySiteId: 1, deliveryKind: 'site', handledInPlatform: true,
+    }));
+    expect(validateCustomDelivery(handled).some((i) => i.fieldPath === 'price')).toBe(false);
+    const negative = recipientFilled(mkBundle({
+      deliverySiteId: 1, deliveryKind: 'site', priceCents: -1,
+    }));
+    expect(validateCustomDelivery(negative).some((i) => i.fieldPath === 'price')).toBe(true);
+  });
+});
+
+describe('validateFanSiteCompletion', () => {
+  function mkDay(day: number, message: string, fileCount: number): BundleFanDay {
+    return { id: day, dayOfMonth: day, message, fileCount };
+  }
+
+  it('requires year + month first', () => {
+    const issues = validateFanSiteCompletion(mkBundle());
+    expect(issues.some((i) => i.fieldPath === 'fansiteMonth')).toBe(true);
+  });
+  it('rejects out-of-range month', () => {
+    const issues = validateFanSiteCompletion(mkBundle({
+      fansiteYear: 2026, fansiteMonth: 13,
+    }));
+    expect(issues.some((i) => i.fieldPath === 'fansiteMonth')).toBe(true);
+  });
+  it('lists every missing day', () => {
+    // Feb 2026 = 28 days, fill 25
+    const fanDays: BundleFanDay[] = [];
+    for (let d = 1; d <= 25; d++) fanDays.push(mkDay(d, 'post', 1));
+    const issues = validateFanSiteCompletion(mkBundle({
+      fansiteYear: 2026, fansiteMonth: 2, fanDays,
+    }));
+    const missing = issues.filter((i) => i.fieldPath.startsWith('fanDay.'));
+    expect(missing.length).toBe(3);
+  });
+  it('differentiates missing message vs missing file', () => {
+    const fanDays = [
+      mkDay(5, '', 1),       // missing message
+      mkDay(6, 'post', 0),    // missing file
+    ];
+    // Fill the rest of Jan (31 days)
+    for (let d = 1; d <= 31; d++) {
+      if (d === 5 || d === 6) continue;
+      fanDays.push(mkDay(d, 'p', 1));
+    }
+    const issues = validateFanSiteCompletion(mkBundle({
+      fansiteYear: 2026, fansiteMonth: 1, fanDays,
+    }));
+    const d5 = issues.find((i) => i.fieldPath === 'fanDay.05')!;
+    const d6 = issues.find((i) => i.fieldPath === 'fanDay.06')!;
+    expect(d5.message).toContain('message');
+    expect(d6.message).toContain('file');
+  });
+  it('passes when every day is complete', () => {
+    const fanDays: BundleFanDay[] = [];
+    for (let d = 1; d <= 30; d++) fanDays.push(mkDay(d, 'post', 1));
+    expect(validateFanSiteCompletion(mkBundle({
+      fansiteYear: 2026, fansiteMonth: 6, fanDays,
+    }))).toEqual([]);
   });
 });
 

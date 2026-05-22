@@ -227,23 +227,150 @@ export function validateContentBundle(bundle: Bundle, ctx: ValidationCtx): Valid
   ];
 }
 
-/** Public dispatch — picks the per-type rule set. PR2 will add Custom + FanSite. */
+// ---------------------------------------------------------------------------
+// Custom-bundle rules (mirror src-tauri/src/bundles.rs::validate_custom_*)
+// ---------------------------------------------------------------------------
+
+export function validateCustomDelivery(bundle: Bundle): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const hasSite = bundle.deliverySiteId != null;
+  const hasUrl = !!(bundle.deliveryUrl ?? '').trim();
+  if (!hasSite && !hasUrl) {
+    issues.push({
+      fieldPath: 'delivery',
+      message: 'Pick a delivery platform (a site or a URL).',
+      severity: 'error',
+      jumpToFieldId: 'bundle-delivery',
+    });
+  }
+  if (hasSite && hasUrl) {
+    issues.push({
+      fieldPath: 'delivery',
+      message: 'Pick one — a site OR a URL, not both.',
+      severity: 'error',
+      jumpToFieldId: 'bundle-delivery',
+    });
+  }
+  if (hasUrl) {
+    const url = (bundle.deliveryUrl ?? '').trim();
+    if (!(url.startsWith('http://') || url.startsWith('https://'))) {
+      issues.push({
+        fieldPath: 'delivery.url',
+        message: 'URL needs to start with http:// or https://.',
+        severity: 'error',
+        jumpToFieldId: 'bundle-delivery-url',
+      });
+    }
+  }
+  if (bundle.deliveryRecipient.trim().length === 0) {
+    issues.push({
+      fieldPath: 'delivery.recipient',
+      message: 'Who is this for? Add a recipient name / username.',
+      severity: 'error',
+      jumpToFieldId: 'bundle-delivery-recipient',
+    });
+  }
+  if (!bundle.handledInPlatform) {
+    if (bundle.priceCents == null) {
+      issues.push({
+        fieldPath: 'price',
+        message: 'Set a price (or tick "handled in delivery platform").',
+        severity: 'error',
+        jumpToFieldId: 'bundle-price',
+      });
+    } else if (bundle.priceCents < 0) {
+      issues.push({
+        fieldPath: 'price',
+        message: "Price can't be negative.",
+        severity: 'error',
+        jumpToFieldId: 'bundle-price',
+      });
+    }
+  }
+  return issues;
+}
+
+export function validateCustomBundle(bundle: Bundle, ctx: ValidationCtx): ValidationIssue[] {
+  return [
+    ...validateTitle(bundle.summary.title),
+    ...validatePersona(bundle.summary.personaCode),
+    ...validateGoLiveDate(bundle.summary.goLiveDate, ctx.today),
+    ...validateContentFiles(bundle.files),
+    ...validateCustomDelivery(bundle),
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// FanSite rules (mirror src-tauri/src/bundles.rs::validate_fansite_*)
+// ---------------------------------------------------------------------------
+
+export function daysInMonth(year: number, month: number): number {
+  if (month < 1 || month > 12) return 0;
+  // Date(year, month, 0) → last day of (month-1+1) = month, JS month 0-indexed.
+  return new Date(year, month, 0).getDate();
+}
+
+export function validateFanSiteCompletion(bundle: Bundle): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  if (bundle.fansiteYear == null || bundle.fansiteMonth == null) {
+    issues.push({
+      fieldPath: 'fansiteMonth',
+      message: 'Pick a month and year to plan posts for.',
+      severity: 'error',
+      jumpToFieldId: 'bundle-fansite-month',
+    });
+    return issues;
+  }
+  const total = daysInMonth(bundle.fansiteYear, bundle.fansiteMonth);
+  if (total === 0) {
+    issues.push({
+      fieldPath: 'fansiteMonth',
+      message: `Month ${bundle.fansiteMonth} doesn't look right (need 1-12).`,
+      severity: 'error',
+      jumpToFieldId: 'bundle-fansite-month',
+    });
+    return issues;
+  }
+  const byDay = new Map(bundle.fanDays.map((d) => [d.dayOfMonth, d]));
+  for (let day = 1; day <= total; day++) {
+    const entry = byDay.get(day);
+    const hasMessage = !!entry && entry.message.trim().length > 0;
+    const hasFile = !!entry && entry.fileCount >= 1;
+    if (!hasMessage || !hasFile) {
+      const missing = !hasMessage && !hasFile
+        ? 'needs a message and a file'
+        : !hasMessage
+        ? 'needs a message'
+        : 'needs a file';
+      const dd = String(day).padStart(2, '0');
+      issues.push({
+        fieldPath: `fanDay.${dd}`,
+        message: `Day ${dd} ${missing}.`,
+        severity: 'error',
+        jumpToFieldId: `bundle-fan-day-${dd}`,
+      });
+    }
+  }
+  return issues;
+}
+
+export function validateFanSiteBundle(bundle: Bundle): ValidationIssue[] {
+  return [
+    ...validateTitle(bundle.summary.title),
+    ...validatePersona(bundle.summary.personaCode),
+    ...validateFanSiteCompletion(bundle),
+  ];
+}
+
+/** Public dispatch — picks the per-type rule set. */
 export function validateBundle(bundle: Bundle, ctx: ValidationCtx): ValidationIssue[] {
   switch (bundle.summary.bundleType) {
     case 'content':
       return validateContentBundle(bundle, ctx);
     case 'custom':
+      return validateCustomBundle(bundle, ctx);
     case 'fansite':
-      // Defer to PR2. For now we return a single advisory issue so the UI
-      // surfaces something useful when someone tries to publish.
-      return [
-        {
-          fieldPath: 'bundleType',
-          message: `Publishing for '${bundle.summary.bundleType}' bundles arrives in a later release.`,
-          severity: 'error',
-          jumpToFieldId: 'bundle-type',
-        },
-      ];
+      return validateFanSiteBundle(bundle);
   }
 }
 

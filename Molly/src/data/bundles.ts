@@ -252,6 +252,22 @@ export async function removeProhibitedWord(word: string): Promise<void> {
   await invoke('remove_prohibited_word', { word });
 }
 
+/** FanSite: idempotent create-or-return for a given (bundle, day). */
+export async function createFanDay(
+  bundleUid: string,
+  dayOfMonth: number,
+): Promise<BundleFanDay> {
+  return invoke<BundleFanDay>('create_fan_day', { bundleUid, dayOfMonth });
+}
+
+export async function updateFanDayMessage(fanDayId: number, message: string): Promise<void> {
+  await invoke('update_fan_day_message', { fanDayId, message });
+}
+
+export async function deleteFanDay(fanDayId: number): Promise<void> {
+  await invoke('delete_fan_day', { fanDayId });
+}
+
 /**
  * Read MasterClipper's category list (best-effort, read-only). Returns
  * empty array if MasterClipper isn't installed / its DB is unreachable.

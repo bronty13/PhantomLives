@@ -276,11 +276,11 @@ Click **🗂 Grid** at the top of the C4S page to switch to a sortable table. Se
 
 Click **🎁 Bundles** in the sidebar. This is where you compose a delivery package for Robert — everything he needs to post-produce one piece of content, zipped and ready to drop into Slack.
 
-There are three flavors planned:
+There are three flavors — all three publish end-to-end:
 
-- **Content Bundle** (live now) — a single piece of content with title, persona, description, categories, files, go-live date, and special instructions.
-- **Custom Bundle** (next release) — a custom video for a specific platform / user / price.
-- **Fan Site Bundle** (next release) — a whole month's worth of fan-site posts on a calendar.
+- **Content Bundle** — a single piece of content with title, persona, description, categories, files, go-live date, and special instructions.
+- **Custom Bundle** — a custom video for a specific platform / user / price.
+- **Fan Site Bundle** — a whole month's worth of fan-site posts on a calendar.
 
 ### Creating a Content Bundle
 
@@ -312,6 +312,42 @@ The success card gives you **Open ZIP** and **Reveal in Finder** buttons, plus b
 ### Editing after publish
 
 A published bundle is locked — the form goes read-only. If you need to change something, click **Delete bundle** on the list row (or on the published draft). That removes the ZIP from disk and flips the bundle back to draft state so you can edit and re-publish. **Your linked Clip row survives** — Sallie's `molly_notes_html` is preserved across re-publishes.
+
+### Creating a Custom Bundle
+
+Click **＋ New Custom Bundle**. Same persona / title / files / special-instructions pattern as Content. The differences:
+
+- **Go-live date** defaults to **tomorrow** (custom turnarounds tend to be short).
+- **Delivery platform** — pick **🌐 Site** to choose from the sites you've added in Settings → Sites (filtered to the bundle's persona), or **🔗 URL link** to paste an arbitrary URL. URL has to start with `http://` or `https://`. Exactly one of the two, not both.
+- **Recipient** — required free-text. Whoever the custom is *for* (a username, a real name, whatever you and Robert use to identify the buyer).
+- **Price** — money field in dollars (`$25.00`). Or tick **handled in delivery platform** to skip the price field entirely (Molly blanks the value when the toggle is on so there's no ambiguity in `info.md`).
+
+No description, no categories — those are Content-bundle things.
+
+### Creating a Fan Site Bundle
+
+Click **＋ New Fan Site Bundle**. Pick the **persona** and **title** first, then choose the **year + month** you're planning posts for.
+
+Molly renders the whole month as a 7-column calendar (Sun-Sat labels at the top). Each day cell color-codes:
+
+- **grey** — out of month (padding)
+- **white** — in month, no data yet
+- **amber** with `…` — partial: has a message OR a file, but not both
+- **persona-accent green/pink** with `✓` — complete: has a message AND ≥1 file
+
+Click any day → a panel slides in from the right with:
+
+- a **short message** textarea (the caption / tease for that day's post)
+- a per-day **file picker** (drag-reorder; files are stored per-day so reordering only shuffles that day)
+- a **🗑 Delete day** button if you want to start that day over (cascades — removes the files too)
+
+A **completion bar** under the calendar shows `X/N complete · M partial` and fills up as you finish days. You can **save anytime**; partial progress persists across launches.
+
+You can only **publish** when every day in the month has both a message and at least one file. The publish wizard's checklist will list every missing day individually so you can click straight to the one that needs attention.
+
+#### How FanSite files get named
+
+`FanSite/DD_NN_<original-name>` where `DD` is the calendar day (zero-padded) and `NN` is the within-day position. So day 1's first file becomes `FanSite/01_01_…`, day 15's second becomes `FanSite/15_02_…`. Order is preserved across the whole month for Robert.
 
 ### Settings → 🎁 Bundler
 
