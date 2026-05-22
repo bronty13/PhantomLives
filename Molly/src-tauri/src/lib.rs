@@ -13,6 +13,7 @@ mod fsutil;
 mod history;
 mod log;
 mod masterclipper;
+mod notes;
 mod site_credentials;
 
 use tauri_plugin_sql::{Migration, MigrationKind};
@@ -151,6 +152,18 @@ pub fn run() {
             sql: include_str!("../migrations/022_job_run_log_path.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 23,
+            description: "notes",
+            sql: include_str!("../migrations/023_notes.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 24,
+            description: "note-font-size",
+            sql: include_str!("../migrations/024_note_font_size.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -287,6 +300,34 @@ pub fn run() {
             background_jobs::run_job_now,
             background_jobs::open_run_log,
             background_jobs::reveal_run_log,
+            notes::list_note_folders,
+            notes::create_note_folder,
+            notes::rename_note_folder,
+            notes::move_note_folder,
+            notes::delete_note_folder,
+            notes::list_notes,
+            notes::get_note,
+            notes::create_note,
+            notes::update_note,
+            notes::set_note_style,
+            notes::move_note,
+            notes::delete_note,
+            notes::copy_note,
+            notes::set_note_tags,
+            notes::list_note_tags,
+            notes::create_note_tag,
+            notes::update_note_tag,
+            notes::delete_note_tag,
+            notes::search_note_titles,
+            notes::find_in_notes,
+            notes::get_note_defaults,
+            notes::set_note_defaults,
+            notes::save_note_attachment,
+            notes::list_note_attachments,
+            notes::delete_note_attachment,
+            notes::open_note_attachment,
+            notes::download_note_attachment,
+            notes::write_note_export,
         ])
         .run(tauri::generate_context!())
         .expect("error while running molly");
@@ -707,6 +748,77 @@ mod camel_case_contract {
         .unwrap();
         assert_camel(&v, "BackgroundJobRun");
     }
+
+    // Phase 13 — Notes boundary structs.
+    use crate::notes::{FindHit, Note, NoteAttachment, NoteDefaults, NoteFolder, NoteSummary, NoteTag};
+
+    #[test]
+    fn note_folder_is_camel_case() {
+        let v = serde_json::to_value(NoteFolder {
+            id: 0, parent_id: None, name: String::new(), sort_order: 0,
+            created_at: String::new(), updated_at: String::new(),
+        }).unwrap();
+        assert_camel(&v, "NoteFolder");
+    }
+
+    #[test]
+    fn note_summary_is_camel_case() {
+        let v = serde_json::to_value(NoteSummary {
+            id: 0, folder_id: None, title: String::new(),
+            paper_color: None, font_family: None, font_size_scale: None,
+            updated_at: String::new(), last_edited_at: String::new(),
+            tag_ids: vec![], attachment_count: 0,
+        }).unwrap();
+        assert_camel(&v, "NoteSummary");
+    }
+
+    #[test]
+    fn note_is_camel_case() {
+        let v = serde_json::to_value(Note {
+            id: 0, folder_id: None, title: String::new(),
+            content_html: String::new(), content_text: String::new(),
+            paper_color: None, font_family: None, font_size_scale: None,
+            created_at: String::new(), updated_at: String::new(),
+            last_edited_at: String::new(), tag_ids: vec![],
+        }).unwrap();
+        assert_camel(&v, "Note");
+    }
+
+    #[test]
+    fn note_tag_is_camel_case() {
+        let v = serde_json::to_value(NoteTag {
+            id: 0, name: String::new(), color: String::new(),
+            sort_order: 0, is_builtin: false,
+        }).unwrap();
+        assert_camel(&v, "NoteTag");
+    }
+
+    #[test]
+    fn note_attachment_is_camel_case() {
+        let v = serde_json::to_value(NoteAttachment {
+            id: 0, note_id: 0, filename: String::new(), original_name: String::new(),
+            mime: String::new(), size_bytes: 0, created_at: String::new(),
+        }).unwrap();
+        assert_camel(&v, "NoteAttachment");
+    }
+
+    #[test]
+    fn find_hit_is_camel_case() {
+        let v = serde_json::to_value(FindHit {
+            note_id: 0, note_title: String::new(), folder_id: None,
+            line_no: 0, snippet: String::new(),
+        }).unwrap();
+        assert_camel(&v, "FindHit");
+    }
+
+    #[test]
+    fn note_defaults_is_camel_case() {
+        let v = serde_json::to_value(NoteDefaults {
+            default_font: String::new(), default_paper_color: String::new(),
+            default_font_size_scale: 1.0,
+        }).unwrap();
+        assert_camel(&v, "NoteDefaults");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -753,6 +865,8 @@ mod migration_smoke {
             (20, "background-jobs",              include_str!("../migrations/020_background_jobs.sql")),
             (21, "keystore-stay-unlocked",       include_str!("../migrations/021_keystore_stay_unlocked.sql")),
             (22, "job-run-log-path",             include_str!("../migrations/022_job_run_log_path.sql")),
+            (23, "notes",                        include_str!("../migrations/023_notes.sql")),
+            (24, "note-font-size",               include_str!("../migrations/024_note_font_size.sql")),
         ];
 
         for (v, name, sql) in migrations {
@@ -779,6 +893,7 @@ mod migration_smoke {
             "crypto_keystore",
             "site_credentials",
             "background_jobs", "background_job_runs",
+            "note_folders", "notes", "note_tags_def", "note_tag_links", "note_attachments",
         ];
         for t in expected_tables {
             let count: i64 = conn

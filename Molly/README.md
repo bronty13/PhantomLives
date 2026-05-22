@@ -118,6 +118,12 @@ Molly/
 | 1.6 | Calendar reminders + Clips grid sort/filter + reusable MoneyInput across 5 spots. |
 | 1.7 | 📔 Molly's Log (Captain's-log-style personal journal w/ Caveat handwritten font). |
 | 1.8 | 🛍️ C4S Store — Clips4Sale catalog import + browser (atomic overlay-replace, count-verify, tiered stale banner, per-column visibility, settings). |
+| 1.9 | 🎁 Content Bundler (Phase 9, pt 1) — Content bundle type: persona-themed ZIP packages with validation engine, draft-then-publish wizard, prohibited-words guard, archive auto-purge. |
+| 1.10 | 🎁 Content Bundler (Phase 9, pt 2) — Custom bundle (recipient + delivery platform + price) + Fan Site bundle (color-coded month-calendar with per-day messages & files). |
+| 1.11 | 🔐 Keystore infrastructure (Phase 10) — passphrase-derived KEK wrapping a per-install DEK, AES-256-GCM at-rest crypto for secrets, rate-limited unlock, change-passphrase. |
+| 1.12 | 🗝️ Site password manager (Phase 11) — site-credentials editor with primary + sub-credentials, last-rotated tracking, copy-to-clipboard, encrypted at rest via the Phase 10 keystore. |
+| 1.13 | 🌀 Background jobs + ATW Repost (Phase 12) — every-4h scheduler running Sallie's `atw-repost-bot` with encrypted creds, full run-history + log viewer, manual-run + pause. |
+| 1.14 | 📝 Notes (Phase 13) — Apple-Notes-style organiser: unlimited-depth folders, tags, WYSIWYG editor, attachments, regex find, MD/DOCX/PDF export, per-note fonts + paper colours + size. |
 | ⏸ 8 | Per-site sales-report parsers (deferred — see [PHASE_8_PARSERS.md](PHASE_8_PARSERS.md)). |
 
 ## Built with love

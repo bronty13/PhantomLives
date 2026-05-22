@@ -1,0 +1,226 @@
+import { useEditor, EditorContent, type Editor } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Underline from '@tiptap/extension-underline';
+import Link from '@tiptap/extension-link';
+import Placeholder from '@tiptap/extension-placeholder';
+import { useEffect, useRef, useState } from 'react';
+import { NamePromptModal } from '../../components/NamePromptModal';
+
+interface Props {
+  /** Current note HTML. Editor reloads when this changes externally
+   *  (i.e. parent switched notes); typing-driven updates stay local. */
+  initialHtml: string;
+  /** Stable key for the loaded note. Forces a content reset when it
+   *  changes so switching notes doesn't bleed body across. */
+  noteKey: string | number;
+  /** Fired after each edit with both formatted HTML and a plain-text
+   *  extract used by the Rust Find scanner. Debounced upstream. */
+  onChange: (html: string, text: string) => void;
+  /** Optional font family override for this note's editor surface. */
+  fontFamily?: string | null;
+  /** Optional paper colour for the editor card background. */
+  paperColor?: string | null;
+  /** Multiplier applied to the base editor font size. 1.0 is normal. */
+  fontScale?: number;
+  /** When set (from a Find hit), scroll the editor to the first DOM
+   *  node containing this snippet and wrap it in a fading yellow
+   *  highlight for 1.5s. Reapplies whenever the value changes. */
+  highlightSnippet?: string | null;
+}
+
+export function NoteEditor({
+  initialHtml, noteKey, onChange, fontFamily, paperColor, highlightSnippet,
+  fontScale = 1,
+}: Props) {
+  const lastKey = useRef<string | number>(noteKey);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
+      Underline,
+      Link.configure({ openOnClick: false, autolink: true, defaultProtocol: 'https' }),
+      Placeholder.configure({ placeholder: 'Start writing — soft sparkles encouraged ✨' }),
+    ],
+    content: initialHtml,
+    onUpdate({ editor }) {
+      onChange(editor.getHTML(), editor.getText());
+    },
+    editorProps: {
+      attributes: {
+        // spellcheck on contenteditable: macOS WebKit honours both spell
+        // check AND grammar correction when the user has them on in
+        // System Settings → Keyboard → Text Input.
+        spellcheck: 'true',
+        autocorrect: 'on',
+        class: 'molly-note-editor min-h-[480px] p-6 focus:outline-none leading-relaxed',
+      },
+    },
+  });
+
+  // Highlight after content has been swapped. Run on a small delay so
+  // setContent (which the noteKey-change effect calls) gets a chance
+  // to land in the DOM before we walk it for the match.
+  useEffect(() => {
+    if (!highlightSnippet || !containerRef.current) return;
+    const trimmed = highlightSnippet.replace(/^…|…$/g, '').trim();
+    if (!trimmed) return;
+    const needle = trimmed.split(/\s+/).reduce((a, b) => (b.length > a.length ? b : a), '');
+    if (needle.length < 2) return;
+    let fadeTimer = 0, unwrapTimer = 0;
+    const runTimer = window.setTimeout(() => {
+      const root = containerRef.current;
+      if (!root) return;
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+      let target: Text | null = null;
+      let offset = -1;
+      while (walker.nextNode()) {
+        const tn = walker.currentNode as Text;
+        const idx = tn.textContent?.toLowerCase().indexOf(needle.toLowerCase()) ?? -1;
+        if (idx >= 0) { target = tn; offset = idx; break; }
+      }
+      if (!target || offset < 0) return;
+      try {
+        const range = document.createRange();
+        range.setStart(target, offset);
+        range.setEnd(target, Math.min(offset + needle.length, target.textContent?.length ?? 0));
+        const mark = document.createElement('mark');
+        mark.style.background = '#fef08a';
+        mark.style.transition = 'background 1s ease-out';
+        mark.style.borderRadius = '3px';
+        mark.style.padding = '0 2px';
+        range.surroundContents(mark);
+        mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        fadeTimer = window.setTimeout(() => { mark.style.background = 'transparent'; }, 1200);
+        unwrapTimer = window.setTimeout(() => {
+          const parent = mark.parentNode;
+          if (!parent) return;
+          while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+          parent.removeChild(mark);
+          parent.normalize();
+        }, 2500);
+      } catch {
+        // surroundContents throws for cross-boundary ranges; silently skip.
+      }
+    }, 120);
+    return () => {
+      window.clearTimeout(runTimer);
+      if (fadeTimer) window.clearTimeout(fadeTimer);
+      if (unwrapTimer) window.clearTimeout(unwrapTimer);
+    };
+  }, [highlightSnippet, noteKey]);
+
+  // External note swap: reset content so the editor doesn't carry
+  // the previous note's body.
+  useEffect(() => {
+    if (!editor) return;
+    if (lastKey.current !== noteKey) {
+      lastKey.current = noteKey;
+      editor.commands.setContent(initialHtml || '', { emitUpdate: false });
+    } else if (editor.getHTML() !== initialHtml && !editor.isFocused) {
+      // Same note, body changed externally (rare — e.g. import) and
+      // editor isn't focused. Don't clobber active typing.
+      editor.commands.setContent(initialHtml || '', { emitUpdate: false });
+    }
+  }, [editor, noteKey, initialHtml]);
+
+  if (!editor) return <div className="text-xs opacity-60 p-6">Loading editor…</div>;
+
+  return (
+    <div
+      className="rounded-2xl border border-black/10 overflow-hidden"
+      style={{
+        background: paperColor ?? 'white',
+        boxShadow: '0 6px 20px rgb(var(--persona-primary) / 0.18)',
+        fontFamily: fontFamily ?? undefined,
+      }}
+    >
+      <Toolbar editor={editor} />
+      <div
+        ref={containerRef}
+        style={{
+          fontFamily: fontFamily ?? undefined,
+          // 1rem (16px) is the editor's default; scale around that so
+          // FONT_BASE_SCALE * user-scale lands at a comfortable reading
+          // size for every bundled font.
+          fontSize: `${fontScale}rem`,
+        }}
+      >
+        <EditorContent editor={editor} />
+      </div>
+    </div>
+  );
+}
+
+function LinkPromptHook({ editor, onClose }: { editor: Editor; onClose: () => void }) {
+  const initial = (editor.getAttributes('link') as { href?: string }).href ?? '';
+  return (
+    <NamePromptModal
+      title={initial ? 'Edit link' : 'Add link'}
+      description="Enter a URL, or leave blank to remove the link."
+      initialValue={initial}
+      placeholder="https://example.com"
+      confirmLabel={initial ? 'Update' : 'Add'}
+      validate={() => null}
+      onCancel={onClose}
+      onSubmit={(url) => {
+        if (url === '') editor.chain().focus().extendMarkRange('link').unsetLink().run();
+        else editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+        onClose();
+      }}
+    />
+  );
+}
+
+function Toolbar({ editor }: { editor: Editor }) {
+  const [linkPromptOpen, setLinkPromptOpen] = useState(false);
+  const Btn = ({ label, isActive, onClick, title }: {
+    label: string; isActive?: boolean; onClick: () => void; title?: string;
+  }) => (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      className="px-2 py-1 rounded-md text-xs font-semibold transition"
+      style={{
+        background: isActive ? 'rgb(var(--persona-accent))' : 'transparent',
+        color: isActive ? 'white' : 'rgb(var(--persona-text))',
+        border: '1px solid rgb(var(--persona-primary) / 0.35)',
+      }}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div className="flex flex-wrap gap-1 p-2 border-b border-black/5 bg-white/40 backdrop-blur-sm">
+      <Btn label="B" title="Bold (⌘B)" isActive={editor.isActive('bold')}
+        onClick={() => editor.chain().focus().toggleBold().run()} />
+      <Btn label="I" title="Italic (⌘I)" isActive={editor.isActive('italic')}
+        onClick={() => editor.chain().focus().toggleItalic().run()} />
+      <Btn label="U" title="Underline (⌘U)" isActive={editor.isActive('underline')}
+        onClick={() => editor.chain().focus().toggleUnderline().run()} />
+      <Btn label="S" title="Strikethrough" isActive={editor.isActive('strike')}
+        onClick={() => editor.chain().focus().toggleStrike().run()} />
+      <div className="w-px bg-black/10 mx-1" />
+      <Btn label="H1" isActive={editor.isActive('heading', { level: 1 })}
+        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} />
+      <Btn label="H2" isActive={editor.isActive('heading', { level: 2 })}
+        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} />
+      <Btn label="H3" isActive={editor.isActive('heading', { level: 3 })}
+        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} />
+      <div className="w-px bg-black/10 mx-1" />
+      <Btn label="• List" isActive={editor.isActive('bulletList')}
+        onClick={() => editor.chain().focus().toggleBulletList().run()} />
+      <Btn label="1. List" isActive={editor.isActive('orderedList')}
+        onClick={() => editor.chain().focus().toggleOrderedList().run()} />
+      <Btn label="❝" title="Quote" isActive={editor.isActive('blockquote')}
+        onClick={() => editor.chain().focus().toggleBlockquote().run()} />
+      <Btn label="—" title="Horizontal rule"
+        onClick={() => editor.chain().focus().setHorizontalRule().run()} />
+      <Btn label="Link" title="Add or edit link" isActive={editor.isActive('link')}
+        onClick={() => setLinkPromptOpen(true)} />
+      <Btn label="Clear" title="Clear formatting"
+        onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()} />
+      {linkPromptOpen && <LinkPromptHook editor={editor} onClose={() => setLinkPromptOpen(false)} />}
+    </div>
+  );
+}

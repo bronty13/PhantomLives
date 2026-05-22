@@ -2,6 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Research Before Guessing
+
+- For third-party APIs/schemas (Slack manifests, CloudKit, Tauri ACL, electron-builder, GitHub Actions workflows), research official docs FIRST before attempting code. Do not paste-and-retry.
+- When debugging environment issues (Finder-launched apps, signing, permissions), check PATH/entitlements/capabilities before blaming the tool.
+
 ## Repository shape
 
 PhantomLives is a polyglot monorepo of **independent personal/utility projects**, not a single application. Each top-level directory is its own self-contained project with its own README, CHANGELOG, install script, tests, and version number. There is no top-level build, lint, or test command — work always happens inside one subproject at a time.
@@ -304,3 +309,30 @@ When a subproject's Python code uses a self-bootstrapping `.venv` (e.g. `transcr
 - **`build-app.sh`** derives `CFBundleShortVersionString` from git (`1.0.<commit-count>`) and `CFBundleVersion` from `<count>.<short-sha>`. Version-bump rule #1 above is satisfied automatically by committing — no manual edit needed for the bundle version.
 
 The app **must** be launched from the `.app` bundle for SwiftUI's `WindowGroup`, `UNUserNotificationCenter` authorization, and the AppleScript dictionary to work; `swift run` alone won't fully activate the UI.
+
+## Git Workflow
+
+- Always verify the current working directory (cwd) matches the intended project before running git init, commit, or push.
+- After committing, always push to remote unless explicitly told otherwise — downstream tools (e.g., /ultraplan) require pushed commits.
+- Never sweep unrelated changes into commits; run `git status` and `git diff --staged` before committing.
+- Use feature branches and PRs when direct push to main is blocked.
+
+## Build & Verify
+
+- After UI/icon changes on macOS, always force-clear icon caches (`touch app bundle`, `killall Finder Dock`) and rebuild — visible icon updates often need a second cache-bust pass.
+- After any build, launch the app and confirm the change is visible before declaring done.
+- Run the full test suite before committing; report pass/fail count (e.g., '455/455 passing').
+
+### Icon / UI change verification sequence
+
+After any icon or UI change:
+1. Rebuild.
+2. `touch /Applications/<App>.app`
+3. `killall Finder Dock`
+4. Relaunch the app.
+5. Report what you **visually see**, not just that the build succeeded.
+
+## File Hygiene
+
+- Watch for and remove duplicate/stray files (e.g., 'RootView 2.swift', duplicate headings in markdown) — they break builds silently.
+- Never clobber existing documentation sections; read before overwriting.

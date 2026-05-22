@@ -1,6 +1,6 @@
 [package]
 name = "molly"
-version = "1.13.0"
+version = "1.14.0"
 description = "Molly — content creator central hub"
 authors = ["Robert Olen <robert.olen@gmail.com>"]
 edition = "2021"
@@ -32,6 +32,8 @@ uuid = { version = "1", features = ["v4"] }
 # Direct SQLite access for BLOB-heavy history attachment writes (the
 # tauri-plugin-sql JS bridge doesn't support raw byte parameters cleanly).
 rusqlite = { version = "0.31", features = ["bundled"] }
+# Used by Notes (Phase 13) for regex search/find on titles + bodies.
+regex = "1"
 # SHA-256 hashing for the Content Bundler (every file in the bundle is
 # hashed on upload + re-verified at bundle time; inner/outer ZIPs are
 # hashed and the digests recorded in hashes.json).
