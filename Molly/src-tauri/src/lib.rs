@@ -145,6 +145,12 @@ pub fn run() {
             sql: include_str!("../migrations/021_keystore_stay_unlocked.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 22,
+            description: "job-run-log-path",
+            sql: include_str!("../migrations/022_job_run_log_path.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -279,6 +285,8 @@ pub fn run() {
             background_jobs::set_job_enabled,
             background_jobs::set_job_cadence,
             background_jobs::run_job_now,
+            background_jobs::open_run_log,
+            background_jobs::reveal_run_log,
         ])
         .run(tauri::generate_context!())
         .expect("error while running molly");
@@ -660,6 +668,7 @@ mod camel_case_contract {
             summary: String::new(),
             log_excerpt: String::new(),
             elapsed_seconds: 0,
+            log_path: None,
         })
         .unwrap();
         assert_camel(&v, "RunOutcome");
@@ -693,6 +702,7 @@ mod camel_case_contract {
             status: String::new(),
             summary: String::new(),
             log_excerpt: String::new(),
+            log_path: None,
         })
         .unwrap();
         assert_camel(&v, "BackgroundJobRun");
@@ -742,6 +752,7 @@ mod migration_smoke {
             (19, "site-credentials",             include_str!("../migrations/019_site_credentials.sql")),
             (20, "background-jobs",              include_str!("../migrations/020_background_jobs.sql")),
             (21, "keystore-stay-unlocked",       include_str!("../migrations/021_keystore_stay_unlocked.sql")),
+            (22, "job-run-log-path",             include_str!("../migrations/022_job_run_log_path.sql")),
         ];
 
         for (v, name, sql) in migrations {

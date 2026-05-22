@@ -22,9 +22,11 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use chrono::Local;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, Runtime, State};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::fs::OpenOptions;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 
 use crate::atw_settings::{self, AtwSettings};
@@ -165,8 +167,11 @@ pub(crate) fn health_check_with_dir(settings: &AtwSettings, bot_dir: &Path) -> A
 pub struct RunOutcome {
     pub status: String,         // "success" | "failed"
     pub summary: String,
-    pub log_excerpt: String,    // last ~100 lines
+    pub log_excerpt: String,    // last ~200 lines (for inline pill expansion)
     pub elapsed_seconds: u64,
+    /// Absolute path to the full on-disk log file for this run. None
+    /// only if creating the file failed (rare; we degrade gracefully).
+    pub log_path: Option<String>,
 }
 
 /// Run the ATW bot once. Spawns `node repost.js` with all the config
@@ -267,11 +272,43 @@ pub async fn run_once<R: Runtime>(
         .take()
         .ok_or_else(|| CryptoError::Internal("subprocess stderr missing".into()))?;
 
-    // Tail buffer (capacity ~200 lines).
+    // Tail buffer (capacity ~200 lines, for the inline run-history pill).
     let log = Arc::new(tokio::sync::Mutex::new(Vec::<String>::with_capacity(256)));
 
-    // Spawn reader tasks for both streams.
+    // Full on-disk log. Lives under app_data/job_logs/. Created lazily;
+    // a failure to create the file is logged but does NOT abort the run.
+    let log_path = create_run_log_file(&app_data).await;
+    let log_file = if let Some(path) = log_path.as_ref() {
+        match OpenOptions::new().create(true).append(true).open(path).await {
+            Ok(f) => Some(Arc::new(tokio::sync::Mutex::new(f))),
+            Err(e) => {
+                eprintln!("[molly] couldn't open job log {}: {e}", path.display());
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Pre-amble: capture metadata at the top of the file so the user
+    // doesn't have to guess which run a given log belongs to.
+    if let Some(f) = &log_file {
+        let mut g = f.lock().await;
+        let header = format!(
+            "=== ATW Repost run · {} ===\nbot_dir: {}\nnode: {}\nchrome: {}\n=== begin output ===\n",
+            Local::now().format("%Y-%m-%d %H:%M:%S"),
+            bot_path.display(),
+            node_path.display(),
+            chrome.as_deref().unwrap_or("(playwright bundled fallback)"),
+        );
+        let _ = g.write_all(header.as_bytes()).await;
+    }
+
+    // Spawn reader tasks for both streams. Each line goes to (a) the
+    // 200-line ring buffer for the inline excerpt + (b) the full log
+    // file on disk.
     let log_out = Arc::clone(&log);
+    let log_file_out = log_file.clone();
     let stdout_task = tokio::spawn(async move {
         let mut lines = BufReader::new(stdout).lines();
         let mut saw_run_end = false;
@@ -282,6 +319,11 @@ pub async fn run_once<R: Runtime>(
                     buf.remove(0);
                 }
                 buf.push(line.clone());
+            }
+            if let Some(f) = &log_file_out {
+                let mut g = f.lock().await;
+                let _ = g.write_all(line.as_bytes()).await;
+                let _ = g.write_all(b"\n").await;
             }
             // Detect "Run #N ended" — the bot's own one-cycle marker.
             // After this, the bot enters its countdown sleep for the
@@ -294,14 +336,23 @@ pub async fn run_once<R: Runtime>(
         saw_run_end
     });
     let log_err = Arc::clone(&log);
+    let log_file_err = log_file.clone();
     let stderr_task = tokio::spawn(async move {
         let mut lines = BufReader::new(stderr).lines();
         while let Ok(Some(line)) = lines.next_line().await {
-            let mut buf = log_err.lock().await;
-            if buf.len() >= 200 {
-                buf.remove(0);
+            {
+                let mut buf = log_err.lock().await;
+                if buf.len() >= 200 {
+                    buf.remove(0);
+                }
+                buf.push(format!("[stderr] {line}"));
             }
-            buf.push(format!("[stderr] {line}"));
+            if let Some(f) = &log_file_err {
+                let mut g = f.lock().await;
+                let _ = g.write_all(b"[stderr] ").await;
+                let _ = g.write_all(line.as_bytes()).await;
+                let _ = g.write_all(b"\n").await;
+            }
         }
     });
 
@@ -322,12 +373,41 @@ pub async fn run_once<R: Runtime>(
     let saw_run_end = matches!(stdout_done, Ok(Ok(true)));
     let (status, summary) = summarize(&buf, saw_run_end, elapsed_seconds);
 
+    // Footer with final status, so the on-disk log is self-contained.
+    if let Some(f) = &log_file {
+        let mut g = f.lock().await;
+        let footer = format!(
+            "\n=== end output ===\nfinished_at: {}\nelapsed_seconds: {elapsed_seconds}\nstatus: {status}\nsummary: {summary}\n",
+            Local::now().format("%Y-%m-%d %H:%M:%S"),
+        );
+        let _ = g.write_all(footer.as_bytes()).await;
+        let _ = g.flush().await;
+    }
+
     Ok(RunOutcome {
         status: status.to_string(),
         summary,
         log_excerpt,
         elapsed_seconds,
+        log_path: log_path.map(|p| p.to_string_lossy().to_string()),
     })
+}
+
+/// Build the full log file path for a fresh run and ensure the parent
+/// directory exists. Returns None only if directory creation fails (in
+/// which case run_once continues with in-memory logging only).
+async fn create_run_log_file(app_data: &Path) -> Option<PathBuf> {
+    let dir = app_data.join("job_logs");
+    if let Err(e) = tokio::fs::create_dir_all(&dir).await {
+        eprintln!("[molly] couldn't create job_logs dir: {e}");
+        return None;
+    }
+    // Filename: atw_<YYYYMMDD_HHMMSS>_<nanos>.log. Including nanos
+    // makes collisions effectively impossible even for back-to-back runs.
+    let now = Local::now();
+    let nanos = now.timestamp_subsec_nanos();
+    let name = format!("atw_{}_{nanos}.log", now.format("%Y%m%d_%H%M%S"));
+    Some(dir.join(name))
 }
 
 /// Parse the bot's stdout tail into a human-readable summary.

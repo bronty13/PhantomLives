@@ -23,6 +23,9 @@ export interface BackgroundJobRun {
   status: 'running' | 'success' | 'failed' | 'cancelled';
   summary: string;
   logExcerpt: string;
+  /** Absolute path to the full on-disk log file. null for older runs
+   *  (pre-migration 022) or when the file couldn't be created. */
+  logPath: string | null;
 }
 
 export async function listBackgroundJobs(): Promise<BackgroundJob[]> {
@@ -47,4 +50,12 @@ export async function setJobCadence(jobId: number, cadenceSeconds: number): Prom
 
 export async function runJobNow(jobId: number): Promise<number> {
   return invoke<number>('run_job_now', { jobId });
+}
+
+export async function openRunLog(runId: number): Promise<void> {
+  await invoke('open_run_log', { runId });
+}
+
+export async function revealRunLog(runId: number): Promise<void> {
+  await invoke('reveal_run_log', { runId });
 }

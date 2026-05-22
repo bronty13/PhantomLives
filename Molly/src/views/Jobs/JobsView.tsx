@@ -4,6 +4,8 @@ import {
   type BackgroundJobRun,
   listBackgroundJobs,
   listJobRuns,
+  openRunLog,
+  revealRunLog,
   runJobNow,
   setJobEnabled,
 } from '../../data/backgroundJobs';
@@ -123,6 +125,7 @@ function JobCard({ job, onChanged }: { job: BackgroundJob; onChanged: () => Prom
 
 function RunRow({ run }: { run: BackgroundJobRun }) {
   const [open, setOpen] = useState(false);
+  const [logError, setLogError] = useState<string | null>(null);
   const pillStyle = (() => {
     switch (run.status) {
       case 'success': return { bg: '#DCFCE7', color: '#166534', label: '✓ success' };
@@ -131,6 +134,18 @@ function RunRow({ run }: { run: BackgroundJobRun }) {
       default: return { bg: '#E5E7EB', color: '#374151', label: run.status };
     }
   })();
+  async function doOpenLog(e: React.MouseEvent) {
+    e.stopPropagation();
+    setLogError(null);
+    try { await openRunLog(run.id); }
+    catch (err) { setLogError(String((err as { message?: string })?.message ?? err)); }
+  }
+  async function doRevealLog(e: React.MouseEvent) {
+    e.stopPropagation();
+    setLogError(null);
+    try { await revealRunLog(run.id); }
+    catch (err) { setLogError(String((err as { message?: string })?.message ?? err)); }
+  }
   return (
     <li className="text-sm">
       <button
@@ -146,14 +161,45 @@ function RunRow({ run }: { run: BackgroundJobRun }) {
         </span>
         <span className="font-mono text-xs opacity-60 w-44">{run.startedAt}</span>
         <span className="flex-1 truncate">{run.summary || '(no summary)'}</span>
-        {run.logExcerpt && (
+        {(run.logExcerpt || run.logPath) && (
           <span className="opacity-50 text-xs">{open ? '▾' : '▸'}</span>
         )}
       </button>
-      {open && run.logExcerpt && (
-        <pre className="text-[10px] font-mono bg-black/5 rounded-xl p-2 mt-1 max-h-72 overflow-auto whitespace-pre-wrap">
-          {run.logExcerpt}
-        </pre>
+      {open && (
+        <div className="space-y-2 mt-1">
+          {run.logPath && (
+            <div className="flex items-center gap-2 px-2">
+              <button
+                type="button"
+                onClick={doOpenLog}
+                className="pretty-button secondary text-xs"
+              >
+                📄 Open full log
+              </button>
+              <button
+                type="button"
+                onClick={doRevealLog}
+                className="pretty-button secondary text-xs"
+              >
+                📂 Reveal in Finder
+              </button>
+              <span className="text-[10px] font-mono opacity-50 truncate flex-1">{run.logPath}</span>
+            </div>
+          )}
+          {logError && (
+            <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-1 mx-2">
+              {logError}
+            </div>
+          )}
+          {run.logExcerpt && (
+            <pre className="text-[10px] font-mono bg-black/5 rounded-xl p-2 max-h-72 overflow-auto whitespace-pre-wrap">
+              {run.logExcerpt}
+            </pre>
+          )}
+          {!run.logExcerpt && !run.logPath && (
+            <div className="text-xs italic opacity-60 px-2">No log captured for this run.</div>
+          )}
+        </div>
       )}
     </li>
   );

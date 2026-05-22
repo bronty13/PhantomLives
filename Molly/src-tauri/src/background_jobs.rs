@@ -56,6 +56,10 @@ pub struct BackgroundJobRun {
     pub status: String,
     pub summary: String,
     pub log_excerpt: String,
+    /// Absolute path to the full on-disk log file for this run. None
+    /// for older runs (pre-migration 022) and for runs where the log
+    /// file couldn't be created (very rare).
+    pub log_path: Option<String>,
 }
 
 fn app_data_dir<R: Runtime>(handle: &AppHandle<R>) -> Result<PathBuf, CryptoError> {
@@ -108,7 +112,7 @@ pub(crate) fn pure_list_runs(
     limit: i64,
 ) -> Result<Vec<BackgroundJobRun>, CryptoError> {
     let mut stmt = conn.prepare(
-        "SELECT id, job_id, started_at, finished_at, status, summary, log_excerpt
+        "SELECT id, job_id, started_at, finished_at, status, summary, log_excerpt, log_path
          FROM background_job_runs
          WHERE job_id = ?1
          ORDER BY started_at DESC, id DESC
@@ -124,6 +128,7 @@ pub(crate) fn pure_list_runs(
                 status: r.get(4)?,
                 summary: r.get(5)?,
                 log_excerpt: r.get(6)?,
+                log_path: r.get(7)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -208,13 +213,14 @@ pub(crate) fn pure_finish_run(
     status: &str,
     summary: &str,
     log_excerpt: &str,
+    log_path: Option<&str>,
 ) -> Result<(), CryptoError> {
     conn.execute(
         "UPDATE background_job_runs
          SET finished_at = datetime('now'),
-             status = ?1, summary = ?2, log_excerpt = ?3
-         WHERE id = ?4",
-        params![status, summary, log_excerpt, run_id],
+             status = ?1, summary = ?2, log_excerpt = ?3, log_path = ?4
+         WHERE id = ?5",
+        params![status, summary, log_excerpt, log_path, run_id],
     )?;
     Ok(())
 }
@@ -309,10 +315,10 @@ pub async fn tick<R: Runtime>(
         let conn = open_conn(&app_data)?;
         match outcome {
             Ok(o) => {
-                pure_finish_run(&conn, run_id, &o.status, &o.summary, &o.log_excerpt)?;
+                pure_finish_run(&conn, run_id, &o.status, &o.summary, &o.log_excerpt, o.log_path.as_deref())?;
             }
             Err(e) => {
-                pure_finish_run(&conn, run_id, "failed", &format!("{}", e), "")?;
+                pure_finish_run(&conn, run_id, "failed", &format!("{}", e), "", None)?;
             }
         }
         pure_mark_job_ran(&conn, job.id)?;
@@ -390,6 +396,99 @@ pub fn set_job_cadence<R: Runtime>(
     pure_set_cadence(&conn, job_id, cadence_seconds)
 }
 
+/// Look up the log path for a run + open it in the OS default text
+/// editor. Errors clearly if the path is missing (older run, manual
+/// delete) so the UI can show a helpful message.
+#[tauri::command]
+pub fn open_run_log<R: Runtime>(
+    handle: AppHandle<R>,
+    run_id: i64,
+) -> Result<(), CryptoError> {
+    let app_data = app_data_dir(&handle)?;
+    let conn = open_conn(&app_data)?;
+    let log_path: Option<String> = conn
+        .query_row(
+            "SELECT log_path FROM background_job_runs WHERE id = ?1",
+            params![run_id],
+            |r| r.get(0),
+        )?;
+    let path = log_path.ok_or_else(|| {
+        CryptoError::Internal(
+            "No log file for this run (older run, or the file was deleted).".into(),
+        )
+    })?;
+    if !std::path::Path::new(&path).is_file() {
+        return Err(CryptoError::Internal(format!(
+            "Log file not found at {path} — it may have been moved or deleted."
+        )));
+    }
+    open_path_in_os(&path)
+}
+
+/// Same as `open_run_log` but reveals the parent folder in Finder so
+/// the user can see / archive / forward the file.
+#[tauri::command]
+pub fn reveal_run_log<R: Runtime>(
+    handle: AppHandle<R>,
+    run_id: i64,
+) -> Result<(), CryptoError> {
+    let app_data = app_data_dir(&handle)?;
+    let conn = open_conn(&app_data)?;
+    let log_path: Option<String> = conn
+        .query_row(
+            "SELECT log_path FROM background_job_runs WHERE id = ?1",
+            params![run_id],
+            |r| r.get(0),
+        )?;
+    let path = log_path.ok_or_else(|| {
+        CryptoError::Internal("No log file for this run.".into())
+    })?;
+    reveal_path_in_finder(&path)
+}
+
+#[cfg(target_os = "macos")]
+fn open_path_in_os(path: &str) -> Result<(), CryptoError> {
+    std::process::Command::new("open")
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| CryptoError::Internal(format!("open failed: {e}")))
+}
+#[cfg(target_os = "windows")]
+fn open_path_in_os(path: &str) -> Result<(), CryptoError> {
+    std::process::Command::new("cmd")
+        .args(["/C", "start", "", path])
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| CryptoError::Internal(format!("start failed: {e}")))
+}
+#[cfg(target_os = "linux")]
+fn open_path_in_os(path: &str) -> Result<(), CryptoError> {
+    std::process::Command::new("xdg-open")
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| CryptoError::Internal(format!("xdg-open failed: {e}")))
+}
+
+#[cfg(target_os = "macos")]
+fn reveal_path_in_finder(path: &str) -> Result<(), CryptoError> {
+    std::process::Command::new("open")
+        .args(["-R", path])
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| CryptoError::Internal(format!("reveal failed: {e}")))
+}
+#[cfg(not(target_os = "macos"))]
+fn reveal_path_in_finder(path: &str) -> Result<(), CryptoError> {
+    // Best-effort on Windows/Linux: just open the parent dir.
+    let parent = std::path::Path::new(path)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.to_string());
+    open_path_in_os(&parent)
+}
+
 /// On-demand run from the React UI. Writes the run row + invokes the
 /// dispatcher just like the tick loop would.
 #[tauri::command]
@@ -416,10 +515,10 @@ pub async fn run_job_now<R: Runtime>(
     let conn = open_conn(&app_data)?;
     match outcome {
         Ok(o) => {
-            pure_finish_run(&conn, run_id, &o.status, &o.summary, &o.log_excerpt)?;
+            pure_finish_run(&conn, run_id, &o.status, &o.summary, &o.log_excerpt, o.log_path.as_deref())?;
         }
         Err(e) => {
-            pure_finish_run(&conn, run_id, "failed", &format!("{}", e), "")?;
+            pure_finish_run(&conn, run_id, "failed", &format!("{}", e), "", None)?;
         }
     }
     pure_mark_job_ran(&conn, job_id)?;
@@ -456,6 +555,8 @@ mod tests {
             include_str!("../migrations/018_crypto_keystore.sql"),
             include_str!("../migrations/019_site_credentials.sql"),
             include_str!("../migrations/020_background_jobs.sql"),
+            include_str!("../migrations/021_keystore_stay_unlocked.sql"),
+            include_str!("../migrations/022_job_run_log_path.sql"),
         ] {
             conn.execute_batch(sql).unwrap();
         }
@@ -519,11 +620,12 @@ mod tests {
         assert_eq!(runs[0].status, "running");
         assert!(runs[0].finished_at.is_none());
 
-        pure_finish_run(&conn, run_id, "success", "did the thing", "log line\nline 2").unwrap();
+        pure_finish_run(&conn, run_id, "success", "did the thing", "log line\nline 2", Some("/tmp/test.log")).unwrap();
         let runs = pure_list_runs(&conn, job_id, 10).unwrap();
         assert_eq!(runs[0].status, "success");
         assert_eq!(runs[0].summary, "did the thing");
         assert!(runs[0].finished_at.is_some());
+        assert_eq!(runs[0].log_path.as_deref(), Some("/tmp/test.log"));
     }
 
     #[test]
