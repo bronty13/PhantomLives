@@ -62,7 +62,7 @@ function NoteRow({ note, allTags, selected, onSelect, onAction }: {
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
-          className="opacity-0 group-hover:opacity-70 hover:opacity-100 px-1 text-xs"
+          className="opacity-50 hover:opacity-100 px-1 text-xs"
           title="Note actions"
         >
           ⋯

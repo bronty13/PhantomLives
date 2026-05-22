@@ -5,6 +5,7 @@ import {
   getNote, listNoteFolders, listNoteTags, listNotes, moveNote, moveNoteFolder,
   renameNoteFolder, setNoteTags, updateNote,
 } from '../../data/notes';
+import { FolderPickerModal } from './FolderPickerModal';
 import { FolderTree, type FolderAction } from './FolderTree';
 import { NoteEditor } from './NoteEditor';
 import { NotesList, type NoteAction } from './NotesList';
@@ -24,6 +25,14 @@ export function NotesView() {
   // Counter bumped on every Find-result open so the same hit re-fires
   // the highlight effect (keying off snippet alone would skip repeats).
   const [highlightTick, setHighlightTick] = useState(0);
+
+  // Active picker modal: 'folder' = move-folder picker, 'note' = move-note
+  // picker. Null = closed.
+  const [picker, setPicker] = useState<
+    | { kind: 'move-folder'; folderId: number; currentParent: number | null }
+    | { kind: 'move-note'; noteId: number; currentFolder: number | null }
+    | null
+  >(null);
 
   // Autosave debounce (800ms after stop typing).
   const saveTimer = useRef<number | null>(null);
@@ -127,10 +136,8 @@ export function NotesView() {
         await renameNoteFolder(folderId, name);
         await reloadFolders();
       } else if (action === 'move' && folderId != null) {
-        const target = await pickFolder(folders, folderId);
-        if (target === 'cancel') return;
-        await moveNoteFolder(folderId, target);
-        await reloadFolders();
+        const current = folders.find((f) => f.id === folderId)?.parentId ?? null;
+        setPicker({ kind: 'move-folder', folderId, currentParent: current });
       } else if (action === 'delete' && folderId != null) {
         if (!window.confirm('Delete this folder + everything inside it? This cannot be undone.')) return;
         await deleteNoteFolder(folderId);
@@ -152,10 +159,8 @@ export function NotesView() {
         await reloadNotes();
         await switchNote(newId);
       } else if (action === 'move') {
-        const target = await pickFolder(folders, null);
-        if (target === 'cancel') return;
-        await moveNote(noteId, target);
-        await reloadNotes();
+        const note = notes.find((n) => n.id === noteId);
+        setPicker({ kind: 'move-note', noteId, currentFolder: note?.folderId ?? null });
       } else if (action === 'delete') {
         if (!window.confirm('Delete this note? This cannot be undone.')) return;
         await deleteNote(noteId);
@@ -248,13 +253,27 @@ export function NotesView() {
     <div className="flex h-full">
       {/* Pane 1: folder tree */}
       <aside className="w-64 border-r border-black/10 bg-white/40 overflow-y-auto p-3">
-        <div className="display-font text-xl font-semibold persona-accent mb-3 px-1">📝 Notes</div>
+        <div className="flex items-center justify-between mb-3 px-1">
+          <div className="display-font text-xl font-semibold persona-accent">📝 Notes</div>
+          <button
+            type="button"
+            onClick={() => onFolderAction(selectedFolderId, 'new-folder')}
+            className="pretty-button text-xs"
+            title="Create a new folder under the selected one (or at root)"
+          >
+            ＋ Folder
+          </button>
+        </div>
         <FolderTree
           folders={folders}
           selectedFolderId={selectedFolderId}
           onSelect={(id) => { flushPending(); setSelectedFolderId(id); }}
           onAction={onFolderAction}
         />
+        <div className="mt-3 px-1 text-[10px] opacity-50 leading-snug">
+          Click <span className="font-semibold">⋯</span> on any folder for rename, move, delete.
+          Double-click a folder name to rename quickly.
+        </div>
       </aside>
 
       {/* Pane 2: notes list */}
@@ -300,6 +319,44 @@ export function NotesView() {
       <main className="flex-1 flex flex-col overflow-hidden">
         {editorBody}
       </main>
+
+      {picker?.kind === 'move-folder' && (
+        <FolderPickerModal
+          title="Move folder to…"
+          folders={folders}
+          excludeId={picker.folderId}
+          currentParentId={picker.currentParent}
+          onCancel={() => setPicker(null)}
+          onPick={async (target) => {
+            const sourceId = picker.folderId;
+            setPicker(null);
+            try {
+              await moveNoteFolder(sourceId, target);
+              await reloadFolders();
+            } catch (e) {
+              setError(String((e as { message?: string })?.message ?? e));
+            }
+          }}
+        />
+      )}
+      {picker?.kind === 'move-note' && (
+        <FolderPickerModal
+          title="Move note to…"
+          folders={folders}
+          currentParentId={picker.currentFolder}
+          onCancel={() => setPicker(null)}
+          onPick={async (target) => {
+            const noteId = picker.noteId;
+            setPicker(null);
+            try {
+              await moveNote(noteId, target);
+              await reloadNotes();
+            } catch (e) {
+              setError(String((e as { message?: string })?.message ?? e));
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -352,44 +409,6 @@ function pickReadable(hex: string): string {
   const r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
   const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
   return luma > 0.6 ? '#3a1431' : 'white';
-}
-
-/** Modal-free folder picker via window.prompt: lists folders and asks
- *  the user to type the destination id (or 0 / blank for root). Cheap
- *  for v1 — a richer picker can come later. */
-async function pickFolder(folders: NoteFolder[], excludeId: number | null): Promise<number | null | 'cancel'> {
-  if (folders.length === 0) {
-    if (!window.confirm('No folders yet — move to root?')) return 'cancel';
-    return null;
-  }
-  const lines = ['0  →  (root)'];
-  for (const f of folders) {
-    if (excludeId != null && f.id === excludeId) continue;
-    const indent = depthOf(folders, f.id);
-    lines.push(`${f.id}  →  ${'  '.repeat(indent)}${f.name}`);
-  }
-  const reply = window.prompt(
-    `Move to which folder? Type the id from below (0 for root):\n\n${lines.join('\n')}`,
-    '0',
-  );
-  if (reply == null) return 'cancel';
-  const n = parseInt(reply.trim(), 10);
-  if (Number.isNaN(n)) return 'cancel';
-  if (n === 0) return null;
-  return n;
-}
-
-function depthOf(folders: NoteFolder[], id: number): number {
-  let depth = 0;
-  let curr = folders.find((f) => f.id === id);
-  while (curr?.parentId != null) {
-    depth += 1;
-    if (depth > 50) break;
-    const next = folders.find((f) => f.id === curr!.parentId);
-    if (!next) break;
-    curr = next;
-  }
-  return depth;
 }
 
 function fmtDateTime(iso: string): string {

@@ -120,6 +120,12 @@ function Row({
         paddingLeft: 8 + depth * 16,
       }}
       onClick={onSelect}
+      onDoubleClick={(e) => {
+        if (isRoot) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onAction('rename');
+      }}
     >
       {chevron ? (
         <button
@@ -137,7 +143,7 @@ function Row({
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
-        className="opacity-0 group-hover:opacity-70 hover:opacity-100 px-1.5 py-1 text-xs"
+        className="opacity-50 hover:opacity-100 px-1.5 py-1 text-xs"
         title="Folder actions"
       >
         ⋯
