@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import type { Persona } from '../../state/personas';
 import { BackupSettings } from './BackupSettings';
 import { BundlerSettings } from './BundlerSettings';
+import { NotesSettings } from './NotesSettings';
 import { AtwSettingsPane } from './AtwSettings';
 import { C4SSettings } from './C4SSettings';
 import { DataSettings } from './DataSettings';
@@ -12,7 +13,7 @@ import { SitesSettings } from './SitesSettings';
 import { TaxonomySettings } from './TaxonomySettings';
 import { UpdatesSettings } from './UpdatesSettings';
 
-type Tab = 'personas' | 'sites' | 'products' | 'interests' | 'kinks' | 'platforms' | 'c4s' | 'bundler' | 'security' | 'atw' | 'data' | 'updates' | 'backup';
+type Tab = 'personas' | 'sites' | 'products' | 'interests' | 'kinks' | 'platforms' | 'c4s' | 'bundler' | 'notes' | 'security' | 'atw' | 'data' | 'updates' | 'backup';
 
 interface Props {
   active: Persona;
@@ -28,6 +29,7 @@ const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'kinks',     label: 'Kinks',      icon: '💕' },
   { key: 'c4s',       label: 'C4S',        icon: '🛍️' },
   { key: 'bundler',   label: 'Bundler',    icon: '🎁' },
+  { key: 'notes',     label: 'Notes',      icon: '📝' },
   { key: 'security',  label: 'Security',   icon: '🔐' },
   { key: 'atw',       label: 'ATW Repost', icon: '🌀' },
   { key: 'data',      label: 'Data',       icon: '📦' },
@@ -48,6 +50,7 @@ export function SettingsView({ active, onPersonasChanged }: Props) {
     case 'kinks':     body = <TaxonomySettings kind="kinks" />; break;
     case 'c4s':       body = <C4SSettings />; break;
     case 'bundler':   body = <BundlerSettings />; break;
+    case 'notes':     body = <NotesSettings />; break;
     case 'security':  body = <SecuritySettings />; break;
     case 'atw':       body = <AtwSettingsPane />; break;
     case 'data':      body = <DataSettings />; break;

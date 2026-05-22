@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import type { NoteSummary } from '../../data/notes';
+import type { NoteSummary, NoteTag } from '../../data/notes';
+import { TagChips } from './TagChips';
 
 interface Props {
   notes: NoteSummary[];
+  allTags: NoteTag[];
   selectedNoteId: number | null;
   onSelect: (noteId: number) => void;
   onAction: (noteId: number, action: NoteAction) => void;
@@ -11,7 +13,7 @@ interface Props {
 
 export type NoteAction = 'copy' | 'move' | 'delete';
 
-export function NotesList({ notes, selectedNoteId, onSelect, onAction, emptyHint }: Props) {
+export function NotesList({ notes, allTags, selectedNoteId, onSelect, onAction, emptyHint }: Props) {
   if (notes.length === 0) {
     return (
       <div className="text-xs italic opacity-60 px-3 py-6 text-center">
@@ -25,6 +27,7 @@ export function NotesList({ notes, selectedNoteId, onSelect, onAction, emptyHint
         <NoteRow
           key={n.id}
           note={n}
+          allTags={allTags}
           selected={selectedNoteId === n.id}
           onSelect={() => onSelect(n.id)}
           onAction={(a) => onAction(n.id, a)}
@@ -34,8 +37,9 @@ export function NotesList({ notes, selectedNoteId, onSelect, onAction, emptyHint
   );
 }
 
-function NoteRow({ note, selected, onSelect, onAction }: {
-  note: NoteSummary; selected: boolean; onSelect: () => void; onAction: (a: NoteAction) => void;
+function NoteRow({ note, allTags, selected, onSelect, onAction }: {
+  note: NoteSummary; allTags: NoteTag[];
+  selected: boolean; onSelect: () => void; onAction: (a: NoteAction) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   return (
@@ -67,6 +71,11 @@ function NoteRow({ note, selected, onSelect, onAction }: {
       <div className="text-[11px] opacity-55 mt-0.5 font-mono">
         edited {fmtDate(note.lastEditedAt)}
       </div>
+      {note.tagIds.length > 0 && (
+        <div className="mt-1">
+          <TagChips allTags={allTags} selected={note.tagIds} onChange={() => {}} editable={false} compact />
+        </div>
+      )}
       {menuOpen && (
         <div
           className="absolute right-1 top-full mt-1 z-10 rounded-xl shadow-lg border border-black/10 bg-white text-left text-xs overflow-hidden"

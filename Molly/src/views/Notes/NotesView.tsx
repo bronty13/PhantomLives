@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  type Note, type NoteFolder, type NoteSummary,
+  type Note, type NoteFolder, type NoteSummary, type NoteTag,
   copyNote, createNote, createNoteFolder, deleteNote, deleteNoteFolder,
-  getNote, listNoteFolders, listNotes, moveNote, moveNoteFolder, renameNoteFolder,
-  updateNote,
+  getNote, listNoteFolders, listNoteTags, listNotes, moveNote, moveNoteFolder,
+  renameNoteFolder, setNoteTags, updateNote,
 } from '../../data/notes';
 import { FolderTree, type FolderAction } from './FolderTree';
 import { NoteEditor } from './NoteEditor';
 import { NotesList, type NoteAction } from './NotesList';
+import { TagChips } from './TagChips';
 
 export function NotesView() {
   const [folders, setFolders] = useState<NoteFolder[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
   const [notes, setNotes] = useState<NoteSummary[]>([]);
+  const [tags, setTags] = useState<NoteTag[]>([]);
+  const [tagFilter, setTagFilter] = useState<number[]>([]);
   const [selectedNoteId, setSelectedNoteId] = useState<number | null>(null);
   const [loadedNote, setLoadedNote] = useState<Note | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +36,11 @@ export function NotesView() {
     catch (e) { setError(String((e as { message?: string })?.message ?? e)); }
   }, [selectedFolderId]);
 
+  const reloadTags = useCallback(async () => {
+    try { setTags(await listNoteTags()); }
+    catch (e) { setError(String((e as { message?: string })?.message ?? e)); }
+  }, []);
+
   const reloadSelectedNote = useCallback(async () => {
     if (selectedNoteId == null) { setLoadedNote(null); return; }
     try { setLoadedNote(await getNote(selectedNoteId)); }
@@ -41,7 +49,15 @@ export function NotesView() {
 
   useEffect(() => { reloadFolders(); }, [reloadFolders]);
   useEffect(() => { reloadNotes(); }, [reloadNotes]);
+  useEffect(() => { reloadTags(); }, [reloadTags]);
   useEffect(() => { reloadSelectedNote(); }, [reloadSelectedNote]);
+
+  // Filter notes by selected tag chips. AND semantics: a note must
+  // carry ALL active filter tags to remain visible. Empty filter = all.
+  const visibleNotes = useMemo(() => {
+    if (tagFilter.length === 0) return notes;
+    return notes.filter((n) => tagFilter.every((tid) => n.tagIds.includes(tid)));
+  }, [notes, tagFilter]);
 
   // Flush any pending edits when the user switches notes (don't lose
   // last few keystrokes to the debounce window).
@@ -149,6 +165,18 @@ export function NotesView() {
     }
   }
 
+  async function onChangeNoteTags(next: number[]) {
+    if (!loadedNote) return;
+    setError(null);
+    try {
+      await setNoteTags(loadedNote.id, next);
+      setLoadedNote({ ...loadedNote, tagIds: next });
+      await reloadNotes();
+    } catch (e) {
+      setError(String((e as { message?: string })?.message ?? e));
+    }
+  }
+
   const editorBody = useMemo(() => {
     if (!loadedNote) {
       return (
@@ -174,8 +202,11 @@ export function NotesView() {
           className="w-full bg-transparent border-none focus:outline-none display-font text-3xl font-semibold mb-3 persona-accent"
           placeholder="Untitled"
         />
-        <div className="text-xs opacity-50 mb-4 font-mono">
+        <div className="text-xs opacity-50 mb-3 font-mono">
           created {fmtDateTime(loadedNote.createdAt)} · edited {fmtDateTime(loadedNote.lastEditedAt)}
+        </div>
+        <div className="mb-4">
+          <TagChips allTags={tags} selected={loadedNote.tagIds} onChange={onChangeNoteTags} />
         </div>
         <NoteEditor
           noteKey={loadedNote.id}
@@ -225,11 +256,22 @@ export function NotesView() {
         {error && (
           <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3">{error}</div>
         )}
+        {tags.length > 0 && (
+          <TagFilterBar
+            tags={tags}
+            active={tagFilter}
+            onChange={setTagFilter}
+            totalCount={notes.length}
+            visibleCount={visibleNotes.length}
+          />
+        )}
         <NotesList
-          notes={notes}
+          notes={visibleNotes}
+          allTags={tags}
           selectedNoteId={selectedNoteId}
           onSelect={switchNote}
           onAction={onNoteAction}
+          emptyHint={tagFilter.length > 0 ? 'No notes match this tag filter.' : undefined}
         />
       </section>
 
@@ -239,6 +281,56 @@ export function NotesView() {
       </main>
     </div>
   );
+}
+
+function TagFilterBar({ tags, active, onChange, totalCount, visibleCount }: {
+  tags: NoteTag[]; active: number[]; onChange: (next: number[]) => void;
+  totalCount: number; visibleCount: number;
+}) {
+  function toggle(id: number) {
+    if (active.includes(id)) onChange(active.filter((x) => x !== id));
+    else onChange([...active, id]);
+  }
+  return (
+    <div className="mb-3 px-1">
+      <div className="flex items-center justify-between text-[10px] uppercase tracking-wider opacity-50 mb-1.5">
+        <span>Filter by tag</span>
+        {active.length > 0 && (
+          <button type="button" onClick={() => onChange([])} className="opacity-70 hover:opacity-100 underline">
+            clear · showing {visibleCount} of {totalCount}
+          </button>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {tags.map((t) => {
+          const on = active.includes(t.id);
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => toggle(t.id)}
+              className="text-[11px] font-semibold rounded-full px-2 py-0.5 transition"
+              style={{
+                background: on ? t.color : 'transparent',
+                color: on ? pickReadable(t.color) : 'rgb(var(--persona-text) / 0.6)',
+                border: `1px solid ${on ? t.color : 'rgb(0 0 0 / 0.15)'}`,
+              }}
+            >
+              #{t.name}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function pickReadable(hex: string): string {
+  const m = hex.match(/^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i);
+  if (!m) return 'black';
+  const r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
+  const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luma > 0.6 ? '#3a1431' : 'white';
 }
 
 /** Modal-free folder picker via window.prompt: lists folders and asks
