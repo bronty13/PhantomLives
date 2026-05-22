@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import type { Persona } from '../../state/personas';
 import { BackupSettings } from './BackupSettings';
+import { BundlerSettings } from './BundlerSettings';
 import { C4SSettings } from './C4SSettings';
 import { DataSettings } from './DataSettings';
 import { PersonasSettings } from './PersonasSettings';
@@ -9,7 +10,7 @@ import { SitesSettings } from './SitesSettings';
 import { TaxonomySettings } from './TaxonomySettings';
 import { UpdatesSettings } from './UpdatesSettings';
 
-type Tab = 'personas' | 'sites' | 'products' | 'interests' | 'kinks' | 'platforms' | 'c4s' | 'data' | 'updates' | 'backup';
+type Tab = 'personas' | 'sites' | 'products' | 'interests' | 'kinks' | 'platforms' | 'c4s' | 'bundler' | 'data' | 'updates' | 'backup';
 
 interface Props {
   active: Persona;
@@ -24,6 +25,7 @@ const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'interests', label: 'Interests',  icon: '🌷' },
   { key: 'kinks',     label: 'Kinks',      icon: '💕' },
   { key: 'c4s',       label: 'C4S',        icon: '🛍️' },
+  { key: 'bundler',   label: 'Bundler',    icon: '🎁' },
   { key: 'data',      label: 'Data',       icon: '📦' },
   { key: 'updates',   label: 'Updates',    icon: '⬇️' },
   { key: 'backup',    label: 'Backup',     icon: '💾' },
@@ -41,6 +43,7 @@ export function SettingsView({ active, onPersonasChanged }: Props) {
     case 'interests': body = <TaxonomySettings kind="interests" />; break;
     case 'kinks':     body = <TaxonomySettings kind="kinks" />; break;
     case 'c4s':       body = <C4SSettings />; break;
+    case 'bundler':   body = <BundlerSettings />; break;
     case 'data':      body = <DataSettings />; break;
     case 'updates':   body = <UpdatesSettings />; break;
     case 'backup':    body = <BackupSettings />; break;

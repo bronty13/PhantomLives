@@ -4,6 +4,142 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] — 2026-05-22
+
+### Added — 🎁 Content Bundler (Phase 9, part 1 of 2)
+
+New top-level **Bundles** sidebar entry. Sallie composes a **Content
+Bundle** — title, persona, description (text or audio), 3+ categories
+(drag-reorder), one or more videos/images (drag-reorder), go-live date,
+optional special instructions — then publishes it as a deterministic,
+SHA-256-hashed two-layer ZIP at `~/Downloads/Molly bundles/<UID>.zip`
+ready to drop into Slack for Robert.
+
+PR1 ships the **Content** bundle type end-to-end. The **Custom** and
+**Fan Site** bundle types appear in a follow-on release (drafts can be
+created today; the form/publish wiring lands in 1.10.0).
+
+#### What gets bundled
+
+```
+<UID>.zip                          ← outer (signed deliverable)
+├── <UID>-inner.zip                ← inner
+│   ├── info.md                    ← human-readable wizard summary (markdown)
+│   ├── Molly.log                  ← technical build log: every input + per-file SHA + verify
+│   ├── Audio/<file>               ← audio description if present
+│   ├── Video/00001_<orig>.mp4     ← 5-digit order prefix
+│   └── Photos/00001_<orig>.jpg
+└── hashes.json                    ← SHA-256 of inner ZIP + every file inside
+```
+
+**Note on `Molly.log` naming**: this is the bundle's build log, **not**
+the personal-journal "Molly's Log" feature in the sidebar. The two share
+a name by accident of history; the in-zip file contains a step-by-step
+audit of THIS bundle's composition (inputs, per-file hashes, verify
+matches), nothing from the journal table.
+
+Files are re-hashed at compose time and asserted against the upload-time
+hash; if you've modified a file on disk between upload and publish, the
+publish refuses with `attachment changed since upload` so you can re-upload.
+
+#### Validation engine (`src/lib/bundleValidation.ts` + `bundles.rs::validate_*`)
+
+Per-field validators with stable DOM ids; the publish wizard's
+`ValidationChecklist` lets Sallie click each issue to scroll-and-focus
+the offending field. Rules for the Content type:
+
+- **Title**: non-empty, two+ words, not in `{none, blank, custom}`.
+- **Persona**: required (one of CoC / PoA / Sa).
+- **Description**: exactly one of text or audio. Text is scanned for
+  prohibited substrings (defaults: `blackmail / mommy / addiction /
+  addicted`; editable in Settings → Bundler).
+- **Categories**: ≥3 (uppercase, deduped, drag-reorder). The picker's
+  suggestion list merges (a) categories Sallie has used on previous
+  bundles, recency-ordered, with (b) every non-archived category from
+  MasterClipper's own SQLite (read-only, fail-quiet — empty list if MC
+  isn't installed or the DB is locked).
+- **Go-live date**: required, ≥ today; warns ("Are you allowing enough
+  time for editing?") if within today+5d.
+- **Files**: ≥1 video or image. Drag-reorder. Each file re-numbered
+  `00001_…` in the bundle.
+
+The TypeScript validator runs live in the form for friction-free
+feedback; the Rust validator (`bundles.rs::validate_for_publish`) is
+authoritative on publish and re-checks everything inside the publish
+transaction.
+
+#### Publish flow
+
+Wizard (`PublishWizard.tsx`) walks every field read-only — including
+audio playback and image thumbnails — runs both validators, surfaces
+any issues with click-to-jump, and on Approve calls `publish_bundle`.
+The Rust side composes the ZIP, hashes both layers, atomically renames
+to the output dir, stamps the bundle row, and (for Content type only)
+**upserts a row into the existing `clips` table** with `status='Bundled'`
+so the go-live date surfaces on Molly's Calendar alongside everything
+else. `molly_notes_html` is preserved across re-publishes — delete-the-
+bundle-then-republish keeps Sallie's editable clip notes intact.
+
+#### Settings → 🎁 Bundler
+
+- **Output folder** — default `~/Downloads/Molly bundles/`; override + Reveal.
+- **Warn threshold** (days) for aging drafts (default 30).
+- **Auto-purge threshold** (days) for old published bundles (default 60).
+  Launch-time hook runs at most once per day; **Run purge now** button bypasses
+  the debounce.
+- **Prohibited words** — chip CRUD against `bundle_prohibited_words`
+  (seeded with the four defaults on install).
+
+#### Schema
+
+- Migration `017_bundles.sql` adds `bundles` (parent table with type
+  discriminator + null-where-unused columns), `bundle_files` (ordered
+  media; `position` 1..N within bundle or within fansite day),
+  `bundle_categories` (UPPERCASE + position), `bundle_fan_days`
+  (reserved for PR2), and `bundle_prohibited_words` (seeded with
+  `blackmail`, `mommy`, `addiction`, `addicted`).
+- Migration smoke test extended: 5 new anchor tables + seed-count
+  assertion on `bundle_prohibited_words`.
+
+#### Tests
+
+105 → **185 tests passing** (62 Rust + 123 frontend):
+- `bundle_zip.rs::tests` (7) — determinism, layout, hash-vs-payload,
+  mutation detection, FanSite naming, info.md content, name sanitization.
+- `bundles.rs::tests` (10) — UID monotonicity per day, prohibited-word
+  seeding + CRUD, all validators, set_categories normalization,
+  clip-upsert preserving `molly_notes_html`, auto-purge threshold +
+  state guards, draft delete returns relpaths, aging-flag buckets.
+- `camel_case_contract` (11) — every new boundary struct (BundleSummary,
+  BundleFileInfo, BundleCategory, BundleFanDay, Bundle, BundlePublishResult,
+  PurgeResult, BundleArchiveRow, BundlerSettings, ValidationIssue,
+  full bundle aggregate) serializes camelCase.
+- `lib/bundleUid.test.ts` (5) — format + parse + today.
+- `lib/bundleValidation.test.ts` (~25) — every per-field rule.
+- `lib/reorderHelpers.test.ts` (7) — drag-reorder splice math.
+
+#### Files added / touched
+
+New Rust: `src-tauri/src/bundle_zip.rs`, `src-tauri/src/bundles.rs`,
+`src-tauri/migrations/017_bundles.sql`. `sha2 = "0.10"` added to
+`Cargo.toml`. `lib.rs` wires the modules, registers ~20 new commands,
+appends the migration + smoke-test entry, and spawns the auto-purge
+launch hook next to the existing backup hook.
+
+New frontend: `src/data/bundles.ts`, `src/lib/bundleUid.ts`,
+`src/lib/bundleValidation.ts`, `src/lib/reorderHelpers.ts`,
+`src/views/Bundles/` (BundlesListView, BundleDraftView via the list,
+ContentBundleForm, PublishWizard, plus 7 shared components under
+`components/`), `src/views/Settings/BundlerSettings.tsx`. Sidebar +
+App.tsx + SettingsView.tsx route the new view.
+
+#### Known limitations
+
+- Custom and Fan Site bundle drafts can be created but the forms are
+  the next release's job.
+- The bundle output folder must be writable by Molly; no fallback
+  prompt yet if the override dir disappears.
+
 ## [1.8.2] — 2026-05-22
 
 ### Fixed — release pipeline (no app code changes)
