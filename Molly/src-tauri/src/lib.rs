@@ -139,6 +139,12 @@ pub fn run() {
             sql: include_str!("../migrations/020_background_jobs.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 21,
+            description: "keystore-stay-unlocked",
+            sql: include_str!("../migrations/021_keystore_stay_unlocked.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -170,10 +176,16 @@ pub fn run() {
                     eprintln!("[molly] launch bundle auto-purge failed: {err}");
                 }
             });
+            let handle_kc = app.handle().clone();
+            // Phase 10 follow-up: try to restore the unlocked session from
+            // the OS keychain if the user opted into "Stay unlocked across
+            // restarts." Synchronous, runs once, then we move on.
+            crypto::commands::try_restore_from_keychain(&handle_kc);
             let handle3 = app.handle().clone();
             // Phase 10 keystore idle-lock checker. Polls every 60s; clears
             // the cached DEK if it's been idle longer than IDLE_LOCK_SECONDS
-            // (8h default). Same fail-quietly contract.
+            // (8h default) AND stay_unlocked is OFF. Same fail-quietly
+            // contract.
             tauri::async_runtime::spawn(async move {
                 crypto::commands::idle_check_loop(handle3).await;
             });
@@ -238,6 +250,7 @@ pub fn run() {
             crypto::commands::init_keystore,
             crypto::commands::unlock_keystore,
             crypto::commands::lock_keystore,
+            crypto::commands::set_keystore_stay_unlocked,
             crypto::commands::change_passphrase,
             crypto::commands::encrypt_field,
             crypto::commands::decrypt_field,
@@ -557,6 +570,7 @@ mod camel_case_contract {
             unlocked: false,
             version: 1,
             unlocked_secs: None,
+            stay_unlocked: false,
         })
         .unwrap();
         assert_camel(&v, "KeystoreStatus");
@@ -727,6 +741,7 @@ mod migration_smoke {
             (18, "crypto-keystore",              include_str!("../migrations/018_crypto_keystore.sql")),
             (19, "site-credentials",             include_str!("../migrations/019_site_credentials.sql")),
             (20, "background-jobs",              include_str!("../migrations/020_background_jobs.sql")),
+            (21, "keystore-stay-unlocked",       include_str!("../migrations/021_keystore_stay_unlocked.sql")),
         ];
 
         for (v, name, sql) in migrations {

@@ -48,6 +48,12 @@ rand = "0.8"
 zeroize = { version = "1", features = ["derive"] }
 tiny-bip39 = "1"
 base64 = "0.22"
+# OS keychain for the "Stay unlocked across restarts" setting. Stores
+# the raw DEK in macOS Keychain / Windows Credential Manager / Linux
+# Secret Service. Only written when the user opts in; manual lock and
+# wipe always purge the entry. Apple-native + sync features off because
+# we want the entry local to this machine and accessible without iCloud.
+keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native"] }
 # tokio is already pulled in transitively by tauri; declared here as
 # a direct dep so we can `use tokio::time::sleep` in long-running
 # background tasks (e.g. crypto::commands::idle_check_loop) and
