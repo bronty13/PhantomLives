@@ -19,10 +19,17 @@ interface Props {
   fontFamily?: string | null;
   /** Optional paper colour for the editor card background. */
   paperColor?: string | null;
+  /** When set (from a Find hit), scroll the editor to the first DOM
+   *  node containing this snippet and wrap it in a fading yellow
+   *  highlight for 1.5s. Reapplies whenever the value changes. */
+  highlightSnippet?: string | null;
 }
 
-export function NoteEditor({ initialHtml, noteKey, onChange, fontFamily, paperColor }: Props) {
+export function NoteEditor({
+  initialHtml, noteKey, onChange, fontFamily, paperColor, highlightSnippet,
+}: Props) {
   const lastKey = useRef<string | number>(noteKey);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
@@ -45,6 +52,58 @@ export function NoteEditor({ initialHtml, noteKey, onChange, fontFamily, paperCo
       },
     },
   });
+
+  // Highlight after content has been swapped. Run on a small delay so
+  // setContent (which the noteKey-change effect calls) gets a chance
+  // to land in the DOM before we walk it for the match.
+  useEffect(() => {
+    if (!highlightSnippet || !containerRef.current) return;
+    const trimmed = highlightSnippet.replace(/^…|…$/g, '').trim();
+    if (!trimmed) return;
+    const needle = trimmed.split(/\s+/).reduce((a, b) => (b.length > a.length ? b : a), '');
+    if (needle.length < 2) return;
+    let fadeTimer = 0, unwrapTimer = 0;
+    const runTimer = window.setTimeout(() => {
+      const root = containerRef.current;
+      if (!root) return;
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+      let target: Text | null = null;
+      let offset = -1;
+      while (walker.nextNode()) {
+        const tn = walker.currentNode as Text;
+        const idx = tn.textContent?.toLowerCase().indexOf(needle.toLowerCase()) ?? -1;
+        if (idx >= 0) { target = tn; offset = idx; break; }
+      }
+      if (!target || offset < 0) return;
+      try {
+        const range = document.createRange();
+        range.setStart(target, offset);
+        range.setEnd(target, Math.min(offset + needle.length, target.textContent?.length ?? 0));
+        const mark = document.createElement('mark');
+        mark.style.background = '#fef08a';
+        mark.style.transition = 'background 1s ease-out';
+        mark.style.borderRadius = '3px';
+        mark.style.padding = '0 2px';
+        range.surroundContents(mark);
+        mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        fadeTimer = window.setTimeout(() => { mark.style.background = 'transparent'; }, 1200);
+        unwrapTimer = window.setTimeout(() => {
+          const parent = mark.parentNode;
+          if (!parent) return;
+          while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+          parent.removeChild(mark);
+          parent.normalize();
+        }, 2500);
+      } catch {
+        // surroundContents throws for cross-boundary ranges; silently skip.
+      }
+    }, 120);
+    return () => {
+      window.clearTimeout(runTimer);
+      if (fadeTimer) window.clearTimeout(fadeTimer);
+      if (unwrapTimer) window.clearTimeout(unwrapTimer);
+    };
+  }, [highlightSnippet, noteKey]);
 
   // External note swap: reset content so the editor doesn't carry
   // the previous note's body.
@@ -72,7 +131,7 @@ export function NoteEditor({ initialHtml, noteKey, onChange, fontFamily, paperCo
       }}
     >
       <Toolbar editor={editor} />
-      <div style={{ fontFamily: fontFamily ?? undefined }}>
+      <div ref={containerRef} style={{ fontFamily: fontFamily ?? undefined }}>
         <EditorContent editor={editor} />
       </div>
     </div>

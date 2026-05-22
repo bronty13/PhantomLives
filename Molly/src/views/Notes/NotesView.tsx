@@ -8,6 +8,7 @@ import {
 import { FolderTree, type FolderAction } from './FolderTree';
 import { NoteEditor } from './NoteEditor';
 import { NotesList, type NoteAction } from './NotesList';
+import { SearchPanel } from './SearchPanel';
 import { TagChips } from './TagChips';
 
 export function NotesView() {
@@ -19,6 +20,10 @@ export function NotesView() {
   const [selectedNoteId, setSelectedNoteId] = useState<number | null>(null);
   const [loadedNote, setLoadedNote] = useState<Note | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [highlightTarget, setHighlightTarget] = useState<string | null>(null);
+  // Counter bumped on every Find-result open so the same hit re-fires
+  // the highlight effect (keying off snippet alone would skip repeats).
+  const [highlightTick, setHighlightTick] = useState(0);
 
   // Autosave debounce (800ms after stop typing).
   const saveTimer = useRef<number | null>(null);
@@ -165,6 +170,20 @@ export function NotesView() {
     }
   }
 
+  // Open a Search or Find hit from the panel. For Find hits the
+  // snippet drives the editor's scroll-and-highlight; for Search the
+  // user just lands on the note plainly.
+  async function openHit(target: { noteId: number; lineNo?: number; snippet?: string }) {
+    await flushPending();
+    setSelectedNoteId(target.noteId);
+    if (target.snippet) {
+      setHighlightTarget(target.snippet);
+      setHighlightTick((t) => t + 1);
+    } else {
+      setHighlightTarget(null);
+    }
+  }
+
   async function onChangeNoteTags(next: number[]) {
     if (!loadedNote) return;
     setError(null);
@@ -209,10 +228,11 @@ export function NotesView() {
           <TagChips allTags={tags} selected={loadedNote.tagIds} onChange={onChangeNoteTags} />
         </div>
         <NoteEditor
-          noteKey={loadedNote.id}
+          noteKey={`${loadedNote.id}-${highlightTick}`}
           initialHtml={loadedNote.contentHtml}
           fontFamily={loadedNote.fontFamily}
           paperColor={loadedNote.paperColor}
+          highlightSnippet={highlightTarget}
           onChange={(html, text) => {
             pendingHtml.current = html;
             pendingText.current = text;
@@ -253,6 +273,7 @@ export function NotesView() {
             ＋ Note
           </button>
         </div>
+        <SearchPanel onOpenHit={openHit} />
         {error && (
           <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3">{error}</div>
         )}
