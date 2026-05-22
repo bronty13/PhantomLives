@@ -6,7 +6,7 @@ import {
   createNoteTag, deleteNoteTag, getNoteDefaults, listNoteTags,
   setNoteDefaults, updateNoteTag,
 } from '../../data/notes';
-import { FontPicker, PaperColorPicker } from '../Notes/StylePickers';
+import { FontPicker, FontSizePicker, PaperColorPicker, effectiveFontScale } from '../Notes/StylePickers';
 
 /** Settings → 📝 Notes pane. v1 focuses on tag CRUD; per-note style
  *  defaults (font + paper colour) come in commit 7 of the Phase 13
@@ -69,6 +69,13 @@ export function NotesSettings() {
               />
             </div>
             <div>
+              <label className="text-xs uppercase tracking-wider opacity-60 block mb-1">Default size</label>
+              <FontSizePicker
+                value={defaults.defaultFontSizeScale}
+                onChange={(s) => s != null && saveDefaults({ ...defaults, defaultFontSizeScale: s })}
+              />
+            </div>
+            <div>
               <label className="text-xs uppercase tracking-wider opacity-60 block mb-1">Default paper colour</label>
               <PaperColorPicker
                 value={defaults.defaultPaperColor}
@@ -78,10 +85,12 @@ export function NotesSettings() {
             <div className="flex-1 min-w-[200px]">
               <label className="text-xs uppercase tracking-wider opacity-60 block mb-1">Preview</label>
               <div
-                className="rounded-2xl border border-black/10 p-3 text-base"
+                className="rounded-2xl border border-black/10 p-3"
                 style={{
                   background: defaults.defaultPaperColor,
                   fontFamily: defaults.defaultFont,
+                  fontSize: `${effectiveFontScale(defaults.defaultFont, defaults.defaultFontSizeScale)}rem`,
+                  lineHeight: 1.6,
                 }}
               >
                 A new note will look like this 🌷

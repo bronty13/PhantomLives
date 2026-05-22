@@ -158,6 +158,12 @@ pub fn run() {
             sql: include_str!("../migrations/023_notes.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 24,
+            description: "note-font-size",
+            sql: include_str!("../migrations/024_note_font_size.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -759,7 +765,7 @@ mod camel_case_contract {
     fn note_summary_is_camel_case() {
         let v = serde_json::to_value(NoteSummary {
             id: 0, folder_id: None, title: String::new(),
-            paper_color: None, font_family: None,
+            paper_color: None, font_family: None, font_size_scale: None,
             updated_at: String::new(), last_edited_at: String::new(),
             tag_ids: vec![], attachment_count: 0,
         }).unwrap();
@@ -771,7 +777,7 @@ mod camel_case_contract {
         let v = serde_json::to_value(Note {
             id: 0, folder_id: None, title: String::new(),
             content_html: String::new(), content_text: String::new(),
-            paper_color: None, font_family: None,
+            paper_color: None, font_family: None, font_size_scale: None,
             created_at: String::new(), updated_at: String::new(),
             last_edited_at: String::new(), tag_ids: vec![],
         }).unwrap();
@@ -809,6 +815,7 @@ mod camel_case_contract {
     fn note_defaults_is_camel_case() {
         let v = serde_json::to_value(NoteDefaults {
             default_font: String::new(), default_paper_color: String::new(),
+            default_font_size_scale: 1.0,
         }).unwrap();
         assert_camel(&v, "NoteDefaults");
     }
@@ -859,6 +866,7 @@ mod migration_smoke {
             (21, "keystore-stay-unlocked",       include_str!("../migrations/021_keystore_stay_unlocked.sql")),
             (22, "job-run-log-path",             include_str!("../migrations/022_job_run_log_path.sql")),
             (23, "notes",                        include_str!("../migrations/023_notes.sql")),
+            (24, "note-font-size",               include_str!("../migrations/024_note_font_size.sql")),
         ];
 
         for (v, name, sql) in migrations {

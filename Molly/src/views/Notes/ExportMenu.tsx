@@ -2,10 +2,12 @@ import { useRef, useState } from 'react';
 import { save as saveDialog } from '@tauri-apps/plugin-dialog';
 import { downloadDir, join } from '@tauri-apps/api/path';
 import { invoke } from '@tauri-apps/api/core';
-import TurndownService from 'turndown';
-import htmlToDocx from 'html-to-docx';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas-pro';
+
+// html-to-docx / jspdf / html2canvas-pro / turndown are loaded lazily.
+// Eager imports of these heavy libraries were causing module-evaluation
+// crashes at app boot (some pull in Node-only or DOM-init code paths).
+// Dynamic import isolates any failure to the click that wants the
+// export, instead of nuking the whole React tree on mount.
 
 interface Props {
   noteTitle: string;
@@ -49,7 +51,7 @@ export function ExportMenu({ noteTitle, noteHtml, fontFamily, paperColor }: Prop
 
       let bytes: Uint8Array;
       if (fmt === 'md') {
-        bytes = new TextEncoder().encode(renderMarkdown(noteTitle, noteHtml));
+        bytes = new TextEncoder().encode(await renderMarkdown(noteTitle, noteHtml));
       } else if (fmt === 'docx') {
         bytes = await renderDocx(noteTitle, noteHtml, fontFamily);
       } else {
@@ -108,7 +110,8 @@ function ExportItem({ icon, label, onClick }: { icon: string; label: string; onC
 
 // ----- Format renderers ------------------------------------------------------
 
-function renderMarkdown(title: string, html: string): string {
+async function renderMarkdown(title: string, html: string): Promise<string> {
+  const { default: TurndownService } = await import('turndown');
   const td = new TurndownService({
     headingStyle: 'atx',
     codeBlockStyle: 'fenced',
@@ -124,6 +127,7 @@ function renderMarkdown(title: string, html: string): string {
 }
 
 async function renderDocx(title: string, html: string, fontFamily?: string | null): Promise<Uint8Array> {
+  const { default: htmlToDocx } = await import('html-to-docx');
   const wrapped = wrapForExport(title, html, fontFamily ?? null, null);
   const blob = await htmlToDocx(wrapped, undefined, {
     margins: { top: 1440, right: 1440, bottom: 1440, left: 1440 }, // 1in
@@ -137,6 +141,8 @@ async function renderDocx(title: string, html: string, fontFamily?: string | nul
 async function renderPdf(
   title: string, html: string, fontFamily: string | null | undefined, paperColor: string | null | undefined,
 ): Promise<Uint8Array> {
+  const { default: jsPDF } = await import('jspdf');
+  const { default: html2canvas } = await import('html2canvas-pro');
   // Build a hidden off-screen element with the print-shaped layout so
   // html2canvas can render it without affecting the live editor.
   const host = document.createElement('div');

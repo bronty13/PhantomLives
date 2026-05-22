@@ -20,6 +20,8 @@ interface Props {
   fontFamily?: string | null;
   /** Optional paper colour for the editor card background. */
   paperColor?: string | null;
+  /** Multiplier applied to the base editor font size. 1.0 is normal. */
+  fontScale?: number;
   /** When set (from a Find hit), scroll the editor to the first DOM
    *  node containing this snippet and wrap it in a fading yellow
    *  highlight for 1.5s. Reapplies whenever the value changes. */
@@ -28,6 +30,7 @@ interface Props {
 
 export function NoteEditor({
   initialHtml, noteKey, onChange, fontFamily, paperColor, highlightSnippet,
+  fontScale = 1,
 }: Props) {
   const lastKey = useRef<string | number>(noteKey);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -132,7 +135,16 @@ export function NoteEditor({
       }}
     >
       <Toolbar editor={editor} />
-      <div ref={containerRef} style={{ fontFamily: fontFamily ?? undefined }}>
+      <div
+        ref={containerRef}
+        style={{
+          fontFamily: fontFamily ?? undefined,
+          // 1rem (16px) is the editor's default; scale around that so
+          // FONT_BASE_SCALE * user-scale lands at a comfortable reading
+          // size for every bundled font.
+          fontSize: `${fontScale}rem`,
+        }}
+      >
         <EditorContent editor={editor} />
       </div>
     </div>

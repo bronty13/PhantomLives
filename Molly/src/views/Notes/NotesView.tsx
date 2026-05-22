@@ -14,7 +14,7 @@ import { FolderTree, type FolderAction } from './FolderTree';
 import { NoteEditor } from './NoteEditor';
 import { NotesList, type NoteAction } from './NotesList';
 import { SearchPanel } from './SearchPanel';
-import { FontPicker, PaperColorPicker } from './StylePickers';
+import { FontPicker, FontSizePicker, PaperColorPicker, effectiveFontScale } from './StylePickers';
 import { TagChips } from './TagChips';
 
 export function NotesView() {
@@ -22,7 +22,7 @@ export function NotesView() {
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
   const [notes, setNotes] = useState<NoteSummary[]>([]);
   const [tags, setTags] = useState<NoteTag[]>([]);
-  const [defaults, setDefaults] = useState<NoteDefaults>({ defaultFont: 'Paper Daisy', defaultPaperColor: '#fdfcf8' });
+  const [defaults, setDefaults] = useState<NoteDefaults>({ defaultFont: 'Paper Daisy', defaultPaperColor: '#fdfcf8', defaultFontSizeScale: 1.0 });
   const [tagFilter, setTagFilter] = useState<number[]>([]);
   const [selectedNoteId, setSelectedNoteId] = useState<number | null>(null);
   const [loadedNote, setLoadedNote] = useState<Note | null>(null);
@@ -220,14 +220,19 @@ export function NotesView() {
     }
   }
 
-  async function onChangeNoteStyle(font: string | null | undefined, color: string | null | undefined) {
+  async function onChangeNoteStyle(
+    font: string | null | undefined,
+    color: string | null | undefined,
+    sizeScale: number | null | undefined,
+  ) {
     if (!loadedNote) return;
     const nextFont = font === undefined ? loadedNote.fontFamily : font;
     const nextColor = color === undefined ? loadedNote.paperColor : color;
+    const nextSize = sizeScale === undefined ? loadedNote.fontSizeScale : sizeScale;
     setError(null);
     try {
-      await setNoteStyle(loadedNote.id, nextFont, nextColor);
-      setLoadedNote({ ...loadedNote, fontFamily: nextFont, paperColor: nextColor });
+      await setNoteStyle(loadedNote.id, nextFont, nextColor, nextSize);
+      setLoadedNote({ ...loadedNote, fontFamily: nextFont, paperColor: nextColor, fontSizeScale: nextSize });
       await reloadNotes();
     } catch (e) {
       setError(String((e as { message?: string })?.message ?? e));
@@ -264,13 +269,19 @@ export function NotesView() {
             <FontPicker
               value={loadedNote.fontFamily}
               defaultName={defaults.defaultFont}
-              onChange={(f) => onChangeNoteStyle(f, undefined)}
+              onChange={(f) => onChangeNoteStyle(f, undefined, undefined)}
+              compact
+            />
+            <FontSizePicker
+              value={loadedNote.fontSizeScale}
+              defaultValue={defaults.defaultFontSizeScale}
+              onChange={(s) => onChangeNoteStyle(undefined, undefined, s)}
               compact
             />
             <PaperColorPicker
               value={loadedNote.paperColor}
               defaultHex={defaults.defaultPaperColor}
-              onChange={(c) => onChangeNoteStyle(undefined, c)}
+              onChange={(c) => onChangeNoteStyle(undefined, c, undefined)}
               compact
             />
             <ExportMenu
@@ -292,6 +303,10 @@ export function NotesView() {
           initialHtml={loadedNote.contentHtml}
           fontFamily={loadedNote.fontFamily ?? defaults.defaultFont}
           paperColor={loadedNote.paperColor ?? defaults.defaultPaperColor}
+          fontScale={effectiveFontScale(
+            loadedNote.fontFamily ?? defaults.defaultFont,
+            loadedNote.fontSizeScale ?? defaults.defaultFontSizeScale,
+          )}
           highlightSnippet={highlightTarget}
           onChange={(html, text) => {
             pendingHtml.current = html;

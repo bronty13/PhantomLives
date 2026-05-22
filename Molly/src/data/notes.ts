@@ -17,6 +17,7 @@ export interface NoteSummary {
   title: string;
   paperColor: string | null;
   fontFamily: string | null;
+  fontSizeScale: number | null;
   updatedAt: string;
   lastEditedAt: string;
   tagIds: number[];
@@ -31,6 +32,7 @@ export interface Note {
   contentText: string;
   paperColor: string | null;
   fontFamily: string | null;
+  fontSizeScale: number | null;
   createdAt: string;
   updatedAt: string;
   lastEditedAt: string;
@@ -56,6 +58,7 @@ export interface FindHit {
 export interface NoteDefaults {
   defaultFont: string;
   defaultPaperColor: string;
+  defaultFontSizeScale: number;
 }
 
 // ----- folders ---------------------------------------------------------------
@@ -95,9 +98,12 @@ export async function updateNote(
   });
 }
 export async function setNoteStyle(
-  noteId: number, fontFamily: string | null, paperColor: string | null,
+  noteId: number,
+  fontFamily: string | null,
+  paperColor: string | null,
+  fontSizeScale: number | null,
 ): Promise<void> {
-  await invoke('set_note_style', { payload: { noteId, fontFamily, paperColor } });
+  await invoke('set_note_style', { payload: { noteId, fontFamily, paperColor, fontSizeScale } });
 }
 export async function moveNote(noteId: number, newFolderId: number | null): Promise<void> {
   await invoke('move_note', { noteId, newFolderId });

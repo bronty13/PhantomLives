@@ -53,6 +53,7 @@ pub struct NoteSummary {
     pub title: String,
     pub paper_color: Option<String>,
     pub font_family: Option<String>,
+    pub font_size_scale: Option<f64>,
     pub updated_at: String,
     pub last_edited_at: String,
     pub tag_ids: Vec<i64>,
@@ -69,6 +70,7 @@ pub struct Note {
     pub content_text: String,
     pub paper_color: Option<String>,
     pub font_family: Option<String>,
+    pub font_size_scale: Option<f64>,
     pub created_at: String,
     pub updated_at: String,
     pub last_edited_at: String,
@@ -228,24 +230,23 @@ pub(crate) fn pure_list_notes(
     folder_id: Option<i64>,
 ) -> Result<Vec<NoteSummary>, CryptoError> {
     let mut stmt = conn.prepare(
-        "SELECT id, folder_id, title, paper_color, font_family, updated_at, last_edited_at
+        "SELECT id, folder_id, title, paper_color, font_family, font_size_scale,
+                updated_at, last_edited_at
          FROM notes
          WHERE folder_id IS ?1
          ORDER BY last_edited_at DESC, id DESC",
     )?;
-    let raw: Vec<(i64, Option<i64>, String, Option<String>, Option<String>, String, String)> =
+    let raw: Vec<(i64, Option<i64>, String, Option<String>, Option<String>, Option<f64>, String, String)> =
         stmt.query_map(params![folder_id], |r| {
             Ok((
-                r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?,
+                r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?,
+                r.get(5)?, r.get(6)?, r.get(7)?,
             ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
-    // Fetch tag_ids + attachment_count per note in two cheap follow-up
-    // queries. For Sallie's volume the N+1 cost is fine; switch to a
-    // single GROUP_CONCAT if it ever becomes hot.
     let mut out = Vec::with_capacity(raw.len());
-    for (id, folder_id, title, paper_color, font_family, updated_at, last_edited_at) in raw {
+    for (id, folder_id, title, paper_color, font_family, font_size_scale, updated_at, last_edited_at) in raw {
         let tag_ids = pure_note_tag_ids(conn, id)?;
         let attachment_count: i64 = conn
             .query_row(
@@ -255,7 +256,7 @@ pub(crate) fn pure_list_notes(
             )
             .unwrap_or(0);
         out.push(NoteSummary {
-            id, folder_id, title, paper_color, font_family,
+            id, folder_id, title, paper_color, font_family, font_size_scale,
             updated_at, last_edited_at, tag_ids, attachment_count,
         });
     }
@@ -263,22 +264,22 @@ pub(crate) fn pure_list_notes(
 }
 
 pub(crate) fn pure_get_note(conn: &Connection, note_id: i64) -> Result<Note, CryptoError> {
-    let row: (i64, Option<i64>, String, String, String, Option<String>, Option<String>, String, String, String) =
+    let row: (i64, Option<i64>, String, String, String, Option<String>, Option<String>, Option<f64>, String, String, String) =
         conn.query_row(
             "SELECT id, folder_id, title, content_html, content_text, paper_color, font_family,
-                    created_at, updated_at, last_edited_at
+                    font_size_scale, created_at, updated_at, last_edited_at
              FROM notes WHERE id = ?1",
             params![note_id],
             |r| Ok((
                 r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?,
-                r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?,
+                r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?, r.get(10)?,
             )),
         )?;
     let tag_ids = pure_note_tag_ids(conn, note_id)?;
     Ok(Note {
         id: row.0, folder_id: row.1, title: row.2, content_html: row.3, content_text: row.4,
-        paper_color: row.5, font_family: row.6,
-        created_at: row.7, updated_at: row.8, last_edited_at: row.9, tag_ids,
+        paper_color: row.5, font_family: row.6, font_size_scale: row.7,
+        created_at: row.8, updated_at: row.9, last_edited_at: row.10, tag_ids,
     })
 }
 
@@ -317,11 +318,13 @@ pub(crate) fn pure_set_note_style(
     note_id: i64,
     font_family: Option<&str>,
     paper_color: Option<&str>,
+    font_size_scale: Option<f64>,
 ) -> Result<(), CryptoError> {
     conn.execute(
-        "UPDATE notes SET font_family = ?1, paper_color = ?2, updated_at = datetime('now')
-         WHERE id = ?3",
-        params![font_family, paper_color, note_id],
+        "UPDATE notes SET font_family = ?1, paper_color = ?2, font_size_scale = ?3,
+         updated_at = datetime('now')
+         WHERE id = ?4",
+        params![font_family, paper_color, font_size_scale, note_id],
     )?;
     Ok(())
 }
@@ -346,8 +349,9 @@ pub(crate) fn pure_delete_note(conn: &Connection, note_id: i64) -> Result<(), Cr
 pub(crate) fn pure_copy_note(conn: &Connection, note_id: i64) -> Result<i64, CryptoError> {
     let src = pure_get_note(conn, note_id)?;
     conn.execute(
-        "INSERT INTO notes (folder_id, title, content_html, content_text, paper_color, font_family)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT INTO notes (folder_id, title, content_html, content_text,
+                            paper_color, font_family, font_size_scale)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             src.folder_id,
             format!("{} (copy)", src.title),
@@ -355,6 +359,7 @@ pub(crate) fn pure_copy_note(conn: &Connection, note_id: i64) -> Result<i64, Cry
             src.content_text,
             src.paper_color,
             src.font_family,
+            src.font_size_scale,
         ],
     )?;
     let new_id = conn.last_insert_rowid();
@@ -503,6 +508,7 @@ pub(crate) fn pure_search_titles(
                 out.push(NoteSummary {
                     id: n.id, folder_id: n.folder_id, title: n.title,
                     paper_color: n.paper_color, font_family: n.font_family,
+                    font_size_scale: n.font_size_scale,
                     updated_at: n.updated_at.clone(),
                     last_edited_at: n.last_edited_at,
                     tag_ids: n.tag_ids,
@@ -531,6 +537,7 @@ pub(crate) fn pure_search_titles(
             out.push(NoteSummary {
                 id: n.id, folder_id: n.folder_id, title: n.title,
                 paper_color: n.paper_color, font_family: n.font_family,
+                font_size_scale: n.font_size_scale,
                 updated_at: n.updated_at.clone(), last_edited_at: n.last_edited_at,
                 tag_ids: n.tag_ids,
                 attachment_count: conn
@@ -635,6 +642,7 @@ fn snippet_around(line: &str, lowered_needle: &str, re: &Option<regex::Regex>) -
 pub struct NoteDefaults {
     pub default_font: String,
     pub default_paper_color: String,
+    pub default_font_size_scale: f64,
 }
 
 pub(crate) fn pure_load_defaults(conn: &Connection) -> Result<NoteDefaults, CryptoError> {
@@ -646,9 +654,11 @@ pub(crate) fn pure_load_defaults(conn: &Connection) -> Result<NoteDefaults, Cryp
         )
         .unwrap_or_else(|_| fallback.to_string())
     };
+    let scale: f64 = load("notes.defaultFontSizeScale", "1.0").parse().unwrap_or(1.0);
     Ok(NoteDefaults {
         default_font: load("notes.defaultFont", "Paper Daisy"),
         default_paper_color: load("notes.defaultPaperColor", "#fdfcf8"),
+        default_font_size_scale: scale,
     })
 }
 
@@ -665,6 +675,11 @@ pub(crate) fn pure_save_defaults(
         "INSERT INTO app_settings (key, value) VALUES ('notes.defaultPaperColor', ?1)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         params![defaults.default_paper_color],
+    )?;
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES ('notes.defaultFontSizeScale', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![format!("{}", defaults.default_font_size_scale)],
     )?;
     Ok(())
 }
@@ -759,6 +774,7 @@ pub struct NoteStylePayload {
     pub note_id: i64,
     pub font_family: Option<String>,
     pub paper_color: Option<String>,
+    pub font_size_scale: Option<f64>,
 }
 
 #[tauri::command]
@@ -771,6 +787,7 @@ pub fn set_note_style<R: Runtime>(
         payload.note_id,
         payload.font_family.as_deref(),
         payload.paper_color.as_deref(),
+        payload.font_size_scale,
     )
 }
 
@@ -1107,6 +1124,7 @@ mod tests {
             include_str!("../migrations/021_keystore_stay_unlocked.sql"),
             include_str!("../migrations/022_job_run_log_path.sql"),
             include_str!("../migrations/023_notes.sql"),
+            include_str!("../migrations/024_note_font_size.sql"),
         ] {
             conn.execute_batch(sql).unwrap();
         }
@@ -1261,24 +1279,28 @@ mod tests {
         pure_save_defaults(&conn, &NoteDefaults {
             default_font: "Caveat".into(),
             default_paper_color: "#ffe4ec".into(),
+            default_font_size_scale: 1.25,
         }).unwrap();
         let d = pure_load_defaults(&conn).unwrap();
         assert_eq!(d.default_font, "Caveat");
         assert_eq!(d.default_paper_color, "#ffe4ec");
+        assert!((d.default_font_size_scale - 1.25).abs() < 1e-9);
     }
 
     #[test]
     fn per_note_style_overrides_persist() {
         let conn = fresh_db();
         let id = pure_create_note(&conn, None, "Pink note").unwrap();
-        pure_set_note_style(&conn, id, Some("Indie Flower"), Some("#ffe4ec")).unwrap();
+        pure_set_note_style(&conn, id, Some("Indie Flower"), Some("#ffe4ec"), Some(1.35)).unwrap();
         let n = pure_get_note(&conn, id).unwrap();
         assert_eq!(n.font_family.as_deref(), Some("Indie Flower"));
         assert_eq!(n.paper_color.as_deref(), Some("#ffe4ec"));
+        assert_eq!(n.font_size_scale, Some(1.35));
         // Setting back to NULL is "use defaults."
-        pure_set_note_style(&conn, id, None, None).unwrap();
+        pure_set_note_style(&conn, id, None, None, None).unwrap();
         let n = pure_get_note(&conn, id).unwrap();
         assert!(n.font_family.is_none());
         assert!(n.paper_color.is_none());
+        assert!(n.font_size_scale.is_none());
     }
 }

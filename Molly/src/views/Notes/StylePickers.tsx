@@ -17,6 +17,42 @@ export const NOTE_FONTS: { name: string; label: string }[] = [
   { name: 'Quicksand',             label: 'Quicksand' },
 ];
 
+/** Per-font visual-baseline scale. Handwritten fonts (especially the
+ *  condensed ones) read smaller than a sans-serif at the same point
+ *  size; multiply the editor's font-size by this when that font is
+ *  active so they all look comfortable side-by-side. Tuned by eye —
+ *  feel free to tweak. */
+export const FONT_BASE_SCALE: Record<string, number> = {
+  'Paper Daisy':         1.30, // condensed handwritten — reads small
+  'Caveat':              1.10,
+  'Patrick Hand':        1.00,
+  'Indie Flower':        1.05,
+  'Shadows Into Light':  1.10,
+  'Architects Daughter': 1.00,
+  'Kalam':               1.00,
+  'Sacramento':          1.45, // very thin script
+  'Amatic SC':           1.55, // tall thin caps — reads tiny otherwise
+  'Comfortaa':           1.00,
+  'Quicksand':           1.00,
+};
+
+/** Five-step user-pickable size multiplier on top of FONT_BASE_SCALE. */
+export const FONT_SIZE_STEPS: { value: number; label: string; emoji: string }[] = [
+  { value: 0.80, label: 'Small',       emoji: '🐭' },
+  { value: 0.95, label: 'Cozy',        emoji: '🌷' },
+  { value: 1.00, label: 'Normal',      emoji: '✨' },
+  { value: 1.20, label: 'Large',       emoji: '🌸' },
+  { value: 1.45, label: 'Bigger',      emoji: '🌼' },
+  { value: 1.75, label: 'Huge',        emoji: '🌻' },
+];
+
+/** Effective size multiplier given font + user scale. */
+export function effectiveFontScale(font: string | undefined | null, userScale: number | undefined | null): number {
+  const base = font ? (FONT_BASE_SCALE[font] ?? 1.0) : 1.0;
+  const user = userScale ?? 1.0;
+  return base * user;
+}
+
 /** Soft Apple-Notes / sticky-note palette. Names from the original
  *  Phase 13 plan. Custom hex is added inline by the picker as needed. */
 export const PAPER_COLORS: { name: string; hex: string }[] = [
@@ -92,6 +128,73 @@ export function FontPicker({ value, defaultName, onChange, compact = false }: Fo
               <span className="opacity-50 text-[10px] font-mono w-4">{f.name === value ? '✓' : ''}</span>
               <span className="flex-1">{f.label}</span>
               <span className="opacity-50 text-[10px]">Aa Aa</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface FontSizePickerProps {
+  /** Selected scale, or null = use default. */
+  value: number | null;
+  defaultValue?: number;
+  onChange: (next: number | null) => void;
+  compact?: boolean;
+}
+
+export function FontSizePicker({ value, defaultValue, onChange, compact = false }: FontSizePickerProps) {
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onClick(e: MouseEvent) {
+      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+    }
+    window.addEventListener('mousedown', onClick);
+    return () => window.removeEventListener('mousedown', onClick);
+  }, [open]);
+
+  const effective = value ?? defaultValue ?? 1.0;
+  const matched = FONT_SIZE_STEPS.find((s) => Math.abs(s.value - effective) < 0.02);
+  const labelText = matched ? matched.label : `${(effective * 100).toFixed(0)}%`;
+  return (
+    <div ref={wrap} className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={compact ? 'pretty-button secondary text-xs' : 'pretty-button secondary text-sm'}
+        title="Font size"
+      >
+        🔡 {labelText}{value == null && defaultValue ? ' (default)' : ''}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-30 rounded-2xl bg-white shadow-lg border border-black/10 py-1 min-w-[180px]">
+          {defaultValue != null && (
+            <>
+              <button
+                type="button"
+                onClick={() => { onChange(null); setOpen(false); }}
+                className="w-full text-left text-xs px-3 py-1.5 hover:bg-black/5 italic opacity-70"
+              >
+                ↩ Use default ({(defaultValue * 100).toFixed(0)}%)
+              </button>
+              <div className="border-t border-black/5" />
+            </>
+          )}
+          {FONT_SIZE_STEPS.map((s) => (
+            <button
+              key={s.value}
+              type="button"
+              onClick={() => { onChange(s.value); setOpen(false); }}
+              className="w-full text-left text-xs px-3 py-1.5 hover:bg-black/5 flex items-center gap-2"
+            >
+              <span className="opacity-50 font-mono w-4">{value != null && Math.abs(s.value - value) < 0.02 ? '✓' : ''}</span>
+              <span>{s.emoji}</span>
+              <span className="flex-1">{s.label}</span>
+              <span className="opacity-50 font-mono text-[10px]">{(s.value * 100).toFixed(0)}%</span>
             </button>
           ))}
         </div>
