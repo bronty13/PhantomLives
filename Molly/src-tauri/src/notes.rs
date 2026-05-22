@@ -3,12 +3,14 @@
 // the `#[tauri::command]` wrappers open the DB, resolve app_data, and
 // delegate. Mirrors the pattern in bundles.rs / site_credentials.rs.
 
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Runtime};
+use uuid::Uuid;
 
 use crate::crypto::CryptoError;
 
@@ -861,6 +863,192 @@ pub fn set_note_defaults<R: Runtime>(
     defaults: NoteDefaults,
 ) -> Result<(), CryptoError> {
     pure_save_defaults(&open_conn(&app_data_dir(&handle)?)?, &defaults)
+}
+
+// ----- Attachments -----------------------------------------------------------
+
+fn note_attachments_dir(app_data: &Path, note_id: i64) -> PathBuf {
+    app_data.join("note_attachments").join(note_id.to_string())
+}
+
+fn sanitize_basename(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '\0' | '?' | '*' | '"' | '<' | '>' | '|' => '_',
+            _ => c,
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub fn save_note_attachment<R: Runtime>(
+    handle: AppHandle<R>,
+    note_id: i64,
+    src_path: String,
+) -> Result<NoteAttachment, CryptoError> {
+    let app_data = app_data_dir(&handle)?;
+    let src = Path::new(&src_path);
+    if !src.is_file() {
+        return Err(CryptoError::Internal(format!("not a file: {src_path}")));
+    }
+    let original = src
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "attachment".into());
+    let safe = sanitize_basename(&original);
+    let uuid = Uuid::new_v4().simple().to_string();
+    let stored = format!("{uuid}_{safe}");
+    let target_dir = note_attachments_dir(&app_data, note_id);
+    fs::create_dir_all(&target_dir).map_err(|e| CryptoError::Internal(format!("mkdir: {e}")))?;
+    let target = target_dir.join(&stored);
+    fs::copy(src, &target).map_err(|e| CryptoError::Internal(format!("copy: {e}")))?;
+    let meta = fs::metadata(&target).map_err(|e| CryptoError::Internal(format!("stat: {e}")))?;
+    let mime = guess_mime(&original);
+
+    let conn = open_conn(&app_data)?;
+    conn.execute(
+        "INSERT INTO note_attachments (note_id, filename, original_name, mime, size_bytes)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![note_id, stored, original, mime, meta.len() as i64],
+    )?;
+    let new_id = conn.last_insert_rowid();
+    let row: NoteAttachment = conn.query_row(
+        "SELECT id, note_id, filename, original_name, mime, size_bytes, created_at
+         FROM note_attachments WHERE id = ?1",
+        params![new_id],
+        |r| Ok(NoteAttachment {
+            id: r.get(0)?, note_id: r.get(1)?, filename: r.get(2)?, original_name: r.get(3)?,
+            mime: r.get(4)?, size_bytes: r.get(5)?, created_at: r.get(6)?,
+        }),
+    )?;
+    // Touch the parent note so the middle pane shows the updated paper-clip count.
+    conn.execute("UPDATE notes SET updated_at = datetime('now') WHERE id = ?1", params![note_id])?;
+    Ok(row)
+}
+
+#[tauri::command]
+pub fn list_note_attachments<R: Runtime>(
+    handle: AppHandle<R>,
+    note_id: i64,
+) -> Result<Vec<NoteAttachment>, CryptoError> {
+    let conn = open_conn(&app_data_dir(&handle)?)?;
+    let mut stmt = conn.prepare(
+        "SELECT id, note_id, filename, original_name, mime, size_bytes, created_at
+         FROM note_attachments WHERE note_id = ?1 ORDER BY id ASC",
+    )?;
+    let rows = stmt
+        .query_map(params![note_id], |r| Ok(NoteAttachment {
+            id: r.get(0)?, note_id: r.get(1)?, filename: r.get(2)?, original_name: r.get(3)?,
+            mime: r.get(4)?, size_bytes: r.get(5)?, created_at: r.get(6)?,
+        }))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+#[tauri::command]
+pub fn delete_note_attachment<R: Runtime>(
+    handle: AppHandle<R>,
+    attachment_id: i64,
+) -> Result<(), CryptoError> {
+    let app_data = app_data_dir(&handle)?;
+    let conn = open_conn(&app_data)?;
+    let row: Option<(i64, String)> = conn
+        .query_row(
+            "SELECT note_id, filename FROM note_attachments WHERE id = ?1",
+            params![attachment_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .ok();
+    if let Some((note_id, filename)) = row {
+        let p = note_attachments_dir(&app_data, note_id).join(&filename);
+        let _ = fs::remove_file(&p);
+        conn.execute(
+            "DELETE FROM note_attachments WHERE id = ?1",
+            params![attachment_id],
+        )?;
+        conn.execute("UPDATE notes SET updated_at = datetime('now') WHERE id = ?1", params![note_id])?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn open_note_attachment<R: Runtime>(
+    handle: AppHandle<R>,
+    attachment_id: i64,
+) -> Result<(), CryptoError> {
+    let path = resolve_attachment_path(&handle, attachment_id)?;
+    #[cfg(target_os = "macos")]
+    { std::process::Command::new("open").arg(&path).spawn()
+        .map_err(|e| CryptoError::Internal(format!("open: {e}")))?; }
+    #[cfg(target_os = "windows")]
+    { std::process::Command::new("cmd").args(["/C", "start", "", &path.to_string_lossy()]).spawn()
+        .map_err(|e| CryptoError::Internal(format!("start: {e}")))?; }
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    { std::process::Command::new("xdg-open").arg(&path).spawn()
+        .map_err(|e| CryptoError::Internal(format!("xdg-open: {e}")))?; }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn download_note_attachment<R: Runtime>(
+    handle: AppHandle<R>,
+    attachment_id: i64,
+    dest_path: String,
+) -> Result<(), CryptoError> {
+    let src = resolve_attachment_path(&handle, attachment_id)?;
+    let dst = Path::new(&dest_path);
+    if let Some(parent) = dst.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    fs::copy(&src, dst).map_err(|e| CryptoError::Internal(format!("copy: {e}")))?;
+    Ok(())
+}
+
+fn resolve_attachment_path<R: Runtime>(
+    handle: &AppHandle<R>,
+    attachment_id: i64,
+) -> Result<PathBuf, CryptoError> {
+    let app_data = app_data_dir(handle)?;
+    let conn = open_conn(&app_data)?;
+    let (note_id, filename): (i64, String) = conn.query_row(
+        "SELECT note_id, filename FROM note_attachments WHERE id = ?1",
+        params![attachment_id],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    let p = note_attachments_dir(&app_data, note_id).join(filename);
+    if !p.is_file() {
+        return Err(CryptoError::Internal(format!(
+            "attachment file missing at {}",
+            p.display()
+        )));
+    }
+    Ok(p)
+}
+
+fn guess_mime(name: &str) -> String {
+    let ext = Path::new(name)
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "heic" => "image/heic",
+        "pdf" => "application/pdf",
+        "txt" | "md" => "text/plain",
+        "html" | "htm" => "text/html",
+        "json" => "application/json",
+        "csv" => "text/csv",
+        "zip" => "application/zip",
+        "mp4" | "m4v" => "video/mp4",
+        "mov" => "video/quicktime",
+        "mp3" => "audio/mpeg",
+        "wav" => "audio/wav",
+        _ => "application/octet-stream",
+    }.into()
 }
 
 // ----- Tests -----------------------------------------------------------------

@@ -136,6 +136,34 @@ export async function findInNotes(query: string, regex: boolean): Promise<FindHi
   return invoke<FindHit[]>('find_in_notes', { query, regex });
 }
 
+// ----- attachments -----------------------------------------------------------
+
+export interface NoteAttachment {
+  id: number;
+  noteId: number;
+  filename: string;
+  originalName: string;
+  mime: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+export async function saveNoteAttachment(noteId: number, srcPath: string): Promise<NoteAttachment> {
+  return invoke<NoteAttachment>('save_note_attachment', { noteId, srcPath });
+}
+export async function listNoteAttachments(noteId: number): Promise<NoteAttachment[]> {
+  return invoke<NoteAttachment[]>('list_note_attachments', { noteId });
+}
+export async function deleteNoteAttachment(attachmentId: number): Promise<void> {
+  await invoke('delete_note_attachment', { attachmentId });
+}
+export async function openNoteAttachment(attachmentId: number): Promise<void> {
+  await invoke('open_note_attachment', { attachmentId });
+}
+export async function downloadNoteAttachment(attachmentId: number, destPath: string): Promise<void> {
+  await invoke('download_note_attachment', { attachmentId, destPath });
+}
+
 // ----- defaults --------------------------------------------------------------
 
 export async function getNoteDefaults(): Promise<NoteDefaults> {

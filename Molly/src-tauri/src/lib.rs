@@ -316,6 +316,11 @@ pub fn run() {
             notes::find_in_notes,
             notes::get_note_defaults,
             notes::set_note_defaults,
+            notes::save_note_attachment,
+            notes::list_note_attachments,
+            notes::delete_note_attachment,
+            notes::open_note_attachment,
+            notes::download_note_attachment,
         ])
         .run(tauri::generate_context!())
         .expect("error while running molly");

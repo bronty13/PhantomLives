@@ -7,6 +7,7 @@ import {
 } from '../../data/notes';
 import { ConfirmModal } from '../../components/ConfirmModal';
 import { NamePromptModal } from '../../components/NamePromptModal';
+import { AttachmentsBar } from './AttachmentsBar';
 import { FolderPickerModal } from './FolderPickerModal';
 import { FolderTree, type FolderAction } from './FolderTree';
 import { NoteEditor } from './NoteEditor';
@@ -244,6 +245,7 @@ export function NotesView() {
             scheduleSave();
           }}
         />
+        <AttachmentsBar noteId={loadedNote.id} onChanged={reloadNotes} />
       </div>
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
