@@ -33,7 +33,16 @@ export function GoLiveDatePicker({ value, onChange, disabled, defaultValue }: Pr
         className="pretty-input w-full"
         min={min}
         value={value ?? ''}
-        onChange={(e) => onChange(e.target.value || null)}
+        onChange={(e) => {
+          // WKWebView's native date popover doesn't reliably close after
+          // a controlled-value React onChange round-trip (the async commit
+          // + reload retains focus on the input, keeping the picker open
+          // even after Sallie has picked a date). Explicit blur dismisses
+          // the popover immediately.
+          const target = e.currentTarget;
+          onChange(target.value || null);
+          target.blur();
+        }}
         disabled={disabled}
       />
       {issue && (
