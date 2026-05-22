@@ -142,14 +142,45 @@ jobs:
         run: |
           set -e
           BUNDLE=src-tauri/target/release/bundle/macos
+          DMG_BUNDLE=src-tauri/target/release/bundle/dmg
           if [ ! -d "$BUNDLE/Molly.app" ]; then
             echo "$BUNDLE/Molly.app not found"
             ls -la "$BUNDLE" || true
             exit 1
           fi
+          # Strip stray xattrs (resource forks / Finder info) before
+          # signing — even on hosted runners these can be left behind
+          # by the bundler and they make codesign abort with "resource
+          # fork, Finder information, or similar detritus not allowed."
+          xattr -cr "$BUNDLE/Molly.app"
+          # Deep ad-hoc sign so Gatekeeper recognises the bundle's
+          # CodeDirectory + sealed resources. Without this, the bundle
+          # is only linker-signed and macOS Sonoma+ rejects downloaded
+          # copies with "Molly is damaged and can't be opened" — even
+          # right-click → Open won't bypass it. Ad-hoc signing makes
+          # it an "unidentified developer" prompt instead, which is
+          # the documented right-click → Open path.
+          # Don't add --options runtime — hardened runtime requires a
+          # real Developer ID cert; for ad-hoc the option is silently
+          # dropped on signing but blocks `codesign --verify` later.
+          codesign --force --deep --sign - "$BUNDLE/Molly.app"
+          codesign --verify --deep --strict --verbose=2 "$BUNDLE/Molly.app"
+          # Re-bundle the now-signed .app into a fresh DMG so the
+          # downloadable artifact carries the same signature. The DMG
+          # produced by `tauri build` was made before we re-signed.
+          if [ -d "$DMG_BUNDLE" ]; then
+            DMG=$(ls "$DMG_BUNDLE"/*.dmg 2>/dev/null | head -n1)
+            if [ -n "$DMG" ]; then
+              rm -f "$DMG"
+              VERSION=$(node -p "require('./package.json').version")
+              NEW_DMG="$DMG_BUNDLE/Molly_${VERSION}_aarch64.dmg"
+              hdiutil create -volname "Molly" -srcfolder "$BUNDLE/Molly.app" -ov -format UDZO "$NEW_DMG"
+            fi
+          fi
           (cd "$BUNDLE" && tar czf "Molly_aarch64.app.tar.gz" "Molly.app")
           pnpm tauri signer sign "$BUNDLE/Molly_aarch64.app.tar.gz"
           ls -la "$BUNDLE"
+          ls -la "$DMG_BUNDLE" 2>/dev/null || true
 
       - name: Pack + sign windows updater bundle
         if: matrix.platform == 'windows-latest'
@@ -273,7 +304,7 @@ jobs:
               },
               "windows-x86_64": {
                 "signature": "${WIN_SIG}",
-                "url": "${BASE}/Molly_${VERSION}_x64-setup.exe"
+                "url": "${BASE}/Molly_${VERSION}_x64-setup.nsis.zip"
               }
             }
           }
@@ -288,3 +319,17 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           gh release upload "$TAG" latest.json --clobber
+
+      # Flip the draft to published. Required for the Tauri updater —
+      # `releases/latest/download/latest.json` only resolves against
+      # published releases, and `releases/download/<tag>/...` 404s for
+      # drafts even with a tag. Previously this was a manual step in
+      # the GitHub UI and v1.8.1 sat as a draft overnight, breaking
+      # Sallie's auto-updater.
+      - name: Publish release (flip draft → published)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release edit "$TAG" --draft=false
+          echo "Published $TAG"

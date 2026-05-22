@@ -4,6 +4,19 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.2] — 2026-05-22
+
+### Fixed — release pipeline (no app code changes)
+
+- **Auto-updater no longer breaks the morning after a release.** Until 1.8.2 the workflow created the GitHub release as a *draft* and required a manual UI publish; v1.8.1 sat as a draft overnight, which broke the updater because `releases/latest/download/latest.json` only resolves against published releases. The workflow now flips draft → published as its final step.
+- **Downloaded .dmg no longer reports "Molly is damaged and can't be opened" on macOS Sonoma+.** The Tauri bundler only linker-signs the app; macOS Sonoma+ Gatekeeper rejects linker-signed downloads outright even with right-click → Open. The mac build step now runs `codesign --force --deep --sign - --options runtime` against the bundle before packing the DMG + tarball, then rebuilds the DMG so the downloadable carries the same ad-hoc signature. Gatekeeper now treats it as "unidentified developer" — the documented right-click → Open path works again.
+- **Windows updater no longer fails signature verification.** The `latest.json` Windows entry pointed at `Molly_x.x.x_x64-setup.exe` while the minisign signature was generated against the `.nsis.zip`. URL now points at the `.nsis.zip` archive that was actually signed.
+
+### Known limitations (unchanged from 1.8.1)
+
+- DMG remains *unsigned in the Apple-Developer-ID sense* (and unnotarized). First-run on macOS will still show "unidentified developer" — right-click → Open works. If you still see "damaged," strip the quarantine bit: `xattr -dr com.apple.quarantine /Applications/Molly.app`. Real Developer ID + notarization is tracked separately.
+- `releases/latest/download/latest.json` is monorepo-shared: if another PhantomLives subproject releases after Molly, Molly's updater endpoint is briefly wrong until the next Molly release. Per-project stable updater URL is tracked separately.
+
 ## [1.8.1] — 2026-05-21
 
 ### Added
