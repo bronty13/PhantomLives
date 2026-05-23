@@ -2,7 +2,7 @@
 
 > A cute, pretty, girly desktop app for a content creator who works across multiple personas — clips, customers, schedules, money, promos, all in one warm little place. Runs on macOS and Windows.
 
-This is a single-user gift app, built for Sallie. 1.0.0 was the original gift release; the app has grown substantially since — customer expansion (kinks taxonomy, addresses, phones, VIP), per-customer history log + sales transactions, customer-sales → adhoc-income union, calendar reminders, money-input refactor, and a personal journal (📔 Molly's Log). See [CHANGELOG.md](CHANGELOG.md) for the full sweep.
+This is a single-user gift app, built for Sallie. 1.0.0 was the original gift release; the app has grown substantially since — including (as of v1.17.1) bundle previews with sample frames, holidays on the calendar, a global content-tag taxonomy with per-day FanSite tagging, a dedicated 🔴 Reddit ops hub (daily to-do · subreddit tracker · post log · captions · hours + reward milestones), and a dark-mode toggle. See [CHANGELOG.md](CHANGELOG.md) for the full sweep.
 
 ## What's in the app
 
@@ -10,18 +10,19 @@ This is a single-user gift app, built for Sallie. 1.0.0 was the original gift re
 |---|---|
 | 🏠 **Home** | A rotating cute saying + a dashboard: clips MTD, per-persona breakdown, reuse detection, recent imports, today's reminders. |
 | 📔 **Molly's Log** | Personal journal — timestamped notes to self with optional file attachments. Edit/delete any past entry. Past entries render in a handwritten font (Caveat). `grep` checkbox toggles regex search. |
-| 🔔 **Reminders** | Overdue / Today / Coming-up-7d with a satisfying check-off + 10-second undo. Schedules tab for the rules (no-cron wizard, six cadence kinds). Five reminders preloaded. |
-| 📅 **Calendar** | Month grid with persona-colored clip pills imported from MasterClipper. Click a pill for the clip detail + your own Tiptap notes. |
+| 🔔 **Reminders** | Overdue / Today / Coming-up-7d with a satisfying check-off + 10-second undo. Schedules tab for the rules (no-cron wizard, six cadence kinds). Three reminders preloaded. |
+| 📅 **Calendar** | Month grid with persona-colored clip pills imported from MasterClipper + 🎉 themed holiday pills (18 US defaults). Three opt-in overlays (per-persona, persisted): 🏷️ FanSite day tags · 🎬 Clip tags · 🔴 Reddit posts. Click a clip pill for the detail + your own Tiptap notes + a content-tag picker. |
 | 🎬 **Clips** | Searchable, sortable clip list. **📂 Import CSV** sucks in a MasterClipper export with persona-code mapping; idempotent on re-import. |
 | 🛍️ **C4S Store** | Read-only Clips4Sale catalog snapshot for both stores (CoC + PoA). ✨ Import C4S CSV auto-detects which store from the `Performers` field, then atomically replaces the snapshot with row-count verification. Dashboard with status breakdown, top categories, top keywords, pricing stats + a tiered cute "X days old" stale-data banner. Sortable, regex-searchable grid; full-page detail view; per-column visibility toggles in Settings. |
-| 🎁 **Bundles** | Compose delivery packages for Robert. Three flavors all live: **Content** (title + persona + text-or-audio description + 3+ drag-reorder categories + drag-reorder media + go-live date), **Custom** (delivery platform = site picker OR URL + recipient + price-or-handled-in-platform), **Fan Site** (whole month of posts on a calendar — click each day → short message + files). Publishes as a deterministic, SHA-256-hashed two-layer ZIP to `~/Downloads/Molly bundles/` ready to drop into Slack. Pre-publish wizard with audio playback + image thumbnails + click-to-jump validation checklist. Content publishes also auto-upsert a Clips row with status `Bundled`. |
+| 🎁 **Bundles** | Compose delivery packages for Robert. Three flavors all live: **Content** (title + persona + text-or-audio description + 3+ drag-reorder categories + drag-reorder media + go-live date + bundle-level content tags), **Custom** (delivery platform = site picker OR URL + recipient + price-or-handled-in-platform + bundle-level content tags), **Fan Site** (whole month of posts on a calendar — click each day → short message + files + per-day content tags). Publishes as a deterministic, SHA-256-hashed two-layer ZIP to `~/Downloads/Molly bundles/` ready to drop into Slack. Pre-publish wizard with **inline image/video previews + 5 sample frames per video** + click-to-jump validation checklist. Content publishes also auto-upsert a Clips row with status `Bundled` and mirror the bundle-level tags onto it. Content tags flow through to `info.md` + `Molly.log` inside the published ZIP. |
+| 🔴 **Reddit** | Daily ops hub with five sub-sections: ✅ Today (daily to-do, 11 quick-add chips, 5 color categories, auto-reset at midnight) · 📌 Subreddits (33 CoC subs seeded; star/category/verified/rotation/last-posted/notes; filter+sort; mark-posted flips rotation + writes to post log) · 📅 Post log (bucketed Future/Tomorrow/Today/Yesterday/Earlier; future-scheduled posts allowed; auto-completes from tracker) · 💬 Captions (copy-to-clipboard library with optional content-tag categories) · ⏱ Hours (clock-in/out, live HH:MM:SS, today/week/month totals, session log, 🎁 reward-milestone progress bars). |
 | 👯‍♀️ **Customers** | Auto-UID (`YYYY-MM-DD-#####`), persona binding, 5 email slots (primary picker), full mailing address (ISO country), 2 phones with mobile + primary flags, ⭐ VIP toggle, product/interest/kink chips, rich-text notes. |
 | 💅 **Molly Helper** | Per-persona grid of color-tinted site cards. **Open** launches the site, **Copy user** drops the username on your clipboard. |
 | 📣 **Promos** | Reddit / X / Instagram / TikTok promo tracker. Optional clip-link. Reports the per-platform count. |
 | 💖 **Income** | Adhoc one-offs, monthly site-income wizard grouped by persona, generic sales-report CSV importer with auto-detected date+amount columns. |
 | 🧾 **Expenses** | One-off + recurring (cadence-driven). Attachments (receipts), full or partial exclusion (`$30 of this $100 was personal`). |
 | 📊 **Reports** | MTD vs Prior MTD vs YTD income–expense–profit, per-persona site bars, Promos breakdown, **📄 Export CSV**. |
-| ⚙️ **Settings** | Personas, Sites, Platforms, Products, Interests, Kinks (~350 preloaded), C4S, Data export, Updates, Backup. |
+| ⚙️ **Settings** | Personas · 🎨 Appearance (light/dark/system) · Sites · Platforms · Products · Interests · Kinks (~350 preloaded) · C4S · 🎁 Bundler · 🏷️ Content tags · 📝 Notes · 🎉 Holidays (18 US defaults) · 🎁 Rewards (hour-goal milestones) · 🔐 Security · 🌀 ATW Repost · Data export · Updates · Backup. |
 | 💌 **Manual** | In-app user guide — `USER_MANUAL.md` rendered with a hand-rolled markdown parser, persona-tinted headings, right-rail table-of-contents that highlights as you scroll. |
 
 The persona switcher at the top right (CoC / PoA / Sa / ★ All) is a global filter — the whole UI recolors per persona via CSS custom properties.
@@ -30,7 +31,7 @@ The persona switcher at the top right (CoC / PoA / Sa / ★ All) is a global fil
 
 ### Sallie (Windows)
 
-See [INSTALL.md](INSTALL.md). Short version: download `Molly_1.0.0_x64-setup.exe` from the [Releases page](https://github.com/bronty13/PhantomLives/releases), double-click, click through. Done.
+See [INSTALL.md](INSTALL.md). Short version: download the latest `Molly_X.Y.Z_x64-setup.exe` from the [Releases page](https://github.com/bronty13/PhantomLives/releases), double-click, click through. Done.
 
 ### Robert (Mac dev)
 
@@ -40,7 +41,7 @@ cd Molly
 pnpm install
 pnpm tauri dev                                 # hot-reload dev
 ./build-app.sh                                  # build + install to /Applications/
-./run-tests.sh                                  # cargo (30) + vitest (75) = 105 tests as of 1.8.0
+./run-tests.sh                                  # cargo (214) + vitest (166) = 380 tests as of 1.17.1
 ```
 
 To cut a signed release: `git tag -a molly-vX.Y.Z -m "…" && git push origin molly-vX.Y.Z`. CI builds + signs both platforms, drops a draft GitHub release with `latest.json` for the auto-updater.
@@ -81,7 +82,7 @@ Molly/
 │   └── state/              React hooks (personas, theme)
 ├── src-tauri/              Rust backend
 │   ├── src/                backup.rs, attachments.rs, c4s.rs, export.rs, fsutil.rs, history.rs, log.rs, lib.rs
-│   ├── migrations/         16 SQL migrations (001 init → 016 c4s_clips)
+│   ├── migrations/         33 SQL migrations (001 init → 033 ui_theme)
 │   └── icons/              Generated icon set
 ├── install.sh              Mac: copy .app to /Applications + relaunch
 ├── build-app.sh            Mac: build + install + relaunch
@@ -124,6 +125,9 @@ Molly/
 | 1.12 | 🗝️ Site password manager (Phase 11) — site-credentials editor with primary + sub-credentials, last-rotated tracking, copy-to-clipboard, encrypted at rest via the Phase 10 keystore. |
 | 1.13 | 🌀 Background jobs + ATW Repost (Phase 12) — every-4h scheduler running Sallie's `atw-repost-bot` with encrypted creds, full run-history + log viewer, manual-run + pause. |
 | 1.14 | 📝 Notes (Phase 13) — Apple-Notes-style organiser: unlimited-depth folders, tags, WYSIWYG editor, attachments, regex find, MD/DOCX/PDF export, per-note fonts + paper colours + size. |
+| 1.15 | 🎁🎉🏷️ Phase 14 — Bundle previews (inline image/video + 5 sample frames per video) · Holidays on the Calendar (18 US defaults, fixed + nth-weekday, two-color split-tone pills) · Content tags (global taxonomy on bundles, per-day FanSite tags, clip tags) · two Calendar overlay toggles (FanSite tags + Clip tags, per-persona). |
+| 1.16 | 🎁 Content-tag propagation — bundle-publish mirrors bundle-level tags onto the clip row; content tags flow into `info.md` + `Molly.log` inside the published ZIP. |
+| 1.17 | 🔴⏱🎨 Phase 15 — Reddit sidebar tab (Today / Subreddits / Post log / Captions / Hours) · 🎁 Reward milestones (global, multiple goals) · 🎨 Dark mode (light/dark/system) · 🌼 Licensed Paper Daisy font · removed unwanted "CoC/PoA content release" defaults · 3rd Calendar overlay for Reddit posts. **v1.17.1 hotfix** for migration-hash crash. |
 | ⏸ 8 | Per-site sales-report parsers (deferred — see [PHASE_8_PARSERS.md](PHASE_8_PARSERS.md)). |
 
 ## Built with love

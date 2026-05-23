@@ -50,11 +50,19 @@ Click a pill and the **whole app recolors** to match. It's not just decoration �
 The Settings page has tabs across the top. Nothing here requires Robert to change code — it's all yours to play with.
 
 - **👯‍♀️ Personas** — rename, redescribe, and recolor any of CoC / PoA / Sa. Five swatches per persona (primary, secondary, tint, accent, text); changing them recolors the whole app instantly. Want a different shade of pink? Try it. Don't like it? Click again.
+- **🎨 Appearance** — light / dark / system theme. Default is **light**; **dark** flips the page and cards darker while keeping your persona accents bright; **system** follows your Mac / Windows preference automatically and switches live when the OS does.
 - **💻 Sites** — add, edit, delete sites. Each one belongs to a persona, with a name, short code, URL, your username, an optional note, a color, and an optional "login group" (used for shared-login families like OnlyFans CoC ↔ PoA).
 - **📦 Products** — what your fans buy from you (Phone, Cam, Customs, Physical merch…). Each product carries a price + unit (e.g. *Customs at $5.00 / minute*, *Physical Panties at $25.00 / item*). Used for sales tracking and tagging on customer cards.
 - **🌷 Interests** — what your customers like (Feet, Pantyhose, Panties, Humiliation…). Multi-select tags on each customer.
 - **💕 Kinks** — what they're into. Ships with ~350 curated entries, each with a short definition. Rename, recolor, archive, or delete any of them — they're just regular taxonomy rows. The real magic happens on the customer card (see below).
 - **🛍️ C4S** — toggles for the C4S Store view (stale-data banner, which columns to show, import button, delete-all). See the C4S section below.
+- **🎁 Bundler** — output folder + aging / auto-purge thresholds + prohibited-word list for the Bundles wizard.
+- **🏷️ Content tags** — the master list of content tags (eight cute defaults: tits, pantyhose, panties, face, ass, feet, flats, heels). Add your own, rename + recolor the builtins.
+- **📝 Notes** — Notes app defaults (font + paper color + default font-size scale).
+- **🎉 Holidays** — manage which holidays show on the Calendar. Eighteen US extended defaults preloaded; add your own (Sallie's birthday, anniversaries, anything) with full color + emoji control.
+- **🎁 Rewards** — set up your hour-goal reward milestones (used by Reddit → Hours). Global, multiple goals, configurable any time.
+- **🔐 Security** — keystore passphrase + "stay unlocked across restarts" toggle.
+- **🌀 ATW Repost** — credentials + cadence + health check for the automated AllThingsWorn poster.
 - **📦 Data** — full-data export (covered below).
 - **⬇️ Updates** — check for and install new Molly versions.
 - **💾 Backup** — the safety net. *Important — read this section below.*
@@ -87,6 +95,57 @@ The timeline interleaves notes + sales together, newest first.
 **Filter the timeline** with the search box above the list — filters by note text, attachment filename, sale notes, and product name. Substring match by default; tick the **regex** checkbox for a real regular expression. Invalid regex shows a soft amber warning; valid filters show *"N of M"* + a Clear button while active.
 
 The list view filters by the active persona (top bar) and supports search across UID / username / real name / primary email — substring or regex (with the same checkbox). Click any customer to open the editor. Edits **auto-save** ~800ms after you stop typing — there's a "💾 Saving…" / "✏️ Unsaved — auto-saving…" / "✓ Saved" status next to the explicit **💾 Save now** button. The ← Back button also flushes any pending changes before closing. **Delete** is two-tap (click once, confirm within 3 seconds).
+
+---
+
+## 🔴 Reddit — your daily ops hub
+
+Click **🔴 Reddit** in the sidebar. This is your morning landing pad for actually *doing the work* — a little hub of five tabs along the top. Everything inside is filtered by the persona switcher at the top of the window.
+
+### ✅ Today
+
+A daily to-do list that resets at midnight (yesterday's tasks don't disappear — they just stop showing in today's view). Five color-coded categories: **Reddit · YouTube · Content · Admin · Other**.
+
+- **Quick-add chips** at the top — one tap for the 11 things you do every day ("Reddit posts — Curves", "Post YT Short", "Film batch session", "Check fan site queue", etc.).
+- Type your own at the bottom, pick a category, hit **+ Add**.
+- Each task has a big **✓ Done** button and a tiny **✕** to delete.
+- The hero shows live stats: **to-do · done · %** complete.
+- Completed tasks slide into a "Completed today" section at the bottom with the time you finished + an **undo** link if you marked it by mistake.
+
+### 📌 Subreddits
+
+A table of every subreddit you post to, **per persona**. Thirty-three CoC subs are pre-loaded as a starting set ("Curse of Curves" defaults pulled from your old ops hub). Each row shows:
+
+- **⭐** — tap to star your favourites (they sort to the top).
+- **r/name**, **Category** (a pretty colored chip, pulled from your Content tags taxonomy), **Verified?** checkbox, **Karma req** (e.g. "50+"), **Rotation** (Ready / Tomorrow / Resting), **Last posted**, **Notes**.
+- **✓** — mark posted today (flips rotation to "Resting" + stamps the date + writes a row to the Post log automatically).
+- **✎** — edit. **✕** — delete (post-log history survives).
+
+Filter by **search**, **category**, **rotation**. Sort by **starred + A-Z / Category / Last posted / Rotation**. Click **+ Add sub** to add a new one.
+
+### 📅 Post log
+
+Every subreddit post you've logged, **bucketed by relationship to today**: *Future · Tomorrow · Today · Yesterday · Earlier*. Use this to glance at coverage at a glance.
+
+To log a post: type the sub name (it auto-completes from your tracker), pick a **date** (defaults to today; you can pick any past or **future** date — scheduled posts render with dashed borders + italic until that day arrives), pick a category, add optional notes (caption used, link, anything), tap **+ Log**.
+
+If you typed a sub that exists in your tracker, Molly automatically flips it to "Resting" + stamps last-posted. If you typed something not in the tracker, it still gets logged free-form.
+
+### 💬 Captions
+
+Your reusable caption stash. Type one, optionally tag it with a content category, hit **+ Save**. Click any caption to **Copy** (the button briefly turns green to confirm). **Edit** to fix typos, **Delete** to remove. Filter by tag + search.
+
+Doesn't have to be that serious. ✨
+
+### ⏱ Hours + 🎁 Reward milestones
+
+The clock card at the top is the heart of this tab. **Log In** when you start working, **Log Out** when you stop. While you're logged in:
+
+- The HH:MM:SS counter is live (updates every second).
+- Three stat cards show **today / this week / this month** totals — auto-rolled across all sessions.
+- A **session log** below lists every past session (date · start → end · duration) with a tiny ✕ to delete one if you logged it by mistake.
+
+Below the stats: your **🎁 Reward milestones** — hour goals tied to rewards. Set them up in **Settings → 🎁 Rewards** (e.g. *100h → spa day*, *250h → weekend off*, *500h → new lens*). Each milestone shows a progress bar, the current hour total vs the goal, and turns green with a 🎉 when you hit it. Add as many as you want. Let the goals be goals.
 
 ---
 
@@ -298,7 +357,13 @@ What to fill in:
 
 ### Publishing
 
-When you're ready, click **🎁 Review & Publish…**. A wizard slides in from the right with every field rendered read-only — you can play the audio, scroll through image thumbnails, see categories in their final order. The **Pre-flight checks** section lists anything still missing; click any issue to jump straight to the field that needs love.
+When you're ready, click **🎁 Review & Publish…**. A wizard slides in from the right with every field rendered read-only — and as of v1.15.0 it actually **shows you every file before you approve**:
+
+- **Photos** render as big thumbs — click any one to fill the screen.
+- **Videos** play inline with a controls bar, plus a strip of **5 sample frames** Molly grabs automatically (just like MasterClipper does). Click a sample frame to enlarge it AND seek the player to that timestamp so you can re-watch the moment.
+- If your Mac has a weird codec the player can't decode, Molly tells you politely — your file is still saved in the bundle either way.
+
+The **Pre-flight checks** section lists anything still missing; click any issue to jump straight to the field that needs love. Below the files you'll see your **content tags** (more on those below) so you can confirm they look right before sending.
 
 When everything's green, click **✨ Approve & Publish**. Molly:
 
@@ -348,6 +413,21 @@ You can only **publish** when every day in the month has both a message and at l
 #### How FanSite files get named
 
 `FanSite/DD_NN_<original-name>` where `DD` is the calendar day (zero-padded) and `NN` is the within-day position. So day 1's first file becomes `FanSite/01_01_…`, day 15's second becomes `FanSite/15_02_…`. Order is preserved across the whole month for Robert.
+
+### 🏷️ Content tags on bundles
+
+Content + Custom bundles get a **tag picker** at the bottom of the form (next to the categories). Tap as many as you like — eight cute defaults are pre-loaded for you: **tits · pantyhose · panties · face · ass · feet · flats · heels**. Built-in tags can be renamed and recoloured (Settings → 🏷️ Content tags) but never deleted; any tag *you* add can be deleted any time.
+
+**FanSite is special:** because each day is its own little post, FanSite tags live **per day** instead of per bundle. Open any day in the FanSite calendar, and the picker is at the bottom of that day's panel. So you can mark *Monday = heels + tits*, *Tuesday = pantyhose*, and so on across the whole month.
+
+Tags travel with the bundle:
+
+- They appear under **🏷️ Content tags** in the published `info.md` Robert receives (per-day for FanSite under each day block).
+- When you publish a Content bundle, the tags **automatically copy onto the matching clip row** in Molly's Clips list, so future reports and searches see them.
+
+#### Tagging clips directly
+
+You can also tag clips that didn't come from a bundle (e.g. CSV-imported ones). Click any clip — from the **Clips** list or from a date on the **Calendar** — and the picker is right there in the detail panel. (Note: this only applies to your imported clip catalog. The read-only **C4S Store snapshot** doesn't take tags — it's a mirror of the live site.)
 
 ### Settings → 🎁 Bundler
 
@@ -418,6 +498,22 @@ Each note can be exported to **Markdown** (`.md`), **Word** (`.docx`), or **PDF*
 
 Click **Calendar**. The month grid shows every imported clip on its go-live date as a colored pill (one per persona), and every pending reminder on its due date as a 🔔 pill with a dashed border (color-matched to the schedule's persona, or neutral when the schedule isn't bound to one). Completed reminders drop off automatically. Click any clip pill to open its detail panel — read every imported field and write your own rich-text notes that survive future imports. Use **Prev** / **Next** / **Today** to move around.
 
+### 🎉 Holidays — pretty themed pills
+
+Above the calendar grid you'll always see **holidays** rendered as little themed pills — red+blue for July 4th, red+green for Christmas, orange+black for Halloween, soft pink for Valentine's, etc. Eighteen US extended defaults are pre-loaded for you (MLK Day, Memorial Day, Mother's Day, Thanksgiving, all the usuals) — and you can add your own in **Settings → 🎉 Holidays** (Sallie's birthday, anniversaries, anything).
+
+Each holiday has a name, emoji, primary + secondary + text color (the two-color ones render as diagonal split-tone pills), and you can hide any individual entry with the toggle. *"Reset US defaults"* restores any default you've edited, but **never** touches the ones you added yourself.
+
+### Overlay toggles
+
+Above the grid you'll find three little checkboxes — they let you layer extra context on top of clips + reminders, **remembered per persona** (so you can have one on for CoC and off for PoA):
+
+- **🏷️ FanSite day tags** — colored pills for the FanSite per-day tags you set on a published bundle.
+- **🎬 Clip tags** — dashed-outline pills (visually distinct from FanSite) for any clip tags whose clip falls on that go-live date.
+- **🔴 Reddit posts** — your subreddit post log (and scheduled future posts, shown italic + dashed). More on this in the Reddit section below.
+
+Click each on/off any time. They're cheap to render and don't change anything else.
+
 ---
 
 ## 🏠 Home dashboard
@@ -433,6 +529,18 @@ The Home page is your morning landing pad. Look at it once with coffee. 🌷
 The icons down the left side are the main feature areas. Click any one to jump there. Press **Ctrl+S** (Windows) or **⌘+S** (Mac) to hide / show the sidebar — great when you want more room for the C4S grid or the Customers list.
 
 The little saying under "Molly" at the top of the sidebar is **clickable** — click it to re-roll. 💕
+
+---
+
+## 🎨 Dark mode — for soft late nights
+
+Open **Settings → 🎨 Appearance** and pick one of:
+
+- **☀️ Light** — the default. Soft pink, cream, lavender — your normal Molly.
+- **🌙 Dark** — pages and cards go dark, persona accents stay bright. Easier on tired eyes.
+- **🖥️ System** — follow whatever your Mac (or Windows) is doing. When the OS flips at sunset, Molly flips with it. ✨
+
+Your choice is remembered between launches.
 
 ---
 
@@ -505,3 +613,7 @@ Molly was built **for you**. Every cute font, every soft color, every saying, ev
 You're doing the work — Molly's just trying to make it a little softer. 🌷
 
 Go make something pretty. ✨
+
+---
+
+*Manual last freshened for **v1.17.1** — bundle previews, holidays, content tags + per-day FanSite tags + clip tags, three Calendar overlays, the new 🔴 Reddit ops hub (Today · Subreddits · Post log · Captions · Hours), reward milestones, dark mode, and a properly licensed Paper Daisy font. 💕*

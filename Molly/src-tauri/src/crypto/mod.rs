@@ -13,4 +13,7 @@ pub mod mnemonic;
 pub mod wrap;
 
 pub use errors::CryptoError;
+// Dek + KeystoreStatus re-exported for outside callers (commands wrap them).
+// KeystoreState is used directly by `manage(KeystoreState::new_arc())` in lib.rs.
+#[allow(unused_imports)]
 pub use keystore::{Dek, KeystoreState, KeystoreStatus};

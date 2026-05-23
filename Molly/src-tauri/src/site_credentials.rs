@@ -57,6 +57,7 @@ pub struct SiteCredential {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct CredentialCreated {
     pub credential: SiteCredential,
 }

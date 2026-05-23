@@ -1,6 +1,6 @@
 # Molly — Roadmap & Ideas
 
-> A living brainstorm of where Molly could go next, captured at 2026-05-22 right after v1.8.1 shipped. Nothing on this page is a commitment — it's a curated menu so future-Robert (or future-Claude) has somewhere to start when Sallie says "what's next?"
+> A living brainstorm of where Molly could go next, last freshened 2026-05-23 after v1.17.1 shipped. Nothing on this page is a commitment — it's a curated menu so future-Robert (or future-Claude) has somewhere to start when Sallie says "what's next?"
 >
 > Things deliberately **not** pitched are documented in [`OUT_OF_SCOPE.md`](OUT_OF_SCOPE.md) (multi-user, cloud sync, web/mobile companion, code-signing certs, hardware integration, shareable accountant logins). Respect those defaults; only re-open if real evidence emerges.
 
@@ -15,43 +15,33 @@ If an idea graduates from this doc, it earns a proper `PHASE_N_*.md` plan (see `
 
 ---
 
-> **Update 2026-05-22:** Phase 9 shipped as the **🎁 Content Bundler** (v1.9.0–v1.10.0 — see CHANGELOG), not the Promo Scheduler. Bundler was an out-of-band ask that fit the same "biggest single feature" slot. Promo Scheduler remains the strongest standalone candidate below; renumber to Phase 10 if we pick it up next.
+## 🎉 Recently shipped (Phases 14 + 15)
 
-## 📣 Phase 10 candidate: Promo Scheduler (the explicit ask)
+Pulling these off the "what could we do" menu — they're real now. See `CHANGELOG.md` for the full details.
 
-The Promos tab today is a **tracker** — Sallie posts to Reddit/X/IG/TikTok manually, then comes back to Molly to log it. The natural next step is the inverse: **compose in Molly first, post out from Molly**. Closest reference apps in the niche are Postpone (Reddit), TweetDeck, Buffer, Hootsuite, Later — most refuse adult content via TOS, so there's room.
+- **v1.15.0 (Phase 14)** — Bundle previews on the Publish wizard · 🎉 Holidays on the Calendar (18 US defaults) · 🏷️ Content tags (global taxonomy) on bundles + clips · per-day FanSite tags · three Calendar overlay toggles (FanSite tags / Clip tags / Reddit posts, per-persona).
+- **v1.16.0** — Bundle-publish propagates tags onto the resulting clip row; content tags also flow into `info.md` + `Molly.log` inside the published ZIP.
+- **v1.17.0 (Phase 15)** — 🔴 **Reddit** sidebar tab with five sub-sections: ✅ Today (daily to-do, quick-add chips) · 📌 Subreddits (33-sub CoC seed, star + verify + rotation + last-posted, filter+sort) · 📅 Post log (past or future-scheduled, bucketed by day relationship) · 💬 Captions (copy-to-clipboard library) · ⏱ Hours (clock-in/out, today/week/month rollup) + 🎁 Reward milestones in Settings.
+- **v1.17.0 also** — 🎨 Dark mode (light / dark / system, OS-subscribed) + 🌼 licensed Paper Daisy font + dropped the unwanted weekly "CoC/PoA content release" default reminders.
+- **v1.17.1** — Hotfix for the migration-hash crash introduced in v1.17.0.
 
-Three honest paths:
+That cleared the **🎁 / 🎉 / 🏷️ / 🔴 / 🎨 / ⏱ / 🎁-Rewards / Daily-to-do / Per-day-FanSite-tags / Calendar-overlays / Subreddit-tracker / Caption-bank** asks from the menu. What's left below is genuinely still on the table.
 
-### A. Reminder-pattern scheduler  *(low risk, fastest to ship)*
-Sallie composes a promo, picks a date+time, hits **Schedule**. Molly creates an occurrence in the existing reminder engine. When the time fires, the reminder card has a **🚀 Post now** button — copies the body to her clipboard, opens the platform in the browser, then waits for her to tap **✓ Posted** to mark it complete.
+---
 
-- **Effort:** S–M
-- **What changes:** Promos schema gains `state: draft | scheduled | posted | archived` + `scheduled_for: timestamp`. Reuses the cadence engine, Reminders view, ConfirmButton. New calendar grid view of scheduled promos.
-- **Tradeoff:** posting stays manual — Molly nudges, but Sallie clicks "Post" on the actual platform.
+## 📣 Promo composer extensions (partially-shipped concept)
 
-### B. Composer + library scheduler  *(recommended sweet spot)*
-Everything in A, plus:
+The 🔴 Reddit hub (v1.17.0) already gives Sallie subreddit tracking, the post log (with future-scheduled posts), and a caption library. The original Phase-10 Promo-Scheduler menu still has a few items worth doing — they layer on top of what's there now:
 
-- **Platform-aware composer** — live character counter for X (280), title-length for Reddit, hashtag density warning for IG, etc.
-- **Hashtag library** per platform, with click-to-insert. Builds itself over time from successful past promos.
-- **Templates** — reusable shells with placeholders auto-filled from a chosen clip: `{clip_title}` `{price}` `{clip_url}`. E.g. *"every Monday — CoC clip drop template."*
-- **Thumbnail attachment** — pick an image, store inline as a SQLite BLOB. Same pattern as Molly's Log and Customer history attachments.
-- **Variants** — for casual A/B testing: 2–3 body variations per promo; Molly rotates which one is suggested at fire time.
-- **Re-promote helper** — a successful post can be cloned forward 30 / 60 / 90 days with a small variation in body.
-- **Performance tracking** — extend the Promos record with a `notes_after_post` field for "what worked / what didn't," eventually graphing per-platform hashtag/time success rates.
+| Idea | Effort | Flavor | Notes |
+|---|---|---|---|
+| **Platform-aware composer** for Captions | M | 🟢 | Live char counter for X (280), title-length for Reddit, hashtag-density warning for IG. Today Captions is just free text; this adds gentle guardrails when she's writing for a specific platform. |
+| **Templates with clip placeholders** | M | 🟢 | Reusable shells: `{clip_title}` `{price}` `{clip_url}`. *"Monday CoC clip drop"* style. Save once, reuse 30+ times. |
+| **Thumbnail attachment on a caption / post** | S | 🟡 | Pick an image, store inline. So the post log + caption bank can carry visual context too. |
+| **Re-promote helper** | S | 🟡 | "Schedule again in 30 / 60 / 90 days" button on a logged post. Drops a future-scheduled entry into the post log automatically. |
+| **Per-post performance notes** | S | 🟡 | A `notes_after_post` field + tiny per-subreddit success rollup (avg upvotes / comments / profile visits). |
 
-- **Effort:** M–L
-- **Why this one:** matches Molly's local-only / single-user / no-credentials philosophy and covers ~90% of what Postpone gives you, *without* the API-token security surface. Sallie still hits the platform's own Post button — but everything before that point happens inside Molly.
-
-### C. Full API scheduler
-Reddit OAuth + actual auto-publish via API. (X API is restrictive + paid; IG / TikTok / OnlyFans don't expose this for adult content at all.)
-
-- **Effort:** XL — credential storage, refresh tokens, rate limits, banned-subreddit handling, "what if my post auto-publishes while I'm asleep and Reddit removes it?" pain.
-- **Verdict:** **probably not worth it.** Diminishing returns vs B. Single user, no team need. Re-open if Reddit specifically starts paying back the integration cost.
-
-### Recommendation
-Ship **B** as **Phase 9**. The data model is a small evolution of the current Promos schema; the new screens are a composer + a calendar; the execution flow piggybacks on the existing reminder engine. This is the largest single-feature uplift on the roadmap.
+API-level auto-publish (Reddit OAuth, etc.) is **deferred** — moved to `OUT_OF_SCOPE.md`. Same TOS / banned-subreddit / sleep-publishing pain as before.
 
 ---
 
@@ -105,16 +95,16 @@ Surface the customer data Molly already has — it's been sitting in `customer_s
 
 ---
 
-## 🌷 Wellbeing (extending Molly's Log)
+## 🌷 Wellbeing (extending Molly's Log + Hours)
 
-Molly's Log is already the journal surface. These add light structure without making it feel like work.
+Hours tracking shipped in v1.17.0 (Reddit → ⏱ Hours). These layer cute structure on top of the journal + clock.
 
 | Idea | Effort | Flavor | Notes |
 |---|---|---|---|
-| **Mood tracker** | S | 🔵 | Soft 5-emoji scale on each log entry. Show a mood trend chart on Home. |
-| **Hours worked** | S | 🔵 | Quick timer per persona. Sunday rollup ("you worked 22 CoC hours + 18 PoA hours this week 🌷"). |
-| **Burnout warning** | S | 🔵 | *"You've worked 7 days in a row — maybe take a soft day? 🌸"* Gentle, dismissible. |
+| **Mood tracker** | S | 🔵 | Soft 5-emoji scale on each Molly's Log entry. Show a mood trend chart on Home. |
+| **Burnout warning** | S | 🔵 | *"You've worked 7 days in a row — maybe take a soft day? 🌸"* Reads from `clock_sessions`; gentle, dismissible. |
 | **Boundary log** | S | 🟢 | Private log of clients who pushed boundaries + what was said. Linked from the customer card. |
+| **Sunday wrap card on Home** | S | 🔵 | Per-persona hour totals for the week with a soft 💕 — "you worked 22 CoC hours + 18 PoA hours this week 🌷". Builds on `hours_totals` already returning week_ms. |
 
 ---
 
@@ -144,27 +134,25 @@ Unlocks per-clip ROI + per-platform commission tracking with real data.
 
 ---
 
-## 🛍️ Suggested slates
+## 🛍️ Suggested slates (post-v1.17.1 refresh)
 
-Three opinionated bundles to choose between. Treat as starting points, not boxes — mix and match.
+### 🌸 Next sweet spot — *high value, low risk* (~2 weeks)
+1. **Customer Intelligence** — LTV column + Whales dashboard + Cooling alerts (the data already exists in `customer_sales`).
+2. **Tax-time dashboard** — quarterly estimate + categorized export.
+3. **Re-promote helper + per-post performance notes** — small adds on the new Post log.
 
-### 🌸 Q2 sweet spot — *high value, low risk* (~3 weeks)
-1. **Promo Scheduler flavor B** — biggest single-feature uplift in this whole doc.
-2. **Customer Intelligence** — LTV column + Whales dashboard + Cooling alerts (the data already exists in `customer_sales`).
-3. **Tax-time dashboard** — quarterly estimate, categorized export.
-
-### 🌷 Ambitious next phase — *bigger build* (~6 weeks)
-1. Promo Scheduler + production planner together — *whole content pipeline from idea → promo*.
-2. **OnlyFans + IWC CSV importers** — close out Phase 8.
-3. **Per-clip ROI** using imports + production-cost field.
-4. **Per-platform commission rate tracking**.
+### 🌷 Ambitious next phase — *bigger build* (~5 weeks)
+1. **OnlyFans + IWC CSV importers** — finally close out Phase 8 (sample CSVs from Sallie are the blocker).
+2. **Per-clip ROI** using those imports + a `production_cost_cents` field.
+3. **Per-platform commission tracking**.
+4. **Production planner** — pipeline view (idea → scripted → shot → edited → uploaded) tying clips, bundles, and the Post log together.
 
 ### 🦋 Soft / personal touches — *scattered cute work* (~1 week)
-1. **Mood tracker + burnout warning** in Molly's Log.
+1. **Mood tracker + burnout warning** (now that Hours data exists, burnout warning is easy).
 2. **Birthday / anniversary reminders** on customers.
-3. **Seasonal saying packs**.
+3. **Seasonal saying packs** (autumn / spring / Sallie's-birthday).
 4. **Sound on check-off** + **custom persona emoji**.
-5. **Achievement badges**.
+5. **Achievement badges** in Molly's Log (first $100 day, first 100h logged, etc.).
 
 ---
 

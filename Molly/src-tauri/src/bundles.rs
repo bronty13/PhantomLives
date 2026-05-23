@@ -29,6 +29,7 @@ use crate::bundle_zip::{
 };
 use crate::fsutil;
 
+#[allow(dead_code)]
 const APP_NAME: &str = "Molly";
 const BUNDLE_FOLDER: &str = "Molly bundles";
 const SETTINGS_FILENAME: &str = "bundler-settings.json";

@@ -6,7 +6,7 @@
 // 264 bits = 24 words × 11 bits/word. This is the same shape Bitcoin
 // wallets use, so users may already be familiar with the format.
 
-use bip39::{Language, Mnemonic, MnemonicType, Seed as _Seed};
+use bip39::{Language, Mnemonic, MnemonicType};
 
 use super::errors::CryptoError;
 use super::keystore::Dek;
@@ -67,6 +67,9 @@ pub fn words_to_dek(words: &[String]) -> Result<Dek, CryptoError> {
 }
 
 /// Convenience: 24-word mnemonic given a length helper for the UI.
+/// Kept as a stable public-API anchor even though no caller wires it
+/// up yet — the Mnemonic Import dialog is the natural caller.
+#[allow(dead_code)]
 pub fn expected_word_count() -> usize {
     // Hard-coded but exposed via fn so the UI doesn't drift from us.
     let _ = MnemonicType::Words24; // sanity touch

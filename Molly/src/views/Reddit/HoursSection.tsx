@@ -10,6 +10,7 @@ import {
   type HoursTotals,
   type RewardMilestone,
 } from '../../data/hours';
+import { fmtClock, fmtHM } from '../../lib/hoursFmt';
 
 export function HoursSection() {
   const [totals, setTotals] = useState<HoursTotals | null>(null);
@@ -231,16 +232,5 @@ function StatCard({ n, label }: { n: string; label: string }) {
   );
 }
 
-function fmtClock(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sc = s % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sc).padStart(2, '0')}`;
-}
-
-function fmtHM(ms: number): string {
-  const m = Math.floor(ms / 60000);
-  const h = Math.floor(m / 60);
-  return h ? `${h}h ${m % 60}m` : `${m}m`;
-}
+// fmtClock + fmtHM extracted to src/lib/hoursFmt.ts (with vitest coverage)
+// so they can be tested without pulling React into the harness.
