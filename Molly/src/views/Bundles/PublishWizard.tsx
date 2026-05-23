@@ -11,6 +11,9 @@ import {
 } from '../../data/bundles';
 import { hasBlockingIssues, validateBundle, type ValidationIssue } from '../../lib/bundleValidation';
 import { ValidationChecklist } from './components/ValidationChecklist';
+import { BundleFilePreview } from './components/BundleFilePreview';
+import { listContentTags, type ContentTag } from '../../data/contentTags';
+import { ReadonlyTagPill } from './components/ContentTagPicker';
 
 type Stage = 'loading' | 'review' | 'composing' | 'done' | 'error';
 
@@ -23,6 +26,7 @@ interface Props {
 export function PublishWizard({ uid, onClose, onPublished }: Props) {
   const [stage, setStage] = useState<Stage>('loading');
   const [bundle, setBundle] = useState<Bundle | null>(null);
+  const [tags, setTags] = useState<ContentTag[]>([]);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [result, setResult] = useState<BundlePublishResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,9 +36,14 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
     let alive = true;
     (async () => {
       try {
-        const [b, pw] = await Promise.all([getBundle(uid), listProhibitedWords()]);
+        const [b, pw, t] = await Promise.all([
+          getBundle(uid),
+          listProhibitedWords(),
+          listContentTags(),
+        ]);
         if (!alive) return;
         setBundle(b);
+        setTags(t);
         setIssues(validateBundle(b, { today: new Date(), prohibitedWords: pw }));
         setStage('review');
       } catch (e) {
@@ -75,7 +84,7 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
 
   return (
     <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm flex items-stretch justify-end">
-      <div className="bg-white w-full max-w-2xl h-full overflow-y-auto shadow-2xl flex flex-col">
+      <div className="bg-white w-full max-w-3xl h-full overflow-y-auto shadow-2xl flex flex-col">
         <header className="p-6 border-b border-black/5 flex items-center justify-between sticky top-0 bg-white z-10">
           <div>
             <h2 className="display-font text-xl font-semibold">Review &amp; Publish</h2>
@@ -110,8 +119,8 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
             {bundle.summary.bundleType === 'content' && (
               <>
                 <ReviewSection title="Description">
-                  {bundle.descriptionMode === 'audio' && bundle.descriptionAudioRelpath ? (
-                    <audio controls className="w-full" src={convertFileSrc(bundle.descriptionAudioRelpath)} />
+                  {bundle.descriptionMode === 'audio' && bundle.descriptionAudioAbsolutePath ? (
+                    <audio controls className="w-full" src={convertFileSrc(bundle.descriptionAudioAbsolutePath)} />
                   ) : bundle.descriptionMode === 'text' ? (
                     <pre className="whitespace-pre-wrap text-sm bg-pink-50 rounded-xl p-3">{bundle.descriptionText || '(blank)'}</pre>
                   ) : (
@@ -156,12 +165,20 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
 
             {bundle.summary.bundleType === 'fansite' && (
               <ReviewSection title={`Days (${bundle.fanDays.length})`}>
-                <ul className="space-y-1 text-sm">
+                <ul className="space-y-1.5 text-sm">
                   {bundle.fanDays.slice().sort((a, b) => a.dayOfMonth - b.dayOfMonth).map((d) => (
-                    <li key={d.id} className="flex items-baseline gap-2">
+                    <li key={d.id} className="flex items-baseline gap-2 flex-wrap">
                       <span className="font-mono text-xs opacity-60 w-6 text-right">{String(d.dayOfMonth).padStart(2, '0')}</span>
                       <span className="truncate flex-1">{d.message || <em className="opacity-50">(no message)</em>}</span>
                       <span className="text-xs opacity-50 font-mono">{d.fileCount} file{d.fileCount === 1 ? '' : 's'}</span>
+                      {d.tagIds.length > 0 && (
+                        <span className="basis-full flex flex-wrap gap-1 pl-6">
+                          {d.tagIds
+                            .map((tid) => tags.find((t) => t.id === tid))
+                            .filter((t): t is ContentTag => !!t)
+                            .map((t) => <ReadonlyTagPill key={t.id} tag={t} />)}
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -170,19 +187,65 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
 
             {bundle.summary.bundleType !== 'fansite' && (
               <ReviewSection title={`Files (${bundle.files.filter((f) => f.fansiteDayId === null).length})`}>
-                <ul className="space-y-1">
+                <ul className="space-y-4">
                   {bundle.files.filter((f) => f.fansiteDayId === null).map((f, i) => (
-                    <li key={f.id} className="flex items-center gap-2 text-sm">
-                      <span className="font-mono text-xs opacity-60 w-6 text-right">{String(i + 1).padStart(5, '0')}</span>
-                      <span>{f.kind === 'video' ? '🎬' : '🖼️'}</span>
-                      {f.kind === 'image' ? (
-                        <img src={convertFileSrc(f.relpath)} alt="" className="w-12 h-12 object-cover rounded" />
-                      ) : null}
-                      <span className="truncate flex-1">{f.originalName}</span>
-                      <span className="text-xs opacity-50 font-mono">{f.sha256.slice(0, 8)}…</span>
+                    <li key={f.id} className="rounded-xl border border-black/5 bg-white/60 p-3 space-y-2">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="font-mono text-xs opacity-60 w-10 text-right">{String(i + 1).padStart(5, '0')}</span>
+                        <span aria-hidden>{f.kind === 'video' ? '🎬' : f.kind === 'image' ? '🖼️' : '🎙️'}</span>
+                        <span className="truncate flex-1 font-medium" title={f.originalName}>{f.originalName}</span>
+                        <span className="text-xs opacity-50 font-mono">{f.sha256.slice(0, 8)}…</span>
+                      </div>
+                      <BundleFilePreview file={f} />
                     </li>
                   ))}
                 </ul>
+              </ReviewSection>
+            )}
+
+            {bundle.summary.bundleType === 'fansite' && (
+              <ReviewSection title={`Day files (${bundle.files.filter((f) => f.fansiteDayId !== null).length})`}>
+                {bundle.fanDays
+                  .slice()
+                  .sort((a, b) => a.dayOfMonth - b.dayOfMonth)
+                  .map((d) => {
+                    const dayFiles = bundle.files.filter((f) => f.fansiteDayId === d.id);
+                    if (dayFiles.length === 0) return null;
+                    return (
+                      <div key={d.id} className="mb-3 last:mb-0">
+                        <div className="text-xs font-semibold opacity-70 mb-1">
+                          Day {String(d.dayOfMonth).padStart(2, '0')} — {dayFiles.length} file{dayFiles.length === 1 ? '' : 's'}
+                        </div>
+                        <ul className="space-y-3 pl-3 border-l-2 border-black/5">
+                          {dayFiles.map((f, i) => (
+                            <li key={f.id} className="rounded-xl border border-black/5 bg-white/60 p-3 space-y-2">
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="font-mono text-xs opacity-60 w-6 text-right">{i + 1}</span>
+                                <span aria-hidden>{f.kind === 'video' ? '🎬' : f.kind === 'image' ? '🖼️' : '🎙️'}</span>
+                                <span className="truncate flex-1 font-medium" title={f.originalName}>{f.originalName}</span>
+                              </div>
+                              <BundleFilePreview file={f} />
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  })}
+              </ReviewSection>
+            )}
+
+            {bundle.summary.bundleType !== 'fansite' && (
+              <ReviewSection title={`Content tags (${bundle.summary.tagIds.length})`}>
+                {bundle.summary.tagIds.length === 0 ? (
+                  <span className="opacity-60 italic">None selected.</span>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {bundle.summary.tagIds
+                      .map((tid) => tags.find((t) => t.id === tid))
+                      .filter((t): t is ContentTag => !!t)
+                      .map((t) => <ReadonlyTagPill key={t.id} tag={t} />)}
+                  </div>
+                )}
               </ReviewSection>
             )}
 

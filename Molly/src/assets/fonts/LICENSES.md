@@ -1,12 +1,12 @@
 # Note Editor Fonts — Licensing
 
-## Paper Daisy (paperdaisy-demo.ttf)
-- Foundry: maja.mint (Jana Matthaeus)
-- Bundled file: demo version (originally personal-use-only)
-- Status: cleared for use in Molly via direct $20 donation to the
-  author with permission for private non-distributed application use.
-  See `paperdaisy-demo-readme.txt` (the foundry's original readme)
-  for the demo terms; the donation supersedes those for this app.
+## Paper Daisy (PaperDaisy.ttf)
+- Foundry: maja.mint (Jana Matthaeus) — `info@majamint.com`
+- Bundled file: licensed full-glyph release (v1.2, Dec 2017), purchased
+  by Robert in May 2026. Replaces the earlier personal-use-only demo
+  that shipped with v1.14.0 and below.
+- Status: licensed for use in Molly. Keep this file private to the
+  app bundle — do not redistribute the .ttf on its own.
 
 ## All other 10 fonts
 Licensed under the SIL Open Font License 1.1 — commercial use OK,

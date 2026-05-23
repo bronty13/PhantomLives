@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react';
 import { getClip, updateClipNotes, deleteClip, type Clip } from '../../data/clips';
 import type { Persona as PersonaRow } from '../../data/personas';
+import {
+  listClipTags,
+  listContentTags,
+  setClipTags,
+  type ContentTag,
+} from '../../data/contentTags';
+import { ContentTagPicker } from '../Bundles/components/ContentTagPicker';
 import { RichTextNotes } from '../../components/RichTextNotes';
 import { ConfirmButton } from '../../components/ConfirmButton';
 
@@ -15,16 +22,32 @@ export function ClipDetail({ clipId, personas, onClose }: Props) {
   const [notes, setNotes] = useState('');
   const [dirty, setDirty] = useState(false);
   const [status, setStatus] = useState('');
+  const [contentTags, setContentTags] = useState<ContentTag[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
 
   useEffect(() => {
-    getClip(clipId)
-      .then((c) => {
+    let alive = true;
+    Promise.all([getClip(clipId), listContentTags(), listClipTags(clipId)])
+      .then(([c, t, ids]) => {
+        if (!alive) return;
         setClip(c);
         setNotes(c?.mollyNotesHtml ?? '');
+        setContentTags(t);
+        setSelectedTagIds(ids);
         setDirty(false);
       })
-      .catch((e) => setStatus(String(e)));
+      .catch((e) => alive && setStatus(String(e)));
+    return () => { alive = false; };
   }, [clipId]);
+
+  async function onTagsChange(next: number[]) {
+    setSelectedTagIds(next);
+    try {
+      await setClipTags(clipId, next);
+    } catch (e) {
+      setStatus(`Couldn't save tags: ${String(e)}`);
+    }
+  }
 
   async function save() {
     if (!clip) return;
@@ -96,6 +119,14 @@ export function ClipDetail({ clipId, personas, onClose }: Props) {
             <div className="text-sm whitespace-pre-wrap p-3 rounded-xl border border-black/5 bg-white">{clip.notes}</div>
           </div>
         )}
+
+        <div className="mt-4">
+          <ContentTagPicker
+            tags={contentTags}
+            selected={selectedTagIds}
+            onChange={onTagsChange}
+          />
+        </div>
 
         <div className="mt-4">
           <div className="text-xs uppercase tracking-wider opacity-60 mb-1">Molly notes (preserved across re-imports)</div>

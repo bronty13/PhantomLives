@@ -14,7 +14,9 @@ import {
   updateBundleFields,
 } from '../../data/bundles';
 import { listPersonas, type Persona } from '../../data/personas';
+import { listContentTags, setBundleTags, type ContentTag } from '../../data/contentTags';
 import { CategoryChipPicker } from './components/CategoryChipPicker';
+import { ContentTagPicker } from './components/ContentTagPicker';
 import { DescriptionField } from './components/DescriptionField';
 import { GoLiveDatePicker } from './components/GoLiveDatePicker';
 import { OrderedFileList } from './components/OrderedFileList';
@@ -35,6 +37,7 @@ export function ContentBundleForm({ uid, onPublishRequested, onClose, onDeleted,
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [prohibited, setProhibited] = useState<string[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [contentTags, setContentTags] = useState<ContentTag[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,16 +53,21 @@ export function ContentBundleForm({ uid, onPublishRequested, onClose, onDeleted,
 
   useEffect(() => {
     let alive = true;
-    Promise.all([reload(), listPersonas(), listProhibitedWords(), loadCategorySuggestions()])
-      .then(([_, p, pw, sug]) => {
+    Promise.all([reload(), listPersonas(), listProhibitedWords(), loadCategorySuggestions(), listContentTags()])
+      .then(([_, p, pw, sug, tags]) => {
         if (!alive) return;
         setPersonas(p);
         setProhibited(pw);
         setSuggestions(sug);
+        setContentTags(tags);
       })
       .catch((e) => alive && setError(String(e)));
     return () => { alive = false; };
   }, [reload]);
+
+  async function onTagsChange(next: number[]) {
+    await withBusy(async () => { await setBundleTags(uid, next); await reload(); });
+  }
 
   async function withBusy<T>(fn: () => Promise<T>): Promise<T | null> {
     setBusy(true); setError(null);
@@ -229,6 +237,13 @@ export function ContentBundleForm({ uid, onPublishRequested, onClose, onDeleted,
           selected={selectedCategories}
           suggestions={suggestions}
           onChange={onCategoriesChange}
+          disabled={busy || locked}
+        />
+
+        <ContentTagPicker
+          tags={contentTags}
+          selected={bundle.summary.tagIds}
+          onChange={onTagsChange}
           disabled={busy || locked}
         />
 

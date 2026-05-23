@@ -4,6 +4,211 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0] — 2026-05-23
+
+### Changed — 🏷️ Per-day FanSite tags + Clip tags + Calendar overlays
+
+Three follow-on enhancements to the Content tags system shipped in v1.15.0.
+
+#### Per-day tags for FanSite bundles
+
+FanSite bundles previously had a single bundle-wide tag set, but a 30-day
+batch wants per-day themes ("flats Mon, heels Wed"). v1.16.0 splits the
+join:
+
+- Migration **027** recreates `bundle_tag_links` with a nullable
+  `fan_day_id` column. `NULL` keeps the old Content/Custom semantics;
+  not-`NULL` attaches the tag to one FanSite day.
+- The FanSite bundle form no longer shows the bundle-level picker — each
+  day's `FanDayModal` carries its own `ContentTagPicker` instead.
+- Existing bundle-level tags on Content/Custom bundles are untouched
+  (the migration copies them forward as `fan_day_id=NULL` rows).
+- Partial unique indexes enforce one (bundle, tag) row at bundle level
+  and one (day, tag) row at day level without forbidding both shapes
+  on the same bundle.
+
+#### Tags on clips
+
+- Migration **028** adds `clip_tag_links` joining the regular `clips`
+  table to the same `content_tags_def` taxonomy (the read-only
+  `c4s_clips` snapshot is deliberately excluded).
+- `ClipDetail` modal (opened from both the Clips list and the Calendar
+  clip cells) gains a `ContentTagPicker`. Edits save immediately —
+  no separate "save tags" button.
+- `ClipsListView` rows show the selected tags as colored pills under
+  the title so Sallie can scan tag coverage without opening each clip.
+- Publishing a **Content bundle** now mirrors its bundle-level tags onto
+  the resulting clip row (FanSite per-day tags are NOT copied — they
+  belong to days, not clips). Idempotent: re-publish re-syncs.
+
+#### Calendar overlays (per persona, per kind)
+
+Two new checkboxes on the Calendar:
+
+- **🏷️ FanSite day tags** — colored pills (matching the tag's color)
+  for any FanSite day whose resolved date falls in the visible month.
+- **🎬 Clip tags** — dashed-outline pills (so they don't visually
+  collide with the solid FanSite ones) for any clip whose go-live
+  date falls in the visible month.
+
+Each toggle is persisted to `localStorage` keyed by
+`(active persona, overlay kind)` — Sallie can have FanSite tags on for
+CoC and Clip tags only for PoA. Hovering a chip surfaces the persona +
+tag name; both queries respect the active persona filter (or return
+everything when ALL is selected).
+
+#### Tauri command surface (new)
+
+- Tags: `list_fan_day_tags`, `set_fan_day_tags`,
+  `list_fansite_day_tags_in_range`, `list_clip_tags`, `set_clip_tags`,
+  `list_clip_tags_in_range`.
+- `set_bundle_tags` semantics changed: now scoped to
+  `fan_day_id IS NULL` so it can't wipe out per-day links on a FanSite
+  bundle.
+- `BundleFanDay.tagIds` added to the boundary struct (camelCase contract
+  test updated).
+
+#### Tests
+
+**181 Rust (+10) + 156 frontend** = **337 total**:
+
+- `content_tags::tests` (10 new):
+  - `bundle_level_set_does_not_touch_day_level`
+  - `day_level_set_replaces_only_that_day`
+  - `deleting_fan_day_cascades_day_tags`
+  - `range_query_resolves_dates_and_filters_by_persona` (FanSite)
+  - `set_clip_tags_round_trips`
+  - `deleting_clip_cascades_clip_tags`
+  - `mirror_bundle_tags_to_clip_copies_only_bundle_level`
+  - `clip_range_query_resolves_dates_and_filters_by_persona`
+- `camel_case_contract` (+2): `FanSiteDayTag`, `ClipTagInDate`.
+- `migration_smoke`: anchors `clip_tag_links`.
+
+#### Known limitations
+
+- Calendar overlay queries assume Rust's
+  `printf('%04d-%02d-%02d', year, month, day)` matches the JS-side
+  ISO date keys. A short test in `range_query_resolves_dates_and_filters_by_persona` pins this.
+- Clip-tag mirroring on bundle publish happens inside the same
+  transaction as the clip upsert, so a content-tag-DB failure rolls
+  back the whole publish. Intentional — if the mirror would fail
+  silently, future reports would lie.
+
+## [1.15.1] — 2026-05-23
+
+### Changed — 🌼 Licensed Paper Daisy font
+
+Replaced the personal-use demo version of Paper Daisy that shipped in
+v1.14.0 with the full licensed release (v1.2, Dec 2017 — purchased
+from maja.mint / Jana Matthaeus in May 2026). Full glyph set, same
+font-family name so existing notes pick it up automatically. License
+note updated in `src/assets/fonts/LICENSES.md`.
+
+## [1.15.0] — 2026-05-23
+
+### Added — 🎁 Bundle previews · 🎉 Holidays · 🏷️ Content tags (Phase 14)
+
+A grab-bag of three Sallie-requested enhancements that ship together.
+
+#### 🎁 Real previews on the Bundle review screen
+
+The Publish wizard now actually previews every file before approval:
+
+- **Images** render as a 12-rem thumb, click for a full-screen lightbox.
+- **Videos** render with inline `<video controls>` + a strip of 5 sample
+  frames extracted client-side via a hidden `<video>` + canvas at evenly
+  spaced times. Click a frame to enlarge it; clicking also seeks the
+  player to that timestamp so Sallie can re-watch from there.
+- For containers the WebView can't decode (e.g. some `.mov` variants
+  on Windows), a polite "the file is still saved" banner appears.
+
+Same enhanced layout is used for Fan-Site day groups (per-day file
+collapsing kept). Editor-side `OrderedFileList` image thumbs also work
+now — the asset protocol scope is wired up properly so file URLs
+resolve, not just silently 404.
+
+Under the hood: `tauri.conf.json` enables `assetProtocol` with `["**"]`
+scope (Molly is single-user local-only), `BundleFileInfo` gains an
+`absolutePath` field resolved against app_data_dir at read time, the
+`tauri/protocol-asset` feature is enabled, and a new
+`src/views/Bundles/components/BundleFilePreview.tsx` component handles
+all the player + frame-strip mechanics.
+
+#### 🎉 Holidays on the Calendar
+
+New 🎉 **Holidays** tab in Settings + a holiday overlay on the Calendar:
+
+- Fixed-date holidays (Christmas, July 4, Valentine's, etc.) and
+  Nth-weekday holidays (3rd Monday MLK, last Monday Memorial Day,
+  4th Thursday Thanksgiving, etc.) — both kinds resolve per-year via
+  `lib/holidayResolver.ts`.
+- 18 US extended defaults preloaded, each with hand-picked color
+  pairings (red/blue for patriotic holidays, red/green for Christmas,
+  orange/black for Halloween, etc.). Two-color holidays render as a
+  diagonal split-tone pill on the calendar.
+- Per-holiday edit: name, kind, month, day/weekday/nth, primary +
+  secondary + text color, emoji, enabled toggle.
+- "Reset to US defaults" wipes only `source='us_default'` rows and
+  re-seeds them — custom-added holidays survive.
+
+Calendar's day-cell shows up to 4 entries total, holidays first
+(least-actionable context), then reminders 🔔, then clips. Hidden
+overflow collapses to a "+N more" line as before.
+
+#### 🏷️ Content tags on bundles
+
+New 🏷️ **Content tags** tab in Settings + a tag picker on every bundle
+form (Content / Custom / Fan-Site):
+
+- Eight cute, color-coded default tags: tits, pantyhose, panties, face,
+  ass, feet, flats, heels.
+- Built-in tags can be renamed and recoloured but not deleted; custom
+  user tags can be deleted any time.
+- Per-bundle multi-select chip picker — pick 0 or many tags. Selection
+  shows up on the bundle list rows + in the Publish review screen.
+- Picker chip styling auto-derives a readable text color from the
+  swatch luminance, so even hot-pink and butter-yellow tags stay
+  legible without per-tag text-color config.
+
+#### Schema
+
+- Migration **025_holidays.sql** — `holidays` table (kind, month, day,
+  weekday, nth, colors, emoji, enabled, source) + 18 US defaults +
+  `calendar.holidaysEnabled` setting.
+- Migration **026_content_tags.sql** — `content_tags_def` +
+  `bundle_tag_links` (CASCADE on both bundle delete + tag delete) +
+  8 built-in tags.
+- `BundleSummary` + `BundleFileInfo` + `Bundle` boundary structs gain
+  `tag_ids` / `absolute_path` / `description_audio_absolute_path`.
+
+#### Tests
+
+**171 Rust (+15) + 156 frontend (+20) = 327 total**:
+- `holidays::tests` (7): seed loads, create round-trip, validator rejects
+  bad inputs, update preserves source, set-enabled flips, delete works,
+  reset preserves custom rows + reverts edits.
+- `content_tags::tests` (6): 8 built-ins seeded, create validates inputs,
+  built-in undeletable but renameable, set_bundle_tags round-trips, FK
+  cascades on bundle delete + on tag delete.
+- `holidayResolver.test.ts` (20): isoDateKey + daysInMonth + nth-weekday
+  for MLK, Memorial Day, Thanksgiving, Mother's Day, Labor Day +
+  resolveHolidayForMonth (month-mismatch, disabled, clamping, fixed,
+  nth_weekday) + resolveHolidaysForMonth (grouping, filtering, empty).
+- `camel_case_contract` (+2): `Holiday`, `ContentTag`.
+- `migration_smoke`: anchors `holidays`, `content_tags_def`,
+  `bundle_tag_links` tables.
+
+#### Known limitations / NOT in this release
+
+- **Frame extraction is best-effort** — Mac-only codecs (e.g. some HEVC
+  variants in `.mov`) may not decode in the WebView; the banner shows
+  and the player + frame strip are skipped.
+- **Holidays are global** — no per-persona holiday sets in v1. Add one
+  globally and Sallie sees it across all persona filters.
+- **Tag search / filter not surfaced yet** — tags persist + show on
+  rows + review, but the bundle list doesn't have a "filter by tag"
+  picker. Easy add later.
+
 ## [1.14.0] — 2026-05-22
 
 ### Added — 📝 Notes (Phase 13)

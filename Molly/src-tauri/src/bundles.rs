@@ -134,6 +134,7 @@ pub struct BundleSummary {
     /// Calculated from `created_at` vs `BundlerSettings.warn_threshold_days`.
     pub aging_flag: String, // "fresh" | "aging" | "overdue"
     pub file_count: i64,
+    pub tag_ids: Vec<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -144,6 +145,11 @@ pub struct BundleFileInfo {
     pub fansite_day_id: Option<i64>,
     pub position: i64,
     pub relpath: String,
+    /// Resolved against app_data_dir at read time so the frontend can
+    /// pass it to `convertFileSrc` without round-tripping through Rust.
+    /// Empty on save returns until reread (callers using save_bundle_file's
+    /// returned shape should rely on relpath + a follow-up get_bundle).
+    pub absolute_path: String,
     pub original_name: String,
     pub kind: String,
     pub size_bytes: i64,
@@ -164,6 +170,7 @@ pub struct BundleFanDay {
     pub day_of_month: i64,
     pub message: String,
     pub file_count: i64,
+    pub tag_ids: Vec<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -174,6 +181,8 @@ pub struct Bundle {
     pub description_mode: Option<String>,
     pub description_text: String,
     pub description_audio_relpath: Option<String>,
+    /// Resolved against app_data_dir for `convertFileSrc` consumption.
+    pub description_audio_absolute_path: Option<String>,
     pub description_audio_original_name: Option<String>,
     pub delivery_kind: Option<String>,
     pub delivery_site_id: Option<i64>,
@@ -740,6 +749,7 @@ fn row_to_summary(
     row: &rusqlite::Row,
     warn_threshold_days: u32,
     file_count: i64,
+    tag_ids: Vec<i64>,
 ) -> rusqlite::Result<BundleSummary> {
     let created_at: String = row.get("created_at")?;
     Ok(BundleSummary {
@@ -757,7 +767,21 @@ fn row_to_summary(
         created_at,
         updated_at: row.get("updated_at")?,
         file_count,
+        tag_ids,
     })
+}
+
+/// Helper: read the tag-id list for a bundle. Used by row_to_summary
+/// callers + the public Bundle composer. Returns empty if the bundle
+/// has no tags yet (table doesn't even need a row).
+fn load_tag_ids(conn: &Connection, uid: &str) -> rusqlite::Result<Vec<i64>> {
+    let mut stmt = conn.prepare(
+        "SELECT tag_id FROM bundle_tag_links WHERE bundle_uid = ?1 ORDER BY tag_id",
+    )?;
+    let rows = stmt
+        .query_map(params![uid], |r| r.get::<_, i64>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
 }
 
 pub(crate) fn pure_create_bundle(
@@ -779,7 +803,11 @@ pub(crate) fn pure_create_bundle(
     Ok(uid)
 }
 
-fn load_files_for(conn: &Connection, uid: &str) -> Result<Vec<BundleFileInfo>, BundleError> {
+fn load_files_for(
+    conn: &Connection,
+    uid: &str,
+    support_dir: &Path,
+) -> Result<Vec<BundleFileInfo>, BundleError> {
     let mut stmt = conn.prepare(
         "SELECT id, bundle_uid, fansite_day_id, position, relpath, original_name, kind,
                 size_bytes, sha256
@@ -789,12 +817,15 @@ fn load_files_for(conn: &Connection, uid: &str) -> Result<Vec<BundleFileInfo>, B
     )?;
     let rows = stmt
         .query_map(params![uid], |r| {
+            let relpath: String = r.get(4)?;
+            let absolute_path = absolute_for(support_dir, &relpath);
             Ok(BundleFileInfo {
                 id: r.get(0)?,
                 bundle_uid: r.get(1)?,
                 fansite_day_id: r.get(2)?,
                 position: r.get(3)?,
-                relpath: r.get(4)?,
+                relpath,
+                absolute_path,
                 original_name: r.get(5)?,
                 kind: r.get(6)?,
                 size_bytes: r.get(7)?,
@@ -803,6 +834,20 @@ fn load_files_for(conn: &Connection, uid: &str) -> Result<Vec<BundleFileInfo>, B
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(rows)
+}
+
+/// Resolve a relative attachment path to a string the frontend can pass to
+/// `convertFileSrc`. Empty `support_dir` (used in tests where there's no
+/// app_data) just returns the relpath unchanged.
+fn absolute_for(support_dir: &Path, relpath: &str) -> String {
+    if support_dir.as_os_str().is_empty() {
+        relpath.to_string()
+    } else {
+        support_dir
+            .join(relpath)
+            .to_string_lossy()
+            .into_owned()
+    }
 }
 
 fn load_categories_for(conn: &Connection, uid: &str) -> Result<Vec<BundleCategory>, BundleError> {
@@ -830,16 +875,27 @@ fn load_fan_days_for(conn: &Connection, uid: &str) -> Result<Vec<BundleFanDay>, 
          GROUP BY bundle_fan_days.id, bundle_fan_days.day_of_month, bundle_fan_days.message
          ORDER BY bundle_fan_days.day_of_month",
     )?;
-    let rows = stmt
+    let mut rows: Vec<BundleFanDay> = stmt
         .query_map(params![uid], |r| {
             Ok(BundleFanDay {
                 id: r.get(0)?,
                 day_of_month: r.get(1)?,
                 message: r.get(2)?,
                 file_count: r.get(3)?,
+                tag_ids: Vec::new(),
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(stmt);
+    // Second pass for tag_ids per day — keeps the GROUP BY shape clean.
+    for d in rows.iter_mut() {
+        let mut tag_stmt = conn.prepare(
+            "SELECT tag_id FROM bundle_tag_links WHERE fan_day_id = ?1 ORDER BY tag_id",
+        )?;
+        d.tag_ids = tag_stmt
+            .query_map(params![d.id], |r| r.get::<_, i64>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+    }
     Ok(rows)
 }
 
@@ -847,8 +903,9 @@ pub(crate) fn pure_get_bundle(
     conn: &Connection,
     uid: &str,
     warn_threshold_days: u32,
+    support_dir: &Path,
 ) -> Result<Bundle, BundleError> {
-    let files = load_files_for(conn, uid)?;
+    let files = load_files_for(conn, uid, support_dir)?;
     let categories = load_categories_for(conn, uid)?;
     let fan_days = load_fan_days_for(conn, uid)?;
     let file_count = files.len() as i64;
@@ -869,7 +926,8 @@ pub(crate) fn pure_get_bundle(
         return Err(BundleError::NotFound(uid.to_string()));
     };
 
-    let summary = row_to_summary(row, warn_threshold_days, file_count)?;
+    let tag_ids = load_tag_ids(conn, uid)?;
+    let summary = row_to_summary(row, warn_threshold_days, file_count, tag_ids)?;
     let description_audio_relpath: Option<String> = row.get("description_audio_relpath")?;
     let description_audio_original_name = description_audio_relpath
         .as_deref()
@@ -880,12 +938,17 @@ pub(crate) fn pure_get_bundle(
             Some(after_uuid.to_string())
         });
 
+    let description_audio_absolute_path = description_audio_relpath
+        .as_deref()
+        .map(|rel| absolute_for(support_dir, rel));
+
     Ok(Bundle {
         summary,
         special_instructions: row.get("special_instructions")?,
         description_mode: row.get("description_mode")?,
         description_text: row.get("description_text")?,
         description_audio_relpath,
+        description_audio_absolute_path,
         description_audio_original_name,
         delivery_kind: row.get("delivery_kind")?,
         delivery_site_id: row.get("delivery_site_id")?,
@@ -931,12 +994,19 @@ pub(crate) fn pure_list_bundles(
         ),
     };
     let mut stmt = conn.prepare(sql)?;
-    let summaries = stmt
+    let mut summaries: Vec<BundleSummary> = stmt
         .query_map(rusqlite::params_from_iter(p.iter()), |row| {
             let file_count: i64 = row.get("file_count")?;
-            row_to_summary(row, warn_threshold_days, file_count)
+            // Tags are loaded in a second pass below so we don't fight the
+            // borrow checker against `conn` while the prepared statement
+            // is live.
+            row_to_summary(row, warn_threshold_days, file_count, Vec::new())
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(stmt);
+    for s in summaries.iter_mut() {
+        s.tag_ids = load_tag_ids(conn, &s.uid)?;
+    }
     Ok(summaries)
 }
 
@@ -1235,6 +1305,11 @@ fn pure_stamp_publish(
     let mut clip_created = false;
     if bundle_type == "content" {
         pure_upsert_clip_from_bundle(&tx, bundle)?;
+        // Mirror the bundle's bundle-level content tags onto the clip
+        // row. Idempotent — re-publish re-syncs. FanSite per-day tags
+        // are NOT mirrored (they belong to days, not clips).
+        crate::content_tags::pure_mirror_bundle_tags_to_clip(&tx, &bundle.summary.uid, &bundle.summary.uid)
+            .map_err(|e| BundleError::Invalid(format!("mirror tags: {e}")))?;
         clip_created = true;
     }
     tx.commit()?;
@@ -1456,12 +1531,14 @@ pub fn save_bundle_file<R: Runtime>(
         "UPDATE bundles SET updated_at = datetime('now') WHERE uid = ?1",
         params![bundle_uid],
     )?;
+    let absolute_path = absolute_for(&app_data, &relpath);
     Ok(BundleFileInfo {
         id,
         bundle_uid,
         fansite_day_id,
         position: next_pos,
         relpath,
+        absolute_path,
         original_name: basename,
         kind,
         size_bytes,
@@ -1563,7 +1640,7 @@ pub fn get_bundle<R: Runtime>(
     let app_data = app_data_dir(&handle)?;
     let settings = load_settings(&app_data);
     let conn = open_conn(&app_data)?;
-    pure_get_bundle(&conn, &uid, settings.warn_threshold_days)
+    pure_get_bundle(&conn, &uid, settings.warn_threshold_days, &app_data)
 }
 
 #[tauri::command]
@@ -1591,7 +1668,7 @@ pub fn publish_bundle<R: Runtime>(
     let app_data = app_data_dir(&handle)?;
     let settings = load_settings(&app_data);
     let mut conn = open_conn(&app_data)?;
-    let bundle = pure_get_bundle(&conn, &uid, settings.warn_threshold_days)?;
+    let bundle = pure_get_bundle(&conn, &uid, settings.warn_threshold_days, &app_data)?;
 
     let prohibited = pure_list_prohibited(&conn)?;
     let today = Local::now().date_naive();
@@ -1802,6 +1879,7 @@ pub(crate) fn pure_create_fan_day(
         day_of_month,
         message,
         file_count,
+        tag_ids: Vec::new(),
     })
 }
 
@@ -1946,6 +2024,9 @@ mod tests {
             include_str!("../migrations/015_mollys_log.sql"),
             include_str!("../migrations/016_c4s_clips.sql"),
             include_str!("../migrations/017_bundles.sql"),
+            include_str!("../migrations/026_content_tags.sql"),
+            include_str!("../migrations/027_fanday_tags.sql"),
+            include_str!("../migrations/028_clip_tags.sql"),
         ] {
             conn.execute_batch(sql).unwrap();
         }
@@ -2107,7 +2188,7 @@ mod tests {
             params![uid],
         )
         .unwrap();
-        let bundle = pure_get_bundle(&conn, &uid, 30).unwrap();
+        let bundle = pure_get_bundle(&conn, &uid, 30, Path::new("")).unwrap();
         pure_upsert_clip_from_bundle(&conn, &bundle).unwrap();
         // molly_notes_html must survive.
         let notes: String = conn
@@ -2239,11 +2320,13 @@ mod tests {
                 updated_at: "2026-05-22T00:00:00Z".into(),
                 aging_flag: "fresh".into(),
                 file_count: 0,
+                tag_ids: vec![],
             },
             special_instructions: String::new(),
             description_mode: None,
             description_text: String::new(),
             description_audio_relpath: None,
+            description_audio_absolute_path: None,
             description_audio_original_name: None,
             delivery_kind: None,
             delivery_site_id: None,
@@ -2268,6 +2351,7 @@ mod tests {
             fansite_day_id: None,
             position: 1,
             relpath: "r".into(),
+            absolute_path: "r".into(),
             original_name: "v.mp4".into(),
             kind: "video".into(),
             size_bytes: 1,
@@ -2377,6 +2461,7 @@ mod tests {
                 day_of_month: day,
                 message: "post".into(),
                 file_count: 1,
+                tag_ids: vec![],
             });
         }
         let mut issues = Vec::new();
@@ -2395,12 +2480,12 @@ mod tests {
         b.fansite_year = Some(2026);
         b.fansite_month = Some(1); // 31 days
         // Day 5: has file but no message
-        b.fan_days.push(BundleFanDay { id: 5, day_of_month: 5, message: "".into(), file_count: 1 });
+        b.fan_days.push(BundleFanDay { id: 5, day_of_month: 5, message: "".into(), file_count: 1, tag_ids: vec![] });
         // Day 6: has message but no file
-        b.fan_days.push(BundleFanDay { id: 6, day_of_month: 6, message: "post".into(), file_count: 0 });
+        b.fan_days.push(BundleFanDay { id: 6, day_of_month: 6, message: "post".into(), file_count: 0, tag_ids: vec![] });
         // Fill the rest so we can target our assertions
         for day in (1..=31).filter(|d| *d != 5 && *d != 6) {
-            b.fan_days.push(BundleFanDay { id: day + 100, day_of_month: day, message: "p".into(), file_count: 1 });
+            b.fan_days.push(BundleFanDay { id: day + 100, day_of_month: day, message: "p".into(), file_count: 1, tag_ids: vec![] });
         }
         let mut issues = Vec::new();
         validate_fansite_completion(&b, &mut issues);

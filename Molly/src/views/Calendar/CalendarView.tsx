@@ -1,10 +1,34 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Persona } from '../../state/personas';
 import { listClips, type Clip } from '../../data/clips';
 import { listOccurrencesInRange, type Occurrence } from '../../data/occurrences';
 import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
+import { listHolidays, type Holiday } from '../../data/holidays';
+import {
+  listClipTagsInRange,
+  listFanSiteDayTagsInRange,
+  type ClipTagInDate,
+  type FanSiteDayTag,
+} from '../../data/contentTags';
 import { ClipDetail } from './ClipDetail';
 import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
+import { holidayPillStyle, resolveHolidaysForMonth } from '../../lib/holidayResolver';
+
+/** localStorage helpers for the per-persona toggle preferences. Keyed
+ *  by both the persona code AND the overlay kind so Sallie can have
+ *  e.g. FanSite tags on for CoC but Clip tags only for PoA. */
+type OverlayKind = 'fansite' | 'clip';
+function toggleKey(personaCode: string, kind: OverlayKind): string {
+  return `molly.calendar.show.${kind}.${personaCode}`;
+}
+function loadToggle(personaCode: string, kind: OverlayKind): boolean {
+  try { return localStorage.getItem(toggleKey(personaCode, kind)) === '1'; }
+  catch { return false; }
+}
+function saveToggle(personaCode: string, kind: OverlayKind, on: boolean) {
+  try { localStorage.setItem(toggleKey(personaCode, kind), on ? '1' : '0'); }
+  catch { /* ignore */ }
+}
 
 interface Props {
   active: Persona;
@@ -33,8 +57,20 @@ export function CalendarView({ active }: Props) {
   const [clips, setClips] = useState<Clip[]>([]);
   const [occurrences, setOccurrences] = useState<Occurrence[]>([]);
   const [personas, setPersonas] = useState<PersonaRow[]>([]);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [fanSiteTags, setFanSiteTags] = useState<FanSiteDayTag[]>([]);
+  const [clipTags, setClipTags] = useState<ClipTagInDate[]>([]);
+  const [showFanSiteTags, setShowFanSiteTags] = useState<boolean>(() => loadToggle(active.code, 'fansite'));
+  const [showClipTags, setShowClipTags] = useState<boolean>(() => loadToggle(active.code, 'clip'));
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>('');
+
+  // Hydrate both toggles whenever the active persona changes — each
+  // preference is persisted per persona + per kind.
+  useEffect(() => {
+    setShowFanSiteTags(loadToggle(active.code, 'fansite'));
+    setShowClipTags(loadToggle(active.code, 'clip'));
+  }, [active.code]);
 
   const monthEnd = useMemo(() => addMonths(month, 1), [month]);
 
@@ -42,7 +78,8 @@ export function CalendarView({ active }: Props) {
     const from = isoDateKey(month);
     const last = new Date(monthEnd.getTime() - 86_400_000); // last day of month
     const to = isoDateKey(last);
-    const [c, o, p] = await Promise.all([
+    const personaFilter = active.code === 'ALL' ? null : active.code;
+    const [c, o, p, h, fst, ct] = await Promise.all([
       listClips({
         personaCode: active.code,
         from,
@@ -52,12 +89,46 @@ export function CalendarView({ active }: Props) {
       }),
       listOccurrencesInRange(from, to, { personaCode: active.code }),
       listPersonas(),
+      listHolidays(),
+      // Both tag overlays are always fetched — toggles control display,
+      // not the query. Each is bounded by (days × tags) in the visible
+      // month so cost stays cheap.
+      listFanSiteDayTagsInRange(from, to, personaFilter),
+      listClipTagsInRange(from, to, personaFilter),
     ]);
     if (!alive()) return;
     setClips(c);
     setOccurrences(o);
     setPersonas(p);
+    setHolidays(h);
+    setFanSiteTags(fst);
+    setClipTags(ct);
   }, [active.code, month]);
+
+  const holidaysByDay = useMemo(
+    () => resolveHolidaysForMonth(holidays, month.getFullYear(), month.getMonth() + 1),
+    [holidays, month],
+  );
+
+  const fanSiteTagsByDay = useMemo(() => {
+    const m = new Map<string, FanSiteDayTag[]>();
+    for (const t of fanSiteTags) {
+      const arr = m.get(t.date) ?? [];
+      arr.push(t);
+      m.set(t.date, arr);
+    }
+    return m;
+  }, [fanSiteTags]);
+
+  const clipTagsByDay = useMemo(() => {
+    const m = new Map<string, ClipTagInDate[]>();
+    for (const t of clipTags) {
+      const arr = m.get(t.date) ?? [];
+      arr.push(t);
+      m.set(t.date, arr);
+    }
+    return m;
+  }, [clipTags]);
 
   const personaByCode = useMemo(() => new Map(personas.map((p) => [p.code, p])), [personas]);
 
@@ -105,7 +176,7 @@ export function CalendarView({ active }: Props) {
         <div>
           <h2 className="display-font text-2xl font-bold persona-accent">Calendar</h2>
           <p className="opacity-70 text-sm">
-            Clip releases by go-live date, plus pending reminders 🔔. {active.code !== 'ALL' && <>Filtered to <strong>{active.name}</strong>.</>}
+            Clip releases by go-live date, plus pending reminders 🔔 and themed holidays 🎉. {active.code !== 'ALL' && <>Filtered to <strong>{active.name}</strong> (holidays are global).</>}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -114,6 +185,36 @@ export function CalendarView({ active }: Props) {
           <button type="button" className="pretty-button secondary" onClick={() => setMonth((d) => addMonths(d, 1))}>Next →</button>
           <button type="button" className="pretty-button secondary" onClick={() => setMonth(startOfMonth(new Date()))}>Today</button>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-4 text-xs">
+        <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={showFanSiteTags}
+            onChange={(e) => {
+              const on = e.target.checked;
+              setShowFanSiteTags(on);
+              saveToggle(active.code, 'fansite', on);
+            }}
+          />
+          <span>🏷️ FanSite day tags</span>
+        </label>
+        <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={showClipTags}
+            onChange={(e) => {
+              const on = e.target.checked;
+              setShowClipTags(on);
+              saveToggle(active.code, 'clip', on);
+            }}
+          />
+          <span>🎬 Clip tags</span>
+        </label>
+        <span className="opacity-50">
+          (toggles remembered for {active.code === 'ALL' ? 'all personas' : active.name})
+        </span>
       </div>
 
       <div className="pretty-card">
@@ -129,12 +230,17 @@ export function CalendarView({ active }: Props) {
             const isToday = isoDateKey(new Date()) === key;
             const dayClips = clipsByDay.get(key) ?? [];
             const dayOccs  = occurrencesByDay.get(key) ?? [];
-            const totalCount = dayClips.length + dayOccs.length;
-            // Reminder pills come first (chronological prompt), then clips.
-            const clipBudget = Math.max(0, 4 - dayOccs.length);
+            const dayHols  = holidaysByDay.get(key) ?? [];
+            const totalCount = dayClips.length + dayOccs.length + dayHols.length;
+            // Holidays first (least-actionable, just context), then reminders,
+            // then clips. Each row counts against the same 4-slot budget so
+            // dense days collapse with a +N more hint.
+            const holsToShow = dayHols.slice(0, 4);
+            const occBudget = Math.max(0, 4 - holsToShow.length);
+            const occsToShow = dayOccs.slice(0, occBudget);
+            const clipBudget = Math.max(0, 4 - holsToShow.length - occsToShow.length);
             const clipsToShow = dayClips.slice(0, clipBudget);
-            const occsToShow  = dayOccs.slice(0, 4);
-            const hidden = totalCount - clipsToShow.length - occsToShow.length;
+            const hidden = totalCount - clipsToShow.length - occsToShow.length - holsToShow.length;
             return (
               <div
                 key={key}
@@ -154,6 +260,52 @@ export function CalendarView({ active }: Props) {
                   )}
                 </div>
                 <div className="flex flex-col gap-0.5 mt-1">
+                  {holsToShow.map((h) => (
+                    <div
+                      key={`h-${h.id}`}
+                      className="px-1.5 py-0.5 rounded text-[10px] truncate font-semibold"
+                      style={holidayPillStyle(h)}
+                      title={h.name}
+                    >
+                      {h.emoji ? `${h.emoji} ` : ''}{h.name}
+                    </div>
+                  ))}
+                  {showFanSiteTags && (fanSiteTagsByDay.get(key)?.length ?? 0) > 0 && (
+                    <div className="flex flex-wrap gap-0.5">
+                      {(fanSiteTagsByDay.get(key) ?? []).map((t) => (
+                        <span
+                          key={`fst-${t.fanDayId}-${t.tagId}`}
+                          className="px-1 py-[1px] rounded-full text-[9px] font-semibold whitespace-nowrap"
+                          style={{
+                            background: t.tagColor,
+                            color: '#1F2937',
+                            border: `1px solid ${t.tagColor}`,
+                          }}
+                          title={`FanSite · ${t.tagName}${t.personaCode ? ` · ${t.personaCode}` : ''}`}
+                        >
+                          {t.tagName}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {showClipTags && (clipTagsByDay.get(key)?.length ?? 0) > 0 && (
+                    <div className="flex flex-wrap gap-0.5">
+                      {(clipTagsByDay.get(key) ?? []).map((t) => (
+                        <span
+                          key={`clt-${t.clipId}-${t.tagId}`}
+                          className="px-1 py-[1px] rounded-full text-[9px] font-semibold whitespace-nowrap"
+                          style={{
+                            background: 'rgba(255,255,255,0.85)',
+                            color: '#1F2937',
+                            border: `1.5px dashed ${t.tagColor}`,
+                          }}
+                          title={`Clip · ${t.tagName}${t.personaCode ? ` · ${t.personaCode}` : ''}`}
+                        >
+                          {t.tagName}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {occsToShow.map((o) => {
                     const persona = o.personaCode ? personaByCode.get(o.personaCode) : null;
                     const tint = persona?.primaryColor ?? '#A16D9C';

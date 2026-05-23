@@ -10,6 +10,8 @@ import {
   saveBundleFile,
   updateFanDayMessage,
 } from '../../../data/bundles';
+import { listContentTags, setFanDayTags, type ContentTag } from '../../../data/contentTags';
+import { ContentTagPicker } from './ContentTagPicker';
 import { OrderedFileList } from './OrderedFileList';
 
 interface Props {
@@ -26,8 +28,15 @@ export function FanDayModal({ bundleUid, dayOfMonth, bundle, onClose, onChanged 
   const existing: BundleFanDay | undefined = bundle.fanDays.find((d) => d.dayOfMonth === dayOfMonth);
   const [fanDayId, setFanDayId] = useState<number | null>(existing?.id ?? null);
   const [message, setMessage] = useState<string>(existing?.message ?? '');
+  const [contentTags, setContentTags] = useState<ContentTag[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    listContentTags().then((t) => { if (alive) setContentTags(t); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   // If the row doesn't exist yet, create it on mount so file uploads
   // have an fansite_day_id to attach to.
@@ -80,6 +89,10 @@ export function FanDayModal({ bundleUid, dayOfMonth, bundle, onClose, onChanged 
   async function onReorder(orderedIds: number[]) {
     await withBusy(async () => { await reorderBundleFiles(bundleUid, orderedIds); await onChanged(); });
   }
+  async function onTagsChange(next: number[]) {
+    if (fanDayId == null) return;
+    await withBusy(async () => { await setFanDayTags(fanDayId, next); await onChanged(); });
+  }
   async function onDeleteDay() {
     if (fanDayId == null) { onClose(); return; }
     if (!confirm(`Delete everything for day ${dayOfMonth}? Files for this day are removed too.`)) return;
@@ -124,6 +137,13 @@ export function FanDayModal({ bundleUid, dayOfMonth, bundle, onClose, onChanged 
             onPick={onPickFiles}
             onRemove={onRemoveFile}
             onReorder={onReorder}
+          />
+
+          <ContentTagPicker
+            tags={contentTags}
+            selected={bundle.fanDays.find((d) => d.id === fanDayId)?.tagIds ?? []}
+            onChange={onTagsChange}
+            disabled={busy || fanDayId == null}
           />
 
           <div className="pt-3 border-t border-black/5">

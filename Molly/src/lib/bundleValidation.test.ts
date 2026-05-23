@@ -20,12 +20,13 @@ function mkBundle(overrides: Partial<Bundle> = {}): Bundle {
       state: 'draft', title: 'Hello World', contentDate: '2026-05-22',
       goLiveDate: '2026-06-15', publishedAt: null, bundlePath: null,
       bundleSizeBytes: null, createdAt: '2026-05-22', updatedAt: '2026-05-22',
-      agingFlag: 'fresh', fileCount: 0,
+      agingFlag: 'fresh', fileCount: 0, tagIds: [],
     },
     specialInstructions: '',
     descriptionMode: null,
     descriptionText: '',
     descriptionAudioRelpath: null,
+    descriptionAudioAbsolutePath: null,
     descriptionAudioOriginalName: null,
     deliveryKind: null,
     deliverySiteId: null,
@@ -140,6 +141,7 @@ describe('validateContentFiles', () => {
     fansiteDayId: null,
     position: 1,
     relpath: 'r',
+    absolutePath: 'r',
     originalName: 'n',
     kind,
     sizeBytes: 1,
@@ -229,7 +231,7 @@ describe('validateCustomDelivery', () => {
 
 describe('validateFanSiteCompletion', () => {
   function mkDay(day: number, message: string, fileCount: number): BundleFanDay {
-    return { id: day, dayOfMonth: day, message, fileCount };
+    return { id: day, dayOfMonth: day, message, fileCount, tagIds: [] };
   }
 
   it('requires year + month first', () => {

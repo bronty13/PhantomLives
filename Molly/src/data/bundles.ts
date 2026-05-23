@@ -29,6 +29,7 @@ export interface BundleSummary {
   updatedAt: string;
   agingFlag: AgingFlag;
   fileCount: number;
+  tagIds: number[];
 }
 
 export interface BundleFileInfo {
@@ -37,6 +38,9 @@ export interface BundleFileInfo {
   fansiteDayId: number | null;
   position: number;
   relpath: string;
+  /** Absolute on-disk path, resolved by Rust against app_data_dir.
+   *  Pass to `convertFileSrc` for inline <img>/<video> previews. */
+  absolutePath: string;
   originalName: string;
   kind: FileKind;
   sizeBytes: number;
@@ -53,6 +57,8 @@ export interface BundleFanDay {
   dayOfMonth: number;
   message: string;
   fileCount: number;
+  /** Per-day tag IDs (FanSite only). Empty for non-FanSite bundles. */
+  tagIds: number[];
 }
 
 export interface Bundle {
@@ -61,6 +67,7 @@ export interface Bundle {
   descriptionMode: 'audio' | 'text' | null;
   descriptionText: string;
   descriptionAudioRelpath: string | null;
+  descriptionAudioAbsolutePath: string | null;
   descriptionAudioOriginalName: string | null;
   deliveryKind: 'site' | 'url' | null;
   deliverySiteId: number | null;

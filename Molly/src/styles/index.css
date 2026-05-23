@@ -9,7 +9,7 @@
  * CSS and breaks downstream rules. Loaded as TTF assets so Molly stays
  * offline-first. License notes in src/assets/fonts/LICENSES.md.
  * Paper Daisy is Sallie's favourite and the default. */
-@font-face { font-family: 'Paper Daisy'; src: url('../assets/fonts/paperdaisy-demo.ttf') format('truetype'); font-display: swap; }
+@font-face { font-family: 'Paper Daisy'; src: url('../assets/fonts/PaperDaisy.ttf') format('truetype'); font-display: swap; }
 @font-face { font-family: 'Caveat'; src: url('../assets/fonts/Caveat-Regular.ttf') format('truetype'); font-display: swap; }
 @font-face { font-family: 'Patrick Hand'; src: url('../assets/fonts/PatrickHand-Regular.ttf') format('truetype'); font-display: swap; }
 @font-face { font-family: 'Indie Flower'; src: url('../assets/fonts/IndieFlower-Regular.ttf') format('truetype'); font-display: swap; }

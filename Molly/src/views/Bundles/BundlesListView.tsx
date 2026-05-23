@@ -10,6 +10,8 @@ import {
 } from '../../data/bundles';
 import { ALL_PERSONAS, type Persona } from '../../data/personas';
 import { listPersonas } from '../../data/personas';
+import { listContentTags, type ContentTag } from '../../data/contentTags';
+import { ReadonlyTagPill } from './components/ContentTagPicker';
 import { ContentBundleForm } from './ContentBundleForm';
 import { CustomBundleForm } from './CustomBundleForm';
 import { FanSiteBundleForm } from './FanSiteBundleForm';
@@ -28,6 +30,7 @@ export function BundlesListView({ active }: Props) {
   const [route, setRoute] = useState<RouteState>({ kind: 'list' });
   const [items, setItems] = useState<BundleSummary[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
+  const [tags, setTags] = useState<ContentTag[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creatingType, setCreatingType] = useState<BundleType | null>(null);
@@ -49,6 +52,7 @@ export function BundlesListView({ active }: Props) {
     let alive = true;
     refresh();
     listPersonas().then((p) => { if (alive) setPersonas(p); }).catch(() => {});
+    listContentTags().then((t) => { if (alive) setTags(t); }).catch(() => {});
     return () => { alive = false; };
   }, [refresh]);
 
@@ -217,6 +221,14 @@ export function BundlesListView({ active }: Props) {
                     {b.goLiveDate && <span>go-live: {b.goLiveDate}</span>}
                     {b.publishedAt && <span>published: {b.publishedAt.slice(0, 10)}</span>}
                   </div>
+                  {b.tagIds.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {b.tagIds
+                        .map((tid) => tags.find((t) => t.id === tid))
+                        .filter((t): t is ContentTag => !!t)
+                        .map((t) => <ReadonlyTagPill key={t.id} tag={t} />)}
+                    </div>
+                  )}
                 </div>
                 {b.state === 'published' && b.bundlePath && (
                   <button

@@ -87,7 +87,7 @@ export function OrderedFileList({
             const isDragging = draggingId === f.id;
             const isDropTarget = dropTargetId === f.id && draggingId !== null && draggingId !== f.id;
             const thumbnail = f.kind === 'image'
-              ? convertFileSrc(`${f.relpath}`) // best-effort; uses tauri's asset protocol
+              ? convertFileSrc(f.absolutePath)
               : null;
             return (
               <li

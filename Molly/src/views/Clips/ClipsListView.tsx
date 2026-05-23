@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import type { Persona } from '../../state/personas';
 import { listClips, type Clip } from '../../data/clips';
 import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
+import { listClipTagsInRange, listContentTags, type ContentTag } from '../../data/contentTags';
+import { ReadonlyTagPill } from '../Bundles/components/ContentTagPicker';
 import { ClipDetail } from '../Calendar/ClipDetail';
 import { MasterClipperImport } from '../Import/MasterClipperImport';
 import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
@@ -16,6 +18,8 @@ type SortDir = 'asc' | 'desc';
 export function ClipsListView({ active }: Props) {
   const [clips, setClips] = useState<Clip[]>([]);
   const [personas, setPersonas] = useState<PersonaRow[]>([]);
+  const [contentTags, setContentTags] = useState<ContentTag[]>([]);
+  const [tagsByClipId, setTagsByClipId] = useState<Map<string, number[]>>(new Map());
   const [search, setSearch] = useState('');
   const [useRegex, setUseRegex] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -31,14 +35,32 @@ export function ClipsListView({ active }: Props) {
   // Filtering is client-side now: search + status + regex toggle apply
   // to the in-memory clips array. Persona scoping stays server-side.
   const { loading, refresh } = useAsyncRefresh(async (alive) => {
-    const [c, p] = await Promise.all([
+    // Wide date window (last 5 years → next 5 years) so every clip with a
+    // go_live_date ends up in the tag map. Clips with no go_live aren't
+    // returned by list_clip_tags_in_range, but they're rare in practice.
+    const today = new Date();
+    const wideFrom = `${today.getFullYear() - 5}-01-01`;
+    const wideTo = `${today.getFullYear() + 5}-12-31`;
+    const [c, p, tagDefs, tagRows] = await Promise.all([
       listClips({ personaCode: active.code, limit: 500 }),
       listPersonas(),
+      listContentTags(),
+      listClipTagsInRange(wideFrom, wideTo, active.code === 'ALL' ? null : active.code),
     ]);
     if (!alive()) return;
     setClips(c);
     setPersonas(p);
+    setContentTags(tagDefs);
+    const m = new Map<string, number[]>();
+    for (const r of tagRows) {
+      const arr = m.get(r.clipId) ?? [];
+      arr.push(r.tagId);
+      m.set(r.clipId, arr);
+    }
+    setTagsByClipId(m);
   }, [active.code]);
+
+  const tagDefById = useMemo(() => new Map(contentTags.map((t) => [t.id, t])), [contentTags]);
 
   const personaByCode = useMemo(() => new Map(personas.map((p) => [p.code, p])), [personas]);
 
@@ -200,6 +222,7 @@ export function ClipsListView({ active }: Props) {
         <div className="divide-y divide-black/5">
           {sorted.map((c) => {
             const p = c.personaCode ? personaByCode.get(c.personaCode) : null;
+            const tagIds = tagsByClipId.get(c.id) ?? [];
             return (
               <button
                 key={c.id}
@@ -215,7 +238,17 @@ export function ClipsListView({ active }: Props) {
                     </span>
                   )}
                 </div>
-                <div className="col-span-5 truncate font-semibold">{c.title || '(untitled)'}</div>
+                <div className="col-span-5 min-w-0">
+                  <div className="truncate font-semibold">{c.title || '(untitled)'}</div>
+                  {tagIds.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {tagIds
+                        .map((tid) => tagDefById.get(tid))
+                        .filter((t): t is ContentTag => !!t)
+                        .map((t) => <ReadonlyTagPill key={t.id} tag={t} />)}
+                    </div>
+                  )}
+                </div>
                 <div className="col-span-2 text-xs opacity-70">{c.status}</div>
                 <div className="col-span-2 text-xs font-mono opacity-70 text-right">{c.goLiveDate ?? '—'}</div>
               </button>

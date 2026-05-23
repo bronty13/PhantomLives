@@ -10,6 +10,8 @@ import {
   updateBundleFields,
 } from '../../data/bundles';
 import { listPersonas, type Persona } from '../../data/personas';
+import { listContentTags, setBundleTags, type ContentTag } from '../../data/contentTags';
+import { ContentTagPicker } from './components/ContentTagPicker';
 import { DeliveryField } from './components/DeliveryField';
 import { GoLiveDatePicker } from './components/GoLiveDatePicker';
 import { OrderedFileList } from './components/OrderedFileList';
@@ -37,6 +39,7 @@ function tomorrowIso(): string {
 export function CustomBundleForm({ uid, onPublishRequested, onClose, onDeleted, onUnlock, locked }: Props) {
   const [bundle, setBundle] = useState<Bundle | null>(null);
   const [personas, setPersonas] = useState<Persona[]>([]);
+  const [contentTags, setContentTags] = useState<ContentTag[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [priceDraft, setPriceDraft] = useState('');
@@ -49,11 +52,15 @@ export function CustomBundleForm({ uid, onPublishRequested, onClose, onDeleted, 
 
   useEffect(() => {
     let alive = true;
-    Promise.all([reload(), listPersonas()])
-      .then(([_, p]) => { if (alive) setPersonas(p); })
+    Promise.all([reload(), listPersonas(), listContentTags()])
+      .then(([_, p, tags]) => { if (alive) { setPersonas(p); setContentTags(tags); } })
       .catch((e) => alive && setError(String(e)));
     return () => { alive = false; };
   }, [reload]);
+
+  async function onTagsChange(next: number[]) {
+    await withBusy(async () => { await setBundleTags(uid, next); await reload(); });
+  }
 
   async function withBusy<T>(fn: () => Promise<T>): Promise<T | null> {
     setBusy(true); setError(null);
@@ -235,6 +242,13 @@ export function CustomBundleForm({ uid, onPublishRequested, onClose, onDeleted, 
             </label>
           </div>
         </div>
+
+        <ContentTagPicker
+          tags={contentTags}
+          selected={bundle.summary.tagIds}
+          onChange={onTagsChange}
+          disabled={busy || locked}
+        />
 
         <SpecialInstructionsField
           value={bundle.specialInstructions}

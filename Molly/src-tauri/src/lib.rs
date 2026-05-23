@@ -7,10 +7,12 @@ mod background_jobs;
 mod bundle_zip;
 mod bundles;
 mod c4s;
+mod content_tags;
 mod crypto;
 mod export;
 mod fsutil;
 mod history;
+mod holidays;
 mod log;
 mod masterclipper;
 mod notes;
@@ -162,6 +164,30 @@ pub fn run() {
             version: 24,
             description: "note-font-size",
             sql: include_str!("../migrations/024_note_font_size.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 25,
+            description: "holidays",
+            sql: include_str!("../migrations/025_holidays.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 26,
+            description: "content-tags",
+            sql: include_str!("../migrations/026_content_tags.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 27,
+            description: "fanday-tags",
+            sql: include_str!("../migrations/027_fanday_tags.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 28,
+            description: "clip-tags",
+            sql: include_str!("../migrations/028_clip_tags.sql"),
             kind: MigrationKind::Up,
         },
     ];
@@ -328,6 +354,24 @@ pub fn run() {
             notes::open_note_attachment,
             notes::download_note_attachment,
             notes::write_note_export,
+            holidays::list_holidays,
+            holidays::create_holiday,
+            holidays::update_holiday,
+            holidays::set_holiday_enabled,
+            holidays::delete_holiday,
+            holidays::reset_holidays_to_us_defaults,
+            content_tags::list_content_tags,
+            content_tags::create_content_tag,
+            content_tags::update_content_tag,
+            content_tags::delete_content_tag,
+            content_tags::list_bundle_tags,
+            content_tags::set_bundle_tags,
+            content_tags::list_fan_day_tags,
+            content_tags::set_fan_day_tags,
+            content_tags::list_fansite_day_tags_in_range,
+            content_tags::list_clip_tags,
+            content_tags::set_clip_tags,
+            content_tags::list_clip_tags_in_range,
         ])
         .run(tauri::generate_context!())
         .expect("error while running molly");
@@ -475,6 +519,7 @@ mod camel_case_contract {
             updated_at: String::new(),
             aging_flag: String::new(),
             file_count: 0,
+            tag_ids: vec![],
         }
     }
 
@@ -498,6 +543,7 @@ mod camel_case_contract {
             fansite_day_id: None,
             position: 0,
             relpath: String::new(),
+            absolute_path: String::new(),
             original_name: String::new(),
             kind: String::new(),
             size_bytes: 0,
@@ -514,6 +560,7 @@ mod camel_case_contract {
             day_of_month: 1,
             message: String::new(),
             file_count: 0,
+            tag_ids: vec![],
         })
         .unwrap();
         assert_camel(&v, "BundleFanDay");
@@ -537,6 +584,7 @@ mod camel_case_contract {
             description_mode: None,
             description_text: String::new(),
             description_audio_relpath: None,
+            description_audio_absolute_path: None,
             description_audio_original_name: None,
             delivery_kind: None,
             delivery_site_id: None,
@@ -819,6 +867,53 @@ mod camel_case_contract {
         }).unwrap();
         assert_camel(&v, "NoteDefaults");
     }
+
+    // Phase 14 — Holidays boundary structs.
+    use crate::holidays::Holiday;
+
+    #[test]
+    fn holiday_is_camel_case() {
+        let v = serde_json::to_value(Holiday {
+            id: 0, name: String::new(), kind: "fixed".into(),
+            month: 1, day: Some(1), weekday: None, nth: None,
+            color_primary: "#000000".into(), color_secondary: None,
+            color_text: "#FFFFFF".into(), emoji: None,
+            enabled: true, source: "custom".into(),
+            created_at: String::new(), updated_at: String::new(),
+        }).unwrap();
+        assert_camel(&v, "Holiday");
+    }
+
+    use crate::content_tags::{ClipTagInDate, ContentTag, FanSiteDayTag};
+
+    #[test]
+    fn content_tag_is_camel_case() {
+        let v = serde_json::to_value(ContentTag {
+            id: 0, name: String::new(), color: "#000000".into(),
+            sort_order: 0, is_builtin: false,
+        }).unwrap();
+        assert_camel(&v, "ContentTag");
+    }
+
+    #[test]
+    fn fansite_day_tag_is_camel_case() {
+        let v = serde_json::to_value(FanSiteDayTag {
+            date: String::new(), bundle_uid: String::new(),
+            persona_code: None, fan_day_id: 0, tag_id: 0,
+            tag_name: String::new(), tag_color: "#000000".into(),
+        }).unwrap();
+        assert_camel(&v, "FanSiteDayTag");
+    }
+
+    #[test]
+    fn clip_tag_in_date_is_camel_case() {
+        let v = serde_json::to_value(ClipTagInDate {
+            date: String::new(), clip_id: String::new(),
+            persona_code: None, tag_id: 0,
+            tag_name: String::new(), tag_color: "#000000".into(),
+        }).unwrap();
+        assert_camel(&v, "ClipTagInDate");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -867,6 +962,10 @@ mod migration_smoke {
             (22, "job-run-log-path",             include_str!("../migrations/022_job_run_log_path.sql")),
             (23, "notes",                        include_str!("../migrations/023_notes.sql")),
             (24, "note-font-size",               include_str!("../migrations/024_note_font_size.sql")),
+            (25, "holidays",                     include_str!("../migrations/025_holidays.sql")),
+            (26, "content-tags",                 include_str!("../migrations/026_content_tags.sql")),
+            (27, "fanday-tags",                  include_str!("../migrations/027_fanday_tags.sql")),
+            (28, "clip-tags",                    include_str!("../migrations/028_clip_tags.sql")),
         ];
 
         for (v, name, sql) in migrations {
@@ -894,6 +993,9 @@ mod migration_smoke {
             "site_credentials",
             "background_jobs", "background_job_runs",
             "note_folders", "notes", "note_tags_def", "note_tag_links", "note_attachments",
+            "holidays",
+            "content_tags_def", "bundle_tag_links",
+            "clip_tag_links",
         ];
         for t in expected_tables {
             let count: i64 = conn
