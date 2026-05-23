@@ -10,6 +10,7 @@ import {
   type ClipTagInDate,
   type FanSiteDayTag,
 } from '../../data/contentTags';
+import { listSubredditPostsInRange, type SubredditPost } from '../../data/reddit';
 import { ClipDetail } from './ClipDetail';
 import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 import { holidayPillStyle, resolveHolidaysForMonth } from '../../lib/holidayResolver';
@@ -17,7 +18,7 @@ import { holidayPillStyle, resolveHolidaysForMonth } from '../../lib/holidayReso
 /** localStorage helpers for the per-persona toggle preferences. Keyed
  *  by both the persona code AND the overlay kind so Sallie can have
  *  e.g. FanSite tags on for CoC but Clip tags only for PoA. */
-type OverlayKind = 'fansite' | 'clip';
+type OverlayKind = 'fansite' | 'clip' | 'reddit';
 function toggleKey(personaCode: string, kind: OverlayKind): string {
   return `molly.calendar.show.${kind}.${personaCode}`;
 }
@@ -60,8 +61,10 @@ export function CalendarView({ active }: Props) {
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [fanSiteTags, setFanSiteTags] = useState<FanSiteDayTag[]>([]);
   const [clipTags, setClipTags] = useState<ClipTagInDate[]>([]);
+  const [redditPosts, setRedditPosts] = useState<SubredditPost[]>([]);
   const [showFanSiteTags, setShowFanSiteTags] = useState<boolean>(() => loadToggle(active.code, 'fansite'));
   const [showClipTags, setShowClipTags] = useState<boolean>(() => loadToggle(active.code, 'clip'));
+  const [showRedditPosts, setShowRedditPosts] = useState<boolean>(() => loadToggle(active.code, 'reddit'));
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>('');
 
@@ -70,6 +73,7 @@ export function CalendarView({ active }: Props) {
   useEffect(() => {
     setShowFanSiteTags(loadToggle(active.code, 'fansite'));
     setShowClipTags(loadToggle(active.code, 'clip'));
+    setShowRedditPosts(loadToggle(active.code, 'reddit'));
   }, [active.code]);
 
   const monthEnd = useMemo(() => addMonths(month, 1), [month]);
@@ -79,7 +83,7 @@ export function CalendarView({ active }: Props) {
     const last = new Date(monthEnd.getTime() - 86_400_000); // last day of month
     const to = isoDateKey(last);
     const personaFilter = active.code === 'ALL' ? null : active.code;
-    const [c, o, p, h, fst, ct] = await Promise.all([
+    const [c, o, p, h, fst, ct, rp] = await Promise.all([
       listClips({
         personaCode: active.code,
         from,
@@ -90,11 +94,12 @@ export function CalendarView({ active }: Props) {
       listOccurrencesInRange(from, to, { personaCode: active.code }),
       listPersonas(),
       listHolidays(),
-      // Both tag overlays are always fetched — toggles control display,
-      // not the query. Each is bounded by (days × tags) in the visible
+      // All three overlays are always fetched — toggles control display,
+      // not the query. Each is bounded by (days × items) in the visible
       // month so cost stays cheap.
       listFanSiteDayTagsInRange(from, to, personaFilter),
       listClipTagsInRange(from, to, personaFilter),
+      listSubredditPostsInRange(from, to, personaFilter),
     ]);
     if (!alive()) return;
     setClips(c);
@@ -103,6 +108,7 @@ export function CalendarView({ active }: Props) {
     setHolidays(h);
     setFanSiteTags(fst);
     setClipTags(ct);
+    setRedditPosts(rp);
   }, [active.code, month]);
 
   const holidaysByDay = useMemo(
@@ -129,6 +135,16 @@ export function CalendarView({ active }: Props) {
     }
     return m;
   }, [clipTags]);
+
+  const redditPostsByDay = useMemo(() => {
+    const m = new Map<string, SubredditPost[]>();
+    for (const p of redditPosts) {
+      const arr = m.get(p.postedDate) ?? [];
+      arr.push(p);
+      m.set(p.postedDate, arr);
+    }
+    return m;
+  }, [redditPosts]);
 
   const personaByCode = useMemo(() => new Map(personas.map((p) => [p.code, p])), [personas]);
 
@@ -211,6 +227,18 @@ export function CalendarView({ active }: Props) {
             }}
           />
           <span>🎬 Clip tags</span>
+        </label>
+        <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={showRedditPosts}
+            onChange={(e) => {
+              const on = e.target.checked;
+              setShowRedditPosts(on);
+              saveToggle(active.code, 'reddit', on);
+            }}
+          />
+          <span>🔴 Reddit posts</span>
         </label>
         <span className="opacity-50">
           (toggles remembered for {active.code === 'ALL' ? 'all personas' : active.name})
@@ -304,6 +332,35 @@ export function CalendarView({ active }: Props) {
                           {t.tagName}
                         </span>
                       ))}
+                    </div>
+                  )}
+                  {showRedditPosts && (redditPostsByDay.get(key)?.length ?? 0) > 0 && (
+                    <div className="flex flex-col gap-0.5">
+                      {(redditPostsByDay.get(key) ?? []).slice(0, 3).map((p) => {
+                        const future = key > isoDateKey(new Date());
+                        return (
+                          <div
+                            key={`rp-${p.id}`}
+                            className="text-left px-1.5 py-0.5 rounded text-[10px] truncate font-medium"
+                            style={{
+                              background: 'rgba(255,107,149,0.15)',
+                              color: '#72243E',
+                              border: future
+                                ? '1px dashed rgba(255,107,149,0.65)'
+                                : '1px solid rgba(255,107,149,0.55)',
+                              fontStyle: future ? 'italic' : 'normal',
+                            }}
+                            title={`r/${p.subredditName}${p.notes ? ` · ${p.notes}` : ''}${future ? ' (scheduled)' : ''}`}
+                          >
+                            🔴 r/{p.subredditName}
+                          </div>
+                        );
+                      })}
+                      {(redditPostsByDay.get(key)?.length ?? 0) > 3 && (
+                        <div className="text-[9px] opacity-60 italic">
+                          +{(redditPostsByDay.get(key)?.length ?? 0) - 3} more
+                        </div>
+                      )}
                     </div>
                   )}
                   {occsToShow.map((o) => {

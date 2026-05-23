@@ -9,13 +9,16 @@ mod bundles;
 mod c4s;
 mod content_tags;
 mod crypto;
+mod daily_tasks;
 mod export;
 mod fsutil;
 mod history;
 mod holidays;
+mod hours;
 mod log;
 mod masterclipper;
 mod notes;
+mod reddit;
 mod site_credentials;
 
 use tauri_plugin_sql::{Migration, MigrationKind};
@@ -188,6 +191,36 @@ pub fn run() {
             version: 28,
             description: "clip-tags",
             sql: include_str!("../migrations/028_clip_tags.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 29,
+            description: "subreddits",
+            sql: include_str!("../migrations/029_subreddits.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 30,
+            description: "hours",
+            sql: include_str!("../migrations/030_hours.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 31,
+            description: "daily-tasks",
+            sql: include_str!("../migrations/031_daily_tasks.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 32,
+            description: "drop-content-release-defaults",
+            sql: include_str!("../migrations/032_drop_content_release_defaults.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 33,
+            description: "ui-theme",
+            sql: include_str!("../migrations/033_ui_theme.sql"),
             kind: MigrationKind::Up,
         },
     ];
@@ -372,6 +405,34 @@ pub fn run() {
             content_tags::list_clip_tags,
             content_tags::set_clip_tags,
             content_tags::list_clip_tags_in_range,
+            reddit::list_subreddits,
+            reddit::create_subreddit,
+            reddit::update_subreddit,
+            reddit::set_subreddit_starred,
+            reddit::set_subreddit_verified,
+            reddit::delete_subreddit,
+            reddit::mark_subreddit_posted,
+            reddit::list_subreddit_posts_in_range,
+            reddit::create_subreddit_post,
+            reddit::delete_subreddit_post,
+            reddit::list_captions,
+            reddit::create_caption,
+            reddit::update_caption,
+            reddit::delete_caption,
+            hours::hours_start_session,
+            hours::hours_stop_session,
+            hours::hours_list_sessions,
+            hours::hours_delete_session,
+            hours::hours_totals,
+            hours::list_reward_milestones,
+            hours::create_reward_milestone,
+            hours::update_reward_milestone,
+            hours::delete_reward_milestone,
+            daily_tasks::list_daily_tasks,
+            daily_tasks::create_daily_task,
+            daily_tasks::complete_daily_task,
+            daily_tasks::undo_daily_task,
+            daily_tasks::delete_daily_task,
         ])
         .run(tauri::generate_context!())
         .expect("error while running molly");
@@ -914,6 +975,78 @@ mod camel_case_contract {
         }).unwrap();
         assert_camel(&v, "ClipTagInDate");
     }
+
+    use crate::daily_tasks::DailyTask;
+    use crate::hours::{ClockSession, HoursTotals, RewardMilestone};
+
+    #[test]
+    fn daily_task_is_camel_case() {
+        let v = serde_json::to_value(DailyTask {
+            id: 0, persona_code: None, for_date: String::new(),
+            text: String::new(), category: "other".into(),
+            done_at: None, sort_order: 0, created_at: String::new(),
+        }).unwrap();
+        assert_camel(&v, "DailyTask");
+    }
+
+    #[test]
+    fn clock_session_is_camel_case() {
+        let v = serde_json::to_value(ClockSession {
+            id: 0, persona_code: None, start_ms: 0, duration_ms: None,
+            notes: String::new(), created_at: String::new(),
+        }).unwrap();
+        assert_camel(&v, "ClockSession");
+    }
+
+    #[test]
+    fn hours_totals_is_camel_case() {
+        let v = serde_json::to_value(HoursTotals {
+            today_ms: 0, week_ms: 0, month_ms: 0, all_time_ms: 0,
+            open_session_start_ms: None, open_session_id: None,
+        }).unwrap();
+        assert_camel(&v, "HoursTotals");
+    }
+
+    #[test]
+    fn reward_milestone_is_camel_case() {
+        let v = serde_json::to_value(RewardMilestone {
+            id: 0, hours_goal: 0.0, label: String::new(), sort_order: 0,
+            created_at: String::new(), updated_at: String::new(),
+        }).unwrap();
+        assert_camel(&v, "RewardMilestone");
+    }
+
+    use crate::reddit::{Caption, Subreddit, SubredditPost};
+
+    #[test]
+    fn subreddit_is_camel_case() {
+        let v = serde_json::to_value(Subreddit {
+            id: 0, persona_code: None, name: String::new(), tag_id: None,
+            verified: false, karma_req: String::new(), rotation: "fresh".into(),
+            last_posted_at: None, notes: String::new(), starred: false, sort_order: 0,
+            created_at: String::new(), updated_at: String::new(),
+        }).unwrap();
+        assert_camel(&v, "Subreddit");
+    }
+
+    #[test]
+    fn subreddit_post_is_camel_case() {
+        let v = serde_json::to_value(SubredditPost {
+            id: 0, persona_code: None, subreddit_id: None,
+            subreddit_name: String::new(), tag_id: None,
+            posted_date: String::new(), notes: String::new(), created_at: String::new(),
+        }).unwrap();
+        assert_camel(&v, "SubredditPost");
+    }
+
+    #[test]
+    fn caption_is_camel_case() {
+        let v = serde_json::to_value(Caption {
+            id: 0, persona_code: None, text: String::new(), tag_id: None,
+            created_at: String::new(), updated_at: String::new(),
+        }).unwrap();
+        assert_camel(&v, "Caption");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -966,6 +1099,11 @@ mod migration_smoke {
             (26, "content-tags",                 include_str!("../migrations/026_content_tags.sql")),
             (27, "fanday-tags",                  include_str!("../migrations/027_fanday_tags.sql")),
             (28, "clip-tags",                    include_str!("../migrations/028_clip_tags.sql")),
+            (29, "subreddits",                   include_str!("../migrations/029_subreddits.sql")),
+            (30, "hours",                        include_str!("../migrations/030_hours.sql")),
+            (31, "daily-tasks",                  include_str!("../migrations/031_daily_tasks.sql")),
+            (32, "drop-content-release",         include_str!("../migrations/032_drop_content_release_defaults.sql")),
+            (33, "ui-theme",                     include_str!("../migrations/033_ui_theme.sql")),
         ];
 
         for (v, name, sql) in migrations {
@@ -996,6 +1134,9 @@ mod migration_smoke {
             "holidays",
             "content_tags_def", "bundle_tag_links",
             "clip_tag_links",
+            "subreddits", "subreddit_posts", "captions",
+            "clock_sessions", "reward_milestones",
+            "daily_tasks",
         ];
         for t in expected_tables {
             let count: i64 = conn

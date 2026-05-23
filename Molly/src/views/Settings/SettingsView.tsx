@@ -1,10 +1,12 @@
 import { useState, type ReactNode } from 'react';
 import type { Persona } from '../../state/personas';
+import { AppearanceSettings } from './AppearanceSettings';
 import { BackupSettings } from './BackupSettings';
 import { BundlerSettings } from './BundlerSettings';
 import { ContentTagsSettings } from './ContentTagsSettings';
 import { HolidaysSettings } from './HolidaysSettings';
 import { NotesSettings } from './NotesSettings';
+import { RewardsSettings } from './RewardsSettings';
 import { AtwSettingsPane } from './AtwSettings';
 import { C4SSettings } from './C4SSettings';
 import { DataSettings } from './DataSettings';
@@ -15,7 +17,7 @@ import { SitesSettings } from './SitesSettings';
 import { TaxonomySettings } from './TaxonomySettings';
 import { UpdatesSettings } from './UpdatesSettings';
 
-type Tab = 'personas' | 'sites' | 'products' | 'interests' | 'kinks' | 'platforms' | 'c4s' | 'bundler' | 'contentTags' | 'notes' | 'holidays' | 'security' | 'atw' | 'data' | 'updates' | 'backup';
+type Tab = 'personas' | 'appearance' | 'sites' | 'products' | 'interests' | 'kinks' | 'platforms' | 'c4s' | 'bundler' | 'contentTags' | 'notes' | 'holidays' | 'rewards' | 'security' | 'atw' | 'data' | 'updates' | 'backup';
 
 interface Props {
   active: Persona;
@@ -24,6 +26,7 @@ interface Props {
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'personas',  label: 'Personas',   icon: '👯‍♀️' },
+  { key: 'appearance', label: 'Appearance', icon: '🎨' },
   { key: 'sites',     label: 'Sites',      icon: '💻' },
   { key: 'platforms', label: 'Platforms',  icon: '📣' },
   { key: 'products',  label: 'Products',   icon: '📦' },
@@ -34,6 +37,7 @@ const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'contentTags', label: 'Content tags', icon: '🏷️' },
   { key: 'notes',     label: 'Notes',      icon: '📝' },
   { key: 'holidays',  label: 'Holidays',   icon: '🎉' },
+  { key: 'rewards',   label: 'Rewards',    icon: '🎁' },
   { key: 'security',  label: 'Security',   icon: '🔐' },
   { key: 'atw',       label: 'ATW Repost', icon: '🌀' },
   { key: 'data',      label: 'Data',       icon: '📦' },
@@ -47,6 +51,7 @@ export function SettingsView({ active, onPersonasChanged }: Props) {
   let body: ReactNode = null;
   switch (tab) {
     case 'personas':  body = <PersonasSettings onChanged={onPersonasChanged} />; break;
+    case 'appearance': body = <AppearanceSettings />; break;
     case 'sites':     body = <SitesSettings activePersona={active} />; break;
     case 'platforms': body = <PlatformsSettings />; break;
     case 'products':  body = <TaxonomySettings kind="products" />; break;
@@ -57,6 +62,7 @@ export function SettingsView({ active, onPersonasChanged }: Props) {
     case 'contentTags': body = <ContentTagsSettings />; break;
     case 'notes':     body = <NotesSettings />; break;
     case 'holidays':  body = <HolidaysSettings />; break;
+    case 'rewards':   body = <RewardsSettings />; break;
     case 'security':  body = <SecuritySettings />; break;
     case 'atw':       body = <AtwSettingsPane />; break;
     case 'data':      body = <DataSettings />; break;

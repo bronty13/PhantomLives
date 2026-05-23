@@ -4,10 +4,12 @@ import { Sidebar, type ViewKey } from './components/Sidebar';
 import { PersonaSwitcher } from './components/PersonaSwitcher';
 import { usePersonas } from './state/personas';
 import { useApplyPersonaTheme } from './state/theme';
+import { useUiTheme } from './state/uiTheme';
 import { SettingsView } from './views/Settings/SettingsView';
 import { CustomerListView } from './views/Customers/CustomerListView';
 import { MollyHelper } from './views/MollyHelper/MollyHelper';
 import { PromosListView } from './views/Promos/PromosListView';
+import { RedditView } from './views/Reddit/RedditView';
 import { HomeDashboard } from './views/Home/HomeDashboard';
 import { CalendarView } from './views/Calendar/CalendarView';
 import { ClipsListView } from './views/Clips/ClipsListView';
@@ -27,6 +29,7 @@ import { materializeRecurringExpenses } from './data/expenses';
 export default function App() {
   const { personas, active, choose, loading, error, refresh } = usePersonas();
   useApplyPersonaTheme(active);
+  useUiTheme();
 
   const [view, setView] = useState<ViewKey>('home');
   const [sidebarVisible, setSidebarVisible] = useState(true);
@@ -106,6 +109,7 @@ export default function App() {
     case 'customers': body = <CustomerListView active={active} />; break;
     case 'helper':    body = <MollyHelper active={active} />; break;
     case 'promos':    body = <PromosListView active={active} />; break;
+    case 'reddit':    body = <RedditView active={active} />; break;
     case 'income':    body = <IncomeView active={active} />; break;
     case 'expenses':  body = <ExpensesView active={active} onChanged={refreshCounts} />; break;
     case 'reports':   body = <ReportsView active={active} />; break;

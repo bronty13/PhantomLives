@@ -96,6 +96,10 @@ pub struct FileEntry {
 pub struct FanDay {
     pub day_of_month: i64,
     pub message: String,
+    /// Per-day content-tag names, in sort order. Empty when no tags
+    /// attached to this day. FanSite-only — bundle-level tags for
+    /// Content/Custom live on `BundleSnapshot.tags`.
+    pub tag_names: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -112,6 +116,11 @@ pub struct BundleSnapshot {
     pub description_text: String,
     pub description_audio: Option<FileEntry>,
     pub categories: Vec<String>, // already UPPERCASE, in position order
+
+    /// Bundle-level content-tag names, in sort order. Populated for
+    /// Content + Custom bundles; FanSite uses per-day tags on `fan_days`
+    /// instead (and leaves this empty).
+    pub tags: Vec<String>,
 
     // Custom
     pub delivery_kind: Option<String>,           // "site" | "url"
@@ -440,6 +449,13 @@ fn render_info_md(s: &BundleSnapshot) -> String {
                 }
                 md.push('\n');
             }
+
+            md.push_str("## Content tags\n\n");
+            if s.tags.is_empty() {
+                md.push_str("_(none)_\n\n");
+            } else {
+                md.push_str(&format!("{}\n\n", s.tags.join(", ")));
+            }
         }
         BundleType::Custom => {
             md.push_str("## Delivery\n\n");
@@ -469,6 +485,13 @@ fn render_info_md(s: &BundleSnapshot) -> String {
                 md.push_str("- **Price:** _(not set)_\n");
             }
             md.push('\n');
+
+            md.push_str("## Content tags\n\n");
+            if s.tags.is_empty() {
+                md.push_str("_(none)_\n\n");
+            } else {
+                md.push_str(&format!("{}\n\n", s.tags.join(", ")));
+            }
         }
         BundleType::FanSite => {
             md.push_str(&format!(
@@ -485,12 +508,16 @@ fn render_info_md(s: &BundleSnapshot) -> String {
                     .filter(|f| f.fansite_day_of_month == Some(d.day_of_month))
                     .count();
                 md.push_str(&format!(
-                    "### Day {:02}\n\n{}\n\n_({} file{})_\n\n",
+                    "### Day {:02}\n\n{}\n\n_({} file{})_\n",
                     d.day_of_month,
                     if d.message.is_empty() { "_(no message)_" } else { &d.message },
                     count,
                     if count == 1 { "" } else { "s" }
                 ));
+                if !d.tag_names.is_empty() {
+                    md.push_str(&format!("\n**Tags:** {}\n", d.tag_names.join(", ")));
+                }
+                md.push('\n');
             }
         }
     }
@@ -602,6 +629,14 @@ fn render_molly_log(
             for (i, c) in s.categories.iter().enumerate() {
                 log.push_str(&format!("  {}. {}\n", i + 1, c));
             }
+            log.push_str(&format!("Content tags ({}):\n", s.tags.len()));
+            if s.tags.is_empty() {
+                log.push_str("  (none)\n");
+            } else {
+                for (i, t) in s.tags.iter().enumerate() {
+                    log.push_str(&format!("  {}. {}\n", i + 1, t));
+                }
+            }
         }
         BundleType::Custom => {
             log.push_str(&format!("Delivery recipient: {}\n", s.delivery_recipient));
@@ -622,6 +657,14 @@ fn render_molly_log(
                 log.push_str(&format!("Price:              ${}.{:02}\n", c / 100, c % 100));
             } else {
                 log.push_str("Price:              (not set)\n");
+            }
+            log.push_str(&format!("Content tags ({}):\n", s.tags.len()));
+            if s.tags.is_empty() {
+                log.push_str("  (none)\n");
+            } else {
+                for (i, t) in s.tags.iter().enumerate() {
+                    log.push_str(&format!("  {}. {}\n", i + 1, t));
+                }
             }
         }
         BundleType::FanSite => {
@@ -646,6 +689,12 @@ fn render_molly_log(
                     if count == 1 { "" } else { "s" },
                     if d.message.is_empty() { "(no message)" } else { &d.message },
                 ));
+                if !d.tag_names.is_empty() {
+                    log.push_str(&format!(
+                        "    tags: {}\n",
+                        d.tag_names.join(", "),
+                    ));
+                }
             }
         }
     }
@@ -736,6 +785,7 @@ mod tests {
             description_text: "Hello there".to_string(),
             description_audio: None,
             categories: vec!["BBW".into(), "STUFFING".into(), "SOLO".into()],
+            tags: vec!["tits".into(), "panties".into()],
             delivery_kind: None,
             delivery_site_name: None,
             delivery_url: None,
@@ -903,6 +953,53 @@ mod tests {
         assert!(md.contains("be cute"));
         assert!(md.contains("Photos/00001_photo1.jpg"));
         assert!(md.contains("Video/00001_clip.mp4"));
+        // Phase 14 PR5 — content tags must appear under their own heading.
+        assert!(md.contains("## Content tags"));
+        assert!(md.contains("tits, panties"));
+    }
+
+    #[test]
+    fn molly_log_includes_bundle_level_tags() {
+        let work = tempfile::tempdir().unwrap();
+        let snap = fixture_content(work.path());
+        let log = render_molly_log(&snap, "deadbeef", &[]);
+        assert!(log.contains("Content tags (2):"));
+        assert!(log.contains("1. tits"));
+        assert!(log.contains("2. panties"));
+    }
+
+    #[test]
+    fn info_md_renders_per_day_tags_for_fansite() {
+        // Build a minimal FanSite snapshot without composing — render only.
+        let snap = BundleSnapshot {
+            uid: "X".into(), bundle_type: BundleType::FanSite,
+            persona_code: None, title: "T".into(), content_date: "2026-06-01".into(),
+            go_live_date: None, special_instructions: String::new(),
+            description_text: String::new(), description_audio: None,
+            categories: Vec::new(), tags: Vec::new(),
+            delivery_kind: None, delivery_site_name: None, delivery_url: None,
+            delivery_recipient: String::new(), price_cents: None, handled_in_platform: false,
+            fansite_year: Some(2026), fansite_month: Some(6),
+            fan_days: vec![
+                FanDay { day_of_month: 4,  message: "spring".into(),  tag_names: vec!["heels".into(), "tits".into()] },
+                FanDay { day_of_month: 11, message: "monday".into(),  tag_names: vec![] },
+                FanDay { day_of_month: 18, message: "midweek".into(), tag_names: vec!["flats".into()] },
+            ],
+            files: Vec::new(), published_at: "2026-06-01T00:00:00Z".into(),
+        };
+        let md = render_info_md(&snap);
+        // Day 4 → both tags present, comma-joined, under a Tags line.
+        assert!(md.contains("### Day 04"));
+        assert!(md.contains("**Tags:** heels, tits"));
+        // Day 11 → no tag line at all (must not say "Tags: ").
+        assert!(md.contains("### Day 11"));
+        // Day 18 → single tag.
+        assert!(md.contains("### Day 18"));
+        assert!(md.contains("**Tags:** flats"));
+        // Negative — render must not emit "Tags:" for the empty day. Since
+        // "Tags:" appears in other day blocks we count occurrences.
+        let tag_line_count = md.matches("**Tags:**").count();
+        assert_eq!(tag_line_count, 2, "only days with tags should print a Tags line");
     }
 
     #[test]
@@ -926,6 +1023,7 @@ mod tests {
             description_text: String::new(),
             description_audio: None,
             categories: Vec::new(),
+            tags: Vec::new(),
             delivery_kind: None,
             delivery_site_name: None,
             delivery_url: None,
@@ -935,8 +1033,16 @@ mod tests {
             fansite_year: Some(2026),
             fansite_month: Some(5),
             fan_days: vec![
-                FanDay { day_of_month: 1, message: "day one".into() },
-                FanDay { day_of_month: 15, message: "mid month".into() },
+                FanDay {
+                    day_of_month: 1,
+                    message: "day one".into(),
+                    tag_names: vec!["heels".into(), "tits".into()],
+                },
+                FanDay {
+                    day_of_month: 15,
+                    message: "mid month".into(),
+                    tag_names: vec!["flats".into()],
+                },
             ],
             files: vec![
                 FileEntry {

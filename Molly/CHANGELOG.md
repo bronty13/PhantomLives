@@ -4,6 +4,185 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.1] — 2026-05-23
+
+### Fixed — 🚨 Migration hash crash on launch
+
+v1.17.0 edited `006_schedules.sql` in place to drop the seeded
+'CoC content release' + 'PoA content release' rows. tauri-plugin-sql
+SHA-hashes every migration on first apply and refuses to open the DB
+if the bytes ever change later, so existing installs hit
+`migration 6 was previously applied but has been modified` and
+couldn't launch.
+
+Fix: `006_schedules.sql` is now byte-exact restored to its original
+v1.0 content (re-includes the two INSERT rows). Migration 032 still
+runs and deletes the same two rows — so the end-state is identical:
+fresh installs seed 5 → 032 deletes 2 → 3 left; existing installs
+simply have 032 run for the first time (it couldn't before because
+006's hash check was blocking it) → 2 rows deleted → same 3 left.
+
+Lesson re-pinned in the head: **never edit a migration's bytes after
+it ships**. The right shape is always "new migration that fixes the
+data" — which is what 032 already was.
+
+## [1.17.0] — 2026-05-23
+
+### Added — 🔴 Reddit ops hub + 🎨 Dark mode (Phase 15)
+
+A new sidebar tab and a UI-theme toggle, plus the removal of two
+unwanted default reminders.
+
+#### 🔴 Reddit (new sidebar tab)
+
+Five sections under a single internal section bar, all persona-scoped
+via the existing Molly persona switcher:
+
+- **✅ Today** — daily to-do list with 11 quick-add chips (Reddit posts,
+  YouTube, content, admin), 5 color-coded category pills, hero stats
+  (to-do / done / %), per-task complete + undo + delete. Tasks belong
+  to a `for_date` so previous-day entries stay as history but don't
+  pollute today's view (frontend filters by today's local date).
+- **📌 Subreddit tracker** — table with star, name, category (pulled
+  from the existing **content tags** taxonomy), verified ✓/✗, karma
+  req, rotation (Ready / Tomorrow / Resting), last-posted date, notes.
+  Sort by starred + A-Z / category / last-posted / rotation. Filter by
+  search, category, rotation. "Mark posted today" flips rotation to
+  Resting + stamps last-posted + creates a Post log entry.
+- **📅 Post log** — chronological log bucketed by Future / Tomorrow /
+  Today / Yesterday / Earlier. Logging a post accepts any date
+  (yesterday, today, scheduled). Auto-completes subreddit name from
+  the tracker; future entries render with dashed borders + italic.
+- **💬 Captions** — light-touch caption stash with copy-to-clipboard,
+  optional content-tag category, search + filter. No "mark used"
+  flow — Sallie said "doesn't have to be that serious."
+- **⏱ Hours** — big clock with Log In / Log Out, live HH:MM:SS counter
+  while running, today / week / month rollups, session log,
+  ✨ **Reward milestones** with progress bars (configurable in
+  Settings → Rewards, global scope, multiple goals).
+
+Five new HTML reference categories seeded into `content_tags_def`:
+bbw, hairy, fetish, redhead, general curvy (all `is_builtin=1`).
+33 default subreddits seeded for CoC (curated from the HTML reference,
+"Curse of Curves" maps directly). PoA + Sa start empty.
+
+#### 🗓️ 3rd Calendar overlay: 🔴 Reddit posts
+
+Per-persona toggle (persisted to localStorage same pattern as the
+FanSite + Clip overlays) that shows scheduled + logged subreddit posts
+on their `posted_date`. Past posts render solid, future posts render
+dashed + italic. Up to 3 chips per day with a `+N more` collapse.
+
+#### 🎨 Dark mode (Settings → Appearance)
+
+Three-way toggle: **Light** (default) / **Dark** / **System**.
+- Stored in `app_settings.ui.theme` (seeded via migration 033).
+- Persona accent colors stay the same — only page / cards / inputs
+  flip darker. Tailwind config gains `darkMode: 'class'`; theme
+  class applied to `<html>` by `useUiTheme()` on App mount.
+- **System** mode subscribes to the OS `prefers-color-scheme` media
+  query and re-applies live when the OS flips.
+- New CSS surface tokens (`--surface-card`, `--surface-page`,
+  `--surface-input`, `--surface-text`, `--surface-border`) replace
+  hard-coded white backgrounds in `.pretty-card` and `.pretty-input`.
+
+#### 🧹 Removed defaults
+
+Migrations **032** drops the seeded weekly schedules **'CoC content
+release'** and **'PoA content release'** per Sallie's ask. New installs
+skip the seed (006_schedules.sql updated); existing DBs purge them by
+name+persona (safe to run twice). Renamed copies survive.
+
+#### Schema
+
+- Migration **029_subreddits.sql** — content_tags_def +5 new builtins,
+  subreddits / subreddit_posts / captions tables, 33 CoC sub seed.
+- Migration **030_hours.sql** — clock_sessions (one-at-a-time
+  semantics: `duration_ms IS NULL` ⇒ open) + reward_milestones (global).
+- Migration **031_daily_tasks.sql** — daily_tasks keyed by for_date +
+  persona.
+- Migration **032_drop_content_release_defaults.sql** — DELETE by
+  name+persona.
+- Migration **033_ui_theme.sql** — `app_settings ('ui.theme', 'light')`.
+
+#### Tauri command surface (35 new)
+
+- Reddit (14): `list_subreddits` / `create_subreddit` / `update_subreddit`
+  / `set_subreddit_starred` / `set_subreddit_verified` / `delete_subreddit`
+  / `mark_subreddit_posted` / `list_subreddit_posts_in_range` /
+  `create_subreddit_post` / `delete_subreddit_post` / `list_captions` /
+  `create_caption` / `update_caption` / `delete_caption`.
+- Hours (9): `hours_start_session` / `hours_stop_session` /
+  `hours_list_sessions` / `hours_delete_session` / `hours_totals` /
+  `list_reward_milestones` / `create_reward_milestone` /
+  `update_reward_milestone` / `delete_reward_milestone`.
+- Daily tasks (5): `list_daily_tasks` / `create_daily_task` /
+  `complete_daily_task` / `undo_daily_task` / `delete_daily_task`.
+
+All new boundary structs pinned by `camel_case_contract`.
+
+#### Tests
+
+**214 Rust** (+33) + **156 frontend** = **370 total**:
+- `reddit::tests` (10): seed loads 33 CoC, list filters by persona,
+  `r/` prefix stripped on create, blank-name / bad-rotation rejected,
+  unique-per-persona but cross-persona dup OK, star+verify toggle,
+  `mark_posted` flips rotation + creates post log row, bad date /
+  missing sub errors, future + past dates supported, deleting a sub
+  preserves post history via FK ON DELETE SET NULL, caption CRUD with
+  text-trim + empty rejection.
+- `hours::tests` (8): start/stop round-trip, stop-without-open errors,
+  start-when-open auto-closes previous, delete session, totals window
+  math (today / week / month / all-time), open-session running portion
+  included in totals, milestone CRUD + validation, list ordered by
+  ascending hours.
+- `daily_tasks::tests` (5): create/list round-trip, previous-day tasks
+  filtered out of today, complete/undo/delete cycle, input validation
+  (empty text / bad date / bad category), unfinished-first ordering.
+- `camel_case_contract` (+7): `Subreddit`, `SubredditPost`, `Caption`,
+  `ClockSession`, `HoursTotals`, `RewardMilestone`, `DailyTask`.
+- `migration_smoke` anchors `subreddits` / `subreddit_posts` /
+  `captions` / `clock_sessions` / `reward_milestones` / `daily_tasks`.
+
+## [1.16.1] — 2026-05-23
+
+### Added — 🏷️ Content tags in published bundle ZIP
+
+The content tags collected in each bundle workflow are now written to
+the bundle's downstream artifacts so Robert sees them when he opens the
+ZIP without needing the Molly DB:
+
+- **info.md** — Content + Custom bundles gain a `## Content tags`
+  section with a comma-joined list of tag names. FanSite bundles get
+  a `**Tags:** …` line under each day block, only when that day has
+  tags attached.
+- **Molly.log** (build log) — adds a `Content tags (N):` block to the
+  inputs section for Content + Custom; per-day tags appear as a
+  `    tags: …` line under each day entry.
+
+Tag names are resolved at snapshot-build time from `content_tags_def`
+sorted by `sort_order, name COLLATE NOCASE` (same order as the picker
+UI), inside the publish transaction. Empty tag sets render either
+`_(none)_` (info.md) or `(none)` (Molly.log).
+
+`BundleSnapshot` gains `tags: Vec<String>` (bundle-level) and
+`FanDay.tag_names: Vec<String>` (per-day). `build_snapshot` reads from
+`bundle_tag_links` JOIN `content_tags_def` — two prepared statements,
+one for bundle-level (`fan_day_id IS NULL`) and one for FanSite per-day
+(`fan_day_id IS NOT NULL`), bucketed by `fan_day_id` for cheap per-day
+lookup in the FanDay loop.
+
+#### Tests
+
+**183 Rust** (+2):
+- `info_md_includes_all_fields`: extended to assert the `## Content tags`
+  heading + comma-joined names appear for Content bundles.
+- `molly_log_includes_bundle_level_tags`: new — `Content tags (N):`
+  block lists each tag with its position.
+- `info_md_renders_per_day_tags_for_fansite`: new — `**Tags:** …` lines
+  appear only on days that have tags; days with no tags emit no Tags
+  line at all (counted `matches("**Tags:**")` to pin the negative case).
+
 ## [1.16.0] — 2026-05-23
 
 ### Changed — 🏷️ Per-day FanSite tags + Clip tags + Calendar overlays

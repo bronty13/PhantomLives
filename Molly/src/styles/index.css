@@ -29,6 +29,23 @@
     --persona-tint: 252 245 250;
     --persona-accent: 161 109 156;
     --persona-text: 60 40 60;
+    /* Phase 15 PR4 — surface tokens flipped in dark mode below. */
+    --surface-card: 255 255 255;             /* white in light */
+    --surface-page: var(--persona-tint);     /* persona tint in light */
+    --surface-input: 255 255 255;
+    --surface-text: var(--persona-text);
+    --surface-border: 0 0 0 / 0.08;          /* black/8 in light */
+  }
+
+  /* Dark theme: leave persona accents untouched (they're the cute part)
+   * but darken page/card/input surfaces. The `.dark` class is toggled
+   * on <html> by src/state/uiTheme.ts. */
+  html.dark {
+    --surface-card: 30 27 36;                /* slate-near-black with purple bias */
+    --surface-page: 18 16 22;
+    --surface-input: 38 34 44;
+    --surface-text: 232 224 232;
+    --surface-border: 255 255 255 / 0.08;
   }
 
   html, body, #root {
@@ -38,8 +55,8 @@
 
   body {
     font-family: 'Nunito', 'SF Pro Rounded', system-ui, sans-serif;
-    color: rgb(var(--persona-text));
-    background: rgb(var(--persona-tint));
+    color: rgb(var(--surface-text));
+    background: rgb(var(--surface-page));
     -webkit-font-smoothing: antialiased;
     transition: background-color 240ms ease, color 240ms ease;
   }
@@ -52,10 +69,14 @@
   .persona-accent { color: rgb(var(--persona-accent)); }
 
   .pretty-card {
-    background: white;
+    background: rgb(var(--surface-card));
+    color: rgb(var(--surface-text));
     border-radius: 1.25rem;
     box-shadow: 0 4px 14px -6px rgb(var(--persona-primary) / 0.45);
     padding: 1.25rem 1.5rem;
+  }
+  html.dark .pretty-card {
+    box-shadow: 0 4px 14px -6px rgba(0, 0, 0, 0.6);
   }
 
   .pretty-button {
@@ -88,11 +109,18 @@
     border-radius: 0.75rem;
     border: 1px solid rgb(var(--persona-primary) / 0.4);
     padding: 0.5rem 0.85rem;
-    background: white;
+    background: rgb(var(--surface-input));
     font-size: 0.9rem;
-    color: rgb(var(--persona-text));
+    color: rgb(var(--surface-text));
     outline: none;
     transition: border 120ms ease, box-shadow 120ms ease;
+  }
+  html.dark .pretty-input {
+    border-color: rgb(var(--persona-primary) / 0.3);
+  }
+  html.dark .pretty-button.secondary {
+    background: rgb(var(--surface-card));
+    color: rgb(var(--surface-text));
   }
   .pretty-input:focus {
     border-color: rgb(var(--persona-accent));

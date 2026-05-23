@@ -1195,6 +1195,47 @@ fn build_snapshot(
         None
     };
 
+    // Bundle-level content tags (sorted by tag sort_order / name to match
+    // the picker display). For FanSite bundles these are usually empty
+    // because tagging happens per-day, but the read is harmless.
+    let bundle_tag_names: Vec<String> = {
+        let mut stmt = conn.prepare(
+            "SELECT t.name
+             FROM bundle_tag_links l
+             JOIN content_tags_def t ON t.id = l.tag_id
+             WHERE l.bundle_uid = ?1 AND l.fan_day_id IS NULL
+             ORDER BY t.sort_order, t.name COLLATE NOCASE",
+        )?;
+        let names = stmt
+            .query_map(params![bundle.summary.uid], |r| r.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        names
+    };
+
+    // Per-day tag names for FanSite. Built into a HashMap keyed by
+    // fan_day_id so the FanDay loop below can stitch them in without
+    // another query per day.
+    let mut tags_by_fan_day: std::collections::HashMap<i64, Vec<String>> =
+        std::collections::HashMap::new();
+    if matches!(bundle_type, BundleType::FanSite) {
+        let mut stmt = conn.prepare(
+            "SELECT l.fan_day_id, t.name
+             FROM bundle_tag_links l
+             JOIN content_tags_def t ON t.id = l.tag_id
+             JOIN bundle_fan_days d ON d.id = l.fan_day_id
+             WHERE d.bundle_uid = ?1 AND l.fan_day_id IS NOT NULL
+             ORDER BY t.sort_order, t.name COLLATE NOCASE",
+        )?;
+        let rows: Vec<(i64, String)> = stmt
+            .query_map(params![bundle.summary.uid], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        for (day_id, name) in rows {
+            tags_by_fan_day.entry(day_id).or_default().push(name);
+        }
+    }
+
     Ok(BundleSnapshot {
         uid: bundle.summary.uid.clone(),
         bundle_type,
@@ -1206,6 +1247,7 @@ fn build_snapshot(
         description_text: bundle.description_text.clone(),
         description_audio,
         categories: bundle.categories.iter().map(|c| c.name.clone()).collect(),
+        tags: bundle_tag_names,
         delivery_kind: bundle.delivery_kind.clone(),
         delivery_site_name,
         delivery_url: bundle.delivery_url.clone(),
@@ -1220,6 +1262,7 @@ fn build_snapshot(
             .map(|d| FanDay {
                 day_of_month: d.day_of_month,
                 message: d.message.clone(),
+                tag_names: tags_by_fan_day.remove(&d.id).unwrap_or_default(),
             })
             .collect(),
         files,

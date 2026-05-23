@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { getVersion } from '@tauri-apps/api/app';
 import { SayingsBanner } from './SayingsBanner';
 
-export type ViewKey = 'home' | 'log' | 'notes' | 'reminders' | 'calendar' | 'clips' | 'c4s' | 'bundles' | 'jobs' | 'customers' | 'helper' | 'promos' | 'income' | 'expenses' | 'reports' | 'settings' | 'manual';
+export type ViewKey = 'home' | 'log' | 'notes' | 'reminders' | 'calendar' | 'clips' | 'c4s' | 'bundles' | 'jobs' | 'customers' | 'helper' | 'promos' | 'reddit' | 'income' | 'expenses' | 'reports' | 'settings' | 'manual';
 
 interface SidebarProps {
   active: ViewKey;
@@ -31,6 +31,7 @@ const NAV: NavItem[] = [
   { key: 'customers', label: 'Customers', icon: <span>👯‍♀️</span>, hint: 'Customer tracker' },
   { key: 'helper',    label: "Molly Helper", icon: <span>💅</span>, hint: 'Site launcher + reminders' },
   { key: 'promos',    label: 'Promos',    icon: <span>📣</span>, hint: 'Reddit / X / Instagram promo posts' },
+  { key: 'reddit',    label: 'Reddit',    icon: <span>🔴</span>, hint: 'Daily to-do · subreddits · post log · captions · hours' },
   { key: 'income',    label: 'Income',    icon: <span>💖</span>, hint: 'Adhoc + per-site' },
   { key: 'expenses',  label: 'Expenses',  icon: <span>🧾</span>, hint: 'One-off + recurring' },
   { key: 'reports',   label: 'Reports',   icon: <span>📊</span>, hint: 'MTD / YTD / per persona' },
