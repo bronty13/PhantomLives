@@ -4,6 +4,102 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] — 2026-05-24
+
+### Added — Phases 8 / 9 / 10: Content, Custom, FanSite Post Runners
+
+Three flavor-specific post runners on top of the Phase-7 primitives.
+Bundle workspace **Post** tab now routes by `bundle.bundleType`:
+
+```
+  content  → 🎬 ContentRunner  (Phase 8)  multi-platform fan-out grid
+  custom   → 🎁 CustomRunner   (Phase 9)  single delivery card
+  fansite  → 📅 FanSiteRunner  (Phase 10) day-by-day calendar walk
+  other    → 📋 GenericRunner  (Phase 7 fallback)
+```
+
+**Migration 016** extends `bundle_postings` with two columns:
+
+- `selected_assets_json` (TEXT, default `'[]'`) — per-platform asset
+  selection for the Content runner.
+- `fansite_day` (INTEGER, nullable) — day-of-month for FanSite
+  postings. NULL for Content/Custom.
+
+The UNIQUE key changes from `(bundle_uid, target_id)` to
+`(bundle_uid, target_id, fansite_day)` so a FanSite bundle can have
+N rows for the same target — one per day.
+
+**New backend bits**:
+- `list_bundle_assets(uid)` returns every artifact the user can
+  attach to a post: processed images + videos (from
+  `processed_files`), master.mp4 from auto-assembly, transcript
+  `.txt`/`.srt` sidecars.
+- `list_fansite_plan(uid)` joins `manifest.fan_days[]` with the
+  per-day `bundle_postings` rows. Resolves the FanSite target
+  (first enabled `kind='fansite'` posting target for the bundle's
+  persona). Returns `{year, month, target, days[]}` for the
+  calendar UI.
+- `upsert_bundle_posting` + `mark_posted` updated to take an
+  optional `fansite_day` so the FanSite runner can address rows
+  by day. Composite uniqueness drives the lookup/upsert.
+
+**🎬 ContentRunner** (multi-platform fan-out).
+
+- Header band: bundle title + manifest description (whitespace-
+  preserved) + categories chips (each clickable to copy, plus
+  📋 all).
+- Card grid (one per applicable target) reuses the Phase-7
+  PlatformCard shape with three additions:
+  - **📁 Assets (N)** button toggles an asset-picker panel with
+    grouped checkboxes (Images / Videos / Master / Transcripts).
+    Selection persists into `selected_assets_json`.
+  - **📋 Body** button copies the current per-platform body
+    (seeded from `manifest.descriptionText`).
+  - Body textarea seeded from manifest description; per-platform
+    edits persist into `body_override` on blur.
+
+**🎁 CustomRunner** (one-to-one delivery).
+
+- Recipient + delivery details band, pulled from
+  `manifest.deliveryRecipient` / `deliverySiteName` / `deliveryUrl`
+  / `priceCents` / `handledInPlatform`. Each surfaces a 📋 Copy
+  affordance.
+- Special-instructions read-out from the manifest.
+- Files-for-delivery list (every asset listed; reveal-workspace
+  shortcut) so the user can drag into the delivery platform.
+- Single delivery card with auto-composed message
+  (`Hi <recipient>, Your custom is ready…`) editable per-platform.
+- Payment-received-via radio (in-platform / tip / other) stored
+  in `notes` as a `[received_via=…]` tag prefix — keeps schema
+  unchanged while persisting the choice.
+
+**📅 FanSiteRunner** (day-by-day calendar).
+
+- Mon-Sun calendar grid laid out by `manifest.fansiteYear` +
+  `fansiteMonth` (correct first-of-month dow offset).
+- Each cell shows day number, abbreviated message, state glyph
+  (✓ posted / 🗓 scheduled / · pending / — skipped), file count.
+- Click a day → focused DayCard with the full message readout +
+  🚀 Open fan-site + 📋 Copy message + state dropdown + posted
+  URL field + **✓ Mark posted & advance** (auto-jumps to next
+  pending day, matching PLAN.md §8.3 "advance-on-post").
+- Counts in the header: ✓ / N · ⏳ / · — skipped.
+- Auto-focus next pending day on first load.
+
+### Tests
+
+139 passing. New camelCase contracts for `BundleAsset`,
+`FanSiteDayPosting`, `FanSitePlan` + the extended `BundlePosting`
+shape (with `selectedAssetsJson` + `fansiteDay`). Migration smoke
+covers 016 and the rebuilt `bundle_postings` table layout.
+
+### What's next (not in this commit)
+
+Phase 11 — return-bundle composition: SideMolly writes a
+`<UID>-post.zip` back to Molly with `report.json` listing what was
+actually posted to which platform when. Auto on `shipped` state with
+undo, plus a manual button.
+
 ## [0.14.0] — 2026-05-24
 
 ### Added — Phase 7: Posting primitives

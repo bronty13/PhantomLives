@@ -1605,6 +1605,7 @@ mod tests {
         conn.execute_batch(include_str!("../migrations/013_dropbox.sql")).unwrap();
         conn.execute_batch(include_str!("../migrations/014_dropbox_template_default.sql")).unwrap();
         conn.execute_batch(include_str!("../migrations/015_posting.sql")).unwrap();
+        conn.execute_batch(include_str!("../migrations/016_posting_assets_and_fansite.sql")).unwrap();
         conn
     }
 

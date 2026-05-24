@@ -166,6 +166,13 @@ pub struct BundlePosting {
     pub posted_url: Option<String>,
     pub body_override: Option<String>,
     pub notes: Option<String>,
+    /// JSON array of {kind, path, label} the user selected for this
+    /// platform. Added in Phase 8 (Content runner). `[]` = no
+    /// explicit selection (use platform default).
+    pub selected_assets_json: String,
+    /// Day-of-month (1..=31) for FanSite postings, NULL otherwise.
+    /// Phase 10.
+    pub fansite_day: Option<i64>,
     pub updated_at: String,
 }
 
@@ -228,14 +235,16 @@ pub fn list_bundle_postings<R: Runtime>(
     drop(stmt);
 
     // For each, look up the bundle_postings row (if any) and resolve
-    // the URL template.
+    // the URL template. list_bundle_postings is Phase-7 generic;
+    // it returns the day-NULL row (Content/Custom). FanSite uses
+    // list_fansite_postings instead.
     let mut out: Vec<PostingCard> = Vec::with_capacity(targets.len());
     for t in targets {
         let posting: Option<BundlePosting> = conn.query_row(
             "SELECT id, bundle_uid, target_id, state, posted_at, posted_url,
-                    body_override, notes, updated_at
+                    body_override, notes, selected_assets_json, fansite_day, updated_at
                FROM bundle_postings
-              WHERE bundle_uid = ?1 AND target_id = ?2",
+              WHERE bundle_uid = ?1 AND target_id = ?2 AND fansite_day IS NULL",
             params![uid, t.id],
             |r| Ok(BundlePosting {
                 id: r.get(0)?,
@@ -246,7 +255,9 @@ pub fn list_bundle_postings<R: Runtime>(
                 posted_url: r.get(5)?,
                 body_override: r.get(6)?,
                 notes: r.get(7)?,
-                updated_at: r.get(8)?,
+                selected_assets_json: r.get(8)?,
+                fansite_day: r.get(9)?,
+                updated_at: r.get(10)?,
             }),
         ).optional()?;
 
@@ -269,8 +280,18 @@ pub struct UpsertBundlePostingInput {
     #[serde(default)] pub posted_url: Option<String>,
     #[serde(default)] pub body_override: Option<String>,
     #[serde(default)] pub notes: Option<String>,
+    /// JSON array — Phase 8 Content runner asset selection.
+    #[serde(default)] pub selected_assets_json: Option<String>,
+    /// Day-of-month for FanSite postings — Phase 10.
+    #[serde(default)] pub fansite_day: Option<i64>,
 }
 
+/// Upsert a posting row. The UNIQUE key is now
+/// (bundle_uid, target_id, fansite_day) so we can SELECT then INSERT
+/// vs UPDATE manually — SQLite's `ON CONFLICT` clause needs the
+/// composite key and a literal NULL doesn't match the "IS NULL"
+/// uniqueness semantics SQLite uses for NULL-in-unique-index. The
+/// two-step lookup is fine since this is a UI-driven op (low rate).
 #[tauri::command]
 pub fn upsert_bundle_posting<R: Runtime>(
     handle: AppHandle<R>,
@@ -282,23 +303,45 @@ pub fn upsert_bundle_posting<R: Runtime>(
         )));
     }
     let conn = open_conn(&handle)?;
-    conn.execute(
-        "INSERT INTO bundle_postings
-            (bundle_uid, target_id, state, posted_at, posted_url,
-             body_override, notes, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))
-         ON CONFLICT(bundle_uid, target_id) DO UPDATE SET
-            state         = excluded.state,
-            posted_at     = excluded.posted_at,
-            posted_url    = excluded.posted_url,
-            body_override = excluded.body_override,
-            notes         = excluded.notes,
-            updated_at    = datetime('now')",
-        params![
-            input.bundle_uid, input.target_id, input.state,
-            input.posted_at, input.posted_url, input.body_override, input.notes,
-        ],
-    )?;
+    let existing_id: Option<i64> = conn.query_row(
+        "SELECT id FROM bundle_postings
+          WHERE bundle_uid = ?1 AND target_id = ?2
+            AND ((fansite_day IS NULL AND ?3 IS NULL)
+                 OR fansite_day = ?3)",
+        params![input.bundle_uid, input.target_id, input.fansite_day],
+        |r| r.get(0),
+    ).optional()?;
+
+    if let Some(id) = existing_id {
+        conn.execute(
+            "UPDATE bundle_postings SET
+                state = ?1,
+                posted_at = ?2,
+                posted_url = ?3,
+                body_override = ?4,
+                notes = ?5,
+                selected_assets_json = COALESCE(?6, selected_assets_json),
+                updated_at = datetime('now')
+              WHERE id = ?7",
+            params![
+                input.state, input.posted_at, input.posted_url,
+                input.body_override, input.notes,
+                input.selected_assets_json, id,
+            ],
+        )?;
+    } else {
+        conn.execute(
+            "INSERT INTO bundle_postings
+                (bundle_uid, target_id, state, posted_at, posted_url,
+                 body_override, notes, selected_assets_json, fansite_day, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, '[]'), ?9, datetime('now'))",
+            params![
+                input.bundle_uid, input.target_id, input.state,
+                input.posted_at, input.posted_url, input.body_override, input.notes,
+                input.selected_assets_json, input.fansite_day,
+            ],
+        )?;
+    }
     Ok(())
 }
 
@@ -308,20 +351,264 @@ pub fn mark_posted<R: Runtime>(
     bundle_uid: String,
     target_id: i64,
     posted_url: Option<String>,
+    fansite_day: Option<i64>,
 ) -> Result<(), BundleError> {
     let conn = open_conn(&handle)?;
-    conn.execute(
-        "INSERT INTO bundle_postings
-            (bundle_uid, target_id, state, posted_at, posted_url, updated_at)
-         VALUES (?1, ?2, 'posted', datetime('now'), ?3, datetime('now'))
-         ON CONFLICT(bundle_uid, target_id) DO UPDATE SET
-            state      = 'posted',
-            posted_at  = COALESCE(bundle_postings.posted_at, datetime('now')),
-            posted_url = COALESCE(?3, bundle_postings.posted_url),
-            updated_at = datetime('now')",
-        params![bundle_uid, target_id, posted_url],
-    )?;
+    let existing_id: Option<i64> = conn.query_row(
+        "SELECT id FROM bundle_postings
+          WHERE bundle_uid = ?1 AND target_id = ?2
+            AND ((fansite_day IS NULL AND ?3 IS NULL)
+                 OR fansite_day = ?3)",
+        params![bundle_uid, target_id, fansite_day],
+        |r| r.get(0),
+    ).optional()?;
+
+    if let Some(id) = existing_id {
+        conn.execute(
+            "UPDATE bundle_postings SET
+                state = 'posted',
+                posted_at = COALESCE(posted_at, datetime('now')),
+                posted_url = COALESCE(?1, posted_url),
+                updated_at = datetime('now')
+              WHERE id = ?2",
+            params![posted_url, id],
+        )?;
+    } else {
+        conn.execute(
+            "INSERT INTO bundle_postings
+                (bundle_uid, target_id, state, posted_at, posted_url,
+                 fansite_day, updated_at)
+             VALUES (?1, ?2, 'posted', datetime('now'), ?3, ?4, datetime('now'))",
+            params![bundle_uid, target_id, posted_url, fansite_day],
+        )?;
+    }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Phase 10 — FanSite day-by-day list
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FanSiteDayPosting {
+    pub day_of_month: i64,
+    pub message: String,
+    pub file_count: i64,
+    pub state: String,
+    pub posted_at: Option<String>,
+    pub posted_url: Option<String>,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FanSitePlan {
+    pub bundle_uid: String,
+    pub year: Option<i64>,
+    pub month: Option<i64>,
+    pub target: Option<PostingTarget>,
+    pub days: Vec<FanSiteDayPosting>,
+}
+
+/// Build the day-by-day plan for a FanSite bundle. Pulls the
+/// fan_days[] from the manifest, joins with the per-day
+/// bundle_postings rows (keyed by fansite_day). Resolves the
+/// "FanSite target" — first enabled posting target with kind='fansite'
+/// for the bundle's persona (or 'any' if none configured).
+#[tauri::command]
+pub fn list_fansite_plan<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+) -> Result<FanSitePlan, BundleError> {
+    let conn = open_conn(&handle)?;
+
+    // Pull bundle persona + manifest JSON.
+    let (persona_code, manifest_json): (Option<String>, String) = conn.query_row(
+        "SELECT persona_code, manifest_json FROM bundles WHERE uid = ?1",
+        params![uid],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    ).optional()?
+        .ok_or_else(|| BundleError::NotFound(format!("bundle {uid}")))?;
+    let manifest: crate::manifest::BundleManifest =
+        serde_json::from_str(&manifest_json).unwrap_or_default();
+
+    // Pick the FanSite target (highest-priority enabled).
+    let target: Option<PostingTarget> = conn.query_row(
+        "SELECT id, name, url_template, persona_code, color, icon,
+                position, kind, enabled
+           FROM posting_targets
+          WHERE enabled = 1
+            AND kind = 'fansite'
+            AND (persona_code IS NULL OR persona_code = ?1)
+          ORDER BY position, name
+          LIMIT 1",
+        params![persona_code.clone().unwrap_or_default()],
+        |r| Ok(PostingTarget {
+            id: r.get(0)?,
+            name: r.get(1)?,
+            url_template: r.get(2)?,
+            persona_code: r.get(3)?,
+            color: r.get(4)?,
+            icon: r.get(5)?,
+            position: r.get(6)?,
+            kind: r.get(7)?,
+            enabled: r.get::<_, i64>(8)? != 0,
+        }),
+    ).optional()?;
+
+    // Per-day posting state (when a target is configured).
+    let mut by_day: std::collections::HashMap<i64, (String, Option<String>, Option<String>, Option<String>)>
+        = std::collections::HashMap::new();
+    if let Some(t) = &target {
+        let mut stmt = conn.prepare(
+            "SELECT fansite_day, state, posted_at, posted_url, notes
+               FROM bundle_postings
+              WHERE bundle_uid = ?1 AND target_id = ?2 AND fansite_day IS NOT NULL",
+        )?;
+        let rows: Vec<(i64, String, Option<String>, Option<String>, Option<String>)> = stmt
+            .query_map(params![uid, t.id], |r| Ok((
+                r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?,
+            )))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        for (d, s, pa, pu, n) in rows {
+            by_day.insert(d, (s, pa, pu, n));
+        }
+    }
+
+    let mut days: Vec<FanSiteDayPosting> = manifest.fan_days.iter().map(|fd| {
+        let (state, posted_at, posted_url, notes) = by_day.get(&fd.day_of_month)
+            .cloned()
+            .map(|(s, pa, pu, n)| (s, pa, pu, n))
+            .unwrap_or_else(|| ("pending".into(), None, None, None));
+        FanSiteDayPosting {
+            day_of_month: fd.day_of_month,
+            message: fd.message.clone(),
+            file_count: fd.file_count,
+            state, posted_at, posted_url, notes,
+        }
+    }).collect();
+    days.sort_by_key(|d| d.day_of_month);
+
+    Ok(FanSitePlan {
+        bundle_uid: uid,
+        year: manifest.fansite_year,
+        month: manifest.fansite_month,
+        target,
+        days,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Phase 8 — assets available to attach per platform
+// ---------------------------------------------------------------------------
+
+/// One asset the user can choose to ship to a given platform. Kinds:
+///   processed_image / processed_video — `processed_files` outputs
+///   master                            — auto-assembled master.mp4
+///   transcript_txt / transcript_srt   — Phase 5 sidecars
+///
+/// Phase 8 surfaces these in the Content runner's per-platform card
+/// as a checklist; the user's selection is stored as JSON in
+/// bundle_postings.selected_assets_json so re-rendering on next
+/// load picks up the same checks.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BundleAsset {
+    pub kind: String,
+    pub path: String,
+    pub label: String,
+    pub size_bytes: i64,
+    pub in_zip_path: Option<String>,
+}
+
+#[tauri::command]
+pub fn list_bundle_assets<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+) -> Result<Vec<BundleAsset>, BundleError> {
+    use std::fs;
+    use std::path::Path;
+    let conn = open_conn(&handle)?;
+    let mut out: Vec<BundleAsset> = Vec::new();
+
+    // Processed images + videos from processed_files. Kind comes
+    // from the parent bundle_file.kind ('image' / 'video') so the
+    // Content runner can scope by media kind in the UI.
+    let mut stmt = conn.prepare(
+        "SELECT pf.output_path, bf.kind, bf.in_zip_path
+           FROM processed_files pf
+           JOIN bundle_files bf ON bf.id = pf.bundle_file_id
+          WHERE bf.bundle_uid = ?1
+          ORDER BY pf.created_at",
+    )?;
+    let rows: Vec<(String, String, String)> = stmt
+        .query_map(params![uid], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(stmt);
+    for (output_path, kind, in_zip) in rows {
+        let path = Path::new(&output_path);
+        if !path.exists() { continue; }
+        let size = fs::metadata(path).ok().map(|m| m.len() as i64).unwrap_or(0);
+        let label = path.file_name().map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| output_path.clone());
+        out.push(BundleAsset {
+            kind: format!("processed_{kind}"),
+            path: output_path,
+            label,
+            size_bytes: size,
+            in_zip_path: Some(in_zip),
+        });
+    }
+
+    // Master cut, when present.
+    let workspace = crate::extract::bundle_workspace_dir(
+        &crate::bundles::work_root(&handle)?, &uid,
+    );
+    let master = workspace.join("auto").join("master.mp4");
+    if master.exists() {
+        let size = fs::metadata(&master).ok().map(|m| m.len() as i64).unwrap_or(0);
+        out.push(BundleAsset {
+            kind: "master".into(),
+            path: master.to_string_lossy().to_string(),
+            label: "master.mp4".into(),
+            size_bytes: size,
+            in_zip_path: None,
+        });
+    }
+
+    // Transcripts (txt + srt; json is too detailed to attach to a post).
+    let tx_dir = workspace.join("transcripts");
+    if tx_dir.is_dir() {
+        if let Ok(entries) = fs::read_dir(&tx_dir) {
+            let mut paths: Vec<std::path::PathBuf> = entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.is_file())
+                .collect();
+            paths.sort();
+            for p in paths {
+                let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("");
+                let kind = match ext {
+                    "txt" => "transcript_txt",
+                    "srt" => "transcript_srt",
+                    _ => continue,
+                };
+                let size = fs::metadata(&p).ok().map(|m| m.len() as i64).unwrap_or(0);
+                let label = p.file_name().map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                out.push(BundleAsset {
+                    kind: kind.into(),
+                    path: p.to_string_lossy().to_string(),
+                    label,
+                    size_bytes: size,
+                    in_zip_path: None,
+                });
+            }
+        }
+    }
+
+    Ok(out)
 }
 
 // ---------------------------------------------------------------------------

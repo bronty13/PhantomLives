@@ -495,6 +495,8 @@ export interface BundlePosting {
   postedUrl: string | null;
   bodyOverride: string | null;
   notes: string | null;
+  selectedAssetsJson: string;
+  fansiteDay: number | null;
   updatedAt: string;
 }
 
@@ -512,6 +514,34 @@ export interface UpsertBundlePostingInput {
   postedUrl?: string | null;
   bodyOverride?: string | null;
   notes?: string | null;
+  selectedAssetsJson?: string | null;
+  fansiteDay?: number | null;
+}
+
+export interface BundleAsset {
+  kind: 'processed_image' | 'processed_video' | 'master' | 'transcript_txt' | 'transcript_srt' | string;
+  path: string;
+  label: string;
+  sizeBytes: number;
+  inZipPath: string | null;
+}
+
+export interface FanSiteDayPosting {
+  dayOfMonth: number;
+  message: string;
+  fileCount: number;
+  state: PostingState;
+  postedAt: string | null;
+  postedUrl: string | null;
+  notes: string | null;
+}
+
+export interface FanSitePlan {
+  bundleUid: string;
+  year: number | null;
+  month: number | null;
+  target: PostingTarget | null;
+  days: FanSiteDayPosting[];
 }
 
 export function listPostingTargets(): Promise<PostingTarget[]> {
@@ -538,8 +568,21 @@ export function upsertBundlePosting(input: UpsertBundlePostingInput): Promise<vo
   return invoke('upsert_bundle_posting', { input });
 }
 
-export function markPosted(bundleUid: string, targetId: number, postedUrl: string | null): Promise<void> {
-  return invoke('mark_posted', { bundleUid, targetId, postedUrl });
+export function markPosted(
+  bundleUid: string,
+  targetId: number,
+  postedUrl: string | null,
+  fansiteDay: number | null = null,
+): Promise<void> {
+  return invoke('mark_posted', { bundleUid, targetId, postedUrl, fansiteDay });
+}
+
+export function listBundleAssets(uid: string): Promise<BundleAsset[]> {
+  return invoke<BundleAsset[]>('list_bundle_assets', { uid });
+}
+
+export function listFanSitePlan(uid: string): Promise<FanSitePlan> {
+  return invoke<FanSitePlan>('list_fansite_plan', { uid });
 }
 
 export function enqueueAutoAssemble(uid: string): Promise<EnqueueAutoAssembleResult> {

@@ -109,6 +109,12 @@ pub fn run() {
             sql: include_str!("../migrations/015_posting.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 16,
+            description: "posting-assets-and-fansite",
+            sql: include_str!("../migrations/016_posting_assets_and_fansite.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -192,6 +198,8 @@ pub fn run() {
             posting::list_bundle_postings,
             posting::upsert_bundle_posting,
             posting::mark_posted,
+            posting::list_bundle_assets,
+            posting::list_fansite_plan,
             bundles::get_master_cut_status,
             bundles::reveal_master_cut,
             bundles::open_master_cut,
@@ -226,7 +234,8 @@ mod camel_case_contract {
         DryRunRow, DryRunSummary,
     };
     use crate::posting::{
-        BundlePosting, PostingCard, PostingTarget, PostingTargetInput,
+        BundleAsset, BundlePosting, FanSiteDayPosting, FanSitePlan,
+        PostingCard, PostingTarget, PostingTargetInput,
         UpsertBundlePostingInput,
     };
     use crate::bundles::{BundleDetail, BundleFileRow, BundleSummary, ExportThumb,
@@ -415,8 +424,31 @@ mod camel_case_contract {
         assert_camel(&serde_json::to_value(BundlePosting {
             id: 0, bundle_uid: String::new(), target_id: 0,
             state: String::new(), posted_at: None, posted_url: None,
-            body_override: None, notes: None, updated_at: String::new(),
+            body_override: None, notes: None,
+            selected_assets_json: "[]".into(), fansite_day: None,
+            updated_at: String::new(),
         }).unwrap(), "BundlePosting");
+    }
+
+    #[test] fn bundle_asset_is_camel_case() {
+        assert_camel(&serde_json::to_value(BundleAsset {
+            kind: String::new(), path: String::new(), label: String::new(),
+            size_bytes: 0, in_zip_path: None,
+        }).unwrap(), "BundleAsset");
+    }
+
+    #[test] fn fansite_day_posting_is_camel_case() {
+        assert_camel(&serde_json::to_value(FanSiteDayPosting {
+            day_of_month: 0, message: String::new(), file_count: 0,
+            state: String::new(), posted_at: None, posted_url: None, notes: None,
+        }).unwrap(), "FanSiteDayPosting");
+    }
+
+    #[test] fn fansite_plan_is_camel_case() {
+        assert_camel(&serde_json::to_value(FanSitePlan {
+            bundle_uid: String::new(), year: None, month: None,
+            target: None, days: vec![],
+        }).unwrap(), "FanSitePlan");
     }
 
     #[test] fn posting_card_is_camel_case() {
@@ -626,6 +658,7 @@ mod migration_smoke {
             (13, "dropbox",        include_str!("../migrations/013_dropbox.sql")),
             (14, "dropbox-template-default", include_str!("../migrations/014_dropbox_template_default.sql")),
             (15, "posting", include_str!("../migrations/015_posting.sql")),
+            (16, "posting-assets-and-fansite", include_str!("../migrations/016_posting_assets_and_fansite.sql")),
         ];
         for (v, name, sql) in migrations {
             conn.execute_batch(sql)
