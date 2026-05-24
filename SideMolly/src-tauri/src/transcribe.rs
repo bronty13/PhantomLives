@@ -124,16 +124,31 @@ pub fn resolve_engine() -> Option<TranscribeEngine> {
     }).clone()
 }
 
-/// `transcribe --version` probe for the Settings status readout.
-/// Returns the trimmed first line of stdout, or None on any error.
+/// Parse the `__version__` constant out of a transcribe.py source
+/// file without invoking Python. Caught 2026-05-24: spawning
+/// `python3 transcribe.py --version` from the status command boots
+/// the script's venv, which on first run pip-installs MLX/Whisper
+/// (~30+ seconds). The Edit tab's refreshProcessed fires that
+/// command on every `job-updated` event, piling concurrent Python
+/// processes and blocking the IPC channel. Parsing the source line
+/// is a few microseconds and good enough — the version is only used
+/// as a badge in the Settings UI.
 pub fn engine_version(engine: &TranscribeEngine) -> Option<String> {
-    let mut cmd = Command::new(&engine.command);
-    cmd.args(&engine.leading_args);
-    cmd.arg("--version");
-    let out = cmd.output().ok()?;
-    if !out.status.success() { return None; }
-    String::from_utf8(out.stdout).ok()
-        .and_then(|s| s.lines().next().map(|l| l.trim().to_string()))
+    // For the shim path we don't have an obvious source file to parse;
+    // skip the version. For the direct-python path, leading_args[0] is
+    // the script file.
+    let script_path = engine.leading_args.first()?;
+    let src = fs::read_to_string(script_path).ok()?;
+    for line in src.lines().take(40) {
+        if let Some(rest) = line.strip_prefix("__version__") {
+            let v = rest.trim_start_matches([' ', '=', '"', '\''])
+                       .trim_end_matches([' ', '"', '\'']);
+            if !v.is_empty() {
+                return Some(format!("transcribe {v}"));
+            }
+        }
+    }
+    None
 }
 
 // ---------------------------------------------------------------------------
