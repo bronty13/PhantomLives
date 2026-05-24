@@ -452,8 +452,18 @@ pub fn dispatch_transcribe_video<R: Runtime>(
     fs::rename(&tmp_json, &dst_json)?;
 
     // Parse JSON and emit .txt + .srt sidecars next to the .json.
+    //
+    // Python's json.dumps emits bare `NaN` / `Infinity` / `-Infinity`
+    // literals for non-finite floats by default (`allow_nan=True`).
+    // RFC 7159 doesn't permit those tokens, so serde_json refuses to
+    // parse the file. Whisper's `avg_logprob` and `no_speech_prob`
+    // fields contain NaN when a segment has no speech / weird audio.
+    // We don't use those fields — strip them to `null` before parse.
+    // Caught 2026-05-24 by jobs 358/360/364 failing with
+    // `expected value at line 16 column 22` on otherwise-fine clips.
     let json_bytes = fs::read(&dst_json)?;
-    let parsed: WhisperJson = serde_json::from_slice(&json_bytes)
+    let cleaned = sanitize_python_json_literals(&String::from_utf8_lossy(&json_bytes));
+    let parsed: WhisperJson = serde_json::from_str(&cleaned)
         .map_err(|e| BundleError::Io(std::io::Error::other(
             format!("transcribe wrote non-JSON output: {e}"),
         )))?;
@@ -515,6 +525,38 @@ fn render_srt(w: &WhisperJson) -> String {
     out
 }
 
+/// Replace Python `json.dumps(allow_nan=True)` non-finite literals
+/// (`NaN`, `Infinity`, `-Infinity`) with JSON `null` so the result
+/// parses as RFC-7159-compliant JSON. transcribe.py uses
+/// `json.dumps(result, indent=2, ensure_ascii=False)` which always
+/// emits values after `: ` and ends them with a delimiter (`,`,
+/// `\n`, `}`, `]`), so a small set of bounded string replacements
+/// is enough — no regex dep needed.
+fn sanitize_python_json_literals(s: &str) -> String {
+    // Order matters: catch `-Infinity` before plain `Infinity` so the
+    // longer variant doesn't get half-eaten. The trailing delimiter
+    // anchors the match to JSON value positions only (avoids
+    // mangling occurrences inside transcript text strings).
+    let mut out = s.to_string();
+    for (find, replace) in &[
+        (": -Infinity,", ": null,"),
+        (": -Infinity\n", ": null\n"),
+        (": -Infinity}", ": null}"),
+        (": -Infinity]", ": null]"),
+        (": Infinity,",  ": null,"),
+        (": Infinity\n", ": null\n"),
+        (": Infinity}",  ": null}"),
+        (": Infinity]",  ": null]"),
+        (": NaN,",  ": null,"),
+        (": NaN\n", ": null\n"),
+        (": NaN}",  ": null}"),
+        (": NaN]",  ": null]"),
+    ] {
+        out = out.replace(find, replace);
+    }
+    out
+}
+
 fn srt_ts(seconds: f64) -> String {
     let total_ms = (seconds * 1000.0).round() as i64;
     let ms = total_ms % 1000;
@@ -559,6 +601,37 @@ mod tests {
         assert!(json.contains("\"jsonOutputPath\""), "{json}");
         assert!(json.contains("\"bundleFileId\""), "{json}");
         let _back: TranscribeVideoParams = serde_json::from_str(&json).unwrap();
+    }
+
+    #[test]
+    fn sanitize_python_json_replaces_non_finite_literals() {
+        let raw = r#"{
+  "text": " hello world.",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 2.5,
+      "avg_logprob": NaN,
+      "compression_ratio": Infinity,
+      "min_logprob": -Infinity,
+      "no_speech_prob": 4.281960550023278e-11
+    }
+  ]
+}"#;
+        let cleaned = sanitize_python_json_literals(raw);
+        // serde_json must accept the result.
+        let parsed: serde_json::Value = serde_json::from_str(&cleaned)
+            .expect("sanitized JSON should parse");
+        let seg = &parsed["segments"][0];
+        assert!(seg["avg_logprob"].is_null());
+        assert!(seg["compression_ratio"].is_null());
+        assert!(seg["min_logprob"].is_null());
+        // Real numbers untouched.
+        assert!(seg["no_speech_prob"].as_f64().unwrap() > 0.0);
+        // Transcript text untouched (no false matches against "NaN"
+        // appearing inside string values — there are none here, but
+        // the anchor pattern `: NaN,` etc. would skip them anyway).
+        assert_eq!(parsed["text"].as_str().unwrap(), " hello world.");
     }
 
     #[test]
