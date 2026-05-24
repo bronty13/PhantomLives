@@ -1,3 +1,4 @@
+mod auto_assemble;
 mod backup;
 mod bundle_io;
 mod bundles;
@@ -68,6 +69,18 @@ pub fn run() {
             sql: include_str!("../migrations/009_bundle_file_rotation.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 10,
+            description: "jobs-kind-widen",
+            sql: include_str!("../migrations/010_jobs_kind_widen.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 11,
+            description: "auto-assembly-settings",
+            sql: include_str!("../migrations/011_auto_assembly_settings.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -127,6 +140,9 @@ pub fn run() {
             bundles::reveal_job_output,
             bundles::reveal_processed_file,
             bundles::set_bundle_file_rotation,
+            auto_assemble::enqueue_auto_assemble,
+            auto_assemble::get_auto_assembly_settings,
+            auto_assemble::set_auto_assembly_settings,
             watch::get_watch_settings,
             watch::set_watch_dir,
             watch::scan_watch_dir_now,
@@ -144,6 +160,10 @@ pub fn run() {
 mod camel_case_contract {
     use crate::backup::{BackupRow, Settings, VerifyResult};
     use crate::bundle_io::{HashesDoc, HashesFile, HashesInnerZip};
+    use crate::auto_assemble::{
+        AssembleMasterParams, AutoAssemblySettings, EnqueueAutoAssembleResult,
+        NormalizeVideoParams, RenderTitleParams,
+    };
     use crate::bundles::{BundleDetail, BundleFileRow, BundleSummary, ExportThumb,
         ImageProgressEvent, IngestResult};
     use crate::manifest::{BundleManifest, FanDay};
@@ -205,6 +225,47 @@ mod camel_case_contract {
             bundle_state: String::new(), file_count: 0,
             source_zip_path: String::new(),
         }).unwrap(), "BundleSummary");
+    }
+
+    #[test] fn auto_assembly_settings_is_camel_case() {
+        assert_camel(&serde_json::to_value(AutoAssemblySettings {
+            target_width: 1920, target_height: 1080, target_fps: 30,
+            xfade_duration_secs: 1.0, title_duration_secs: 10.0,
+            audio_enhance_enabled: true, deepfilternet_enabled: false,
+        }).unwrap(), "AutoAssemblySettings");
+    }
+
+    #[test] fn render_title_params_is_camel_case() {
+        assert_camel(&serde_json::to_value(RenderTitleParams {
+            bundle_uid: String::new(), output_path: String::new(),
+            title: String::new(), persona_watermark: String::new(),
+            duration_secs: 10.0, fps: 30, width: 1920, height: 1080,
+        }).unwrap(), "RenderTitleParams");
+    }
+
+    #[test] fn normalize_video_params_is_camel_case() {
+        assert_camel(&serde_json::to_value(NormalizeVideoParams {
+            bundle_uid: String::new(), bundle_file_id: 0,
+            working_path: String::new(), output_path: String::new(),
+            width: 1920, height: 1080, fps: 30,
+            rotation_degrees: 0, watermark_png_path: None,
+            watermark_position: String::new(), watermark_margin_pct: 0.0,
+            audio_enhance: false,
+        }).unwrap(), "NormalizeVideoParams");
+    }
+
+    #[test] fn assemble_master_params_is_camel_case() {
+        assert_camel(&serde_json::to_value(AssembleMasterParams {
+            bundle_uid: String::new(), output_path: String::new(),
+            input_paths: vec![], xfade_duration_secs: 1.0, fps: 30,
+        }).unwrap(), "AssembleMasterParams");
+    }
+
+    #[test] fn enqueue_auto_assemble_result_is_camel_case() {
+        assert_camel(&serde_json::to_value(EnqueueAutoAssembleResult {
+            bundle_uid: String::new(), master_path: String::new(),
+            job_ids: vec![], video_count: 0, errors: vec![],
+        }).unwrap(), "EnqueueAutoAssembleResult");
     }
 
     #[test] fn image_progress_event_is_camel_case() {
@@ -369,8 +430,9 @@ mod migration_smoke {
             (7, "video-processed", include_str!("../migrations/007_video_processed_files.sql")),
             (8, "wm-per-media",   include_str!("../migrations/008_watermark_per_media.sql")),
             (9, "bf-rotation",    include_str!("../migrations/009_bundle_file_rotation.sql")),
+            (10, "jobs-kind-widen", include_str!("../migrations/010_jobs_kind_widen.sql")),
+            (11, "aa-settings",   include_str!("../migrations/011_auto_assembly_settings.sql")),
         ];
-
         for (v, name, sql) in migrations {
             conn.execute_batch(sql)
                 .unwrap_or_else(|e| panic!("migration {v} ({name}) failed: {e}"));
@@ -380,6 +442,7 @@ mod migration_smoke {
             "app_settings", "bundles", "bundle_files", "bundle_export_thumbs",
             "watermark_profiles", "processed_files",
             "jobs", "job_runs",
+            "auto_assembly_settings",
         ];
         for t in expected_tables {
             let count: i64 = conn

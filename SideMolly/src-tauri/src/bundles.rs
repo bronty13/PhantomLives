@@ -159,7 +159,7 @@ fn db_path<R: Runtime>(handle: &AppHandle<R>) -> Result<PathBuf, BundleError> {
 /// `~/Library/Application Support/com.phantomlives.sidemolly/work/` — root
 /// of per-bundle extraction directories. Phase 3+ image/video ops will
 /// write side files (thumbnails, processed variants) alongside.
-fn work_root<R: Runtime>(handle: &AppHandle<R>) -> Result<PathBuf, BundleError> {
+pub fn work_root<R: Runtime>(handle: &AppHandle<R>) -> Result<PathBuf, BundleError> {
     let root = app_data_dir(handle)?.join("work");
     fs::create_dir_all(&root)?;
     Ok(root)
@@ -786,7 +786,7 @@ pub struct ProcessImagesResult {
 /// macOS-stable lookup for the bundled font. Tauri's `resolve_resource`
 /// returns the in-bundle path for production; in dev / tests it falls
 /// back to the source-tree copy.
-fn paper_daisy_bytes<R: Runtime>(handle: &AppHandle<R>) -> Result<Vec<u8>, BundleError> {
+pub fn paper_daisy_bytes<R: Runtime>(handle: &AppHandle<R>) -> Result<Vec<u8>, BundleError> {
     let path = paper_daisy_path(handle)?;
     Ok(fs::read(path)?)
 }
@@ -873,6 +873,17 @@ pub fn set_watermark_profile<R: Runtime>(
         ],
     )?;
     Ok(())
+}
+
+/// Public alias for `load_watermark_profile` so sibling modules
+/// (`auto_assemble.rs`) can reuse the per-media profile lookup without
+/// duplicating the SELECT.
+pub fn load_watermark_profile_pub(
+    conn: &Connection,
+    persona_code: Option<&str>,
+    media: MediaKind,
+) -> Result<Option<WatermarkProfile>, BundleError> {
+    load_watermark_profile(conn, persona_code, media)
 }
 
 fn load_watermark_profile(
@@ -1314,7 +1325,7 @@ fn profile_cache_key(p: &WatermarkProfile) -> String {
     s
 }
 
-fn watermark_position_to_str(p: WatermarkPosition) -> String {
+pub fn watermark_position_to_str(p: WatermarkPosition) -> String {
     match p {
         WatermarkPosition::TopLeft      => "top-left",
         WatermarkPosition::TopCenter    => "top-center",
@@ -1474,6 +1485,8 @@ mod tests {
         conn.execute_batch(include_str!("../migrations/007_video_processed_files.sql")).unwrap();
         conn.execute_batch(include_str!("../migrations/008_watermark_per_media.sql")).unwrap();
         conn.execute_batch(include_str!("../migrations/009_bundle_file_rotation.sql")).unwrap();
+        conn.execute_batch(include_str!("../migrations/010_jobs_kind_widen.sql")).unwrap();
+        conn.execute_batch(include_str!("../migrations/011_auto_assembly_settings.sql")).unwrap();
         conn
     }
 

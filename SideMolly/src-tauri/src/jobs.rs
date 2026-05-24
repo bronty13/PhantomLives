@@ -279,6 +279,30 @@ fn dispatch<R: Runtime>(
 ) -> Result<(), BundleError> {
     match job.kind.as_str() {
         "process_video" => crate::video::dispatch_process_video(handle, conn, job),
+        "render_title" => {
+            let p: crate::auto_assemble::RenderTitleParams =
+                serde_json::from_str(&job.params_json)
+                    .map_err(|e| BundleError::Io(std::io::Error::other(
+                        format!("render_title bad params: {e}"),
+                    )))?;
+            crate::auto_assemble::dispatch_render_title(handle, p)
+        }
+        "normalize_video" => {
+            let p: crate::auto_assemble::NormalizeVideoParams =
+                serde_json::from_str(&job.params_json)
+                    .map_err(|e| BundleError::Io(std::io::Error::other(
+                        format!("normalize_video bad params: {e}"),
+                    )))?;
+            crate::auto_assemble::dispatch_normalize_video(handle, p)
+        }
+        "assemble_master" => {
+            let p: crate::auto_assemble::AssembleMasterParams =
+                serde_json::from_str(&job.params_json)
+                    .map_err(|e| BundleError::Io(std::io::Error::other(
+                        format!("assemble_master bad params: {e}"),
+                    )))?;
+            crate::auto_assemble::dispatch_assemble_master(handle, p)
+        }
         other => Err(BundleError::NotFound(format!("unknown job kind: {other}"))),
     }
 }

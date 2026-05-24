@@ -4,6 +4,98 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] — 2026-05-24
+
+### Added — Phase 4.5a: Auto-Assembly pipeline
+
+One-click "make me the master cut" on the Bundle workspace Edit tab.
+Compiles every video in a bundle into a single landscape 16:9 MP4 with
+title card, cross-dissolves between every clip, watermark, audio
+enhancement, and fade-to-black at the end. The mechanic that closes
+the loop on the editing tab — what watermarks + rotation + per-clip
+processing were all building toward.
+
+```
+┌── 10s title ──┐ xfade ┌── v₁ ──┐ xfade ┌── v₂ ──┐ xfade … ┌── v_N ──┐ → fade-to-black
+│ bundle title  │   1s  │ + WM    │   1s  │ + WM    │         │ + WM    │
+│ + persona     │       │ + audio │       │ + audio │         │ + audio │
+└───────────────┘       └─────────┘       └─────────┘         └─────────┘
+```
+
+**Three new job kinds** route through the existing Phase 4 jobs queue
+(sequential worker, atomic claim, per-attempt audit):
+
+- `render_title` — 10s `lavfi` color source + drawtext title (8% of
+  height) + persona watermark below (5% of height, 85% opacity).
+  Silent stereo AAC track so the title's stream layout matches the
+  normalize_video output for the xfade graph.
+- `normalize_video` — one ffmpeg invocation per source video:
+  - Rotation via transpose (uses per-file rotation_degrees from
+    Phase 4.x).
+  - Scale-to-fit + letterbox pad to 1920×1080 (or user setting),
+    `force_original_aspect_ratio=decrease` so nothing crops.
+  - 30fps resample, setsar=1.
+  - Watermark PNG overlay (reuses the Phase 4 cached PNG render
+    keyed by persona profile, with the same 1.25× alpha boost).
+  - Audio: `loudnorm=I=-16:TP=-1.5:LRA=11` + acompressor +
+    200Hz/3kHz EQ (toggle in Settings).
+  - Container: H.264 yuv420p / AAC 48kHz stereo / 192k / faststart.
+- `assemble_master` — xfade chain across every input. Per-clip
+  duration probed via ffprobe so xfade offsets line up. Final
+  `fade=t=out` 1.0s tail. Re-encodes once at CRF 21 (master quality).
+
+**Defaults seeded in `auto_assembly_settings`** (one-row table,
+migration 011): 1920×1080 @ 30fps, 1.0s xfade, 10s title, audio
+enhance on, DeepFilterNet off (Phase 4.5b).
+
+**Trigger surfaces**:
+
+- Edit tab → **🎞 Auto-assemble master** button (only shown when the
+  bundle has videos). Single Tauri command `enqueue_auto_assemble`
+  enqueues title + N normalize + assemble jobs in that order; the
+  queue's `created_at ASC` ordering means they run sequentially with
+  no extra dependency tracking. Failure of any prereq → the assemble
+  step fails loudly (input missing); user re-clicks to retry.
+- Settings → **🎞 Auto-Assembly** panel with sliders for every default
+  + DeepFilterNet toggle (disabled, marked Phase 4.5b).
+
+**Master output**: `~/Library/Application Support/com.phantomlives.sidemolly/work/<uid>/auto/master.mp4`.
+Title + intermediate clips remain in `/auto/` for inspection /
+manual re-use.
+
+**Persona watermark text on title card**: uses the persona's
+`watermark_profiles.text` (or PhantomLives defaults — CoC →
+CurseOfCurves, PoA → PrincessOfAddiction, Sa → SheerAttraction)
+even if the per-video watermark is disabled in Settings → Watermark.
+The title card brand surface is intentionally always on.
+
+### Migrations
+
+- **010**: widen `jobs.kind` CHECK from `('process_video')` to no
+  CHECK. Rebuilds the table SQLite-style. Validation lives in the
+  Rust dispatcher (`jobs::dispatch`).
+- **011**: new `auto_assembly_settings` table, seeded with defaults.
+
+### Deferred to Phase 4.5b
+
+- **DeepFilterNet voice isolation** — ONNX-based pre-filter before
+  the FFmpeg audio chain. Needs ONNX runtime crate + the
+  DeepFilterNet model file (~10MB) bundled into resources/, plus
+  cross-platform packaging (macOS arm64+x86_64 / Windows x86_64).
+  Schema column reserved; UI toggle disabled with explanatory label.
+- Per-platform master variants (vertical 9:16 / square 1:1).
+- Auto-assemble-on-ingest toggle.
+- Incremental re-assemble (skip steps whose inputs unchanged).
+
+### Tests
+
+100 passing. New camelCase contracts for `AutoAssemblySettings`,
+`RenderTitleParams`, `NormalizeVideoParams`, `AssembleMasterParams`,
+`EnqueueAutoAssembleResult`. Migration smoke applies 010/011 and
+checks `auto_assembly_settings` table exists. Per-kind params JSON
+round-trip tests in `auto_assemble.rs` (escape semantics for
+drawtext + serde renames).
+
 ## [0.7.0] — 2026-05-24
 
 ### Added — Phase 4.x: per-file rotation, per-media watermark toggles, live progress

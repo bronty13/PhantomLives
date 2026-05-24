@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import {
-  enqueueBundleVideoOps, fmtSize, getBundleThumbnails, getProcessedPreviews,
-  listProcessedFiles, processBundleImages, revealProcessedFile,
+  enqueueAutoAssemble, enqueueBundleVideoOps, fmtSize, getBundleThumbnails,
+  getProcessedPreviews, listProcessedFiles, processBundleImages, revealProcessedFile,
   revealWorkingDir, revealWorkingFile, setBundleFileRotation,
   type BundleFileRow, type BundleSummary, type ImageOpsInput, type ProcessedFileRow,
   type VideoOpsInput,
@@ -131,6 +131,24 @@ export function EditTab({ summary, files, refreshSignal, onFileUpdated }: Props)
     }
   };
 
+  const runAutoAssemble = async () => {
+    setBusy(true);
+    setBusyLabel(`Queueing auto-assembly — title + ${videos.length} clip${videos.length === 1 ? '' : 's'} + master…`);
+    setLastResult(null);
+    try {
+      const r = await enqueueAutoAssemble(summary.uid);
+      setLastResult({
+        ok: r.jobIds.length, skipped: 0, errors: r.errors,
+        what: `🎞 Auto-assembly queued — ${r.videoCount} clip${r.videoCount === 1 ? '' : 's'} + title + master · see 🛠 Jobs`,
+      });
+    } catch (e) {
+      setLastResult({ ok: 0, skipped: 0, errors: [String(e)], what: 'auto-assemble failed' });
+    } finally {
+      setBusy(false);
+      setBusyLabel(null);
+    }
+  };
+
   const runEnqueueVideos = async () => {
     setBusy(true);
     setLastResult(null);
@@ -226,6 +244,32 @@ export function EditTab({ summary, files, refreshSignal, onFileUpdated }: Props)
               onClick={runEnqueueVideos}
             >
               {busy ? '⏳ Enqueuing…' : `Process ${videos.length} video${videos.length === 1 ? '' : 's'}`}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {videos.length > 0 && (
+        <section className="sm-card">
+          <div className="font-semibold mb-2">🎞 Auto-assemble ({videos.length} clip{videos.length === 1 ? '' : 's'})</div>
+          <div className="text-xs mb-3" style={{ color: 'rgb(var(--surface-muted))' }}>
+            One-click master cut. Compiles every bundle video into a single
+            landscape 16:9 MP4: <strong>10s title card</strong> →
+            <strong> 1.0s cross-dissolves</strong> between every clip
+            (normalized to 1920×1080, watermarked, audio-enhanced) →
+            <strong> 1.0s fade-to-black</strong> at the end. Decomposes
+            into per-step jobs in 🛠 Jobs; output lands at
+            <code className="ml-1 text-[11px]">work/&lt;uid&gt;/auto/master.mp4</code>.
+            Tune defaults in Settings → Auto-Assembly.
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              className="sm-button"
+              disabled={busy}
+              onClick={runAutoAssemble}
+            >
+              {busy ? '⏳ Queueing…' : '🎞 Auto-assemble master'}
             </button>
           </div>
         </section>

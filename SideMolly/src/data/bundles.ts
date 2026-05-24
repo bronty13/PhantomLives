@@ -262,6 +262,39 @@ export function setBundleFileRotation(
   return invoke('set_bundle_file_rotation', { uid, inZipPath, degrees });
 }
 
+// ----- Phase 4.5 auto-assembly -----
+
+export interface AutoAssemblySettings {
+  targetWidth: number;
+  targetHeight: number;
+  targetFps: number;
+  xfadeDurationSecs: number;
+  titleDurationSecs: number;
+  audioEnhanceEnabled: boolean;
+  /** Phase 4.5b — runtime support lands later. */
+  deepfilternetEnabled: boolean;
+}
+
+export interface EnqueueAutoAssembleResult {
+  bundleUid: string;
+  masterPath: string;
+  jobIds: number[];
+  videoCount: number;
+  errors: string[];
+}
+
+export function getAutoAssemblySettings(): Promise<AutoAssemblySettings> {
+  return invoke<AutoAssemblySettings>('get_auto_assembly_settings');
+}
+
+export function setAutoAssemblySettings(settings: AutoAssemblySettings): Promise<void> {
+  return invoke('set_auto_assembly_settings', { settings });
+}
+
+export function enqueueAutoAssemble(uid: string): Promise<EnqueueAutoAssembleResult> {
+  return invoke<EnqueueAutoAssembleResult>('enqueue_auto_assemble', { uid });
+}
+
 export function getWatchSettings(): Promise<WatchSettings> {
   return invoke<WatchSettings>('get_watch_settings');
 }

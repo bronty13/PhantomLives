@@ -1,15 +1,17 @@
 import { useState } from 'react';
+import { AutoAssemblySettings } from './AutoAssemblySettings';
 import { BackupSettings } from './BackupSettings';
 import { WatchSettings } from './WatchSettings';
 import { WatermarkSettings } from './WatermarkSettings';
 
-type SettingsTab = 'watch' | 'watermark' | 'backup' | 'about';
+type SettingsTab = 'watch' | 'watermark' | 'autoassemble' | 'backup' | 'about';
 
 const TABS: { key: SettingsTab; label: string; icon: string }[] = [
-  { key: 'watch',     label: 'Watched folder', icon: '👀' },
-  { key: 'watermark', label: 'Watermark',      icon: '🖋' },
-  { key: 'backup',    label: 'Backup',         icon: '💾' },
-  { key: 'about',     label: 'About',          icon: 'ℹ️' },
+  { key: 'watch',        label: 'Watched folder', icon: '👀' },
+  { key: 'watermark',    label: 'Watermark',      icon: '🖋' },
+  { key: 'autoassemble', label: 'Auto-Assembly',  icon: '🎞' },
+  { key: 'backup',       label: 'Backup',         icon: '💾' },
+  { key: 'about',        label: 'About',          icon: 'ℹ️' },
 ];
 
 // Phase 0 ships Backup (required per CLAUDE.md) and a placeholder About
@@ -45,6 +47,7 @@ export function SettingsView() {
 
       {tab === 'watch' && <WatchSettings />}
       {tab === 'watermark' && <WatermarkSettings />}
+      {tab === 'autoassemble' && <AutoAssemblySettings />}
       {tab === 'backup' && <BackupSettings />}
       {tab === 'about' && (
         <div className="sm-card">
