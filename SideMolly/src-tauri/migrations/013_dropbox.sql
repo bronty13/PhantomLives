@@ -9,14 +9,13 @@
 --
 --   dropbox_settings  — one row, app-wide config. Holds the absolute
 --                       root path + the destination-folder template.
---                       Default template `{date} {title}` is a flat
---                       layout — every bundle gets its own folder
---                       directly under root, named like
---                       `2025-12-31 Mary Poppins`. Locked-in 2026-05-24
---                       (supersedes the original
---                       `{uid}_{persona}_{title}` decision; the
---                       unbracketed date form is what Robert browses
---                       by and reads cleanly in Finder).
+--                       Default template `[{date}] - {title}` is a
+--                       flat layout — every bundle gets its own
+--                       folder directly under root, named with the
+--                       bundle's ingested date and title. Locked-in
+--                       2026-05-24 (supersedes the original
+--                       `{uid}_{persona}_{title}` decision; the date
+--                       form is what Robert actually browses by).
 --                       Template variables: {date} {title} {uid}
 --                       {persona}.
 --
@@ -30,7 +29,7 @@
 CREATE TABLE IF NOT EXISTS dropbox_settings (
     id          INTEGER PRIMARY KEY CHECK(id = 1),
     root_path   TEXT NOT NULL DEFAULT '',      -- empty = unconfigured
-    template    TEXT NOT NULL DEFAULT '{date} {title}',
+    template    TEXT NOT NULL DEFAULT '[{date}] - {title}',
     updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

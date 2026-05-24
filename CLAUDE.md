@@ -33,6 +33,21 @@ These apply to **every** code, config, script, test, or doc change. Do not skip 
 6. Update operational files (config defaults, installers, helper scripts, command help text) when relevant.
 7. If a hygiene item genuinely doesn't apply, explicitly say why in the commit/PR notes.
 
+## SQL migrations are immutable
+
+Once a migration file has been added to a release (committed to `main` AND/OR applied to any developer's local database), **never edit it**. `tauri-plugin-sql` and similar runtime migrators hash the migration file at every launch and refuse to start when the hash doesn't match the stored value — that's the "migration N was previously applied but has been modified" crash.
+
+To change schema or data already covered by a shipped migration:
+
+- **Add a new migration** (e.g. `017_xxx.sql`) that applies the change via `ALTER TABLE`, `UPDATE`, or a table-rebuild dance.
+- A new install runs both the original migration and the follow-up in sequence, landing at the same end state as an existing install that only runs the follow-up.
+
+This applies even to comment-only edits — the file's bytes are what get hashed.
+
+**Guardrail** (SideMolly reference): `cargo test migration_immutability` re-hashes every shipped migration at compile time and asserts against a frozen `EXPECTED_MIGRATION_HASHES` constant. Adding a new migration produces a clear "append `(N, "<hash>"),` to the constant" message; editing an existing one fails with "migration N has been modified post-ship — revert and add a new migration instead." See `SideMolly/src-tauri/src/lib.rs::migration_immutability` for the pattern; lift verbatim into any other PhantomLives subproject that uses migration files.
+
+Incident reference: SideMolly v0.13.1 (2026-05-24) — edited migration 013 in place to change a `DEFAULT` value, broke launch for every install that had run v0.13.0. Fixed by reverting 013 to its v0.13.0 bytes; migration 014 already covered the data update.
+
 ## Default output location
 
 Every PhantomLives tool that writes user-visible output (exports, transcripts, reports, generated files, baselines, etc.) **must** default its output path to:

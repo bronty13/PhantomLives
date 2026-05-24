@@ -708,3 +708,129 @@ mod migration_smoke {
         assert!(bad_kind.is_err(), "CHECK on bundle_files.kind should reject 'nonsense'");
     }
 }
+
+// ---------------------------------------------------------------------------
+// Migration immutability guard.
+//
+// `tauri-plugin-sql` stores a SHA256 of each migration's bytes alongside its
+// version row in `_sqlx_migrations`. On every app launch it re-hashes the
+// shipped migration files and refuses to start if any hash doesn't match
+// the stored value — that's the "migration N was previously applied but has
+// been modified" error.
+//
+// This test catches the same case at `cargo test` time so we never ship a
+// build that crashes someone's app at launch (incident 2026-05-24: editing
+// migration 013 in-place after v0.13.0 had been installed locally).
+//
+// Workflow:
+//   - Adding a new migration: this test fails with the new file's hash;
+//     paste the suggested line into `EXPECTED_MIGRATION_HASHES`.
+//   - Editing an existing migration: this test fails. Don't fix the hash —
+//     revert the migration and add a new one to apply your change.
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod migration_immutability {
+    use sha2::{Digest, Sha256};
+
+    /// Frozen hashes of every shipped migration. Editing a migration after
+    /// it's been added to this list is a build break — by design.
+    /// Append a new line ONLY when ADDING a new migration file.
+    const EXPECTED_MIGRATION_HASHES: &[(u32, &str)] = &[
+        (1, "ea35d775514071b3913c4c93c520d9c8d507a9c046bc1eecd1ccb9c6835a0bbc"),
+        (2, "5cc3db2c5f89fbde821b0388497c2a7cbc457eeac01306dd819dc52d194f04a5"),
+        (3, "0da5d79a58dac71d9e336ee212ee333c6a82e047ba7545c61844b5cff6bea9f4"),
+        (4, "8493f734171befd8fb73c74ec0746d0bb423df5256c4c4a372be47a009b55fe5"),
+        (5, "9c43bcec5c7dabbc52ba2cb14a2f976a98dcaebf532bb92562043dc67578f8e0"),
+        (6, "b21627d4f9685db02b146be0ddbebfbce6a5c64145499fad14d8c0f709d6c3b9"),
+        (7, "bd9dffb47b862b3acab054136ba1fa080df944792bb4ccd84f04058dddd73b27"),
+        (8, "fd07dddeccd0f89a9186bbb566a975596a48bd599de093321daf169a26a479de"),
+        (9, "5d8d7f67405008c02693ec0bdfef1876805e33343b534243e9c467a1fdd02972"),
+        (10, "23fd87b32c210f7a1c20241ff07f7f54effee9cf9f872263686c8a0c0f27f153"),
+        (11, "2fa55655c9bf934271e14656773574a448bce10a32c73f396fbd2e7e342e5ce4"),
+        (12, "7194fded5e2a69f7ced08db8972518f98129459ba70f21aba610877311b8aed0"),
+        (13, "79668ad641cf0e8b2c2e38745cb765cdb2618c15833063cd5fc3d09506a798bb"),
+        (14, "d1cef25bbf843418ab1fbfffd1d53a19cbeda98d699d2fee35bd5c416e368e22"),
+        (15, "6a0add1e30d2adb380c0d32e7dba9b3b2337e64d365f8fbff3777056ae81d42f"),
+        (16, "76eb7e7c6f4a684c8cb1e48d23ce43b29289e57f276d32c264123eb1857a6326"),
+    ];
+
+    /// Source-of-truth for "which migrations ship at compile time". Must
+    /// stay aligned with the `migrations` vec in `run()` above + the
+    /// `migrations` array in `migration_smoke::all_migrations_apply_cleanly`.
+    /// `include_str!` pulls the file bytes at compile time so the test
+    /// runs against the same content tauri-plugin-sql will hash at launch.
+    const MIGRATION_FILES: &[(u32, &str, &str)] = &[
+        (1,  "001_init.sql",                       include_str!("../migrations/001_init.sql")),
+        (2,  "002_bundles.sql",                    include_str!("../migrations/002_bundles.sql")),
+        (3,  "003_bundle_files.sql",               include_str!("../migrations/003_bundle_files.sql")),
+        (4,  "004_export_thumbs.sql",              include_str!("../migrations/004_export_thumbs.sql")),
+        (5,  "005_image_ops.sql",                  include_str!("../migrations/005_image_ops.sql")),
+        (6,  "006_jobs.sql",                       include_str!("../migrations/006_jobs.sql")),
+        (7,  "007_video_processed_files.sql",      include_str!("../migrations/007_video_processed_files.sql")),
+        (8,  "008_watermark_per_media.sql",        include_str!("../migrations/008_watermark_per_media.sql")),
+        (9,  "009_bundle_file_rotation.sql",       include_str!("../migrations/009_bundle_file_rotation.sql")),
+        (10, "010_jobs_kind_widen.sql",            include_str!("../migrations/010_jobs_kind_widen.sql")),
+        (11, "011_auto_assembly_settings.sql",     include_str!("../migrations/011_auto_assembly_settings.sql")),
+        (12, "012_processing_log.sql",             include_str!("../migrations/012_processing_log.sql")),
+        (13, "013_dropbox.sql",                    include_str!("../migrations/013_dropbox.sql")),
+        (14, "014_dropbox_template_default.sql",   include_str!("../migrations/014_dropbox_template_default.sql")),
+        (15, "015_posting.sql",                    include_str!("../migrations/015_posting.sql")),
+        (16, "016_posting_assets_and_fansite.sql", include_str!("../migrations/016_posting_assets_and_fansite.sql")),
+    ];
+
+    fn sha256_hex(s: &str) -> String {
+        let mut h = Sha256::new();
+        h.update(s.as_bytes());
+        format!("{:x}", h.finalize())
+    }
+
+    #[test]
+    fn migrations_have_not_been_edited_post_ship() {
+        let expected: std::collections::HashMap<u32, &str> =
+            EXPECTED_MIGRATION_HASHES.iter().copied().collect();
+
+        let mut problems: Vec<String> = Vec::new();
+        for (version, name, sql) in MIGRATION_FILES {
+            let hash = sha256_hex(sql);
+            match expected.get(version) {
+                Some(e) if *e == hash.as_str() => {}
+                Some(e) => problems.push(format!(
+                    "❌ migration {version} ({name}) HAS BEEN MODIFIED post-ship.\n\
+                     \n\
+                     Expected hash: {e}\n\
+                     Current hash:  {hash}\n\
+                     \n\
+                     Migrations are immutable once shipped. Revert this file\n\
+                     to its previous bytes and add a NEW migration to apply\n\
+                     your intended change. (Incident 2026-05-24.)",
+                )),
+                None => problems.push(format!(
+                    "❌ migration {version} ({name}) has no expected hash entry.\n\
+                     \n\
+                     If you just added this migration, append the following\n\
+                     line to EXPECTED_MIGRATION_HASHES:\n\
+                     \n\
+                     \t({version}, \"{hash}\"),",
+                )),
+            }
+        }
+
+        // Detect a hash entry whose file disappeared (rename / deletion).
+        for (version, _) in EXPECTED_MIGRATION_HASHES {
+            if !MIGRATION_FILES.iter().any(|(v, _, _)| v == version) {
+                problems.push(format!(
+                    "❌ EXPECTED_MIGRATION_HASHES lists version {version} but no\n\
+                     corresponding entry exists in MIGRATION_FILES (was the\n\
+                     file deleted or renamed?).",
+                ));
+            }
+        }
+
+        assert!(
+            problems.is_empty(),
+            "\n\n{}\n\n",
+            problems.join("\n\n────────────────────────────────────────\n\n"),
+        );
+    }
+}
