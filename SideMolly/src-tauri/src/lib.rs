@@ -2,6 +2,7 @@ mod auto_assemble;
 mod backup;
 mod bundle_io;
 mod bundles;
+mod dropbox;
 mod extract;
 mod fsutil;
 mod images;
@@ -89,6 +90,12 @@ pub fn run() {
             sql: include_str!("../migrations/012_processing_log.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 13,
+            description: "dropbox",
+            sql: include_str!("../migrations/013_dropbox.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -160,6 +167,11 @@ pub fn run() {
             processing_log::export_bundle_log,
             processing_log::clear_bundle_log,
             processing_log::reveal_bundle_log,
+            dropbox::get_dropbox_settings,
+            dropbox::set_dropbox_settings,
+            dropbox::dry_run_dropbox,
+            dropbox::copy_to_dropbox,
+            dropbox::reveal_dropbox_dest,
             bundles::get_master_cut_status,
             bundles::reveal_master_cut,
             bundles::open_master_cut,
@@ -189,6 +201,10 @@ mod camel_case_contract {
         TranscriptRow,
     };
     use crate::processing_log::{ExportLogResult, LogRow};
+    use crate::dropbox::{
+        CopyResultRow, CopyResultSummary, DropboxSettings,
+        DryRunRow, DryRunSummary,
+    };
     use crate::bundles::{BundleDetail, BundleFileRow, BundleSummary, ExportThumb,
         ImageProgressEvent, IngestResult};
     use crate::manifest::{BundleManifest, FanDay};
@@ -319,6 +335,43 @@ mod camel_case_contract {
         assert_camel(&serde_json::to_value(ExportLogResult {
             bundle_uid: String::new(), output_path: String::new(), row_count: 0,
         }).unwrap(), "ExportLogResult");
+    }
+
+    #[test] fn dropbox_settings_is_camel_case() {
+        assert_camel(&serde_json::to_value(DropboxSettings {
+            root_path: String::new(), template: String::new(),
+        }).unwrap(), "DropboxSettings");
+    }
+
+    #[test] fn dry_run_row_is_camel_case() {
+        assert_camel(&serde_json::to_value(DryRunRow {
+            source_path: String::new(), source_sha256: String::new(),
+            source_size_bytes: 0,
+            dropbox_path: String::new(), destination_name: String::new(),
+            kind: String::new(), status: String::new(),
+        }).unwrap(), "DryRunRow");
+    }
+
+    #[test] fn dry_run_summary_is_camel_case() {
+        assert_camel(&serde_json::to_value(DryRunSummary {
+            bundle_uid: String::new(), root_configured: false,
+            dropbox_root: String::new(), destination_dir: String::new(),
+            items: vec![],
+        }).unwrap(), "DryRunSummary");
+    }
+
+    #[test] fn copy_result_row_is_camel_case() {
+        assert_camel(&serde_json::to_value(CopyResultRow {
+            source_path: String::new(), dropbox_path: String::new(),
+            status: String::new(), verified: false, error: None,
+        }).unwrap(), "CopyResultRow");
+    }
+
+    #[test] fn copy_result_summary_is_camel_case() {
+        assert_camel(&serde_json::to_value(CopyResultSummary {
+            bundle_uid: String::new(), destination_dir: String::new(),
+            copied: 0, skipped: 0, failed: 0, items: vec![],
+        }).unwrap(), "CopyResultSummary");
     }
 
     #[test] fn transcript_row_is_camel_case() {
@@ -508,6 +561,7 @@ mod migration_smoke {
             (10, "jobs-kind-widen", include_str!("../migrations/010_jobs_kind_widen.sql")),
             (11, "aa-settings",   include_str!("../migrations/011_auto_assembly_settings.sql")),
             (12, "processing-log", include_str!("../migrations/012_processing_log.sql")),
+            (13, "dropbox",        include_str!("../migrations/013_dropbox.sql")),
         ];
         for (v, name, sql) in migrations {
             conn.execute_batch(sql)
@@ -520,6 +574,7 @@ mod migration_smoke {
             "jobs", "job_runs",
             "auto_assembly_settings",
             "processing_log",
+            "dropbox_settings", "dropbox_copies",
         ];
         for t in expected_tables {
             let count: i64 = conn

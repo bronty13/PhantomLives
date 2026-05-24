@@ -394,6 +394,70 @@ export function revealBundleLog(uid: string): Promise<void> {
   return invoke('reveal_bundle_log', { uid });
 }
 
+// ----- Phase 6: Dropbox local-folder copy -----
+
+export interface DropboxSettings {
+  rootPath: string;
+  template: string;
+}
+
+export interface DryRunRow {
+  sourcePath: string;
+  sourceSha256: string;
+  sourceSizeBytes: number;
+  dropboxPath: string;
+  destinationName: string;
+  kind: string;
+  /** new | skip | changed | missing */
+  status: string;
+}
+
+export interface DryRunSummary {
+  bundleUid: string;
+  rootConfigured: boolean;
+  dropboxRoot: string;
+  destinationDir: string;
+  items: DryRunRow[];
+}
+
+export interface CopyResultRow {
+  sourcePath: string;
+  dropboxPath: string;
+  /** copied | skipped | failed */
+  status: string;
+  verified: boolean;
+  error: string | null;
+}
+
+export interface CopyResultSummary {
+  bundleUid: string;
+  destinationDir: string;
+  copied: number;
+  skipped: number;
+  failed: number;
+  items: CopyResultRow[];
+}
+
+export function getDropboxSettings(): Promise<DropboxSettings> {
+  return invoke<DropboxSettings>('get_dropbox_settings');
+}
+
+export function setDropboxSettings(settings: DropboxSettings): Promise<void> {
+  return invoke('set_dropbox_settings', { settings });
+}
+
+export function dryRunDropbox(uid: string): Promise<DryRunSummary> {
+  return invoke<DryRunSummary>('dry_run_dropbox', { uid });
+}
+
+export function copyToDropbox(uid: string): Promise<CopyResultSummary> {
+  return invoke<CopyResultSummary>('copy_to_dropbox', { uid });
+}
+
+export function revealDropboxDest(uid: string): Promise<void> {
+  return invoke('reveal_dropbox_dest', { uid });
+}
+
 export function enqueueAutoAssemble(uid: string): Promise<EnqueueAutoAssembleResult> {
   return invoke<EnqueueAutoAssembleResult>('enqueue_auto_assemble', { uid });
 }

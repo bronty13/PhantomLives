@@ -6,6 +6,7 @@ import { getBundle, getBundleThumbnails, personaChipColor, bundleTypeEmoji, veri
          type BundleDetail } from '../../data/bundles';
 import { OverviewTab } from './OverviewTab';
 import { EditTab } from './EditTab';
+import { DistributeTab } from './DistributeTab';
 import { DocDrawer, type DocKind } from './DocDrawer';
 
 interface Props {
@@ -15,8 +16,8 @@ interface Props {
   jobSignal: number;
 }
 
-type WorkspaceTab = 'overview' | 'edit';
-// Distribute / Post tabs land in Phases 6-10.
+type WorkspaceTab = 'overview' | 'edit' | 'distribute';
+// Post tab lands in Phases 7-10.
 
 export function BundleWorkspace({ uid, onBack, jobSignal }: Props) {
   const [tab, setTab] = useState<WorkspaceTab>('overview');
@@ -129,7 +130,7 @@ export function BundleWorkspace({ uid, onBack, jobSignal }: Props) {
         <nav className="mt-4 flex gap-2 text-sm">
           <TabPill label="Overview"   icon="📄" active={tab === 'overview'} onClick={() => setTab('overview')} />
           <TabPill label="Edit"       icon="✂️" active={tab === 'edit'}     onClick={() => setTab('edit')} />
-          <TabPill label="Distribute" icon="📦" active={false} disabled />
+          <TabPill label="Distribute" icon="📦" active={tab === 'distribute'} onClick={() => setTab('distribute')} />
           <TabPill label="Post"       icon="🚀" active={false} disabled />
         </nav>
       </header>
@@ -152,6 +153,9 @@ export function BundleWorkspace({ uid, onBack, jobSignal }: Props) {
             jobs={jobs}
             onFileUpdated={() => setRefreshSeq((n) => n + 1)}
           />
+        )}
+        {tab === 'distribute' && (
+          <DistributeTab summary={summary} refreshSignal={jobSignal} />
         )}
       </div>
 

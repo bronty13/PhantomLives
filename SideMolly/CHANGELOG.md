@@ -4,6 +4,92 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] — 2026-05-24
+
+### Added — Phase 6: Dropbox local-folder copy
+
+The bundle workspace **Distribute** tab — previously a disabled
+placeholder — lights up. One-click ships every processed artifact
+into the user's local Dropbox sync folder. SideMolly never touches
+the Dropbox HTTP API; files land on disk and the Dropbox app does
+the rest.
+
+**Destination layout** (per Robert's direction 2026-05-24):
+
+```
+<dropbox-root>/
+  [2026-05-22] - and before too soon it was JUNE/
+    01_01_xxx__watermark_strip.jpg
+    02_01_xxx__watermark_strip.jpg
+    …
+    30_01_xxx__video_watermark_strip.mp4
+    master.mp4
+    30_01_xxx.txt
+    30_01_xxx.srt
+    30_01_xxx.json
+```
+
+Flat per bundle (no per-kind subfolders); folder name follows the
+template `[{date}] - {title}` by default (supersedes the original
+PLAN.md decision #21 `{uid}_{persona}_{title}` — date form is what
+Robert actually browses by). Template variables: `{date}`
+(YYYY-MM-DD from `bundles.ingested_at`), `{title}`, `{uid}`,
+`{persona}`. Filesystem-hostile chars get rewritten to `-`.
+
+**What gets shipped**:
+- Every row in `processed_files` (images + videos + auto-assemble
+  normalized clips and any individual processed video the user ran
+  via Edit Step 2).
+- `master.mp4` from `auto/` (Phase 4.5 output) when present.
+- Transcript sidecars (`.txt` + `.srt` + `.json`) when present.
+
+**Idempotent copy**:
+
+- New `dropbox_copies` table (migration 013) tracks every
+  (bundle_uid, source_path, dropbox_path) tuple with the source's
+  sha256 at copy time.
+- Re-running Copy is a no-op when the source's sha hasn't changed
+  AND the destination file still exists — only the modified /
+  never-shipped artifacts get re-copied.
+- Atomic write (`.sm-dropbox-tmp` + rename) so Dropbox never
+  observes a half-written file.
+- Verify-on-write: re-hash the destination after copy and flag
+  mismatches in the result. Per-row `verified` bool persisted.
+
+**Distribute tab UI**:
+- Header card shows resolved destination path + template + Refresh
+  / Copy / Reveal buttons.
+- Preview table lists every artifact with status pill (`✨ new` /
+  `✎ changed` / `✓ skip` / `⚠ missing`), kind tag (image / video /
+  master / transcript-{txt,srt,json}), filename, full destination
+  path, file size.
+- Copy button label shows pending count (`Copy to Dropbox (12)`)
+  and disables when nothing's pending.
+- Post-copy summary banner with copied / skipped / failed totals
+  and the per-row results inline.
+
+**Settings → Dropbox**:
+- Root path input with native folder picker (📁 Browse…) for the
+  Dropbox folder.
+- Template input + Reset button. Inline help shows the variable
+  list.
+- Auto-detect default: when the row is unset, `get_dropbox_settings`
+  returns `~/Dropbox/` (or `~/Library/CloudStorage/Dropbox/`) if it
+  exists on the user's machine so they can usually click Save
+  without picking.
+
+**Logging**: every copy + every verify result hits `processing_log`
+under kind=`dropbox_copy`. Mismatched verifies log as `warn`.
+
+### Tests
+
+126 passing. New camelCase contracts for `DropboxSettings`,
+`DryRunRow`, `DryRunSummary`, `CopyResultRow`, `CopyResultSummary`.
+Migration smoke covers 013 + the two new tables. Template
+resolution unit tests cover the default layout + all variables +
+filesystem-hostile char sanitization + the `nopersona` fallback for
+null personas.
+
 ## [0.12.0] — 2026-05-24
 
 ### Added — smart re-transcribe + bundle activity log

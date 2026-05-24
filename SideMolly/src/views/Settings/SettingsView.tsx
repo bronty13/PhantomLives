@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { AutoAssemblySettings } from './AutoAssemblySettings';
 import { BackupSettings } from './BackupSettings';
+import { DropboxSettings } from './DropboxSettings';
 import { WatchSettings } from './WatchSettings';
 import { WatermarkSettings } from './WatermarkSettings';
 
-type SettingsTab = 'watch' | 'watermark' | 'autoassemble' | 'backup' | 'about';
+type SettingsTab = 'watch' | 'watermark' | 'autoassemble' | 'dropbox' | 'backup' | 'about';
 
 const TABS: { key: SettingsTab; label: string; icon: string }[] = [
   { key: 'watch',        label: 'Watched folder', icon: '👀' },
   { key: 'watermark',    label: 'Watermark',      icon: '🖋' },
   { key: 'autoassemble', label: 'Auto-Assembly',  icon: '🎞' },
+  { key: 'dropbox',      label: 'Dropbox',        icon: '📦' },
   { key: 'backup',       label: 'Backup',         icon: '💾' },
   { key: 'about',        label: 'About',          icon: 'ℹ️' },
 ];
@@ -48,6 +50,7 @@ export function SettingsView() {
       {tab === 'watch' && <WatchSettings />}
       {tab === 'watermark' && <WatermarkSettings />}
       {tab === 'autoassemble' && <AutoAssemblySettings />}
+      {tab === 'dropbox' && <DropboxSettings />}
       {tab === 'backup' && <BackupSettings />}
       {tab === 'about' && (
         <div className="sm-card">

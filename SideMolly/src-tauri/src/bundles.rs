@@ -1602,6 +1602,7 @@ mod tests {
         conn.execute_batch(include_str!("../migrations/010_jobs_kind_widen.sql")).unwrap();
         conn.execute_batch(include_str!("../migrations/011_auto_assembly_settings.sql")).unwrap();
         conn.execute_batch(include_str!("../migrations/012_processing_log.sql")).unwrap();
+        conn.execute_batch(include_str!("../migrations/013_dropbox.sql")).unwrap();
         conn
     }
 
