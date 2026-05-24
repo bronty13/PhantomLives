@@ -4,6 +4,78 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] — 2026-05-24
+
+### Added — Phase 7: Posting primitives
+
+The infrastructure underneath the three flavor-specific post runners
+that land in Phases 8-10. Bundle workspace **Post** tab (previously a
+disabled placeholder) lights up as a generic per-platform checklist;
+Settings → **🚀 Platforms** gets a CRUD editor for the user's own
+platform list (independent of Molly's — locked-in decision #12).
+
+**Migration 015**: two new tables.
+
+- `posting_targets` — name, url_template, persona_code (nullable),
+  color, icon, position, kind (`content`/`custom`/`fansite`/`any`),
+  enabled. No seed rows; the user adds platforms via Settings →
+  Platforms.
+- `bundle_postings` — one row per (bundle_uid, target_id) pair,
+  tracking state (`pending`/`scheduled`/`posted`/`skipped`),
+  posted_at, posted_url, body_override, notes. UPSERT on the
+  composite key.
+
+**`posting.rs` module**: types + Tauri commands.
+
+- CRUD: `list_posting_targets`, `create_posting_target`,
+  `update_posting_target`, `delete_posting_target`.
+- Per-bundle: `list_bundle_postings(uid)` returns a Vec<PostingCard>
+  pre-resolving the URL template against the bundle's title / uid /
+  persona / date. Filters server-side by kind (`any` OR match) and
+  persona (target NULL = "any persona").
+- State writes: `upsert_bundle_posting(input)` for full upsert,
+  `mark_posted(uid, targetId, postedUrl?)` for the common one-click
+  case.
+- `resolve_url_template` replaces `{uid}` / `{title}` / `{persona}`
+  / `{date}` with URL-encoded values (minimal in-crate encoder; no
+  new dep for token-replacement on user-set URLs).
+
+**Settings → 🚀 Platforms** — CRUD UI. Each row shows name +
+icon + kind chip + persona scope + enable toggle + Edit/Delete.
+Inline draft editor for "➕ Add platform" + per-row edit; includes
+URL template, color picker, kind dropdown (`any` / `content` /
+`custom` / `fansite`), persona scope, sort position.
+
+**Bundle workspace → 🚀 Post tab** — generic per-platform card
+grid. Each card:
+
+- Header: icon + name + kind/persona scope chip + state badge
+  (⏳ pending / 🗓 scheduled / ✓ posted / — skipped).
+- Action row: `🚀 Open` (launches resolved URL via
+  `tauri-plugin-opener`), `📋 Title` (clipboard), state dropdown,
+  `▸ More` toggle.
+- Expanded body: resolved URL preview, body override textarea
+  (defaults to bundle title), posted URL field, `✓ Mark posted`
+  button (timestamps + state transition in one click), notes
+  textarea, last-posted timestamp readout.
+- Cards filtered server-side to applicable platforms only —
+  bundle of kind `content` sees `kind='content'` + `kind='any'`
+  platforms; persona-scoped platforms only show on matching-
+  persona bundles.
+
+Flavor-specific runners coming next: Phase 8 (🎬 Content multi-
+platform fan-out grid + per-platform body overrides + file
+selection), Phase 9 (🎁 Custom one-shot delivery + payment
+surface), Phase 10 (📅 FanSite day-by-day calendar walk).
+
+### Tests
+
+136 passing. New camelCase contracts for `PostingTarget`,
+`PostingTargetInput`, `BundlePosting`, `PostingCard`,
+`UpsertBundlePostingInput`. URL-template resolver unit tests cover
+every variable, the no-vars passthrough case, the URL-encoder
+edge cases, and the kind-validator.
+
 ## [0.13.1] — 2026-05-24
 
 ### Changed — Dropbox folder template default

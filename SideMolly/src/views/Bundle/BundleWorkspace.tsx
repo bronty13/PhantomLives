@@ -7,6 +7,7 @@ import { getBundle, getBundleThumbnails, personaChipColor, bundleTypeEmoji, veri
 import { OverviewTab } from './OverviewTab';
 import { EditTab } from './EditTab';
 import { DistributeTab } from './DistributeTab';
+import { PostTab } from './PostTab';
 import { DocDrawer, type DocKind } from './DocDrawer';
 
 interface Props {
@@ -16,8 +17,8 @@ interface Props {
   jobSignal: number;
 }
 
-type WorkspaceTab = 'overview' | 'edit' | 'distribute';
-// Post tab lands in Phases 7-10.
+type WorkspaceTab = 'overview' | 'edit' | 'distribute' | 'post';
+// Flavor-specific Post Runners (Content/Custom/FanSite) land in Phases 8-10.
 
 export function BundleWorkspace({ uid, onBack, jobSignal }: Props) {
   const [tab, setTab] = useState<WorkspaceTab>('overview');
@@ -131,7 +132,7 @@ export function BundleWorkspace({ uid, onBack, jobSignal }: Props) {
           <TabPill label="Overview"   icon="📄" active={tab === 'overview'} onClick={() => setTab('overview')} />
           <TabPill label="Edit"       icon="✂️" active={tab === 'edit'}     onClick={() => setTab('edit')} />
           <TabPill label="Distribute" icon="📦" active={tab === 'distribute'} onClick={() => setTab('distribute')} />
-          <TabPill label="Post"       icon="🚀" active={false} disabled />
+          <TabPill label="Post"       icon="🚀" active={tab === 'post'} onClick={() => setTab('post')} />
         </nav>
       </header>
 
@@ -156,6 +157,9 @@ export function BundleWorkspace({ uid, onBack, jobSignal }: Props) {
         )}
         {tab === 'distribute' && (
           <DistributeTab summary={summary} refreshSignal={jobSignal} />
+        )}
+        {tab === 'post' && (
+          <PostTab summary={summary} />
         )}
       </div>
 

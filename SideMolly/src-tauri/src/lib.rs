@@ -8,6 +8,7 @@ mod fsutil;
 mod images;
 mod jobs;
 mod manifest;
+mod posting;
 mod processing_log;
 mod thumbnails;
 mod transcribe;
@@ -102,6 +103,12 @@ pub fn run() {
             sql: include_str!("../migrations/014_dropbox_template_default.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 15,
+            description: "posting",
+            sql: include_str!("../migrations/015_posting.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -178,6 +185,13 @@ pub fn run() {
             dropbox::dry_run_dropbox,
             dropbox::copy_to_dropbox,
             dropbox::reveal_dropbox_dest,
+            posting::list_posting_targets,
+            posting::create_posting_target,
+            posting::update_posting_target,
+            posting::delete_posting_target,
+            posting::list_bundle_postings,
+            posting::upsert_bundle_posting,
+            posting::mark_posted,
             bundles::get_master_cut_status,
             bundles::reveal_master_cut,
             bundles::open_master_cut,
@@ -210,6 +224,10 @@ mod camel_case_contract {
     use crate::dropbox::{
         CopyResultRow, CopyResultSummary, DropboxSettings,
         DryRunRow, DryRunSummary,
+    };
+    use crate::posting::{
+        BundlePosting, PostingCard, PostingTarget, PostingTargetInput,
+        UpsertBundlePostingInput,
     };
     use crate::bundles::{BundleDetail, BundleFileRow, BundleSummary, ExportThumb,
         ImageProgressEvent, IngestResult};
@@ -378,6 +396,44 @@ mod camel_case_contract {
             bundle_uid: String::new(), destination_dir: String::new(),
             copied: 0, skipped: 0, failed: 0, items: vec![],
         }).unwrap(), "CopyResultSummary");
+    }
+
+    #[test] fn posting_target_is_camel_case() {
+        assert_camel(&serde_json::to_value(PostingTarget {
+            id: 0, name: String::new(), url_template: String::new(),
+            persona_code: None, color: String::new(), icon: String::new(),
+            position: 0, kind: String::new(), enabled: false,
+        }).unwrap(), "PostingTarget");
+    }
+
+    #[test] fn posting_target_input_is_camel_case() {
+        assert_camel(&serde_json::to_value(PostingTargetInput::default()).unwrap(),
+                     "PostingTargetInput");
+    }
+
+    #[test] fn bundle_posting_is_camel_case() {
+        assert_camel(&serde_json::to_value(BundlePosting {
+            id: 0, bundle_uid: String::new(), target_id: 0,
+            state: String::new(), posted_at: None, posted_url: None,
+            body_override: None, notes: None, updated_at: String::new(),
+        }).unwrap(), "BundlePosting");
+    }
+
+    #[test] fn posting_card_is_camel_case() {
+        assert_camel(&serde_json::to_value(PostingCard {
+            target: PostingTarget {
+                id: 0, name: String::new(), url_template: String::new(),
+                persona_code: None, color: String::new(), icon: String::new(),
+                position: 0, kind: String::new(), enabled: false,
+            },
+            posting: None,
+            resolved_url: String::new(),
+        }).unwrap(), "PostingCard");
+    }
+
+    #[test] fn upsert_bundle_posting_input_is_camel_case() {
+        assert_camel(&serde_json::to_value(UpsertBundlePostingInput::default()).unwrap(),
+                     "UpsertBundlePostingInput");
     }
 
     #[test] fn transcript_row_is_camel_case() {
@@ -569,6 +625,7 @@ mod migration_smoke {
             (12, "processing-log", include_str!("../migrations/012_processing_log.sql")),
             (13, "dropbox",        include_str!("../migrations/013_dropbox.sql")),
             (14, "dropbox-template-default", include_str!("../migrations/014_dropbox_template_default.sql")),
+            (15, "posting", include_str!("../migrations/015_posting.sql")),
         ];
         for (v, name, sql) in migrations {
             conn.execute_batch(sql)
@@ -582,6 +639,7 @@ mod migration_smoke {
             "auto_assembly_settings",
             "processing_log",
             "dropbox_settings", "dropbox_copies",
+            "posting_targets", "bundle_postings",
         ];
         for t in expected_tables {
             let count: i64 = conn

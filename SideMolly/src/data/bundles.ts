@@ -458,6 +458,90 @@ export function revealDropboxDest(uid: string): Promise<void> {
   return invoke('reveal_dropbox_dest', { uid });
 }
 
+// ----- Phase 7: Posting primitives -----
+
+export type PostingKind = 'content' | 'custom' | 'fansite' | 'any';
+export type PostingState = 'pending' | 'scheduled' | 'posted' | 'skipped';
+
+export interface PostingTarget {
+  id: number;
+  name: string;
+  urlTemplate: string;
+  personaCode: string | null;
+  color: string;
+  icon: string;
+  position: number;
+  kind: PostingKind;
+  enabled: boolean;
+}
+
+export interface PostingTargetInput {
+  name: string;
+  urlTemplate?: string;
+  personaCode?: string | null;
+  color?: string;
+  icon?: string;
+  position?: number;
+  kind?: PostingKind;
+  enabled?: boolean;
+}
+
+export interface BundlePosting {
+  id: number;
+  bundleUid: string;
+  targetId: number;
+  state: PostingState;
+  postedAt: string | null;
+  postedUrl: string | null;
+  bodyOverride: string | null;
+  notes: string | null;
+  updatedAt: string;
+}
+
+export interface PostingCard {
+  target: PostingTarget;
+  posting: BundlePosting | null;
+  resolvedUrl: string;
+}
+
+export interface UpsertBundlePostingInput {
+  bundleUid: string;
+  targetId: number;
+  state: PostingState;
+  postedAt?: string | null;
+  postedUrl?: string | null;
+  bodyOverride?: string | null;
+  notes?: string | null;
+}
+
+export function listPostingTargets(): Promise<PostingTarget[]> {
+  return invoke<PostingTarget[]>('list_posting_targets');
+}
+
+export function createPostingTarget(target: PostingTargetInput): Promise<number> {
+  return invoke<number>('create_posting_target', { target });
+}
+
+export function updatePostingTarget(id: number, target: PostingTargetInput): Promise<void> {
+  return invoke('update_posting_target', { id, target });
+}
+
+export function deletePostingTarget(id: number): Promise<void> {
+  return invoke('delete_posting_target', { id });
+}
+
+export function listBundlePostings(uid: string): Promise<PostingCard[]> {
+  return invoke<PostingCard[]>('list_bundle_postings', { uid });
+}
+
+export function upsertBundlePosting(input: UpsertBundlePostingInput): Promise<void> {
+  return invoke('upsert_bundle_posting', { input });
+}
+
+export function markPosted(bundleUid: string, targetId: number, postedUrl: string | null): Promise<void> {
+  return invoke('mark_posted', { bundleUid, targetId, postedUrl });
+}
+
 export function enqueueAutoAssemble(uid: string): Promise<EnqueueAutoAssembleResult> {
   return invoke<EnqueueAutoAssembleResult>('enqueue_auto_assemble', { uid });
 }
