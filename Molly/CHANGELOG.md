@@ -4,6 +4,78 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.0] — 2026-05-24
+
+### Added — Phase 2 (SideMolly contract): `manifest.json` in bundle output
+
+Every published bundle ZIP now carries a structured `manifest.json`
+alongside `hashes.json` at the top level of the outer ZIP. SideMolly's
+ingest pipeline (which already supports both paths — see
+`SideMolly/src-tauri/src/manifest.rs`) prefers this contract over its
+prior `Molly.log` line-based fallback parse.
+
+**Outer ZIP layout (v1.18.0+).**
+
+```
+<UID>.zip                              (outer)
+├── <UID>-inner.zip                    (unchanged — same SHA-256 as v1.17.x)
+├── manifest.json                      NEW
+└── hashes.json                        (unchanged schema; sits at index 2 not 1 now)
+```
+
+**`manifest.json` schema** (`manifestVersion: 1`):
+
+```json
+{
+  "manifestVersion": 1,
+  "bundleUid": "2026-05-22-0001",
+  "bundleType": "content|custom|fansite",
+  "personaCode": "CoC",
+  "title": "...",
+  "contentDate": "2026-05-22",
+  "goLiveDate": "2026-05-29",
+  "specialInstructions": "...",
+  "description": { "mode": "text|audio|none", "text": "...", "audioPath": "Audio/..." },
+  "categories": ["..."],
+  "tags": ["..."],
+  "delivery": { "kind": "site|url|null", "siteName": "...", "url": "...", "recipient": "...", "priceCents": 4900, "handledInPlatform": false },
+  "fanSite": { "year": 2026, "month": 6, "days": [{ "day": 1, "message": "...", "tags": ["..."], "files": [{"path": "FanSite/01_01_a.jpg", "position": 1}] }] },
+  "files": [{ "kind": "video|image|audio", "originalName": "...", "inZipPath": "Video/00001_...mp4", "position": 1, "fansiteDayOfMonth": null, "sha256": "..." }],
+  "publishedAt": "2026-05-22T03:00:00Z"
+}
+```
+
+**Determinism.** Composed from the immutable `BundleSnapshot` via
+`serde_json::to_vec_pretty` (insertion-order preserving) and written
+with `zip::DateTime::default()` (MS-DOS epoch). Same snapshot composes
+byte-identical manifest.json across runs — locked in by
+`manifest_json_is_deterministic` test.
+
+**Backward compatibility.** The inner ZIP is unchanged (same files,
+same order, same SHA-256). The outer SHA-256 *does* change (one more
+entry); this is fine because consumers find entries by name, not
+index. Older SideMolly versions that only parse `Molly.log` still work
+— manifest.json is an additive sibling, not a replacement.
+
+### Tests
+
+5 new tests in `bundle_zip::tests` (+ 2 updated for the new outer
+layout): `manifest_json_is_deterministic`,
+`manifest_json_round_trips_{content,custom,fansite}_bundle`,
+`manifest_json_audio_description_mode`.
+
+**219 Rust + 166 frontend = 385 tests passing** (was 380 in v1.17.1).
+
+### Implementation
+
+- New `render_manifest_json(snapshot: &BundleSnapshot) -> Vec<u8>` in
+  `src-tauri/src/bundle_zip.rs`, paired with a helper
+  `in_zip_path_for(snapshot, file)` that constructs the same paths as
+  the inner-zip media loop (deliberately not factored back into
+  compose_bundle to keep the existing byte stream identical).
+- `compose_bundle` writes the manifest between `<UID>-inner.zip` and
+  `hashes.json` in the outer ZIP.
+
 ## [1.17.1] — 2026-05-23
 
 ### Fixed — 🚨 Migration hash crash on launch
