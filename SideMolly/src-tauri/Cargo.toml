@@ -1,0 +1,43 @@
+[package]
+name = "sidemolly"
+version = "0.1.0"
+description = "SideMolly — Molly bundle workbench"
+authors = ["Robert Olen <robert.olen@gmail.com>"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "sidemolly_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-process = "2"
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+tauri-plugin-updater = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Auto-backup zips the entire app_data/ tree on launch.
+zip = { version = "2", default-features = false, features = ["deflate"] }
+walkdir = "2"
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"
+dirs = "5"
+# Used by the migration smoke test (applies every shipped migration to a
+# fresh in-memory SQLite). Bundled feature keeps the binary self-contained
+# (no system libsqlite3 dep).
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+[dev-dependencies]
+tempfile = "3"
+filetime = "0.2"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

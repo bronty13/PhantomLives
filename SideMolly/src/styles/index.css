@@ -1,0 +1,103 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Paper Daisy — commercial license, see SideMolly/LICENSES.md (Phase 0+).
+ * MUST be a top-level @font-face (not inside @layer) — Tailwind's PostCSS
+ * pipeline silently breaks rules nested under a layer wrapper. Same gotcha
+ * Molly hit in v1.13. */
+@font-face { font-family: 'Paper Daisy'; src: url('../assets/fonts/PaperDaisy.ttf') format('truetype'); font-display: swap; }
+
+@layer base {
+  :root {
+    /* Workbench-neutral surface tokens. Persona chips paint on top via the
+     * persona-{coc,poa,sa} tokens; surface itself stays calm so multi-
+     * persona work doesn't visually thrash. */
+    --surface-base:   248 248 250;
+    --surface-card:   255 255 255;
+    --surface-input:  255 255 255;
+    --surface-border:  20  18  30 / 0.10;
+    --surface-text:    20  18  30;
+    --surface-muted:   90  84 102;
+    --surface-accent:  92  72 220;
+
+    /* Persona chip colors. These mirror Molly's defaults but are read-only
+     * here — SideMolly never lets the user edit personas; it just paints
+     * the chip for the bundle's bound persona. */
+    --persona-coc: 255 192 203;
+    --persona-poa: 200  16  46;
+    --persona-sa:  210 180 140;
+  }
+
+  html.dark {
+    --surface-base:   18  16  22;
+    --surface-card:   30  27  36;
+    --surface-input:  38  34  44;
+    --surface-border: 255 255 255 / 0.10;
+    --surface-text:  232 224 232;
+    --surface-muted: 158 152 170;
+    --surface-accent: 140 124 240;
+  }
+
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    font-family: 'Nunito', 'SF Pro Rounded', system-ui, sans-serif;
+    color: rgb(var(--surface-text));
+    background: rgb(var(--surface-base));
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer components {
+  .display-font {
+    font-family: 'Paper Daisy', 'Comfortaa', system-ui, sans-serif;
+  }
+
+  .sm-card {
+    background: rgb(var(--surface-card));
+    border: 1px solid rgb(var(--surface-border));
+    border-radius: 1rem;
+    padding: 1rem 1.25rem;
+  }
+
+  .sm-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 0.625rem;
+    background: rgb(var(--surface-accent));
+    color: white;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: filter 120ms ease, transform 120ms ease;
+  }
+  .sm-button:hover { filter: brightness(1.05); }
+  .sm-button:active { transform: translateY(1px); }
+  .sm-button.secondary {
+    background: rgb(var(--surface-card));
+    color: rgb(var(--surface-text));
+    border: 1px solid rgb(var(--surface-border));
+  }
+  .sm-button.danger {
+    background: #d94a6a;
+  }
+
+  .sm-input {
+    border-radius: 0.5rem;
+    border: 1px solid rgb(var(--surface-border));
+    background: rgb(var(--surface-input));
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9rem;
+    color: rgb(var(--surface-text));
+    outline: none;
+  }
+  .sm-input:focus {
+    border-color: rgb(var(--surface-accent));
+    box-shadow: 0 0 0 3px rgb(var(--surface-accent) / 0.18);
+  }
+}
