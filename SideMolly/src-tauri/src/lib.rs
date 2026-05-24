@@ -4,8 +4,10 @@ mod bundles;
 mod extract;
 mod fsutil;
 mod images;
+mod jobs;
 mod manifest;
 mod thumbnails;
+mod video;
 mod watch;
 
 use tauri_plugin_sql::{Migration, MigrationKind};
@@ -42,6 +44,12 @@ pub fn run() {
             sql: include_str!("../migrations/005_image_ops.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 6,
+            description: "jobs",
+            sql: include_str!("../migrations/006_jobs.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -67,6 +75,10 @@ pub fn run() {
             // notify watcher in its own thread; emits `bundle-ingested`
             // events the frontend listens to.
             watch::spawn_watcher(app.handle().clone());
+            // Phase 4 background job worker. Polls the `jobs` table
+            // every 2s; dispatches by kind (process_video for v0.6.0,
+            // transcribe/dropbox/etc. in later phases).
+            jobs::spawn_worker(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -91,6 +103,9 @@ pub fn run() {
             bundles::process_bundle_images,
             bundles::list_processed_files,
             bundles::get_processed_previews,
+            bundles::enqueue_bundle_video_ops,
+            bundles::list_jobs,
+            bundles::list_job_runs,
             watch::get_watch_settings,
             watch::set_watch_dir,
             watch::scan_watch_dir_now,
@@ -223,7 +238,11 @@ mod camel_case_contract {
     }
 
     use crate::watch::{ScanResult, WatchSettings};
-    use crate::bundles::{ImageOpsInput, ProcessImagesResult, ProcessedFileRow, WatermarkProfileRow};
+    use crate::bundles::{
+        EnqueueVideoOpsResult, ImageOpsInput, ProcessImagesResult,
+        ProcessedFileRow, VideoOpsInput, WatermarkProfileRow,
+    };
+    use crate::jobs::{JobRow, JobRunRow};
 
     #[test] fn watch_settings_is_camel_case() {
         assert_camel(&serde_json::to_value(WatchSettings {
@@ -267,6 +286,33 @@ mod camel_case_contract {
             processed: vec![], skipped: 0, errors: vec![],
         }).unwrap(), "ProcessImagesResult");
     }
+
+    #[test] fn video_ops_input_is_camel_case() {
+        assert_camel(&serde_json::to_value(VideoOpsInput::default()).unwrap(), "VideoOpsInput");
+    }
+
+    #[test] fn enqueue_video_ops_result_is_camel_case() {
+        assert_camel(&serde_json::to_value(EnqueueVideoOpsResult {
+            bundle_uid: String::new(), op_kind: String::new(),
+            enqueued_count: 0, skipped: 0, job_ids: vec![], errors: vec![],
+        }).unwrap(), "EnqueueVideoOpsResult");
+    }
+
+    #[test] fn job_row_is_camel_case() {
+        assert_camel(&serde_json::to_value(JobRow {
+            id: 0, kind: String::new(), params_json: String::new(),
+            bundle_uid: None, source_in_zip_path: None,
+            status: String::new(), attempts: 0, last_error: None,
+            created_at: String::new(), updated_at: String::new(),
+        }).unwrap(), "JobRow");
+    }
+
+    #[test] fn job_run_row_is_camel_case() {
+        assert_camel(&serde_json::to_value(JobRunRow {
+            id: 0, job_id: 0, started_at: String::new(),
+            finished_at: None, exit_code: None, log_path: None,
+        }).unwrap(), "JobRunRow");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -288,6 +334,7 @@ mod migration_smoke {
             (3, "bundle-files",   include_str!("../migrations/003_bundle_files.sql")),
             (4, "export-thumbs",  include_str!("../migrations/004_export_thumbs.sql")),
             (5, "image-ops",      include_str!("../migrations/005_image_ops.sql")),
+            (6, "jobs",           include_str!("../migrations/006_jobs.sql")),
         ];
 
         for (v, name, sql) in migrations {
@@ -298,6 +345,7 @@ mod migration_smoke {
         let expected_tables: &[&str] = &[
             "app_settings", "bundles", "bundle_files", "bundle_export_thumbs",
             "watermark_profiles", "processed_files",
+            "jobs", "job_runs",
         ];
         for t in expected_tables {
             let count: i64 = conn

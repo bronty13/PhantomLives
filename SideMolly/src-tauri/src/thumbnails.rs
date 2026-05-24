@@ -114,7 +114,7 @@ fn generate_image_thumb(src: &Path, dst: &Path) -> Result<(), ThumbnailError> {
 /// locations directly is more reliable than relying on the spawned
 /// command picking it up via PATH. Falls back to bare "ffmpeg" so a
 /// custom PATH (set in tauri.conf.json or via a shim) still works.
-fn ffmpeg_bin() -> &'static str {
+pub fn ffmpeg_bin() -> &'static str {
     use std::sync::OnceLock;
     static FOUND: OnceLock<String> = OnceLock::new();
     FOUND

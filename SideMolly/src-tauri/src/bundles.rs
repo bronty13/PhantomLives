@@ -728,19 +728,25 @@ pub struct ProcessImagesResult {
 /// returns the in-bundle path for production; in dev / tests it falls
 /// back to the source-tree copy.
 fn paper_daisy_bytes<R: Runtime>(handle: &AppHandle<R>) -> Result<Vec<u8>, BundleError> {
-    // Try the bundled resource path first (release builds).
+    let path = paper_daisy_path(handle)?;
+    Ok(fs::read(path)?)
+}
+
+/// Same resource lookup as `paper_daisy_bytes`, returning the path —
+/// needed by `video.rs` because ffmpeg's `drawtext` filter takes a
+/// filename, not bytes.
+pub fn paper_daisy_path<R: Runtime>(handle: &AppHandle<R>) -> Result<PathBuf, BundleError> {
     if let Ok(p) = handle.path().resolve(
         "resources/fonts/PaperDaisy.ttf",
         tauri::path::BaseDirectory::Resource,
     ) {
         if p.exists() {
-            return Ok(fs::read(p)?);
+            return Ok(p);
         }
     }
-    // Dev fallback: relative to CARGO_MANIFEST_DIR.
     let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/fonts/PaperDaisy.ttf");
     if dev.exists() {
-        return Ok(fs::read(dev)?);
+        return Ok(dev);
     }
     Err(BundleError::NotFound("resources/fonts/PaperDaisy.ttf".into()))
 }
@@ -964,6 +970,170 @@ pub fn list_processed_files<R: Runtime>(
     Ok(rows)
 }
 
+#[derive(Debug, Clone, Serialize, serde::Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoOpsInput {
+    #[serde(default)] pub watermark: bool,
+    #[serde(default)] pub strip_metadata: bool,
+    #[serde(default)] pub rename: bool,
+}
+
+impl VideoOpsInput {
+    fn op_kind(&self) -> String {
+        let parts = [
+            (self.watermark, "watermark"),
+            (self.strip_metadata, "strip"),
+            (self.rename, "rename"),
+        ];
+        let on: Vec<&str> = parts.iter().filter(|(b, _)| *b).map(|(_, n)| *n).collect();
+        if on.is_empty() { "video_clean".into() } else { format!("video_{}", on.join("_")) }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnqueueVideoOpsResult {
+    pub bundle_uid: String,
+    pub op_kind: String,
+    pub enqueued_count: i64,
+    pub skipped: i64,
+    pub job_ids: Vec<i64>,
+    pub errors: Vec<String>,
+}
+
+#[tauri::command]
+pub fn enqueue_bundle_video_ops<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+    ops: VideoOpsInput,
+) -> Result<EnqueueVideoOpsResult, BundleError> {
+    let op_kind = ops.op_kind();
+    let workspace = bundle_workspace_dir(&work_root(&handle)?, &uid);
+
+    let conn = open_conn(&handle)?;
+    let persona: Option<String> = conn
+        .query_row(
+            "SELECT persona_code FROM bundles WHERE uid = ?1",
+            params![uid],
+            |r| r.get(0),
+        )
+        .optional()?
+        .flatten();
+    let profile = if ops.watermark {
+        load_watermark_profile(&conn, persona.as_deref())?
+    } else {
+        None
+    };
+    let font_path = if ops.watermark {
+        Some(crate::video::resolve_font_path(&handle)?
+            .to_string_lossy()
+            .to_string())
+    } else {
+        None
+    };
+
+    let mut stmt = conn.prepare(
+        "SELECT id, in_zip_path, working_path
+           FROM bundle_files
+          WHERE bundle_uid = ?1 AND kind = 'video'
+                AND working_path IS NOT NULL AND working_path != ''",
+    )?;
+    let videos: Vec<(i64, String, String)> = stmt
+        .query_map(params![uid], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(stmt);
+
+    let mut job_ids: Vec<i64> = Vec::with_capacity(videos.len());
+    let mut skipped = 0i64;
+    let mut errors: Vec<String> = Vec::new();
+
+    for (id, in_zip, working) in videos {
+        if !std::path::Path::new(&working).exists() {
+            skipped += 1;
+            errors.push(format!("{in_zip}: working file missing"));
+            continue;
+        }
+        let stem = std::path::Path::new(&in_zip)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| in_zip.clone());
+        let output_path = workspace
+            .join("processed")
+            .join(format!("{stem}__{op_kind}.mp4"))
+            .to_string_lossy()
+            .to_string();
+
+        let params_struct = crate::video::ProcessVideoParams {
+            working_path: working,
+            output_path,
+            op_kind: op_kind.clone(),
+            watermark: ops.watermark,
+            strip_metadata: ops.strip_metadata,
+            rename: ops.rename,
+            watermark_text: profile.as_ref().map(|p| p.text.clone()),
+            opacity_percent: profile.as_ref().map(|p| p.opacity_percent).unwrap_or(0),
+            position: profile
+                .as_ref()
+                .map(|p| watermark_position_to_str(p.position))
+                .unwrap_or_else(|| "bottom-right".to_string()),
+            font_size_pct: profile.as_ref().map(|p| p.font_size_pct).unwrap_or(4.0),
+            margin_pct: profile.as_ref().map(|p| p.margin_pct).unwrap_or(2.5),
+            font_path: font_path.clone(),
+            bundle_file_id: id,
+        };
+        let params_json = serde_json::to_string(&params_struct).unwrap_or_else(|_| "{}".into());
+        let job_id = crate::jobs::enqueue(
+            &conn,
+            "process_video",
+            &params_json,
+            Some(&uid),
+            Some(&in_zip),
+        )?;
+        job_ids.push(job_id);
+    }
+
+    Ok(EnqueueVideoOpsResult {
+        bundle_uid: uid,
+        op_kind,
+        enqueued_count: job_ids.len() as i64,
+        skipped,
+        job_ids,
+        errors,
+    })
+}
+
+fn watermark_position_to_str(p: WatermarkPosition) -> String {
+    match p {
+        WatermarkPosition::TopLeft      => "top-left",
+        WatermarkPosition::TopCenter    => "top-center",
+        WatermarkPosition::TopRight     => "top-right",
+        WatermarkPosition::MiddleLeft   => "middle-left",
+        WatermarkPosition::MiddleCenter => "middle-center",
+        WatermarkPosition::MiddleRight  => "middle-right",
+        WatermarkPosition::BottomLeft   => "bottom-left",
+        WatermarkPosition::BottomCenter => "bottom-center",
+        WatermarkPosition::BottomRight  => "bottom-right",
+    }.to_string()
+}
+
+#[tauri::command]
+pub fn list_jobs<R: Runtime>(
+    handle: AppHandle<R>,
+    status_filter: Option<String>,
+) -> Result<Vec<crate::jobs::JobRow>, BundleError> {
+    let conn = open_conn(&handle)?;
+    Ok(crate::jobs::list(&conn, status_filter.as_deref())?)
+}
+
+#[tauri::command]
+pub fn list_job_runs<R: Runtime>(
+    handle: AppHandle<R>,
+    job_id: i64,
+) -> Result<Vec<crate::jobs::JobRunRow>, BundleError> {
+    let conn = open_conn(&handle)?;
+    Ok(crate::jobs::list_runs(&conn, job_id)?)
+}
+
 #[tauri::command]
 pub fn get_processed_previews<R: Runtime>(
     handle: AppHandle<R>,
@@ -1010,6 +1180,8 @@ mod tests {
         conn.execute_batch(include_str!("../migrations/002_bundles.sql")).unwrap();
         conn.execute_batch(include_str!("../migrations/003_bundle_files.sql")).unwrap();
         conn.execute_batch(include_str!("../migrations/004_export_thumbs.sql")).unwrap();
+        conn.execute_batch(include_str!("../migrations/005_image_ops.sql")).unwrap();
+        conn.execute_batch(include_str!("../migrations/006_jobs.sql")).unwrap();
         conn
     }
 

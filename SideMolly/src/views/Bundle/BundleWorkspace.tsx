@@ -9,12 +9,14 @@ import { DocDrawer, type DocKind } from './DocDrawer';
 interface Props {
   uid: string;
   onBack: () => void;
+  /** Bumped on every `job-updated` Tauri event so the EditTab refreshes. */
+  jobSignal: number;
 }
 
 type WorkspaceTab = 'overview' | 'edit';
 // Distribute / Post tabs land in Phases 6-10.
 
-export function BundleWorkspace({ uid, onBack }: Props) {
+export function BundleWorkspace({ uid, onBack, jobSignal }: Props) {
   const [tab, setTab] = useState<WorkspaceTab>('overview');
   const [detail, setDetail] = useState<BundleDetail | null>(null);
   const [docKind, setDocKind] = useState<DocKind | null>(null);
@@ -95,7 +97,7 @@ export function BundleWorkspace({ uid, onBack }: Props) {
             onOpenDoc={setDocKind}
           />
         )}
-        {tab === 'edit' && <EditTab summary={summary} files={files} />}
+        {tab === 'edit' && <EditTab summary={summary} files={files} refreshSignal={jobSignal} />}
       </div>
 
       <DocDrawer uid={summary.uid} kind={docKind} manifest={manifest} onClose={() => setDocKind(null)} />

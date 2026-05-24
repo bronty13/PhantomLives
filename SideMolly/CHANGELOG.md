@@ -4,6 +4,118 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — 2026-05-24
+
+### Added — Phase 4: video ops via ffmpeg + background jobs queue
+
+Video transcode + watermark + metadata-strip via a new background
+worker. Bundle workspace Edit tab now has parity with the image side
+(Phase 3) — but videos take minutes per clip, so they're processed
+asynchronously through the new `jobs` queue rather than blocking the
+UI.
+
+**Background jobs queue** (`jobs.rs` + migration 006). One sequential
+worker thread spawned from `lib.rs::setup`, polls the `jobs` table
+every 2s, claims the oldest pending row via atomic UPDATE, dispatches
+by kind, writes back `done` or `failed` + `last_error`. Per-attempt
+audit trail in `job_runs`. Emits `job-updated` Tauri events the
+frontend listens to.
+
+**Video pipeline** (`video.rs`). One ffmpeg invocation per video:
+
+```
+ffmpeg -y -i <src>
+  -map_metadata -1                       # strip global metadata
+  [-vf drawtext=fontfile='...':text='...':fontcolor=white@N:
+     fontsize=h*N:x=...:y=...]           # when watermark on
+  -c:v libx264 -crf 23 -preset medium    # H.264 transcode
+  -pix_fmt yuv420p
+  -c:a aac -b:a 128k                     # AAC audio
+  -movflags +faststart                   # web-streaming friendly
+  <dst.mp4>
+```
+
+Atomic via `.sm-tmp.mp4` + rename. 30-min wall-clock timeout per job.
+Stderr captured + surfaced through `jobs.last_error`. `ffmpeg_bin()`
+probes `/opt/homebrew/bin/ffmpeg` → `/usr/local/bin/ffmpeg` → bare
+`ffmpeg` (cached in `OnceLock`), so Finder-launched apps work without
+shell PATH inheritance.
+
+**Watermark drawtext expressions** — 9-grid position mapping uses
+ffmpeg's per-frame variables (`w`, `h`, `tw`, `th`) so the same
+profile that styled images in Phase 3 renders identically on video.
+Reuses the per-persona `watermark_profiles` table.
+
+### Bundle workspace Edit tab
+
+Now has two sections:
+
+- **Image ops** (synchronous, runs in the foreground)
+- **Video ops** (asynchronous, queues into 🛠 Jobs)
+
+Each with three op checkboxes (watermark / strip metadata / rename)
+plus a "Process N" button. Status pane below shows the latest action's
+outcome with expandable per-file error details.
+
+### Sidebar 🛠 Jobs entry
+
+New view between Inbox and Settings. Filter pills for all / pending /
+running / done / failed with live counts. Per-row pill with status
+glyph + colour + expandable error block when a job fails. Updates
+automatically on every `job-updated` Tauri event — no polling on the
+frontend.
+
+### Schema (migration 006)
+
+- `jobs` — id PK, kind CHECK (currently just `process_video`),
+  params_json, bundle_uid FK CASCADE nullable, source_in_zip_path
+  nullable, status CHECK (pending/running/done/failed), attempts,
+  last_error, timestamps. Indexed on `(status, created_at)` for the
+  worker's claim query.
+- `job_runs` — id PK, job_id FK CASCADE, started_at, finished_at,
+  exit_code, log_path. Append-only per attempt.
+
+### New Tauri commands
+
+- `enqueue_bundle_video_ops(uid, ops)` → `EnqueueVideoOpsResult` —
+  fans out one job per video in the bundle.
+- `list_jobs(statusFilter)` → `Vec<JobRow>` — filtered by status, 200-row cap.
+- `list_job_runs(jobId)` → per-attempt audit trail.
+
+### Tests
+
+**90 cargo tests** (was 74 in v0.5.0) + 1 vitest:
+
+- `jobs::tests` (6) — enqueue→claim transitions running + increments
+  attempts; claim returns None on empty queue; claim doesn't re-claim
+  a running row; mark_done clears last_error; claim orders by
+  created_at ASC; list filters by status; record_run persists per-attempt.
+- `video::tests` (5) — bottom-right drawtext expression uses
+  `w-tw-h*N` / `h-th-h*N`; middle-center uses centered formulas;
+  escape_filter_value handles quotes + backslashes; opacity > 100
+  clamps to white@1.00; top-left uses margin for both axes.
+- `camel_case_contract` (+4) — `VideoOpsInput`, `EnqueueVideoOpsResult`,
+  `JobRow`, `JobRunRow`.
+- `migration_smoke` extended for 006; asserts `jobs` + `job_runs`
+  tables exist.
+
+### Deferred to later sub-phases
+
+- **Trim** — needs a time-range selector UI (Phase 4.1).
+- **Multi-preset library** — Phase 4.5 (Auto-Assembly) covers a
+  master-output preset; per-platform variants in Phase 7+.
+- **Job cancel + retry** — Phase 12 (Jobs panel polish).
+- **Live progress streaming** — current implementation only surfaces
+  final status; mid-transcode percentage is a Phase 12 add.
+
+### Internal
+
+- `bundles::paper_daisy_path(handle)` factored out from
+  `paper_daisy_bytes` so `video.rs` can hand a path to ffmpeg's
+  `drawtext` filter (it needs a file, not bytes).
+- `thumbnails::ffmpeg_bin` made `pub` so `video.rs` shares the
+  Homebrew-path probe + `OnceLock` cache.
+
 ## [0.5.0] — 2026-05-24
 
 ### Added — Phase 3: image ops + per-persona watermark + Bundle Edit tab

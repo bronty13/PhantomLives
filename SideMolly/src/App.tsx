@@ -3,6 +3,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { Sidebar, type ViewKey } from './components/Sidebar';
 import { InboxView } from './views/Inbox/InboxView';
+import { JobsView } from './views/Jobs/JobsView';
 import { SettingsView } from './views/Settings/SettingsView';
 import { ManualView } from './views/Manual/ManualView';
 import { BundleWorkspace } from './views/Bundle/BundleWorkspace';
@@ -21,6 +22,10 @@ export default function App() {
   const [openBundleUid, setOpenBundleUid] = useState<string | null>(null);
   // Inbox listens on this counter and refreshes whenever it increments.
   const [refreshSignal, setRefreshSignal] = useState(0);
+  // Bumped on every job-updated Tauri event. JobsView + the Bundle
+  // workspace Edit tab listen on this so processed lists + status pills
+  // stay current as ffmpeg jobs complete.
+  const [jobSignal, setJobSignal] = useState(0);
   const [ingestStatus, setIngestStatus] = useState<IngestStatus>({ kind: 'idle', message: '' });
   const [dragHover, setDragHover] = useState(false);
   // tauri-plugin-sql runs migrations only on the first JS-side
@@ -52,6 +57,18 @@ export default function App() {
           kind: 'ok',
           message: `Watched folder: ingested ${r.title || r.uid} (${r.fileCount} files).`,
         });
+      });
+    })();
+    return () => { unlisten?.(); };
+  }, []);
+
+  // Job worker emits `job-updated` on every status transition. Bump the
+  // job signal so JobsView + EditTab re-query in lockstep.
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+    (async () => {
+      unlisten = await listen<unknown>('job-updated', () => {
+        setJobSignal((n) => n + 1);
       });
     })();
     return () => { unlisten?.(); };
@@ -158,9 +175,11 @@ export default function App() {
       <Sidebar active={view} onSelect={(k) => { setView(k); setOpenBundleUid(null); }} visible={sidebarVisible} />
       <main className="flex-1 overflow-y-auto">
         {openBundleUid ? (
-          <BundleWorkspace uid={openBundleUid} onBack={closeBundle} />
+          <BundleWorkspace uid={openBundleUid} onBack={closeBundle} jobSignal={jobSignal} />
         ) : view === 'inbox' ? (
           <InboxView refreshSignal={refreshSignal} onOpen={setOpenBundleUid} />
+        ) : view === 'jobs' ? (
+          <JobsView refreshSignal={jobSignal} />
         ) : view === 'settings' ? (
           <SettingsView />
         ) : (

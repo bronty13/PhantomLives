@@ -191,6 +191,59 @@ export function getProcessedPreviews(uid: string): Promise<Record<string, string
   return invoke<Record<string, string>>('get_processed_previews', { uid });
 }
 
+// ----- Phase 4 video ops + jobs queue -----
+
+export interface VideoOpsInput {
+  watermark: boolean;
+  stripMetadata: boolean;
+  rename: boolean;
+}
+
+export interface EnqueueVideoOpsResult {
+  bundleUid: string;
+  opKind: string;
+  enqueuedCount: number;
+  skipped: number;
+  jobIds: number[];
+  errors: string[];
+}
+
+export type JobStatus = 'pending' | 'running' | 'done' | 'failed';
+
+export interface JobRow {
+  id: number;
+  kind: string;
+  paramsJson: string;
+  bundleUid: string | null;
+  sourceInZipPath: string | null;
+  status: JobStatus;
+  attempts: number;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface JobRunRow {
+  id: number;
+  jobId: number;
+  startedAt: string;
+  finishedAt: string | null;
+  exitCode: number | null;
+  logPath: string | null;
+}
+
+export function enqueueBundleVideoOps(uid: string, ops: VideoOpsInput): Promise<EnqueueVideoOpsResult> {
+  return invoke<EnqueueVideoOpsResult>('enqueue_bundle_video_ops', { uid, ops });
+}
+
+export function listJobs(statusFilter?: JobStatus | 'all'): Promise<JobRow[]> {
+  return invoke<JobRow[]>('list_jobs', { statusFilter: statusFilter ?? null });
+}
+
+export function listJobRuns(jobId: number): Promise<JobRunRow[]> {
+  return invoke<JobRunRow[]>('list_job_runs', { jobId });
+}
+
 export function getWatchSettings(): Promise<WatchSettings> {
   return invoke<WatchSettings>('get_watch_settings');
 }

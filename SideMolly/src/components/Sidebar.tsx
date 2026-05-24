@@ -4,7 +4,7 @@ import { getVersion } from '@tauri-apps/api/app';
 // Phase 0 sidebar — Inbox / Settings / Manual only. Bundle workspace,
 // runners (Content/Custom/FanSite), Jobs, etc. all land in later phases.
 // Reuses Molly's HStack pattern (CLAUDE.md: NEVER NavigationSplitView).
-export type ViewKey = 'inbox' | 'settings' | 'manual';
+export type ViewKey = 'inbox' | 'jobs' | 'settings' | 'manual';
 
 interface SidebarProps {
   active: ViewKey;
@@ -21,6 +21,7 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { key: 'inbox',    label: 'Inbox',    icon: <span>📥</span>, hint: 'Ingested Molly bundles' },
+  { key: 'jobs',     label: 'Jobs',     icon: <span>🛠</span>, hint: 'Background queue — video transcoding etc.' },
   { key: 'settings', label: 'Settings', icon: <span>⚙️</span>, hint: 'Backup, watched folder, watermarks, Dropbox, platforms' },
   { key: 'manual',   label: 'Manual',   icon: <span>💌</span>, hint: 'In-app guide' },
 ];
