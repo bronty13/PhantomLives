@@ -96,12 +96,15 @@ fn current_watch_dir<R: Runtime>(handle: &AppHandle<R>) -> Result<(PathBuf, bool
 }
 
 /// `true` if we already have a bundles row pointing at this path AND
-/// the extracted workspace is still present on disk. The launch scan
-/// uses this to skip files that are fully ingested + extracted. If the
-/// DB row exists but the workspace dir was deleted (or the bundle was
-/// ingested by an older SideMolly version that didn't extract), this
-/// returns false and we re-ingest — which idempotently restores the
-/// workspace via the size-match check in `extract::extract_inner_zip`.
+/// the extracted workspace is still present on disk AND (since v0.4.0)
+/// the thumbnail pass has been run.
+///
+/// Returning false here triggers a re-ingest, which idempotently
+/// restores both the extracted workspace (via size-match in extract)
+/// and the thumbnails (via path-keyed skip in thumbnails). The three
+/// "missing" conditions all collapse to the same recovery path —
+/// useful for SideMolly version upgrades (v0.3.0 → v0.4.0 fills in
+/// thumbnails for already-ingested bundles without any user action).
 ///
 /// Notify-driven re-scans bypass this entirely; an FS event = something
 /// changed, force a re-ingest.
@@ -115,14 +118,59 @@ fn already_ingested(conn: &Connection, work_root: &Path, path: &Path) -> bool {
         )
         .optional()
         .unwrap_or(None);
-    match uid {
-        None => false,
-        Some(uid) => {
-            // info.md is the canonical "extract happened" sentinel —
-            // it's always the first file Molly writes into the inner zip.
-            bundle_workspace_dir(work_root, &uid).join("info.md").exists()
-        }
+    let Some(uid) = uid else { return false; };
+
+    // info.md is the canonical "extract happened" sentinel — Molly
+    // always writes it as the first inner-zip entry.
+    if !bundle_workspace_dir(work_root, &uid).join("info.md").exists() {
+        return false;
     }
+
+    // v0.4.0 thumbnail upgrade check. Three failure modes trigger
+    // re-ingest:
+    //   1. Bundle has media but zero export thumbs (pre-Phase-1c data).
+    //   2. Bundle has video files but zero of them carry a
+    //      thumbnail_path — this catches the v0.4.0 → v0.4.0+ffmpeg-fix
+    //      upgrade where Finder-launched apps' empty PATH meant ffmpeg
+    //      never ran on the first try. Now that we probe explicit
+    //      paths, a re-ingest picks up the videos.
+    let media: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM bundle_files
+              WHERE bundle_uid = ?1 AND kind IN ('image','video')",
+            params![uid],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if media == 0 { return true; }
+    let exports: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM bundle_export_thumbs WHERE bundle_uid = ?1",
+            params![uid],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if exports == 0 { return false; }
+
+    let videos: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM bundle_files
+              WHERE bundle_uid = ?1 AND kind = 'video'",
+            params![uid],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if videos == 0 { return true; }
+    let videos_with_thumbs: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM bundle_files
+              WHERE bundle_uid = ?1 AND kind = 'video'
+                AND thumbnail_path IS NOT NULL AND thumbnail_path != ''",
+            params![uid],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    videos_with_thumbs > 0
 }
 
 fn is_bundle_zip(path: &Path) -> bool {

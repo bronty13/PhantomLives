@@ -1,6 +1,6 @@
 [package]
 name = "sidemolly"
-version = "0.3.0"
+version = "0.4.0"
 description = "SideMolly — Molly bundle workbench"
 authors = ["Robert Olen <robert.olen@gmail.com>"]
 edition = "2021"
@@ -38,6 +38,16 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 # SHA-256 hashing for bundle verification (re-hash inner zip bytes + every
 # inner-zip entry, assert == values in hashes.json).
 sha2 = "0.10"
+# base64 — encode on-disk thumbnail JPEGs as `data:image/jpeg;base64,…`
+# URLs. WKWebView on macOS rejected our `asset://localhost/...` URLs
+# (diagnostic captured 2026-05-24); data URLs render everywhere
+# regardless of the asset-protocol handshake.
+base64 = "0.22"
+# Image decode + resize for the Phase 1c thumbnail pipeline. Default
+# features off because we only need the four common bundle formats —
+# everything else stays a glyph fallback. Keeps the bundle binary
+# slimmer than the full default codec set.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
 # File-system watcher for the watched-folder ingest path. Wraps FSEvents
 # on macOS, ReadDirectoryChangesW on Windows, inotify on Linux behind a
 # single Result-returning API. Used only from src-tauri/src/watch.rs.

@@ -4,6 +4,7 @@ mod bundles;
 mod extract;
 mod fsutil;
 mod manifest;
+mod thumbnails;
 mod watch;
 
 use tauri_plugin_sql::{Migration, MigrationKind};
@@ -26,6 +27,12 @@ pub fn run() {
             version: 3,
             description: "bundle-files",
             sql: include_str!("../migrations/003_bundle_files.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 4,
+            description: "export-thumbs",
+            sql: include_str!("../migrations/004_export_thumbs.sql"),
             kind: MigrationKind::Up,
         },
     ];
@@ -69,6 +76,9 @@ pub fn run() {
             bundles::get_bundle,
             bundles::reveal_working_dir,
             bundles::reveal_working_file,
+            bundles::read_doc_text,
+            bundles::get_export_thumbnails,
+            bundles::get_bundle_thumbnails,
             watch::get_watch_settings,
             watch::set_watch_dir,
             watch::scan_watch_dir_now,
@@ -86,7 +96,7 @@ pub fn run() {
 mod camel_case_contract {
     use crate::backup::{BackupRow, Settings, VerifyResult};
     use crate::bundle_io::{HashesDoc, HashesFile, HashesInnerZip};
-    use crate::bundles::{BundleDetail, BundleFileRow, BundleSummary, IngestResult};
+    use crate::bundles::{BundleDetail, BundleFileRow, BundleSummary, ExportThumb, IngestResult};
     use crate::manifest::{BundleManifest, FanDay};
     use serde_json::Value;
 
@@ -126,7 +136,16 @@ mod camel_case_contract {
             verify_status: String::new(), file_count: 0,
             manifest_source: String::new(),
             workspace_path: String::new(), extracted_count: 0,
+            thumbnail_count: 0, export_thumb_count: 0,
         }).unwrap(), "IngestResult");
+    }
+
+    #[test] fn export_thumb_is_camel_case() {
+        assert_camel(&serde_json::to_value(ExportThumb {
+            position: 1,
+            source_in_zip_path: String::new(),
+            thumbnail_path: String::new(),
+        }).unwrap(), "ExportThumb");
     }
 
     #[test] fn bundle_summary_is_camel_case() {
@@ -145,6 +164,7 @@ mod camel_case_contract {
             kind: String::new(), position: 0,
             fansite_day_of_month: None, sha256: String::new(),
             size_bytes: 0,
+            working_path: None, thumbnail_path: None,
         }).unwrap(), "BundleFileRow");
     }
 
@@ -223,9 +243,10 @@ mod migration_smoke {
         conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
 
         let migrations: &[(u32, &str, &str)] = &[
-            (1, "init",          include_str!("../migrations/001_init.sql")),
-            (2, "bundles",       include_str!("../migrations/002_bundles.sql")),
-            (3, "bundle-files",  include_str!("../migrations/003_bundle_files.sql")),
+            (1, "init",           include_str!("../migrations/001_init.sql")),
+            (2, "bundles",        include_str!("../migrations/002_bundles.sql")),
+            (3, "bundle-files",   include_str!("../migrations/003_bundle_files.sql")),
+            (4, "export-thumbs",  include_str!("../migrations/004_export_thumbs.sql")),
         ];
 
         for (v, name, sql) in migrations {
@@ -233,7 +254,9 @@ mod migration_smoke {
                 .unwrap_or_else(|e| panic!("migration {v} ({name}) failed: {e}"));
         }
 
-        let expected_tables: &[&str] = &["app_settings", "bundles", "bundle_files"];
+        let expected_tables: &[&str] = &[
+            "app_settings", "bundles", "bundle_files", "bundle_export_thumbs",
+        ];
         for t in expected_tables {
             let count: i64 = conn
                 .query_row(

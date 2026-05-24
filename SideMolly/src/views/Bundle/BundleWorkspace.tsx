@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useAsyncRefresh, listPlaceholder } from '../../lib/useAsyncRefresh';
-import { getBundle, personaChipColor, bundleTypeEmoji, verifyStatusBadge,
+import { getBundle, getBundleThumbnails, personaChipColor, bundleTypeEmoji, verifyStatusBadge,
          type BundleDetail } from '../../data/bundles';
 import { OverviewTab } from './OverviewTab';
+import { DocDrawer, type DocKind } from './DocDrawer';
 
 interface Props {
   uid: string;
@@ -15,11 +16,20 @@ type WorkspaceTab = 'overview';
 export function BundleWorkspace({ uid, onBack }: Props) {
   const [tab] = useState<WorkspaceTab>('overview');
   const [detail, setDetail] = useState<BundleDetail | null>(null);
+  const [docKind, setDocKind] = useState<DocKind | null>(null);
+  // Map<inZipPath, "data:image/jpeg;base64,…"> for the Files pane.
+  // Fetched in parallel with the bundle detail so it's available by
+  // the time the user sees the file list.
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
 
   const { loading, error } = useAsyncRefresh(async (alive) => {
-    const d = await getBundle(uid);
+    const [d, t] = await Promise.all([
+      getBundle(uid),
+      getBundleThumbnails(uid).catch(() => ({} as Record<string, string>)),
+    ]);
     if (!alive()) return;
     setDetail(d);
+    setThumbs(t);
   }, [uid]);
 
   const placeholder = listPlaceholder({
@@ -76,8 +86,18 @@ export function BundleWorkspace({ uid, onBack }: Props) {
       </nav>
 
       <div className="mt-4">
-        {tab === 'overview' && <OverviewTab summary={summary} manifest={manifest} files={files} />}
+        {tab === 'overview' && (
+          <OverviewTab
+            summary={summary}
+            manifest={manifest}
+            files={files}
+            thumbs={thumbs}
+            onOpenDoc={setDocKind}
+          />
+        )}
       </div>
+
+      <DocDrawer uid={summary.uid} kind={docKind} manifest={manifest} onClose={() => setDocKind(null)} />
     </div>
   );
 }

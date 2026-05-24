@@ -4,6 +4,126 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-05-24
+
+### Added — Phase 1c: thumbnails + DocDrawer + grouped Files view
+
+**Per-file thumbnails.** Every image and video in the bundle gets a
+256-px JPEG thumbnail at ingest time, stored under
+`work/<UID>/.thumbs/<sha8>.jpg`. Image thumbs use the `image` crate
+(JPEG/PNG/GIF/WebP); video thumbs spawn `ffmpeg -ss 1 -frames:v 1
+-vf scale=256:-1` against the system `ffmpeg` if present, with a
+10-second kill timer and a graceful fall back to the kind glyph if
+ffmpeg is missing. Thumbnails are idempotent — repeat ingests skip
+files that already have a non-empty thumb at the deterministic
+sha-keyed path.
+
+**Export thumbnails.** Per-bundle, SideMolly picks 10 random
+thumbnails (deterministically seeded on bundle UID via xorshift64*) and
+stores them in a new `bundle_export_thumbs` table. Phase 11 will pack
+these into `artifacts/thumbnails/` of the post-bundle ZIP returned to
+Molly. Selection is replaced (DELETE+INSERT) on every re-ingest so
+the picks track the current file set.
+
+**Bundle workspace reorganized:**
+
+- New `TopTrio` row above the Files list — three pill buttons for
+  **Manifest**, **Molly.log**, **info.md**. Click pops out a right-side
+  `DocDrawer`. Manifest renders the parsed `BundleManifest` as a
+  pretty key/value layout (no Finder hop); Molly.log renders as
+  monospace text; info.md renders via a hand-rolled `markdownLite`
+  parser supporting H1-H3 / lists / blockquote / code blocks / inline
+  code / bold / italic / links / rules. Each drawer has a Reveal button
+  if Robert wants the underlying file in Finder.
+
+- **Files list grouped:**
+  - **FanSite bundles:** sections per day (`FAN-SITE DAY 01 / 02 …`)
+    with the day's message inline and per-row `D01/01` prefix.
+  - **Content / Custom bundles:** grouped by kind (`VIDEO / IMAGE /
+    AUDIO`) with `#00001` position prefix where applicable.
+
+- **Thumbnails in rows:** each file row shows its actual thumbnail
+  rendered inline as a `data:image/jpeg;base64,…` URL. The Bundle
+  workspace fetches all of a bundle's thumbs in a single
+  `get_bundle_thumbnails` IPC call on mount and keys them by
+  `inZipPath`. Rows without a thumb (videos that ffmpeg couldn't
+  process, HEIC images, info/log/manifest kinds) fall through to the
+  kind glyph.
+
+  *Implementation note.* The first attempt used Tauri's
+  `convertFileSrc` → `asset://localhost/<encoded-path>` — but WKWebView
+  on macOS 15 silently rejected those URLs even with
+  `assetProtocol.scope: ["**"]` + permissive CSP + no sandbox
+  entitlements. Diagnostic captured 2026-05-24: img onError fired
+  immediately. Data URLs sidestep the asset-protocol handshake entirely
+  and render anywhere; cost is ~13KB of base64 per 10KB JPEG (one-time
+  per bundle workspace open, all local IPC).
+
+- **Size control** — three-state S/M/L (48 / 96 / 192 px) above the
+  Files list, persisted to `localStorage` under
+  `sidemolly.thumbSize`. Default M.
+
+### Schema
+
+- **Migration 004 — `bundle_export_thumbs`** — `id PK,
+  bundle_uid FK CASCADE, bundle_file_id FK CASCADE, position CHECK
+  1..10, thumbnail_path` with `UNIQUE(bundle_uid, position)` and
+  `UNIQUE(bundle_uid, bundle_file_id)`.
+
+- **`bundle_files`** rows now also expose `working_path` +
+  `thumbnail_path` over the IPC boundary (already in the schema,
+  un-exposed before).
+
+### New Tauri commands
+
+- `read_doc_text(uid, in_zip_path)` — reads a workspace text file
+  (Molly.log / info.md / manifest.json) with a 256 KB safety cap.
+- `get_export_thumbnails(uid)` — returns the 10 picks joined with
+  their source file's in-zip path.
+- `get_bundle_thumbnails(uid)` — returns `Map<inZipPath, dataUrl>`
+  for every file that has a thumbnail; base64-encodes the JPEGs
+  server-side so the webview can render them via `<img src="data:…">`
+  without depending on the asset protocol.
+
+### Tests
+
+**62 cargo tests** (was 55 in v0.3.0) + 1 vitest:
+
+- `thumbnails::tests` (6) — image thumb writes a smaller JPEG; idempotent
+  skip when thumb exists (proven by deleting the source between calls);
+  corrupt image returns Ok(None) not Err; non-media kinds return None;
+  ffmpeg-missing path returns None gracefully; sha-keyed filename is
+  stable + 16 hex chars.
+- `camel_case_contract` (+1) — `ExportThumb`. Updated `IngestResult`
+  and `BundleFileRow` contracts for new fields.
+- `migration_smoke` extended for 004; asserts `bundle_export_thumbs`
+  table exists post-migration.
+- `bundles::tests::fresh_db` extended to apply migration 004.
+
+### Internal
+
+- `bundles::ingest_bundle_inner` now does a per-file thumbnail pass +
+  export-thumb selection after extract. Stale picks from a previous
+  ingest get DELETE'd before the new ones land.
+- `thumbnails::ffmpeg_bin()` probes `/opt/homebrew/bin/ffmpeg` →
+  `/usr/local/bin/ffmpeg` → `/usr/bin/ffmpeg` → bare `ffmpeg` (cached
+  in a `OnceLock`). Required because Finder-launched macOS apps
+  inherit a minimal PATH that excludes Homebrew prefixes.
+- ffmpeg invocation captures stderr and emits diagnostic lines on
+  non-zero exit / timeout — surfaced the "Unable to choose an output
+  format for `.jpg.sm-tmp`" muxer error that gated the original video
+  thumbnail attempts. Fix: tmp file extension is now `.sm-tmp.jpg`
+  (final extension `.jpg`) so ffmpeg can sniff the image2/mjpeg muxer.
+- `watch::already_ingested` extended for the v0.3.0 → v0.4.0 +
+  ffmpeg-fix upgrade case: also returns `false` when the bundle has
+  video files but zero of them have a `thumbnail_path`, so the launch
+  scan force-re-ingests automatically (no manual "Scan now" needed).
+- `DocDrawer` info-md rendering: hoisted the markdown-parse `useMemo`
+  to top-level of the component. The first attempt called it inside a
+  JSX ternary, violating Rules of Hooks — different hook count
+  between renders → React aborted the tree → blank screen requiring
+  app restart. Caught by Robert on first click.
+
 ## [0.3.0] — 2026-05-24
 
 ### Added — Phase 1b: watched folder + inner-zip extract

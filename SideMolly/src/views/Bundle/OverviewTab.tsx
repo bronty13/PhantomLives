@@ -1,211 +1,271 @@
-import { fmtPrice, fmtSize, revealWorkingDir, revealWorkingFile,
+import { useEffect, useState } from 'react';
+import { fmtSize, revealWorkingDir, revealWorkingFile,
          type BundleFileRow, type BundleManifest, type BundleSummary } from '../../data/bundles';
+import { TopTrio } from './TopTrio';
+import type { DocKind } from './DocDrawer';
 
 interface Props {
   summary: BundleSummary;
   manifest: BundleManifest;
   files: BundleFileRow[];
+  /** Map<inZipPath, "data:image/jpeg;base64,…">. Empty until the
+   *  parallel `get_bundle_thumbnails` IPC call resolves. */
+  thumbs: Record<string, string>;
+  onOpenDoc: (kind: DocKind) => void;
 }
 
-export function OverviewTab({ summary, manifest, files }: Props) {
+type ThumbSize = 'S' | 'M' | 'L';
+const THUMB_PX: Record<ThumbSize, number> = { S: 48, M: 96, L: 192 };
+const THUMB_SIZE_KEY = 'sidemolly.thumbSize';
+
+function loadSize(): ThumbSize {
+  const v = localStorage.getItem(THUMB_SIZE_KEY);
+  return v === 'S' || v === 'M' || v === 'L' ? v : 'M';
+}
+
+export function OverviewTab({ summary, manifest, files, thumbs, onOpenDoc }: Props) {
+  const [size, setSize] = useState<ThumbSize>(loadSize);
+  useEffect(() => { localStorage.setItem(THUMB_SIZE_KEY, size); }, [size]);
+
+  // Manifest file (Phase 2+) only exists when the bundle was published
+  // with the new contract. If we have a `bundle_files` row of kind
+  // 'manifest', the json is on disk; otherwise the drawer just shows
+  // the parsed-from-Molly.log view.
+  const hasManifestJson = files.some((f) => f.kind === 'manifest');
+
   return (
     <div className="flex flex-col gap-4">
-      <ManifestPane manifest={manifest} />
-      <FilesPane files={files} bundleType={summary.bundleType} uid={summary.uid} />
+      <TopTrio onOpen={onOpenDoc} hasManifestJsonInBundle={hasManifestJson} />
+      <FilesPane
+        summary={summary}
+        manifest={manifest}
+        files={files}
+        thumbs={thumbs}
+        size={size}
+        onSizeChange={setSize}
+      />
     </div>
   );
 }
 
-function ManifestPane({ manifest }: { manifest: BundleManifest }) {
-  return (
-    <section className="sm-card">
-      <h2 className="font-semibold text-base mb-3">Manifest</h2>
-      <dl className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-1.5 text-sm">
-        <Field k="UID"             v={<code className="text-xs">{manifest.uid}</code>} />
-        <Field k="Type"            v={manifest.bundleType} />
-        <Field k="Persona"         v={manifest.personaCode ?? '(unassigned)'} />
-        <Field k="Content date"    v={manifest.contentDate ?? '—'} />
-        {manifest.goLiveDate && <Field k="Go-live date" v={manifest.goLiveDate} />}
-        {manifest.publishedAt && <Field k="Published"   v={<code className="text-xs">{manifest.publishedAt}</code>} />}
-
-        {manifest.bundleType === 'content' && (
-          <>
-            <Field k="Description mode" v={manifest.descriptionMode ?? '—'} />
-            {manifest.descriptionText && (
-              <Field k="Description" v={<pre className="text-xs whitespace-pre-wrap">{manifest.descriptionText}</pre>} />
-            )}
-            {manifest.descriptionAudioPath && (
-              <Field k="Audio" v={<code className="text-xs">{manifest.descriptionAudioPath}</code>} />
-            )}
-            {manifest.categories.length > 0 && (
-              <Field k="Categories" v={
-                <div className="flex flex-wrap gap-1.5">
-                  {manifest.categories.map((c, i) => (
-                    <span key={i} className="text-xs px-1.5 py-0.5 rounded"
-                          style={{ background: 'rgb(var(--surface-accent) / 0.12)', color: 'rgb(var(--surface-accent))' }}>
-                      {c}
-                    </span>
-                  ))}
-                </div>
-              } />
-            )}
-          </>
-        )}
-
-        {manifest.bundleType === 'custom' && (
-          <>
-            <Field k="Recipient" v={manifest.deliveryRecipient || '—'} />
-            <Field k="Delivery"  v={
-              manifest.deliveryKind === 'site' ? (manifest.deliverySiteName ?? '—') :
-              manifest.deliveryKind === 'url'  ? (<a href={manifest.deliveryUrl ?? '#'} target="_blank" rel="noreferrer" className="underline">{manifest.deliveryUrl}</a>) :
-              '—'
-            } />
-            <Field k="Price" v={fmtPrice(manifest.priceCents, manifest.handledInPlatform)} />
-          </>
-        )}
-
-        {manifest.bundleType === 'fansite' && (
-          <>
-            <Field k="Month" v={
-              manifest.fansiteYear && manifest.fansiteMonth
-                ? `${manifest.fansiteYear}-${String(manifest.fansiteMonth).padStart(2, '0')}`
-                : '—'
-            } />
-            <Field k="Days"  v={`${manifest.fanDays.length} day${manifest.fanDays.length === 1 ? '' : 's'}`} />
-          </>
-        )}
-
-        {manifest.specialInstructions && (
-          <Field k="Special instructions"
-            v={<pre className="text-xs whitespace-pre-wrap">{manifest.specialInstructions}</pre>} />
-        )}
-      </dl>
-
-      {manifest.bundleType === 'fansite' && manifest.fanDays.length > 0 && (
-        <FanDayList days={manifest.fanDays} />
-      )}
-    </section>
-  );
-}
-
-function FanDayList({ days }: { days: BundleManifest['fanDays'] }) {
-  return (
-    <div className="mt-4">
-      <div className="text-xs uppercase tracking-wider mb-2" style={{ color: 'rgb(var(--surface-muted))' }}>
-        Fan-site days
-      </div>
-      <ul className="flex flex-col gap-1.5">
-        {days.map((d) => (
-          <li key={d.dayOfMonth} className="flex items-start gap-3 text-sm">
-            <span className="font-mono text-xs px-1.5 py-0.5 rounded shrink-0"
-                  style={{ background: 'rgb(var(--surface-base))', minWidth: 38, textAlign: 'center' }}>
-              Day {String(d.dayOfMonth).padStart(2, '0')}
-            </span>
-            <span className="text-xs shrink-0 pt-0.5" style={{ color: 'rgb(var(--surface-muted))' }}>
-              {d.fileCount} file{d.fileCount === 1 ? '' : 's'}
-            </span>
-            <span className="flex-1 min-w-0">{d.message || <em style={{ color: 'rgb(var(--surface-muted))' }}>(no message)</em>}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function FilesPane({ files, bundleType, uid }: {
-  files: BundleFileRow[]; bundleType: BundleSummary['bundleType']; uid: string;
+function FilesPane({ summary, manifest, files, thumbs, size, onSizeChange }: {
+  summary: BundleSummary;
+  manifest: BundleManifest;
+  files: BundleFileRow[];
+  thumbs: Record<string, string>;
+  size: ThumbSize;
+  onSizeChange: (s: ThumbSize) => void;
 }) {
-  // Stats by kind.
-  const counts: Record<string, number> = {};
-  let totalBytes = 0;
-  for (const f of files) {
-    counts[f.kind] = (counts[f.kind] ?? 0) + 1;
-    totalBytes += f.sizeBytes;
-  }
-
-  const reveal = (path: string) => () =>
-    revealWorkingFile(uid, path).catch((e) => console.warn('reveal failed', e));
+  // Media files only — info.md / Molly.log / manifest.json are in the TopTrio.
+  const media = files.filter((f) => f.kind === 'video' || f.kind === 'image' || f.kind === 'audio');
+  const totalBytes = media.reduce((n, f) => n + f.sizeBytes, 0);
 
   return (
     <section className="sm-card">
-      <div className="flex items-center justify-between mb-3">
+      <header className="flex items-start justify-between mb-4 flex-wrap gap-3">
         <div>
-          <h2 className="font-semibold text-base">Files ({files.length})</h2>
+          <h2 className="font-semibold text-base">Files ({media.length})</h2>
           <div className="text-xs mt-0.5" style={{ color: 'rgb(var(--surface-muted))' }}>
-            Extracted to <code>{'~/Library/Application Support/com.phantomlives.sidemolly/work/' + uid}</code>
+            Extracted to{' '}
+            <code className="text-[10px]">
+              {'~/Library/Application Support/com.phantomlives.sidemolly/work/' + summary.uid}
+            </code>
+            {' '}· {fmtSize(totalBytes)} total
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="text-xs text-right" style={{ color: 'rgb(var(--surface-muted))' }}>
-            {Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(' · ')}
-            <br />
-            {fmtSize(totalBytes)} total
+        <div className="flex items-center gap-2">
+          <span className="text-xs" style={{ color: 'rgb(var(--surface-muted))' }}>Thumbnail size</span>
+          <div className="inline-flex rounded-md overflow-hidden" style={{ border: '1px solid rgb(var(--surface-border))' }}>
+            {(['S', 'M', 'L'] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => onSizeChange(s)}
+                className="px-2.5 py-1 text-xs"
+                style={{
+                  background: size === s ? 'rgb(var(--surface-accent) / 0.12)' : 'rgb(var(--surface-card))',
+                  color: size === s ? 'rgb(var(--surface-accent))' : 'rgb(var(--surface-text))',
+                  fontWeight: size === s ? 600 : 500,
+                  borderRight: s !== 'L' ? '1px solid rgb(var(--surface-border))' : 'none',
+                }}
+              >
+                {s}
+              </button>
+            ))}
           </div>
-          <button
-            type="button"
-            className="sm-button secondary"
-            onClick={() => revealWorkingDir(uid).catch((e) => console.warn('reveal failed', e))}
-          >
+          <button type="button" className="sm-button secondary text-xs"
+                  onClick={() => revealWorkingDir(summary.uid).catch(() => {})}>
             📁 Reveal folder
           </button>
         </div>
-      </div>
+      </header>
 
-      <ul className="flex flex-col gap-1">
-        {files.map((f) => (
-          <li key={f.inZipPath}
-              className="flex items-center gap-3 text-xs py-1"
-              style={{ borderTop: '1px solid rgb(var(--surface-border))' }}
-          >
-            <span className="shrink-0 w-12 font-mono" style={{ color: 'rgb(var(--surface-muted))' }}>
-              {kindGlyph(f.kind)}
-            </span>
-            {bundleType === 'fansite' && f.fansiteDayOfMonth != null && (
-              <span className="shrink-0 font-mono" style={{ color: 'rgb(var(--surface-muted))' }}>
-                D{String(f.fansiteDayOfMonth).padStart(2, '0')}/{String(f.position).padStart(2, '0')}
-              </span>
-            )}
-            {(bundleType === 'content' || bundleType === 'custom') && f.position > 0 && (
-              <span className="shrink-0 font-mono" style={{ color: 'rgb(var(--surface-muted))' }}>
-                #{String(f.position).padStart(5, '0')}
-              </span>
-            )}
-            <span className="flex-1 min-w-0 truncate font-mono">{f.originalName}</span>
-            <span className="shrink-0" style={{ color: 'rgb(var(--surface-muted))' }}>{fmtSize(f.sizeBytes)}</span>
-            <code className="shrink-0 text-[10px]" style={{ color: 'rgb(var(--surface-muted))' }}
-                  title={f.sha256}>{f.sha256.slice(0, 8)}…</code>
-            <button
-              type="button"
-              onClick={reveal(f.inZipPath)}
-              title="Reveal in Finder"
-              className="shrink-0 px-1 text-sm opacity-50 hover:opacity-100"
-            >
-              📁
-            </button>
-          </li>
-        ))}
-      </ul>
+      {summary.bundleType === 'fansite'
+        ? <FanSiteGroups uid={summary.uid} files={media} thumbs={thumbs} manifest={manifest} size={size} />
+        : <KindGroups uid={summary.uid} files={media} thumbs={thumbs} size={size} />
+      }
     </section>
   );
 }
 
-function Field({ k, v }: { k: string; v: React.ReactNode }) {
+function FanSiteGroups({ uid, files, thumbs, manifest, size }: {
+  uid: string; files: BundleFileRow[]; thumbs: Record<string, string>;
+  manifest: BundleManifest; size: ThumbSize;
+}) {
+  const byDay = new Map<number, BundleFileRow[]>();
+  for (const f of files) {
+    const d = f.fansiteDayOfMonth ?? 0;
+    if (!byDay.has(d)) byDay.set(d, []);
+    byDay.get(d)!.push(f);
+  }
+  const days = Array.from(byDay.keys()).sort((a, b) => a - b);
+  const messageByDay = new Map(manifest.fanDays.map((d) => [d.dayOfMonth, d.message]));
+
   return (
-    <>
-      <dt className="text-xs uppercase tracking-wider pt-1" style={{ color: 'rgb(var(--surface-muted))' }}>{k}</dt>
-      <dd className="text-sm">{v}</dd>
-    </>
+    <div className="flex flex-col gap-4">
+      {days.map((d) => {
+        const dayFiles = byDay.get(d)!;
+        const message = messageByDay.get(d);
+        return (
+          <div key={d}>
+            <div className="flex items-baseline gap-3 mb-1.5"
+                 style={{ borderBottom: '1px solid rgb(var(--surface-border))', paddingBottom: 4 }}>
+              <div className="display-font text-sm" style={{ color: 'rgb(var(--surface-accent))' }}>
+                FAN-SITE DAY {String(d).padStart(2, '0')}
+              </div>
+              <div className="text-[11px]" style={{ color: 'rgb(var(--surface-muted))' }}>
+                {dayFiles.length} file{dayFiles.length === 1 ? '' : 's'}
+              </div>
+              {message && (
+                <div className="text-xs flex-1 min-w-0 truncate" style={{ color: 'rgb(var(--surface-text) / 0.8)' }}>
+                  · {message}
+                </div>
+              )}
+            </div>
+            <ul className="flex flex-col gap-1">
+              {dayFiles.map((f) => (
+                <FileRow key={f.inZipPath} uid={uid} file={f} thumbs={thumbs} size={size}
+                  prefix={`D${String(d).padStart(2, '0')}/${String(f.position).padStart(2, '0')}`} />
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function KindGroups({ uid, files, thumbs, size }: {
+  uid: string; files: BundleFileRow[]; thumbs: Record<string, string>; size: ThumbSize;
+}) {
+  const KIND_ORDER: BundleFileRow['kind'][] = ['video', 'image', 'audio'];
+  const byKind = new Map<string, BundleFileRow[]>();
+  for (const f of files) {
+    if (!byKind.has(f.kind)) byKind.set(f.kind, []);
+    byKind.get(f.kind)!.push(f);
+  }
+  return (
+    <div className="flex flex-col gap-4">
+      {KIND_ORDER.filter((k) => byKind.has(k)).map((kind) => {
+        const rows = byKind.get(kind)!;
+        return (
+          <div key={kind}>
+            <div className="flex items-baseline gap-3 mb-1.5"
+                 style={{ borderBottom: '1px solid rgb(var(--surface-border))', paddingBottom: 4 }}>
+              <div className="display-font text-sm" style={{ color: 'rgb(var(--surface-accent))' }}>
+                {kind.toUpperCase()}
+              </div>
+              <div className="text-[11px]" style={{ color: 'rgb(var(--surface-muted))' }}>
+                {rows.length} file{rows.length === 1 ? '' : 's'}
+              </div>
+            </div>
+            <ul className="flex flex-col gap-1">
+              {rows.map((f) => (
+                <FileRow key={f.inZipPath} uid={uid} file={f} thumbs={thumbs} size={size}
+                  prefix={f.position > 0 ? `#${String(f.position).padStart(5, '0')}` : ''} />
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function FileRow({ uid, file, thumbs, size, prefix }: {
+  uid: string; file: BundleFileRow; thumbs: Record<string, string>;
+  size: ThumbSize; prefix: string;
+}) {
+  const px = THUMB_PX[size];
+  return (
+    <li className="flex items-center gap-3 py-1"
+        style={{ borderBottom: '1px solid rgb(var(--surface-border) / 0.5)' }}
+    >
+      <Thumb file={file} dataUrl={thumbs[file.inZipPath]} px={px} />
+      {prefix && (
+        <span className="shrink-0 font-mono text-xs" style={{ color: 'rgb(var(--surface-muted))', minWidth: 64 }}>
+          {prefix}
+        </span>
+      )}
+      <span className="flex-1 min-w-0 truncate font-mono text-xs">{file.originalName}</span>
+      <span className="shrink-0 text-xs" style={{ color: 'rgb(var(--surface-muted))' }}>
+        {fmtSize(file.sizeBytes)}
+      </span>
+      <code className="shrink-0 text-[10px]" title={file.sha256} style={{ color: 'rgb(var(--surface-muted))' }}>
+        {file.sha256.slice(0, 8)}…
+      </code>
+      <button type="button" onClick={() => revealWorkingFile(uid, file.inZipPath).catch(() => {})}
+              title="Reveal in Finder"
+              className="shrink-0 px-1 text-sm opacity-50 hover:opacity-100">
+        📁
+      </button>
+    </li>
+  );
+}
+
+function Thumb({ file, dataUrl, px }: {
+  file: BundleFileRow; dataUrl: string | undefined; px: number;
+}) {
+  // `dataUrl` is the entry from the bundle's thumbnails map fetched
+  // server-side as a base64 `data:image/jpeg;base64,…` payload. Missing
+  // entries (videos we couldn't ffmpeg, HEIC images, info/log/manifest
+  // kinds) fall through to the kind-glyph block.
+  if (!dataUrl) {
+    return (
+      <div
+        className="shrink-0 flex items-center justify-center rounded text-base"
+        style={{
+          width: px, height: px,
+          background: 'rgb(var(--surface-base))',
+          border: '1px solid rgb(var(--surface-border))',
+        }}
+        title={file.thumbnailPath ?? file.kind}
+      >
+        {kindGlyph(file.kind)}
+      </div>
+    );
+  }
+  return (
+    <img
+      src={dataUrl}
+      alt={file.originalName}
+      className="shrink-0 object-cover rounded"
+      style={{
+        width: px, height: px,
+        border: '1px solid rgb(var(--surface-border))',
+      }}
+    />
   );
 }
 
 function kindGlyph(kind: BundleFileRow['kind']): string {
   switch (kind) {
-    case 'video':    return '🎬 video';
-    case 'image':    return '🖼 image';
-    case 'audio':    return '🎙 audio';
-    case 'info':     return '📄 info';
-    case 'log':      return '📜 log';
-    case 'manifest': return '🗂 manifest';
-    case 'other':    return '· other';
+    case 'video':    return '🎬';
+    case 'image':    return '🖼';
+    case 'audio':    return '🎙';
+    case 'info':     return '📄';
+    case 'log':      return '📜';
+    case 'manifest': return '🗂';
+    case 'other':    return '·';
   }
 }

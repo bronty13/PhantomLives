@@ -38,6 +38,7 @@ use crate::fsutil;
 use crate::manifest::{
     parse_manifest_json, parse_molly_log, BundleManifest, ManifestError,
 };
+use crate::thumbnails::{generate_for_file, is_thumbnailable_kind, ThumbnailError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BundleError {
@@ -49,6 +50,8 @@ pub enum BundleError {
     Manifest(#[from] ManifestError),
     #[error("extract: {0}")]
     Extract(#[from] ExtractError),
+    #[error("thumbnail: {0}")]
+    Thumbnail(#[from] ThumbnailError),
     #[error("db: {0}")]
     Db(#[from] rusqlite::Error),
     #[error("app data dir: {0}")]
@@ -81,6 +84,16 @@ pub struct IngestResult {
     pub workspace_path: String,
     /// Files actually extracted to disk this call (idempotent skips don't count).
     pub extracted_count: i64,
+    pub thumbnail_count: i64,
+    pub export_thumb_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportThumb {
+    pub position: i64,
+    pub source_in_zip_path: String,
+    pub thumbnail_path: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -107,6 +120,8 @@ pub struct BundleFileRow {
     pub fansite_day_of_month: Option<i64>,
     pub sha256: String,
     pub size_bytes: i64,
+    pub working_path: Option<String>,
+    pub thumbnail_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -309,9 +324,73 @@ pub fn ingest_bundle_inner<R: Runtime>(
         )?;
     }
 
-    let workspace_path = bundle_workspace_dir(&work_root_dir, &manifest.uid)
-        .to_string_lossy()
-        .to_string();
+    let workspace_path_buf = bundle_workspace_dir(&work_root_dir, &manifest.uid);
+    let workspace_path = workspace_path_buf.to_string_lossy().to_string();
+
+    // ---- Phase 1c thumbnails ----
+    // Re-load extracted rows with their DB ids so we can reference them
+    // from bundle_export_thumbs.
+    let mut media: Vec<(i64, String, String, PathBuf)> = Vec::new();
+    {
+        let mut stmt = conn.prepare(
+            "SELECT id, in_zip_path, kind, working_path
+              FROM bundle_files WHERE bundle_uid = ?1",
+        )?;
+        let rows = stmt.query_map(params![manifest.uid], |row| {
+            let id: i64 = row.get(0)?;
+            let in_zip: String = row.get(1)?;
+            let kind: String = row.get(2)?;
+            let wp: Option<String> = row.get(3)?;
+            Ok((id, in_zip, kind, PathBuf::from(wp.unwrap_or_default())))
+        })?;
+        for r in rows {
+            let row = r?;
+            if is_thumbnailable_kind(&row.2) {
+                media.push(row);
+            }
+        }
+    }
+
+    let thumb_dir = workspace_path_buf.join(".thumbs");
+    let mut thumb_rows: Vec<(i64, String, PathBuf)> = Vec::new();
+    for (id, in_zip, kind, wp) in &media {
+        if !wp.exists() { continue; }
+        let made = generate_for_file(kind, in_zip, wp, &thumb_dir)?;
+        if let Some(path) = made {
+            conn.execute(
+                "UPDATE bundle_files SET thumbnail_path = ?1 WHERE id = ?2",
+                params![path.to_string_lossy().to_string(), id],
+            )?;
+            thumb_rows.push((*id, in_zip.clone(), path));
+        }
+    }
+    let thumbnail_count = thumb_rows.len() as i64;
+
+    // ---- 10 random export thumbnails ----
+    // Selection is stable across re-ingests for the moment: DELETE +
+    // INSERT replaces the picks each time. Phase 11 (post-bundle
+    // composition) reads from bundle_export_thumbs.
+    conn.execute(
+        "DELETE FROM bundle_export_thumbs WHERE bundle_uid = ?1",
+        params![manifest.uid],
+    )?;
+    let mut picks = thumb_rows.clone();
+    pseudo_shuffle(&mut picks, &manifest.uid);
+    picks.truncate(10);
+    for (i, (id, _in_zip, path)) in picks.iter().enumerate() {
+        conn.execute(
+            "INSERT INTO bundle_export_thumbs
+                (bundle_uid, bundle_file_id, position, thumbnail_path)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![
+                manifest.uid,
+                id,
+                (i + 1) as i64,
+                path.to_string_lossy().to_string(),
+            ],
+        )?;
+    }
+    let export_thumb_count = picks.len() as i64;
 
     Ok(IngestResult {
         uid: manifest.uid,
@@ -323,7 +402,32 @@ pub fn ingest_bundle_inner<R: Runtime>(
         manifest_source,
         workspace_path,
         extracted_count,
+        thumbnail_count,
+        export_thumb_count,
     })
+}
+
+/// Deterministic shuffle keyed on the bundle UID. Avoids pulling the
+/// `rand` crate just for this; the security of the selection doesn't
+/// matter, only that it's evenly distributed and stable per-bundle.
+fn pseudo_shuffle<T>(items: &mut Vec<T>, key: &str) {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(key.as_bytes());
+    let seed = hasher.finalize();
+    // xorshift64* seeded from the first 8 bytes of the SHA-256 digest.
+    let mut state: u64 = u64::from_be_bytes([
+        seed[0], seed[1], seed[2], seed[3], seed[4], seed[5], seed[6], seed[7],
+    ]);
+    if state == 0 { state = 1; }
+    let n = items.len();
+    for i in (1..n).rev() {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        let j = (state as usize) % (i + 1);
+        items.swap(i, j);
+    }
 }
 
 #[tauri::command]
@@ -332,6 +436,104 @@ pub fn ingest_bundle<R: Runtime>(
     path: String,
 ) -> Result<IngestResult, BundleError> {
     ingest_bundle_inner(&handle, &path)
+}
+
+/// Cap on text-doc reads from the workspace. Molly.log is typically
+/// 5-20 KB; info.md similarly small. 256 KB is plenty of headroom and
+/// keeps the frontend from accidentally pulling a 95 MB video into a
+/// drawer.
+const DOC_READ_CAP_BYTES: u64 = 256 * 1024;
+
+#[tauri::command]
+pub fn read_doc_text<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+    in_zip_path: String,
+) -> Result<String, BundleError> {
+    let conn = open_conn(&handle)?;
+    let working_path: Option<String> = conn
+        .query_row(
+            "SELECT working_path FROM bundle_files
+              WHERE bundle_uid = ?1 AND in_zip_path = ?2",
+            params![uid, in_zip_path],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()?
+        .flatten();
+    let working_path = working_path
+        .filter(|p| !p.is_empty())
+        .ok_or_else(|| BundleError::NotFound(format!("{uid}::{in_zip_path}")))?;
+    let meta = fs::metadata(&working_path)?;
+    if meta.len() > DOC_READ_CAP_BYTES {
+        return Err(BundleError::NotFound(format!(
+            "file too large to read inline ({} bytes; cap is {DOC_READ_CAP_BYTES})",
+            meta.len()
+        )));
+    }
+    let bytes = fs::read(&working_path)?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// Bundle thumbnails as inline data URLs, keyed on `in_zip_path` so
+/// the frontend can map files → src directly. We do this server-side
+/// (instead of letting the webview load `asset://…` URLs) because
+/// WKWebView on macOS 15 silently refuses our asset-protocol URLs even
+/// with `assetProtocol.scope: ["**"]` + CSP wide open. Data URLs render
+/// regardless of webview protocol handshakes — at the cost of one
+/// 4/3 base64 expansion per JPEG (~13KB / image), bounded by the
+/// 256-px thumbnails the ingest pipeline produces.
+#[tauri::command]
+pub fn get_bundle_thumbnails<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+) -> Result<std::collections::HashMap<String, String>, BundleError> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+
+    let conn = open_conn(&handle)?;
+    let mut stmt = conn.prepare(
+        "SELECT in_zip_path, thumbnail_path
+           FROM bundle_files
+          WHERE bundle_uid = ?1
+            AND thumbnail_path IS NOT NULL
+            AND thumbnail_path != ''",
+    )?;
+    let rows: Vec<(String, String)> = stmt
+        .query_map(params![uid], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    let mut out = std::collections::HashMap::with_capacity(rows.len());
+    for (in_zip, path) in rows {
+        let Ok(bytes) = fs::read(&path) else { continue };
+        // All thumbs are JPEG by construction (see thumbnails::generate_*).
+        let encoded = STANDARD.encode(&bytes);
+        out.insert(in_zip, format!("data:image/jpeg;base64,{encoded}"));
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+pub fn get_export_thumbnails<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+) -> Result<Vec<ExportThumb>, BundleError> {
+    let conn = open_conn(&handle)?;
+    let mut stmt = conn.prepare(
+        "SELECT t.position, f.in_zip_path, t.thumbnail_path
+           FROM bundle_export_thumbs t
+           JOIN bundle_files f ON f.id = t.bundle_file_id
+          WHERE t.bundle_uid = ?1
+          ORDER BY t.position",
+    )?;
+    let rows = stmt
+        .query_map(params![uid], |row| {
+            Ok(ExportThumb {
+                position: row.get(0)?,
+                source_in_zip_path: row.get(1)?,
+                thumbnail_path: row.get(2)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
 }
 
 #[tauri::command]
@@ -438,7 +640,8 @@ pub fn get_bundle<R: Runtime>(
 
     let mut stmt = conn.prepare(
         "SELECT in_zip_path, original_name, kind, position,
-                fansite_day_of_month, sha256, size_bytes
+                fansite_day_of_month, sha256, size_bytes,
+                working_path, thumbnail_path
          FROM bundle_files
          WHERE bundle_uid = ?1
          ORDER BY
@@ -456,6 +659,8 @@ pub fn get_bundle<R: Runtime>(
                 fansite_day_of_month: row.get(4)?,
                 sha256: row.get(5)?,
                 size_bytes: row.get(6)?,
+                working_path: row.get(7)?,
+                thumbnail_path: row.get(8)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -479,6 +684,7 @@ mod tests {
         conn.execute_batch(include_str!("../migrations/001_init.sql")).unwrap();
         conn.execute_batch(include_str!("../migrations/002_bundles.sql")).unwrap();
         conn.execute_batch(include_str!("../migrations/003_bundle_files.sql")).unwrap();
+        conn.execute_batch(include_str!("../migrations/004_export_thumbs.sql")).unwrap();
         conn
     }
 

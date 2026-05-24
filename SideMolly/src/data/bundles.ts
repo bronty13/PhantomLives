@@ -13,6 +13,14 @@ export interface IngestResult {
   manifestSource: 'manifest_json' | 'molly_log';
   workspacePath: string;
   extractedCount: number;
+  thumbnailCount: number;
+  exportThumbCount: number;
+}
+
+export interface ExportThumb {
+  position: number;
+  sourceInZipPath: string;
+  thumbnailPath: string;
 }
 
 export interface WatchSettings {
@@ -80,6 +88,8 @@ export interface BundleFileRow {
   fansiteDayOfMonth: number | null;
   sha256: string;
   sizeBytes: number;
+  workingPath: string | null;
+  thumbnailPath: string | null;
 }
 
 export interface BundleDetail {
@@ -106,6 +116,20 @@ export function revealWorkingDir(uid: string): Promise<void> {
 
 export function revealWorkingFile(uid: string, inZipPath: string): Promise<void> {
   return invoke('reveal_working_file', { uid, inZipPath });
+}
+
+export function readDocText(uid: string, inZipPath: string): Promise<string> {
+  return invoke<string>('read_doc_text', { uid, inZipPath });
+}
+
+export function getExportThumbnails(uid: string): Promise<ExportThumb[]> {
+  return invoke<ExportThumb[]>('get_export_thumbnails', { uid });
+}
+
+/** Map<inZipPath, "data:image/jpeg;base64,…"> for every file that has a
+ *  thumbnail. One IPC call instead of N asset:// URL dances. */
+export function getBundleThumbnails(uid: string): Promise<Record<string, string>> {
+  return invoke<Record<string, string>>('get_bundle_thumbnails', { uid });
 }
 
 export function getWatchSettings(): Promise<WatchSettings> {
