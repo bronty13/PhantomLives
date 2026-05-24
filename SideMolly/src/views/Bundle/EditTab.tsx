@@ -25,12 +25,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import {
-  enqueueAutoAssemble, enqueueBundleVideoOps, fmtSize, getBundleThumbnails,
-  getMasterCutStatus, getProcessedPreviews, listProcessedFiles, openMasterCut,
-  processBundleImages, revealMasterCut, revealProcessedFile,
+  enqueueAutoAssemble, enqueueBundleTranscripts, enqueueBundleVideoOps,
+  fmtSize, getBundleThumbnails, getMasterCutStatus, getProcessedPreviews,
+  getTranscribeStatus, listProcessedFiles, listTranscripts, openMasterCut,
+  processBundleImages, revealMasterCut, revealProcessedFile, revealTranscript,
   revealWorkingFile, setBundleFileRotation,
   type BundleFileRow, type BundleSummary, type ImageOpsInput, type JobRow,
-  type MasterCutStatus, type ProcessedFileRow, type VideoOpsInput,
+  type MasterCutStatus, type ProcessedFileRow, type TranscribeStatus,
+  type TranscriptRow, type VideoOpsInput,
 } from '../../data/bundles';
 import type { BundleJobsSnapshot } from '../../lib/useBundleJobs';
 
@@ -81,6 +83,8 @@ export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated: _u
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [master, setMaster] = useState<MasterCutStatus | null>(null);
+  const [transcripts, setTranscripts] = useState<TranscriptRow[]>([]);
+  const [transcribeStatus, setTranscribeStatus] = useState<TranscribeStatus | null>(null);
 
   // ── Image-progress live counter while running.
   useEffect(() => {
@@ -110,14 +114,18 @@ export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated: _u
   //   2-4 stay in sync as jobs complete.
   const refreshProcessed = useCallback(async () => {
     try {
-      const [rows, prev, mc] = await Promise.all([
+      const [rows, prev, mc, tx, ts] = await Promise.all([
         listProcessedFiles(summary.uid),
         getProcessedPreviews(summary.uid),
         getMasterCutStatus(summary.uid),
+        listTranscripts(summary.uid).catch(() => [] as TranscriptRow[]),
+        getTranscribeStatus().catch(() => null as TranscribeStatus | null),
       ]);
       setProcessed(rows);
       setPreviews(prev);
       setMaster(mc);
+      setTranscripts(tx);
+      setTranscribeStatus(ts);
     } catch (e) {
       console.warn('refreshProcessed failed', e);
     }
@@ -220,6 +228,28 @@ export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated: _u
     () => jobs.all.filter((j) => ['render_title', 'normalize_video', 'assemble_master'].includes(j.kind)),
     [jobs.all],
   );
+  const transcribeJobs = useMemo(
+    () => jobs.all.filter((j) => j.kind === 'transcribe_video'),
+    [jobs.all],
+  );
+
+  const runTranscribe = async () => {
+    setBusy(true);
+    setBusyLabel(`Queueing transcription for ${videos.length} video${videos.length === 1 ? '' : 's'}…`);
+    setLastResult(null);
+    try {
+      const r = await enqueueBundleTranscripts(summary.uid);
+      setLastResult({
+        ok: r.jobIds.length, skipped: 0, errors: r.errors,
+        what: `📝 Transcripts queued — ${r.videoCount} video${r.videoCount === 1 ? '' : 's'} · running below ↓`,
+      });
+    } catch (e) {
+      setLastResult({ ok: 0, skipped: 0, errors: [String(e)], what: 'transcribe failed' });
+    } finally {
+      setBusy(false);
+      setBusyLabel(null);
+    }
+  };
 
   if (allMedia.length === 0) {
     return (
@@ -359,10 +389,39 @@ export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated: _u
       )}
 
       {/* ────────────────────────────────────────────────────────────
-          STEP 4 — Processed outputs
+          STEP 4 — Transcripts (videos only)
+          ──────────────────────────────────────────────────────────── */}
+      {videos.length > 0 && (
+        <StepCard num={4} title="Transcripts" subtitle={
+          <>Per-video transcripts via MLX-accelerated Whisper. Writes
+            <code className="mx-1">.txt</code> +
+            <code className="mr-1">.srt</code> +
+            <code>.json</code> sidecars to
+            <code className="ml-1">…/work/{summary.uid}/transcripts/</code>.
+            Phase 5 ships flat-transcript + word-timestamps; diarization
+            (speaker turns) lands in 5.1.</>
+        }>
+          <TranscriptsPanel
+            videos={videos}
+            transcripts={transcripts}
+            status={transcribeStatus}
+            busy={busy || jobs.busy}
+            onRun={runTranscribe}
+            onReveal={(inZipPath) => revealTranscript(summary.uid, inZipPath).catch((e) => alert(String(e)))}
+          />
+          <LiveQueue
+            title="Transcription queue"
+            jobs={transcribeJobs}
+            emptyHint="Click 📝 Transcribe all videos to start the queue."
+          />
+        </StepCard>
+      )}
+
+      {/* ────────────────────────────────────────────────────────────
+          STEP 5 — Processed outputs
           ──────────────────────────────────────────────────────────── */}
       <StepCard
-        num={4}
+        num={5}
         title={`Processed outputs (${processed.length})`}
         subtitle={<>Latest run per source file shown. Click <strong>📁 output</strong> to reveal the processed file in Finder.</>}
       >
@@ -757,5 +816,99 @@ function ProcessedRow({ row, preview, source, uid }: {
         📁 src
       </button>
     </li>
+  );
+}
+
+function TranscriptsPanel({ videos, transcripts, status, busy, onRun, onReveal }: {
+  videos: BundleFileRow[];
+  transcripts: TranscriptRow[];
+  status: TranscribeStatus | null;
+  busy: boolean;
+  onRun: () => void;
+  onReveal: (inZipPath: string) => void;
+}) {
+  const transcribedCount = transcripts.filter((t) => t.txtPath != null).length;
+  const installed = status?.installed ?? false;
+
+  return (
+    <>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="text-xs" style={{ color: 'rgb(var(--surface-muted))' }}>
+          {installed ? (
+            <>
+              <span style={{ color: '#0f5d33' }}>✓ transcribe ready</span>
+              {status?.version && (
+                <span> · {status.version}</span>
+              )}
+              {' '}· {transcribedCount} / {videos.length} done
+            </>
+          ) : (
+            <>
+              <span style={{ color: '#7a0000' }}>⚠ transcribe (MLX) not detected</span>
+              {' '}— install from{' '}
+              <code className="text-[10px]">~/dev/PhantomLives/transcribe/</code>
+            </>
+          )}
+        </div>
+        <button
+          type="button"
+          className="sm-button"
+          disabled={busy || !installed}
+          onClick={onRun}
+          title={installed ? '' : 'Install PhantomLives transcribe first'}
+        >
+          📝 Transcribe all videos
+        </button>
+      </div>
+
+      <ul className="flex flex-col gap-1">
+        {videos.map((v) => {
+          const t = transcripts.find((x) => x.inZipPath === v.inZipPath);
+          const done = t?.txtPath != null;
+          return (
+            <li
+              key={v.inZipPath}
+              className="flex items-start gap-3 py-1.5"
+              style={{ borderBottom: '1px solid rgb(var(--surface-border) / 0.5)' }}
+            >
+              <span
+                className="text-xs px-1.5 py-0.5 rounded font-semibold whitespace-nowrap"
+                style={{
+                  background: done ? '#deffee' : 'rgb(var(--surface-base))',
+                  color: done ? '#0f5d33' : 'rgb(var(--surface-muted))',
+                  minWidth: 56, textAlign: 'center',
+                }}
+              >
+                {done ? '✓ done' : '… pending'}
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="font-mono text-xs truncate">
+                  🎬 {v.inZipPath.split('/').pop()}
+                </div>
+                {t?.txtPreview && (
+                  <div
+                    className="text-[11px] mt-0.5 truncate italic"
+                    style={{ color: 'rgb(var(--surface-muted))' }}
+                    title={t.txtPreview}
+                  >
+                    “{t.txtPreview.replace(/\s+/g, ' ').trim()}”
+                  </div>
+                )}
+              </div>
+              {done && (
+                <button
+                  type="button"
+                  className="sm-button secondary text-xs"
+                  onClick={() => onReveal(v.inZipPath)}
+                  title="Reveal transcript in Finder"
+                >
+                  📁 Reveal
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </>
   );
 }

@@ -301,6 +301,48 @@ export function getDeepFilterNetStatus(): Promise<DeepFilterNetStatus> {
   return invoke<DeepFilterNetStatus>('get_deepfilternet_status');
 }
 
+// ----- Phase 5 transcription -----
+
+export interface TranscribeStatus {
+  installed: boolean;
+  command: string | null;
+  description: string | null;
+  version: string | null;
+}
+
+export interface EnqueueTranscriptsResult {
+  bundleUid: string;
+  jobIds: number[];
+  videoCount: number;
+  errors: string[];
+}
+
+export interface TranscriptRow {
+  bundleUid: string;
+  inZipPath: string;
+  stem: string;
+  jsonPath: string | null;
+  txtPath: string | null;
+  srtPath: string | null;
+  txtPreview: string | null;
+}
+
+export function getTranscribeStatus(): Promise<TranscribeStatus> {
+  return invoke<TranscribeStatus>('get_transcribe_status');
+}
+
+export function enqueueBundleTranscripts(uid: string): Promise<EnqueueTranscriptsResult> {
+  return invoke<EnqueueTranscriptsResult>('enqueue_bundle_transcripts', { uid });
+}
+
+export function listTranscripts(uid: string): Promise<TranscriptRow[]> {
+  return invoke<TranscriptRow[]>('list_transcripts', { uid });
+}
+
+export function revealTranscript(uid: string, inZipPath: string): Promise<void> {
+  return invoke('reveal_transcript', { uid, inZipPath });
+}
+
 export function enqueueAutoAssemble(uid: string): Promise<EnqueueAutoAssembleResult> {
   return invoke<EnqueueAutoAssembleResult>('enqueue_auto_assemble', { uid });
 }

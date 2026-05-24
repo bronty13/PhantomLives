@@ -1514,6 +1514,16 @@ pub fn reveal_job_output<R: Runtime>(
                 .map_err(|e| BundleError::Io(std::io::Error::other(format!("bad params: {e}"))))?;
             p.output_path
         }
+        "transcribe_video" => {
+            let p: crate::transcribe::TranscribeVideoParams = serde_json::from_str(&params_json)
+                .map_err(|e| BundleError::Io(std::io::Error::other(format!("bad params: {e}"))))?;
+            // Reveal the .txt sidecar (most likely target) rather than
+            // the .json. If the .txt isn't there yet, fall back to JSON.
+            let json = std::path::Path::new(&p.json_output_path);
+            let txt = json.with_extension("txt");
+            if txt.exists() { txt.to_string_lossy().to_string() }
+            else { p.json_output_path }
+        }
         other => return Err(BundleError::NotFound(format!("unknown job kind: {other}"))),
     };
     if !Path::new(&output_path).exists() {

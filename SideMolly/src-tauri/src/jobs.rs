@@ -303,6 +303,14 @@ fn dispatch<R: Runtime>(
                     )))?;
             crate::auto_assemble::dispatch_assemble_master(handle, p)
         }
+        "transcribe_video" => {
+            let p: crate::transcribe::TranscribeVideoParams =
+                serde_json::from_str(&job.params_json)
+                    .map_err(|e| BundleError::Io(std::io::Error::other(
+                        format!("transcribe_video bad params: {e}"),
+                    )))?;
+            crate::transcribe::dispatch_transcribe_video(handle, p)
+        }
         other => Err(BundleError::NotFound(format!("unknown job kind: {other}"))),
     }
 }

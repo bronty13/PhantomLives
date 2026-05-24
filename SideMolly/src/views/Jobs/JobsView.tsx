@@ -121,7 +121,8 @@ function JobRowEl({ row }: { row: JobRow }) {
           row.kind === 'process_video' ||
           row.kind === 'render_title' ||
           row.kind === 'normalize_video' ||
-          row.kind === 'assemble_master'
+          row.kind === 'assemble_master' ||
+          row.kind === 'transcribe_video'
         ) && (
           <button
             type="button"

@@ -4,6 +4,66 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] — 2026-05-24
+
+### Added — Phase 5: Transcription
+
+Per-video transcripts via the PhantomLives `transcribe/` CLI (MLX-
+accelerated Whisper on Apple Silicon). New `transcribe_video` job
+kind goes through the existing queue and writes three sidecars per
+video to `work/<uid>/transcripts/<stem>.{txt,srt,json}`:
+
+- **.json** — full whisper output (segments, timings, language probe)
+- **.txt** — flat text (joined segment text)
+- **.srt** — subtitle format (numbered segments + timecodes)
+
+`transcribe.py` only emits one `-f <format>` per invocation, so to
+avoid running Whisper 3× per video the dispatcher calls it once with
+`-f json` and **derives the .txt + .srt locally** by parsing the
+JSON. Saves ~2× the wall clock on a 30-min batch.
+
+**Engine resolver** (priority order):
+1. `transcribe` shim on PATH (`/opt/homebrew/bin`, `/usr/local/bin`,
+   `/usr/bin`, then `which`).
+2. Direct script invocation via `python3` at
+   `~/dev/PhantomLives/transcribe/transcribe.py` (the most likely
+   path on Robert's box).
+3. `PHANTOMLIVES_HOME` env-var override.
+
+Cached via `OnceLock`. Returns `TranscribeEngine { command,
+leading_args, description }` so dispatch can spawn uniformly whether
+we found a shim or have to go through python.
+
+**Edit tab Step 4 — Transcripts** (videos only). Shows install
+status pill (`✓ ready · transcribe 1.4.4` or `⚠ not detected`),
+"📝 Transcribe all videos" button (disabled when engine missing),
+per-video status row (`✓ done` / `… pending`), text preview when
+available, and a LiveQueue widget showing each `transcribe_video`
+job. Reveal-in-Finder button on done rows.
+
+**Settings status** lives inline in the EditTab — no separate
+Settings panel for this phase. Future iterations can add a model
+selector + advanced flags.
+
+**Whisper-JSON → .srt** parsing tested with realistic timestamps
+(`srt_timestamp_format` test covers hour/minute/second/millisecond
+formatting including the comma decimal-marker SRT requires).
+
+### Deferred to Phase 5.1
+
+Diarization (speaker turns) per spec §11 risk note — typically needs
+a pyannote-style component that's a separate model + a non-trivial
+dependency. Robert can hand-edit speaker tags into the .srt for now;
+we'll ship a proper pipeline once the diarization model story is
+clear.
+
+### Tests
+
+110 passing. New camelCase contracts for `TranscribeStatus`,
+`TranscribeVideoParams`, `EnqueueTranscriptsResult`, `TranscriptRow`.
+Round-trip + SRT timestamp + segment-text rendering tests in
+`transcribe.rs`.
+
 ## [0.10.0] — 2026-05-24
 
 ### Added — Phase 4.5b: DeepFilterNet voice isolation

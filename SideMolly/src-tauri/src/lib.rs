@@ -8,6 +8,7 @@ mod images;
 mod jobs;
 mod manifest;
 mod thumbnails;
+mod transcribe;
 mod video;
 mod watch;
 
@@ -144,6 +145,10 @@ pub fn run() {
             auto_assemble::get_auto_assembly_settings,
             auto_assemble::set_auto_assembly_settings,
             auto_assemble::get_deepfilternet_status,
+            transcribe::get_transcribe_status,
+            transcribe::enqueue_bundle_transcripts,
+            transcribe::list_transcripts,
+            transcribe::reveal_transcript,
             bundles::get_master_cut_status,
             bundles::reveal_master_cut,
             bundles::open_master_cut,
@@ -167,6 +172,10 @@ mod camel_case_contract {
     use crate::auto_assemble::{
         AssembleMasterParams, AutoAssemblySettings, DeepFilterNetStatus,
         EnqueueAutoAssembleResult, NormalizeVideoParams, RenderTitleParams,
+    };
+    use crate::transcribe::{
+        EnqueueTranscriptsResult, TranscribeStatus, TranscribeVideoParams,
+        TranscriptRow,
     };
     use crate::bundles::{BundleDetail, BundleFileRow, BundleSummary, ExportThumb,
         ImageProgressEvent, IngestResult};
@@ -263,6 +272,35 @@ mod camel_case_contract {
         assert_camel(&serde_json::to_value(DeepFilterNetStatus {
             installed: false, bin_path: None, version: None,
         }).unwrap(), "DeepFilterNetStatus");
+    }
+
+    #[test] fn transcribe_status_is_camel_case() {
+        assert_camel(&serde_json::to_value(TranscribeStatus {
+            installed: false, command: None, description: None, version: None,
+        }).unwrap(), "TranscribeStatus");
+    }
+
+    #[test] fn transcribe_video_params_is_camel_case() {
+        assert_camel(&serde_json::to_value(TranscribeVideoParams {
+            bundle_uid: String::new(), bundle_file_id: 0,
+            source_path: String::new(), json_output_path: String::new(),
+            model: None,
+        }).unwrap(), "TranscribeVideoParams");
+    }
+
+    #[test] fn enqueue_transcripts_result_is_camel_case() {
+        assert_camel(&serde_json::to_value(EnqueueTranscriptsResult {
+            bundle_uid: String::new(), job_ids: vec![],
+            video_count: 0, errors: vec![],
+        }).unwrap(), "EnqueueTranscriptsResult");
+    }
+
+    #[test] fn transcript_row_is_camel_case() {
+        assert_camel(&serde_json::to_value(TranscriptRow {
+            bundle_uid: String::new(), in_zip_path: String::new(),
+            stem: String::new(),
+            json_path: None, txt_path: None, srt_path: None, txt_preview: None,
+        }).unwrap(), "TranscriptRow");
     }
 
     #[test] fn assemble_master_params_is_camel_case() {
