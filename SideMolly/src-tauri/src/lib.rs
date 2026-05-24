@@ -1,8 +1,10 @@
 mod backup;
 mod bundle_io;
 mod bundles;
+mod extract;
 mod fsutil;
 mod manifest;
+mod watch;
 
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -47,6 +49,10 @@ pub fn run() {
                     eprintln!("[sidemolly] launch backup failed: {err}");
                 }
             });
+            // Phase 1b watched-folder ingest. Runs an initial scan +
+            // notify watcher in its own thread; emits `bundle-ingested`
+            // events the frontend listens to.
+            watch::spawn_watcher(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -61,6 +67,12 @@ pub fn run() {
             bundles::ingest_bundle,
             bundles::list_bundles,
             bundles::get_bundle,
+            bundles::reveal_working_dir,
+            bundles::reveal_working_file,
+            watch::get_watch_settings,
+            watch::set_watch_dir,
+            watch::scan_watch_dir_now,
+            watch::reveal_watch_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -113,6 +125,7 @@ mod camel_case_contract {
             persona_code: None, title: String::new(),
             verify_status: String::new(), file_count: 0,
             manifest_source: String::new(),
+            workspace_path: String::new(), extracted_count: 0,
         }).unwrap(), "IngestResult");
     }
 
@@ -175,6 +188,24 @@ mod camel_case_contract {
         assert_camel(&serde_json::to_value(HashesFile {
             path: String::new(), sha256: String::new(),
         }).unwrap(), "HashesFile");
+    }
+
+    use crate::watch::{ScanResult, WatchSettings};
+
+    #[test] fn watch_settings_is_camel_case() {
+        assert_camel(&serde_json::to_value(WatchSettings {
+            configured_path: String::new(),
+            resolved_path: String::new(),
+            using_default: true,
+        }).unwrap(), "WatchSettings");
+    }
+
+    #[test] fn scan_result_is_camel_case() {
+        assert_camel(&serde_json::to_value(ScanResult {
+            scanned_path: String::new(),
+            considered: 0, ingested: 0, skipped: 0, failed: 0,
+            errors: vec![],
+        }).unwrap(), "ScanResult");
     }
 }
 

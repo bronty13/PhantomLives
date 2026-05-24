@@ -1,18 +1,20 @@
 import { useState } from 'react';
 import { BackupSettings } from './BackupSettings';
+import { WatchSettings } from './WatchSettings';
 
-type SettingsTab = 'backup' | 'about';
+type SettingsTab = 'watch' | 'backup' | 'about';
 
 const TABS: { key: SettingsTab; label: string; icon: string }[] = [
-  { key: 'backup', label: 'Backup', icon: '💾' },
-  { key: 'about',  label: 'About',  icon: 'ℹ️' },
+  { key: 'watch',  label: 'Watched folder', icon: '👀' },
+  { key: 'backup', label: 'Backup',         icon: '💾' },
+  { key: 'about',  label: 'About',          icon: 'ℹ️' },
 ];
 
 // Phase 0 ships Backup (required per CLAUDE.md) and a placeholder About
 // pane. Watermarks / Dropbox / Platforms / Watched-folder / Transcription
 // / FFmpeg tabs land in Phases 3, 6, 7, and 4 respectively.
 export function SettingsView() {
-  const [tab, setTab] = useState<SettingsTab>('backup');
+  const [tab, setTab] = useState<SettingsTab>('watch');
   return (
     <div className="p-8 max-w-4xl">
       <h1 className="display-font text-4xl mb-2" style={{ color: 'rgb(var(--surface-accent))' }}>
@@ -39,6 +41,7 @@ export function SettingsView() {
         ))}
       </div>
 
+      {tab === 'watch' && <WatchSettings />}
       {tab === 'backup' && <BackupSettings />}
       {tab === 'about' && (
         <div className="sm-card">

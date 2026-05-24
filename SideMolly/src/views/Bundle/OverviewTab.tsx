@@ -1,5 +1,5 @@
-import { fmtPrice, fmtSize, type BundleFileRow,
-         type BundleManifest, type BundleSummary } from '../../data/bundles';
+import { fmtPrice, fmtSize, revealWorkingDir, revealWorkingFile,
+         type BundleFileRow, type BundleManifest, type BundleSummary } from '../../data/bundles';
 
 interface Props {
   summary: BundleSummary;
@@ -11,7 +11,7 @@ export function OverviewTab({ summary, manifest, files }: Props) {
   return (
     <div className="flex flex-col gap-4">
       <ManifestPane manifest={manifest} />
-      <FilesPane files={files} bundleType={summary.bundleType} />
+      <FilesPane files={files} bundleType={summary.bundleType} uid={summary.uid} />
     </div>
   );
 }
@@ -112,7 +112,9 @@ function FanDayList({ days }: { days: BundleManifest['fanDays'] }) {
   );
 }
 
-function FilesPane({ files, bundleType }: { files: BundleFileRow[]; bundleType: BundleSummary['bundleType'] }) {
+function FilesPane({ files, bundleType, uid }: {
+  files: BundleFileRow[]; bundleType: BundleSummary['bundleType']; uid: string;
+}) {
   // Stats by kind.
   const counts: Record<string, number> = {};
   let totalBytes = 0;
@@ -121,12 +123,31 @@ function FilesPane({ files, bundleType }: { files: BundleFileRow[]; bundleType: 
     totalBytes += f.sizeBytes;
   }
 
+  const reveal = (path: string) => () =>
+    revealWorkingFile(uid, path).catch((e) => console.warn('reveal failed', e));
+
   return (
     <section className="sm-card">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold text-base">Files ({files.length})</h2>
-        <div className="text-xs" style={{ color: 'rgb(var(--surface-muted))' }}>
-          {Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(' · ')} · {fmtSize(totalBytes)} total
+        <div>
+          <h2 className="font-semibold text-base">Files ({files.length})</h2>
+          <div className="text-xs mt-0.5" style={{ color: 'rgb(var(--surface-muted))' }}>
+            Extracted to <code>{'~/Library/Application Support/com.phantomlives.sidemolly/work/' + uid}</code>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="text-xs text-right" style={{ color: 'rgb(var(--surface-muted))' }}>
+            {Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(' · ')}
+            <br />
+            {fmtSize(totalBytes)} total
+          </div>
+          <button
+            type="button"
+            className="sm-button secondary"
+            onClick={() => revealWorkingDir(uid).catch((e) => console.warn('reveal failed', e))}
+          >
+            📁 Reveal folder
+          </button>
         </div>
       </div>
 
@@ -153,6 +174,14 @@ function FilesPane({ files, bundleType }: { files: BundleFileRow[]; bundleType: 
             <span className="shrink-0" style={{ color: 'rgb(var(--surface-muted))' }}>{fmtSize(f.sizeBytes)}</span>
             <code className="shrink-0 text-[10px]" style={{ color: 'rgb(var(--surface-muted))' }}
                   title={f.sha256}>{f.sha256.slice(0, 8)}…</code>
+            <button
+              type="button"
+              onClick={reveal(f.inZipPath)}
+              title="Reveal in Finder"
+              className="shrink-0 px-1 text-sm opacity-50 hover:opacity-100"
+            >
+              📁
+            </button>
           </li>
         ))}
       </ul>

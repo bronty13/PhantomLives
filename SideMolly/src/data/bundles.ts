@@ -11,6 +11,23 @@ export interface IngestResult {
   verifyStatus: string;
   fileCount: number;
   manifestSource: 'manifest_json' | 'molly_log';
+  workspacePath: string;
+  extractedCount: number;
+}
+
+export interface WatchSettings {
+  configuredPath: string;
+  resolvedPath: string;
+  usingDefault: boolean;
+}
+
+export interface ScanResult {
+  scannedPath: string;
+  considered: number;
+  ingested: number;
+  skipped: number;
+  failed: number;
+  errors: string[];
 }
 
 export interface BundleSummary {
@@ -81,6 +98,30 @@ export function listBundles(): Promise<BundleSummary[]> {
 
 export function getBundle(uid: string): Promise<BundleDetail> {
   return invoke<BundleDetail>('get_bundle', { uid });
+}
+
+export function revealWorkingDir(uid: string): Promise<void> {
+  return invoke('reveal_working_dir', { uid });
+}
+
+export function revealWorkingFile(uid: string, inZipPath: string): Promise<void> {
+  return invoke('reveal_working_file', { uid, inZipPath });
+}
+
+export function getWatchSettings(): Promise<WatchSettings> {
+  return invoke<WatchSettings>('get_watch_settings');
+}
+
+export function setWatchDir(path: string | null): Promise<WatchSettings> {
+  return invoke<WatchSettings>('set_watch_dir', { path });
+}
+
+export function scanWatchDirNow(): Promise<ScanResult> {
+  return invoke<ScanResult>('scan_watch_dir_now');
+}
+
+export function revealWatchDir(): Promise<void> {
+  return invoke('reveal_watch_dir');
 }
 
 // ----- presentation helpers used in multiple views -----

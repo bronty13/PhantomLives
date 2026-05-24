@@ -76,6 +76,9 @@ pub struct HashesDoc {
 /// of info.md / Molly.log / manifest.json (if present) so callers don't
 /// have to re-open the ZIP. Per-entry file metadata (size + sha) is in
 /// `hashes.files` — used to populate the bundle_files table.
+///
+/// Carries the validated inner-zip bytes so the extract step in Phase
+/// 1b doesn't have to re-open the outer file from disk.
 #[derive(Debug)]
 pub struct ValidatedBundle {
     pub hashes: HashesDoc,
@@ -88,6 +91,8 @@ pub struct ValidatedBundle {
     /// Per-file size pulled from the inner zip's central directory.
     /// Keyed on `in_zip_path`. (hashes.files doesn't carry size.)
     pub file_sizes: std::collections::BTreeMap<String, u64>,
+    /// Raw inner-zip bytes for downstream extraction. Always populated.
+    pub inner_zip_bytes: Vec<u8>,
 }
 
 pub fn sha256_hex(bytes: &[u8]) -> String {
@@ -197,6 +202,7 @@ pub fn verify_outer_zip(path: &Path) -> Result<ValidatedBundle, BundleIoError> {
         molly_log,
         manifest_json,
         file_sizes,
+        inner_zip_bytes: inner_bytes,
     })
 }
 

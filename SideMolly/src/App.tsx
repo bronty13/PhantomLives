@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { Sidebar, type ViewKey } from './components/Sidebar';
 import { InboxView } from './views/Inbox/InboxView';
 import { SettingsView } from './views/Settings/SettingsView';
 import { ManualView } from './views/Manual/ManualView';
 import { BundleWorkspace } from './views/Bundle/BundleWorkspace';
-import { ingestBundle } from './data/bundles';
+import { ingestBundle, type IngestResult } from './data/bundles';
 import { db } from './data/db';
 
 interface IngestStatus {
@@ -36,6 +37,24 @@ export default function App() {
     db()
       .then(() => setDbReady(true))
       .catch((e) => setDbError(String(e)));
+  }, []);
+
+  // Watched-folder ingest emits `bundle-ingested` from the Rust side.
+  // Bump the refresh signal so the Inbox re-queries, and quietly surface
+  // a toast so the user knows something just landed.
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+    (async () => {
+      unlisten = await listen<IngestResult>('bundle-ingested', (event) => {
+        setRefreshSignal((n) => n + 1);
+        const r = event.payload;
+        setIngestStatus({
+          kind: 'ok',
+          message: `Watched folder: ingested ${r.title || r.uid} (${r.fileCount} files).`,
+        });
+      });
+    })();
+    return () => { unlisten?.(); };
   }, []);
 
   // Cmd+S / Ctrl+S toggles the sidebar (same shortcut Molly uses).

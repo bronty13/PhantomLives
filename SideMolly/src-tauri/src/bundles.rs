@@ -21,10 +21,11 @@
 // fix. Phase 1.1 may grow a "broken bundles" surface if it turns out to
 // be useful.
 
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use chrono::Local;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, Runtime};
 
@@ -32,6 +33,8 @@ use crate::bundle_io::{
     classify_kind, parse_content_prefix, parse_fansite_prefix, verify_outer_zip,
     BundleIoError, ValidatedBundle,
 };
+use crate::extract::{bundle_workspace_dir, extract_inner_zip, ExtractError};
+use crate::fsutil;
 use crate::manifest::{
     parse_manifest_json, parse_molly_log, BundleManifest, ManifestError,
 };
@@ -44,10 +47,14 @@ pub enum BundleError {
     Verify(#[from] BundleIoError),
     #[error("manifest: {0}")]
     Manifest(#[from] ManifestError),
+    #[error("extract: {0}")]
+    Extract(#[from] ExtractError),
     #[error("db: {0}")]
     Db(#[from] rusqlite::Error),
     #[error("app data dir: {0}")]
     AppData(String),
+    #[error("bundle not found: {0}")]
+    NotFound(String),
 }
 
 impl serde::Serialize for BundleError {
@@ -71,6 +78,9 @@ pub struct IngestResult {
     pub verify_status: String,
     pub file_count: i64,
     pub manifest_source: String,
+    pub workspace_path: String,
+    /// Files actually extracted to disk this call (idempotent skips don't count).
+    pub extracted_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -120,6 +130,15 @@ fn app_data_dir<R: Runtime>(handle: &AppHandle<R>) -> Result<PathBuf, BundleErro
 
 fn db_path<R: Runtime>(handle: &AppHandle<R>) -> Result<PathBuf, BundleError> {
     Ok(app_data_dir(handle)?.join("sidemolly.db"))
+}
+
+/// `~/Library/Application Support/com.phantomlives.sidemolly/work/` — root
+/// of per-bundle extraction directories. Phase 3+ image/video ops will
+/// write side files (thumbnails, processed variants) alongside.
+fn work_root<R: Runtime>(handle: &AppHandle<R>) -> Result<PathBuf, BundleError> {
+    let root = app_data_dir(handle)?.join("work");
+    fs::create_dir_all(&root)?;
+    Ok(root)
 }
 
 fn open_conn<R: Runtime>(handle: &AppHandle<R>) -> Result<Connection, BundleError> {
@@ -236,12 +255,14 @@ pub(crate) fn persist_validated(
     Ok(count)
 }
 
-#[tauri::command]
-pub fn ingest_bundle<R: Runtime>(
-    handle: AppHandle<R>,
-    path: String,
+/// Borrow-flavoured ingest. Exists so the watched-folder watcher can
+/// drive ingest in a loop without cloning the AppHandle each iteration.
+/// The `#[tauri::command]` wrapper below just forwards.
+pub fn ingest_bundle_inner<R: Runtime>(
+    handle: &AppHandle<R>,
+    path: &str,
 ) -> Result<IngestResult, BundleError> {
-    let validated = verify_outer_zip(Path::new(&path))?;
+    let validated = verify_outer_zip(Path::new(path))?;
 
     // Manifest preference: manifest.json (Phase 2+) → Molly.log fallback.
     let (manifest, manifest_source) = if let Some(json) = &validated.manifest_json {
@@ -254,14 +275,43 @@ pub fn ingest_bundle<R: Runtime>(
         (parse_molly_log(&validated.molly_log)?, "molly_log".to_string())
     };
 
-    let mut conn = open_conn(&handle)?;
+    let mut conn = open_conn(handle)?;
     let file_count = persist_validated(
         &mut conn,
         &validated,
         &manifest,
         &manifest_source,
-        &path,
+        path,
     )?;
+
+    // Phase 1b: extract the inner zip to work/<UID>/ and stamp each
+    // bundle_files row with its absolute working_path so Phase 3+ ops
+    // can locate files by SQL rather than re-extracting on demand.
+    let work_root_dir = work_root(handle)?;
+    let extracted = extract_inner_zip(
+        &validated.inner_zip_bytes,
+        &work_root_dir,
+        &manifest.uid,
+        &validated.file_sizes,
+    )?;
+    let extracted_count = extracted.iter().filter(|e| e.written).count() as i64;
+    for e in &extracted {
+        conn.execute(
+            "UPDATE bundle_files
+                SET working_path = ?1, size_bytes = ?2
+              WHERE bundle_uid = ?3 AND in_zip_path = ?4",
+            params![
+                e.working_path.to_string_lossy().to_string(),
+                e.size_bytes as i64,
+                manifest.uid,
+                e.in_zip_path,
+            ],
+        )?;
+    }
+
+    let workspace_path = bundle_workspace_dir(&work_root_dir, &manifest.uid)
+        .to_string_lossy()
+        .to_string();
 
     Ok(IngestResult {
         uid: manifest.uid,
@@ -271,7 +321,55 @@ pub fn ingest_bundle<R: Runtime>(
         verify_status: "verified".to_string(),
         file_count,
         manifest_source,
+        workspace_path,
+        extracted_count,
     })
+}
+
+#[tauri::command]
+pub fn ingest_bundle<R: Runtime>(
+    handle: AppHandle<R>,
+    path: String,
+) -> Result<IngestResult, BundleError> {
+    ingest_bundle_inner(&handle, &path)
+}
+
+#[tauri::command]
+pub fn reveal_working_dir<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+) -> Result<(), BundleError> {
+    let dir = bundle_workspace_dir(&work_root(&handle)?, &uid);
+    if !dir.exists() {
+        return Err(BundleError::NotFound(uid));
+    }
+    fsutil::reveal_in_file_browser(&dir)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn reveal_working_file<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+    in_zip_path: String,
+) -> Result<(), BundleError> {
+    let conn = open_conn(&handle)?;
+    // Outer Option = "no matching row"; inner Option = SQL NULL for an
+    // un-extracted file. Both collapse to NotFound for the caller.
+    let path: Option<String> = conn
+        .query_row(
+            "SELECT working_path FROM bundle_files
+              WHERE bundle_uid = ?1 AND in_zip_path = ?2",
+            params![uid, in_zip_path],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()?
+        .flatten();
+    let path = path
+        .filter(|p| !p.is_empty())
+        .ok_or_else(|| BundleError::NotFound(format!("{uid}::{in_zip_path}")))?;
+    fsutil::reveal_in_file_browser(Path::new(&path))?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -411,6 +509,7 @@ mod tests {
             molly_log: format!("Bundle UID: {uid}\nBundle type: fansite\n"),
             manifest_json: None,
             file_sizes,
+            inner_zip_bytes: Vec::new(),
         }
     }
 

@@ -4,6 +4,75 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-05-24
+
+### Added — Phase 1b: watched folder + inner-zip extract
+
+Closes out Phase 1's full scope (PLAN.md §11). Two additions:
+
+**Watched folder.** A background thread watches the configured bundle
+folder (default `~/Downloads/Molly bundles/`, configurable in Settings →
+Watched folder) and auto-ingests anything Molly drops. On launch:
+scan the dir and ingest any `.zip` not already in the DB. Ongoing: a
+`notify` recommended_watcher (FSEvents on macOS, ReadDirectoryChangesW
+on Windows, inotify on Linux) fires for new/changed `.zip` files, the
+watcher debounces 1s for file-flush, then re-scans force-ingesting.
+Re-ingest is safe — the UPSERT path from v0.2.0 handles it. Frontend
+listens to `bundle-ingested` Tauri events and refreshes the Inbox the
+moment a bundle lands.
+
+**Inner-zip extraction.** Every successful ingest now also extracts the
+inner zip to
+`~/Library/Application Support/com.phantomlives.sidemolly/work/<UID>/`
+with the layout Molly emits (`Audio/`, `Video/00001_…`,
+`Photos/00001_…`, `FanSite/DD_NN_…`, `info.md`, `Molly.log`). Each
+`bundle_files` row's `working_path` is stamped so Phase 3+ image/video
+ops can locate files by SQL without re-extracting on demand.
+Extraction is idempotent — re-ingest only writes files whose size
+differs from disk; identical re-runs are no-ops. Atomic write via
+`.sm-tmp` + rename so a crash mid-extract leaves any previous file
+intact.
+
+**Settings → Watched folder** pane (new): resolved path readout
+(monospaced), "Choose folder…" picker, "Use default" reset,
+"Reveal in Finder", "Scan now" button (manual force-rescan that
+returns considered / ingested / skipped / failed counts + per-file
+error details).
+
+**Bundle workspace Overview Files pane** gains a "📁 Reveal folder"
+button for the whole bundle workspace + a small "📁" per file row to
+reveal that specific extracted file in Finder.
+
+### Changed
+
+- `ingest_bundle` now also returns `workspacePath` + `extractedCount`
+  in `IngestResult`, alongside the existing fields.
+- `ValidatedBundle::inner_zip_bytes` newly populated by
+  `bundle_io::verify_outer_zip` so `extract::extract_inner_zip` doesn't
+  re-open the outer file from disk.
+
+### Tests
+
+**55 cargo tests** (was 44 in v0.2.0) + 1 vitest:
+
+- `extract::tests` (6) — fresh extract writes everything, re-extract
+  is idempotent no-op, partial-state resume only writes missing files,
+  size mismatch triggers rewrite, nested dir layout preserved,
+  workspace dir resolution.
+- `watch::tests` (3) — is_bundle_zip filter (dir / non-zip excluded),
+  case-insensitive `.ZIP` extension, default-watch-dir contract.
+- `camel_case_contract` (+2 new) — `WatchSettings`, `ScanResult`.
+- `bundles::tests` updated for the `inner_zip_bytes` field on
+  `ValidatedBundle`.
+
+### Internal
+
+- New `notify = "6"` + `tokio` deps in Cargo.toml. tokio default
+  features stay off; only `time / rt / sync / macros` enabled.
+- New `bundles::ingest_bundle_inner(&handle, &path)` — borrow-flavoured
+  ingest the watcher thread uses so it doesn't clone `AppHandle` per
+  scan. The `#[tauri::command] ingest_bundle` just forwards.
+
 ## [0.2.0] — 2026-05-24
 
 ### Added — Phase 1: bundle ingest + Inbox + Bundle workspace Overview

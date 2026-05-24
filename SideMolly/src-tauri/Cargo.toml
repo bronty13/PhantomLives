@@ -1,6 +1,6 @@
 [package]
 name = "sidemolly"
-version = "0.2.0"
+version = "0.3.0"
 description = "SideMolly — Molly bundle workbench"
 authors = ["Robert Olen <robert.olen@gmail.com>"]
 edition = "2021"
@@ -38,6 +38,15 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 # SHA-256 hashing for bundle verification (re-hash inner zip bytes + every
 # inner-zip entry, assert == values in hashes.json).
 sha2 = "0.10"
+# File-system watcher for the watched-folder ingest path. Wraps FSEvents
+# on macOS, ReadDirectoryChangesW on Windows, inotify on Linux behind a
+# single Result-returning API. Used only from src-tauri/src/watch.rs.
+notify = "6"
+# Async tokio is already pulled in transitively by tauri; declared here
+# so watch.rs can use tokio::time::sleep for FS-event debounce and
+# spawn the launch-time + ongoing watcher task. Default features off —
+# tauri's runtime configuration sets what we need.
+tokio = { version = "1", default-features = false, features = ["time", "rt", "sync", "macros"] }
 
 [dev-dependencies]
 tempfile = "3"
