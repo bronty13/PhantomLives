@@ -232,6 +232,65 @@ pub fn render_watermark_png(
     Ok(out)
 }
 
+/// Render the Phase 4.5 auto-assembly title card as a full-frame
+/// 1920×1080 (or user-configured) PNG. Layout: solid black background,
+/// title text centred above frame center at ~8% of frame height, persona
+/// watermark below at ~5% of frame height with 85% opacity. Both texts
+/// are PaperDaisy.
+///
+/// PNG instead of ffmpeg's `drawtext` filter because Homebrew's stock
+/// ffmpeg lacks libfreetype (same issue we hit on video watermarks —
+/// see `render_watermark_png` above). The auto-assemble title pipeline
+/// then loops this PNG for the title duration with ffmpeg's `loop`
+/// demuxer and adds the fade-in/out via ffmpeg's `fade` filter (which
+/// IS in any ffmpeg build).
+pub fn render_title_card_png(
+    title: &str,
+    persona_watermark: &str,
+    width: u32,
+    height: u32,
+    font_bytes: &[u8],
+) -> Result<Vec<u8>, ImageOpError> {
+    let font = FontRef::try_from_slice(font_bytes)
+        .map_err(|e| ImageOpError::Font(e.to_string()))?;
+
+    // Solid-black background — matches the spec's `color=black` source.
+    let mut canvas: RgbaImage =
+        ImageBuffer::from_pixel(width, height, Rgba([0, 0, 0, 255]));
+
+    let h_f = height as f32;
+    let title_size = (h_f * 0.08).max(24.0);
+    let persona_size = (h_f * 0.05).max(18.0);
+    let gap = (h_f * 0.02) as i32;
+    let title_scale = PxScale::from(title_size);
+    let persona_scale = PxScale::from(persona_size);
+
+    let (tw_title, th_title) = text_size(title_scale, &font, title);
+    let (tw_persona, _th_persona) = text_size(persona_scale, &font, persona_watermark);
+
+    let w_i = width as i32;
+    let h_i = height as i32;
+    let title_x = (w_i - tw_title as i32) / 2;
+    let persona_x = (w_i - tw_persona as i32) / 2;
+    // Title sits just above center, persona just below — gap between.
+    let title_y = (h_i / 2) - th_title as i32 - gap / 2;
+    let persona_y = (h_i / 2) + gap / 2;
+
+    draw_text_mut(
+        &mut canvas, Rgba([255, 255, 255, 255]),
+        title_x, title_y, title_scale, &font, title,
+    );
+    let persona_alpha = (0.85 * 255.0) as u8;
+    draw_text_mut(
+        &mut canvas, Rgba([255, 255, 255, persona_alpha]),
+        persona_x, persona_y, persona_scale, &font, persona_watermark,
+    );
+
+    let mut out = Vec::with_capacity((width * height * 2) as usize);
+    canvas.write_to(&mut Cursor::new(&mut out), ImageFormat::Png)?;
+    Ok(out)
+}
+
 /// Compute the ffmpeg `overlay` filter's (x, y) expressions for the
 /// nine-grid position. `margin_px` is the absolute pixel margin from
 /// the edge (overlay x/y are in pixels; variables `W`/`H` are the main

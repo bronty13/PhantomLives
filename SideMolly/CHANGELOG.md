@@ -4,6 +4,96 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] — 2026-05-24
+
+### Edit tab redesign + title-card fix
+
+Robert ran a bundle end-to-end through the 0.8.0 Edit tab and the
+flow was awful — Process buttons sat above the rotation grid so the
+natural reading order made you process before rotating; every
+rotation click re-fetched the whole bundle and snapped the page;
+once anything was running the only way to see progress was the
+separate Jobs tab; switching back lost context entirely. This
+release is a focused UX rewrite, not a feature add.
+
+**Sticky bundle chrome** at the top of every workspace tab. Always
+shows persona chip, title, UID, verify status, image/video counts,
+workspace path (one click reveals it in Finder), and a
+**status pill** that's always visible:
+
+- `✓ idle` — no jobs for this bundle yet
+- `⚙️ N active · M/T done` — something running, with progress
+- `✓ N done` — all complete
+- `⚠ N failed` — surfaced loud
+
+Driven by a new `useBundleJobs(uid)` hook that subscribes to the
+`job-updated` event bus + 3s safety poll, filters server-wide jobs
+to this bundle's UID, and exposes pending/running/done/failed
+counts to anyone who needs them.
+
+**Edit tab is now a 4-step linear flow** with numbered cards (large
+indigo circle + clear hierarchy):
+
+1. **Review & rotate** — was buried at the bottom in 0.8.0. Now
+   first, because it has to happen before processing. Mixed grid
+   (images + videos in bundle order) with click-to-cycle rotation
+   tiles. Rotation click is **optimistic local state** now —
+   the DB write fires in the background but the UI updates
+   instantly with no re-fetch (fixes the scroll-snap that plagued
+   30+ clicks in a row). Footer shows `N rotated · M untouched` +
+   "Reset all to 0°" affordance.
+
+2. **Process media** — images and videos in one card with their own
+   toggle rows + Process buttons. Inline progress banner for sync
+   image work (existing per-image counter + bar) **plus** a new
+   `LiveQueue` widget below that lists every `process_video` job
+   for this bundle with status pills, the source path, and a
+   running aggregate (`N/M done · ⚙️ 1 running · ⏳ K pending`).
+   No more tab-switching.
+
+3. **Auto-assemble master cut** — same `LiveQueue` widget filtered
+   to the title + normalize + assemble pipeline. The user can see
+   every sub-job's status without leaving Edit. Master cut card
+   (✓ ready / pending placeholder) is inside this step now,
+   right where it belongs.
+
+4. **Processed outputs** — moved here from its previous mid-flow
+   position. Same per-row Reveal/copy/src controls.
+
+**Live queue widgets** (`LiveQueue` component) render inline in
+both processing steps and update on every `job-updated` event.
+Footer shows aggregate counts; per-row pills show status + the
+file the job is operating on. Failed jobs surface their last
+error as a `⚠` tooltip on the row.
+
+**Title card render-via-PNG fix** — 0.8.0 used ffmpeg's `drawtext`
+filter on the title card, but Homebrew's stock ffmpeg ships without
+libfreetype (same workaround we shipped for video watermarks in
+Phase 4 — I forgot to apply it here). Every `render_title` job
+was failing with `No such filter: 'drawtext'`, blocking every
+`assemble_master` job downstream. New `images::render_title_card_png`
+rasterises the full 1920×1080 title card via imageproc; ffmpeg
+loops the still and applies fade-in/out via the `fade` filter
+(works on any ffmpeg build).
+
+### What didn't change
+
+- Sidebar (Inbox / Jobs / Settings / Manual).
+- Inbox layout.
+- Overview tab.
+- Jobs tab still exists as a global queue view — useful when you
+  want to see all bundles' jobs at once, just not the *primary*
+  way to track a bundle you're actively working on.
+- Settings tabs.
+
+### Files
+
+New: `src/lib/useBundleJobs.ts` (data hook), `src/views/Bundle/EditTab.tsx`
+rewritten in place (was 631 lines, now ~720 with the 4-step structure).
+`BundleWorkspace.tsx` restructured for sticky chrome.
+
+100 tests still passing.
+
 ## [0.8.0] — 2026-05-24
 
 ### Added — Phase 4.5a: Auto-Assembly pipeline

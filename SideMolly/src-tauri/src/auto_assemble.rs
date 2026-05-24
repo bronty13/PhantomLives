@@ -34,7 +34,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Runtime};
 
 use crate::bundles::{
-    paper_daisy_bytes, paper_daisy_path, watermark_position_to_str,
+    paper_daisy_bytes, watermark_position_to_str,
     work_root, BundleError, MediaKind,
 };
 use crate::extract::bundle_workspace_dir;
@@ -375,62 +375,71 @@ pub fn dispatch_render_title<R: Runtime>(
     handle: &AppHandle<R>,
     params: RenderTitleParams,
 ) -> Result<(), BundleError> {
-    let font = paper_daisy_path(handle)?;
     let dst = PathBuf::from(&params.output_path);
     if let Some(parent) = dst.parent() { fs::create_dir_all(parent)?; }
     let tmp = dst.with_extension("sm-tmp.mp4");
 
-    // Build the title card via lavfi `color` source. Title above center,
-    // persona watermark below. 1s fade-in + 1s fade-out bookends.
-    let fade_in_end = (params.fps as f64 * 1.0) as i64; // frame 30 @ 30fps
+    // ── Render the title card as a PNG via imageproc (NOT ffmpeg
+    // drawtext — Homebrew's stock ffmpeg ships without libfreetype, so
+    // drawtext is unavailable; same workaround we use for video
+    // watermarks). The PNG is the full target resolution with title +
+    // persona text already baked in.
+    let font_bytes = paper_daisy_bytes(handle)?;
+    let png_bytes = crate::images::render_title_card_png(
+        &params.title,
+        &params.persona_watermark,
+        params.width as u32,
+        params.height as u32,
+        &font_bytes,
+    )?;
+    let png_path = dst.with_file_name(format!(
+        "{}.title.png",
+        dst.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
+    ));
+    fs::write(&png_path, &png_bytes)?;
+
+    // Fade-in / fade-out bookends, applied as a filter on the looped
+    // PNG. fade=in is frames 0..fps, fade=out is the last fps frames.
+    let fade_in_end = (params.fps as f64 * 1.0) as i64;
     let fade_out_start = ((params.duration_secs - 1.0) * params.fps as f64) as i64;
-
-    // Escape commas/colons in user-provided text so ffmpeg's filter
-    // parser doesn't split them.
-    let title_esc = escape_drawtext(&params.title);
-    let persona_esc = escape_drawtext(&params.persona_watermark);
-    let font_path = font.to_string_lossy().to_string();
-    let font_esc = font_path.replace('\\', "\\\\").replace(':', "\\:").replace('\'', "\\'");
-
     let vf = format!(
-        concat!(
-            "drawtext=fontfile='{font}':text='{title}':",
-            "fontsize=h*0.08:fontcolor=white:x=(w-tw)/2:y=(h/2)-th-h*0.01,",
-            "drawtext=fontfile='{font}':text='{persona}':",
-            "fontsize=h*0.05:fontcolor=white@0.85:x=(w-tw)/2:y=(h/2)+h*0.01,",
-            "fade=in:0:{fi},fade=out:{fo}:{fi}",
-        ),
-        font = font_esc, title = title_esc, persona = persona_esc,
+        "fade=in:0:{fi},fade=out:{fo}:{fi}",
         fi = fade_in_end, fo = fade_out_start,
     );
 
-    let lavfi = format!(
-        "color=black:size={w}x{h}:rate={r}:duration={d}",
-        w = params.width, h = params.height, r = params.fps, d = params.duration_secs,
-    );
-
+    // Loop the still PNG for `duration_secs`, plus a silent stereo
+    // audio track so the title card's stream layout matches the
+    // normalize_video output (required for the xfade chain).
     let argv: Vec<String> = vec![
         "-y".into(),
         "-loglevel".into(), "error".into(),
+        // Input 0: still PNG, looped at target fps for duration secs
+        "-loop".into(), "1".into(),
+        "-framerate".into(), params.fps.to_string(),
+        "-t".into(), params.duration_secs.to_string(),
+        "-i".into(), png_path.to_string_lossy().to_string(),
+        // Input 1: silent stereo AAC
         "-f".into(), "lavfi".into(),
-        "-i".into(), lavfi,
+        "-t".into(), params.duration_secs.to_string(),
+        "-i".into(), "anullsrc=channel_layout=stereo:sample_rate=48000".into(),
+        // ── Output options ──
         "-vf".into(), vf,
         "-c:v".into(), "libx264".into(),
         "-pix_fmt".into(), "yuv420p".into(),
         "-preset".into(), "medium".into(),
         "-crf".into(), "23".into(),
-        // Silent stereo audio track so the title card's stream layout
-        // matches the normalize_video output for the xfade graph.
-        "-f".into(), "lavfi".into(),
-        "-i".into(), format!("anullsrc=channel_layout=stereo:sample_rate=48000:duration={}", params.duration_secs),
         "-c:a".into(), "aac".into(),
         "-b:a".into(), "192k".into(),
+        "-ar".into(), "48000".into(),
+        "-ac".into(), "2".into(),
         "-shortest".into(),
         "-movflags".into(), "+faststart".into(),
         tmp.to_string_lossy().to_string(),
     ];
 
     run_ffmpeg(&argv, &tmp, &dst)?;
+    // PNG is kept for debugging — small (~50KB) and the user can
+    // inspect what the title card actually looked like before encode.
     Ok(())
 }
 

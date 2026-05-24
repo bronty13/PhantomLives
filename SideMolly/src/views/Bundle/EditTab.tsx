@@ -1,20 +1,38 @@
+// Edit tab — the primary working surface for a bundle. v0.9.0 redesign:
+// a linear 4-step flow (Rotate → Process → Auto-assemble → Outputs)
+// with inline live-queue widgets in each step so the user never has to
+// leave this tab to see what's happening.
+//
+// Data flow:
+//
+//   BundleWorkspace ──┬── useBundleJobs(uid) ──┐
+//                     │                         │
+//                     ├── jobs (shared) ────────┼── EditTab
+//                     │                         │       ├── StepCard 1 (rotate)
+//                     │                         │       ├── StepCard 2 (process media)
+//                     │                         │       │     └── LiveQueue filtered to process_video
+//                     │                         │       ├── StepCard 3 (auto-assemble)
+//                     │                         │       │     └── LiveQueue filtered to title+normalize+assemble
+//                     │                         │       └── StepCard 4 (outputs)
+//                     │
+//                     └── header StatusPill (jobs-busy chip)
+//
+// Rotation clicks update local component state immediately (no full
+// bundle refetch), so the user can rotate 30 files without losing
+// scroll position. The DB write happens in the background; on next
+// bundle mount the persisted state is read.
+
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import {
   enqueueAutoAssemble, enqueueBundleVideoOps, fmtSize, getBundleThumbnails,
   getMasterCutStatus, getProcessedPreviews, listProcessedFiles, openMasterCut,
   processBundleImages, revealMasterCut, revealProcessedFile,
-  revealWorkingDir, revealWorkingFile, setBundleFileRotation,
-  type BundleFileRow, type BundleSummary, type ImageOpsInput,
+  revealWorkingFile, setBundleFileRotation,
+  type BundleFileRow, type BundleSummary, type ImageOpsInput, type JobRow,
   type MasterCutStatus, type ProcessedFileRow, type VideoOpsInput,
 } from '../../data/bundles';
-
-interface ImageProgress {
-  bundleUid: string;
-  done: number;
-  total: number;
-  currentInZipPath: string;
-}
+import type { BundleJobsSnapshot } from '../../lib/useBundleJobs';
 
 type Rotation = 0 | 90 | 180 | 270;
 const ROTATIONS: Rotation[] = [0, 90, 180, 270];
@@ -25,39 +43,72 @@ const ROTATION_LABEL: Record<Rotation, string> = {
   270: '270° ↺',
 };
 
+interface ImageProgress {
+  bundleUid: string;
+  done: number;
+  total: number;
+  currentInZipPath: string;
+}
+
 interface Props {
   summary: BundleSummary;
   files: BundleFileRow[];
-  /** Bumped whenever a job-updated event lands so the processed list refreshes. */
   refreshSignal: number;
-  /** Called after a per-file rotation save so the parent re-fetches the bundle detail. */
+  jobs: BundleJobsSnapshot;
+  /** Called after non-rotation persistence so the parent re-fetches. */
   onFileUpdated?: () => void;
 }
 
-export function EditTab({ summary, files, refreshSignal, onFileUpdated }: Props) {
-  const images = useMemo(() => files.filter((f) => f.kind === 'image'), [files]);
-  const videos = useMemo(() => files.filter((f) => f.kind === 'video'), [files]);
+export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated: _unused }: Props) {
+  // ── Local file mirror so rotation clicks update instantly without
+  //   round-tripping through a full getBundle() refetch. Sync from prop
+  //   when bundle UID changes (navigated to a different bundle) or when
+  //   a non-rotation field is modified (refreshSignal bump).
+  const [localFiles, setLocalFiles] = useState<BundleFileRow[]>(files);
+  useEffect(() => { setLocalFiles(files); }, [files]);
+
+  const images = useMemo(() => localFiles.filter((f) => f.kind === 'image'), [localFiles]);
+  const videos = useMemo(() => localFiles.filter((f) => f.kind === 'video'), [localFiles]);
+  const allMedia = useMemo(() => localFiles.filter((f) => f.kind === 'image' || f.kind === 'video'), [localFiles]);
+
   const [imageOps, setImageOps] = useState<ImageOpsInput>({ watermark: true, stripExif: true, rename: false });
   const [videoOps, setVideoOps] = useState<VideoOpsInput>({ watermark: true, stripMetadata: true, rename: false });
-  const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [busyLabel, setBusyLabel] = useState<string | null>(null);
   const [imageProgress, setImageProgress] = useState<ImageProgress | null>(null);
-  // Heartbeat — bumps every 500ms while busy so the banner shows
-  // movement even before/between Tauri events arrive. Tells the user
-  // the app is still alive even if real progress hasn't pinged yet.
-  const [heartbeat, setHeartbeat] = useState(0);
-  useEffect(() => {
-    if (!busy) return;
-    const t = setInterval(() => setHeartbeat((n) => (n + 1) % 4), 500);
-    return () => clearInterval(t);
-  }, [busy]);
   const [lastResult, setLastResult] = useState<{ ok: number; skipped: number; errors: string[]; what: string } | null>(null);
   const [processed, setProcessed] = useState<ProcessedFileRow[]>([]);
   const [previews, setPreviews] = useState<Record<string, string>>({});
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [master, setMaster] = useState<MasterCutStatus | null>(null);
 
-  const refreshProcessed = async () => {
+  // ── Image-progress live counter while running.
+  useEffect(() => {
+    let alive = true;
+    let unlisten: UnlistenFn | undefined;
+    (async () => {
+      unlisten = await listen<ImageProgress>('image-progress', (event) => {
+        if (!alive) return;
+        if (event.payload.bundleUid !== summary.uid) return;
+        setImageProgress(event.payload);
+      });
+    })();
+    return () => { alive = false; unlisten?.(); };
+  }, [summary.uid]);
+
+  // ── Thumbnails (one fetch per bundle, drives the rotation grid).
+  useEffect(() => {
+    let alive = true;
+    getBundleThumbnails(summary.uid)
+      .then((t) => { if (alive) setThumbs(t); })
+      .catch((e) => console.warn('thumbs load failed', e));
+    return () => { alive = false; };
+  }, [summary.uid]);
+
+  // ── Processed outputs + previews + master cut. Refreshed on
+  //   refreshSignal bumps (job-updated events from App.tsx) so Steps
+  //   2-4 stay in sync as jobs complete.
+  const refreshProcessed = useCallback(async () => {
     try {
       const [rows, prev, mc] = await Promise.all([
         listProcessedFiles(summary.uid),
@@ -68,52 +119,42 @@ export function EditTab({ summary, files, refreshSignal, onFileUpdated }: Props)
       setPreviews(prev);
       setMaster(mc);
     } catch (e) {
-      console.warn('list processed failed', e);
+      console.warn('refreshProcessed failed', e);
     }
-  };
-
-  useEffect(() => { refreshProcessed(); }, [summary.uid, refreshSignal]);
-
-  // Subscribe to per-image progress while processing — fires once per
-  // file from process_bundle_images so the busy banner stays live
-  // instead of looking frozen on bundles with 30+ images.
-  useEffect(() => {
-    let alive = true;
-    let unlisten: UnlistenFn | undefined;
-    (async () => {
-      unlisten = await listen<ImageProgress>('image-progress', (event) => {
-        if (!alive) return;
-        // eslint-disable-next-line no-console
-        console.log('[image-progress]', event.payload);
-        if (event.payload.bundleUid !== summary.uid) return;
-        setImageProgress(event.payload);
-      });
-      // eslint-disable-next-line no-console
-      console.log('[image-progress] listener attached for uid', summary.uid);
-    })();
-    return () => { alive = false; unlisten?.(); };
   }, [summary.uid]);
+  useEffect(() => { refreshProcessed(); }, [refreshProcessed, refreshSignal]);
 
-  // Load per-file thumbnail data-URLs once per bundle. Powers the
-  // rotation preview tiles below.
-  useEffect(() => {
-    let alive = true;
-    getBundleThumbnails(summary.uid)
-      .then((t) => { if (alive) setThumbs(t); })
-      .catch((e) => console.warn('thumbs load failed', e));
-    return () => { alive = false; };
-  }, [summary.uid]);
-
+  // ── Optimistic rotation: update local state immediately, then write
+  //   to the DB. No full bundle refetch — that was causing the scroll
+  //   snap on every click.
   const cycleRotation = useCallback(async (inZipPath: string, current: Rotation) => {
     const next: Rotation = ROTATIONS[(ROTATIONS.indexOf(current) + 1) % 4];
+    setLocalFiles((arr) =>
+      arr.map((f) => f.inZipPath === inZipPath ? { ...f, rotationDegrees: next } : f),
+    );
     try {
       await setBundleFileRotation(summary.uid, inZipPath, next);
-      onFileUpdated?.();
     } catch (e) {
+      // Rollback on failure so the UI doesn't lie about persistence.
+      setLocalFiles((arr) =>
+        arr.map((f) => f.inZipPath === inZipPath ? { ...f, rotationDegrees: current } : f),
+      );
       alert(String(e));
     }
-  }, [summary.uid, onFileUpdated]);
+  }, [summary.uid]);
 
+  const rotationCount = localFiles.filter((f) => (f.rotationDegrees ?? 0) !== 0).length;
+
+  const resetAllRotations = async () => {
+    const targets = localFiles.filter((f) => (f.rotationDegrees ?? 0) !== 0);
+    if (targets.length === 0) return;
+    setLocalFiles((arr) => arr.map((f) => ({ ...f, rotationDegrees: 0 as Rotation })));
+    try {
+      await Promise.all(targets.map((f) => setBundleFileRotation(summary.uid, f.inZipPath, 0)));
+    } catch (e) { alert(String(e)); }
+  };
+
+  // ── Run handlers (process / auto-assemble).
   const runProcessImages = async () => {
     setBusy(true);
     setBusyLabel(`Processing ${images.length} image${images.length === 1 ? '' : 's'}…`);
@@ -135,6 +176,24 @@ export function EditTab({ summary, files, refreshSignal, onFileUpdated }: Props)
     }
   };
 
+  const runEnqueueVideos = async () => {
+    setBusy(true);
+    setBusyLabel(`Queueing ${videos.length} video job${videos.length === 1 ? '' : 's'}…`);
+    setLastResult(null);
+    try {
+      const r = await enqueueBundleVideoOps(summary.uid, videoOps);
+      setLastResult({
+        ok: r.enqueuedCount, skipped: r.skipped, errors: r.errors,
+        what: `${r.enqueuedCount} video job${r.enqueuedCount === 1 ? '' : 's'} queued · running below ↓`,
+      });
+    } catch (e) {
+      setLastResult({ ok: 0, skipped: 0, errors: [String(e)], what: 'enqueue failed' });
+    } finally {
+      setBusy(false);
+      setBusyLabel(null);
+    }
+  };
+
   const runAutoAssemble = async () => {
     setBusy(true);
     setBusyLabel(`Queueing auto-assembly — title + ${videos.length} clip${videos.length === 1 ? '' : 's'} + master…`);
@@ -143,7 +202,7 @@ export function EditTab({ summary, files, refreshSignal, onFileUpdated }: Props)
       const r = await enqueueAutoAssemble(summary.uid);
       setLastResult({
         ok: r.jobIds.length, skipped: 0, errors: r.errors,
-        what: `🎞 Auto-assembly queued — ${r.videoCount} clip${r.videoCount === 1 ? '' : 's'} + title + master · see 🛠 Jobs`,
+        what: `🎞 Auto-assembly queued — ${r.videoCount} clip${r.videoCount === 1 ? '' : 's'} + title + master · running below ↓`,
       });
     } catch (e) {
       setLastResult({ ok: 0, skipped: 0, errors: [String(e)], what: 'auto-assemble failed' });
@@ -153,23 +212,16 @@ export function EditTab({ summary, files, refreshSignal, onFileUpdated }: Props)
     }
   };
 
-  const runEnqueueVideos = async () => {
-    setBusy(true);
-    setLastResult(null);
-    try {
-      const r = await enqueueBundleVideoOps(summary.uid, videoOps);
-      setLastResult({
-        ok: r.enqueuedCount, skipped: r.skipped, errors: r.errors,
-        what: `${r.enqueuedCount} video job${r.enqueuedCount === 1 ? '' : 's'} enqueued — see 🛠 Jobs`,
-      });
-    } catch (e) {
-      setLastResult({ ok: 0, skipped: 0, errors: [String(e)], what: 'enqueue failed' });
-    } finally {
-      setBusy(false);
-    }
-  };
+  const videoProcessingJobs = useMemo(
+    () => jobs.all.filter((j) => j.kind === 'process_video'),
+    [jobs.all],
+  );
+  const autoAssembleJobs = useMemo(
+    () => jobs.all.filter((j) => ['render_title', 'normalize_video', 'assemble_master'].includes(j.kind)),
+    [jobs.all],
+  );
 
-  if (images.length === 0 && videos.length === 0) {
+  if (allMedia.length === 0) {
     return (
       <div className="sm-card text-sm" style={{ color: 'rgb(var(--surface-muted))' }}>
         No images or videos in this bundle to process.
@@ -178,31 +230,47 @@ export function EditTab({ summary, files, refreshSignal, onFileUpdated }: Props)
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      {images.length > 0 && (
-        <section className="sm-card">
-          <div className="font-semibold mb-2">Image ops ({images.length})</div>
-          <div className="text-xs mb-3" style={{ color: 'rgb(var(--surface-muted))' }}>
-            Synchronous — runs in the foreground. Watermark uses the persona profile
-            from Settings → Watermark (bundle persona: <code>{summary.personaCode ?? '(none)'}</code>).
-            Sources are never touched.
-          </div>
-          <div className="flex flex-wrap items-center gap-4">
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={imageOps.watermark}
-                     onChange={(e) => setImageOps({ ...imageOps, watermark: e.target.checked })} />
-              <span>🖋 Watermark</span>
-            </label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={imageOps.stripExif}
-                     onChange={(e) => setImageOps({ ...imageOps, stripExif: e.target.checked })} />
-              <span>🪪 Strip EXIF</span>
-            </label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={imageOps.rename}
-                     onChange={(e) => setImageOps({ ...imageOps, rename: e.target.checked })} />
-              <span>🏷 Rename (output only)</span>
-            </label>
+    <div className="flex flex-col gap-6">
+      {/* ────────────────────────────────────────────────────────────
+          STEP 1 — Review & rotate
+          ──────────────────────────────────────────────────────────── */}
+      <StepCard num={1} title="Review &amp; rotate" subtitle={
+        <>Click any tile to cycle <code>0° → 90° → 180° → 270°</code>. The preview rotates instantly so you can verify before processing. Applies during the next image/video process run.</>
+      }>
+        <RotationGrid files={allMedia} thumbs={thumbs} onClick={cycleRotation} />
+        <div className="mt-3 flex items-center justify-between text-xs" style={{ color: 'rgb(var(--surface-muted))' }}>
+          <span>
+            {rotationCount > 0 ? (
+              <><strong style={{ color: 'rgb(var(--surface-accent))' }}>{rotationCount}</strong> rotated · {allMedia.length - rotationCount} untouched</>
+            ) : (
+              <>{allMedia.length} files · none rotated yet</>
+            )}
+          </span>
+          {rotationCount > 0 && (
+            <button type="button" className="sm-button secondary text-xs" onClick={resetAllRotations}>
+              Reset all to 0°
+            </button>
+          )}
+        </div>
+      </StepCard>
+
+      {/* ────────────────────────────────────────────────────────────
+          STEP 2 — Process media
+          ──────────────────────────────────────────────────────────── */}
+      <StepCard num={2} title="Process media" subtitle={
+        <>Images run synchronously in the foreground; videos queue into 🛠 Jobs (one at a time). Watermark uses your persona profile from <em>Settings → Watermark</em> (bundle persona <code>{summary.personaCode ?? '(none)'}</code>). Source files are never touched — outputs land in <code>…/work/{summary.uid}/processed/</code>.</>
+      }>
+        {images.length > 0 && (
+          <div className="flex flex-wrap items-center gap-4 py-2">
+            <span className="text-sm" style={{ minWidth: 92 }}>
+              🖼 <strong>{images.length}</strong> images
+            </span>
+            <OpsToggle label="🖋 Watermark" checked={imageOps.watermark}
+                       onChange={(c) => setImageOps({ ...imageOps, watermark: c })} />
+            <OpsToggle label="🪪 Strip EXIF" checked={imageOps.stripExif}
+                       onChange={(c) => setImageOps({ ...imageOps, stripExif: c })} />
+            <OpsToggle label="🏷 Rename" checked={imageOps.rename}
+                       onChange={(c) => setImageOps({ ...imageOps, rename: c })} />
             <div className="flex-1" />
             <button
               type="button"
@@ -213,33 +281,19 @@ export function EditTab({ summary, files, refreshSignal, onFileUpdated }: Props)
               {busy ? '⏳ Working…' : `Process ${images.length} image${images.length === 1 ? '' : 's'}`}
             </button>
           </div>
-        </section>
-      )}
+        )}
 
-      {videos.length > 0 && (
-        <section className="sm-card">
-          <div className="font-semibold mb-2">Video ops ({videos.length})</div>
-          <div className="text-xs mb-3" style={{ color: 'rgb(var(--surface-muted))' }}>
-            Asynchronous — videos queue into 🛠 Jobs and process one at a time.
-            Always re-encodes to H.264 1080p · CRF 23 · AAC 128k. Watermark
-            uses the same persona profile as images.
-          </div>
-          <div className="flex flex-wrap items-center gap-4">
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={videoOps.watermark}
-                     onChange={(e) => setVideoOps({ ...videoOps, watermark: e.target.checked })} />
-              <span>🖋 Watermark</span>
-            </label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={videoOps.stripMetadata}
-                     onChange={(e) => setVideoOps({ ...videoOps, stripMetadata: e.target.checked })} />
-              <span>🪪 Strip metadata</span>
-            </label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={videoOps.rename}
-                     onChange={(e) => setVideoOps({ ...videoOps, rename: e.target.checked })} />
-              <span>🏷 Rename (output only)</span>
-            </label>
+        {videos.length > 0 && (
+          <div className="flex flex-wrap items-center gap-4 py-2 mt-2" style={{ borderTop: images.length > 0 ? '1px dashed rgb(var(--surface-border))' : 'none', paddingTop: images.length > 0 ? 12 : 0 }}>
+            <span className="text-sm" style={{ minWidth: 92 }}>
+              🎬 <strong>{videos.length}</strong> videos
+            </span>
+            <OpsToggle label="🖋 Watermark" checked={videoOps.watermark}
+                       onChange={(c) => setVideoOps({ ...videoOps, watermark: c })} />
+            <OpsToggle label="🪪 Strip metadata" checked={videoOps.stripMetadata}
+                       onChange={(c) => setVideoOps({ ...videoOps, stripMetadata: c })} />
+            <OpsToggle label="🏷 Rename" checked={videoOps.rename}
+                       onChange={(c) => setVideoOps({ ...videoOps, rename: c })} />
             <div className="flex-1" />
             <button
               type="button"
@@ -250,214 +304,68 @@ export function EditTab({ summary, files, refreshSignal, onFileUpdated }: Props)
               {busy ? '⏳ Enqueuing…' : `Process ${videos.length} video${videos.length === 1 ? '' : 's'}`}
             </button>
           </div>
-        </section>
-      )}
+        )}
 
+        {/* Inline progress: image counter (sync) + video queue (async). */}
+        {busy && imageProgress && imageProgress.total > 0 && (
+          <ProgressBanner
+            label={busyLabel ?? 'Working…'}
+            done={imageProgress.done}
+            total={imageProgress.total}
+            currentLabel={imageProgress.currentInZipPath}
+          />
+        )}
+        <LiveQueue
+          title="Video processing queue"
+          jobs={videoProcessingJobs}
+          emptyHint="Process videos above to queue them here."
+        />
+
+        {lastResult && (
+          <ResultPill r={lastResult} />
+        )}
+      </StepCard>
+
+      {/* ────────────────────────────────────────────────────────────
+          STEP 3 — Auto-assemble master cut
+          ──────────────────────────────────────────────────────────── */}
       {videos.length > 0 && (
-        <section className="sm-card">
-          <div className="font-semibold mb-2">🎞 Auto-assemble ({videos.length} clip{videos.length === 1 ? '' : 's'})</div>
-          <div className="text-xs mb-3" style={{ color: 'rgb(var(--surface-muted))' }}>
-            One-click master cut. Compiles every bundle video into a single
-            landscape 16:9 MP4: <strong>10s title card</strong> →
-            <strong> 1.0s cross-dissolves</strong> between every clip
-            (normalized to 1920×1080, watermarked, audio-enhanced) →
-            <strong> 1.0s fade-to-black</strong> at the end. Decomposes
-            into per-step jobs in 🛠 Jobs; output lands at
-            <code className="ml-1 text-[11px]">work/&lt;uid&gt;/auto/master.mp4</code>.
-            Tune defaults in Settings → Auto-Assembly.
-          </div>
-          <div className="flex justify-end">
+        <StepCard num={3} title="Auto-assemble master cut" subtitle={
+          <>One-click <strong>master.mp4</strong>: 10s title card → 1.0s cross-dissolves between every clip (normalized to 1920×1080, watermarked, audio-enhanced) → 1.0s fade-to-black. Output lands at <code>…/work/{summary.uid}/auto/master.mp4</code>. Tune defaults in <em>Settings → Auto-Assembly</em>.</>
+        }>
+          <div className="flex justify-end mb-3">
             <button
               type="button"
               className="sm-button"
-              disabled={busy}
+              disabled={busy || jobs.busy}
               onClick={runAutoAssemble}
             >
-              {busy ? '⏳ Queueing…' : '🎞 Auto-assemble master'}
+              {jobs.busy ? '⚙️ Working — see queue below' : `🎞 Auto-assemble (${videos.length} clip${videos.length === 1 ? '' : 's'})`}
             </button>
           </div>
-        </section>
-      )}
 
-      {busy && (
-        <div
-          className="sm-card flex flex-col gap-2"
-          style={{
-            background: '#fff4d6',
-            color: '#7a5b00',
-            border: '2px solid #d4a000',
-            padding: '14px 16px',
-          }}
-        >
-          <div className="flex items-center gap-3">
-            <span style={{ fontSize: 28 }}>
-              {['⏳', '⌛', '⏳', '⌛'][heartbeat]}
-            </span>
-            <div className="flex-1">
-              <div className="font-semibold text-base">
-                {busyLabel ?? 'Working…'}
-              </div>
-              {imageProgress && imageProgress.total > 0 && (
-                <div className="font-mono text-sm mt-0.5">
-                  {imageProgress.done} of {imageProgress.total} done
-                  {' · '}
-                  <span className="opacity-70">
-                    {'.'.repeat(heartbeat + 1)}
-                  </span>
-                </div>
-              )}
-            </div>
-            {imageProgress && imageProgress.total > 0 && (
-              <span className="font-mono text-2xl whitespace-nowrap font-bold">
-                {Math.round((imageProgress.done / imageProgress.total) * 100)}%
-              </span>
-            )}
-          </div>
-          {imageProgress && imageProgress.total > 0 && (
-            <>
-              <div
-                className="w-full rounded overflow-hidden"
-                style={{ background: 'rgba(122, 91, 0, 0.2)', height: 10 }}
-              >
-                <div
-                  className="h-full transition-all duration-200"
-                  style={{
-                    width: `${Math.round((imageProgress.done / imageProgress.total) * 100)}%`,
-                    background: '#7a5b00',
-                  }}
-                />
-              </div>
-              {imageProgress.currentInZipPath && (
-                <div className="font-mono text-xs truncate" title={imageProgress.currentInZipPath}>
-                  ▸ {imageProgress.currentInZipPath}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {lastResult && (
-        <div className="sm-card text-sm"
-             style={{ color: lastResult.errors.length > 0 ? '#7a0000' : '#0f5d33',
-                      background: lastResult.errors.length > 0 ? '#ffe4e4' : '#deffee' }}>
-          ✓ {lastResult.what}{lastResult.skipped > 0 ? ` · ${lastResult.skipped} skipped` : ''}
-          {lastResult.errors.length > 0 && (
-            <details className="mt-1">
-              <summary className="cursor-pointer text-xs">
-                {lastResult.errors.length} error{lastResult.errors.length === 1 ? '' : 's'}
-              </summary>
-              <ul className="text-xs mt-1 font-mono">
-                {lastResult.errors.map((e, i) => <li key={i}>· {e}</li>)}
-              </ul>
-            </details>
-          )}
-        </div>
-      )}
-
-      {(images.length > 0 || videos.length > 0) && (
-        <section className="sm-card">
-          <div className="font-semibold mb-1">
-            🔄 Per-file rotation ({images.length + videos.length})
-          </div>
-          <div className="text-xs mb-3" style={{ color: 'rgb(var(--surface-muted))' }}>
-            Click a thumbnail to cycle 0° → 90° → 180° → 270°. The preview
-            rotates immediately so you can see the result before processing.
-            Applies during the next image/video process run.
-          </div>
-          <RotationGrid
-            files={[...images, ...videos]}
-            thumbs={thumbs}
-            onClick={cycleRotation}
+          <LiveQueue
+            title="Auto-assemble queue"
+            jobs={autoAssembleJobs}
+            emptyHint="Click 🎞 Auto-assemble to start the title → normalize → assemble pipeline."
           />
-        </section>
+
+          <MasterCutCard
+            master={master}
+            onOpen={() => openMasterCut(summary.uid).catch((e) => alert(String(e)))}
+            onReveal={() => revealMasterCut(summary.uid).catch((e) => alert(String(e)))}
+          />
+        </StepCard>
       )}
 
-      {videos.length > 0 && (
-        <section
-          className="sm-card"
-          style={{
-            background: master?.exists ? '#deffee' : 'rgb(var(--surface-card))',
-            border: master?.exists
-              ? '2px solid #0f5d33'
-              : '1px solid rgb(var(--surface-border))',
-          }}
-        >
-          <div className="flex items-center gap-3 mb-2">
-            <span style={{ fontSize: 28 }}>{master?.exists ? '🎬' : '🎞'}</span>
-            <div className="flex-1">
-              <div className="font-semibold text-base">
-                Master cut
-                {master?.exists ? (
-                  <span className="ml-2 text-xs font-normal" style={{ color: '#0f5d33' }}>
-                    ✓ ready
-                  </span>
-                ) : (
-                  <span className="ml-2 text-xs font-normal" style={{ color: 'rgb(var(--surface-muted))' }}>
-                    not yet built — click 🎞 Auto-assemble above
-                  </span>
-                )}
-              </div>
-              {master?.exists && (
-                <div className="text-xs mt-0.5" style={{ color: 'rgb(var(--surface-muted))' }}>
-                  {fmtSize(master.sizeBytes)} · built {master.modifiedAt}
-                </div>
-              )}
-            </div>
-            {master?.exists && (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="sm-button text-sm"
-                  onClick={() => openMasterCut(summary.uid).catch((e) => alert(String(e)))}
-                  title="Open the master in QuickLook / default video player"
-                >
-                  ▶ Open
-                </button>
-                <button
-                  type="button"
-                  className="sm-button secondary text-sm"
-                  onClick={() => revealMasterCut(summary.uid).catch((e) => alert(String(e)))}
-                  title="Reveal master.mp4 in Finder"
-                >
-                  📁 Reveal
-                </button>
-                <button
-                  type="button"
-                  className="sm-button secondary text-sm"
-                  onClick={() => navigator.clipboard.writeText(master.masterPath).catch(() => {})}
-                  title="Copy master.mp4 path"
-                >
-                  ⧉ Copy path
-                </button>
-              </div>
-            )}
-          </div>
-          {master?.exists && (
-            <div
-              className="font-mono text-[11px] truncate"
-              style={{ color: 'rgb(var(--surface-muted))' }}
-              title={master.masterPath}
-            >
-              → {master.masterPath}
-            </div>
-          )}
-        </section>
-      )}
-
-      <section className="sm-card">
-        <div className="flex items-baseline justify-between mb-2 gap-3">
-          <div className="font-semibold">Processed outputs ({processed.length})</div>
-          <button
-            type="button"
-            className="sm-button secondary text-xs"
-            onClick={() => revealWorkingDir(summary.uid).catch(() => {})}
-            title="Open the bundle workspace in Finder"
-          >
-            📁 Open bundle workspace
-          </button>
-        </div>
-
+      {/* ────────────────────────────────────────────────────────────
+          STEP 4 — Processed outputs
+          ──────────────────────────────────────────────────────────── */}
+      <StepCard
+        num={4}
+        title={`Processed outputs (${processed.length})`}
+        subtitle={<>Latest run per source file shown. Click <strong>📁 output</strong> to reveal the processed file in Finder.</>}
+      >
         {processed.length === 0 ? (
           <div className="text-sm" style={{ color: 'rgb(var(--surface-muted))' }}>
             No processed outputs yet for this bundle.
@@ -469,87 +377,253 @@ export function EditTab({ summary, files, refreshSignal, onFileUpdated }: Props)
                 key={`${p.bundleFileId}-${p.opKind}`}
                 row={p}
                 preview={previews[p.inZipPath]}
-                source={images.find((f) => f.inZipPath === p.inZipPath)}
+                source={images.find((f) => f.inZipPath === p.inZipPath)
+                     ?? videos.find((f) => f.inZipPath === p.inZipPath)}
                 uid={summary.uid}
               />
             ))}
           </ul>
         )}
-      </section>
+      </StepCard>
     </div>
   );
 }
 
-function ProcessedRow({ row, preview, source, uid }: {
-  row: ProcessedFileRow;
-  preview: string | undefined;
-  source: BundleFileRow | undefined;
-  uid: string;
+// ─── Reusable components ────────────────────────────────────────────
+
+function StepCard({ num, title, subtitle, children }: {
+  num: number;
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  children: React.ReactNode;
 }) {
-  const px = 64;
   return (
-    <li
-      className="flex items-center gap-3 py-1.5"
-      style={{ borderBottom: '1px solid rgb(var(--surface-border) / 0.5)' }}
-    >
-      {preview ? (
-        <img src={preview} alt="" width={px} height={px}
-             className="rounded object-cover"
-             style={{ border: '1px solid rgb(var(--surface-border))' }} />
-      ) : (
-        <div className="rounded flex items-center justify-center"
-             style={{
-               width: px, height: px,
-               background: 'rgb(var(--surface-base))',
-               border: '1px solid rgb(var(--surface-border))',
-             }}>
-          🖼
+    <section className="sm-card">
+      <div className="flex items-baseline gap-3 mb-1">
+        <span
+          className="inline-flex items-center justify-center font-bold"
+          style={{
+            width: 28, height: 28,
+            borderRadius: 14,
+            background: 'rgb(var(--surface-accent))',
+            color: 'white',
+            fontSize: 14,
+            flexShrink: 0,
+          }}
+        >
+          {num}
+        </span>
+        <h2 className="font-semibold text-lg" style={{ color: 'rgb(var(--surface-text))' }}>
+          {title}
+        </h2>
+      </div>
+      {subtitle && (
+        <div className="text-xs mb-3 ml-10" style={{ color: 'rgb(var(--surface-muted))' }}>
+          {subtitle}
         </div>
       )}
-      <div className="flex-1 min-w-0">
-        <div className="font-mono text-xs truncate">{row.inZipPath}</div>
-        <div className="text-[11px] mt-0.5" style={{ color: 'rgb(var(--surface-muted))' }}>
-          <span className="font-semibold">{row.opKind}</span>
-          {source && (
-            <>
-              <span> · src {fmtSize(source.sizeBytes)}</span>
-            </>
-          )}
-          <span> · {row.createdAt}</span>
+      <div className="ml-10">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function OpsToggle({ label, checked, onChange }: {
+  label: string; checked: boolean; onChange: (v: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center gap-2 text-sm cursor-pointer whitespace-nowrap">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span>{label}</span>
+    </label>
+  );
+}
+
+function ProgressBanner({ label, done, total, currentLabel }: {
+  label: string; done: number; total: number; currentLabel?: string;
+}) {
+  const pct = Math.round((done / total) * 100);
+  return (
+    <div
+      className="mt-3 p-3 rounded flex flex-col gap-1.5"
+      style={{ background: '#fff4d6', color: '#7a5b00', border: '1px solid #d4a000' }}
+    >
+      <div className="flex items-center gap-3">
+        <span className="inline-block animate-spin" style={{ fontSize: 18 }}>⏳</span>
+        <span className="flex-1 font-semibold text-sm">{label}</span>
+        <span className="font-mono text-sm font-bold">{pct}%</span>
+        <span className="font-mono text-xs">{done} / {total}</span>
+      </div>
+      <div className="w-full rounded overflow-hidden" style={{ background: 'rgba(122, 91, 0, 0.2)', height: 8 }}>
+        <div className="h-full transition-all duration-200"
+             style={{ width: `${pct}%`, background: '#7a5b00' }} />
+      </div>
+      {currentLabel && (
+        <div className="font-mono text-[11px] truncate" title={currentLabel}>
+          ▸ {currentLabel}
         </div>
-        <div
-          className="font-mono text-[10px] mt-0.5 truncate"
-          style={{ color: 'rgb(var(--surface-muted))' }}
-          title={row.outputPath}
-        >
-          → {row.outputPath}
+      )}
+    </div>
+  );
+}
+
+function ResultPill({ r }: { r: { ok: number; skipped: number; errors: string[]; what: string } }) {
+  const isError = r.errors.length > 0 && r.ok === 0;
+  return (
+    <div
+      className="mt-3 sm-card text-sm"
+      style={{
+        color: isError ? '#7a0000' : '#0f5d33',
+        background: isError ? '#ffe4e4' : '#deffee',
+      }}
+    >
+      ✓ {r.what}{r.skipped > 0 ? ` · ${r.skipped} skipped` : ''}
+      {r.errors.length > 0 && (
+        <details className="mt-1">
+          <summary className="cursor-pointer text-xs">
+            {r.errors.length} error{r.errors.length === 1 ? '' : 's'}
+          </summary>
+          <ul className="text-xs mt-1 font-mono">
+            {r.errors.map((e, i) => <li key={i}>· {e}</li>)}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
+
+/** Inline live queue — shows every job for this bundle of the given
+ *  kinds, with status pills and the running one's filename. Updates
+ *  in real time via the parent's useBundleJobs subscription. */
+function LiveQueue({ title, jobs, emptyHint }: {
+  title: string; jobs: JobRow[]; emptyHint: string;
+}) {
+  if (jobs.length === 0) {
+    return (
+      <div className="mt-3 text-xs italic" style={{ color: 'rgb(var(--surface-muted))' }}>
+        {emptyHint}
+      </div>
+    );
+  }
+  const done = jobs.filter((j) => j.status === 'done').length;
+  const running = jobs.find((j) => j.status === 'running');
+  const pending = jobs.filter((j) => j.status === 'pending').length;
+  const failed = jobs.filter((j) => j.status === 'failed').length;
+
+  return (
+    <div
+      className="mt-3 rounded"
+      style={{
+        background: 'rgb(var(--surface-base))',
+        border: '1px solid rgb(var(--surface-border))',
+        padding: 12,
+      }}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold" style={{ color: 'rgb(var(--surface-muted))' }}>
+          {title}
+        </span>
+        <span className="text-xs font-mono">
+          {done}/{jobs.length} done
+          {running && <span> · ⚙️ 1 running</span>}
+          {pending > 0 && <span> · ⏳ {pending} pending</span>}
+          {failed > 0 && <span style={{ color: '#7a0000' }}> · ⚠ {failed} failed</span>}
+        </span>
+      </div>
+      <div className="flex flex-col gap-0.5">
+        {jobs.slice().reverse().map((j) => (
+          <JobRowMini key={j.id} job={j} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function JobRowMini({ job }: { job: JobRow }) {
+  const sp = jobStatusPill(job.status);
+  const subject = job.sourceInZipPath
+    ?? (job.kind === 'render_title' ? 'title card'
+        : job.kind === 'assemble_master' ? 'assemble master'
+        : job.kind);
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span
+        className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold"
+        style={{ background: sp.bg, color: sp.fg, minWidth: 56, textAlign: 'center' }}
+      >
+        {sp.glyph} {job.status}
+      </span>
+      <span className="font-mono truncate flex-1" style={{ color: 'rgb(var(--surface-muted))' }}>
+        {job.kind} · {subject}
+      </span>
+      {job.lastError && (
+        <span className="text-[10px]" style={{ color: '#7a0000' }} title={job.lastError}>
+          ⚠
+        </span>
+      )}
+    </div>
+  );
+}
+
+function jobStatusPill(s: JobRow['status']): { glyph: string; bg: string; fg: string } {
+  switch (s) {
+    case 'pending': return { glyph: '⏳', bg: 'rgb(var(--surface-card))', fg: 'rgb(var(--surface-muted))' };
+    case 'running': return { glyph: '⚙️', bg: '#fff4d6', fg: '#7a5b00' };
+    case 'done':    return { glyph: '✓',  bg: '#deffee', fg: '#0f5d33' };
+    case 'failed':  return { glyph: '⚠',  bg: '#ffe4e4', fg: '#7a0000' };
+  }
+}
+
+function MasterCutCard({ master, onOpen, onReveal }: {
+  master: MasterCutStatus | null;
+  onOpen: () => void;
+  onReveal: () => void;
+}) {
+  if (!master) return null;
+  if (!master.exists) {
+    return (
+      <div className="mt-3 text-xs italic" style={{ color: 'rgb(var(--surface-muted))' }}>
+        Master cut not yet built — click 🎞 Auto-assemble above.
+      </div>
+    );
+  }
+  return (
+    <div
+      className="mt-3 rounded p-3"
+      style={{ background: '#deffee', border: '2px solid #0f5d33' }}
+    >
+      <div className="flex items-center gap-3">
+        <span style={{ fontSize: 28 }}>🎬</span>
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-base" style={{ color: '#0f5d33' }}>
+            Master cut ✓ ready
+          </div>
+          <div className="text-xs mt-0.5" style={{ color: '#0f5d33' }}>
+            {fmtSize(master.sizeBytes)} · built {master.modifiedAt}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button type="button" className="sm-button text-sm" onClick={onOpen}
+                  title="Open in QuickLook / default video player">
+            ▶ Open
+          </button>
+          <button type="button" className="sm-button secondary text-sm" onClick={onReveal}
+                  title="Reveal master.mp4 in Finder">
+            📁 Reveal
+          </button>
+          <button type="button" className="sm-button secondary text-sm"
+                  onClick={() => navigator.clipboard.writeText(master.masterPath).catch(() => {})}
+                  title="Copy master.mp4 path">
+            ⧉ Copy path
+          </button>
         </div>
       </div>
-      <button
-        type="button"
-        className="sm-button secondary text-xs"
-        onClick={() => revealProcessedFile(uid, row.inZipPath, row.opKind).catch((e) => alert(String(e)))}
-        title="Reveal processed output in Finder"
-      >
-        📁 output
-      </button>
-      <button
-        type="button"
-        className="sm-button secondary text-xs"
-        onClick={() => navigator.clipboard.writeText(row.outputPath).catch(() => {})}
-        title="Copy output path"
-      >
-        ⧉ copy
-      </button>
-      <button
-        type="button"
-        className="sm-button secondary text-xs"
-        onClick={() => revealWorkingFile(uid, row.inZipPath).catch(() => {})}
-        title="Reveal source in Finder"
-      >
-        📁 src
-      </button>
-    </li>
+      <div className="font-mono text-[11px] truncate mt-2" style={{ color: '#0f5d33' }}
+           title={master.masterPath}>
+        → {master.masterPath}
+      </div>
+    </div>
   );
 }
 
@@ -561,9 +635,7 @@ function RotationGrid({ files, thumbs, onClick }: {
   return (
     <div
       className="grid gap-2"
-      style={{
-        gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
-      }}
+      style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}
     >
       {files.map((f) => {
         const rot = (f.rotationDegrees ?? 0) as Rotation;
@@ -594,9 +666,7 @@ function RotationGrid({ files, thumbs, onClick }: {
                   src={dataUrl}
                   alt=""
                   style={{
-                    maxWidth: '100%',
-                    maxHeight: '100%',
-                    objectFit: 'contain',
+                    maxWidth: '100%', maxHeight: '100%', objectFit: 'contain',
                     transform: `rotate(${rot}deg)`,
                     transition: 'transform 200ms ease',
                   }}
@@ -627,5 +697,65 @@ function RotationGrid({ files, thumbs, onClick }: {
         );
       })}
     </div>
+  );
+}
+
+function ProcessedRow({ row, preview, source, uid }: {
+  row: ProcessedFileRow;
+  preview: string | undefined;
+  source: BundleFileRow | undefined;
+  uid: string;
+}) {
+  const px = 64;
+  return (
+    <li
+      className="flex items-center gap-3 py-1.5"
+      style={{ borderBottom: '1px solid rgb(var(--surface-border) / 0.5)' }}
+    >
+      {preview ? (
+        <img src={preview} alt="" width={px} height={px}
+             className="rounded object-cover"
+             style={{ border: '1px solid rgb(var(--surface-border))' }} />
+      ) : (
+        <div className="rounded flex items-center justify-center"
+             style={{
+               width: px, height: px,
+               background: 'rgb(var(--surface-base))',
+               border: '1px solid rgb(var(--surface-border))',
+             }}>
+          {source?.kind === 'video' ? '🎬' : '🖼'}
+        </div>
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="font-mono text-xs truncate">{row.inZipPath}</div>
+        <div className="text-[11px] mt-0.5" style={{ color: 'rgb(var(--surface-muted))' }}>
+          <span className="font-semibold">{row.opKind}</span>
+          {source && (<><span> · src {fmtSize(source.sizeBytes)}</span></>)}
+          <span> · {row.createdAt}</span>
+        </div>
+        <div
+          className="font-mono text-[10px] mt-0.5 truncate"
+          style={{ color: 'rgb(var(--surface-muted))' }}
+          title={row.outputPath}
+        >
+          → {row.outputPath}
+        </div>
+      </div>
+      <button type="button" className="sm-button secondary text-xs"
+              onClick={() => revealProcessedFile(uid, row.inZipPath, row.opKind).catch((e) => alert(String(e)))}
+              title="Reveal processed output in Finder">
+        📁 output
+      </button>
+      <button type="button" className="sm-button secondary text-xs"
+              onClick={() => navigator.clipboard.writeText(row.outputPath).catch(() => {})}
+              title="Copy output path">
+        ⧉
+      </button>
+      <button type="button" className="sm-button secondary text-xs"
+              onClick={() => revealWorkingFile(uid, row.inZipPath).catch(() => {})}
+              title="Reveal source in Finder">
+        📁 src
+      </button>
+    </li>
   );
 }
