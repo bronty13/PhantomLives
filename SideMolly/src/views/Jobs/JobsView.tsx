@@ -117,7 +117,12 @@ function JobRowEl({ row }: { row: JobRow }) {
         <span className="shrink-0 text-xs ml-auto" style={{ color: 'rgb(var(--surface-muted))' }}>
           {row.updatedAt}
         </span>
-        {row.status === 'done' && row.kind === 'process_video' && (
+        {row.status === 'done' && (
+          row.kind === 'process_video' ||
+          row.kind === 'render_title' ||
+          row.kind === 'normalize_video' ||
+          row.kind === 'assemble_master'
+        ) && (
           <button
             type="button"
             onClick={(e) => {

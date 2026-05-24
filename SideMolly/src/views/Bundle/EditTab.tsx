@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import {
   enqueueAutoAssemble, enqueueBundleVideoOps, fmtSize, getBundleThumbnails,
-  getProcessedPreviews, listProcessedFiles, processBundleImages, revealProcessedFile,
+  getMasterCutStatus, getProcessedPreviews, listProcessedFiles, openMasterCut,
+  processBundleImages, revealMasterCut, revealProcessedFile,
   revealWorkingDir, revealWorkingFile, setBundleFileRotation,
-  type BundleFileRow, type BundleSummary, type ImageOpsInput, type ProcessedFileRow,
-  type VideoOpsInput,
+  type BundleFileRow, type BundleSummary, type ImageOpsInput,
+  type MasterCutStatus, type ProcessedFileRow, type VideoOpsInput,
 } from '../../data/bundles';
 
 interface ImageProgress {
@@ -54,15 +55,18 @@ export function EditTab({ summary, files, refreshSignal, onFileUpdated }: Props)
   const [lastResult, setLastResult] = useState<{ ok: number; skipped: number; errors: string[]; what: string } | null>(null);
   const [processed, setProcessed] = useState<ProcessedFileRow[]>([]);
   const [previews, setPreviews] = useState<Record<string, string>>({});
+  const [master, setMaster] = useState<MasterCutStatus | null>(null);
 
   const refreshProcessed = async () => {
     try {
-      const [rows, prev] = await Promise.all([
+      const [rows, prev, mc] = await Promise.all([
         listProcessedFiles(summary.uid),
         getProcessedPreviews(summary.uid),
+        getMasterCutStatus(summary.uid),
       ]);
       setProcessed(rows);
       setPreviews(prev);
+      setMaster(mc);
     } catch (e) {
       console.warn('list processed failed', e);
     }
@@ -366,6 +370,78 @@ export function EditTab({ summary, files, refreshSignal, onFileUpdated }: Props)
             thumbs={thumbs}
             onClick={cycleRotation}
           />
+        </section>
+      )}
+
+      {videos.length > 0 && (
+        <section
+          className="sm-card"
+          style={{
+            background: master?.exists ? '#deffee' : 'rgb(var(--surface-card))',
+            border: master?.exists
+              ? '2px solid #0f5d33'
+              : '1px solid rgb(var(--surface-border))',
+          }}
+        >
+          <div className="flex items-center gap-3 mb-2">
+            <span style={{ fontSize: 28 }}>{master?.exists ? '🎬' : '🎞'}</span>
+            <div className="flex-1">
+              <div className="font-semibold text-base">
+                Master cut
+                {master?.exists ? (
+                  <span className="ml-2 text-xs font-normal" style={{ color: '#0f5d33' }}>
+                    ✓ ready
+                  </span>
+                ) : (
+                  <span className="ml-2 text-xs font-normal" style={{ color: 'rgb(var(--surface-muted))' }}>
+                    not yet built — click 🎞 Auto-assemble above
+                  </span>
+                )}
+              </div>
+              {master?.exists && (
+                <div className="text-xs mt-0.5" style={{ color: 'rgb(var(--surface-muted))' }}>
+                  {fmtSize(master.sizeBytes)} · built {master.modifiedAt}
+                </div>
+              )}
+            </div>
+            {master?.exists && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="sm-button text-sm"
+                  onClick={() => openMasterCut(summary.uid).catch((e) => alert(String(e)))}
+                  title="Open the master in QuickLook / default video player"
+                >
+                  ▶ Open
+                </button>
+                <button
+                  type="button"
+                  className="sm-button secondary text-sm"
+                  onClick={() => revealMasterCut(summary.uid).catch((e) => alert(String(e)))}
+                  title="Reveal master.mp4 in Finder"
+                >
+                  📁 Reveal
+                </button>
+                <button
+                  type="button"
+                  className="sm-button secondary text-sm"
+                  onClick={() => navigator.clipboard.writeText(master.masterPath).catch(() => {})}
+                  title="Copy master.mp4 path"
+                >
+                  ⧉ Copy path
+                </button>
+              </div>
+            )}
+          </div>
+          {master?.exists && (
+            <div
+              className="font-mono text-[11px] truncate"
+              style={{ color: 'rgb(var(--surface-muted))' }}
+              title={master.masterPath}
+            >
+              → {master.masterPath}
+            </div>
+          )}
         </section>
       )}
 

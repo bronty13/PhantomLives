@@ -1357,6 +1357,95 @@ pub fn list_job_runs<R: Runtime>(
     Ok(crate::jobs::list_runs(&conn, job_id)?)
 }
 
+/// Status snapshot of the auto-assembled master MP4 for a bundle.
+/// Frontend uses this to render the "Master cut" card on the Edit tab
+/// — exists/missing flag, file size, last-modified timestamp so the
+/// user knows whether the assemble step has actually produced output
+/// (versus still queued or failed).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MasterCutStatus {
+    pub bundle_uid: String,
+    pub master_path: String,
+    pub exists: bool,
+    pub size_bytes: i64,
+    pub modified_at: Option<String>,
+}
+
+#[tauri::command]
+pub fn get_master_cut_status<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+) -> Result<MasterCutStatus, BundleError> {
+    let workspace = crate::extract::bundle_workspace_dir(&work_root(&handle)?, &uid);
+    let master_path = workspace.join("auto").join("master.mp4");
+    let (exists, size_bytes, modified_at) = match fs::metadata(&master_path) {
+        Ok(m) => {
+            let modified = m.modified().ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| {
+                    let secs = d.as_secs() as i64;
+                    chrono::DateTime::<chrono::Utc>::from_timestamp(secs, 0)
+                        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string())
+                        .unwrap_or_default()
+                });
+            (true, m.len() as i64, modified)
+        }
+        Err(_) => (false, 0, None),
+    };
+    Ok(MasterCutStatus {
+        bundle_uid: uid,
+        master_path: master_path.to_string_lossy().to_string(),
+        exists, size_bytes, modified_at,
+    })
+}
+
+#[tauri::command]
+pub fn reveal_master_cut<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+) -> Result<(), BundleError> {
+    let workspace = crate::extract::bundle_workspace_dir(&work_root(&handle)?, &uid);
+    let master_path = workspace.join("auto").join("master.mp4");
+    if !master_path.exists() {
+        return Err(BundleError::NotFound(format!(
+            "master.mp4 not yet at {}", master_path.display()
+        )));
+    }
+    fsutil::reveal_in_file_browser(&master_path)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn open_master_cut<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+) -> Result<(), BundleError> {
+    let workspace = crate::extract::bundle_workspace_dir(&work_root(&handle)?, &uid);
+    let master_path = workspace.join("auto").join("master.mp4");
+    if !master_path.exists() {
+        return Err(BundleError::NotFound(format!(
+            "master.mp4 not yet at {}", master_path.display()
+        )));
+    }
+    // Use the system default opener — QuickLook / VLC / preferred player.
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&master_path)
+            .spawn()
+            .map_err(|e| BundleError::Io(std::io::Error::other(format!("open: {e}"))))?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", master_path.to_str().unwrap_or("")])
+            .spawn()
+            .map_err(|e| BundleError::Io(std::io::Error::other(format!("start: {e}"))))?;
+    }
+    Ok(())
+}
+
 /// Reveal a processed file in Finder/Explorer. Scoped by
 /// (bundle_uid, in_zip_path, op_kind) so the user can't ask us to
 /// reveal an arbitrary path — we always validate against the
@@ -1407,6 +1496,21 @@ pub fn reveal_job_output<R: Runtime>(
     let output_path: String = match kind.as_str() {
         "process_video" => {
             let p: crate::video::ProcessVideoParams = serde_json::from_str(&params_json)
+                .map_err(|e| BundleError::Io(std::io::Error::other(format!("bad params: {e}"))))?;
+            p.output_path
+        }
+        "render_title" => {
+            let p: crate::auto_assemble::RenderTitleParams = serde_json::from_str(&params_json)
+                .map_err(|e| BundleError::Io(std::io::Error::other(format!("bad params: {e}"))))?;
+            p.output_path
+        }
+        "normalize_video" => {
+            let p: crate::auto_assemble::NormalizeVideoParams = serde_json::from_str(&params_json)
+                .map_err(|e| BundleError::Io(std::io::Error::other(format!("bad params: {e}"))))?;
+            p.output_path
+        }
+        "assemble_master" => {
+            let p: crate::auto_assemble::AssembleMasterParams = serde_json::from_str(&params_json)
                 .map_err(|e| BundleError::Io(std::io::Error::other(format!("bad params: {e}"))))?;
             p.output_path
         }

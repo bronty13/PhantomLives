@@ -295,6 +295,26 @@ export function enqueueAutoAssemble(uid: string): Promise<EnqueueAutoAssembleRes
   return invoke<EnqueueAutoAssembleResult>('enqueue_auto_assemble', { uid });
 }
 
+export interface MasterCutStatus {
+  bundleUid: string;
+  masterPath: string;
+  exists: boolean;
+  sizeBytes: number;
+  modifiedAt: string | null;
+}
+
+export function getMasterCutStatus(uid: string): Promise<MasterCutStatus> {
+  return invoke<MasterCutStatus>('get_master_cut_status', { uid });
+}
+
+export function revealMasterCut(uid: string): Promise<void> {
+  return invoke('reveal_master_cut', { uid });
+}
+
+export function openMasterCut(uid: string): Promise<void> {
+  return invoke('open_master_cut', { uid });
+}
+
 export function getWatchSettings(): Promise<WatchSettings> {
   return invoke<WatchSettings>('get_watch_settings');
 }
