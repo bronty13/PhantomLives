@@ -4,6 +4,84 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] — 2026-05-24
+
+### Added — Phase 12: Jobs panel polish
+
+The 🛠 Jobs view (cross-bundle queue inspector) gets the operational
+controls PLAN.md called for: pause, retry, cancel, bulk clear.
+Closes out the original 13-phase plan.
+
+**Worker pause toggle** — `app_settings.jobs_paused` flag. Worker
+poll loop reads it on every tick (cheap indexed SELECT) and skips
+job-claiming when set, so the currently-running job finishes
+cleanly but the queue holds. UI button flips between
+`⏸ Pause worker` and `▶ Resume worker` (gold highlight when
+paused) + the header subtitle shows "· ⏸ paused".
+
+**Retry failed jobs** — `retry_job(id)` flips `status: failed →
+pending` and clears `last_error`. The worker picks it up on the
+next poll cycle. Per-row 🔄 Retry button on failed rows (gold).
+`attempts` counter survives, so the row preserves its history.
+
+**Cancel pending jobs** — `cancel_pending_job(id)` deletes a
+pending row before the worker claims it. Per-row ✕ button on
+pending rows (red border). Confirms before deletion. Running
+jobs aren't cancellable today (ffmpeg / whisper subprocesses
+lack a graceful-stop API) — UI says so via tooltip.
+
+**Bulk clear** — `clear_jobs_by_status(['done'|'failed'])`.
+`🗑 Clear done (N)` / `🗑 Clear failed (N)` buttons in the toolbar
+with row counts. Confirms before bulk delete.
+
+**Kind filter** — dropdown alongside the existing status filter
+pills. Defaults to "all"; lists every kind currently present in
+the queue (process_video / render_title / normalize_video /
+assemble_master / transcribe_video) so users can drill into one
+type at a time.
+
+**Per-job expand** — click the ▸ to expand a row into a
+two-column drawer:
+- **Params**: pretty-printed JSON (params_json from the queue row).
+- **Log entries**: filtered to `job_id` from `processing_log`, with
+  timestamp + level + message. Final error tail appended at the
+  bottom in red for failed rows.
+- Footer: `id #N · K attempts · created at …`.
+
+**Live updates** — JobsView subscribes to `job-updated` on the
+Tauri event bus. Every status transition, retry, cancel, or clear
+fires the event → list refreshes. No manual refresh needed.
+
+### Tests
+
+145 passing (unchanged). The new ops commands don't add boundary
+types so no new camelCase contracts; their UI behavior is verified
+by hand.
+
+### Closes the original 13-phase plan
+
+| Phase | Ships |
+|---|---|
+| 0  | Tauri scaffold + sidebar + backup-on-launch (v0.1.0) |
+| 1  | Bundle ingest (v0.2.0) |
+| 2  | Molly's manifest.json (v0.3.0) |
+| 3  | Image ops + watermark (v0.5.0) |
+| 4  | Video ops via FFmpeg (v0.6.0) |
+| 4.5a | Auto-Assembly pipeline (v0.8.0) |
+| 4.5b | DeepFilterNet voice isolation (v0.10.0) |
+| 5  | Transcription via MLX (v0.11.0) |
+| 6  | Dropbox local-folder copy (v0.13.0) |
+| 7  | Posting primitives (v0.14.0) |
+| 8 / 9 / 10 | Content / Custom / FanSite runners (v0.15.0) |
+| 11 | Post-bundle return trip (v0.16.0) |
+| 12 | 🛠 Jobs panel polish (v0.17.0) — **this release** |
+
+Follow-ups that remain (none blocking the roadmap):
+- Auto-compose-on-shipped + undo banner (Phase 11 follow-up).
+- DeepFilterNet binary auto-install.
+- Diarization (Phase 5.1) — speaker turns for transcripts.
+- Molly-side post-bundle ingest PR (separate from SideMolly).
+
 ## [0.16.0] — 2026-05-24
 
 ### Added — Phase 11: post-bundle return trip back to Molly

@@ -617,6 +617,28 @@ export function revealPostBundle(uid: string): Promise<void> {
   return invoke('reveal_post_bundle', { uid });
 }
 
+// ----- Phase 12: Jobs panel ops -----
+
+export function retryJob(id: number): Promise<void> {
+  return invoke('retry_job', { id });
+}
+
+export function cancelPendingJob(id: number): Promise<void> {
+  return invoke('cancel_pending_job', { id });
+}
+
+export function clearJobsByStatus(statuses: JobStatus[]): Promise<number> {
+  return invoke<number>('clear_jobs_by_status', { statuses });
+}
+
+export function getWorkerPaused(): Promise<boolean> {
+  return invoke<boolean>('get_worker_paused');
+}
+
+export function setWorkerPaused(paused: boolean): Promise<void> {
+  return invoke('set_worker_paused', { paused });
+}
+
 export function enqueueAutoAssemble(uid: string): Promise<EnqueueAutoAssembleResult> {
   return invoke<EnqueueAutoAssembleResult>('enqueue_auto_assemble', { uid });
 }

@@ -236,6 +236,19 @@ fn run_worker<R: Runtime>(handle: AppHandle<R>) {
                 continue;
             }
         };
+
+        // Phase 12 — honor the user-controlled pause toggle. Worker
+        // keeps polling but doesn't claim anything until the user
+        // hits Resume. Cheap (one indexed SELECT against
+        // app_settings) so the poll loop's wall-clock cost is
+        // basically unchanged.
+        let paused: Option<String> = conn
+            .query_row(
+                "SELECT value FROM app_settings WHERE key='jobs_paused'",
+                [], |r| r.get(0),
+            ).optional().ok().flatten();
+        if paused.as_deref() == Some("1") { continue; }
+
         let job = match claim_next_pending(&conn) {
             Ok(Some(j)) => j,
             Ok(None) => continue,
@@ -336,6 +349,114 @@ fn dispatch<R: Runtime>(
         }
         other => Err(BundleError::NotFound(format!("unknown job kind: {other}"))),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 12 — operational commands. Surface in the 🛠 Jobs view.
+// ---------------------------------------------------------------------------
+
+/// Reset a failed job back to pending so the worker can take another
+/// swing at it. `attempts` counter survives so the row's history is
+/// preserved; only `status` and `last_error` flip.
+#[tauri::command]
+pub fn retry_job<R: Runtime>(
+    handle: AppHandle<R>,
+    id: i64,
+) -> Result<(), BundleError> {
+    let conn = open_conn(&handle)?;
+    let n = conn.execute(
+        "UPDATE jobs
+            SET status = 'pending',
+                last_error = NULL,
+                updated_at = datetime('now')
+          WHERE id = ?1 AND status = 'failed'",
+        params![id],
+    )?;
+    if n == 0 {
+        return Err(BundleError::NotFound(format!(
+            "no failed job {id} to retry (already pending/running/done?)"
+        )));
+    }
+    let _ = handle.emit("job-updated", serde_json::json!({ "id": id }));
+    Ok(())
+}
+
+/// Drop a pending job before the worker claims it. Running jobs are
+/// out of scope — they'd need a signal mechanism inside the
+/// dispatchers (ffmpeg etc. don't have a graceful interruption API
+/// today). User can mark it failed manually if a hard-kill is needed.
+#[tauri::command]
+pub fn cancel_pending_job<R: Runtime>(
+    handle: AppHandle<R>,
+    id: i64,
+) -> Result<(), BundleError> {
+    let conn = open_conn(&handle)?;
+    let n = conn.execute(
+        "DELETE FROM jobs WHERE id = ?1 AND status = 'pending'",
+        params![id],
+    )?;
+    if n == 0 {
+        return Err(BundleError::NotFound(format!(
+            "no pending job {id} to cancel"
+        )));
+    }
+    let _ = handle.emit("job-updated", serde_json::json!({ "deleted": id }));
+    Ok(())
+}
+
+/// Bulk-delete jobs by status. Returns the number of rows removed.
+/// UI uses this for "Clear done" / "Clear failed" — keeps the queue
+/// view scannable after a long batch.
+#[tauri::command]
+pub fn clear_jobs_by_status<R: Runtime>(
+    handle: AppHandle<R>,
+    statuses: Vec<String>,
+) -> Result<i64, BundleError> {
+    if statuses.is_empty() {
+        return Ok(0);
+    }
+    for s in &statuses {
+        if !["pending", "running", "done", "failed"].contains(&s.as_str()) {
+            return Err(BundleError::NotFound(format!("invalid status: {s}")));
+        }
+    }
+    let conn = open_conn(&handle)?;
+    let placeholders = statuses.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!("DELETE FROM jobs WHERE status IN ({placeholders})");
+    let params_vec: Vec<&dyn rusqlite::ToSql> = statuses.iter()
+        .map(|s| s as &dyn rusqlite::ToSql).collect();
+    let n = conn.execute(&sql, params_vec.as_slice())?;
+    let _ = handle.emit("job-updated", serde_json::json!({ "cleared": n }));
+    Ok(n as i64)
+}
+
+/// Read the current worker-paused flag from app_settings. Missing key
+/// = unpaused.
+#[tauri::command]
+pub fn get_worker_paused<R: Runtime>(
+    handle: AppHandle<R>,
+) -> Result<bool, BundleError> {
+    let conn = open_conn(&handle)?;
+    let v: Option<String> = conn.query_row(
+        "SELECT value FROM app_settings WHERE key='jobs_paused'",
+        [], |r| r.get(0),
+    ).optional()?;
+    Ok(v.as_deref() == Some("1"))
+}
+
+#[tauri::command]
+pub fn set_worker_paused<R: Runtime>(
+    handle: AppHandle<R>,
+    paused: bool,
+) -> Result<(), BundleError> {
+    let conn = open_conn(&handle)?;
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES ('jobs_paused', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![if paused { "1" } else { "0" }],
+    )?;
+    let _ = handle.emit("job-updated", serde_json::json!({ "paused": paused }));
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
