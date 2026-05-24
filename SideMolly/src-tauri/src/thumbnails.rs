@@ -155,6 +155,62 @@ pub fn ffprobe_bin() -> &'static str {
         .as_str()
 }
 
+/// Optional locator for the `deep-filter` CLI binary (DeepFilterNet).
+/// Returns the resolved path if found in any conventional install
+/// location; `None` otherwise. Cached via `OnceLock` on first call.
+///
+/// Why optional: DeepFilterNet is a heavy dep (Rust binary + bundled
+/// ONNX model, ~75MB on macOS arm64). We don't bundle it — users
+/// install via `cargo install --git https://github.com/Rikorose/DeepFilterNet
+/// --bin deep-filter` or download a GitHub Release. Auto-assemble's
+/// voice-isolation step is wired to use it when present, and the
+/// Settings → Auto-Assembly panel shows install status.
+pub fn deep_filter_bin() -> Option<&'static str> {
+    use std::sync::OnceLock;
+    static FOUND: OnceLock<Option<String>> = OnceLock::new();
+    FOUND.get_or_init(|| {
+        // Standard install paths Homebrew/cargo write to, plus the
+        // PATH default. We probe absolute paths first because Finder-
+        // launched macOS apps inherit a stripped PATH that excludes
+        // `/opt/homebrew/bin` and `~/.cargo/bin` (same issue we hit
+        // with ffmpeg in Phase 4).
+        let candidates: Vec<std::path::PathBuf> = vec![
+            "/opt/homebrew/bin/deep-filter".into(),
+            "/usr/local/bin/deep-filter".into(),
+            "/usr/bin/deep-filter".into(),
+            dirs::home_dir()
+                .map(|h| h.join(".cargo/bin/deep-filter"))
+                .unwrap_or_default(),
+        ];
+        for c in &candidates {
+            if c.is_file() {
+                return Some(c.to_string_lossy().to_string());
+            }
+        }
+        // Last-resort PATH lookup. Most reliable when sidemolly is
+        // launched from a shell rather than Finder.
+        if let Ok(out) = Command::new("which").arg("deep-filter").output() {
+            if out.status.success() {
+                let p = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !p.is_empty() && std::path::Path::new(&p).is_file() {
+                    return Some(p);
+                }
+            }
+        }
+        None
+    }).as_deref()
+}
+
+/// Run `deep-filter --version` and return the trimmed first line. Used
+/// by the Settings panel status indicator.
+pub fn deep_filter_version() -> Option<String> {
+    let bin = deep_filter_bin()?;
+    let out = Command::new(bin).arg("--version").output().ok()?;
+    if !out.status.success() { return None; }
+    let raw = String::from_utf8(out.stdout).ok()?;
+    raw.lines().next().map(|s| s.trim().to_string())
+}
+
 /// Probe a video file for its first video-stream height (pixels). Used
 /// by the Phase 4 watermark pipeline to size the overlay PNG against
 /// the actual frame — not a hardcoded 1080-px reference (the bug

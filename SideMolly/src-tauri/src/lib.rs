@@ -143,6 +143,7 @@ pub fn run() {
             auto_assemble::enqueue_auto_assemble,
             auto_assemble::get_auto_assembly_settings,
             auto_assemble::set_auto_assembly_settings,
+            auto_assemble::get_deepfilternet_status,
             bundles::get_master_cut_status,
             bundles::reveal_master_cut,
             bundles::open_master_cut,
@@ -164,8 +165,8 @@ mod camel_case_contract {
     use crate::backup::{BackupRow, Settings, VerifyResult};
     use crate::bundle_io::{HashesDoc, HashesFile, HashesInnerZip};
     use crate::auto_assemble::{
-        AssembleMasterParams, AutoAssemblySettings, EnqueueAutoAssembleResult,
-        NormalizeVideoParams, RenderTitleParams,
+        AssembleMasterParams, AutoAssemblySettings, DeepFilterNetStatus,
+        EnqueueAutoAssembleResult, NormalizeVideoParams, RenderTitleParams,
     };
     use crate::bundles::{BundleDetail, BundleFileRow, BundleSummary, ExportThumb,
         ImageProgressEvent, IngestResult};
@@ -254,7 +255,14 @@ mod camel_case_contract {
             rotation_degrees: 0, watermark_png_path: None,
             watermark_position: String::new(), watermark_margin_pct: 0.0,
             audio_enhance: false,
+            deepfilternet_enabled: false,
         }).unwrap(), "NormalizeVideoParams");
+    }
+
+    #[test] fn deepfilternet_status_is_camel_case() {
+        assert_camel(&serde_json::to_value(DeepFilterNetStatus {
+            installed: false, bin_path: None, version: None,
+        }).unwrap(), "DeepFilterNetStatus");
     }
 
     #[test] fn assemble_master_params_is_camel_case() {

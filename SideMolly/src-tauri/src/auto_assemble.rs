@@ -83,6 +83,29 @@ impl AutoAssemblySettings {
     }
 }
 
+/// Installation status of the optional `deep-filter` binary, used by
+/// the Settings → Auto-Assembly UI to flip the DeepFilterNet checkbox
+/// from "disabled, not installed" to "enabled, ready" + show a version
+/// readout.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeepFilterNetStatus {
+    pub installed: bool,
+    pub bin_path: Option<String>,
+    pub version: Option<String>,
+}
+
+#[tauri::command]
+pub fn get_deepfilternet_status() -> Result<DeepFilterNetStatus, BundleError> {
+    let bin_path = crate::thumbnails::deep_filter_bin().map(|s| s.to_string());
+    let version = crate::thumbnails::deep_filter_version();
+    Ok(DeepFilterNetStatus {
+        installed: bin_path.is_some(),
+        bin_path,
+        version,
+    })
+}
+
 #[tauri::command]
 pub fn get_auto_assembly_settings<R: Runtime>(
     handle: AppHandle<R>,
@@ -146,6 +169,12 @@ pub struct NormalizeVideoParams {
     pub watermark_position: String,
     pub watermark_margin_pct: f64,
     pub audio_enhance: bool,
+    /// Phase 4.5b — run the source audio through DeepFilterNet
+    /// before the ffmpeg enhance chain. Caller (`enqueue_auto_assemble`)
+    /// validates the binary is present; if false here we skip the
+    /// extra step entirely and use source audio unmodified.
+    #[serde(default)]
+    pub deepfilternet_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -183,6 +212,20 @@ pub fn enqueue_auto_assemble<R: Runtime>(
 
     let conn = open_conn(&handle)?;
     let settings = AutoAssemblySettings::load(&conn)?;
+
+    // Phase 4.5b validation — if DFN is enabled but the binary isn't
+    // installed, refuse to enqueue. Better to surface this once up
+    // front than to ship N silently-noisier clips through the queue.
+    if settings.deepfilternet_enabled
+        && crate::thumbnails::deep_filter_bin().is_none()
+    {
+        return Err(BundleError::NotFound(
+            "DeepFilterNet enabled in Settings → Auto-Assembly but `deep-filter` \
+             binary not found. Install via `cargo install --git \
+             https://github.com/Rikorose/DeepFilterNet --bin deep-filter` or \
+             disable the toggle.".into(),
+        ));
+    }
 
     // Pull bundle persona + title for the title-card text.
     let (title, persona_code): (String, Option<String>) = conn.query_row(
@@ -308,6 +351,7 @@ pub fn enqueue_auto_assemble<R: Runtime>(
             watermark_position: watermark_position.clone(),
             watermark_margin_pct,
             audio_enhance: settings.audio_enhance_enabled,
+            deepfilternet_enabled: settings.deepfilternet_enabled,
         };
         let nid = crate::jobs::enqueue(
             &conn,
@@ -456,11 +500,44 @@ pub fn dispatch_normalize_video<R: Runtime>(
     if let Some(parent) = dst.parent() { fs::create_dir_all(parent)?; }
     let tmp = dst.with_extension("sm-tmp.mp4");
 
+    // ── Phase 4.5b: DeepFilterNet voice isolation (optional pre-pass).
+    // When enabled + binary present, extract source audio to a WAV,
+    // run it through `deep-filter`, then use the cleaned WAV as a
+    // second ffmpeg input. When disabled OR binary missing, we just
+    // use the source's audio stream directly (single -i source.mov).
+    //
+    // The enqueue validator already errors out if the toggle is on
+    // but the binary isn't installed, so reaching this dispatcher
+    // with `deepfilternet_enabled=true` means the binary IS available
+    // unless something unmounted it mid-batch. We re-check defensively
+    // and fall back to source audio with a logged warning rather than
+    // failing the whole clip.
+    let cleaned_audio: Option<PathBuf> = if params.deepfilternet_enabled {
+        match crate::thumbnails::deep_filter_bin() {
+            Some(bin) => Some(extract_and_denoise_audio(src, &dst, bin)?),
+            None => {
+                eprintln!(
+                    "[sidemolly] deep-filter binary disappeared mid-batch; \
+                     falling back to source audio for {}",
+                    params.working_path,
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     let mut argv: Vec<String> = vec![
         "-y".into(),
         "-loglevel".into(), "error".into(),
         "-i".into(), src.to_string_lossy().to_string(),
     ];
+    let mut input_index_audio: usize = 0; // [0:a] by default
+    if let Some(p) = &cleaned_audio {
+        argv.extend(["-i".into(), p.to_string_lossy().to_string()]);
+        input_index_audio = 1; // audio now lives on the 2nd input
+    }
 
     // Build the filter graph:
     //   [0:v] (rotate?) → scale-to-fit + pad to target → (overlay watermark?) → [vout]
@@ -489,6 +566,12 @@ pub fn dispatch_normalize_video<R: Runtime>(
         .map(|p| Path::new(p).exists())
         .unwrap_or(false);
 
+    // Watermark PNG slots in AFTER any DeepFilterNet cleaned-audio
+    // input, so its filter-graph index depends on whether that input
+    // was added. With cleaned audio:  [2:v] for the watermark.
+    // Without cleaned audio:          [1:v] for the watermark.
+    let wm_input_index = if cleaned_audio.is_some() { 2 } else { 1 };
+
     let filter_complex = if has_watermark {
         let wm = params.watermark_png_path.as_ref().unwrap();
         argv.extend(["-i".into(), wm.clone()]);
@@ -498,18 +581,26 @@ pub fn dispatch_normalize_video<R: Runtime>(
             ((params.height as f32) * (params.watermark_margin_pct as f32) / 100.0).round() as i32;
         let (x, y) = overlay_xy_expr(pos, margin_px.max(8));
         format!(
-            "[0:v]{vfilters}[vbase];[vbase][1:v]overlay=x={x}:y={y}:format=rgb[vout]",
+            "[0:v]{vfilters}[vbase];[vbase][{wmi}:v]overlay=x={x}:y={y}:format=rgb[vout]",
             vfilters = vchain.join(","),
+            wmi = wm_input_index,
         )
     } else {
         format!("[0:v]{vfilters}[vout]", vfilters = vchain.join(","))
     };
 
+    // Audio chain reads from either [0:a] (source-direct path) or
+    // [1:a] (DeepFilterNet-cleaned path) depending on what we added
+    // as a second input above. The enhance filter is the same either
+    // way — podcast-grade loudnorm + mild compression + warmth/presence EQ.
+    let audio_in_label = format!("[{}:a]", input_index_audio);
     let audio_filter = if params.audio_enhance {
-        // Podcast-grade loudness + mild compression + 200Hz warmth + 3kHz presence.
-        "[0:a]loudnorm=I=-16:TP=-1.5:LRA=11,acompressor=threshold=-18dB:ratio=3:attack=5:release=50,equalizer=f=200:t=q:w=1.0:g=2,equalizer=f=3000:t=q:w=1.0:g=2.5[aout]".to_string()
+        format!(
+            "{audio_in}loudnorm=I=-16:TP=-1.5:LRA=11,acompressor=threshold=-18dB:ratio=3:attack=5:release=50,equalizer=f=200:t=q:w=1.0:g=2,equalizer=f=3000:t=q:w=1.0:g=2.5[aout]",
+            audio_in = audio_in_label,
+        )
     } else {
-        "[0:a]anull[aout]".to_string()
+        format!("{audio_in}anull[aout]", audio_in = audio_in_label)
     };
 
     let full_filter = format!("{filter_complex};{audio_filter}");
@@ -629,6 +720,111 @@ pub fn dispatch_assemble_master<R: Runtime>(
 // ---------------------------------------------------------------------------
 // Helpers.
 // ---------------------------------------------------------------------------
+
+/// Phase 4.5b voice isolation helper. Extracts the source video's
+/// audio to a PCM WAV, runs DeepFilterNet's `deep-filter` on it, and
+/// returns the cleaned WAV path. Caller passes the result as a
+/// second ffmpeg input to the main normalize encode.
+///
+/// Layout (per-clip side dir):
+///   <dst>.df-raw.wav             — extracted PCM (deleted after success)
+///   <dst>.df-clean.wav           — deep-filter output (consumed downstream)
+///
+/// `deep-filter` writes `<basename>_DeepFilterNet3.wav` next to its
+/// input by default, with version suffix that drifts between releases.
+/// We use `--output-dir` + a temp dir per clip so we know the exact
+/// output filename to reference. Falls back to scanning the output
+/// dir for a `_DeepFilterNet*.wav` file if `--output-dir` semantics
+/// vary across CLI versions.
+fn extract_and_denoise_audio(
+    src: &Path,
+    final_dst: &Path,
+    deep_filter_bin: &str,
+) -> Result<PathBuf, BundleError> {
+    let work_dir = final_dst.parent()
+        .ok_or_else(|| BundleError::NotFound("normalize_video: dst has no parent".into()))?
+        .to_path_buf();
+    fs::create_dir_all(&work_dir)?;
+
+    let stem = final_dst.file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "audio".to_string());
+    let raw_wav = work_dir.join(format!("{stem}.df-raw.wav"));
+    let clean_wav = work_dir.join(format!("{stem}.df-clean.wav"));
+
+    // Step 1: extract audio to PCM WAV (48kHz stereo, matching
+    // DeepFilterNet's native rate).
+    let ff = ffmpeg_bin();
+    let extract_status = Command::new(ff)
+        .args([
+            "-y", "-loglevel", "error",
+            "-i",
+        ])
+        .arg(src)
+        .args([
+            "-vn",
+            "-ac", "2",
+            "-ar", "48000",
+            "-c:a", "pcm_s16le",
+        ])
+        .arg(&raw_wav)
+        .status()
+        .map_err(|e| BundleError::Io(std::io::Error::other(
+            format!("ffmpeg audio-extract spawn: {e}"),
+        )))?;
+    if !extract_status.success() {
+        return Err(BundleError::Io(std::io::Error::other(
+            format!("ffmpeg audio-extract exit {:?}", extract_status.code()),
+        )));
+    }
+
+    // Step 2: run deep-filter into a dedicated output dir so we
+    // can reliably find the cleaned WAV regardless of the CLI's
+    // version-suffix naming convention.
+    let df_dir = work_dir.join(format!("{stem}.df-out"));
+    let _ = fs::remove_dir_all(&df_dir); // start clean
+    fs::create_dir_all(&df_dir)?;
+    let df_status = Command::new(deep_filter_bin)
+        .arg(&raw_wav)
+        .args(["--output-dir"])
+        .arg(&df_dir)
+        .status()
+        .map_err(|e| BundleError::Io(std::io::Error::other(
+            format!("deep-filter spawn ({deep_filter_bin}): {e}"),
+        )))?;
+    if !df_status.success() {
+        return Err(BundleError::Io(std::io::Error::other(
+            format!("deep-filter exit {:?} on {}", df_status.code(), raw_wav.display()),
+        )));
+    }
+
+    // Locate the cleaned WAV. CLI typically writes
+    // `<input-stem>_DeepFilterNet3.wav` (version varies) — match any
+    // `_DeepFilterNet*.wav` in the output dir.
+    let cleaned_path: Option<PathBuf> = fs::read_dir(&df_dir)
+        .ok()
+        .and_then(|rd| {
+            rd.flatten()
+                .map(|e| e.path())
+                .find(|p| p.file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|s| s.contains("_DeepFilterNet") && s.ends_with(".wav"))
+                    .unwrap_or(false))
+        });
+    let cleaned = cleaned_path.ok_or_else(|| BundleError::NotFound(
+        format!("deep-filter ran but no *_DeepFilterNet*.wav appeared in {}",
+                df_dir.display()),
+    ))?;
+
+    // Move into a deterministic spot so downstream ffmpeg can
+    // reference it, then remove the intermediates.
+    if clean_wav.exists() { let _ = fs::remove_file(&clean_wav); }
+    fs::rename(&cleaned, &clean_wav)?;
+    let _ = fs::remove_dir_all(&df_dir);
+    let _ = fs::remove_file(&raw_wav);
+
+    Ok(clean_wav)
+}
 
 /// ffmpeg's `drawtext` filter parser splits on `:` and `,`, so any of
 /// those in user-provided text would break the filter graph. Escape the
@@ -753,9 +949,11 @@ mod tests {
             watermark_position: "bottom-right".into(),
             watermark_margin_pct: 2.5,
             audio_enhance: true,
+            deepfilternet_enabled: true,
         };
         let json = serde_json::to_string(&p).unwrap();
         assert!(json.contains("\"rotationDegrees\""), "{json}");
+        assert!(json.contains("\"deepfilternetEnabled\""), "{json}");
         assert!(json.contains("\"watermarkPngPath\""), "{json}");
         let _back: NormalizeVideoParams = serde_json::from_str(&json).unwrap();
     }

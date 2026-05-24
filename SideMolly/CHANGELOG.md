@@ -4,6 +4,73 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] — 2026-05-24
+
+### Added — Phase 4.5b: DeepFilterNet voice isolation
+
+Optional voice-isolation pre-pass in the auto-assemble pipeline. When
+enabled (Settings → Auto-Assembly) the per-clip normalize step extracts
+the source audio to a PCM WAV, runs it through DeepFilterNet, and uses
+the cleaned audio as a second ffmpeg input to the main encode. The
+existing ffmpeg audio chain (loudnorm + acompressor + EQ) still runs
+on top, so the audio path becomes:
+
+```
+source audio → DeepFilterNet (denoise + voice isolation)
+            → loudnorm -16 LUFS + acompressor + 200Hz/3kHz EQ
+            → AAC 192k / 48k stereo
+```
+
+**Why DeepFilterNet over a pure-ffmpeg approach** (e.g. arnndn): better
+quality on modern voice scenarios and the spec called for it. The
+cost is an external dependency we don't bundle — `deep-filter` is a
+~75MB binary with embedded ONNX weights, too large to ship inside the
+.app.
+
+**Binary detection** lives in `thumbnails::deep_filter_bin()`,
+following the same Finder-launched-PATH-stripped probe pattern we
+use for ffmpeg/ffprobe: checks `/opt/homebrew/bin`, `/usr/local/bin`,
+`~/.cargo/bin`, then falls back to `which`. Cached via `OnceLock`.
+
+**Settings → Auto-Assembly** panel shows live install status under the
+checkbox:
+
+- Installed: `✓ installed · deep-filter <version> · /path/to/binary`
+- Not installed: `⚠ deep-filter binary not found` plus copy-pasteable
+  install command:
+  ```
+  cargo install --git https://github.com/Rikorose/DeepFilterNet --bin deep-filter
+  ```
+  and a link to the GitHub Releases page for pre-built binaries.
+
+The checkbox itself is disabled until the binary is detected, so the
+user can't enable a toggle that would silently no-op.
+
+**Enqueue-time validation**: if `deepfilternet_enabled` is on but the
+binary disappeared between Settings save and Auto-assemble click, the
+enqueue command errors before queuing any jobs — better than shipping
+N silently-noisier clips through the worker.
+
+**New backend command**: `get_deepfilternet_status` returns
+`{ installed, binPath, version }` for the Settings UI.
+
+**Filter-graph rewiring**: `dispatch_normalize_video` now tracks input
+indices dynamically. When DeepFilterNet is on, the cleaned-audio WAV
+is input 1 (source video stays input 0); the watermark PNG (if any)
+shifts to input 2. Audio chain reads from `[1:a]` instead of `[0:a]`.
+
+**Intermediate files** live next to the per-clip output:
+`v01.df-raw.wav` (extracted PCM, deleted on success) and
+`v01.df-clean.wav` (DeepFilterNet output, consumed by the main encode).
+The CLI writes its output as `*_DeepFilterNet*.wav` with a version
+suffix that drifts between releases, so we use `--output-dir` + a
+scan rather than hardcoding the filename.
+
+### Tests
+
+101 passing. New camelCase contracts for `DeepFilterNetStatus`,
+extended `NormalizeVideoParams` to cover `deepfilternet_enabled`.
+
 ## [0.9.0] — 2026-05-24
 
 ### Edit tab redesign + title-card fix

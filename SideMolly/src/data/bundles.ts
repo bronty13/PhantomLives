@@ -291,6 +291,16 @@ export function setAutoAssemblySettings(settings: AutoAssemblySettings): Promise
   return invoke('set_auto_assembly_settings', { settings });
 }
 
+export interface DeepFilterNetStatus {
+  installed: boolean;
+  binPath: string | null;
+  version: string | null;
+}
+
+export function getDeepFilterNetStatus(): Promise<DeepFilterNetStatus> {
+  return invoke<DeepFilterNetStatus>('get_deepfilternet_status');
+}
+
 export function enqueueAutoAssemble(uid: string): Promise<EnqueueAutoAssembleResult> {
   return invoke<EnqueueAutoAssembleResult>('enqueue_auto_assemble', { uid });
 }

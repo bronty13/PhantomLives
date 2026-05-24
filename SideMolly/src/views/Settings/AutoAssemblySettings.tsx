@@ -1,17 +1,24 @@
 import { useEffect, useState } from 'react';
-import { getAutoAssemblySettings, setAutoAssemblySettings,
-         type AutoAssemblySettings as AAS } from '../../data/bundles';
+import { getAutoAssemblySettings, getDeepFilterNetStatus, setAutoAssemblySettings,
+         type AutoAssemblySettings as AAS,
+         type DeepFilterNetStatus } from '../../data/bundles';
 
 export function AutoAssemblySettings() {
   const [settings, setSettings] = useState<AAS | null>(null);
+  const [dfn, setDfn] = useState<DeepFilterNetStatus | null>(null);
   const [status, setStatus] = useState<string>('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let alive = true;
-    getAutoAssemblySettings()
-      .then((s) => { if (alive) setSettings(s); })
-      .catch((e) => setStatus(`Failed to load: ${e}`));
+    Promise.all([
+      getAutoAssemblySettings(),
+      getDeepFilterNetStatus().catch(() => null),
+    ]).then(([s, d]) => {
+      if (!alive) return;
+      setSettings(s);
+      setDfn(d);
+    }).catch((e) => setStatus(`Failed to load: ${e}`));
     return () => { alive = false; };
   }, []);
 
@@ -125,12 +132,24 @@ export function AutoAssemblySettings() {
           </label>
 
           <label className="text-xs" style={{ color: 'rgb(var(--surface-muted))' }}>DeepFilterNet</label>
-          <label className="flex items-center gap-2 cursor-not-allowed opacity-50">
-            <input type="checkbox" checked={settings.deepfilternetEnabled} disabled />
-            <span className="text-xs">
-              Voice isolation (ONNX) — Phase 4.5b, not yet wired
-            </span>
-          </label>
+          <div className="flex flex-col gap-1">
+            <label
+              className={`flex items-center gap-2 ${dfn?.installed ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
+              title={dfn?.installed ? '' : '`deep-filter` binary not found — install instructions below'}
+            >
+              <input
+                type="checkbox"
+                checked={settings.deepfilternetEnabled && (dfn?.installed ?? false)}
+                disabled={!dfn?.installed}
+                onChange={(e) => update({ deepfilternetEnabled: e.target.checked })}
+              />
+              <span className="text-xs">
+                Voice isolation — DeepFilterNet pre-filter before the ffmpeg
+                audio chain
+              </span>
+            </label>
+            <DeepFilterStatus dfn={dfn} />
+          </div>
         </div>
 
         <div className="flex justify-between items-center mt-1">
@@ -147,6 +166,60 @@ export function AutoAssemblySettings() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function DeepFilterStatus({ dfn }: { dfn: DeepFilterNetStatus | null }) {
+  if (!dfn) return null;
+  if (dfn.installed) {
+    return (
+      <div
+        className="text-[11px] flex items-center gap-2 font-mono pl-6"
+        style={{ color: '#0f5d33' }}
+      >
+        <span>✓ installed</span>
+        {dfn.version && <span style={{ color: 'rgb(var(--surface-muted))' }}>· {dfn.version}</span>}
+        {dfn.binPath && (
+          <span
+            className="truncate"
+            style={{ color: 'rgb(var(--surface-muted))' }}
+            title={dfn.binPath}
+          >
+            · {dfn.binPath}
+          </span>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="text-[11px] flex flex-col gap-0.5 pl-6">
+      <span style={{ color: '#7a0000' }}>⚠ deep-filter binary not found</span>
+      <span style={{ color: 'rgb(var(--surface-muted))' }}>
+        Install (one-time, ~3 min):
+      </span>
+      <code
+        className="text-[10px] p-1 rounded"
+        style={{
+          background: 'rgb(var(--surface-base))',
+          border: '1px solid rgb(var(--surface-border))',
+        }}
+      >
+        cargo install --git https://github.com/Rikorose/DeepFilterNet --bin deep-filter
+      </code>
+      <span style={{ color: 'rgb(var(--surface-muted))' }}>
+        Or download a binary release from{' '}
+        <a
+          href="https://github.com/Rikorose/DeepFilterNet/releases"
+          target="_blank"
+          rel="noreferrer"
+          style={{ color: 'rgb(var(--surface-accent))' }}
+        >
+          DeepFilterNet releases
+        </a>
+        {' '}and place it in <code>/opt/homebrew/bin</code> or{' '}
+        <code>~/.cargo/bin</code>.
+      </span>
     </div>
   );
 }
