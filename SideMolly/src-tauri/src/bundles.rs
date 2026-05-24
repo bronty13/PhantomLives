@@ -35,6 +35,10 @@ use crate::bundle_io::{
 };
 use crate::extract::{bundle_workspace_dir, extract_inner_zip, ExtractError};
 use crate::fsutil;
+use crate::images::{
+    output_path as image_output_path, process_image, ImageOps, ImageOpError,
+    WatermarkPosition, WatermarkProfile,
+};
 use crate::manifest::{
     parse_manifest_json, parse_molly_log, BundleManifest, ManifestError,
 };
@@ -52,6 +56,8 @@ pub enum BundleError {
     Extract(#[from] ExtractError),
     #[error("thumbnail: {0}")]
     Thumbnail(#[from] ThumbnailError),
+    #[error("image: {0}")]
+    Image(#[from] ImageOpError),
     #[error("db: {0}")]
     Db(#[from] rusqlite::Error),
     #[error("app data dir: {0}")]
@@ -666,6 +672,325 @@ pub fn get_bundle<R: Runtime>(
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
     Ok(BundleDetail { summary, manifest, files })
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3 image ops — watermark profiles + process_bundle_images.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WatermarkProfileRow {
+    pub persona_code: String,
+    pub text: String,
+    pub opacity_percent: i64,
+    pub position: String,
+    pub font_size_pct: f64,
+    pub margin_pct: f64,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageOpsInput {
+    #[serde(default)] pub watermark: bool,
+    #[serde(default)] pub strip_exif: bool,
+    #[serde(default)] pub rename: bool,
+}
+
+impl From<ImageOpsInput> for ImageOps {
+    fn from(i: ImageOpsInput) -> Self {
+        ImageOps { watermark: i.watermark, strip_exif: i.strip_exif, rename: i.rename }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessedFileRow {
+    pub bundle_file_id: i64,
+    pub in_zip_path: String,
+    pub op_kind: String,
+    pub output_path: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessImagesResult {
+    pub bundle_uid: String,
+    pub op_kind: String,
+    pub processed: Vec<ProcessedFileRow>,
+    pub skipped: i64,
+    pub errors: Vec<String>,
+}
+
+/// macOS-stable lookup for the bundled font. Tauri's `resolve_resource`
+/// returns the in-bundle path for production; in dev / tests it falls
+/// back to the source-tree copy.
+fn paper_daisy_bytes<R: Runtime>(handle: &AppHandle<R>) -> Result<Vec<u8>, BundleError> {
+    // Try the bundled resource path first (release builds).
+    if let Ok(p) = handle.path().resolve(
+        "resources/fonts/PaperDaisy.ttf",
+        tauri::path::BaseDirectory::Resource,
+    ) {
+        if p.exists() {
+            return Ok(fs::read(p)?);
+        }
+    }
+    // Dev fallback: relative to CARGO_MANIFEST_DIR.
+    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/fonts/PaperDaisy.ttf");
+    if dev.exists() {
+        return Ok(fs::read(dev)?);
+    }
+    Err(BundleError::NotFound("resources/fonts/PaperDaisy.ttf".into()))
+}
+
+#[tauri::command]
+pub fn get_watermark_profiles<R: Runtime>(
+    handle: AppHandle<R>,
+) -> Result<Vec<WatermarkProfileRow>, BundleError> {
+    let conn = open_conn(&handle)?;
+    let mut stmt = conn.prepare(
+        "SELECT persona_code, text, opacity_percent, position,
+                font_size_pct, margin_pct, enabled
+           FROM watermark_profiles
+          ORDER BY CASE persona_code WHEN '' THEN 0 ELSE 1 END, persona_code",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(WatermarkProfileRow {
+                persona_code: row.get(0)?,
+                text: row.get(1)?,
+                opacity_percent: row.get(2)?,
+                position: row.get(3)?,
+                font_size_pct: row.get(4)?,
+                margin_pct: row.get(5)?,
+                enabled: row.get::<_, i64>(6)? != 0,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+#[tauri::command]
+pub fn set_watermark_profile<R: Runtime>(
+    handle: AppHandle<R>,
+    profile: WatermarkProfileRow,
+) -> Result<(), BundleError> {
+    // Validate position before touching the DB so we surface a clean
+    // error instead of a CHECK constraint failure.
+    WatermarkPosition::parse(&profile.position).map_err(ImageOpError::from)?;
+    let conn = open_conn(&handle)?;
+    conn.execute(
+        "INSERT INTO watermark_profiles
+            (persona_code, text, opacity_percent, position,
+             font_size_pct, margin_pct, enabled, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))
+         ON CONFLICT(persona_code) DO UPDATE SET
+            text             = excluded.text,
+            opacity_percent  = excluded.opacity_percent,
+            position         = excluded.position,
+            font_size_pct    = excluded.font_size_pct,
+            margin_pct       = excluded.margin_pct,
+            enabled          = excluded.enabled,
+            updated_at       = datetime('now')",
+        params![
+            profile.persona_code,
+            profile.text,
+            profile.opacity_percent,
+            profile.position,
+            profile.font_size_pct,
+            profile.margin_pct,
+            if profile.enabled { 1 } else { 0 },
+        ],
+    )?;
+    Ok(())
+}
+
+fn load_watermark_profile(
+    conn: &Connection,
+    persona_code: Option<&str>,
+) -> Result<Option<WatermarkProfile>, BundleError> {
+    let lookup_key = persona_code.unwrap_or("");
+    // Look up the bundle's persona first; fall back to the '' default
+    // row when missing or disabled.
+    for key in [lookup_key, ""] {
+        let row = conn
+            .query_row(
+                "SELECT text, opacity_percent, position, font_size_pct, margin_pct, enabled
+                   FROM watermark_profiles WHERE persona_code = ?1",
+                params![key],
+                |r| Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, f64>(3)?,
+                    r.get::<_, f64>(4)?,
+                    r.get::<_, i64>(5)?,
+                )),
+            )
+            .optional()?;
+        let Some((text, opacity, position, font_size, margin, enabled)) = row else { continue };
+        if enabled == 0 || text.is_empty() { continue; }
+        return Ok(Some(WatermarkProfile {
+            text,
+            opacity_percent: opacity.clamp(0, 100) as u8,
+            position: WatermarkPosition::parse(&position).map_err(ImageOpError::from)?,
+            font_size_pct: font_size as f32,
+            margin_pct: margin as f32,
+        }));
+    }
+    Ok(None)
+}
+
+#[tauri::command]
+pub fn process_bundle_images<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+    ops: ImageOpsInput,
+) -> Result<ProcessImagesResult, BundleError> {
+    let typed_ops: ImageOps = ops.into();
+    let op_kind = typed_ops.op_kind().to_string();
+    let workspace = bundle_workspace_dir(&work_root(&handle)?, &uid);
+
+    // Resolve the persona once + load its watermark profile.
+    let conn = open_conn(&handle)?;
+    let persona: Option<String> = conn
+        .query_row(
+            "SELECT persona_code FROM bundles WHERE uid = ?1",
+            params![uid],
+            |r| r.get(0),
+        )
+        .optional()?
+        .flatten();
+    let profile = if typed_ops.watermark {
+        load_watermark_profile(&conn, persona.as_deref())?
+    } else {
+        None
+    };
+
+    let font_bytes = if typed_ops.watermark { paper_daisy_bytes(&handle)? } else { Vec::new() };
+
+    // Walk every image-kind row that has a working path on disk.
+    let mut stmt = conn.prepare(
+        "SELECT id, in_zip_path, working_path
+           FROM bundle_files
+          WHERE bundle_uid = ?1 AND kind = 'image'
+                AND working_path IS NOT NULL AND working_path != ''",
+    )?;
+    let candidates: Vec<(i64, String, String)> = stmt
+        .query_map(params![uid], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(stmt);
+
+    let mut processed: Vec<ProcessedFileRow> = Vec::with_capacity(candidates.len());
+    let mut skipped: i64 = 0;
+    let mut errors: Vec<String> = Vec::new();
+
+    for (id, in_zip, working) in candidates {
+        let src = PathBuf::from(&working);
+        if !src.exists() {
+            skipped += 1;
+            errors.push(format!("{in_zip}: working file missing"));
+            continue;
+        }
+        let dst = image_output_path(&workspace, &in_zip, &op_kind);
+        match process_image(&src, &dst, typed_ops, profile.as_ref(), &font_bytes) {
+            Ok(()) => {
+                conn.execute(
+                    "INSERT INTO processed_files
+                        (bundle_file_id, op_kind, output_path)
+                     VALUES (?1, ?2, ?3)
+                     ON CONFLICT(bundle_file_id, op_kind) DO UPDATE SET
+                        output_path = excluded.output_path,
+                        created_at = datetime('now')",
+                    params![id, op_kind, dst.to_string_lossy().to_string()],
+                )?;
+                let created_at: String = conn.query_row(
+                    "SELECT created_at FROM processed_files
+                      WHERE bundle_file_id = ?1 AND op_kind = ?2",
+                    params![id, op_kind],
+                    |r| r.get(0),
+                )?;
+                processed.push(ProcessedFileRow {
+                    bundle_file_id: id,
+                    in_zip_path: in_zip,
+                    op_kind: op_kind.clone(),
+                    output_path: dst.to_string_lossy().to_string(),
+                    created_at,
+                });
+            }
+            Err(e) => {
+                skipped += 1;
+                errors.push(format!("{in_zip}: {e}"));
+            }
+        }
+    }
+
+    Ok(ProcessImagesResult {
+        bundle_uid: uid,
+        op_kind,
+        processed,
+        skipped,
+        errors,
+    })
+}
+
+#[tauri::command]
+pub fn list_processed_files<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+) -> Result<Vec<ProcessedFileRow>, BundleError> {
+    let conn = open_conn(&handle)?;
+    let mut stmt = conn.prepare(
+        "SELECT pf.bundle_file_id, bf.in_zip_path, pf.op_kind,
+                pf.output_path, pf.created_at
+           FROM processed_files pf
+           JOIN bundle_files bf ON bf.id = pf.bundle_file_id
+          WHERE bf.bundle_uid = ?1
+          ORDER BY bf.in_zip_path, pf.op_kind",
+    )?;
+    let rows = stmt
+        .query_map(params![uid], |row| {
+            Ok(ProcessedFileRow {
+                bundle_file_id: row.get(0)?,
+                in_zip_path: row.get(1)?,
+                op_kind: row.get(2)?,
+                output_path: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+#[tauri::command]
+pub fn get_processed_previews<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+) -> Result<std::collections::HashMap<String, String>, BundleError> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    let conn = open_conn(&handle)?;
+    let mut stmt = conn.prepare(
+        "SELECT bf.in_zip_path, pf.output_path
+           FROM processed_files pf
+           JOIN bundle_files bf ON bf.id = pf.bundle_file_id
+          WHERE bf.bundle_uid = ?1
+          ORDER BY pf.created_at DESC",
+    )?;
+    let rows: Vec<(String, String)> = stmt
+        .query_map(params![uid], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(stmt);
+
+    let mut out: std::collections::HashMap<String, String> =
+        std::collections::HashMap::with_capacity(rows.len());
+    for (in_zip, path) in rows {
+        if out.contains_key(&in_zip) { continue; } // most-recent op wins
+        let Ok(bytes) = fs::read(&path) else { continue };
+        out.insert(in_zip, format!("data:image/jpeg;base64,{}", STANDARD.encode(&bytes)));
+    }
+    Ok(out)
 }
 
 // ---------------------------------------------------------------------------

@@ -1,0 +1,389 @@
+// Phase 3 image-ops — watermark stamping + EXIF strip + deterministic
+// rename. Pure module (no Tauri dep) so the contract can be tested in
+// isolation. Same atomic write-via-tmp pattern as thumbnails.rs.
+//
+// Watermark: rasterized text (PaperDaisy.ttf shipped in resources) blended
+// at configurable opacity over the source image at one of nine
+// 3x3-grid positions. Font size and margin are expressed as percentages
+// of image height so output looks the same at 1080p and 4K.
+//
+// EXIF strip: re-encoding via image::DynamicImage::save (or the JPEG
+// encoder directly) drops everything that wasn't pixel data — EXIF,
+// XMP, IPTC, ICC. That's what we want when posting from a private
+// camera roll.
+//
+// Rename: deterministic template applied to the OUTPUT filename only.
+// Source files are never touched.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use ab_glyph::{FontRef, PxScale};
+use image::{DynamicImage, GenericImage, GenericImageView, Rgba, RgbaImage};
+use imageproc::drawing::{draw_text_mut, text_size};
+
+#[derive(Debug, thiserror::Error)]
+pub enum ImageOpError {
+    #[error("io: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("image: {0}")]
+    Image(#[from] image::ImageError),
+    #[error("font: {0}")]
+    Font(String),
+    #[error("invalid position: {0}")]
+    Position(String),
+}
+
+/// Bitflags-ish set of ops the caller wants applied. Order is fixed
+/// (watermark → strip_exif → rename) so the output is deterministic
+/// regardless of how the caller orders the booleans in the request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ImageOps {
+    pub watermark: bool,
+    pub strip_exif: bool,
+    pub rename: bool,
+}
+
+impl ImageOps {
+    pub fn op_kind(self) -> &'static str {
+        match (self.watermark, self.strip_exif, self.rename) {
+            (true, true, true) => "watermark_strip_rename",
+            (true, true, false) => "watermark_strip",
+            (true, false, false) => "watermark",
+            (false, true, false) => "strip_exif",
+            (false, false, true) => "rename",
+            // Any other combo collapses to a "strip+rename" via JPEG
+            // re-encode; we treat it as strip_exif for accounting.
+            _ => "strip_exif",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WatermarkProfile {
+    pub text: String,
+    /// 0..=100. 0 = invisible, 100 = solid.
+    pub opacity_percent: u8,
+    pub position: WatermarkPosition,
+    /// Font size as a percentage of image height (e.g. 4.0 = 4%).
+    pub font_size_pct: f32,
+    /// Distance from edge as a percentage of image height.
+    pub margin_pct: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WatermarkPosition {
+    TopLeft, TopCenter, TopRight,
+    MiddleLeft, MiddleCenter, MiddleRight,
+    BottomLeft, BottomCenter, BottomRight,
+}
+
+impl WatermarkPosition {
+    pub fn parse(s: &str) -> Result<Self, ImageOpError> {
+        Ok(match s {
+            "top-left" => Self::TopLeft,
+            "top-center" => Self::TopCenter,
+            "top-right" => Self::TopRight,
+            "middle-left" => Self::MiddleLeft,
+            "middle-center" => Self::MiddleCenter,
+            "middle-right" => Self::MiddleRight,
+            "bottom-left" => Self::BottomLeft,
+            "bottom-center" => Self::BottomCenter,
+            "bottom-right" => Self::BottomRight,
+            other => return Err(ImageOpError::Position(other.to_string())),
+        })
+    }
+}
+
+/// Process a single source image into `dst` with the requested ops.
+/// Atomic via `.sm-tmp.jpg` + rename, like thumbnails.
+///
+/// `font_bytes` is the bundled PaperDaisy.ttf bytes — caller resolves
+/// the resource path once (via Tauri) and reuses across many images.
+pub fn process_image(
+    src: &Path,
+    dst: &Path,
+    ops: ImageOps,
+    watermark: Option<&WatermarkProfile>,
+    font_bytes: &[u8],
+) -> Result<(), ImageOpError> {
+    // Load. image::open drops EXIF on decode (we re-encode anyway).
+    let mut img: DynamicImage = image::open(src)?;
+
+    // Watermark requires an RGBA buffer for alpha blending.
+    if ops.watermark {
+        if let Some(profile) = watermark {
+            if profile.opacity_percent > 0 && !profile.text.is_empty() {
+                let mut rgba = img.to_rgba8();
+                draw_watermark(&mut rgba, profile, font_bytes)?;
+                img = DynamicImage::ImageRgba8(rgba);
+            }
+        }
+    }
+
+    // Write to a sibling tmp file with .jpg extension (re-encode JPEG;
+    // drops EXIF on save). Atomic rename to final dst.
+    if let Some(parent) = dst.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let tmp = dst.with_extension("sm-tmp.jpg");
+
+    // Always re-encode as JPEG quality 92 — high-fidelity but smaller
+    // than original RAW/PNG. Strips all non-pixel metadata.
+    let rgb = img.to_rgb8();
+    {
+        let mut file = fs::File::create(&tmp)?;
+        let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut file, 92);
+        encoder.encode_image(&rgb)?;
+    }
+    if dst.exists() { let _ = fs::remove_file(dst); }
+    fs::rename(&tmp, dst)?;
+    Ok(())
+}
+
+/// Render `profile.text` onto `img` per the position + opacity in the
+/// profile. Mutates `img` in place. Uses the bundled font bytes.
+fn draw_watermark(
+    img: &mut RgbaImage,
+    profile: &WatermarkProfile,
+    font_bytes: &[u8],
+) -> Result<(), ImageOpError> {
+    let font = FontRef::try_from_slice(font_bytes)
+        .map_err(|e| ImageOpError::Font(e.to_string()))?;
+
+    let w = img.width() as f32;
+    let h = img.height() as f32;
+    let font_size = (h * profile.font_size_pct / 100.0).max(12.0);
+    let margin = (h * profile.margin_pct / 100.0).max(4.0) as i32;
+    let scale = PxScale::from(font_size);
+
+    let (tw, th) = text_size(scale, &font, &profile.text);
+    let (tw, th) = (tw as i32, th as i32);
+    let w_i = w as i32;
+    let h_i = h as i32;
+
+    let (x, y) = match profile.position {
+        WatermarkPosition::TopLeft      => (margin,                 margin),
+        WatermarkPosition::TopCenter    => ((w_i - tw) / 2,         margin),
+        WatermarkPosition::TopRight     => (w_i - tw - margin,      margin),
+        WatermarkPosition::MiddleLeft   => (margin,                 (h_i - th) / 2),
+        WatermarkPosition::MiddleCenter => ((w_i - tw) / 2,         (h_i - th) / 2),
+        WatermarkPosition::MiddleRight  => (w_i - tw - margin,      (h_i - th) / 2),
+        WatermarkPosition::BottomLeft   => (margin,                 h_i - th - margin),
+        WatermarkPosition::BottomCenter => ((w_i - tw) / 2,         h_i - th - margin),
+        WatermarkPosition::BottomRight  => (w_i - tw - margin,      h_i - th - margin),
+    };
+
+    let alpha = (profile.opacity_percent as f32 / 100.0 * 255.0) as u8;
+    let color = Rgba([255, 255, 255, alpha]);
+    draw_text_mut(img, color, x, y, scale, &font, &profile.text);
+    Ok(())
+}
+
+/// Compute a deterministic output filename for a given bundle + file.
+/// `position` is the 1-indexed file ordinal within its kind.
+///
+/// Template currently fixed: `{date}_{persona}_{NN}.jpg`. When
+/// `persona` is empty, omits the persona segment. Rename is a pure
+/// helper — pair with `process_image` writing to that path.
+pub fn rename_output(
+    date: &str,
+    persona: &str,
+    position: i64,
+    original_basename: &str,
+) -> String {
+    let stem = match Path::new(original_basename).file_stem() {
+        Some(s) => s.to_string_lossy().to_string(),
+        None => original_basename.to_string(),
+    };
+    let _ = stem; // The current template ignores the stem; kept for
+                   // future templating where Robert wants to preserve
+                   // a hint of the original name.
+    let nn = format!("{:02}", position);
+    if persona.is_empty() {
+        format!("{date}_{nn}.jpg")
+    } else {
+        format!("{date}_{persona}_{nn}.jpg")
+    }
+}
+
+/// Convenience: compose the on-disk output path for a processed file.
+/// Layout: `<workspace>/processed/<basename>__<op>.jpg`.
+pub fn output_path(workspace: &Path, in_zip_path: &str, op_kind: &str) -> PathBuf {
+    let stem = Path::new(in_zip_path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "out".to_string());
+    workspace.join("processed").join(format!("{stem}__{op_kind}.jpg"))
+}
+
+// Used by tests to assemble a tiny RGB image without an external file.
+#[allow(dead_code)]
+fn test_image(w: u32, h: u32, c: [u8; 3]) -> DynamicImage {
+    let mut img = image::ImageBuffer::from_pixel(w, h, image::Rgb(c));
+    // Pixel mutation just to keep the rustc warning quiet; not actually
+    // needed otherwise.
+    let _ = img.get_pixel_mut(0, 0);
+    DynamicImage::ImageRgb8(img)
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    // The PaperDaisy bytes shipped with SideMolly's resource bundle.
+    const PAPER_DAISY: &[u8] = include_bytes!("../resources/fonts/PaperDaisy.ttf");
+
+    fn write_source(dir: &Path, name: &str, color: [u8; 3], w: u32, h: u32) -> PathBuf {
+        let p = dir.join(name);
+        let img = test_image(w, h, color);
+        img.save(&p).unwrap();
+        p
+    }
+
+    #[test]
+    fn strip_exif_only_round_trips() {
+        let dir = TempDir::new().unwrap();
+        let src = write_source(dir.path(), "src.jpg", [200, 100, 50], 256, 128);
+        let dst = dir.path().join("out.jpg");
+        let ops = ImageOps { strip_exif: true, ..Default::default() };
+        process_image(&src, &dst, ops, None, PAPER_DAISY).unwrap();
+        let out = image::open(&dst).unwrap();
+        assert_eq!(out.width(), 256);
+        assert_eq!(out.height(), 128);
+    }
+
+    #[test]
+    fn watermark_modifies_corner_pixels() {
+        let dir = TempDir::new().unwrap();
+        let src = write_source(dir.path(), "src.jpg", [240, 240, 240], 512, 256);
+        let dst = dir.path().join("watermarked.jpg");
+        let profile = WatermarkProfile {
+            text: "TEST".to_string(),
+            opacity_percent: 100, // solid for the diff check
+            position: WatermarkPosition::BottomRight,
+            font_size_pct: 10.0,  // big enough that the glyphs definitely paint
+            margin_pct: 2.5,
+        };
+        let ops = ImageOps { watermark: true, strip_exif: true, ..Default::default() };
+        process_image(&src, &dst, ops, Some(&profile), PAPER_DAISY).unwrap();
+
+        let out = image::open(&dst).unwrap().to_rgb8();
+        // The bottom-right region should contain SOME non-light-grey
+        // pixels — the rasterized "TEST" text drawn at full white over
+        // light grey will produce a small but detectable shift.
+        let (w, h) = (out.width(), out.height());
+        let mut any_changed = false;
+        for y in (h * 3 / 4)..h {
+            for x in (w * 3 / 4)..w {
+                let p = out.get_pixel(x, y);
+                if p[0] != 240 || p[1] != 240 || p[2] != 240 {
+                    any_changed = true;
+                    break;
+                }
+            }
+            if any_changed { break; }
+        }
+        assert!(any_changed, "bottom-right quadrant should show watermark drawing");
+
+        // Sanity: top-left quadrant should be untouched.
+        let p = out.get_pixel(5, 5);
+        assert!(
+            p[0] >= 235 && p[1] >= 235 && p[2] >= 235,
+            "top-left should still be ~light grey, got {p:?}",
+        );
+    }
+
+    #[test]
+    fn watermark_position_top_left_paints_top_left() {
+        let dir = TempDir::new().unwrap();
+        let src = write_source(dir.path(), "src.jpg", [240, 240, 240], 512, 256);
+        let dst = dir.path().join("tl.jpg");
+        let profile = WatermarkProfile {
+            text: "TEST".to_string(),
+            opacity_percent: 100,
+            position: WatermarkPosition::TopLeft,
+            font_size_pct: 10.0,
+            margin_pct: 2.5,
+        };
+        let ops = ImageOps { watermark: true, ..Default::default() };
+        process_image(&src, &dst, ops, Some(&profile), PAPER_DAISY).unwrap();
+        let out = image::open(&dst).unwrap().to_rgb8();
+        let (w, h) = (out.width(), out.height());
+
+        let mut tl_changed = false;
+        for y in 5..(h / 4) {
+            for x in 5..(w / 4) {
+                let p = out.get_pixel(x, y);
+                if p[0] != 240 || p[1] != 240 || p[2] != 240 { tl_changed = true; break; }
+            }
+            if tl_changed { break; }
+        }
+        assert!(tl_changed, "top-left should show drawing for TopLeft position");
+    }
+
+    #[test]
+    fn zero_opacity_is_a_no_op_for_watermark() {
+        let dir = TempDir::new().unwrap();
+        let src = write_source(dir.path(), "src.jpg", [240, 240, 240], 256, 128);
+        let dst = dir.path().join("invisible.jpg");
+        let profile = WatermarkProfile {
+            text: "TEST".to_string(),
+            opacity_percent: 0, // <- shortcuts inside process_image
+            position: WatermarkPosition::BottomRight,
+            font_size_pct: 10.0,
+            margin_pct: 2.5,
+        };
+        let ops = ImageOps { watermark: true, ..Default::default() };
+        process_image(&src, &dst, ops, Some(&profile), PAPER_DAISY).unwrap();
+        // No pixel-level assertion needed; just confirm we got a valid
+        // image out and didn't try to draw with 0 opacity.
+        let out = image::open(&dst).unwrap();
+        assert_eq!(out.width(), 256);
+    }
+
+    #[test]
+    fn output_path_layout_is_stable() {
+        let p = output_path(Path::new("/work/uid"), "FanSite/01_01_IMG_3488.jpg", "watermark_strip");
+        assert_eq!(p.to_string_lossy(), "/work/uid/processed/01_01_IMG_3488__watermark_strip.jpg");
+    }
+
+    #[test]
+    fn rename_template_basic() {
+        assert_eq!(rename_output("2026-05-22", "CoC", 1, "IMG_3488.jpg"),
+                   "2026-05-22_CoC_01.jpg");
+        assert_eq!(rename_output("2026-05-22", "", 7, "anything.png"),
+                   "2026-05-22_07.jpg");
+        assert_eq!(rename_output("2026-05-22", "PoA", 99, "x"),
+                   "2026-05-22_PoA_99.jpg");
+    }
+
+    #[test]
+    fn op_kind_combination() {
+        assert_eq!(ImageOps { watermark: true, strip_exif: true, rename: true }.op_kind(),
+                   "watermark_strip_rename");
+        assert_eq!(ImageOps { watermark: true, strip_exif: true, rename: false }.op_kind(),
+                   "watermark_strip");
+        assert_eq!(ImageOps { watermark: true, ..Default::default() }.op_kind(),
+                   "watermark");
+        assert_eq!(ImageOps { rename: true, ..Default::default() }.op_kind(),
+                   "rename");
+    }
+
+    #[test]
+    fn position_parse_round_trips_all_nine() {
+        for s in &[
+            "top-left", "top-center", "top-right",
+            "middle-left", "middle-center", "middle-right",
+            "bottom-left", "bottom-center", "bottom-right",
+        ] {
+            WatermarkPosition::parse(s).unwrap_or_else(|_| panic!("failed to parse {s}"));
+        }
+        assert!(WatermarkPosition::parse("nonsense").is_err());
+    }
+}

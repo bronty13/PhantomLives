@@ -132,6 +132,65 @@ export function getBundleThumbnails(uid: string): Promise<Record<string, string>
   return invoke<Record<string, string>>('get_bundle_thumbnails', { uid });
 }
 
+// ----- Phase 3 image ops -----
+
+export type WatermarkPosition =
+  | 'top-left' | 'top-center' | 'top-right'
+  | 'middle-left' | 'middle-center' | 'middle-right'
+  | 'bottom-left' | 'bottom-center' | 'bottom-right';
+
+export interface WatermarkProfile {
+  personaCode: string;
+  text: string;
+  opacityPercent: number;
+  position: WatermarkPosition;
+  fontSizePct: number;
+  marginPct: number;
+  enabled: boolean;
+}
+
+export interface ImageOpsInput {
+  watermark: boolean;
+  stripExif: boolean;
+  rename: boolean;
+}
+
+export interface ProcessedFileRow {
+  bundleFileId: number;
+  inZipPath: string;
+  opKind: string;
+  outputPath: string;
+  createdAt: string;
+}
+
+export interface ProcessImagesResult {
+  bundleUid: string;
+  opKind: string;
+  processed: ProcessedFileRow[];
+  skipped: number;
+  errors: string[];
+}
+
+export function getWatermarkProfiles(): Promise<WatermarkProfile[]> {
+  return invoke<WatermarkProfile[]>('get_watermark_profiles');
+}
+
+export function setWatermarkProfile(profile: WatermarkProfile): Promise<void> {
+  return invoke('set_watermark_profile', { profile });
+}
+
+export function processBundleImages(uid: string, ops: ImageOpsInput): Promise<ProcessImagesResult> {
+  return invoke<ProcessImagesResult>('process_bundle_images', { uid, ops });
+}
+
+export function listProcessedFiles(uid: string): Promise<ProcessedFileRow[]> {
+  return invoke<ProcessedFileRow[]>('list_processed_files', { uid });
+}
+
+export function getProcessedPreviews(uid: string): Promise<Record<string, string>> {
+  return invoke<Record<string, string>>('get_processed_previews', { uid });
+}
+
 export function getWatchSettings(): Promise<WatchSettings> {
   return invoke<WatchSettings>('get_watch_settings');
 }

@@ -3,6 +3,7 @@ import { useAsyncRefresh, listPlaceholder } from '../../lib/useAsyncRefresh';
 import { getBundle, getBundleThumbnails, personaChipColor, bundleTypeEmoji, verifyStatusBadge,
          type BundleDetail } from '../../data/bundles';
 import { OverviewTab } from './OverviewTab';
+import { EditTab } from './EditTab';
 import { DocDrawer, type DocKind } from './DocDrawer';
 
 interface Props {
@@ -10,11 +11,11 @@ interface Props {
   onBack: () => void;
 }
 
-type WorkspaceTab = 'overview';
-// Edit / Distribute / Post tabs land in Phases 3-10.
+type WorkspaceTab = 'overview' | 'edit';
+// Distribute / Post tabs land in Phases 6-10.
 
 export function BundleWorkspace({ uid, onBack }: Props) {
-  const [tab] = useState<WorkspaceTab>('overview');
+  const [tab, setTab] = useState<WorkspaceTab>('overview');
   const [detail, setDetail] = useState<BundleDetail | null>(null);
   const [docKind, setDocKind] = useState<DocKind | null>(null);
   // Map<inZipPath, "data:image/jpeg;base64,…"> for the Files pane.
@@ -78,9 +79,8 @@ export function BundleWorkspace({ uid, onBack }: Props) {
       </header>
 
       <nav className="mt-6 flex gap-2 text-sm">
-        <TabPill label="Overview" icon="📄" active={tab === 'overview'} />
-        <TabPill label="Files"      icon="📁" active={false} disabled />
-        <TabPill label="Edit"       icon="✂️"  active={false} disabled />
+        <TabPill label="Overview"   icon="📄" active={tab === 'overview'} onClick={() => setTab('overview')} />
+        <TabPill label="Edit"       icon="✂️" active={tab === 'edit'}     onClick={() => setTab('edit')} />
         <TabPill label="Distribute" icon="📦" active={false} disabled />
         <TabPill label="Post"       icon="🚀" active={false} disabled />
       </nav>
@@ -95,6 +95,7 @@ export function BundleWorkspace({ uid, onBack }: Props) {
             onOpenDoc={setDocKind}
           />
         )}
+        {tab === 'edit' && <EditTab summary={summary} files={files} />}
       </div>
 
       <DocDrawer uid={summary.uid} kind={docKind} manifest={manifest} onClose={() => setDocKind(null)} />
@@ -115,23 +116,31 @@ function BackBar({ onBack }: { onBack: () => void }) {
   );
 }
 
-function TabPill({ label, icon, active, disabled }: {
+function TabPill({ label, icon, active, disabled, onClick }: {
   label: string; icon: string; active: boolean; disabled?: boolean;
+  onClick?: () => void;
 }) {
+  const className = "px-3 py-1.5 rounded-lg text-sm transition";
+  const style = {
+    background: active ? 'rgb(var(--surface-accent) / 0.12)' : 'rgb(var(--surface-card))',
+    color: active ? 'rgb(var(--surface-accent))' : disabled ? 'rgb(var(--surface-muted))' : 'rgb(var(--surface-text))',
+    border: '1px solid rgb(var(--surface-border))',
+    fontWeight: active ? 600 : 500,
+    opacity: disabled ? 0.55 : 1,
+    cursor: disabled ? 'default' : 'pointer',
+  } as const;
+  if (disabled || !onClick) {
+    return (
+      <span title={disabled ? 'Coming in a later phase' : undefined} className={className} style={style}>
+        <span className="mr-1.5">{icon}</span>
+        {label}
+      </span>
+    );
+  }
   return (
-    <span
-      title={disabled ? 'Coming in a later phase' : undefined}
-      className="px-3 py-1.5 rounded-lg text-sm"
-      style={{
-        background: active ? 'rgb(var(--surface-accent) / 0.12)' : 'rgb(var(--surface-card))',
-        color: active ? 'rgb(var(--surface-accent))' : disabled ? 'rgb(var(--surface-muted))' : 'rgb(var(--surface-text))',
-        border: '1px solid rgb(var(--surface-border))',
-        fontWeight: active ? 600 : 500,
-        opacity: disabled ? 0.55 : 1,
-      }}
-    >
+    <button type="button" onClick={onClick} className={className} style={style}>
       <span className="mr-1.5">{icon}</span>
       {label}
-    </span>
+    </button>
   );
 }

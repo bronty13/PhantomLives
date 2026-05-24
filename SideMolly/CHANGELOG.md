@@ -4,6 +4,107 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-05-24
+
+### Added — Phase 3: image ops + per-persona watermark + Bundle Edit tab
+
+First phase where SideMolly **transforms** bundle content rather than
+just reading it. Three primitives:
+
+**Watermark stamping.** Paper Daisy text overlay rendered with
+`ab_glyph` + `imageproc::drawing::draw_text_mut`. Per-persona profile
+(text, opacity 0-100, 9-position grid, font-size %, margin %) stored
+in the new `watermark_profiles` table. Defaults seeded per PLAN.md
+§12 #24: CoC → `CurseOfCurves`, PoA → `PrincessOfAddiction`, Sa →
+`SheerAttraction`. 20% opacity, bottom-right, 4% font size, 2.5%
+margin. The `''` row catches null-persona bundles + serves as the
+editable default.
+
+**EXIF strip.** Re-encoding via the `image` crate's JPEG encoder
+naturally drops EXIF/XMP/IPTC/ICC — anything that isn't pixel data
+goes. Output is a fresh quality-92 JPEG, on average smaller than the
+RAW/PNG source.
+
+**Rename (output only).** Template applied to the output filename
+only — sources are never touched. Current template:
+`{date}_{persona}_{NN}.jpg` (omits the persona segment when null).
+More templates land alongside Dropbox copy in Phase 6.
+
+### Bundle workspace · new Edit tab
+
+Replaces the disabled placeholder from Phase 1c. Per-bundle UI:
+
+- Three op-checkboxes (Watermark / Strip EXIF / Rename). Default:
+  Watermark + Strip EXIF on, Rename off.
+- "Process N images" button — invokes `process_bundle_images`, which
+  loads the bundle's persona-bound watermark profile, walks every
+  image-kind row, and writes processed outputs to
+  `work/<UID>/processed/<basename>__<op>.jpg` with atomic
+  `.sm-tmp.jpg` + rename.
+- Results list with persisted history (`processed_files` table) —
+  shows source path, op_kind, created_at, and a 64-px preview via
+  the same data-URL pattern used for thumbnails.
+- Errors surface inline per source file with the failure reason.
+
+### Settings · new Watermark tab
+
+One card per persona profile (sorted with `''` default first).
+Editor controls:
+
+- Text input (blank disables watermark for that persona)
+- Opacity slider (0-100 with live readout)
+- 9-position picker (3×3 grid of arrow glyphs ↖ ↑ ↗ ← • → ↙ ↓ ↘)
+- Font-size % and margin % numeric inputs
+- Enabled toggle
+- Per-row Save button
+
+### Schema (migration 005)
+
+- `watermark_profiles` — `persona_code PK, text, opacity_percent
+  CHECK 0..100, position CHECK 9-grid, font_size_pct, margin_pct,
+  enabled, timestamps`. Seeded with 4 rows (`''`, CoC, PoA, Sa).
+- `processed_files` — `id PK, bundle_file_id FK CASCADE, op_kind
+  CHECK, output_path, output_sha256, params_json, created_at,
+  UNIQUE(bundle_file_id, op_kind)`. UPSERT on re-run.
+
+### New Tauri commands
+
+- `get_watermark_profiles()` → `Vec<WatermarkProfileRow>`
+- `set_watermark_profile(profile)` — UPSERT
+- `process_bundle_images(uid, ops)` — apply ops to every image in the
+  bundle, returns `ProcessImagesResult { processed, skipped, errors }`
+- `list_processed_files(uid)` — audit trail per bundle
+- `get_processed_previews(uid)` — `Map<inZipPath, dataUrl>` for the
+  most-recent processed output per source (same pattern as
+  `get_bundle_thumbnails` from v0.4.0)
+
+### Tests
+
+**74 cargo tests** (was 62 in v0.4.0) + 1 vitest:
+
+- `images::tests` (8) — strip-EXIF round-trip preserves dimensions;
+  watermark modifies bottom-right pixels at 100% opacity;
+  TopLeft position paints top-left; 0% opacity is a no-op;
+  output_path layout is stable; rename template covers persona +
+  no-persona; op_kind combination maps correctly; all 9 positions
+  parse round-trip.
+- `camel_case_contract` (+4) — `WatermarkProfileRow`, `ImageOpsInput`,
+  `ProcessedFileRow`, `ProcessImagesResult`.
+- `migration_smoke` extended for 005; asserts `watermark_profiles`
+  and `processed_files` tables exist post-migration.
+
+### Implementation notes
+
+- `paper_daisy_bytes(handle)` resolves the bundled
+  `resources/fonts/PaperDaisy.ttf` via Tauri's `resolve_resource`
+  for release builds, falls back to `CARGO_MANIFEST_DIR` in tests.
+- Watermark profile lookup falls through to the `''` default when
+  the bundle's persona is unknown or its profile is disabled / has
+  empty text.
+- Sources are read-only — every transformation writes a sibling to
+  `processed/` keyed on the op combination, never overwriting the
+  extracted file.
+
 ## [0.4.0] — 2026-05-24
 
 ### Added — Phase 1c: thumbnails + DocDrawer + grouped Files view

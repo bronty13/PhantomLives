@@ -1,6 +1,6 @@
 [package]
 name = "sidemolly"
-version = "0.4.0"
+version = "0.5.0"
 description = "SideMolly — Molly bundle workbench"
 authors = ["Robert Olen <robert.olen@gmail.com>"]
 edition = "2021"
@@ -48,6 +48,11 @@ base64 = "0.22"
 # everything else stays a glyph fallback. Keeps the bundle binary
 # slimmer than the full default codec set.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
+# Phase 3 image ops — watermark drawing on top of decoded JPEG/PNG/etc.
+# imageproc provides `drawing::draw_text_mut`; ab_glyph rasterizes the
+# bundled PaperDaisy.ttf glyphs that the drawing call consumes.
+imageproc = { version = "0.25", default-features = false }
+ab_glyph = "0.2"
 # File-system watcher for the watched-folder ingest path. Wraps FSEvents
 # on macOS, ReadDirectoryChangesW on Windows, inotify on Linux behind a
 # single Result-returning API. Used only from src-tauri/src/watch.rs.

@@ -3,6 +3,7 @@ mod bundle_io;
 mod bundles;
 mod extract;
 mod fsutil;
+mod images;
 mod manifest;
 mod thumbnails;
 mod watch;
@@ -33,6 +34,12 @@ pub fn run() {
             version: 4,
             description: "export-thumbs",
             sql: include_str!("../migrations/004_export_thumbs.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 5,
+            description: "image-ops",
+            sql: include_str!("../migrations/005_image_ops.sql"),
             kind: MigrationKind::Up,
         },
     ];
@@ -79,6 +86,11 @@ pub fn run() {
             bundles::read_doc_text,
             bundles::get_export_thumbnails,
             bundles::get_bundle_thumbnails,
+            bundles::get_watermark_profiles,
+            bundles::set_watermark_profile,
+            bundles::process_bundle_images,
+            bundles::list_processed_files,
+            bundles::get_processed_previews,
             watch::get_watch_settings,
             watch::set_watch_dir,
             watch::scan_watch_dir_now,
@@ -211,6 +223,7 @@ mod camel_case_contract {
     }
 
     use crate::watch::{ScanResult, WatchSettings};
+    use crate::bundles::{ImageOpsInput, ProcessImagesResult, ProcessedFileRow, WatermarkProfileRow};
 
     #[test] fn watch_settings_is_camel_case() {
         assert_camel(&serde_json::to_value(WatchSettings {
@@ -226,6 +239,33 @@ mod camel_case_contract {
             considered: 0, ingested: 0, skipped: 0, failed: 0,
             errors: vec![],
         }).unwrap(), "ScanResult");
+    }
+
+    #[test] fn watermark_profile_row_is_camel_case() {
+        assert_camel(&serde_json::to_value(WatermarkProfileRow {
+            persona_code: String::new(), text: String::new(),
+            opacity_percent: 20, position: "bottom-right".into(),
+            font_size_pct: 4.0, margin_pct: 2.5, enabled: true,
+        }).unwrap(), "WatermarkProfileRow");
+    }
+
+    #[test] fn image_ops_input_is_camel_case() {
+        assert_camel(&serde_json::to_value(ImageOpsInput::default()).unwrap(), "ImageOpsInput");
+    }
+
+    #[test] fn processed_file_row_is_camel_case() {
+        assert_camel(&serde_json::to_value(ProcessedFileRow {
+            bundle_file_id: 0, in_zip_path: String::new(),
+            op_kind: String::new(), output_path: String::new(),
+            created_at: String::new(),
+        }).unwrap(), "ProcessedFileRow");
+    }
+
+    #[test] fn process_images_result_is_camel_case() {
+        assert_camel(&serde_json::to_value(ProcessImagesResult {
+            bundle_uid: String::new(), op_kind: String::new(),
+            processed: vec![], skipped: 0, errors: vec![],
+        }).unwrap(), "ProcessImagesResult");
     }
 }
 
@@ -247,6 +287,7 @@ mod migration_smoke {
             (2, "bundles",        include_str!("../migrations/002_bundles.sql")),
             (3, "bundle-files",   include_str!("../migrations/003_bundle_files.sql")),
             (4, "export-thumbs",  include_str!("../migrations/004_export_thumbs.sql")),
+            (5, "image-ops",      include_str!("../migrations/005_image_ops.sql")),
         ];
 
         for (v, name, sql) in migrations {
@@ -256,6 +297,7 @@ mod migration_smoke {
 
         let expected_tables: &[&str] = &[
             "app_settings", "bundles", "bundle_files", "bundle_export_thumbs",
+            "watermark_profiles", "processed_files",
         ];
         for t in expected_tables {
             let count: i64 = conn
