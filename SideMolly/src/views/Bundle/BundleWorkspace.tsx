@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAsyncRefresh, listPlaceholder } from '../../lib/useAsyncRefresh';
 import { useBundleJobs } from '../../lib/useBundleJobs';
-import { getBundle, getBundleThumbnails, personaChipColor, bundleTypeEmoji, verifyStatusBadge,
-         revealWorkingDir,
-         type BundleDetail } from '../../data/bundles';
+import {
+  composePostBundle, getBundle, getBundleThumbnails, getPostBundleStatus,
+  personaChipColor, bundleTypeEmoji, verifyStatusBadge,
+  revealPostBundle, revealWorkingDir,
+  type BundleDetail, type PostBundleStatus,
+} from '../../data/bundles';
 import { OverviewTab } from './OverviewTab';
 import { EditTab } from './EditTab';
 import { DistributeTab } from './DistributeTab';
@@ -80,7 +83,10 @@ export function BundleWorkspace({ uid, onBack, jobSignal }: Props) {
           borderBottom: '1px solid rgb(var(--surface-border))',
         }}
       >
-        <BackBar onBack={onBack} />
+        <div className="flex items-center justify-between">
+          <BackBar onBack={onBack} />
+          <SendToMollyButton uid={uid} jobs={jobs} />
+        </div>
 
         <div className="mt-3 flex items-start gap-4">
           <div className="text-4xl">{bundleTypeEmoji(summary.bundleType)}</div>
@@ -265,4 +271,88 @@ function TabPill({ label, icon, active, disabled, onClick }: {
       {label}
     </button>
   );
+}
+
+/// Phase 11 — manual "📤 Send to Molly" surface in the sticky header.
+/// Composes a deterministic <UID>-post.zip into ~/Downloads/Molly
+/// post-bundles/, ready for Molly to ingest. Pill flips between:
+///   📤 Send to Molly        (never composed)
+///   ✓ Sent (size · mtime)   (composed at least once — re-compose
+///                            via 🔄 button next to it)
+///
+/// Disables while any job for the bundle is in flight so we don't
+/// snapshot a report mid-process.
+function SendToMollyButton({ uid, jobs }:
+  { uid: string; jobs: ReturnType<typeof useBundleJobs> }) {
+  const [status, setStatus] = useState<PostBundleStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [hint, setHint] = useState<string | null>(null);
+
+  const refresh = async () => {
+    try { setStatus(await getPostBundleStatus(uid)); }
+    catch { /* swallow — non-critical */ }
+  };
+  useEffect(() => { refresh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [uid]);
+
+  const compose = async () => {
+    setBusy(true);
+    setHint(null);
+    try {
+      const r = await composePostBundle(uid);
+      setHint(`✓ ${r.targetCount} targets · ${r.artifactCount} artifacts · ${fmtKb(r.bytesWritten)}`);
+      await refresh();
+    } catch (e) {
+      setHint(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reveal = () => revealPostBundle(uid).catch((e) => alert(String(e)));
+
+  const disabled = busy || jobs.busy;
+  const label = status?.exists ? '🔄 Re-send to Molly' : '📤 Send to Molly';
+
+  return (
+    <div className="flex items-center gap-2">
+      {status?.exists && (
+        <button
+          type="button"
+          className="sm-button secondary text-xs"
+          onClick={reveal}
+          title={status.outputPath}
+        >
+          📁 ✓ Sent · {fmtKb(status.sizeBytes)}
+        </button>
+      )}
+      <button
+        type="button"
+        className="sm-button text-xs"
+        disabled={disabled}
+        onClick={compose}
+        title={
+          jobs.busy ? 'Wait for the job queue to finish so the report reflects final state.' :
+          status?.exists ? 'Recompose <UID>-post.zip — overwrites the existing one atomically.' :
+          'Compose <UID>-post.zip into ~/Downloads/Molly post-bundles/'
+        }
+      >
+        {busy ? '⏳ Composing…' : label}
+      </button>
+      {hint && (
+        <span
+          className="text-[10px] truncate"
+          style={{ color: 'rgb(var(--surface-muted))', maxWidth: 280 }}
+          title={hint}
+        >
+          {hint}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function fmtKb(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }

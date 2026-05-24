@@ -585,6 +585,38 @@ export function listFanSitePlan(uid: string): Promise<FanSitePlan> {
   return invoke<FanSitePlan>('list_fansite_plan', { uid });
 }
 
+// ----- Phase 11: post-bundle return trip -----
+
+export interface ComposeResult {
+  bundleUid: string;
+  outputPath: string;
+  innerZipSha256: string;
+  outerZipSha256: string;
+  targetCount: number;
+  artifactCount: number;
+  bytesWritten: number;
+}
+
+export interface PostBundleStatus {
+  bundleUid: string;
+  outputPath: string;
+  exists: boolean;
+  sizeBytes: number;
+  modifiedAt: string | null;
+}
+
+export function composePostBundle(uid: string): Promise<ComposeResult> {
+  return invoke<ComposeResult>('compose_post_bundle', { uid });
+}
+
+export function getPostBundleStatus(uid: string): Promise<PostBundleStatus> {
+  return invoke<PostBundleStatus>('get_post_bundle_status', { uid });
+}
+
+export function revealPostBundle(uid: string): Promise<void> {
+  return invoke('reveal_post_bundle', { uid });
+}
+
 export function enqueueAutoAssemble(uid: string): Promise<EnqueueAutoAssembleResult> {
   return invoke<EnqueueAutoAssembleResult>('enqueue_auto_assemble', { uid });
 }

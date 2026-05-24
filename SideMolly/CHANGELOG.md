@@ -4,6 +4,96 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] — 2026-05-24
+
+### Added — Phase 11: post-bundle return trip back to Molly
+
+SideMolly composes a deterministic `<UID>-post.zip` containing a
+structured outcomes report + supporting artifacts, ready for Molly
+to ingest. Manual trigger from a **📤 Send to Molly** button in the
+sticky bundle header; auto-on-shipped + the 5-second undo banner
+are deferred to v0.16.x (need the lifecycle hook + UX work).
+
+**Output layout** (mirrors PLAN.md §9.1, byte-identical to Molly's
+outbound bundle pattern):
+
+```
+<UID>-post.zip                            (outer)
+├── <UID>-post-inner.zip                  (inner — MS-DOS epoch)
+│   ├── report.json                       (per §9.2 schema)
+│   ├── notes.md                          (empty MVP; UI editing later)
+│   ├── processing.log                    (when bundle workspace has one)
+│   └── artifacts/
+│       ├── transcripts/<stem>.txt + .srt (Phase 5 sidecars)
+│       └── thumbnails/<stem>.jpg         (per-file thumbs)
+└── hashes.json                           (same shape as inbound)
+```
+
+**Determinism**: every zip entry's mtime is set to MS-DOS epoch
+(1980-01-01 00:00:00). Inner-zip entries sorted by name via
+`BTreeMap`. Re-runs against the same source data produce
+byte-identical outputs — so the post-bundle is bit-stable and the
+sha256 we record in `hashes.json` is reproducible.
+
+**Drop location**: `~/Downloads/Molly post-bundles/` (sibling to the
+inbound watched folder). Created on demand.
+
+**`report.json` v1** schema (matches §9.2):
+
+```json
+{
+  "reportVersion": 1,
+  "bundleUid": "...",
+  "bundleType": "content",
+  "personaCode": "CoC",
+  "reportComposedAt": "2026-05-25T18:42:00Z",
+  "bundleState": "shipped",
+  "targets": [{
+    "targetId": "...",
+    "targetName": "...",
+    "state": "posted",
+    "postedAt": "...",
+    "postedUrl": "...",
+    "bodyOverride": "...",
+    "filesUsed": ["..."],
+    "notes": "...",
+    "fansiteDay": 7
+  }]
+}
+```
+
+`filesUsed` derives from `bundle_postings.selected_assets_json` (the
+Phase 8 per-platform asset picker). `fansiteDay` is omitted from
+non-FanSite targets (camelCase serde + nullable Option).
+
+**Idempotency**: re-running `📤 Send to Molly` for the same UID
+overwrites `<UID>-post.zip` atomically (`.tmp` + rename). Molly's
+ingest will be idempotent on `bundleUid` (separate Molly-side PR,
+not in this commit).
+
+**Sticky header surface**:
+- First send: `📤 Send to Molly` button.
+- After at least one send: `📁 ✓ Sent · 142 KB` (reveals the file
+  in Finder on click) + `🔄 Re-send to Molly` button next to it.
+- Disabled while any job for the bundle is in flight — don't
+  snapshot a report mid-process. Tooltip explains why.
+
+**Logging**: every compose hits `processing_log` under kind=
+`post_bundle` with `(N targets, M artifacts, B bytes)` summary.
+
+**Tests**: 145 passing. Round-trip serialization test for the
+`Report` shape covers every camelCase field + `fansiteDay` rename.
+DOS-epoch helper test. SHA256 hex format test. Migration immutability
+guardrail unchanged (no new migrations in this phase).
+
+### Deferred from Phase 11
+
+- Auto-compose on `bundle_state = 'shipped'` transition.
+- 5-second undo banner UX.
+- Molly-side ingest (separate Molly PR per §9.5).
+- `bundleLevelNotes` editor (currently always `null` in the report).
+- Per-bundle `notes.md` content (currently always empty).
+
 ## [0.15.0] — 2026-05-24
 
 ### Added — Phases 8 / 9 / 10: Content, Custom, FanSite Post Runners

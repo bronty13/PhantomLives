@@ -8,6 +8,7 @@ mod fsutil;
 mod images;
 mod jobs;
 mod manifest;
+mod post_bundle;
 mod posting;
 mod processing_log;
 mod thumbnails;
@@ -200,6 +201,9 @@ pub fn run() {
             posting::mark_posted,
             posting::list_bundle_assets,
             posting::list_fansite_plan,
+            post_bundle::compose_post_bundle,
+            post_bundle::get_post_bundle_status,
+            post_bundle::reveal_post_bundle,
             bundles::get_master_cut_status,
             bundles::reveal_master_cut,
             bundles::open_master_cut,
@@ -238,6 +242,7 @@ mod camel_case_contract {
         PostingCard, PostingTarget, PostingTargetInput,
         UpsertBundlePostingInput,
     };
+    use crate::post_bundle::{ComposeResult, PostBundleStatus};
     use crate::bundles::{BundleDetail, BundleFileRow, BundleSummary, ExportThumb,
         ImageProgressEvent, IngestResult};
     use crate::manifest::{BundleManifest, FanDay};
@@ -449,6 +454,21 @@ mod camel_case_contract {
             bundle_uid: String::new(), year: None, month: None,
             target: None, days: vec![],
         }).unwrap(), "FanSitePlan");
+    }
+
+    #[test] fn compose_result_is_camel_case() {
+        assert_camel(&serde_json::to_value(ComposeResult {
+            bundle_uid: String::new(), output_path: String::new(),
+            inner_zip_sha256: String::new(), outer_zip_sha256: String::new(),
+            target_count: 0, artifact_count: 0, bytes_written: 0,
+        }).unwrap(), "ComposeResult");
+    }
+
+    #[test] fn post_bundle_status_is_camel_case() {
+        assert_camel(&serde_json::to_value(PostBundleStatus {
+            bundle_uid: String::new(), output_path: String::new(),
+            exists: false, size_bytes: 0, modified_at: None,
+        }).unwrap(), "PostBundleStatus");
     }
 
     #[test] fn posting_card_is_camel_case() {

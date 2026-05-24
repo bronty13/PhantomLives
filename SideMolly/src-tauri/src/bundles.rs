@@ -60,6 +60,8 @@ pub enum BundleError {
     Image(#[from] ImageOpError),
     #[error("db: {0}")]
     Db(#[from] rusqlite::Error),
+    #[error("zip: {0}")]
+    Zip(#[from] zip::result::ZipError),
     #[error("app data dir: {0}")]
     AppData(String),
     #[error("bundle not found: {0}")]
