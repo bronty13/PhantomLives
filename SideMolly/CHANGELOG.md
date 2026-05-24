@@ -4,6 +4,25 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.1] — 2026-05-24
+
+### Changed — Dropbox folder template default
+
+Drop the brackets + the literal `" - "` separator from the default
+Dropbox-folder template. Was `[{date}] - {title}` → now `{date} {title}`,
+so a bundle titled "Mary Poppins" ingested on 2025-12-31 lands at:
+
+```
+<root>/2025-12-31 Mary Poppins/
+```
+
+Sorts the same in Finder but reads cleanly without bracket noise —
+matches how Robert actually names his project folders elsewhere.
+
+Migration 014 updates any `dropbox_settings` row still on the old
+default; user-customized templates are untouched. The Reset button in
+Settings → Dropbox now restores `{date} {title}`.
+
 ## [0.13.0] — 2026-05-24
 
 ### Added — Phase 6: Dropbox local-folder copy

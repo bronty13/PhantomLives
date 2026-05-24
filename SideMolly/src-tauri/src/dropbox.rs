@@ -7,7 +7,7 @@
 // Per Robert's direction 2026-05-24, the destination layout is FLAT
 // per bundle:
 //
-//   <root>/[YYYY-MM-DD] - <Title>/
+//   <root>/YYYY-MM-DD <Title>/
 //       01_01_xxx__watermark_strip.jpg
 //       02_01_xxx__watermark_strip.jpg
 //       …
@@ -126,8 +126,9 @@ pub fn set_dropbox_settings<R: Runtime>(
 ///   {uid}      — bundle.uid (e.g. "2026-05-22-0002")
 ///   {persona}  — bundle.persona_code (or "nopersona" when null)
 ///
-/// Robert's default is `[{date}] - {title}` — a date-prefixed flat
-/// layout that sorts naturally in Finder.
+/// Robert's default is `{date} {title}` — a date-prefixed flat
+/// layout (e.g. `2025-12-31 Mary Poppins`) that sorts naturally in
+/// Finder.
 fn resolve_folder_name(template: &str, b: &BundleResolution) -> String {
     let date_str = extract_date(&b.ingested_at);
     let title = sanitize_filename(&b.title);
@@ -587,9 +588,21 @@ mod tests {
     fn date_title_template_is_the_default_layout() {
         let r = b("2026-05-22-0002", "and before too soon it was JUNE",
                   Some("CoC"), "2026-05-22 18:34:21");
+        // v0.13.1 default: `{date} {title}` — unbracketed, single
+        // space between. Matches `2025-12-31 Mary Poppins` per
+        // Robert's direction.
         assert_eq!(
-            resolve_folder_name("[{date}] - {title}", &r),
-            "[2026-05-22] - and before too soon it was JUNE",
+            resolve_folder_name("{date} {title}", &r),
+            "2026-05-22 and before too soon it was JUNE",
+        );
+    }
+
+    #[test]
+    fn date_title_default_example_robert_specced() {
+        let r = b("2025-12-31-0001", "Mary Poppins", None, "2025-12-31 09:00:00");
+        assert_eq!(
+            resolve_folder_name("{date} {title}", &r),
+            "2025-12-31 Mary Poppins",
         );
     }
 

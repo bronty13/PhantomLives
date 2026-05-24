@@ -96,6 +96,12 @@ pub fn run() {
             sql: include_str!("../migrations/013_dropbox.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 14,
+            description: "dropbox-template-default",
+            sql: include_str!("../migrations/014_dropbox_template_default.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -562,6 +568,7 @@ mod migration_smoke {
             (11, "aa-settings",   include_str!("../migrations/011_auto_assembly_settings.sql")),
             (12, "processing-log", include_str!("../migrations/012_processing_log.sql")),
             (13, "dropbox",        include_str!("../migrations/013_dropbox.sql")),
+            (14, "dropbox-template-default", include_str!("../migrations/014_dropbox_template_default.sql")),
         ];
         for (v, name, sql) in migrations {
             conn.execute_batch(sql)

@@ -41,7 +41,7 @@ export function DropboxSettings() {
     }
   };
 
-  const resetTemplate = () => update({ template: '[{date}] - {title}' });
+  const resetTemplate = () => update({ template: '{date} {title}' });
 
   const save = async () => {
     setBusy(true);
@@ -102,7 +102,7 @@ export function DropboxSettings() {
             Variables: <code>{'{date}'}</code> (YYYY-MM-DD, ingested),{' '}
             <code>{'{title}'}</code>, <code>{'{uid}'}</code>,{' '}
             <code>{'{persona}'}</code>. Default:{' '}
-            <code>{'[{date}] - {title}'}</code>
+            <code>{'{date} {title}'}</code> (e.g. <code>2025-12-31 Mary Poppins</code>)
           </div>
         </div>
 
