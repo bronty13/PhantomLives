@@ -38,6 +38,13 @@ export function BundleWorkspace({ uid, onBack, jobSignal }: Props) {
     setThumbs(t);
   }, [uid, refreshSeq]);
 
+  // Hook subscription has to run unconditionally — calling it after
+  // the placeholder early-return would violate Rules of Hooks on the
+  // transition from loading → loaded (caught 2026-05-24, white screen
+  // on launch of v0.9.0). useBundleJobs handles empty uid by returning
+  // an EMPTY snapshot.
+  const jobs = useBundleJobs(uid);
+
   const placeholder = listPlaceholder({
     loading, error, isEmpty: detail == null, emptyText: 'Bundle not found.',
   });
@@ -53,7 +60,6 @@ export function BundleWorkspace({ uid, onBack, jobSignal }: Props) {
   const { summary, manifest, files } = detail!;
   const chip = personaChipColor(summary.personaCode);
   const verify = verifyStatusBadge(summary.verifyStatus);
-  const jobs = useBundleJobs(summary.uid);
   const imageCount = files.filter((f) => f.kind === 'image').length;
   const videoCount = files.filter((f) => f.kind === 'video').length;
 
