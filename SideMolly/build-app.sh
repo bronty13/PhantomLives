@@ -27,6 +27,17 @@ fi
 
 pnpm install --frozen-lockfile 2>/dev/null || pnpm install
 
+# Force a fresh frontend build every time — `tsc -b` is incremental and
+# `vite build` honors the .vite cache, which has bitten us twice with
+# newly-edited TSX silently not making it into the .app bundle (the
+# Rust side rebuilds fine; the React side stays stale). Wiping dist/
+# plus the tsc buildinfo is cheap (<10s extra) and the
+# `beforeBuildCommand` hook in tauri.conf.json regenerates everything.
+rm -rf "$PROJECT_DIR/dist"
+rm -f  "$PROJECT_DIR/tsconfig.tsbuildinfo" \
+       "$PROJECT_DIR/tsconfig.app.tsbuildinfo" \
+       "$PROJECT_DIR/tsconfig.node.tsbuildinfo"
+
 # Strip --no-install / --no-open before forwarding the rest to Tauri.
 TAURI_ARGS=()
 for arg in "$@"; do

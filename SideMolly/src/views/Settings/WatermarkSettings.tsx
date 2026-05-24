@@ -52,9 +52,11 @@ export function WatermarkSettings() {
         <div className="font-semibold mb-1">Watermark profiles</div>
         <div className="text-xs" style={{ color: 'rgb(var(--surface-muted))' }}>
           One profile per persona. Used by the Bundle workspace → Edit tab when
-          you process images. Text is rendered in <em>Paper Daisy</em> at the
-          configured opacity over the lower-right by default (matches the
-          Phase 4.5 Auto-Assembly video burn-in spec).
+          you process media. Toggle <strong>🖼 Images</strong> and
+          <strong> 🎬 Videos</strong> independently — defaults are Images
+          off, Videos on (videos go to platforms direct; photos get
+          hand-edited downstream). Text is <em>Paper Daisy</em> over the
+          lower-right by default.
         </div>
       </div>
 
@@ -67,14 +69,24 @@ export function WatermarkSettings() {
                 {p.personaCode || '(default for null-persona bundles)'}
               </span>
             </div>
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input
-                type="checkbox"
-                checked={p.enabled}
-                onChange={(e) => updateOne(idx, { enabled: e.target.checked })}
-              />
-              Enabled
-            </label>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={p.imageEnabled}
+                  onChange={(e) => updateOne(idx, { imageEnabled: e.target.checked })}
+                />
+                🖼 Images
+              </label>
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={p.videoEnabled}
+                  onChange={(e) => updateOne(idx, { videoEnabled: e.target.checked })}
+                />
+                🎬 Videos
+              </label>
+            </div>
           </div>
 
           <div className="grid grid-cols-[140px_1fr] gap-x-3 gap-y-2 text-sm items-center">

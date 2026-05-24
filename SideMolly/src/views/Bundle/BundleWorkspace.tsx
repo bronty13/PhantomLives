@@ -25,6 +25,7 @@ export function BundleWorkspace({ uid, onBack, jobSignal }: Props) {
   // the time the user sees the file list.
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
 
+  const [refreshSeq, setRefreshSeq] = useState(0);
   const { loading, error } = useAsyncRefresh(async (alive) => {
     const [d, t] = await Promise.all([
       getBundle(uid),
@@ -33,7 +34,7 @@ export function BundleWorkspace({ uid, onBack, jobSignal }: Props) {
     if (!alive()) return;
     setDetail(d);
     setThumbs(t);
-  }, [uid]);
+  }, [uid, refreshSeq]);
 
   const placeholder = listPlaceholder({
     loading, error, isEmpty: detail == null, emptyText: 'Bundle not found.',
@@ -97,7 +98,14 @@ export function BundleWorkspace({ uid, onBack, jobSignal }: Props) {
             onOpenDoc={setDocKind}
           />
         )}
-        {tab === 'edit' && <EditTab summary={summary} files={files} refreshSignal={jobSignal} />}
+        {tab === 'edit' && (
+          <EditTab
+            summary={summary}
+            files={files}
+            refreshSignal={jobSignal}
+            onFileUpdated={() => setRefreshSeq((n) => n + 1)}
+          />
+        )}
       </div>
 
       <DocDrawer uid={summary.uid} kind={docKind} manifest={manifest} onClose={() => setDocKind(null)} />

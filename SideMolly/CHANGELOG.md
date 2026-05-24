@@ -4,6 +4,121 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] — 2026-05-24
+
+### Added — Phase 4.x: per-file rotation, per-media watermark toggles, live progress
+
+Iteration on Phase 4. Driven entirely by user feedback running the
+first real bundle through Edit/process and finding rough edges.
+
+**Per-file rotation** (migration 009 + new `RotationGrid` in EditTab).
+A bundle commonly mixes correctly-oriented files with sideways /
+upside-down ones — iPhone clips, scanned photos, etc. Each `bundle_file`
+now carries a `rotation_degrees` override (0/90/180/270), surfaced as
+a thumbnail grid in the Edit tab. Click a thumbnail to cycle the
+rotation; the preview rotates immediately via CSS `transform` so the
+user sees the chosen orientation before processing. New
+`set_bundle_file_rotation` command (validates degrees, scopes by
+bundle_uid + in_zip_path). Applied during processing:
+
+- Images: `DynamicImage::rotate90/180/270` before watermark, so the
+  watermark lands in the bottom-right of the *corrected* frame.
+- Videos: ffmpeg `transpose` filter prepended to the filter graph,
+  same reasoning.
+
+The per-batch rotation dropdown shipped in 0.6.0 is gone — fully
+replaced by per-file controls.
+
+**Per-media watermark toggles** (migration 008). The single `enabled`
+column on `watermark_profiles` splits into `image_enabled` (default
+**off**) and `video_enabled` (default **on**). PhantomLives photos
+typically get hand-edited downstream so the watermark is wasted; videos
+go to platforms direct and need provenance burn-in. Settings →
+Watermark now shows two checkboxes per persona. Existing rows: old
+`enabled` carries forward into `video_enabled`; `image_enabled` resets
+to 0 per the new default policy.
+
+**Video watermark visibility fixes** — the 0.6.0 watermark looked
+washed out at the user's nominal 20% opacity, in two flavours:
+
+- *Chroma loss*: ffmpeg's `overlay` filter defaults to `format=yuv420`,
+  which subsamples chroma during compositing and attenuates pure-white
+  text edges. Switched to `format=rgb` so the composite happens in
+  full RGB; the final `-pix_fmt yuv420p` still converts for x264.
+- *Size mismatch*: 0.6.0 rendered the overlay PNG against a hardcoded
+  1080-px reference, then ffmpeg layered it on the actual frame
+  unscaled. iPhone photos at 4032-tall got 4% text = 121 px; 720p
+  videos got 4% of 1080 = 43 px overlaid on a 720-tall frame —
+  visually much smaller. Now: ffprobe each video, render the PNG at
+  `max(actual_height, 1440) * font_size_pct%` capped at 8% of actual
+  frame height (handles anything from 240p webcam clips up through
+  8K source). Margin always scales against the real frame so it
+  stays proportional.
+- *Perceptual nudge*: 1.25× alpha boost just for video PNGs. Video
+  motion makes a static white watermark feel lighter than the same
+  alpha on a still photo; 20% UI → 25% PNG alpha closes the gap.
+  Image side untouched.
+
+**Live image-processing progress** (`image-progress` event channel).
+Bundle of 42 images was previously 60-90 seconds with a static "⏳
+Working…" banner — looked frozen. Rust now emits one event per file
+with `done`/`total`/`currentInZipPath` plus a final tick; EditTab
+shows a fat progress bar with `X of N done`, %, and the current file
+name. 500ms heartbeat ticks independently so the banner shows life
+even between events. Command is now `async` + `spawn_blocking` so the
+emit channel reliably flushes to the renderer mid-run instead of
+queueing until return.
+
+### Edit tab UX
+
+- **`📁 Reveal`** button on every done `process_video` job (Jobs view)
+  and every row in `Processed outputs` — surfaces the output `.mp4`
+  in Finder. Backend command is scoped by job id / (uid, in_zip_path,
+  op_kind), so we don't expose a generic "reveal arbitrary path".
+- Each Processed outputs row also gets **`⧉ copy`** (copies the full
+  output path to clipboard) and the resolved path is now rendered
+  truncated under the filename — was invisible before.
+- **`📁 Open bundle workspace`** button at the Processed outputs
+  header reveals `~/Library/Application Support/com.phantomlives.sidemolly/work/<UID>/`
+  so the user can browse the whole tree (the path is in `Library` and
+  Finder won't open it from clicked text alone).
+- Video thumbnails now appear in `Processed outputs` (was the 🖼
+  placeholder before). `get_processed_previews` falls back to the
+  source video's `bundle_files.thumbnail_path` for `kind='video'`
+  rows — base64-embedding a raw `.mp4` as `data:image/jpeg` gave
+  the browser garbage.
+- Per-batch rotation dropdown removed (see per-file above).
+
+### Other fixes
+
+- **Migration 007** — widen `processed_files.op_kind` CHECK from the
+  image-only list (`watermark`, `strip_exif`, etc.) to no CHECK at
+  all, so Phase 4 video op kinds (`video_watermark_strip`,
+  `video_clean`, etc.) can land. Validation moves to Rust (where
+  new op kinds get added anyway).
+- **`format=rgb` + overlay-with-PNG** for video watermarks (see
+  visibility fixes above) instead of the original 0.6.0 `drawtext`
+  filter — Homebrew's stock ffmpeg ships without libfreetype so
+  `drawtext` was unavailable and every video job in 0.6.0 actually
+  failed at the ffmpeg layer.
+- **`build-app.sh` now wipes `dist/` + `tsconfig.tsbuildinfo*`** on
+  every run. `tsc -b` is incremental and silently kept stale .d.ts/
+  emit when source-only TSX changed, so the .app shipped without the
+  newest React code twice in a row. Cheap to clean (~10s extra).
+
+### Tests
+
+91 passing. New + adjusted:
+- Migration smoke now applies 007/008/009.
+- `WatermarkProfileRow` camelCase contract covers `imageEnabled` +
+  `videoEnabled`.
+- `ImageProgressEvent` camelCase contract.
+- `BundleFileRow` covers `rotationDegrees`.
+- `process_video_params_round_trips_via_json` covers the new
+  `rotation` field.
+- `render_watermark_png_produces_valid_rgba_png` updated for the new
+  `font_size_px`-direct signature.
+
 ## [0.6.0] — 2026-05-24
 
 ### Added — Phase 4: video ops via ffmpeg + background jobs queue

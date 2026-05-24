@@ -1,24 +1,56 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import {
-  enqueueBundleVideoOps, fmtSize, getProcessedPreviews, listProcessedFiles,
-  processBundleImages, revealWorkingFile,
+  enqueueBundleVideoOps, fmtSize, getBundleThumbnails, getProcessedPreviews,
+  listProcessedFiles, processBundleImages, revealProcessedFile,
+  revealWorkingDir, revealWorkingFile, setBundleFileRotation,
   type BundleFileRow, type BundleSummary, type ImageOpsInput, type ProcessedFileRow,
   type VideoOpsInput,
 } from '../../data/bundles';
+
+interface ImageProgress {
+  bundleUid: string;
+  done: number;
+  total: number;
+  currentInZipPath: string;
+}
+
+type Rotation = 0 | 90 | 180 | 270;
+const ROTATIONS: Rotation[] = [0, 90, 180, 270];
+const ROTATION_LABEL: Record<Rotation, string> = {
+  0:   '0°',
+  90:  '90° ↻',
+  180: '180°',
+  270: '270° ↺',
+};
 
 interface Props {
   summary: BundleSummary;
   files: BundleFileRow[];
   /** Bumped whenever a job-updated event lands so the processed list refreshes. */
   refreshSignal: number;
+  /** Called after a per-file rotation save so the parent re-fetches the bundle detail. */
+  onFileUpdated?: () => void;
 }
 
-export function EditTab({ summary, files, refreshSignal }: Props) {
+export function EditTab({ summary, files, refreshSignal, onFileUpdated }: Props) {
   const images = useMemo(() => files.filter((f) => f.kind === 'image'), [files]);
   const videos = useMemo(() => files.filter((f) => f.kind === 'video'), [files]);
   const [imageOps, setImageOps] = useState<ImageOpsInput>({ watermark: true, stripExif: true, rename: false });
   const [videoOps, setVideoOps] = useState<VideoOpsInput>({ watermark: true, stripMetadata: true, rename: false });
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [busyLabel, setBusyLabel] = useState<string | null>(null);
+  const [imageProgress, setImageProgress] = useState<ImageProgress | null>(null);
+  // Heartbeat — bumps every 500ms while busy so the banner shows
+  // movement even before/between Tauri events arrive. Tells the user
+  // the app is still alive even if real progress hasn't pinged yet.
+  const [heartbeat, setHeartbeat] = useState(0);
+  useEffect(() => {
+    if (!busy) return;
+    const t = setInterval(() => setHeartbeat((n) => (n + 1) % 4), 500);
+    return () => clearInterval(t);
+  }, [busy]);
   const [lastResult, setLastResult] = useState<{ ok: number; skipped: number; errors: string[]; what: string } | null>(null);
   const [processed, setProcessed] = useState<ProcessedFileRow[]>([]);
   const [previews, setPreviews] = useState<Record<string, string>>({});
@@ -38,8 +70,50 @@ export function EditTab({ summary, files, refreshSignal }: Props) {
 
   useEffect(() => { refreshProcessed(); }, [summary.uid, refreshSignal]);
 
+  // Subscribe to per-image progress while processing — fires once per
+  // file from process_bundle_images so the busy banner stays live
+  // instead of looking frozen on bundles with 30+ images.
+  useEffect(() => {
+    let alive = true;
+    let unlisten: UnlistenFn | undefined;
+    (async () => {
+      unlisten = await listen<ImageProgress>('image-progress', (event) => {
+        if (!alive) return;
+        // eslint-disable-next-line no-console
+        console.log('[image-progress]', event.payload);
+        if (event.payload.bundleUid !== summary.uid) return;
+        setImageProgress(event.payload);
+      });
+      // eslint-disable-next-line no-console
+      console.log('[image-progress] listener attached for uid', summary.uid);
+    })();
+    return () => { alive = false; unlisten?.(); };
+  }, [summary.uid]);
+
+  // Load per-file thumbnail data-URLs once per bundle. Powers the
+  // rotation preview tiles below.
+  useEffect(() => {
+    let alive = true;
+    getBundleThumbnails(summary.uid)
+      .then((t) => { if (alive) setThumbs(t); })
+      .catch((e) => console.warn('thumbs load failed', e));
+    return () => { alive = false; };
+  }, [summary.uid]);
+
+  const cycleRotation = useCallback(async (inZipPath: string, current: Rotation) => {
+    const next: Rotation = ROTATIONS[(ROTATIONS.indexOf(current) + 1) % 4];
+    try {
+      await setBundleFileRotation(summary.uid, inZipPath, next);
+      onFileUpdated?.();
+    } catch (e) {
+      alert(String(e));
+    }
+  }, [summary.uid, onFileUpdated]);
+
   const runProcessImages = async () => {
     setBusy(true);
+    setBusyLabel(`Processing ${images.length} image${images.length === 1 ? '' : 's'}…`);
+    setImageProgress({ bundleUid: summary.uid, done: 0, total: images.length, currentInZipPath: '' });
     setLastResult(null);
     try {
       const r = await processBundleImages(summary.uid, imageOps);
@@ -52,6 +126,8 @@ export function EditTab({ summary, files, refreshSignal }: Props) {
       setLastResult({ ok: 0, skipped: 0, errors: [String(e)], what: 'image processing failed' });
     } finally {
       setBusy(false);
+      setBusyLabel(null);
+      setImageProgress(null);
     }
   };
 
@@ -155,6 +231,64 @@ export function EditTab({ summary, files, refreshSignal }: Props) {
         </section>
       )}
 
+      {busy && (
+        <div
+          className="sm-card flex flex-col gap-2"
+          style={{
+            background: '#fff4d6',
+            color: '#7a5b00',
+            border: '2px solid #d4a000',
+            padding: '14px 16px',
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <span style={{ fontSize: 28 }}>
+              {['⏳', '⌛', '⏳', '⌛'][heartbeat]}
+            </span>
+            <div className="flex-1">
+              <div className="font-semibold text-base">
+                {busyLabel ?? 'Working…'}
+              </div>
+              {imageProgress && imageProgress.total > 0 && (
+                <div className="font-mono text-sm mt-0.5">
+                  {imageProgress.done} of {imageProgress.total} done
+                  {' · '}
+                  <span className="opacity-70">
+                    {'.'.repeat(heartbeat + 1)}
+                  </span>
+                </div>
+              )}
+            </div>
+            {imageProgress && imageProgress.total > 0 && (
+              <span className="font-mono text-2xl whitespace-nowrap font-bold">
+                {Math.round((imageProgress.done / imageProgress.total) * 100)}%
+              </span>
+            )}
+          </div>
+          {imageProgress && imageProgress.total > 0 && (
+            <>
+              <div
+                className="w-full rounded overflow-hidden"
+                style={{ background: 'rgba(122, 91, 0, 0.2)', height: 10 }}
+              >
+                <div
+                  className="h-full transition-all duration-200"
+                  style={{
+                    width: `${Math.round((imageProgress.done / imageProgress.total) * 100)}%`,
+                    background: '#7a5b00',
+                  }}
+                />
+              </div>
+              {imageProgress.currentInZipPath && (
+                <div className="font-mono text-xs truncate" title={imageProgress.currentInZipPath}>
+                  ▸ {imageProgress.currentInZipPath}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {lastResult && (
         <div className="sm-card text-sm"
              style={{ color: lastResult.errors.length > 0 ? '#7a0000' : '#0f5d33',
@@ -173,12 +307,35 @@ export function EditTab({ summary, files, refreshSignal }: Props) {
         </div>
       )}
 
-      <section className="sm-card">
-        <div className="flex items-baseline justify-between mb-2">
-          <div className="font-semibold">Processed outputs ({processed.length})</div>
-          <div className="text-xs" style={{ color: 'rgb(var(--surface-muted))' }}>
-            Latest run per source file shown
+      {(images.length > 0 || videos.length > 0) && (
+        <section className="sm-card">
+          <div className="font-semibold mb-1">
+            🔄 Per-file rotation ({images.length + videos.length})
           </div>
+          <div className="text-xs mb-3" style={{ color: 'rgb(var(--surface-muted))' }}>
+            Click a thumbnail to cycle 0° → 90° → 180° → 270°. The preview
+            rotates immediately so you can see the result before processing.
+            Applies during the next image/video process run.
+          </div>
+          <RotationGrid
+            files={[...images, ...videos]}
+            thumbs={thumbs}
+            onClick={cycleRotation}
+          />
+        </section>
+      )}
+
+      <section className="sm-card">
+        <div className="flex items-baseline justify-between mb-2 gap-3">
+          <div className="font-semibold">Processed outputs ({processed.length})</div>
+          <button
+            type="button"
+            className="sm-button secondary text-xs"
+            onClick={() => revealWorkingDir(summary.uid).catch(() => {})}
+            title="Open the bundle workspace in Finder"
+          >
+            📁 Open bundle workspace
+          </button>
         </div>
 
         {processed.length === 0 ? (
@@ -240,7 +397,30 @@ function ProcessedRow({ row, preview, source, uid }: {
           )}
           <span> · {row.createdAt}</span>
         </div>
+        <div
+          className="font-mono text-[10px] mt-0.5 truncate"
+          style={{ color: 'rgb(var(--surface-muted))' }}
+          title={row.outputPath}
+        >
+          → {row.outputPath}
+        </div>
       </div>
+      <button
+        type="button"
+        className="sm-button secondary text-xs"
+        onClick={() => revealProcessedFile(uid, row.inZipPath, row.opKind).catch((e) => alert(String(e)))}
+        title="Reveal processed output in Finder"
+      >
+        📁 output
+      </button>
+      <button
+        type="button"
+        className="sm-button secondary text-xs"
+        onClick={() => navigator.clipboard.writeText(row.outputPath).catch(() => {})}
+        title="Copy output path"
+      >
+        ⧉ copy
+      </button>
       <button
         type="button"
         className="sm-button secondary text-xs"
@@ -250,5 +430,82 @@ function ProcessedRow({ row, preview, source, uid }: {
         📁 src
       </button>
     </li>
+  );
+}
+
+function RotationGrid({ files, thumbs, onClick }: {
+  files: BundleFileRow[];
+  thumbs: Record<string, string>;
+  onClick: (inZipPath: string, current: Rotation) => void;
+}) {
+  return (
+    <div
+      className="grid gap-2"
+      style={{
+        gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+      }}
+    >
+      {files.map((f) => {
+        const rot = (f.rotationDegrees ?? 0) as Rotation;
+        const isVideo = f.kind === 'video';
+        const dataUrl = thumbs[f.inZipPath];
+        return (
+          <button
+            key={f.inZipPath}
+            type="button"
+            onClick={() => onClick(f.inZipPath, rot)}
+            className="flex flex-col items-stretch text-left p-1.5 rounded transition"
+            style={{
+              border: `1px solid ${rot === 0 ? 'rgb(var(--surface-border))' : 'rgb(var(--surface-accent))'}`,
+              background: 'rgb(var(--surface-card))',
+            }}
+            title={`Click to rotate (current: ${ROTATION_LABEL[rot]})`}
+          >
+            <div
+              className="w-full overflow-hidden flex items-center justify-center"
+              style={{
+                aspectRatio: '1 / 1',
+                background: 'rgb(var(--surface-base))',
+                borderRadius: 4,
+              }}
+            >
+              {dataUrl ? (
+                <img
+                  src={dataUrl}
+                  alt=""
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    objectFit: 'contain',
+                    transform: `rotate(${rot}deg)`,
+                    transition: 'transform 200ms ease',
+                  }}
+                />
+              ) : (
+                <span style={{ color: 'rgb(var(--surface-muted))', fontSize: 22 }}>
+                  {isVideo ? '🎬' : '🖼'}
+                </span>
+              )}
+            </div>
+            <div
+              className="font-mono text-[10px] mt-1.5 truncate"
+              style={{ color: 'rgb(var(--surface-text))' }}
+            >
+              {isVideo ? '🎬' : '🖼'} {f.inZipPath.split('/').pop()}
+            </div>
+            <div
+              className="text-[10px] mt-0.5 flex items-center justify-between"
+              style={{
+                color: rot === 0 ? 'rgb(var(--surface-muted))' : 'rgb(var(--surface-accent))',
+                fontWeight: rot === 0 ? 400 : 600,
+              }}
+            >
+              <span>{ROTATION_LABEL[rot]}</span>
+              <span style={{ fontSize: 10 }}>↻</span>
+            </div>
+          </button>
+        );
+      })}
+    </div>
   );
 }

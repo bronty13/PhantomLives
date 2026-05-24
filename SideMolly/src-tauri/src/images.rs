@@ -16,10 +16,11 @@
 // Source files are never touched.
 
 use std::fs;
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
 use ab_glyph::{FontRef, PxScale};
-use image::{DynamicImage, GenericImage, GenericImageView, Rgba, RgbaImage};
+use image::{DynamicImage, GenericImage, GenericImageView, ImageBuffer, ImageFormat, Rgba, RgbaImage};
 use imageproc::drawing::{draw_text_mut, text_size};
 
 #[derive(Debug, thiserror::Error)]
@@ -106,9 +107,20 @@ pub fn process_image(
     ops: ImageOps,
     watermark: Option<&WatermarkProfile>,
     font_bytes: &[u8],
+    rotation_degrees: i64,
 ) -> Result<(), ImageOpError> {
     // Load. image::open drops EXIF on decode (we re-encode anyway).
     let mut img: DynamicImage = image::open(src)?;
+
+    // Apply per-file rotation first — watermark/position math should
+    // operate on the corrected orientation so the watermark lands in
+    // the bottom-right of what the user actually sees.
+    img = match rotation_degrees {
+        90  => img.rotate90(),
+        180 => img.rotate180(),
+        270 => img.rotate270(),
+        _   => img,
+    };
 
     // Watermark requires an RGBA buffer for alpha blending.
     if ops.watermark {
@@ -178,6 +190,64 @@ fn draw_watermark(
     let color = Rgba([255, 255, 255, alpha]);
     draw_text_mut(img, color, x, y, scale, &font, &profile.text);
     Ok(())
+}
+
+/// Render the watermark text to a transparent-background RGBA PNG at
+/// the given absolute font size (in px). Used by the Phase 4 video
+/// pipeline because Homebrew's stock ffmpeg ships without libfreetype
+/// (so the `drawtext` filter is unavailable) — overlay-with-PNG works
+/// on any ffmpeg build.
+///
+/// The caller (bundles.rs::enqueue_bundle_video_ops) owns all the
+/// resolution math: floor for legibility on tiny clips, cap so the
+/// watermark doesn't dominate small frames, and reference height for
+/// the user's font_size_pct. Keeping the math out of this function
+/// makes it usable for both video-overlay and future image-overlay
+/// callers that need the same PNG render path.
+pub fn render_watermark_png(
+    profile: &WatermarkProfile,
+    font_bytes: &[u8],
+    font_size_px: f32,
+) -> Result<Vec<u8>, ImageOpError> {
+    let font = FontRef::try_from_slice(font_bytes)
+        .map_err(|e| ImageOpError::Font(e.to_string()))?;
+    let font_size = font_size_px.max(12.0);
+    let scale = PxScale::from(font_size);
+    let (tw, th) = text_size(scale, &font, &profile.text);
+
+    // Breathing room around the glyphs so descenders + edges don't
+    // clip when alpha-composited. Tight crop saves overlay bytes.
+    let pad: u32 = 6;
+    let w = (tw + 2 * pad).max(1);
+    let h = (th + 2 * pad).max(1);
+    let mut canvas: RgbaImage = ImageBuffer::from_pixel(w, h, Rgba([0, 0, 0, 0]));
+
+    let alpha = (profile.opacity_percent.min(100) as f32 / 100.0 * 255.0) as u8;
+    let color = Rgba([255, 255, 255, alpha]);
+    draw_text_mut(&mut canvas, color, pad as i32, pad as i32, scale, &font, &profile.text);
+
+    let mut out = Vec::with_capacity((w * h * 2) as usize);
+    canvas
+        .write_to(&mut Cursor::new(&mut out), ImageFormat::Png)?;
+    Ok(out)
+}
+
+/// Compute the ffmpeg `overlay` filter's (x, y) expressions for the
+/// nine-grid position. `margin_px` is the absolute pixel margin from
+/// the edge (overlay x/y are in pixels; variables `W`/`H` are the main
+/// video dims, `w`/`h` are the overlay PNG dims).
+pub fn overlay_xy_expr(position: WatermarkPosition, margin_px: i32) -> (String, String) {
+    match position {
+        WatermarkPosition::TopLeft      => (format!("{margin_px}"),         format!("{margin_px}")),
+        WatermarkPosition::TopCenter    => ("(W-w)/2".into(),                format!("{margin_px}")),
+        WatermarkPosition::TopRight     => (format!("W-w-{margin_px}"),     format!("{margin_px}")),
+        WatermarkPosition::MiddleLeft   => (format!("{margin_px}"),         "(H-h)/2".into()),
+        WatermarkPosition::MiddleCenter => ("(W-w)/2".into(),                "(H-h)/2".into()),
+        WatermarkPosition::MiddleRight  => (format!("W-w-{margin_px}"),     "(H-h)/2".into()),
+        WatermarkPosition::BottomLeft   => (format!("{margin_px}"),         format!("H-h-{margin_px}")),
+        WatermarkPosition::BottomCenter => ("(W-w)/2".into(),                format!("H-h-{margin_px}")),
+        WatermarkPosition::BottomRight  => (format!("W-w-{margin_px}"),     format!("H-h-{margin_px}")),
+    }
 }
 
 /// Compute a deterministic output filename for a given bundle + file.
@@ -252,7 +322,7 @@ mod tests {
         let src = write_source(dir.path(), "src.jpg", [200, 100, 50], 256, 128);
         let dst = dir.path().join("out.jpg");
         let ops = ImageOps { strip_exif: true, ..Default::default() };
-        process_image(&src, &dst, ops, None, PAPER_DAISY).unwrap();
+        process_image(&src, &dst, ops, None, PAPER_DAISY, 0).unwrap();
         let out = image::open(&dst).unwrap();
         assert_eq!(out.width(), 256);
         assert_eq!(out.height(), 128);
@@ -271,7 +341,7 @@ mod tests {
             margin_pct: 2.5,
         };
         let ops = ImageOps { watermark: true, strip_exif: true, ..Default::default() };
-        process_image(&src, &dst, ops, Some(&profile), PAPER_DAISY).unwrap();
+        process_image(&src, &dst, ops, Some(&profile), PAPER_DAISY, 0).unwrap();
 
         let out = image::open(&dst).unwrap().to_rgb8();
         // The bottom-right region should contain SOME non-light-grey
@@ -312,7 +382,7 @@ mod tests {
             margin_pct: 2.5,
         };
         let ops = ImageOps { watermark: true, ..Default::default() };
-        process_image(&src, &dst, ops, Some(&profile), PAPER_DAISY).unwrap();
+        process_image(&src, &dst, ops, Some(&profile), PAPER_DAISY, 0).unwrap();
         let out = image::open(&dst).unwrap().to_rgb8();
         let (w, h) = (out.width(), out.height());
 
@@ -340,7 +410,7 @@ mod tests {
             margin_pct: 2.5,
         };
         let ops = ImageOps { watermark: true, ..Default::default() };
-        process_image(&src, &dst, ops, Some(&profile), PAPER_DAISY).unwrap();
+        process_image(&src, &dst, ops, Some(&profile), PAPER_DAISY, 0).unwrap();
         // No pixel-level assertion needed; just confirm we got a valid
         // image out and didn't try to draw with 0 opacity.
         let out = image::open(&dst).unwrap();
@@ -373,6 +443,48 @@ mod tests {
                    "watermark");
         assert_eq!(ImageOps { rename: true, ..Default::default() }.op_kind(),
                    "rename");
+    }
+
+    #[test]
+    fn render_watermark_png_produces_valid_rgba_png() {
+        let profile = WatermarkProfile {
+            text: "CurseOfCurves".into(), opacity_percent: 20,
+            position: WatermarkPosition::BottomRight,
+            font_size_pct: 4.0, margin_pct: 2.5,
+        };
+        // 60px font size — typical sub-HD video output (1440 ref @ 4%).
+        let bytes = render_watermark_png(&profile, PAPER_DAISY, 60.0).unwrap();
+        // PNG magic bytes.
+        assert_eq!(&bytes[0..8], &[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]);
+        // Decodes back as an RGBA image with non-trivial dimensions.
+        let img = image::load_from_memory(&bytes).unwrap().to_rgba8();
+        assert!(img.width() > 16);
+        assert!(img.height() > 16);
+        // Background is transparent — sample a corner that's outside the
+        // glyph stroke region.
+        let corner = img.get_pixel(0, 0);
+        assert_eq!(corner[3], 0, "outside-glyph alpha must be 0 (transparent)");
+    }
+
+    #[test]
+    fn overlay_xy_expr_bottom_right_uses_w_w_h_h_minus_margin() {
+        let (x, y) = overlay_xy_expr(WatermarkPosition::BottomRight, 25);
+        assert_eq!(x, "W-w-25");
+        assert_eq!(y, "H-h-25");
+    }
+
+    #[test]
+    fn overlay_xy_expr_middle_center_uses_centered_formula() {
+        let (x, y) = overlay_xy_expr(WatermarkPosition::MiddleCenter, 25);
+        assert_eq!(x, "(W-w)/2");
+        assert_eq!(y, "(H-h)/2");
+    }
+
+    #[test]
+    fn overlay_xy_expr_top_left_uses_margin_for_both() {
+        let (x, y) = overlay_xy_expr(WatermarkPosition::TopLeft, 30);
+        assert_eq!(x, "30");
+        assert_eq!(y, "30");
     }
 
     #[test]

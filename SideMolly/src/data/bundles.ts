@@ -90,6 +90,7 @@ export interface BundleFileRow {
   sizeBytes: number;
   workingPath: string | null;
   thumbnailPath: string | null;
+  rotationDegrees: 0 | 90 | 180 | 270;
 }
 
 export interface BundleDetail {
@@ -146,7 +147,8 @@ export interface WatermarkProfile {
   position: WatermarkPosition;
   fontSizePct: number;
   marginPct: number;
-  enabled: boolean;
+  imageEnabled: boolean;
+  videoEnabled: boolean;
 }
 
 export interface ImageOpsInput {
@@ -242,6 +244,22 @@ export function listJobs(statusFilter?: JobStatus | 'all'): Promise<JobRow[]> {
 
 export function listJobRuns(jobId: number): Promise<JobRunRow[]> {
   return invoke<JobRunRow[]>('list_job_runs', { jobId });
+}
+
+export function revealJobOutput(jobId: number): Promise<void> {
+  return invoke('reveal_job_output', { jobId });
+}
+
+export function revealProcessedFile(uid: string, inZipPath: string, opKind: string): Promise<void> {
+  return invoke('reveal_processed_file', { uid, inZipPath, opKind });
+}
+
+export function setBundleFileRotation(
+  uid: string,
+  inZipPath: string,
+  degrees: 0 | 90 | 180 | 270,
+): Promise<void> {
+  return invoke('set_bundle_file_rotation', { uid, inZipPath, degrees });
 }
 
 export function getWatchSettings(): Promise<WatchSettings> {

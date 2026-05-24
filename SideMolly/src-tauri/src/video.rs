@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Runtime};
 
 use crate::bundles::{paper_daisy_path, BundleError};
-use crate::images::WatermarkPosition;
+use crate::images::{overlay_xy_expr, WatermarkPosition};
 use crate::jobs::JobRow;
 use crate::thumbnails::ffmpeg_bin;
 
@@ -44,23 +44,32 @@ const FFMPEG_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 /// JSON payload persisted in jobs.params_json for kind='process_video'.
 /// Keeping it self-contained means the worker can run a job months
 /// later even if the source paths or watermark settings have moved.
+///
+/// `watermark_png_path` points at a pre-rendered RGBA PNG produced by
+/// `images::render_watermark_png` at enqueue time. We composite it via
+/// ffmpeg's `overlay` filter (always available) instead of `drawtext`
+/// (which requires libfreetype that Homebrew's stock ffmpeg lacks —
+/// caught by the v0.6.0 jobs failure 2026-05-24).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessVideoParams {
     pub working_path: String,
     pub output_path: String,
-    pub op_kind: String,         // e.g. "watermark_strip"
+    pub op_kind: String,         // e.g. "video_watermark_strip"
     pub watermark: bool,
     pub strip_metadata: bool,
     pub rename: bool,            // currently informational only
-    pub watermark_text: Option<String>,
-    pub opacity_percent: u8,
-    pub position: String,        // 9-grid string
-    pub font_size_pct: f32,
-    pub margin_pct: f32,
-    pub font_path: Option<String>,
+    pub position: String,        // 9-grid string, used by overlay xy
+    pub margin_pct: f32,         // converted to absolute px against an 1080p ref
+    pub watermark_png_path: Option<String>,
     pub bundle_file_id: i64,
+    /// "none" | "cw" | "ccw" | "180" — pre-overlay ffmpeg transpose so
+    /// the watermark lands in the corrected orientation.
+    #[serde(default = "default_rotation")]
+    pub rotation: String,
 }
+
+fn default_rotation() -> String { "none".to_string() }
 
 /// Run ffmpeg synchronously. Caller is responsible for kicking this
 /// off the main thread (jobs.rs worker spawns a dedicated thread).
@@ -76,33 +85,67 @@ pub fn process_video(params: &ProcessVideoParams) -> Result<(), BundleError> {
     let tmp = dst.with_extension("sm-tmp.mp4");
 
     // Assemble argv. Build the vector so we can log it on failure.
+    // Inputs:
+    //   [0:v] = source video at `src`
+    //   [1:v] = watermark PNG (only when params.watermark is on)
     let mut argv: Vec<String> = vec![
         "-y".into(),
         "-loglevel".into(), "error".into(),
         "-i".into(), src.to_string_lossy().to_string(),
-        "-map_metadata".into(), "-1".into(),
     ];
 
+    // Rotation step — applied to [0:v] before the watermark overlay
+    // so the watermark lands in the corrected orientation. ffmpeg's
+    // `transpose` filter handles 90° rotations; 180° chains two CW
+    // rotations (cheap, no quality loss). When rotation is "none" we
+    // skip the filter entirely.
+    let rotation_filter: Option<&'static str> = match params.rotation.as_str() {
+        "cw"  => Some("transpose=1"),                  // 90° clockwise
+        "ccw" => Some("transpose=2"),                  // 90° counter-clockwise
+        "180" => Some("transpose=1,transpose=1"),      // 180° flip
+        _ => None,
+    };
+
     if params.watermark {
-        let Some(text) = params.watermark_text.as_deref().filter(|t| !t.is_empty()) else {
-            return Err(BundleError::NotFound("watermark text missing".into()));
+        let Some(wm_path) = params.watermark_png_path.as_deref() else {
+            return Err(BundleError::NotFound("watermark PNG path missing".into()));
         };
-        let Some(font_path) = params.font_path.as_deref() else {
-            return Err(BundleError::NotFound("font path missing".into()));
-        };
+        if !Path::new(wm_path).exists() {
+            return Err(BundleError::NotFound(format!("watermark PNG not at {wm_path}")));
+        }
+        argv.extend(["-i".into(), wm_path.to_string()]);
+
         let pos = WatermarkPosition::parse(&params.position)
             .map_err(crate::images::ImageOpError::from)?;
-        let filter = build_drawtext_filter(
-            font_path,
-            text,
-            params.opacity_percent,
-            params.font_size_pct,
-            params.margin_pct,
-            pos,
-        );
-        argv.push("-vf".into());
-        argv.push(filter);
+        // Probe actual video height for margin sizing — falls back to
+        // 1080 when ffprobe is unavailable. Note: when rotation swaps
+        // dimensions (cw/ccw), the rotated frame's "height" is the
+        // source width; ffmpeg `overlay` references the rotated stream
+        // so the margin is still proportional to the visible frame.
+        let video_height = crate::thumbnails::probe_video_height(src).unwrap_or(1080) as f32;
+        let margin_px = ((video_height * params.margin_pct / 100.0).round() as i32).max(8);
+        let (x, y) = overlay_xy_expr(pos, margin_px);
+        // `format=rgb` forces ffmpeg to convert the video frame to RGB
+        // for the composite (vs the default `yuv420` which subsamples
+        // chroma and visually attenuates white watermark text, and
+        // vs `format=auto` which keeps yuv when both inputs are
+        // yuv-compatible). The downstream `-pix_fmt yuv420p` converts
+        // back to yuv420p for x264 encoding.
+        let filter_complex = if let Some(rot) = rotation_filter {
+            format!("[0:v]{rot}[rot];[rot][1:v]overlay=x={x}:y={y}:format=rgb")
+        } else {
+            format!("[0:v][1:v]overlay=x={x}:y={y}:format=rgb")
+        };
+        argv.extend(["-filter_complex".into(), filter_complex]);
+    } else if let Some(rot) = rotation_filter {
+        // Rotation-only path (no watermark).
+        argv.extend(["-vf".into(), rot.to_string()]);
     }
+
+    // Strip metadata after the filter graph so it applies to the final
+    // muxed output. ffmpeg accepts the flag at any position; keeping
+    // it after -filter_complex matches the ffmpeg-cli conventions.
+    argv.extend(["-map_metadata".into(), "-1".into()]);
 
     // Encoders + container flags.
     argv.extend([
@@ -168,57 +211,6 @@ pub fn process_video(params: &ProcessVideoParams) -> Result<(), BundleError> {
     Ok(())
 }
 
-/// Build the `drawtext` filter expression for ffmpeg.
-///
-/// Variables ffmpeg evaluates per frame: `w` (frame width), `h`
-/// (frame height), `tw` (text width), `th` (text height). Margin and
-/// font size are expressed as percentages of frame height so output
-/// scales sensibly across 720p / 1080p / 4K.
-///
-/// Path escaping for ffmpeg filter syntax: paths are single-quoted to
-/// protect spaces; literal `:` is escaped (would otherwise be a filter
-/// argument separator). See:
-/// https://ffmpeg.org/ffmpeg-filters.html#Notes-on-filtergraph-escaping
-pub fn build_drawtext_filter(
-    font_path: &str,
-    text: &str,
-    opacity_percent: u8,
-    font_size_pct: f32,
-    margin_pct: f32,
-    position: WatermarkPosition,
-) -> String {
-    let alpha = (opacity_percent.min(100) as f32) / 100.0;
-    let fontfile = escape_filter_value(font_path);
-    let escaped_text = escape_filter_value(text);
-
-    // Position as ffmpeg expressions. `tw` / `th` are the rendered
-    // text bounds; `w` / `h` are the frame.
-    let margin = format!("h*{:.4}", margin_pct / 100.0);
-    let font_size_expr = format!("h*{:.4}", font_size_pct / 100.0);
-    let (x_expr, y_expr) = match position {
-        WatermarkPosition::TopLeft      => (margin.clone(),                       margin.clone()),
-        WatermarkPosition::TopCenter    => (format!("(w-tw)/2"),                   margin.clone()),
-        WatermarkPosition::TopRight     => (format!("w-tw-{margin}"),              margin.clone()),
-        WatermarkPosition::MiddleLeft   => (margin.clone(),                       format!("(h-th)/2")),
-        WatermarkPosition::MiddleCenter => (format!("(w-tw)/2"),                   format!("(h-th)/2")),
-        WatermarkPosition::MiddleRight  => (format!("w-tw-{margin}"),              format!("(h-th)/2")),
-        WatermarkPosition::BottomLeft   => (margin.clone(),                       format!("h-th-{margin}")),
-        WatermarkPosition::BottomCenter => (format!("(w-tw)/2"),                   format!("h-th-{margin}")),
-        WatermarkPosition::BottomRight  => (format!("w-tw-{margin}"),              format!("h-th-{margin}")),
-    };
-
-    format!(
-        "drawtext=fontfile='{fontfile}':text='{escaped_text}':fontcolor=white@{alpha:.2}:fontsize={font_size_expr}:x={x_expr}:y={y_expr}"
-    )
-}
-
-/// Escape a value for use inside a single-quoted ffmpeg filter argument.
-/// Backslashes and single quotes are the dangerous ones; backslash-escape
-/// both. The `:` separator is harmless inside single quotes.
-fn escape_filter_value(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('\'', "\\'")
-}
-
 // ---------------------------------------------------------------------------
 // Jobs dispatcher — invoked by jobs.rs when a row of kind='process_video'
 // claims the worker. Reads the params JSON, calls process_video, writes
@@ -265,54 +257,28 @@ pub fn resolve_font_path<R: Runtime>(handle: &AppHandle<R>) -> Result<PathBuf, B
 mod tests {
     use super::*;
 
+    /// The serialized ProcessVideoParams must round-trip cleanly —
+    /// jobs.params_json stores this and the worker pulls it back out
+    /// later. camelCase contract verified in lib.rs.
     #[test]
-    fn drawtext_bottom_right_uses_subtract_for_x_and_y() {
-        let s = build_drawtext_filter(
-            "/path/to/font.ttf", "CurseOfCurves", 20, 4.0, 2.5,
-            WatermarkPosition::BottomRight,
-        );
-        assert!(s.contains("fontfile='/path/to/font.ttf'"));
-        assert!(s.contains("text='CurseOfCurves'"));
-        assert!(s.contains("fontcolor=white@0.20"));
-        assert!(s.contains("fontsize=h*0.0400"));
-        // Margin = h*0.0250 because 2.5/100.
-        assert!(s.contains("x=w-tw-h*0.0250"), "missing x expr; got: {s}");
-        assert!(s.contains("y=h-th-h*0.0250"), "missing y expr; got: {s}");
-    }
-
-    #[test]
-    fn drawtext_middle_center_uses_centered_x_and_y() {
-        let s = build_drawtext_filter(
-            "/path/font.ttf", "T", 50, 5.0, 2.0,
-            WatermarkPosition::MiddleCenter,
-        );
-        assert!(s.contains("x=(w-tw)/2"), "missing centered x; got: {s}");
-        assert!(s.contains("y=(h-th)/2"), "missing centered y; got: {s}");
-        assert!(s.contains("fontcolor=white@0.50"));
-    }
-
-    #[test]
-    fn escape_filter_value_handles_quotes_and_backslashes() {
-        assert_eq!(escape_filter_value("plain"), "plain");
-        assert_eq!(escape_filter_value("with 'quote'"), "with \\'quote\\'");
-        assert_eq!(escape_filter_value("back\\slash"), "back\\\\slash");
-        // Space + colon are harmless inside the single-quoted value.
-        assert_eq!(escape_filter_value("/Users/me/Application Support/font.ttf"),
-                   "/Users/me/Application Support/font.ttf");
-    }
-
-    #[test]
-    fn drawtext_opacity_clamps_above_100_via_min() {
-        // 120 is invalid; we min-clamp to 100 which yields alpha=1.00.
-        let s = build_drawtext_filter("/f.ttf", "X", 120, 4.0, 2.5, WatermarkPosition::BottomRight);
-        assert!(s.contains("fontcolor=white@1.00"), "got: {s}");
-    }
-
-    #[test]
-    fn drawtext_top_left_uses_margin_for_both_x_and_y() {
-        let s = build_drawtext_filter("/f.ttf", "X", 20, 4.0, 2.5, WatermarkPosition::TopLeft);
-        // Both expressions equal the margin value h*0.0250.
-        let occurrences = s.matches("h*0.0250").count();
-        assert!(occurrences >= 2, "top-left should use margin for both axes; got: {s}");
+    fn process_video_params_round_trips_via_json() {
+        let p = ProcessVideoParams {
+            working_path: "/work/in.mov".into(),
+            output_path: "/work/out.mp4".into(),
+            op_kind: "video_watermark_strip_rotcw".into(),
+            watermark: true, strip_metadata: true, rename: false,
+            position: "bottom-right".into(),
+            margin_pct: 2.5,
+            watermark_png_path: Some("/work/.wm/abc.png".into()),
+            bundle_file_id: 42,
+            rotation: "cw".into(),
+        };
+        let json = serde_json::to_string(&p).unwrap();
+        // camelCase over the wire.
+        assert!(json.contains("\"watermarkPngPath\""), "got: {json}");
+        assert!(json.contains("\"marginPct\""), "got: {json}");
+        let back: ProcessVideoParams = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.bundle_file_id, 42);
+        assert_eq!(back.position, "bottom-right");
     }
 }

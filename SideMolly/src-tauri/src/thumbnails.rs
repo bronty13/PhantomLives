@@ -133,6 +133,54 @@ pub fn ffmpeg_bin() -> &'static str {
         .as_str()
 }
 
+/// Sibling of `ffmpeg_bin` — same Finder-PATH probe but for `ffprobe`.
+/// Homebrew ships them in the same `bin/` directory so the candidate
+/// list mirrors ffmpeg.
+pub fn ffprobe_bin() -> &'static str {
+    use std::sync::OnceLock;
+    static FOUND: OnceLock<String> = OnceLock::new();
+    FOUND
+        .get_or_init(|| {
+            for candidate in &[
+                "/opt/homebrew/bin/ffprobe",
+                "/usr/local/bin/ffprobe",
+                "/usr/bin/ffprobe",
+            ] {
+                if std::path::Path::new(candidate).is_file() {
+                    return (*candidate).to_string();
+                }
+            }
+            "ffprobe".to_string()
+        })
+        .as_str()
+}
+
+/// Probe a video file for its first video-stream height (pixels). Used
+/// by the Phase 4 watermark pipeline to size the overlay PNG against
+/// the actual frame — not a hardcoded 1080-px reference (the bug
+/// caught 2026-05-24: 720p videos got watermark text rendered for a
+/// 1080-tall frame, making the glyphs ~1/3rd the size of the image
+/// watermark on iPhone-sized photos).
+///
+/// Returns `None` when ffprobe is unavailable, errors, or returns an
+/// unparseable height. Caller decides the fallback (currently 1080).
+pub fn probe_video_height(path: &Path) -> Option<u32> {
+    let bin = ffprobe_bin();
+    let output = Command::new(bin)
+        .args([
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=height",
+            "-of", "csv=p=0",
+        ])
+        .arg(path)
+        .output()
+        .ok()?;
+    if !output.status.success() { return None; }
+    let s = String::from_utf8(output.stdout).ok()?;
+    s.trim().parse::<u32>().ok()
+}
+
 fn generate_video_thumb(src: &Path, dst: &Path) -> Option<PathBuf> {
     let bin = ffmpeg_bin();
     // Tmp suffix ends in `.jpg` so ffmpeg can sniff the output muxer

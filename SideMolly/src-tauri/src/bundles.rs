@@ -27,7 +27,7 @@ use std::path::{Path, PathBuf};
 use chrono::Local;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use crate::bundle_io::{
     classify_kind, parse_content_prefix, parse_fansite_prefix, verify_outer_zip,
@@ -128,6 +128,9 @@ pub struct BundleFileRow {
     pub size_bytes: i64,
     pub working_path: Option<String>,
     pub thumbnail_path: Option<String>,
+    /// 0 / 90 / 180 / 270. Per-file rotation override applied during
+    /// processing. Added in migration 009.
+    pub rotation_degrees: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -555,6 +558,35 @@ pub fn reveal_working_dir<R: Runtime>(
     Ok(())
 }
 
+/// Per-file rotation override (0/90/180/270). 0 clears any prior
+/// override. Applied at processing time by `process_bundle_images`
+/// and `enqueue_bundle_video_ops`. Added 2026-05-24 to support
+/// rotating individual files in a mixed bundle.
+#[tauri::command]
+pub fn set_bundle_file_rotation<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+    in_zip_path: String,
+    degrees: i64,
+) -> Result<(), BundleError> {
+    if ![0, 90, 180, 270].contains(&degrees) {
+        return Err(BundleError::Io(std::io::Error::other(
+            format!("rotation must be 0/90/180/270, got {degrees}"),
+        )));
+    }
+    let conn = open_conn(&handle)?;
+    let n = conn.execute(
+        "UPDATE bundle_files
+            SET rotation_degrees = ?1
+          WHERE bundle_uid = ?2 AND in_zip_path = ?3",
+        params![degrees, uid, in_zip_path],
+    )?;
+    if n == 0 {
+        return Err(BundleError::NotFound(format!("{uid}::{in_zip_path}")));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn reveal_working_file<R: Runtime>(
     handle: AppHandle<R>,
@@ -647,7 +679,7 @@ pub fn get_bundle<R: Runtime>(
     let mut stmt = conn.prepare(
         "SELECT in_zip_path, original_name, kind, position,
                 fansite_day_of_month, sha256, size_bytes,
-                working_path, thumbnail_path
+                working_path, thumbnail_path, rotation_degrees
          FROM bundle_files
          WHERE bundle_uid = ?1
          ORDER BY
@@ -667,6 +699,7 @@ pub fn get_bundle<R: Runtime>(
                 size_bytes: row.get(6)?,
                 working_path: row.get(7)?,
                 thumbnail_path: row.get(8)?,
+                rotation_degrees: row.get(9)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -687,7 +720,21 @@ pub struct WatermarkProfileRow {
     pub position: String,
     pub font_size_pct: f64,
     pub margin_pct: f64,
-    pub enabled: bool,
+    /// Apply watermark to images of bundles with this persona. Default off
+    /// (most photos are hand-edited downstream anyway).
+    pub image_enabled: bool,
+    /// Apply watermark to videos of bundles with this persona. Default on
+    /// (videos are typically uploaded direct).
+    pub video_enabled: bool,
+}
+
+/// Media kind the loader should check the per-media `enabled` flag for.
+/// Image vs Video map to `image_enabled` / `video_enabled` columns on
+/// `watermark_profiles` (added in migration 008).
+#[derive(Debug, Clone, Copy)]
+pub enum MediaKind {
+    Image,
+    Video,
 }
 
 #[derive(Debug, Clone, Serialize, serde::Deserialize, Default)]
@@ -712,6 +759,18 @@ pub struct ProcessedFileRow {
     pub op_kind: String,
     pub output_path: String,
     pub created_at: String,
+}
+
+/// Per-image progress tick emitted on the `image-progress` channel
+/// during `process_bundle_images`. Frontend subscribes and updates
+/// the EditTab busy banner with the live "X of N" count + filename.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageProgressEvent {
+    pub bundle_uid: String,
+    pub done: i64,
+    pub total: i64,
+    pub current_in_zip_path: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -758,7 +817,7 @@ pub fn get_watermark_profiles<R: Runtime>(
     let conn = open_conn(&handle)?;
     let mut stmt = conn.prepare(
         "SELECT persona_code, text, opacity_percent, position,
-                font_size_pct, margin_pct, enabled
+                font_size_pct, margin_pct, image_enabled, video_enabled
            FROM watermark_profiles
           ORDER BY CASE persona_code WHEN '' THEN 0 ELSE 1 END, persona_code",
     )?;
@@ -771,7 +830,8 @@ pub fn get_watermark_profiles<R: Runtime>(
                 position: row.get(3)?,
                 font_size_pct: row.get(4)?,
                 margin_pct: row.get(5)?,
-                enabled: row.get::<_, i64>(6)? != 0,
+                image_enabled: row.get::<_, i64>(6)? != 0,
+                video_enabled: row.get::<_, i64>(7)? != 0,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -790,15 +850,16 @@ pub fn set_watermark_profile<R: Runtime>(
     conn.execute(
         "INSERT INTO watermark_profiles
             (persona_code, text, opacity_percent, position,
-             font_size_pct, margin_pct, enabled, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))
+             font_size_pct, margin_pct, image_enabled, video_enabled, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, datetime('now'))
          ON CONFLICT(persona_code) DO UPDATE SET
             text             = excluded.text,
             opacity_percent  = excluded.opacity_percent,
             position         = excluded.position,
             font_size_pct    = excluded.font_size_pct,
             margin_pct       = excluded.margin_pct,
-            enabled          = excluded.enabled,
+            image_enabled    = excluded.image_enabled,
+            video_enabled    = excluded.video_enabled,
             updated_at       = datetime('now')",
         params![
             profile.persona_code,
@@ -807,7 +868,8 @@ pub fn set_watermark_profile<R: Runtime>(
             profile.position,
             profile.font_size_pct,
             profile.margin_pct,
-            if profile.enabled { 1 } else { 0 },
+            if profile.image_enabled { 1 } else { 0 },
+            if profile.video_enabled { 1 } else { 0 },
         ],
     )?;
     Ok(())
@@ -816,14 +878,18 @@ pub fn set_watermark_profile<R: Runtime>(
 fn load_watermark_profile(
     conn: &Connection,
     persona_code: Option<&str>,
+    media: MediaKind,
 ) -> Result<Option<WatermarkProfile>, BundleError> {
     let lookup_key = persona_code.unwrap_or("");
     // Look up the bundle's persona first; fall back to the '' default
-    // row when missing or disabled.
+    // row when missing or disabled-for-this-media-kind. The per-media
+    // flag (image_enabled / video_enabled) was added in migration 008
+    // so images and videos can have independent defaults per persona.
     for key in [lookup_key, ""] {
         let row = conn
             .query_row(
-                "SELECT text, opacity_percent, position, font_size_pct, margin_pct, enabled
+                "SELECT text, opacity_percent, position, font_size_pct, margin_pct,
+                        image_enabled, video_enabled
                    FROM watermark_profiles WHERE persona_code = ?1",
                 params![key],
                 |r| Ok((
@@ -833,11 +899,17 @@ fn load_watermark_profile(
                     r.get::<_, f64>(3)?,
                     r.get::<_, f64>(4)?,
                     r.get::<_, i64>(5)?,
+                    r.get::<_, i64>(6)?,
                 )),
             )
             .optional()?;
-        let Some((text, opacity, position, font_size, margin, enabled)) = row else { continue };
-        if enabled == 0 || text.is_empty() { continue; }
+        let Some((text, opacity, position, font_size, margin, img_en, vid_en)) = row
+            else { continue };
+        let enabled_for_media = match media {
+            MediaKind::Image => img_en != 0,
+            MediaKind::Video => vid_en != 0,
+        };
+        if !enabled_for_media || text.is_empty() { continue; }
         return Ok(Some(WatermarkProfile {
             text,
             opacity_percent: opacity.clamp(0, 100) as u8,
@@ -849,8 +921,28 @@ fn load_watermark_profile(
     Ok(None)
 }
 
+/// Async wrapper that offloads the CPU-heavy image loop onto
+/// `tauri::async_runtime::spawn_blocking`. The earlier sync version
+/// emitted `image-progress` events fine on paper, but the Tauri 2
+/// IPC bus didn't reliably flush them to the renderer until the
+/// command returned — making the UI look frozen for the entire run.
+/// Spawning explicitly off the runtime thread lets emit() reach the
+/// WebView in real time. Caught 2026-05-24.
 #[tauri::command]
-pub fn process_bundle_images<R: Runtime>(
+pub async fn process_bundle_images<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+    ops: ImageOpsInput,
+) -> Result<ProcessImagesResult, BundleError> {
+    let h = handle.clone();
+    tauri::async_runtime::spawn_blocking(move || process_bundle_images_inner(h, uid, ops))
+        .await
+        .map_err(|e| BundleError::Io(std::io::Error::other(
+            format!("spawn_blocking join: {e}"),
+        )))?
+}
+
+fn process_bundle_images_inner<R: Runtime>(
     handle: AppHandle<R>,
     uid: String,
     ops: ImageOpsInput,
@@ -870,7 +962,7 @@ pub fn process_bundle_images<R: Runtime>(
         .optional()?
         .flatten();
     let profile = if typed_ops.watermark {
-        load_watermark_profile(&conn, persona.as_deref())?
+        load_watermark_profile(&conn, persona.as_deref(), MediaKind::Image)?
     } else {
         None
     };
@@ -879,13 +971,15 @@ pub fn process_bundle_images<R: Runtime>(
 
     // Walk every image-kind row that has a working path on disk.
     let mut stmt = conn.prepare(
-        "SELECT id, in_zip_path, working_path
+        "SELECT id, in_zip_path, working_path, rotation_degrees
            FROM bundle_files
           WHERE bundle_uid = ?1 AND kind = 'image'
                 AND working_path IS NOT NULL AND working_path != ''",
     )?;
-    let candidates: Vec<(i64, String, String)> = stmt
-        .query_map(params![uid], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+    let candidates: Vec<(i64, String, String, i64)> = stmt
+        .query_map(params![uid], |row| Ok((
+            row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?,
+        )))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     drop(stmt);
 
@@ -893,7 +987,18 @@ pub fn process_bundle_images<R: Runtime>(
     let mut skipped: i64 = 0;
     let mut errors: Vec<String> = Vec::new();
 
-    for (id, in_zip, working) in candidates {
+    let total = candidates.len() as i64;
+    for (i, (id, in_zip, working, rot_deg)) in candidates.into_iter().enumerate() {
+        // Emit progress before kicking off each image so the UI banner
+        // updates with the current file name BEFORE the JPEG re-encode
+        // (which is the slow part). The frontend listens for this on
+        // the `image-progress` channel.
+        let _ = handle.emit("image-progress", ImageProgressEvent {
+            bundle_uid: uid.clone(),
+            done: i as i64,
+            total,
+            current_in_zip_path: in_zip.clone(),
+        });
         let src = PathBuf::from(&working);
         if !src.exists() {
             skipped += 1;
@@ -901,7 +1006,7 @@ pub fn process_bundle_images<R: Runtime>(
             continue;
         }
         let dst = image_output_path(&workspace, &in_zip, &op_kind);
-        match process_image(&src, &dst, typed_ops, profile.as_ref(), &font_bytes) {
+        match process_image(&src, &dst, typed_ops, profile.as_ref(), &font_bytes, rot_deg) {
             Ok(()) => {
                 conn.execute(
                     "INSERT INTO processed_files
@@ -932,6 +1037,15 @@ pub fn process_bundle_images<R: Runtime>(
             }
         }
     }
+
+    // Final tick so the progress UI reads "N of N done" before the
+    // IPC return lands.
+    let _ = handle.emit("image-progress", ImageProgressEvent {
+        bundle_uid: uid.clone(),
+        done: total,
+        total,
+        current_in_zip_path: String::new(),
+    });
 
     Ok(ProcessImagesResult {
         bundle_uid: uid,
@@ -990,6 +1104,17 @@ impl VideoOpsInput {
     }
 }
 
+/// Map a per-file rotation_degrees value (0/90/180/270) to the string
+/// form `ProcessVideoParams.rotation` expects ("none" / "cw" / "180" / "ccw").
+fn rotation_degrees_to_str(degrees: i64) -> &'static str {
+    match degrees {
+        90 => "cw",
+        180 => "180",
+        270 => "ccw",
+        _ => "none",
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EnqueueVideoOpsResult {
@@ -1020,26 +1145,36 @@ pub fn enqueue_bundle_video_ops<R: Runtime>(
         .optional()?
         .flatten();
     let profile = if ops.watermark {
-        load_watermark_profile(&conn, persona.as_deref())?
+        load_watermark_profile(&conn, persona.as_deref(), MediaKind::Video)?
     } else {
         None
     };
-    let font_path = if ops.watermark {
-        Some(crate::video::resolve_font_path(&handle)?
-            .to_string_lossy()
-            .to_string())
+    // Phase 4.2 fix: probe each video for its actual height with
+    // ffprobe and render the watermark PNG sized for that height (was
+    // hardcoded to 1080 — fine for HD content, but 720p videos got
+    // text ~1/3rd the size of iPhone-resolution images at the same
+    // 4% font_size setting). Cache PNGs by (profile + height) so a
+    // batch of identical-height clips reuses the same overlay file.
+    let font_bytes: Option<Vec<u8>> = if profile.is_some() {
+        Some(paper_daisy_bytes(&handle)?)
     } else {
         None
     };
+    let wm_dir = workspace.join(".watermarks");
+    if profile.is_some() { fs::create_dir_all(&wm_dir)?; }
+    let mut wm_cache: std::collections::HashMap<u32, String> =
+        std::collections::HashMap::new();
 
     let mut stmt = conn.prepare(
-        "SELECT id, in_zip_path, working_path
+        "SELECT id, in_zip_path, working_path, rotation_degrees
            FROM bundle_files
           WHERE bundle_uid = ?1 AND kind = 'video'
                 AND working_path IS NOT NULL AND working_path != ''",
     )?;
-    let videos: Vec<(i64, String, String)> = stmt
-        .query_map(params![uid], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+    let videos: Vec<(i64, String, String, i64)> = stmt
+        .query_map(params![uid], |row| Ok((
+            row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?,
+        )))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     drop(stmt);
 
@@ -1047,7 +1182,7 @@ pub fn enqueue_bundle_video_ops<R: Runtime>(
     let mut skipped = 0i64;
     let mut errors: Vec<String> = Vec::new();
 
-    for (id, in_zip, working) in videos {
+    for (id, in_zip, working, rot_deg) in videos {
         if !std::path::Path::new(&working).exists() {
             skipped += 1;
             errors.push(format!("{in_zip}: working file missing"));
@@ -1063,23 +1198,78 @@ pub fn enqueue_bundle_video_ops<R: Runtime>(
             .to_string_lossy()
             .to_string();
 
+        // Resolve (or reuse) the watermark PNG for this video.
+        //
+        // Resolution-agnostic sizing — works for anything from a
+        // 240p webcam clip to 8K source:
+        //   reference   = max(actual_height, 1440)   — floor so small
+        //                                              videos still
+        //                                              get legible text
+        //   base_font   = reference * font_size_pct
+        //   cap         = actual_height * 8%         — never let the
+        //                                              watermark dominate
+        //                                              a small frame
+        //   font_size_px = clamp(base_font, 24, cap-or-base)
+        //
+        // Cache key is the resulting integer font_size_px so two
+        // different videos at the same render height share a PNG.
+        // (Caught 2026-05-24: hardcoded 1080 was small for iPhone-vs-
+        //  image parity; naive per-video-height made 720p smaller still;
+        //  this version is correct for any incoming resolution.)
+        let watermark_png_path: Option<String> = match (&profile, &font_bytes) {
+            (Some(p), Some(fb)) => {
+                let actual_height = crate::thumbnails::probe_video_height(
+                    std::path::Path::new(&working),
+                ).unwrap_or(1080);
+                let reference = std::cmp::max(actual_height, 1440) as f32;
+                let base_font = reference * p.font_size_pct / 100.0;
+                let cap = (actual_height as f32) * 0.08;
+                let font_size_px = base_font.min(cap).max(24.0);
+                let cache_key = font_size_px.round() as u32;
+                if let Some(existing) = wm_cache.get(&cache_key) {
+                    Some(existing.clone())
+                } else {
+                    // Video opacity boost (perceptual parity with images).
+                // ffmpeg overlay with format=rgb already corrects the
+                // chroma-loss issue, but at the same nominal alpha the
+                // motion in the frame still makes the watermark read
+                // ~20% lighter than a still photo's. 1.25× nudge —
+                // 20% UI → 25% effective on video. Capped at 100.
+                let boosted = WatermarkProfile {
+                    opacity_percent: ((p.opacity_percent as f32 * 1.25).min(100.0)) as u8,
+                    ..p.clone()
+                };
+                let png_bytes = crate::images::render_watermark_png(&boosted, fb, font_size_px)?;
+                    let key = profile_cache_key(p);
+                    let path = wm_dir.join(format!("{key}-f{cache_key}.png"));
+                    let needs_write = match fs::read(&path) {
+                        Ok(existing) => existing != png_bytes,
+                        Err(_) => true,
+                    };
+                    if needs_write { fs::write(&path, &png_bytes)?; }
+                    let s = path.to_string_lossy().to_string();
+                    wm_cache.insert(cache_key, s.clone());
+                    Some(s)
+                }
+            }
+            _ => None,
+        };
+
         let params_struct = crate::video::ProcessVideoParams {
             working_path: working,
             output_path,
             op_kind: op_kind.clone(),
-            watermark: ops.watermark,
+            watermark: ops.watermark && profile.is_some(),
             strip_metadata: ops.strip_metadata,
             rename: ops.rename,
-            watermark_text: profile.as_ref().map(|p| p.text.clone()),
-            opacity_percent: profile.as_ref().map(|p| p.opacity_percent).unwrap_or(0),
             position: profile
                 .as_ref()
                 .map(|p| watermark_position_to_str(p.position))
                 .unwrap_or_else(|| "bottom-right".to_string()),
-            font_size_pct: profile.as_ref().map(|p| p.font_size_pct).unwrap_or(4.0),
             margin_pct: profile.as_ref().map(|p| p.margin_pct).unwrap_or(2.5),
-            font_path: font_path.clone(),
+            watermark_png_path,
             bundle_file_id: id,
+            rotation: rotation_degrees_to_str(rot_deg).to_string(),
         };
         let params_json = serde_json::to_string(&params_struct).unwrap_or_else(|_| "{}".into());
         let job_id = crate::jobs::enqueue(
@@ -1100,6 +1290,28 @@ pub fn enqueue_bundle_video_ops<R: Runtime>(
         job_ids,
         errors,
     })
+}
+
+/// Stable 8-hex key derived from the watermark profile content so
+/// the rendered PNG can be cached at `.watermarks/<key>.png` and
+/// reused across every video in a batch. Phase 5+ can extend this
+/// to scope by bundle persona once watermarks become bundle-bound.
+fn profile_cache_key(p: &WatermarkProfile) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(p.text.as_bytes());
+    hasher.update([p.opacity_percent]);
+    hasher.update(format!("{:?}", p.position).as_bytes());
+    hasher.update(p.font_size_pct.to_le_bytes());
+    hasher.update(p.margin_pct.to_le_bytes());
+    let digest = hasher.finalize();
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut s = String::with_capacity(16);
+    for b in digest.iter().take(8) {
+        s.push(HEX[(b >> 4) as usize] as char);
+        s.push(HEX[(b & 0x0f) as usize] as char);
+    }
+    s
 }
 
 fn watermark_position_to_str(p: WatermarkPosition) -> String {
@@ -1134,6 +1346,68 @@ pub fn list_job_runs<R: Runtime>(
     Ok(crate::jobs::list_runs(&conn, job_id)?)
 }
 
+/// Reveal a processed file in Finder/Explorer. Scoped by
+/// (bundle_uid, in_zip_path, op_kind) so the user can't ask us to
+/// reveal an arbitrary path — we always validate against the
+/// processed_files table.
+#[tauri::command]
+pub fn reveal_processed_file<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+    in_zip_path: String,
+    op_kind: String,
+) -> Result<(), BundleError> {
+    let conn = open_conn(&handle)?;
+    let output_path: Option<String> = conn.query_row(
+        "SELECT pf.output_path
+           FROM processed_files pf
+           JOIN bundle_files bf ON bf.id = pf.bundle_file_id
+          WHERE bf.bundle_uid = ?1 AND bf.in_zip_path = ?2 AND pf.op_kind = ?3",
+        params![uid, in_zip_path, op_kind],
+        |r| r.get(0),
+    ).optional()?;
+    let path = output_path
+        .ok_or_else(|| BundleError::NotFound(format!("{uid}::{in_zip_path}::{op_kind}")))?;
+    if !Path::new(&path).exists() {
+        return Err(BundleError::NotFound(path));
+    }
+    fsutil::reveal_in_file_browser(Path::new(&path))?;
+    Ok(())
+}
+
+/// Reveal the output produced by a completed job in Finder/Explorer.
+/// Looks up the job's params_json and routes by `kind`. Scoping reveal
+/// to a known job id keeps us from exposing a generic
+/// `reveal_arbitrary_path` command from the frontend (any path on
+/// disk would be a footgun).
+#[tauri::command]
+pub fn reveal_job_output<R: Runtime>(
+    handle: AppHandle<R>,
+    job_id: i64,
+) -> Result<(), BundleError> {
+    let conn = open_conn(&handle)?;
+    let (kind, params_json): (String, String) = conn.query_row(
+        "SELECT kind, params_json FROM jobs WHERE id = ?1",
+        params![job_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    ).optional()?
+        .ok_or_else(|| BundleError::NotFound(format!("job {job_id}")))?;
+
+    let output_path: String = match kind.as_str() {
+        "process_video" => {
+            let p: crate::video::ProcessVideoParams = serde_json::from_str(&params_json)
+                .map_err(|e| BundleError::Io(std::io::Error::other(format!("bad params: {e}"))))?;
+            p.output_path
+        }
+        other => return Err(BundleError::NotFound(format!("unknown job kind: {other}"))),
+    };
+    if !Path::new(&output_path).exists() {
+        return Err(BundleError::NotFound(output_path));
+    }
+    fsutil::reveal_in_file_browser(Path::new(&output_path))?;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn get_processed_previews<R: Runtime>(
     handle: AppHandle<R>,
@@ -1141,23 +1415,38 @@ pub fn get_processed_previews<R: Runtime>(
 ) -> Result<std::collections::HashMap<String, String>, BundleError> {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
     let conn = open_conn(&handle)?;
+    // For image outputs the processed file is a JPEG we can base64-embed.
+    // For video outputs the processed file is an .mp4 — base64-ing it as
+    // image/jpeg gives the browser garbage and the row renders the 🖼
+    // placeholder (the bug Robert hit 2026-05-24). Fall back to the
+    // source video's bundle_files.thumbnail_path (an ffmpeg-extracted
+    // frame at t=1s, generated by thumbnails.rs).
     let mut stmt = conn.prepare(
-        "SELECT bf.in_zip_path, pf.output_path
+        "SELECT bf.in_zip_path, bf.kind, pf.output_path, bf.thumbnail_path
            FROM processed_files pf
            JOIN bundle_files bf ON bf.id = pf.bundle_file_id
           WHERE bf.bundle_uid = ?1
           ORDER BY pf.created_at DESC",
     )?;
-    let rows: Vec<(String, String)> = stmt
-        .query_map(params![uid], |row| Ok((row.get(0)?, row.get(1)?)))?
+    let rows: Vec<(String, String, String, Option<String>)> = stmt
+        .query_map(params![uid], |row| Ok((
+            row.get(0)?, row.get(1)?, row.get(2)?, row.get::<_, Option<String>>(3)?,
+        )))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     drop(stmt);
 
     let mut out: std::collections::HashMap<String, String> =
         std::collections::HashMap::with_capacity(rows.len());
-    for (in_zip, path) in rows {
+    for (in_zip, kind, output_path, thumb_path) in rows {
         if out.contains_key(&in_zip) { continue; } // most-recent op wins
-        let Ok(bytes) = fs::read(&path) else { continue };
+        // Pick the right source for the preview JPEG.
+        let preview_src: Option<String> = match kind.as_str() {
+            "image" => Some(output_path),
+            "video" => thumb_path.filter(|p| !p.is_empty()),
+            _ => None,
+        };
+        let Some(src) = preview_src else { continue };
+        let Ok(bytes) = fs::read(&src) else { continue };
         out.insert(in_zip, format!("data:image/jpeg;base64,{}", STANDARD.encode(&bytes)));
     }
     Ok(out)
@@ -1182,6 +1471,9 @@ mod tests {
         conn.execute_batch(include_str!("../migrations/004_export_thumbs.sql")).unwrap();
         conn.execute_batch(include_str!("../migrations/005_image_ops.sql")).unwrap();
         conn.execute_batch(include_str!("../migrations/006_jobs.sql")).unwrap();
+        conn.execute_batch(include_str!("../migrations/007_video_processed_files.sql")).unwrap();
+        conn.execute_batch(include_str!("../migrations/008_watermark_per_media.sql")).unwrap();
+        conn.execute_batch(include_str!("../migrations/009_bundle_file_rotation.sql")).unwrap();
         conn
     }
 

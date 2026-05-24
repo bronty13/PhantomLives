@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { listJobs, type JobRow, type JobStatus } from '../../data/bundles';
+import { listJobs, revealJobOutput, type JobRow, type JobStatus } from '../../data/bundles';
 
 type FilterKey = 'all' | JobStatus;
 
@@ -117,6 +117,24 @@ function JobRowEl({ row }: { row: JobRow }) {
         <span className="shrink-0 text-xs ml-auto" style={{ color: 'rgb(var(--surface-muted))' }}>
           {row.updatedAt}
         </span>
+        {row.status === 'done' && row.kind === 'process_video' && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              revealJobOutput(row.id).catch((err) => alert(String(err)));
+            }}
+            className="shrink-0 text-xs px-2 py-0.5 rounded ml-1"
+            style={{
+              color: 'rgb(var(--surface-accent))',
+              border: '1px solid rgb(var(--surface-border))',
+              background: 'rgb(var(--surface-card))',
+            }}
+            title="Reveal processed video in Finder"
+          >
+            📁 Reveal
+          </button>
+        )}
         {(has_error || row.attempts > 1) && (
           <button
             type="button"

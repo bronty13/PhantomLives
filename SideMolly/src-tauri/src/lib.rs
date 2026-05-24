@@ -50,6 +50,24 @@ pub fn run() {
             sql: include_str!("../migrations/006_jobs.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 7,
+            description: "video-processed-files",
+            sql: include_str!("../migrations/007_video_processed_files.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 8,
+            description: "watermark-per-media",
+            sql: include_str!("../migrations/008_watermark_per_media.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 9,
+            description: "bundle-file-rotation",
+            sql: include_str!("../migrations/009_bundle_file_rotation.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -106,6 +124,9 @@ pub fn run() {
             bundles::enqueue_bundle_video_ops,
             bundles::list_jobs,
             bundles::list_job_runs,
+            bundles::reveal_job_output,
+            bundles::reveal_processed_file,
+            bundles::set_bundle_file_rotation,
             watch::get_watch_settings,
             watch::set_watch_dir,
             watch::scan_watch_dir_now,
@@ -123,7 +144,8 @@ pub fn run() {
 mod camel_case_contract {
     use crate::backup::{BackupRow, Settings, VerifyResult};
     use crate::bundle_io::{HashesDoc, HashesFile, HashesInnerZip};
-    use crate::bundles::{BundleDetail, BundleFileRow, BundleSummary, ExportThumb, IngestResult};
+    use crate::bundles::{BundleDetail, BundleFileRow, BundleSummary, ExportThumb,
+        ImageProgressEvent, IngestResult};
     use crate::manifest::{BundleManifest, FanDay};
     use serde_json::Value;
 
@@ -185,6 +207,13 @@ mod camel_case_contract {
         }).unwrap(), "BundleSummary");
     }
 
+    #[test] fn image_progress_event_is_camel_case() {
+        assert_camel(&serde_json::to_value(ImageProgressEvent {
+            bundle_uid: String::new(), done: 0, total: 0,
+            current_in_zip_path: String::new(),
+        }).unwrap(), "ImageProgressEvent");
+    }
+
     #[test] fn bundle_file_row_is_camel_case() {
         assert_camel(&serde_json::to_value(BundleFileRow {
             in_zip_path: String::new(), original_name: String::new(),
@@ -192,6 +221,7 @@ mod camel_case_contract {
             fansite_day_of_month: None, sha256: String::new(),
             size_bytes: 0,
             working_path: None, thumbnail_path: None,
+            rotation_degrees: 0,
         }).unwrap(), "BundleFileRow");
     }
 
@@ -264,7 +294,8 @@ mod camel_case_contract {
         assert_camel(&serde_json::to_value(WatermarkProfileRow {
             persona_code: String::new(), text: String::new(),
             opacity_percent: 20, position: "bottom-right".into(),
-            font_size_pct: 4.0, margin_pct: 2.5, enabled: true,
+            font_size_pct: 4.0, margin_pct: 2.5,
+            image_enabled: false, video_enabled: true,
         }).unwrap(), "WatermarkProfileRow");
     }
 
@@ -335,6 +366,9 @@ mod migration_smoke {
             (4, "export-thumbs",  include_str!("../migrations/004_export_thumbs.sql")),
             (5, "image-ops",      include_str!("../migrations/005_image_ops.sql")),
             (6, "jobs",           include_str!("../migrations/006_jobs.sql")),
+            (7, "video-processed", include_str!("../migrations/007_video_processed_files.sql")),
+            (8, "wm-per-media",   include_str!("../migrations/008_watermark_per_media.sql")),
+            (9, "bf-rotation",    include_str!("../migrations/009_bundle_file_rotation.sql")),
         ];
 
         for (v, name, sql) in migrations {
