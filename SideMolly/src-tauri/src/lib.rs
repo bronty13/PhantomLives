@@ -7,6 +7,7 @@ mod fsutil;
 mod images;
 mod jobs;
 mod manifest;
+mod processing_log;
 mod thumbnails;
 mod transcribe;
 mod video;
@@ -82,6 +83,12 @@ pub fn run() {
             sql: include_str!("../migrations/011_auto_assembly_settings.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 12,
+            description: "processing-log",
+            sql: include_str!("../migrations/012_processing_log.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -149,6 +156,10 @@ pub fn run() {
             transcribe::enqueue_bundle_transcripts,
             transcribe::list_transcripts,
             transcribe::reveal_transcript,
+            processing_log::list_log_entries,
+            processing_log::export_bundle_log,
+            processing_log::clear_bundle_log,
+            processing_log::reveal_bundle_log,
             bundles::get_master_cut_status,
             bundles::reveal_master_cut,
             bundles::open_master_cut,
@@ -177,6 +188,7 @@ mod camel_case_contract {
         EnqueueTranscriptsResult, TranscribeStatus, TranscribeVideoParams,
         TranscriptRow,
     };
+    use crate::processing_log::{ExportLogResult, LogRow};
     use crate::bundles::{BundleDetail, BundleFileRow, BundleSummary, ExportThumb,
         ImageProgressEvent, IngestResult};
     use crate::manifest::{BundleManifest, FanDay};
@@ -291,8 +303,22 @@ mod camel_case_contract {
     #[test] fn enqueue_transcripts_result_is_camel_case() {
         assert_camel(&serde_json::to_value(EnqueueTranscriptsResult {
             bundle_uid: String::new(), job_ids: vec![],
-            video_count: 0, errors: vec![],
+            video_count: 0, skipped: 0, errors: vec![],
         }).unwrap(), "EnqueueTranscriptsResult");
+    }
+
+    #[test] fn log_row_is_camel_case() {
+        assert_camel(&serde_json::to_value(LogRow {
+            id: 0, timestamp: String::new(), bundle_uid: None, job_id: None,
+            kind: None, level: String::new(), message: String::new(),
+            subject: None, details: None,
+        }).unwrap(), "LogRow");
+    }
+
+    #[test] fn export_log_result_is_camel_case() {
+        assert_camel(&serde_json::to_value(ExportLogResult {
+            bundle_uid: String::new(), output_path: String::new(), row_count: 0,
+        }).unwrap(), "ExportLogResult");
     }
 
     #[test] fn transcript_row_is_camel_case() {
@@ -481,6 +507,7 @@ mod migration_smoke {
             (9, "bf-rotation",    include_str!("../migrations/009_bundle_file_rotation.sql")),
             (10, "jobs-kind-widen", include_str!("../migrations/010_jobs_kind_widen.sql")),
             (11, "aa-settings",   include_str!("../migrations/011_auto_assembly_settings.sql")),
+            (12, "processing-log", include_str!("../migrations/012_processing_log.sql")),
         ];
         for (v, name, sql) in migrations {
             conn.execute_batch(sql)
@@ -492,6 +519,7 @@ mod migration_smoke {
             "watermark_profiles", "processed_files",
             "jobs", "job_runs",
             "auto_assembly_settings",
+            "processing_log",
         ];
         for t in expected_tables {
             let count: i64 = conn

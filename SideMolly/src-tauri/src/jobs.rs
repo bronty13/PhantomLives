@@ -246,20 +246,43 @@ fn run_worker<R: Runtime>(handle: AppHandle<R>) {
         };
         // Emit running event before doing work.
         let _ = handle.emit("job-updated", &job);
+        crate::processing_log::write(
+            &conn, job.bundle_uid.as_deref(), Some(job.id), Some(&job.kind),
+            crate::processing_log::Level::Info,
+            "started",
+            job.source_in_zip_path.as_deref(),
+            None,
+        );
 
         // Dispatch.
+        let started = std::time::Instant::now();
         let outcome = dispatch(&handle, &conn, &job);
+        let elapsed_ms = started.elapsed().as_millis() as i64;
 
         match outcome {
             Ok(()) => {
                 let _ = mark_done(&conn, job.id);
                 let _ = record_run(&conn, job.id, Some(0), None);
+                crate::processing_log::write(
+                    &conn, job.bundle_uid.as_deref(), Some(job.id), Some(&job.kind),
+                    crate::processing_log::Level::Info,
+                    &format!("done in {:.1}s", elapsed_ms as f64 / 1000.0),
+                    job.source_in_zip_path.as_deref(),
+                    None,
+                );
             }
             Err(e) => {
                 let msg = e.to_string();
                 eprintln!("[sidemolly:jobs] job {} {} failed: {msg}", job.id, job.kind);
                 let _ = mark_failed(&conn, job.id, &msg);
                 let _ = record_run(&conn, job.id, Some(-1), None);
+                crate::processing_log::write(
+                    &conn, job.bundle_uid.as_deref(), Some(job.id), Some(&job.kind),
+                    crate::processing_log::Level::Error,
+                    "failed",
+                    job.source_in_zip_path.as_deref(),
+                    Some(&msg),
+                );
             }
         }
         // Emit terminal event so frontend can refresh.

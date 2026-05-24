@@ -184,6 +184,10 @@ pub struct EnqueueTranscriptsResult {
     pub bundle_uid: String,
     pub job_ids: Vec<i64>,
     pub video_count: i64,
+    /// Number of videos skipped because they already have a .txt
+    /// sidecar (smart-retry default). Always 0 when called with
+    /// force_all=true.
+    pub skipped: i64,
     pub errors: Vec<String>,
 }
 
@@ -225,7 +229,9 @@ pub fn get_transcribe_status() -> Result<TranscribeStatus, BundleError> {
 pub fn enqueue_bundle_transcripts<R: Runtime>(
     handle: AppHandle<R>,
     uid: String,
+    force_all: Option<bool>,
 ) -> Result<EnqueueTranscriptsResult, BundleError> {
+    let force_all = force_all.unwrap_or(false);
     // Engine validation up front — better one clear error than N
     // silently-skipped jobs.
     if resolve_engine().is_none() {
@@ -268,12 +274,25 @@ pub fn enqueue_bundle_transcripts<R: Runtime>(
 
     let mut job_ids: Vec<i64> = Vec::with_capacity(videos.len());
     let errors: Vec<String> = Vec::new();
+    let mut skipped: i64 = 0;
 
     for (bundle_file_id, in_zip, working) in &videos {
         let stem = Path::new(in_zip).file_stem()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| in_zip.clone());
         let json_path = tx_dir.join(format!("{stem}.json"));
+        let txt_path = tx_dir.join(format!("{stem}.txt"));
+
+        // Smart skip: when force_all is false (default), already-
+        // transcribed videos (i.e. the .txt sidecar exists) are
+        // left alone. Failed jobs leave no .txt behind, so the user's
+        // common case — "retry the broken ones" — is the default. Set
+        // force_all=true from the "Re-transcribe all" button to
+        // re-run every video regardless.
+        if !force_all && txt_path.exists() {
+            skipped += 1;
+            continue;
+        }
 
         let params_struct = TranscribeVideoParams {
             bundle_uid: uid.clone(),
@@ -297,6 +316,7 @@ pub fn enqueue_bundle_transcripts<R: Runtime>(
         bundle_uid: uid,
         job_ids,
         video_count: videos.len() as i64,
+        skipped,
         errors,
     })
 }

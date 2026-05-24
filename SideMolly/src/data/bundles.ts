@@ -314,6 +314,7 @@ export interface EnqueueTranscriptsResult {
   bundleUid: string;
   jobIds: number[];
   videoCount: number;
+  skipped: number;
   errors: string[];
 }
 
@@ -331,8 +332,22 @@ export function getTranscribeStatus(): Promise<TranscribeStatus> {
   return invoke<TranscribeStatus>('get_transcribe_status');
 }
 
-export function enqueueBundleTranscripts(uid: string): Promise<EnqueueTranscriptsResult> {
-  return invoke<EnqueueTranscriptsResult>('enqueue_bundle_transcripts', { uid });
+/**
+ * Enqueue transcript jobs for a bundle's videos.
+ *
+ * - `forceAll=false` (default): only queue videos that don't have a
+ *   .txt sidecar — i.e. retry the previously-failed ones and skip the
+ *   already-transcribed ones. The most common case after a partial
+ *   first run.
+ * - `forceAll=true`: queue every video regardless. Use when settings
+ *   changed (different model, language, etc.) and you want to redo
+ *   the whole batch.
+ */
+export function enqueueBundleTranscripts(
+  uid: string,
+  forceAll = false,
+): Promise<EnqueueTranscriptsResult> {
+  return invoke<EnqueueTranscriptsResult>('enqueue_bundle_transcripts', { uid, forceAll });
 }
 
 export function listTranscripts(uid: string): Promise<TranscriptRow[]> {
@@ -341,6 +356,42 @@ export function listTranscripts(uid: string): Promise<TranscriptRow[]> {
 
 export function revealTranscript(uid: string, inZipPath: string): Promise<void> {
   return invoke('reveal_transcript', { uid, inZipPath });
+}
+
+// ----- Processing log -----
+
+export interface LogRow {
+  id: number;
+  timestamp: string;
+  bundleUid: string | null;
+  jobId: number | null;
+  kind: string | null;
+  level: 'info' | 'warn' | 'error';
+  message: string;
+  subject: string | null;
+  details: string | null;
+}
+
+export interface ExportLogResult {
+  bundleUid: string;
+  outputPath: string;
+  rowCount: number;
+}
+
+export function listLogEntries(bundleUid: string | null, limit = 500): Promise<LogRow[]> {
+  return invoke<LogRow[]>('list_log_entries', { bundleUid, limit });
+}
+
+export function exportBundleLog(uid: string): Promise<ExportLogResult> {
+  return invoke<ExportLogResult>('export_bundle_log', { uid });
+}
+
+export function clearBundleLog(uid: string): Promise<number> {
+  return invoke<number>('clear_bundle_log', { uid });
+}
+
+export function revealBundleLog(uid: string): Promise<void> {
+  return invoke('reveal_bundle_log', { uid });
 }
 
 export function enqueueAutoAssemble(uid: string): Promise<EnqueueAutoAssembleResult> {

@@ -25,14 +25,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import {
-  enqueueAutoAssemble, enqueueBundleTranscripts, enqueueBundleVideoOps,
-  fmtSize, getBundleThumbnails, getMasterCutStatus, getProcessedPreviews,
-  getTranscribeStatus, listProcessedFiles, listTranscripts, openMasterCut,
-  processBundleImages, revealMasterCut, revealProcessedFile, revealTranscript,
-  revealWorkingFile, setBundleFileRotation,
+  clearBundleLog, enqueueAutoAssemble, enqueueBundleTranscripts,
+  enqueueBundleVideoOps, exportBundleLog, fmtSize, getBundleThumbnails,
+  getMasterCutStatus, getProcessedPreviews, getTranscribeStatus,
+  listLogEntries, listProcessedFiles, listTranscripts, openMasterCut,
+  processBundleImages, revealBundleLog, revealMasterCut, revealProcessedFile,
+  revealTranscript, revealWorkingFile, setBundleFileRotation,
   type BundleFileRow, type BundleSummary, type ImageOpsInput, type JobRow,
-  type MasterCutStatus, type ProcessedFileRow, type TranscribeStatus,
-  type TranscriptRow, type VideoOpsInput,
+  type LogRow, type MasterCutStatus, type ProcessedFileRow,
+  type TranscribeStatus, type TranscriptRow, type VideoOpsInput,
 } from '../../data/bundles';
 import type { BundleJobsSnapshot } from '../../lib/useBundleJobs';
 
@@ -85,6 +86,7 @@ export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated: _u
   const [master, setMaster] = useState<MasterCutStatus | null>(null);
   const [transcripts, setTranscripts] = useState<TranscriptRow[]>([]);
   const [transcribeStatus, setTranscribeStatus] = useState<TranscribeStatus | null>(null);
+  const [logRows, setLogRows] = useState<LogRow[]>([]);
 
   // ── Image-progress live counter while running.
   useEffect(() => {
@@ -114,18 +116,20 @@ export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated: _u
   //   2-4 stay in sync as jobs complete.
   const refreshProcessed = useCallback(async () => {
     try {
-      const [rows, prev, mc, tx, ts] = await Promise.all([
+      const [rows, prev, mc, tx, ts, lg] = await Promise.all([
         listProcessedFiles(summary.uid),
         getProcessedPreviews(summary.uid),
         getMasterCutStatus(summary.uid),
         listTranscripts(summary.uid).catch(() => [] as TranscriptRow[]),
         getTranscribeStatus().catch(() => null as TranscribeStatus | null),
+        listLogEntries(summary.uid, 200).catch(() => [] as LogRow[]),
       ]);
       setProcessed(rows);
       setPreviews(prev);
       setMaster(mc);
       setTranscripts(tx);
       setTranscribeStatus(ts);
+      setLogRows(lg);
     } catch (e) {
       console.warn('refreshProcessed failed', e);
     }
@@ -233,21 +237,52 @@ export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated: _u
     [jobs.all],
   );
 
-  const runTranscribe = async () => {
+  const runTranscribe = async (forceAll: boolean) => {
     setBusy(true);
-    setBusyLabel(`Queueing transcription for ${videos.length} video${videos.length === 1 ? '' : 's'}…`);
+    setBusyLabel(
+      forceAll
+        ? `Re-transcribing all ${videos.length} video${videos.length === 1 ? '' : 's'}…`
+        : `Transcribing missing video${videos.length === 1 ? '' : 's'}…`,
+    );
     setLastResult(null);
     try {
-      const r = await enqueueBundleTranscripts(summary.uid);
+      const r = await enqueueBundleTranscripts(summary.uid, forceAll);
+      const ok = r.jobIds.length;
       setLastResult({
-        ok: r.jobIds.length, skipped: 0, errors: r.errors,
-        what: `📝 Transcripts queued — ${r.videoCount} video${r.videoCount === 1 ? '' : 's'} · running below ↓`,
+        ok, skipped: r.skipped, errors: r.errors,
+        what: ok > 0
+          ? `📝 ${ok} transcribe job${ok === 1 ? '' : 's'} queued${r.skipped > 0 ? ` · ${r.skipped} skipped (already done)` : ''} · running below ↓`
+          : `📝 Nothing to transcribe — all ${r.videoCount} video${r.videoCount === 1 ? '' : 's'} already have transcripts. Use "Re-transcribe all" to redo.`,
       });
     } catch (e) {
       setLastResult({ ok: 0, skipped: 0, errors: [String(e)], what: 'transcribe failed' });
     } finally {
       setBusy(false);
       setBusyLabel(null);
+    }
+  };
+
+  const exportLog = async () => {
+    try {
+      const r = await exportBundleLog(summary.uid);
+      setLastResult({
+        ok: r.rowCount, skipped: 0, errors: [],
+        what: `📜 Log exported — ${r.rowCount} entries → ${r.outputPath}`,
+      });
+      // Auto-reveal in Finder for convenience.
+      revealBundleLog(summary.uid).catch(() => {});
+    } catch (e) {
+      setLastResult({ ok: 0, skipped: 0, errors: [String(e)], what: 'log export failed' });
+    }
+  };
+
+  const clearLog = async () => {
+    if (!confirm(`Clear the activity log for bundle ${summary.uid}? This wipes ${logRows.length} entries.`)) return;
+    try {
+      await clearBundleLog(summary.uid);
+      setLogRows([]);
+    } catch (e) {
+      alert(String(e));
     }
   };
 
@@ -407,7 +442,8 @@ export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated: _u
             transcribeJobs={transcribeJobs}
             status={transcribeStatus}
             busy={busy || jobs.busy}
-            onRun={runTranscribe}
+            onRunMissing={() => runTranscribe(false)}
+            onRunAll={() => runTranscribe(true)}
             onReveal={(inZipPath) => revealTranscript(summary.uid, inZipPath).catch((e) => alert(String(e)))}
           />
           <LiveQueue
@@ -444,6 +480,21 @@ export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated: _u
             ))}
           </ul>
         )}
+      </StepCard>
+
+      {/* ────────────────────────────────────────────────────────────
+          STEP 6 — Activity log
+          ──────────────────────────────────────────────────────────── */}
+      <StepCard
+        num={6}
+        title={`Activity log (${logRows.length})`}
+        subtitle={<>Every job lifecycle event for this bundle — started, done, failed — newest first. <strong>Export</strong> writes <code>processing.log</code> to the bundle workspace; that file gets folded into the return bundle back to Molly (Phase 11).</>}
+      >
+        <ActivityLog
+          rows={logRows}
+          onExport={exportLog}
+          onClear={clearLog}
+        />
       </StepCard>
     </div>
   );
@@ -820,18 +871,20 @@ function ProcessedRow({ row, preview, source, uid }: {
   );
 }
 
-function TranscriptsPanel({ videos, transcripts, transcribeJobs, status, busy, onRun, onReveal }: {
+function TranscriptsPanel({ videos, transcripts, transcribeJobs, status, busy, onRunMissing, onRunAll, onReveal }: {
   videos: BundleFileRow[];
   transcripts: TranscriptRow[];
   transcribeJobs: JobRow[];
   status: TranscribeStatus | null;
   busy: boolean;
-  onRun: () => void;
+  onRunMissing: () => void;
+  onRunAll: () => void;
   onReveal: (inZipPath: string) => void;
 }) {
   const transcribedCount = transcripts.filter((t) => t.txtPath != null).length;
   const failedCount = transcribeJobs.filter((j) => j.status === 'failed').length;
   const installed = status?.installed ?? false;
+  const missingCount = videos.length - transcribedCount;
 
   // Per-video status: cross-reference (a) the on-disk transcript
   // sidecar — definitive "done" signal — with (b) the live job
@@ -889,15 +942,32 @@ function TranscriptsPanel({ videos, transcripts, transcribeJobs, status, busy, o
             </>
           )}
         </div>
-        <button
-          type="button"
-          className="sm-button"
-          disabled={busy || !installed}
-          onClick={onRun}
-          title={installed ? '' : 'Install PhantomLives transcribe first'}
-        >
-          📝 Transcribe all videos
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="sm-button"
+            disabled={busy || !installed || missingCount === 0}
+            onClick={onRunMissing}
+            title={
+              !installed
+                ? 'Install PhantomLives transcribe first'
+                : missingCount === 0
+                  ? 'All videos already transcribed'
+                  : `Run transcribe on ${missingCount} video${missingCount === 1 ? '' : 's'} without a .txt sidecar (includes previously-failed ones)`
+            }
+          >
+            📝 Transcribe missing ({missingCount})
+          </button>
+          <button
+            type="button"
+            className="sm-button secondary"
+            disabled={busy || !installed || videos.length === 0}
+            onClick={onRunAll}
+            title={installed ? `Re-run transcribe on every video, regardless of existing .txt` : 'Install PhantomLives transcribe first'}
+          >
+            🔄 Re-transcribe all
+          </button>
+        </div>
       </div>
 
       <ul className="flex flex-col gap-1">
@@ -960,4 +1030,95 @@ function TranscriptsPanel({ videos, transcripts, transcribeJobs, status, busy, o
       </ul>
     </>
   );
+}
+
+function ActivityLog({ rows, onExport, onClear }: {
+  rows: LogRow[];
+  onExport: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <>
+      <div className="flex items-center justify-between gap-3 mb-2 text-xs" style={{ color: 'rgb(var(--surface-muted))' }}>
+        <span>
+          {rows.length === 0
+            ? 'No activity yet — log fills in as jobs run.'
+            : `Showing ${rows.length} most-recent event${rows.length === 1 ? '' : 's'}.`}
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="sm-button text-xs"
+            disabled={rows.length === 0}
+            onClick={onExport}
+            title="Write a text-format log file into the bundle workspace + reveal it"
+          >
+            💾 Export processing.log
+          </button>
+          <button
+            type="button"
+            className="sm-button secondary text-xs"
+            disabled={rows.length === 0}
+            onClick={onClear}
+            title="Wipe activity-log history for this bundle"
+          >
+            🗑 Clear
+          </button>
+        </div>
+      </div>
+
+      {rows.length > 0 && (
+        <div
+          className="rounded overflow-auto font-mono text-[11px]"
+          style={{
+            maxHeight: 360,
+            background: 'rgb(var(--surface-base))',
+            border: '1px solid rgb(var(--surface-border))',
+            padding: 8,
+          }}
+        >
+          {rows.map((r) => (
+            <div key={r.id} className="flex gap-2 py-0.5">
+              <span style={{ color: 'rgb(var(--surface-muted))', minWidth: 140 }}>
+                {r.timestamp}
+              </span>
+              <span style={logLevelStyle(r.level)} className="font-semibold" >
+                {r.level}
+              </span>
+              {r.kind && (
+                <span style={{ color: 'rgb(var(--surface-muted))', minWidth: 130 }}>
+                  {r.kind}
+                </span>
+              )}
+              {r.subject && (
+                <span className="truncate" style={{ maxWidth: 260 }} title={r.subject}>
+                  {r.subject.split('/').pop()}
+                </span>
+              )}
+              <span className="flex-1 truncate" title={r.message}>
+                {r.message}
+              </span>
+              {r.details && (
+                <span
+                  className="truncate italic"
+                  style={{ color: '#7a0000', maxWidth: 280 }}
+                  title={r.details}
+                >
+                  {r.details.split('\n')[0]}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function logLevelStyle(level: 'info' | 'warn' | 'error'): React.CSSProperties {
+  switch (level) {
+    case 'info':  return { color: 'rgb(var(--surface-accent))', minWidth: 40 };
+    case 'warn':  return { color: '#7a5b00', minWidth: 40 };
+    case 'error': return { color: '#7a0000', minWidth: 40 };
+  }
 }

@@ -4,6 +4,64 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] — 2026-05-24
+
+### Added — smart re-transcribe + bundle activity log
+
+**Smart re-transcribe**. The original "📝 Transcribe all videos"
+button queued every video unconditionally, which after a partial run
+re-ran whisper on clips that already had clean transcripts. Replaced
+with two buttons:
+
+- **📝 Transcribe missing (N)** — default action. Skips videos whose
+  `.txt` sidecar exists; queues only the failed and never-started
+  ones. Most-common case after a flaky batch.
+- **🔄 Re-transcribe all** — secondary action. Queues every video
+  regardless of existing transcript. Use when the whisper model /
+  language setting changes and you want a clean redo.
+
+`enqueue_bundle_transcripts` gains a `force_all` param (defaults
+`false`). Returns a new `skipped` count so the result pill shows
+e.g. `9 queued · 4 skipped (already done)`.
+
+**Bundle activity log** (migration 012, new `processing_log` module).
+Every job lifecycle event lands in a SQLite table scoped by
+`bundle_uid` + `job_id`:
+
+```
+info  process_video    01_01_xxx.mov  started
+info  process_video    01_01_xxx.mov  done in 32.1s
+error transcribe_video 13_01_xxx.MP4  failed
+                                       | transcribe exit Some(1): ...
+```
+
+The worker in `jobs.rs::run_worker` writes started/done/failed
+entries with elapsed time; dispatchers can append ad-hoc info/warn
+events. Failed jobs include the stderr tail in `details`.
+
+**Edit tab Step 6 — Activity log** surfaces the per-bundle log
+newest-first with three buttons:
+
+- **💾 Export processing.log** — writes a tab-separated text file
+  to `…/work/<uid>/processing.log` (auto-reveals in Finder). This
+  file is what we'll fold into the Phase 11 return-bundle ZIP back
+  to Molly so she gets a record of what SideMolly did to the bundle.
+- **🗑 Clear** — wipes the log for this bundle (with confirm).
+- The log renders inline in monospace with timestamp, level, kind,
+  subject (filename), and message; failure details show truncated
+  on the row with full text in the hover tooltip.
+
+**New Tauri commands**:
+- `list_log_entries(bundleUid, limit)` — filtered + capped.
+- `export_bundle_log(uid)` — write text file, returns path + row count.
+- `clear_bundle_log(uid)` — DELETE WHERE bundle_uid = ?
+- `reveal_bundle_log(uid)` — Finder-reveals the exported text file.
+
+116 tests passing. New camelCase contracts for `LogRow`,
+`ExportLogResult`. Migration smoke applies 012 and verifies
+`processing_log` exists. `level` CHECK constraint test ensures
+invalid levels are rejected at the DB layer.
+
 ## [0.11.0] — 2026-05-24
 
 ### Added — Phase 5: Transcription
