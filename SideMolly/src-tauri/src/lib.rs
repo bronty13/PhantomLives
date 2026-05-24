@@ -1,5 +1,8 @@
 mod backup;
+mod bundle_io;
+mod bundles;
 mod fsutil;
+mod manifest;
 
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -9,6 +12,18 @@ pub fn run() {
             version: 1,
             description: "init",
             sql: include_str!("../migrations/001_init.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 2,
+            description: "bundles",
+            sql: include_str!("../migrations/002_bundles.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 3,
+            description: "bundle-files",
+            sql: include_str!("../migrations/003_bundle_files.sql"),
             kind: MigrationKind::Up,
         },
     ];
@@ -43,24 +58,24 @@ pub fn run() {
             backup::reveal_path,
             backup::get_backup_settings,
             backup::set_backup_settings,
+            bundles::ingest_bundle,
+            bundles::list_bundles,
+            bundles::get_bundle,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
 // ---------------------------------------------------------------------------
-// camelCase boundary contract.
-//
-// Every struct that crosses the Tauri IPC boundary serializes camelCase via
-// `#[serde(rename_all = "camelCase")]`. This test catches a missing rename
-// at `cargo test` time instead of silently breaking the frontend.
-//
-// Add a new test here for every new boundary struct introduced from
-// Phase 1 onward.
+// camelCase boundary contract — every Tauri-IPC struct serialises camelCase.
+// Add a test for every new boundary type introduced.
 // ---------------------------------------------------------------------------
 #[cfg(test)]
 mod camel_case_contract {
     use crate::backup::{BackupRow, Settings, VerifyResult};
+    use crate::bundle_io::{HashesDoc, HashesFile, HashesInnerZip};
+    use crate::bundles::{BundleDetail, BundleFileRow, BundleSummary, IngestResult};
+    use crate::manifest::{BundleManifest, FanDay};
     use serde_json::Value;
 
     fn assert_camel(value: &Value, type_name: &'static str) {
@@ -73,34 +88,93 @@ mod camel_case_contract {
         }
     }
 
-    #[test]
-    fn settings_is_camel_case() {
-        let v = serde_json::to_value(Settings::default()).unwrap();
-        assert_camel(&v, "Settings");
+    #[test] fn settings_is_camel_case() {
+        assert_camel(&serde_json::to_value(Settings::default()).unwrap(), "Settings");
     }
 
-    #[test]
-    fn backup_row_is_camel_case() {
-        let v = serde_json::to_value(BackupRow {
-            path: String::new(),
-            filename: String::new(),
-            modified_at: String::new(),
-            size_bytes: 0,
-        }).unwrap();
-        assert_camel(&v, "BackupRow");
+    #[test] fn backup_row_is_camel_case() {
+        assert_camel(&serde_json::to_value(BackupRow {
+            path: String::new(), filename: String::new(),
+            modified_at: String::new(), size_bytes: 0,
+        }).unwrap(), "BackupRow");
     }
 
-    #[test]
-    fn verify_result_is_camel_case() {
-        let v = serde_json::to_value(VerifyResult {
-            archive_path: String::new(),
-            archive_size: 0,
-            file_count: 0,
-            total_bytes: 0,
-            has_database: false,
+    #[test] fn verify_result_is_camel_case() {
+        assert_camel(&serde_json::to_value(VerifyResult {
+            archive_path: String::new(), archive_size: 0,
+            file_count: 0, total_bytes: 0, has_database: false,
             entries: vec![],
-        }).unwrap();
-        assert_camel(&v, "VerifyResult");
+        }).unwrap(), "VerifyResult");
+    }
+
+    #[test] fn ingest_result_is_camel_case() {
+        assert_camel(&serde_json::to_value(IngestResult {
+            uid: String::new(), bundle_type: String::new(),
+            persona_code: None, title: String::new(),
+            verify_status: String::new(), file_count: 0,
+            manifest_source: String::new(),
+        }).unwrap(), "IngestResult");
+    }
+
+    #[test] fn bundle_summary_is_camel_case() {
+        assert_camel(&serde_json::to_value(BundleSummary {
+            uid: String::new(), bundle_type: String::new(),
+            persona_code: None, title: String::new(),
+            ingested_at: String::new(), verify_status: String::new(),
+            bundle_state: String::new(), file_count: 0,
+            source_zip_path: String::new(),
+        }).unwrap(), "BundleSummary");
+    }
+
+    #[test] fn bundle_file_row_is_camel_case() {
+        assert_camel(&serde_json::to_value(BundleFileRow {
+            in_zip_path: String::new(), original_name: String::new(),
+            kind: String::new(), position: 0,
+            fansite_day_of_month: None, sha256: String::new(),
+            size_bytes: 0,
+        }).unwrap(), "BundleFileRow");
+    }
+
+    #[test] fn bundle_detail_is_camel_case() {
+        assert_camel(&serde_json::to_value(BundleDetail {
+            summary: BundleSummary {
+                uid: String::new(), bundle_type: String::new(),
+                persona_code: None, title: String::new(),
+                ingested_at: String::new(), verify_status: String::new(),
+                bundle_state: String::new(), file_count: 0,
+                source_zip_path: String::new(),
+            },
+            manifest: BundleManifest::default(),
+            files: vec![],
+        }).unwrap(), "BundleDetail");
+    }
+
+    #[test] fn bundle_manifest_is_camel_case() {
+        assert_camel(&serde_json::to_value(BundleManifest::default()).unwrap(), "BundleManifest");
+    }
+
+    #[test] fn fan_day_is_camel_case() {
+        assert_camel(&serde_json::to_value(FanDay::default()).unwrap(), "FanDay");
+    }
+
+    #[test] fn hashes_doc_is_camel_case() {
+        assert_camel(&serde_json::to_value(HashesDoc {
+            bundle_uid: String::new(),
+            inner_zip: HashesInnerZip { name: String::new(), sha256: String::new(), bytes: 0 },
+            files: vec![],
+        }).unwrap(), "HashesDoc");
+    }
+
+    #[test] fn hashes_inner_zip_is_camel_case() {
+        assert_camel(&serde_json::to_value(HashesInnerZip {
+            name: String::new(), sha256: String::new(), bytes: 0,
+        }).unwrap(), "HashesInnerZip");
+    }
+
+    #[test] fn hashes_file_is_camel_case() {
+        assert_camel(&serde_json::to_value(HashesFile {
+            path: String::new(), sha256: String::new(),
+        }).unwrap(), "HashesFile");
     }
 }
 
@@ -118,7 +192,9 @@ mod migration_smoke {
         conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
 
         let migrations: &[(u32, &str, &str)] = &[
-            (1, "init", include_str!("../migrations/001_init.sql")),
+            (1, "init",          include_str!("../migrations/001_init.sql")),
+            (2, "bundles",       include_str!("../migrations/002_bundles.sql")),
+            (3, "bundle-files",  include_str!("../migrations/003_bundle_files.sql")),
         ];
 
         for (v, name, sql) in migrations {
@@ -126,7 +202,7 @@ mod migration_smoke {
                 .unwrap_or_else(|e| panic!("migration {v} ({name}) failed: {e}"));
         }
 
-        let expected_tables: &[&str] = &["app_settings"];
+        let expected_tables: &[&str] = &["app_settings", "bundles", "bundle_files"];
         for t in expected_tables {
             let count: i64 = conn
                 .query_row(
@@ -137,5 +213,27 @@ mod migration_smoke {
                 .unwrap();
             assert_eq!(count, 1, "table `{t}` should exist after all migrations");
         }
+
+        // bundles CHECK constraints are real (reject 'nonsense' for bundle_type).
+        let bad = conn.execute(
+            "INSERT INTO bundles (uid, bundle_type, source_zip_path, manifest_json)
+             VALUES ('x', 'nonsense', '/x', '{}')",
+            [],
+        );
+        assert!(bad.is_err(), "CHECK on bundle_type should reject 'nonsense'");
+
+        // bundle_files CHECK constraints likewise.
+        conn.execute(
+            "INSERT INTO bundles (uid, bundle_type, source_zip_path, manifest_json)
+             VALUES ('ok', 'content', '/ok', '{}')",
+            [],
+        ).unwrap();
+        let bad_kind = conn.execute(
+            "INSERT INTO bundle_files (bundle_uid, in_zip_path, original_name,
+                                       kind, sha256)
+             VALUES ('ok', 'x', 'x', 'nonsense', 'sha')",
+            [],
+        );
+        assert!(bad_kind.is_err(), "CHECK on bundle_files.kind should reject 'nonsense'");
     }
 }

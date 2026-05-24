@@ -1,6 +1,6 @@
 [package]
 name = "sidemolly"
-version = "0.1.0"
+version = "0.2.0"
 description = "SideMolly — Molly bundle workbench"
 authors = ["Robert Olen <robert.olen@gmail.com>"]
 edition = "2021"
@@ -29,10 +29,15 @@ walkdir = "2"
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
 dirs = "5"
-# Used by the migration smoke test (applies every shipped migration to a
-# fresh in-memory SQLite). Bundled feature keeps the binary self-contained
-# (no system libsqlite3 dep).
+# Used for both the migration smoke test (applies every shipped migration
+# to a fresh in-memory SQLite) AND production bundle ingest writes (parallel
+# connection at the same `sidemolly.db` path used by tauri-plugin-sql, same
+# pattern Molly uses for BLOB-heavy history attachments). Bundled feature
+# keeps the binary self-contained (no system libsqlite3 dep).
 rusqlite = { version = "0.31", features = ["bundled"] }
+# SHA-256 hashing for bundle verification (re-hash inner zip bytes + every
+# inner-zip entry, assert == values in hashes.json).
+sha2 = "0.10"
 
 [dev-dependencies]
 tempfile = "3"

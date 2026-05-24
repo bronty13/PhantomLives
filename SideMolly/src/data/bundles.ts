@@ -1,0 +1,124 @@
+import { invoke } from '@tauri-apps/api/core';
+
+// Mirrors src-tauri/src/bundles.rs boundary structs — camelCase contract
+// enforced at cargo-test time so this file stays in lockstep.
+
+export interface IngestResult {
+  uid: string;
+  bundleType: string;
+  personaCode: string | null;
+  title: string;
+  verifyStatus: string;
+  fileCount: number;
+  manifestSource: 'manifest_json' | 'molly_log';
+}
+
+export interface BundleSummary {
+  uid: string;
+  bundleType: 'content' | 'custom' | 'fansite';
+  personaCode: string | null;
+  title: string;
+  ingestedAt: string;
+  verifyStatus: 'pending' | 'verified' | 'failed';
+  bundleState: 'new' | 'in_progress' | 'shipped' | 'archived';
+  fileCount: number;
+  sourceZipPath: string;
+}
+
+export interface FanDay {
+  dayOfMonth: number;
+  message: string;
+  fileCount: number;
+}
+
+export interface BundleManifest {
+  uid: string;
+  bundleType: string;
+  personaCode: string | null;
+  title: string;
+  contentDate: string | null;
+  goLiveDate: string | null;
+  specialInstructions: string;
+  descriptionMode: string | null;
+  descriptionText: string;
+  descriptionAudioPath: string | null;
+  categories: string[];
+  deliveryKind: string | null;
+  deliverySiteName: string | null;
+  deliveryUrl: string | null;
+  deliveryRecipient: string;
+  priceCents: number | null;
+  handledInPlatform: boolean;
+  fansiteYear: number | null;
+  fansiteMonth: number | null;
+  fanDays: FanDay[];
+  publishedAt: string | null;
+}
+
+export interface BundleFileRow {
+  inZipPath: string;
+  originalName: string;
+  kind: 'video' | 'image' | 'audio' | 'info' | 'log' | 'manifest' | 'other';
+  position: number;
+  fansiteDayOfMonth: number | null;
+  sha256: string;
+  sizeBytes: number;
+}
+
+export interface BundleDetail {
+  summary: BundleSummary;
+  manifest: BundleManifest;
+  files: BundleFileRow[];
+}
+
+export function ingestBundle(path: string): Promise<IngestResult> {
+  return invoke<IngestResult>('ingest_bundle', { path });
+}
+
+export function listBundles(): Promise<BundleSummary[]> {
+  return invoke<BundleSummary[]>('list_bundles');
+}
+
+export function getBundle(uid: string): Promise<BundleDetail> {
+  return invoke<BundleDetail>('get_bundle', { uid });
+}
+
+// ----- presentation helpers used in multiple views -----
+
+export function personaChipColor(code: string | null): { bg: string; fg: string; label: string } {
+  switch (code) {
+    case 'CoC': return { bg: 'rgb(var(--persona-coc) / 0.30)', fg: '#5B2540', label: 'CoC' };
+    case 'PoA': return { bg: 'rgb(var(--persona-poa) / 0.30)', fg: '#7A0000', label: 'PoA' };
+    case 'Sa':  return { bg: 'rgb(var(--persona-sa) / 0.30)',  fg: '#3A2F22', label: 'Sa'  };
+    default:    return { bg: 'rgb(var(--surface-border))', fg: 'rgb(var(--surface-muted))', label: '—' };
+  }
+}
+
+export function bundleTypeEmoji(t: BundleSummary['bundleType']): string {
+  switch (t) {
+    case 'content': return '🎬';
+    case 'custom':  return '🎁';
+    case 'fansite': return '📅';
+  }
+}
+
+export function verifyStatusBadge(s: BundleSummary['verifyStatus']): { glyph: string; tone: string } {
+  switch (s) {
+    case 'verified': return { glyph: '✓', tone: '#1f9d55' };
+    case 'failed':   return { glyph: '⚠', tone: '#c4252e' };
+    case 'pending':  return { glyph: '…', tone: 'rgb(var(--surface-muted))' };
+  }
+}
+
+export function fmtPrice(cents: number | null, handledInPlatform: boolean): string {
+  if (handledInPlatform) return 'handled in-platform';
+  if (cents == null) return '—';
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+export function fmtSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
