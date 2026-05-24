@@ -168,6 +168,42 @@ pub(crate) fn pure_create_task(
     Ok(conn.last_insert_rowid())
 }
 
+/// Persist a new sort_order for the given tasks. The list must contain
+/// every still-open task in its desired order — done tasks keep their
+/// existing sort_order (they're not visible to drag). Renumbered 1..N
+/// so the column never collides with new INSERTs (which compute
+/// `MAX(sort_order)+1`).
+pub(crate) fn pure_reorder_tasks(
+    conn: &Connection,
+    ordered_ids: &[i64],
+) -> Result<(), DailyError> {
+    let tx_started = !conn.is_autocommit();
+    if !tx_started {
+        conn.execute_batch("BEGIN")?;
+    }
+    let result: Result<(), DailyError> = (|| {
+        for (i, id) in ordered_ids.iter().enumerate() {
+            let new_order = (i as i64) + 1;
+            let n = conn.execute(
+                "UPDATE daily_tasks SET sort_order = ?1 WHERE id = ?2",
+                params![new_order, id],
+            )?;
+            if n == 0 {
+                return Err(DailyError::NotFound(*id));
+            }
+        }
+        Ok(())
+    })();
+    if !tx_started {
+        if result.is_ok() {
+            conn.execute_batch("COMMIT")?;
+        } else {
+            let _ = conn.execute_batch("ROLLBACK");
+        }
+    }
+    result
+}
+
 pub(crate) fn pure_complete_task(conn: &Connection, id: i64) -> Result<(), DailyError> {
     let n = conn.execute(
         "UPDATE daily_tasks SET done_at = datetime('now') WHERE id = ?1 AND done_at IS NULL",
@@ -241,6 +277,15 @@ pub fn undo_daily_task<R: Runtime>(handle: AppHandle<R>, id: i64) -> Result<(), 
 pub fn delete_daily_task<R: Runtime>(handle: AppHandle<R>, id: i64) -> Result<(), DailyError> {
     let conn = open_conn(&app_data_dir(&handle)?)?;
     pure_delete_task(&conn, id)
+}
+
+#[tauri::command]
+pub fn reorder_daily_tasks<R: Runtime>(
+    handle: AppHandle<R>,
+    ordered_ids: Vec<i64>,
+) -> Result<(), DailyError> {
+    let conn = open_conn(&app_data_dir(&handle)?)?;
+    pure_reorder_tasks(&conn, &ordered_ids)
 }
 
 // ---- Tests -----------------------------------------------------------------
@@ -325,6 +370,40 @@ mod tests {
         assert!(pure_create_task(&conn, &mk_input("Jun 15", "x", "other", None)).is_err());
         // bad category
         assert!(pure_create_task(&conn, &mk_input("2026-06-15", "x", "tiktok", None)).is_err());
+    }
+
+    #[test]
+    fn reorder_renumbers_and_persists() {
+        let conn = fresh_db();
+        let a = pure_create_task(&conn, &mk_input("2026-05-24", "alpha", "other", None)).unwrap();
+        let b = pure_create_task(&conn, &mk_input("2026-05-24", "bravo", "other", None)).unwrap();
+        let c = pure_create_task(&conn, &mk_input("2026-05-24", "charlie", "other", None)).unwrap();
+        // Drag charlie → top, bravo → middle, alpha → bottom.
+        pure_reorder_tasks(&conn, &[c, b, a]).unwrap();
+        let rows = pure_list_tasks_for_date(&conn, "2026-05-24", None).unwrap();
+        assert_eq!(rows[0].id, c);
+        assert_eq!(rows[1].id, b);
+        assert_eq!(rows[2].id, a);
+        // sort_order is dense 1..N so new INSERTs land at the end.
+        assert_eq!(rows[0].sort_order, 1);
+        assert_eq!(rows[1].sort_order, 2);
+        assert_eq!(rows[2].sort_order, 3);
+        let d = pure_create_task(&conn, &mk_input("2026-05-24", "delta", "other", None)).unwrap();
+        let rows = pure_list_tasks_for_date(&conn, "2026-05-24", None).unwrap();
+        let added = rows.iter().find(|t| t.id == d).unwrap();
+        assert_eq!(added.sort_order, 4);
+    }
+
+    #[test]
+    fn reorder_rejects_unknown_id_and_rolls_back() {
+        let conn = fresh_db();
+        let a = pure_create_task(&conn, &mk_input("2026-05-24", "alpha", "other", None)).unwrap();
+        // Mix a real id with a fake one — should error AND leave sort_order untouched.
+        let original = pure_list_tasks_for_date(&conn, "2026-05-24", None).unwrap()[0].sort_order;
+        let err = pure_reorder_tasks(&conn, &[a, 99_999]);
+        assert!(matches!(err, Err(DailyError::NotFound(_))));
+        let after = pure_list_tasks_for_date(&conn, "2026-05-24", None).unwrap()[0].sort_order;
+        assert_eq!(after, original, "rolled-back transaction must leave sort_order untouched");
     }
 
     #[test]

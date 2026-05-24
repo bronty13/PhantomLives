@@ -130,6 +130,26 @@ export function SubredditsSection({ active }: Props) {
     try { await markSubredditPosted(s.id, todayIso()); setStatus(`Marked r/${s.name} as posted today.`); await refresh(); }
     catch (e) { setStatus(String(e)); }
   }
+  async function changeCategory(s: Subreddit, newTagId: number | null) {
+    if ((newTagId ?? null) === (s.tagId ?? null)) return;
+    // Optimistic — flip locally so the chip re-colors immediately, then save.
+    setSubs((prev) => prev.map((r) => r.id === s.id ? { ...r, tagId: newTagId } : r));
+    try {
+      await updateSubreddit(s.id, {
+        personaCode: s.personaCode,
+        name: s.name,
+        tagId: newTagId,
+        verified: s.verified,
+        karmaReq: s.karmaReq,
+        rotation: s.rotation,
+        notes: s.notes,
+      });
+      await refresh();
+    } catch (e) {
+      setStatus(`Couldn't save category: ${String(e)}`);
+      await refresh();
+    }
+  }
   async function remove(s: Subreddit) {
     if (!confirm(`Remove r/${s.name}? Past posts to this sub will stay in the log under the snapshotted name.`)) return;
     try { await deleteSubreddit(s.id); setStatus(`Removed r/${s.name}.`); await refresh(); }
@@ -218,16 +238,12 @@ export function SubredditsSection({ active }: Props) {
                       </td>
                       <td className="py-2 pr-2 font-semibold">r/{s.name}</td>
                       <td className="py-2 pr-2">
-                        {tag ? (
-                          <span
-                            className="px-2 py-0.5 rounded-full text-[11px] font-semibold"
-                            style={{ background: tag.color, color: idealTextColor(tag.color) }}
-                          >
-                            {tag.name}
-                          </span>
-                        ) : (
-                          <span className="opacity-40 text-xs">—</span>
-                        )}
+                        <CategorySelect
+                          value={s.tagId}
+                          tags={tags}
+                          onChange={(newTagId) => changeCategory(s, newTagId)}
+                          tagColor={tag?.color}
+                        />
                       </td>
                       <td className="py-2 pr-2 text-center">
                         <input
@@ -389,6 +405,52 @@ function SubEditor({
         </button>
       </div>
     </div>
+  );
+}
+
+/** Inline-editable category cell. Renders as a pretty pill that's also a
+ *  native <select> — click anywhere on it to pick a category. Color matches
+ *  the chosen tag (or muted "—" placeholder when none). Native `<select>`
+ *  was chosen over a custom dropdown for accessibility + zero-dependency
+ *  keyboard support. */
+function CategorySelect({
+  value,
+  tags,
+  onChange,
+  tagColor,
+}: {
+  value: number | null;
+  tags: ContentTag[];
+  onChange: (next: number | null) => void;
+  tagColor?: string;
+}) {
+  const hasTag = value != null && !!tagColor;
+  const bg = hasTag ? tagColor! : 'rgba(0,0,0,0.05)';
+  const fg = hasTag ? idealTextColor(tagColor!) : 'rgba(0,0,0,0.5)';
+  return (
+    <select
+      value={value ?? ''}
+      onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
+      onClick={(e) => e.stopPropagation()}
+      className="appearance-none px-2 py-0.5 rounded-full text-[11px] font-semibold cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 transition"
+      style={{
+        background: bg,
+        color: fg,
+        border: `1px solid ${hasTag ? bg : 'rgba(0,0,0,0.15)'}`,
+        // Tiny SVG caret so the chip still hints it's clickable. Color
+        // adapts to the foreground so a dark chip gets a white caret.
+        backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'><path d='M0 0l4 5 4-5z' fill='${encodeURIComponent(fg)}'/></svg>")`,
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'right 6px center',
+        paddingRight: 18,
+      }}
+      title="Click to change category"
+    >
+      <option value="">— no category —</option>
+      {tags.map((t) => (
+        <option key={t.id} value={t.id}>{t.name}</option>
+      ))}
+    </select>
   );
 }
 

@@ -433,6 +433,7 @@ pub fn run() {
             daily_tasks::complete_daily_task,
             daily_tasks::undo_daily_task,
             daily_tasks::delete_daily_task,
+            daily_tasks::reorder_daily_tasks,
         ])
         .run(tauri::generate_context!())
         .expect("error while running molly");

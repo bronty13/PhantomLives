@@ -4,6 +4,70 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.1] — 2026-05-24
+
+### Added — 🔴 Reddit tab UX polish
+
+Two small but daily-touch enhancements on the Reddit tab.
+
+#### ✅ Today → drag-and-drop reordering
+
+Open to-do items can be reordered freely with drag-and-drop. Tasks
+keep a stable `sort_order` column (already in 031_daily_tasks.sql);
+the new `reorder_daily_tasks(orderedIds)` Tauri command renumbers
+them 1..N inside a transaction so failed reorders roll back cleanly
+and new INSERTs keep landing at the bottom (`MAX(sort_order)+1`).
+
+- Tiny ⋮⋮ drag affordance on the left of each task; existing
+  per-task buttons (`✓ Done`, `✕`) are marked `draggable={false}`
+  so a click on either still hits the right handler.
+- Drop target outlines in the persona accent color; drag source
+  fades to 45% opacity.
+- Optimistic local reorder for snappy feel; refresh re-fetches from
+  Rust to confirm; error rolls back via refresh.
+- Completed tasks stay in their "Completed today" section — they
+  always sort to the bottom by `done_at IS NOT NULL` in the list
+  query, so only the open list is draggable (intended).
+
+Reuses the `reorderBeforeTarget` helper already used by
+`OrderedFileList` for bundle file reordering — same pattern, no new
+drag-drop library.
+
+#### 📌 Subreddits → inline-edit Category
+
+The Category cell in the subreddit tracker table is now a
+click-to-edit pill backed by a native `<select>`. Pick any tag from
+the existing **Content tags** taxonomy (or "— no category —" to
+clear). Saves immediately via `update_subreddit` with the rest of the
+row's fields preserved.
+
+- Chip background is the tag color (or muted neutral when unset);
+  caret tint adapts to the chip foreground via a tiny inline-SVG so
+  it reads on both dark and pastel chips.
+- Optimistic local update so the chip re-colors instantly; refresh
+  re-fetches from Rust to confirm.
+- Click on the chip is `stopPropagation`'d so it doesn't bubble into
+  any future row-click handler.
+- Native `<select>` chosen over a custom popup for accessibility +
+  zero-dependency keyboard support (Sallie can tab through cells +
+  use arrow keys to pick).
+
+#### Tests
+
+**221 Rust** (+2) + **166 frontend** = **387 total**:
+
+- `daily_tasks::tests::reorder_renumbers_and_persists` — three tasks
+  shuffled, sort_order densely renumbered 1..3, a fourth INSERT lands
+  at 4 (so the `MAX+1` invariant for new tasks survives).
+- `daily_tasks::tests::reorder_rejects_unknown_id_and_rolls_back` —
+  mixing a real id with a fake one errors with `NotFound` AND leaves
+  the real row's sort_order untouched (transaction rolled back).
+
+The frontend changes are pure UI wiring — no new test surface
+worth adding (drag events on jsdom are notoriously flaky and the
+underlying `reorderBeforeTarget` helper already has coverage in
+`reorderHelpers.test.ts`).
+
 ## [1.18.0] — 2026-05-24
 
 ### Added — Phase 2 (SideMolly contract): `manifest.json` in bundle output

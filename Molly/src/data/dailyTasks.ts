@@ -43,6 +43,10 @@ export async function deleteDailyTask(id: number): Promise<void> {
   await invoke<void>('delete_daily_task', { id });
 }
 
+export async function reorderDailyTasks(orderedIds: number[]): Promise<void> {
+  await invoke<void>('reorder_daily_tasks', { orderedIds });
+}
+
 /** Current local-date YYYY-MM-DD — matches what the Rust validator expects. */
 export function todayIso(): string {
   const d = new Date();

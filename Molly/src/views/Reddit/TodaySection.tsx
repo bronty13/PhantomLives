@@ -5,11 +5,13 @@ import {
   createDailyTask,
   deleteDailyTask,
   listDailyTasks,
+  reorderDailyTasks,
   todayIso,
   undoDailyTask,
   type DailyCategory,
   type DailyTask,
 } from '../../data/dailyTasks';
+import { reorderBeforeTarget } from '../../lib/reorderHelpers';
 
 const QUICK_TASKS: { label: string; category: DailyCategory }[] = [
   { label: 'Reddit posts — Curves',    category: 'reddit' },
@@ -50,6 +52,8 @@ export function TodaySection({ active }: Props) {
   const [text, setText] = useState('');
   const [cat, setCat] = useState<DailyCategory>('reddit');
   const [status, setStatus] = useState('');
+  const [draggingId, setDraggingId] = useState<number | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<number | null>(null);
   const personaCode = active.code === 'ALL' ? null : active.code;
 
   async function refresh() {
@@ -95,6 +99,27 @@ export function TodaySection({ active }: Props) {
   async function remove(id: number) {
     try { await deleteDailyTask(id); await refresh(); }
     catch (e) { setStatus(String(e)); }
+  }
+
+  async function onDropReorder(draggedId: number, targetId: number) {
+    // Reorder only the open tasks — done tasks always sort to the
+    // bottom by `done_at IS NOT NULL` in the Rust list query.
+    if (draggedId === targetId) return;
+    const nextIds = reorderBeforeTarget(open, (t) => t.id, draggedId, targetId).map((t) => t.id);
+    // Optimistic local reorder for snappy feel; refresh re-fetches from Rust.
+    setTasks((prev) => {
+      const byId = new Map(prev.map((t) => [t.id, t]));
+      const newOpen = nextIds.map((id) => byId.get(id)!).filter(Boolean);
+      const stillDone = prev.filter((t) => !!t.doneAt);
+      return [...newOpen, ...stillDone];
+    });
+    try {
+      await reorderDailyTasks(nextIds);
+      await refresh();
+    } catch (e) {
+      setStatus(`Couldn't save order: ${String(e)}`);
+      await refresh();
+    }
   }
 
   const open = tasks.filter((t) => !t.doneAt);
@@ -153,33 +178,74 @@ export function TodaySection({ active }: Props) {
       </div>
 
       <section>
-        <div className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-1.5">To do</div>
+        <div className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-1.5">
+          To do <span className="opacity-50 normal-case font-medium tracking-normal">· drag ⋮⋮ to reorder</span>
+        </div>
         {open.length === 0 ? (
           <div className="pretty-card text-sm opacity-60 italic">Nothing left — great work! 🎉</div>
         ) : (
           <ul className="space-y-1.5">
-            {open.map((t) => (
-              <li key={t.id} className="pretty-card flex items-center gap-3 py-2.5">
-                <CatPill cat={t.category} />
-                <span className="flex-1 text-sm font-medium">{t.text}</span>
-                <button
-                  type="button"
-                  className="text-xs font-semibold px-3 py-1 rounded-lg border-2"
-                  style={{ borderColor: '#2ecc71', color: '#2ecc71' }}
-                  onClick={() => complete(t.id)}
+            {open.map((t) => {
+              const isDragging = draggingId === t.id;
+              const isDropTarget = dropTargetId === t.id && draggingId !== null && draggingId !== t.id;
+              return (
+                <li
+                  key={t.id}
+                  draggable
+                  onDragStart={(e) => {
+                    setDraggingId(t.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', String(t.id));
+                  }}
+                  onDragOver={(e) => {
+                    if (draggingId !== null && draggingId !== t.id) {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                      if (dropTargetId !== t.id) setDropTargetId(t.id);
+                    }
+                  }}
+                  onDragLeave={() => { if (dropTargetId === t.id) setDropTargetId(null); }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (draggingId !== null) {
+                      void onDropReorder(draggingId, t.id);
+                    }
+                    setDraggingId(null);
+                    setDropTargetId(null);
+                  }}
+                  onDragEnd={() => { setDraggingId(null); setDropTargetId(null); }}
+                  className="pretty-card flex items-center gap-3 py-2.5 transition"
+                  style={{
+                    opacity: isDragging ? 0.45 : 1,
+                    cursor: isDragging ? 'grabbing' : 'grab',
+                    outline: isDropTarget ? '2px solid rgb(var(--persona-accent))' : 'none',
+                    userSelect: 'none',
+                  }}
                 >
-                  ✓ Done
-                </button>
-                <button
-                  type="button"
-                  className="text-base opacity-50 hover:opacity-100 hover:text-red-600 px-1"
-                  onClick={() => remove(t.id)}
-                  title="Delete"
-                >
-                  ✕
-                </button>
-              </li>
-            ))}
+                  <span aria-hidden className="opacity-40 font-mono text-sm select-none">⋮⋮</span>
+                  <CatPill cat={t.category} />
+                  <span className="flex-1 text-sm font-medium">{t.text}</span>
+                  <button
+                    type="button"
+                    className="text-xs font-semibold px-3 py-1 rounded-lg border-2"
+                    style={{ borderColor: '#2ecc71', color: '#2ecc71' }}
+                    onClick={() => complete(t.id)}
+                    draggable={false}
+                  >
+                    ✓ Done
+                  </button>
+                  <button
+                    type="button"
+                    className="text-base opacity-50 hover:opacity-100 hover:text-red-600 px-1"
+                    onClick={() => remove(t.id)}
+                    title="Delete"
+                    draggable={false}
+                  >
+                    ✕
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
