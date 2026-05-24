@@ -404,6 +404,7 @@ export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated: _u
           <TranscriptsPanel
             videos={videos}
             transcripts={transcripts}
+            transcribeJobs={transcribeJobs}
             status={transcribeStatus}
             busy={busy || jobs.busy}
             onRun={runTranscribe}
@@ -819,16 +820,51 @@ function ProcessedRow({ row, preview, source, uid }: {
   );
 }
 
-function TranscriptsPanel({ videos, transcripts, status, busy, onRun, onReveal }: {
+function TranscriptsPanel({ videos, transcripts, transcribeJobs, status, busy, onRun, onReveal }: {
   videos: BundleFileRow[];
   transcripts: TranscriptRow[];
+  transcribeJobs: JobRow[];
   status: TranscribeStatus | null;
   busy: boolean;
   onRun: () => void;
   onReveal: (inZipPath: string) => void;
 }) {
   const transcribedCount = transcripts.filter((t) => t.txtPath != null).length;
+  const failedCount = transcribeJobs.filter((j) => j.status === 'failed').length;
   const installed = status?.installed ?? false;
+
+  // Per-video status: cross-reference (a) the on-disk transcript
+  // sidecar — definitive "done" signal — with (b) the live job
+  // status from the queue. Without the job lookup a row stays at
+  // "… pending" even when the worker is actively running on it OR
+  // has failed it; user reads that as "stuck". Job-based status
+  // beats disk-based status when the job is still active.
+  const statusFor = (
+    inZipPath: string,
+  ): { pill: string; bg: string; fg: string; lastError?: string } => {
+    const t = transcripts.find((x) => x.inZipPath === inZipPath);
+    if (t?.txtPath) {
+      return { pill: '✓ done',   bg: '#deffee', fg: '#0f5d33' };
+    }
+    // Find the newest job for this clip (worker is sequential so at
+    // most one is running at a time; multiple historical jobs may
+    // exist if the user clicked Transcribe twice).
+    const latest = transcribeJobs
+      .filter((j) => j.sourceInZipPath === inZipPath)
+      .sort((a, b) => b.id - a.id)[0];
+    if (!latest) {
+      return { pill: '… not started', bg: 'rgb(var(--surface-base))', fg: 'rgb(var(--surface-muted))' };
+    }
+    switch (latest.status) {
+      case 'running': return { pill: '⚙ running', bg: '#fff4d6', fg: '#7a5b00' };
+      case 'pending': return { pill: '⏳ queued',   bg: '#eef2ff', fg: '#3730a3' };
+      case 'failed':  return {
+        pill: '⚠ failed', bg: '#ffe4e4', fg: '#7a0000',
+        lastError: latest.lastError ?? undefined,
+      };
+      case 'done':    return { pill: '✓ done',    bg: '#deffee', fg: '#0f5d33' };
+    }
+  };
 
   return (
     <>
@@ -841,6 +877,9 @@ function TranscriptsPanel({ videos, transcripts, status, busy, onRun, onReveal }
                 <span> · {status.version}</span>
               )}
               {' '}· {transcribedCount} / {videos.length} done
+              {failedCount > 0 && (
+                <span style={{ color: '#7a0000' }}> · {failedCount} failed</span>
+              )}
             </>
           ) : (
             <>
@@ -864,6 +903,7 @@ function TranscriptsPanel({ videos, transcripts, status, busy, onRun, onReveal }
       <ul className="flex flex-col gap-1">
         {videos.map((v) => {
           const t = transcripts.find((x) => x.inZipPath === v.inZipPath);
+          const s = statusFor(v.inZipPath);
           const done = t?.txtPath != null;
           return (
             <li
@@ -874,12 +914,12 @@ function TranscriptsPanel({ videos, transcripts, status, busy, onRun, onReveal }
               <span
                 className="text-xs px-1.5 py-0.5 rounded font-semibold whitespace-nowrap"
                 style={{
-                  background: done ? '#deffee' : 'rgb(var(--surface-base))',
-                  color: done ? '#0f5d33' : 'rgb(var(--surface-muted))',
-                  minWidth: 56, textAlign: 'center',
+                  background: s.bg, color: s.fg,
+                  minWidth: 76, textAlign: 'center',
                 }}
+                title={s.lastError ?? ''}
               >
-                {done ? '✓ done' : '… pending'}
+                {s.pill}
               </span>
               <div className="flex-1 min-w-0">
                 <div className="font-mono text-xs truncate">
@@ -892,6 +932,15 @@ function TranscriptsPanel({ videos, transcripts, status, busy, onRun, onReveal }
                     title={t.txtPreview}
                   >
                     “{t.txtPreview.replace(/\s+/g, ' ').trim()}”
+                  </div>
+                )}
+                {s.lastError && (
+                  <div
+                    className="text-[10px] mt-0.5 truncate font-mono"
+                    style={{ color: '#7a0000' }}
+                    title={s.lastError}
+                  >
+                    {s.lastError}
                   </div>
                 )}
               </div>
