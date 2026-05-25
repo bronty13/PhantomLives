@@ -1632,10 +1632,6 @@ struct ContentView: View {
     }
 }
 
-#Preview {
-    ContentView(settingsStore: SettingsStore())
-}
-
 // MARK: - Trash undo bookkeeping
 
 /// One entry per file successfully moved to the Trash by the most recent batch.

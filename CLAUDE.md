@@ -364,6 +364,7 @@ The app **must** be launched from the `.app` bundle for SwiftUI's `WindowGroup`,
 
 ## Git Workflow
 
+- **Before starting work on a subproject, run a quick `git pull --rebase` from the repo root.** The maintainer works across two Macs and pushes directly to `main`, so the remote routinely advances between sessions. Rebasing up front keeps history linear and avoids the stash → rebase → resolve-conflict dance that a stale local `main` forces at push time. If the working tree is dirty, `git stash` first, rebase, then `git stash pop`.
 - Always verify the current working directory (cwd) matches the intended project before running git init, commit, or push.
 - After committing, always push to remote unless explicitly told otherwise — downstream tools (e.g., /ultraplan) require pushed commits.
 - Never sweep unrelated changes into commits; run `git status` and `git diff --staged` before committing.

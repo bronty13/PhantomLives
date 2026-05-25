@@ -19,6 +19,7 @@ struct EditingQueueView: View {
         KeyPathComparator(\Clip.contentDate, order: .forward)
     ]
     @State private var showingVerificationWorkflow: Bool = false
+    @State private var postingClip: Clip?
 
     var body: some View {
         EdPageShell(
@@ -27,14 +28,19 @@ struct EditingQueueView: View {
             emphasized: "queue",
             deck: deckText,
             trailing: AnyView(
-                Button {
-                    showingVerificationWorkflow = true
-                } label: {
-                    Text("RUN FILE VERIFICATION")
+                HStack(spacing: 8) {
+                    ClipActionsBar(selectedClip: selectedClip) { newId in
+                        selection = newId
+                    }
+                    Button {
+                        showingVerificationWorkflow = true
+                    } label: {
+                        Text("RUN FILE VERIFICATION")
+                    }
+                    .buttonStyle(EdGhostButtonStyle())
+                    .disabled(filteredClips.isEmpty)
+                    .help("Walk through the visible queue one clip at a time, auditing files for each.")
                 }
-                .buttonStyle(EdGhostButtonStyle())
-                .disabled(filteredClips.isEmpty)
-                .help("Walk through the visible queue one clip at a time, auditing files for each.")
             )
         ) {
             HSplitView {
@@ -52,6 +58,10 @@ struct EditingQueueView: View {
         .sheet(isPresented: $showingVerificationWorkflow) {
             FileAuditWorkflow(clips: filteredClips)
         }
+        .sheet(item: $postingClip) { clip in
+            SingleClipPostingFlow(clip: clip) { postingClip = nil }
+                .environmentObject(appState)
+        }
         .onAppear {
             if selection == nil { selection = filteredClips.first?.id }
         }
@@ -61,6 +71,11 @@ struct EditingQueueView: View {
                 appState.focusedClipId = nil
             }
         }
+    }
+
+    private var selectedClip: Clip? {
+        guard let id = selection else { return nil }
+        return appState.clips.first { $0.id == id }
     }
 
     // MARK: - Deck
@@ -197,6 +212,16 @@ struct EditingQueueView: View {
             }
             .width(min: 130, ideal: 140)
         }
+        .contextMenu(forSelectionType: Clip.ID.self) { ids in
+            if let id = ids.first {
+                Button("Edit") { selection = id }
+                Button("Post this clip…") { startPosting(id: id) }
+            }
+        }
+    }
+
+    private func startPosting(id: Clip.ID) {
+        postingClip = appState.clips.first { $0.id == id }
     }
 
     // MARK: - Cells

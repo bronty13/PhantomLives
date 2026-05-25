@@ -8,10 +8,11 @@ import Thumbnails from './Thumbnails';
 import OutlineTree from './OutlineTree';
 import { projectPageOrderDetailed, type ProjectedSlot } from './projectOrder';
 import FindBar from './FindBar';
-import AnnotationLayer, { type ArmedStamp } from '../annotate/AnnotationLayer';
+import AnnotationLayer, { type ArmedStamp, type ArmedImage } from '../annotate/AnnotationLayer';
 import AccessibilityPanel from '../a11y/AccessibilityPanel';
 import { runA11yChecks, type A11yReport } from '../a11y/checks';
 import EditPalette from '../annotate/EditPalette';
+import { normalizeImage } from '../annotate/imageNormalize';
 import FormLayer from '../forms/FormLayer';
 import FormsPanel from '../forms/FormsPanel';
 
@@ -27,6 +28,8 @@ interface Props {
   /** Called when the user picks the Sign tool but has no signature armed. */
   onNeedSignature: () => void;
   onOpenProperties: () => void;
+  /** Open the Settings → Stamps tab from the EditPalette "Manage stamps…" link. */
+  onOpenSettings: () => void;
   /** Used by the Accessibility tab and Document → Accessibility Check menu. */
   a11yRefreshNonce: number;
 }
@@ -40,6 +43,7 @@ export default function PDFViewer({
   armedSignature,
   onNeedSignature,
   onOpenProperties,
+  onOpenSettings,
   a11yRefreshNonce
 }: Props): JSX.Element {
   const [sidebar, setSidebar] = useState<SidebarMode>('thumbnails');
@@ -49,6 +53,14 @@ export default function PDFViewer({
   const [a11yReport, setA11yReport] = useState<A11yReport | null>(null);
   const [a11yLoading, setA11yLoading] = useState(false);
   const [armedStamp, setArmedStamp] = useState<ArmedStamp | null>(null);
+  const [armedImage, setArmedImage] = useState<ArmedImage | null>(null);
+
+  // Disarm the image when switching away from the image tool (parity with
+  // signature/stamp). Prevents stale bytes from being placed if the user
+  // jumps back to the image tool later.
+  useEffect(() => {
+    if (tab.tool !== 'image' && armedImage) setArmedImage(null);
+  }, [tab.tool, armedImage]);
   const [a11yLocalNonce, setA11yLocalNonce] = useState(0);
 
   // Run a11y checks whenever the panel is shown, the doc changes, or an
@@ -326,7 +338,8 @@ export default function PDFViewer({
         t: 'textbox',
         g: 'signature',
         x: 'redact',
-        m: 'stamp'
+        m: 'stamp',
+        i: 'image'
       };
       const k = e.key.toLowerCase();
       if (k in KEY_TO_TOOL) {
@@ -524,6 +537,7 @@ export default function PDFViewer({
         color={tab.color}
         strokeWidth={tab.strokeWidth ?? 2}
         armedStamp={armedStamp}
+        armedImage={armedImage}
         onToolChange={setTool}
         onColorChange={setColor}
         onStrokeWidthChange={setStrokeWidth}
@@ -531,6 +545,35 @@ export default function PDFViewer({
           setArmedStamp(s);
           if (s) setTool('stamp');
         }}
+        onPickImage={async () => {
+          const api = (window as unknown as {
+            purplePDF?: {
+              pickImageForInsert: () => Promise<{ bytes: ArrayBuffer; ext: string; name: string } | null>;
+            };
+          }).purplePDF;
+          if (!api?.pickImageForInsert) return;
+          const picked = await api.pickImageForInsert();
+          if (!picked) return;
+          try {
+            const norm = await normalizeImage(new Uint8Array(picked.bytes), picked.ext);
+            setArmedImage({
+              bytes: norm.bytes,
+              mime: norm.mime,
+              naturalWidth: norm.width,
+              naturalHeight: norm.height,
+              alt: picked.name
+            });
+            setTool('image');
+          } catch (err) {
+            console.error('[PurplePDF] image normalize failed:', err);
+            window.alert(`Could not load that image: ${(err as Error).message}`);
+          }
+        }}
+        onArmCustomImageStamp={(img) => {
+          setArmedImage(img);
+          setTool('image');
+        }}
+        onOpenStampSettings={onOpenSettings}
         onDeletePage={deletePage}
         onRotatePage={rotatePage}
         onInsertBlank={insertBlank}
@@ -665,6 +708,7 @@ export default function PDFViewer({
                 strokeWidth={tab.strokeWidth ?? 2}
                 armedSignature={armedSignature}
                 armedStamp={armedStamp}
+                armedImage={armedImage}
                 onCreate={createAnnot}
                 onUpdate={updateAnnot}
                 onDelete={deleteAnnot}
@@ -714,6 +758,10 @@ const TOOL_HINTS: Record<Tool, { label: string; how: string }> = {
   stamp: {
     label: 'Stamp',
     how: 'Pick a preset from the stamp menu (Approved, Denied, ✓, …) then click the page to place it. Toggle "Include date/time" to freeze a timestamp on the stamp.'
+  },
+  image: {
+    label: 'Insert Image',
+    how: 'Click the 🖼 button to pick a PNG, JPEG, GIF, WebP, SVG or HEIC file. Then click on the page to place it — drag the handles to resize.'
   },
   crop: {
     label: 'Crop Page',

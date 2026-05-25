@@ -55,8 +55,10 @@ export async function buildModifiedPdf(
   const fontOblique = await doc.embedFont(StandardFonts.HelveticaOblique);
   const fontBoldOblique = await doc.embedFont(StandardFonts.HelveticaBoldOblique);
 
-  // Cache PNG embeds per byte-array reference so multi-page signatures reuse one image XObject.
+  // Cache PNG/JPEG embeds per byte-array reference so multi-page images
+  // (signatures and inserted images) reuse one image XObject.
   const pngCache = new Map<Uint8Array, import('pdf-lib').PDFImage>();
+  const jpgCache = new Map<Uint8Array, import('pdf-lib').PDFImage>();
   const embedSignaturePng = async (
     bytes: Uint8Array
   ): Promise<import('pdf-lib').PDFImage> => {
@@ -65,6 +67,19 @@ export async function buildModifiedPdf(
     const img = await doc.embedPng(bytes);
     pngCache.set(bytes, img);
     return img;
+  };
+  const embedImageBytes = async (
+    bytes: Uint8Array,
+    mime: 'image/png' | 'image/jpeg'
+  ): Promise<import('pdf-lib').PDFImage> => {
+    if (mime === 'image/jpeg') {
+      const cached = jpgCache.get(bytes);
+      if (cached) return cached;
+      const img = await doc.embedJpg(bytes);
+      jpgCache.set(bytes, img);
+      return img;
+    }
+    return await embedSignaturePng(bytes);
   };
 
   // 0) Apply form values to AcroForm fields (best-effort; skips unknown fields).
@@ -118,6 +133,13 @@ export async function buildModifiedPdf(
           page.drawImage(img, { x: a.x, y: a.y, width: a.w, height: a.h });
         } catch {
           // Bad PNG; skip rather than abort the whole save.
+        }
+      } else if (a.kind === 'image') {
+        try {
+          const img = await embedImageBytes(a.bytes, a.mime);
+          page.drawImage(img, { x: a.x, y: a.y, width: a.w, height: a.h });
+        } catch {
+          // Bad image bytes; skip rather than abort the whole save.
         }
       } else {
         drawAnnotation(page, a, font, fontBold, fontOblique, fontBoldOblique);
@@ -416,5 +438,6 @@ function drawAnnotation(
     }
     return;
   }
-  // 'signature' is handled separately in the caller because it requires async embedPng.
+  // 'signature' and 'image' are handled separately in the caller because
+  // they require async embedPng/embedJpg.
 }

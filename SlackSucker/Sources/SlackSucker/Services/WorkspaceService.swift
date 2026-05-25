@@ -29,10 +29,22 @@ final class WorkspaceService: ObservableObject {
     /// workspace name collides). The UI surfaces a confirm dialog and
     /// calls `answerOverwrite(yes:)` to write the response into stdin.
     @Published private(set) var pendingOverwritePrompt: String?
+    /// Name of the workspace just added by a successful `workspace new`
+    /// run. Published so the sheet can pick it up and auto-select —
+    /// otherwise the workspace lands in the list but the user has to
+    /// hunt for a "Select" button to make it current.
+    @Published private(set) var lastAddedWorkspaceName: String?
 
     private let binary: () -> String?
     private var runningNewProcess: Process?
-    private var newStdinPipe: Pipe?
+    /// Master end of the pseudo-terminal that drives the in-flight
+    /// `workspace new` child. We write user responses (y/N) here and read
+    /// the child's stdout/stderr off the same fd. See `openPTYPair` for
+    /// why a PTY is required.
+    private var newPTYMaster: FileHandle?
+    /// One-shot flag: have we already dismissed slackdump's `huh.Select`
+    /// auth-method picker by sending a bare Enter? Reset per spawn.
+    private var didDismissAuthMenu: Bool = false
 
     init(binary: @escaping () -> String? = SlackdumpBinary.resolvedPath) {
         self.binary = binary
@@ -122,11 +134,17 @@ final class WorkspaceService: ObservableObject {
     }
 
     /// Spawn `slackdump workspace new <name>`. Slackdump runs its own
-    /// EZ-Login flow on launch; we stream stdout/stderr into
-    /// `newWorkspaceLog` so the user can see what's happening, and pipe
-    /// stdin so prompts (e.g. "Overwrite? (y/N)" when the name collides)
-    /// can actually be answered. Without stdin slackdump busy-loops on
-    /// the prompt because it sees EOF.
+    /// EZ-Login browser flow on launch; we stream stdout/stderr into
+    /// `newWorkspaceLog` so the user can see what's happening, and write
+    /// user responses (e.g. y/N to "Overwrite?" when the name collides)
+    /// to the same fd.
+    ///
+    /// We hand slackdump the slave end of a pseudo-terminal rather than a
+    /// `Pipe`. slackdump checks `isatty(stderr)` before launching Rod and
+    /// errors out with "browser auth is not supported in dumb terminals"
+    /// when the check fails — anonymous pipes always fail it. The PTY
+    /// satisfies the check while still letting us multiplex everything
+    /// through a single FileHandle on our side.
     ///
     /// `name` is forwarded as the positional argument. `nil` lets
     /// slackdump default to "default" (and prompt if it already exists).
@@ -139,28 +157,56 @@ final class WorkspaceService: ObservableObject {
         isBusy = true
         newWorkspaceLog = []
         pendingOverwritePrompt = nil
+        didDismissAuthMenu = false
         defer { isBusy = false; pendingOverwritePrompt = nil }
 
-        var args = ["workspace", "new"]
-        if let name, !name.trimmingCharacters(in: .whitespaces).isEmpty {
-            args.append(name)
+        // `-v` is registered on the `workspace new` subcommand's flag
+        // set (not the top level), so it has to come AFTER `new`. Helps
+        // diagnose which auth path slackdump actually takes.
+        var args = ["workspace", "new", "-v"]
+        // slackdump v4.3 uses the positional arg as the workspace key
+        // for BOTH the saved-credentials filename and the post-auth
+        // "select as current" step. When the arg is a URL, the select
+        // step fails with `no such workspace: "https://..."` and the
+        // captured token+cookie get discarded. Reduce a URL to its
+        // first hostname label so both steps see the same name.
+        var spawnedWorkspaceName: String?
+        if let raw = name?.trimmingCharacters(in: .whitespaces), !raw.isEmpty {
+            let arg = Self.workspaceArg(from: raw)
+            args.append(arg)
+            spawnedWorkspaceName = arg
         }
+        // Echo the exact argv we're about to exec so the log shows
+        // whether the URL/name actually made it through.
+        let quoted = args.map { $0.contains(" ") ? "\"\($0)\"" : $0 }.joined(separator: " ")
+        newWorkspaceLog.append("[slacksucker] spawning: slackdump \(quoted)")
+
+        guard let pty = Self.openPTYPair() else {
+            lastError = "Couldn't allocate a pseudo-terminal for slackdump."
+            return
+        }
+        let masterHandle = FileHandle(fileDescriptor: pty.masterFD, closeOnDealloc: true)
+        // We close the slave fd manually after spawn — Foundation has
+        // already dup'd it into the child by then. `closeOnDealloc:
+        // false` keeps the FileHandle from racing us to it.
+        let slaveHandle  = FileHandle(fileDescriptor: pty.slaveFD,  closeOnDealloc: false)
+        newPTYMaster = masterHandle
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: bin)
         process.arguments = args
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError  = pipe
-        // Real (open) stdin so slackdump's interactive prompts can be
-        // answered by `answerOverwrite(yes:)`. Without this slackdump
-        // reads EOF from stdin and reprompts forever.
-        let stdinPipe = Pipe()
-        process.standardInput = stdinPipe
-        newStdinPipe = stdinPipe
+        process.standardInput  = slaveHandle
+        process.standardOutput = slaveHandle
+        process.standardError  = slaveHandle
+        // Some Go libraries slackdump links against gate their terminal
+        // behaviour on $TERM; default to xterm-256color so we look like a
+        // normal interactive shell.
+        var env = ProcessInfo.processInfo.environment
+        if env["TERM"] == nil { env["TERM"] = "xterm-256color" }
+        process.environment = env
 
         let buffer = LineBuffer()
-        pipe.fileHandleForReading.readabilityHandler = { handle in
+        masterHandle.readabilityHandler = { handle in
             let chunk = handle.availableData
             guard !chunk.isEmpty else { return }
             buffer.append(chunk)
@@ -180,6 +226,21 @@ final class WorkspaceService: ObservableObject {
                        let collision = Self.detectOverwritePrompt(in: line) {
                         self.pendingOverwritePrompt = collision
                     }
+                    // Slackdump v4.3 pops a huh.Select auth-method picker
+                    // after `tryLoad()` fails. The default-highlighted
+                    // item is "Login in Browser" (EZ-Login). Send a bare
+                    // Enter to accept it and continue into the browser
+                    // flow — once per spawn so redraws don't re-fire.
+                    if !self.didDismissAuthMenu,
+                       Self.detectAuthMenuFooter(in: line) {
+                        self.didDismissAuthMenu = true
+                        if let master = self.newPTYMaster {
+                            try? master.write(contentsOf: Data([0x0D]))
+                            self.newWorkspaceLog.append(
+                                "[slacksucker] dismissed auth picker — selecting default (browser login)"
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -187,19 +248,24 @@ final class WorkspaceService: ObservableObject {
         do {
             try process.run()
         } catch {
+            masterHandle.readabilityHandler = nil
+            close(pty.slaveFD)
+            newPTYMaster = nil
             lastError = "Couldn't launch slackdump: \(error.localizedDescription)"
-            pipe.fileHandleForReading.readabilityHandler = nil
             return
         }
+        // Child owns its own dup'd copy now. Closing our slave reference
+        // ensures the master sees EOF when the child exits.
+        close(pty.slaveFD)
         runningNewProcess = process
 
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             process.terminationHandler = { _ in cont.resume() }
         }
         runningNewProcess = nil
-        newStdinPipe = nil
-        pipe.fileHandleForReading.readabilityHandler = nil
-        let tail = pipe.fileHandleForReading.availableData
+        newPTYMaster = nil
+        masterHandle.readabilityHandler = nil
+        let tail = masterHandle.availableData
         if !tail.isEmpty {
             buffer.append(tail)
             for (line, _) in buffer.extractLines() {
@@ -208,17 +274,28 @@ final class WorkspaceService: ObservableObject {
         }
         if process.terminationStatus != 0 {
             lastError = "slackdump workspace new exited \(process.terminationStatus)."
+        } else if let n = spawnedWorkspaceName {
+            // Surface the new workspace name so the sheet can auto-select
+            // it instead of making the user click "Select" themselves.
+            lastAddedWorkspaceName = n
         }
         await refresh()
     }
 
-    /// Write a y/N answer to the running `workspace new` process's stdin
-    /// and clear the pending-prompt flag. No-op if nothing is running.
+    /// Called by the sheet once it has acted on `lastAddedWorkspaceName`,
+    /// so the same workspace isn't re-selected on subsequent state changes.
+    func acknowledgeLastAdded() {
+        lastAddedWorkspaceName = nil
+    }
+
+    /// Write a y/N answer to the running `workspace new` process by
+    /// writing to the PTY master end and clear the pending-prompt flag.
+    /// No-op if nothing is running.
     func answerOverwrite(yes: Bool) {
-        guard let stdin = newStdinPipe else { return }
+        guard let master = newPTYMaster else { return }
         let response = (yes ? "y\n" : "N\n").data(using: .utf8)!
         do {
-            try stdin.fileHandleForWriting.write(contentsOf: response)
+            try master.write(contentsOf: response)
         } catch {
             NSLog("SlackSucker: failed to write overwrite answer — \(error.localizedDescription)")
         }
@@ -230,9 +307,6 @@ final class WorkspaceService: ObservableObject {
     /// Cancel an in-flight `workspace new` (terminates the browser-auth
     /// child process). No-op if nothing is running.
     func cancelNewWorkspace() {
-        // Closing stdin first prevents slackdump from emitting another
-        // round of prompts during termination.
-        try? newStdinPipe?.fileHandleForWriting.close()
         runningNewProcess?.terminate()
     }
 
@@ -247,6 +321,28 @@ final class WorkspaceService: ObservableObject {
             return String(line[r].dropFirst().dropLast())
         }
         return "this workspace"
+    }
+
+    /// Reduce a workspace identifier the user typed (URL or bare name)
+    /// to the form slackdump v4.3 wants as the `workspace new` positional
+    /// arg: just the first hostname label. `https://sheer-enterprise.slack.com/`
+    /// → `sheer-enterprise`. A bare name passes through unchanged.
+    nonisolated static func workspaceArg(from input: String) -> String {
+        var s = input
+        if let r = s.range(of: "://") { s = String(s[r.upperBound...]) }
+        if let r = s.firstIndex(of: "/") { s = String(s[..<r]) }
+        if let r = s.firstIndex(of: ".") { s = String(s[..<r]) }
+        s = s.trimmingCharacters(in: .whitespaces)
+        return s.isEmpty ? input : s
+    }
+
+    /// Recognise slackdump's `huh.Select` keyhelp footer — distinctive
+    /// enough to mean "we're sitting on the auth-method picker". The
+    /// arrow + the word "submit" only co-occur on this footer; ANSI
+    /// colouring between glyphs doesn't break the substring matches
+    /// since each token sits inside its own colour run.
+    nonisolated static func detectAuthMenuFooter(in line: String) -> Bool {
+        line.contains("↑") && line.contains("submit")
     }
 
     // MARK: - Process helpers
@@ -283,5 +379,36 @@ final class WorkspaceService: ObservableObject {
                 : trimmedErr)
         }
         return .success(stdout)
+    }
+
+    // MARK: - PTY allocation
+    //
+    // slackdump's EZ-Login refuses to start when stderr isn't a TTY
+    // ("browser auth is not supported in dumb terminals, use token/cookie
+    // auth instead."). Foundation's `Pipe` is an anonymous pipe and never
+    // passes that isatty() check. Allocating a pseudo-terminal pair and
+    // handing the slave end to the child satisfies the check; the master
+    // end stays with us for read+write.
+
+    /// Open a new PTY pair via the POSIX primitives. Returns `nil` on any
+    /// failure; on success the caller owns both file descriptors.
+    nonisolated static func openPTYPair() -> (masterFD: Int32, slaveFD: Int32)? {
+        let m = posix_openpt(O_RDWR | O_NOCTTY)
+        guard m >= 0 else { return nil }
+        if grantpt(m) != 0 { close(m); return nil }
+        if unlockpt(m) != 0 { close(m); return nil }
+        guard let cname = ptsname(m) else { close(m); return nil }
+        let s = open(cname, O_RDWR | O_NOCTTY)
+        guard s >= 0 else { close(m); return nil }
+
+        // Disable local echo on the slave so the y/N bytes we write to
+        // the master end don't bounce back into the output log. Cosmetic
+        // — slackdump still reads our input correctly either way.
+        var t = termios()
+        if tcgetattr(s, &t) == 0 {
+            t.c_lflag &= ~tcflag_t(ECHO)
+            _ = tcsetattr(s, TCSANOW, &t)
+        }
+        return (m, s)
     }
 }
