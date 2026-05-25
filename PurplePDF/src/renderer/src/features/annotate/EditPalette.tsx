@@ -1,18 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Tool } from './types';
-import { STAMP_PRESETS } from './stamps';
-import type { ArmedStamp } from './AnnotationLayer';
+import type { ArmedStamp, ArmedImage } from './AnnotationLayer';
+import { useStampLibrary } from '../settings/useStampLibrary';
+import { base64ToBytes } from '../settings/prefs';
 
 interface Props {
   tool: Tool;
   color: string;
   strokeWidth: number;
   armedStamp: ArmedStamp | null;
+  armedImage: ArmedImage | null;
   onToolChange: (t: Tool) => void;
   onColorChange: (c: string) => void;
   onStrokeWidthChange: (w: number) => void;
   /** Arm (or disarm) a stamp preset. Passing null disarms. Auto-switches tool to 'stamp'. */
   onArmStamp: (s: ArmedStamp | null) => void;
+  /** Open OS file picker for an image, normalize it, then arm + switch to image tool. */
+  onPickImage: () => void | Promise<void>;
+  /** Arm a custom image stamp (already-normalized bytes). Auto-switches tool to 'image'. */
+  onArmCustomImageStamp: (s: ArmedImage) => void;
+  /** Open the Settings → Stamps tab. */
+  onOpenStampSettings: () => void;
   onDeletePage: () => void;
   onRotatePage: () => void;
   onInsertBlank: () => void;
@@ -30,6 +38,7 @@ const TOOLS: { id: Tool; label: string; icon: string; title: string }[] = [
   { id: 'signature', label: 'Sign', icon: '✍', title: 'Place signature' },
   { id: 'redact', label: 'Redact', icon: '■', title: 'Visual redaction (blackout)' },
   { id: 'stamp', label: 'Stamp', icon: '✪', title: 'Place a business stamp (Approved, Denied, …)' },
+  { id: 'image', label: 'Image', icon: '🖼', title: 'Insert an image from disk (I)' },
   { id: 'crop', label: 'Crop', icon: '⌗', title: 'Crop current page (drag a rectangle)' }
 ];
 
@@ -57,10 +66,14 @@ export default function EditPalette({
   color,
   strokeWidth,
   armedStamp,
+  armedImage,
   onToolChange,
   onColorChange,
   onStrokeWidthChange,
   onArmStamp,
+  onPickImage,
+  onArmCustomImageStamp,
+  onOpenStampSettings,
   onDeletePage,
   onRotatePage,
   onInsertBlank
@@ -70,6 +83,7 @@ export default function EditPalette({
   const [includeUser, setIncludeUser] = useState(true);
   const stampBtnRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const lib = useStampLibrary();
 
   // Close stamp picker when clicking outside it.
   useEffect(() => {
@@ -90,6 +104,13 @@ export default function EditPalette({
       setStampPickerOpen((v) => !v);
       return;
     }
+    if (t === 'image') {
+      setStampPickerOpen(false);
+      // If user clicks Image again while already armed, re-open file picker
+      // so they can choose a different image. Otherwise this is the first arm.
+      void onPickImage();
+      return;
+    }
     setStampPickerOpen(false);
     onToolChange(t);
   };
@@ -100,7 +121,8 @@ export default function EditPalette({
         {TOOLS.map((t) => {
           const active =
             tool === t.id ||
-            (t.id === 'stamp' && tool === 'stamp' && !!armedStamp);
+            (t.id === 'stamp' && tool === 'stamp' && !!armedStamp) ||
+            (t.id === 'image' && tool === 'image' && !!armedImage);
           return (
             <button
               key={t.id}
@@ -193,31 +215,96 @@ export default function EditPalette({
             </div>
           </div>
           <div className="stamp-picker-grid">
-            {STAMP_PRESETS.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                role="menuitem"
-                className="stamp-preset"
-                style={{ borderColor: p.color, color: p.color }}
-                title={p.style === 'mark' ? `Mark: ${p.label}` : p.label}
-                onClick={() => {
-                  onArmStamp({
-                    label: p.label,
-                    style: p.style,
-                    color: p.color,
-                    width: p.width,
-                    height: p.height,
-                    includeDate: p.style === 'mark' ? false : includeDate,
-                    includeUser: p.style === 'mark' ? false : includeUser
-                  });
-                  // Switching to the stamp tool happens via onArmStamp in the parent.
-                  setStampPickerOpen(false);
-                }}
-              >
-                <span className="stamp-preset-label">{p.label}</span>
-              </button>
-            ))}
+            {lib.merged.map((entry) => {
+              if (entry.kind === 'builtin' && entry.preset) {
+                const p = entry.preset;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    role="menuitem"
+                    className="stamp-preset"
+                    style={{ borderColor: p.color, color: p.color }}
+                    title={p.style === 'mark' ? `Mark: ${p.label}` : p.label}
+                    onClick={() => {
+                      onArmStamp({
+                        label: p.label,
+                        style: p.style,
+                        color: p.color,
+                        width: p.width,
+                        height: p.height,
+                        includeDate: p.style === 'mark' ? false : includeDate,
+                        includeUser: p.style === 'mark' ? false : includeUser
+                      });
+                      setStampPickerOpen(false);
+                    }}
+                  >
+                    <span className="stamp-preset-label">{p.label}</span>
+                  </button>
+                );
+              }
+              if (entry.kind === 'custom-text' && entry.custom?.kind === 'text') {
+                const c = entry.custom;
+                const subMode = c.subtitleMode;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    role="menuitem"
+                    className="stamp-preset stamp-preset-custom"
+                    style={{ borderColor: c.color, color: c.color }}
+                    title={`${c.label} (custom)`}
+                    onClick={() => {
+                      onArmStamp({
+                        label: c.label,
+                        style: c.style,
+                        color: c.color,
+                        width: c.width,
+                        height: c.height,
+                        includeDate:
+                          c.style === 'mark'
+                            ? false
+                            : subMode === 'date' || subMode === 'both' ? includeDate : false,
+                        includeUser:
+                          c.style === 'mark'
+                            ? false
+                            : subMode === 'user' || subMode === 'both' ? includeUser : false
+                      });
+                      setStampPickerOpen(false);
+                    }}
+                  >
+                    <span className="stamp-preset-label">{c.label}</span>
+                  </button>
+                );
+              }
+              if (entry.kind === 'custom-image' && entry.custom?.kind === 'image') {
+                const c = entry.custom;
+                const href = `data:${c.mime};base64,${c.imageBytesB64}`;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    role="menuitem"
+                    className="stamp-preset stamp-preset-image"
+                    title={`${c.label} (custom image)`}
+                    onClick={() => {
+                      onArmCustomImageStamp({
+                        bytes: base64ToBytes(c.imageBytesB64),
+                        mime: c.mime,
+                        naturalWidth: c.naturalWidth,
+                        naturalHeight: c.naturalHeight,
+                        placeWidthPt: c.width,
+                        alt: c.label
+                      });
+                      setStampPickerOpen(false);
+                    }}
+                  >
+                    <img src={href} alt={c.label} />
+                  </button>
+                );
+              }
+              return null;
+            })}
           </div>
           {armedStamp && (
             <div className="stamp-picker-footer">
@@ -234,6 +321,18 @@ export default function EditPalette({
               </button>
             </div>
           )}
+          <div className="stamp-picker-manage">
+            <button
+              type="button"
+              className="link-btn"
+              onClick={() => {
+                setStampPickerOpen(false);
+                onOpenStampSettings();
+              }}
+            >
+              ⚙ Manage stamps…
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -8,6 +8,52 @@ Patch versions increment automatically on every commit that touches
 `PurplePDF/**`, via the `pre-commit` hook installed by
 `scripts/install-git-hooks.sh`. Minor and major bumps are manual.
 
+## [1.1.0] - 2026-05-22 — Insert Image annotation + custom Stamps library
+
+### Added
+- **Insert Image annotation** (🖼 / keyboard `I`). Pick any
+  PNG / JPEG / GIF / WebP / SVG / HEIC file from disk; the renderer
+  decodes it via `HTMLImageElement` + `<canvas>` (plus `heic2any` for
+  Apple HEIC) and places it at native aspect ratio. Move / resize via
+  the existing 8-handle gestures. Embedded into the saved PDF as a
+  PNG/JPEG XObject via `pdf-lib`, with per-byte-array caching so
+  multi-page placements reuse one image object.
+- **Preferences window** (Edit → Preferences / `Cmd+,`) with a new
+  **Stamps** tab:
+  - Hide / show built-in stamps (built-ins are immutable so future
+    updates can't collide with user customizations).
+  - Create / edit / delete / reorder **custom text stamps**: label,
+    style (box / mark), color, default size, default subtitle.
+  - Create **custom image stamps** (company logo, scanned rubber
+    stamp, …) using the same image pipeline as Insert Image.
+  - **Import / export** the custom collection as `.purplestamps.json`
+    (text-only) or `.purplestamps` ZIP bundle (image-aware). Conflict
+    resolution prompt on import (replace conflicts vs. rename).
+- EditPalette stamp picker now lists built-ins **and** custom stamps,
+  with a "⚙ Manage stamps…" link that opens Settings → Stamps.
+- 7 new vitest unit tests covering the stamp import/export round-trip
+  (`tests/unit/stampIO.test.ts`).
+
+### Changed
+- `Annot` union and `Tool` union extended with `'image'`; default
+  color + size table entries added for parity with existing tools.
+
+### Technical
+- New `src/main/prefs.ts` module backs `prefs:get/set/reset` IPCs via
+  `electron-store` (`<userData>/purple-pdf-prefs.json`). The `Insert
+  Image` flow gets a parallel `purplepdf:pick-image-for-insert` IPC;
+  the stamp library uses dedicated `stamps-export-dialog` /
+  `stamps-import-dialog` + a generic `write-file-bytes` helper.
+- New renderer module `features/annotate/imageNormalize.ts` decodes any
+  browser-supported image format (including HEIC via `heic2any`) into a
+  consistent `{ bytes, mime, naturalWidth, naturalHeight }` payload.
+  **No** native deps added — works out of the box on macOS and Windows.
+- `flatten.ts` extended to embed PNG and JPEG image annotations via
+  `doc.embedPng` / `doc.embedJpg`, with per-byte-array caching so
+  multi-page placements reuse one image XObject.
+- New deps: `heic2any` ^0.0.4, `jszip` ^3.10.1, plus `@types/jszip`
+  ^3.4.0 (dev). `electron-store` was already a dependency.
+
 ## [1.0.3] - 2026-05-21 — Developer ID signing on macOS 15 + iCloud-synced trees
 
 ### Fixed

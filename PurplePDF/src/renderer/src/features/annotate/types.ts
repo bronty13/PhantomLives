@@ -12,7 +12,8 @@ export type AnnotKind =
   | 'textbox'
   | 'signature'
   | 'redact'
-  | 'stamp';
+  | 'stamp'
+  | 'image';
 
 export interface PdfRect {
   x: number;
@@ -109,6 +110,25 @@ export interface StampAnnot extends BaseAnnot {
   borderColor: string;
 }
 
+/** A raster image inserted on the page. PNG or JPEG bytes are stored
+ *  here verbatim and embedded into the saved PDF at flatten time. */
+export interface ImageAnnot extends BaseAnnot {
+  kind: 'image';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Encoded image bytes. */
+  bytes: Uint8Array;
+  /** MIME type ('image/png' or 'image/jpeg'). */
+  mime: 'image/png' | 'image/jpeg';
+  /** Intrinsic pixel dimensions of the source image (for aspect-lock resize). */
+  naturalWidth: number;
+  naturalHeight: number;
+  /** Optional alt text for accessibility tagging. */
+  alt?: string;
+}
+
 export type Annot =
   | TextMarkupAnnot
   | NoteAnnot
@@ -117,7 +137,8 @@ export type Annot =
   | TextBoxAnnot
   | SignatureAnnot
   | RedactAnnot
-  | StampAnnot;
+  | StampAnnot
+  | ImageAnnot;
 
 export type Tool =
   | 'select'
@@ -131,6 +152,7 @@ export type Tool =
   | 'signature'
   | 'redact'
   | 'stamp'
+  | 'image'
   | 'crop';
 
 export const DEFAULT_COLORS: Record<Tool, string> = {
@@ -145,6 +167,7 @@ export const DEFAULT_COLORS: Record<Tool, string> = {
   signature: '#1f1a2e',
   redact: '#000000',
   stamp: '#16A34A',
+  image: '#A78BFA',
   crop: '#A78BFA'
 };
 
@@ -160,6 +183,7 @@ export const DEFAULT_SIZES: Record<Tool, number> = {
   signature: 2,
   redact: 2,
   stamp: 2,
+  image: 2,
   crop: 2
 };
 

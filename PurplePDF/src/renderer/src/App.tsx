@@ -14,6 +14,7 @@ import type { PDFDocumentProxy } from './features/viewer/pdfjs';
 import type { PageOp } from './features/annotate/flatten';
 import { extractFormFields, initialValues } from './features/forms/extract';
 import SignatureModal from './features/sign/SignatureModal';
+import SettingsWindow from './features/settings/SettingsWindow';
 import ProtectModal, { type ProtectOptions } from './features/security/ProtectModal';
 import PropertiesModal from './features/properties/PropertiesModal';
 import Welcome from './features/welcome/Welcome';
@@ -27,6 +28,7 @@ export default function App(): JSX.Element {
     { bytes: Uint8Array; width: number; height: number } | null
   >(null);
   const [signatureModalOpen, setSignatureModalOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [protectModalOpen, setProtectModalOpen] = useState(false);
   const [propertiesModalOpen, setPropertiesModalOpen] = useState(false);
   const [a11yRefreshNonce, setA11yRefreshNonce] = useState(0);
@@ -643,6 +645,9 @@ export default function App(): JSX.Element {
     offs.push(window.purplePDF.onProperties(() => openProperties()));
     offs.push(window.purplePDF.onConvertStandard((target) => void convertToStandard(target)));
     offs.push(window.purplePDF.onA11yCheck(() => triggerA11yCheck()));
+    if (window.purplePDF.onOpenSettings) {
+      offs.push(window.purplePDF.onOpenSettings(() => setSettingsOpen(true)));
+    }
     offs.push(
       window.purplePDF.onCombinePdfs(() => {
         void (async () => {
@@ -1205,6 +1210,7 @@ export default function App(): JSX.Element {
             armedSignature={armedSignature}
             onNeedSignature={openSignatureModal}
             onOpenProperties={openProperties}
+            onOpenSettings={() => setSettingsOpen(true)}
             a11yRefreshNonce={a11yRefreshNonce}
           />
         ) : (
@@ -1224,6 +1230,7 @@ export default function App(): JSX.Element {
         onCancel={() => setSignatureModalOpen(false)}
         onConfirm={onSignatureCreated}
       />
+      {settingsOpen && <SettingsWindow onClose={() => setSettingsOpen(false)} />}
       <ProtectModal
         open={protectModalOpen}
         onCancel={() => setProtectModalOpen(false)}

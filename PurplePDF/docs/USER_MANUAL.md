@@ -71,7 +71,18 @@ Pick a tool in the **Annotate** menu. Drag on the page to apply.
   blackout **and** the underlying glyphs/images are removed (`pdf-lib`
   + custom redaction). Metadata can be stripped at the same time via
   **File → Save As…** options.
+- **Stamp (✪ / `M`)** — drop a business-style rubber stamp (APPROVED,
+  DENIED, REVIEWED, RECEIVED, DRAFT, FINAL, CONFIDENTIAL, VOID, REVISED,
+  ✓, ✗ — or any **custom stamp** you've defined in Preferences). Optional
+  **Include date/time** and **Include user** lines render an italic
+  subtitle (e.g. `By Robert Olen at 6:36 pm, May 21, 2026`).
+- **Insert Image (🖼 / `I`)** — pick any PNG / JPEG / GIF / WebP / SVG /
+  HEIC file from disk. Decoded in the renderer (no native deps; HEIC
+  decoded via `heic2any`), placed at native aspect ratio, and embedded
+  into the saved PDF as a real image XObject via `pdf-lib`.
 - **Undo / Redo** — `⌘Z` / `⇧⌘Z`. Stack is per-tab.
+- **Drag-to-move** + **8-handle resize** for any selected annotation
+  (corners + edge midpoints; corners support flipping; min 4 pt).
 
 Annotation size, colour, and opacity are exposed in the **Properties**
 right-sidebar.
@@ -155,6 +166,27 @@ ops)"*. Hit `⌘S` to flatten.
 - **File → Properties** (`⌘I`) — Title / Author / Subject / Keywords /
   Language. Saved to info dict and catalog `/Lang`.
 
+## 14b. Preferences (`⌘,`)
+
+**Edit → Preferences** (macOS) / **Edit → Settings** (Windows) opens
+the Preferences window.
+
+- **Stamps tab**
+  - **Hide / show built-in stamps** — built-ins are immutable so future
+    updates can't collide with your customizations; toggle visibility
+    individually.
+  - **Custom text stamps** — create / edit / delete / reorder. Each
+    has: label, style (box / mark), color, default size, default
+    subtitle.
+  - **Custom image stamps** — for company logos or scanned rubber
+    stamps; uses the same image pipeline as Insert Image.
+  - **Import / export** as `.purplestamps.json` (text-only) or
+    `.purplestamps` (ZIP bundle, image-aware). On import you'll be
+    asked how to resolve conflicts (replace or rename).
+
+Preferences are stored at `<userData>/purple-pdf-prefs.json` via
+`electron-store`. Wipe the file to reset.
+
 ## 15. Crash Recovery & Auto-Update
 
 - **Help → Show Crash Reports Folder** — opens
@@ -176,6 +208,7 @@ User data is stored under Electron's `app.getPath('userData')`:
 | `recents.json` | Recent documents |
 | `Captures/` | Screen-capture exports |
 | `autosaves/<sha1>.json` | Crash-recovery snapshots |
+| `purple-pdf-prefs.json` | Preferences (stamp library, UI toggles) |
 | `CrashReports/` | Minidumps |
 | `prefs.json` | Per-user preferences |
 
