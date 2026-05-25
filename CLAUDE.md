@@ -53,9 +53,10 @@ Stacks in use across subprojects: Bash, Python (with self-bootstrapping `.venv`s
 
 ### Nested git repositories
 
-One subdirectory is a **separate git repo**, not part of PhantomLives. Run `git` inside its directory; commits made from the repo root will not include it, and pushing the outer repo will not push it:
+Two subdirectories are **separate git repos**, not part of PhantomLives. Run `git` inside their directory; commits made from the repo root will not include them, and pushing the outer repo will not push them. They surface as untracked entries in the outer repo's `git status` — leave them alone (don't `git add` them):
 
 - `video-analyzer/` — fork of `byjlw/video-analyzer` (different `origin`)
+- `ClipperInfo/` — `bronty13/ClipperInfo` (a standalone info/landing page; `index.html`)
 
 Everything else (including `MusicJournal/`, `fsearch/`, `PurpleIRC/`, `messages-exporter/`, etc.) lives in the outer `bronty13/PhantomLives` repo. (`MusicJournal/` was briefly an independent repo before being imported into PhantomLives at commit `58f3d35`.)
 
