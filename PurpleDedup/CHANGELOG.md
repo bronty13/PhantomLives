@@ -3,6 +3,15 @@
 Versions follow `1.0.<commit-count>` derived from git in `build-app.sh`. This file
 narrates *what* changed and *why*; bundle versions just label the moment.
 
+## Unreleased — drop the last `#Preview` block
+
+Removed the sole `#Preview { ContentView(...) }` from `ContentView.swift`.
+It was the only `#Preview` macro left in the project, and the
+`PreviewsMacros` plugin it depends on ships only with full Xcode — so its
+presence forced a full-Xcode toolchain even for a plain `swift build`.
+With it gone, PurpleDedup compiles under Command Line Tools too. (Sparkle
+still requires `SPARKLE_PUBLIC_KEY` at build time — that's unchanged.)
+
 ## 0.22.3 — First notarized release (2026-05-10)
 
 Pipeline change only — no code changes. Notarytool keychain profile
