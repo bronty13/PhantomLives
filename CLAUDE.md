@@ -425,7 +425,7 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer ./build-app.sh
 sudo xcode-select -s /Applications/Xcode.app
 ```
 
-Subprojects currently known to contain `#Preview` blocks: **PurpleDedup**. Any new SwiftUI subproject is likely to acquire them.
+Subprojects currently known to contain `#Preview` blocks: **none** — PurpleDedup carried the last one until it was removed (commit `3b26576`, 2026-05-24), so every SwiftUI subproject now builds under Command Line Tools. Any new SwiftUI subproject is likely to reintroduce them, at which point this requirement applies again; grep for `#Preview` if a build dies with `PreviewsMacros … not found`.
 
 ### 2. Sparkle apps need `SPARKLE_PUBLIC_KEY` in the environment
 
