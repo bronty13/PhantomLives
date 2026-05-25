@@ -24,6 +24,7 @@ struct PostingQueueView: View {
     /// need a per-clip diff.
     @State private var postedByClip: [String: Set<Int64>] = [:]
     @State private var showingVerificationWorkflow: Bool = false
+    @State private var postingClip: Clip?
 
     var body: some View {
         EdPageShell(
@@ -32,14 +33,19 @@ struct PostingQueueView: View {
             emphasized: "push",
             deck: deckText,
             trailing: AnyView(
-                Button {
-                    showingVerificationWorkflow = true
-                } label: {
-                    Text("RUN FILE VERIFICATION")
+                HStack(spacing: 8) {
+                    ClipActionsBar(selectedClip: selectedClip) { newId in
+                        selection = newId
+                    }
+                    Button {
+                        showingVerificationWorkflow = true
+                    } label: {
+                        Text("RUN FILE VERIFICATION")
+                    }
+                    .buttonStyle(EdGhostButtonStyle())
+                    .disabled(filteredClips.isEmpty)
+                    .help("Walk through the visible queue one clip at a time, auditing files for each.")
                 }
-                .buttonStyle(EdGhostButtonStyle())
-                .disabled(filteredClips.isEmpty)
-                .help("Walk through the visible queue one clip at a time, auditing files for each.")
             )
         ) {
             HSplitView {
@@ -57,6 +63,10 @@ struct PostingQueueView: View {
         .sheet(isPresented: $showingVerificationWorkflow) {
             FileAuditWorkflow(clips: filteredClips)
         }
+        .sheet(item: $postingClip) { clip in
+            SingleClipPostingFlow(clip: clip) { postingClip = nil }
+                .environmentObject(appState)
+        }
         .onAppear {
             refreshPostings()
             if selection == nil { selection = filteredClips.first?.id }
@@ -68,6 +78,11 @@ struct PostingQueueView: View {
                 appState.focusedClipId = nil
             }
         }
+    }
+
+    private var selectedClip: Clip? {
+        guard let id = selection else { return nil }
+        return appState.clips.first { $0.id == id }
     }
 
     // MARK: - Deck
@@ -200,6 +215,16 @@ struct PostingQueueView: View {
             }
             .width(min: 130, ideal: 140)
         }
+        .contextMenu(forSelectionType: Clip.ID.self) { ids in
+            if let id = ids.first {
+                Button("Edit") { selection = id }
+                Button("Post this clip…") { startPosting(id: id) }
+            }
+        }
+    }
+
+    private func startPosting(id: Clip.ID) {
+        postingClip = appState.clips.first { $0.id == id }
     }
 
     // MARK: - Posting-progress cell

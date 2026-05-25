@@ -384,6 +384,16 @@ When a queue empties, falls back to the queue stage with an "all done" page and 
 
 Excluded clips (see [Excluding clips from posting](#excluding-clips-from-posting) above) never appear in any of these queues.
 
+### Post a single clip (no batch)
+
+The same per-clip posting window is reachable from three places without going through the (site × persona) batch picker:
+
+- **POST** button in the top-right action bar on Clips, Editing Queue, and Posting Queue. Acts on the currently selected clip — opens a site picker first, then the focused posting window for the chosen site.
+- **Post…** button next to each row in the editor's **Posting status** section. Skips the picker and opens the window pre-targeted to that site — useful when you already know which site you're about to post.
+- **Right-click a clip → Post this clip…** in any of the three tables.
+
+Mechanics match the batch flow: **Mark posted** (⌘S), **Skip for now**, **Posted & next** (⌘↩). The picker shows every scoped site with its posted / pending state; **Posted & next** cycles to the next un-posted site for the same clip, and the sheet closes once the clip is fully posted. Price-set gating still applies (zero is allowed).
+
 ## File locations & path defaults
 
 **Settings → File Locations** configures the path templates used by the editor's path-helper buttons (`wand.and.rays`) and the one-time backfill:
