@@ -554,6 +554,7 @@
     <button onclick="openAddModal()">✦ Add Deal</button>
     <button onclick="exportJSON()">⬇︎ Export JSON</button>
     <button onclick="exportCSV()">⬇︎ Export CSV</button>
+    <button onclick="generateMonthSummary()">📊 Month summary PDF</button>
     <span class="spacer"></span>
     <span class="meta" id="lastExtracted"></span>
     <button class="danger small" onclick="confirmReset()">Reset to spreadsheet</button>
@@ -1867,6 +1868,178 @@ function generateInvoice(dealId) {
   setInvoiced(dealId, { number, date: issueDate });
   renderAll();
   toast(`Invoice ${number} generated`);
+}
+
+function generateMonthSummary() {
+  // Use the active month filter; if "ALL", fall back to the current calendar month.
+  const monthCode = activeMonth === "ALL" ? currentMonthCode() : activeMonth;
+  const monthDeals = state.deals.filter(d => d.month === monthCode);
+  if (!monthDeals.length) {
+    toast(`No deals in ${monthName(monthCode)} to summarize`);
+    return;
+  }
+
+  const contracted = monthDeals.reduce((s, d) => s + (d.amountNumeric || 0), 0);
+  const paid = monthDeals.filter(d => d.paid === "Yes").reduce((s, d) => s + d.amountNumeric, 0);
+  const pending = monthDeals.filter(d => d.paid === "Pending").reduce((s, d) => s + d.amountNumeric, 0);
+  const giftedCount = monthDeals.filter(d => d.isGifted).length;
+  const completedCount = monthDeals.filter(d => d.status === "Completed").length;
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "pt", format: "letter" });
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+
+  // --- letterhead (same brand treatment as invoices) ---
+  doc.setFillColor(0xF4, 0xBF, 0xD0);
+  doc.ellipse(W/2, 80, 230, 60, "F");
+  drawDaisyCluster(doc, W - 110, 50, 1.0);
+  drawDaisyCluster(doc, 60, H - 100, 0.7);
+
+  doc.setFont("times", "italic");
+  doc.setTextColor(26, 26, 26);
+  doc.setFontSize(36);
+  doc.text("Real with ", 60, 90);
+  const rwLen = doc.getTextWidth("Real with ");
+  doc.setTextColor(0xB8, 0x5A, 0x6B);
+  doc.text("Rach", 60 + rwLen, 90);
+  doc.setTextColor(26, 26, 26);
+  doc.text(" UGC", 60 + rwLen + doc.getTextWidth("Rach"), 90);
+
+  doc.setFontSize(10);
+  doc.setTextColor(107, 92, 97);
+  doc.text("Monthly summary", 60, 110);
+
+  // --- month title (top right) ---
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(20);
+  doc.setTextColor(0xB8, 0x5A, 0x6B);
+  doc.text(monthName(monthCode).toUpperCase(), W - 60, 70, { align: "right" });
+  doc.setFontSize(10);
+  doc.setTextColor(107, 92, 97);
+  doc.text(`Generated ${new Date().toLocaleDateString("en-US", { year:"numeric", month:"long", day:"numeric" })}`,
+           W - 60, 90, { align: "right" });
+  doc.text(`${monthDeals.length} deal${monthDeals.length === 1 ? "" : "s"}`, W - 60, 104, { align: "right" });
+
+  // --- stats row ---
+  doc.setDrawColor(215, 207, 209);
+  doc.line(60, 150, W - 60, 150);
+
+  const statBoxes = [
+    { label: "CONTRACTED", value: money(contracted, { decimals: 0 }) },
+    { label: "PAID",       value: money(paid, { decimals: 0 }) },
+    { label: "OUTSTANDING", value: money(pending, { decimals: 0 }) },
+    { label: "COMPLETED",  value: `${completedCount}/${monthDeals.length}` },
+    { label: "GIFTED",     value: String(giftedCount) },
+  ];
+  const boxW = (W - 120) / statBoxes.length;
+  statBoxes.forEach((s, i) => {
+    const x = 60 + i * boxW;
+    doc.setFont("times", "italic");
+    doc.setFontSize(9);
+    doc.setTextColor(107, 92, 97);
+    doc.text(s.label, x + boxW/2, 180, { align: "center" });
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(26, 26, 26);
+    doc.text(s.value, x + boxW/2, 202, { align: "center" });
+  });
+
+  doc.setDrawColor(215, 207, 209);
+  doc.line(60, 230, W - 60, 230);
+
+  // --- table ---
+  const tableTop = 260;
+  doc.setFillColor(0xFB, 0xE9, 0xEE);
+  doc.rect(60, tableTop - 18, W - 120, 26, "F");
+  doc.setFont("times", "italic");
+  doc.setFontSize(9);
+  doc.setTextColor(107, 92, 97);
+  // Column layout: Brand | Deliverables | Status | Paid | Amount
+  const colX = {
+    brand: 70,
+    deliv: 200,
+    status: W - 240,
+    paid: W - 145,
+    amount: W - 70,
+  };
+  doc.text("BRAND", colX.brand, tableTop - 2);
+  doc.text("DELIVERABLES", colX.deliv, tableTop - 2);
+  doc.text("STATUS", colX.status, tableTop - 2);
+  doc.text("PAID", colX.paid, tableTop - 2);
+  doc.text("AMOUNT", colX.amount, tableTop - 2, { align: "right" });
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9.5);
+  doc.setTextColor(26, 26, 26);
+  let y = tableTop + 22;
+  monthDeals.sort((a, b) => (b.amountNumeric || 0) - (a.amountNumeric || 0)).forEach((d, idx) => {
+    if (y > H - 130) {
+      // simple page break — rare for a single month, but be defensive.
+      doc.addPage();
+      y = 80;
+    }
+    if (idx % 2 === 1) {
+      doc.setFillColor(0xFD, 0xF5, 0xF7);
+      doc.rect(60, y - 12, W - 120, 22, "F");
+    }
+    doc.setTextColor(26, 26, 26);
+    doc.text(truncatePdf(doc, d.brand || "—", 120), colX.brand, y);
+    doc.setTextColor(80, 70, 75);
+    doc.text(truncatePdf(doc, d.deliverables || "—", 200), colX.deliv, y);
+    doc.setTextColor(26, 26, 26);
+    doc.text(d.status || "—", colX.status, y);
+    doc.text(d.paid || "—", colX.paid, y);
+    if (d.isGifted) {
+      doc.setTextColor(0xB8, 0x5A, 0x6B);
+      doc.setFont("times", "italic");
+      doc.text(d.amountDisplay || "Gifted", colX.amount, y, { align: "right" });
+      doc.setFont("helvetica", "normal");
+    } else {
+      doc.setTextColor(26, 26, 26);
+      doc.text(d.amountNumeric ? money(d.amountNumeric, { decimals: 0 }) : "—",
+               colX.amount, y, { align: "right" });
+    }
+    y += 22;
+  });
+
+  // --- totals ---
+  y += 8;
+  doc.setDrawColor(215, 207, 209);
+  doc.line(60, y, W - 60, y);
+  y += 22;
+  doc.setFillColor(0xF4, 0xBF, 0xD0);
+  doc.rect(W - 240, y - 14, 180, 28, "F");
+  doc.setFont("times", "italic");
+  doc.setFontSize(11);
+  doc.setTextColor(26, 26, 26);
+  doc.text("Total contracted", W - 230, y + 4);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.text(money(contracted, { decimals: 0 }), W - 70, y + 4, { align: "right" });
+
+  // --- footer ---
+  doc.setFont("times", "italic");
+  doc.setFontSize(9);
+  doc.setTextColor(107, 92, 97);
+  doc.text("Real with Rach UGC · Rachel Rogalsky", 60, H - 60);
+  doc.text("Generated by RachelUGC dashboard", W - 60, H - 60, { align: "right" });
+
+  const yr = new Date().getFullYear();
+  doc.save(`rachelugc-summary-${yr}-${monthCode}.pdf`);
+  toast(`${monthName(monthCode)} summary PDF saved`);
+}
+
+function truncatePdf(doc, text, maxWidth) {
+  if (doc.getTextWidth(text) <= maxWidth) return text;
+  // Binary-search shrink
+  let lo = 0, hi = text.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (doc.getTextWidth(text.slice(0, mid) + "…") <= maxWidth) lo = mid;
+    else hi = mid - 1;
+  }
+  return text.slice(0, lo) + "…";
 }
 
 function drawDaisyCluster(doc, cx, cy, scale) {

@@ -1,5 +1,19 @@
 # RachelUGC — Changelog
 
+## v0.5.0 — 2026-05-25
+
+- **Monthly summary PDF**. New toolbar button "📊 Month summary PDF" generates
+  a one-page branded PDF for the currently-active month chip (falls back to
+  the current calendar month when "All" is selected).
+- Layout: same Bodoni wordmark + pink hero blob + daisy cluster letterhead
+  as the per-deal invoices, then a stats row (Contracted / Paid / Outstanding
+  / Completed / Gifted), an itemized table sorted by amount desc (Brand /
+  Deliverables / Status / Paid / Amount with zebra striping and gifted-row
+  italics in dusty rose), a pink-highlighted total row, and a footer.
+- Page-break safe — rare for a single month, but doesn't crash for a 50-row
+  outlier.
+- Filename pattern: `rachelugc-summary-<YYYY>-<MMM>.pdf`.
+
 ## v0.4.0 — 2026-05-25
 
 - **Optional due date** on every deal (date picker in the add/edit modal).

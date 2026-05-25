@@ -72,7 +72,8 @@ python3 scripts/extract.py -i /path/to/some-other.xlsx
   latest status. Repeat customers (2+ deals) get a pink badge. Sortable.
 - **All deals table** — sortable, click a row to edit, every row has
   per-deal "📄 Invoice" and "Edit" buttons
-- **Toolbar** — Add Deal, Export JSON, Export CSV, Reset to spreadsheet
+- **Toolbar** — Add Deal, Export JSON, Export CSV, **Month summary PDF**
+  (branded one-pager for the active month chip), Reset to spreadsheet
 
 ### Editing in the browser
 
