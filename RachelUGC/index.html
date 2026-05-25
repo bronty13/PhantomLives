@@ -392,6 +392,33 @@
   .daisy.deep { fill: var(--accent-deep); }
   .daisy.light { fill: var(--accent-2); }
 
+  /* ---------- brands panel ---------- */
+  .brands-summary {
+    font-size: 13px; color: var(--muted); margin: -8px 0 14px;
+    display: flex; gap: 14px; flex-wrap: wrap;
+  }
+  .brands-summary strong { font-family: var(--serif); font-weight: 600; color: var(--accent-deep); font-size: 16px; }
+  table.brands { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  table.brands th, table.brands td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--neutral); }
+  table.brands th {
+    font-family: var(--serif); font-size: 11px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
+    cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  table.brands th .sort-indicator { color: var(--accent-deep); margin-left: 3px; }
+  table.brands tbody tr:hover { background: var(--panel-soft); }
+  table.brands td.name { font-family: var(--serif); font-weight: 500; font-size: 15px; }
+  table.brands td.total { font-family: var(--serif); font-weight: 600; color: var(--text); }
+  .repeat-badge {
+    display: inline-block; margin-left: 8px;
+    padding: 1px 8px; border-radius: 999px;
+    background: var(--blob); color: var(--accent-deep);
+    font-size: 10px; font-weight: 700; letter-spacing: 0.05em;
+    text-transform: uppercase; font-family: var(--sans);
+    vertical-align: middle;
+  }
+  .platform-list { font-size: 11px; color: var(--muted); }
+
   /* misc */
   .invoiced-note { color: var(--muted); font-size: 11px; font-style: italic; }
   .row-status-select {
@@ -472,6 +499,19 @@
     <h2 class="panel-title">Outstanding <span class="accent">payments</span></h2>
     <p class="panel-subtitle" id="outstandingSubtitle">—</p>
     <div class="outstanding-list" id="outstandingList"></div>
+  </section>
+
+  <!-- ==================== BRANDS ==================== -->
+  <section class="panel">
+    <h2 class="panel-title">Brands &amp; <span class="accent">repeat customers</span></h2>
+    <p class="panel-subtitle">Aggregated by brand — biggest customers and who keeps coming back</p>
+    <div class="brands-summary" id="brandsSummary"></div>
+    <div class="table-wrap">
+      <table class="brands" id="brandsTable">
+        <thead><tr id="brandsHead"></tr></thead>
+        <tbody id="brandsBody"></tbody>
+      </table>
+    </div>
   </section>
 
   <!-- ==================== ALL DEALS TABLE ==================== -->
@@ -683,6 +723,8 @@ let activeCategories = new Set();  // chip filter
 let sortKey = "rowIndex";
 let sortDir = "desc";       // newest first
 let editingDealId = null;
+let brandsSortKey = "totalPaid";
+let brandsSortDir = "desc";
 
 // ---------- bootstrap ----------
 function bootstrap() {
@@ -1059,6 +1101,120 @@ function markPaid(dealId) {
   d.paid = "Yes";
   persist(); renderAll();
   toast(`Marked “${d.brand}” as paid 💸`);
+}
+
+// ---------- brands aggregate ----------
+function aggregateBrands(deals) {
+  // Group deals by case-insensitive trimmed brand name; first-seen casing wins.
+  const map = new Map();
+  deals.forEach(d => {
+    const key = (d.brand || "").trim().toLowerCase();
+    if (!key) return;
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        name: d.brand.trim(),
+        count: 0,
+        totalContracted: 0,
+        totalPaid: 0,
+        totalPending: 0,
+        giftedCount: 0,
+        platforms: new Set(),
+        categories: new Set(),
+        lastMonth: null,
+        lastMonthIdx: -1,
+        latestStatus: null,
+        latestRowIndex: -1,
+      });
+    }
+    const b = map.get(key);
+    b.count++;
+    if (d.isGifted) b.giftedCount++;
+    else {
+      b.totalContracted += d.amountNumeric || 0;
+      if (d.paid === "Yes") b.totalPaid += d.amountNumeric || 0;
+      if (d.paid === "Pending") b.totalPending += d.amountNumeric || 0;
+    }
+    if (d.platform) b.platforms.add(d.platform);
+    if (d.category) b.categories.add(d.category);
+    const mIdx = MONTH_ORDER.indexOf(d.month);
+    if (mIdx > b.lastMonthIdx) {
+      b.lastMonthIdx = mIdx;
+      b.lastMonth = d.month;
+    }
+    if ((d.rowIndex || 0) > b.latestRowIndex) {
+      b.latestRowIndex = d.rowIndex || 0;
+      b.latestStatus = d.status;
+    }
+  });
+  return [...map.values()];
+}
+
+const BRAND_COLS = [
+  { key: "name", label: "Brand", cls: "name",
+    render: (b) => escapeHTML(b.name) + (b.count >= 2 ? `<span class="repeat-badge">×${b.count} repeat</span>` : "") },
+  { key: "count", label: "Deals", render: (b) => b.count },
+  { key: "totalPaid", label: "Paid", cls: "total",
+    render: (b) => b.totalPaid ? money(b.totalPaid) : "—" },
+  { key: "totalPending", label: "Outstanding",
+    render: (b) => b.totalPending
+      ? `<span style="color:var(--accent-deep)">${money(b.totalPending)}</span>` : "—" },
+  { key: "totalContracted", label: "Contracted",
+    render: (b) => b.totalContracted ? money(b.totalContracted) : "—" },
+  { key: "giftedCount", label: "Gifted",
+    render: (b) => b.giftedCount || "—" },
+  { key: "platforms", label: "Platforms",
+    render: (b) => `<span class="platform-list">${[...b.platforms].join(", ") || "—"}</span>` },
+  { key: "lastMonthIdx", label: "Last deal",
+    render: (b) => b.lastMonth ? monthName(b.lastMonth) : "—" },
+  { key: "latestStatus", label: "Latest status",
+    render: (b) => `<span class="pill ${STATUS_PILL_CLASS[b.latestStatus] || ""}">${escapeHTML(b.latestStatus || "—")}</span>` },
+];
+
+function renderBrands() {
+  const brands = aggregateBrands(visibleDeals());
+  const repeat = brands.filter(b => b.count >= 2);
+  const totalRevenue = brands.reduce((s, b) => s + b.totalPaid, 0);
+
+  document.getElementById("brandsSummary").innerHTML = `
+    <span><strong>${brands.length}</strong> unique brands</span>
+    <span><strong>${repeat.length}</strong> repeat customer${repeat.length === 1 ? "" : "s"}</span>
+    <span><strong>${money(totalRevenue)}</strong> total paid across all brands</span>
+  `;
+
+  const head = document.getElementById("brandsHead");
+  head.innerHTML = BRAND_COLS.map(c => {
+    const arrow = c.key === brandsSortKey ? `<span class="sort-indicator">${brandsSortDir === "asc" ? "▲" : "▼"}</span>` : "";
+    return `<th data-key="${c.key}">${c.label}${arrow}</th>`;
+  }).join("");
+  head.querySelectorAll("th").forEach(th => {
+    const k = th.dataset.key;
+    th.onclick = () => {
+      if (brandsSortKey === k) brandsSortDir = brandsSortDir === "asc" ? "desc" : "asc";
+      else { brandsSortKey = k; brandsSortDir = "desc"; }
+      renderBrands();
+    };
+  });
+
+  brands.sort((a, b) => {
+    const A = a[brandsSortKey], B = b[brandsSortKey];
+    const numA = typeof A === "number" ? A : (A instanceof Set ? A.size : (A ?? "").toString().toLowerCase());
+    const numB = typeof B === "number" ? B : (B instanceof Set ? B.size : (B ?? "").toString().toLowerCase());
+    if (numA < numB) return brandsSortDir === "asc" ? -1 : 1;
+    if (numA > numB) return brandsSortDir === "asc" ? 1 : -1;
+    // Tiebreaker: total paid desc, then name asc
+    if (b.totalPaid !== a.totalPaid) return b.totalPaid - a.totalPaid;
+    return a.name.localeCompare(b.name);
+  });
+
+  const body = document.getElementById("brandsBody");
+  if (!brands.length) {
+    body.innerHTML = `<tr><td colspan="${BRAND_COLS.length}" style="text-align:center;padding:36px 0;color:var(--muted)">No brands match the current filter.</td></tr>`;
+    return;
+  }
+  body.innerHTML = brands.map(b =>
+    `<tr>` + BRAND_COLS.map(c => `<td class="${c.cls || ""}">${c.render(b)}</td>`).join("") + `</tr>`
+  ).join("");
 }
 
 // ---------- table ----------
@@ -1543,6 +1699,7 @@ function renderAll() {
   renderCharts();
   renderBoard();
   renderOutstanding();
+  renderBrands();
   renderTable();
   const ex = state.extractedAt
     ? new Date(state.extractedAt).toLocaleString("en-US",

@@ -1,5 +1,17 @@
 # RachelUGC — Changelog
 
+## v0.2.0 — 2026-05-25
+
+- New **Brands & repeat customers** panel between Outstanding and All Deals.
+  Aggregates every deal by case-insensitive brand name and shows: deal count,
+  paid $, outstanding $, contracted $, gifted count, platforms used, last
+  deal's month, latest status. Repeat customers (2+ deals) get a pink
+  `×N repeat` badge so they pop visually.
+- Panel header summary: `N unique brands · M repeat customers · $X total paid`.
+- Sortable by every column. Default sort: paid $ desc — biggest customers
+  on top. Tiebreaker: paid $ desc then name asc.
+- Respects the existing month + category filter chips at the top of the page.
+
 ## v0.1.0 — 2026-05-25
 
 First cut: Phase 1 single-file SPA mockup for Rachel Rogalsky's UGC business.
