@@ -650,6 +650,31 @@
   </div>
 </div>
 
+<!-- ==================== BRAND CONTACT MODAL ==================== -->
+<div class="backdrop" id="brandBackdrop" onclick="if(event.target===this) closeBrandModal()">
+  <div class="modal" style="max-width: 480px">
+    <h2 id="brandModalTitle">Brand <span class="accent">contact</span></h2>
+    <p class="panel-subtitle" id="brandModalSub" style="margin: -10px 0 16px"></p>
+    <div class="field">
+      <label for="b_email">Email</label>
+      <input type="text" id="b_email" placeholder="contact@brand.com" />
+    </div>
+    <div class="field">
+      <label for="b_contact">Contact name</label>
+      <input type="text" id="b_contact" placeholder="who you actually talk to" />
+    </div>
+    <div class="field">
+      <label for="b_notes">Notes</label>
+      <textarea id="b_notes" placeholder="rate history, preferred timeline, anything to remember"></textarea>
+    </div>
+    <div class="modal-actions">
+      <span class="spacer"></span>
+      <button onclick="closeBrandModal()">Cancel</button>
+      <button class="primary" onclick="saveBrandContact()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- ==================== CHASE EMAIL MODAL ==================== -->
 <div class="backdrop" id="chaseBackdrop" onclick="if(event.target===this) closeChaseModal()">
   <div class="modal" style="max-width: 640px">
@@ -1213,6 +1238,66 @@ function markPaid(dealId) {
   toast(`Marked “${d.brand}” as paid 💸`);
 }
 
+// ---------- brand contact CRM ----------
+// Keyed by lowercased trimmed brand name. Lives on state so it round-trips
+// localStorage. Initialised lazily — older saved states won't have it.
+function getBrandKey(name) { return (name || "").trim().toLowerCase(); }
+function getBrandContact(name) {
+  if (!state.brands) state.brands = {};
+  return state.brands[getBrandKey(name)] || null;
+}
+function setBrandContact(name, contact) {
+  if (!state.brands) state.brands = {};
+  const key = getBrandKey(name);
+  if (!contact || (!contact.email && !contact.contact && !contact.notes)) {
+    delete state.brands[key];
+  } else {
+    state.brands[key] = { email: "", contact: "", notes: "", ...contact };
+  }
+  persist();
+}
+
+let editingBrandKey = null;
+let editingBrandName = null;
+
+function openBrandModal(brandName) {
+  editingBrandKey = getBrandKey(brandName);
+  editingBrandName = brandName;
+  const c = getBrandContact(brandName) || {};
+  document.getElementById("brandModalTitle").innerHTML = `Contact for <span class="accent">${escapeHTML(brandName)}</span>`;
+  // Surface aggregate context so Rachel sees what this brand represents.
+  const aggregate = aggregateBrands(state.deals).find(b => b.key === editingBrandKey);
+  if (aggregate) {
+    document.getElementById("brandModalSub").innerHTML =
+      `${aggregate.count} deal${aggregate.count === 1 ? "" : "s"} &middot; `
+      + `${money(aggregate.totalPaid)} paid &middot; `
+      + `last: ${aggregate.lastMonth ? monthName(aggregate.lastMonth) : "—"}`;
+  } else {
+    document.getElementById("brandModalSub").textContent = "";
+  }
+  document.getElementById("b_email").value = c.email || "";
+  document.getElementById("b_contact").value = c.contact || "";
+  document.getElementById("b_notes").value = c.notes || "";
+  document.getElementById("brandBackdrop").classList.add("open");
+  setTimeout(() => document.getElementById("b_email").focus(), 50);
+}
+function closeBrandModal() {
+  document.getElementById("brandBackdrop").classList.remove("open");
+  editingBrandKey = null;
+  editingBrandName = null;
+}
+function saveBrandContact() {
+  if (!editingBrandName) return;
+  setBrandContact(editingBrandName, {
+    email: document.getElementById("b_email").value.trim(),
+    contact: document.getElementById("b_contact").value.trim(),
+    notes: document.getElementById("b_notes").value.trim(),
+  });
+  closeBrandModal();
+  renderAll();
+  toast("Contact saved");
+}
+
 // ---------- brands aggregate ----------
 function aggregateBrands(deals) {
   // Group deals by case-insensitive trimmed brand name; first-seen casing wins.
@@ -1262,7 +1347,20 @@ function aggregateBrands(deals) {
 
 const BRAND_COLS = [
   { key: "name", label: "Brand", cls: "name",
-    render: (b) => escapeHTML(b.name) + (b.count >= 2 ? `<span class="repeat-badge">×${b.count} repeat</span>` : "") },
+    render: (b) => {
+      const c = getBrandContact(b.name);
+      const contactLine = c && (c.email || c.contact)
+        ? `<div style="font-size:11px;color:var(--muted);font-family:var(--sans);font-weight:400;margin-top:2px">`
+          + (c.contact ? escapeHTML(c.contact) : "")
+          + (c.contact && c.email ? " · " : "")
+          + (c.email ? `<a href="mailto:${escapeAttr(c.email)}" onclick="event.stopPropagation()" style="color:var(--accent-deep)">${escapeHTML(c.email)}</a>` : "")
+          + `</div>`
+        : "";
+      return `<span style="cursor:pointer" onclick="openBrandModal('${escapeAttr(b.name).replace(/'/g, "\\'")}')">`
+           + escapeHTML(b.name)
+           + (b.count >= 2 ? `<span class="repeat-badge">×${b.count} repeat</span>` : "")
+           + `</span>${contactLine}`;
+    } },
   { key: "count", label: "Deals", render: (b) => b.count },
   { key: "totalPaid", label: "Paid", cls: "total",
     render: (b) => b.totalPaid ? money(b.totalPaid) : "—" },
@@ -1548,7 +1646,7 @@ const CHASE_TEMPLATES = {
   friendly: {
     subjectPrefix: "Quick check-in on ",
     body: (ctx) => (
-`Hi ${ctx.brandPossessive} team!
+`Hi ${ctx.greeting},
 
 I hope you're having a great week! I wanted to gently check in on the invoice for our ${ctx.deliverables} collaboration${ctx.invoiceLine}. The agreed amount was ${ctx.amount}.
 
@@ -1563,7 +1661,7 @@ Real with Rach UGC`)
   standard: {
     subjectPrefix: "Following up: invoice for ",
     body: (ctx) => (
-`Hi ${ctx.brandPossessive} team,
+`Hi ${ctx.greeting},
 
 I'm following up on the outstanding payment for our ${ctx.deliverables} collaboration${ctx.invoiceLine}. The agreed amount is ${ctx.amount}${ctx.statusLine}.
 
@@ -1577,7 +1675,7 @@ Real with Rach UGC`)
   firm: {
     subjectPrefix: "Second follow-up: payment due for ",
     body: (ctx) => (
-`Hi ${ctx.brandPossessive} team,
+`Hi ${ctx.greeting},
 
 I'm writing to follow up again on the outstanding payment for our ${ctx.deliverables} collaboration${ctx.invoiceLine}. The agreed amount of ${ctx.amount} is now past due${ctx.statusLine}.
 
@@ -1597,7 +1695,8 @@ function openChaseModal(dealId) {
   document.getElementById("chaseFor").innerHTML =
     `For <strong style="color:var(--text)">${escapeHTML(d.brand)}</strong> &middot; `
     + `${money(d.amountNumeric)} &middot; ${escapeHTML(d.platform || "—")}`;
-  document.getElementById("chaseTo").value = "";
+  const contact = getBrandContact(d.brand);
+  document.getElementById("chaseTo").value = contact && contact.email ? contact.email : "";
   refreshChaseTone();
   document.getElementById("chaseBackdrop").classList.add("open");
   setTimeout(() => document.getElementById("chaseTo").focus(), 50);
@@ -1617,8 +1716,13 @@ function refreshChaseTone() {
   const d = state.deals.find(x => x.id === chaseDealId);
   if (!d) return;
   const invoiced = getInvoiced(chaseDealId);
+  const contact = getBrandContact(d.brand);
+  // Use contact's first name when we have one, otherwise "<Brand> team".
+  const greeting = contact && contact.contact
+    ? contact.contact.trim().split(/\s+/)[0]
+    : (d.brand.endsWith("s") ? d.brand + "'" : d.brand + "'s") + " team";
   const ctx = {
-    brandPossessive: d.brand.endsWith("s") ? d.brand + "'" : d.brand + "'s",
+    greeting,
     deliverables: (d.deliverables || "UGC content").toLowerCase().replace(/\s+/g, " "),
     amount: money(d.amountNumeric, { decimals: 0 }),
     invoiceLine: invoiced ? ` (invoice ${invoiced.number}, issued ${invoiced.date})` : "",

@@ -1,5 +1,19 @@
 # RachelUGC — Changelog
 
+## v0.6.0 — 2026-05-25
+
+- **Brand contact CRM**. Click a brand name in the Brands & repeat customers
+  table to open a contact modal with email, contact name, and notes fields.
+  Stored on `state.brands` keyed by lowercased brand name, persisted to
+  localStorage. Survives spreadsheet re-imports.
+- Brand row in the table now shows the stored contact + email beneath the
+  brand name (mailto link, click-to-stop-propagate so the row click still
+  opens the contact modal).
+- **Chase email auto-fills**:
+  - "To" field pre-fills with the stored brand email.
+  - "Hi …," greeting uses the contact's first name when stored, falls back
+    to "<Brand>'s team" otherwise. Works across all three tone templates.
+
 ## v0.5.0 — 2026-05-25
 
 - **Monthly summary PDF**. New toolbar button "📊 Month summary PDF" generates
