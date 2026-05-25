@@ -79,7 +79,9 @@ python3 scripts/extract.py -i /path/to/some-other.xlsx
 - **All deals table** — sortable, click a row to edit, every row has
   per-deal "📄 Invoice" and "Edit" buttons
 - **Toolbar** — Add Deal, Export JSON, Export CSV, **Month summary PDF**
-  (branded one-pager for the active month chip), Reset to spreadsheet
+  (branded one-pager for the active month chip), **Tax export** (single
+  Schedule-C-friendly CSV with paid income / category roll-up / monthly
+  roll-up / pending / gifted sections), Reset to spreadsheet
 
 ### Editing in the browser
 

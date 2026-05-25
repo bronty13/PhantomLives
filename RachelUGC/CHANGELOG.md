@@ -1,5 +1,25 @@
 # RachelUGC — Changelog
 
+## v0.8.0 — 2026-05-25
+
+- **Tax-prep CSV export**. New toolbar button "🧾 Tax export" generates a
+  Schedule-C-friendly one-file CSV (`rachelugc-tax-<year>.csv`) with five
+  clearly-labeled sections:
+  1. **Paid income** — per-deal listing of every `paid:Yes` non-gifted deal
+     for the year (date / platform / brand / deliverables / category /
+     amount, with a TOTAL row).
+  2. **Income by category** — paid $ rolled up by category, descending.
+  3. **Income by month** — paid $ rolled up by month, calendar order.
+  4. **Pending (not yet received)** — `paid:Pending` deals broken out
+     separately so they're explicitly excluded from filings until received.
+     Only emitted when there are pending deals.
+  5. **Gifted / barter** — gifted deals listed separately with a "consult
+     CPA — may be reportable at fair market value" note. Only emitted when
+     there are gifted deals.
+- All sections share the same column structure where applicable so the
+  file is easy to import into Excel/Numbers and copy-paste into 1099/Sched-C
+  worksheets.
+
 ## v0.7.0 — 2026-05-25
 
 - **Cashflow forecast panel** between Outstanding payments and Brands.

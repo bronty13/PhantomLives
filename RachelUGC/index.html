@@ -599,6 +599,7 @@
     <button onclick="exportJSON()">⬇︎ Export JSON</button>
     <button onclick="exportCSV()">⬇︎ Export CSV</button>
     <button onclick="generateMonthSummary()">📊 Month summary PDF</button>
+    <button onclick="exportTaxCSV()">🧾 Tax export</button>
     <span class="spacer"></span>
     <span class="meta" id="lastExtracted"></span>
     <button class="danger small" onclick="confirmReset()">Reset to spreadsheet</button>
@@ -1944,6 +1945,107 @@ function exportJSON() {
   downloadBlob(`rachelugc-export-${todayStr()}.json`,
     JSON.stringify(state, null, 2), "application/json");
   toast("Exported JSON to Downloads");
+}
+
+function exportTaxCSV() {
+  // Schedule C friendly layout. One sheet, three sections:
+  //   1) Per-deal listing of every PAID deal (gifted excluded — those are
+  //      barter income that may or may not need reporting; flagged separately).
+  //   2) Category roll-up: paid $ by category for the year.
+  //   3) Monthly roll-up: paid $ by month for the year.
+  // Gifted deals get their own listing at the bottom so Rachel can decide
+  // whether to declare them.
+  const yr = new Date().getFullYear();
+  const paid = state.deals.filter(d => d.paid === "Yes" && !d.isGifted && d.amountNumeric > 0);
+  const gifted = state.deals.filter(d => d.isGifted);
+
+  const out = [];
+
+  // ----- Header -----
+  out.push(`Real with Rach UGC — Tax-prep export for ${yr}`);
+  out.push(`Generated ${new Date().toISOString().slice(0, 10)}`);
+  out.push("");
+  out.push("");
+
+  // ----- Section 1: per-deal paid income -----
+  out.push("SECTION 1 — PAID INCOME (reportable receipts)");
+  out.push(["Date (month)", "Platform", "Brand", "Deliverables", "Category", "Amount"].map(csvCell).join(","));
+  paid.sort((a, b) => MONTH_ORDER.indexOf(a.month) - MONTH_ORDER.indexOf(b.month))
+      .forEach(d => out.push([
+        d.month ? `${monthName(d.month)} ${yr}` : "",
+        d.platform, d.brand, d.deliverables, d.category, d.amountNumeric.toFixed(2),
+      ].map(csvCell).join(",")));
+  const paidTotal = paid.reduce((s, d) => s + d.amountNumeric, 0);
+  out.push(["", "", "", "", "TOTAL", paidTotal.toFixed(2)].map(csvCell).join(","));
+  out.push("");
+  out.push("");
+
+  // ----- Section 2: category roll-up -----
+  out.push("SECTION 2 — INCOME BY CATEGORY");
+  out.push(["Category", "Deal count", "Total paid"].map(csvCell).join(","));
+  const byCat = {};
+  paid.forEach(d => {
+    const c = d.category || "Uncategorized";
+    if (!byCat[c]) byCat[c] = { count: 0, total: 0 };
+    byCat[c].count++;
+    byCat[c].total += d.amountNumeric;
+  });
+  Object.keys(byCat).sort((a, b) => byCat[b].total - byCat[a].total)
+        .forEach(c => out.push([c, byCat[c].count, byCat[c].total.toFixed(2)].map(csvCell).join(",")));
+  out.push(["", "TOTAL", paidTotal.toFixed(2)].map(csvCell).join(","));
+  out.push("");
+  out.push("");
+
+  // ----- Section 3: monthly roll-up -----
+  out.push("SECTION 3 — INCOME BY MONTH");
+  out.push(["Month", "Deal count", "Total paid"].map(csvCell).join(","));
+  const byMonth = {};
+  paid.forEach(d => {
+    const m = d.month || "UNK";
+    if (!byMonth[m]) byMonth[m] = { count: 0, total: 0 };
+    byMonth[m].count++;
+    byMonth[m].total += d.amountNumeric;
+  });
+  Object.keys(byMonth).sort((a, b) => MONTH_ORDER.indexOf(a) - MONTH_ORDER.indexOf(b))
+        .forEach(m => out.push([
+          m === "UNK" ? "(unknown)" : monthName(m),
+          byMonth[m].count,
+          byMonth[m].total.toFixed(2),
+        ].map(csvCell).join(",")));
+  out.push(["", "TOTAL", paidTotal.toFixed(2)].map(csvCell).join(","));
+  out.push("");
+  out.push("");
+
+  // ----- Section 4: pending (not yet income) -----
+  const pending = state.deals.filter(d => d.paid === "Pending" && !d.isGifted && d.amountNumeric > 0);
+  if (pending.length) {
+    out.push("SECTION 4 — PENDING (NOT YET RECEIVED — exclude from filings until paid)");
+    out.push(["Month", "Platform", "Brand", "Deliverables", "Category", "Amount"].map(csvCell).join(","));
+    pending.sort((a, b) => MONTH_ORDER.indexOf(a.month) - MONTH_ORDER.indexOf(b.month))
+           .forEach(d => out.push([
+             d.month ? `${monthName(d.month)} ${yr}` : "",
+             d.platform, d.brand, d.deliverables, d.category, d.amountNumeric.toFixed(2),
+           ].map(csvCell).join(",")));
+    const pendingTotal = pending.reduce((s, d) => s + d.amountNumeric, 0);
+    out.push(["", "", "", "", "TOTAL", pendingTotal.toFixed(2)].map(csvCell).join(","));
+    out.push("");
+    out.push("");
+  }
+
+  // ----- Section 5: gifted (barter — consult CPA) -----
+  if (gifted.length) {
+    out.push("SECTION 5 — GIFTED / BARTER (consult CPA — may be reportable at fair market value)");
+    out.push(["Month", "Platform", "Brand", "Deliverables", "Category", "Gift type"].map(csvCell).join(","));
+    gifted.sort((a, b) => MONTH_ORDER.indexOf(a.month) - MONTH_ORDER.indexOf(b.month))
+          .forEach(d => out.push([
+            d.month ? `${monthName(d.month)} ${yr}` : "",
+            d.platform, d.brand, d.deliverables, d.category, d.amountDisplay || "Gifted",
+          ].map(csvCell).join(",")));
+    out.push("");
+  }
+
+  downloadBlob(`rachelugc-tax-${yr}.csv`, out.join("\n"), "text/csv");
+  toast(`Tax export for ${yr} saved (${paid.length} paid · ${gifted.length} gifted)`);
 }
 
 function exportCSV() {
