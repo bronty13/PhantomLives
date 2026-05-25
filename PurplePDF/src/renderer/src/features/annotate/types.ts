@@ -127,6 +127,10 @@ export interface ImageAnnot extends BaseAnnot {
   naturalHeight: number;
   /** Optional alt text for accessibility tagging. */
   alt?: string;
+  /** Optional caption frozen at placement (e.g. "By Robert Olen at 6:36 pm,
+   *  May 21, 2026"), rendered as an overlay band along the image's bottom
+   *  edge. Driven by a custom image stamp's `defaultIncludeSubtitle`. */
+  subtext?: string;
 }
 
 export type Annot =

@@ -294,7 +294,8 @@ export default function EditPalette({
                         naturalWidth: c.naturalWidth,
                         naturalHeight: c.naturalHeight,
                         placeWidthPt: c.width,
-                        alt: c.label
+                        alt: c.label,
+                        includeSubtitle: c.defaultIncludeSubtitle
                       });
                       setStampPickerOpen(false);
                     }}

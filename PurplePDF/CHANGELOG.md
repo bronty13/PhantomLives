@@ -8,6 +8,21 @@ Patch versions increment automatically on every commit that touches
 `PurplePDF/**`, via the `pre-commit` hook installed by
 `scripts/install-git-hooks.sh`. Minor and major bumps are manual.
 
+## [1.1.1] - 2026-05-24 — Custom image-stamp subtitle overlay
+
+### Fixed
+
+- **Custom image stamps now honor "Overlay user + date/time subtitle."**
+  The toggle shipped in 1.1.0 but was never read — image stamps always
+  placed as a bare image. Placing one with the option on now freezes a
+  `By {user} at {time, date}` caption onto a translucent band along the
+  image's bottom edge, both on-screen (`AnnotationLayer`) and in the
+  saved/flattened PDF (`flatten.ts`). The caption auto-shrinks to fit the
+  image width and is suppressed when the composed text is empty (e.g. no
+  username available). `ImageAnnot` gained an optional `subtext` field and
+  `ArmedImage` gained `includeSubtitle`. 3 new vitest tests cover the
+  flatten round-trip and the caption-content contract.
+
 ## [1.1.0] - 2026-05-22 — Insert Image annotation + custom Stamps library
 
 ### Added

@@ -138,6 +138,9 @@ export async function buildModifiedPdf(
         try {
           const img = await embedImageBytes(a.bytes, a.mime);
           page.drawImage(img, { x: a.x, y: a.y, width: a.w, height: a.h });
+          if (a.subtext && a.subtext.trim()) {
+            drawImageCaption(page, a, a.subtext, fontOblique);
+          }
         } catch {
           // Bad image bytes; skip rather than abort the whole save.
         }
@@ -440,4 +443,36 @@ function drawAnnotation(
   }
   // 'signature' and 'image' are handled separately in the caller because
   // they require async embedPng/embedJpg.
+}
+
+/** Draw the frozen caption band along an image annotation's bottom edge —
+ *  white italic text on a translucent dark strip, mirroring the on-screen
+ *  overlay in AnnotationLayer. The caption auto-shrinks to fit the width. */
+function drawImageCaption(page: Page, a: { x: number; y: number; w: number; h: number }, sub: string, fontOblique: Font): void {
+  const bandH = Math.max(10, Math.min(a.h * 0.18, 18));
+  const padX = 6;
+  const maxW = Math.max(8, a.w - padX * 2);
+  let size = bandH * 0.66;
+  while (size > 5 && fontOblique.widthOfTextAtSize(sub, size) > maxW) {
+    size -= 0.5;
+  }
+  // Translucent backing strip flush with the image's bottom edge.
+  page.drawRectangle({
+    x: a.x,
+    y: a.y,
+    width: a.w,
+    height: bandH,
+    color: rgb(0, 0, 0),
+    opacity: 0.55,
+    borderWidth: 0
+  });
+  const textW = fontOblique.widthOfTextAtSize(sub, size);
+  const textH = fontOblique.heightAtSize(size);
+  page.drawText(sub, {
+    x: a.x + Math.max(padX, (a.w - textW) / 2),
+    y: a.y + (bandH - textH) / 2 + textH * 0.18,
+    size,
+    font: fontOblique,
+    color: rgb(1, 1, 1)
+  });
 }

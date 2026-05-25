@@ -45,6 +45,10 @@ export interface ArmedImage {
   placeWidthPt?: number;
   /** Optional alt text passed through to the annotation. */
   alt?: string;
+  /** When true, freeze a "By {user} at {date}" caption onto the image at
+   *  placement (rendered as a bottom-edge overlay band). Comes from a
+   *  custom image stamp's `defaultIncludeSubtitle`. */
+  includeSubtitle?: boolean;
 }
 
 interface Props {
@@ -253,6 +257,12 @@ export default function AnnotationLayer({
       const [px, py] = viewport.convertToPdfPoint(x, y);
       const w = armedImage.placeWidthPt ?? 200;
       const h = (armedImage.naturalHeight / Math.max(1, armedImage.naturalWidth)) * w;
+      // Freeze a user+date caption when the source stamp opted in. Mirrors
+      // the rect-stamp subtitle, but always carries both (the image-stamp
+      // toggle is a single boolean — see CustomImageStamp.defaultIncludeSubtitle).
+      const imgSub = armedImage.includeSubtitle
+        ? buildStampSubtext({ includeUser: true, includeDate: true })
+        : '';
       const img: ImageAnnot = {
         id: newId(),
         page: pageIndex,
@@ -266,6 +276,7 @@ export default function AnnotationLayer({
         naturalWidth: armedImage.naturalWidth,
         naturalHeight: armedImage.naturalHeight,
         alt: armedImage.alt,
+        subtext: imgSub || undefined,
         color
       };
       onCreate(img);
@@ -1075,6 +1086,11 @@ function AnnotShape({
   if (a.kind === 'image') {
     const sv = pdfRectToSvg(vp, effRect ?? a);
     const href = imageHref(a.bytes, a.mime);
+    const hasSub = !!(a.subtext && a.subtext.trim());
+    // Caption overlay band hugging the image's bottom edge. White italic
+    // text on a translucent dark strip so it stays legible over any image.
+    const bandH = Math.max(12, Math.min(sv.h * 0.18, 18));
+    const capFs = bandH * 0.66;
     return (
       <g>
         <image
@@ -1086,6 +1102,30 @@ function AnnotShape({
           preserveAspectRatio="none"
           style={{ pointerEvents: 'none' }}
         />
+        {hasSub && (
+          <>
+            <rect
+              x={sv.x}
+              y={sv.y + sv.h - bandH}
+              width={sv.w}
+              height={bandH}
+              fill="rgba(0, 0, 0, 0.55)"
+              style={{ pointerEvents: 'none' }}
+            />
+            <text
+              x={sv.x + sv.w / 2}
+              y={sv.y + sv.h - bandH / 2 + capFs * 0.35}
+              textAnchor="middle"
+              fontSize={capFs}
+              fontStyle="italic"
+              fontFamily="'Helvetica Neue', Helvetica, Arial, sans-serif"
+              fill="#ffffff"
+              style={{ pointerEvents: 'none', userSelect: 'none' }}
+            >
+              {a.subtext}
+            </text>
+          </>
+        )}
         {isSelectTool && (
           <rect
             {...hitProps}

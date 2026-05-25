@@ -179,7 +179,11 @@ the Preferences window.
     has: label, style (box / mark), color, default size, default
     subtitle.
   - **Custom image stamps** — for company logos or scanned rubber
-    stamps; uses the same image pipeline as Insert Image.
+    stamps; uses the same image pipeline as Insert Image. Tick
+    **"Overlay user + date/time subtitle when placing"** to freeze a
+    `By {you} at {time, date}` caption onto a translucent band along the
+    image's bottom edge each time you stamp it (mirrors the text-stamp
+    subtitle; the timestamp is frozen at placement).
   - **Import / export** as `.purplestamps.json` (text-only) or
     `.purplestamps` (ZIP bundle, image-aware). On import you'll be
     asked how to resolve conflicts (replace or rename).
