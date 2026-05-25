@@ -119,6 +119,56 @@ struct WorkspaceParserTests {
         // Unrelated lines must not trigger the prompt.
         #expect(WorkspaceService.detectOverwritePrompt(in: "Fetching channels...") == nil)
     }
+
+    @Test("workspaceArg reduces URLs to slackdump's positional name form")
+    func workspaceArgReduction() {
+        // Full URLs collapse to just the first hostname label.
+        #expect(WorkspaceService.workspaceArg(from: "https://sheer-enterprise.slack.com/") == "sheer-enterprise")
+        #expect(WorkspaceService.workspaceArg(from: "https://acme.slack.com") == "acme")
+        #expect(WorkspaceService.workspaceArg(from: "http://acme.slack.com") == "acme")
+        // Bare names pass through untouched.
+        #expect(WorkspaceService.workspaceArg(from: "acme") == "acme")
+        #expect(WorkspaceService.workspaceArg(from: "sheer-enterprise") == "sheer-enterprise")
+        // Whitespace + trailing slash variants.
+        #expect(WorkspaceService.workspaceArg(from: "  https://acme.slack.com/  ") == "acme")
+    }
+
+    @Test("detects huh.Select auth picker footer (with and without ANSI)")
+    func detectAuthMenuFooter() {
+        // Raw form, as a real terminal would render.
+        #expect(WorkspaceService.detectAuthMenuFooter(
+            in: "↑ up • ↓ down • / filter • enter submit"
+        ))
+        // Colorised form (the bytes the line buffer actually sees).
+        let ansi = "\u{1B}[38;5;59m↑\u{1B}[0m \u{1B}[38;5;59mup\u{1B}[0m • \u{1B}[38;5;59menter\u{1B}[0m \u{1B}[38;5;59msubmit\u{1B}[0m"
+        #expect(WorkspaceService.detectAuthMenuFooter(in: ansi))
+        // Unrelated log lines must not match.
+        #expect(!WorkspaceService.detectAuthMenuFooter(in: "DEBUG requesting authentication..."))
+        #expect(!WorkspaceService.detectAuthMenuFooter(in: "ready to submit form"))
+    }
+
+    @Test("openPTYPair returns a slave whose isatty() check passes")
+    func ptyAllocationLooksLikeATerminal() throws {
+        // Regression guard for the EZ-Login "dumb terminals" error.
+        // slackdump rejects browser auth when isatty(stderr) == 0; the
+        // whole point of the PTY swap is to make that check pass.
+        let pair = try #require(WorkspaceService.openPTYPair())
+        defer { close(pair.masterFD); close(pair.slaveFD) }
+        #expect(isatty(pair.slaveFD) == 1)
+        // Round-trip a byte through the PTY to confirm both ends are
+        // wired up. ECHO is off on the slave (see openPTYPair), so the
+        // master only sees what the "child" actually writes.
+        let payload: [UInt8] = [0x68, 0x69, 0x0A] // "hi\n"
+        let written = payload.withUnsafeBufferPointer { buf in
+            write(pair.slaveFD, buf.baseAddress, buf.count)
+        }
+        #expect(written == payload.count)
+        var readBuf = [UInt8](repeating: 0, count: 16)
+        let n = readBuf.withUnsafeMutableBufferPointer { buf in
+            read(pair.masterFD, buf.baseAddress, buf.count)
+        }
+        #expect(n >= payload.count)
+    }
 }
 
 @Suite("ChannelService JSON parser")
