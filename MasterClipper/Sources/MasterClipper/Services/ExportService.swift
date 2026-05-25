@@ -86,51 +86,23 @@ enum ExportService {
         return md
     }
 
-    /// Plain-text "Information Needed" block for a single clip, mirroring the
-    /// Reports → Information Needed → Copy for creator payload. Shows Blank /
-    /// None Defined for missing fields; only includes the go-live line when
-    /// it's actually missing.
-    static func plainTextInformationNeeded(_ clip: Clip, appState: AppState) -> String {
-        let cats = categoryNames(forClip: clip.id, appState: appState)
-        let descMissing = clip.descriptionRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let catsMissing = cats.isEmpty
-        let goLiveMissing = (clip.goLiveDate ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-
-        let title = clip.title.isEmpty ? "Untitled" : clip.title
-        var lines: [String] = ["Please confirm/provide the following:", ""]
-        lines.append("\(clip.id) - \(title) [\(clip.personaCode)]")
-        lines.append("Description: \(descMissing ? "Blank" : clip.descriptionRaw)")
-        lines.append("Categories: \(catsMissing ? "None Defined" : cats.joined(separator: ", "))")
-        if goLiveMissing {
-            lines.append("Go-live date: Not set")
+    static func exportClipPlainText(_ clip: Clip, appState: AppState) -> String {
+        let cats = categoryNames(forClip: clip.id, appState: appState).joined(separator: ", ")
+        var s = ""
+        s += "[\(clip.id)] \(clip.title.isEmpty ? "Untitled" : clip.title) — \(clip.personaCode)\n"
+        s += "Length: \(DurationFormatter.format(clip.lengthSeconds))"
+        if let cents = clip.priceCents { s += String(format: "  ·  Price: $%.2f", Double(cents) / 100) }
+        if let gl = clip.goLiveDate, !gl.isEmpty { s += "  ·  Go-Live: \(gl)" }
+        s += "\n"
+        if !cats.isEmpty { s += "Categories: \(cats)\n" }
+        if !clip.keywords.isEmpty { s += "Keywords: \(clip.keywords)\n" }
+        s += "\n"
+        let body = clip.descriptionRefined.isEmpty ? clip.descriptionRaw : clip.descriptionRefined
+        if !body.isEmpty {
+            s += body
+            s += "\n"
         }
-        return lines.joined(separator: "\n")
-    }
-
-    /// Plain-text "Verification" block for a single clip. Always emits all
-    /// fields — including ones we already have — so the creator can read the
-    /// whole record back. Uses the refined description (falling back to raw
-    /// when refined is blank but raw isn't).
-    static func plainTextVerification(_ clip: Clip, appState: AppState) -> String {
-        let cats = categoryNames(forClip: clip.id, appState: appState)
-        let title = clip.title.isEmpty ? "Untitled" : clip.title
-
-        let refined = clip.descriptionRefined.trimmingCharacters(in: .whitespacesAndNewlines)
-        let raw = clip.descriptionRaw.trimmingCharacters(in: .whitespacesAndNewlines)
-        let descValue: String = {
-            if !refined.isEmpty { return clip.descriptionRefined }
-            if !raw.isEmpty     { return clip.descriptionRaw }
-            return "Not Set"
-        }()
-
-        let goLive = (clip.goLiveDate ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-
-        var lines: [String] = []
-        lines.append("\(clip.id) - \(title) [\(clip.personaCode)] - \(clip.statusEnum.label)")
-        lines.append("Description: \(descValue)")
-        lines.append("Categories: \(cats.isEmpty ? "Not Set" : cats.joined(separator: ", "))")
-        lines.append("Go-live date: \(goLive.isEmpty ? "Not Set" : goLive)")
-        return lines.joined(separator: "\n")
+        return s
     }
 
     // MARK: - XLSX

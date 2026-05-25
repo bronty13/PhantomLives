@@ -10,8 +10,14 @@ struct ClipListView: View {
     @State private var postingFilter: PostingFilter = .all
     @State private var includeArchived: Bool = false
     @State private var selection: Clip.ID?
+    @State private var showingNewSheet: Bool = false
+    @State private var showingDeleteConfirm: Bool = false
+    /// Sheet bindings driven by the *clip itself* — using `.sheet(item:)`
+    /// instead of a separate Bool + id state pair so SwiftUI can never
+    /// open a sheet without the data it's about to render.
+    @State private var workflowClip: Clip? = nil
+    @State private var exportingClip: Clip? = nil
     @State private var postedSitesByClip: [String: Set<Int64>] = [:]
-    @State private var postingClip: Clip?
     @State private var sortOrder: [KeyPathComparator<Clip>] = [
         KeyPathComparator(\Clip.createdAt, order: .reverse)
     ]
@@ -23,8 +29,25 @@ struct ClipListView: View {
             emphasized: "catalog",
             deck: "\(appState.clips.filter { !$0.archived }.count) clips. Filter, sort, edit. Selection opens to the right.",
             trailing: AnyView(
-                ClipActionsBar(selectedClip: selectedClip) { newId in
-                    selection = newId
+                HStack(spacing: 8) {
+                    Button { showingNewSheet = true } label: { Text("⌘ N · NEW") }
+                        .buttonStyle(EdInkPillButtonStyle())
+                    Button {
+                        if let clip = selectedClip { workflowClip = clip }
+                    } label: { Text("WORKFLOW") }
+                        .buttonStyle(EdGhostButtonStyle())
+                        .disabled(selectedClip == nil)
+                        .help("Run the file audit and capture editing notes (appended to clip notes)")
+                    Button {
+                        if let clip = selectedClip { exportingClip = clip }
+                    } label: { Text("EXPORT") }
+                        .buttonStyle(EdGhostButtonStyle())
+                        .disabled(selectedClip == nil)
+                    Button(role: .destructive) { showingDeleteConfirm = true } label: { Text("DELETE") }
+                        .buttonStyle(EdGhostButtonStyle())
+                        .disabled(selectedClip == nil)
+                        .keyboardShortcut(.delete, modifiers: .command)
+                        .help("Delete the selected clip (⌘⌫)")
                 }
             )
         ) {
@@ -39,6 +62,56 @@ struct ClipListView: View {
                 ClipDetailView(clipId: selection)
                     .frame(minWidth: 480)
             }
+        }
+        .alert("Delete this clip?", isPresented: $showingDeleteConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                if let id = selection { deleteClip(id: id) }
+            }
+        } message: {
+            if let id = selection,
+               let clip = appState.clips.first(where: { $0.id == id }) {
+                let titleText = clip.title.isEmpty ? clip.id : "\"\(clip.title)\""
+                Text("\(titleText) and all its postings, category links, and history will be permanently deleted. This cannot be undone — restore from a backup if you change your mind.")
+            } else {
+                Text("This clip and all its associated data will be permanently deleted. This cannot be undone.")
+            }
+        }
+        .sheet(item: $exportingClip) { clip in
+            ClipExportSheet(clip: clip) { exportingClip = nil }
+                .environmentObject(appState)
+        }
+        .sheet(isPresented: $showingNewSheet) {
+            ClipWorkflowView(
+                onCompleted: { newClip in
+                    selection = newClip.id
+                    showingNewSheet = false
+                },
+                onContinueToEditing: { newClip in
+                    // Chain into the editing workflow. Dismiss the new-clip
+                    // sheet first, then trip the workflowClip binding once
+                    // SwiftUI is past the dismiss transition — `.sheet(item:)`
+                    // can't show a new sheet while another is dismissing.
+                    selection = newClip.id
+                    showingNewSheet = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        workflowClip = newClip
+                    }
+                },
+                onCancel: {
+                    showingNewSheet = false
+                }
+            )
+            .environmentObject(appState)
+        }
+        .sheet(item: $workflowClip) { clip in
+            EditingWorkflowView(clipId: clip.id) {
+                workflowClip = nil
+            }
+            .environmentObject(appState)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .newClipRequested)) { _ in
+            showingNewSheet = true
         }
         .onAppear {
             applyFocusedClipIfAny()
@@ -174,7 +247,6 @@ struct ClipListView: View {
         .contextMenu(forSelectionType: Clip.ID.self) { ids in
             if let id = ids.first {
                 Button("Edit") { selection = id }
-                Button("Post this clip…") { startPosting(id: id) }
                 Divider()
                 Button("Mark as historical (all scope sites posted)") {
                     markHistorical(id: id)
@@ -185,14 +257,6 @@ struct ClipListView: View {
                 }
             }
         }
-        .sheet(item: $postingClip) { clip in
-            SingleClipPostingFlow(clip: clip) { postingClip = nil }
-                .environmentObject(appState)
-        }
-    }
-
-    private func startPosting(id: Clip.ID) {
-        postingClip = appState.clips.first { $0.id == id }
     }
 
     // MARK: - Selection helpers

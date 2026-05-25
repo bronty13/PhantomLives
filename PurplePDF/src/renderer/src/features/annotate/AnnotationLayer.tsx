@@ -6,7 +6,6 @@ import type {
   SignatureAnnot,
   RedactAnnot,
   StampAnnot,
-  ImageAnnot,
   Tool
 } from './types';
 import { newId } from './types';
@@ -34,19 +33,6 @@ export interface ArmedStamp {
   includeUser: boolean;
 }
 
-/** Image bytes ready to drop on the page (PNG/JPEG, with intrinsic
- *  pixel dimensions for aspect-ratio defaults). */
-export interface ArmedImage {
-  bytes: Uint8Array;
-  mime: 'image/png' | 'image/jpeg';
-  naturalWidth: number;
-  naturalHeight: number;
-  /** Default placement width in PDF points (height derived from aspect). */
-  placeWidthPt?: number;
-  /** Optional alt text passed through to the annotation. */
-  alt?: string;
-}
-
 interface Props {
   pageIndex: number; // 0-based
   viewport: Viewport;
@@ -62,8 +48,6 @@ interface Props {
   signaturePlaceWidthPt?: number;
   /** Currently-armed stamp preset; when set and tool='stamp', clicking on the page places it. */
   armedStamp: ArmedStamp | null;
-  /** Currently-armed image; when set and tool='image', clicking on the page places it. */
-  armedImage: ArmedImage | null;
   onCreate: (a: Annot) => void;
   onUpdate: (id: string, patch: Partial<Annot>) => void;
   onDelete: (id: string) => void;
@@ -91,15 +75,14 @@ function pdfRectToSvg(
 }
 
 /** Annotation kinds whose bounding rect can be drag-resized via handles. */
-type ResizableKind = 'rect' | 'textbox' | 'signature' | 'redact' | 'stamp' | 'image';
+type ResizableKind = 'rect' | 'textbox' | 'signature' | 'redact' | 'stamp';
 function isResizable(a: Annot): a is Extract<Annot, { kind: ResizableKind }> {
   return (
     a.kind === 'rect' ||
     a.kind === 'textbox' ||
     a.kind === 'signature' ||
     a.kind === 'redact' ||
-    a.kind === 'stamp' ||
-    a.kind === 'image'
+    a.kind === 'stamp'
   );
 }
 
@@ -144,7 +127,6 @@ export default function AnnotationLayer({
   armedSignature,
   signaturePlaceWidthPt = 140,
   armedStamp,
-  armedImage,
   onCreate,
   onUpdate,
   onDelete,
@@ -170,8 +152,7 @@ export default function AnnotationLayer({
     tool === 'strikethrough' ||
     tool === 'crop' ||
     (tool === 'signature' && !!armedSignature) ||
-    (tool === 'stamp' && !!armedStamp) ||
-    (tool === 'image' && !!armedImage);
+    (tool === 'stamp' && !!armedStamp);
 
   const localPoint = (e: ReactPointerEvent<SVGSVGElement>): { x: number; y: number } => {
     const rect = svgRef.current!.getBoundingClientRect();
@@ -246,29 +227,6 @@ export default function AnnotationLayer({
         borderColor: armedStamp.color
       };
       onCreate(stamp);
-      return;
-    }
-    if (tool === 'image' && armedImage) {
-      const { x, y } = localPoint(e);
-      const [px, py] = viewport.convertToPdfPoint(x, y);
-      const w = armedImage.placeWidthPt ?? 200;
-      const h = (armedImage.naturalHeight / Math.max(1, armedImage.naturalWidth)) * w;
-      const img: ImageAnnot = {
-        id: newId(),
-        page: pageIndex,
-        kind: 'image',
-        x: px - w / 2,
-        y: py - h / 2,
-        w,
-        h,
-        bytes: armedImage.bytes,
-        mime: armedImage.mime,
-        naturalWidth: armedImage.naturalWidth,
-        naturalHeight: armedImage.naturalHeight,
-        alt: armedImage.alt,
-        color
-      };
-      onCreate(img);
       return;
     }
     const p = localPoint(e);
@@ -515,15 +473,11 @@ export default function AnnotationLayer({
             ? armedStamp
               ? 'copy'
               : 'not-allowed'
-            : tool === 'image'
-              ? armedImage
-                ? 'copy'
-                : 'not-allowed'
-              : tool === 'redact'
+            : tool === 'redact'
+              ? 'crosshair'
+              : tool === 'freehand'
                 ? 'crosshair'
-                : tool === 'freehand'
-                  ? 'crosshair'
-                  : 'crosshair';
+                : 'crosshair';
 
   // Live transform that the selected annotation should preview during drag/resize.
   const previewById = (id: string): { dx?: number; dy?: number; rect?: { x: number; y: number; w: number; h: number } } | null => {
@@ -649,7 +603,6 @@ function translateAnnot(a: Annot, dx: number, dy: number): Partial<Annot> {
     a.kind === 'signature' ||
     a.kind === 'redact' ||
     a.kind === 'stamp' ||
-    a.kind === 'image' ||
     a.kind === 'note'
   ) {
     return { x: a.x + dx, y: a.y + dy } as Partial<Annot>;
@@ -1072,50 +1025,6 @@ function AnnotShape({
     );
   }
 
-  if (a.kind === 'image') {
-    const sv = pdfRectToSvg(vp, effRect ?? a);
-    const href = imageHref(a.bytes, a.mime);
-    return (
-      <g>
-        <image
-          href={href}
-          x={sv.x}
-          y={sv.y}
-          width={sv.w}
-          height={sv.h}
-          preserveAspectRatio="none"
-          style={{ pointerEvents: 'none' }}
-        />
-        {isSelectTool && (
-          <rect
-            {...hitProps}
-            x={sv.x}
-            y={sv.y}
-            width={sv.w}
-            height={sv.h}
-            fill="transparent"
-          />
-        )}
-        {selected && (
-          <rect
-            x={sv.x}
-            y={sv.y}
-            width={sv.w}
-            height={sv.h}
-            fill="none"
-            stroke="#A78BFA"
-            strokeDasharray="3 2"
-            strokeWidth={1}
-            style={{ pointerEvents: 'none' }}
-          />
-        )}
-        {selected && isSelectTool && effRect && (
-          <ResizeHandles rectVp={sv} onStartResize={onStartResize} />
-        )}
-      </g>
-    );
-  }
-
   return <g />;
 }
 
@@ -1288,17 +1197,6 @@ function signatureHref(bytes: Uint8Array): string {
   for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
   const href = `data:image/png;base64,${btoa(bin)}`;
   signatureHrefCache.set(bytes, href);
-  return href;
-}
-
-const imageHrefCache = new WeakMap<Uint8Array, string>();
-function imageHref(bytes: Uint8Array, mime: 'image/png' | 'image/jpeg'): string {
-  const cached = imageHrefCache.get(bytes);
-  if (cached) return cached;
-  let bin = '';
-  for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
-  const href = `data:${mime};base64,${btoa(bin)}`;
-  imageHrefCache.set(bytes, href);
   return href;
 }
 

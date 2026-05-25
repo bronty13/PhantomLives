@@ -114,19 +114,6 @@ struct WorkspaceSheet: View {
         .onAppear {
             Task { await workspaces.refresh() }
         }
-        // After a successful `workspace new`, slackdump has already
-        // marked the new workspace as current in its own cache — mirror
-        // that into SettingsStore so SlackSucker uses it without the
-        // user having to click "Select" themselves.
-        .onChange(of: workspaces.lastAddedWorkspaceName) { _, newValue in
-            guard let name = newValue else { return }
-            settings.selectedWorkspace = name
-            settings.save()
-            Task {
-                await workspaces.select(name)
-                workspaces.acknowledgeLastAdded()
-            }
-        }
     }
 
     // MARK: - Add section
@@ -156,9 +143,6 @@ struct WorkspaceSheet: View {
                               text: $newWorkspaceName)
                         .textFieldStyle(.roundedBorder)
                     Text("Slackdump opens its own browser-based login (EZ-Login 3000) when you continue. Leave blank to use the name \u{201C}default\u{201D}.")
-                        .font(AppFont.sans(11))
-                        .foregroundStyle(.tertiary)
-                    Text("Tip: if Slack offers to open the desktop app, choose \u{201C}use Slack in your browser\u{201D} instead — the hijacker can only capture credentials from the web session.")
                         .font(AppFont.sans(11))
                         .foregroundStyle(.tertiary)
                     HStack {
@@ -192,36 +176,20 @@ struct WorkspaceSheet: View {
             }
 
             if !workspaces.newWorkspaceLog.isEmpty {
-                ZStack(alignment: .topTrailing) {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 1) {
-                            ForEach(workspaces.newWorkspaceLog.indices, id: \.self) { i in
-                                Text(workspaces.newWorkspaceLog[i])
-                                    .font(AppFont.mono(11))
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 1) {
+                        ForEach(workspaces.newWorkspaceLog.indices, id: \.self) { i in
+                            Text(workspaces.newWorkspaceLog[i])
+                                .font(AppFont.mono(11))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .padding(8)
                     }
-                    .frame(maxHeight: 120)
-                    .background(Color.black.opacity(0.04))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-
-                    Button {
-                        let joined = workspaces.newWorkspaceLog.joined(separator: "\n")
-                        let pb = NSPasteboard.general
-                        pb.clearContents()
-                        pb.setString(joined, forType: .string)
-                    } label: {
-                        Label("Copy", systemImage: "doc.on.doc")
-                            .labelStyle(.iconOnly)
-                            .padding(4)
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Copy log to clipboard")
-                    .padding(6)
+                    .padding(8)
                 }
+                .frame(maxHeight: 120)
+                .background(Color.black.opacity(0.04))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
             }
             if let err = workspaces.lastError {
                 Text(err)

@@ -17,18 +17,7 @@ struct ClipExportSheet: View {
         }
     }
 
-    enum PlainTextVariant: String, CaseIterable {
-        case informationNeeded, verification
-        var label: String {
-            switch self {
-            case .informationNeeded: return "Information Needed"
-            case .verification:      return "Verification"
-            }
-        }
-    }
-
     @State private var mode: Mode = .plainText
-    @State private var plainVariant: PlainTextVariant = .informationNeeded
     @State private var copyConfirmed: Bool = false
 
     var body: some View {
@@ -40,13 +29,6 @@ struct ClipExportSheet: View {
                 ForEach(Mode.allCases, id: \.self) { Text($0.label).tag($0) }
             }
             .pickerStyle(.segmented)
-
-            if mode == .plainText {
-                Picker("Mode", selection: $plainVariant) {
-                    ForEach(PlainTextVariant.allCases, id: \.self) { Text($0.label).tag($0) }
-                }
-                .pickerStyle(.segmented)
-            }
 
             if mode != .pdf {
                 ScrollView {
@@ -88,11 +70,7 @@ struct ClipExportSheet: View {
 
     private var currentText: String {
         switch mode {
-        case .plainText:
-            switch plainVariant {
-            case .informationNeeded: return ExportService.plainTextInformationNeeded(clip, appState: appState)
-            case .verification:      return ExportService.plainTextVerification(clip, appState: appState)
-            }
+        case .plainText: return ExportService.exportClipPlainText(clip, appState: appState)
         case .markdown:  return ExportService.exportClipMarkdown(clip, appState: appState)
         case .pdf:       return ""
         }

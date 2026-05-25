@@ -12,8 +12,6 @@ import { convertToStandard, detectGhostscript, optimizePdf, type StandardTarget 
 import { combinePdfs, splitPdfPerPage, extractPages, parseRangeString } from './pdfops';
 import { checkForUpdates, scheduleStartupCheck } from './updater';
 import { crashReportsDir, startCrashReporter } from './crashreport';
-import { getPreferences, setPreferences, resetPreferences } from './prefs';
-import type { Preferences } from './prefs';
 import {
   convertViaLibreOffice,
   findLibreOffice,
@@ -324,12 +322,6 @@ function buildMenu(): void {
           label: 'Find…',
           accelerator: 'CmdOrCtrl+F',
           click: () => sendToRenderer('purplepdf:find', null)
-        },
-        { type: 'separator' },
-        {
-          label: process.platform === 'darwin' ? 'Preferences…' : 'Settings…',
-          accelerator: 'CmdOrCtrl+,',
-          click: () => sendToRenderer('purplepdf:open-settings', undefined)
         }
       ]
     },
@@ -706,105 +698,6 @@ app.whenReady().then(() => {
         ]
       });
       return result.canceled ? [] : result.filePaths;
-    }
-  );
-
-  // Pick a single image to insert as an annotation. Returns the raw file
-  // bytes + MIME guess; the renderer normalizes (decode → PNG/JPEG) so
-  // we avoid native deps like sharp.
-  ipcMain.handle(
-    'purplepdf:pick-image-for-insert',
-    async (): Promise<{ path: string; name: string; bytes: ArrayBuffer; ext: string } | null> => {
-      if (!mainWindow) return null;
-      const result = await dialog.showOpenDialog(mainWindow, {
-        title: 'Insert an image',
-        properties: ['openFile'],
-        filters: [
-          {
-            name: 'Images',
-            extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'heic', 'heif']
-          }
-        ]
-      });
-      if (result.canceled || result.filePaths.length === 0) return null;
-      const filePath = result.filePaths[0];
-      const buf = await readFile(filePath);
-      return {
-        path: filePath,
-        name: basename(filePath),
-        bytes: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
-        ext: extname(filePath).slice(1).toLowerCase()
-      };
-    }
-  );
-
-  // ----- Preferences -----
-  ipcMain.handle('purplepdf:prefs-get', (): Preferences => getPreferences());
-  ipcMain.handle(
-    'purplepdf:prefs-set',
-    (_evt, patch: Partial<Preferences>): Preferences => setPreferences(patch)
-  );
-  ipcMain.handle('purplepdf:prefs-reset', (): Preferences => resetPreferences());
-
-  // Write arbitrary bytes to a chosen path. Used by the Settings →
-  // Stamps tab to persist exported bundles after the save dialog
-  // returns a path. The dialog already constrained the path to a
-  // user-chosen location.
-  ipcMain.handle(
-    'purplepdf:write-file-bytes',
-    async (_evt, path: string, bytes: ArrayBuffer): Promise<boolean> => {
-      try {
-        await writeFile(path, Buffer.from(bytes));
-        return true;
-      } catch (err) {
-        console.error('[PurplePDF] write-file-bytes failed:', err);
-        return false;
-      }
-    }
-  );
-
-  // Stamp library file pickers (export/import dialogs).
-  ipcMain.handle(
-    'purplepdf:stamps-export-dialog',
-    async (_evt, args: { defaultName: string }): Promise<string | null> => {
-      if (!mainWindow) return null;
-      const ext = args.defaultName.toLowerCase().endsWith('.purplestamps')
-        ? 'purplestamps'
-        : 'purplestamps.json';
-      const filters =
-        ext === 'purplestamps'
-          ? [{ name: 'Purple Stamps Bundle', extensions: ['purplestamps'] }]
-          : [{ name: 'Purple Stamps (JSON)', extensions: ['purplestamps.json', 'json'] }];
-      const r = await dialog.showSaveDialog(mainWindow, {
-        title: 'Export stamp library',
-        defaultPath: args.defaultName,
-        filters
-      });
-      if (r.canceled || !r.filePath) return null;
-      return r.filePath;
-    }
-  );
-
-  ipcMain.handle(
-    'purplepdf:stamps-import-dialog',
-    async (): Promise<{ path: string; bytes: ArrayBuffer; ext: string } | null> => {
-      if (!mainWindow) return null;
-      const r = await dialog.showOpenDialog(mainWindow, {
-        title: 'Import stamp library',
-        properties: ['openFile'],
-        filters: [
-          { name: 'Purple Stamps', extensions: ['purplestamps', 'json'] },
-          { name: 'All Files', extensions: ['*'] }
-        ]
-      });
-      if (r.canceled || r.filePaths.length === 0) return null;
-      const filePath = r.filePaths[0];
-      const buf = await readFile(filePath);
-      return {
-        path: filePath,
-        bytes: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
-        ext: extname(filePath).slice(1).toLowerCase()
-      };
     }
   );
 

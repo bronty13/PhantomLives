@@ -1,26 +1,5 @@
 # SlackSucker changelog
 
-## 1.1.x — Add Workspace works from inside the app (2026-05-19)
-
-### Workspace authentication
-
-- **PTY-backed `workspace new`**: `WorkspaceService.addNewWorkspace`
-  now spawns slackdump under a pseudo-terminal pair instead of plain
-  `Pipe`s. slackdump's EZ-Login refuses to start when its stderr fails
-  the `isatty()` check ("browser auth is not supported in dumb
-  terminals, use token/cookie auth instead.") — anonymous pipes always
-  fail it, which made the in-app **Add workspace** flow always error
-  out. The PTY satisfies the check while still multiplexing
-  stdin/stdout/stderr through a single FileHandle we own. ECHO is
-  disabled on the slave so y/N responses don't bounce back into the
-  output log. `TERM=xterm-256color` is forwarded so any tty-gated
-  libraries slackdump links against behave normally.
-- **`answerOverwrite` / `cancelNewWorkspace`** rewired to write to the
-  PTY master instead of a separate stdin pipe.
-- **Test**: `RunnerTests.ptyAllocationLooksLikeATerminal` is a
-  regression guard — opens a pair and asserts `isatty(slave) == 1`
-  plus a round-trip byte through master↔slave.
-
 ## 1.1.x — file ordering fix + iOS batch-upload limitation (2026-05-16)
 
 ### FileOrganizer — order recovery

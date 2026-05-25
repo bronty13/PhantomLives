@@ -1,21 +1,5 @@
 # Changelog
 
-## 2026-05-17 — Single-clip posting flow (no batch wizard)
-
-Until now the focused per-clip posting window (`PostingClipWindow`) only opened from inside the (site × persona) batch wizard — fine for working through a backlog, painful when you just wanted to post one clip to one site. Added three new entry points that all funnel into the same dialog so the body of the workflow is unchanged.
-
-New shared launcher: `Views/Posting/SingleClipPostingFlow.swift`. Two-stage sheet — picker → posting window. The picker lists the clip's scoped sites with posted / pending state; selecting one opens `PostingClipWindow` for that (clip, site) pair. **Posted & next** cycles to the next un-posted scoped site on the same clip (the batch flow cycles clips for one target — this flow cycles sites for one clip); the sheet closes once the clip is fully posted. Accepts an optional `preselectedSiteId` so the per-row entry point skips the picker. The embedded `PostingClipWindow` is keyed by `target.id` so notes / price drafts reset between sites without modifying the dialog itself.
-
-Entry points wired up:
-
-- **POST** button in `ClipActionsBar` — appears on Clips, Editing Queue, and Posting Queue. Acts on the currently selected clip.
-- **Post…** button on each row inside the editor's `PostingGrid`. Pre-targets that specific site, skipping the picker. Sits alongside (not replacing) the existing per-site posted-state checkbox — checkbox is the quick toggle, button is the full flow.
-- Context-menu item **Post this clip…** on the table in all three views (the existing menu in `ClipListView` gained the item; `EditingQueueView` and `PostingQueueView` had no context menu before — they now each get one with `Edit` and `Post this clip…`).
-
-Bookkeeping: `PostingService.markPosted` still drives the actual posted-flip, so the clip's pipeline status (`to_post` → `posting` → `production`) auto-recomputes via `DatabaseService.upsertPosting` the same way the batch flow has always worked. The picker re-reads posted state from the DB on initial appearance and on every return-from-posting so re-entrant flips show up correctly.
-
-Hygiene: docs updated (`README.md`, `USER_MANUAL.md`); version auto-bumps via `build-app.sh`'s `1.0.<commit-count>` derivation; no schema change, no new tests (MasterClipper has no unit-test target — `run-tests.sh` is a build smoke test).
-
 ## 2026-05-16 — build-app.sh: stop breaking the signature post-build
 
 The app stopped launching on macOS 26.5: every run crashed with `EXC_BREAKPOINT` deep inside `CKContainer.__allocating_init(identifier:)` (called from `ShareManager.shared` during `AppState.init`), and once the entitlements were preserved during re-sign it instead failed to even spawn with `Launchd job spawn failed (POSIX 163)`. Root cause was in `build-app.sh`:

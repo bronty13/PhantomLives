@@ -11,7 +11,7 @@ A full-featured, cross-platform PDF reader and editor for **macOS and Windows**.
 ## What's in the box
 
 - 📖 **Read** — multi-tab, multi-page, full pdf.js renderer with outline / thumbnails / find-in-page / accessibility tree.
-- ✏️ **Annotate** — highlight, underline, strikeout, freehand, shapes, sticky notes, text boxes, redact (with underlying-content removal), business stamps (built-in + custom library), insert image (PNG/JPEG/GIF/WebP/SVG/HEIC).
+- ✏️ **Annotate** — highlight, underline, strikeout, freehand, shapes, sticky notes, text boxes, redact (with underlying-content removal).
 - 📝 **Edit** — drag-to-reorder pages, delete / duplicate / insert-blank / rotate / crop / auto-crop with **live in-canvas preview**.
 - 🖋️ **Sign** — draw, type, or image-based signatures; AES-256 password protection (qpdf); permission flags; certified redaction.
 - 📰 **Forms** — fill, recognize fields from flat docs, sandboxed JS hooks, export FDF / XFDF / JSON / CSV.

@@ -48,12 +48,6 @@ const api = {
   converterStatus: (): Promise<{ libreoffice: string | null }> =>
     ipcRenderer.invoke('purplepdf:converter-status'),
   pickImages: (): Promise<string[]> => ipcRenderer.invoke('purplepdf:pick-images'),
-  pickImageForInsert: (): Promise<{
-    path: string;
-    name: string;
-    bytes: ArrayBuffer;
-    ext: string;
-  } | null> => ipcRenderer.invoke('purplepdf:pick-image-for-insert'),
   pickOffice: (): Promise<string[]> => ipcRenderer.invoke('purplepdf:pick-office'),
   imagesToPdf: (images: string[], defaultName?: string): Promise<string | null> =>
     ipcRenderer.invoke('purplepdf:images-to-pdf', { images, defaultName }),
@@ -264,27 +258,6 @@ const api = {
     ): void => cb(args);
     ipcRenderer.on('purplepdf:export-image', h);
     return () => ipcRenderer.removeListener('purplepdf:export-image', h);
-  },
-
-  // ----- Preferences -----
-  prefsGet: (): Promise<unknown> => ipcRenderer.invoke('purplepdf:prefs-get'),
-  prefsSet: (patch: unknown): Promise<unknown> =>
-    ipcRenderer.invoke('purplepdf:prefs-set', patch),
-  prefsReset: (): Promise<unknown> => ipcRenderer.invoke('purplepdf:prefs-reset'),
-  writeFileBytes: (path: string, bytes: ArrayBuffer): Promise<boolean> =>
-    ipcRenderer.invoke('purplepdf:write-file-bytes', path, bytes),
-
-  // ----- Stamp library file dialogs -----
-  stampsExportDialog: (defaultName: string): Promise<string | null> =>
-    ipcRenderer.invoke('purplepdf:stamps-export-dialog', { defaultName }),
-  stampsImportDialog: (): Promise<{ path: string; bytes: ArrayBuffer; ext: string } | null> =>
-    ipcRenderer.invoke('purplepdf:stamps-import-dialog'),
-
-  // ----- Settings window opener (renderer-side event from main menu) -----
-  onOpenSettings: (cb: (tab?: string) => void): (() => void) => {
-    const h = (_e: IpcRendererEvent, tab?: string): void => cb(tab);
-    ipcRenderer.on('purplepdf:open-settings', h);
-    return () => ipcRenderer.removeListener('purplepdf:open-settings', h);
   }
 };
 
