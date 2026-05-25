@@ -233,14 +233,20 @@ final class WorkspaceService: ObservableObject {
                     // flow — once per spawn so redraws don't re-fire.
                     if !self.didDismissAuthMenu,
                        Self.detectAuthMenuFooter(in: line) {
-                        self.didDismissAuthMenu = true
-                        if let master = self.newPTYMaster {
-                            try? master.write(contentsOf: Data([0x0D]))
-                            self.newWorkspaceLog.append(
-                                "[slacksucker] dismissed auth picker — selecting default (browser login)"
-                            )
-                        }
+                        self.dismissAuthMenu()
                     }
+                }
+            }
+            // The huh.Select footer is the last line of a TUI frame and is
+            // usually redrawn WITHOUT a trailing newline, so extractLines()
+            // never surfaces it. Probe the un-terminated tail too — the raw
+            // bytes persist across reads, so a footer split mid-chunk is still
+            // caught once fully buffered. dismissAuthMenu() is one-shot.
+            let pending = buffer.peekPending()
+            if !pending.isEmpty, Self.detectAuthMenuFooter(in: pending) {
+                Task { @MainActor [weak self] in
+                    guard let self, !self.didDismissAuthMenu else { return }
+                    self.dismissAuthMenu()
                 }
             }
         }
@@ -286,6 +292,19 @@ final class WorkspaceService: ObservableObject {
     /// so the same workspace isn't re-selected on subsequent state changes.
     func acknowledgeLastAdded() {
         lastAddedWorkspaceName = nil
+    }
+
+    /// Accept slackdump's `huh.Select` auth picker by sending a bare Enter
+    /// to the PTY master (selecting the default "Login in Browser"). One-shot
+    /// — guarded by `didDismissAuthMenu` so TUI redraws can't re-fire it.
+    private func dismissAuthMenu() {
+        guard !didDismissAuthMenu else { return }
+        didDismissAuthMenu = true
+        guard let master = newPTYMaster else { return }
+        try? master.write(contentsOf: Data([0x0D]))
+        newWorkspaceLog.append(
+            "[slacksucker] dismissed auth picker — selecting default (browser login)"
+        )
     }
 
     /// Write a y/N answer to the running `workspace new` process by

@@ -1,5 +1,22 @@
 # SlackSucker changelog
 
+## 1.1.x — Auth picker auto-dismiss: catch the un-terminated footer (2026-05-24)
+
+### Workspace authentication
+
+- **The `huh.Select` auth-picker auto-dismiss now fires even when its
+  footer arrives without a newline.** The detection only ran on complete
+  lines from `LineBuffer.extractLines()`, but slackdump redraws the picker
+  as a TUI frame whose keyhelp footer (`↑ … submit`) is the last line and
+  usually carries no trailing newline — so it never surfaced as a line and
+  the bare-Enter was never sent, leaving the user stuck at the picker. The
+  readability handler now also probes `LineBuffer.peekPending()` (a new
+  non-consuming view of the un-terminated tail); a footer split across
+  reads is still caught once fully buffered. The bare-Enter send is
+  refactored into a one-shot `dismissAuthMenu()` shared by both probes.
+- **Test**: `LineBufferTests.peekPendingNonConsuming` covers the
+  no-newline footer case and asserts `peekPending()` is non-consuming.
+
 ## 1.1.x — Add Workspace works from inside the app (2026-05-19)
 
 ### Workspace authentication

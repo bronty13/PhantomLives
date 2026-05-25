@@ -33,6 +33,27 @@ struct LineBufferTests {
         #expect(buf.extractLines().isEmpty)
         #expect(buf.drainTrailing() == ["partial"])
     }
+
+    @Test("peekPending exposes an un-terminated tail without consuming it")
+    func peekPendingNonConsuming() {
+        let buf = LineBuffer()
+        // A complete line plus an un-terminated tail (a TUI footer redrawn
+        // with no trailing newline — the huh.Select case).
+        buf.append("done\n↑ up • ↓ down • enter submit".data(using: .utf8)!)
+        // extractLines only yields the terminated line; the footer stays put.
+        #expect(buf.extractLines().map(\.0) == ["done"])
+        let pending = buf.peekPending()
+        #expect(pending.contains("↑") && pending.contains("submit"))
+        // The auth-dismiss probe would now fire even though no newline ever
+        // surfaced the footer as a line.
+        #expect(WorkspaceService.detectAuthMenuFooter(in: pending))
+        // Non-consuming: a second peek returns the same bytes, and a
+        // subsequent terminator still flushes the footer as a real line.
+        #expect(buf.peekPending() == pending)
+        buf.append("\n".data(using: .utf8)!)
+        #expect(buf.extractLines().map(\.0).first?.contains("submit") == true)
+        #expect(buf.peekPending().isEmpty)
+    }
 }
 
 @Suite("RunStats")

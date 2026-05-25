@@ -45,6 +45,20 @@ final class LineBuffer: @unchecked Sendable {
 
     /// Pull whatever's left as a single line. Used at process exit so we
     /// don't drop the final un-terminated line.
+    /// Non-consuming view of the bytes accumulated since the last complete
+    /// line (i.e. the current un-terminated tail). Used to detect TUI frames
+    /// redrawn *without* a trailing newline — e.g. slackdump's `huh.Select`
+    /// keyhelp footer, which `extractLines()` would otherwise never surface.
+    /// Lossy-decoded so a chunk ending mid-multibyte character still yields a
+    /// usable string (the raw bytes stay in the buffer for the next read).
+    func peekPending() -> String {
+        lock.lock(); defer { lock.unlock() }
+        guard !data.isEmpty else { return "" }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    /// Pull whatever's left as a single line. Used at process exit so we
+    /// don't drop the final un-terminated line.
     func drainTrailing() -> [String] {
         lock.lock(); defer { lock.unlock() }
         guard !data.isEmpty else { return [] }
