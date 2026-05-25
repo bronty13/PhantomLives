@@ -3,6 +3,9 @@ import SwiftUI
 @main
 struct PurpleIRCApp: App {
     @StateObject private var model = ChatModel()
+    // Sanitizes persisted window/split state before SwiftUI materializes
+    // the first window — see WindowStateGuard / AppDelegate.
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
         WindowGroup("PurpleIRC") {
@@ -46,6 +49,11 @@ struct PurpleIRCApp: App {
             CommandMenu("Buffer")       { BufferMenu().environmentObject(model) }
             CommandMenu("Network")      { NetworkMenu().environmentObject(model) }
             CommandMenu("Conversation") { ConversationMenu().environmentObject(model) }
+            // Window menu — recovery affordance for persisted window /
+            // split-view state corruption (see WindowStateGuard).
+            CommandGroup(after: .windowArrangement) {
+                WindowMenuExtras()
+            }
             // Help menu — append below the system Help search field.
             CommandGroup(after: .help) {
                 HelpMenuExtras().environmentObject(model)
@@ -347,6 +355,22 @@ private struct ConversationMenu: View {
               let id = conn.selectedBufferID,
               let buf = conn.buffers.first(where: { $0.id == id }) else { return false }
         return buf.kind == .channel
+    }
+}
+
+/// Window menu extras — a manual recovery affordance for persisted
+/// window-state corruption. Calls `WindowStateGuard.forceReset`, which
+/// wipes the NSWindow frames, sidebar separation, and `.savedState`
+/// directory, then relaunch advice is implicit (the wipe takes effect
+/// on the next launch). Quitting right after is the cleanest path.
+private struct WindowMenuExtras: View {
+    var body: some View {
+        Button("Reset Window State…") {
+            WindowStateGuard.forceReset(
+                appName: "PurpleIRC",
+                resetVersion: AppDelegate.windowResetVersion
+            )
+        }
     }
 }
 

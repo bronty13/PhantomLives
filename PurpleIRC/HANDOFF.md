@@ -2,7 +2,9 @@
 
 Snapshot of where the project stands so a future session (human or AI)
 can pick up without re-deriving everything from the commit history.
-Last updated: 2026-05-12. Tier #13 (perf + robustness sweep,
+Last updated: 2026-05-24. Tier #18 (sidebar off `NavigationSplitView`
+→ manual `HStack` + `WindowStateGuard`/`AppDelegate`; gitignore Finder
+` 2.app` dupes; doc sync). Tier #13 (perf + robustness sweep,
 1.0.234–235), Tier #14 (refactor pass — SetupView split, typed
 BufferKey, BufferInputState, 1.0.236–238), Tier #15 (quick-wins
 batch — pop-on-watch, irc.store, activity sparkline, Shortcuts.app
@@ -20,8 +22,8 @@ loads, etc.).
 
 ```
 swift build                        # debug build
-./build-app.sh                     # release build → PurpleIRC.app
-./run-tests.sh                     # 245 tests via swift-testing
+./build-app.sh                     # release → PurpleIRC.app → /Applications → relaunch
+./run-tests.sh                     # 332 tests via swift-testing
 open PurpleIRC.app
 ```
 
@@ -77,6 +79,7 @@ stream across every connection, UUID-tagged so listeners can scope.
 | 15 | Quick-wins (pop-on-watch toggle, PurpleBot `irc.store` API, contact activity sparkline, Shortcuts.app + Focus Filter App Intents; reciprocal-watch dropped as unimplementable) | Done | `1.0.239–1.0.241` |
 | 16 | Person model + world-class Address Book workspace (LinkedNick / ContactAlertOverride / migration; non-modal Window(id: "address-book") via ⇧⌘B; sectioned detail with linked nicks, alert overrides, activity timeline, hostmask history, shared channels; Suggest Links sheet; Setup → Address Book tab removed) | Done | `1.0.243` |
 | 17 | Cross-network unified search ⌘⇧F (`LogStore.search` + `UnifiedSearchView`; case-sensitivity + network filter chips + click-to-jump routing through existing `/join` / `/query` auto-create) | Done | `1.0.247` |
+| 18 | Sidebar off `NavigationSplitView` → manual `HStack` (fixed 220 px, `@AppStorage("sidebarVisible")` toggle ⌃⌘S); `WindowStateGuard` + `AppDelegate` (resetVersion 1) + Window → Reset Window State…; gitignore Finder ` 2.app`/` 3.app` dupes + delete stray bundle; README/HANDOFF doc sync | Done | 2026-05-24 |
 
 ## Security & robustness pass (1.0.92, 2026-04-30)
 

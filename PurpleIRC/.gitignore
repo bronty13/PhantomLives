@@ -1,6 +1,9 @@
 .build/
 .swiftpm/
 PurpleIRC.app/
+# Finder-created duplicate bundles ("PurpleIRC 2.app", "PurpleIRC 3.app", …)
+# that appear when Launch Services copies a bundle alongside the original.
+* [0-9].app/
 *.xcodeproj/
 Package.resolved
 .DS_Store

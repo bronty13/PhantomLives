@@ -2,7 +2,8 @@
 
 Native macOS IRC client, written in Swift/SwiftUI. Uses Apple's `Network`
 framework for the TCP/TLS transport, a hand-rolled RFC 1459-style parser,
-and a SwiftUI + `NavigationSplitView` UI.
+and a SwiftUI UI built on a manual fixed-width sidebar (a plain `HStack`,
+not `NavigationSplitView` — see the layout note at the bottom).
 
 ## Requirements
 - macOS 14 (Sonoma) or newer
@@ -11,10 +12,18 @@ and a SwiftUI + `NavigationSplitView` UI.
 ## Build & Run
 
 ```sh
-./build-app.sh            # builds PurpleIRC.app
-open PurpleIRC.app           # launch
-./run-tests.sh            # 267 tests via swift-testing
+./build-app.sh            # build + install to /Applications + relaunch
+./build-app.sh --no-open  # build + install, no focus-stealing relaunch
+./build-app.sh --no-install   # build only (legacy behavior)
+./install.sh              # re-install the last-built bundle
+./run-tests.sh            # 332 tests via swift-testing
 ```
+
+`build-app.sh` defaults to **build + install + relaunch**: it builds
+`PurpleIRC.app`, replaces `/Applications/PurpleIRC.app` via `install.sh`
+(`ditto --noextattr`, after quitting the running copy), and reopens it.
+Installing to `/Applications/` keeps TCC grants, Launch Services, and the
+AppleScript dictionary bound to a stable bundle path across rebuilds.
 
 The script produces a release build by default; set `CONFIG=debug` for a
 debug build.
@@ -205,14 +214,41 @@ purge never loses persisted state.
 
 ## Layout
 
+`HANDOFF.md` is the canonical architecture snapshot — read it before any
+non-trivial change. The high-level map of `Sources/PurpleIRC/`:
+
 ```
-Sources/PurpleIRC/
-  App.swift            @main SwiftUI app + menu commands
-  ContentView.swift    Sidebar + connect form + toolbar
-  BufferView.swift     Messages pane, user list, input bar, raw log
-  ChatModel.swift      @MainActor ObservableObject state + command dispatch
-  IRCClient.swift      NWConnection wrapper, line buffering, send/receive
-  IRCMessage.swift     RFC 1459 line parser
-  WatchlistService.swift  MONITOR / ISON polling + UNUserNotifications
-  WatchlistView.swift  Add/remove watched nicks, presence indicators
+App.swift / AppDelegate.swift   @main scene, menu commands, launch hooks
+ContentView.swift               Manual HStack sidebar + toolbar + sheets
+WindowStateGuard.swift          Purges stale persisted window/split state
+BufferView.swift                Messages pane, user list, input bar, raw log
+ChatModel.swift                 @MainActor store + slash-command dispatch
+IRCConnection.swift             One per network: client + buffers + reconnect
+IRCClient.swift                 NWConnection transport, line buffering, SASL/CAP
+IRCMessage.swift                RFC 1459 line parser  ·  IRCFormatter / IRCSanitize
+SASLNegotiator.swift            SASL PLAIN / EXTERNAL state machine
+ProxyFramer.swift               SOCKS/HTTP proxy at the bottom of the stack
+DCC.swift / DCCView.swift       File transfers + direct chats
+Crypto.swift / KeyStore.swift / EncryptedJSON.swift / BlobStore.swift
+                                AES-256-GCM at-rest encryption + key wrapping
+SettingsStore.swift             settings.json model + persistence
+LogStore.swift / SeenStore.swift / SessionHistoryStore.swift / AppLog.swift
+                                Chat logs, seen tracker, replay archive, diag log
+BotHost.swift / BotEngine.swift / ScriptStore.swift
+                                PurpleBot (JavaScriptCore) + native trigger bot
+AssistantEngine.swift / OllamaClient.swift   Local-LLM assistant
+WatchlistService.swift / WatchlistView.swift  MONITOR/ISON + notifications
+Commands.swift                  60+ slash-command table + /help metadata
+AddressBook/                    Contacts workspace (linked nicks, timeline, tags)
+Setup/                          20-tab Setup window, one file per tab group
 ```
+
+### Sidebar layout note
+
+The top-level sidebar is a plain `HStack` with a fixed-width column, **not**
+`NavigationSplitView`. `NavigationSplitView` on macOS 14+ doesn't reliably
+honor its declared minimum column width at runtime and persists a corruptible
+divider position; the manual layout owns every pixel. `WindowStateGuard`
+(wired from `AppDelegate`) sanitizes any stale persisted window/split state on
+launch, and **Window → Reset Window State…** is the user-facing recovery
+affordance. See CLAUDE.md for the full incident history.

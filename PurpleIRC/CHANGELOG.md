@@ -2,8 +2,52 @@
 
 All notable changes to PurpleIRC are recorded here. The bundle's
 `CFBundleShortVersionString` is derived automatically from the git commit
-count (`1.0.<count>`); CHANGELOG entries use the same scheme so the
-version on the About panel matches the entry that introduced it.
+count (`1.0.<count>`).
+
+> **Versioning note (2026-05-24):** PurpleIRC lives in the polyglot
+> `PhantomLives` monorepo, so `<count>` is the *whole repo's* commit
+> count — commits to sibling projects (SideMolly, PurpleReel, …) bump
+> PurpleIRC's reported version too. The About-panel number therefore
+> runs **ahead** of the latest CHANGELOG heading and no longer maps
+> 1:1 to the entry that introduced a change. Read the **dates**, not
+> the patch numbers, as the source of truth for "what shipped when."
+
+## [1.0.509] — 2026-05-24
+
+### Changed (sidebar layout + window-state hardening)
+
+- **Top-level sidebar migrated off `NavigationSplitView` to a manual
+  `HStack`** with a fixed 220 px column, per the PhantomLives canonical
+  pattern (CLAUDE.md). `NavigationSplitView` on macOS 14+ does not
+  reliably honor its declared minimum column width at runtime and
+  persists a corruptible divider position in both `UserDefaults` and
+  `.savedState`; the manual layout owns every pixel. A new toolbar
+  button (and ⌃⌘S) toggles sidebar visibility via
+  `@AppStorage("sidebarVisible")`.
+- **Added `WindowStateGuard` + `AppDelegate`** (wired via
+  `@NSApplicationDelegateAdaptor`). On launch it purges stale
+  `"NSSplitView Subview Frames *"` keys and the bundle's `.savedState`
+  directory, and runs a versioned one-shot wipe (`resetVersion = 1`) so
+  every existing install drops any divider position left over from the
+  old `NavigationSplitView` chrome.
+- **New Window → Reset Window State…** menu item calls
+  `WindowStateGuard.forceReset` as a user-facing recovery affordance.
+
+### Fixed (file hygiene)
+
+- **`.gitignore` now ignores Finder-created duplicate bundles**
+  (`PurpleIRC 2.app`, `PurpleIRC 3.app`, … via `* [0-9].app/`) so the
+  copies Launch Services drops alongside the original stop showing up in
+  `git status`. Deleted the stray `PurpleIRC 2.app` that had accumulated.
+
+### Docs
+
+- README: corrected the stale "Layout" section (8 files → current
+  architecture map), refreshed Build & Run to document the
+  build → `/Applications/` → relaunch `install.sh` chain, fixed the test
+  count (267 → 332), and dropped the `NavigationSplitView` description.
+- HANDOFF: bumped the build-block test count (245 → 332), updated the
+  header date, and logged Tier #18.
 
 ## [1.0.247] — 2026-05-12
 

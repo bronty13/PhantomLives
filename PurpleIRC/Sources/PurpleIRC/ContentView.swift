@@ -76,15 +76,37 @@ extension Notification.Name {
     static let purpleShowChatLogs = Notification.Name("PurpleIRC.showChatLogs")
 }
 
+/// Root container. Uses a plain `HStack` instead of `NavigationSplitView`
+/// because `NavigationSplitView`'s runtime layout on macOS 14+ does not
+/// honor `.navigationSplitViewColumnWidth(min:)` reliably — persisted
+/// state (in BOTH UserDefaults `NSSplitView Subview Frames *` keys and
+/// `Saved Application State/<bundleId>.savedState/`) can produce a
+/// sidebar that renders narrower than its declared minimum, with no
+/// in-app recovery affordance. This is the empirically-verified
+/// PhantomLives pattern (MusicJournal / PurpleReel); see CLAUDE.md.
+///
+/// With a manual `HStack`, we own every pixel: the sidebar always renders
+/// at exactly `sidebarWidth`, and AppKit's window-restoration machinery
+/// has no top-level split-view divider to mis-restore. `WindowStateGuard`
+/// (wired from `AppDelegate`) still runs to keep stale persisted state
+/// clean across launches.
 struct ContentView: View {
     @EnvironmentObject var model: ChatModel
     @Environment(\.openWindow) private var openWindow
+    @AppStorage("sidebarVisible") private var sidebarVisible: Bool = true
+
+    /// Fixed width. Resizability is a nice-to-have that re-opens the
+    /// persistence-corruption door — defer until explicitly requested.
+    private let sidebarWidth: CGFloat = 220
 
     var body: some View {
-        NavigationSplitView {
-            SidebarView()
-                .navigationSplitViewColumnWidth(min: 180, ideal: 220)
-        } detail: {
+        HStack(spacing: 0) {
+            if sidebarVisible {
+                SidebarView()
+                    .frame(width: sidebarWidth)
+                    .background(.ultraThinMaterial)
+                Divider()
+            }
             VStack(spacing: 0) {
                 WatchHitBanner(watchlist: model.watchlist)
                     .animation(.spring(duration: 0.25), value: model.watchlist.recentHits.first?.id)
@@ -96,8 +118,18 @@ struct ContentView: View {
                         .padding(24)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) { sidebarVisible.toggle() }
+                } label: {
+                    Label("Toggle Sidebar", systemImage: "sidebar.left")
+                }
+                .help("Toggle Sidebar (⌃⌘S)")
+                .keyboardShortcut("s", modifiers: [.control, .command])
+            }
             ToolbarItem(placement: .navigation) {
                 ConnectionStatusView()
             }
