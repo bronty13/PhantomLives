@@ -1,5 +1,19 @@
 # RachelUGC — Changelog
 
+## v0.7.0 — 2026-05-25
+
+- **Cashflow forecast panel** between Outstanding payments and Brands.
+  Buckets every `paid:Pending` deal into Already overdue / Next 30 days /
+  30-60 / 60-90 / Beyond 90 / Unknown ETA using the heuristic *payment
+  lands ~30 days after the deal's month-end* (standard platform net-30
+  cycle).
+- 6 bucket cards across the top — overdue and "next 30 days" get a soft
+  red-tinted / blush-tinted gradient so the urgent stuff pops.
+- Single horizontal stacked-proportion bar underneath visualizes how the
+  total pending $ is distributed across buckets, with $ labels inline when
+  the bucket is ≥7% of total. Legend below.
+- Subtitle headline shows total pending $ in dusty rose serif.
+
 ## v0.6.0 — 2026-05-25
 
 - **Brand contact CRM**. Click a brand name in the Brands & repeat customers

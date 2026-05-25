@@ -67,6 +67,9 @@ python3 scripts/extract.py -i /path/to/some-other.xlsx
   with one-click "Mark paid" and a **Compose chase** button that opens a
   pre-filled email draft (Friendly / Standard / Firm tone chips, editable
   subject + body, Copy-to-clipboard + Open-in-Mail buttons)
+- **Cashflow forecast** — every pending payment bucketed by projected
+  arrival (overdue / 30d / 60d / 90d / beyond), using the platform net-30
+  heuristic. Horizontal proportion bar + per-bucket cards.
 - **Brands & repeat customers** — every deal aggregated by brand name, with
   paid / outstanding / contracted totals, platforms used, last-deal month,
   latest status. Repeat customers (2+ deals) get a pink badge. Sortable.

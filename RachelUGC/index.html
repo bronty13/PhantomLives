@@ -392,6 +392,41 @@
   .daisy.deep { fill: var(--accent-deep); }
   .daisy.light { fill: var(--accent-2); }
 
+  /* ---------- cashflow forecast ---------- */
+  .cashflow-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 10px; margin-bottom: 16px;
+  }
+  .cashflow-bucket {
+    border: 1px solid var(--neutral); border-radius: 12px;
+    padding: 12px 14px; position: relative; overflow: hidden;
+    background: var(--panel);
+  }
+  .cashflow-bucket .label {
+    font-family: var(--serif); font-size: 11px; color: var(--muted);
+    letter-spacing: 0.08em; text-transform: uppercase; font-style: italic;
+  }
+  .cashflow-bucket .value {
+    font-family: var(--serif); font-size: 22px; font-weight: 500;
+    margin-top: 4px; font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .cashflow-bucket .sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .cashflow-bucket.overdue { background: linear-gradient(135deg, #FEE2E2, #FFFFFF); border-color: #FCA5A5; }
+  .cashflow-bucket.overdue .value { color: #991B1B; }
+  .cashflow-bucket.soon { background: linear-gradient(135deg, var(--panel-soft), #FFFFFF); border-color: var(--accent); }
+  .cashflow-bucket.soon .value { color: var(--accent-deep); }
+  .cashflow-bar {
+    height: 16px; display: flex; border-radius: 999px; overflow: hidden;
+    background: var(--panel-soft); border: 1px solid var(--neutral);
+  }
+  .cashflow-bar > div {
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 10px; font-weight: 600;
+    transition: flex 0.3s ease;
+  }
+  .cashflow-bar-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; font-size: 11px; color: var(--muted); }
+  .cashflow-bar-legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
+
   /* ---------- overdue ---------- */
   .badge {
     display: inline-block; padding: 1px 7px; border-radius: 999px;
@@ -518,6 +553,15 @@
     <h2 class="panel-title">Outstanding <span class="accent">payments</span></h2>
     <p class="panel-subtitle" id="outstandingSubtitle">—</p>
     <div class="outstanding-list" id="outstandingList"></div>
+  </section>
+
+  <!-- ==================== CASHFLOW FORECAST ==================== -->
+  <section class="panel">
+    <h2 class="panel-title">Cashflow <span class="accent">forecast</span></h2>
+    <p class="panel-subtitle" id="cashflowSubtitle">Projected arrival of pending payments — assumes payment lands ~30 days after the deal's month-end</p>
+    <div class="cashflow-grid" id="cashflowGrid"></div>
+    <div class="cashflow-bar" id="cashflowBar"></div>
+    <div class="cashflow-bar-legend" id="cashflowLegend"></div>
   </section>
 
   <!-- ==================== BRANDS ==================== -->
@@ -1236,6 +1280,106 @@ function markPaid(dealId) {
   d.paid = "Yes";
   persist(); renderAll();
   toast(`Marked “${d.brand}” as paid 💸`);
+}
+
+// ---------- cashflow forecast ----------
+// Heuristic: payment for a deal lands ~30 days after the END of the month
+// the deal was contracted in. Rachel can refine later — Phase 1 doesn't track
+// actual completion dates, and most platforms pay on month-end + net-30
+// cycles anyway.
+function projectedPayDate(deal) {
+  const mIdx = MONTH_ORDER.indexOf(deal.month);
+  if (mIdx < 0) return null;
+  // Use current year by default. If the month is in the future (e.g. activeMonth filter
+  // showing months past current), still use current year — we never project across years.
+  const yr = new Date().getFullYear();
+  // last day of that month
+  const lastDay = new Date(yr, mIdx + 1, 0);
+  // + 30 days for net-30 cycle
+  return new Date(lastDay.getTime() + 30 * 86400000);
+}
+
+function bucketCashflow(pendingDeals) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const buckets = {
+    overdue:  { label: "Already overdue", days: "ETA in the past", total: 0, count: 0, deals: [] },
+    soon:     { label: "Next 30 days",    days: "this billing cycle", total: 0, count: 0, deals: [] },
+    near:     { label: "30–60 days",      days: "next cycle",        total: 0, count: 0, deals: [] },
+    mid:      { label: "60–90 days",      days: "two cycles out",    total: 0, count: 0, deals: [] },
+    far:      { label: "Beyond 90 days",  days: "long tail",         total: 0, count: 0, deals: [] },
+    unknown:  { label: "Unknown ETA",     days: "no month set",      total: 0, count: 0, deals: [] },
+  };
+  pendingDeals.forEach(d => {
+    const pay = projectedPayDate(d);
+    if (!pay) { buckets.unknown.total += d.amountNumeric; buckets.unknown.count++; buckets.unknown.deals.push(d); return; }
+    const days = Math.round((pay - today) / 86400000);
+    let key;
+    if (days < 0) key = "overdue";
+    else if (days <= 30) key = "soon";
+    else if (days <= 60) key = "near";
+    else if (days <= 90) key = "mid";
+    else key = "far";
+    buckets[key].total += d.amountNumeric;
+    buckets[key].count++;
+    buckets[key].deals.push(d);
+  });
+  return buckets;
+}
+
+function renderCashflow() {
+  const pending = state.deals.filter(d => d.paid === "Pending" && d.amountNumeric > 0);
+  const total = pending.reduce((s, d) => s + d.amountNumeric, 0);
+  const buckets = bucketCashflow(pending);
+
+  document.getElementById("cashflowSubtitle").innerHTML =
+    total
+      ? `<strong style="color:var(--accent-deep);font-family:var(--serif);font-size:16px">${money(total)}</strong> pending across ${pending.length} deal${pending.length === 1 ? "" : "s"} — projected arrival assumes payment lands ~30 days after the deal's month-end`
+      : `Nothing pending — you're all paid up 🌸`;
+
+  const order = ["overdue", "soon", "near", "mid", "far", "unknown"];
+  const cssAccentDeep = readVar("--accent-deep");
+  const cssAccent = readVar("--accent");
+  const cssAccent2 = readVar("--accent-2");
+  const cssBlob = readVar("--blob");
+  const cssNeutral = readVar("--neutral");
+  const colors = {
+    overdue: "#B91C1C",
+    soon:    cssAccentDeep,
+    near:    cssAccent,
+    mid:     cssAccent2,
+    far:     cssBlob,
+    unknown: cssNeutral,
+  };
+
+  const grid = document.getElementById("cashflowGrid");
+  grid.innerHTML = order.map(k => {
+    const b = buckets[k];
+    const cls = k === "overdue" ? "overdue" : (k === "soon" ? "soon" : "");
+    return `<div class="cashflow-bucket ${cls}">
+      <div class="label">${b.label}</div>
+      <div class="value">${b.total ? money(b.total) : "—"}</div>
+      <div class="sub">${b.count ? b.count + " deal" + (b.count === 1 ? "" : "s") + " · " + b.days : b.days}</div>
+    </div>`;
+  }).join("");
+
+  const bar = document.getElementById("cashflowBar");
+  if (!total) {
+    bar.innerHTML = "";
+    document.getElementById("cashflowLegend").innerHTML = "";
+    return;
+  }
+  bar.innerHTML = order.map(k => {
+    const b = buckets[k];
+    if (!b.total) return "";
+    const flex = (b.total / total).toFixed(4);
+    return `<div style="flex:${flex};background:${colors[k]}" title="${b.label}: ${money(b.total)}">${(b.total / total) > 0.07 ? money(b.total) : ""}</div>`;
+  }).join("");
+
+  document.getElementById("cashflowLegend").innerHTML = order
+    .filter(k => buckets[k].total > 0)
+    .map(k => `<span><span class="swatch" style="background:${colors[k]}"></span>${buckets[k].label}</span>`)
+    .join("");
 }
 
 // ---------- brand contact CRM ----------
@@ -2202,6 +2346,7 @@ function renderAll() {
   renderCharts();
   renderBoard();
   renderOutstanding();
+  renderCashflow();
   renderBrands();
   renderTable();
   const ex = state.extractedAt
