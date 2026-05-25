@@ -1,5 +1,19 @@
 # RachelUGC — Changelog
 
+## v0.3.0 — 2026-05-25
+
+- **Payment chase email composer** on every Outstanding row alongside
+  "Mark paid". Click "✉︎ Compose chase" → modal pre-fills a draft email
+  customized to the deal (brand, deliverables, amount, invoice number if
+  one was generated, completion-on-time mention if status is Completed).
+- Three tones via chips: **Friendly nudge** (default), **Standard
+  follow-up**, **Firm reminder** — switch between them and the subject +
+  body regenerate.
+- Recipient address, subject, and body are all editable in the modal.
+- Two ship paths: **📋 Copy body** writes to clipboard, **✉︎ Open in Mail**
+  fires a `mailto:` so Apple Mail / Gmail / whatever Rachel's default
+  client is picks it up with the draft ready to send.
+
 ## v0.2.0 — 2026-05-25
 
 - New **Brands & repeat customers** panel between Outstanding and All Deals.

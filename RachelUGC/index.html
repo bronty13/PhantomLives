@@ -392,6 +392,12 @@
   .daisy.deep { fill: var(--accent-deep); }
   .daisy.light { fill: var(--accent-2); }
 
+  /* ---------- chase modal ---------- */
+  .chase-field { display: grid; grid-template-columns: 100px 1fr; gap: 10px; align-items: center; margin-bottom: 10px; }
+  .chase-field label { margin: 0; }
+  .chase-body { width: 100%; min-height: 220px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; line-height: 1.5; padding: 12px; border: 1px solid var(--neutral); border-radius: 10px; }
+  .tone-chips { display: inline-flex; gap: 6px; }
+
   /* ---------- brands panel ---------- */
   .brands-summary {
     font-size: 13px; color: var(--muted); margin: -8px 0 14px;
@@ -620,6 +626,42 @@
       <span class="spacer"></span>
       <button onclick="closeDealModal()">Cancel</button>
       <button class="primary" onclick="saveDealFromModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== CHASE EMAIL MODAL ==================== -->
+<div class="backdrop" id="chaseBackdrop" onclick="if(event.target===this) closeChaseModal()">
+  <div class="modal" style="max-width: 640px">
+    <h2>Compose <span class="accent">payment chase</span></h2>
+    <p class="panel-subtitle" id="chaseFor" style="margin: -10px 0 14px"></p>
+
+    <div class="chase-field">
+      <label>Tone</label>
+      <div class="tone-chips chips">
+        <span class="chip active" data-tone="friendly" onclick="setChaseTone('friendly')">Friendly nudge</span>
+        <span class="chip" data-tone="standard" onclick="setChaseTone('standard')">Standard follow-up</span>
+        <span class="chip" data-tone="firm" onclick="setChaseTone('firm')">Firm reminder</span>
+      </div>
+    </div>
+    <div class="chase-field">
+      <label>To</label>
+      <input type="text" id="chaseTo" placeholder="brand@example.com (optional)" />
+    </div>
+    <div class="chase-field">
+      <label>Subject</label>
+      <input type="text" id="chaseSubject" />
+    </div>
+    <div class="field">
+      <label>Body</label>
+      <textarea id="chaseBody" class="chase-body" spellcheck="true"></textarea>
+    </div>
+
+    <div class="modal-actions">
+      <span class="spacer"></span>
+      <button onclick="closeChaseModal()">Cancel</button>
+      <button onclick="copyChaseBody()">📋 Copy body</button>
+      <button class="primary" onclick="openChaseMailto()">✉︎ Open in Mail</button>
     </div>
   </div>
 </div>
@@ -1088,7 +1130,8 @@ function renderOutstanding() {
         <div class="outstanding-meta">${escapeHTML(d.platform)} &middot; ${escapeHTML(d.category)} &middot; ${escapeHTML(d.status)}</div>
       </div>
       <div class="outstanding-amount">${money(d.amountNumeric)}</div>
-      <div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
+        <button class="small" onclick="openChaseModal('${d.id}')">✉︎ Compose chase</button>
         <button class="small" onclick="markPaid('${d.id}')">Mark paid</button>
       </div>
     </div>
@@ -1417,6 +1460,112 @@ function deleteFromModal() {
       closeDealModal();
       toast("Deleted");
     });
+}
+
+// ---------- chase email ----------
+let chaseDealId = null;
+let chaseTone = "friendly";
+
+const CHASE_TEMPLATES = {
+  friendly: {
+    subjectPrefix: "Quick check-in on ",
+    body: (ctx) => (
+`Hi ${ctx.brandPossessive} team!
+
+I hope you're having a great week! I wanted to gently check in on the invoice for our ${ctx.deliverables} collaboration${ctx.invoiceLine}. The agreed amount was ${ctx.amount}.
+
+When you get a chance, could you let me know where this is in your payment cycle? Totally understand if it's still working its way through — just want to make sure nothing slipped through the cracks.
+
+Thank you so much again for partnering with me on this! 🌸
+
+Warmly,
+Rachel Rogalsky
+Real with Rach UGC`)
+  },
+  standard: {
+    subjectPrefix: "Following up: invoice for ",
+    body: (ctx) => (
+`Hi ${ctx.brandPossessive} team,
+
+I'm following up on the outstanding payment for our ${ctx.deliverables} collaboration${ctx.invoiceLine}. The agreed amount is ${ctx.amount}${ctx.statusLine}.
+
+Could you share an update on when I can expect payment? Happy to resend the invoice or any supporting materials if useful.
+
+Thanks for your time —
+
+Rachel Rogalsky
+Real with Rach UGC`)
+  },
+  firm: {
+    subjectPrefix: "Second follow-up: payment due for ",
+    body: (ctx) => (
+`Hi ${ctx.brandPossessive} team,
+
+I'm writing to follow up again on the outstanding payment for our ${ctx.deliverables} collaboration${ctx.invoiceLine}. The agreed amount of ${ctx.amount} is now past due${ctx.statusLine}.
+
+Could you please confirm a payment date by end of week? If there's a different contact on your team who handles AP, I'd appreciate being introduced.
+
+Thanks,
+Rachel Rogalsky
+Real with Rach UGC`)
+  },
+};
+
+function openChaseModal(dealId) {
+  const d = state.deals.find(x => x.id === dealId);
+  if (!d) return;
+  chaseDealId = dealId;
+  chaseTone = "friendly";
+  document.getElementById("chaseFor").innerHTML =
+    `For <strong style="color:var(--text)">${escapeHTML(d.brand)}</strong> &middot; `
+    + `${money(d.amountNumeric)} &middot; ${escapeHTML(d.platform || "—")}`;
+  document.getElementById("chaseTo").value = "";
+  refreshChaseTone();
+  document.getElementById("chaseBackdrop").classList.add("open");
+  setTimeout(() => document.getElementById("chaseTo").focus(), 50);
+}
+function closeChaseModal() {
+  document.getElementById("chaseBackdrop").classList.remove("open");
+  chaseDealId = null;
+}
+function setChaseTone(tone) {
+  chaseTone = tone;
+  document.querySelectorAll(".tone-chips .chip").forEach(c => {
+    c.classList.toggle("active", c.dataset.tone === tone);
+  });
+  refreshChaseTone();
+}
+function refreshChaseTone() {
+  const d = state.deals.find(x => x.id === chaseDealId);
+  if (!d) return;
+  const invoiced = getInvoiced(chaseDealId);
+  const ctx = {
+    brandPossessive: d.brand.endsWith("s") ? d.brand + "'" : d.brand + "'s",
+    deliverables: (d.deliverables || "UGC content").toLowerCase().replace(/\s+/g, " "),
+    amount: money(d.amountNumeric, { decimals: 0 }),
+    invoiceLine: invoiced ? ` (invoice ${invoiced.number}, issued ${invoiced.date})` : "",
+    statusLine: d.status === "Completed" ? ", and the deliverable was completed on time" : "",
+  };
+  const tpl = CHASE_TEMPLATES[chaseTone];
+  document.getElementById("chaseSubject").value =
+    tpl.subjectPrefix + d.brand + (invoiced ? ` (${invoiced.number})` : "");
+  document.getElementById("chaseBody").value = tpl.body(ctx);
+}
+function copyChaseBody() {
+  const body = document.getElementById("chaseBody").value;
+  navigator.clipboard.writeText(body).then(
+    () => toast("Email body copied to clipboard"),
+    () => toast("Couldn't copy — select manually")
+  );
+}
+function openChaseMailto() {
+  const to = document.getElementById("chaseTo").value.trim();
+  const subject = document.getElementById("chaseSubject").value;
+  const body = document.getElementById("chaseBody").value;
+  const url = "mailto:" + encodeURIComponent(to)
+    + "?subject=" + encodeURIComponent(subject)
+    + "&body=" + encodeURIComponent(body);
+  window.location.href = url;
 }
 
 // ---------- confirm modal ----------
