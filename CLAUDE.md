@@ -43,6 +43,7 @@ The repo content is shared via git, but these pieces live in macOS Keychain / sy
 3. **Sparkle EdDSA private key** in the login Keychain for Sparkle-using apps (currently PurpleDedup). The public half goes into `~/.zshrc` as `SPARKLE_PUBLIC_KEY`. See `## Swift app build prerequisites` section 2 below for details.
 4. **Notarytool keychain profile** for release builds: `xcrun notarytool store-credentials "<App>-Notary" --apple-id <id> --team-id <id>`. Per-subproject; only needed when cutting a release from this Mac.
 5. **Homebrew prereqs** vary per subproject — see each subproject's README. Common: `rust`, `pnpm`, `librsvg`, `imagemagick`, `slackdump`.
+6. **Git hooks** are NOT carried by `git clone` — re-run any subproject's hook installer after cloning. Currently: `PurplePDF/scripts/install-git-hooks.sh` (installs the pre-commit hook that auto-bumps PurplePDF's patch version + prepends a CHANGELOG entry on commits touching `PurplePDF/**`; no-ops for other subprojects). Without it, PurplePDF version bumps must be done by hand.
 
 ## Repository shape
 
