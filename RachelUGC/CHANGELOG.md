@@ -1,5 +1,22 @@
 # RachelUGC — Changelog
 
+## v0.4.0 — 2026-05-25
+
+- **Optional due date** on every deal (date picker in the add/edit modal).
+  Stored on the deal as `dueDate` (ISO `YYYY-MM-DD`); persists through
+  edits + localStorage and survives spreadsheet re-imports.
+- **Overdue badges & callouts**:
+  - Status-board cards show a 🔥 due-line in red when overdue, ⏰ in pink
+    when due within 3 days, 📅 in muted grey when further out. An
+    `overdue` pill appears next to the brand name on overdue cards.
+  - All-deals table gains a Due column and renders the same pill next to
+    the status pill for overdue rows.
+- **Overdue KPI** added to the at-a-glance strip — count of past-due
+  deliverables, with a "N due soon" sub-line when there are any due in
+  the next 3 days.
+- Due-date logic ignores Completed and Cancelled deals, so the overdue
+  count is always "deliverables I actually still owe."
+
 ## v0.3.0 — 2026-05-25
 
 - **Payment chase email composer** on every Outstanding row alongside

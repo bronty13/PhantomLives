@@ -54,14 +54,15 @@ python3 scripts/extract.py -i /path/to/some-other.xlsx
 
 - **Hero** — "Real with Rach UGC" wordmark, daisy clusters, soft pink blob
 - **Filter chips** — by month and by category, top of the page
-- **KPI strip** — contracted $, paid $, outstanding $, completed count, gifted
-  count, average paid deal
+- **KPI strip** — contracted $, paid $, outstanding $, completed count,
+  **overdue count**, gifted count, average paid deal
 - **Charts** — stacked monthly earnings bar (paid + pending; gifted count
   shown in tooltip) and a category-mix doughnut
 - **Status board** — kanban with five columns (Need to Film → Awaiting
   Delivery → Need to Edit → Pending Approval → Completed). Drag a card
-  between columns to update its status. Cancelled deals collapsed into a
-  footer for the sake of vibes.
+  between columns to update its status. Cards show due dates with 🔥 /
+  ⏰ / 📅 indicators when the deal has one. Cancelled deals collapsed
+  into a footer for the sake of vibes.
 - **Outstanding payments** — every `Paid = Pending` deal, biggest first,
   with one-click "Mark paid" and a **Compose chase** button that opens a
   pre-filled email draft (Friendly / Standard / Firm tone chips, editable

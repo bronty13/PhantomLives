@@ -392,6 +392,19 @@
   .daisy.deep { fill: var(--accent-deep); }
   .daisy.light { fill: var(--accent-2); }
 
+  /* ---------- overdue ---------- */
+  .badge {
+    display: inline-block; padding: 1px 7px; border-radius: 999px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.05em;
+    text-transform: uppercase; font-family: var(--sans);
+    vertical-align: middle; margin-left: 6px;
+  }
+  .badge.overdue { background: #FEE2E2; color: #991B1B; }
+  .badge.due-soon { background: var(--blob); color: var(--accent-deep); }
+  .due-line { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .due-line.overdue { color: #B91C1C; font-weight: 600; }
+  .due-line.soon { color: var(--accent-deep); }
+
   /* ---------- chase modal ---------- */
   .chase-field { display: grid; grid-template-columns: 100px 1fr; gap: 10px; align-items: center; margin-bottom: 10px; }
   .chase-field label { margin: 0; }
@@ -614,10 +627,16 @@
         </select>
       </div>
     </div>
-    <div class="field">
-      <label for="f_category">Category</label>
-      <input type="text" id="f_category" list="categoryList" placeholder="Health, Skincare, ..." />
-      <datalist id="categoryList"></datalist>
+    <div class="field-row">
+      <div class="field">
+        <label for="f_category">Category</label>
+        <input type="text" id="f_category" list="categoryList" placeholder="Health, Skincare, ..." />
+        <datalist id="categoryList"></datalist>
+      </div>
+      <div class="field">
+        <label for="f_dueDate">Due date <span style="text-transform:none;font-style:italic;font-weight:400">(optional)</span></label>
+        <input type="date" id="f_dueDate" />
+      </div>
     </div>
     <div id="invoicedNote"></div>
     <div class="modal-actions">
@@ -850,6 +869,33 @@ function monthName(code) {
   return ({JAN:"January",FEB:"February",MAR:"March",APR:"April",MAY:"May",JUN:"June",JUL:"July",AUG:"August",SEP:"September",OCT:"October",NOV:"November",DEC:"December"})[code] || code;
 }
 
+// Returns -N if overdue by N days, +N if due in N days, null if no due date.
+// "Today" counts as 0 (still on time). Returns null for completed/cancelled deals.
+function dueDelta(d) {
+  if (!d.dueDate) return null;
+  if (d.status === "Completed" || d.status === "Cancelled") return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(d.dueDate + "T00:00:00");
+  return Math.round((due - today) / 86400000);
+}
+function isOverdue(d) {
+  const n = dueDelta(d);
+  return n !== null && n < 0;
+}
+function isDueSoon(d, withinDays=3) {
+  const n = dueDelta(d);
+  return n !== null && n >= 0 && n <= withinDays;
+}
+function dueLabel(d) {
+  const n = dueDelta(d);
+  if (n === null) return "";
+  if (n < 0) return `${-n}d overdue`;
+  if (n === 0) return "due today";
+  if (n === 1) return "due tomorrow";
+  return `due in ${n}d`;
+}
+
 function money(n, opts={}) {
   if (n === null || n === undefined || isNaN(n)) return "—";
   const decimals = opts.decimals ?? 0;
@@ -896,12 +942,19 @@ function renderKPIs() {
   const paidDeals = deals.filter(d => d.paid === "Yes" && !d.isGifted && d.amountNumeric > 0);
   const avgPaid = paidDeals.length ? paidDeals.reduce((s, d) => s + d.amountNumeric, 0) / paidDeals.length : 0;
 
+  const overdueCount = deals.filter(isOverdue).length;
+  const dueSoonCount = deals.filter(d => isDueSoon(d, 3)).length;
+
   const cards = [
     { label: "Contracted", value: money(contracted), sub: deals.length + " deals", cls: "accent-fill" },
     { label: "Paid", value: money(paid), sub: paidDeals.length + " paid deals", valCls: "good" },
     { label: "Outstanding", value: money(pending), sub: "awaiting payment", valCls: "warn", cls: "outstanding" },
     { label: "Completed", value: completed + (deals.length ? "/" + deals.length : ""),
       sub: deals.length ? Math.round(100 * completed / deals.length) + "% done" : "" },
+    { label: "Overdue",
+      value: overdueCount,
+      sub: dueSoonCount ? dueSoonCount + " due soon" : "deliverables past due",
+      valCls: overdueCount ? "bad" : "" },
     { label: "Gifted", value: gifted, sub: "deals" },
     { label: "Avg paid deal", value: money(avgPaid, {decimals: 0}), sub: "excl. gifted" },
   ];
@@ -1087,14 +1140,27 @@ function buildCard(d) {
     ? `<span class="card-amount gifted">${escapeHTML(d.amountDisplay || "Gifted")}</span>`
     : (d.amountNumeric ? `<span class="card-amount">${money(d.amountNumeric)}</span>` : "");
 
+  const delta = dueDelta(d);
+  let dueHTML = "";
+  if (delta !== null) {
+    if (delta < 0) {
+      dueHTML = `<div class="due-line overdue">🔥 ${dueLabel(d)}</div>`;
+    } else if (delta <= 3) {
+      dueHTML = `<div class="due-line soon">⏰ ${dueLabel(d)}</div>`;
+    } else {
+      dueHTML = `<div class="due-line">📅 ${dueLabel(d)}</div>`;
+    }
+  }
+
   card.innerHTML = `
     ${amountHTML}
-    <div class="card-brand">${escapeHTML(d.brand)}</div>
+    <div class="card-brand">${escapeHTML(d.brand)}${isOverdue(d) ? '<span class="badge overdue">overdue</span>' : ''}</div>
     <div class="card-meta">
       <span class="card-tag">${escapeHTML(d.platform || "—")}</span>
       <span class="card-tag">${escapeHTML(d.category || "—")}</span>
     </div>
     <div class="card-deliverables">${escapeHTML(d.deliverables || "")}</div>
+    ${dueHTML}
   `;
   return card;
 }
@@ -1272,7 +1338,15 @@ const TABLE_COLS = [
       ? `<span class="amount gifted">${escapeHTML(d.amountDisplay || "Gifted")}</span>`
       : (d.amountNumeric ? money(d.amountNumeric) : "—") },
   { key: "status",     label: "Status",
-    render: (d) => `<span class="pill ${STATUS_PILL_CLASS[d.status] || ""}">${escapeHTML(d.status || "—")}</span>` },
+    render: (d) => `<span class="pill ${STATUS_PILL_CLASS[d.status] || ""}">${escapeHTML(d.status || "—")}</span>`
+                 + (isOverdue(d) ? '<span class="badge overdue">overdue</span>' : '') },
+  { key: "dueDate",    label: "Due",
+    render: (d) => {
+      if (!d.dueDate) return "—";
+      const lbl = dueLabel(d);
+      const cls = isOverdue(d) ? "overdue" : (isDueSoon(d, 3) ? "soon" : "");
+      return `<span class="due-line ${cls}" style="margin:0">${d.dueDate}${lbl ? " · " + lbl : ""}</span>`;
+    } },
   { key: "paid",       label: "Paid",
     render: (d) => `<span class="pill ${PAID_PILL_CLASS[d.paid] || ""}">${escapeHTML(d.paid || "—")}</span>` },
   { key: "category",   label: "Category", render: (d) => escapeHTML(d.category) },
@@ -1339,6 +1413,7 @@ function openAddModal() {
   document.getElementById("f_paid").value = "Pending";
   document.getElementById("f_posting").value = "No";
   document.getElementById("f_category").value = "";
+  document.getElementById("f_dueDate").value = "";
   populateMonthSelect();
   document.getElementById("f_month").value = currentMonthCode();
   document.getElementById("deleteBtn").style.display = "none";
@@ -1364,6 +1439,7 @@ function openEditModal(dealId) {
   document.getElementById("f_paid").value = d.paid || "N/A";
   document.getElementById("f_posting").value = d.postingToSocials || "No";
   document.getElementById("f_category").value = d.category || "";
+  document.getElementById("f_dueDate").value = d.dueDate || "";
   populateMonthSelect();
   document.getElementById("f_month").value = d.month || currentMonthCode();
   document.getElementById("deleteBtn").style.display = "";
@@ -1414,6 +1490,7 @@ function saveDealFromModal() {
   const posting = document.getElementById("f_posting").value;
   const category = document.getElementById("f_category").value.trim();
   const month = document.getElementById("f_month").value;
+  const dueDate = document.getElementById("f_dueDate").value || null;
 
   const isGifted = !!gifted;
   const amountNumeric = isGifted ? 0 : (isNaN(amount) ? 0 : amount);
@@ -1426,7 +1503,7 @@ function saveDealFromModal() {
     Object.assign(d, {
       platform, brand, deliverables, amountNumeric, amountDisplay, isGifted,
       amountRaw: isGifted ? amountDisplay : (amountNumeric ? String(amountNumeric) : ""),
-      status, paid, postingToSocials: posting, category, month,
+      status, paid, postingToSocials: posting, category, month, dueDate,
     });
   } else {
     const id = "user-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
@@ -1434,7 +1511,7 @@ function saveDealFromModal() {
       id, rowIndex: 10000 + state.deals.length,
       platform, brand, deliverables, amountNumeric, amountDisplay, isGifted,
       amountRaw: isGifted ? amountDisplay : (amountNumeric ? String(amountNumeric) : ""),
-      status, paid, postingToSocials: posting, category, month,
+      status, paid, postingToSocials: posting, category, month, dueDate,
     });
   }
 
