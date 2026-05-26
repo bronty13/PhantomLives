@@ -4,7 +4,9 @@ import { AppearanceSettings } from './AppearanceSettings';
 import { BackupSettings } from './BackupSettings';
 import { BundlerSettings } from './BundlerSettings';
 import { ContentTagsSettings } from './ContentTagsSettings';
+import { FeaturesSettings } from './FeaturesSettings';
 import { HolidaysSettings } from './HolidaysSettings';
+import { IncomeGoalsSettings } from './IncomeGoalsSettings';
 import { NotesSettings } from './NotesSettings';
 import { RewardsSettings } from './RewardsSettings';
 import { AtwSettingsPane } from './AtwSettings';
@@ -17,7 +19,7 @@ import { SitesSettings } from './SitesSettings';
 import { TaxonomySettings } from './TaxonomySettings';
 import { UpdatesSettings } from './UpdatesSettings';
 
-type Tab = 'personas' | 'appearance' | 'sites' | 'products' | 'interests' | 'kinks' | 'platforms' | 'c4s' | 'bundler' | 'contentTags' | 'notes' | 'holidays' | 'rewards' | 'security' | 'atw' | 'data' | 'updates' | 'backup';
+type Tab = 'personas' | 'appearance' | 'features' | 'goals' | 'sites' | 'products' | 'interests' | 'kinks' | 'platforms' | 'c4s' | 'bundler' | 'contentTags' | 'notes' | 'holidays' | 'rewards' | 'security' | 'atw' | 'data' | 'updates' | 'backup';
 
 interface Props {
   active: Persona;
@@ -27,6 +29,8 @@ interface Props {
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'personas',  label: 'Personas',   icon: '👯‍♀️' },
   { key: 'appearance', label: 'Appearance', icon: '🎨' },
+  { key: 'features',  label: 'Features',   icon: '🚩' },
+  { key: 'goals',     label: 'Goals',      icon: '💎' },
   { key: 'sites',     label: 'Sites',      icon: '💻' },
   { key: 'platforms', label: 'Platforms',  icon: '📣' },
   { key: 'products',  label: 'Products',   icon: '📦' },
@@ -52,6 +56,8 @@ export function SettingsView({ active, onPersonasChanged }: Props) {
   switch (tab) {
     case 'personas':  body = <PersonasSettings onChanged={onPersonasChanged} />; break;
     case 'appearance': body = <AppearanceSettings />; break;
+    case 'features':  body = <FeaturesSettings />; break;
+    case 'goals':     body = <IncomeGoalsSettings />; break;
     case 'sites':     body = <SitesSettings activePersona={active} />; break;
     case 'platforms': body = <PlatformsSettings />; break;
     case 'products':  body = <TaxonomySettings kind="products" />; break;

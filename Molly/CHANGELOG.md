@@ -4,6 +4,397 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.0] — 2026-05-26
+
+### Added — 💎 Adhoc-income monthly goals + escalating celebrations
+
+Two-part feature: configurable monthly income targets, plus a much
+more expressive celebration system that scales with sale size.
+
+#### Settings → 💎 Goals
+
+New Settings tab with 12 month fields (`<MoneyInput />` each). Stores
+per-month adhoc-income goals as integer cents in `app_settings` under
+keys `goals.adhocMonthly.01` … `.12`. No migration — rows are created
+lazily on first save. Defaults: **$1,000** for Jan–Oct (steady months)
+and **$2,000** for Nov–Dec (holiday season). A "↺ Reset to defaults"
+button restores the canonical split.
+
+Goals are **global** (one number per month covering all personas
+combined) and the goal counts the Adhoc tab's unified total — typed-in
+adhocs plus customer sales — matching what
+`totalsForPeriod(...).adhocTotal` already returns.
+
+#### Goal progress card on the Adhoc Income tab
+
+Pretty card at the top of the Adhoc Income view shows the current
+month's running total in Caveat (e.g. `$842 of $1,000`), a soft-pink
+animated progress bar (480ms cubic-bezier on `width` so it visibly
+slides forward when new income lands), and inline emoji milestone
+markers at 25% 🌸 / 50% 🌷 / 75% 🌟 / 100% 🎉 (markers fade in once
+the percent crosses each threshold).
+
+When `actual > goal`, a "🚀 +$420 over goal!" pill appears. Card
+auto-hides for any past-month view so historical browsing for tax
+prep stays clean.
+
+#### Five-tier celebrations when income is logged
+
+Sale size determines the tier — a $5 tip and a $1,500 custom no
+longer feel the same.
+
+| Tier | Amount | Sound | Encouragement bank | Visual |
+|---|---|---|---|---|
+| 1 | < $10 | soft A5 ting (200ms) | `tiny` (~10 lines, "Every dollar counts! 🌸") | small +$X pill |
+| 2 | $10–$49 | classic `playCashRegister()` | `small` (original 30 sayings) | +$X + 1 emoji |
+| 3 | $50–$199 | brighter ka-ching (4-partial bell w/ E8 sparkle) | `medium` (14 lines, more enthusiastic) | +$X + 3-emoji burst |
+| 4 | $200–$999 | layered double cha-ching (two bells 180ms apart) | `big` (12 lines, big-girl-bag energy) | larger +$X + 6-emoji burst |
+| 5 | $1000+ | mega fanfare (drawer + C-major arpeggio cascade + high C8) | `whale` (11 lines, full queen energy) | huge +$X + 10-emoji burst + screen flash |
+
+Encouragement banks restructured from the flat 30-saying constant
+into per-tier readonly arrays. Recent-avoidance window (last 8
+strings) is shared across all banks so back-to-back saves never
+repeat the same line regardless of tier.
+
+#### Milestone fanfare layered on top
+
+When `totalAfter` crosses a monthly goal milestone the current save
+didn't start on (25 / 50 / 75 / 100 / 150 / 200%), a separate
+fanfare fires ~500ms after the tier sound starts and a dedicated
+milestone toast pops ~600ms behind the regular tier toast:
+
+- 25% → C+G perfect-fifth ping + "🌸 25% in! Quarter of the way! 🌸"
+- 50% → E→G major-third ascent + "💖 Halfway! Halfway there! 💖"
+- 75% → G→B→D rising notes + "🌟 75% there!"
+- 100% → full C-major triad with C7 echo + "🎉 GOAL HIT!"
+- 150% → "💎 150% there!"
+- 200% → double ascending arpeggio + "🚀 DOUBLE goal!!"
+
+When a single huge sale crosses multiple milestones in one shot
+(e.g. $0 → $1000 on a $1000 goal), the highest milestone is fired so
+the moment matches the magnitude.
+
+#### Files
+
+**New:**
+- `src/state/incomeGoals.ts` — load/save/hook for the 12-month map
+  (mirrors `state/featureFlags.ts`).
+- `src/views/Settings/IncomeGoalsSettings.tsx` — Settings → Goals tab.
+- `src/views/Income/GoalProgress.tsx` — progress card.
+- `src/lib/celebration.ts` — `celebrateIncome()` orchestrator,
+  `tierForAmount`, `milestoneCrossed`.
+- `src/lib/floatingNumber.ts` — imperative DOM +$X pill + emoji
+  burst + tier-5 screen flash.
+- `src/lib/celebration.test.ts` — 9 new cases (tier mapping +
+  milestone crossing detection including multi-milestone single
+  saves + boundary inclusivity).
+
+**Modified:**
+- `src/lib/encouragements.ts` — restructured into 5 tier banks +
+  milestone bank; `pickEncouragement(tier)` signature change.
+- `src/lib/encouragements.test.ts` — extended to assert per-tier
+  variety and shared-window avoidance.
+- `src/lib/encouragementToast.ts` — `showEncouragement()` now
+  accepts optional explicit text (defaults to the small bank).
+- `src/lib/soundFx.ts` — added `playCashRegisterTiny / Medium / Big
+  / Mega` and `playMilestoneFanfare(percent)` built on the existing
+  `playBellTone` primitive.
+- `src/views/Settings/SettingsView.tsx` — registers the new `goals`
+  tab between `features` and `sites`.
+- `src/views/Income/AdhocIncomeView.tsx` — adds `<GoalProgress />`,
+  captures before/after current-month totals around the insert, and
+  fires `celebrateIncome(...)` in place of the old single-tier pair.
+  Saves into the current calendar month always use today's goal,
+  even when the view is filtered to a different month (Sallie
+  backfilling May from June still progresses June's goal).
+- `src/views/Customers/CustomerSaleEditor.tsx` — same celebration
+  swap, calling `loadMonthlyGoals()` inline since the editor doesn't
+  live under a goals provider.
+- `src/views/Income/SiteIncomeWizard.tsx` — kept on the original
+  single-tier celebration (site income isn't in the adhoc-goal
+  scope), updated to the new `pickEncouragement('small')` signature.
+
+Tests: **190/190 JS pass** (up from 180), 229/229 Rust pass.
+
+## [1.18.6] — 2026-05-26
+
+### Added — ⏱ Home page timers (2 countdowns + stopwatch) with arrival chimes
+
+The Hi, I'm Molly card had a lot of empty space; it now hosts a row
+of three pretty timers under the live clock. All state persists
+across app launches.
+
+#### Countdown #1 — 🎂 default "Birthday" / Dec 6
+
+Big handwritten-Caveat day count + the chosen date underneath ("194
+days · Dec 6, 2026"). Both the label and the date are editable via
+the ✏️ button — change "Birthday" to a friend's name, change the
+date to any day, click Save.
+
+Default date picks the next future Dec 6 (rolls to next year if Dec
+6 has already passed this year). State persists in `localStorage`
+under `molly:timer:countdown1`.
+
+On the arrival day (`remaining === 0`), plays an ascending C6 → E6
+→ G6 major-chord arpeggio — the celebratory "birthday chime."
+Fires at most once per calendar day per timer (tracked under
+`molly:timer:countdown1:lastFired`) so app re-opens later in the
+day stay silent.
+
+#### Countdown #2 — 🏠 default "Rent Due" / next 1st of the month
+
+Identical card with a different default. Default date is the 1st of
+the *next* calendar month from today; Sallie can pin it to any day.
+Plays a different chime on arrival: A5 → E5 perfect-fourth descent
+("ding-dong"), heavier than the birthday flourish so the two are
+audibly distinct.
+
+#### Stopwatch — ⏱ HH:MM:SS.cc count-up
+
+Monospaced display with centisecond precision. Start / Stop / Reset
+buttons. Hundredths-of-a-second updates run via `requestAnimationFrame`
+direct to the DOM (no React re-renders 30× a second) and only run
+while the timer is active.
+
+State persists across app launches *including the running state* —
+if Sallie hits Start and quits Molly, the timer keeps counting in
+the background and resumes from the correct elapsed time on next
+launch. Internal model is `{ running, startedAt, accumulatedMs }`
+so resume is just `accumulatedMs + (now − startedAt)`.
+
+On Stop (only — Start is silent), plays a soft A4+A5 bell pair as a
+gentle "session complete" cue. Reset zeroes everything; the button
+is disabled while running or already at zero.
+
+#### Files
+
+- `src/views/Home/TimersPanel.tsx` — new component owning all three
+  timer cards plus the date math (`daysUntil`, `formatStopwatch`,
+  `stopwatchElapsedMs`) and localStorage helpers.
+- `src/views/Home/TimersPanel.test.ts` — 11 new vitest cases
+  (date math, formatting padding, hour roll-over, negative clamp,
+  running-vs-stopped elapsed calculation).
+- `src/lib/soundFx.ts` — three new exported chimes
+  (`playBirthdayChime`, `playRentDueChime`, `playStopwatchChime`)
+  built on a shared `playBellTone` sine-decay primitive.
+- `src/views/Home/HomeDashboard.tsx` — drops `<TimersPanel />` in
+  under the existing `<PrettyClock />`.
+
+Tests: 180/180 JS pass (up from 169 — the 11 timer tests are the
+additions), 229/229 Rust pass.
+
+## [1.18.5] — 2026-05-26
+
+### Added — 💰 Cash-register cha-ching + encouragement toast on money entries
+
+When Sallie logs money, Molly now reacts.
+
+#### Cha-CHING! (every income + expense create)
+
+A synthesized cash-register sound plays whenever a new row is created
+in any of these places:
+
+- **Income** — adhoc income create (`AdhocIncomeView`)
+- **Income** — per-site monthly upsert with at least one brand-new
+  positive entry (`SiteIncomeWizard`)
+- **Income** — customer sale create (`CustomerSaleEditor`, per the
+  user's explicit ask to cover "those done from customers" too)
+- **Expenses** — one-off expense create (`ExpenseListView`)
+- **Expenses** — new recurring expense template (`RecurringExpensesView`)
+
+The sound is synthesized live via Web Audio (no bundled audio
+asset — keeps Molly offline-first and licensing-clean):
+
+- A low-passed noise burst → the cash drawer thudding open ("cha").
+- A band-passed noise transient → the bell hammer striking.
+- Three sine partials at E6 / E7 / G#7 with 5ms attack and 600ms
+  exponential decay → the unmistakable "ching!" sparkle.
+
+Total duration ~700ms. Fires only on creates — edits are silent so
+fixing a typo doesn't trigger a celebration. Bulk imports (sales
+report CSV import) also stay silent on purpose. Sound construction
+is wrapped in `try/catch` and gracefully no-ops if AudioContext is
+unavailable (degraded WebView, vitest/jsdom, etc.) so a missing
+ka-ching never breaks the underlying save.
+
+#### Encouragement toast (income only)
+
+Logging income — adhoc, per-site, or customer sale — also pops a
+soft-pink floating banner at the top of the viewport with one of 30
+encouraging one-liners in the handwritten Caveat font ("Way to go,
+girl! 💕", "Cha-ching, queen! 👑", "Sallie season! 🎀", …).
+
+The toast picks a saying biased away from the last 8 picks so Sallie
+doesn't see "Money queen!" twice in a row. The full pool of 30 sayings
+is exercised across ~200 picks (asserted by test). Animation: 260ms
+scale-up entrance from the top, 2.4s hold, 360ms scale-down exit.
+
+Expenses deliberately do NOT trigger the encouragement — spending
+money isn't the moment Sallie needs to be cheered on.
+
+#### Files
+
+- `src/lib/soundFx.ts` — lazy AudioContext + `playCashRegister()`.
+- `src/lib/encouragements.ts` — saying bank + `pickEncouragement()`
+  with recent-avoidance.
+- `src/lib/encouragements.test.ts` — 3 new vitest cases (always in
+  bank, never repeats within recent window, full coverage at 200
+  picks).
+- `src/lib/encouragementToast.ts` — imperative DOM toast renderer.
+- Wired into all 5 money-create call sites listed above.
+
+Tests: 169/169 JS pass (up from 166 — the 3 encouragement tests are
+the additions), 229/229 Rust pass, no migration needed.
+
+## [1.18.4] — 2026-05-26
+
+### Added — 🚩 Feature flags (Settings → Features) with Promos toggle
+
+New **Settings → Features** tab houses on/off toggles for parts of
+Molly that not every install needs. The first flag is **Promos**, off
+by default — when off, the 📣 Promos entry disappears from the
+sidebar entirely and the page is unreachable. Sallie can flip it on
+in Settings any time and it comes right back.
+
+Behavior:
+
+- Default is **off** on first launch. Users who flip it on (or off
+  again) persist their choice in `app_settings` under the key
+  `feature.promosEnabled` (value `'1'` / `'0'`), so the choice
+  survives app restarts.
+- Toggling off while sitting on the Promos page bounces the user to
+  Home — they're never stranded on an invisible page.
+- The Promos data itself (`promos` table) is left untouched when the
+  flag flips off; nothing is dropped or migrated. Flipping the flag
+  on later restores the page with everything intact.
+- The `null` render in `App.tsx` covers the single render-cycle gap
+  between the redirect effect firing and `view` updating, so the
+  hidden page never briefly flashes its contents.
+
+Implementation:
+
+- `src/state/featureFlags.ts` — new module mirroring the pattern in
+  `state/uiTheme.ts`. Exports `loadPromosEnabled`, `savePromosEnabled`,
+  and the `usePromosEnabled()` hook (which returns `{ enabled,
+  setEnabled, loaded }` — `loaded` lets the sidebar skip the
+  default-on flicker on the first frame).
+- `src/views/Settings/FeaturesSettings.tsx` — new tab pane with a
+  pretty-toggle row component. Toggle is disabled while the flag is
+  still loading to prevent racing the initial fetch.
+- `src/views/Settings/SettingsView.tsx` — registers the new
+  `features` tab between Appearance and Sites.
+- `src/components/Sidebar.tsx` — accepts a `promosEnabled` prop and
+  filters the `promos` nav entry out when false.
+- `src/App.tsx` — wires `usePromosEnabled()`, passes the value to the
+  Sidebar, gates the `promos` switch case, and bounces stranded users
+  to Home via a `useEffect`.
+
+All 166 JS tests + 229 Rust tests continue to pass; no migration
+needed since `app_settings` already exists and the flag row is
+created lazily on first save.
+
+## [1.18.3] — 2026-05-26
+
+### Added — 🏠 Home page reorder + pretty live clock
+
+Two changes to the Home dashboard, both motivated by Sallie's daily use:
+she wants the cards she cares about most at the top, and she wants the
+time-of-day visible without having to glance at the menu bar.
+
+#### Drag-to-reorder dashboard cards
+
+Five Home sections are now reorderable by drag-and-drop:
+
+1. ⏰ Overdue / Due today reminders
+2. Stats row (This month / YTD / All time)
+3. Clips per persona
+4. Reuse detection
+5. Recent imports
+
+The Saying banner and the **Hi, I'm Molly** welcome card stay locked at
+the top (the welcome card now owns the clock — see below), and the
+error card stays at the bottom when present. Each reorderable card
+shows a small `⋮⋮` drag affordance in the top-right; drop targets
+outline in the persona accent color while a card is being dragged.
+
+Order is persisted to `localStorage` under `molly:home:order` so it
+survives app launches. Saved orders are validated on load — unknown
+section IDs are dropped, and any sections newly added in future
+releases are appended to the bottom so Sallie's customizations never
+hide a brand-new section completely.
+
+Reorderable sections that have nothing to show right now (e.g. no
+overdue items, no imports yet) render an invisible placeholder so the
+slot's position is preserved — when content arrives, it appears in
+the chosen position, not appended at the bottom.
+
+#### Pretty live clock in the welcome card
+
+The **Hi, I'm Molly** card now hosts a soft-pink gradient panel with:
+
+- The current time in the Caveat handwritten font at 3.25rem, in the
+  persona accent color, lowercased am/pm (`3:42 pm`).
+- The day of the week in Comfortaa display font (`Tuesday`).
+- The full date with an ordinal day (`May 26th, 2026`).
+
+The clock re-renders once per minute — the first tick is aligned to
+the next `:00` boundary so the visible minute flips exactly on time
+instead of drifting up to a minute behind. Seconds are intentionally
+not shown (avoids a re-render every second on an otherwise-static
+dashboard).
+
+Touched files:
+
+- `src/views/Home/HomeDashboard.tsx` — full refactor: each section
+  extracted into its own component, sections rendered via the
+  persisted `order` array, drag-and-drop wired in the same pattern as
+  `TodaySection.tsx` (Reddit tab), new `WelcomeCard` and
+  `PrettyClock` components.
+
+All 166 JS tests + 229 Rust tests continue to pass.
+
+## [1.18.2] — 2026-05-26
+
+### Changed — 🎁 Bundle ZIP filenames include the title
+
+Published bundles now write to `~/Downloads/Molly bundles/` as
+`<UID> <title>.zip` (e.g. `2026-05-26-0001 May Custom for @username.zip`)
+instead of just `<UID>.zip`. The change applies to all three bundle
+types — Content, Custom, and FanSite — because they share the same
+publish path (`bundle_zip::compose_bundle`).
+
+Motivation: Sallie has trouble recognizing bundles in Finder when
+they're named only by date+counter. The title was already stored in
+the DB and rendered in the Bundle list inside the app; this just
+surfaces it in the filename too so the on-disk view matches.
+
+Details:
+
+- New helper `bundle_zip::bundle_archive_filename(uid, title)` builds
+  the filename. Sanitization replaces filesystem-forbidden characters
+  (`/ \ : * ? " < > |` and control chars) with spaces, collapses
+  whitespace runs, and strips leading/trailing dots. Titles are capped
+  at 100 chars so the total filename stays well under APFS's 255-byte
+  limit and remains readable.
+- Empty / whitespace-only / fully-sanitized-to-empty titles fall back
+  to the old `<UID>.zip` form so an untitled draft still publishes
+  cleanly.
+- Existing bundles already on disk under the old name are left alone;
+  they keep working because the DB row's `bundle_path` is the source
+  of truth for "Open ZIP", unpublish, and auto-purge.
+- `list_bundle_archives` was updated to extract the UID from either
+  filename form by validating the leading 15 chars against the
+  `YYYY-MM-DD-NNNN` shape via a new `is_bundle_uid` helper. This
+  preserves the existing guard that ignores unrelated zips a user
+  may have dropped into the bundles folder.
+
+Test coverage (8 new tests, 437/437 total passing):
+- `bundle_archive_filename_*` × 6: title appended, empty-title
+  fallback, forbidden-char sanitization, length cap, leading/trailing
+  dot stripping, all-forbidden-chars fallback.
+- `is_bundle_uid_*` × 2: accepts the valid shape, rejects wrong-length
+  / wrong-separator / non-digit / unrelated-filename inputs.
+
 ## [1.18.1] — 2026-05-24
 
 ### Added — 🔴 Reddit tab UX polish

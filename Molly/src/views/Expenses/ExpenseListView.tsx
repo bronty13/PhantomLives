@@ -13,6 +13,7 @@ import { fmtMoney, MONTH_NAMES, todayParts } from '../../lib/money';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import { AttachmentField } from '../../components/AttachmentField';
 import { MoneyInput } from '../../components/MoneyInput';
+import { playCashRegister } from '../../lib/soundFx';
 import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
 
 interface Props {
@@ -64,11 +65,15 @@ export function ExpenseListView({ active }: Props) {
   async function save() {
     if (!draft) return;
     try {
+      const isNew = !draft.id;
       if (draft.id) {
         await updateExpense({ ...draft, id: draft.id, createdAt: '', updatedAt: '' } as Expense);
       } else {
         await createExpense(draft);
       }
+      // Sound only — no encouragement toast for expenses; spending
+      // money isn't the moment Sallie needs to be cheered on.
+      if (isNew) playCashRegister();
       setDraft(null);
       await refresh();
     } catch (e) {

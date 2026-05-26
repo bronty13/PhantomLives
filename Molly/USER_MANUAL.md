@@ -184,6 +184,8 @@ Click **Income** in the sidebar. Three tabs across the top:
 
 Where one-off sales go. Add anything — a custom for a fan, a tip on a phone call, a one-time payment. Each entry has a date, amount, persona (or unassigned), source label, and an optional note. The year + month filter at the top lets you backfill any past month (set it to last March for tax prep, etc.). Sales from the Customer timeline appear here too, marked 🛒.
 
+**💎 Monthly goal & celebrations.** A pretty progress card at the top of this tab shows how much adhoc income you've logged this month versus your monthly goal (set in **Settings → 💎 Goals** — defaults to $1,000 most months and $2,000 for Nov & Dec). The bar fills as you log income, with milestone markers at 25% 🌸 / 50% 🌷 / 75% 🌟 / 100% 🎉. Every time you log income, Molly celebrates — with the size of the celebration matching the size of the sale: a $5 tip gets a soft ting, a $1,000 custom gets pure fireworks (ascending bell cascade, full screen flash, ten-emoji burst). Crossing a milestone layers an extra fanfare on top. The progress card only shows for the current calendar month; past-month views stay clean for tax-prep browsing.
+
 ### 🌐 Site income wizard
 
 Once a month — typically right after the *"Income update"* reminder fires — open this wizard, pick the month, and walk down the list. Sites are grouped by persona; type the dollar amount each site earned for that month. Per-persona subtotals + grand total update live. You can reopen any past month and edit at any time.
@@ -369,7 +371,7 @@ When everything's green, click **✨ Approve & Publish**. Molly:
 
 1. Hashes every file (re-reads from disk; refuses if anything's changed since upload).
 2. Writes an inner ZIP with `info.md`, `Molly.log`, plus `Audio/`, `Video/`, `Photos/` folders.
-3. Wraps that inner ZIP plus `hashes.json` into an outer ZIP at `~/Downloads/Molly bundles/<UID>.zip`.
+3. Wraps that inner ZIP plus `hashes.json` into an outer ZIP at `~/Downloads/Molly bundles/<UID> <title>.zip` (e.g. `2026-05-26-0001 May Custom for @username.zip`). If the bundle has no title yet, the filename falls back to just `<UID>.zip`.
 4. Creates (or updates) a row in **Clips** with status `Bundled` so the go-live date shows on your Calendar.
 
 The success card gives you **Open ZIP** and **Reveal in Finder** buttons, plus both SHA-256 digests in case Robert wants to verify.

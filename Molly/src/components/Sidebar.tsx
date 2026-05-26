@@ -9,6 +9,8 @@ interface SidebarProps {
   onSelect: (key: ViewKey) => void;
   visible: boolean;
   pendingCount?: number;     // overdue + today; shows red badge on Reminders
+  /** Feature flag — when false the Promos nav entry is hidden. */
+  promosEnabled?: boolean;
 }
 
 interface NavItem {
@@ -39,12 +41,13 @@ const NAV: NavItem[] = [
   { key: 'manual',    label: 'Manual',    icon: <span>💌</span>, hint: 'Sallie’s in-app user guide' },
 ];
 
-export function Sidebar({ active, onSelect, visible, pendingCount = 0 }: SidebarProps) {
+export function Sidebar({ active, onSelect, visible, pendingCount = 0, promosEnabled = true }: SidebarProps) {
   const [version, setVersion] = useState<string>('');
   useEffect(() => {
     getVersion().then(setVersion).catch(() => setVersion(''));
   }, []);
   if (!visible) return null;
+  const items = NAV.filter((item) => (item.key === 'promos' ? promosEnabled : true));
   return (
     <aside
       className="flex flex-col"
@@ -62,7 +65,7 @@ export function Sidebar({ active, onSelect, visible, pendingCount = 0 }: Sidebar
         </div>
       </div>
       <nav className="flex-1 px-3 pb-4 overflow-y-auto">
-        {NAV.map((item) => {
+        {items.map((item) => {
           const isActive = active === item.key;
           return (
             <button

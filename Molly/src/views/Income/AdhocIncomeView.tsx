@@ -4,6 +4,7 @@ import {
   createAdhoc,
   deleteAdhoc,
   listAdhocUnified,
+  totalsForPeriod,
   updateAdhoc,
   type AdhocIncome,
   type UnifiedAdhocRow,
@@ -13,6 +14,9 @@ import { fmtMoney, MONTH_NAMES, todayParts } from '../../lib/money';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import { MoneyInput } from '../../components/MoneyInput';
 import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
+import { celebrateIncome } from '../../lib/celebration';
+import { useMonthlyGoals, type MonthNumber } from '../../state/incomeGoals';
+import { GoalProgress } from './GoalProgress';
 
 interface Props {
   active: Persona;
@@ -32,6 +36,12 @@ export function AdhocIncomeView({ active }: Props) {
   const [personas, setPersonas] = useState<PersonaRow[]>([]);
   const [draft, setDraft] = useState<(Omit<AdhocIncome, 'id' | 'createdAt' | 'updatedAt'> & { id?: number }) | null>(null);
   const [status, setStatus] = useState('');
+  // Bumped after every successful save so <GoalProgress /> re-reads
+  // the DB. The view's own data already refetches via useAsyncRefresh,
+  // but the progress card lives in a sibling tree and doesn't share
+  // the refresh trigger.
+  const [goalRefreshKey, setGoalRefreshKey] = useState(0);
+  const { goals } = useMonthlyGoals();
 
   const { loading, refresh } = useAsyncRefresh(async (alive) => {
     const filter: { year?: number; month?: number; personaCode?: string } = {
@@ -53,10 +63,33 @@ export function AdhocIncomeView({ active }: Props) {
   async function save() {
     if (!draft) return;
     try {
+      const isNew = !draft.id;
+      // Capture the current-month unified-adhoc total BEFORE the insert
+      // so celebrateIncome() can decide whether this save crossed a
+      // monthly-goal milestone. Use today's calendar month, not the
+      // year/month filter — Sallie can backfill into May from June and
+      // her June goal is still the one being chased.
+      const todayP = todayParts();
+      const totalBefore = isNew
+        ? (await totalsForPeriod({ year: todayP.year, month: todayP.month })).adhocTotal
+        : 0;
       if (draft.id) {
         await updateAdhoc({ ...draft, id: draft.id, createdAt: '', updatedAt: '' });
       } else {
         await createAdhoc(draft);
+      }
+      if (isNew) {
+        // Re-query after the insert to pick up the new contribution.
+        // Adhocs dated outside the current month don't lift the goal —
+        // they show as totalAfter === totalBefore, no milestone fires.
+        const totalAfter = (await totalsForPeriod({ year: todayP.year, month: todayP.month })).adhocTotal;
+        celebrateIncome({
+          amountDollars: draft.amount,
+          totalBefore,
+          totalAfter,
+          goalDollars: goals[todayP.month as MonthNumber] ?? 0,
+        });
+        setGoalRefreshKey((n) => n + 1);
       }
       setDraft(null);
       await refresh();
@@ -80,6 +113,8 @@ export function AdhocIncomeView({ active }: Props) {
 
   return (
     <div className="p-8 max-w-5xl space-y-4">
+      <GoalProgress year={year} month={month} refreshKey={goalRefreshKey} />
+
       <div className="flex items-end justify-between gap-3">
         <div>
           <h2 className="display-font text-2xl font-bold persona-accent">Adhoc income</h2>

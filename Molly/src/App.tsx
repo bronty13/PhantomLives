@@ -5,6 +5,7 @@ import { PersonaSwitcher } from './components/PersonaSwitcher';
 import { usePersonas } from './state/personas';
 import { useApplyPersonaTheme } from './state/theme';
 import { useUiTheme } from './state/uiTheme';
+import { usePromosEnabled } from './state/featureFlags';
 import { SettingsView } from './views/Settings/SettingsView';
 import { CustomerListView } from './views/Customers/CustomerListView';
 import { MollyHelper } from './views/MollyHelper/MollyHelper';
@@ -30,8 +31,19 @@ export default function App() {
   const { personas, active, choose, loading, error, refresh } = usePersonas();
   useApplyPersonaTheme(active);
   useUiTheme();
+  const { enabled: promosEnabled, loaded: promosFlagLoaded } = usePromosEnabled();
 
   const [view, setView] = useState<ViewKey>('home');
+
+  // If Sallie is sitting on the Promos page when the flag flips off
+  // (either by toggling it in Settings, or because the saved state
+  // says off on launch), bounce her to Home so she's never stranded
+  // on an "invisible" page.
+  useEffect(() => {
+    if (promosFlagLoaded && !promosEnabled && view === 'promos') {
+      setView('home');
+    }
+  }, [promosEnabled, promosFlagLoaded, view]);
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [pendingTotal, setPendingTotal] = useState(0);
 
@@ -108,7 +120,13 @@ export default function App() {
     case 'notes':     body = <NotesView />; break;
     case 'customers': body = <CustomerListView active={active} />; break;
     case 'helper':    body = <MollyHelper active={active} />; break;
-    case 'promos':    body = <PromosListView active={active} />; break;
+    case 'promos':
+      // Flag-gated: render only when the user has Promos turned on. The
+      // useEffect above bounces them to home if they get here with the
+      // flag off (e.g. via a stale saved view); the null fallback covers
+      // the single render-cycle gap.
+      body = promosEnabled ? <PromosListView active={active} /> : null;
+      break;
     case 'reddit':    body = <RedditView active={active} />; break;
     case 'income':    body = <IncomeView active={active} />; break;
     case 'expenses':  body = <ExpensesView active={active} onChanged={refreshCounts} />; break;
@@ -120,7 +138,13 @@ export default function App() {
   return (
     <KeystoreProvider>
       <div className="h-screen flex" style={{ background: 'rgb(var(--persona-tint))' }}>
-        <Sidebar active={view} onSelect={setView} visible={sidebarVisible} pendingCount={pendingTotal} />
+        <Sidebar
+          active={view}
+          onSelect={setView}
+          visible={sidebarVisible}
+          pendingCount={pendingTotal}
+          promosEnabled={promosEnabled}
+        />
         <div className="flex-1 flex flex-col min-w-0">
           <PersonaSwitcher
             personas={personas}

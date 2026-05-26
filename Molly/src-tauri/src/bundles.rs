@@ -342,6 +342,19 @@ fn iso_now() -> String {
     Utc::now().to_rfc3339()
 }
 
+/// True iff `s` matches the bundle UID shape `YYYY-MM-DD-NNNN`. Used when
+/// scanning the bundle directory to tell our archives apart from any
+/// unrelated zips a user has dropped in there.
+fn is_bundle_uid(s: &str) -> bool {
+    if s.len() != 15 {
+        return false;
+    }
+    s.chars().enumerate().all(|(i, c)| match i {
+        4 | 7 | 10 => c == '-',
+        _ => c.is_ascii_digit(),
+    })
+}
+
 /// Return the next bundle UID for `today`. `today` is the date prefix
 /// (YYYY-MM-DD); we scan `bundles` for the max counter already used
 /// today, add 1, zero-pad to 4 digits. Pulls the value with one
@@ -1815,8 +1828,16 @@ pub fn list_bundle_archives<R: Runtime>(
             .ok()
             .map(|m| DateTime::<Utc>::from(m).to_rfc3339())
             .unwrap_or_default();
-        // Filename is `<UID>.zip` for our bundles.
-        let uid = name.strip_suffix(".zip").map(|s| s.to_string());
+        // Filename is `<UID>.zip` (pre-v1.18.2) or `<UID> <title>.zip`
+        // (v1.18.2+). Take everything up to the first space and validate it
+        // looks like a UID; anything else is somebody else's zip.
+        let stem = name.strip_suffix(".zip").unwrap_or(&name);
+        let candidate = stem.split(' ').next().unwrap_or(stem);
+        let uid = if is_bundle_uid(candidate) {
+            Some(candidate.to_string())
+        } else {
+            None
+        };
         rows.push(BundleArchiveRow {
             uid,
             path: entry.path().to_string_lossy().to_string(),
@@ -2046,6 +2067,22 @@ fn sanitize_component(s: &str) -> String {
 mod tests {
     use super::*;
     use rusqlite::Connection;
+
+    #[test]
+    fn is_bundle_uid_accepts_valid_shape() {
+        assert!(is_bundle_uid("2026-05-26-0001"));
+        assert!(is_bundle_uid("2026-12-31-9999"));
+    }
+
+    #[test]
+    fn is_bundle_uid_rejects_other_shapes() {
+        assert!(!is_bundle_uid(""));
+        assert!(!is_bundle_uid("2026-05-26"));               // missing counter
+        assert!(!is_bundle_uid("2026-05-26-0001-extra"));    // too long
+        assert!(!is_bundle_uid("2026/05/26-0001"));          // wrong separators
+        assert!(!is_bundle_uid("Somebody-Elses-Random.zip")); // not ours
+        assert!(!is_bundle_uid("2026-05-26-001a"));          // non-digit counter
+    }
 
     fn fresh_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();

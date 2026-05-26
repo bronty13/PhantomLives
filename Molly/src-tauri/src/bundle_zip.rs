@@ -401,8 +401,10 @@ pub fn compose_bundle(
     ])?;
     let outer_sha = sha256_hex(&outer_zip_bytes);
 
-    // ---- Atomic write to <out_dir>/<UID>.zip via .tmp + rename.
-    let out_path = out_dir.join(format!("{}.zip", snapshot.uid));
+    // ---- Atomic write to <out_dir>/<UID> <title>.zip via .tmp + rename.
+    // Title is appended so Sallie can recognize bundles by name in Finder
+    // instead of memorizing UIDs; falls back to `<UID>.zip` if title is empty.
+    let out_path = out_dir.join(bundle_archive_filename(&snapshot.uid, &snapshot.title));
     let tmp_path = out_path.with_extension("zip.tmp");
     fs::write(&tmp_path, &outer_zip_bytes)?;
     if out_path.exists() {
@@ -492,6 +494,46 @@ fn build_zip(entries: &[(String, Vec<u8>, String)]) -> Result<Vec<u8>, BundleErr
         zip.finish()?;
     }
     Ok(cursor.into_inner())
+}
+
+/// Build the on-disk filename for a published bundle ZIP. Returns
+/// `<UID> <sanitized-title>.zip`, or just `<UID>.zip` when the title is
+/// empty/whitespace-only or sanitizes down to nothing. Title is capped at
+/// 100 chars to keep total filenames well under APFS's 255-byte limit and
+/// readable in Finder.
+pub fn bundle_archive_filename(uid: &str, title: &str) -> String {
+    let trimmed = title.trim();
+    if trimmed.is_empty() {
+        return format!("{uid}.zip");
+    }
+    let mut safe = String::with_capacity(trimmed.len());
+    for c in trimmed.chars() {
+        match c {
+            // Filesystem-forbidden on macOS or Windows.
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0' => safe.push(' '),
+            // Other control chars.
+            c if (c as u32) < 0x20 => safe.push(' '),
+            _ => safe.push(c),
+        }
+    }
+    // Collapse whitespace runs and strip leading/trailing dots+spaces.
+    let collapsed: String = safe.split_whitespace().collect::<Vec<_>>().join(" ");
+    let cleaned = collapsed.trim_matches(|c: char| c == '.' || c.is_whitespace());
+    if cleaned.is_empty() {
+        return format!("{uid}.zip");
+    }
+    const MAX_TITLE_LEN: usize = 100;
+    let title_part: String = if cleaned.chars().count() > MAX_TITLE_LEN {
+        cleaned
+            .chars()
+            .take(MAX_TITLE_LEN)
+            .collect::<String>()
+            .trim_end()
+            .to_string()
+    } else {
+        cleaned.to_string()
+    };
+    format!("{uid} {title_part}.zip")
 }
 
 /// Drop characters that aren't safe to drop into a ZIP entry name on
@@ -1005,6 +1047,63 @@ mod tests {
     use super::*;
     use std::io::Cursor;
     use std::path::PathBuf;
+
+    #[test]
+    fn archive_filename_appends_title() {
+        assert_eq!(
+            bundle_archive_filename("2026-05-26-0001", "My Title Goes Here"),
+            "2026-05-26-0001 My Title Goes Here.zip",
+        );
+    }
+
+    #[test]
+    fn archive_filename_falls_back_when_title_empty() {
+        assert_eq!(
+            bundle_archive_filename("2026-05-26-0001", ""),
+            "2026-05-26-0001.zip",
+        );
+        assert_eq!(
+            bundle_archive_filename("2026-05-26-0001", "   "),
+            "2026-05-26-0001.zip",
+        );
+    }
+
+    #[test]
+    fn archive_filename_sanitizes_forbidden_chars() {
+        // /, \, :, *, ?, ", <, >, | are all illegal somewhere — replace
+        // with spaces and collapse runs.
+        let got = bundle_archive_filename("2026-05-26-0001", "May 2026 / Custom: \"foo\"");
+        assert_eq!(got, "2026-05-26-0001 May 2026 Custom foo.zip");
+    }
+
+    #[test]
+    fn archive_filename_truncates_long_titles() {
+        let long_title = "a".repeat(500);
+        let got = bundle_archive_filename("2026-05-26-0001", &long_title);
+        // 15 (uid) + 1 (space) + 100 (capped title) + 4 (".zip") = 120
+        assert_eq!(got.len(), 120);
+        assert!(got.starts_with("2026-05-26-0001 "));
+        assert!(got.ends_with(".zip"));
+    }
+
+    #[test]
+    fn archive_filename_strips_leading_trailing_dots() {
+        // Windows reserves trailing dots, and leading dots make Finder hide
+        // the file on macOS. Strip both.
+        assert_eq!(
+            bundle_archive_filename("2026-05-26-0001", "...edge case..."),
+            "2026-05-26-0001 edge case.zip",
+        );
+    }
+
+    #[test]
+    fn archive_filename_falls_back_when_only_forbidden_chars() {
+        // Sanitization can empty the title; fall back to UID-only.
+        assert_eq!(
+            bundle_archive_filename("2026-05-26-0001", "///:::"),
+            "2026-05-26-0001.zip",
+        );
+    }
 
     fn write_tmp(dir: &Path, name: &str, body: &[u8]) -> PathBuf {
         let p = dir.join(name);

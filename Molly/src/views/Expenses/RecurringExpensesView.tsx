@@ -21,6 +21,7 @@ import { fmtMoney } from '../../lib/money';
 import { ConfirmButton } from '../../components/ConfirmButton';
 import { MoneyInput } from '../../components/MoneyInput';
 import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
+import { playCashRegister } from '../../lib/soundFx';
 
 type Family = 'weekly' | 'monthly' | 'every_n_days' | 'daily';
 type MonthlyFlavor = 'dom' | 'days_before_next' | 'days_after_eom';
@@ -55,6 +56,7 @@ export function RecurringExpensesView({ onChanged }: Props) {
   async function save() {
     if (!draft) return;
     try {
+      const isNew = !draft.id;
       if (draft.id) {
         await updateRecurring({ ...draft, id: draft.id, lastMaterial: null });
       } else {
@@ -64,6 +66,7 @@ export function RecurringExpensesView({ onChanged }: Props) {
       await materializeRecurringExpenses();
       await refresh();
       await onChanged();
+      if (isNew) playCashRegister();
       setStatus('Saved.');
     } catch (e) {
       setStatus(`Couldn't save: ${String(e)}`);

@@ -5,6 +5,9 @@ import { listPersonas, type Persona as PersonaRow } from '../../data/personas';
 import { fmtMoney, MONTH_NAMES, todayParts } from '../../lib/money';
 import { MoneyInput } from '../../components/MoneyInput';
 import { useAsyncRefresh } from '../../lib/useAsyncRefresh';
+import { playCashRegister } from '../../lib/soundFx';
+import { showEncouragement } from '../../lib/encouragementToast';
+import { pickEncouragement } from '../../lib/encouragements';
 
 interface Props {
   onClose: () => void;
@@ -75,14 +78,25 @@ export function SiteIncomeWizard({ onClose }: Props) {
 
   async function save() {
     try {
+      // Count brand-new positive entries — those are real income-IN
+      // moments worth celebrating. Edits and zero-fills are silent.
+      let newIncomeRows = 0;
       for (const [siteId, { amount, note }] of edits.entries()) {
         const prev = existing.get(siteId);
         // Only upsert when changed (or new and non-zero)
         if (!prev && amount === 0 && note === '') continue;
         if (prev && prev.amount === amount && prev.note === note) continue;
+        if (!prev && amount > 0) newIncomeRows += 1;
         await upsertSiteIncome(year, month, siteId, amount, note);
       }
       setStatus(`Saved ${MONTH_NAMES[month - 1]} ${year}.`);
+      if (newIncomeRows > 0) {
+        // Site income isn't in the adhoc-goal scope, so we keep the
+        // original v1.18.5 single-tier celebration here — cha-ching +
+        // small-bank toast — no goal milestone check.
+        playCashRegister();
+        showEncouragement(pickEncouragement('small'));
+      }
       await refresh();
     } catch (e) {
       setStatus(`Couldn't save: ${String(e)}`);

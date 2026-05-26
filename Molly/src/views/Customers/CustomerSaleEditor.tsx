@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { addSale, updateSale, type Sale } from '../../data/customerSales';
+import { totalsForPeriod } from '../../data/income';
 import type { TaxonomyItem } from '../../data/taxonomy';
+import { celebrateIncome } from '../../lib/celebration';
+import { todayParts } from '../../lib/money';
+import { loadMonthlyGoals, type MonthNumber } from '../../state/incomeGoals';
 
 interface Props {
   customerUid: string;
@@ -106,6 +110,11 @@ export function CustomerSaleEditor({ customerUid, products, initial, onSaved, on
           notes,
         });
       } else {
+        // Capture this-calendar-month adhoc total before + after so the
+        // celebration can fire the right tier and detect any goal
+        // milestone crossing — same shape as AdhocIncomeView.save().
+        const todayP = todayParts();
+        const totalBefore = (await totalsForPeriod({ year: todayP.year, month: todayP.month })).adhocTotal;
         await addSale({
           customerUid,
           productId,
@@ -114,6 +123,14 @@ export function CustomerSaleEditor({ customerUid, products, initial, onSaved, on
           unitPriceCents,
           totalCents,
           notes,
+        });
+        const totalAfter = (await totalsForPeriod({ year: todayP.year, month: todayP.month })).adhocTotal;
+        const goals = await loadMonthlyGoals();
+        celebrateIncome({
+          amountDollars: totalCents / 100,
+          totalBefore,
+          totalAfter,
+          goalDollars: goals[todayP.month as MonthNumber] ?? 0,
         });
       }
       await onSaved();
