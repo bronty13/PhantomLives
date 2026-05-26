@@ -51,6 +51,8 @@ The Settings page has tabs across the top. Nothing here requires Robert to chang
 
 - **👯‍♀️ Personas** — rename, redescribe, and recolor any of CoC / PoA / Sa. Five swatches per persona (primary, secondary, tint, accent, text); changing them recolors the whole app instantly. Want a different shade of pink? Try it. Don't like it? Click again.
 - **🎨 Appearance** — light / dark / system theme. Default is **light**; **dark** flips the page and cards darker while keeping your persona accents bright; **system** follows your Mac / Windows preference automatically and switches live when the OS does.
+- **🚩 Features** — on/off toggles for whole sections of Molly that not every install needs. Currently houses the **Promos** toggle — switch it off and the entire 📣 Promos page disappears from the sidebar (your data is preserved, comes right back when you flip it on). Default is off.
+- **💎 Goals** — your monthly adhoc-income targets, one per month. Defaults: **$1,000** for Jan–Oct, **$2,000** for Nov–Dec (holiday season). The progress bar on the Income → Adhoc tab fills toward these numbers; crossing 25 / 50 / 75 / 100% triggers a milestone fanfare. "↺ Reset to defaults" puts them all back.
 - **💻 Sites** — add, edit, delete sites. Each one belongs to a persona, with a name, short code, URL, your username, an optional note, a color, and an optional "login group" (used for shared-login families like OnlyFans CoC ↔ PoA).
 - **📦 Products** — what your fans buy from you (Phone, Cam, Customs, Physical merch…). Each product carries a price + unit (e.g. *Customs at $5.00 / minute*, *Physical Panties at $25.00 / item*). Used for sales tracking and tagging on customer cards.
 - **🌷 Interests** — what your customers like (Feet, Pantyhose, Panties, Humiliation…). Multi-select tags on each customer.
@@ -201,6 +203,8 @@ If any rows can't be parsed, the importer lists them at the bottom so nothing is
 ## 🧾 Expenses
 
 Click **Expenses**. Two tabs:
+
+**💸 Cha-ching feedback.** Every new expense you log plays a synthesized cash-register sound — same as income, just without the encouragement toast (expenses don't get cheered on). Edits and bulk-import paths stay silent.
 
 ### 🧾 All expenses
 
@@ -520,7 +524,16 @@ Click each on/off any time. They're cheap to render and don't change anything el
 
 ## 🏠 Home dashboard
 
-Click **🏠 Home**. The very first thing you'll see is the **cute saying card** — a different one every render, in a different font. ✨ Below that, today's reminders (if any), then four count cards (this month vs last, year-to-date, all-time), a bar chart of clips per persona, a **reuse detection** panel that flags possible duplicate posts (same external ID, or same title within ~2 weeks), and a recent-imports log.
+Click **🏠 Home**. The very first thing you'll see is the **cute saying card** — a different one every render, in a different font. ✨ Below that, the **Hi, I'm Molly 💕** welcome card with a soft-pink panel underneath showing:
+
+- 🕐 **Live wall clock** — the current time in handwritten Caveat font, day-of-week + full date underneath. Updates exactly on the minute, no drift.
+- 🎂 **Birthday countdown** — defaults to the next Dec 6; click ✏️ to change the label and date. Plays a celebratory C-major chime when the day arrives.
+- 🏠 **Rent Due countdown** — defaults to the 1st of next month; same editable card. Plays a different (heavier "ding-dong") chime on arrival so you can tell the two apart by ear.
+- ⏱ **Stopwatch** — HH:MM:SS.cc count-up with Start / Stop / Reset. Keeps counting even when the app is closed (resumes correctly on next launch). Soft bell when you press Stop.
+
+Each countdown's arrival chime fires once per day per timer, so re-opening Molly later in the day stays quiet.
+
+Below the welcome card: drag-to-reorder dashboard sections — today's reminders (if any), three count cards (this month vs last, year-to-date, all-time), a bar chart of clips per persona, a **reuse detection** panel that flags possible duplicate posts (same external ID, or same title within ~2 weeks), and a recent-imports log. **Drag any card by its ⋮⋮ handle (top-right) to put them in your preferred order** — your layout sticks across app launches. The saying card and welcome card stay locked at the top.
 
 The Home page is your morning landing pad. Look at it once with coffee. 🌷
 
