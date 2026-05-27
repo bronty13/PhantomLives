@@ -33,8 +33,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager, Runtime};
 
-use crate::bundles::{work_root, BundleError};
-use crate::extract::bundle_workspace_dir;
+use crate::bundles::BundleError;
 use crate::images::{process_image, ImageOps};
 use crate::posting::PostingTarget;
 use crate::video::{process_video, ProcessVideoParams};
@@ -360,11 +359,84 @@ fn rotation_to_video(deg: i64) -> &'static str {
     }
 }
 
-/// Folder for one day's staged media: `<workspace>/fansite-staging/Day NN/`.
-fn day_folder(workspace: &std::path::Path, day: i64) -> PathBuf {
-    workspace
-        .join("fansite-staging")
-        .join(format!("Day {day:02}"))
+/// Filesystem-friendly folder-name component: drop path separators and
+/// control chars, collapse runs of whitespace.
+fn sanitize_folder_component(s: &str) -> String {
+    let cleaned: String = s
+        .chars()
+        .map(|c| if c.is_control() || matches!(c, '/' | '\\' | ':') { ' ' } else { c })
+        .collect();
+    cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Human-readable, browsable folder name for a fan-site bundle, e.g.
+/// `CoC 2026-06 June drops [a1b2c3]`. The short uid suffix keeps two
+/// bundles that share persona/month/title from colliding while staying
+/// recognizable; the brackets echo the `OnlyFans [CoC]` target naming.
+fn fansite_bundle_folder_name(
+    persona: Option<&str>,
+    year: Option<i64>,
+    month: Option<i64>,
+    title: &str,
+    uid: &str,
+) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(p) = persona {
+        if !p.is_empty() {
+            parts.push(p.to_string());
+        }
+    }
+    if let (Some(y), Some(m)) = (year, month) {
+        parts.push(format!("{y:04}-{m:02}"));
+    }
+    let t = sanitize_folder_component(title);
+    if !t.is_empty() {
+        parts.push(t);
+    }
+    let short = &uid[..uid.len().min(6)];
+    if parts.is_empty() {
+        format!("bundle [{short}]")
+    } else {
+        format!("{} [{short}]", parts.join(" "))
+    }
+}
+
+/// User-facing staging folder for one fan-site day:
+/// `~/Downloads/SideMolly/FanSite/<bundle name>/Day NN/`.
+///
+/// This deliberately lives under `~/Downloads` (present in every macOS
+/// open-panel sidebar) rather than the app's Application Support
+/// workspace. When you upload to a site, the browser's file picker can't
+/// reach a hidden `~/Library` path — so the day's media has to land
+/// somewhere the picker can actually navigate to. Also satisfies the
+/// PhantomLives default-output-location rule (`~/Downloads/<AppName>/`).
+fn fansite_day_folder(
+    conn: &Connection,
+    uid: &str,
+    day: i64,
+) -> Result<PathBuf, BundleError> {
+    let (persona, title, manifest_json): (Option<String>, String, String) = conn
+        .query_row(
+            "SELECT persona_code, COALESCE(title, ''), manifest_json
+               FROM bundles WHERE uid = ?1",
+            params![uid],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .optional()?
+        .ok_or_else(|| BundleError::NotFound(format!("bundle {uid}")))?;
+    let manifest: crate::manifest::BundleManifest =
+        serde_json::from_str(&manifest_json).unwrap_or_default();
+    let name = fansite_bundle_folder_name(
+        persona.as_deref(),
+        manifest.fansite_year,
+        manifest.fansite_month,
+        &title,
+        uid,
+    );
+    Ok(crate::fsutil::downloads_subdir("SideMolly")
+        .join("FanSite")
+        .join(name)
+        .join(format!("Day {day:02}")))
 }
 
 /// Stage one FanSite day's media into a dedicated folder, applying the
@@ -378,8 +450,8 @@ pub fn prepare_fansite_day<R: Runtime>(
     uid: String,
     day: i64,
 ) -> Result<PreparedDay, BundleError> {
-    let workspace = bundle_workspace_dir(&work_root(&handle)?, &uid);
-    let folder = day_folder(&workspace, day);
+    let conn = open_conn(&handle)?;
+    let folder = fansite_day_folder(&conn, &uid, day)?;
 
     // Wipe + recreate so stale files from a previous prepare can't
     // sneak into the upload.
@@ -388,7 +460,6 @@ pub fn prepare_fansite_day<R: Runtime>(
     }
     std::fs::create_dir_all(&folder)?;
 
-    let conn = open_conn(&handle)?;
     let mut stmt = conn.prepare(
         "SELECT in_zip_path, original_name, kind, working_path, rotation_degrees
            FROM bundle_files
@@ -497,8 +568,9 @@ pub fn reveal_fansite_day<R: Runtime>(
     uid: String,
     day: i64,
 ) -> Result<(), BundleError> {
-    let workspace = bundle_workspace_dir(&work_root(&handle)?, &uid);
-    let folder = day_folder(&workspace, day);
+    let conn = open_conn(&handle)?;
+    let folder = fansite_day_folder(&conn, &uid, day)?;
+    drop(conn);
     if !folder.exists() {
         prepare_fansite_day(handle, uid, day)?;
     }
@@ -804,11 +876,27 @@ mod tests {
     }
 
     #[test]
-    fn day_folder_is_zero_padded() {
-        let p = day_folder(std::path::Path::new("/work/uid"), 7);
-        assert!(p.ends_with("fansite-staging/Day 07"));
-        let p = day_folder(std::path::Path::new("/work/uid"), 13);
-        assert!(p.ends_with("fansite-staging/Day 13"));
+    fn bundle_folder_name_is_readable_and_unique() {
+        // Persona + month + title, with the short-uid disambiguator.
+        let n = fansite_bundle_folder_name(Some("CoC"), Some(2026), Some(6), "June drops", "abc123def456");
+        assert_eq!(n, "CoC 2026-06 June drops [abc123]");
+        // Path separators in the title can't escape the folder.
+        let n = fansite_bundle_folder_name(Some("PoA"), Some(2026), Some(12), "a/b:c\\d", "u");
+        assert_eq!(n, "PoA 2026-12 a b c d [u]");
+        // Nothing usable → still a stable, uid-anchored name.
+        let n = fansite_bundle_folder_name(None, None, None, "   ", "zzzzzzzz");
+        assert_eq!(n, "bundle [zzzzzz]");
+    }
+
+    #[test]
+    fn day_folder_is_browsable_and_zero_padded() {
+        // Day folders live under ~/Downloads/SideMolly/FanSite/, never
+        // the hidden Application Support workspace.
+        let base = crate::fsutil::downloads_subdir("SideMolly").join("FanSite");
+        let p = base.join("CoC 2026-06 [x]").join(format!("Day {:02}", 7));
+        assert!(p.ends_with("FanSite/CoC 2026-06 [x]/Day 07"));
+        let p = base.join("CoC 2026-06 [x]").join(format!("Day {:02}", 13));
+        assert!(p.ends_with("Day 13"));
     }
 
     #[test]

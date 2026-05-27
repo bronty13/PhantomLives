@@ -205,11 +205,13 @@ fn scan_dir<R: Runtime>(
     };
 
     // Resolve the work root once so already_ingested can check for the
-    // extracted workspace alongside the DB row.
-    let work_root = match handle.path().app_data_dir() {
-        Ok(p) => p.join("work"),
+    // extracted workspace alongside the DB row. Routes through the
+    // canonical helper (~/Downloads/SideMolly/work/), not a local
+    // app_data_dir join — those diverged once the workspace moved.
+    let work_root = match crate::bundles::work_root(handle) {
+        Ok(p) => p,
         Err(e) => {
-            result.errors.push(format!("app data dir: {e}"));
+            result.errors.push(format!("work root: {e}"));
             return result;
         }
     };

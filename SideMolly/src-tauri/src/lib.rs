@@ -138,6 +138,11 @@ pub fn run() {
         )
         .setup(|app| {
             let handle = app.handle().clone();
+            // v0.20.0: relocate the bundle workspace from Application
+            // Support to ~/Downloads/SideMolly/work/. Runs synchronously
+            // before the watcher so work_root is stable, and before the
+            // backup so the archive no longer carries the old media.
+            bundles::migrate_workspace_to_downloads(app.handle());
             // Auto-backup-on-launch (CLAUDE.md standard). Never throw; log on failure.
             tauri::async_runtime::spawn(async move {
                 if let Err(err) = backup::run_on_launch_if_due(&handle).await {

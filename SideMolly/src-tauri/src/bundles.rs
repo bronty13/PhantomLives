@@ -158,13 +158,99 @@ fn db_path<R: Runtime>(handle: &AppHandle<R>) -> Result<PathBuf, BundleError> {
     Ok(app_data_dir(handle)?.join("sidemolly.db"))
 }
 
-/// `~/Library/Application Support/com.phantomlives.sidemolly/work/` — root
-/// of per-bundle extraction directories. Phase 3+ image/video ops will
-/// write side files (thumbnails, processed variants) alongside.
-pub fn work_root<R: Runtime>(handle: &AppHandle<R>) -> Result<PathBuf, BundleError> {
-    let root = app_data_dir(handle)?.join("work");
+/// `~/Downloads/SideMolly/work/` — root of per-bundle extraction
+/// directories (extracted media, processed variants, thumbnails). This
+/// lives under `~/Downloads` rather than Application Support so the
+/// folders are reachable from a site's browser upload dialog and so the
+/// launch backup (which zips Application Support) stays small — it no
+/// longer drags hundreds of MB of bundle media along. The one-time move
+/// of pre-existing workspaces is handled by
+/// [`migrate_workspace_to_downloads`].
+pub fn work_root<R: Runtime>(_handle: &AppHandle<R>) -> Result<PathBuf, BundleError> {
+    let root = crate::fsutil::downloads_subdir("SideMolly").join("work");
     fs::create_dir_all(&root)?;
     Ok(root)
+}
+
+/// Columns holding absolute paths under the old workspace root. The
+/// launch migration rewrites just the root prefix of each. Append here
+/// if a future column ever stores a `work/`-rooted absolute path.
+const WORKSPACE_PATH_COLUMNS: &[(&str, &str)] = &[
+    ("bundle_files", "working_path"),
+    ("bundle_files", "thumbnail_path"),
+    ("processed_files", "output_path"),
+    ("bundle_export_thumbs", "thumbnail_path"),
+    ("dropbox_copies", "source_path"),
+];
+
+/// Swap the `old` root prefix for `new` in every stored workspace path.
+/// Prefix-only (`new || substr(col, len(old)+1)`) so unrelated paths and
+/// paths that merely *contain* the old string elsewhere are untouched.
+fn rewrite_workspace_paths(conn: &Connection, old: &str, new: &str) -> rusqlite::Result<()> {
+    for (table, col) in WORKSPACE_PATH_COLUMNS {
+        let sql = format!(
+            "UPDATE {table} SET {col} = ?1 || substr({col}, ?3) WHERE {col} LIKE ?2"
+        );
+        conn.execute(&sql, params![new, format!("{old}%"), (old.len() as i64) + 1])?;
+    }
+    Ok(())
+}
+
+/// One-time (v0.20.0) relocation of the bundle workspace out of
+/// `~/Library/Application Support/.../work/` and into
+/// `~/Downloads/SideMolly/work/`. Moves each per-bundle directory
+/// (an atomic `rename` — Library and Downloads share the boot volume)
+/// then rewrites the absolute paths the DB stored against the old root.
+///
+/// Idempotent: no-ops once the old root is gone. Never throws — a failed
+/// relocation logs via `eprintln!` and must not block launch.
+pub fn migrate_workspace_to_downloads<R: Runtime>(handle: &AppHandle<R>) {
+    let old_root = match app_data_dir(handle) {
+        Ok(d) => d.join("work"),
+        Err(_) => return,
+    };
+    if !old_root.exists() {
+        return; // fresh install, or already migrated
+    }
+    let new_root = crate::fsutil::downloads_subdir("SideMolly").join("work");
+    if let Err(e) = fs::create_dir_all(&new_root) {
+        eprintln!("[sidemolly] workspace migration: cannot create {}: {e}", new_root.display());
+        return;
+    }
+
+    let entries = match fs::read_dir(&old_root) {
+        Ok(e) => e,
+        Err(e) => { eprintln!("[sidemolly] workspace migration: read_dir failed: {e}"); return; }
+    };
+    let mut moved = 0;
+    for entry in entries.flatten() {
+        let src = entry.path();
+        let dst = new_root.join(entry.file_name());
+        if dst.exists() {
+            continue; // bundle already present at destination — leave it
+        }
+        match fs::rename(&src, &dst) {
+            Ok(()) => moved += 1,
+            Err(e) => eprintln!("[sidemolly] workspace migration: move {} failed: {e}", src.display()),
+        }
+    }
+
+    if let (Some(old_s), Some(new_s)) = (old_root.to_str(), new_root.to_str()) {
+        match open_conn(handle) {
+            Ok(conn) => {
+                if let Err(e) = rewrite_workspace_paths(&conn, old_s, new_s) {
+                    eprintln!("[sidemolly] workspace migration: path rewrite failed: {e}");
+                }
+            }
+            Err(e) => eprintln!("[sidemolly] workspace migration: open DB failed: {e}"),
+        }
+    }
+
+    // Best-effort cleanup of the now-empty old root.
+    let _ = fs::remove_dir_all(&old_root);
+    if moved > 0 {
+        eprintln!("[sidemolly] workspace migrated {moved} bundle(s) to {}", new_root.display());
+    }
 }
 
 fn open_conn<R: Runtime>(handle: &AppHandle<R>) -> Result<Connection, BundleError> {
@@ -1609,6 +1695,40 @@ mod tests {
         conn.execute_batch(include_str!("../migrations/015_posting.sql")).unwrap();
         conn.execute_batch(include_str!("../migrations/016_posting_assets_and_fansite.sql")).unwrap();
         conn
+    }
+
+    #[test]
+    fn workspace_path_rewrite_swaps_prefix_only() {
+        let conn = fresh_db();
+        conn.execute_batch("PRAGMA foreign_keys = OFF;").unwrap();
+        let old = "/Users/x/Library/Application Support/com.phantomlives.sidemolly/work";
+        let new = "/Users/x/Downloads/SideMolly/work";
+
+        // Row under the old root (working + thumbnail), and one outside it.
+        conn.execute(
+            "INSERT INTO bundle_files
+               (bundle_uid, in_zip_path, original_name, kind, sha256, working_path, thumbnail_path)
+             VALUES ('u1','a.jpg','a.jpg','image','sha', ?1, ?2)",
+            params![format!("{old}/u1/a.jpg"), format!("{old}/u1/thumbs/a.jpg")],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO bundle_files
+               (bundle_uid, in_zip_path, original_name, kind, sha256, working_path)
+             VALUES ('u1','b.jpg','b.jpg','image','sha', '/elsewhere/b.jpg')",
+            [],
+        ).unwrap();
+
+        rewrite_workspace_paths(&conn, old, new).unwrap();
+
+        let moved: String = conn.query_row(
+            "SELECT working_path FROM bundle_files WHERE in_zip_path='a.jpg'", [], |r| r.get(0)).unwrap();
+        assert_eq!(moved, format!("{new}/u1/a.jpg"));
+        let thumb: String = conn.query_row(
+            "SELECT thumbnail_path FROM bundle_files WHERE in_zip_path='a.jpg'", [], |r| r.get(0)).unwrap();
+        assert_eq!(thumb, format!("{new}/u1/thumbs/a.jpg"), "thumbnail prefix rewritten too");
+        let untouched: String = conn.query_row(
+            "SELECT working_path FROM bundle_files WHERE in_zip_path='b.jpg'", [], |r| r.get(0)).unwrap();
+        assert_eq!(untouched, "/elsewhere/b.jpg", "paths outside the old root are left alone");
     }
 
     fn fixture_validated(uid: &str, files: &[(&str, &str, u64)]) -> ValidatedBundle {

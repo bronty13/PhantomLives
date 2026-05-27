@@ -4,6 +4,92 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0] — 2026-05-26
+
+### Changed — All bundle processing moved to `~/Downloads/SideMolly/`
+
+The per-bundle workspace (extracted media, processed variants,
+thumbnails) used to live inside Application Support
+(`~/Library/Application Support/com.phantomlives.sidemolly/work/`).
+That had two problems: the media wasn't reachable from a browser's
+upload dialog (macOS hides `~/Library`), and the launch backup — which
+zips Application Support — was dragging hundreds of MB of bundle media
+into every archive.
+
+The workspace now lives at `~/Downloads/SideMolly/work/<uid>/`,
+alongside the FanSite day folders at `~/Downloads/SideMolly/FanSite/`.
+Application Support keeps only what belongs there: the database
+(`sidemolly.db`) and settings. As a direct result, launch backups are
+now small and fast.
+
+- **One-time launch migration** (`migrate_workspace_to_downloads`):
+  on first run of this version, every existing per-bundle directory is
+  moved (atomic rename — same volume) from the old root to the new one,
+  and the absolute paths the DB stored against the old root are
+  rewritten (`bundle_files.working_path` / `.thumbnail_path`,
+  `processed_files.output_path`, `bundle_export_thumbs.thumbnail_path`,
+  `dropbox_copies.source_path`). Idempotent, and never blocks launch on
+  failure (logs and continues). The emptied old `work/` dir is removed.
+- `work_root` now resolves to `~/Downloads/SideMolly/work/`; the
+  watched-folder scanner routes through it instead of its own
+  app_data_dir join (the two had to agree).
+- Test: `workspace_path_rewrite_swaps_prefix_only` (prefix-only swap;
+  paths outside the old root untouched).
+
+### Fixed — Extracted post-bundle folders now open in Finder
+
+Double-clicking a post-bundle and drilling into `artifacts/` produced
+*"you don't have permission to see its contents."* The cause wasn't the
+folder being extracted — it was the folder macOS **Archive Utility
+synthesizes**: when an archive has more than one item at its top level,
+Archive Utility invents an enclosing folder and creates it `drwx------`
+(0700). The post-bundle's outer zip (`hashes.json` + inner zip) and
+inner zip (`report.json` + `notes.md` + `posting-log.json` +
+`artifacts/`) were both multi-root, so each spawned a 0700 wrapper.
+(Reproduced with a plain `zip`-made archive too — it's universal
+Archive Utility behavior, not a flaw in our zips.)
+
+Both zips now wrap their contents in a **single top-level directory**
+(`<uid>-post/` and `<uid>-post-inner/`) carried as an explicit `0o755`
+entry. Archive Utility extracts that folder directly with its stored,
+traversable mode and never synthesizes a 0700 wrapper.
+
+- Zip writing extracted into testable `build_inner_zip` /
+  `build_outer_zip` helpers; `hashes.json` entry paths now carry the
+  `<uid>-post-inner/` prefix so they match the inner zip's entry names
+  exactly. Determinism (MS-DOS-epoch mtimes, fixed entry order) is
+  preserved.
+- Tests: `inner_zip_wraps_everything_in_one_traversable_folder`,
+  `outer_zip_wraps_everything_in_one_traversable_folder`,
+  `inner_zip_is_byte_deterministic`.
+- Note for the future: Molly does not ingest post-bundles yet, so the
+  layout change has no consumer to break today — it sets the contract
+  for when post-ingest is built.
+
+### Fixed — FanSite day media now lands somewhere a browser can reach it
+
+The per-day "infallible media" folder was staged inside the app's
+Application Support workspace
+(`~/Library/Application Support/com.phantomlives.sidemolly/work/<uid>/fansite-staging/Day NN/`).
+That path is unusable when posting: macOS hides `~/Library`, and a
+site's browser upload dialog can't navigate there or accept a pasted
+`~/Library/...` path.
+
+Day folders now stage to a browsable location under
+`~/Downloads/SideMolly/FanSite/<persona> <YYYY-MM> <title> [uid]/Day NN/`
+— present in every macOS open-panel sidebar, and aligned with the
+PhantomLives default-output-location rule. The day card now also spells
+out how to use it: pick **Downloads → SideMolly → FanSite** in the
+upload dialog, or press **⌘⇧G** and paste the copied path.
+
+- New `fansite_day_folder` resolves the readable, per-bundle Downloads
+  path; `prepare_fansite_day` and `reveal_fansite_day` both use it, so
+  Copy-path / Reveal / Re-stage all agree.
+- Folder name is sanitized (path separators and control chars stripped)
+  and suffixed with a short uid so distinct bundles can't collide.
+- Tests: `bundle_folder_name_is_readable_and_unique`,
+  `day_folder_is_browsable_and_zero_padded`.
+
 ## [0.19.0] — 2026-05-26
 
 ### Added — Appearance setting (Dark / Light / Auto)

@@ -147,6 +147,12 @@ pub(crate) fn run_backup(support_dir: &Path, backup_dir: &Path) -> Result<PathBu
         let options = SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated)
             .unix_permissions(0o644);
+        // Directory entries get the execute bit so the extracted tree is
+        // traversable (the zip crate already defaults dirs to 0o755, but
+        // be explicit). Note: backups are restored programmatically by
+        // BackupService, so the multi-root Archive-Utility 0o700-wrapper
+        // quirk that post-bundles avoid doesn't affect restore here.
+        let dir_options = options.unix_permissions(0o755);
 
         let mut buf = Vec::with_capacity(64 * 1024);
         for entry in WalkDir::new(support_dir).into_iter().filter_map(|e| e.ok()) {
@@ -160,7 +166,7 @@ pub(crate) fn run_backup(support_dir: &Path, backup_dir: &Path) -> Result<PathBu
 
             if entry.file_type().is_dir() {
                 let dir_name = format!("{}/", name.replace('\\', "/"));
-                zip.add_directory(dir_name, options)?;
+                zip.add_directory(dir_name, dir_options)?;
             } else if entry.file_type().is_file() {
                 let file_name = name.replace('\\', "/");
                 zip.start_file(file_name, options)?;
@@ -495,6 +501,37 @@ mod tests {
         let verify = verify_archive(&out).expect("archive verifies");
         assert!(verify.has_database, "archive contains sidemolly.db");
         assert_eq!(verify.file_count, 2);
+    }
+
+    #[test]
+    fn backup_directory_entries_are_traversable() {
+        // Regression: directory entries were written 0o644 (no execute
+        // bit), so the extracted folder was non-traversable — Finder
+        // reported "you don't have permission to see its contents".
+        let support = TempDir::new().unwrap();
+        fs::write(support.path().join(DB_FILENAME), b"db").unwrap();
+        fs::create_dir_all(support.path().join("work/uid")).unwrap();
+        fs::write(support.path().join("work/uid/a.bin"), b"x").unwrap();
+
+        let backup_dir = TempDir::new().unwrap();
+        let out = run_backup(support.path(), backup_dir.path()).expect("backup succeeds");
+
+        let file = fs::File::open(&out).unwrap();
+        let mut zip = zip::ZipArchive::new(file).unwrap();
+        let (mut saw_dir, mut saw_file) = (false, false);
+        for i in 0..zip.len() {
+            let entry = zip.by_index(i).unwrap();
+            let mode = entry.unix_mode().expect("entry carries a unix mode") & 0o777;
+            if entry.is_dir() {
+                saw_dir = true;
+                assert_eq!(mode, 0o755, "dir {} must be traversable", entry.name());
+            } else {
+                saw_file = true;
+                assert_eq!(mode, 0o644, "file {} mode", entry.name());
+            }
+        }
+        assert!(saw_dir, "archive contains a directory entry");
+        assert!(saw_file, "archive contains a file entry");
     }
 
     #[test]

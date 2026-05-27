@@ -44,10 +44,13 @@ made — run it whenever a roster looks incomplete.
    - **Copy chips** for Persona · Date · Title · Message.
    - **📁 Day media** — SideMolly stages exactly that day's files
      (rotated, EXIF stripped, **no watermark** — the sites add their
-     own) into a dedicated folder. Use **📋 Copy folder path** or
-     **👁 Reveal folder**, then point the site's upload dialog there.
-     Because the folder holds only that day's media, you can't grab
-     the wrong files.
+     own) into a dedicated folder under
+     `~/Downloads/SideMolly/FanSite/<persona> <month> <title>/Day NN/`.
+     That location is browsable: in the site's upload dialog pick
+     **Downloads → SideMolly → FanSite**, or press **⌘⇧G** and paste
+     the path from **📋 Copy folder path**. **👁 Reveal folder** opens
+     it in Finder. Because the folder holds only that day's media, you
+     can't grab the wrong files.
    - **🚀 Open {site}** (if a URL is set), **📋 Copy message**.
 4. After uploading, tick the **posted** checkbox (untick to undo a
    mistaken check), or click **✓ Mark posted & advance** to record it
@@ -81,6 +84,21 @@ Pick SideMolly's theme:
 
 The choice is remembered across launches and applies immediately
 (no restart, no flash on startup).
+
+## Where SideMolly keeps files
+
+- **Bundle media you work with** lives under `~/Downloads/SideMolly/`:
+  extracted and processed files at `~/Downloads/SideMolly/work/<uid>/`,
+  and the FanSite per-day upload folders at
+  `~/Downloads/SideMolly/FanSite/`. Keeping them here means they're
+  reachable from a site's browser upload dialog.
+- **The database and settings** live in
+  `~/Library/Application Support/com.phantomlives.sidemolly/` — that's
+  what the launch backup archives (and why backups stay small: they
+  don't carry the bundle media).
+
+Upgrading from an older version moves your existing workspace into
+`~/Downloads/SideMolly/work/` automatically on first launch.
 
 ## Backup (Settings → 💾 Backup)
 

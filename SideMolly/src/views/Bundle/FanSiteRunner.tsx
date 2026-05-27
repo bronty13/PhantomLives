@@ -512,9 +512,15 @@ function DayCard({ plan, target, day, thumbs, onChange, onAdvance }: {
           </div>
         </div>
         {prepared && prepared.folderPath && (
-          <div className="text-[10px] font-mono mb-1.5 break-all" style={{ color: 'rgb(var(--surface-muted))' }}>
-            {prepared.folderPath}
-          </div>
+          <>
+            <div className="text-[10px] font-mono mb-1 break-all" style={{ color: 'rgb(var(--surface-muted))' }}>
+              {prepared.folderPath}
+            </div>
+            <div className="text-[10px] mb-1.5 leading-snug" style={{ color: 'rgb(var(--surface-muted))' }}>
+              In the site's upload dialog, pick <strong>Downloads → SideMolly → FanSite</strong>,
+              or press <kbd>⌘⇧G</kbd> and paste the path above.
+            </div>
+          </>
         )}
         {prepared && prepared.files.length > 0 ? (
           <div className="flex flex-wrap gap-1.5">
