@@ -136,6 +136,12 @@ pub struct BundleSummary {
     pub aging_flag: String, // "fresh" | "aging" | "overdue"
     pub file_count: i64,
     pub tag_ids: Vec<i64>,
+    /// Set by return_file::import_return_file. Non-NULL means Sallie has
+    /// imported the post-bundle for this row.
+    pub completed_at: Option<String>,
+    /// Scheduled cleanup timestamp — set on return-file import to 3 days
+    /// out. The auto-purge pass picks up rows whose delete_after has passed.
+    pub delete_after: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -782,6 +788,8 @@ fn row_to_summary(
         updated_at: row.get("updated_at")?,
         file_count,
         tag_ids,
+        completed_at: row.get("completed_at")?,
+        delete_after: row.get("delete_after")?,
     })
 }
 
@@ -932,7 +940,8 @@ pub(crate) fn pure_get_bundle(
                 fansite_year, fansite_month,
                 published_at, bundle_path, bundle_size_bytes,
                 outer_sha256, inner_sha256,
-                created_at, updated_at
+                created_at, updated_at,
+                completed_at, delete_after
          FROM bundles WHERE uid = ?1",
     )?;
     let mut rows = stmt.query(params![uid])?;
@@ -990,7 +999,7 @@ pub(crate) fn pure_list_bundles(
         Some(s) => (
             "SELECT b.uid, b.bundle_type, b.persona_code, b.state, b.title, b.content_date,
                     b.go_live_date, b.published_at, b.bundle_path, b.bundle_size_bytes,
-                    b.created_at, b.updated_at,
+                    b.created_at, b.updated_at, b.completed_at, b.delete_after,
                     (SELECT COUNT(*) FROM bundle_files WHERE bundle_uid = b.uid) AS file_count
              FROM bundles b
              WHERE b.state = ?1
@@ -1000,7 +1009,7 @@ pub(crate) fn pure_list_bundles(
         None => (
             "SELECT b.uid, b.bundle_type, b.persona_code, b.state, b.title, b.content_date,
                     b.go_live_date, b.published_at, b.bundle_path, b.bundle_size_bytes,
-                    b.created_at, b.updated_at,
+                    b.created_at, b.updated_at, b.completed_at, b.delete_after,
                     (SELECT COUNT(*) FROM bundle_files WHERE bundle_uid = b.uid) AS file_count
              FROM bundles b
              ORDER BY b.created_at DESC",
@@ -1383,7 +1392,7 @@ pub(crate) fn pure_auto_purge(
     now: DateTime<Utc>,
 ) -> Result<PurgeResult, BundleError> {
     let now_str = now.to_rfc3339();
-    if !settings.auto_purge_enabled || settings.purge_threshold_days == 0 {
+    if !settings.auto_purge_enabled {
         return Ok(PurgeResult {
             considered: 0,
             purged: 0,
@@ -1391,14 +1400,29 @@ pub(crate) fn pure_auto_purge(
             last_run_at: now_str,
         });
     }
-    let cutoff = now - chrono::Duration::days(settings.purge_threshold_days as i64);
-    let cutoff_str = cutoff.to_rfc3339();
+    // Two cleanup rules, UNIONed:
+    //   1. The generic "this bundle has been sitting around for N days"
+    //      rule (skipped when purge_threshold_days == 0).
+    //   2. The per-bundle delete_after rule — set on return-file import to
+    //      now()+3d. Always honored when auto_purge_enabled is on so the
+    //      "kept forever" toggle (purge_threshold_days=0) still cleans up
+    //      bundles Sallie explicitly closed out.
+    let age_cutoff_str = if settings.purge_threshold_days > 0 {
+        (now - chrono::Duration::days(settings.purge_threshold_days as i64)).to_rfc3339()
+    } else {
+        // Sentinel that won't match any RFC3339 timestamp.
+        "0001-01-01T00:00:00Z".to_string()
+    };
     let mut stmt = conn.prepare(
         "SELECT uid, bundle_path FROM bundles
-         WHERE state = 'published' AND published_at < ?1",
+         WHERE state <> 'purged'
+           AND (
+                (state = 'published' AND published_at IS NOT NULL AND published_at < ?1)
+             OR (delete_after IS NOT NULL AND delete_after < ?2)
+           )",
     )?;
     let candidates = stmt
-        .query_map(params![cutoff_str], |r| {
+        .query_map(params![age_cutoff_str, now_str], |r| {
             Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -2108,6 +2132,7 @@ mod tests {
             include_str!("../migrations/026_content_tags.sql"),
             include_str!("../migrations/027_fanday_tags.sql"),
             include_str!("../migrations/028_clip_tags.sql"),
+            include_str!("../migrations/034_return_file_import.sql"),
         ] {
             conn.execute_batch(sql).unwrap();
         }
@@ -2402,6 +2427,8 @@ mod tests {
                 aging_flag: "fresh".into(),
                 file_count: 0,
                 tag_ids: vec![],
+                completed_at: None,
+                delete_after: None,
             },
             special_instructions: String::new(),
             description_mode: None,

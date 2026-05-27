@@ -4,6 +4,113 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.0] — 2026-05-27
+
+### Added — 📥 Import the return file from SideMolly
+
+Closes the Molly ↔ SideMolly round-trip. After Robert post-produces a
+published bundle and SideMolly composes a `<UID>-post.zip` "return file"
+at `~/Downloads/Molly post-bundles/`, Sallie can pull that file back
+into Molly with a single click on the Bundles page.
+
+#### Flow
+
+A new **📥 Import Return File** button on the Bundles page opens a
+side-panel wizard. On open, Molly scans `~/Downloads/Molly post-bundles/`
+and lists every `*-post.zip` it finds (newest first), annotated with
+the bundle UID, type, compose timestamp, file size, and whether it's
+already been imported. A **📂 Pick from disk…** escape hatch covers
+files received via other channels.
+
+On import (transactional):
+
+- For each posting target SideMolly recorded, a row lands in the new
+  `bundle_postings` table — target name, state (posted/scheduled/
+  pending/skipped), posted-at, posted URL, body override, notes,
+  optional fansite day. Upserted on `(bundle_uid, target_id,
+  fansite_day)` so re-importing a corrected return file merges rather
+  than duplicates.
+- For **Content** and **Custom** bundles, each `filesUsed` entry is
+  resolved against `bundle_files.relpath`, the original filename's
+  stem is matched against `clips.id` / `clips.external_clip_id` /
+  `clips.title` (case-insensitive), and the writeback lands in
+  `bundle_posting_files` with the matched `clip_id` (or NULL if no
+  match). Matched + posted targets also append a row to
+  `social_promos` when a matching `social_platforms` row exists, so
+  the per-clip posting audit-trail stays consistent.
+- For **FanSite** bundles, files are recorded but `clip_id` is always
+  NULL (FanSite days aren't clips). Postings are logged for review
+  but never written to the Clips list.
+- The bundle row is stamped with `completed_at = datetime('now')` and
+  `delete_after = datetime('now', '+3 days')` (skipped when the bundle
+  is already purged). A green **✓ Imported · cleanup `MM-DD`** badge
+  appears on the row in the Bundles list.
+- A one-line entry lands in `mollys_log` ("Imported return file for
+  bundle <UID> · M/N targets posted · X/Y files linked to clips ·
+  cleanup `YYYY-MM-DD`") so the import is visible in Molly's Log.
+- The source ZIP's SHA-256 is recorded in the new `return_file_imports`
+  table; re-importing the same bytes short-circuits with a
+  `wasDuplicate=true` result modal and zero DB writes.
+
+The result modal surfaces every target (name, state pill, posted URL,
+fansite day, body override, per-target notes), a per-file clip-match
+summary ("5 of 5 matched"), and the cleanup date.
+
+#### Auto-purge integration
+
+`pure_auto_purge` (called once per day at launch) now picks up bundles
+whose `delete_after` has passed in addition to the existing 60-day
+published-threshold rule. The `delete_after` rule fires even when the
+generic threshold is disabled (`purge_threshold_days = 0`), so closing
+out a bundle via return-file import always honors the 3-day cleanup
+regardless of the global retention setting.
+
+#### Backend
+
+- New migration `034_return_file_import.sql`:
+  - Adds `completed_at` + `delete_after` to `bundles`.
+  - New tables: `bundle_postings`, `bundle_posting_files`,
+    `return_file_imports`.
+- New module `return_file.rs` exposing four Tauri commands:
+  `list_return_file_candidates`, `import_return_file`,
+  `get_bundle_postings`, `reveal_post_bundles_dir`.
+- The `Report` / `ReportTarget` Rust structs mirror SideMolly's
+  `post_bundle.rs` exactly so a small schema bump there is a one-line
+  update here.
+- Outer + inner ZIP layout handles the new SideMolly v0.16 wrapping
+  directories (`<UID>-post/` and `<UID>-post-inner/`) plus the legacy
+  bare-entry shape.
+
+#### Frontend
+
+- New `ImportReturnFileWizard.tsx` with picking → importing → done →
+  error stages (mirrors `PublishWizard.tsx`).
+- `BundleSummary` TS type extended with `completedAt` + `deleteAfter`.
+- Bundles list row shows a `✓ Imported · cleanup MM-DD` badge when
+  imported, or `· already cleaned up` when the source ZIP was already
+  purged before import.
+
+### Tests
+
+11 new Rust tests across `return_file::tests`:
+- `filename_stem_strips_extension_and_position_prefix`
+- `resolve_clip_matches_id_then_external_id_then_title`
+- `import_records_posting_and_links_matched_clip`
+- `import_unmatched_file_records_null_clip_id`
+- `import_is_idempotent_by_source_sha`
+- `import_fansite_does_not_write_to_clips`
+- `import_rejects_unknown_bundle_uid`
+- `import_rejects_type_mismatch`
+- `import_on_purged_bundle_skips_delete_after`
+
+`migration_smoke` covers `034`; `camel_case_contract` covers the four
+new boundary structs (`ReturnFileCandidate`, `PostingFileOutcome`,
+`BundlePostingDto`, `ReturnFileImportResult`).
+
+242/242 passing.
+
+---
+
 ## [1.19.0] — 2026-05-26
 
 ### Added — 💎 Adhoc-income monthly goals + escalating celebrations

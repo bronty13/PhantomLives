@@ -16,6 +16,7 @@ import { ContentBundleForm } from './ContentBundleForm';
 import { CustomBundleForm } from './CustomBundleForm';
 import { FanSiteBundleForm } from './FanSiteBundleForm';
 import { PublishWizard } from './PublishWizard';
+import { ImportReturnFileWizard } from './ImportReturnFileWizard';
 
 interface Props {
   active: Persona;
@@ -34,6 +35,7 @@ export function BundlesListView({ active }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creatingType, setCreatingType] = useState<BundleType | null>(null);
+  const [showImport, setShowImport] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -183,7 +185,22 @@ export function BundlesListView({ active }: Props) {
         >
           ＋ New Fan Site Bundle
         </button>
+        <button
+          type="button"
+          onClick={() => setShowImport(true)}
+          className="pretty-button secondary ml-auto"
+          title="Import SideMolly's return file (post-bundle ZIP)"
+        >
+          📥 Import Return File
+        </button>
       </div>
+
+      {showImport && (
+        <ImportReturnFileWizard
+          onClose={() => setShowImport(false)}
+          onImported={() => { refresh(); }}
+        />
+      )}
 
       {error && (
         <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{error}</div>
@@ -209,10 +226,11 @@ export function BundlesListView({ active }: Props) {
                   {b.bundleType === 'content' ? '🎁' : b.bundleType === 'custom' ? '✨' : '📅'}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2">
+                  <div className="flex items-baseline gap-2 flex-wrap">
                     <span className="font-mono text-xs opacity-60">{b.uid}</span>
                     <span className="text-xs uppercase tracking-wider opacity-50">{b.bundleType}</span>
                     <StatePill state={b.state} aging={b.agingFlag} />
+                    {b.completedAt && <ImportedBadge deleteAfter={b.deleteAfter} alreadyPurged={b.state === 'purged'} />}
                   </div>
                   <div className="font-medium truncate">{b.title || <em className="opacity-50">(untitled)</em>}</div>
                   <div className="text-xs opacity-60 flex flex-wrap gap-x-3 gap-y-0.5">
@@ -255,6 +273,23 @@ export function BundlesListView({ active }: Props) {
         </ul>
       )}
     </div>
+  );
+}
+
+function ImportedBadge({ deleteAfter, alreadyPurged }: { deleteAfter: string | null; alreadyPurged: boolean }) {
+  const tail = alreadyPurged
+    ? ' · already cleaned up'
+    : deleteAfter
+      ? ` · cleanup ${deleteAfter.slice(0, 10)}`
+      : '';
+  return (
+    <span
+      className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full"
+      style={{ background: '#DCFCE7', color: '#166534' }}
+      title="Return file from SideMolly has been imported"
+    >
+      ✓ Imported{tail}
+    </span>
   );
 }
 

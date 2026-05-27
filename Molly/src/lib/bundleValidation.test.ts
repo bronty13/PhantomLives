@@ -21,6 +21,7 @@ function mkBundle(overrides: Partial<Bundle> = {}): Bundle {
       goLiveDate: '2026-06-15', publishedAt: null, bundlePath: null,
       bundleSizeBytes: null, createdAt: '2026-05-22', updatedAt: '2026-05-22',
       agingFlag: 'fresh', fileCount: 0, tagIds: [],
+      completedAt: null, deleteAfter: null,
     },
     specialInstructions: '',
     descriptionMode: null,

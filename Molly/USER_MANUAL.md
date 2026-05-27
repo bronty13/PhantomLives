@@ -443,6 +443,27 @@ You can also tag clips that didn't come from a bundle (e.g. CSV-imported ones). 
 - **Auto-purge enabled** — separate toggle from the threshold, so you can flip-test without losing your number.
 - **Prohibited words** — chip list. Add / remove any time.
 
+### 📥 Importing the return file from SideMolly
+
+After Robert finishes post-producing a bundle in **SideMolly** and posts it everywhere it's supposed to go, SideMolly composes a little **return file** — a ZIP named `<UID>-post.zip` — and drops it into `~/Downloads/Molly post-bundles/` on his Mac. Robert sends that file back to you (Slack, AirDrop, whatever) and you save it to your own `~/Downloads/Molly post-bundles/` folder.
+
+Then in Molly, on the **🎁 Bundles** page, click **📥 Import Return File** in the top-right of the toolbar. A side panel slides in:
+
+1. Molly scans your `~/Downloads/Molly post-bundles/` folder and lists every return file she finds, newest first. Each row shows the bundle UID, type, when SideMolly composed it, and the file size. If you've already imported a file, you'll see an "already imported" pill — clicking **Re-import** is safe and just re-shows the previous result without writing duplicate rows.
+2. If you don't see the file you want (Robert sent it to a different folder, say), click **📂 Pick from disk…** and navigate to it.
+3. Molly reads the return file, looks up the matching bundle, and writes everything back in one go. Takes a second.
+
+When it finishes, you see a result card with:
+
+- The bundle UID + type and the cleanup date ("Bundle scheduled for cleanup on `YYYY-MM-DD`" — three days out so the on-disk ZIP doesn't linger forever after you've closed it out).
+- Every **posting target** SideMolly recorded — Clips4Sale, your fan site, OnlyFans, wherever — with the state (posted / scheduled / pending / skipped), the timestamp, the actual posted URL (clickable), and any per-target notes Robert left.
+- For **Content / Custom** bundles: a **Clip writeback** summary like "5 of 5 files matched." Molly tries to match each posted file back to a row in your Clips list by filename — when she finds a match she logs the posting against that clip. If a file's name doesn't match any clip, she still records the posting (just without a clip link).
+- For **Fan Site** bundles: a logged list of which days posted where, and a note that fan-site days don't link to clips (since they're calendar entries, not clips). You'll see everything that posted, but nothing gets written to the Clips list.
+
+After import, the bundle row in your Bundles list gets a green **✓ Imported · cleanup `MM-DD`** badge so you can see at a glance which bundles are still waiting on a return file. The cleanup itself runs at the next app launch (or the next time the auto-purge sweep fires) — the original ZIP at `~/Downloads/Molly bundles/<UID>.zip` is removed when the 3-day window passes. If the ZIP was already gone (because the older 60-day auto-purge already cleaned it up), the badge reads **✓ Imported · already cleaned up**.
+
+Every import also drops a one-line entry into **Molly's Log** so you have a permanent journal of when each bundle's return file came in.
+
 ---
 
 ## 📔 Molly's Log — your personal journal

@@ -30,6 +30,10 @@ export interface BundleSummary {
   agingFlag: AgingFlag;
   fileCount: number;
   tagIds: number[];
+  /** Set by Import Return File. Non-null = imported. */
+  completedAt: string | null;
+  /** Scheduled auto-cleanup ISO timestamp (set on return-file import). */
+  deleteAfter: string | null;
 }
 
 export interface BundleFileInfo {
@@ -273,6 +277,75 @@ export async function updateFanDayMessage(fanDayId: number, message: string): Pr
 
 export async function deleteFanDay(fanDayId: number): Promise<void> {
   await invoke('delete_fan_day', { fanDayId });
+}
+
+// ---------------------------------------------------------------------------
+// v1.20.0 — SideMolly return-file import.
+// ---------------------------------------------------------------------------
+
+export interface ReturnFileCandidate {
+  path: string;
+  filename: string;
+  bundleUid: string;
+  bundleType: BundleType;
+  bundleKnown: boolean;
+  alreadyImported: boolean;
+  composedAt: string;
+  sizeBytes: number;
+}
+
+export interface PostingFileOutcome {
+  relpath: string;
+  originalName: string | null;
+  clipId: string | null;
+  clipTitle: string | null;
+}
+
+export interface BundlePostingDto {
+  id: number;
+  bundleUid: string;
+  targetId: string;
+  targetName: string;
+  state: 'pending' | 'scheduled' | 'posted' | 'skipped';
+  postedAt: string | null;
+  postedUrl: string | null;
+  bodyOverride: string | null;
+  notes: string | null;
+  fansiteDay: number | null;
+  importedAt: string;
+  files: PostingFileOutcome[];
+}
+
+export interface ReturnFileImportResult {
+  bundleUid: string;
+  bundleType: BundleType;
+  completedAt: string;
+  deleteAfter: string | null;
+  bundleAlreadyPurged: boolean;
+  postings: BundlePostingDto[];
+  matchedFileCount: number;
+  totalFileCount: number;
+  wasDuplicate: boolean;
+  /** Non-null when SideMolly's reported type disagrees with Molly's stored type.
+   *  Holds SideMolly's claimed type so the UI can show "stored=X · reported=Y";
+   *  `bundleType` is always Molly's canonical (stored) value. */
+  reportedBundleType: BundleType | null;
+}
+
+export async function listReturnFileCandidates(): Promise<ReturnFileCandidate[]> {
+  return invoke<ReturnFileCandidate[]>('list_return_file_candidates');
+}
+
+export async function importReturnFile(path: string): Promise<ReturnFileImportResult> {
+  return invoke<ReturnFileImportResult>('import_return_file', { path });
+}
+
+export async function getBundlePostings(bundleUid: string): Promise<BundlePostingDto[]> {
+  return invoke<BundlePostingDto[]>('get_bundle_postings', { bundleUid });
+}
+
+export async function revealPostBundlesDir(): Promise<void> {
+  await invoke('reveal_post_bundles_dir');
 }
 
 /**

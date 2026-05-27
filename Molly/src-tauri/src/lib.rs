@@ -19,6 +19,7 @@ mod log;
 mod masterclipper;
 mod notes;
 mod reddit;
+mod return_file;
 mod site_credentials;
 
 use tauri_plugin_sql::{Migration, MigrationKind};
@@ -221,6 +222,12 @@ pub fn run() {
             version: 33,
             description: "ui-theme",
             sql: include_str!("../migrations/033_ui_theme.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 34,
+            description: "return-file-import",
+            sql: include_str!("../migrations/034_return_file_import.sql"),
             kind: MigrationKind::Up,
         },
     ];
@@ -434,6 +441,10 @@ pub fn run() {
             daily_tasks::undo_daily_task,
             daily_tasks::delete_daily_task,
             daily_tasks::reorder_daily_tasks,
+            return_file::list_return_file_candidates,
+            return_file::import_return_file,
+            return_file::get_bundle_postings,
+            return_file::reveal_post_bundles_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running molly");
@@ -582,6 +593,8 @@ mod camel_case_contract {
             aging_flag: String::new(),
             file_count: 0,
             tag_ids: vec![],
+            completed_at: None,
+            delete_after: None,
         }
     }
 
@@ -1048,6 +1061,55 @@ mod camel_case_contract {
         }).unwrap();
         assert_camel(&v, "Caption");
     }
+
+    // v1.20.0 — SideMolly return-file import boundary structs.
+    use crate::return_file::{
+        BundlePostingDto, PostingFileOutcome, ReturnFileCandidate, ReturnFileImportResult,
+    };
+
+    #[test]
+    fn return_file_candidate_is_camel_case() {
+        let v = serde_json::to_value(ReturnFileCandidate {
+            path: String::new(), filename: String::new(),
+            bundle_uid: String::new(), bundle_type: String::new(),
+            bundle_known: false, already_imported: false,
+            composed_at: String::new(), size_bytes: 0,
+        }).unwrap();
+        assert_camel(&v, "ReturnFileCandidate");
+    }
+
+    #[test]
+    fn posting_file_outcome_is_camel_case() {
+        let v = serde_json::to_value(PostingFileOutcome {
+            relpath: String::new(), original_name: None,
+            clip_id: None, clip_title: None,
+        }).unwrap();
+        assert_camel(&v, "PostingFileOutcome");
+    }
+
+    #[test]
+    fn bundle_posting_dto_is_camel_case() {
+        let v = serde_json::to_value(BundlePostingDto {
+            id: 0, bundle_uid: String::new(),
+            target_id: String::new(), target_name: String::new(),
+            state: "posted".into(),
+            posted_at: None, posted_url: None, body_override: None, notes: None,
+            fansite_day: None, imported_at: String::new(), files: vec![],
+        }).unwrap();
+        assert_camel(&v, "BundlePostingDto");
+    }
+
+    #[test]
+    fn return_file_import_result_is_camel_case() {
+        let v = serde_json::to_value(ReturnFileImportResult {
+            bundle_uid: String::new(), bundle_type: String::new(),
+            completed_at: String::new(), delete_after: None,
+            bundle_already_purged: false, postings: vec![],
+            matched_file_count: 0, total_file_count: 0, was_duplicate: false,
+            reported_bundle_type: None,
+        }).unwrap();
+        assert_camel(&v, "ReturnFileImportResult");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1105,6 +1167,7 @@ mod migration_smoke {
             (31, "daily-tasks",                  include_str!("../migrations/031_daily_tasks.sql")),
             (32, "drop-content-release",         include_str!("../migrations/032_drop_content_release_defaults.sql")),
             (33, "ui-theme",                     include_str!("../migrations/033_ui_theme.sql")),
+            (34, "return-file-import",           include_str!("../migrations/034_return_file_import.sql")),
         ];
 
         for (v, name, sql) in migrations {
@@ -1138,6 +1201,7 @@ mod migration_smoke {
             "subreddits", "subreddit_posts", "captions",
             "clock_sessions", "reward_milestones",
             "daily_tasks",
+            "bundle_postings", "bundle_posting_files", "return_file_imports",
         ];
         for t in expected_tables {
             let count: i64 = conn
