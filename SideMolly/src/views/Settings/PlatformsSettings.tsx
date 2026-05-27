@@ -12,7 +12,7 @@
 import { useEffect, useState } from 'react';
 import {
   createPostingTarget, deletePostingTarget, listPostingTargets,
-  updatePostingTarget,
+  seedFanSiteTargets, updatePostingTarget,
   type PostingTarget, type PostingTargetInput, type PostingKind,
 } from '../../data/bundles';
 
@@ -42,6 +42,14 @@ export function PlatformsSettings() {
   });
 
   const cancelDraft = () => setDraft(null);
+
+  const seedFanSites = async () => {
+    try {
+      const targets = await seedFanSiteTargets();
+      setTargets(targets);
+      setStatus('✓ Fan-site roster ready (CoC + PoA)');
+    } catch (e) { setStatus(`Seed failed: ${e}`); }
+  };
 
   const saveDraft = async () => {
     if (!draft || !draft.name.trim()) {
@@ -94,6 +102,10 @@ export function PlatformsSettings() {
           <div className="text-sm font-semibold">{targets.length} platform{targets.length === 1 ? '' : 's'}</div>
           <div className="flex items-center gap-2">
             {status && <span className="text-xs" style={{ color: 'rgb(var(--surface-muted))' }}>{status}</span>}
+            <button type="button" className="sm-button secondary text-sm" onClick={seedFanSites}
+                    title="Create OnlyFans/ManyVids/Niteflirt (CoC) + OnlyFans/Niteflirt/LoyalFans (PoA). Idempotent.">
+              📅 Seed fan-sites
+            </button>
             <button type="button" className="sm-button text-sm" onClick={startAdd}>
               ➕ Add platform
             </button>

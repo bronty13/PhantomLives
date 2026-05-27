@@ -94,3 +94,4 @@ SideMolly/
 | 10 | 📅 FanSite Post Runner |
 | 11 | 📤 Post-bundle composition + Molly ingest (joint release) |
 | 12 | 🛠 Jobs panel |
+| 13 | 📅 FanSite multi-site workflow (per-persona roster, per-day media staging, posting log) |

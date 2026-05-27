@@ -526,22 +526,74 @@ export interface BundleAsset {
   inZipPath: string | null;
 }
 
-export interface FanSiteDayPosting {
-  dayOfMonth: number;
-  message: string;
-  fileCount: number;
+// ----- Phase 13: multi-site FanSite runner -----
+
+/** One fan-site target's posting state for a single calendar day. */
+export interface FanSiteTargetDay {
+  targetId: number;
   state: PostingState;
   postedAt: string | null;
   postedUrl: string | null;
   notes: string | null;
 }
 
+export interface FanSiteDay {
+  dayOfMonth: number;
+  message: string;
+  fileCount: number;
+  /** One entry per FanSitePlan.targets (same order); index by targetId. */
+  targets: FanSiteTargetDay[];
+}
+
 export interface FanSitePlan {
   bundleUid: string;
+  personaCode: string | null;
+  title: string;
   year: number | null;
   month: number | null;
-  target: PostingTarget | null;
-  days: FanSiteDayPosting[];
+  /** Every enabled fan-site target for this persona (the roster). */
+  targets: PostingTarget[];
+  days: FanSiteDay[];
+}
+
+export interface PreparedDayFile {
+  name: string;
+  path: string;
+  kind: 'image' | 'video' | 'audio' | 'other' | string;
+  inZipPath: string;
+}
+
+export interface PreparedDay {
+  bundleUid: string;
+  dayOfMonth: number;
+  folderPath: string;
+  files: PreparedDayFile[];
+  processedCount: number;
+  skippedCount: number;
+  errors: string[];
+}
+
+export interface PostingLogRow {
+  id: number;
+  bundleUid: string;
+  targetId: number | null;
+  targetName: string;
+  personaCode: string | null;
+  fansiteDay: number | null;
+  title: string | null;
+  action: 'posted' | 'unposted' | 'reset';
+  postedUrl: string | null;
+  details: string | null;
+  loggedAt: string;
+}
+
+export interface SetFanSiteDayInput {
+  bundleUid: string;
+  targetId: number;
+  fansiteDay: number;
+  state: PostingState;
+  postedUrl?: string | null;
+  notes?: string | null;
 }
 
 export function listPostingTargets(): Promise<PostingTarget[]> {
@@ -581,8 +633,41 @@ export function listBundleAssets(uid: string): Promise<BundleAsset[]> {
   return invoke<BundleAsset[]>('list_bundle_assets', { uid });
 }
 
-export function listFanSitePlan(uid: string): Promise<FanSitePlan> {
-  return invoke<FanSitePlan>('list_fansite_plan', { uid });
+// ----- Phase 13: multi-site FanSite runner -----
+
+export function getFanSitePlan(uid: string): Promise<FanSitePlan> {
+  return invoke<FanSitePlan>('get_fansite_plan', { uid });
+}
+
+/** Create the canonical per-persona fan-site roster (idempotent).
+ *  Returns the full target list afterward. */
+export function seedFanSiteTargets(): Promise<PostingTarget[]> {
+  return invoke<PostingTarget[]>('seed_fansite_targets');
+}
+
+/** Stage one day's media into a dedicated folder (rotate + strip EXIF,
+ *  no watermark) and return the folder path + file list. */
+export function prepareFanSiteDay(uid: string, day: number): Promise<PreparedDay> {
+  return invoke<PreparedDay>('prepare_fansite_day', { uid, day });
+}
+
+export function revealFanSiteDay(uid: string, day: number): Promise<void> {
+  return invoke('reveal_fansite_day', { uid, day });
+}
+
+/** Upsert one (bundle, target, day) posting cell. Writes a posting_log
+ *  row when the cell flips to/from posted. */
+export function setFanSiteDay(input: SetFanSiteDayInput): Promise<void> {
+  return invoke('set_fansite_day', { input });
+}
+
+/** Unwind one site (targetId set) or the whole bundle (targetId null). */
+export function resetFanSitePostings(uid: string, targetId: number | null = null): Promise<void> {
+  return invoke('reset_fansite_postings', { uid, targetId });
+}
+
+export function listPostingLog(uid: string): Promise<PostingLogRow[]> {
+  return invoke<PostingLogRow[]>('list_posting_log', { uid });
 }
 
 // ----- Phase 11: post-bundle return trip -----

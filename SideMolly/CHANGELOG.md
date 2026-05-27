@@ -4,6 +4,80 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.2] — 2026-05-26
+
+### Fixed — "Open site" was blocked by the opener ACL
+
+Clicking **🚀 Open {site}** failed with "Not allowed to open url …".
+`opener:default` ships no URL scope, so every `open_url` was denied.
+Added an explicit `opener:allow-open-url` scope for `http://*` +
+`https://*` to the capability. Also normalize the typed site URL
+before opening — lowercase the scheme (the scope glob is
+case-sensitive, so a stored `Https://…` was rejected) and prepend
+`https://` when no scheme is present.
+
+## [0.18.1] — 2026-05-26
+
+### Changed — FanSite day card simplified to a posted checkbox
+
+FanSite posting is binary, so the day card drops the four-state
+dropdown (pending/scheduled/posted/skipped) for a single **posted**
+checkbox — check to mark posted, uncheck to undo a mistaken check.
+The **Posted URL** field is removed entirely (the fan-sites don't
+surface a post URL to record). **✓ Mark posted & advance** stays as
+the fast path for walking a site day-by-day. The calendar and site-tab
+progress still read from the same `posted` state, and the posting log
+still records each posted/unposted/reset flip.
+
+## [0.18.0] — 2026-05-26
+
+### Added — Phase 13: FanSite multi-site posting workflow
+
+The 📅 FanSite runner is rebuilt around how fan-sites actually get
+posted: before the start of each month, to a **fixed roster of sites
+per persona**, walking one site fully before moving to the next.
+
+**Per-persona site roster + one-click seed.** CoC posts to OnlyFans /
+ManyVids / Niteflirt; PoA posts to OnlyFans / Niteflirt / LoyalFans;
+Sheer (Sa) has no fan-sites and is excluded. `seed_fansite_targets`
+creates the canonical roster (idempotent — never clobbers your
+Settings → Platforms edits), reachable from the runner's empty state
+and a new **📅 Seed fan-sites** button in Settings → Platforms. Names
+use bracket notation (`OnlyFans [CoC]`) so the same site can exist
+under two personas despite the `UNIQUE(name)` constraint.
+
+**Multi-site calendar.** `get_fansite_plan` now returns *every*
+fan-site target for the persona (the old Phase-10 `list_fansite_plan`
+resolved only one). The runner shows **site tabs** with per-site
+progress (`✓ posted / total`); pick a site, walk the month, switch to
+the next. State is keyed `(bundle, target, day)` so stopping and
+resuming auto-focuses the next pending day for the active site.
+
+**Infallible per-day media.** `prepare_fansite_day` stages exactly one
+day's files into a dedicated folder (`fansite-staging/Day NN/`),
+applying the abbreviated fan-site processing — **rotate + strip EXIF,
+no watermark** (the sites watermark automatically; doubling looks
+bad). The day card shows thumbnails, a **📋 Copy folder path** button,
+**Reveal folder**, and per-file copy-path — so the upload dialog can
+only ever see the right files.
+
+**Prominent persona color** banner (CoC pink / PoA crimson) and
+**copy chips** for Persona · Date · Title · Message on every day.
+
+**Reset / unwind.** "Reset this site" and "Reset all sites"
+(confirm-gated) clear posting state to start fresh; the audit log
+keeps the history.
+
+**Posting log (carried back to Molly).** New append-only `posting_log`
+table (migration `017`) records every posted / unposted / reset action
+with a timestamp, persona, site, day, title, and URL. Viewable inline
+in the runner and written to `posting-log.json` inside the post-bundle
+ZIP so Molly can reconcile what actually went live.
+
+### Migrations
+
+- `017_posting_log.sql` — append-only `posting_log` audit table.
+
 ## [0.17.0] — 2026-05-24
 
 ### Added — Phase 12: Jobs panel polish

@@ -129,6 +129,14 @@ pub fn compose_post_bundle<R: Runtime>(
         .map_err(|e| BundleError::Io(std::io::Error::other(format!("report serialize: {e}"))))?;
     let notes_md = "".to_string();  // Phase 11 ships empty; UI can populate later.
 
+    // Posting log (Phase 13) — the append-only audit trail, oldest-first
+    // for a stable, diff-friendly file. Carried back so Molly can
+    // reconcile what actually went live, when, and where. Empty bundles
+    // get "[]" (deterministic; never absent).
+    let posting_log = crate::fansite::read_posting_log(&conn, &uid, false)?;
+    let posting_log_json = serde_json::to_string_pretty(&posting_log)
+        .map_err(|e| BundleError::Io(std::io::Error::other(format!("posting-log serialize: {e}"))))?;
+
     // Collect artifacts: transcripts + per-file thumbnails. Keyed by
     // their in-zip path so the BTreeMap ordering drives deterministic
     // entry order.
@@ -163,6 +171,9 @@ pub fn compose_post_bundle<R: Runtime>(
 
         zip.start_file("notes.md", opts)?;
         zip.write_all(notes_md.as_bytes())?;
+
+        zip.start_file("posting-log.json", opts)?;
+        zip.write_all(posting_log_json.as_bytes())?;
 
         if let Some(log) = &log_bytes {
             zip.start_file("processing.log", opts)?;

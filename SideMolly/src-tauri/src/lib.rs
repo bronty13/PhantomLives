@@ -4,6 +4,7 @@ mod bundle_io;
 mod bundles;
 mod dropbox;
 mod extract;
+mod fansite;
 mod fsutil;
 mod images;
 mod jobs;
@@ -116,6 +117,12 @@ pub fn run() {
             sql: include_str!("../migrations/016_posting_assets_and_fansite.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 17,
+            description: "posting-log",
+            sql: include_str!("../migrations/017_posting_log.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -200,7 +207,13 @@ pub fn run() {
             posting::upsert_bundle_posting,
             posting::mark_posted,
             posting::list_bundle_assets,
-            posting::list_fansite_plan,
+            fansite::get_fansite_plan,
+            fansite::seed_fansite_targets,
+            fansite::prepare_fansite_day,
+            fansite::reveal_fansite_day,
+            fansite::set_fansite_day,
+            fansite::reset_fansite_postings,
+            fansite::list_posting_log,
             post_bundle::compose_post_bundle,
             post_bundle::get_post_bundle_status,
             post_bundle::reveal_post_bundle,
@@ -243,9 +256,13 @@ mod camel_case_contract {
         DryRunRow, DryRunSummary,
     };
     use crate::posting::{
-        BundleAsset, BundlePosting, FanSiteDayPosting, FanSitePlan,
+        BundleAsset, BundlePosting,
         PostingCard, PostingTarget, PostingTargetInput,
         UpsertBundlePostingInput,
+    };
+    use crate::fansite::{
+        FanSiteDay, FanSitePlan, FanSiteTargetDay, PostingLogRow,
+        PreparedDay, PreparedDayFile,
     };
     use crate::post_bundle::{ComposeResult, PostBundleStatus};
     use crate::bundles::{BundleDetail, BundleFileRow, BundleSummary, ExportThumb,
@@ -447,18 +464,49 @@ mod camel_case_contract {
         }).unwrap(), "BundleAsset");
     }
 
-    #[test] fn fansite_day_posting_is_camel_case() {
-        assert_camel(&serde_json::to_value(FanSiteDayPosting {
+    #[test] fn fansite_target_day_is_camel_case() {
+        assert_camel(&serde_json::to_value(FanSiteTargetDay {
+            target_id: 0, state: String::new(),
+            posted_at: None, posted_url: None, notes: None,
+        }).unwrap(), "FanSiteTargetDay");
+    }
+
+    #[test] fn fansite_day_is_camel_case() {
+        assert_camel(&serde_json::to_value(FanSiteDay {
             day_of_month: 0, message: String::new(), file_count: 0,
-            state: String::new(), posted_at: None, posted_url: None, notes: None,
-        }).unwrap(), "FanSiteDayPosting");
+            targets: vec![],
+        }).unwrap(), "FanSiteDay");
     }
 
     #[test] fn fansite_plan_is_camel_case() {
         assert_camel(&serde_json::to_value(FanSitePlan {
-            bundle_uid: String::new(), year: None, month: None,
-            target: None, days: vec![],
+            bundle_uid: String::new(), persona_code: None, title: String::new(),
+            year: None, month: None, targets: vec![], days: vec![],
         }).unwrap(), "FanSitePlan");
+    }
+
+    #[test] fn prepared_day_is_camel_case() {
+        assert_camel(&serde_json::to_value(PreparedDay {
+            bundle_uid: String::new(), day_of_month: 0,
+            folder_path: String::new(), files: vec![],
+            processed_count: 0, skipped_count: 0, errors: vec![],
+        }).unwrap(), "PreparedDay");
+    }
+
+    #[test] fn prepared_day_file_is_camel_case() {
+        assert_camel(&serde_json::to_value(PreparedDayFile {
+            name: String::new(), path: String::new(),
+            kind: String::new(), in_zip_path: String::new(),
+        }).unwrap(), "PreparedDayFile");
+    }
+
+    #[test] fn posting_log_row_is_camel_case() {
+        assert_camel(&serde_json::to_value(PostingLogRow {
+            id: 0, bundle_uid: String::new(), target_id: None,
+            target_name: String::new(), persona_code: None, fansite_day: None,
+            title: None, action: String::new(), posted_url: None,
+            details: None, logged_at: String::new(),
+        }).unwrap(), "PostingLogRow");
     }
 
     #[test] fn compose_result_is_camel_case() {
@@ -684,6 +732,7 @@ mod migration_smoke {
             (14, "dropbox-template-default", include_str!("../migrations/014_dropbox_template_default.sql")),
             (15, "posting", include_str!("../migrations/015_posting.sql")),
             (16, "posting-assets-and-fansite", include_str!("../migrations/016_posting_assets_and_fansite.sql")),
+            (17, "posting-log", include_str!("../migrations/017_posting_log.sql")),
         ];
         for (v, name, sql) in migrations {
             conn.execute_batch(sql)
@@ -697,7 +746,7 @@ mod migration_smoke {
             "auto_assembly_settings",
             "processing_log",
             "dropbox_settings", "dropbox_copies",
-            "posting_targets", "bundle_postings",
+            "posting_targets", "bundle_postings", "posting_log",
         ];
         for t in expected_tables {
             let count: i64 = conn
@@ -778,6 +827,7 @@ mod migration_immutability {
         (14, "d1cef25bbf843418ab1fbfffd1d53a19cbeda98d699d2fee35bd5c416e368e22"),
         (15, "6a0add1e30d2adb380c0d32e7dba9b3b2337e64d365f8fbff3777056ae81d42f"),
         (16, "76eb7e7c6f4a684c8cb1e48d23ce43b29289e57f276d32c264123eb1857a6326"),
+        (17, "786bea0eb6e0e2a7acb240f58e9575dd3613c74444b8fcc01c7b7f52acb49ebc"),
     ];
 
     /// Source-of-truth for "which migrations ship at compile time". Must
@@ -802,6 +852,7 @@ mod migration_immutability {
         (14, "014_dropbox_template_default.sql",   include_str!("../migrations/014_dropbox_template_default.sql")),
         (15, "015_posting.sql",                    include_str!("../migrations/015_posting.sql")),
         (16, "016_posting_assets_and_fansite.sql", include_str!("../migrations/016_posting_assets_and_fansite.sql")),
+        (17, "017_posting_log.sql",                include_str!("../migrations/017_posting_log.sql")),
     ];
 
     fn sha256_hex(s: &str) -> String {

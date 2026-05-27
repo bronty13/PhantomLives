@@ -52,8 +52,34 @@ SideMolly/
 | Module | Commands |
 |---|---|
 | backup | `run_backup_now`, `list_backups`, `test_backup`, `restore_backup`, `reveal_backup_dir`, `reveal_path`, `get_backup_settings`, `set_backup_settings` |
+| fansite (Phase 13) | `get_fansite_plan`, `seed_fansite_targets`, `prepare_fansite_day`, `reveal_fansite_day`, `set_fansite_day`, `reset_fansite_postings`, `list_posting_log` |
 
 ACL is in `src-tauri/capabilities/default.json`.
+
+### FanSite multi-site workflow (Phase 13, `src-tauri/src/fansite.rs`)
+
+The 📅 runner posts a month to a fixed per-persona site roster
+(CoC → OnlyFans/ManyVids/Niteflirt; PoA → OnlyFans/Niteflirt/LoyalFans;
+Sheer excluded), one site at a time. Key pieces:
+
+- **`get_fansite_plan`** returns *all* enabled `fansite`-kind targets
+  for the persona plus a per-day × per-target state grid (keyed
+  `(bundle_uid, target_id, fansite_day)` in `bundle_postings`). It
+  supersedes the Phase-10 single-target `list_fansite_plan` (removed).
+- **`prepare_fansite_day`** wipes + rebuilds
+  `<workspace>/fansite-staging/Day NN/` with exactly that day's media,
+  applying **rotate + strip-EXIF, no watermark** (images via
+  `images::process_image`, videos via `video::process_video`; audio
+  copied verbatim). This is the "infallible media" guarantee.
+- **`set_fansite_day`** upserts one cell and appends a `posting_log`
+  row on flips to/from `posted`. **`reset_fansite_postings`** unwinds a
+  site (or all) and logs a `reset`.
+- **`posting_log`** (migration `017`, append-only) is the audit trail.
+  `read_posting_log(conn, uid, newest_first)` backs both the in-app
+  viewer and `post_bundle.rs`'s `posting-log.json` (oldest-first) in
+  the return ZIP.
+- Seed names use bracket notation (`OnlyFans [CoC]`) to coexist under
+  the `posting_targets.name` UNIQUE constraint.
 
 ## Cross-cutting standards baked in at Phase 0
 
