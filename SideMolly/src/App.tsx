@@ -9,6 +9,7 @@ import { ManualView } from './views/Manual/ManualView';
 import { BundleWorkspace } from './views/Bundle/BundleWorkspace';
 import { ingestBundle, type IngestResult } from './data/bundles';
 import { db } from './data/db';
+import { applyTheme, getTheme, watchSystemTheme } from './lib/theme';
 
 interface IngestStatus {
   kind: 'idle' | 'busy' | 'ok' | 'error';
@@ -42,6 +43,14 @@ export default function App() {
     db()
       .then(() => setDbReady(true))
       .catch((e) => setDbError(String(e)));
+  }, []);
+
+  // Appearance: re-assert the stored theme on mount (covers HMR) and
+  // keep 'auto' live as the OS appearance flips. The no-flash class is
+  // already set by the index.html bootstrap before React runs.
+  useEffect(() => {
+    applyTheme(getTheme());
+    return watchSystemTheme();
   }, []);
 
   // Watched-folder ingest emits `bundle-ingested` from the Rust side.

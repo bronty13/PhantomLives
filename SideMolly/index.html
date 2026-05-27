@@ -4,6 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SideMolly</title>
+    <script>
+      // No-flash theme bootstrap. Mirrors src/lib/theme.ts (key 'sm-theme',
+      // default 'dark'). Runs before React mounts so we never flash light.
+      (function () {
+        try {
+          var t = localStorage.getItem('sm-theme') || 'dark';
+          var dark = t === 'dark'
+            || (t === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.classList.toggle('dark', dark);
+        } catch (e) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

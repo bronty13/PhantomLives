@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AppearanceSettings } from './AppearanceSettings';
 import { AutoAssemblySettings } from './AutoAssemblySettings';
 import { BackupSettings } from './BackupSettings';
 import { DropboxSettings } from './DropboxSettings';
@@ -6,9 +7,10 @@ import { PlatformsSettings } from './PlatformsSettings';
 import { WatchSettings } from './WatchSettings';
 import { WatermarkSettings } from './WatermarkSettings';
 
-type SettingsTab = 'watch' | 'watermark' | 'autoassemble' | 'dropbox' | 'platforms' | 'backup' | 'about';
+type SettingsTab = 'appearance' | 'watch' | 'watermark' | 'autoassemble' | 'dropbox' | 'platforms' | 'backup' | 'about';
 
 const TABS: { key: SettingsTab; label: string; icon: string }[] = [
+  { key: 'appearance',   label: 'Appearance',     icon: '🎨' },
   { key: 'watch',        label: 'Watched folder', icon: '👀' },
   { key: 'watermark',    label: 'Watermark',      icon: '🖋' },
   { key: 'autoassemble', label: 'Auto-Assembly',  icon: '🎞' },
@@ -22,14 +24,14 @@ const TABS: { key: SettingsTab; label: string; icon: string }[] = [
 // pane. Watermarks / Dropbox / Platforms / Watched-folder / Transcription
 // / FFmpeg tabs land in Phases 3, 6, 7, and 4 respectively.
 export function SettingsView() {
-  const [tab, setTab] = useState<SettingsTab>('watch');
+  const [tab, setTab] = useState<SettingsTab>('appearance');
   return (
     <div className="p-8 max-w-4xl">
       <h1 className="display-font text-4xl mb-2" style={{ color: 'rgb(var(--surface-accent))' }}>
         Settings
       </h1>
 
-      <div className="flex gap-2 mb-6 mt-4">
+      <div className="flex flex-wrap gap-2 mb-6 mt-4">
         {TABS.map((t) => (
           <button
             key={t.key}
@@ -49,6 +51,7 @@ export function SettingsView() {
         ))}
       </div>
 
+      {tab === 'appearance' && <AppearanceSettings />}
       {tab === 'watch' && <WatchSettings />}
       {tab === 'watermark' && <WatermarkSettings />}
       {tab === 'autoassemble' && <AutoAssemblySettings />}

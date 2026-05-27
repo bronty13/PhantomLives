@@ -1,35 +1,30 @@
 # SideMolly — User Manual
 
-> **Phase 0 placeholder.** Content lands as features ship.
-
 SideMolly is a workbench for Molly bundles. When Molly publishes a bundle
 (content, custom, or fan-site), drop the resulting ZIP into SideMolly and
 work through three stages — **edit**, **process**, **post** — then send a
 post-bundle back to Molly to record what actually happened.
 
-## What works in Phase 0
+## Getting started
 
-- The app installs and launches.
-- Sidebar shows three tabs: **Inbox** (placeholder), **Settings**, and
-  **Manual** (this file).
-- **Settings → Backup** is fully wired:
-  - Toggle auto-backup-on-launch (default **on**, 5-minute debounce)
-  - Set a custom backup folder (or fall back to `~/Downloads/SideMolly backup/`)
-  - Set retention days (0 = keep forever, default 14)
-  - **Run Backup Now**
-  - **Recent backups** list with per-row Test / Restore / Reveal actions
-  - Last-backup timestamp + status line
+- **Ingest a bundle** — drag a Molly bundle `.zip` onto the window, or
+  drop it in the watched folder (Settings → Watched folder) and it's
+  picked up automatically. SideMolly verifies it against `hashes.json`
+  and extracts it into a per-bundle workspace.
+- **Work a bundle** — open it from the **Inbox** and move through the
+  **Edit → Process → Post** tabs. The Post tab adapts to the bundle
+  type: 🎬 Content, 🎁 Custom, or 📅 FanSite.
+- **Ship it back** — compose a post-bundle ZIP that records what you
+  posted; Molly ingests it to close the loop.
 
 ## FanSite posting (📅 Bundle → Post)
 
 FanSite bundles are posted before the start of each month, on a
 calendar cadence, to a **fixed roster of sites per persona**:
 
-| Persona | Sites |
-|---|---|
-| **CoC** | OnlyFans · ManyVids · Niteflirt |
-| **PoA** | OnlyFans · Niteflirt · LoyalFans |
-| **Sheer (Sa)** | *(none — Sheer has no fan-sites)* |
+- **CoC** → OnlyFans · ManyVids · Niteflirt
+- **PoA** → OnlyFans · Niteflirt · LoyalFans
+- **Sheer (Sa)** → none — Sheer has no fan-sites
 
 ### First-time setup
 
@@ -71,16 +66,35 @@ sites** clears the whole bundle. Both are confirm-gated, and the
 ### Posting log
 
 The **📝 Posting log** panel records every posted / unposted / reset
-action with a timestamp, site, day, and URL. It's also written into
-the post-bundle ZIP (`posting-log.json`) so Molly can reconcile what
-went live when you ship the bundle back.
+action with a timestamp, site, and day. It's also written into the
+post-bundle ZIP (`posting-log.json`) so Molly can reconcile what went
+live when you ship the bundle back.
 
-## What's coming
+## Appearance (Settings → 🎨 Appearance)
 
-See [PLAN.md](PLAN.md) §11 for the 13-phase plan.
+Pick SideMolly's theme:
+
+- **Dark** — the default.
+- **Light**.
+- **Auto** — follows your macOS Light/Dark setting and switches live
+  when the system appearance changes.
+
+The choice is remembered across launches and applies immediately
+(no restart, no flash on startup).
+
+## Backup (Settings → 💾 Backup)
+
+SideMolly auto-backs up its database on launch (default **on**, with a
+5-minute debounce so quick relaunches don't pile up archives).
+
+- Set a custom backup folder, or fall back to
+  `~/Downloads/SideMolly backup/`.
+- Set retention days (`0` = keep forever, default 14).
+- **Run Backup Now** ignores the debounce.
+- **Recent backups** lists archives with per-row **Test** / **Restore**
+  / **Reveal** actions. Restore always writes a pre-restore safety
+  backup first.
 
 ## Keyboard shortcuts
 
-| Shortcut | Action |
-|---|---|
-| ⌘+S / Ctrl+S | Toggle the sidebar |
+- **⌘S / Ctrl+S** — toggle the sidebar.

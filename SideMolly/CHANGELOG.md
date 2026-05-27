@@ -4,6 +4,36 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] — 2026-05-26
+
+### Added — Appearance setting (Dark / Light / Auto)
+
+New **Settings → 🎨 Appearance** tab to choose the theme:
+
+- **Dark** — the default (the app shipped dark-only styling but never
+  actually applied the `dark` class, so it had been rendering light;
+  it now defaults to dark as intended).
+- **Light**.
+- **Auto** — follows the macOS Light/Dark setting and updates live as
+  the system appearance flips.
+
+The choice persists in `localStorage` (`sm-theme`) and is applied by
+toggling `html.dark`, which the surface CSS vars already key off. An
+inline bootstrap in `index.html` applies the stored theme before React
+mounts, so there's no light-mode flash on launch. Theme logic lives in
+`src/lib/theme.ts` with unit tests for `normalizeTheme` / `resolveDark`.
+
+### Added — in-app Manual is now wired
+
+The **Manual** sidebar tab renders `USER_MANUAL.md` live (bundled at
+build time) instead of a "not wired yet" placeholder, with a sticky
+right-rail table of contents that anchor-scrolls to each section. The
+markdownLite renderer that previously lived inside `DocDrawer` is
+extracted to a shared `src/components/Markdown.tsx` (used by both the
+Manual and the bundle info.md preview). The manual content was rewritten
+to drop the stale "Phase 0" framing and use lists instead of tables
+(markdownLite renders lists, not tables).
+
 ## [0.18.2] — 2026-05-26
 
 ### Fixed — "Open site" was blocked by the opener ACL
