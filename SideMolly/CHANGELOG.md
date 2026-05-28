@@ -4,6 +4,44 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.1] — 2026-05-27
+
+### Fixed — Post-bundle layout reverted to flat, Molly-compatible structure
+
+An audit of the return-zip process found that 0.20.0's single-folder
+wrapper (`<uid>-post/` + `<uid>-post-inner/`), added to dodge macOS
+Archive Utility's 0700-wrapper quirk, **broke the bundle format
+contract**: SideMolly's own `verify_outer_zip` (the exact contract a
+Molly post-ingest mirrors) looks up `hashes.json` and the inner zip by
+literal top-level name, so the wrapped layout failed with
+MissingHashes / MissingInnerZip. Molly's own bundles are flat
+multi-root, so the wrapper diverged from the convention.
+
+- **Reverted to the flat layout** — `hashes.json` + `<uid>-post-inner.zip`
+  at the outer top level; `report.json` / `notes.md` /
+  `posting-log.json` / `processing.log` / `artifacts/` flat inside the
+  inner zip; `hashes.json` paths are the bare entry names. Now byte-for-
+  byte compatible with the shared verifier.
+- **Finder access kept** via a **sidecar folder**: compose now also
+  writes a plain `~/Downloads/Molly post-bundles/<uid>-post/` directory
+  (normal perms, real dates, rebuilt each run) holding the same inner
+  payload. Open it to browse artifacts without extracting — the zip
+  stays the untouched Molly deliverable. Sidecar failure is non-fatal
+  (logged; the zip already shipped).
+- **`posting-log.json` is now hash-covered** in `hashes.json` (it was
+  the one inner file left out), matching Molly's "hash every inner
+  file" convention.
+- **Entry dates stay at the MS-DOS epoch (1980-01-01)** — intentional
+  and identical to Molly's `bundle_zip.rs` for byte-deterministic
+  output. The `.zip` file itself carries a real modification time; only
+  the entries inside read 1980. Not a bug.
+- Zip building refactored into a DB-independent `assemble_post_zip`
+  core. New regression guard `post_bundle_round_trips_through_shared_verifier`
+  composes a post-bundle and asserts `verify_outer_zip` accepts it —
+  the check that would have caught the 0.20.0 wrapper regression. Also
+  `inner_zip_is_flat_and_matches_molly_layout`, `post_zip_is_byte_deterministic`,
+  `sidecar_folder_is_a_plain_browsable_copy`.
+
 ## [0.20.0] — 2026-05-26
 
 ### Changed — All bundle processing moved to `~/Downloads/SideMolly/`

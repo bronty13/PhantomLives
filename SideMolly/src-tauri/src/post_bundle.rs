@@ -1,23 +1,26 @@
 // Phase 11 — compose a deterministic post-bundle ZIP back to Molly.
 //
-// Layout. Each zip wraps its contents in ONE top-level directory so
-// macOS Archive Utility extracts that folder (with its stored 0o755
-// mode) instead of synthesizing a 0o700 enclosing folder for a
-// multi-root archive — the latter is non-traversable and Finder reports
-// "you don't have permission to see its contents".
+// Layout (flat, mirrors Molly's outbound bundle pattern exactly so
+// SideMolly's own verify_outer_zip — the contract a Molly post-ingest
+// mirrors — accepts it unchanged):
 //
-//   <UID>-post.zip                          (outer)
-//   └── <UID>-post/
-//       ├── hashes.json                     (inner-zip hash + per-entry hashes)
-//       └── <UID>-post-inner.zip            (inner — MS-DOS epoch, sorted entries)
-//           └── <UID>-post-inner/
-//               ├── report.json             (structured posting outcomes per §9.2)
-//               ├── notes.md                (Robert's freeform notes; empty allowed)
-//               ├── posting-log.json        (timestamped posting actions)
-//               ├── processing.log          (optional — auto-included when present)
-//               └── artifacts/
-//                   ├── transcripts/<stem>.txt + .srt   (if generated in Phase 5)
-//                   └── thumbnails/<stem>.jpg            (per-file thumbnails)
+//   <UID>-post.zip                      (outer)
+//   ├── <UID>-post-inner.zip            (inner — MS-DOS epoch, sorted entries)
+//   │   ├── report.json                 (structured posting outcomes per §9.2)
+//   │   ├── notes.md                    (Robert's freeform notes; empty allowed)
+//   │   ├── posting-log.json            (timestamped posting actions)
+//   │   ├── processing.log              (optional — auto-included when present)
+//   │   └── artifacts/
+//   │       ├── transcripts/<stem>.txt + .srt   (if generated in Phase 5)
+//   │       └── thumbnails/<stem>.jpg            (per-file thumbnails)
+//   └── hashes.json                     (inner-zip hash + per-entry hashes)
+//
+// Sidecar: a plain, unzipped `<UID>-post/` folder is written next to the
+// zip with the same inner payload, at normal perms. The zip is the
+// Molly-bound deliverable; because it's multi-root, double-clicking it
+// makes macOS Archive Utility synthesize a non-traversable 0o700 wrapper
+// ("you don't have permission to see its contents") — the sidecar lets
+// the user browse the artifacts without extracting at all.
 //
 // Determinism: every zip entry's mtime is set to the MS-DOS epoch
 // (1980-01-01 00:00:00) and entries are written in sorted-name order
@@ -160,15 +163,13 @@ pub fn compose_post_bundle<R: Runtime>(
         None
     };
 
-    // ── Inner ZIP (deterministic) ────────────────────────────────────
-    // Wrapped under a single top-level directory (`<uid>-post-inner/`)
-    // so macOS Archive Utility extracts THAT folder with its stored
-    // 0o755 mode, rather than synthesizing a 0o700 enclosing folder for
-    // a multi-root archive (which Finder flags as "you don't have
-    // permission to see its contents").
-    let inner_root = format!("{uid}-post-inner");
-    let inner_buf = build_inner_zip(
-        &inner_root,
+    // ── Assemble the flat, Molly-compatible outer zip ────────────────
+    // Layout matches Molly's bundle convention exactly (inner zip +
+    // hashes.json at the outer top level; flat entries inside the inner
+    // zip), so SideMolly's own `verify_outer_zip` — the contract a Molly
+    // post-ingest mirrors — accepts it unchanged.
+    let (outer_bytes, inner_sha) = assemble_post_zip(
+        &uid,
         &report_json,
         &notes_md,
         &posting_log_json,
@@ -176,64 +177,37 @@ pub fn compose_post_bundle<R: Runtime>(
         &artifacts,
     )?;
 
-    let inner_zip_name = format!("{uid}-post-inner.zip");
-    let inner_sha = sha256_hex(&inner_buf);
-
-    // ── hashes.json — same shape as inbound bundles (see bundle_io.rs).
-    // Per-entry hashes mirror the inner zip's file list.
-    // Paths mirror the inner zip's entry names exactly — i.e. carry the
-    // `<uid>-post-inner/` wrapper prefix — so a verifier can look each
-    // file up by its literal entry name without stripping anything.
-    let mut files_for_hashes: Vec<HashesFile> = Vec::new();
-    files_for_hashes.push(HashesFile {
-        path: format!("{inner_root}/report.json"),
-        sha256: sha256_hex(report_json.as_bytes()),
-    });
-    files_for_hashes.push(HashesFile {
-        path: format!("{inner_root}/notes.md"),
-        sha256: sha256_hex(notes_md.as_bytes()),
-    });
-    if let Some(log) = &log_bytes {
-        files_for_hashes.push(HashesFile {
-            path: format!("{inner_root}/processing.log"),
-            sha256: sha256_hex(log),
-        });
-    }
-    for (path, bytes) in &artifacts {
-        files_for_hashes.push(HashesFile {
-            path: format!("{inner_root}/{path}"),
-            sha256: sha256_hex(bytes),
-        });
-    }
-    files_for_hashes.sort_by(|a, b| a.path.cmp(&b.path));
-    let hashes = HashesDoc {
-        bundle_uid: uid.clone(),
-        inner_zip: HashesInnerZip {
-            name: inner_zip_name.clone(),
-            sha256: inner_sha.clone(),
-            bytes: inner_buf.len() as u64,
-        },
-        files: files_for_hashes,
-    };
-    let hashes_json = serde_json::to_string_pretty(&hashes)
-        .map_err(|e| BundleError::Io(std::io::Error::other(format!("hashes serialize: {e}"))))?;
-
-    // ── Outer ZIP ─────────────────────────────────────────────────────
     let drop_dir = default_drop_dir();
     fs::create_dir_all(&drop_dir)?;
     let out_path = drop_dir.join(format!("{uid}-post.zip"));
     let tmp_path = out_path.with_extension("zip.tmp");
-
-    // Wrapped under `<uid>-post/` for the same Archive-Utility reason as
-    // the inner zip — extracting yields one traversable 0o755 folder.
-    let outer_root = format!("{uid}-post");
-    let outer_bytes = build_outer_zip(&outer_root, &inner_zip_name, &hashes_json, &inner_buf)?;
     fs::write(&tmp_path, &outer_bytes)?;
     let outer_sha = sha256_hex(&outer_bytes);
 
     // Atomic replace.
     if out_path.exists() { let _ = fs::remove_file(&out_path); }
     fs::rename(&tmp_path, &out_path)?;
+
+    // ── Sidecar folder ───────────────────────────────────────────────
+    // A plain, browsable copy of the inner payload sitting next to the
+    // zip. The .zip is the Molly-bound deliverable, but it's multi-root,
+    // so double-clicking it makes macOS Archive Utility synthesize a
+    // non-traversable 0o700 wrapper ("you don't have permission to see
+    // its contents"). The sidecar is created at normal perms and lets
+    // the user open the artifacts directly, no extraction required.
+    let sidecar = drop_dir.join(format!("{uid}-post"));
+    if let Err(e) = write_sidecar_folder(
+        &sidecar, &report_json, &notes_md, &posting_log_json,
+        log_bytes.as_deref(), &artifacts,
+    ) {
+        // Non-fatal: the zip (the actual deliverable) already shipped.
+        crate::processing_log::write(
+            &conn, Some(&uid), None, Some("post_bundle"),
+            crate::processing_log::Level::Warn,
+            &format!("sidecar folder write failed (zip is fine): {e}"),
+            None, None,
+        );
+    }
 
     // Log to processing_log.
     crate::processing_log::write(
@@ -341,14 +315,60 @@ fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", h.finalize())
 }
 
-/// Build the deterministic inner zip, with every entry under a single
-/// top-level directory `<root>/`. Files are 0o644; directory entries are
-/// 0o755 (the execute bit makes the extracted folder traversable —
-/// without it Finder reports "you don't have permission to see its
-/// contents"). Entry order is fixed and mtimes are the MS-DOS epoch so
-/// re-runs against the same inputs produce byte-identical output.
+/// Assemble the complete outer-zip bytes from in-memory pieces — the
+/// DB-independent core of compose, so it can be round-tripped through
+/// `bundle_io::verify_outer_zip` in a test. Returns `(outer_bytes,
+/// inner_sha)`. The layout is flat and matches Molly's bundle convention
+/// exactly (hashes.json + inner zip at the outer top level; flat entries
+/// inside the inner zip), so the shared verifier accepts it unchanged.
+fn assemble_post_zip(
+    uid: &str,
+    report_json: &str,
+    notes_md: &str,
+    posting_log_json: &str,
+    log_bytes: Option<&[u8]>,
+    artifacts: &BTreeMap<String, Vec<u8>>,
+) -> Result<(Vec<u8>, String), BundleError> {
+    let inner_buf = build_inner_zip(report_json, notes_md, posting_log_json, log_bytes, artifacts)?;
+    let inner_zip_name = format!("{uid}-post-inner.zip");
+    let inner_sha = sha256_hex(&inner_buf);
+
+    // hashes.json — same shape as inbound bundles (see bundle_io.rs).
+    // Entry paths are the inner zip's literal (flat) names. Every inner
+    // file is covered, including posting-log.json.
+    let mut files: Vec<HashesFile> = Vec::new();
+    files.push(HashesFile { path: "report.json".into(), sha256: sha256_hex(report_json.as_bytes()) });
+    files.push(HashesFile { path: "notes.md".into(), sha256: sha256_hex(notes_md.as_bytes()) });
+    files.push(HashesFile { path: "posting-log.json".into(), sha256: sha256_hex(posting_log_json.as_bytes()) });
+    if let Some(log) = log_bytes {
+        files.push(HashesFile { path: "processing.log".into(), sha256: sha256_hex(log) });
+    }
+    for (path, bytes) in artifacts {
+        files.push(HashesFile { path: path.clone(), sha256: sha256_hex(bytes) });
+    }
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+    let hashes = HashesDoc {
+        bundle_uid: uid.to_string(),
+        inner_zip: HashesInnerZip {
+            name: inner_zip_name.clone(),
+            sha256: inner_sha.clone(),
+            bytes: inner_buf.len() as u64,
+        },
+        files,
+    };
+    let hashes_json = serde_json::to_string_pretty(&hashes)
+        .map_err(|e| BundleError::Io(std::io::Error::other(format!("hashes serialize: {e}"))))?;
+
+    let outer_bytes = build_outer_zip(&inner_zip_name, &hashes_json, &inner_buf)?;
+    Ok((outer_bytes, inner_sha))
+}
+
+/// Build the deterministic inner zip: flat entries (report.json,
+/// notes.md, posting-log.json, optional processing.log, artifacts/*) at
+/// the top level, mirroring Molly's inner-zip layout. Files are 0o644;
+/// directory entries (artifacts/ and subdirs) are 0o755. Entry order is
+/// fixed and mtimes are the MS-DOS epoch so re-runs are byte-identical.
 fn build_inner_zip(
-    root: &str,
     report_json: &str,
     notes_md: &str,
     posting_log_json: &str,
@@ -364,22 +384,19 @@ fn build_inner_zip(
             .last_modified_time(dos_epoch());
         let dir_opts = opts.unix_permissions(0o755);
 
-        // The single wrapping directory, then the files inside it.
-        zip.add_directory(format!("{root}/"), dir_opts)?;
-
-        zip.start_file(format!("{root}/report.json"), opts)?;
+        zip.start_file("report.json", opts)?;
         zip.write_all(report_json.as_bytes())?;
-        zip.start_file(format!("{root}/notes.md"), opts)?;
+        zip.start_file("notes.md", opts)?;
         zip.write_all(notes_md.as_bytes())?;
-        zip.start_file(format!("{root}/posting-log.json"), opts)?;
+        zip.start_file("posting-log.json", opts)?;
         zip.write_all(posting_log_json.as_bytes())?;
         if let Some(log) = log_bytes {
-            zip.start_file(format!("{root}/processing.log"), opts)?;
+            zip.start_file("processing.log", opts)?;
             zip.write_all(log)?;
         }
 
         if !artifacts.is_empty() {
-            zip.add_directory(format!("{root}/artifacts/"), dir_opts)?;
+            zip.add_directory("artifacts/", dir_opts)?;
             // Explicit entry for each artifact subdirectory (some tools
             // won't extract a tree without directory markers). Seed the
             // set with "artifacts" so a flat `artifacts/foo` file doesn't
@@ -389,12 +406,12 @@ fn build_inner_zip(
             for (path, _) in artifacts {
                 if let Some((dir, _)) = path.rsplit_once('/') {
                     if emitted_dirs.insert(dir.to_string()) {
-                        zip.add_directory(format!("{root}/{dir}/"), dir_opts)?;
+                        zip.add_directory(format!("{dir}/"), dir_opts)?;
                     }
                 }
             }
             for (path, bytes) in artifacts {
-                zip.start_file(format!("{root}/{path}"), opts)?;
+                zip.start_file(path.clone(), opts)?;
                 zip.write_all(bytes)?;
             }
         }
@@ -403,12 +420,10 @@ fn build_inner_zip(
     Ok(buf)
 }
 
-/// Build the outer zip: a single top-level directory `<root>/` holding
-/// `hashes.json` and the already-deflated inner zip (stored, not
-/// re-compressed). Same single-folder / 0o755-dir rationale as
-/// [`build_inner_zip`].
+/// Build the outer zip: flat `hashes.json` + the already-deflated inner
+/// zip (stored, not re-compressed), both at the top level — mirroring
+/// Molly's outer-zip layout so `verify_outer_zip` finds them by name.
 fn build_outer_zip(
-    root: &str,
     inner_zip_name: &str,
     hashes_json: &str,
     inner_buf: &[u8],
@@ -420,16 +435,45 @@ fn build_outer_zip(
             .compression_method(zip::CompressionMethod::Stored) // inner is already deflated
             .unix_permissions(0o644)
             .last_modified_time(dos_epoch());
-        let dir_opts = opts.unix_permissions(0o755);
 
-        zip.add_directory(format!("{root}/"), dir_opts)?;
-        zip.start_file(format!("{root}/hashes.json"), opts)?;
+        zip.start_file("hashes.json", opts)?;
         zip.write_all(hashes_json.as_bytes())?;
-        zip.start_file(format!("{root}/{inner_zip_name}"), opts)?;
+        zip.start_file(inner_zip_name, opts)?;
         zip.write_all(inner_buf)?;
         zip.finish()?;
     }
     Ok(buf)
+}
+
+/// Write a plain, browsable copy of the inner payload into `dir`,
+/// rebuilt from scratch each call so it can't go stale. The zip is the
+/// Molly deliverable; this sidecar is the human-facing artifact (the zip
+/// is multi-root, so double-clicking it makes Archive Utility synthesize
+/// a non-traversable 0o700 folder — this sidesteps extraction entirely).
+fn write_sidecar_folder(
+    dir: &Path,
+    report_json: &str,
+    notes_md: &str,
+    posting_log_json: &str,
+    log_bytes: Option<&[u8]>,
+    artifacts: &BTreeMap<String, Vec<u8>>,
+) -> Result<(), BundleError> {
+    if dir.exists() { fs::remove_dir_all(dir)?; }
+    fs::create_dir_all(dir)?;
+    fs::write(dir.join("report.json"), report_json)?;
+    fs::write(dir.join("notes.md"), notes_md)?;
+    fs::write(dir.join("posting-log.json"), posting_log_json)?;
+    if let Some(log) = log_bytes {
+        fs::write(dir.join("processing.log"), log)?;
+    }
+    for (path, bytes) in artifacts {
+        let dst = dir.join(path);
+        if let Some(parent) = dst.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(dst, bytes)?;
+    }
+    Ok(())
 }
 
 fn open_conn<R: Runtime>(handle: &AppHandle<R>) -> Result<Connection, BundleError> {
@@ -597,66 +641,80 @@ mod tests {
         assert!(s.chars().all(|c| c.is_ascii_hexdigit() && (!c.is_alphabetic() || c.is_lowercase())));
     }
 
-    // Helper: assert every entry sits under exactly one top-level
-    // component, directory entries are 0o755 and files 0o644. This is
-    // what keeps macOS Archive Utility from synthesizing a 0o700
-    // enclosing folder on extraction.
-    fn assert_single_traversable_root(buf: Vec<u8>, expected_root: &str) {
-        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(buf)).unwrap();
-        let mut roots = std::collections::HashSet::new();
-        for i in 0..zip.len() {
-            let e = zip.by_index(i).unwrap();
-            let name = e.name().to_string();
-            assert!(name.starts_with(&format!("{expected_root}/")),
-                    "entry {name:?} not under {expected_root}/");
-            roots.insert(name.split('/').next().unwrap().to_string());
-            let mode = e.unix_mode().expect("entry carries a unix mode") & 0o777;
-            if e.is_dir() {
-                assert_eq!(mode, 0o755, "dir {name:?} must be traversable");
-            } else {
-                assert_eq!(mode, 0o644, "file {name:?} mode");
-            }
-        }
-        assert_eq!(roots.len(), 1, "exactly one top-level folder; got {roots:?}");
-        assert_eq!(roots.into_iter().next().unwrap(), expected_root);
-    }
-
     #[test]
-    fn inner_zip_wraps_everything_in_one_traversable_folder() {
+    fn inner_zip_is_flat_and_matches_molly_layout() {
         use std::io::Read;
         let mut artifacts = BTreeMap::new();
         artifacts.insert("artifacts/transcripts/a.txt".to_string(), b"hi".to_vec());
         artifacts.insert("artifacts/thumbnails/b.jpg".to_string(), b"\xff\xd8".to_vec());
-        let buf = build_inner_zip("u1-post-inner", "{}", "notes", "[]", None, &artifacts).unwrap();
+        let buf = build_inner_zip("{}", "notes", "[]", None, &artifacts).unwrap();
 
-        assert_single_traversable_root(buf.clone(), "u1-post-inner");
-
-        // Content round-trips under the wrapped path.
         let mut zip = zip::ZipArchive::new(std::io::Cursor::new(buf)).unwrap();
+        // No single wrapping folder: the report sits at the top level,
+        // exactly like Molly's inner zip (info.md at the root).
+        assert!(zip.by_name("report.json").is_ok(), "report.json at top level");
+        assert!(zip.by_name("posting-log.json").is_ok());
+        // dir entries traversable, file entries 0o644
+        for i in 0..zip.len() {
+            let e = zip.by_index(i).unwrap();
+            let mode = e.unix_mode().unwrap() & 0o777;
+            if e.is_dir() { assert_eq!(mode, 0o755, "dir {}", e.name()); }
+            else { assert_eq!(mode, 0o644, "file {}", e.name()); }
+        }
         let mut s = String::new();
-        zip.by_name("u1-post-inner/artifacts/transcripts/a.txt").unwrap()
-            .read_to_string(&mut s).unwrap();
+        zip.by_name("artifacts/transcripts/a.txt").unwrap().read_to_string(&mut s).unwrap();
         assert_eq!(s, "hi");
-        assert!(zip.by_name("u1-post-inner/report.json").is_ok());
     }
 
     #[test]
-    fn outer_zip_wraps_everything_in_one_traversable_folder() {
-        let inner = build_inner_zip("u1-post-inner", "{}", "", "[]", None, &BTreeMap::new()).unwrap();
-        let buf = build_outer_zip("u1-post", "u1-post-inner.zip", "{\"x\":1}", &inner).unwrap();
+    fn post_bundle_round_trips_through_shared_verifier() {
+        // THE regression guard: the post-bundle must verify via the same
+        // `verify_outer_zip` contract that Molly's ingest mirrors. (The
+        // 0.20.0 single-folder wrapper silently broke this — exact-name
+        // lookups for hashes.json / the inner zip failed.)
+        let mut artifacts = BTreeMap::new();
+        artifacts.insert("artifacts/transcripts/a.txt".to_string(), b"hello".to_vec());
+        artifacts.insert("artifacts/thumbnails/b.jpg".to_string(), b"\xff\xd8\xff".to_vec());
+        let (outer, _sha) = assemble_post_zip(
+            "2026-01-01-0001", "{\"reportVersion\":1}", "notes", "[]",
+            Some(b"a log line"), &artifacts,
+        ).unwrap();
 
-        assert_single_traversable_root(buf.clone(), "u1-post");
-        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(buf)).unwrap();
-        assert!(zip.by_name("u1-post/hashes.json").is_ok());
-        assert!(zip.by_name("u1-post/u1-post-inner.zip").is_ok());
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("2026-01-01-0001-post.zip");
+        std::fs::write(&path, &outer).unwrap();
+
+        let validated = crate::bundle_io::verify_outer_zip(&path)
+            .expect("post-bundle must verify via the shared Molly contract");
+        assert_eq!(validated.hashes.bundle_uid, "2026-01-01-0001");
+        // posting-log.json is now hash-covered like every other inner file.
+        assert!(validated.hashes.files.iter().any(|f| f.path == "posting-log.json"));
+        assert!(validated.hashes.files.iter().any(|f| f.path == "artifacts/transcripts/a.txt"));
     }
 
     #[test]
-    fn inner_zip_is_byte_deterministic() {
+    fn post_zip_is_byte_deterministic() {
         let mut a = BTreeMap::new();
         a.insert("artifacts/x.txt".to_string(), b"z".to_vec());
-        let b1 = build_inner_zip("r-post-inner", "rep", "n", "p", None, &a).unwrap();
-        let b2 = build_inner_zip("r-post-inner", "rep", "n", "p", None, &a).unwrap();
+        let (b1, _) = assemble_post_zip("u", "rep", "n", "[]", None, &a).unwrap();
+        let (b2, _) = assemble_post_zip("u", "rep", "n", "[]", None, &a).unwrap();
         assert_eq!(b1, b2, "re-runs against identical inputs are byte-identical");
+    }
+
+    #[test]
+    fn sidecar_folder_is_a_plain_browsable_copy() {
+        let mut artifacts = BTreeMap::new();
+        artifacts.insert("artifacts/transcripts/a.txt".to_string(), b"hi".to_vec());
+        let dir = tempfile::TempDir::new().unwrap();
+        let sidecar = dir.path().join("u-post");
+        write_sidecar_folder(&sidecar, "{}", "notes", "[]", None, &artifacts).unwrap();
+
+        assert!(sidecar.join("report.json").is_file());
+        assert!(sidecar.join("posting-log.json").is_file());
+        assert_eq!(std::fs::read(sidecar.join("artifacts/transcripts/a.txt")).unwrap(), b"hi");
+        // Rebuilt from scratch: a stale file from a prior run is cleared.
+        std::fs::write(sidecar.join("stale.txt"), b"old").unwrap();
+        write_sidecar_folder(&sidecar, "{}", "notes", "[]", None, &artifacts).unwrap();
+        assert!(!sidecar.join("stale.txt").exists(), "sidecar rebuilt clean");
     }
 }

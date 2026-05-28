@@ -15,7 +15,11 @@ post-bundle back to Molly to record what actually happened.
   **Edit → Process → Post** tabs. The Post tab adapts to the bundle
   type: 🎬 Content, 🎁 Custom, or 📅 FanSite.
 - **Ship it back** — compose a post-bundle ZIP that records what you
-  posted; Molly ingests it to close the loop.
+  posted; Molly ingests it to close the loop. The ZIP lands in
+  `~/Downloads/Molly post-bundles/<uid>-post.zip`, and a plain
+  `<uid>-post/` folder is written next to it holding the same contents
+  (report, notes, posting log, artifacts) — open that folder to browse
+  the artifacts directly, without unzipping.
 
 ## FanSite posting (📅 Bundle → Post)
 
