@@ -4,6 +4,29 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.0] — 2026-05-29
+
+### Added
+
+**Editable per-platform daily goal in Settings → Platforms.** The
+`social_platforms.daily_goal` column has driven the piggy bank since
+1.21.0 (coin slots, `count/goal`, the ✓ DONE state, and both streak
+calculations all key off it), but the platform editor never exposed
+it — every new platform was silently pinned to a goal of `1` and the
+only way to change it was direct SQL. Added a **Daily goal** number
+field to the add/edit form and a `🪙 N/day` badge to each platform
+row so the current goal is visible at a glance.
+
+The field allows `0`, which is the documented "paused/retired" state:
+`pure_overall_streak` already drops goal-0 platforms
+(`social_drops.rs:305`) and `pure_platform_streak` early-returns for
+them (`:359`), so a paused platform is skipped by the streak instead
+of breaking it. Rows with a `0` goal show `⏸️ paused` instead of the
+coin badge.
+
+No schema or Rust changes — `createPlatform` / `updatePlatform`
+already round-tripped `daily_goal`; this only wires up the missing UI.
+
 ## [1.21.1] — 2026-05-29
 
 ### Docs

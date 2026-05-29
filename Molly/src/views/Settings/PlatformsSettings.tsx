@@ -87,6 +87,18 @@ export function PlatformsSettings() {
               <span className="text-xs uppercase tracking-wider opacity-60">Sort</span>
               <input type="number" className="pretty-input" value={draft.sortOrder} onChange={(e) => setDraft({ ...draft, sortOrder: Number(e.target.value) || 0 })} />
             </label>
+            <label className="flex flex-col gap-1 col-span-3">
+              <span className="text-xs uppercase tracking-wider opacity-60">Daily goal 🪙</span>
+              <input
+                type="number"
+                min={0}
+                max={1000}
+                className="pretty-input"
+                value={draft.dailyGoal}
+                onChange={(e) => setDraft({ ...draft, dailyGoal: Math.min(1000, Math.max(0, Number(e.target.value) || 0)) })}
+              />
+              <span className="text-[10px] opacity-50 leading-tight">Posts per day to fill the piggy bank. <strong>0 = paused</strong> (skipped by the streak).</span>
+            </label>
             <div className="col-span-12">
               <ColorPicker label="Color" value={draft.color} onChange={(v) => setDraft({ ...draft, color: v })} />
             </div>
@@ -108,6 +120,9 @@ export function PlatformsSettings() {
                     <span className="w-3 h-3 rounded-full" style={{ background: p.color, border: '1px solid rgba(0,0,0,0.1)' }} />
                     <span className="font-semibold">{p.name}</span>
                     <span className="font-mono text-xs opacity-60">[{p.shortCode}]</span>
+                    <span className="text-xs opacity-60">
+                      {p.dailyGoal > 0 ? `🪙 ${p.dailyGoal}/day` : '⏸️ paused'}
+                    </span>
                   </div>
                   <div className="flex gap-2">
                     <button type="button" className="pretty-button secondary" onClick={() => setDraft(isEditing ? null : { ...p })}>
