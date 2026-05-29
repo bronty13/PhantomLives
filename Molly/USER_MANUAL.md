@@ -100,26 +100,49 @@ The list view filters by the active persona (top bar) and supports search across
 
 ---
 
-## 🪙 Social — piggy bank + Reddit deep tools
+## 🪙 Social — your little piggy bank of posts 💕
 
-Click **🪙 Social** in the sidebar. This is your daily-posting hub. The first tab is the **🪙 Piggy bank** overview — one row per platform, with default daily goals: 🐶 Reddit 10/day · ✖️ X 3/day · 📸 Instagram 2/day · 🎵 TikTok 2/day. Tap **+1 Post** every time you actually post; a coin slot fills, a soft "ching" plays, and the row turns green when you hit the goal for that platform.
+Click **🪙 Social** in the sidebar — this is your new favorite place. You told me you wanted to feel *good* about the posting work (and to know, in a quick glance, "did I do enough today?") — so I built you a piggy bank. 🐷✨
 
-Hit every platform's goal for the day → the **🔥 day streak** at the top ticks up. Miss one → the streak resets the next day. The streak number is "I posted consistently for N days in a row" — the thing to protect.
+### 🪙 The Piggy bank tab
 
-Each non-Reddit platform also gets its own tab (🐦 X / 🎵 TikTok / 📸 Instagram) with a focused view: a big +1 button, a 5-week history grid (green = goal hit, faded color = partial, blank = 0), the per-platform streak, and a goal editor if 2/day or 3/day stops feeling right.
+When you open Social, the first tab is **🪙 Piggy bank**. One pretty row per platform, with the daily goals we set up:
 
-A few details:
+- 🐶 **Reddit** — 10 posts/day
+- ✖️ **X (Twitter)** — 3 posts/day
+- 📸 **Instagram** — 2 posts/day
+- 🎵 **TikTok** — 2 posts/day
 
-- **Persona-scoped.** Each persona (Curves / Princess) has its own count and its own streak. The **ALL** switcher disables the +1 buttons — pick a persona first, then tap.
-- **Undo.** Misclick? Tap the small **↶** next to a +1 button to remove the most recent coin for that platform today.
-- **Sound.** 🔔 / 🔇 toggle in the piggy-bank header mutes the chings (per-device).
-- **Goals can be edited** per platform from inside that platform's tab. Set to **0** to drop it from the streak math (e.g. you're not running TikTok this month).
+Every time you actually post somewhere, tap the **+1 Post** button on that row. A pretty coin slot fills up in your platform's color, a soft little **"ching!"** ✨ plays, and when you hit the daily goal the whole row turns **mint green** with a big **✓ DONE** — like a tiny round of applause from me to you. 💖
 
-Reddit gets a richer **🔴 Reddit** tab inside Social with its existing deep tools (Today · Subreddits · Post log · Captions · Hours — see below). The piggy bank's Reddit count automatically counts both kinds of activity: a generic "+1 Reddit" tap *and* every "mark posted" you do in the Subreddits section. Use whichever tool fits the moment — they don't double-count.
+> 💡 If you accidentally tap +1 (it happens 🥺), the little **↶** next to the +1 button will take one coin back out of the piggy bank for you.
+
+### 🔥 Your streak — the thing to protect
+
+Up top, you'll see a **🔥 day streak** number. That's how many days in a row you've hit *every* platform's goal. Miss one platform → the streak resets the next day. So it's the thing to protect — the number that says "I'm actually being consistent right now." 💪💕
+
+(Some days are just hard. The streak isn't a punishment — it's a high-five for the days you crushed. If it resets, we start a new one. No big deal. 🌸)
+
+### 🐦 / 🎵 / 📸 Per-platform tabs
+
+Each non-Reddit platform gets its own tab so you can dig in:
+
+- A **big +1 button** front and center
+- A **5-week grid** of your history — green squares for "goal met!", faded color for "got partway", blank for "nothing today" 💕
+- Your **per-platform streak** ("🔥 5 days on TikTok!")
+- A **goal editor** if 2/day or 3/day stops feeling right — bump it up when you're feeling powerful, bump it down on tough weeks 🌷
+
+### A few sweet details
+
+- **It's persona-scoped.** Curves and Princess each have their *own* count and their *own* streak — pick a persona in the top bar first, then start tapping. If you're on **ALL**, the +1 buttons will gently wait until you pick one (so no coin goes to the wrong piggy bank 🐷).
+- **The "ching" 🔔 is muteable.** Top-right corner of the Piggy bank header — tap **🔔** to switch to **🔇** when the babies are napping. Your choice sticks per computer.
+- **Goal = 0 = retired.** Drop a platform's daily goal to **0** if you're not running it this month — the streak math will just skip it. No deletion, no commitment, just a sweet little pause. 🌸
 
 ### 🔴 Reddit deep tools
 
-Pick **🔴 Reddit** as a sub-tab inside Social. This is your morning landing pad for actually *doing the work* — a hub of five sub-tabs.
+The **🔴 Reddit** sub-tab inside Social keeps everything you already know and love — all five Reddit tools (Today / Subreddits / Post log / Captions / Hours) live right there, exactly as before.
+
+Here's the cute part: the Piggy bank's Reddit count is *smart*. It counts both **+1 Reddit** taps from the Piggy bank AND every "**mark posted**" you do over in the Subreddits tracker. So use whichever feels right in the moment — quick coin-drop, or full subreddit detail — and they never double-count. 💕
 
 ### ✅ Today
 
@@ -406,9 +429,9 @@ A published bundle is locked — the form goes read-only. If you need to change 
 Click **＋ New Custom Bundle**. Same persona / title / files / special-instructions pattern as Content. The differences:
 
 - **Go-live date** defaults to **tomorrow** (custom turnarounds tend to be short).
-- **Delivery method** — pick **🌐 Site** to choose from the sites you've added in Settings → Sites (filtered to the bundle's persona), or **🔗 URL link** for any other delivery destination.
-  - **🌐 Site** asks you for the site, the recipient (username / name), and the price (or "handled in delivery platform"). All required.
-  - **🔗 URL link** is "pick it and you're done" — the form hides Recipient and Price entirely. Robert fills in the destination URL, the recipient and the price when he records the return file. You just pick the persona, give it a title + go-live date, drop in the files, click URL link, and publish.
+- **Delivery method** — two cute little buttons to pick from. 💕
+  - **🌐 Site** — for one of the sites you've already added in **Settings → Sites** (it'll only show sites for the persona you've picked, so no mix-ups). Then fill in the recipient (their username or name) and the price — easy peasy.
+  - **🔗 URL link** — for *anything else*. Click it and you're done! ✨ I'll hide the Recipient and Price fields because Robert is going to fill those in when he records the return file — no need to invent them now. So your whole flow becomes: pick the persona → title → go-live date → drop the files in → click 🔗 URL link → publish. Five-step custom, on a busy mom morning. 🥰
 - **Recipient** — required free-text. Whoever the custom is *for* (a username, a real name, whatever you and Robert use to identify the buyer).
 - **Price** — money field in dollars (`$25.00`). Or tick **handled in delivery platform** to skip the price field entirely (Molly blanks the value when the toggle is on so there's no ambiguity in `info.md`).
 

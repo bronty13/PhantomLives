@@ -4,6 +4,26 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.1] — 2026-05-29
+
+### Docs
+
+Rewrote the **🪙 Social** section of `USER_MANUAL.md` in the 200% cute
+voice the rest of the manual is written in (the 1.21.0 version was
+technically correct but read like a spec sheet, which doesn't match
+the cozy-coffee-chat tone of the rest of the manual). Also re-cuted
+the **🔗 URL link** paragraph under Creating a Custom Bundle to call
+out the five-step "busy mom morning" flow more warmly.
+
+No code changes — pure doc release so Sallie's in-app manual matches
+the rest of her book.
+
+Added a release-process rule to top-level `CLAUDE.md`: USER_MANUAL.md
+(and any Sallie-facing doc) must be updated in 200%-cute voice *before*
+every release commit; a stale or textbook-voice manual is a release
+blocker. Dev-facing docs (README, CHANGELOG, HANDOFF, code comments)
+keep their normal voice but must also be current at release time.
+
 ## [1.21.0] — 2026-05-29
 
 ### Added — 🪙 Social hub with daily piggy-bank tracker
