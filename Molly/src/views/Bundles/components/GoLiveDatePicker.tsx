@@ -37,11 +37,16 @@ export function GoLiveDatePicker({ value, onChange, disabled, defaultValue }: Pr
           // WKWebView's native date popover doesn't reliably close after
           // a controlled-value React onChange round-trip (the async commit
           // + reload retains focus on the input, keeping the picker open
-          // even after Sallie has picked a date). Explicit blur dismisses
-          // the popover immediately.
+          // even after Sallie has picked a date). Defer the blur past the
+          // current event tick — a synchronous blur() runs before
+          // WKWebView has finished settling the popover and is silently
+          // ignored. rAF + setTimeout belt-and-braces for slow renders.
           const target = e.currentTarget;
           onChange(target.value || null);
-          target.blur();
+          requestAnimationFrame(() => {
+            target.blur();
+            setTimeout(() => target.blur(), 50);
+          });
         }}
         disabled={disabled}
       />

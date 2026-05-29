@@ -146,9 +146,11 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
             {bundle.summary.bundleType === 'custom' && (
               <ReviewSection title="Delivery">
                 <ReviewRow label="To" value={bundle.deliveryRecipient || <em className="opacity-50">(not set)</em>} />
-                <ReviewRow label="Platform" value={
+                <ReviewRow label="Method" value={
                   bundle.deliveryKind === 'url'
-                    ? <span className="font-mono break-all">{bundle.deliveryUrl ?? '(no URL)'}</span>
+                    ? (bundle.deliveryUrl
+                        ? <span className="font-mono break-all">{bundle.deliveryUrl}</span>
+                        : <span>🔗 URL link <em className="opacity-60">(filled in on return)</em></span>)
                     : bundle.deliveryKind === 'site'
                     ? <span className="font-mono">site #{bundle.deliverySiteId ?? '?'}</span>
                     : <em className="opacity-50">(not set)</em>

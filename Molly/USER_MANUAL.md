@@ -389,7 +389,7 @@ A published bundle is locked — the form goes read-only. If you need to change 
 Click **＋ New Custom Bundle**. Same persona / title / files / special-instructions pattern as Content. The differences:
 
 - **Go-live date** defaults to **tomorrow** (custom turnarounds tend to be short).
-- **Delivery platform** — pick **🌐 Site** to choose from the sites you've added in Settings → Sites (filtered to the bundle's persona), or **🔗 URL link** to paste an arbitrary URL. URL has to start with `http://` or `https://`. Exactly one of the two, not both.
+- **Delivery method** — pick **🌐 Site** to choose from the sites you've added in Settings → Sites (filtered to the bundle's persona), or **🔗 URL link** for any other delivery destination. URL link is just a choice — you don't paste a URL here; Robert fills in the destination URL on the return file once he's posted the bundle.
 - **Recipient** — required free-text. Whoever the custom is *for* (a username, a real name, whatever you and Robert use to identify the buyer).
 - **Price** — money field in dollars (`$25.00`). Or tick **handled in delivery platform** to skip the price field entirely (Molly blanks the value when the toggle is on so there's no ambiguity in `info.md`).
 

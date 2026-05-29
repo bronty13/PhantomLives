@@ -576,46 +576,32 @@ pub(crate) fn validate_content_bundle(
     issues
 }
 
-/// Custom-bundle delivery rule: exactly one of (site, url); recipient
-/// required; if delivery_kind == 'url' the URL must look like http(s)://;
-/// price required unless handled-in-platform.
+/// Custom-bundle delivery rule: `delivery_kind` must be set; if 'site' a
+/// site id is required; if 'url' nothing else is required here (Robert
+/// fills in the URL later via the SideMolly return-file flow). Recipient
+/// is always required; price required unless handled-in-platform.
 pub(crate) fn validate_custom_delivery(
     bundle: &Bundle,
     issues: &mut Vec<ValidationIssue>,
 ) {
-    let has_site = bundle.delivery_site_id.is_some();
-    let has_url = bundle
-        .delivery_url
-        .as_deref()
-        .map(|s| !s.trim().is_empty())
-        .unwrap_or(false);
-
-    if !has_site && !has_url {
-        issues.push(ValidationIssue {
-            field_path: "delivery".into(),
-            message: "Pick a delivery platform (a site or a URL).".into(),
-            severity: Severity::Error,
-            jump_to_field_id: "bundle-delivery".into(),
-        });
-    }
-    if has_site && has_url {
-        issues.push(ValidationIssue {
-            field_path: "delivery".into(),
-            message: "Pick one — a site OR a URL, not both.".into(),
-            severity: Severity::Error,
-            jump_to_field_id: "bundle-delivery".into(),
-        });
-    }
-    if has_url {
-        let url = bundle.delivery_url.as_deref().unwrap_or("").trim();
-        if !(url.starts_with("http://") || url.starts_with("https://")) {
+    match bundle.delivery_kind.as_deref() {
+        None => {
             issues.push(ValidationIssue {
-                field_path: "delivery.url".into(),
-                message: "URL needs to start with http:// or https://.".into(),
+                field_path: "delivery".into(),
+                message: "Pick a delivery method (Site or URL link).".into(),
                 severity: Severity::Error,
-                jump_to_field_id: "bundle-delivery-url".into(),
+                jump_to_field_id: "bundle-delivery".into(),
             });
         }
+        Some("site") if bundle.delivery_site_id.is_none() => {
+            issues.push(ValidationIssue {
+                field_path: "delivery".into(),
+                message: "Pick a site for this persona.".into(),
+                severity: Severity::Error,
+                jump_to_field_id: "bundle-delivery-site".into(),
+            });
+        }
+        _ => {}
     }
     if bundle.delivery_recipient.trim().is_empty() {
         issues.push(ValidationIssue {
@@ -2479,28 +2465,27 @@ mod tests {
     }
 
     #[test]
-    fn custom_delivery_requires_exactly_one_target() {
+    fn custom_delivery_requires_kind() {
         let mut b = mk_bundle("x", "custom");
         b.files.push(mk_video_file());
         b.delivery_recipient = "alice".into();
         b.handled_in_platform = true; // skip price requirement
 
-        // Neither set → error.
+        // delivery_kind unset → error.
         let mut i = Vec::new();
         validate_custom_delivery(&b, &mut i);
         assert!(i.iter().any(|x| x.field_path == "delivery"));
 
-        // Both set → error.
+        // 'site' kind without site_id → error.
         let mut b2 = b.clone();
-        b2.delivery_site_id = Some(1);
-        b2.delivery_url = Some("https://example.com".into());
-        b2.delivery_kind = Some("url".into());
+        b2.delivery_kind = Some("site".into());
         let mut i2 = Vec::new();
         validate_custom_delivery(&b2, &mut i2);
         assert!(i2.iter().any(|x| x.field_path == "delivery"));
 
-        // Site only → no delivery error.
+        // 'site' kind with site_id → no delivery error.
         let mut b3 = b.clone();
+        b3.delivery_kind = Some("site".into());
         b3.delivery_site_id = Some(1);
         let mut i3 = Vec::new();
         validate_custom_delivery(&b3, &mut i3);
@@ -2508,21 +2493,23 @@ mod tests {
     }
 
     #[test]
-    fn custom_url_must_be_http_or_https() {
+    fn custom_url_kind_needs_no_url_string() {
+        // 1.20.1: URL link is just a delivery method choice; Robert fills
+        // in the URL via the SideMolly return-file flow once delivered.
         let mut b = mk_bundle("x", "custom");
+        b.files.push(mk_video_file());
         b.delivery_recipient = "alice".into();
         b.handled_in_platform = true;
-        b.delivery_url = Some("ftp://nope".into());
         b.delivery_kind = Some("url".into());
+        // delivery_url stays None.
 
         let mut i = Vec::new();
         validate_custom_delivery(&b, &mut i);
-        assert!(i.iter().any(|x| x.field_path == "delivery.url"));
-
-        b.delivery_url = Some("https://onlyfans.com/foo".into());
-        let mut i2 = Vec::new();
-        validate_custom_delivery(&b, &mut i2);
-        assert!(!i2.iter().any(|x| x.field_path == "delivery.url"));
+        assert!(
+            i.is_empty(),
+            "expected no issues for URL-kind without URL, got: {:?}",
+            i
+        );
     }
 
     #[test]

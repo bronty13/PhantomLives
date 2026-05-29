@@ -4,6 +4,54 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.1] — 2026-05-29
+
+### Fixed — 🐛 Custom-bundle submission was blocked when delivery was URL link
+
+Sallie couldn't publish a Custom bundle with **🔗 URL link** as the
+delivery method. The form required her to paste a `http(s)://` URL up
+front, but the URL is the *work product* — it's the link Robert sends
+back via the SideMolly return-file flow once he's posted the bundle.
+Validation refused to accept "URL link" without a URL string, blocking
+publish.
+
+**New behaviour** — the **Delivery method** field (renamed from
+"Delivery platform") is now just a choice:
+
+- **🌐 Site** → pick a site from Settings → Sites (for the bundle's
+  persona). Site id required; behaves exactly as before.
+- **🔗 URL link** → click and you're done. No URL input. A pink
+  helper note replaces the old text field: *"Robert will fill in the
+  URL on return. Nothing else to enter here."* The URL itself lands
+  on the bundle row when Sallie imports the SideMolly return file.
+
+Validation rule, both client + server (`validate_custom_delivery`):
+
+- `delivery_kind` must be set (Site or URL link).
+- If `'site'` → `delivery_site_id` required.
+- If `'url'` → no further input required.
+- Removed the http(s) URL-format check (URL is no longer collected here).
+- Recipient + price rules unchanged.
+
+Pre-publish review row was also tweaked: URL-kind deliveries now read
+"🔗 URL link *(filled in on return)*" instead of the misleading "(no URL)".
+
+### Fixed — 📅 Go-live date popover wouldn't dismiss after picking a date
+
+WKWebView's native date popover ignored the synchronous `blur()` call
+that was supposed to dismiss it after Sallie picked a date — the
+controlled-value React onChange + async DB commit kept the input
+focused, so the popover hung around obscuring the rest of the Custom
+Bundle form. Deferred the dismiss to the next animation frame (plus a
+50 ms belt-and-braces follow-up) so the popover closes immediately
+after Sallie picks a date.
+
+### Changed
+
+- `bundle.delivery_url` is now optional even for URL-kind deliveries.
+  Existing rows where Sallie *had* pasted a URL under the old flow
+  continue to render fine in the publish review; no migration needed.
+
 ## [1.20.0] — 2026-05-27
 
 ### Added — 📥 Import the return file from SideMolly

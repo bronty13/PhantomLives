@@ -176,34 +176,29 @@ describe('daysInMonth', () => {
 describe('validateCustomDelivery', () => {
   const recipientFilled = (b: Bundle) => { b.deliveryRecipient = 'alice'; return b; };
 
-  it('errors when neither site nor URL', () => {
+  it('errors when deliveryKind is unset', () => {
     const b = recipientFilled(mkBundle({ handledInPlatform: true }));
     const issues = validateCustomDelivery(b);
     expect(issues.some((i) => i.fieldPath === 'delivery')).toBe(true);
   });
-  it('errors when both site and URL', () => {
+  it('errors when site kind has no siteId', () => {
     const b = recipientFilled(mkBundle({
-      handledInPlatform: true, deliverySiteId: 1,
-      deliveryUrl: 'https://example.com', deliveryKind: 'url',
+      handledInPlatform: true, deliveryKind: 'site',
     }));
     const issues = validateCustomDelivery(b);
     expect(issues.some((i) => i.fieldPath === 'delivery')).toBe(true);
   });
-  it('passes with site only', () => {
+  it('passes with site + siteId', () => {
     const b = recipientFilled(mkBundle({
       handledInPlatform: true, deliverySiteId: 1, deliveryKind: 'site',
     }));
     expect(validateCustomDelivery(b)).toEqual([]);
   });
-  it('requires http(s) URL', () => {
-    const bad = recipientFilled(mkBundle({
-      handledInPlatform: true, deliveryUrl: 'ftp://nope', deliveryKind: 'url',
+  it('passes with URL kind and no URL — Robert fills it in on return', () => {
+    const b = recipientFilled(mkBundle({
+      handledInPlatform: true, deliveryKind: 'url',
     }));
-    expect(validateCustomDelivery(bad).some((i) => i.fieldPath === 'delivery.url')).toBe(true);
-    const good = recipientFilled(mkBundle({
-      handledInPlatform: true, deliveryUrl: 'https://ok.com', deliveryKind: 'url',
-    }));
-    expect(validateCustomDelivery(good).some((i) => i.fieldPath === 'delivery.url')).toBe(false);
+    expect(validateCustomDelivery(b)).toEqual([]);
   });
   it('requires recipient', () => {
     const b = mkBundle({

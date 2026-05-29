@@ -233,35 +233,24 @@ export function validateContentBundle(bundle: Bundle, ctx: ValidationCtx): Valid
 
 export function validateCustomDelivery(bundle: Bundle): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  const hasSite = bundle.deliverySiteId != null;
-  const hasUrl = !!(bundle.deliveryUrl ?? '').trim();
-  if (!hasSite && !hasUrl) {
+  const kind = bundle.deliveryKind;
+  if (kind == null) {
     issues.push({
       fieldPath: 'delivery',
-      message: 'Pick a delivery platform (a site or a URL).',
+      message: 'Pick a delivery method (Site or URL link).',
       severity: 'error',
       jumpToFieldId: 'bundle-delivery',
     });
-  }
-  if (hasSite && hasUrl) {
+  } else if (kind === 'site' && bundle.deliverySiteId == null) {
     issues.push({
       fieldPath: 'delivery',
-      message: 'Pick one — a site OR a URL, not both.',
+      message: 'Pick a site for this persona.',
       severity: 'error',
-      jumpToFieldId: 'bundle-delivery',
+      jumpToFieldId: 'bundle-delivery-site',
     });
   }
-  if (hasUrl) {
-    const url = (bundle.deliveryUrl ?? '').trim();
-    if (!(url.startsWith('http://') || url.startsWith('https://'))) {
-      issues.push({
-        fieldPath: 'delivery.url',
-        message: 'URL needs to start with http:// or https://.',
-        severity: 'error',
-        jumpToFieldId: 'bundle-delivery-url',
-      });
-    }
-  }
+  // kind === 'url' needs no further input — Robert fills the URL in via
+  // the SideMolly return-file flow once the bundle has been delivered.
   if (bundle.deliveryRecipient.trim().length === 0) {
     issues.push({
       fieldPath: 'delivery.recipient',
