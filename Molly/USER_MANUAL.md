@@ -100,9 +100,26 @@ The list view filters by the active persona (top bar) and supports search across
 
 ---
 
-## 🔴 Reddit — your daily ops hub
+## 🪙 Social — piggy bank + Reddit deep tools
 
-Click **🔴 Reddit** in the sidebar. This is your morning landing pad for actually *doing the work* — a little hub of five tabs along the top. Everything inside is filtered by the persona switcher at the top of the window.
+Click **🪙 Social** in the sidebar. This is your daily-posting hub. The first tab is the **🪙 Piggy bank** overview — one row per platform, with default daily goals: 🐶 Reddit 10/day · ✖️ X 3/day · 📸 Instagram 2/day · 🎵 TikTok 2/day. Tap **+1 Post** every time you actually post; a coin slot fills, a soft "ching" plays, and the row turns green when you hit the goal for that platform.
+
+Hit every platform's goal for the day → the **🔥 day streak** at the top ticks up. Miss one → the streak resets the next day. The streak number is "I posted consistently for N days in a row" — the thing to protect.
+
+Each non-Reddit platform also gets its own tab (🐦 X / 🎵 TikTok / 📸 Instagram) with a focused view: a big +1 button, a 5-week history grid (green = goal hit, faded color = partial, blank = 0), the per-platform streak, and a goal editor if 2/day or 3/day stops feeling right.
+
+A few details:
+
+- **Persona-scoped.** Each persona (Curves / Princess) has its own count and its own streak. The **ALL** switcher disables the +1 buttons — pick a persona first, then tap.
+- **Undo.** Misclick? Tap the small **↶** next to a +1 button to remove the most recent coin for that platform today.
+- **Sound.** 🔔 / 🔇 toggle in the piggy-bank header mutes the chings (per-device).
+- **Goals can be edited** per platform from inside that platform's tab. Set to **0** to drop it from the streak math (e.g. you're not running TikTok this month).
+
+Reddit gets a richer **🔴 Reddit** tab inside Social with its existing deep tools (Today · Subreddits · Post log · Captions · Hours — see below). The piggy bank's Reddit count automatically counts both kinds of activity: a generic "+1 Reddit" tap *and* every "mark posted" you do in the Subreddits section. Use whichever tool fits the moment — they don't double-count.
+
+### 🔴 Reddit deep tools
+
+Pick **🔴 Reddit** as a sub-tab inside Social. This is your morning landing pad for actually *doing the work* — a hub of five sub-tabs.
 
 ### ✅ Today
 

@@ -17,6 +17,7 @@ const EMPTY = (): Omit<SocialPlatform, 'id'> => ({
   color: '#A16D9C',
   sortOrder: 100,
   archived: false,
+  dailyGoal: 1,
 });
 
 export function PlatformsSettings() {

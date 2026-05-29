@@ -10,7 +10,7 @@ import { SettingsView } from './views/Settings/SettingsView';
 import { CustomerListView } from './views/Customers/CustomerListView';
 import { MollyHelper } from './views/MollyHelper/MollyHelper';
 import { PromosListView } from './views/Promos/PromosListView';
-import { RedditView } from './views/Reddit/RedditView';
+import { SocialView } from './views/Social/SocialView';
 import { HomeDashboard } from './views/Home/HomeDashboard';
 import { CalendarView } from './views/Calendar/CalendarView';
 import { ClipsListView } from './views/Clips/ClipsListView';
@@ -127,7 +127,7 @@ export default function App() {
       // the single render-cycle gap.
       body = promosEnabled ? <PromosListView active={active} /> : null;
       break;
-    case 'reddit':    body = <RedditView active={active} />; break;
+    case 'social':    body = <SocialView active={active} />; break;
     case 'income':    body = <IncomeView active={active} />; break;
     case 'expenses':  body = <ExpensesView active={active} onChanged={refreshCounts} />; break;
     case 'reports':   body = <ReportsView active={active} />; break;

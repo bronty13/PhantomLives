@@ -4,6 +4,91 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.0] — 2026-05-29
+
+### Added — 🪙 Social hub with daily piggy-bank tracker
+
+The Reddit page has been promoted into a broader **🪙 Social** hub
+that tracks daily posting cadence across every platform. Sallie's
+problem: posting *consistently* on TikTok / Instagram / Twitter is
+ultimately the bottleneck for monetising the foundation she's
+already built, and "did I post today?" is hard to feel good about
+while wrangling kids in summer.
+
+Solution — a piggy bank. Every time she posts, she taps **+1 Post**
+on that platform's row; a coin slot fills, a soft **"ching"** plays,
+and the row turns green when the daily goal is hit. Hit every
+platform's goal in a day and the **🔥 day-streak** ticks up.
+
+#### Default goals (editable per-platform)
+
+- 🐶 **Reddit** — 10/day
+- ✖️ **X** — 3/day
+- 📸 **Instagram** — 2/day
+- 🎵 **TikTok** — 2/day
+
+#### Tabs inside Social
+
+- **🪙 Piggy bank** — all-platforms-today overview. Coin slots,
+  progress bar, +1 button, undo arrow, sound mute toggle. The
+  big number at the top is the all-platforms-hit streak.
+- **One tab per platform** (X / Instagram / TikTok) — focused
+  view with the +1 button, a 5-week history grid color-coded by
+  goal-met / partial / 0, per-platform streak, and a goal editor.
+- **🔴 Reddit** — the existing Reddit deep tools (Today /
+  Subreddits / Post log / Captions / Hours) preserved verbatim
+  as a nested tab. Reddit's piggy-bank count auto-merges generic
+  +1 drops *and* the existing "mark subreddit posted" rows, so
+  Sallie can use whichever tool fits the moment without
+  double-counting.
+
+#### Data model
+
+- New SQL migration **035** adds `social_platforms.daily_goal`
+  (default 1, backfilled with Sallie's preferred cadence) and
+  the append-only `social_post_drops` table (one row per coin
+  drop, persona-scoped, indexed by `(persona_code, posted_date)`
+  and `(platform_id, posted_date)`).
+- Existing `social_promos` and `subreddit_posts` tables are
+  untouched. Promos remains the place for "I posted *this
+  specific URL/body* on Reddit" detail rows; the piggy bank is
+  the lightweight "I did the thing, +1" companion.
+
+#### Streak rules
+
+- **Overall streak**: walks back from today, counts consecutive
+  days where *every* non-archived platform met its goal for the
+  active persona. First miss breaks the streak. Today only counts
+  once it's complete.
+- **Per-platform streak**: same idea, but only one platform.
+- Platforms with `daily_goal = 0` are skipped — set a goal to 0
+  to retire a platform from the streak math without archiving it.
+
+#### Persona scoping
+
+Matches the rest of Molly. Each persona (Curves / Princess) has
+its own count and its own streak per platform. The **ALL**
+switcher disables the +1 buttons (with an explanatory banner) so
+Sallie doesn't accidentally drop a coin against the wrong
+persona — pick one, tap, done.
+
+#### Sound
+
+Tiny Web Audio API tones (no external asset). Two flavours: a
+single sparkle for every coin, an ascending major arpeggio when
+a daily goal flips from missed to met. Muteable per-device via
+the 🔔/🔇 toggle on the piggy-bank header; preference persists
+in localStorage.
+
+#### Tests
+
+- **Rust** — 10 new tests in `social_drops` covering: zero-count
+  initial state, just-hit threshold semantics, persona isolation,
+  Reddit's subreddit_posts merge, undo only touching generic drops
+  (never subreddit_posts), overall-streak break-on-miss, per-
+  platform streak independence, history ordering, goal validation,
+  bad-date rejection.
+
 ## [1.20.2] — 2026-05-29
 
 ### Fixed — 🔗 URL-link customs now skip recipient + price too

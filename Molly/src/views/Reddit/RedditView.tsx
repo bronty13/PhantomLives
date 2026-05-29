@@ -18,20 +18,25 @@ const SECTIONS: { key: Section; label: string; icon: string }[] = [
 
 interface Props {
   active: Persona;
+  /** When rendered inside the Social hub, hide the outer heading + the
+   * page padding so the parent layout owns those. */
+  embedded?: boolean;
 }
 
-export function RedditView({ active }: Props) {
+export function RedditView({ active, embedded }: Props) {
   const [section, setSection] = useState<Section>('today');
 
   return (
-    <div className="p-8 max-w-6xl space-y-4">
-      <div>
-        <h2 className="display-font text-2xl font-bold persona-accent">🔴 Reddit</h2>
-        <p className="opacity-70 text-sm">
-          Daily ops hub — to-do list, subreddit tracker, post log, captions, and hours.
-          {active.code !== 'ALL' && <> Filtered to <strong>{active.name}</strong>.</>}
-        </p>
-      </div>
+    <div className={embedded ? 'space-y-4' : 'p-8 max-w-6xl space-y-4'}>
+      {!embedded && (
+        <div>
+          <h2 className="display-font text-2xl font-bold persona-accent">🔴 Reddit</h2>
+          <p className="opacity-70 text-sm">
+            Daily ops hub — to-do list, subreddit tracker, post log, captions, and hours.
+            {active.code !== 'ALL' && <> Filtered to <strong>{active.name}</strong>.</>}
+          </p>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-1.5">
         {SECTIONS.map((s) => {

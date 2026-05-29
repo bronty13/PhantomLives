@@ -19,6 +19,7 @@ mod log;
 mod masterclipper;
 mod notes;
 mod reddit;
+mod social_drops;
 mod return_file;
 mod site_credentials;
 
@@ -230,6 +231,12 @@ pub fn run() {
             sql: include_str!("../migrations/034_return_file_import.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 35,
+            description: "social-drops",
+            sql: include_str!("../migrations/035_social_drops.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -426,6 +433,13 @@ pub fn run() {
             reddit::create_caption,
             reddit::update_caption,
             reddit::delete_caption,
+            social_drops::list_social_today,
+            social_drops::add_social_drop,
+            social_drops::undo_last_social_drop,
+            social_drops::list_social_platform_history,
+            social_drops::compute_social_overall_streak,
+            social_drops::compute_social_platform_streak,
+            social_drops::set_social_platform_goal,
             hours::hours_start_session,
             hours::hours_stop_session,
             hours::hours_list_sessions,
@@ -1168,6 +1182,7 @@ mod migration_smoke {
             (32, "drop-content-release",         include_str!("../migrations/032_drop_content_release_defaults.sql")),
             (33, "ui-theme",                     include_str!("../migrations/033_ui_theme.sql")),
             (34, "return-file-import",           include_str!("../migrations/034_return_file_import.sql")),
+            (35, "social-drops",                 include_str!("../migrations/035_social_drops.sql")),
         ];
 
         for (v, name, sql) in migrations {
