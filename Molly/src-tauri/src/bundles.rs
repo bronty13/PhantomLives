@@ -578,13 +578,15 @@ pub(crate) fn validate_content_bundle(
 
 /// Custom-bundle delivery rule: `delivery_kind` must be set; if 'site' a
 /// site id is required; if 'url' nothing else is required here (Robert
-/// fills in the URL later via the SideMolly return-file flow). Recipient
-/// is always required; price required unless handled-in-platform.
+/// fills in the URL, recipient and price later via the SideMolly
+/// return-file flow). For 'site' kind, recipient is required and price
+/// is required unless handled-in-platform.
 pub(crate) fn validate_custom_delivery(
     bundle: &Bundle,
     issues: &mut Vec<ValidationIssue>,
 ) {
-    match bundle.delivery_kind.as_deref() {
+    let kind = bundle.delivery_kind.as_deref();
+    match kind {
         None => {
             issues.push(ValidationIssue {
                 field_path: "delivery".into(),
@@ -602,6 +604,11 @@ pub(crate) fn validate_custom_delivery(
             });
         }
         _ => {}
+    }
+    // URL-kind submissions are "pick the option and you're done" —
+    // recipient and price come back via the return file.
+    if kind == Some("url") {
+        return;
     }
     if bundle.delivery_recipient.trim().is_empty() {
         issues.push(ValidationIssue {
@@ -2508,6 +2515,24 @@ mod tests {
         assert!(
             i.is_empty(),
             "expected no issues for URL-kind without URL, got: {:?}",
+            i
+        );
+    }
+
+    #[test]
+    fn custom_url_kind_skips_recipient_and_price() {
+        // 1.20.2: URL link is "pick the option and you're done" —
+        // recipient and price come back via the SideMolly return file.
+        let mut b = mk_bundle("x", "custom");
+        b.files.push(mk_video_file());
+        b.delivery_kind = Some("url".into());
+        // delivery_recipient empty, price_cents None, handled_in_platform false.
+
+        let mut i = Vec::new();
+        validate_custom_delivery(&b, &mut i);
+        assert!(
+            i.is_empty(),
+            "expected no recipient/price issues for URL-kind, got: {:?}",
             i
         );
     }

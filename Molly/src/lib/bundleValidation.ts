@@ -249,31 +249,34 @@ export function validateCustomDelivery(bundle: Bundle): ValidationIssue[] {
       jumpToFieldId: 'bundle-delivery-site',
     });
   }
-  // kind === 'url' needs no further input — Robert fills the URL in via
-  // the SideMolly return-file flow once the bundle has been delivered.
-  if (bundle.deliveryRecipient.trim().length === 0) {
-    issues.push({
-      fieldPath: 'delivery.recipient',
-      message: 'Who is this for? Add a recipient name / username.',
-      severity: 'error',
-      jumpToFieldId: 'bundle-delivery-recipient',
-    });
-  }
-  if (!bundle.handledInPlatform) {
-    if (bundle.priceCents == null) {
+  // kind === 'url' needs no further input — Robert fills the URL,
+  // recipient and price in via the SideMolly return-file flow once the
+  // bundle has been delivered. Sallie just picks the choice.
+  if (kind !== 'url') {
+    if (bundle.deliveryRecipient.trim().length === 0) {
       issues.push({
-        fieldPath: 'price',
-        message: 'Set a price (or tick "handled in delivery platform").',
+        fieldPath: 'delivery.recipient',
+        message: 'Who is this for? Add a recipient name / username.',
         severity: 'error',
-        jumpToFieldId: 'bundle-price',
+        jumpToFieldId: 'bundle-delivery-recipient',
       });
-    } else if (bundle.priceCents < 0) {
-      issues.push({
-        fieldPath: 'price',
-        message: "Price can't be negative.",
-        severity: 'error',
-        jumpToFieldId: 'bundle-price',
-      });
+    }
+    if (!bundle.handledInPlatform) {
+      if (bundle.priceCents == null) {
+        issues.push({
+          fieldPath: 'price',
+          message: 'Set a price (or tick "handled in delivery platform").',
+          severity: 'error',
+          jumpToFieldId: 'bundle-price',
+        });
+      } else if (bundle.priceCents < 0) {
+        issues.push({
+          fieldPath: 'price',
+          message: "Price can't be negative.",
+          severity: 'error',
+          jumpToFieldId: 'bundle-price',
+        });
+      }
     }
   }
   return issues;

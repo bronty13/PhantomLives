@@ -4,6 +4,20 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.2] — 2026-05-29
+
+### Fixed — 🔗 URL-link customs now skip recipient + price too
+
+Follow-up to 1.20.1. When Sallie picks **🔗 URL link** for delivery,
+the form is "pick the option and you're done" — Robert fills in the
+URL *and* the recipient *and* the price when he records the return
+file. So the Custom Bundle form now hides the Recipient and Price
+fields entirely while URL link is selected, and validation skips
+both checks. Site-kind submissions are unchanged.
+
+In the publish review, the Delivery section collapses the recipient
+and price rows into a single "filled in on return" line for URL-kind.
+
 ## [1.20.1] — 2026-05-29
 
 ### Fixed — 🐛 Custom-bundle submission was blocked when delivery was URL link

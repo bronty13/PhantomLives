@@ -145,7 +145,6 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
 
             {bundle.summary.bundleType === 'custom' && (
               <ReviewSection title="Delivery">
-                <ReviewRow label="To" value={bundle.deliveryRecipient || <em className="opacity-50">(not set)</em>} />
                 <ReviewRow label="Method" value={
                   bundle.deliveryKind === 'url'
                     ? (bundle.deliveryUrl
@@ -155,13 +154,21 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
                     ? <span className="font-mono">site #{bundle.deliverySiteId ?? '?'}</span>
                     : <em className="opacity-50">(not set)</em>
                 } />
-                <ReviewRow label="Price" value={
-                  bundle.handledInPlatform
-                    ? <em>handled in delivery platform</em>
-                    : bundle.priceCents != null
-                    ? <span className="font-mono">${(bundle.priceCents / 100).toFixed(2)}</span>
-                    : <em className="opacity-50">(not set)</em>
-                } />
+                {bundle.deliveryKind !== 'url' && (
+                  <ReviewRow label="To" value={bundle.deliveryRecipient || <em className="opacity-50">(not set)</em>} />
+                )}
+                {bundle.deliveryKind !== 'url' && (
+                  <ReviewRow label="Price" value={
+                    bundle.handledInPlatform
+                      ? <em>handled in delivery platform</em>
+                      : bundle.priceCents != null
+                      ? <span className="font-mono">${(bundle.priceCents / 100).toFixed(2)}</span>
+                      : <em className="opacity-50">(not set)</em>
+                  } />
+                )}
+                {bundle.deliveryKind === 'url' && (
+                  <ReviewRow label="Recipient / price" value={<em className="opacity-60">filled in on return</em>} />
+                )}
               </ReviewSection>
             )}
 

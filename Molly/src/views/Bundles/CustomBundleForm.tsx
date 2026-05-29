@@ -203,45 +203,49 @@ export function CustomBundleForm({ uid, onPublishRequested, onClose, onDeleted, 
           disabled={busy || locked}
         />
 
-        <div className="space-y-1">
-          <label htmlFor="bundle-delivery-recipient" className="text-xs font-semibold opacity-75">Recipient (username / name)</label>
-          <input
-            id="bundle-delivery-recipient"
-            type="text"
-            className="pretty-input w-full"
-            defaultValue={bundle.deliveryRecipient}
-            onBlur={(e) => { if (e.target.value !== bundle.deliveryRecipient) commitRecipient(e.target.value); }}
-            placeholder="e.g. @cute_buyer or 'Alice'"
-            disabled={busy || locked}
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-xs font-semibold opacity-75">Price</label>
-          <div className="flex items-center gap-3">
+        {bundle.deliveryKind !== 'url' && (
+          <div className="space-y-1">
+            <label htmlFor="bundle-delivery-recipient" className="text-xs font-semibold opacity-75">Recipient (username / name)</label>
             <input
-              id="bundle-price"
+              id="bundle-delivery-recipient"
               type="text"
-              inputMode="decimal"
-              className="pretty-input w-32 font-mono"
-              value={bundle.handledInPlatform ? '' : priceDraft}
-              onChange={(e) => setPriceDraft(e.target.value)}
-              onBlur={() => { if (parseDollars(priceDraft) !== bundle.priceCents) commitPrice(); }}
-              placeholder="$ 0.00"
-              disabled={busy || locked || bundle.handledInPlatform}
+              className="pretty-input w-full"
+              defaultValue={bundle.deliveryRecipient}
+              onBlur={(e) => { if (e.target.value !== bundle.deliveryRecipient) commitRecipient(e.target.value); }}
+              placeholder="e.g. @cute_buyer or 'Alice'"
+              disabled={busy || locked}
             />
-            <label className="text-sm flex items-center gap-2 select-none">
-              <input
-                type="checkbox"
-                checked={bundle.handledInPlatform}
-                onChange={(e) => commitHandledInPlatform(e.target.checked)}
-                className="w-4 h-4"
-                disabled={busy || locked}
-              />
-              handled in delivery platform
-            </label>
           </div>
-        </div>
+        )}
+
+        {bundle.deliveryKind !== 'url' && (
+          <div className="space-y-1">
+            <label className="text-xs font-semibold opacity-75">Price</label>
+            <div className="flex items-center gap-3">
+              <input
+                id="bundle-price"
+                type="text"
+                inputMode="decimal"
+                className="pretty-input w-32 font-mono"
+                value={bundle.handledInPlatform ? '' : priceDraft}
+                onChange={(e) => setPriceDraft(e.target.value)}
+                onBlur={() => { if (parseDollars(priceDraft) !== bundle.priceCents) commitPrice(); }}
+                placeholder="$ 0.00"
+                disabled={busy || locked || bundle.handledInPlatform}
+              />
+              <label className="text-sm flex items-center gap-2 select-none">
+                <input
+                  type="checkbox"
+                  checked={bundle.handledInPlatform}
+                  onChange={(e) => commitHandledInPlatform(e.target.checked)}
+                  className="w-4 h-4"
+                  disabled={busy || locked}
+                />
+                handled in delivery platform
+              </label>
+            </div>
+          </div>
+        )}
 
         <ContentTagPicker
           tags={contentTags}

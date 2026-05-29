@@ -200,6 +200,16 @@ describe('validateCustomDelivery', () => {
     }));
     expect(validateCustomDelivery(b)).toEqual([]);
   });
+  it('URL kind skips recipient and price requirements', () => {
+    // Sallie picks URL link → that is the whole submission. Recipient
+    // and price come back via the SideMolly return file along with the
+    // URL; she shouldn't be required to invent them up front.
+    const b = mkBundle({
+      deliveryKind: 'url',
+      // deliveryRecipient blank, priceCents null, handledInPlatform false
+    });
+    expect(validateCustomDelivery(b)).toEqual([]);
+  });
   it('requires recipient', () => {
     const b = mkBundle({
       handledInPlatform: true, deliverySiteId: 1, deliveryKind: 'site',
