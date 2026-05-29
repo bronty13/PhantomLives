@@ -10,26 +10,73 @@ final class SettingsStore: ObservableObject {
     @AppStorage("outputDirectoryPath") private var storedOutputPath: String = ""
     @AppStorage("outputFormatRaw")     private var storedFormatRaw: String = OutputFormat.m4a.rawValue
     @AppStorage("processingProfileRaw") private var storedProfileRaw: String = ProcessingProfile.medium.rawValue
-    @AppStorage("enhancementEnabled")  var enhancementEnabled: Bool = true
-    @AppStorage("autoPlayAfterProcess") var autoPlayAfterProcess: Bool = false
-    @AppStorage("autoRevealAfterProcess") var autoRevealAfterProcess: Bool = false
 
     // v0.2: engine + filter additions.
     @AppStorage("processingEngineRaw") private var storedEngineRaw: String = ProcessingEngine.ffmpegOnly.rawValue
     @AppStorage("loudnessTargetRaw")   private var storedLoudnessRaw: String = LoudnessTarget.none.rawValue
-    @AppStorage("deEsserEnabled")      var deEsserEnabled: Bool = false
-    @AppStorage("deClickerEnabled")    var deClickerEnabled: Bool = false
-    @AppStorage("preserveStereo")      var preserveStereo: Bool = false
-    @AppStorage("dereverbEnabled")     var dereverbEnabled: Bool = false
-    /// Optional override for the `deep-filter` binary. Empty string
-    /// means "let DeepFilterNetLocator search the standard paths."
-    @AppStorage("deepFilterPathOverride") var deepFilterPathOverride: String = ""
 
     // v0.3: fine-tune overrides for individual filter parameters.
     // Stored as JSON in a single key — adding new tunables doesn't
-    // require new UserDefaults keys or a migration.
-    @AppStorage("customTuningEnabled") var customTuningEnabled: Bool = false
+    // require new UserDefaults keys or a migration. As of v0.4 the
+    // knobs are always-live (no master gate): a nil field inherits the
+    // profile default, a set field overrides it.
     @AppStorage("filterTuningJSON")    private var storedTuningJSON: String = ""
+
+    // Toggles + path/preset state. These are computed wrappers over a
+    // private `@AppStorage` so their setters can fire `objectWillChange`
+    // — `@AppStorage` inside an `ObservableObject` doesn't publish on
+    // its own, and dependent views (e.g. a knob whose enabled-state
+    // tracks `deEsserEnabled`) must re-render when these flip.
+    @AppStorage("enhancementEnabled")     private var storedEnhancement: Bool = true
+    @AppStorage("autoPlayAfterProcess")   private var storedAutoPlay: Bool = false
+    @AppStorage("autoRevealAfterProcess") private var storedAutoReveal: Bool = false
+    @AppStorage("deEsserEnabled")         private var storedDeEsser: Bool = false
+    @AppStorage("deClickerEnabled")       private var storedDeClicker: Bool = false
+    @AppStorage("preserveStereo")         private var storedPreserveStereo: Bool = false
+    @AppStorage("dereverbEnabled")        private var storedDereverb: Bool = false
+    @AppStorage("deepFilterPathOverride") private var storedDeepFilterPath: String = ""
+    // v0.4: which preset is currently applied (empty = none / custom).
+    // Drives the preset bar's title + the "(Modified)" indicator.
+    @AppStorage("activePresetID")         private var storedActivePresetID: String = ""
+
+    var enhancementEnabled: Bool {
+        get { storedEnhancement }
+        set { storedEnhancement = newValue; objectWillChange.send() }
+    }
+    var autoPlayAfterProcess: Bool {
+        get { storedAutoPlay }
+        set { storedAutoPlay = newValue; objectWillChange.send() }
+    }
+    var autoRevealAfterProcess: Bool {
+        get { storedAutoReveal }
+        set { storedAutoReveal = newValue; objectWillChange.send() }
+    }
+    var deEsserEnabled: Bool {
+        get { storedDeEsser }
+        set { storedDeEsser = newValue; objectWillChange.send() }
+    }
+    var deClickerEnabled: Bool {
+        get { storedDeClicker }
+        set { storedDeClicker = newValue; objectWillChange.send() }
+    }
+    var preserveStereo: Bool {
+        get { storedPreserveStereo }
+        set { storedPreserveStereo = newValue; objectWillChange.send() }
+    }
+    var dereverbEnabled: Bool {
+        get { storedDereverb }
+        set { storedDereverb = newValue; objectWillChange.send() }
+    }
+    /// Optional override for the `deep-filter` binary. Empty string
+    /// means "let DeepFilterNetLocator search the standard paths."
+    var deepFilterPathOverride: String {
+        get { storedDeepFilterPath }
+        set { storedDeepFilterPath = newValue; objectWillChange.send() }
+    }
+    var activePresetIDRaw: String {
+        get { storedActivePresetID }
+        set { storedActivePresetID = newValue; objectWillChange.send() }
+    }
 
     var outputDirectory: URL {
         get {
@@ -99,11 +146,53 @@ final class SettingsStore: ObservableObject {
         }
     }
 
-    /// Effective tuning for a processing run — `inherited` (all
-    /// profile defaults) when the user hasn't opted into custom
-    /// tuning, otherwise the persisted overrides.
-    var effectiveTuning: FilterTuning {
-        customTuningEnabled ? filterTuning : .inherited
+    /// Effective tuning for a processing run. The knobs are always
+    /// live as of v0.4, so this is just the persisted overrides — any
+    /// nil field still inherits the profile default inside
+    /// `FilterChainBuilder`. Kept as a named accessor so call sites
+    /// (the queue) read intent rather than reaching for the raw store.
+    var effectiveTuning: FilterTuning { filterTuning }
+
+    // MARK: - Presets
+
+    /// The current live settings expressed as a `Preset`. Used to save
+    /// a new preset and to compare against the applied one. `builtIn`
+    /// is false and `name` is a placeholder — callers set the real
+    /// name when saving.
+    var liveSnapshot: Preset {
+        Preset(id: UUID(),
+               name: "Custom",
+               builtIn: false,
+               profile: profile,
+               enhancementEnabled: enhancementEnabled,
+               engine: processingEngine,
+               loudnessTarget: loudnessTarget,
+               deEsserEnabled: deEsserEnabled,
+               deClickerEnabled: deClickerEnabled,
+               preserveStereo: preserveStereo,
+               dereverbEnabled: dereverbEnabled,
+               tuning: filterTuning)
+    }
+
+    /// Write every sound-affecting field from `preset` into the live
+    /// settings and remember it as the active preset.
+    func apply(_ preset: Preset) {
+        profile = preset.profile
+        enhancementEnabled = preset.enhancementEnabled
+        processingEngine = preset.engine
+        loudnessTarget = preset.loudnessTarget
+        deEsserEnabled = preset.deEsserEnabled
+        deClickerEnabled = preset.deClickerEnabled
+        preserveStereo = preset.preserveStereo
+        dereverbEnabled = preset.dereverbEnabled
+        filterTuning = preset.tuning
+        activePresetIDRaw = preset.id.uuidString
+    }
+
+    /// True when the live settings still equal `preset`'s settings —
+    /// i.e. the user hasn't tweaked anything since applying it.
+    func matchesLive(_ preset: Preset) -> Bool {
+        preset.hasSameSettings(as: liveSnapshot)
     }
 
     /// Per CLAUDE.md: every PhantomLives tool that writes user-visible

@@ -3,7 +3,7 @@ import AppKit
 
 /// Detail pane for one selected clip. Shows filename, status, progress,
 /// playback controls with A/B swap, the waveform with trim handles,
-/// and the processing knobs from `ProcessingControls`.
+/// and the processing knobs from `ProcessingPanel`.
 struct ClipDetailView: View {
     @ObservedObject var clip: Clip
     @EnvironmentObject var queue: ProcessingQueue
@@ -20,9 +20,12 @@ struct ClipDetailView: View {
             VStack(alignment: .leading, spacing: 20) {
                 header
                 statusRow
-                WaveformView(clip: clip, player: player)
+                HStack(alignment: .top, spacing: 14) {
+                    WaveformView(clip: clip, player: player)
+                    meters
+                }
                 playbackRow
-                ProcessingControls()
+                ProcessingPanel()
                 if clip.status == .failed, let msg = clip.lastError {
                     errorPane(msg: msg)
                 }
@@ -102,6 +105,24 @@ struct ClipDetailView: View {
                 .buttonStyle(.bordered)
             }
         }
+    }
+
+    /// Input / output level meters beside the waveform. The one
+    /// matching the current A/B selection is `active` and animates from
+    /// the player; the other sits idle. Honest single-stream metering —
+    /// only the audible stream has a real level.
+    private var meters: some View {
+        HStack(spacing: 8) {
+            LevelMeter(level: preferCleaned ? Float(0) : player.meterLevel,
+                       peak: preferCleaned ? Float(0) : player.meterPeak,
+                       label: "in",
+                       active: !preferCleaned && player.isPlaying)
+            LevelMeter(level: preferCleaned ? player.meterLevel : Float(0),
+                       peak: preferCleaned ? player.meterPeak : Float(0),
+                       label: "out",
+                       active: preferCleaned && player.isPlaying)
+        }
+        .frame(height: 118)
     }
 
     private var playbackRow: some View {

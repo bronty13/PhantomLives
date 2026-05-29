@@ -215,22 +215,9 @@ actor ClipProcessor {
             dfnArgs.append(contentsOf: ["--post-filter-beta", "0.05"])
         }
 
-        let process = Process()
-        process.executableURL = binaryURL
-        process.arguments = dfnArgs
-
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
-
-        let stderrAccum = ConcurrentDataBuffer()
-        stderrPipe.fileHandleForReading.readabilityHandler = { handle in
-            let chunk = handle.availableData
-            if !chunk.isEmpty { stderrAccum.append(chunk) }
-        }
         // DFN doesn't emit machine-readable progress on stdout. Send
-        // synthetic ticks so the UI doesn't appear frozen.
+        // synthetic ticks so the UI doesn't appear frozen. The ticker
+        // runs alongside `runProcess` and is cancelled once it returns.
         let tickerTask = Task { [progressHandler] in
             var p: Double = 0.05
             while !Task.isCancelled {
@@ -240,18 +227,11 @@ actor ClipProcessor {
             }
         }
 
-        try process.run()
-        await withTaskCancellationHandler {
-            await waitForExit(process)
-        } onCancel: {
-            process.terminate()
-        }
+        let (status, stderr) = try await runProcess(executable: binaryURL,
+                                                     args: dfnArgs)
         tickerTask.cancel()
-        stderrPipe.fileHandleForReading.readabilityHandler = nil
 
-        let status = process.terminationStatus
         if status != 0 {
-            let stderr = String(data: stderrAccum.snapshot, encoding: .utf8) ?? ""
             throw ClipProcessorError.deepFilterFailed(
                 status: status,
                 stderrTail: Self.tail(of: stderr, lines: 12)
@@ -276,8 +256,44 @@ actor ClipProcessor {
                             progressHandler: @escaping @Sendable (Double) -> Void)
         async throws {
 
+        // ffmpeg streams `-progress pipe:1` key=value lines on stdout;
+        // `out_time_us=` is the rendered position. Map it to 0–0.99.
+        let (status, stderr) = try await runProcess(
+            executable: ffmpegURL,
+            args: args,
+            onStdoutLine: { line in
+                guard durationSeconds > 0,
+                      line.hasPrefix("out_time_us="),
+                      let microStr = line.split(separator: "=").last.map(String.init),
+                      let micro = Double(microStr) else { return }
+                let p = min(max(micro / 1_000_000 / durationSeconds, 0), 0.99)
+                progressHandler(p)
+            }
+        )
+        if status != 0 {
+            throw ClipProcessorError.ffmpegFailed(
+                status: status,
+                stderrTail: Self.tail(of: stderr, lines: 12)
+            )
+        }
+    }
+
+    // MARK: - Process plumbing
+
+    /// Spawn `executable` with `args`, accumulating stderr off the
+    /// readability handler and (optionally) streaming stdout lines to
+    /// `onStdoutLine` — the one place the `Process` + `Pipe` +
+    /// cancellation lifecycle lives, shared by the ffmpeg and
+    /// DeepFilterNet paths. Returns the exit status plus the captured
+    /// stderr; callers decide how to map a non-zero status to an error.
+    /// Cancelling the surrounding task terminates the child process.
+    private func runProcess(executable: URL,
+                            args: [String],
+                            onStdoutLine: (@Sendable (String) -> Void)? = nil)
+        async throws -> (status: Int32, stderr: String) {
+
         let process = Process()
-        process.executableURL = ffmpegURL
+        process.executableURL = executable
         process.arguments = args
 
         let stdoutPipe = Pipe()
@@ -291,23 +307,22 @@ actor ClipProcessor {
             if !chunk.isEmpty { stderrAccum.append(chunk) }
         }
 
-        let progressTask = Task { [durationSeconds] in
-            let handle = stdoutPipe.fileHandleForReading
-            var buffer = Data()
-            while !Task.isCancelled {
-                let chunk = handle.availableData
-                if chunk.isEmpty { break }
-                buffer.append(chunk)
-                while let nl = buffer.firstIndex(of: 0x0A) {
-                    let lineData = buffer[..<nl]
-                    buffer.removeSubrange(...nl)
-                    guard let line = String(data: lineData, encoding: .utf8) else { continue }
-                    if line.hasPrefix("out_time_us="),
-                       let microStr = line.split(separator: "=").last.map(String.init),
-                       let micro = Double(microStr),
-                       durationSeconds > 0 {
-                        let p = min(max(micro / 1_000_000 / durationSeconds, 0), 0.99)
-                        progressHandler(p)
+        // Only drain stdout when a line handler wants it (ffmpeg
+        // progress). DFN produces nothing useful on stdout.
+        let stdoutTask: Task<Void, Never>? = onStdoutLine.map { handler in
+            Task {
+                let handle = stdoutPipe.fileHandleForReading
+                var buffer = Data()
+                while !Task.isCancelled {
+                    let chunk = handle.availableData
+                    if chunk.isEmpty { break }
+                    buffer.append(chunk)
+                    while let nl = buffer.firstIndex(of: 0x0A) {
+                        let lineData = buffer[..<nl]
+                        buffer.removeSubrange(...nl)
+                        if let line = String(data: lineData, encoding: .utf8) {
+                            handler(line)
+                        }
                     }
                 }
             }
@@ -319,17 +334,11 @@ actor ClipProcessor {
         } onCancel: {
             process.terminate()
         }
-        progressTask.cancel()
+        stdoutTask?.cancel()
         stderrPipe.fileHandleForReading.readabilityHandler = nil
 
-        let status = process.terminationStatus
-        if status != 0 {
-            let stderr = String(data: stderrAccum.snapshot, encoding: .utf8) ?? ""
-            throw ClipProcessorError.ffmpegFailed(
-                status: status,
-                stderrTail: Self.tail(of: stderr, lines: 12)
-            )
-        }
+        let stderr = String(data: stderrAccum.snapshot, encoding: .utf8) ?? ""
+        return (process.terminationStatus, stderr)
     }
 
     // MARK: - Helpers

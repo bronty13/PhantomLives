@@ -1,5 +1,72 @@
 # PurpleVoice Changelog
 
+## v0.4.0 — 2026-05-28
+
+A pro mixing-console UI with presets. The fine-tune adjustments come out
+from behind the **Tune…** button and onto the main surface as rotary
+knobs and live level meters, and a full presets system lets you recall a
+sound in one click.
+
+### Presets
+
+- **8 built-in presets** out of the box: Voice Memo Cleanup, Podcast,
+  Interview / Remote Call, Lecture / Meeting, Audiobook / Narration,
+  Field Recording, Phone / Voicemail Rescue, and Max Denoise (Neural).
+- **Save your own** — the console's preset menu saves the current
+  profile, engine, toggles, and every knob value as a reusable preset.
+- **Manage presets** — rename, delete, duplicate (built-ins are
+  duplicate-only), and "New from current settings", from the `⋯` menu or
+  the new Settings → **Presets** tab.
+- The preset bar shows the active preset and a **Modified** badge once
+  you tweak anything; **Update** writes your edits back, **Revert**
+  restores the preset.
+- Presets are stored as a single JSON blob in UserDefaults — adding
+  fields later needs no migration.
+
+### Pro-console UI
+
+- The per-filter parameters are now **always-visible rotary knobs**
+  (high-pass, denoise, de-ess, compressor threshold + ratio, limiter).
+  Drag to turn, double-click to reset to the profile default. A knob
+  dims when its stage is inactive (e.g. denoise while DeepFilterNet is
+  selected).
+- **Live input / output level meters** beside the waveform, driven by
+  the player's metering and tracking the A/B selection.
+- The cleanup options (enhancement, de-esser, de-clicker, stereo,
+  dereverb) and the engine / loudness / format pickers moved onto the
+  console too. The old **Tune…** sheet and the "Apply custom tuning"
+  master toggle are gone — the knobs are simply always live.
+
+### CLI
+
+- `--preset <name>` applies a saved preset as the base; any other flag
+  overrides it (`purplevoice clean memo.m4a --preset Podcast --denoise-db 18`).
+- New `purplevoice presets` subcommand lists the available presets.
+
+### Fixed
+
+- **CLI `clean` deadlock** — the bundled `purplevoice clean …` path hung
+  forever (pre-existing since v0.3.0, never exercised end-to-end). The
+  CLI dispatcher blocked the main thread on a semaphore while
+  `ClipProcessor` tried to hop to `@MainActor`, so processing never
+  started. The dispatcher now spins the main run loop instead of
+  blocking it.
+
+### Internal
+
+- `ClipProcessor` collapses the duplicated subprocess plumbing
+  (Process/Pipe/cancellation) into one shared `runProcess` helper.
+- `AudioPlayer` collapses its three near-identical stream loaders into a
+  single `load(url:at:autoplay:)`, and gains average-power metering.
+- `WaveformView`'s placeholder text is now passed explicitly instead of
+  inferred from a title string.
+
+### Tests
+
+- New `PresetTests` and `PresetStoreTests`; extended `CLITests`; added an
+  `AudioPlayer.normalize` meter-mapping test. 61 tests total (was 46),
+  all green.
+
 ## v0.3.0 — 2026-05-28
 
 Fine-tune adjustments + a draggable, click-to-seek playhead on the waveform.

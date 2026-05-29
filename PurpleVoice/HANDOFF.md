@@ -3,7 +3,7 @@
 Snapshot of where the project stands so a future session (human or AI)
 can pick up without re-deriving everything from the commit history.
 Last updated: 2026-05-28. Initial release session: v0.1.0 → v0.2.0 →
-v0.3.0 all landed in a single sitting. Test count 46. Bundle is
+v0.3.0 → v0.4.0 all landed in a single sitting. Test count 60. Bundle is
 Developer-ID signed (hardened runtime), notarisation-ready.
 
 ## What it is
@@ -18,7 +18,7 @@ second engine. Drag-and-drop a noisy voice memo, get a cleaned file in
 brew install ffmpeg                # required runtime dep
 cargo install deep_filter          # optional, for the DeepFilterNet engine
 ./build-app.sh                     # release → PurpleVoice.app → /Applications + CLI wrapper + relaunch
-./run-tests.sh                     # 46 tests via swift-testing
+./run-tests.sh                     # 61 tests via swift-testing
 ./install.sh --no-cli              # opt out of installing the CLI wrapper
 ```
 
@@ -47,12 +47,31 @@ Plain SwiftPM, single executable target. No external Swift dependencies.
   + within-batch sources, kicks off serial processing automatically.
 - `ProcessingProfile` / `ProcessingEngine` / `LoudnessTarget` /
   `OutputFormat` — Codable enums backing the various pickers + CLI.
-- `SettingsStore` — `@AppStorage` over UserDefaults for everything
-  except `filterTuning`, which lives as a single JSON blob in a single
-  key (`filterTuningJSON`) so future tunables don't need migrations.
-  Computed `outputDirectory`, `outputFormat`, `profile`,
-  `processingEngine`, `loudnessTarget`, `filterTuning`,
-  `effectiveTuning` accessors.
+- `SettingsStore` — `@AppStorage` over UserDefaults. The enum/URL
+  accessors (`outputDirectory`, `outputFormat`, `profile`,
+  `processingEngine`, `loudnessTarget`) and, as of v0.4, the Bool
+  toggles + `deepFilterPathOverride` + `activePresetIDRaw` are all
+  computed wrappers over a private `@AppStorage` so their setters fire
+  `objectWillChange` (bare `@AppStorage` inside an `ObservableObject`
+  doesn't publish, so dependent views — e.g. a knob whose enabled-state
+  tracks `deEsserEnabled` — wouldn't re-render). `filterTuning` is a
+  single JSON blob (`filterTuningJSON`). v0.4 added `apply(_:)`,
+  `liveSnapshot`, `matchesLive(_:)` for presets; `effectiveTuning` now
+  just returns `filterTuning` (the v0.3 "custom tuning" master gate is
+  gone — knobs are always live).
+- `Preset` (`Models/Preset.swift`) — Codable bundle of the
+  sound-affecting fields (profile, engine, enhancement, loudness, the
+  four toggles, `tuning`). NOT output format. `builtIns` is a
+  code-defined array with fixed UUIDs (so a persisted `activePresetID`
+  survives relaunch/updates); `hasSameSettings(as:)` powers the
+  "Modified" check.
+- `PresetStore` (`Services/PresetStore.swift`, `ObservableObject`) —
+  owns user presets (persisted as one JSON array under
+  `userPresetsJSON`), exposes `all` (built-ins + user), and CRUD
+  (`add`/`update`/`delete`/`rename`/`duplicate`/`preset(named:)`).
+  Injected as an `environmentObject`; the CLI builds its own instance
+  against shared `.standard` defaults so `--preset` resolves user
+  presets too.
 - `Clip` — `ObservableObject` for each queued audio file. Holds source
   URL, status, progress, output URL, error tail, duration, optional
   `trimStart` / `trimEnd` window.
@@ -63,16 +82,24 @@ Plain SwiftPM, single executable target. No external Swift dependencies.
 - `ClipProcessor` (`actor`) — runs the pipeline. Two-stage when
   DeepFilterNet engine is picked (decode → DFN → ffmpeg
   enhancement/encode), single-stage otherwise. Progress is mapped 0–0.5
-  / 0.5–1.0 across the two stages so the UI bar tracks honestly.
+  / 0.5–1.0 across the two stages so the UI bar tracks honestly. The
+  `Process`/`Pipe`/cancellation lifecycle lives in one shared
+  `runProcess(executable:args:onStdoutLine:)`; `runFFmpeg` passes the
+  `out_time_us=` progress closure, the DFN path passes none and runs a
+  synthetic ticker alongside.
 - `FFmpegLocator` / `DeepFilterNetLocator` — same search-order pattern
   for both: env var override (`PURPLE_VOICE_FFMPEG`,
   `PURPLE_VOICE_DEEPFILTER`), known paths (Homebrew Apple Silicon +
   Intel, MacPorts, `~/.cargo/bin/` for DFN), then `which` against an
   augmented PATH.
 - `AudioPlayer` (`@MainActor`) — thin wrapper around `AVAudioPlayer`.
-  Single-stream — starting a new playback stops the previous. Supports
-  swap (used by A/B preview) and the DAW-style scrub lifecycle
-  (`beginScrub` / `scrubSeek(to:)` / `endScrub`).
+  Single-stream — starting a new playback stops the previous. `play`,
+  `seek` (load branch), and `swap` (paused branch) all route through one
+  private `load(url:at:autoplay:)`. Supports swap (used by A/B preview)
+  and the DAW-style scrub lifecycle (`beginScrub` / `scrubSeek(to:)` /
+  `endScrub`). v0.4: `isMeteringEnabled` + a `meterLevel`/`meterPeak`
+  pair published off the 0.05 s ticker (average-power dB → 0…1) drive
+  the `LevelMeter`s.
 - `WaveformGenerator` / `WaveformCache` — AVAssetReader-based PCM mix
   down + bucket downsample to N min/max pairs (default 1500). Cached
   on disk under `~/Library/Caches/PurpleVoice/waveforms/<sha256>.json`,
@@ -86,16 +113,31 @@ ContentView
 │   ├── SidebarView         (clip queue; rows with status icons + inline progress)
 │   └── mainPane
 │       ├── MissingFFmpegView     (when ffmpeg not found at launch)
-│       ├── DropZoneView          (no clip selected → drop target + ProcessingControls)
+│       ├── DropZoneView          (no clip selected → drop target + ProcessingPanel)
 │       └── ClipDetailView        (clip selected)
 │           ├── header
 │           ├── statusRow
-│           ├── WaveformView      (original + cleaned waveforms, trim handles, draggable playhead)
+│           ├── HStack( WaveformView + LevelMeter ×2 "in"/"out" )
 │           ├── playbackRow       (A/B picker + play/stop + remove)
-│           └── ProcessingControls  (profile + format + enhance toggle + Tune… button)
-└── Settings scene (3 tabs)
+│           └── ProcessingPanel   (preset bar + profile + knobs + toggles + pickers)
+└── Settings scene (4 tabs: General / Processing / Presets / Advanced)
 
-ProcessingControls.Tune… opens FineTuneSheet  (sliders for the per-filter knobs)
+ProcessingPanel (Views/ProcessingPanel.swift) is the shared console,
+rendered by both DropZoneView and ClipDetailView:
+  • preset bar — apply menu (built-in + My Presets) + ⋯ menu
+    (Save as New… / Update / Revert / Manage Presets…) + Modified badge
+  • profile segmented control + blurb
+  • a row of rotary Knob (Views/Controls/Knob.swift) — high-pass,
+    denoise, de-ess, comp threshold, comp ratio, limiter; each binds to
+    a FilterTuning field (nil = inherit profile default), dims when its
+    stage is inactive, double-click resets
+  • toggle row (enhance / de-esser / de-clicker / stereo / dereverb)
+  • engine / loudness / format pickers
+LevelMeter (Views/Controls/LevelMeter.swift) — vertical green→red bar
+  with peak-hold; the "in"/"out" pair tracks the A/B selection.
+ManagePresetsView (Views/ManagePresetsView.swift) — rename/delete/
+  duplicate/new; used as the ⋯ → Manage sheet AND the Settings →
+  Presets tab (embedded: true).
 ```
 
 ### CLI
@@ -108,7 +150,11 @@ sheet 1:1 (`--profile`, `--engine`, `--lufs`, `--de-esser`,
 `--de-clicker`, `--stereo`, `--dereverb`, `--trim`,
 `--highpass-hz`, `--denoise-db`, `--de-esser-intensity`,
 `--compressor-threshold-db`, `--compressor-ratio`,
-`--limiter-ceiling`).
+`--limiter-ceiling`). v0.4 adds `--preset <name>` (resolved via
+`PresetStore`, applied as the base before the regular flags so any
+explicit flag overrides it — handled by a pre-scan + a no-op loop case)
+and a `presets` subcommand that lists built-in + user preset names.
+`AppDelegate.isCLICommand` includes `presets` in its dispatch table.
 
 Shell wrapper at `/opt/homebrew/bin/purplevoice` (or `/usr/local/bin/`
 or `~/.local/bin/` as fallbacks) exec's into the .app binary. Installed
@@ -121,6 +167,7 @@ by `install.sh` unless `--no-cli` is passed.
 | 0.1.0   | Initial release: drag-and-drop queue, three strength profiles, optional enhancement chain, A/B playback buttons, three output formats, missing-ffmpeg pane, WindowStateGuard, 16 tests | Initial scaffold |
 | 0.2.0   | DeepFilterNet engine, loudness normalization (Podcast/Streaming/Broadcast LUFS), de-esser + de-clicker, dereverb (DFN only), preserve-stereo toggle, waveform display, region trim with draggable handles, A/B picker swap, hybrid binary CLI with `purplevoice` wrapper, three-tab Settings, 34 tests | +18 |
 | 0.3.0   | Fine-tune sheet with sliders (highpass cutoff, denoise dB, de-esser intensity, compressor threshold + ratio, limiter ceiling); per-slider reset + master toggle; CLI mirrors with `--*` flags; draggable + click-to-seek playhead; DAW-style scrub (audio audible during drag, visual ticker frozen so playhead doesn't lurch toward end), 46 tests | +12 |
+| 0.4.0   | Pro-console UI: per-filter rotary knobs + live in/out level meters on the main surface (Tune… sheet + custom-tuning master toggle removed). Presets subsystem: `Preset`/`PresetStore`, 8 built-ins, save/rename/duplicate/delete (Manage sheet + Settings → Presets tab). CLI `--preset` + `presets`. Refactors: `ClipProcessor.runProcess`, `AudioPlayer.load`, `WaveformView` emptyText. SettingsStore Bool toggles → computed-with-objectWillChange. CLI `clean` main-thread deadlock fixed (run loop). USER_MANUAL added. 61 tests | +15 |
 
 ## Filter chain rationale
 
@@ -177,6 +224,16 @@ earlier produced a process that ran but never opened a window.
 Dispatching from the AppDelegate works because NSApplication has
 already partially initialised by then, and a clean `exit(0)` from the
 CLI path tears everything down cleanly.
+
+**Do not block the main thread while the CLI runs.** The CLI is kicked
+off in a `Task.detached` and the dispatcher then calls `CFRunLoopRun()`
+(NOT a `DispatchSemaphore.wait()`). `ClipProcessor.process` hops to
+`@MainActor` to stamp the clip duration, and the GUI progress handler
+posts to `DispatchQueue.main`; both are serviced by the main run loop.
+A blocked main thread deadlocks the whole `clean` pipeline — that was a
+latent bug from v0.3.0 (the bundled `clean` path was never run
+end-to-end) fixed in v0.4.0 by switching to `CFRunLoopRun()` +
+`CFRunLoopStop(CFRunLoopGetMain())` on completion.
 
 ### Sidebar layout: manual HStack
 
@@ -235,6 +292,7 @@ PurpleVoice/
 ├── install.sh                       # quit-running → replace /Applications/ → install CLI wrapper → relaunch
 ├── run-tests.sh                     # Testing.framework rpath wrapper
 ├── README.md
+├── USER_MANUAL.md                   # end-user walkthrough (presets, console, CLI, troubleshooting)
 ├── CHANGELOG.md
 ├── HANDOFF.md                       # this file
 ├── Sources/PurpleVoice/
@@ -251,25 +309,31 @@ PurpleVoice/
 │   │   ├── ProcessingEngine.swift   # ffmpeg vs deepFilterNet
 │   │   ├── LoudnessTarget.swift     # off / podcast / streaming / broadcast
 │   │   ├── FilterTuning.swift       # per-filter knob overrides + Bounds
-│   │   ├── SettingsStore.swift      # @AppStorage-backed
+│   │   ├── Preset.swift             # Codable preset bundle + 8 built-ins (v0.4)
+│   │   ├── SettingsStore.swift      # @AppStorage-backed; apply()/liveSnapshot/matchesLive
 │   │   └── ProcessingQueue.swift    # @MainActor; ingest + serial drain
 │   ├── Services/
 │   │   ├── FFmpegLocator.swift
 │   │   ├── DeepFilterNetLocator.swift
 │   │   ├── FilterChainBuilder.swift # pure -af string builder
-│   │   ├── ClipProcessor.swift      # actor; two-stage DFN + ffmpeg pipeline; ProcessingOptions struct lives here
-│   │   ├── AudioPlayer.swift        # AVAudioPlayer wrapper + scrub lifecycle
+│   │   ├── ClipProcessor.swift      # actor; two-stage DFN + ffmpeg pipeline; shared runProcess; ProcessingOptions struct lives here
+│   │   ├── AudioPlayer.swift        # AVAudioPlayer wrapper + scrub lifecycle + metering; single load() loader
+│   │   ├── PresetStore.swift        # ObservableObject; user-preset CRUD + persistence (v0.4)
 │   │   ├── WaveformGenerator.swift  # AVAssetReader → downsampled peaks
 │   │   ├── WaveformCache.swift      # on-disk JSON cache keyed by path|size|mtime
 │   │   └── WindowStateGuard.swift   # CLAUDE.md convention (verbatim from PurpleReel)
 │   └── Views/
 │       ├── ContentView.swift        # HStack root
 │       ├── SidebarView.swift        # queue rows
-│       ├── ClipDetailView.swift     # waveform + A/B + controls + error pane
-│       ├── DropZoneView.swift       # drop target + ProcessingControls (shared)
+│       ├── ClipDetailView.swift     # waveform + level meters + A/B + console + error pane
+│       ├── DropZoneView.swift       # drop target + ProcessingPanel (shared)
+│       ├── ProcessingPanel.swift    # the console: preset bar + profile + knobs + toggles + pickers (v0.4)
+│       ├── ManagePresetsView.swift  # rename/delete/duplicate; sheet + Settings tab (v0.4)
 │       ├── WaveformView.swift       # canvas + trim handles + draggable playhead + click-to-seek
-│       ├── FineTuneSheet.swift      # v0.3 per-knob sliders
-│       ├── SettingsView.swift       # 3 tabs (General / Processing / Advanced)
+│       ├── Controls/
+│       │   ├── Knob.swift           # rotary knob bound to Optional<Double> (v0.4)
+│       │   └── LevelMeter.swift     # vertical playback meter w/ peak-hold (v0.4)
+│       ├── SettingsView.swift       # 4 tabs (General / Processing / Presets / Advanced)
 │       └── MissingFFmpegView.swift  # shown when FFmpegLocator returns nil
 └── Tests/PurpleVoiceTests/
     ├── FilterChainBuilderTests.swift  # 9 cases: per-profile, enhancement toggle, skipDenoise, loudnorm
@@ -280,9 +344,11 @@ PurpleVoice/
     ├── DeepFilterNetLocatorTests.swift # 3 cases
     ├── ClipProcessorTests.swift       # 6 cases: tail(), queue de-dupe, accepted ext, e2e trim duration, e2e stereo
     ├── WaveformGeneratorTests.swift   # 2 cases: bucket count + normalization, cache round-trip
-    ├── CLITests.swift                 # 4 cases: parseTrim shapes, isCLICommand dispatch table
+    ├── CLITests.swift                 # 6 cases: parseTrim shapes, isCLICommand table, valueAfter, resolvePreset
     ├── CLITuningFlagTests.swift       # 1 case (inside FilterTuningTests file)
-    └── AudioPlayerTests.swift         # 2 cases: seek lifecycle, scrub lifecycle (the v0.3 regression test)
+    ├── PresetTests.swift              # 5 cases: built-ins well-formed/unique, JSON round-trip, apply/matchesLive (v0.4)
+    ├── PresetStoreTests.swift         # 8 cases: CRUD, ordering, name lookup, persistence (v0.4)
+    └── AudioPlayerTests.swift         # 3 cases: seek lifecycle, scrub lifecycle (v0.3 regression), normalize meter mapping
 ```
 
 ## Testing
@@ -291,10 +357,11 @@ PurpleVoice/
 ./run-tests.sh
 ```
 
-46 cases across 11 suites. ~0.8s wall time. Tests that depend on
+61 cases across 13 suites. ~1.7s wall time. Tests that depend on
 ffmpeg skip gracefully when it isn't installed (return early without
 asserting), so the suite still passes on machines without Homebrew
-ffmpeg.
+ffmpeg. `PresetStoreTests` use a throwaway `UserDefaults(suiteName:)`
+so they never touch real app defaults.
 
 End-to-end tests that actually spawn ffmpeg:
 - `Trim window produces a shorter output of the expected duration`
@@ -318,7 +385,13 @@ The scrub-lifecycle test is the canonical regression check for the v0.3
 - **True Logic-style scrub** — would need `AVAudioEngine` + buffer
   scheduling. Current behaviour is "good enough" QuickTime-style.
 - **Per-clip tuning overrides** — tuning is currently global. Could
-  add a per-Clip `FilterTuning` that overrides the global.
+  add a per-Clip `FilterTuning` that overrides the global. (Presets are
+  also global; same lift.)
+- **Simultaneous in/out level meters** — the "in"/"out" meters
+  currently reflect whichever single stream is audible (the A/B
+  selection), since `AudioPlayer` is single-stream. True simultaneous
+  metering would need a second `AVAudioPlayer` (or `AVAudioEngine` taps)
+  to play/meter original + cleaned at once.
 - **Two-pass loudnorm** — current `loudnorm` is single-pass for speed;
   two-pass would be more accurate for podcast publishing.
 - **Sparkle auto-update** — not wired. PurpleDedup has the pattern if

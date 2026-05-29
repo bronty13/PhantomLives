@@ -9,6 +9,7 @@ import AppKit
 /// - **Advanced**: DeepFilterNet path override + reachability check
 struct SettingsView: View {
     @EnvironmentObject var settings: SettingsStore
+    @EnvironmentObject var presetStore: PresetStore
 
     var body: some View {
         TabView {
@@ -16,10 +17,19 @@ struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gear") }
             processingTab
                 .tabItem { Label("Processing", systemImage: "slider.horizontal.3") }
+            presetsTab
+                .tabItem { Label("Presets", systemImage: "square.stack.3d.up") }
             advancedTab
                 .tabItem { Label("Advanced", systemImage: "wrench.and.screwdriver") }
         }
         .padding(20)
+        .frame(minHeight: 380)
+    }
+
+    private var presetsTab: some View {
+        ManagePresetsView(embedded: true)
+            .environmentObject(settings)
+            .environmentObject(presetStore)
     }
 
     private var generalTab: some View {

@@ -13,12 +13,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // registration and the app launched with zero windows.
         let args = Array(CommandLine.arguments.dropFirst())
         if let first = args.first, Self.isCLICommand(first) {
-            let sem = DispatchSemaphore(value: 0)
+            // Run the CLI on a background task and spin the main run
+            // loop while it works — do NOT block the main thread on a
+            // semaphore. `ClipProcessor` hops to `@MainActor` (e.g. to
+            // stamp the clip's duration), and those hops are serviced by
+            // the main run loop / `DispatchQueue.main`; a blocked main
+            // thread deadlocks the `clean` pipeline. When the CLI
+            // finishes it stops the run loop and we exit.
             Task.detached {
                 await CLI.run(args: args)
-                sem.signal()
+                CFRunLoopStop(CFRunLoopGetMain())
             }
-            sem.wait()
+            CFRunLoopRun()
             exit(0)
         }
         WindowStateGuard.applyOnLaunch(
@@ -47,7 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// flags passed when opening a file via Finder) falls through to
     /// the GUI.
     static func isCLICommand(_ arg: String) -> Bool {
-        ["clean", "help", "version",
+        ["clean", "presets", "help", "version",
          "-h", "--help", "-v", "--version"].contains(arg)
     }
 }

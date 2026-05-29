@@ -5,12 +5,14 @@ struct PurpleVoiceApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var queue = ProcessingQueue()
     @StateObject private var settings = SettingsStore()
+    @StateObject private var presetStore = PresetStore()
 
     var body: some Scene {
         WindowGroup("PurpleVoice") {
             ContentView()
                 .environmentObject(queue)
                 .environmentObject(settings)
+                .environmentObject(presetStore)
                 .frame(minWidth: 720, minHeight: 460)
         }
         .windowResizability(.contentMinSize)
@@ -36,6 +38,7 @@ struct PurpleVoiceApp: App {
         Settings {
             SettingsView()
                 .environmentObject(settings)
+                .environmentObject(presetStore)
                 .frame(width: 480)
         }
     }

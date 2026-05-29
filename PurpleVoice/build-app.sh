@@ -12,7 +12,7 @@ CONFIG="${CONFIG:-release}"
 
 COMMIT_COUNT="$(git rev-list --count HEAD 2>/dev/null || echo 0)"
 SHORT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-SHORT_VERSION="${SHORT_VERSION:-0.3.${COMMIT_COUNT}}"
+SHORT_VERSION="${SHORT_VERSION:-0.4.${COMMIT_COUNT}}"
 BUILD_NUMBER="${BUILD_NUMBER:-${COMMIT_COUNT}.${SHORT_SHA}}"
 
 # Pre-build cleanup of " N.app" siblings iCloud File Provider may have

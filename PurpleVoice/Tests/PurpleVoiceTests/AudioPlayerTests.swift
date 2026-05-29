@@ -122,4 +122,16 @@ struct AudioPlayerTests {
                 "endScrub from a was-playing scrub keeps playback going")
         player.stop()
     }
+
+    @Test("normalize maps average-power dB onto a clamped 0…1 meter level")
+    func normalizeMeterMapping() {
+        // 0 dBFS = full scale; the -50 dB floor = silence; midpoint maps
+        // halfway. Out-of-range and non-finite readings clamp safely.
+        #expect(AudioPlayer.normalize(db: 0) == 1)
+        #expect(AudioPlayer.normalize(db: -50) == 0)
+        #expect(abs(AudioPlayer.normalize(db: -25) - 0.5) < 0.0001)
+        #expect(AudioPlayer.normalize(db: 10) == 1, "above 0 dB clamps to full")
+        #expect(AudioPlayer.normalize(db: -120) == 0, "below the floor clamps to silence")
+        #expect(AudioPlayer.normalize(db: -.infinity) == 0, "−inf (true silence) reads as 0")
+    }
 }

@@ -19,6 +19,14 @@ final class AudioPlayer: ObservableObject {
     @Published private(set) var currentTime: TimeInterval = 0
     @Published private(set) var duration: TimeInterval = 0
 
+    /// Live playback level for the active stream, normalized 0…1 from
+    /// the player's average power (dB). Drives the `LevelMeter` in the
+    /// detail pane. `meterPeak` holds the recent maximum with decay so
+    /// the meter shows a falling peak tick. Both reset to 0 whenever
+    /// playback stops or pauses (there's no signal to meter).
+    @Published private(set) var meterLevel: Float = 0
+    @Published private(set) var meterPeak: Float = 0
+
     private var player: AVAudioPlayer?
     private var delegate: PlayerDelegate?
     private var tickTimer: Timer?
@@ -32,6 +40,18 @@ final class AudioPlayer: ObservableObject {
     private var wasPlayingBeforeScrub: Bool = false
 
     func play(url: URL, at offset: TimeInterval = 0) {
+        load(url: url, at: offset, autoplay: true)
+    }
+
+    /// Load `url` into a fresh `AVAudioPlayer`, seek to `offset`, and
+    /// either start playback (`autoplay`) or hold paused. Replaces any
+    /// current stream (`stop()` first — idempotent when nothing is
+    /// loaded). The single place stream construction + property
+    /// assignment lives; `play`, `seek`'s load branch, and `swap`'s
+    /// paused branch all route through here. Returns false (and logs)
+    /// on load failure.
+    @discardableResult
+    private func load(url: URL, at offset: TimeInterval, autoplay: Bool) -> Bool {
         stop()
         do {
             let p = try AVAudioPlayer(contentsOf: url)
@@ -39,22 +59,24 @@ final class AudioPlayer: ObservableObject {
                 Task { @MainActor in self?.handleFinished() }
             }
             p.delegate = d
+            p.isMeteringEnabled = true
             p.prepareToPlay()
-            if offset > 0 && offset < p.duration {
-                p.currentTime = offset
-            }
-            p.play()
+            let clamped = max(0, min(offset, max(p.duration - 0.01, 0)))
+            if clamped > 0 { p.currentTime = clamped }
+            if autoplay { p.play() }
             self.player = p
             self.delegate = d
-            self.isPlaying = true
             self.nowPlayingURL = url
             self.duration = p.duration
-            self.currentTime = p.currentTime
-            startTicker()
+            self.currentTime = clamped
+            self.isPlaying = autoplay
+            if autoplay { startTicker() }
+            return true
         } catch {
-            NSLog("[AudioPlayer] failed to play \(url.path): \(error)")
+            NSLog("[AudioPlayer] failed to load \(url.path): \(error)")
             self.isPlaying = false
             self.nowPlayingURL = nil
+            return false
         }
     }
 
@@ -67,6 +89,8 @@ final class AudioPlayer: ObservableObject {
         isPlaying = false
         nowPlayingURL = nil
         currentTime = 0
+        meterLevel = 0
+        meterPeak = 0
     }
 
     func toggle(url: URL) {
@@ -136,6 +160,8 @@ final class AudioPlayer: ObservableObject {
             if !resume {
                 p.pause()
                 isPlaying = false
+                meterLevel = 0
+                meterPeak = 0
             } else {
                 // Still playing — restart the ticker so the playhead
                 // tracks the player's natural advancement again.
@@ -164,24 +190,7 @@ final class AudioPlayer: ObservableObject {
         // paused at the requested offset so a subsequent toggle()
         // resumes from there.
         guard let url else { return }
-        do {
-            let p = try AVAudioPlayer(contentsOf: url)
-            let d = PlayerDelegate { [weak self] in
-                Task { @MainActor in self?.handleFinished() }
-            }
-            p.delegate = d
-            p.prepareToPlay()
-            let clamped = max(0, min(offset, max(p.duration - 0.01, 0)))
-            p.currentTime = clamped
-            self.player = p
-            self.delegate = d
-            self.nowPlayingURL = url
-            self.duration = p.duration
-            self.currentTime = clamped
-            self.isPlaying = false
-        } catch {
-            NSLog("[AudioPlayer] seek-load failed for \(url.path): \(error)")
-        }
+        load(url: url, at: offset, autoplay: false)
     }
 
     /// Swap the active stream to `url`, preserving the current
@@ -189,33 +198,16 @@ final class AudioPlayer: ObservableObject {
     /// playback is started (the caller should follow with `play(url:)`
     /// or `toggle(url:)`).
     func swap(to url: URL) {
-        guard let p = player else {
-            // Nothing playing — set the latched URL so the UI shows
-            // the right "now playing" label and the next `toggle()`
-            // can decide what to do.
-            return
-        }
+        // Nothing loaded — there's no offset/play-state to carry over,
+        // so the caller should follow with play()/toggle() instead.
+        guard let p = player else { return }
         let wasPlaying = p.isPlaying
         let offset = p.currentTime
         if wasPlaying {
             play(url: url, at: offset)
         } else {
-            // Was paused — load the new URL, seek, hold.
-            stop()
-            do {
-                let newP = try AVAudioPlayer(contentsOf: url)
-                newP.prepareToPlay()
-                if offset > 0 && offset < newP.duration {
-                    newP.currentTime = offset
-                }
-                self.player = newP
-                self.nowPlayingURL = url
-                self.duration = newP.duration
-                self.currentTime = newP.currentTime
-                self.isPlaying = false
-            } catch {
-                NSLog("[AudioPlayer] swap failed for \(url.path): \(error)")
-            }
+            // Was paused — load the new URL at the same offset, hold.
+            load(url: url, at: offset, autoplay: false)
         }
     }
 
@@ -225,8 +217,29 @@ final class AudioPlayer: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self, let p = self.player else { return }
                 self.currentTime = p.currentTime
+                self.updateMeter(from: p)
             }
         }
+    }
+
+    /// Sample the player's average power and fold it into the published
+    /// meter values. dB is mapped from a -50…0 floor to 0…1; the peak
+    /// decays ~0.04 per tick (≈0.8/s) so it visibly falls back.
+    private func updateMeter(from p: AVAudioPlayer) {
+        p.updateMeters()
+        let db = p.averagePower(forChannel: 0)
+        let level = Self.normalize(db: db)
+        meterLevel = level
+        meterPeak = max(level, meterPeak - 0.04)
+    }
+
+    /// Map an average-power dB reading to a 0…1 meter level. -50 dB and
+    /// below reads as silence; 0 dBFS as full scale. `nonisolated` —
+    /// it's a pure function, callable off the main actor (and by tests).
+    nonisolated static func normalize(db: Float) -> Float {
+        let floor: Float = -50
+        guard db.isFinite else { return 0 }
+        return max(0, min(1, (db - floor) / -floor))
     }
 
     private func handleFinished() {
@@ -235,6 +248,8 @@ final class AudioPlayer: ObservableObject {
         isPlaying = false
         nowPlayingURL = nil
         currentTime = 0
+        meterLevel = 0
+        meterPeak = 0
     }
 
     private final class PlayerDelegate: NSObject, AVAudioPlayerDelegate {

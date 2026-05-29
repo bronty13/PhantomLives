@@ -34,7 +34,7 @@ struct CLITests {
 
     @Test("AppDelegate.isCLICommand recognizes the documented subcommands")
     func isCLICommandDispatchTable() {
-        for cmd in ["clean", "help", "version",
+        for cmd in ["clean", "presets", "help", "version",
                     "-h", "--help", "-v", "--version"] {
             #expect(AppDelegate.isCLICommand(cmd),
                     "\(cmd) should route to CLI")
@@ -44,5 +44,27 @@ struct CLITests {
             #expect(!AppDelegate.isCLICommand(other),
                     "\(other) should NOT route to CLI (would steal Finder launches)")
         }
+    }
+
+    @Test("valueAfter returns the token following a flag, nil otherwise")
+    func valueAfterFlag() {
+        let args = ["clean", "memo.m4a", "--preset", "Podcast", "--denoise-db", "18"]
+        #expect(CLI.valueAfter("--preset", in: args) == "Podcast")
+        #expect(CLI.valueAfter("--denoise-db", in: args) == "18")
+        #expect(CLI.valueAfter("--missing", in: args) == nil)
+        // Trailing flag with no value.
+        #expect(CLI.valueAfter("--preset", in: ["clean", "--preset"]) == nil)
+    }
+
+    @Test("resolvePreset finds a built-in by name, case-insensitively")
+    func resolvePresetBuiltIn() {
+        let podcast = CLI.resolvePreset(named: "podcast")
+        #expect(podcast != nil)
+        // The Podcast built-in's defining traits flow into the run.
+        #expect(podcast?.loudnessTarget == .podcast)
+        #expect(podcast?.deEsserEnabled == true)
+        #expect(podcast?.profile == .medium)
+
+        #expect(CLI.resolvePreset(named: "no such preset") == nil)
     }
 }

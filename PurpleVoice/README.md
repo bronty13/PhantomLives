@@ -4,6 +4,8 @@ Voice isolation, vocal enhancement, and loudness normalization for short audio (
 
 PurpleVoice is a thin SwiftUI front-end over `ffmpeg` and (optionally) DeepFilterNet. There is no cloud round-trip, no telemetry — everything happens locally on your Mac.
 
+For a full walkthrough — presets, the console knobs, trimming, the CLI, and troubleshooting — see **[USER_MANUAL.md](USER_MANUAL.md)**.
+
 ## What it does
 
 - **Voice isolation** — two engines:
@@ -15,7 +17,8 @@ PurpleVoice is a thin SwiftUI front-end over `ffmpeg` and (optionally) DeepFilte
 - **Region trim** — drag handles on the waveform to clean just a portion of the clip. The trim window is applied *before* the denoise so long-form recordings don't waste time on bits you're going to throw away.
 - **A/B preview** — flip between original and cleaned mid-playback without losing your position.
 - **Scrubbable playhead** — drag the red playhead, or click anywhere in the waveform, to seek. Works before pressing Play.
-- **Fine-tune sliders** — "Tune…" button opens a sheet with sliders for the per-filter knobs (high-pass cutoff, denoise depth, de-esser intensity, compressor threshold + ratio, limiter ceiling). Overrides apply on top of your profile; per-slider reset and "reset all" affordances make it easy to back out.
+- **Presets** — recall a whole sound in one click. Ships with 8 built-ins (Voice Memo Cleanup, Podcast, Interview / Remote Call, Lecture / Meeting, Audiobook / Narration, Field Recording, Phone / Voicemail Rescue, Max Denoise (Neural)), and you can save / rename / duplicate / delete your own. A preset captures the profile, engine, toggles, loudness target, and every knob value (but not the output format).
+- **Pro-console knobs + meters** — the per-filter parameters live on the main surface as always-visible rotary knobs (high-pass cutoff, denoise depth, de-esser intensity, compressor threshold + ratio, limiter ceiling). Drag to turn, double-click to reset to the profile default. Live input/output level meters sit beside the waveform.
 - **Three strength profiles** — Light, Medium (default), Aggressive — tune how hard the denoise hits.
 - **Batch queue** — drop a folder, watch it clean one clip at a time.
 - **Stereo / mono** — defaults to mono downmix (right for voice work); toggle Preserve Stereo for music podcasts or stereo field recordings.
@@ -50,7 +53,11 @@ The app refuses to do anything useful without ffmpeg. If the main pane shows "ff
 3. Each clip enters the sidebar queue and starts cleaning automatically.
 4. When a clip finishes, click it in the sidebar to see the waveform, drag the trim handles to clean just a region, A/B-preview the result, or hit **Reveal in Finder**.
 
-Cleaned files default to `~/Downloads/PurpleVoice/<stem>_clean.<ext>`. Override the output folder, format, engine, loudness target, and other defaults in **PurpleVoice → Settings…** (three tabs: General, Processing, Advanced).
+Cleaned files default to `~/Downloads/PurpleVoice/<stem>_clean.<ext>`. Override the output folder, format, engine, loudness target, and other defaults in **PurpleVoice → Settings…** (four tabs: General, Processing, Presets, Advanced).
+
+### Presets
+
+The console's preset menu (top of the controls panel) applies any built-in or saved preset. Tweak a knob or toggle and the bar shows a **Modified** badge — use the `⋯` menu to **Save as New Preset…**, **Update** the active preset, **Revert**, or open **Manage Presets…** (also available as Settings → Presets) to rename, duplicate, or delete. Built-ins can't be edited but can be duplicated as a starting point.
 
 ### Picking a profile
 
@@ -79,10 +86,13 @@ purplevoice clean talk.mp4 -o talk_clean.wav -p aggressive --lufs podcast
 purplevoice clean interview.wav --engine deepfilter --dereverb --stereo
 purplevoice clean podcast.m4a --trim 5.0:1800.0 --lufs podcast --de-esser
 purplevoice clean memo.m4a --denoise-db 18 --limiter-ceiling 0.92  # fine-tuning
+purplevoice clean memo.m4a --preset Podcast                        # start from a preset
+purplevoice clean memo.m4a --preset Podcast --denoise-db 18        # preset + override
+purplevoice presets                                                # list available presets
 purplevoice help
 ```
 
-Every GUI option has a flag. `purplevoice help` prints the full list. The CLI binary lands at the first writable PATH directory (`/opt/homebrew/bin/`, `/usr/local/bin/`, or `~/.local/bin/`) when you run `install.sh`; skip with `./install.sh --no-cli`.
+`--preset <name>` seeds the run from any built-in or saved preset; any other flag you pass overrides the preset's value. `purplevoice presets` lists the names (quote names with spaces). Every GUI option has a flag. `purplevoice help` prints the full list. The CLI binary lands at the first writable PATH directory (`/opt/homebrew/bin/`, `/usr/local/bin/`, or `~/.local/bin/`) when you run `install.sh`; skip with `./install.sh --no-cli`.
 
 ## Supported formats
 
@@ -98,7 +108,7 @@ Voice resamples to 48 kHz, mono by default (toggle in Settings → Processing �
 ./run-tests.sh
 ```
 
-Runs the Swift Testing suite (34 tests covering filter chain composition with every toggle combination, loudness target wiring, ffmpeg + DeepFilterNet locator search order, settings round-trip, queue de-duplication, CLI argument parsing, waveform generator + cache, and end-to-end trim/stereo regressions). The wrapper adds `Testing.framework` paths for Command Line Tools setups; with full Xcode installed, plain `swift test` works.
+Runs the Swift Testing suite (61 tests covering filter chain composition with every toggle combination, loudness target wiring, ffmpeg + DeepFilterNet locator search order, settings round-trip, presets (model + store CRUD + persistence), queue de-duplication, CLI argument + preset parsing, waveform generator + cache, level-meter normalization, and end-to-end trim/stereo regressions). The wrapper adds `Testing.framework` paths for Command Line Tools setups; with full Xcode installed, plain `swift test` works.
 
 ## How the filter chain works
 

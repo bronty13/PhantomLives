@@ -47,6 +47,8 @@ enum CLI {
             printUsage()
         case "version", "-v", "--version":
             print("PurpleVoice \(AppVersion.short) (build \(AppVersion.build))")
+        case "presets":
+            printPresets()
         case "clean":
             await runClean(args: Array(args.dropFirst()))
         default:
@@ -62,11 +64,14 @@ enum CLI {
 
         Usage:
           purplevoice clean <input> [options]
+          purplevoice presets
           purplevoice help
           purplevoice version
 
         Options:
           -o, --output <path>          Output file path (default: ~/Downloads/PurpleVoice/)
+              --preset <name>          Start from a saved preset (see `purplevoice presets`);
+                                       any other flags below override the preset
           -p, --profile <name>         light | medium | aggressive (default: medium)
               --no-enhance             Skip the dynamics chain (compression/limiter)
           -e, --engine <name>          ffmpeg | deepfilter (default: ffmpeg)
@@ -91,8 +96,23 @@ enum CLI {
           purplevoice clean memo.m4a
           purplevoice clean talk.mp4 -o talk_clean.wav -p aggressive --lufs podcast
           purplevoice clean interview.wav --engine deepfilter --dereverb --stereo
-          purplevoice clean memo.m4a --denoise-db 18 --limiter-ceiling 0.92
+          purplevoice clean memo.m4a --preset Podcast
+          purplevoice clean memo.m4a --preset Podcast --denoise-db 18
         """)
+    }
+
+    /// `purplevoice presets` — list the available presets (built-in +
+    /// any the user saved in the app). Names with spaces need quoting
+    /// when passed to `--preset`.
+    private static func printPresets() {
+        print("Built-in presets:")
+        for p in Preset.builtIns { print("  \(p.name)") }
+        let user = PresetStore().userPresets
+        if !user.isEmpty {
+            print("\nYour presets:")
+            for p in user { print("  \(p.name)") }
+        }
+        print("\nApply one with: purplevoice clean <input> --preset \"<name>\"")
     }
 
     private static func runClean(args: [String]) async {
@@ -112,10 +132,32 @@ enum CLI {
         var quiet: Bool = false
         var tuning = FilterTuning.inherited
 
+        // `--preset` seeds the defaults before the regular flags are
+        // parsed, so any explicit flag (in any position) overrides the
+        // preset. Resolve it up front and apply it as the base.
+        if let presetName = valueAfter("--preset", in: args) {
+            guard let preset = resolvePreset(named: presetName) else {
+                bail("Unknown preset: \(presetName). Run `purplevoice presets` to list them.")
+            }
+            profile        = preset.profile
+            enhancement    = preset.enhancementEnabled
+            engine         = preset.engine
+            lufs           = preset.loudnessTarget
+            deEsser        = preset.deEsserEnabled
+            deClicker      = preset.deClickerEnabled
+            preserveStereo = preset.preserveStereo
+            dereverb       = preset.dereverbEnabled
+            tuning         = preset.tuning
+        }
+
         var i = 0
         while i < args.count {
             let arg = args[i]
             switch arg {
+            case "--preset":
+                // Already applied as the base above; just consume its
+                // value here so it isn't treated as the input file.
+                i += 1
             case "-o", "--output":
                 i += 1; output = args[safe: i]
             case "-p", "--profile":
@@ -303,6 +345,20 @@ enum CLI {
         if !parts[1].isEmpty && end == nil { return nil }
         if let s = start, let e = end, s >= e { return nil }
         return (start, end)
+    }
+
+    /// Return the token immediately following the first occurrence of
+    /// `flag` in `args`, or nil if `flag` is absent or trailing.
+    static func valueAfter(_ flag: String, in args: [String]) -> String? {
+        guard let idx = args.firstIndex(of: flag), idx + 1 < args.count else { return nil }
+        return args[idx + 1]
+    }
+
+    /// Resolve a preset by name for the CLI — user presets (from the
+    /// shared app UserDefaults) take precedence over a built-in of the
+    /// same name, matching the GUI's `PresetStore`.
+    static func resolvePreset(named name: String) -> Preset? {
+        PresetStore().preset(named: name)
     }
 
     private static func bail(_ msg: String) -> Never {

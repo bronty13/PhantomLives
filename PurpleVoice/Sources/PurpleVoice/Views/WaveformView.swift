@@ -83,9 +83,11 @@ struct WaveformView: View {
                     VStack(spacing: pairSpacing) {
                         waveRow(result: sourceWaveform,
                                 title: "Original",
+                                emptyText: "(no waveform)",
                                 color: .accentColor)
                         waveRow(result: processedWaveform,
                                 title: "Cleaned",
+                                emptyText: "(no output yet)",
                                 color: .green)
                     }
                     overlay(width: proxy.size.width,
@@ -99,6 +101,7 @@ struct WaveformView: View {
     @ViewBuilder
     private func waveRow(result: WaveformGenerator.Result?,
                          title: String,
+                         emptyText: String,
                          color: Color) -> some View {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -108,9 +111,7 @@ struct WaveformView: View {
                     .fill(color.opacity(0.75))
                     .padding(.vertical, 4)
             } else {
-                Text(title == "Cleaned"
-                     ? "(no output yet)"
-                     : "(no waveform)")
+                Text(emptyText)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
