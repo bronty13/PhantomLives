@@ -1,0 +1,8 @@
+.build/
+.swiftpm/
+DerivedData/
+Package.resolved
+PurpleVoice.app/
+PurpleVoice */
+*.dSYM/
+.DS_Store
