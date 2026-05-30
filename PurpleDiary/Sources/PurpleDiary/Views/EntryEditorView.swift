@@ -14,7 +14,7 @@ struct EntryEditorView: View {
     @State private var mood: Mood = .unset
     @State private var selectedTagIds: Set<Int64> = []
     @State private var loaded = false
-    @State private var saveWorkItem: DispatchWorkItem?
+    @State private var saveTask: Task<Void, Never>?
 
     var body: some View {
         ScrollView {
@@ -77,15 +77,17 @@ struct EntryEditorView: View {
 
     private func scheduleSave() {
         guard loaded else { return }
-        saveWorkItem?.cancel()
-        let work = DispatchWorkItem { persist() }
-        saveWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
+        saveTask?.cancel()
+        saveTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            guard !Task.isCancelled else { return }
+            persist()
+        }
     }
 
     private func flushSave() {
-        saveWorkItem?.cancel()
-        saveWorkItem = nil
+        saveTask?.cancel()
+        saveTask = nil
         if loaded { persist() }
     }
 
