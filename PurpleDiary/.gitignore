@@ -1,0 +1,7 @@
+*.xcuserstate
+xcuserdata/
+DerivedData/
+.DS_Store
+PurpleDiary.app
+PurpleDiary.xcodeproj
+.build/
