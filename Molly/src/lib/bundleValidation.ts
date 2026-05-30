@@ -211,6 +211,30 @@ export function validateContentFiles(files: BundleFileInfo[]): ValidationIssue[]
   return [];
 }
 
+/** YouTube bundles take video clips only (no images); at least one. Mirrors
+ *  src-tauri/src/bundles.rs::validate_youtube_files. */
+export function validateYouTubeFiles(files: BundleFileInfo[]): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const videos = files.filter((f) => f.kind === 'video');
+  if (videos.length === 0) {
+    issues.push({
+      fieldPath: 'files',
+      message: 'Add at least one video clip.',
+      severity: 'error',
+      jumpToFieldId: 'bundle-files',
+    });
+  }
+  if (files.some((f) => f.kind !== 'video')) {
+    issues.push({
+      fieldPath: 'files',
+      message: 'YouTube bundles take video clips only — remove non-video files.',
+      severity: 'error',
+      jumpToFieldId: 'bundle-files',
+    });
+  }
+  return issues;
+}
+
 /** Validate a Content bundle against all rules. Returns full issue list. */
 export function validateContentBundle(bundle: Bundle, ctx: ValidationCtx): ValidationIssue[] {
   return [
@@ -224,6 +248,22 @@ export function validateContentBundle(bundle: Bundle, ctx: ValidationCtx): Valid
     ),
     ...validateCategories(bundle.categories),
     ...validateContentFiles(bundle.files),
+  ];
+}
+
+/** Validate a YouTube bundle. Same shape as Content minus categories, with
+ *  the file list restricted to video. Mirrors validate_youtube_bundle. */
+export function validateYouTubeBundle(bundle: Bundle, ctx: ValidationCtx): ValidationIssue[] {
+  return [
+    ...validateTitle(bundle.summary.title),
+    ...validatePersona(bundle.summary.personaCode),
+    ...validateGoLiveDate(bundle.summary.goLiveDate, ctx.today),
+    ...validateContentDescription(
+      bundle.descriptionText,
+      bundle.descriptionAudioRelpath,
+      ctx.prohibitedWords,
+    ),
+    ...validateYouTubeFiles(bundle.files),
   ];
 }
 
@@ -359,6 +399,8 @@ export function validateBundle(bundle: Bundle, ctx: ValidationCtx): ValidationIs
   switch (bundle.summary.bundleType) {
     case 'content':
       return validateContentBundle(bundle, ctx);
+    case 'youtube':
+      return validateYouTubeBundle(bundle, ctx);
     case 'custom':
       return validateCustomBundle(bundle, ctx);
     case 'fansite':

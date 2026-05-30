@@ -116,7 +116,7 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
               )}
             </ReviewSection>
 
-            {bundle.summary.bundleType === 'content' && (
+            {(bundle.summary.bundleType === 'content' || bundle.summary.bundleType === 'youtube') && (
               <>
                 <ReviewSection title="Description">
                   {bundle.descriptionMode === 'audio' && bundle.descriptionAudioAbsolutePath ? (
@@ -127,19 +127,21 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
                     <span className="opacity-60 italic">No description set.</span>
                   )}
                 </ReviewSection>
-                <ReviewSection title={`Categories (${bundle.categories.length})`}>
-                  {bundle.categories.length === 0 ? (
-                    <span className="opacity-60 italic">None selected.</span>
-                  ) : (
-                    <div className="flex flex-wrap gap-1.5">
-                      {bundle.categories.map((c, i) => (
-                        <span key={c.name} className="px-2 py-0.5 rounded-full text-xs font-mono text-white" style={{ background: 'rgb(var(--persona-accent))' }}>
-                          {i + 1}. {c.name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </ReviewSection>
+                {bundle.summary.bundleType === 'content' && (
+                  <ReviewSection title={`Categories (${bundle.categories.length})`}>
+                    {bundle.categories.length === 0 ? (
+                      <span className="opacity-60 italic">None selected.</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {bundle.categories.map((c, i) => (
+                          <span key={c.name} className="px-2 py-0.5 rounded-full text-xs font-mono text-white" style={{ background: 'rgb(var(--persona-accent))' }}>
+                            {i + 1}. {c.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </ReviewSection>
+                )}
               </>
             )}
 
@@ -302,7 +304,7 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
               <dt className="opacity-60">Inner SHA-256</dt><dd className="break-all">{result.innerSha256}</dd>
               <dt className="opacity-60">Outer SHA-256</dt><dd className="break-all">{result.outerSha256}</dd>
             </dl>
-            {result.clipCreated && bundle?.summary.bundleType === 'content' && (
+            {result.clipCreated && (
               <div className="text-sm bg-pink-50 border border-pink-200 rounded-xl px-3 py-2">
                 💖 Clips row created with status <strong>Bundled</strong>.
               </div>

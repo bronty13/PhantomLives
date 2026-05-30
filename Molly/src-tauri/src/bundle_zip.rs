@@ -39,13 +39,16 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use zip::write::SimpleFileOptions;
 
-/// Three discriminated bundle flavors. Mirrors the `bundle_type` CHECK
-/// constraint in migration 017.
+/// Discriminated bundle flavors. Content/Custom/FanSite mirror the
+/// `bundle_type` CHECK constraint in migration 017; YouTube is the 4th
+/// flavor added in v1.23.0, discriminated by `bundle_kind` (migration 036).
+/// YouTube shares Content's ZIP layout (Video/ + Audio/), minus categories.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BundleType {
     Content,
     Custom,
     FanSite,
+    YouTube,
 }
 
 impl BundleType {
@@ -54,6 +57,7 @@ impl BundleType {
             BundleType::Content => "content",
             BundleType::Custom => "custom",
             BundleType::FanSite => "fansite",
+            BundleType::YouTube => "youtube",
         }
     }
 }
@@ -310,7 +314,7 @@ pub fn compose_bundle(
     // to send them ordered — caller bugs shouldn't make hashes flaky.
     let mut files = snapshot.files.clone();
     match snapshot.bundle_type {
-        BundleType::Content | BundleType::Custom => {
+        BundleType::Content | BundleType::Custom | BundleType::YouTube => {
             files.sort_by_key(|f| (f.kind as i32, f.position));
             for f in &files {
                 let bytes = read_and_verify(f)?;
@@ -570,7 +574,9 @@ fn render_info_md(s: &BundleSnapshot) -> String {
     md.push_str(&format!("- **Published at:** `{}`\n\n", s.published_at));
 
     match s.bundle_type {
-        BundleType::Content => {
+        // YouTube shares Content's layout (description + content tags) but
+        // has no Categories section.
+        BundleType::Content | BundleType::YouTube => {
             md.push_str("## Description\n\n");
             if let Some(audio) = &s.description_audio {
                 md.push_str(&format!(
@@ -583,14 +589,16 @@ fn render_info_md(s: &BundleSnapshot) -> String {
                 md.push_str("_(none)_\n\n");
             }
 
-            md.push_str("## Categories\n\n");
-            if s.categories.is_empty() {
-                md.push_str("_(none)_\n\n");
-            } else {
-                for (i, c) in s.categories.iter().enumerate() {
-                    md.push_str(&format!("{}. {}\n", i + 1, c));
+            if s.bundle_type != BundleType::YouTube {
+                md.push_str("## Categories\n\n");
+                if s.categories.is_empty() {
+                    md.push_str("_(none)_\n\n");
+                } else {
+                    for (i, c) in s.categories.iter().enumerate() {
+                        md.push_str(&format!("{}. {}\n", i + 1, c));
+                    }
+                    md.push('\n');
                 }
-                md.push('\n');
             }
 
             md.push_str("## Content tags\n\n");
@@ -752,7 +760,7 @@ fn render_molly_log(
     }
 
     match s.bundle_type {
-        BundleType::Content => {
+        BundleType::Content | BundleType::YouTube => {
             if let Some(audio) = &s.description_audio {
                 log.push_str("Description mode:   audio\n");
                 log.push_str(&format!(
@@ -768,9 +776,11 @@ fn render_molly_log(
             } else {
                 log.push_str("Description mode:   (none)\n");
             }
-            log.push_str(&format!("Categories ({}):\n", s.categories.len()));
-            for (i, c) in s.categories.iter().enumerate() {
-                log.push_str(&format!("  {}. {}\n", i + 1, c));
+            if s.bundle_type != BundleType::YouTube {
+                log.push_str(&format!("Categories ({}):\n", s.categories.len()));
+                for (i, c) in s.categories.iter().enumerate() {
+                    log.push_str(&format!("  {}. {}\n", i + 1, c));
+                }
             }
             log.push_str(&format!("Content tags ({}):\n", s.tags.len()));
             if s.tags.is_empty() {
@@ -917,7 +927,7 @@ fn short_sha(s: &str) -> &str {
 /// older SideMolly versions via the Molly.log fallback path.
 fn in_zip_path_for(snapshot: &BundleSnapshot, file: &FileEntry) -> String {
     match snapshot.bundle_type {
-        BundleType::Content | BundleType::Custom => {
+        BundleType::Content | BundleType::Custom | BundleType::YouTube => {
             let folder = match file.kind {
                 FileKind::Video => "Video",
                 FileKind::Image => "Photos",
@@ -999,7 +1009,7 @@ pub fn render_manifest_json(snapshot: &BundleSnapshot) -> Vec<u8> {
     // the order is meaningful + deterministic.
     let mut files_sorted = snapshot.files.clone();
     match snapshot.bundle_type {
-        BundleType::Content | BundleType::Custom => {
+        BundleType::Content | BundleType::Custom | BundleType::YouTube => {
             files_sorted.sort_by_key(|f| (f.kind as i32, f.position));
         }
         BundleType::FanSite => {

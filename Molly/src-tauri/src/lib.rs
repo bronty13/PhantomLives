@@ -237,6 +237,12 @@ pub fn run() {
             sql: include_str!("../migrations/035_social_drops.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 36,
+            description: "youtube-bundle",
+            sql: include_str!("../migrations/036_youtube_bundle.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -1183,6 +1189,7 @@ mod migration_smoke {
             (33, "ui-theme",                     include_str!("../migrations/033_ui_theme.sql")),
             (34, "return-file-import",           include_str!("../migrations/034_return_file_import.sql")),
             (35, "social-drops",                 include_str!("../migrations/035_social_drops.sql")),
+            (36, "youtube-bundle",               include_str!("../migrations/036_youtube_bundle.sql")),
         ];
 
         for (v, name, sql) in migrations {

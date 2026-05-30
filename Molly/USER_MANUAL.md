@@ -382,9 +382,10 @@ Click **🗂 Grid** at the top of the C4S page to switch to a sortable table. Se
 
 Click **🎁 Bundles** in the sidebar. This is where you compose a delivery package for Robert — everything he needs to post-produce one piece of content, zipped and ready to drop into Slack.
 
-There are three flavors — all three publish end-to-end:
+There are four flavors — all four publish end-to-end:
 
 - **Content Bundle** — a single piece of content with title, persona, description, categories, files, go-live date, and special instructions.
+- **▶️ YouTube Bundle** — a bundle of video clips headed for YouTube. Just like Content, but no categories and videos only.
 - **Custom Bundle** — a custom video for a specific platform / user / price.
 - **Fan Site Bundle** — a whole month's worth of fan-site posts on a calendar.
 
@@ -424,6 +425,21 @@ The success card gives you **Open ZIP** and **Reveal in Finder** buttons, plus b
 ### Editing after publish
 
 A published bundle is locked — the form goes read-only. If you need to change something, click **Delete bundle** on the list row (or on the published draft). That removes the ZIP from disk and flips the bundle back to draft state so you can edit and re-publish. **Your linked Clip row survives** — Sallie's `molly_notes_html` is preserved across re-publishes.
+
+### Creating a YouTube Bundle ▶️
+
+Click **▶️ New YouTube Bundle**. This one's for when you're sending Robert a batch of clips bound for YouTube — think of it as your Content bundle's tidy little sister. 💕
+
+Fill in:
+
+- **Persona** — required. CoC, PoA, or Sa.
+- **Title** — at least two words, same sweet safeguards as everywhere else.
+- **Description** — pick **📝 Type** to write it out, or **🎙️ Upload audio** to leave Robert a voice note. Exactly one, just like Content. (And yes, the prohibited-word scan still has your back.)
+- **Video clips** — pop in **one or as many as you like**! This one's videos *only* — the picker won't even show photos, so there's no way to slip the wrong thing in. Drag the rows to reorder; each clip gets renamed `00001_…` in the final ZIP so Robert gets them in your order.
+- **Go-live date** — required, no dates in the past. The little calendar tucks itself away the moment you pick a day. If it's today or within 5 days I'll gently ask *"are you allowing enough time for editing?"* — no pressure, just looking out for you. 🌷
+- **Special instructions** — optional notes for Robert.
+
+No categories here — that's a Content thing. Everything else (publishing, the preview wizard with sample frames, the locked-after-publish flow, the **💖 Clips row** that drops your go-live date onto the Calendar) works exactly like a Content bundle, so you already know the dance. ✨
 
 ### Creating a Custom Bundle
 

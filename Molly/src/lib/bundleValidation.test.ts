@@ -10,6 +10,8 @@ import {
   validateGoLiveDate,
   validatePersona,
   validateTitle,
+  validateYouTubeBundle,
+  validateYouTubeFiles,
 } from './bundleValidation';
 import type { Bundle, BundleCategory, BundleFanDay, BundleFileInfo } from '../data/bundles';
 
@@ -284,6 +286,55 @@ describe('validateFanSiteCompletion', () => {
     expect(validateFanSiteCompletion(mkBundle({
       fansiteYear: 2026, fansiteMonth: 6, fanDays,
     }))).toEqual([]);
+  });
+});
+
+describe('validateYouTubeFiles', () => {
+  const mk = (id: number, kind: 'video' | 'image' | 'audio'): BundleFileInfo => ({
+    id, bundleUid: 'x', fansiteDayId: null, position: id, relpath: 'r',
+    absolutePath: 'r', originalName: 'f', kind, sizeBytes: 1, sha256: '',
+  });
+  it('passes with at least one video', () => {
+    expect(validateYouTubeFiles([mk(1, 'video')])).toEqual([]);
+  });
+  it('errors when no video present', () => {
+    const issues = validateYouTubeFiles([]);
+    expect(issues.some((i) => i.fieldPath === 'files' && i.severity === 'error')).toBe(true);
+  });
+  it('errors when a non-video file is included', () => {
+    const issues = validateYouTubeFiles([mk(1, 'video'), mk(2, 'image')]);
+    expect(issues.some((i) => i.message.includes('video clips only'))).toBe(true);
+  });
+});
+
+describe('validateYouTubeBundle', () => {
+  const ctx = { today: new Date(2026, 4, 22), prohibitedWords: [] };
+  const ytBundle = (overrides: Partial<Bundle> = {}): Bundle => {
+    const b = mkBundle(overrides);
+    b.summary.bundleType = 'youtube';
+    return b;
+  };
+  const video: BundleFileInfo = {
+    id: 1, bundleUid: 'x', fansiteDayId: null, position: 1, relpath: 'r',
+    absolutePath: 'r', originalName: 'v.mp4', kind: 'video', sizeBytes: 1, sha256: '',
+  };
+  it('passes with video + text description', () => {
+    const issues = validateYouTubeBundle(
+      ytBundle({ descriptionMode: 'text', descriptionText: 'A cute clip', files: [video] }),
+      ctx,
+    );
+    expect(issues.filter((i) => i.severity === 'error')).toEqual([]);
+  });
+  it('requires a description', () => {
+    const issues = validateYouTubeBundle(ytBundle({ files: [video] }), ctx);
+    expect(issues.some((i) => i.fieldPath === 'description' && i.severity === 'error')).toBe(true);
+  });
+  it('requires at least one video', () => {
+    const issues = validateYouTubeBundle(
+      ytBundle({ descriptionMode: 'text', descriptionText: 'desc' }),
+      ctx,
+    );
+    expect(issues.some((i) => i.fieldPath === 'files' && i.severity === 'error')).toBe(true);
   });
 });
 

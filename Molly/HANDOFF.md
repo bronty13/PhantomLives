@@ -95,7 +95,7 @@ Molly/
 │   │   ├── log.rs                        # add_log_entry_with_attachment + download_log_attachment (Molly's Log)
 │   │   ├── c4s.rs                        # replace_c4s_clips (atomic overlay) + delete_all_c4s_data + count-verify
 │   │   ├── masterclipper.rs              # MasterClipper external-DB read helpers (clip dedup feed)
-│   │   ├── bundles.rs                    # Content / Custom / Fan-Site bundle CRUD + validation engine + publish
+│   │   ├── bundles.rs                    # Content / YouTube / Custom / Fan-Site bundle CRUD + validation engine + publish
 │   │   ├── bundle_zip.rs                 # ZIP composition for published bundles (Video/, Photos/, FanSite/, info.md, Molly.log)
 │   │   ├── crypto/                       # Phase 10 keystore: passphrase-derived KEK wrapping per-install DEK
 │   │   │   ├── mod.rs / wrap.rs          # AES-256-GCM wrap/unwrap helpers + roundtrip tests
@@ -112,7 +112,7 @@ Molly/
 │   │   ├── hours.rs                      # Phase 15 — clock sessions + totals (today/week/month/all) + reward milestones (global)
 │   │   ├── daily_tasks.rs                # Phase 15 — daily to-do list (keyed by for_date + persona)
 │   │   └── fsutil.rs                     # ~/Downloads/<sub> resolution + Finder reveal
-│   ├── migrations/                       # 33 migrations (run automatically on launch)
+│   ├── migrations/                       # 36 migrations (run automatically on launch)
 │   │   ├── 001_init.sql                  # personas + app_settings
 │   │   ├── 002_sites.sql                 # site entries, preloaded
 │   │   ├── 003_taxonomy.sql              # products + interests
@@ -145,7 +145,10 @@ Molly/
 │   │   ├── 030_hours.sql                 # Phase 15 — clock_sessions (NULL duration_ms = open) + reward_milestones (global)
 │   │   ├── 031_daily_tasks.sql           # Phase 15 — daily_tasks keyed by for_date + persona
 │   │   ├── 032_drop_content_release_defaults.sql # Phase 15 — DELETE the seeded weekly 'CoC/PoA content release' rows by name+persona
-│   │   └── 033_ui_theme.sql              # Phase 15 — app_settings ('ui.theme', 'light') seed
+│   │   ├── 033_ui_theme.sql              # Phase 15 — app_settings ('ui.theme', 'light') seed
+│   │   ├── 034_return_file_import.sql    # v1.20.0 — bundles.completed_at/delete_after + bundle_postings + bundle_posting_files + return_file_imports
+│   │   ├── 035_social_drops.sql          # v1.21.0 — Social hub daily piggy-bank (social_platforms.daily_goal + social_drops)
+│   │   └── 036_youtube_bundle.sql        # v1.23.0 — bundles.bundle_kind discriminator (safe ALTER; escapes the bundle_type CHECK trap)
 │   ├── icons/                            # Generated icon set (from molly.svg)
 │   ├── capabilities/default.json         # Tauri ACL — which plugin commands the frontend can invoke
 │   ├── tauri.conf.json
@@ -231,6 +234,7 @@ Updater is wired against `https://github.com/bronty13/PhantomLives/releases/late
 - **`refresh()` race protection** — anything that fires on persona change should use `useAsyncRefresh` to avoid stale-data clobber.
 - **App data location**: `~/Library/Application Support/com.phantomlives.molly/` (Mac), `%APPDATA%\com.phantomlives.molly\` (Windows). Everything Molly knows lives there.
 - **Never edit a shipped migration's bytes** — `tauri-plugin-sql` SHA-hashes every migration on first apply and refuses to open the DB if a previously-applied migration's content ever changes (`migration N was previously applied but has been modified`). To remove or rename seed data, **write a new migration** that does the DELETE / UPDATE. Cost us v1.17.0 → had to ship a hotfix v1.17.1 that restored 006_schedules.sql to its byte-exact original and leaned on migration 032 to do the actual deletion. Lesson re-pinned here on purpose.
+- **Can't widen a CHECK constraint in a migration — use a new unconstrained column instead.** `bundles.bundle_type` has `CHECK (bundle_type IN ('content','custom','fansite'))`. Relaxing a CHECK requires rebuilding the table, but `bundles` is the parent of six `ON DELETE CASCADE` children. Inside a `tauri-plugin-sql` migration `foreign_keys` is forced ON (sqlx default) and the script runs in a transaction where `PRAGMA foreign_keys` / `legacy_alter_table` / `defer_foreign_keys` are **all no-ops** (verified empirically — the rebuild silently cascade-deletes the children). v1.23.0's YouTube type therefore added `bundle_kind` via a plain `ALTER TABLE ADD COLUMN` (migration 036) and made it the authoritative discriminator: Rust reads `COALESCE(bundle_kind, bundle_type) AS bundle_type` everywhere, YouTube rows store `bundle_type='content'` + `bundle_kind='youtube'`. **Any future bundle type goes in `bundle_kind` — never touch the `bundle_type` CHECK.** `BundleType::YouTube` shares Content's ZIP layout (Video/ + Audio/) minus categories.
 - **Calendar overlay query date format** — Rust `printf('%04d-%02d-%02d', year, month, day)` matches the JS `isoDateKey()` zero-pad shape. If you tweak either side, the other has to keep up — there's a test in `content_tags::tests::range_query_resolves_dates_and_filters_by_persona` that pins this.
 
 ## Tests

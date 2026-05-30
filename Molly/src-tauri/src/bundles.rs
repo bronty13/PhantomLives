@@ -576,6 +576,54 @@ pub(crate) fn validate_content_bundle(
     issues
 }
 
+/// YouTube bundles take video clips only (no images). At least one is
+/// required. The form locks the picker to video extensions, so a non-video
+/// row here would be an oddity — but we validate anyway since publish is
+/// authoritative.
+pub(crate) fn validate_youtube_files(
+    files: &[BundleFileInfo],
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let videos = files.iter().filter(|f| f.kind == "video").count();
+    if videos == 0 {
+        issues.push(ValidationIssue {
+            field_path: "files".into(),
+            message: "Add at least one video clip.".into(),
+            severity: Severity::Error,
+            jump_to_field_id: "bundle-files".into(),
+        });
+    }
+    if files.iter().any(|f| f.kind != "video") {
+        issues.push(ValidationIssue {
+            field_path: "files".into(),
+            message: "YouTube bundles take video clips only — remove non-video files.".into(),
+            severity: Severity::Error,
+            jump_to_field_id: "bundle-files".into(),
+        });
+    }
+}
+
+/// Top-level validator for the YouTube bundle type. Same shape as Content
+/// minus categories, with the file list restricted to video.
+pub(crate) fn validate_youtube_bundle(
+    bundle: &Bundle,
+    today: NaiveDate,
+    prohibited_words: &[String],
+) -> Vec<ValidationIssue> {
+    let mut issues = Vec::new();
+    validate_title(&bundle.summary.title, &mut issues);
+    validate_persona(bundle.summary.persona_code.as_deref(), &mut issues);
+    validate_go_live(bundle.summary.go_live_date.as_deref(), today, &mut issues);
+    validate_content_description(
+        &bundle.description_text,
+        bundle.description_audio_relpath.as_deref(),
+        prohibited_words,
+        &mut issues,
+    );
+    validate_youtube_files(&bundle.files, &mut issues);
+    issues
+}
+
 /// Custom-bundle delivery rule: `delivery_kind` must be set; if 'site' a
 /// site id is required; if 'url' nothing else is required here (Robert
 /// fills in the URL, recipient and price later via the SideMolly
@@ -802,18 +850,23 @@ fn load_tag_ids(conn: &Connection, uid: &str) -> rusqlite::Result<Vec<i64>> {
 pub(crate) fn pure_create_bundle(
     conn: &Connection,
     today: &str,
-    bundle_type: &str,
+    bundle_kind: &str,
     persona_code: Option<&str>,
 ) -> Result<String, BundleError> {
-    match bundle_type {
-        "content" | "custom" | "fansite" => {}
+    match bundle_kind {
+        "content" | "custom" | "fansite" | "youtube" => {}
         other => return Err(BundleError::Invalid(format!("unknown bundle type {other}"))),
     }
+    // `bundle_kind` is the authoritative discriminator the app reads back
+    // (see the COALESCE(bundle_kind, bundle_type) selects). The legacy
+    // `bundle_type` column still carries a CHECK-valid value, so a youtube
+    // bundle is stored as content+kind=youtube. See migration 036.
+    let storage_type = if bundle_kind == "youtube" { "content" } else { bundle_kind };
     let uid = next_uid_in_conn(conn, today)?;
     conn.execute(
-        "INSERT INTO bundles (uid, bundle_type, persona_code, content_date)
-         VALUES (?1, ?2, ?3, ?4)",
-        params![uid, bundle_type, persona_code, today],
+        "INSERT INTO bundles (uid, bundle_type, bundle_kind, persona_code, content_date)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![uid, storage_type, bundle_kind, persona_code, today],
     )?;
     Ok(uid)
 }
@@ -925,7 +978,7 @@ pub(crate) fn pure_get_bundle(
     let fan_days = load_fan_days_for(conn, uid)?;
     let file_count = files.len() as i64;
     let mut stmt = conn.prepare(
-        "SELECT uid, bundle_type, persona_code, state, title, content_date, go_live_date,
+        "SELECT uid, COALESCE(bundle_kind, bundle_type) AS bundle_type, persona_code, state, title, content_date, go_live_date,
                 special_instructions, description_mode, description_text,
                 description_audio_relpath,
                 delivery_kind, delivery_site_id, delivery_url, delivery_recipient,
@@ -990,7 +1043,7 @@ pub(crate) fn pure_list_bundles(
     // Pull summaries + per-bundle file counts in one round trip.
     let (sql, p): (&str, Vec<SqlValue>) = match state {
         Some(s) => (
-            "SELECT b.uid, b.bundle_type, b.persona_code, b.state, b.title, b.content_date,
+            "SELECT b.uid, COALESCE(b.bundle_kind, b.bundle_type) AS bundle_type, b.persona_code, b.state, b.title, b.content_date,
                     b.go_live_date, b.published_at, b.bundle_path, b.bundle_size_bytes,
                     b.created_at, b.updated_at, b.completed_at, b.delete_after,
                     (SELECT COUNT(*) FROM bundle_files WHERE bundle_uid = b.uid) AS file_count
@@ -1000,7 +1053,7 @@ pub(crate) fn pure_list_bundles(
             vec![SqlValue::Text(s.to_string())],
         ),
         None => (
-            "SELECT b.uid, b.bundle_type, b.persona_code, b.state, b.title, b.content_date,
+            "SELECT b.uid, COALESCE(b.bundle_kind, b.bundle_type) AS bundle_type, b.persona_code, b.state, b.title, b.content_date,
                     b.go_live_date, b.published_at, b.bundle_path, b.bundle_size_bytes,
                     b.created_at, b.updated_at, b.completed_at, b.delete_after,
                     (SELECT COUNT(*) FROM bundle_files WHERE bundle_uid = b.uid) AS file_count
@@ -1137,6 +1190,7 @@ fn build_snapshot(
 ) -> Result<BundleSnapshot, BundleError> {
     let bundle_type = match bundle.summary.bundle_type.as_str() {
         "content" => BundleType::Content,
+        "youtube" => BundleType::YouTube,
         "custom" => BundleType::Custom,
         "fansite" => BundleType::FanSite,
         other => return Err(BundleError::Invalid(format!("unknown type {other}"))),
@@ -1362,7 +1416,9 @@ fn pure_stamp_publish(
         ],
     )?;
     let mut clip_created = false;
-    if bundle_type == "content" {
+    // YouTube bundles upsert a clip too (same as Content). Their categories
+    // list is empty so the clip's categories column lands blank — fine.
+    if bundle_type == "content" || bundle_type == "youtube" {
         pure_upsert_clip_from_bundle(&tx, bundle)?;
         // Mirror the bundle's bundle-level content tags onto the clip
         // row. Idempotent — re-publish re-syncs. FanSite per-day tags
@@ -1748,6 +1804,7 @@ pub fn publish_bundle<R: Runtime>(
     let today = Local::now().date_naive();
     let issues = match bundle.summary.bundle_type.as_str() {
         "content" => validate_content_bundle(&bundle, today, &prohibited),
+        "youtube" => validate_youtube_bundle(&bundle, today, &prohibited),
         "custom" => validate_custom_bundle(&bundle, today),
         "fansite" => validate_fansite_bundle(&bundle),
         other => {
@@ -2126,6 +2183,7 @@ mod tests {
             include_str!("../migrations/027_fanday_tags.sql"),
             include_str!("../migrations/028_clip_tags.sql"),
             include_str!("../migrations/034_return_file_import.sql"),
+            include_str!("../migrations/036_youtube_bundle.sql"),
         ] {
             conn.execute_batch(sql).unwrap();
         }
@@ -2469,6 +2527,83 @@ mod tests {
         assert_eq!(days_in_month(2026, 12), 31);
         assert_eq!(days_in_month(2026, 0), 0); // invalid
         assert_eq!(days_in_month(2026, 13), 0); // invalid
+    }
+
+    // ---- v1.23.0: YouTube bundle type ---------------------------------
+
+    #[test]
+    fn youtube_create_stores_content_storage_type_but_reads_back_as_youtube() {
+        let conn = fresh_db();
+        let uid = pure_create_bundle(&conn, "2026-05-29", "youtube", Some("CoC")).unwrap();
+        // Storage column keeps a CHECK-valid value; bundle_kind is authoritative.
+        let (stype, skind): (String, String) = conn
+            .query_row(
+                "SELECT bundle_type, bundle_kind FROM bundles WHERE uid = ?1",
+                params![uid],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(stype, "content");
+        assert_eq!(skind, "youtube");
+        // The COALESCE(bundle_kind, bundle_type) read surfaces "youtube".
+        let b = pure_get_bundle(&conn, &uid, 30, std::path::Path::new("/tmp")).unwrap();
+        assert_eq!(b.summary.bundle_type, "youtube");
+        // And it shows up in the list view with the effective kind.
+        let list = pure_list_bundles(&conn, None, 30).unwrap();
+        assert_eq!(list.iter().find(|s| s.uid == uid).unwrap().bundle_type, "youtube");
+    }
+
+    #[test]
+    fn youtube_validation_passes_with_video_and_description() {
+        let mut b = mk_bundle("x", "youtube");
+        b.description_mode = Some("text".into());
+        b.description_text = "A cute little clip".into();
+        b.files.push(mk_video_file());
+        let today = NaiveDate::from_ymd_opt(2026, 5, 29).unwrap();
+        let issues = validate_youtube_bundle(&b, today, &[]);
+        assert!(
+            !issues.iter().any(|i| i.severity == Severity::Error),
+            "expected no errors, got {issues:?}"
+        );
+    }
+
+    #[test]
+    fn youtube_validation_requires_at_least_one_video() {
+        let mut b = mk_bundle("x", "youtube");
+        b.description_mode = Some("text".into());
+        b.description_text = "desc".into();
+        // No files.
+        let today = NaiveDate::from_ymd_opt(2026, 5, 29).unwrap();
+        let issues = validate_youtube_bundle(&b, today, &[]);
+        assert!(issues.iter().any(|i| i.field_path == "files" && i.severity == Severity::Error));
+    }
+
+    #[test]
+    fn youtube_validation_rejects_non_video_files() {
+        let mut b = mk_bundle("x", "youtube");
+        b.description_mode = Some("text".into());
+        b.description_text = "desc".into();
+        b.files.push(mk_video_file());
+        let mut img = mk_video_file();
+        img.id = 2;
+        img.kind = "image".into();
+        b.files.push(img);
+        let today = NaiveDate::from_ymd_opt(2026, 5, 29).unwrap();
+        let issues = validate_youtube_bundle(&b, today, &[]);
+        assert!(
+            issues.iter().any(|i| i.message.contains("video clips only")),
+            "expected video-only error, got {issues:?}"
+        );
+    }
+
+    #[test]
+    fn youtube_validation_requires_description() {
+        let mut b = mk_bundle("x", "youtube");
+        b.files.push(mk_video_file());
+        // No description text or audio.
+        let today = NaiveDate::from_ymd_opt(2026, 5, 29).unwrap();
+        let issues = validate_youtube_bundle(&b, today, &[]);
+        assert!(issues.iter().any(|i| i.field_path == "description" && i.severity == Severity::Error));
     }
 
     #[test]

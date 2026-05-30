@@ -4,6 +4,58 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.0] — 2026-05-29
+
+### Added — ▶️ YouTube bundle type
+
+A fourth bundle flavor sits alongside Content / Custom / Fan Site. A
+**YouTube bundle** collects: **title**, **persona**, a **description**
+(text *or* audio — same one-or-the-other rule as Content), **one or
+more video clips** (video-only; the picker is locked to video
+extensions), a **go-live date** (the existing date popover that
+dismisses on click-off), and optional **special instructions**. It's
+the Content bundle minus categories, with the file list restricted to
+video. Publishing composes the same deterministic two-layer ZIP
+(`Video/` + optional `Audio/` for an audio description) and, like
+Content, upserts a Clips row with status `Bundled` and mirrors the
+bundle-level content tags onto it.
+
+#### Why a new `bundle_kind` column instead of a 4th `bundle_type` value
+
+`bundles.bundle_type` carries a SQL `CHECK (bundle_type IN
+('content','custom','fansite'))`. SQLite can't alter a CHECK without
+rebuilding the table — and `bundles` is the parent of **six**
+`ON DELETE CASCADE` children (`bundle_fan_days`, `bundle_files`,
+`bundle_categories`, `bundle_tag_links`, `bundle_postings`,
+`return_file_imports`). Inside a `tauri-plugin-sql` migration
+`foreign_keys` is forced ON (sqlx default — verified in the crate
+source) and the script runs in a transaction where `PRAGMA
+foreign_keys`, `legacy_alter_table` and `defer_foreign_keys` are all
+no-ops (verified empirically against a throwaway DB). So `DROP TABLE
+bundles` would cascade-delete every child row, and a full-cluster
+rebuild on Sallie's live DB is unacceptably risky.
+
+Migration `036_youtube_bundle.sql` instead adds an **unconstrained**
+discriminator column via a plain, never-cascading `ALTER TABLE ... ADD
+COLUMN bundle_kind TEXT` (the same safe move 034 used) and backfills it
+from `bundle_type`. `bundle_kind` is now the authoritative type the app
+reads — Rust selects `COALESCE(bundle_kind, bundle_type) AS
+bundle_type`, so the frontend is unaware of the dual column. YouTube
+rows store `bundle_type='content'` (keeps the legacy CHECK satisfied) +
+`bundle_kind='youtube'`. This also permanently escapes the CHECK trap:
+any future bundle type is now a zero-risk migration.
+
+### Tests
+
+- Rust: `youtube_create_stores_content_storage_type_but_reads_back_as_youtube`
+  (storage columns + COALESCE read + list view), plus YouTube validation
+  cases (passes with video+description, requires a video, rejects
+  non-video files, requires a description).
+- Frontend: `validateYouTubeFiles` + `validateYouTubeBundle` describe
+  blocks in `bundleValidation.test.ts`.
+- `migration_smoke` + the bundles-test `fresh_db()` both apply migration
+  036.
+
 ## [1.22.0] — 2026-05-29
 
 ### Added

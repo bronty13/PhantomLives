@@ -15,6 +15,7 @@ import { ReadonlyTagPill } from './components/ContentTagPicker';
 import { ContentBundleForm } from './ContentBundleForm';
 import { CustomBundleForm } from './CustomBundleForm';
 import { FanSiteBundleForm } from './FanSiteBundleForm';
+import { YouTubeBundleForm } from './YouTubeBundleForm';
 import { PublishWizard } from './PublishWizard';
 import { ImportReturnFileWizard } from './ImportReturnFileWizard';
 
@@ -128,6 +129,7 @@ export function BundlesListView({ active }: Props) {
     };
     switch (b?.bundleType) {
       case 'content': return <ContentBundleForm {...closeProps} />;
+      case 'youtube': return <YouTubeBundleForm {...closeProps} />;
       case 'custom':  return <CustomBundleForm {...closeProps} />;
       case 'fansite': return <FanSiteBundleForm {...closeProps} />;
       default:
@@ -155,8 +157,8 @@ export function BundlesListView({ active }: Props) {
       <header className="space-y-1">
         <h2 className="display-font text-2xl font-bold persona-accent">🎁 Bundles</h2>
         <p className="opacity-70 text-sm">
-          Compose delivery packages for Robert. Three flavors — Content (live now),
-          Custom and Fan Site (coming next).
+          Compose delivery packages for Robert. Four flavors — Content, YouTube,
+          Custom and Fan Site.
         </p>
       </header>
 
@@ -184,6 +186,14 @@ export function BundlesListView({ active }: Props) {
           className="pretty-button secondary"
         >
           ＋ New Fan Site Bundle
+        </button>
+        <button
+          type="button"
+          onClick={() => startNew('youtube')}
+          disabled={creatingType !== null}
+          className="pretty-button secondary"
+        >
+          ▶️ New YouTube Bundle
         </button>
         <button
           type="button"
@@ -223,7 +233,7 @@ export function BundlesListView({ active }: Props) {
                 onClick={() => setRoute({ kind: 'draft', uid: b.uid })}
               >
                 <span className="text-2xl" aria-hidden>
-                  {b.bundleType === 'content' ? '🎁' : b.bundleType === 'custom' ? '✨' : '📅'}
+                  {b.bundleType === 'content' ? '🎁' : b.bundleType === 'youtube' ? '▶️' : b.bundleType === 'custom' ? '✨' : '📅'}
                 </span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline gap-2 flex-wrap">

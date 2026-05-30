@@ -8,7 +8,7 @@ import { invoke } from '@tauri-apps/api/core';
 // IPC boundary. The struct shapes mirror Rust's #[serde(rename_all =
 // "camelCase")] response types (asserted by lib.rs::camel_case_contract).
 
-export type BundleType = 'content' | 'custom' | 'fansite';
+export type BundleType = 'content' | 'custom' | 'fansite' | 'youtube';
 export type BundleState = 'draft' | 'published' | 'purged';
 export type FileKind = 'video' | 'image' | 'audio';
 export type AgingFlag = 'fresh' | 'aging' | 'overdue';
