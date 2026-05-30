@@ -1,0 +1,47 @@
+name: PurpleDiary
+options:
+  bundleIdPrefix: com.bronty13
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16"
+
+packages:
+  GRDB:
+    url: https://github.com/groue/GRDB.swift
+    from: "6.0.0"
+
+targets:
+  PurpleDiary:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/PurpleDiary
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bronty13.PurpleDiary
+        SWIFT_VERSION: "5.10"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        CODE_SIGN_STYLE: Automatic
+        INFOPLIST_FILE: Sources/PurpleDiary/App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/PurpleDiary/App/PurpleDiary.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    dependencies:
+      - package: GRDB
+    scheme:
+      testTargets:
+        - PurpleDiaryTests
+
+  PurpleDiaryTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/PurpleDiaryTests
+    dependencies:
+      - target: PurpleDiary
+      - package: GRDB
+    settings:
+      base:
+        SWIFT_VERSION: "5.10"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.bronty13.PurpleDiaryTests
