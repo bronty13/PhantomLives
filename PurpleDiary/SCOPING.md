@@ -134,8 +134,9 @@ The blank-page journal that's genuinely usable day one. No integrations yet.
   for the entry's date+place.
 - **Tracker tags + graphs**: define custom metrics, log per entry, plot trends
   in the dashboard (Swift Charts).
-- **Statistics/insights dashboard**: word counts, streaks, mood-over-time,
-  tracker graphs, entries-per-month.
+- ✅ **Statistics/insights dashboard** (Insights section): word counts, streaks,
+  mood-over-time, entries/words-per-month, tag usage (Swift Charts). Tracker
+  graphs land with tracker tags.
 - **Export**: Markdown / HTML / PDF (copy Timeliner's `ExportService`
   HTML→WKWebView→PDF pipeline) / JSON.
 

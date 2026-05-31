@@ -147,6 +147,7 @@ struct DetailRouterView: View {
             switch appState.selectedSection {
             case .timeline: TimelineView()
             case .calendar: CalendarView()
+            case .insights: InsightsView()
             case .search:   SearchView()
             case .people:   PeopleView()
             case .tags:     TagsView()

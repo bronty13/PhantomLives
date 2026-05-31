@@ -50,6 +50,7 @@ final class AppState: ObservableObject {
     enum Section: String, Hashable, CaseIterable {
         case timeline
         case calendar
+        case insights
         case search
         case people
         case tags
@@ -58,6 +59,7 @@ final class AppState: ObservableObject {
             switch self {
             case .timeline: return "Timeline"
             case .calendar: return "Calendar"
+            case .insights: return "Insights"
             case .search:   return "Search"
             case .people:   return "People"
             case .tags:     return "Tags"
@@ -68,6 +70,7 @@ final class AppState: ObservableObject {
             switch self {
             case .timeline: return "list.bullet.rectangle"
             case .calendar: return "calendar"
+            case .insights: return "chart.line.uptrend.xyaxis"
             case .search:   return "magnifyingglass"
             case .people:   return "person.2.fill"
             case .tags:     return "tag.fill"

@@ -32,6 +32,10 @@ entries.
   to its entry (or start a new one on that day). Use the arrows to change month.
 - **Search** — type to find entries by title, body, tag, or person. Results are
   ranked: a title match beats a body match. Click a result to open it.
+- **Insights** — a dashboard of your journaling: total entries and words, days
+  journaled, average mood, your current and longest writing streaks, a
+  mood-over-time line, entries and words per month, and which tags you use most.
+  It's all computed from your entries on your Mac — nothing is sent anywhere.
 
 ## People & tags
 
