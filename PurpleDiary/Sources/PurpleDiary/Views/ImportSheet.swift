@@ -77,9 +77,8 @@ struct ImportSheet: View {
         importing = true; resultText = nil; errorText = nil
         defer { importing = false }
         do {
-            let data = try Data(contentsOf: url)
-            let bundle = try ImportService.parse(data, format: format)
-            let added = try ImportService.apply(bundle)
+            let bundle = try ImportService.parse(contentsOf: url, format: format)
+            let added = try await ImportService.apply(bundle)
             appState.reloadAll()
             resultText = "Imported \(added) " + (added == 1 ? "entry" : "entries") +
                 " from \(bundle.sourceName)."

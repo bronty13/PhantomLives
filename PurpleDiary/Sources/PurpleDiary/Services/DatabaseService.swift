@@ -509,13 +509,21 @@ final class DatabaseService {
         try dbPool.write { db in try journal.update(db) }
     }
 
-    /// Delete a journal, first reassigning its entries to the default journal so
-    /// nothing is lost. The default journal itself cannot be deleted.
-    func deleteJournal(id: String) throws {
+    /// Delete a journal. When `deleteEntries` is false (default) its entries are
+    /// first reassigned to the default journal so nothing is lost; when true, the
+    /// entries (and their cascaded tags/trackers/attachments) are deleted along
+    /// with the journal — used to clean up a throwaway import. The default
+    /// journal itself cannot be deleted.
+    func deleteJournal(id: String, deleteEntries: Bool = false) throws {
         guard id != Journal.defaultId else { return }
         try dbPool.write { db in
-            try db.execute(sql: "UPDATE entries SET journal_id = ? WHERE journal_id = ?",
-                           arguments: [Journal.defaultId, id])
+            if deleteEntries {
+                // FK cascades from entries → entry_tags / tracker_values / attachments.
+                try db.execute(sql: "DELETE FROM entries WHERE journal_id = ?", arguments: [id])
+            } else {
+                try db.execute(sql: "UPDATE entries SET journal_id = ? WHERE journal_id = ?",
+                               arguments: [Journal.defaultId, id])
+            }
             _ = try Journal.deleteOne(db, key: id)
         }
     }

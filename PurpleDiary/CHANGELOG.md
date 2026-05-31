@@ -2,6 +2,26 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Fixes: Day One media import + delete-journal choice
+
+### Fixed
+- **Day One import now brings in photos & videos.** Day One stores media in
+  sibling folders (`photos/`, `videos/`, `audios/`, `pdfs/`) next to
+  `Journal.json`, referenced by each entry. Import now resolves those files
+  (by `<md5>.<type>`) and attaches them to the imported entries. Point the
+  importer at the **extracted** `Journal.json` so the folders sit alongside it.
+- **Deleting a journal no longer silently dumps its entries into "Journal".**
+  Deleting a non-empty journal now asks: **Move N entries to "Journal"** (the old
+  no-data-loss behavior) or **Delete journal and its N entries** (clean removal,
+  e.g. after a throwaway test import). Empty journals delete with one confirm.
+
+### Notes
+- `DatabaseService.deleteJournal(id:deleteEntries:)` (cascades to
+  tags/trackers/attachments); sidebar uses a confirmation dialog.
+  `ImportService` gains a file-URL parse path + media resolution; `apply` is now
+  async (imports media via `FileImportService`). **+2 tests** (Day One media
+  resolve→import; delete-with-entries) → 122 total.
+
 ## [Unreleased] — Phase 8: Importers
 
 ### Added

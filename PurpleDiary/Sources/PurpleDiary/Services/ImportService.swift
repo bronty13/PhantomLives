@@ -31,7 +31,11 @@ enum ImportService {
     }
 
     struct Bundle {
-        struct Entry { var date: String; var title: String; var body: String; var moodRating: Int; var tags: [String] }
+        struct Entry {
+            var date: String; var title: String; var body: String; var moodRating: Int; var tags: [String]
+            /// Resolved on-disk media files to import as attachments (Day One).
+            var mediaFiles: [URL] = []
+        }
         struct Journal { var name: String; var entries: [Entry] }
         var sourceName: String
         var journals: [Journal]
@@ -51,16 +55,29 @@ enum ImportService {
 
     // MARK: - Parse
 
+    /// Parse raw JSON (no media resolution). Used by tests and non-file callers.
     static func parse(_ data: Data, format: Format) throws -> Bundle {
+        try parse(data, format: format, baseURL: nil)
+    }
+
+    /// Parse a file, resolving Day One media from sibling folders next to the
+    /// chosen `Journal.json` (e.g. `photos/<md5>.<type>`).
+    static func parse(contentsOf url: URL, format: Format) throws -> Bundle {
+        let data = try Data(contentsOf: url)
+        return try parse(data, format: format, baseURL: url.deletingLastPathComponent())
+    }
+
+    private static func parse(_ data: Data, format: Format, baseURL: URL?) throws -> Bundle {
         switch format {
         case .purpleDiary: return try parsePurpleDiary(data)
-        case .dayOne:      return try parseDayOne(data)
+        case .dayOne:      return try parseDayOne(data, baseURL: baseURL)
         case .journey:     return try parseJourney(data)
         case .diarium:     return try parseDiarium(data)
         case .auto:
-            for parser in [parsePurpleDiary, parseDayOne, parseJourney, parseDiarium] {
-                if let b = try? parser(data), b.totalEntries > 0 { return b }
-            }
+            if let b = try? parsePurpleDiary(data), b.totalEntries > 0 { return b }
+            if let b = try? parseDayOne(data, baseURL: baseURL), b.totalEntries > 0 { return b }
+            if let b = try? parseJourney(data), b.totalEntries > 0 { return b }
+            if let b = try? parseDiarium(data), b.totalEntries > 0 { return b }
             throw ImportError.unrecognized
         }
     }
@@ -83,16 +100,48 @@ enum ImportService {
         return Bundle(sourceName: "PurpleDiary", journals: journals)
     }
 
-    // Day One: { "entries": [ { "creationDate", "text", "tags"?, "starred"? } ] }
+    // Day One: { "entries": [ { "creationDate", "text", "tags"?, "photos"?,
+    // "videos"?, "audios"?, "pdfAttachments"? } ] }. Media files live in sibling
+    // folders next to Journal.json, named "<md5>.<type>".
     private struct DayOneFile: Decodable {
-        struct Entry: Decodable { var creationDate: String?; var text: String?; var tags: [String]? }
+        struct Media: Decodable { var md5: String?; var type: String?; var identifier: String? }
+        struct Entry: Decodable {
+            var creationDate: String?; var text: String?; var tags: [String]?
+            var photos: [Media]?; var videos: [Media]?; var audios: [Media]?; var pdfAttachments: [Media]?
+        }
         var entries: [Entry]
     }
-    static func parseDayOne(_ data: Data) throws -> Bundle {
+
+    /// Day One media folder per kind. Files are `<md5>.<type>` (also try
+    /// `<identifier>.<type>` as a fallback).
+    private static func dayOneMediaURLs(_ entry: DayOneFile.Entry, baseURL: URL?) -> [URL] {
+        guard let baseURL else { return [] }
+        let fm = FileManager.default
+        let groups: [(String, [DayOneFile.Media]?)] = [
+            ("photos", entry.photos), ("videos", entry.videos),
+            ("audios", entry.audios), ("pdfs", entry.pdfAttachments),
+        ]
+        var urls: [URL] = []
+        for (folder, media) in groups {
+            for m in media ?? [] {
+                let ext = (m.type?.isEmpty == false) ? m.type! : "dat"
+                let candidates = [m.md5, m.identifier].compactMap { $0 }.map {
+                    baseURL.appendingPathComponent(folder).appendingPathComponent("\($0).\(ext)")
+                }
+                if let found = candidates.first(where: { fm.fileExists(atPath: $0.path) }) {
+                    urls.append(found)
+                }
+            }
+        }
+        return urls
+    }
+
+    static func parseDayOne(_ data: Data, baseURL: URL? = nil) throws -> Bundle {
         let file = try JSONDecoder().decode(DayOneFile.self, from: data)
         let entries = file.entries.map { e in
             Bundle.Entry(date: e.creationDate ?? "", title: "",
-                         body: e.text ?? "", moodRating: 0, tags: e.tags ?? [])
+                         body: e.text ?? "", moodRating: 0, tags: e.tags ?? [],
+                         mediaFiles: dayOneMediaURLs(e, baseURL: baseURL))
         }
         guard !entries.isEmpty else { throw ImportError.empty }
         return Bundle(sourceName: "Day One", journals: [.init(name: "Day One", entries: entries)])
@@ -150,7 +199,7 @@ enum ImportService {
     /// reloads its slices afterward.
     @MainActor
     @discardableResult
-    static func apply(_ bundle: Bundle) throws -> Int {
+    static func apply(_ bundle: Bundle) async throws -> Int {
         let db = DatabaseService.shared
         let now = DatabaseService.isoNow()
 
@@ -191,6 +240,12 @@ enum ImportService {
                 try db.insertEntry(entry)
                 let ids = try ie.tags.compactMap { try tagId($0) }
                 if !ids.isEmpty { try db.setTags(ids, forEntry: entry.id) }
+                // Import any resolved media files as attachments (Day One).
+                for fileURL in ie.mediaFiles {
+                    if let attachment = await FileImportService.makeAttachment(from: fileURL, entryId: entry.id) {
+                        try db.insertAttachment(attachment)
+                    }
+                }
                 added += 1
             }
         }

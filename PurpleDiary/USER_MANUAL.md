@@ -49,8 +49,9 @@ own entries.
   everything; click a single journal to focus just its entries (Timeline,
   Calendar, Search, and Insights all narrow to it).
 - Click the **＋** to create one. Right-click a journal to **rename**, **recolor**,
-  **hide**, or **delete** it. Deleting a journal moves its entries back into the
-  default "Journal" — nothing is lost.
+  **hide**, or **delete** it. When you delete a journal that has entries, you
+  choose whether to **move them to "Journal"** (nothing lost) or **delete them
+  along with the journal**.
 - New entries go into whichever journal you're currently viewing (or the default
   if you're on All Journals). Move an entry between journals with the **journal
   menu** in the editor header (next to the date).
@@ -193,9 +194,15 @@ entries to your journal (it never overwrites what's already there).
   trackers, and people links aren't stored in the JSON export, so those don't
   come back through import — keep the encrypted backups for a full restore.)
 - **Day One / Journey / Diarium** — export from that app, **unzip** it, and pick
-  the `.json` inside. Entries land in a new journal named for the source. These
+  the `.json` inside. Entries land in a new journal named for the source. For
+  **Day One**, leave the photos/videos folders next to `Journal.json` when you
+  pick it — their media is brought in and attached to the entries. These
   importers are built to each app's documented format; give the result a quick
   look and let me know if anything's off.
+
+To remove an import you were just trying out, right-click its journal →
+**Delete Journal…** and choose **Delete journal and its entries** (the other
+option just moves them into your default journal).
 
 The sheet auto-detects the format (or you can choose it) and tells you how many
 entries it added.

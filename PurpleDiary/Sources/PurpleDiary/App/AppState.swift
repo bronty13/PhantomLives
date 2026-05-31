@@ -343,13 +343,16 @@ final class AppState: ObservableObject {
         reloadJournals()
     }
 
-    func deleteJournal(id: String) throws {
+    func deleteJournal(id: String, deleteEntries: Bool = false) throws {
         guard id != Journal.defaultId else { return }
-        try DatabaseService.shared.deleteJournal(id: id)
+        try DatabaseService.shared.deleteJournal(id: id, deleteEntries: deleteEntries)
         if selectedJournalId == id { selectedJournalId = nil }
         unlockedHiddenJournalIds.remove(id)
+        if selectedEntryId != nil && entries.first(where: { $0.id == selectedEntryId }) == nil {
+            selectedEntryId = nil
+        }
         reloadJournals()
-        reloadEntries()   // entries were reassigned to the default journal
+        reloadEntries()   // entries were reassigned to (or removed with) the journal
     }
 
     /// Move a single entry into another journal.

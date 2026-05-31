@@ -10,6 +10,7 @@ struct SidebarView: View {
     @State private var newJournalName = ""
     @State private var renaming: Journal?
     @State private var renameText = ""
+    @State private var deleting: Journal?
 
     /// Preset colors offered when recoloring a journal.
     private let presetColors = ["#7C5CFF", "#3FA9F5", "#3FB950", "#E8A93B", "#F08C2E", "#D14B5C", "#888888"]
@@ -44,6 +45,32 @@ struct SidebarView: View {
             TextField("Name", text: $renameText)
             Button("Save") { commitRename() }
             Button("Cancel", role: .cancel) { renaming = nil }
+        }
+        .confirmationDialog(
+            deleting.map { "Delete “\($0.name)”?" } ?? "Delete journal?",
+            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+            titleVisibility: .visible,
+            presenting: deleting
+        ) { journal in
+            if deleteCount > 0 {
+                Button("Move \(deleteCount) \(deleteCount == 1 ? "entry" : "entries") to “Journal”") {
+                    try? appState.deleteJournal(id: journal.id, deleteEntries: false)
+                }
+                Button("Delete journal and \(deleteCount) \(deleteCount == 1 ? "entry" : "entries")", role: .destructive) {
+                    try? appState.deleteJournal(id: journal.id, deleteEntries: true)
+                }
+            } else {
+                Button("Delete", role: .destructive) {
+                    try? appState.deleteJournal(id: journal.id, deleteEntries: true)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { journal in
+            if deleteCount > 0 {
+                Text("“\(journal.name)” has \(deleteCount) \(deleteCount == 1 ? "entry" : "entries"). Move them to your default journal, or delete them along with the journal (this can't be undone).")
+            } else {
+                Text("This journal has no entries.")
+            }
         }
     }
 
@@ -205,13 +232,11 @@ struct SidebarView: View {
         }
         if !journal.isDefault {
             Divider()
-            Button(role: .destructive) {
-                try? appState.deleteJournal(id: journal.id)
-            } label: {
-                Text("Delete (entries move to “Journal”)")
-            }
+            Button(role: .destructive) { deleting = journal } label: { Text("Delete Journal…") }
         }
     }
+
+    private var deleteCount: Int { deleting.map { appState.entryCountByJournal[$0.id] ?? 0 } ?? 0 }
 
     private func createJournal() {
         let name = newJournalName
