@@ -2,6 +2,27 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Phase 2: Audio attachments
+
+### Added
+- **Add audio from Files.** The **"Add from Files…"** picker now accepts **audio**
+  (mp3, m4a, wav, aiff, …) alongside photos and videos. Audio is stored
+  byte-for-byte as an encrypted BLOB inside `diary.sqlite`, like video.
+- **Audio playback in the viewer.** Click an audio attachment to open a compact
+  player — a waveform card, play/pause (Space), a draggable scrubber, and
+  elapsed/remaining time (`AudioPlayerView`, AVKit-backed). Audio thumbnails in
+  the strip show a music-note glyph with a ▶ badge (audio has no visual frame).
+
+### Changed
+- The editor media section is now labelled **"Media"** (photos, video, **and
+  audio**). `Attachment`/`AttachmentThumb` gain `isAudio`; `FileImportService`
+  classifies audio and stores it verbatim (no thumbnail). **No new migration** —
+  audio is an `attachments` row with `kind = "audio"`.
+
+### Notes
+- Build-verified; **76/76 tests** (audio content-type classification + verbatim
+  audio-from-file import added). Audio playback verified by hand (AVKit).
+
 ## [Unreleased] — Phase 2: Browse-any-day photos, filesystem import, media viewer
 
 ### Added

@@ -41,10 +41,14 @@ final class FileImportTests: XCTestCase {
         let png = scratch.appendingPathComponent("pic.png")
         try solidPNG(width: 8, height: 8).write(to: png)
         let mov = try write("clip.mov", [0x00, 0x00, 0x00, 0x14])
+        let m4a = try write("voice.m4a", [0x00, 0x00, 0x00, 0x18])
+        let mp3 = try write("song.mp3", [0x49, 0x44, 0x33])
         let txt = try write("notes.txt", Array("hello".utf8))
 
         XCTAssertEqual(FileImportService.classify(png), .image)
         XCTAssertEqual(FileImportService.classify(mov), .video)
+        XCTAssertEqual(FileImportService.classify(m4a), .audio)
+        XCTAssertEqual(FileImportService.classify(mp3), .audio)
         XCTAssertEqual(FileImportService.classify(txt), .unsupported)
     }
 
@@ -63,6 +67,25 @@ final class FileImportTests: XCTestCase {
         XCTAssertEqual(Array(a.data.prefix(2)), [0xFF, 0xD8])
         XCTAssertEqual(max(a.width, a.height), Int(ImageProcessing.maxImageEdge))
         XCTAssertNotNil(a.thumbnailData)
+    }
+
+    func testMakeAudioAttachmentFromFile() async throws {
+        // Audio bytes are stored verbatim — no decode required, so arbitrary
+        // bytes with an audio extension exercise the full path.
+        let bytes: [UInt8] = [0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70]
+        let m4a = try write("memo.m4a", bytes)
+
+        let made = await FileImportService.makeAttachment(from: m4a, entryId: "E1")
+        let a = try XCTUnwrap(made)
+        XCTAssertEqual(a.kind, "audio")
+        XCTAssertTrue(a.isAudio)
+        XCTAssertTrue(a.mimeType.hasPrefix("audio/"))
+        XCTAssertEqual(a.filename, "memo.m4a")
+        XCTAssertEqual(a.data, Data(bytes), "audio is stored byte-for-byte")
+        XCTAssertNil(a.thumbnailData, "audio has no visual thumbnail")
+        XCTAssertEqual(a.width, 0)
+        XCTAssertEqual(a.height, 0)
+        XCTAssertNil(a.sourceAssetId)
     }
 
     func testUnsupportedFileYieldsNil() async throws {

@@ -38,14 +38,14 @@ entries.
   a line chart for each tracker you keep (see below). It's all computed from your
   entries on your Mac — nothing is sent anywhere.
 
-## Photos & Video
+## Photos, Video & Audio
 
 PurpleDiary can pull in the photos you took on an entry's date so your day
-arrives pre-assembled — and you can add photos or videos from anywhere on your
-Mac too.
+arrives pre-assembled — and you can add photos, videos, or audio from anywhere
+on your Mac too.
 
-**From Apple Photos** — in the editor, find the **Photos & Video** row and click
-**Add from Photos**.
+**From Apple Photos** — in the editor, find the **Media** row and click **Add
+from Photos**.
 
 - The first time, macOS asks for permission to your photo library — choose
   **Allow Access to All Photos** (or **Select Photos…** to share only some).
@@ -55,21 +55,24 @@ Mac too.
   recent** to browse your most recent photos regardless of date.
 - Click to select the ones you want, then **Add**.
 
-**From Files** — click **Add from Files…** to choose **photos or videos** from
-anywhere on your Mac. Videos are kept exactly as-is (not re-compressed); photos
-are scaled down to a sensible size.
+**From Files** — click **Add from Files…** to choose **photos, videos, or audio**
+(mp3, m4a, wav, …) from anywhere on your Mac. Videos and audio are kept exactly
+as-is (not re-compressed); photos are scaled down to a sensible size. (Apple
+Photos only holds photos, so audio comes in through Files.)
 
-**Viewing** — attached media shows up as thumbnails on the entry. **Click a
-thumbnail** to open it full size — photos display fit-to-window, videos play in
-a built-in player (video thumbnails carry a ▶ badge). The viewer has a **Save a
-Copy…** button to write the original back out to disk. Hover a thumbnail and
-click the ✕ to remove it from the entry.
+**Viewing & playback** — attached media shows up as thumbnails on the entry
+(audio shows a music-note glyph). **Click a thumbnail** to open it: photos
+display fit-to-window, videos play in a built-in player, and audio opens a
+compact player with play/pause (or the Space bar), a scrubber, and the running
+time. Playable items carry a ▶ badge. The viewer has a **Save a Copy…** button
+to write the original back out to disk. Hover a thumbnail and click the ✕ to
+remove it from the entry.
 
 Everything is copied **into your encrypted journal** (stored right inside the
 database, so it's protected by the same encryption and included in backups) —
-nothing is ever uploaded. One thing to know: because videos are stored
-uncompressed inside the database, a large video makes both your database and
-each launch backup bigger. Short clips are best.
+nothing is ever uploaded. One thing to know: because videos and audio are stored
+uncompressed inside the database, a large file makes both your database and each
+launch backup bigger. Short clips are best.
 
 ## Trackers
 
@@ -106,9 +109,9 @@ Want a copy of your journal outside the app? Choose **File → Export Journal…
   tracker (with the values you logged), plus an attachment count per entry. This
   is the one to keep if you ever want to re-import your journal later. (Markdown
   and HTML exports show each entry's logged tracker values on a 📊 line and a 🖼️
-  attachment count too.) Exports note how many photos and videos an entry has,
-  but the media files themselves stay safely inside your encrypted journal and
-  its backups.
+  attachment count too.) Exports note how many attachments (photos, videos, and
+  audio) an entry has, but the media files themselves stay safely inside your
+  encrypted journal and its backups.
 
 Files are saved to **`~/Downloads/PurpleDiary/`** by default (you can change the
 folder in Settings → General → Export), named

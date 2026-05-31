@@ -43,6 +43,7 @@ struct Attachment: Codable, FetchableRecord, MutablePersistableRecord, Identifia
 
     var isImage: Bool { mimeType.hasPrefix("image/") }
     var isVideo: Bool { kind == "video" || mimeType.hasPrefix("video/") }
+    var isAudio: Bool { kind == "audio" || mimeType.hasPrefix("audio/") }
 }
 
 /// Lightweight projection for the editor's photo strip: identity + thumbnail +
@@ -71,4 +72,5 @@ struct AttachmentThumb: Identifiable, Hashable, FetchableRecord {
     }
 
     var isVideo: Bool { kind == "video" || mimeType.hasPrefix("video/") }
+    var isAudio: Bool { kind == "audio" || mimeType.hasPrefix("audio/") }
 }
