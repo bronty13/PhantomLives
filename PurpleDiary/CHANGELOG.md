@@ -2,6 +2,33 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Phase 7: PDF & file attachments
+
+### Added
+- **PDF attachments.** "Add from Files…" now accepts **PDFs** — stored as
+  encrypted BLOBs with a first-page thumbnail, and viewed in-app with a real
+  PDFKit reader (scroll, zoom). The caption shows the page count.
+- **Any-file attachments.** You can now attach **any file** (a `.pages` doc, a
+  `.zip`, a ticket — anything). Non-previewable files show a doc icon with the
+  name and size; **Save a Copy…** writes the original back out to open elsewhere.
+
+### Changed
+- The Media row's "Add from Files…" picker now allows images, video, audio,
+  PDFs, and any other file. The strip badges each kind with the right glyph.
+
+### Deferred
+- **Drawing/sketch entries** (originally roadmapped for this phase) are **not**
+  shipped: PencilKit is iPad-centric and a poor fit for a native (non-Catalyst)
+  macOS app, and mouse-drawing is weak. Can revisit with a custom canvas if
+  wanted; for now you can draw elsewhere and attach the image/PDF.
+
+### Notes
+- New `PDFProcessing` (PDFKit first-page thumbnail + page count) and
+  `PDFKitView`. `FileImportService` classifies `.pdf`/`.file`; `Attachment` gains
+  `isPDF`/`isFile`. No migration — PDFs/files reuse the `attachments` table.
+  **+2 tests** (classify pdf/file, generic-file verbatim, PDF thumbnail/pagecount,
+  unreadable→nil). 114 total.
+
 ## [Unreleased] — Phase 6: Calendar heatmap + daily reminder
 
 ### Added

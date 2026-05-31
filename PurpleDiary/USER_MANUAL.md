@@ -116,24 +116,26 @@ from Photos**.
   recent** to browse your most recent photos regardless of date.
 - Click to select the ones you want, then **Add**.
 
-**From Files** — click **Add from Files…** to choose **photos, videos, or audio**
-(mp3, m4a, wav, …) from anywhere on your Mac. Videos and audio are kept exactly
-as-is (not re-compressed); photos are scaled down to a sensible size. (Apple
-Photos only holds photos, so audio comes in through Files.)
+**From Files** — click **Add from Files…** to choose **photos, videos, audio,
+PDFs, or any other file** from anywhere on your Mac. Videos, audio, PDFs, and
+other files are kept exactly as-is; photos are scaled down to a sensible size.
+(Apple Photos only holds photos, so audio, PDFs, and documents come in through
+Files.)
 
 **Viewing & playback** — attached media shows up as thumbnails on the entry
-(audio shows a music-note glyph). **Click a thumbnail** to open it: photos
-display fit-to-window, videos play in a built-in player, and audio opens a
-compact player with play/pause (or the Space bar), a scrubber, and the running
-time. Playable items carry a ▶ badge. The viewer has a **Save a Copy…** button
-to write the original back out to disk. Hover a thumbnail and click the ✕ to
-remove it from the entry.
+(audio shows a music note, PDFs a first-page preview, other files a doc icon).
+**Click a thumbnail** to open it: photos display fit-to-window, videos play in a
+built-in player, audio opens a compact player (play/pause or Space, scrubber,
+running time), PDFs open in a scroll/zoom reader, and any other file shows its
+name and size. Playable items carry a ▶ badge. The viewer has a **Save a Copy…**
+button to write the original back out to disk. Hover a thumbnail and click the ✕
+to remove it from the entry.
 
 Everything is copied **into your encrypted journal** (stored right inside the
 database, so it's protected by the same encryption and included in backups) —
-nothing is ever uploaded. One thing to know: because videos and audio are stored
-uncompressed inside the database, a large file makes both your database and each
-launch backup bigger. Short clips are best.
+nothing is ever uploaded. One thing to know: because videos, audio, PDFs, and
+files are stored uncompressed inside the database, a large one makes both your
+database and each launch backup bigger. Keep big attachments occasional.
 
 ## Trackers
 

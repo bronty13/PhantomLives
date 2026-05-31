@@ -175,7 +175,7 @@ fitness/social integrations. Each phase is its own build/test/PR.
 | **4 — Reflection** | "On This Day" flashback (local date query) + a **bundled static** prompt library rotating daily. | ✅ **done** |
 | **5 — Templates** | Reusable entry scaffolds with auto-filled date. | ✅ **done** |
 | **6 — Calendar heatmap + reminders** | Word-count intensity on the calendar; local `UNUserNotificationCenter` daily reminder. | ✅ **done** |
-| **7 — Attachments+** | PDF / document attachments; PencilKit drawing entries. Extends the encrypted-BLOB attachment model. | planned |
+| **7 — Attachments+** | PDF / document / any-file attachments (PDFKit reader + thumbnail). Extends the encrypted-BLOB model. **Drawing deferred** — PencilKit isn't a native-macOS fit. | ✅ **done** (drawing deferred) |
 | **8 — Importers** | Day One / Diarium / Journey JSON import (file-based, offline). | planned |
 | **9 — Vault (Option B)** | Per-journal **cryptographic** separation: a hidden journal sealed under its own passphrase-wrapped key (AES-GCM), opaque even with the app open. Borrows PurpleLife's vault pattern. The last pole. | planned |
 

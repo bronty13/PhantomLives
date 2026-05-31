@@ -1,5 +1,6 @@
 import XCTest
 import AppKit
+import PDFKit
 @testable import PurpleDiary
 
 /// Covers the filesystem import path: content-type classification and building
@@ -43,13 +44,15 @@ final class FileImportTests: XCTestCase {
         let mov = try write("clip.mov", [0x00, 0x00, 0x00, 0x14])
         let m4a = try write("voice.m4a", [0x00, 0x00, 0x00, 0x18])
         let mp3 = try write("song.mp3", [0x49, 0x44, 0x33])
-        let txt = try write("notes.txt", Array("hello".utf8))
+        let pdf = try write("doc.pdf", Array("%PDF-1.4".utf8))
+        let bin = try write("data.bin", [0x00, 0x01, 0x02])
 
         XCTAssertEqual(FileImportService.classify(png), .image)
         XCTAssertEqual(FileImportService.classify(mov), .video)
         XCTAssertEqual(FileImportService.classify(m4a), .audio)
         XCTAssertEqual(FileImportService.classify(mp3), .audio)
-        XCTAssertEqual(FileImportService.classify(txt), .unsupported)
+        XCTAssertEqual(FileImportService.classify(pdf), .pdf)
+        XCTAssertEqual(FileImportService.classify(bin), .file)   // anything else → generic file
     }
 
     func testMakeImageAttachmentFromFile() async throws {
@@ -88,9 +91,37 @@ final class FileImportTests: XCTestCase {
         XCTAssertNil(a.sourceAssetId)
     }
 
-    func testUnsupportedFileYieldsNil() async throws {
-        let txt = try write("doc.txt", Array("not media".utf8))
-        let result = await FileImportService.makeAttachment(from: txt, entryId: "E1")
+    func testMakeGenericFileAttachmentStoresBytesVerbatim() async throws {
+        let bytes: [UInt8] = [0xCA, 0xFE, 0xBA, 0xBE, 0x00, 0x11]
+        let bin = try write("ticket.bin", bytes)
+        let made = await FileImportService.makeAttachment(from: bin, entryId: "E1")
+        let a = try XCTUnwrap(made)
+        XCTAssertEqual(a.kind, "file")
+        XCTAssertTrue(a.isFile)
+        XCTAssertEqual(a.filename, "ticket.bin")
+        XCTAssertEqual(a.data, Data(bytes), "generic files are stored byte-for-byte")
+        XCTAssertNil(a.thumbnailData)
+    }
+
+    func testMakePDFAttachmentWithThumbnailAndPageCount() async throws {
+        // Build a one-page PDF from an image so PDFKit can render a thumbnail.
+        let page = PDFPage(image: NSImage(data: solidPNG(width: 200, height: 260))!)!
+        let doc = PDFDocument(); doc.insert(page, at: 0)
+        let pdfURL = scratch.appendingPathComponent("receipt.pdf")
+        try XCTUnwrap(doc.dataRepresentation()).write(to: pdfURL)
+
+        let made = await FileImportService.makeAttachment(from: pdfURL, entryId: "E1")
+        let a = try XCTUnwrap(made)
+        XCTAssertEqual(a.kind, "pdf")
+        XCTAssertTrue(a.isPDF)
+        XCTAssertEqual(a.mimeType, "application/pdf")
+        XCTAssertEqual(a.height, 1, "page count stored in height (display-only)")
+        XCTAssertNotNil(a.thumbnailData, "PDF first-page thumbnail")
+    }
+
+    func testUnreadablePathYieldsNil() async throws {
+        let missing = scratch.appendingPathComponent("does-not-exist.bin")
+        let result = await FileImportService.makeAttachment(from: missing, entryId: "E1")
         XCTAssertNil(result)
     }
 }
