@@ -12,8 +12,9 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
 > import + in-app viewer/player). Phase 3 shipped: **journals** (multiple +
 > hidden). Phase 4 shipped: **reflection** (On This Day + writing prompts).
 > Phase 5 shipped: **templates**. Phase 6 shipped: **calendar heatmap + daily
-> reminder**. Phase 7 shipped: **PDF & file attachments**. Phases 8–9 are
-> roadmapped in SCOPING.md (importers and a per-journal encryption vault).
+> reminder**. Phase 7 shipped: **PDF & file attachments**. Phase 8 shipped:
+> **importers** (PurpleDiary / Day One / Journey / Diarium JSON). Phase 9 (a
+> per-journal encryption **vault**) is roadmapped in SCOPING.md.
 > Network-based auto-context (e.g. WeatherKit) is **out of scope** — PurpleDiary
 > stays fully offline. See SCOPING.md / HANDOFF.md.
 
@@ -44,6 +45,9 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
   *(Phase 5)*
 - **Daily reminder** — an opt-in local notification at a time you pick (Settings →
   Reminders). On-device, no network. *(Phase 6)*
+- **Import** — bring entries in from a JSON export (PurpleDiary's own, Day One,
+  Journey, or Diarium) via File → Import Journal… (⇧⌘I). Additive; nothing
+  overwritten. *(Phase 8)*
 - **Photos, video & audio** — "Add from Photos" pulls in the photos you took on
   the entry's date (PhotoKit), with a date picker to browse any other day and a
   "Show all recent" toggle for the whole library. "Add from Files…" imports

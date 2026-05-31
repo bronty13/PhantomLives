@@ -30,7 +30,9 @@ shipped: **calendar heatmap** (days shaded by word count) + an opt-in **local
 daily reminder** (`UNUserNotificationCenter`). Phase 7 shipped: **PDF & file
 attachments** (PDFKit reader + first-page thumbnail; any file as a generic
 attachment). Drawing/sketch was deferred — PencilKit isn't a native-macOS fit.
-Phases 8–9 roadmapped in `SCOPING.md` (importers, per-journal encryption vault).
+Phase 8 shipped: **importers** (PurpleDiary round-trip + Day One / Journey /
+Diarium JSON → journals, via File → Import Journal…). Phase 9 (per-journal
+encryption **vault**) roadmapped in `SCOPING.md`.
 Deferred: Calendar import, Map view, sync. Weather/WeatherKit was built and
 **reverted** — it required network egress (lat/long → Apple), which conflicts
 with the no-network guarantee.
@@ -187,7 +189,7 @@ feature, keep it offline.
   ever added.) See the repo memory `reference-macos-photokit-tcc-entitlement`.
 - **Migrations immutable** (§4). **SQLCipher link order** (§5).
 
-## 8. Tests (`Tests/PurpleDiaryTests/`, 114 total)
+## 8. Tests (`Tests/PurpleDiaryTests/`, 120 total)
 
 Migration round-trip + cascades + frozen-set guard; model Codable + word count +
 `TrackerKind` formatting; `SearchService` ranking; `BackupService`
@@ -216,14 +218,14 @@ Sources/PurpleDiary/
 ├── Models/   Entry, Mood, Tag, Person, TrackerTag, Journal, Template, Attachment, AppSettings
 ├── Services/ DatabaseService(+SQLCipher), BackupService, SearchService, SampleDataService,
 │             ExportService, ImageProcessing, VideoProcessing, PhotosImportService,
-│             FileImportService, TextImportService, PDFProcessing, PromptService, OnThisDayService,
-│             TemplateService, CalendarHeatmap, NotificationService, StatsService, KeyStore,
+│             FileImportService, TextImportService, ImportService, PDFProcessing, PromptService,
+│             OnThisDayService, TemplateService, CalendarHeatmap, NotificationService, StatsService, KeyStore,
 │             KeychainStore, Crypto, RecoveryKey, BIP39Wordlist, BootState, BiometricAuthService,
 │             WindowStateGuard
 └── Views/    ContentView (HStack sidebar) + DetailRouterView, SidebarView, TimelineView,
               EntryEditorView, CalendarView, OnThisDayView, InsightsView, SearchView, PeopleView,
               TagsView, TrackersView, PhotoImportView, AttachmentViewerSheet, ExportSheet,
-              TemplatesSheet, AppLockScreen, RecoveryScreen, RecoveryKeySaveSheet, SecurityDocView, Settings/, Shared/
+              TemplatesSheet, ImportSheet, AppLockScreen, RecoveryScreen, RecoveryKeySaveSheet, SecurityDocView, Settings/, Shared/
 Vendor/       GRDB.swift + SQLCipher 4.6.1 (local SwiftPM packages)
 Resources/Prompts.json   Bundled writing-prompt library (Phase 4)
 Docs/SECURITY.md   Security & Privacy whitepaper (also rendered in-app via Help)

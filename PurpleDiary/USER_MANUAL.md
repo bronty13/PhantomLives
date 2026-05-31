@@ -182,6 +182,24 @@ folder in Settings → General → Export), named
 Finder** to jump straight to the file. Everything stays on your Mac — exporting
 just writes a file; nothing is uploaded anywhere.
 
+## Importing from another app
+
+Switching from another journal app — or moving entries between Macs? Choose
+**File → Import Journal…** (⇧⌘I), pick a `.json` file, and PurpleDiary adds its
+entries to your journal (it never overwrites what's already there).
+
+- **PurpleDiary** — re-import one of your own JSON exports. Your entries come
+  back into their original journals, with mood and tags. (Photos/videos,
+  trackers, and people links aren't stored in the JSON export, so those don't
+  come back through import — keep the encrypted backups for a full restore.)
+- **Day One / Journey / Diarium** — export from that app, **unzip** it, and pick
+  the `.json` inside. Entries land in a new journal named for the source. These
+  importers are built to each app's documented format; give the result a quick
+  look and let me know if anything's off.
+
+The sheet auto-detects the format (or you can choose it) and tells you how many
+entries it added.
+
 ## People & tags
 
 - **People** — keep a list of the recurring people in your life; link them to

@@ -2,6 +2,28 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Phase 8: Importers
+
+### Added
+- **Import journals** from JSON (File → **Import Journal…**, ⇧⌘I). Four sources:
+  - **PurpleDiary** — round-trips our own schema-v4 export: entries return to
+    their original journals, with mood and tags. (Trackers, people links, and
+    attachments aren't in the JSON export, so they don't round-trip.)
+  - **Day One**, **Journey**, **Diarium** — parsed from each app's documented
+    JSON entry shape into a journal named for the source. Extract the export's
+    `.zip` first and pick the `.json`.
+- The import sheet auto-detects the format (or pick it), and reports how many
+  entries were added. Import is **additive** — fresh ids, nothing overwritten;
+  tags are de-duplicated by name.
+
+### Notes
+- New `ImportService` (pure per-format parsers → a normalized bundle; `apply`
+  inserts via `DatabaseService`) and `ImportSheet`. No migration. **+6 tests**
+  (PurpleDiary export→parse round-trip preserving journals/mood/tags; additive
+  apply; Day One / Journey / Diarium synthetic-sample parsers; garbage→throws).
+  120 total. Third-party parsers are verified against synthetic samples —
+  confirm with a real export.
+
 ## [Unreleased] — Phase 7: PDF & file attachments
 
 ### Added
