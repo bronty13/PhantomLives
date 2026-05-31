@@ -1,14 +1,16 @@
 # PurpleDiary
 
 A native macOS SwiftUI journaling app inspired by [Diarium](https://diariumapp.com).
-Local-first, private, no account — your journal lives in a single SQLite
-database on your Mac. See [SCOPING.md](SCOPING.md) for the full design brief and
-phased roadmap.
+Local-first, private, no account, **no network** — your journal lives in a single
+SQLite database on your Mac. See [SCOPING.md](SCOPING.md) for the design brief and
+roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
+[Docs/SECURITY.md](Docs/SECURITY.md) for the security model.
 
 > **Status:** Phase 1 complete (core journal + privacy core: encryption-at-rest,
-> app-lock, 24-word recovery key). Phase 2 in progress: **Insights**, **export**,
-> **trackers**, and **Photos import** are in. Calendar/WeatherKit, map view, and
-> sync are scoped for later — see SCOPING.md.
+> app-lock, 24-word recovery key). Phase 2 shipped: **Insights**, **export**,
+> **trackers**, and **Photos import**. Map view and sync are scoped for later.
+> Network-based auto-context (e.g. WeatherKit) is **out of scope** — PurpleDiary
+> stays fully offline. See SCOPING.md / HANDOFF.md.
 
 ## At a glance (Phase 1)
 
