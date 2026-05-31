@@ -50,7 +50,7 @@ struct PeopleView: View {
     private func add() {
         let name = newName.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
-        try? appState.createPerson(name: name)
+        _ = try? appState.createPerson(name: name)
         newName = ""
     }
 }

@@ -90,7 +90,7 @@ struct CalendarView: View {
         if let first = existing.sorted(by: { $0.date > $1.date }).first {
             appState.selectedEntryId = first.id
         } else {
-            try? appState.createEntry(date: day)
+            _ = try? appState.createEntry(date: day)
         }
         appState.selectedSection = .timeline
     }

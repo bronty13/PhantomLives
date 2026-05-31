@@ -30,10 +30,29 @@ All notable changes to PurpleDiary are documented here.
 - Test suite: migrations + cascade, model Codable + word count, search
   ranking, backup debounce/retention/verify.
 
+### Fixed
+- **Empty first-launch backup.** `AppState.init` ran the launch backup before
+  `DatabaseService.shared` was first touched, so on a brand-new install the
+  support directory was still empty when the backup zipped it — producing a
+  0-file archive (`zip: Nothing to do!`) on exactly the launch where a fresh
+  migration runs. Now the database file and `settings.json` are materialized
+  before `BackupService.runOnLaunchIfDue`, so the first backup contains a real
+  `diary.sqlite`. Verified by simulating a fresh install: the first launch's
+  archive now holds 4 files (DB + WAL/shm + settings) instead of 0.
+- Silenced two "result of `try?` is unused" warnings on the `@discardableResult`
+  `createEntry`/`createPerson` calls in `CalendarView`/`PeopleView` (`_ = try?`).
+
 ### Notes
-- Scaffold was authored in a Linux CI container; an on-Mac
-  `./build-app.sh` + `./run-tests.sh` pass is still required before this is
-  considered build-verified.
+- **Build-verified on macOS (2026-05-30).** `./run-tests.sh` → **16/16
+  passing** (BackupService 5, Migration 3, Model 4, Search 4). `./build-app.sh`
+  builds Release clean (no warnings), installs to `/Applications/PurpleDiary.app`,
+  and launches. Functionally exercised end-to-end: `v1_initial` migration
+  applies, 6 default tags + 4 sample entries seed on first launch, backup-on-
+  launch and Run Backup Now both write valid zips to `~/Downloads/PurpleDiary
+  backup/` (verified the archive's inner `diary.sqlite` round-trips its rows).
+- App-lock is UI-only this phase; the lock screen, passphrase/Keychain wiring,
+  and SQLCipher encryption-at-rest are the next Phase-1 milestone (see
+  SCOPING.md).
 - App-lock is UI-only this phase; the lock screen, passphrase/Keychain wiring,
   and SQLCipher encryption-at-rest are the next Phase-1 milestone (see
   SCOPING.md).
