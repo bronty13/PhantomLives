@@ -37,5 +37,22 @@ struct AppMenuCommands: Commands {
                 NotificationCenter.default.post(name: .windowResetRequested, object: nil)
             }
         }
+
+        CommandGroup(replacing: .help) {
+            SecurityDocMenuItem()
+        }
+    }
+}
+
+/// Help → Security & Privacy whitepaper. Opens the in-app `SecurityDocView`
+/// window (id `security-doc`, declared in `PurpleDiaryApp`). Kept as its own
+/// view so it can reach `\.openWindow` from inside the App-level Commands block.
+private struct SecurityDocMenuItem: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Security & Privacy whitepaper…") {
+            openWindow(id: "security-doc")
+        }
     }
 }

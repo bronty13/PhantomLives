@@ -35,6 +35,11 @@ phased roadmap.
   lock-on-launch, lock-on-background, ⌘L. Configured in Settings → Security.
 - **24-word recovery key** — BIP39 phrase shown on first launch; unlocks the DB
   if the Keychain entry is ever lost. No cloud involved.
+- **Security & Privacy whitepaper** — a full trust document
+  ([`Docs/SECURITY.md`](Docs/SECURITY.md)) readable in-app via **Help → Security
+  & Privacy whitepaper…**. Covers the encryption-at-rest design, the recovery
+  key, the local-only/no-network model, and a "verify the claims" section, and
+  is honest about limitations (`settings.json` is plaintext preferences only).
 
 ## Build
 

@@ -119,6 +119,9 @@ The blank-page journal that's genuinely usable day one. No integrations yet.
   lock-on-launch and lock-on-background. **Encryption-at-rest** via SQLCipher
   (whole-DB, vendored GRDB+SQLCipher). Plus a 24-word BIP39 recovery key.
 - ✅ **Auto-backup on launch** + full Backup settings UI (standard).
+- ✅ **Security & Privacy whitepaper** (`Docs/SECURITY.md`), readable in-app via
+  Help → Security & Privacy whitepaper… — mirrors PurpleLife's, rewritten for
+  PurpleDiary's local-only/no-cloud model and the 24-word recovery key.
 - Themes + per-slot fonts (copy Timeliner's theme/font system).
 - Sample entries seeded on first launch (so it's not empty).
 - Test suite: migration round-trip + immutability guard, model Codable,

@@ -93,6 +93,12 @@ If the Keychain key is ever lost, PurpleDiary shows a recovery screen where you
 enter your 24-word recovery key — or reset and start fresh (your old, unreadable
 data is quarantined on disk rather than deleted, just in case).
 
+**Want the full story?** Open **Help → Security & Privacy whitepaper…** to read
+the complete write-up of how your journal is protected — what's encrypted, what
+isn't, how the recovery key works, and how to verify the claims yourself. It's
+the same document as `Docs/SECURITY.md` in the project, rendered right inside the
+app.
+
 ## Settings
 
 - **General** — daily word goal, week-start day; restore the original sample

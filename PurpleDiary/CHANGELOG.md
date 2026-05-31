@@ -2,6 +2,35 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Security & Privacy whitepaper + in-app viewer
+
+### Added
+- **`Docs/SECURITY.md` — a full Security & Privacy whitepaper.** A read-it-end-
+  to-end trust document covering what PurpleDiary protects and how: the
+  SQLCipher-encrypted database, the Keychain-held DEK, the optional passphrase
+  wrap, the 24-word BIP39 recovery key, the plaintext→SQLCipher upgrade
+  migration, the cryptographic-primitives table, and a "verify the claims"
+  section with commands anyone can run. Tailored to PurpleDiary's **local-only,
+  no-network, no-cloud** model (the whole "in transit / in iCloud" surface that
+  PurpleLife's whitepaper covers simply doesn't exist here), and honest about
+  limitations — notably that `settings.json` is plaintext (preferences only, no
+  journal content) and that the recovery key is a bearer credential.
+- **In-app whitepaper viewer.** **Help → Security & Privacy whitepaper…** opens
+  a dedicated window (`SecurityDocView`) that renders the bundled `SECURITY.md`
+  with a small hand-rolled Markdown block parser (headings, lists, numbered
+  items, fenced code, dividers, inline bold/italic/code/links via
+  `AttributedString`). The doc is copied into `Contents/Resources` by
+  `project.yml` and loaded via `Bundle.main`, so the in-app text always matches
+  the repo's canonical authoring copy.
+
+### Notes
+- Build-verified on macOS: clean Release build (Developer-ID-signed),
+  **54/54 tests** (47 prior + 7 new `SecurityDocView` parser tests covering all
+  heading levels, bullet/dash and numbered lists, dividers, verbatim fenced code
+  blocks, paragraph-join, and a bundled-`SECURITY.md` parse check). The Help →
+  Security & Privacy menu item was confirmed present and reachable; the rendered
+  window was not screenshotted this round because the Mac was at the lock screen.
+
 ## [Unreleased] — Phase 2: Insights dashboard
 
 ### Added
