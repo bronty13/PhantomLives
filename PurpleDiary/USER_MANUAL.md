@@ -37,6 +37,27 @@ entries.
   mood-over-time line, entries and words per month, and which tags you use most.
   It's all computed from your entries on your Mac — nothing is sent anywhere.
 
+## Exporting your journal
+
+Want a copy of your journal outside the app? Choose **File → Export Journal…**
+(⇧⌘E), or open **Settings → General → Export**, and pick a format:
+
+- **Markdown** — one plain-text document, entries grouped by month, with a
+  little metadata line (date, mood, tags, people) above each entry's text.
+  Opens in any editor or a note vault like Obsidian or Bear.
+- **HTML** — a single self-contained web page (nicely styled, no extra files)
+  you can open in any browser.
+- **PDF** — the same layout as the HTML, paginated — handy for printing or
+  keeping a fixed archive.
+- **JSON** — a complete, structured copy of every entry, tag, and person. This
+  is the one to keep if you ever want to re-import your journal later.
+
+Files are saved to **`~/Downloads/PurpleDiary/`** by default (you can change the
+folder in Settings → General → Export), named
+`PurpleDiary-Journal-<date-time>.<format>`. After an export, tap **Reveal in
+Finder** to jump straight to the file. Everything stays on your Mac — exporting
+just writes a file; nothing is uploaded anywhere.
+
 ## People & tags
 
 - **People** — keep a list of the recurring people in your life; link them to
@@ -103,7 +124,8 @@ app.
 
 - **General** — daily word goal, week-start day; restore the original sample
   entries, **add 100 sample entries** to try things at scale, or **remove all
-  sample entries** the app generated; app version + database location.
+  sample entries** the app generated; the **Export** controls (format + folder,
+  described above); app version + database location.
 - **Appearance** — light/dark/system and the accent color.
 - **Security** — encryption status, app-lock toggles, Touch ID options,
   passphrase, and recovery-key management (above).

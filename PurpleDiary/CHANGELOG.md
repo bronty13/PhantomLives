@@ -2,6 +2,43 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Phase 2: Export (Markdown / HTML / PDF / JSON)
+
+### Added
+- **Whole-journal export** in four formats, via **File → Export Journal… (⇧⌘E)**
+  and **Settings → General → Export**:
+  - **Markdown** — one document, entries grouped by year → month, each with a
+    metadata line (date · mood stars · #tags · people · place) and its body
+    verbatim. Opens in any editor or note vault.
+  - **HTML** — a self-contained, zero-dependency styled page (purple theme,
+    inline CSS), entries as cards with mood stars and tag/person chips.
+  - **PDF** — the same HTML paginated through an off-screen `WKWebView`
+    (US-letter portrait), good for printing or archiving.
+  - **JSON** — a versioned (`schemaVersion: 1`), round-trippable dump of every
+    entry (with resolved tag names + linked person ids), plus the people roster.
+    Lays the groundwork for the Phase-3 importer.
+- `ExportService` — `@MainActor enum` with pure `renderMarkdown` / `renderHTML` /
+  `encodeJSON` render functions and an `export(format:…:exportDir:)` dispatcher.
+  Output lands in the resolved export directory (default
+  `~/Downloads/PurpleDiary/`, user-overridable in Settings → General), as a
+  stamped `PurpleDiary-Journal-YYYY-MM-DD-HHmmss.<ext>` file. All user content
+  is HTML-escaped before embedding; bodies get a small inline-Markdown pass
+  (bold/italic/code/line-breaks).
+- `ExportSheet` — format picker, destination readout, progress, success +
+  **Reveal in Finder**. Reachable from the File menu and from Settings → General
+  (which also hosts the persistent export-directory picker).
+
+### Notes
+- Build-verified on macOS: clean Developer-ID Release build; **60/60 tests**
+  (54 prior + 6 new `ExportService` tests covering Markdown content/grouping,
+  self-contained HTML, HTML-escaping of `<script>`/`&`, JSON round-trip +
+  schema version, empty-journal, and chronological year/month grouping). All
+  four formats were exported from the running app against an 8-entry journal and
+  inspected: the Markdown structure, the 8-article HTML, the schema-v1 JSON, and
+  the PDF — visually confirmed rendering the purple-themed cards with gold mood
+  stars and preserved line breaks (the PDF/`WKWebView` path the unit tests can't
+  cover).
+
 ## [Unreleased] — Security & Privacy whitepaper + in-app viewer
 
 ### Added
