@@ -2,6 +2,28 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Phase 9: Vault (cryptographic foundation)
+
+### Added (internal — no behavior change yet)
+- **Vault cryptographic core.** Lays the groundwork for per-journal sealed
+  journals: a journal can carry an `is_vault` flag and a `vault_envelopes` row
+  holding a random 256-bit content key (CK) wrapped two ways — under a
+  **passphrase-derived KEK** and under the **24-word recovery key** — so a vault
+  journal's text can be ciphertext even with the database open, yet stays
+  recoverable if the passphrase is lost. `VaultService` provides the verified
+  primitives: `makeEnvelope` (dual-wrap), `unwrap` (by passphrase / recovery),
+  `seal`/`unseal` (AES-256-GCM with a `pdvlt1:` sentinel), and a session-only
+  unlocked-key store. New `v6_vault` migration (append-only; frozen-set guard
+  updated).
+
+### Notes
+- This is the **cryptographic foundation only** — there is no UI and no entry is
+  sealed yet. The transparent data-path sealing (encrypt/decrypt vault entry text
+  on write/read), the Make-Vault / unlock flows, export-skips-locked, and
+  app-lock integration are the next focused step, built on this tested core.
+  **+7 tests** (passphrase + recovery unwrap, wrong-key rejection, seal/unseal
+  round-trip + wrong-key, envelope DB round-trip, session unlock/lock) → 135.
+
 ## [Unreleased] — Inline media in entries
 
 ### Added

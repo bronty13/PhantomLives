@@ -21,6 +21,10 @@ struct Journal: Codable, FetchableRecord, MutablePersistableRecord, Identifiable
     var isHidden: Bool
     var sortOrder: Int
     var createdAt: String           // ISO-8601
+    /// Phase-9 vault: when true, the journal's text is sealed under a per-journal
+    /// content key (see `VaultService`) — opaque even with the DB open until
+    /// unlocked for the session.
+    var isVault: Bool = false
 
     static let databaseTableName = "journals"
 
@@ -36,6 +40,7 @@ struct Journal: Codable, FetchableRecord, MutablePersistableRecord, Identifiable
         case isHidden = "is_hidden"
         case sortOrder = "sort_order"
         case createdAt = "created_at"
+        case isVault = "is_vault"
     }
 
     var isDefault: Bool { id == Self.defaultId }

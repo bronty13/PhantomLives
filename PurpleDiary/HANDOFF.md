@@ -127,6 +127,7 @@ encrypted install at launch. The frozen set is asserted by
 | `v3_attachments` | `attachments` (photo/video/audio BLOBs + thumbnail, cascade with entry) |
 | `v4_journals` | `journals` (+ seeded default journal `Journal.defaultId`); adds NOT NULL `entries.journal_id` (existing rows back-fill to default via the column DEFAULT) + index. Hidden = app-level visibility only. |
 | `v5_templates` | `templates` (reusable entry scaffolds; two starter templates seeded on first run by `seedDefaultTemplatesIfEmpty`). |
+| `v6_vault` | `journals.is_vault` + `vault_envelopes` (per-journal content key wrapped under passphrase **and** 24-word recovery key). Phase-9 vault crypto foundation; transparent sealing + UI not wired yet. |
 
 To change shipped schema/data: **add a new migration**, never edit an existing
 one. Append its id to the frozen-set test deliberately.
@@ -193,7 +194,7 @@ feature, keep it offline.
   ever added.) See the repo memory `reference-macos-photokit-tcc-entitlement`.
 - **Migrations immutable** (§4). **SQLCipher link order** (§5).
 
-## 8. Tests (`Tests/PurpleDiaryTests/`, 128 total)
+## 8. Tests (`Tests/PurpleDiaryTests/`, 135 total)
 
 Migration round-trip + cascades + frozen-set guard; model Codable + word count +
 `TrackerKind` formatting; `SearchService` ranking; `BackupService`
@@ -223,7 +224,7 @@ Sources/PurpleDiary/
 ├── Services/ DatabaseService(+SQLCipher), BackupService, SearchService, SampleDataService,
 │             ExportService, ImageProcessing, VideoProcessing, PhotosImportService,
 │             FileImportService, TextImportService, ImportService, InlineMedia, PDFProcessing, PromptService,
-│             OnThisDayService, TemplateService, CalendarHeatmap, NotificationService, StatsService, KeyStore,
+│             OnThisDayService, TemplateService, CalendarHeatmap, NotificationService, VaultService, StatsService, KeyStore,
 │             KeychainStore, Crypto, RecoveryKey, BIP39Wordlist, BootState, BiometricAuthService,
 │             WindowStateGuard
 └── Views/    ContentView (HStack sidebar) + DetailRouterView, SidebarView, TimelineView,

@@ -25,7 +25,7 @@ final class SecurityMiscTests: XCTestCase {
         let ids = try queue.read {
             try String.fetchAll($0, sql: "SELECT identifier FROM grdb_migrations ORDER BY identifier")
         }
-        XCTAssertEqual(ids, ["v1_initial", "v2_trackers", "v3_attachments", "v4_journals", "v5_templates"],
+        XCTAssertEqual(ids, ["v1_initial", "v2_trackers", "v3_attachments", "v4_journals", "v5_templates", "v6_vault"],
                        "Shipped migrations are immutable. Append new identifiers here when you add a migration; never edit or rename an existing one.")
     }
 }

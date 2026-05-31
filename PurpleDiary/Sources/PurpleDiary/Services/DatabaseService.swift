@@ -399,6 +399,27 @@ final class DatabaseService {
             }
         }
 
+        // Phase-9 vault: a journal can be sealed under its own per-journal content
+        // key (CK). `is_vault` flags it; `vault_envelopes` stores CK wrapped under
+        // both a passphrase-derived KEK and the 24-word recovery key, so the
+        // journal's text is opaque even with the DB open, yet recoverable. Append-
+        // only. See Docs/SECURITY.md / SCOPING.md Phase 9.
+        migrator.registerMigration("v6_vault") { db in
+            try db.alter(table: "journals") { t in
+                t.add(column: "is_vault", .integer).notNull().defaults(to: 0)
+            }
+            try db.create(table: "vault_envelopes") { t in
+                t.column("journal_id", .text).primaryKey()
+                    .references("journals", column: "id", onDelete: .cascade)
+                t.column("pass_salt", .blob).notNull()
+                t.column("pass_iters", .integer).notNull()
+                t.column("pass_wrap", .blob).notNull()
+                t.column("recovery_salt", .blob).notNull()
+                t.column("recovery_iters", .integer).notNull()
+                t.column("recovery_wrap", .blob).notNull()
+            }
+        }
+
         try migrator.migrate(writer)
     }
 
@@ -545,6 +566,24 @@ final class DatabaseService {
             var out: [String: Int] = [:]
             for row in rows { out[row["journal_id"]] = row["n"] }
             return out
+        }
+    }
+
+    // MARK: - Vault envelopes (Phase 9)
+
+    func saveVaultEnvelope(_ env: VaultEnvelope) throws {
+        try dbPool.write { db in var m = env; try m.save(db) }
+    }
+
+    func vaultEnvelope(journalId: String) throws -> VaultEnvelope? {
+        try dbPool.read { db in try VaultEnvelope.fetchOne(db, key: journalId) }
+    }
+
+    /// Flip a journal's vault flag (the envelope is stored separately).
+    func setJournalVault(_ isVault: Bool, journalId: String) throws {
+        try dbPool.write { db in
+            try db.execute(sql: "UPDATE journals SET is_vault = ? WHERE id = ?",
+                           arguments: [isVault ? 1 : 0, journalId])
         }
     }
 
