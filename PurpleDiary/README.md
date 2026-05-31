@@ -11,9 +11,9 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
 > **trackers**, and **media** (Photos import + filesystem photo/video/audio
 > import + in-app viewer/player). Phase 3 shipped: **journals** (multiple +
 > hidden). Phase 4 shipped: **reflection** (On This Day + writing prompts).
-> Phase 5 shipped: **templates**. Phases 6–9 are roadmapped in SCOPING.md
-> (calendar heatmap + reminders, attachments+, importers, and a per-journal
-> encryption vault).
+> Phase 5 shipped: **templates**. Phase 6 shipped: **calendar heatmap + daily
+> reminder**. Phases 7–9 are roadmapped in SCOPING.md (attachments+, importers,
+> and a per-journal encryption vault).
 > Network-based auto-context (e.g. WeatherKit) is **out of scope** — PurpleDiary
 > stays fully offline. See SCOPING.md / HANDOFF.md.
 
@@ -31,8 +31,8 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
 - **Tags** — named, colored, toggleable per entry; six seeded on first launch.
 - **People** — a global list of recurring people you can link to entries.
 - **Timeline** — entries grouped by month, newest first, with an inline editor.
-- **Calendar** — month grid; days with entries are dotted; click to jump or
-  create.
+- **Calendar** — month grid shaded as a **heatmap** by how much you wrote each
+  day; click to jump or create. *(heatmap: Phase 6)*
 - **Search** — ranked across title / body / tags / people.
 - **On This Day** — entries from today's date in previous years, grouped by "N
   years ago." A local look-back; nothing fetched. *(Phase 4)*
@@ -42,6 +42,8 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
 - **Templates** — reusable entry scaffolds with auto-filled date tokens. Start
   one from the New Entry split-menu; manage them in **Manage Templates…**.
   *(Phase 5)*
+- **Daily reminder** — an opt-in local notification at a time you pick (Settings →
+  Reminders). On-device, no network. *(Phase 6)*
 - **Photos, video & audio** — "Add from Photos" pulls in the photos you took on
   the entry's date (PhotoKit), with a date picker to browse any other day and a
   "Show all recent" toggle for the whole library. "Add from Files…" imports

@@ -2,6 +2,26 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Phase 6: Calendar heatmap + daily reminder
+
+### Added
+- **Calendar heatmap.** Calendar days are now shaded by how much you wrote that
+  day (five intensity levels in the accent color), instead of a single dot. Days
+  with multiple entries show the count; today keeps an accent ring; a small
+  Less→More legend sits under the grid. Hover a day for its entry/word counts.
+- **Daily reminder.** An opt-in **local** notification nudges you to journal at a
+  time you choose (Settings → **Reminders**). It's a repeating on-device
+  notification — no account, no network — and authorization is requested only
+  when you switch it on.
+
+### Notes
+- New `CalendarHeatmap` (pure level/opacity buckets) and `NotificationService`
+  (`UNUserNotificationCenter` daily trigger; gentle weekday-rotated copy).
+  `AppSettings` gains `reminderEnabled` / `reminderHour` / `reminderMinute`; the
+  reminder is re-synced with the OS on every launch. **+4 tests** (heatmap
+  levels + monotonic opacity; reminder time clamping + deterministic body).
+  112 total.
+
 ## [Unreleased] — Phase 5: Templates
 
 ### Added

@@ -12,6 +12,9 @@ struct SettingsView: View {
             AppearanceSettingsTab()
                 .tabItem { Label("Appearance", systemImage: "paintpalette") }
 
+            RemindersSettingsTab()
+                .tabItem { Label("Reminders", systemImage: "bell") }
+
             SecuritySettingsTab()
                 .tabItem { Label("Security", systemImage: "lock.fill") }
 
@@ -20,6 +23,56 @@ struct SettingsView: View {
         }
         .padding(20)
         .frame(minWidth: 700, minHeight: 500)
+    }
+}
+
+// MARK: - Reminders
+
+struct RemindersSettingsTab: View {
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        Form {
+            Section("Daily reminder") {
+                Toggle("Remind me to journal each day", isOn: Binding(
+                    get: { appState.settings.reminderEnabled },
+                    set: { on in
+                        var s = appState.settings; s.reminderEnabled = on; appState.settings = s
+                        if on {
+                            Task {
+                                _ = await NotificationService.requestAuthorization()
+                                appState.updateReminderSchedule()
+                            }
+                        } else {
+                            appState.updateReminderSchedule()
+                        }
+                    }
+                ))
+                DatePicker("Time", selection: Binding(
+                    get: {
+                        var c = DateComponents()
+                        c.hour = appState.settings.reminderHour
+                        c.minute = appState.settings.reminderMinute
+                        return Calendar.current.date(from: c) ?? Date()
+                    },
+                    set: { date in
+                        let c = Calendar.current.dateComponents([.hour, .minute], from: date)
+                        var s = appState.settings
+                        s.reminderHour = c.hour ?? 20
+                        s.reminderMinute = c.minute ?? 0
+                        appState.settings = s
+                        appState.updateReminderSchedule()
+                    }
+                ), displayedComponents: .hourAndMinute)
+                .disabled(!appState.settings.reminderEnabled)
+            }
+            Section {
+                Text("A gentle local notification — nothing leaves your Mac. If macOS asks, allow notifications for PurpleDiary so the reminder can appear. You can fine-tune or silence it any time in System Settings → Notifications.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
     }
 }
 

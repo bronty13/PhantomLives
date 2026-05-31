@@ -13,6 +13,11 @@ struct AppSettings: Codable {
     var dailyWordGoal: Int = 750               // 0 disables the goal indicator
     var weekStartsMonday: Bool = false
 
+    // Daily reminder (local notification; opt-in, no network). Time is local.
+    var reminderEnabled: Bool = false
+    var reminderHour: Int = 20                 // 24-hour
+    var reminderMinute: Int = 0
+
     // Backup (auto-runs at every launch by default — PhantomLives convention)
     var autoBackupEnabled: Bool = true
     var backupPath: String = ""                // empty → resolvedBackupPath default
