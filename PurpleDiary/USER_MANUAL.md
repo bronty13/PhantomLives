@@ -86,8 +86,11 @@ again when you relaunch PurpleDiary.
 
 - **Timeline** — all entries, newest first, grouped by month. Click one to open
   it; right-click to delete.
-- **Calendar** — a month grid. Days with entries get a dot. Click a day to jump
-  to its entry (or start a new one on that day). Use the arrows to change month.
+- **Calendar** — a month grid shaded as a **heatmap**: the more you wrote on a
+  day, the deeper its color (a Less→More key sits under the grid). Days with more
+  than one entry show the count, and today has a ring. Click a day to jump to its
+  entry (or start a new one there); hover for the day's entry and word counts.
+  Use the arrows to change month.
 - **Search** — type to find entries by title, body, tag, or person. Results are
   ranked: a title match beats a body match. Click a result to open it.
 - **Insights** — a dashboard of your journaling: total entries and words, days
@@ -200,6 +203,15 @@ In **Settings → Backup** you can:
   data) and **Restore** from one (a safety backup of your current journal is
   written first).
 - **Reveal in Finder**.
+
+## Daily reminder
+
+Want a nudge to write? In **Settings → Reminders**, turn on **Remind me to
+journal each day** and pick a time. PurpleDiary will pop a gentle notification
+then. It's an ordinary local reminder — nothing is sent anywhere — and the first
+time you enable it, macOS may ask you to allow notifications for PurpleDiary. You
+can change the time, turn it off, or silence it from System Settings →
+Notifications whenever you like.
 
 ## Locking & encryption
 

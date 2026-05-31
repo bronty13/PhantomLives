@@ -175,6 +175,18 @@ final class AppState: ObservableObject {
 
         // 9. Lock when the app loses focus, if app-lock is enabled.
         installLockOnBackgroundObserver()
+
+        // 10. Keep the daily reminder (if the user enabled it) in sync with the
+        //     OS each launch. Never prompts here — authorization is requested
+        //     only when the user turns the reminder on in Settings.
+        updateReminderSchedule()
+    }
+
+    /// Re-register the single daily reminder from current settings.
+    func updateReminderSchedule() {
+        NotificationService.reschedule(enabled: settings.reminderEnabled,
+                                       hour: settings.reminderHour,
+                                       minute: settings.reminderMinute)
     }
 
     deinit {

@@ -25,9 +25,10 @@ video / compact audio player). Phase 3 shipped: **journals** (multiple +
 hidden/locked, Option A visibility gate). Phase 4 shipped: **reflection** —
 "On This Day" (entries from today's date in past years) + bundled writing
 prompts (daily-rotating, shown on an empty entry). Phase 5 shipped: **templates**
-(reusable scaffolds with date tokens, via the New Entry split-menu). Phases 6–9
-roadmapped in `SCOPING.md` (calendar heatmap + reminders, attachments+,
-importers, per-journal encryption vault).
+(reusable scaffolds with date tokens, via the New Entry split-menu). Phase 6
+shipped: **calendar heatmap** (days shaded by word count) + an opt-in **local
+daily reminder** (`UNUserNotificationCenter`). Phases 7–9 roadmapped in
+`SCOPING.md` (attachments+, importers, per-journal encryption vault).
 Deferred: Calendar import, Map view, sync. Weather/WeatherKit was built and
 **reverted** — it required network egress (lat/long → Apple), which conflicts
 with the no-network guarantee.
@@ -183,7 +184,7 @@ feature, keep it offline.
   ever added.) See the repo memory `reference-macos-photokit-tcc-entitlement`.
 - **Migrations immutable** (§4). **SQLCipher link order** (§5).
 
-## 8. Tests (`Tests/PurpleDiaryTests/`, 108 total)
+## 8. Tests (`Tests/PurpleDiaryTests/`, 112 total)
 
 Migration round-trip + cascades + frozen-set guard; model Codable + word count +
 `TrackerKind` formatting; `SearchService` ranking; `BackupService`
@@ -199,7 +200,8 @@ build; `TextImportService` merge rule + Markdown/plain-text/RTF reading;
 (default + back-fill + move + delete-reassign) and `AppState.entryIsVisible`
 journal-visibility predicate; `PromptService` daily rotation + bundled-JSON
 decode and `OnThisDayService` month/day matching; `TemplateService` token
-render + `Template` CRUD/seed. PhotoKit live import,
+render + `Template` CRUD/seed; `CalendarHeatmap` level/opacity buckets +
+`NotificationService` reminder time-clamp/body. PhotoKit live import,
 video poster decoding, and AVKit playback are verified by hand (no headless TCC
 / no AVFoundation media fixture).
 
@@ -212,8 +214,9 @@ Sources/PurpleDiary/
 ├── Services/ DatabaseService(+SQLCipher), BackupService, SearchService, SampleDataService,
 │             ExportService, ImageProcessing, VideoProcessing, PhotosImportService,
 │             FileImportService, TextImportService, PromptService, OnThisDayService,
-│             TemplateService, StatsService, KeyStore, KeychainStore, Crypto, RecoveryKey,
-│             BIP39Wordlist, BootState, BiometricAuthService, WindowStateGuard
+│             TemplateService, CalendarHeatmap, NotificationService, StatsService, KeyStore,
+│             KeychainStore, Crypto, RecoveryKey, BIP39Wordlist, BootState, BiometricAuthService,
+│             WindowStateGuard
 └── Views/    ContentView (HStack sidebar) + DetailRouterView, SidebarView, TimelineView,
               EntryEditorView, CalendarView, OnThisDayView, InsightsView, SearchView, PeopleView,
               TagsView, TrackersView, PhotoImportView, AttachmentViewerSheet, ExportSheet,

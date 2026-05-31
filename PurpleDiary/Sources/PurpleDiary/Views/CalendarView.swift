@@ -14,6 +14,7 @@ struct CalendarView: View {
             monthHeader
             weekdayHeader
             grid
+            legend
             Spacer()
         }
         .padding(20)
@@ -30,6 +31,21 @@ struct CalendarView: View {
             Button { shift(by: 1) } label: { Image(systemName: "chevron.right") }
                 .buttonStyle(.plain)
         }
+    }
+
+    /// Heatmap key: faint → strong, by how much you wrote that day.
+    private var legend: some View {
+        HStack(spacing: 6) {
+            Spacer()
+            Text("Less").font(.caption2).foregroundStyle(.secondary)
+            ForEach(0...4, id: \.self) { level in
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(appState.effectiveAccentColor.opacity(CalendarHeatmap.opacity(level: level)))
+                    .frame(width: 12, height: 12)
+            }
+            Text("More").font(.caption2).foregroundStyle(.secondary)
+        }
+        .padding(.top, 4)
     }
 
     private var weekdayHeader: some View {
@@ -58,30 +74,39 @@ struct CalendarView: View {
 
     private func dayCell(_ day: Date) -> some View {
         let entriesOnDay = appState.visibleEntries.filter { cal.isDate($0.dateValue, inSameDayAs: day) }
+        let words = entriesOnDay.reduce(0) { $0 + $1.wordCount }
+        let level = CalendarHeatmap.level(words: words)
         let isToday = cal.isDateInToday(day)
+        let accent = appState.effectiveAccentColor
+        let fill = entriesOnDay.isEmpty
+            ? Color.secondary.opacity(0.06)
+            : accent.opacity(CalendarHeatmap.opacity(level: level))
         return Button {
             open(day: day, existing: entriesOnDay)
         } label: {
             VStack(spacing: 4) {
                 Text("\(cal.component(.day, from: day))")
                     .font(.callout)
-                    .foregroundStyle(isToday ? Color.accentColor : .primary)
-                if !entriesOnDay.isEmpty {
-                    Circle()
-                        .fill(Color.accentColor)
-                        .frame(width: 6, height: 6)
+                    .foregroundStyle(level >= 3 ? .white : (isToday ? accent : .primary))
+                if entriesOnDay.count > 1 {
+                    Text("\(entriesOnDay.count)")
+                        .font(.caption2)
+                        .foregroundStyle(level >= 3 ? .white.opacity(0.9) : .secondary)
                 } else {
                     Spacer().frame(height: 6)
                 }
             }
             .frame(maxWidth: .infinity)
             .frame(height: 56)
-            .background(
-                isToday ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.06),
-                in: RoundedRectangle(cornerRadius: 6)
+            .background(fill, in: RoundedRectangle(cornerRadius: 6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(isToday ? accent : .clear, lineWidth: isToday ? 1.5 : 0)
             )
         }
         .buttonStyle(.plain)
+        .help(entriesOnDay.isEmpty ? "" : "\(entriesOnDay.count) " +
+              (entriesOnDay.count == 1 ? "entry" : "entries") + " · \(words) words")
     }
 
     // MARK: - Actions
