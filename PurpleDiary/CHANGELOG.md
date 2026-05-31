@@ -2,6 +2,26 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Phase 5: Templates
+
+### Added
+- **Entry templates.** Reusable scaffolds for entries. The toolbar **New Entry**
+  button is now a split menu: its arrow lists your templates ("From template"),
+  plus **Blank Entry** and **Manage Templates…**. Starting an entry from a
+  template fills the body with its scaffold, substituting date/time tokens —
+  `{{date}}`, `{{date_long}}`, `{{time}}`, `{{weekday}}`, `{{year}}` — for the
+  entry's date.
+- **Manage Templates** sheet (master list + body editor) to create, rename,
+  edit, and delete templates.
+- Two starter templates seeded on first run (Daily check-in, Gratitude).
+
+### Notes
+- New `Template` model + `v5_templates` migration (append-only; frozen-set guard
+  updated). New `TemplateService.render` (pure token substitution) and
+  `TemplatesSheet`. New entries land in the active journal, same as a blank one.
+  **+6 tests** (token render: substitute / case-insensitive / unknown-left-alone;
+  CRUD; seed; Codable). 108 total.
+
 ## [Unreleased] — Phase 4: Reflection (On This Day + writing prompts)
 
 ### Added

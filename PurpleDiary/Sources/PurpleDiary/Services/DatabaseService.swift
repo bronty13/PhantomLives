@@ -388,6 +388,17 @@ final class DatabaseService {
             try db.create(index: "idx_entries_journal", on: "entries", columns: ["journal_id"])
         }
 
+        // Phase-5 entry templates. Append-only (v1…v4 stay frozen).
+        migrator.registerMigration("v5_templates") { db in
+            try db.create(table: "templates") { t in
+                t.column("id", .text).primaryKey()
+                t.column("name", .text).notNull().defaults(to: "Template")
+                t.column("body", .text).notNull().defaults(to: "")
+                t.column("sort_order", .integer).notNull().defaults(to: 0)
+                t.column("created_at", .text).notNull().defaults(to: "")
+            }
+        }
+
         try migrator.migrate(writer)
     }
 
@@ -526,6 +537,45 @@ final class DatabaseService {
             var out: [String: Int] = [:]
             for row in rows { out[row["journal_id"]] = row["n"] }
             return out
+        }
+    }
+
+    // MARK: - Templates
+
+    func fetchAllTemplates() throws -> [Template] {
+        try dbPool.read { db in
+            try Template.order(Column("sort_order").asc, Column("name").asc).fetchAll(db)
+        }
+    }
+
+    func insertTemplate(_ template: Template) throws {
+        try dbPool.write { db in var m = template; try m.insert(db) }
+    }
+
+    func updateTemplate(_ template: Template) throws {
+        try dbPool.write { db in try template.update(db) }
+    }
+
+    func deleteTemplate(id: String) throws {
+        try dbPool.write { db in _ = try Template.deleteOne(db, key: id) }
+    }
+
+    /// Seed a couple of starter templates the first time (table empty), so the
+    /// feature is discoverable. Mirrors `seedDefaultTagsIfEmpty`.
+    func seedDefaultTemplatesIfEmpty() throws {
+        try dbPool.write { db in
+            let count = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM templates") ?? 0
+            guard count == 0 else { return }
+            let defaults: [(String, String)] = [
+                ("Daily check-in",
+                 "## {{weekday}}, {{date}}\n\n**Today I…**\n- \n\n**One good thing:** \n\n**On my mind:** "),
+                ("Gratitude",
+                 "## Grateful — {{date}}\n\n1. \n2. \n3. "),
+            ]
+            for (i, (name, body)) in defaults.enumerated() {
+                var t = Template.newDraft(name: name, body: body, sortOrder: i)
+                try t.insert(db)
+            }
         }
     }
 

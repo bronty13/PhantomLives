@@ -24,9 +24,10 @@ import of photos, **video, and audio**, and a full-size viewer (image / AVKit
 video / compact audio player). Phase 3 shipped: **journals** (multiple +
 hidden/locked, Option A visibility gate). Phase 4 shipped: **reflection** —
 "On This Day" (entries from today's date in past years) + bundled writing
-prompts (daily-rotating, shown on an empty entry). Phases 5–9 roadmapped in
-`SCOPING.md` (templates, calendar heatmap + reminders, attachments+, importers,
-per-journal encryption vault).
+prompts (daily-rotating, shown on an empty entry). Phase 5 shipped: **templates**
+(reusable scaffolds with date tokens, via the New Entry split-menu). Phases 6–9
+roadmapped in `SCOPING.md` (calendar heatmap + reminders, attachments+,
+importers, per-journal encryption vault).
 Deferred: Calendar import, Map view, sync. Weather/WeatherKit was built and
 **reverted** — it required network egress (lat/long → Apple), which conflicts
 with the no-network guarantee.
@@ -115,6 +116,7 @@ encrypted install at launch. The frozen set is asserted by
 | `v2_trackers` | `tracker_tags`, `tracker_values` (cascade with entry + tracker) |
 | `v3_attachments` | `attachments` (photo/video/audio BLOBs + thumbnail, cascade with entry) |
 | `v4_journals` | `journals` (+ seeded default journal `Journal.defaultId`); adds NOT NULL `entries.journal_id` (existing rows back-fill to default via the column DEFAULT) + index. Hidden = app-level visibility only. |
+| `v5_templates` | `templates` (reusable entry scaffolds; two starter templates seeded on first run by `seedDefaultTemplatesIfEmpty`). |
 
 To change shipped schema/data: **add a new migration**, never edit an existing
 one. Append its id to the frozen-set test deliberately.
@@ -181,7 +183,7 @@ feature, keep it offline.
   ever added.) See the repo memory `reference-macos-photokit-tcc-entitlement`.
 - **Migrations immutable** (§4). **SQLCipher link order** (§5).
 
-## 8. Tests (`Tests/PurpleDiaryTests/`, 102 total)
+## 8. Tests (`Tests/PurpleDiaryTests/`, 108 total)
 
 Migration round-trip + cascades + frozen-set guard; model Codable + word count +
 `TrackerKind` formatting; `SearchService` ranking; `BackupService`
@@ -196,7 +198,8 @@ build; `TextImportService` merge rule + Markdown/plain-text/RTF reading;
 `AppState.entryIsEmpty` discard-empty-entry predicate; `Journal` data layer
 (default + back-fill + move + delete-reassign) and `AppState.entryIsVisible`
 journal-visibility predicate; `PromptService` daily rotation + bundled-JSON
-decode and `OnThisDayService` month/day matching. PhotoKit live import,
+decode and `OnThisDayService` month/day matching; `TemplateService` token
+render + `Template` CRUD/seed. PhotoKit live import,
 video poster decoding, and AVKit playback are verified by hand (no headless TCC
 / no AVFoundation media fixture).
 
@@ -205,16 +208,16 @@ video poster decoding, and AVKit playback are verified by hand (no headless TCC
 ```
 Sources/PurpleDiary/
 ├── App/      PurpleDiaryApp, AppState, AppDelegate, AppMenuCommands, Version, Info.plist, entitlements
-├── Models/   Entry, Mood, Tag, Person, TrackerTag, Journal, Attachment, AppSettings
+├── Models/   Entry, Mood, Tag, Person, TrackerTag, Journal, Template, Attachment, AppSettings
 ├── Services/ DatabaseService(+SQLCipher), BackupService, SearchService, SampleDataService,
 │             ExportService, ImageProcessing, VideoProcessing, PhotosImportService,
 │             FileImportService, TextImportService, PromptService, OnThisDayService,
-│             StatsService, KeyStore, KeychainStore, Crypto, RecoveryKey, BIP39Wordlist,
-│             BootState, BiometricAuthService, WindowStateGuard
+│             TemplateService, StatsService, KeyStore, KeychainStore, Crypto, RecoveryKey,
+│             BIP39Wordlist, BootState, BiometricAuthService, WindowStateGuard
 └── Views/    ContentView (HStack sidebar) + DetailRouterView, SidebarView, TimelineView,
               EntryEditorView, CalendarView, OnThisDayView, InsightsView, SearchView, PeopleView,
               TagsView, TrackersView, PhotoImportView, AttachmentViewerSheet, ExportSheet,
-              AppLockScreen, RecoveryScreen, RecoveryKeySaveSheet, SecurityDocView, Settings/, Shared/
+              TemplatesSheet, AppLockScreen, RecoveryScreen, RecoveryKeySaveSheet, SecurityDocView, Settings/, Shared/
 Vendor/       GRDB.swift + SQLCipher 4.6.1 (local SwiftPM packages)
 Resources/Prompts.json   Bundled writing-prompt library (Phase 4)
 Docs/SECURITY.md   Security & Privacy whitepaper (also rendered in-app via Help)
