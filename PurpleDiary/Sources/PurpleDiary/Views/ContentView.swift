@@ -18,6 +18,7 @@ struct ContentView: View {
     @State private var showingBackupSuccess: URL?
     @State private var showingResetConfirm: Bool = false
     @State private var showingExport: Bool = false
+    @State private var showingTemplates: Bool = false
 
     var body: some View {
         // Privacy gates take over the whole window, in priority order:
@@ -61,12 +62,23 @@ struct ContentView: View {
                 .keyboardShortcut("s", modifiers: [.control, .command])
             }
             ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    newEntry()
+                Menu {
+                    if !appState.templates.isEmpty {
+                        Section("From template") {
+                            ForEach(appState.templates) { t in
+                                Button(t.name) { newEntry(from: t) }
+                            }
+                        }
+                    }
+                    Button("Blank Entry") { newEntry() }
+                    Divider()
+                    Button("Manage Templates…") { showingTemplates = true }
                 } label: {
                     Label("New Entry", systemImage: "square.and.pencil")
+                } primaryAction: {
+                    newEntry()
                 }
-                .help("Write a new entry (⌘N)")
+                .help("New entry (⌘N) — or pick a template")
 
                 Button {
                     runBackupNow()
@@ -93,6 +105,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingExport) {
             ExportSheet().environmentObject(appState)
+        }
+        .sheet(isPresented: $showingTemplates) {
+            TemplatesSheet().environmentObject(appState)
         }
         .alert("Reset window state?", isPresented: $showingResetConfirm) {
             Button("Cancel", role: .cancel) {}
@@ -130,6 +145,15 @@ struct ContentView: View {
     private func newEntry() {
         do {
             try appState.createEntry()
+            appState.selectedSection = .timeline
+        } catch {
+            appState.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func newEntry(from template: Template) {
+        do {
+            try appState.createEntry(fromTemplate: template)
             appState.selectedSection = .timeline
         } catch {
             appState.errorMessage = error.localizedDescription

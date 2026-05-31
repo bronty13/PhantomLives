@@ -11,8 +11,9 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
 > **trackers**, and **media** (Photos import + filesystem photo/video/audio
 > import + in-app viewer/player). Phase 3 shipped: **journals** (multiple +
 > hidden). Phase 4 shipped: **reflection** (On This Day + writing prompts).
-> Phases 5–9 are roadmapped in SCOPING.md (templates, calendar heatmap +
-> reminders, attachments+, importers, and a per-journal encryption vault).
+> Phase 5 shipped: **templates**. Phases 6–9 are roadmapped in SCOPING.md
+> (calendar heatmap + reminders, attachments+, importers, and a per-journal
+> encryption vault).
 > Network-based auto-context (e.g. WeatherKit) is **out of scope** — PurpleDiary
 > stays fully offline. See SCOPING.md / HANDOFF.md.
 
@@ -38,6 +39,9 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
 - **Writing prompts** — an empty entry offers a daily prompt from a bundled
   library (Use to drop it in, shuffle for another). On-device, no network.
   *(Phase 4)*
+- **Templates** — reusable entry scaffolds with auto-filled date tokens. Start
+  one from the New Entry split-menu; manage them in **Manage Templates…**.
+  *(Phase 5)*
 - **Photos, video & audio** — "Add from Photos" pulls in the photos you took on
   the entry's date (PhotoKit), with a date picker to browse any other day and a
   "Show all recent" toggle for the whole library. "Add from Files…" imports

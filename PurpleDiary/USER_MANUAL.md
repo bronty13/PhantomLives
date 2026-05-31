@@ -30,6 +30,16 @@ without the key, which lives in your Mac's Keychain.
 Edits save automatically a beat after you stop typing, and again when you switch
 entries.
 
+### Templates
+
+If you write the same kind of entry often (a daily check-in, a gratitude list),
+save it as a **template**. Click the little arrow on the **New Entry** toolbar
+button to start an entry **From template**, write a **Blank Entry**, or open
+**Manage Templates…**. A template's body can include tokens that fill in
+automatically when you use it: `{{date}}`, `{{date_long}}`, `{{time}}`,
+`{{weekday}}`, and `{{year}}`. PurpleDiary starts you off with two (Daily
+check-in, Gratitude) — edit or delete them freely.
+
 ## Journals
 
 Keep separate notebooks — Personal, Work, Travel, a dream journal — each with its

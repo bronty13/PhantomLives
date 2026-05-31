@@ -18,6 +18,7 @@ final class AppState: ObservableObject {
     @Published var trackerTags: [TrackerTag] = []
     @Published var trackerValuesByEntry: [String: [Int64: Double]] = [:] // entry.id → (trackerTagId → value)
     @Published var attachmentCountByEntry: [String: Int] = [:]           // entry.id → photo count
+    @Published var templates: [Template] = []                            // Phase 5 entry scaffolds
 
     // MARK: - Journals (Phase 3)
 
@@ -160,6 +161,7 @@ final class AppState: ObservableObject {
 
         // 7. Normal startup.
         try? DatabaseService.shared.seedDefaultTagsIfEmpty()
+        try? DatabaseService.shared.seedDefaultTemplatesIfEmpty()
         reloadAll()
         let didInstall = SampleDataService.installIfFirstRunCompleted(
             existing: entries, settingsStore: settingsStore
@@ -190,6 +192,7 @@ final class AppState: ObservableObject {
             trackerTags = try DatabaseService.shared.fetchAllTrackerTags()
             journals = try DatabaseService.shared.fetchAllJournals()
             entryCountByJournal = try DatabaseService.shared.entryCountByJournal()
+            templates = try DatabaseService.shared.fetchAllTemplates()
             try reloadJoins()
             if selectedEntryId == nil { selectedEntryId = entries.first?.id }
         } catch {
@@ -377,9 +380,47 @@ final class AppState: ObservableObject {
         return entry
     }
 
+    /// Create a new entry pre-filled from a template (date/time tokens rendered).
+    @discardableResult
+    func createEntry(fromTemplate template: Template, date: Date = Date()) throws -> Entry {
+        let journalId = selectedJournalId ?? Journal.defaultId
+        var entry = Entry.newDraft(date: date, journalId: journalId)
+        entry.bodyMarkdown = TemplateService.render(template.body, date: date)
+        try DatabaseService.shared.insertEntry(entry)
+        reloadEntries()
+        selectedEntryId = entry.id
+        return entry
+    }
+
     func updateEntry(_ entry: Entry) throws {
         try DatabaseService.shared.updateEntry(entry)
         reloadEntries()
+    }
+
+    // MARK: - Template mutations
+
+    func reloadTemplates() {
+        templates = (try? DatabaseService.shared.fetchAllTemplates()) ?? templates
+    }
+
+    @discardableResult
+    func createTemplate(name: String, body: String) throws -> Template {
+        let t = Template.newDraft(name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                                  body: body,
+                                  sortOrder: (templates.map(\.sortOrder).max() ?? 0) + 1)
+        try DatabaseService.shared.insertTemplate(t)
+        reloadTemplates()
+        return t
+    }
+
+    func updateTemplate(_ template: Template) throws {
+        try DatabaseService.shared.updateTemplate(template)
+        reloadTemplates()
+    }
+
+    func deleteTemplate(id: String) throws {
+        try DatabaseService.shared.deleteTemplate(id: id)
+        reloadTemplates()
     }
 
     func deleteEntry(id: String) throws {

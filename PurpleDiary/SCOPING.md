@@ -173,7 +173,7 @@ fitness/social integrations. Each phase is its own build/test/PR.
 |---|---|---|
 | **3 — Journals** | Multiple journals; **hidden/locked** journals (Option A: app-level visibility gate — filtered out of Timeline/Calendar/Search/Insights until unlocked for the session). Sidebar switcher, per-entry journal, move-between, export schema v4. | ✅ **done** |
 | **4 — Reflection** | "On This Day" flashback (local date query) + a **bundled static** prompt library rotating daily. | ✅ **done** |
-| **5 — Templates** | Reusable entry scaffolds with auto-filled date. | planned |
+| **5 — Templates** | Reusable entry scaffolds with auto-filled date. | ✅ **done** |
 | **6 — Calendar heatmap + reminders** | Word-count intensity on the calendar; local `UNUserNotificationCenter` daily reminder. | planned |
 | **7 — Attachments+** | PDF / document attachments; PencilKit drawing entries. Extends the encrypted-BLOB attachment model. | planned |
 | **8 — Importers** | Day One / Diarium / Journey JSON import (file-based, offline). | planned |
