@@ -12,8 +12,8 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
 > import + in-app viewer/player). Phase 3 shipped: **journals** (multiple +
 > hidden). Phase 4 shipped: **reflection** (On This Day + writing prompts).
 > Phase 5 shipped: **templates**. Phase 6 shipped: **calendar heatmap + daily
-> reminder**. Phases 7–9 are roadmapped in SCOPING.md (attachments+, importers,
-> and a per-journal encryption vault).
+> reminder**. Phase 7 shipped: **PDF & file attachments**. Phases 8–9 are
+> roadmapped in SCOPING.md (importers and a per-journal encryption vault).
 > Network-based auto-context (e.g. WeatherKit) is **out of scope** — PurpleDiary
 > stays fully offline. See SCOPING.md / HANDOFF.md.
 
@@ -50,7 +50,8 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
   photos, **videos**, and **audio** from anywhere on your Mac. Click any
   thumbnail to view it full-size (image), play it (video, AVKit), or play it in a
   compact transport (audio). All media is stored as SQLCipher-encrypted BLOBs in
-  the database — photos downscaled, video and audio byte-for-byte. *(Phase 2)*
+  the database — photos downscaled, video and audio byte-for-byte. **PDFs** (with
+  a PDFKit reader) and **any other file** can be attached too. *(Phase 2 / 7)*
 - **Trackers** — define custom quantified metrics (number + unit, duration, or
   yes/no), log them per entry, and graph the trend. *(Phase 2)*
 - **Insights** — Swift Charts dashboard over your entries: summary cards

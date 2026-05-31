@@ -1,11 +1,13 @@
 import SwiftUI
 import AVKit
 import AppKit
+import PDFKit
 import UniformTypeIdentifiers
 
-/// Full-size viewer for one attachment: a fit-to-window image for photos, or an
-/// AVKit player for video. The full `data` BLOB is loaded once on appear; for
-/// video it's written to a temp file (AVPlayer needs a URL) that's cleaned up on
+/// Full-size viewer for one attachment: a fit-to-window image for photos, an
+/// AVKit player for video/audio, a PDFKit view for PDFs, or a doc-icon card for
+/// any other file. The full `data` BLOB is loaded once on appear; for video/audio
+/// it's written to a temp file (AVPlayer needs a URL) that's cleaned up on
 /// dismiss. A "Save a Copy…" action lets the user pull the original bytes back
 /// out to disk.
 struct AttachmentViewerSheet: View {
@@ -48,6 +50,14 @@ struct AttachmentViewerSheet: View {
                 } else {
                     placeholder("speaker.slash", "Couldn’t play this audio.")
                 }
+            } else if attachment.isPDF {
+                if let doc = PDFDocument(data: attachment.data) {
+                    PDFKitView(document: doc)
+                } else {
+                    placeholder("doc.richtext", "Couldn’t open this PDF.")
+                }
+            } else if attachment.isFile {
+                fileCard(attachment)
             } else if let img = NSImage(data: attachment.data) {
                 Image(nsImage: img)
                     .resizable()
@@ -89,12 +99,27 @@ struct AttachmentViewerSheet: View {
         }
     }
 
+    /// Doc-icon card for a non-previewable file attachment.
+    private func fileCard(_ a: Attachment) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: "doc")
+                .font(.system(size: 64, weight: .regular))
+                .foregroundStyle(.secondary)
+            Text(a.filename).font(.headline).lineLimit(2).multilineTextAlignment(.center)
+            Text("\(byteString(a.sizeBytes)) · use “Save a Copy…” to open it in another app")
+                .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: 380)
+    }
+
     private func captionLine(_ a: Attachment) -> String {
         var parts: [String] = []
         if a.width > 0, a.height > 0 { parts.append("\(a.width)×\(a.height)") }
         parts.append(byteString(a.sizeBytes))
         if a.isVideo { parts.append("video") }
         else if a.isAudio { parts.append("audio") }
+        else if a.isPDF { parts.append(a.height > 0 ? "\(a.height)-page PDF" : "PDF") }
+        else if a.isFile { parts.append("file") }
         return parts.joined(separator: " · ")
     }
 
@@ -144,6 +169,23 @@ struct AttachmentViewerSheet: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do { try a.data.write(to: url, options: .atomic) }
         catch { appState.errorMessage = error.localizedDescription }
+    }
+}
+
+/// Wraps a `PDFView` (AppKit) so a PDF attachment renders in the SwiftUI viewer.
+struct PDFKitView: NSViewRepresentable {
+    let document: PDFDocument
+
+    func makeNSView(context: Context) -> PDFView {
+        let view = PDFView()
+        view.autoScales = true
+        view.displayMode = .singlePageContinuous
+        view.document = document
+        return view
+    }
+
+    func updateNSView(_ view: PDFView, context: Context) {
+        if view.document !== document { view.document = document }
     }
 }
 

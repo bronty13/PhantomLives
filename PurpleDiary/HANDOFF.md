@@ -27,8 +27,10 @@ hidden/locked, Option A visibility gate). Phase 4 shipped: **reflection** —
 prompts (daily-rotating, shown on an empty entry). Phase 5 shipped: **templates**
 (reusable scaffolds with date tokens, via the New Entry split-menu). Phase 6
 shipped: **calendar heatmap** (days shaded by word count) + an opt-in **local
-daily reminder** (`UNUserNotificationCenter`). Phases 7–9 roadmapped in
-`SCOPING.md` (attachments+, importers, per-journal encryption vault).
+daily reminder** (`UNUserNotificationCenter`). Phase 7 shipped: **PDF & file
+attachments** (PDFKit reader + first-page thumbnail; any file as a generic
+attachment). Drawing/sketch was deferred — PencilKit isn't a native-macOS fit.
+Phases 8–9 roadmapped in `SCOPING.md` (importers, per-journal encryption vault).
 Deferred: Calendar import, Map view, sync. Weather/WeatherKit was built and
 **reverted** — it required network egress (lat/long → Apple), which conflicts
 with the no-network guarantee.
@@ -100,10 +102,11 @@ GRDB records in `Models/`: `Entry` (now carries `journalId`), `Mood`, `Tag`
 `TrackerKind`), `Journal`, `Attachment`
 (+ `AttachmentThumb` projection — carries `kind`/`mimeType` so the strip can
 badge video and the viewer can pick image-vs-player without paging the BLOB),
-`AppSettings`. Attachments cover **photos, video, and audio**: a video/audio
-clip is just an `attachments` row with `kind = "video"`/`"audio"` and the raw
-bytes in `data` (audio has no thumbnail) — no schema change was needed for any
-of them, so the migration set stayed frozen.
+`AppSettings`. Attachments cover **photos, video, audio, PDF, and any file**:
+each is an `attachments` row with `kind` = `"photo"`/`"video"`/`"audio"`/`"pdf"`/
+`"file"` and the raw bytes in `data` (PDF stores a first-page thumbnail + page
+count in `height`; audio/file have no thumbnail) — no schema change was needed
+for any of them, so the migration set stayed frozen.
 
 Migrations live **only** in `DatabaseService.applyMigrations(to:)` (so tests run
 the real migrator against an in-memory DB). They are **append-only and
@@ -184,7 +187,7 @@ feature, keep it offline.
   ever added.) See the repo memory `reference-macos-photokit-tcc-entitlement`.
 - **Migrations immutable** (§4). **SQLCipher link order** (§5).
 
-## 8. Tests (`Tests/PurpleDiaryTests/`, 112 total)
+## 8. Tests (`Tests/PurpleDiaryTests/`, 114 total)
 
 Migration round-trip + cascades + frozen-set guard; model Codable + word count +
 `TrackerKind` formatting; `SearchService` ranking; `BackupService`
@@ -213,7 +216,7 @@ Sources/PurpleDiary/
 ├── Models/   Entry, Mood, Tag, Person, TrackerTag, Journal, Template, Attachment, AppSettings
 ├── Services/ DatabaseService(+SQLCipher), BackupService, SearchService, SampleDataService,
 │             ExportService, ImageProcessing, VideoProcessing, PhotosImportService,
-│             FileImportService, TextImportService, PromptService, OnThisDayService,
+│             FileImportService, TextImportService, PDFProcessing, PromptService, OnThisDayService,
 │             TemplateService, CalendarHeatmap, NotificationService, StatsService, KeyStore,
 │             KeychainStore, Crypto, RecoveryKey, BIP39Wordlist, BootState, BiometricAuthService,
 │             WindowStateGuard

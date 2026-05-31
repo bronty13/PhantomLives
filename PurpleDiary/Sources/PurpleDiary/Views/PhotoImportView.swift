@@ -46,7 +46,7 @@ struct EntryPhotosSection: View {
             }
 
             if thumbs.isEmpty {
-                Text("No media yet. Pull in the photos you took on \(dayString), browse another day, or add photos, video, or audio from your Mac.")
+                Text("No media yet. Pull in the photos you took on \(dayString), browse another day, or add photos, video, audio, PDFs, or files from your Mac.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
@@ -121,23 +121,26 @@ struct EntryPhotosSection: View {
     private func placeholderGlyph(_ thumb: AttachmentThumb) -> String {
         if thumb.isVideo { return "video" }
         if thumb.isAudio { return "music.note" }
+        if thumb.isPDF { return "doc.richtext" }
+        if thumb.isFile { return "doc" }
         return "photo"
     }
 
     private func removeHelp(_ thumb: AttachmentThumb) -> String {
-        let noun = thumb.isVideo ? "video" : thumb.isAudio ? "audio clip" : "photo"
+        let noun = thumb.isVideo ? "video" : thumb.isAudio ? "audio clip"
+            : thumb.isPDF ? "PDF" : thumb.isFile ? "file" : "photo"
         return "Remove this \(noun) from the entry"
     }
 
-    /// NSOpenPanel for filesystem images + videos; imports each chosen file into
-    /// the encrypted DB, then refreshes the strip.
+    /// NSOpenPanel for filesystem media, PDFs, and any other file; imports each
+    /// chosen file into the encrypted DB, then refreshes the strip.
     private func chooseFiles() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
         panel.allowedContentTypes = FileImportService.allowedContentTypes
-        panel.message = "Choose photos, videos, or audio to add to this entry"
+        panel.message = "Choose photos, videos, audio, PDFs, or any file to add to this entry"
         panel.prompt = "Add"
         guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
         let urls = panel.urls
