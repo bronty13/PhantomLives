@@ -17,6 +17,7 @@ final class AppState: ObservableObject {
     @Published var peopleByEntry: [String: [Person]] = [:] // entry.id → people
     @Published var trackerTags: [TrackerTag] = []
     @Published var trackerValuesByEntry: [String: [Int64: Double]] = [:] // entry.id → (trackerTagId → value)
+    @Published var attachmentCountByEntry: [String: Int] = [:]           // entry.id → photo count
 
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
@@ -212,6 +213,7 @@ final class AppState: ObservableObject {
         tagsByEntry = try DatabaseService.shared.tagsByEntry()
         peopleByEntry = try DatabaseService.shared.peopleByEntry()
         trackerValuesByEntry = try DatabaseService.shared.trackerValuesByEntry()
+        attachmentCountByEntry = try DatabaseService.shared.attachmentCountByEntry()
     }
 
     func reloadTrackers() {
@@ -313,6 +315,22 @@ final class AppState: ObservableObject {
     func setTrackerValue(_ value: Double?, trackerTagId: Int64, forEntry entryId: String) throws {
         try DatabaseService.shared.setTrackerValue(value, trackerTagId: trackerTagId, forEntry: entryId)
         try reloadJoins()
+    }
+
+    // MARK: - Attachment mutations
+
+    func addAttachment(_ attachment: Attachment) throws {
+        try DatabaseService.shared.insertAttachment(attachment)
+        refreshAttachmentCounts()
+    }
+
+    func deleteAttachment(id: String) throws {
+        try DatabaseService.shared.deleteAttachment(id: id)
+        refreshAttachmentCounts()
+    }
+
+    private func refreshAttachmentCounts() {
+        attachmentCountByEntry = (try? DatabaseService.shared.attachmentCountByEntry()) ?? attachmentCountByEntry
     }
 
     // MARK: - Keystore bootstrap (launch)

@@ -24,6 +24,7 @@ struct EntryEditorView: View {
                 Divider()
                 tagRow
                 if !appState.trackerTags.isEmpty { trackerRow }
+                EntryPhotosSection(entry: entry)
                 MarkdownEditor(text: $body_)
             }
             .padding(20)

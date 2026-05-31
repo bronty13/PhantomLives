@@ -337,6 +337,30 @@ final class DatabaseService {
             try db.create(index: "idx_tracker_values_tag", on: "tracker_values", columns: ["tracker_tag_id"])
         }
 
+        // Phase-2 photo attachments. Append-only (v1_initial + v2_trackers stay
+        // frozen). Bytes are stored in the `data` BLOB so they're encrypted at
+        // rest by SQLCipher and captured by the backup zip — no separate
+        // plaintext attachment files. See SecurityMiscTests' frozen-migration
+        // guard and Docs/SECURITY.md §3.
+        migrator.registerMigration("v3_attachments") { db in
+            try db.create(table: "attachments") { t in
+                t.column("id", .text).primaryKey()
+                t.column("entry_id", .text).notNull()
+                    .references("entries", column: "id", onDelete: .cascade)
+                t.column("kind", .text).notNull().defaults(to: "photo")
+                t.column("filename", .text).notNull().defaults(to: "")
+                t.column("mime_type", .text).notNull().defaults(to: "image/jpeg")
+                t.column("size_bytes", .integer).notNull().defaults(to: 0)
+                t.column("width", .integer).notNull().defaults(to: 0)
+                t.column("height", .integer).notNull().defaults(to: 0)
+                t.column("data", .blob).notNull()
+                t.column("thumbnail_data", .blob)
+                t.column("source_asset_id", .text)
+                t.column("created_at", .text).notNull()
+            }
+            try db.create(index: "idx_attachments_entry", on: "attachments", columns: ["entry_id"])
+        }
+
         try migrator.migrate(writer)
     }
 
@@ -597,6 +621,67 @@ final class DatabaseService {
                 let eid: String = row["entry_id"]
                 out[eid, default: [:]][row["tracker_tag_id"]] = row["value"]
             }
+            return out
+        }
+    }
+
+    // MARK: - Attachments
+
+    /// Full attachment rows (including the `data` BLOB) for one entry, oldest
+    /// first. Used by export and by the full-image viewer.
+    func attachments(forEntry entryId: String) throws -> [Attachment] {
+        try dbPool.read { db in
+            try Attachment
+                .filter(Column("entry_id") == entryId)
+                .order(Column("created_at").asc)
+                .fetchAll(db)
+        }
+    }
+
+    /// Lightweight thumbnails (no full `data` BLOB) for one entry — drives the
+    /// editor's photo strip.
+    func attachmentThumbs(forEntry entryId: String) throws -> [AttachmentThumb] {
+        try dbPool.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT id, entry_id, filename, thumbnail_data, width, height
+                FROM attachments WHERE entry_id = ? ORDER BY created_at ASC
+                """, arguments: [entryId])
+            return rows.map { AttachmentThumb(row: $0) }
+        }
+    }
+
+    func insertAttachment(_ attachment: Attachment) throws {
+        try dbPool.write { db in
+            var mutable = attachment
+            try mutable.insert(db)
+        }
+    }
+
+    func deleteAttachment(id: String) throws {
+        try dbPool.write { db in
+            _ = try Attachment.deleteOne(db, key: id)
+        }
+    }
+
+    /// True if a photo with this `PHAsset.localIdentifier` is already attached to
+    /// the entry — lets the import path skip duplicates.
+    func attachmentExists(entryId: String, sourceAssetId: String) throws -> Bool {
+        try dbPool.read { db in
+            try Attachment
+                .filter(Column("entry_id") == entryId && Column("source_asset_id") == sourceAssetId)
+                .fetchCount(db) > 0
+        }
+    }
+
+    /// entry.id → attachment count, one query for the whole journal. Feeds the
+    /// export note and any timeline badges.
+    func attachmentCountByEntry() throws -> [String: Int] {
+        try dbPool.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT entry_id, COUNT(*) AS n FROM attachments GROUP BY entry_id
+                """)
+            var out: [String: Int] = [:]
+            for row in rows { out[row["entry_id"]] = row["n"] }
             return out
         }
     }

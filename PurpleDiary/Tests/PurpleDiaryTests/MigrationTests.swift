@@ -14,7 +14,7 @@ final class MigrationTests: XCTestCase {
 
         try queue.read { db in
             let tables = ["entries", "tags", "entry_tags", "people", "entry_people",
-                          "tracker_tags", "tracker_values"]
+                          "tracker_tags", "tracker_values", "attachments"]
             for t in tables {
                 let exists = try Bool.fetchOne(
                     db,
@@ -108,6 +108,37 @@ final class MigrationTests: XCTestCase {
                            "deleting the tracker cascades its values")
             XCTAssertEqual(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM entries") ?? -1, 1,
                            "entry F survives the tracker delete")
+        }
+    }
+
+    /// Attachments cascade-delete with their entry; the row round-trips its
+    /// BLOB through GRDB.
+    @MainActor
+    func testAttachmentInsertFetchAndCascade() throws {
+        let queue = try DatabaseQueue()
+        try queue.writeWithoutTransaction { db in
+            try db.execute(sql: "PRAGMA foreign_keys = ON")
+        }
+        try DatabaseService.applyMigrations(to: queue)
+
+        let bytes = Data([0xFF, 0xD8, 0xFF, 0xE0, 0x01, 0x02, 0x03])
+        try queue.write { db in
+            var e = Entry.newDraft(title: "with photo"); e.id = "E"; try e.insert(db)
+            var a = Attachment(id: "A", entryId: "E", kind: "photo",
+                               filename: "IMG_0001.jpg", mimeType: "image/jpeg",
+                               sizeBytes: Int64(bytes.count), width: 4, height: 3,
+                               data: bytes, thumbnailData: Data([0x01]),
+                               sourceAssetId: "asset/1", createdAt: "2026-05-31T00:00:00Z")
+            try a.insert(db)
+
+            let back = try Attachment.fetchOne(db, key: "A")
+            XCTAssertEqual(back?.data, bytes)
+            XCTAssertEqual(back?.filename, "IMG_0001.jpg")
+            XCTAssertEqual(back?.sourceAssetId, "asset/1")
+
+            _ = try Entry.deleteOne(db, key: "E")
+            XCTAssertEqual(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM attachments") ?? -1, 0,
+                           "attachments cascade-delete with their entry")
         }
     }
 }

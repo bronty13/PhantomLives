@@ -128,7 +128,9 @@ The blank-page journal that's genuinely usable day one. No integrations yet.
   search ranking, backup debounce/retention, lock logic.
 
 ### Phase 2 — Auto-assembled days + richer context (the Diarium signature)
-- **Photos import** (PhotoKit): suggest/attach photos taken on the entry's date.
+- ✅ **Photos import** (PhotoKit): "Add photos from this day" suggests the photos
+  taken on the entry's date and attaches the chosen ones, stored as
+  SQLCipher-encrypted BLOBs in the database (downscaled, deduped by asset).
 - **Calendar + Reminders import** (EventKit): pull the day's events/completed
   reminders as entry context.
 - **Location + Map view** (CoreLocation + MapKit): geotag entries, browse them
