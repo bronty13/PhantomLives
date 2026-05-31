@@ -24,6 +24,10 @@ phased roadmap.
 - **Insights** — Swift Charts dashboard over your entries: summary cards
   (entries, words, days journaled, avg mood, current/longest streak), mood over
   time, entries/words per month, and tag usage. No new permissions. *(Phase 2)*
+- **Export** — save the whole journal as **Markdown**, **HTML**, **PDF**, or
+  **JSON** from File → Export Journal… (⇧⌘E) or Settings → General. Entries are
+  grouped by month; files land in `~/Downloads/PurpleDiary/`. JSON is a
+  versioned, round-trippable dump for backup/re-import. *(Phase 2)*
 - **Auto-backup at every launch** — zips the support directory to
   `~/Downloads/PurpleDiary backup/` with 14-day retention; verify and restore
   from Settings → Backup. (PhantomLives convention.)
@@ -71,7 +75,8 @@ Test suite covers GRDB migrations + cascade behavior, model Codable/word-count,
 search ranking, BackupService debounce/retention/verify, and the privacy core:
 AES-GCM crypto, BIP39 recovery-key encode/decode/checksum, KeyStore
 passphrase/recovery unlock round-trips, SQLCipher at-rest (ciphertext on disk,
-wrong-key rejection, plaintext→SQLCipher migration), and the sample-data facility.
+wrong-key rejection, plaintext→SQLCipher migration), the sample-data facility,
+the Insights stats aggregation, and the Markdown/HTML/JSON export render paths.
 
 ## Encryption & dependencies
 
@@ -107,6 +112,6 @@ PurpleDiary/
 | Database | `~/Library/Application Support/PurpleDiary/diary.sqlite` |
 | Settings | `~/Library/Application Support/PurpleDiary/settings.json` |
 | Backups | `~/Downloads/PurpleDiary backup/PurpleDiary-yyyy-MM-dd-HHmmss.zip` |
-| Exports (Phase 2) | `~/Downloads/PurpleDiary/` |
+| Exports | `~/Downloads/PurpleDiary/PurpleDiary-Journal-<stamp>.{md,html,pdf,json}` |
 
 All output paths are user-overridable in Settings; the override persists.

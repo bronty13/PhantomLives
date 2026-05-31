@@ -17,6 +17,7 @@ struct ContentView: View {
     @State private var showingBackupError: String?
     @State private var showingBackupSuccess: URL?
     @State private var showingResetConfirm: Bool = false
+    @State private var showingExport: Bool = false
 
     var body: some View {
         // Privacy gates take over the whole window, in priority order:
@@ -86,6 +87,12 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .lockRequested)) { _ in
             appState.lockApp()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .exportRequested)) { _ in
+            showingExport = true
+        }
+        .sheet(isPresented: $showingExport) {
+            ExportSheet().environmentObject(appState)
         }
         .alert("Reset window state?", isPresented: $showingResetConfirm) {
             Button("Cancel", role: .cancel) {}

@@ -31,6 +31,7 @@ struct GeneralSettingsTab: View {
     @State private var confirmPopulate = false
     @State private var confirmRemoveSamples = false
     @State private var resultMessage: String?
+    @State private var showingExport = false
 
     private var sampleCount: Int { appState.settings.sampleDataIds.count }
 
@@ -67,12 +68,45 @@ struct GeneralSettingsTab: View {
                 }
                 .disabled(sampleCount == 0)
             }
+            Section("Export") {
+                Text("Save your whole journal as Markdown, HTML, PDF, or JSON. Files are written to the folder below; nothing leaves your Mac.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    TextField("(default: ~/Downloads/PurpleDiary)", text: Binding(
+                        get: { appState.settings.defaultExportDirectory },
+                        set: { var s = appState.settings; s.defaultExportDirectory = $0; appState.settings = s }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    Button("Choose…") { chooseExportDir() }
+                    Button("Default") {
+                        var s = appState.settings; s.defaultExportDirectory = ""; appState.settings = s
+                    }
+                }
+                Text("Resolved: \(appState.settingsStore.resolvedExportDirectory.path)")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.tertiary)
+                HStack {
+                    Button {
+                        showingExport = true
+                    } label: {
+                        Label("Export Journal…", systemImage: "square.and.arrow.up")
+                    }
+                    Spacer()
+                    Button("Reveal in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([appState.settingsStore.resolvedExportDirectory])
+                    }
+                }
+            }
             Section("About") {
                 LabeledContent("Version", value: AppVersion.display)
                 LabeledContent("Database", value: DatabaseService.shared.databaseURL.path)
             }
         }
         .formStyle(.grouped)
+        .sheet(isPresented: $showingExport) {
+            ExportSheet().environmentObject(appState)
+        }
         .alert("Restore sample entries?", isPresented: $confirmRestoreSamples) {
             Button("Cancel", role: .cancel) {}
             Button("Restore") {
@@ -116,6 +150,17 @@ struct GeneralSettingsTab: View {
     private var goalLabel: String {
         let g = appState.settings.dailyWordGoal
         return g == 0 ? "off" : "\(g) words"
+    }
+
+    private func chooseExportDir() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        if panel.runModal() == .OK, let url = panel.url {
+            var s = appState.settings
+            s.defaultExportDirectory = url.path
+            appState.settings = s
+        }
     }
 }
 

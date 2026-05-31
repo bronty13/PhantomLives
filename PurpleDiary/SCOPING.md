@@ -140,8 +140,9 @@ The blank-page journal that's genuinely usable day one. No integrations yet.
 - ✅ **Statistics/insights dashboard** (Insights section): word counts, streaks,
   mood-over-time, entries/words-per-month, tag usage (Swift Charts). Tracker
   graphs land with tracker tags.
-- **Export**: Markdown / HTML / PDF (copy Timeliner's `ExportService`
-  HTML→WKWebView→PDF pipeline) / JSON.
+- ✅ **Export**: Markdown / HTML / PDF (Timeliner's `ExportService`
+  HTML→WKWebView→PDF pipeline) / JSON — whole-journal, grouped by month, from
+  File → Export Journal… or Settings → General. JSON is versioned + round-trippable.
 
 ### Phase 3 — Memory, sync, migration
 - **"On this day"** flashback view + opt-in `UNUserNotificationCenter`
