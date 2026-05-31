@@ -18,6 +18,7 @@ struct ContentView: View {
     @State private var showingBackupSuccess: URL?
     @State private var showingResetConfirm: Bool = false
     @State private var showingExport: Bool = false
+    @State private var showingImport: Bool = false
     @State private var showingTemplates: Bool = false
 
     var body: some View {
@@ -103,11 +104,17 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .exportRequested)) { _ in
             showingExport = true
         }
+        .onReceive(NotificationCenter.default.publisher(for: .importRequested)) { _ in
+            showingImport = true
+        }
         .sheet(isPresented: $showingExport) {
             ExportSheet().environmentObject(appState)
         }
         .sheet(isPresented: $showingTemplates) {
             TemplatesSheet().environmentObject(appState)
+        }
+        .sheet(isPresented: $showingImport) {
+            ImportSheet().environmentObject(appState)
         }
         .alert("Reset window state?", isPresented: $showingResetConfirm) {
             Button("Cancel", role: .cancel) {}

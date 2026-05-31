@@ -6,6 +6,7 @@ extension Notification.Name {
     static let newEntryRequested    = Notification.Name("PurpleDiary.newEntryRequested")
     static let backupRequested      = Notification.Name("PurpleDiary.backupRequested")
     static let exportRequested      = Notification.Name("PurpleDiary.exportRequested")
+    static let importRequested      = Notification.Name("PurpleDiary.importRequested")
     static let windowResetRequested = Notification.Name("PurpleDiary.windowResetRequested")
     static let lockRequested        = Notification.Name("PurpleDiary.lockRequested")
 }
@@ -31,6 +32,11 @@ struct AppMenuCommands: Commands {
                 NotificationCenter.default.post(name: .exportRequested, object: nil)
             }
             .keyboardShortcut("e", modifiers: [.command, .shift])
+
+            Button("Import Journal…") {
+                NotificationCenter.default.post(name: .importRequested, object: nil)
+            }
+            .keyboardShortcut("i", modifiers: [.command, .shift])
 
             Button("Lock PurpleDiary") {
                 NotificationCenter.default.post(name: .lockRequested, object: nil)
