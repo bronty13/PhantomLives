@@ -158,6 +158,7 @@ struct DetailRouterView: View {
             case .search:   SearchView()
             case .people:   PeopleView()
             case .tags:     TagsView()
+            case .trackers: TrackersView()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

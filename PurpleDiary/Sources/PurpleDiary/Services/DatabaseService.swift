@@ -313,6 +313,30 @@ final class DatabaseService {
             }
         }
 
+        // Phase-2 tracker tags + per-entry values. Append-only: v1_initial is
+        // shipped and immutable (editing it would change the GRDB hash and
+        // brick every encrypted install). See CLAUDE.md → "SQL migrations are
+        // immutable" and the SecurityMiscTests frozen-migration guard.
+        migrator.registerMigration("v2_trackers") { db in
+            try db.create(table: "tracker_tags") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("name", .text).notNull().collate(.nocase)
+                t.column("unit", .text).notNull().defaults(to: "")
+                t.column("kind", .text).notNull().defaults(to: "number")
+                t.column("color_hex", .text).notNull().defaults(to: "#7C5CFF")
+                t.uniqueKey(["name"])
+            }
+            try db.create(table: "tracker_values") { t in
+                t.column("entry_id", .text).notNull()
+                    .references("entries", column: "id", onDelete: .cascade)
+                t.column("tracker_tag_id", .integer).notNull()
+                    .references("tracker_tags", column: "id", onDelete: .cascade)
+                t.column("value", .double).notNull().defaults(to: 0)
+                t.primaryKey(["entry_id", "tracker_tag_id"])
+            }
+            try db.create(index: "idx_tracker_values_tag", on: "tracker_values", columns: ["tracker_tag_id"])
+        }
+
         try migrator.migrate(writer)
     }
 
@@ -507,6 +531,71 @@ final class DatabaseService {
                 let eid: String = row["entry_id"]
                 let person = Person(id: row["id"], name: row["name"], notes: row["notes"])
                 out[eid, default: []].append(person)
+            }
+            return out
+        }
+    }
+
+    // MARK: - Trackers
+
+    func fetchAllTrackerTags() throws -> [TrackerTag] {
+        try dbPool.read { db in
+            try TrackerTag.order(Column("name").asc).fetchAll(db)
+        }
+    }
+
+    func saveTrackerTag(_ tracker: inout TrackerTag) throws {
+        try dbPool.write { db in
+            try tracker.save(db)
+        }
+    }
+
+    func deleteTrackerTag(id: Int64) throws {
+        try dbPool.write { db in
+            _ = try TrackerTag.deleteOne(db, key: id)
+        }
+    }
+
+    /// Set (or clear) a tracker's value on one entry. A nil `value` removes the
+    /// row — the editor uses this to "unlog" a tracker for an entry.
+    func setTrackerValue(_ value: Double?, trackerTagId: Int64, forEntry entryId: String) throws {
+        try dbPool.write { db in
+            if let value {
+                try TrackerValue(entryId: entryId, trackerTagId: trackerTagId, value: value)
+                    .upsert(db)
+            } else {
+                try TrackerValue
+                    .filter(Column("entry_id") == entryId && Column("tracker_tag_id") == trackerTagId)
+                    .deleteAll(db)
+            }
+        }
+    }
+
+    /// trackerTagId → value for one entry.
+    func trackerValues(forEntry entryId: String) throws -> [Int64: Double] {
+        try dbPool.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT tracker_tag_id, value FROM tracker_values WHERE entry_id = ?",
+                arguments: [entryId]
+            )
+            var out: [Int64: Double] = [:]
+            for row in rows { out[row["tracker_tag_id"]] = row["value"] }
+            return out
+        }
+    }
+
+    /// entry.id → (trackerTagId → value), one query for the whole journal —
+    /// feeds the Insights tracker graphs.
+    func trackerValuesByEntry() throws -> [String: [Int64: Double]] {
+        try dbPool.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT entry_id, tracker_tag_id, value FROM tracker_values
+                """)
+            var out: [String: [Int64: Double]] = [:]
+            for row in rows {
+                let eid: String = row["entry_id"]
+                out[eid, default: [:]][row["tracker_tag_id"]] = row["value"]
             }
             return out
         }

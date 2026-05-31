@@ -135,11 +135,13 @@ The blank-page journal that's genuinely usable day one. No integrations yet.
   on a map.
 - **Weather** (WeatherKit): record conditions, temp, sunrise/sunset, moon phase
   for the entry's date+place.
-- **Tracker tags + graphs**: define custom metrics, log per entry, plot trends
-  in the dashboard (Swift Charts).
+- ✅ **Tracker tags + graphs**: define custom metrics (number+unit / duration /
+  yes-no), log per entry, plot daily-average trends in the dashboard (Swift
+  Charts). Trackers section + entry-editor logging row + per-tracker Insights
+  chart; included in JSON/Markdown/HTML export.
 - ✅ **Statistics/insights dashboard** (Insights section): word counts, streaks,
-  mood-over-time, entries/words-per-month, tag usage (Swift Charts). Tracker
-  graphs land with tracker tags.
+  mood-over-time, entries/words-per-month, tag usage (Swift Charts), plus a
+  per-tracker line chart.
 - ✅ **Export**: Markdown / HTML / PDF (Timeliner's `ExportService`
   HTML→WKWebView→PDF pipeline) / JSON — whole-journal, grouped by month, from
   File → Export Journal… or Settings → General. JSON is versioned + round-trippable.

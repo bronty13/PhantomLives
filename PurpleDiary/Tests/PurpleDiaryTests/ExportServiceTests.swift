@@ -87,24 +87,36 @@ final class ExportServiceTests: XCTestCase {
     @MainActor
     func testJSONRoundTripsAndCarriesSchemaVersion() throws {
         let people = [Person(id: "P1", name: "Sam", notes: "a friend")]
+        let trackers = [
+            TrackerTag(rowId: 7, name: "Water", unit: "cups", kind: .number, colorHex: "#3FA9F5"),
+            TrackerTag(rowId: 8, name: "Exercise", unit: "", kind: .boolean, colorHex: "#3FB950"),
+        ]
         let data = try ExportService.encodeJSON(
             entries: sample(),
             people: people,
             tagsByEntry: ["E1": [Tag(rowId: 1, name: "gratitude", colorHex: "#7C5CFF")]],
-            peopleByEntry: ["E1": people]
+            peopleByEntry: ["E1": people],
+            trackerTags: trackers,
+            trackerValuesByEntry: ["E1": [7: 6, 8: 1]]
         )
         let decoded = try JSONDecoder().decode(ExportService.JournalExport.self, from: data)
         XCTAssertEqual(decoded.schemaVersion, ExportService.jsonSchemaVersion)
+        XCTAssertEqual(decoded.schemaVersion, 2)
         XCTAssertEqual(decoded.app, "PurpleDiary")
         XCTAssertEqual(decoded.entryCount, 3)
         XCTAssertEqual(decoded.entries.count, 3)
         XCTAssertEqual(decoded.people.count, 1)
+        XCTAssertEqual(decoded.trackers.count, 2)
+        XCTAssertEqual(Set(decoded.trackers.map(\.name)), ["Water", "Exercise"])
 
         let e1 = try XCTUnwrap(decoded.entries.first { $0.id == "E1" })
         XCTAssertEqual(e1.title, "New year start")
         XCTAssertEqual(e1.tags, ["gratitude"])
         XCTAssertEqual(e1.people, ["P1"])
         XCTAssertEqual(e1.moodRating, 5)
+        // Two tracker values logged on E1, sorted by tracker name (Exercise, Water).
+        XCTAssertEqual(e1.trackers.map(\.tracker), ["Exercise", "Water"])
+        XCTAssertEqual(e1.trackers.first { $0.tracker == "Water" }?.value, 6)
     }
 
     // MARK: - Grouping

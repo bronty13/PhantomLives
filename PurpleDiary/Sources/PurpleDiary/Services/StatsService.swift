@@ -112,6 +112,36 @@ enum StatsService {
         return stats
     }
 
+    // MARK: - Tracker series
+
+    struct TrackerPoint: Identifiable, Equatable {
+        let day: Date           // start of day
+        let value: Double       // daily average for the tracker on that day
+        var id: Date { day }
+    }
+
+    /// Daily-average time series for one tracker, chronological. Multiple
+    /// entries on the same day are averaged so the line has one point per day.
+    /// `valuesByEntry` is `entry.id → (trackerTagId → value)`.
+    static func trackerSeries(
+        trackerId: Int64,
+        entries: [Entry],
+        valuesByEntry: [String: [Int64: Double]],
+        calendar: Calendar = .current
+    ) -> [TrackerPoint] {
+        var sum: [Date: Double] = [:]
+        var n: [Date: Int] = [:]
+        for e in entries {
+            guard let v = valuesByEntry[e.id]?[trackerId] else { continue }
+            let day = calendar.startOfDay(for: e.dateValue)
+            sum[day, default: 0] += v
+            n[day, default: 0] += 1
+        }
+        return sum.keys.sorted().map { day in
+            TrackerPoint(day: day, value: sum[day]! / Double(n[day] ?? 1))
+        }
+    }
+
     // MARK: - Helpers
 
     private static func startOfMonth(_ date: Date, calendar: Calendar) -> Date {

@@ -15,6 +15,8 @@ final class AppState: ObservableObject {
     @Published var people: [Person] = []
     @Published var tagsByEntry: [String: [Tag]] = [:]      // entry.id → tags
     @Published var peopleByEntry: [String: [Person]] = [:] // entry.id → people
+    @Published var trackerTags: [TrackerTag] = []
+    @Published var trackerValuesByEntry: [String: [Int64: Double]] = [:] // entry.id → (trackerTagId → value)
 
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
@@ -54,6 +56,7 @@ final class AppState: ObservableObject {
         case search
         case people
         case tags
+        case trackers
 
         var title: String {
             switch self {
@@ -63,6 +66,7 @@ final class AppState: ObservableObject {
             case .search:   return "Search"
             case .people:   return "People"
             case .tags:     return "Tags"
+            case .trackers: return "Trackers"
             }
         }
 
@@ -74,6 +78,7 @@ final class AppState: ObservableObject {
             case .search:   return "magnifyingglass"
             case .people:   return "person.2.fill"
             case .tags:     return "tag.fill"
+            case .trackers: return "chart.xyaxis.line"
             }
         }
     }
@@ -167,6 +172,7 @@ final class AppState: ObservableObject {
             entries = try DatabaseService.shared.fetchAllEntries()
             tags    = try DatabaseService.shared.fetchAllTags()
             people  = try DatabaseService.shared.fetchAllPeople()
+            trackerTags = try DatabaseService.shared.fetchAllTrackerTags()
             try reloadJoins()
             if selectedEntryId == nil { selectedEntryId = entries.first?.id }
         } catch {
@@ -205,6 +211,16 @@ final class AppState: ObservableObject {
     private func reloadJoins() throws {
         tagsByEntry = try DatabaseService.shared.tagsByEntry()
         peopleByEntry = try DatabaseService.shared.peopleByEntry()
+        trackerValuesByEntry = try DatabaseService.shared.trackerValuesByEntry()
+    }
+
+    func reloadTrackers() {
+        do {
+            trackerTags = try DatabaseService.shared.fetchAllTrackerTags()
+            try reloadJoins()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     // MARK: - Selection helpers
@@ -277,6 +293,25 @@ final class AppState: ObservableObject {
 
     func setPeople(_ personIds: [String], forEntry entryId: String) throws {
         try DatabaseService.shared.setPeople(personIds, forEntry: entryId)
+        try reloadJoins()
+    }
+
+    // MARK: - Tracker mutations
+
+    func saveTrackerTag(_ tracker: TrackerTag) throws {
+        var mutable = tracker
+        try DatabaseService.shared.saveTrackerTag(&mutable)
+        reloadTrackers()
+    }
+
+    func deleteTrackerTag(id: Int64) throws {
+        try DatabaseService.shared.deleteTrackerTag(id: id)
+        reloadTrackers()
+    }
+
+    /// Log (value != nil) or clear (nil) a tracker's value on an entry.
+    func setTrackerValue(_ value: Double?, trackerTagId: Int64, forEntry entryId: String) throws {
+        try DatabaseService.shared.setTrackerValue(value, trackerTagId: trackerTagId, forEntry: entryId)
         try reloadJoins()
     }
 
