@@ -15,6 +15,7 @@ struct EntryEditorView: View {
     @State private var selectedTagIds: Set<Int64> = []
     @State private var trackerValues: [Int64: Double] = [:]
     @State private var journalId: String = Journal.defaultId
+    @State private var prompt: Prompt = PromptService.prompt(for: Date())
     @State private var loaded = false
     @State private var saveTask: Task<Void, Never>?
 
@@ -26,6 +27,9 @@ struct EntryEditorView: View {
                 tagRow
                 if !appState.trackerTags.isEmpty { trackerRow }
                 EntryPhotosSection(entry: entry)
+                if body_.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    promptCard
+                }
                 MarkdownEditor(text: $body_)
             }
             .padding(20)
@@ -84,6 +88,43 @@ struct EntryEditorView: View {
         catch { appState.errorMessage = error.localizedDescription }
     }
 
+    // MARK: - Writing prompt (shown only while the body is empty)
+
+    private var promptCard: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "sparkles")
+                .foregroundStyle(appState.effectiveAccentColor)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(prompt.text)
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(prompt.category)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 6)
+            VStack(spacing: 6) {
+                Button("Use") { usePrompt() }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                Button { prompt = PromptService.next(after: prompt) } label: {
+                    Image(systemName: "shuffle").font(.caption)
+                }
+                .buttonStyle(.borderless)
+                .help("Show another prompt")
+            }
+        }
+        .padding(12)
+        .background(appState.effectiveAccentColor.opacity(0.08),
+                    in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8)
+            .stroke(appState.effectiveAccentColor.opacity(0.25), lineWidth: 1))
+    }
+
+    private func usePrompt() {
+        body_ = "> \(prompt.text)\n\n"
+    }
+
     // MARK: - Tags
 
     private var tagRow: some View {
@@ -135,6 +176,7 @@ struct EntryEditorView: View {
         selectedTagIds = Set((try? DatabaseService.shared.tagIDs(forEntry: entry.id)) ?? [])
         trackerValues = (try? DatabaseService.shared.trackerValues(forEntry: entry.id)) ?? [:]
         journalId = entry.journalId
+        prompt = PromptService.prompt(for: entry.dateValue)
         loaded = true
     }
 

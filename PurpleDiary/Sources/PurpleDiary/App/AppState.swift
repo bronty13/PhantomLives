@@ -64,6 +64,7 @@ final class AppState: ObservableObject {
     enum Section: String, Hashable, CaseIterable {
         case timeline
         case calendar
+        case onThisDay
         case insights
         case search
         case people
@@ -72,25 +73,27 @@ final class AppState: ObservableObject {
 
         var title: String {
             switch self {
-            case .timeline: return "Timeline"
-            case .calendar: return "Calendar"
-            case .insights: return "Insights"
-            case .search:   return "Search"
-            case .people:   return "People"
-            case .tags:     return "Tags"
-            case .trackers: return "Trackers"
+            case .timeline:  return "Timeline"
+            case .calendar:  return "Calendar"
+            case .onThisDay: return "On This Day"
+            case .insights:  return "Insights"
+            case .search:    return "Search"
+            case .people:    return "People"
+            case .tags:      return "Tags"
+            case .trackers:  return "Trackers"
             }
         }
 
         var systemImage: String {
             switch self {
-            case .timeline: return "list.bullet.rectangle"
-            case .calendar: return "calendar"
-            case .insights: return "chart.line.uptrend.xyaxis"
-            case .search:   return "magnifyingglass"
-            case .people:   return "person.2.fill"
-            case .tags:     return "tag.fill"
-            case .trackers: return "chart.xyaxis.line"
+            case .timeline:  return "list.bullet.rectangle"
+            case .calendar:  return "calendar"
+            case .onThisDay: return "clock.arrow.circlepath"
+            case .insights:  return "chart.line.uptrend.xyaxis"
+            case .search:    return "magnifyingglass"
+            case .people:    return "person.2.fill"
+            case .tags:      return "tag.fill"
+            case .trackers:  return "chart.xyaxis.line"
             }
         }
     }

@@ -59,6 +59,19 @@ again when you relaunch PurpleDiary.
 > unlock. A future update will add an optional vault mode that keeps a journal
 > encrypted under its own separate passphrase even while the app is open.
 
+## Reflecting
+
+- **On This Day** — a sidebar section that gathers entries you wrote on today's
+  date in earlier years, grouped by "1 year ago," "2 years ago," and so on. It's
+  just a look-back over your own journal — nothing leaves your Mac. Click an
+  entry to open it. (It follows your journal selection, and hidden journals stay
+  hidden here too.)
+- **Writing prompts** — start a new entry and, while it's blank, a little ✨
+  prompt appears below your photos (e.g. *"What surprised you today?"*). Tap
+  **Use** to drop it into the entry as a quote you can write under, or the
+  shuffle button to see another. The prompt is the same all day, and the whole
+  prompt library ships inside the app — nothing is fetched or generated online.
+
 ## Browsing
 
 - **Timeline** — all entries, newest first, grouped by month. Click one to open

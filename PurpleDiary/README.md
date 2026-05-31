@@ -10,10 +10,11 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
 > app-lock, 24-word recovery key). Phase 2 shipped: **Insights**, **export**,
 > **trackers**, and **media** (Photos import + filesystem photo/video/audio
 > import + in-app viewer/player). Phase 3 shipped: **journals** (multiple +
-> hidden). Phases 4–9 are roadmapped in SCOPING.md (reflection, templates,
-> calendar heatmap + reminders, attachments+, importers, and a per-journal
-> encryption vault). Network-based auto-context (e.g. WeatherKit) is **out of
-> scope** — PurpleDiary stays fully offline. See SCOPING.md / HANDOFF.md.
+> hidden). Phase 4 shipped: **reflection** (On This Day + writing prompts).
+> Phases 5–9 are roadmapped in SCOPING.md (templates, calendar heatmap +
+> reminders, attachments+, importers, and a per-journal encryption vault).
+> Network-based auto-context (e.g. WeatherKit) is **out of scope** — PurpleDiary
+> stays fully offline. See SCOPING.md / HANDOFF.md.
 
 ## At a glance (Phase 1)
 
@@ -32,6 +33,11 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
 - **Calendar** — month grid; days with entries are dotted; click to jump or
   create.
 - **Search** — ranked across title / body / tags / people.
+- **On This Day** — entries from today's date in previous years, grouped by "N
+  years ago." A local look-back; nothing fetched. *(Phase 4)*
+- **Writing prompts** — an empty entry offers a daily prompt from a bundled
+  library (Use to drop it in, shuffle for another). On-device, no network.
+  *(Phase 4)*
 - **Photos, video & audio** — "Add from Photos" pulls in the photos you took on
   the entry's date (PhotoKit), with a date picker to browse any other day and a
   "Show all recent" toggle for the whole library. "Add from Files…" imports
