@@ -21,6 +21,9 @@ phased roadmap.
 - **Calendar** — month grid; days with entries are dotted; click to jump or
   create.
 - **Search** — ranked across title / body / tags / people.
+- **Insights** — Swift Charts dashboard over your entries: summary cards
+  (entries, words, days journaled, avg mood, current/longest streak), mood over
+  time, entries/words per month, and tag usage. No new permissions. *(Phase 2)*
 - **Auto-backup at every launch** — zips the support directory to
   `~/Downloads/PurpleDiary backup/` with 14-day retention; verify and restore
   from Settings → Backup. (PhantomLives convention.)
@@ -83,9 +86,9 @@ PurpleDiary/
 │   ├── Models/       # Entry, Mood, Tag, Person, AppSettings (GRDB records)
 │   ├── Services/     # DatabaseService(+SQLCipher), BackupService, SearchService, SampleDataService,
 │   │                 #   KeyStore, KeychainStore, Crypto, RecoveryKey, BIP39Wordlist,
-│   │                 #   BootState, BiometricAuthService, WindowStateGuard
-│   └── Views/        # ContentView (HStack sidebar), Timeline, EntryEditor, Calendar, Search, People,
-│                     #   Tags, AppLockScreen, RecoveryScreen, RecoveryKeySaveSheet, Settings/, Shared/
+│   │                 #   BootState, BiometricAuthService, StatsService, WindowStateGuard
+│   └── Views/        # ContentView (HStack sidebar), Timeline, EntryEditor, Calendar, Insights, Search,
+│                     #   People, Tags, AppLockScreen, RecoveryScreen, RecoveryKeySaveSheet, Settings/, Shared/
 ├── Tests/PurpleDiaryTests/
 ├── Vendor/           # GRDB.swift + SQLCipher 4.6.1 (local SwiftPM packages)
 ├── Scripts/generate-icon.swift

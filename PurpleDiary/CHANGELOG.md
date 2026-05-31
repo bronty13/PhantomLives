@@ -2,6 +2,28 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Phase 2: Insights dashboard
+
+### Added
+- **Insights** sidebar section — a statistics dashboard built on Swift Charts
+  over the entries you already have (no new permissions, no data collection):
+  summary cards (total entries, total words, days journaled, average mood,
+  current + longest writing streak), a **mood-over-time** line chart (daily
+  average, rated entries only), **entries-per-month** and **words-per-month**
+  bar charts, and a **tag-usage** breakdown colored by each tag. Empty-state
+  when the journal has no entries yet.
+- `StatsService` — pure, testable aggregation (totals, monthly buckets,
+  daily-average mood series, tag counts, and consecutive-day streaks with an
+  injectable calendar/reference date). Streak logic counts back from today and
+  falls back to a run ending yesterday so an evening writer isn't punished.
+
+### Notes
+- Build-verified on macOS: clean Release build; **47/47 tests** (Phase-1's 39 +
+  8 `StatsService` tests covering totals, average-mood-excludes-unset, monthly
+  buckets, tag ordering, and all streak cases). Insights dashboard exercised
+  visually against a 7-entry journal (7 entries / 137 words / 5 days / avg mood
+  3.2, with the mood line + monthly bars rendering).
+
 ## [Unreleased] — Phase 1: privacy core (encryption-at-rest + app-lock)
 
 ### Added
