@@ -38,23 +38,38 @@ entries.
   a line chart for each tracker you keep (see below). It's all computed from your
   entries on your Mac — nothing is sent anywhere.
 
-## Photos
+## Photos & Video
 
 PurpleDiary can pull in the photos you took on an entry's date so your day
-arrives pre-assembled.
+arrives pre-assembled — and you can add photos or videos from anywhere on your
+Mac too.
 
-- In the editor, find the **Photos** row and click **Add photos from this day**.
+**From Apple Photos** — in the editor, find the **Photos & Video** row and click
+**Add from Photos**.
+
 - The first time, macOS asks for permission to your photo library — choose
   **Allow Access to All Photos** (or **Select Photos…** to share only some).
   You can change this later in System Settings → Privacy & Security → Photos.
-- A grid of the photos taken on that entry's date appears. Click to select the
-  ones you want, then **Add**. They show up as thumbnails on the entry; hover and
-  click the ✕ to remove one.
+- A grid of the photos from the entry's date appears. To look elsewhere, use the
+  **date picker** at the top to jump to any other day, or tick **Show all
+  recent** to browse your most recent photos regardless of date.
+- Click to select the ones you want, then **Add**.
 
-Your photos are copied **into your encrypted journal** (stored right inside the
-database, so they're protected by the same encryption and included in backups) —
-nothing is ever uploaded. Imported photos are scaled down to a sensible size so
-the database stays manageable.
+**From Files** — click **Add from Files…** to choose **photos or videos** from
+anywhere on your Mac. Videos are kept exactly as-is (not re-compressed); photos
+are scaled down to a sensible size.
+
+**Viewing** — attached media shows up as thumbnails on the entry. **Click a
+thumbnail** to open it full size — photos display fit-to-window, videos play in
+a built-in player (video thumbnails carry a ▶ badge). The viewer has a **Save a
+Copy…** button to write the original back out to disk. Hover a thumbnail and
+click the ✕ to remove it from the entry.
+
+Everything is copied **into your encrypted journal** (stored right inside the
+database, so it's protected by the same encryption and included in backups) —
+nothing is ever uploaded. One thing to know: because videos are stored
+uncompressed inside the database, a large video makes both your database and
+each launch backup bigger. Short clips are best.
 
 ## Trackers
 
@@ -88,11 +103,12 @@ Want a copy of your journal outside the app? Choose **File → Export Journal…
 - **PDF** — the same layout as the HTML, paginated — handy for printing or
   keeping a fixed archive.
 - **JSON** — a complete, structured copy of every entry, tag, person, and
-  tracker (with the values you logged), plus a photo count per entry. This is the
-  one to keep if you ever want to re-import your journal later. (Markdown and HTML
-  exports show each entry's logged tracker values on a 📊 line and a 🖼️ photo
-  count too.) Exports note how many photos an entry has, but the photo files
-  themselves stay safely inside your encrypted journal and its backups.
+  tracker (with the values you logged), plus an attachment count per entry. This
+  is the one to keep if you ever want to re-import your journal later. (Markdown
+  and HTML exports show each entry's logged tracker values on a 📊 line and a 🖼️
+  attachment count too.) Exports note how many photos and videos an entry has,
+  but the media files themselves stay safely inside your encrypted journal and
+  its backups.
 
 Files are saved to **`~/Downloads/PurpleDiary/`** by default (you can change the
 folder in Settings → General → Export), named

@@ -176,7 +176,7 @@ enum ExportService {
                         out += "📊 " + trackers.joined(separator: " · ") + "\n\n"
                     }
                     if let n = attachmentCountByEntry[e.id], n > 0 {
-                        out += "🖼️ \(n) " + (n == 1 ? "photo" : "photos") + "\n\n"
+                        out += "🖼️ \(n) " + (n == 1 ? "attachment" : "attachments") + "\n\n"
                     }
 
                     let body = e.bodyMarkdown.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -283,7 +283,7 @@ enum ExportService {
             s += "      <div class='trackers'>📊 \(escape(trackers.joined(separator: " · ")))</div>\n"
         }
         if photoCount > 0 {
-            s += "      <div class='photos'>🖼️ \(photoCount) \(photoCount == 1 ? "photo" : "photos")</div>\n"
+            s += "      <div class='photos'>🖼️ \(photoCount) \(photoCount == 1 ? "attachment" : "attachments")</div>\n"
         }
         s += "    </article>\n"
         return s

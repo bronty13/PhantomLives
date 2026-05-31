@@ -2,6 +2,44 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Phase 2: Browse-any-day photos, filesystem import, media viewer
+
+### Added
+- **Browse beyond the entry's day in the Photos picker.** "Add from Photos"
+  (renamed from "Add photos from this day") now has a **date picker** (defaults
+  to the entry's date) so you can pull in photos from any day, plus a **"Show all
+  recent"** checkbox that browses the most recent photos across your whole
+  library (capped at 300, newest first) ignoring the date.
+- **Add photos and videos from Files.** A new **"Add from Files…"** button opens
+  a standard file panel for images **and videos**. Images are downscaled to JPEG
+  like the Photos path; **videos are stored byte-for-byte** as encrypted BLOBs
+  with an auto-generated poster-frame thumbnail. No new entitlement (user-chosen
+  files; the app stays non-sandboxed). The editor section is now **"Photos &
+  Video"**.
+- **Full-size viewer.** Click any thumbnail in the strip to open it: a
+  fit-to-window image for photos, or an **AVKit player** for video (video
+  thumbnails get a ▶ badge). The viewer has a **"Save a Copy…"** action to write
+  the original bytes back to disk.
+
+### Changed
+- `AttachmentThumb` now carries `kind` + `mimeType` (so the strip can badge video
+  and the viewer can choose image-vs-player without loading the BLOB); new
+  `DatabaseService.attachment(id:)` fetches one full row for the viewer. **No new
+  migration** — videos reuse the existing `attachments` table as `kind = "video"`
+  rows, so the frozen migration set is unchanged.
+- Export wording generalized: the per-entry count line now reads
+  `🖼️ N attachments` (it counts photos **and** videos). The JSON schema is
+  unchanged (`attachmentCount` was already generic).
+
+### Notes
+- New `FileImportService` (content-type classification + attachment building) and
+  `VideoProcessing` (AVFoundation poster frame + dimensions). New
+  `AttachmentViewerSheet`.
+- Tests: thumb projection carries kind/mime, fetch-by-id round-trip, filesystem
+  classification (image/video/unsupported), and image-from-file import. Video
+  poster decoding is verified by hand (needs a real movie + AVFoundation),
+  consistent with the live PhotoKit import.
+
 ## [Unreleased] — Phase 2: Photos import (auto-assembled day)
 
 ### Added

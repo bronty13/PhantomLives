@@ -44,6 +44,41 @@ final class AttachmentTests: XCTestCase {
         try DatabaseService.shared.deleteEntry(id: entry.id)
     }
 
+    /// The lightweight thumb projection must carry kind + mimeType so the strip
+    /// can badge videos and the viewer can pick image-vs-player without the BLOB.
+    func testThumbProjectionCarriesKindAndMimeType() throws {
+        let entry = Entry.newDraft(title: "mixed media")
+        try DatabaseService.shared.insertEntry(entry)
+        defer { try? DatabaseService.shared.deleteEntry(id: entry.id) }
+
+        try DatabaseService.shared.insertAttachment(attachment("P1", entry: entry.id, asset: nil))
+        var vid = attachment("V1", entry: entry.id, asset: nil)
+        vid.kind = "video"; vid.mimeType = "video/quicktime"; vid.filename = "V1.mov"
+        try DatabaseService.shared.insertAttachment(vid)
+
+        let thumbs = try DatabaseService.shared.attachmentThumbs(forEntry: entry.id)
+        let byId = Dictionary(uniqueKeysWithValues: thumbs.map { ($0.id, $0) })
+        XCTAssertEqual(byId["P1"]?.kind, "photo")
+        XCTAssertEqual(byId["P1"]?.isVideo, false)
+        XCTAssertEqual(byId["V1"]?.kind, "video")
+        XCTAssertEqual(byId["V1"]?.mimeType, "video/quicktime")
+        XCTAssertEqual(byId["V1"]?.isVideo, true)
+    }
+
+    /// The viewer fetches one full row (bytes included) by id.
+    func testAttachmentByIdRoundTrips() throws {
+        let entry = Entry.newDraft(title: "viewer")
+        try DatabaseService.shared.insertEntry(entry)
+        defer { try? DatabaseService.shared.deleteEntry(id: entry.id) }
+
+        let a = attachment("X1", entry: entry.id, asset: nil, bytes: [0xFF, 0xD8, 0xFF, 0xAB, 0xCD])
+        try DatabaseService.shared.insertAttachment(a)
+
+        let fetched = try XCTUnwrap(DatabaseService.shared.attachment(id: "X1"))
+        XCTAssertEqual(fetched.data, Data([0xFF, 0xD8, 0xFF, 0xAB, 0xCD]))
+        XCTAssertNil(try DatabaseService.shared.attachment(id: "nope"))
+    }
+
     // MARK: - ImageProcessing
 
     private func solidPNG(width: Int, height: Int) -> Data {

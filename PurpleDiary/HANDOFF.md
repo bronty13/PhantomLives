@@ -18,7 +18,9 @@ experiment was deliberately rolled back). Modeled on `Timeliner/` and built to
 PhantomLives conventions.
 
 **Status:** Phase 1 complete (journal + privacy core). Phase 2 shipped:
-Insights dashboard, Export (MD/HTML/PDF/JSON), Trackers + graphs, Photos import.
+Insights dashboard, Export (MD/HTML/PDF/JSON), Trackers + graphs, and media —
+Photos import (auto-assembled day, browse any day / all-recent), filesystem
+import of photos **and video**, and a full-size image/video viewer.
 Deferred: Calendar import, Map view, sync. Weather/WeatherKit was built and
 **reverted** — it required network egress (lat/long → Apple), which conflicts
 with the no-network guarantee.
@@ -79,7 +81,11 @@ View → appState.someMutation() → DatabaseService.shared → appState.reload<
 
 GRDB records in `Models/`: `Entry`, `Mood`, `Tag` (+ `EntryTag`), `Person`
 (+ `EntryPerson`), `TrackerTag` (+ `TrackerValue`, `TrackerKind`), `Attachment`
-(+ `AttachmentThumb` projection), `AppSettings`.
+(+ `AttachmentThumb` projection — carries `kind`/`mimeType` so the strip can
+badge video and the viewer can pick image-vs-player without paging the BLOB),
+`AppSettings`. Attachments cover **photos and video**: a video is just an
+`attachments` row with `kind = "video"` and the movie's raw bytes in `data` —
+no schema change was needed, so the migration set stayed frozen.
 
 Migrations live **only** in `DatabaseService.applyMigrations(to:)` (so tests run
 the real migrator against an in-memory DB). They are **append-only and
@@ -91,7 +97,7 @@ encrypted install at launch. The frozen set is asserted by
 |---|---|
 | `v1_initial` | `entries` (incl. nullable lat/long/place/weather columns reserved up front), `tags`, `entry_tags`, `people`, `entry_people` |
 | `v2_trackers` | `tracker_tags`, `tracker_values` (cascade with entry + tracker) |
-| `v3_attachments` | `attachments` (photo BLOBs + thumbnail, cascade with entry) |
+| `v3_attachments` | `attachments` (photo/video BLOBs + thumbnail, cascade with entry) |
 
 To change shipped schema/data: **add a new migration**, never edit an existing
 one. Append its id to the frozen-set test deliberately.
@@ -158,7 +164,7 @@ feature, keep it offline.
   ever added.) See the repo memory `reference-macos-photokit-tcc-entitlement`.
 - **Migrations immutable** (§4). **SQLCipher link order** (§5).
 
-## 8. Tests (`Tests/PurpleDiaryTests/`, 70 total)
+## 8. Tests (`Tests/PurpleDiaryTests/`, 75 total)
 
 Migration round-trip + cascades + frozen-set guard; model Codable + word count +
 `TrackerKind` formatting; `SearchService` ranking; `BackupService`
@@ -166,8 +172,10 @@ debounce/retention/verify; crypto (AES-GCM, PBKDF2), BIP39 recovery,
 `KeyStore` unlock round-trips, SQLCipher at-rest (ciphertext on disk, wrong-key
 rejection, plaintext→cipher migration); `StatsService` (totals/streaks/tracker
 series); `ExportService` render paths (MD/HTML/JSON incl. escaping + schema v3);
-`SecurityDocView` markdown parser; attachment CRUD/dedupe + `ImageProcessing`
-resize. PhotoKit live import is verified by hand (no headless TCC).
+`SecurityDocView` markdown parser; attachment CRUD/dedupe + thumb projection
+(kind/mime) + fetch-by-id + `ImageProcessing` resize; `FileImportService`
+classification + image-from-file build. PhotoKit live import and video poster
+decoding are verified by hand (no headless TCC / no AVFoundation movie fixture).
 
 ## 9. Where things live
 
@@ -176,13 +184,13 @@ Sources/PurpleDiary/
 ├── App/      PurpleDiaryApp, AppState, AppDelegate, AppMenuCommands, Version, Info.plist, entitlements
 ├── Models/   Entry, Mood, Tag, Person, TrackerTag, Attachment, AppSettings
 ├── Services/ DatabaseService(+SQLCipher), BackupService, SearchService, SampleDataService,
-│             ExportService, ImageProcessing, PhotosImportService, StatsService,
-│             KeyStore, KeychainStore, Crypto, RecoveryKey, BIP39Wordlist, BootState,
-│             BiometricAuthService, WindowStateGuard
+│             ExportService, ImageProcessing, VideoProcessing, PhotosImportService,
+│             FileImportService, StatsService, KeyStore, KeychainStore, Crypto,
+│             RecoveryKey, BIP39Wordlist, BootState, BiometricAuthService, WindowStateGuard
 └── Views/    ContentView (HStack sidebar) + DetailRouterView, SidebarView, TimelineView,
               EntryEditorView, CalendarView, InsightsView, SearchView, PeopleView, TagsView,
-              TrackersView, PhotoImportView, ExportSheet, AppLockScreen, RecoveryScreen,
-              RecoveryKeySaveSheet, SecurityDocView, Settings/, Shared/
+              TrackersView, PhotoImportView, AttachmentViewerSheet, ExportSheet, AppLockScreen,
+              RecoveryScreen, RecoveryKeySaveSheet, SecurityDocView, Settings/, Shared/
 Vendor/       GRDB.swift + SQLCipher 4.6.1 (local SwiftPM packages)
 Docs/SECURITY.md   Security & Privacy whitepaper (also rendered in-app via Help)
 ```
