@@ -787,6 +787,18 @@ final class DatabaseService {
         try dbPool.read { db in try Attachment.fetchOne(db, key: id) }
     }
 
+    /// One lightweight thumbnail projection by id (no full `data` BLOB) — backs
+    /// inline-media rendering in the editor preview.
+    func attachmentThumb(id: String) throws -> AttachmentThumb? {
+        try dbPool.read { db in
+            let row = try Row.fetchOne(db, sql: """
+                SELECT id, entry_id, kind, mime_type, filename, thumbnail_data, width, height
+                FROM attachments WHERE id = ?
+                """, arguments: [id])
+            return row.map { AttachmentThumb(row: $0) }
+        }
+    }
+
     /// Lightweight thumbnails (no full `data` BLOB) for one entry — drives the
     /// editor's photo strip.
     func attachmentThumbs(forEntry entryId: String) throws -> [AttachmentThumb] {

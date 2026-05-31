@@ -2,6 +2,35 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Inline media in entries
+
+### Added
+- **Place media inside the body, with a caption and text before/after.** Any
+  attachment (photo, video, audio, PDF, file) can now be embedded *within* the
+  entry text using a Markdown ref `![caption](pd-attachment://<id>)`. In **Write**
+  mode it's plain text you can move or recaption; in **Preview** the media renders
+  in place (photo image, video poster + ▶, audio/PDF/file as a labeled tile),
+  tappable to open the full viewer. The same attachment still appears in the strip
+  for management.
+- **Insert into text.** Right-click any attachment in the Media strip →
+  **Insert into entry text** drops its ref at the end of the body (reposition or
+  caption it in Write). Works for every media kind, including filesystem audio.
+
+### Changed
+- **Day One import now keeps the story.** Day One interleaves photos with the
+  prose describing them. Instead of stripping those inline refs (which lost the
+  placement), import now **rewrites each `dayone-moment://…` ref into an inline
+  attachment ref at its original position**, preserving the caption and the text
+  before/after. Refs whose media can't be found fall back to a readable marker
+  (📷/🎬/🎵/📄) so nothing breaks.
+
+### Notes
+- New `InlineMedia` (ref + segment parser + Day One rewrite) and `InlineMediaView`
+  (in-place rendering). `MarkdownEditor` preview now renders inline segments;
+  `DatabaseService.attachmentThumb(id:)` backs it. **+7 tests** (ref/scheme,
+  segment parse incl. consecutive/plain, Day One rewrite map + marker fallback,
+  end-to-end Day One inline import) → 128 total.
+
 ## [Unreleased] — Fixes: Day One media import + delete-journal choice
 
 ### Fixed

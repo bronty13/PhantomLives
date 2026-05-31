@@ -108,7 +108,11 @@ badge video and the viewer can pick image-vs-player without paging the BLOB),
 each is an `attachments` row with `kind` = `"photo"`/`"video"`/`"audio"`/`"pdf"`/
 `"file"` and the raw bytes in `data` (PDF stores a first-page thumbnail + page
 count in `height`; audio/file have no thumbnail) — no schema change was needed
-for any of them, so the migration set stayed frozen.
+for any of them, so the migration set stayed frozen. **Inline media:** an
+attachment can also be placed *within* the body via `![caption](pd-attachment://<id>)`
+(`InlineMedia`); `MarkdownEditor`'s preview renders text/media segments in order
+(`InlineMediaView`), and the same attachment still shows in the strip. Day One
+import rewrites `dayone-moment://` refs into these inline refs in place.
 
 Migrations live **only** in `DatabaseService.applyMigrations(to:)` (so tests run
 the real migrator against an in-memory DB). They are **append-only and
@@ -189,7 +193,7 @@ feature, keep it offline.
   ever added.) See the repo memory `reference-macos-photokit-tcc-entitlement`.
 - **Migrations immutable** (§4). **SQLCipher link order** (§5).
 
-## 8. Tests (`Tests/PurpleDiaryTests/`, 122 total)
+## 8. Tests (`Tests/PurpleDiaryTests/`, 128 total)
 
 Migration round-trip + cascades + frozen-set guard; model Codable + word count +
 `TrackerKind` formatting; `SearchService` ranking; `BackupService`
@@ -218,7 +222,7 @@ Sources/PurpleDiary/
 ├── Models/   Entry, Mood, Tag, Person, TrackerTag, Journal, Template, Attachment, AppSettings
 ├── Services/ DatabaseService(+SQLCipher), BackupService, SearchService, SampleDataService,
 │             ExportService, ImageProcessing, VideoProcessing, PhotosImportService,
-│             FileImportService, TextImportService, ImportService, PDFProcessing, PromptService,
+│             FileImportService, TextImportService, ImportService, InlineMedia, PDFProcessing, PromptService,
 │             OnThisDayService, TemplateService, CalendarHeatmap, NotificationService, StatsService, KeyStore,
 │             KeychainStore, Crypto, RecoveryKey, BIP39Wordlist, BootState, BiometricAuthService,
 │             WindowStateGuard
