@@ -10,6 +10,8 @@ import UniformTypeIdentifiers
 struct EntryPhotosSection: View {
     @EnvironmentObject private var appState: AppState
     let entry: Entry
+    /// Insert an inline reference to this attachment into the entry body.
+    var onInsert: ((AttachmentThumb) -> Void)?
 
     /// Wraps an attachment id so it can drive `.sheet(item:)` (String isn't Identifiable).
     private struct ViewerItem: Identifiable { let id: String }
@@ -115,6 +117,13 @@ struct EntryPhotosSection: View {
             .buttonStyle(.plain)
             .padding(3)
             .help(removeHelp(thumb))
+        }
+        .contextMenu {
+            if onInsert != nil {
+                Button { onInsert?(thumb) } label: { Label("Insert into entry text", systemImage: "text.insert") }
+            }
+            Button { viewerItem = ViewerItem(id: thumb.id) } label: { Label("View", systemImage: "eye") }
+            Button(role: .destructive) { remove(thumb) } label: { Label("Remove", systemImage: "trash") }
         }
     }
 

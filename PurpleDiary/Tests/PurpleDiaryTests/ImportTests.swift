@@ -106,24 +106,31 @@ final class ImportTests: XCTestCase {
         let png = NSBitmapImageRep(data: img.tiffRepresentation!)!.representation(using: .png, properties: [:])!
         try png.write(to: photos.appendingPathComponent("abc123.jpg"))
 
+        // Body references the photo inline via a Day One moment URL.
         let json = """
-        { "entries": [ { "creationDate":"2026-05-31T09:00:00Z", "text":"with a photo",
-          "photos":[{"md5":"abc123","type":"jpg","identifier":"X"}] } ] }
+        { "entries": [ { "creationDate":"2026-05-31T09:00:00Z",
+          "text":"before ![beach](dayone-moment://abc123) after",
+          "photos":[{"md5":"abc123","type":"jpg","identifier":"abc123"}] } ] }
         """
         let jsonURL = dir.appendingPathComponent("Journal.json")
         try json.write(to: jsonURL, atomically: true, encoding: .utf8)
 
         let bundle = try ImportService.parse(contentsOf: jsonURL, format: .dayOne)
         let entry = try XCTUnwrap(bundle.journals.first?.entries.first)
-        XCTAssertEqual(entry.mediaFiles.count, 1, "the sibling photo should be resolved")
+        XCTAssertEqual(entry.inlineMoments.count, 1, "the sibling photo should be resolved as a moment")
 
         let added = try await ImportService.apply(bundle)
         XCTAssertEqual(added, 1)
-        // The imported entry (in the "Day One" journal) should carry one attachment.
         let dayOne = try XCTUnwrap(DatabaseService.shared.fetchAllJournals().first { $0.name == "Day One" })
         let imported = try DatabaseService.shared.fetchAllEntries().filter { $0.journalId == dayOne.id }
-        let withPhoto = try imported.first { try !DatabaseService.shared.attachmentThumbs(forEntry: $0.id).isEmpty }
-        XCTAssertNotNil(withPhoto, "imported Day One entry should have its photo attached")
+        let withPhoto = try XCTUnwrap(imported.first { try !DatabaseService.shared.attachmentThumbs(forEntry: $0.id).isEmpty },
+                                      "imported Day One entry should have its photo attached")
+        // The moment ref was rewritten into an inline attachment ref, in place.
+        XCTAssertTrue(withPhoto.bodyMarkdown.contains(InlineMedia.scheme), "moment ref → inline attachment ref")
+        XCTAssertFalse(withPhoto.bodyMarkdown.contains("dayone-moment"), "no leftover moment ref")
+        XCTAssertTrue(withPhoto.bodyMarkdown.contains("before"), "prose before the photo is kept")
+        XCTAssertTrue(withPhoto.bodyMarkdown.contains("after"), "prose after the photo is kept")
+        XCTAssertTrue(withPhoto.bodyMarkdown.contains("beach"), "caption is kept")
     }
 
     // MARK: - Helpers

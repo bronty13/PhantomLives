@@ -132,6 +132,14 @@ name and size. Playable items carry a ▶ badge. The viewer has a **Save a Copy�
 button to write the original back out to disk. Hover a thumbnail and click the ✕
 to remove it from the entry.
 
+**Putting media inside your writing** — you can place any attachment *within*
+the entry text, with a caption and words before and after it. Right-click an item
+in the strip and choose **Insert into entry text**; a little reference like
+`![caption](pd-attachment://…)` drops into the body. Type a caption between the
+`[ ]`, and move the line wherever you want it in **Write** mode — then switch to
+**Preview** and the photo (or video/audio/PDF) shows right there in the story,
+tappable to open full size. The item still lives in the strip too, for managing.
+
 Everything is copied **into your encrypted journal** (stored right inside the
 database, so it's protected by the same encryption and included in backups) —
 nothing is ever uploaded. One thing to know: because videos, audio, PDFs, and
@@ -196,7 +204,9 @@ entries to your journal (it never overwrites what's already there).
 - **Day One / Journey / Diarium** — export from that app, **unzip** it, and pick
   the `.json` inside. Entries land in a new journal named for the source. For
   **Day One**, leave the photos/videos folders next to `Journal.json` when you
-  pick it — their media is brought in and attached to the entries. These
+  pick it — their media is brought in and, where Day One had a photo *inline* in
+  the text, it's placed back **inline at that spot** (with its caption) so the
+  story reads the way you wrote it. These
   importers are built to each app's documented format; give the result a quick
   look and let me know if anything's off.
 

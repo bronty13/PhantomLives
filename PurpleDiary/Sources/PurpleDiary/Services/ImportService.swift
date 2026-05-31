@@ -33,8 +33,12 @@ enum ImportService {
     struct Bundle {
         struct Entry {
             var date: String; var title: String; var body: String; var moodRating: Int; var tags: [String]
-            /// Resolved on-disk media files to import as attachments (Day One).
+            /// Media to import and attach without a body position.
             var mediaFiles: [URL] = []
+            /// Day One media keyed by the moment id used in the body's
+            /// `dayone-moment://<id>` refs — imported, then the refs are rewritten
+            /// into inline attachment refs in place.
+            var inlineMoments: [(momentId: String, url: URL)] = []
         }
         struct Journal { var name: String; var entries: [Entry] }
         var sourceName: String
@@ -112,36 +116,42 @@ enum ImportService {
         var entries: [Entry]
     }
 
-    /// Day One media folder per kind. Files are `<md5>.<type>` (also try
-    /// `<identifier>.<type>` as a fallback).
-    private static func dayOneMediaURLs(_ entry: DayOneFile.Entry, baseURL: URL?) -> [URL] {
+    /// Day One media, paired with the moment id the body refers to. Files live in
+    /// per-kind sibling folders named `<md5>.<type>` (fallback `<identifier>.<type>`);
+    /// the moment id used in the body's `dayone-moment://<id>` is the identifier
+    /// (fallback md5). The raw body keeps its refs — `apply` rewrites them into
+    /// inline attachment refs once the files are imported and have attachment ids.
+    private static func dayOneMoments(_ entry: DayOneFile.Entry, baseURL: URL?) -> [(momentId: String, url: URL)] {
         guard let baseURL else { return [] }
         let fm = FileManager.default
         let groups: [(String, [DayOneFile.Media]?)] = [
             ("photos", entry.photos), ("videos", entry.videos),
             ("audios", entry.audios), ("pdfs", entry.pdfAttachments),
         ]
-        var urls: [URL] = []
+        var out: [(String, URL)] = []
         for (folder, media) in groups {
             for m in media ?? [] {
                 let ext = (m.type?.isEmpty == false) ? m.type! : "dat"
                 let candidates = [m.md5, m.identifier].compactMap { $0 }.map {
                     baseURL.appendingPathComponent(folder).appendingPathComponent("\($0).\(ext)")
                 }
-                if let found = candidates.first(where: { fm.fileExists(atPath: $0.path) }) {
-                    urls.append(found)
-                }
+                guard let found = candidates.first(where: { fm.fileExists(atPath: $0.path) }) else { continue }
+                let momentId = m.identifier ?? m.md5 ?? found.deletingPathExtension().lastPathComponent
+                out.append((momentId, found))
             }
         }
-        return urls
+        return out
     }
 
     static func parseDayOne(_ data: Data, baseURL: URL? = nil) throws -> Bundle {
         let file = try JSONDecoder().decode(DayOneFile.self, from: data)
         let entries = file.entries.map { e in
+            // Keep the raw body (with dayone-moment refs); apply() rewrites them
+            // into inline attachment refs at their original position once media
+            // is imported, so the photo shows where the prose describes it.
             Bundle.Entry(date: e.creationDate ?? "", title: "",
                          body: e.text ?? "", moodRating: 0, tags: e.tags ?? [],
-                         mediaFiles: dayOneMediaURLs(e, baseURL: baseURL))
+                         inlineMoments: dayOneMoments(e, baseURL: baseURL))
         }
         guard !entries.isEmpty else { throw ImportError.empty }
         return Bundle(sourceName: "Day One", journals: [.init(name: "Day One", entries: entries)])
@@ -240,11 +250,27 @@ enum ImportService {
                 try db.insertEntry(entry)
                 let ids = try ie.tags.compactMap { try tagId($0) }
                 if !ids.isEmpty { try db.setTags(ids, forEntry: entry.id) }
-                // Import any resolved media files as attachments (Day One).
+
+                // Non-positioned media → attachments only.
                 for fileURL in ie.mediaFiles {
                     if let attachment = await FileImportService.makeAttachment(from: fileURL, entryId: entry.id) {
                         try db.insertAttachment(attachment)
                     }
+                }
+                // Positioned (Day One) media → import, map moment-id → attachment-id.
+                var momentToAtt: [String: String] = [:]
+                for (momentId, url) in ie.inlineMoments {
+                    if let attachment = await FileImportService.makeAttachment(from: url, entryId: entry.id) {
+                        try db.insertAttachment(attachment)
+                        momentToAtt[momentId] = attachment.id
+                    }
+                }
+                // Rewrite the body's moment refs into inline attachment refs at
+                // their original positions (unmapped refs fall back to a marker).
+                let rewritten = InlineMedia.rewriteDayOneBody(entry.bodyMarkdown, momentToAttachment: momentToAtt)
+                if rewritten != entry.bodyMarkdown {
+                    entry.bodyMarkdown = rewritten
+                    try db.updateEntry(entry)
                 }
                 added += 1
             }

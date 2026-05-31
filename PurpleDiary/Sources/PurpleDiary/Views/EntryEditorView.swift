@@ -26,7 +26,7 @@ struct EntryEditorView: View {
                 Divider()
                 tagRow
                 if !appState.trackerTags.isEmpty { trackerRow }
-                EntryPhotosSection(entry: entry)
+                EntryPhotosSection(entry: entry, onInsert: insertInline)
                 if body_.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     promptCard
                 }
@@ -123,6 +123,15 @@ struct EntryEditorView: View {
 
     private func usePrompt() {
         body_ = "> \(prompt.text)\n\n"
+    }
+
+    /// Insert an inline reference to an attachment at the end of the body. The
+    /// user can reposition it or add a caption in Write mode; Preview renders the
+    /// media in place. Works for any attachment kind (photo/video/audio/pdf/file).
+    private func insertInline(_ thumb: AttachmentThumb) {
+        let ref = InlineMedia.ref(attachmentId: thumb.id)
+        let separator = body_.isEmpty || body_.hasSuffix("\n") ? "" : "\n\n"
+        body_ += "\(separator)\(ref)\n"
     }
 
     // MARK: - Tags
