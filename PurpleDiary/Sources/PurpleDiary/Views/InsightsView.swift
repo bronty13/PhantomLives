@@ -23,6 +23,7 @@ struct InsightsView: View {
                         entriesPerMonthChart
                         wordsPerMonthChart
                         if !stats.tagCounts.isEmpty { tagChart }
+                        trackerCharts
                     }
                     .padding(20)
                 }
@@ -125,6 +126,44 @@ struct InsightsView: View {
         }
     }
 
+    // MARK: - Tracker charts
+
+    /// One line chart per tracker that has at least one logged value, drawn in
+    /// the tracker's own color. Daily-average series from `StatsService`.
+    @ViewBuilder
+    private var trackerCharts: some View {
+        ForEach(appState.trackerTags) { tracker in
+            if let rid = tracker.rowId {
+                let series = StatsService.trackerSeries(
+                    trackerId: rid,
+                    entries: appState.entries,
+                    valuesByEntry: appState.trackerValuesByEntry
+                )
+                if !series.isEmpty {
+                    trackerChart(tracker, series: series)
+                }
+            }
+        }
+    }
+
+    private func trackerChart(_ tracker: TrackerTag, series: [StatsService.TrackerPoint]) -> some View {
+        let color = Color(hex: tracker.colorHex) ?? appState.effectiveAccentColor
+        let title = tracker.unit.isEmpty || tracker.kind != .number
+            ? tracker.name
+            : "\(tracker.name) (\(tracker.unit))"
+        return chartCard(title) {
+            Chart(series) { point in
+                LineMark(x: .value("Day", point.day), y: .value("Value", point.value))
+                    .interpolationMethod(.catmullRom)
+                    .foregroundStyle(color)
+                PointMark(x: .value("Day", point.day), y: .value("Value", point.value))
+                    .foregroundStyle(color)
+            }
+            .modifier(TrackerYScale(kind: tracker.kind))
+            .frame(height: 180)
+        }
+    }
+
     private func chartCard<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title).font(.headline)
@@ -133,5 +172,18 @@ struct InsightsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+/// Pins a boolean tracker's y-axis to 0...1 (No/Yes); leaves number/duration
+/// trackers to auto-scale.
+private struct TrackerYScale: ViewModifier {
+    let kind: TrackerKind
+    func body(content: Content) -> some View {
+        if kind == .boolean {
+            content.chartYScale(domain: 0...1)
+        } else {
+            content
+        }
     }
 }

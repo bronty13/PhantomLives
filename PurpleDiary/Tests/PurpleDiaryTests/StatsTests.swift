@@ -117,4 +117,25 @@ final class StatsTests: XCTestCase {
         XCTAssertEqual(r.longest, 4)
         XCTAssertEqual(r.current, 0)
     }
+
+    // MARK: - Tracker series
+
+    func testTrackerSeriesAveragesPerDayAndSortsChronologically() {
+        let e1 = entry(on: day(2026, 1, 10)); let e1b = entry(on: day(2026, 1, 10))
+        let e2 = entry(on: day(2026, 1, 5))
+        let e3 = entry(on: day(2026, 1, 20))   // no value logged for the tracker
+        let values: [String: [Int64: Double]] = [
+            e1.id:  [7: 6],
+            e1b.id: [7: 8],   // same day as e1 → averages to 7
+            e2.id:  [7: 4],
+            e3.id:  [9: 1],   // different tracker, ignored
+        ]
+        let series = StatsService.trackerSeries(
+            trackerId: 7, entries: [e1, e1b, e2, e3], valuesByEntry: values, calendar: cal
+        )
+        XCTAssertEqual(series.count, 2)
+        // Chronological: Jan 5 then Jan 10.
+        XCTAssertEqual(series.map(\.value), [4, 7])
+        XCTAssertEqual(series.first?.day, cal.startOfDay(for: day(2026, 1, 5)))
+    }
 }

@@ -2,6 +2,41 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Phase 2: Tracker tags + graphs
+
+### Added
+- **Trackers** — define your own quantified metrics (cups of water, hours of
+  sleep, "did I exercise?") and log them per entry, then watch the trend in
+  Insights. Three kinds: **Number** (with an optional unit), **Duration**
+  (minutes, shown as `1h 30m`), and **Yes / No**.
+  - New **Trackers** sidebar section to define/recolor/delete metrics.
+  - The **entry editor** gains a Trackers row: a numeric field for
+    number/duration trackers and a three-state **— / No / Yes** picker for
+    booleans. Clearing a field un-logs that tracker for the entry (so an
+    un-logged tracker is never silently recorded as zero).
+  - **Insights** draws one line chart per tracker that has data — daily-average
+    value over time, in the tracker's own color (booleans pinned to a 0…1 axis).
+- New `v2_trackers` migration (`tracker_tags` + `tracker_values`, with
+  `ON DELETE CASCADE` on both the entry and the tracker definition). Appended,
+  not edited — `v1_initial` stays frozen (the immutability guard now expects
+  `["v1_initial", "v2_trackers"]`).
+- `StatsService.trackerSeries(...)` — pure daily-average time series for a
+  tracker (multiple same-day entries are averaged to one point).
+- **Export** now includes trackers. The JSON export bumps to
+  **`schemaVersion: 2`** with a top-level `trackers` array (definitions) and a
+  per-entry `trackers` list of `{tracker, value}`; the Markdown and HTML exports
+  show each entry's logged values on a `📊` line.
+
+### Notes
+- Build-verified on macOS: clean Developer-ID Release build; **64/64 tests**
+  (60 prior + tracker migration/cascade, `TrackerKind` formatting, `TrackerTag`
+  Codable round-trip, and `trackerSeries` daily-average ordering; the JSON
+  export test now asserts the v2 tracker payload). The `v2_trackers` migration
+  applied cleanly to the existing encrypted database, and the full
+  define → log → graph flow was exercised in the running app (a "Sleep" tracker
+  defined, logged on an entry, and rendered as a point on its Insights chart),
+  then removed.
+
 ## [Unreleased] — Phase 2: Export (Markdown / HTML / PDF / JSON)
 
 ### Added

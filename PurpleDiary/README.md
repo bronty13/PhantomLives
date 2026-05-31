@@ -21,13 +21,17 @@ phased roadmap.
 - **Calendar** — month grid; days with entries are dotted; click to jump or
   create.
 - **Search** — ranked across title / body / tags / people.
+- **Trackers** — define custom quantified metrics (number + unit, duration, or
+  yes/no), log them per entry, and graph the trend. *(Phase 2)*
 - **Insights** — Swift Charts dashboard over your entries: summary cards
   (entries, words, days journaled, avg mood, current/longest streak), mood over
-  time, entries/words per month, and tag usage. No new permissions. *(Phase 2)*
+  time, entries/words per month, tag usage, and a line chart per tracker. No new
+  permissions. *(Phase 2)*
 - **Export** — save the whole journal as **Markdown**, **HTML**, **PDF**, or
   **JSON** from File → Export Journal… (⇧⌘E) or Settings → General. Entries are
   grouped by month; files land in `~/Downloads/PurpleDiary/`. JSON is a
-  versioned, round-trippable dump for backup/re-import. *(Phase 2)*
+  versioned, round-trippable dump (now schema v2, including trackers) for
+  backup/re-import. *(Phase 2)*
 - **Auto-backup at every launch** — zips the support directory to
   `~/Downloads/PurpleDiary backup/` with 14-day retention; verify and restore
   from Settings → Backup. (PhantomLives convention.)
@@ -76,7 +80,8 @@ search ranking, BackupService debounce/retention/verify, and the privacy core:
 AES-GCM crypto, BIP39 recovery-key encode/decode/checksum, KeyStore
 passphrase/recovery unlock round-trips, SQLCipher at-rest (ciphertext on disk,
 wrong-key rejection, plaintext→SQLCipher migration), the sample-data facility,
-the Insights stats aggregation, and the Markdown/HTML/JSON export render paths.
+the Insights stats aggregation (including tracker series), tracker migration +
+cascade and Codable, and the Markdown/HTML/JSON export render paths.
 
 ## Encryption & dependencies
 
@@ -93,12 +98,13 @@ database. See `Vendor/SQLCipher/PROVENANCE.md`.
 PurpleDiary/
 ├── Sources/PurpleDiary/
 │   ├── App/          # PurpleDiaryApp, AppState, AppDelegate, AppMenuCommands, Version, Info.plist
-│   ├── Models/       # Entry, Mood, Tag, Person, AppSettings (GRDB records)
+│   ├── Models/       # Entry, Mood, Tag, Person, TrackerTag, AppSettings (GRDB records)
 │   ├── Services/     # DatabaseService(+SQLCipher), BackupService, SearchService, SampleDataService,
-│   │                 #   KeyStore, KeychainStore, Crypto, RecoveryKey, BIP39Wordlist,
+│   │                 #   ExportService, KeyStore, KeychainStore, Crypto, RecoveryKey, BIP39Wordlist,
 │   │                 #   BootState, BiometricAuthService, StatsService, WindowStateGuard
 │   └── Views/        # ContentView (HStack sidebar), Timeline, EntryEditor, Calendar, Insights, Search,
-│                     #   People, Tags, AppLockScreen, RecoveryScreen, RecoveryKeySaveSheet, Settings/, Shared/
+│                     #   People, Tags, Trackers, ExportSheet, AppLockScreen, RecoveryScreen,
+│                     #   RecoveryKeySaveSheet, SecurityDocView, Settings/, Shared/
 ├── Tests/PurpleDiaryTests/
 ├── Vendor/           # GRDB.swift + SQLCipher 4.6.1 (local SwiftPM packages)
 ├── Scripts/generate-icon.swift

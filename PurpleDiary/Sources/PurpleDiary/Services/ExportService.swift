@@ -66,6 +66,8 @@ enum ExportService {
         people: [Person],
         tagsByEntry: [String: [Tag]],
         peopleByEntry: [String: [Person]],
+        trackerTags: [TrackerTag] = [],
+        trackerValuesByEntry: [String: [Int64: Double]] = [:],
         exportDir: URL
     ) async throws -> URL {
         let fm = FileManager.default
@@ -81,16 +83,21 @@ enum ExportService {
         do {
             switch format {
             case .markdown:
-                let md = renderMarkdown(entries: sorted, tagsByEntry: tagsByEntry, peopleByEntry: peopleByEntry)
+                let md = renderMarkdown(entries: sorted, tagsByEntry: tagsByEntry, peopleByEntry: peopleByEntry,
+                                        trackerTags: trackerTags, trackerValuesByEntry: trackerValuesByEntry)
                 try md.data(using: .utf8)?.write(to: url, options: .atomic)
             case .html:
-                let html = renderHTML(entries: sorted, tagsByEntry: tagsByEntry, peopleByEntry: peopleByEntry)
+                let html = renderHTML(entries: sorted, tagsByEntry: tagsByEntry, peopleByEntry: peopleByEntry,
+                                      trackerTags: trackerTags, trackerValuesByEntry: trackerValuesByEntry)
                 try html.data(using: .utf8)?.write(to: url, options: .atomic)
             case .json:
-                let data = try encodeJSON(entries: sorted, people: people, tagsByEntry: tagsByEntry, peopleByEntry: peopleByEntry)
+                let data = try encodeJSON(entries: sorted, people: people, tagsByEntry: tagsByEntry,
+                                          peopleByEntry: peopleByEntry, trackerTags: trackerTags,
+                                          trackerValuesByEntry: trackerValuesByEntry)
                 try data.write(to: url, options: .atomic)
             case .pdf:
-                let html = renderHTML(entries: sorted, tagsByEntry: tagsByEntry, peopleByEntry: peopleByEntry)
+                let html = renderHTML(entries: sorted, tagsByEntry: tagsByEntry, peopleByEntry: peopleByEntry,
+                                      trackerTags: trackerTags, trackerValuesByEntry: trackerValuesByEntry)
                 let pdf = try await renderPDFData(html: html)
                 try pdf.write(to: url, options: .atomic)
             }
@@ -109,10 +116,26 @@ enum ExportService {
     /// stars, tags, people) followed by its body verbatim (it's already
     /// Markdown). Plain text, no front-matter — opens cleanly in any editor or
     /// Obsidian/Bear-style vault.
+    /// Resolved "Name: 6 cups" / "Slept: 7h 30m" / "Exercise: Yes" strings for an
+    /// entry's logged trackers, in tracker-name order. Shared by Markdown + HTML.
+    private static func trackerSummaries(
+        for entryId: String,
+        trackerTags: [TrackerTag],
+        trackerValuesByEntry: [String: [Int64: Double]]
+    ) -> [String] {
+        guard let vals = trackerValuesByEntry[entryId], !vals.isEmpty else { return [] }
+        return trackerTags.compactMap { t -> String? in
+            guard let rid = t.rowId, let v = vals[rid] else { return nil }
+            return "\(t.name): \(t.kind.format(v, unit: t.unit))"
+        }
+    }
+
     static func renderMarkdown(
         entries: [Entry],
         tagsByEntry: [String: [Tag]],
-        peopleByEntry: [String: [Person]]
+        peopleByEntry: [String: [Person]],
+        trackerTags: [TrackerTag] = [],
+        trackerValuesByEntry: [String: [Int64: Double]] = [:]
     ) -> String {
         var out = "# My PurpleDiary Journal\n\n"
         out += "_\(entries.count) " + (entries.count == 1 ? "entry" : "entries") + " · exported \(humanStamp())_\n\n"
@@ -141,6 +164,12 @@ enum ExportService {
                     if let place = e.placeName, !place.isEmpty { meta.append("📍 \(place)") }
                     out += "*\(meta.joined(separator: " · "))*\n\n"
 
+                    let trackers = trackerSummaries(for: e.id, trackerTags: trackerTags,
+                                                    trackerValuesByEntry: trackerValuesByEntry)
+                    if !trackers.isEmpty {
+                        out += "📊 " + trackers.joined(separator: " · ") + "\n\n"
+                    }
+
                     let body = e.bodyMarkdown.trimmingCharacters(in: .whitespacesAndNewlines)
                     out += (body.isEmpty ? "_(no text)_" : body) + "\n\n"
                     out += "---\n\n"
@@ -160,7 +189,9 @@ enum ExportService {
     static func renderHTML(
         entries: [Entry],
         tagsByEntry: [String: [Tag]],
-        peopleByEntry: [String: [Person]]
+        peopleByEntry: [String: [Person]],
+        trackerTags: [TrackerTag] = [],
+        trackerValuesByEntry: [String: [Int64: Double]] = [:]
     ) -> String {
         var body = ""
         body += "<header>\n"
@@ -179,7 +210,9 @@ enum ExportService {
                     for e in mg.entries {
                         body += renderEntryHTML(e,
                                                 tags: tagsByEntry[e.id] ?? [],
-                                                people: peopleByEntry[e.id] ?? [])
+                                                people: peopleByEntry[e.id] ?? [],
+                                                trackers: trackerSummaries(for: e.id, trackerTags: trackerTags,
+                                                                           trackerValuesByEntry: trackerValuesByEntry))
                     }
                     body += "  </div>\n"
                 }
@@ -204,7 +237,7 @@ enum ExportService {
         """
     }
 
-    private static func renderEntryHTML(_ e: Entry, tags: [Tag], people: [Person]) -> String {
+    private static func renderEntryHTML(_ e: Entry, tags: [Tag], people: [Person], trackers: [String] = []) -> String {
         var s = "    <article class='entry'>\n"
         s += "      <div class='entry-head'>\n"
         s += "        <h4>\(escape(e.title.isEmpty ? "Untitled" : e.title))</h4>\n"
@@ -235,6 +268,9 @@ enum ExportService {
             }
             s += "      </div>\n"
         }
+        if !trackers.isEmpty {
+            s += "      <div class='trackers'>📊 \(escape(trackers.joined(separator: " · ")))</div>\n"
+        }
         s += "    </article>\n"
         return s
     }
@@ -251,6 +287,7 @@ enum ExportService {
         var entryCount: Int
         var entries: [EntryExport]
         var people: [PersonExport]
+        var trackers: [TrackerDefExport]
     }
     struct EntryExport: Codable, Equatable {
         var id: String
@@ -261,6 +298,7 @@ enum ExportService {
         var wordCount: Int
         var tags: [String]
         var people: [String]          // person ids linked to this entry
+        var trackers: [TrackerValueExport]   // values logged on this entry
         var latitude: Double?
         var longitude: Double?
         var placeName: String?
@@ -274,17 +312,37 @@ enum ExportService {
         var name: String
         var notes: String
     }
+    struct TrackerDefExport: Codable, Equatable {
+        var name: String
+        var unit: String
+        var kind: String
+        var colorHex: String
+    }
+    struct TrackerValueExport: Codable, Equatable {
+        var tracker: String           // tracker name (stable id for re-import)
+        var value: Double
+    }
 
-    static let jsonSchemaVersion = 1
+    static let jsonSchemaVersion = 2
 
     static func buildExportModel(
         entries: [Entry],
         people: [Person],
         tagsByEntry: [String: [Tag]],
-        peopleByEntry: [String: [Person]]
+        peopleByEntry: [String: [Person]],
+        trackerTags: [TrackerTag] = [],
+        trackerValuesByEntry: [String: [Int64: Double]] = [:]
     ) -> JournalExport {
+        let trackerNameById: [Int64: String] = Dictionary(
+            uniqueKeysWithValues: trackerTags.compactMap { t in t.rowId.map { ($0, t.name) } }
+        )
         let entryModels = entries.map { e in
-            EntryExport(
+            let trackerVals: [TrackerValueExport] = (trackerValuesByEntry[e.id] ?? [:])
+                .compactMap { (tid, value) in
+                    trackerNameById[tid].map { TrackerValueExport(tracker: $0, value: value) }
+                }
+                .sorted { $0.tracker < $1.tracker }
+            return EntryExport(
                 id: e.id,
                 date: e.date,
                 title: e.title,
@@ -293,6 +351,7 @@ enum ExportService {
                 wordCount: e.wordCount,
                 tags: (tagsByEntry[e.id] ?? []).map(\.name),
                 people: (peopleByEntry[e.id] ?? []).map(\.id),
+                trackers: trackerVals,
                 latitude: e.latitude,
                 longitude: e.longitude,
                 placeName: e.placeName,
@@ -308,7 +367,10 @@ enum ExportService {
             exportedAt: ISO8601DateFormatter().string(from: Date()),
             entryCount: entryModels.count,
             entries: entryModels,
-            people: people.map { PersonExport(id: $0.id, name: $0.name, notes: $0.notes) }
+            people: people.map { PersonExport(id: $0.id, name: $0.name, notes: $0.notes) },
+            trackers: trackerTags.map {
+                TrackerDefExport(name: $0.name, unit: $0.unit, kind: $0.kind.rawValue, colorHex: $0.colorHex)
+            }
         )
     }
 
@@ -316,10 +378,13 @@ enum ExportService {
         entries: [Entry],
         people: [Person],
         tagsByEntry: [String: [Tag]],
-        peopleByEntry: [String: [Person]]
+        peopleByEntry: [String: [Person]],
+        trackerTags: [TrackerTag] = [],
+        trackerValuesByEntry: [String: [Int64: Double]] = [:]
     ) throws -> Data {
         let model = buildExportModel(entries: entries, people: people,
-                                     tagsByEntry: tagsByEntry, peopleByEntry: peopleByEntry)
+                                     tagsByEntry: tagsByEntry, peopleByEntry: peopleByEntry,
+                                     trackerTags: trackerTags, trackerValuesByEntry: trackerValuesByEntry)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         return try encoder.encode(model)
@@ -491,6 +556,7 @@ enum ExportService {
       border-color: color-mix(in srgb, var(--c) 45%, white);
     }
     .chip.person::before { content: "@ "; color: var(--muted); }
+    .trackers { margin-top: 8px; font-size: 0.8rem; color: var(--muted); }
     footer {
       max-width: 820px; margin: 0 auto; padding: 20px 28px 48px;
       text-align: center; color: var(--muted); font-size: 0.8rem;

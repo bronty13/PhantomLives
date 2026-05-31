@@ -13,6 +13,7 @@ struct EntryEditorView: View {
     @State private var date: Date = Date()
     @State private var mood: Mood = .unset
     @State private var selectedTagIds: Set<Int64> = []
+    @State private var trackerValues: [Int64: Double] = [:]
     @State private var loaded = false
     @State private var saveTask: Task<Void, Never>?
 
@@ -22,6 +23,7 @@ struct EntryEditorView: View {
                 header
                 Divider()
                 tagRow
+                if !appState.trackerTags.isEmpty { trackerRow }
                 MarkdownEditor(text: $body_)
             }
             .padding(20)
@@ -63,6 +65,35 @@ struct EntryEditorView: View {
         }
     }
 
+    // MARK: - Trackers
+
+    private var trackerRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Trackers")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            VStack(spacing: 4) {
+                ForEach(appState.trackerTags) { tracker in
+                    TrackerLogRow(
+                        tracker: tracker,
+                        value: tracker.rowId.flatMap { trackerValues[$0] },
+                        onCommit: { newValue in commitTracker(tracker, newValue) }
+                    )
+                }
+            }
+        }
+    }
+
+    private func commitTracker(_ tracker: TrackerTag, _ value: Double?) {
+        guard loaded, let rid = tracker.rowId else { return }
+        if let value { trackerValues[rid] = value } else { trackerValues[rid] = nil }
+        do {
+            try appState.setTrackerValue(value, trackerTagId: rid, forEntry: entry.id)
+        } catch {
+            appState.errorMessage = error.localizedDescription
+        }
+    }
+
     // MARK: - Load / save
 
     private func loadIfNeeded() {
@@ -72,6 +103,7 @@ struct EntryEditorView: View {
         date = entry.dateValue
         mood = entry.mood
         selectedTagIds = Set((try? DatabaseService.shared.tagIDs(forEntry: entry.id)) ?? [])
+        trackerValues = (try? DatabaseService.shared.trackerValues(forEntry: entry.id)) ?? [:]
         loaded = true
     }
 
@@ -150,5 +182,94 @@ struct FlowChips: View {
                 .overlay(Capsule().stroke(color.opacity(isOn ? 0.8 : 0), lineWidth: 1))
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// One row for logging a tracker's value on an entry. The control depends on
+/// the tracker's kind: a numeric field (number / duration in minutes) or a
+/// three-state picker (— / No / Yes) for booleans. Empty / "—" clears the
+/// logged value entirely (so an un-logged tracker stays un-logged rather than
+/// being recorded as zero). Commits on Enter and on focus loss.
+struct TrackerLogRow: View {
+    let tracker: TrackerTag
+    let value: Double?
+    let onCommit: (Double?) -> Void
+
+    @State private var text: String = ""
+    @State private var boolChoice: Int = -1     // -1 = unset, 0 = no, 1 = yes
+    @FocusState private var focused: Bool
+
+    private var color: Color { Color(hex: tracker.colorHex) ?? .gray }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle().fill(color).frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(tracker.name).font(.callout)
+                if let v = value {
+                    Text("Logged: \(tracker.kind.format(v, unit: tracker.unit))")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            control
+        }
+        .padding(.vertical, 2)
+        .onAppear(perform: sync)
+        .onChange(of: value) { _, _ in sync() }
+    }
+
+    @ViewBuilder
+    private var control: some View {
+        switch tracker.kind {
+        case .boolean:
+            Picker("", selection: $boolChoice) {
+                Text("—").tag(-1)
+                Text("No").tag(0)
+                Text("Yes").tag(1)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 150)
+            .onChange(of: boolChoice) { _, new in
+                onCommit(new < 0 ? nil : Double(new))
+            }
+        default:
+            HStack(spacing: 4) {
+                TextField(tracker.kind == .duration ? "min" : (tracker.unit.isEmpty ? "value" : tracker.unit),
+                          text: $text)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 90)
+                    .multilineTextAlignment(.trailing)
+                    .focused($focused)
+                    .onSubmit(commitNumber)
+                    .onChange(of: focused) { _, isFocused in if !isFocused { commitNumber() } }
+                Text(tracker.kind == .duration ? "min" : tracker.unit)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .frame(minWidth: 28, alignment: .leading)
+            }
+        }
+    }
+
+    private func sync() {
+        switch tracker.kind {
+        case .boolean:
+            boolChoice = value.map { $0 >= 0.5 ? 1 : 0 } ?? -1
+        default:
+            if let v = value {
+                text = v == v.rounded() ? String(Int(v)) : String(format: "%.2f", v)
+            } else {
+                text = ""
+            }
+        }
+    }
+
+    private func commitNumber() {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty {
+            onCommit(nil)
+        } else if let d = Double(trimmed.replacingOccurrences(of: ",", with: ".")) {
+            onCommit(d)
+        }
     }
 }

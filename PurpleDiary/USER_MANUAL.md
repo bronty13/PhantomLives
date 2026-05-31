@@ -34,8 +34,28 @@ entries.
   ranked: a title match beats a body match. Click a result to open it.
 - **Insights** — a dashboard of your journaling: total entries and words, days
   journaled, average mood, your current and longest writing streaks, a
-  mood-over-time line, entries and words per month, and which tags you use most.
-  It's all computed from your entries on your Mac — nothing is sent anywhere.
+  mood-over-time line, entries and words per month, which tags you use most, and
+  a line chart for each tracker you keep (see below). It's all computed from your
+  entries on your Mac — nothing is sent anywhere.
+
+## Trackers
+
+Trackers let you log a number on each entry and watch it trend over time —
+cups of water, hours of sleep, pages read, whether you exercised.
+
+- Open the **Trackers** section to create one. Give it a name, pick a **kind**,
+  choose a color, and (for numbers) an optional **unit**:
+  - **Number** — any quantity, with your unit (e.g. `6 cups`, `3 km`).
+  - **Duration** — minutes, shown back as `1h 30m`.
+  - **Yes / No** — a simple did-I-or-didn't-I.
+- When you write or edit an entry, a **Trackers** row appears below the tags.
+  Type a value (or pick — / No / Yes) to log it for that day. Clearing the field
+  un-logs it — an empty tracker is never recorded as a zero.
+- In **Insights**, each tracker with data gets its own line chart in its color,
+  showing the daily average over time. (Days with more than one entry are
+  averaged into a single point.)
+- Deleting a tracker removes its logged values everywhere but leaves your
+  entries untouched.
 
 ## Exporting your journal
 
@@ -49,8 +69,10 @@ Want a copy of your journal outside the app? Choose **File → Export Journal…
   you can open in any browser.
 - **PDF** — the same layout as the HTML, paginated — handy for printing or
   keeping a fixed archive.
-- **JSON** — a complete, structured copy of every entry, tag, and person. This
-  is the one to keep if you ever want to re-import your journal later.
+- **JSON** — a complete, structured copy of every entry, tag, person, and
+  tracker (with the values you logged). This is the one to keep if you ever want
+  to re-import your journal later. (Markdown and HTML exports show each entry's
+  logged tracker values on a 📊 line too.)
 
 Files are saved to **`~/Downloads/PurpleDiary/`** by default (you can change the
 folder in Settings → General → Export), named

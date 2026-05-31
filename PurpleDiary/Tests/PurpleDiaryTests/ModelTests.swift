@@ -49,4 +49,29 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(Mood.great.filledStars, 5)
         XCTAssertEqual(Mood.unset.filledStars, 0)
     }
+
+    func testTrackerKindFormatting() {
+        XCTAssertEqual(TrackerKind.number.format(6, unit: "cups"), "6 cups")
+        XCTAssertEqual(TrackerKind.number.format(2.5, unit: "km"), "2.50 km")
+        XCTAssertEqual(TrackerKind.number.format(3, unit: ""), "3")
+        XCTAssertEqual(TrackerKind.duration.format(90, unit: ""), "1h 30m")
+        XCTAssertEqual(TrackerKind.duration.format(45, unit: ""), "45m")
+        XCTAssertEqual(TrackerKind.duration.format(120, unit: ""), "2h")
+        XCTAssertEqual(TrackerKind.boolean.format(1, unit: ""), "Yes")
+        XCTAssertEqual(TrackerKind.boolean.format(0, unit: ""), "No")
+    }
+
+    @MainActor
+    func testTrackerTagCodableRoundTrip() throws {
+        let queue = try DatabaseQueue()
+        try DatabaseService.applyMigrations(to: queue)
+        try queue.write { db in
+            var t = TrackerTag(rowId: nil, name: "Sleep", unit: "h", kind: .duration, colorHex: "#3FB950")
+            try t.insert(db)
+            let back = try TrackerTag.fetchOne(db, key: t.rowId!)
+            XCTAssertEqual(back?.name, "Sleep")
+            XCTAssertEqual(back?.kind, .duration)
+            XCTAssertEqual(back?.unit, "h")
+        }
+    }
 }
