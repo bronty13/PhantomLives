@@ -16,7 +16,9 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
 ## At a glance (Phase 1)
 
 - **Entries** — Markdown body, optional title, editable date/time, multiple
-  entries per day. Live word count.
+  entries per day. Live word count. **Import…** in the editor toolbar pulls a
+  Markdown/text/RTF file's contents into the body (smart merge — sets an empty
+  body, or appends after a `---` separator). *(Phase 2)*
 - **Mood** — 0–5 star rating per entry.
 - **Tags** — named, colored, toggleable per entry; six seeded on first launch.
 - **People** — a global list of recurring people you can link to entries.

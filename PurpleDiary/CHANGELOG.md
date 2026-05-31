@@ -2,6 +2,22 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Phase 2: Import text files into an entry
+
+### Added
+- **Import a text file into the entry body.** The Markdown editor's toolbar gains
+  an **"Import…"** button that opens a Markdown / plain-text / RTF file and merges
+  its contents into the current entry's body. RTF is flattened to plain text. The
+  merge is *smart*: an empty body is set to the file's contents; a body that
+  already has text gets the file appended after a `---` separator (existing text
+  is never overwritten). Unlike "Add from Files…" (which attaches media), this
+  brings the text **into the entry itself**.
+
+### Notes
+- New `TextImportService` (read Markdown/text/RTF + the pure `mergedBody` rule);
+  the button lives in `MarkdownEditor`. Build-verified; **+6 tests** (merge rule
+  + Markdown/plain-text/RTF reading).
+
 ## [Unreleased] — Phase 2: Discard never-filled-in entries
 
 ### Changed

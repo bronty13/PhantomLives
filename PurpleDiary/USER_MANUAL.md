@@ -16,6 +16,12 @@ without the key, which lives in your Mac's Keychain.
 - Write the body in **Markdown**. Use the **Write / Preview** toggle to see it
   rendered. The live word count is in the editor's top-right and in the sidebar
   footer.
+- **Import a text file** with the **Import…** button in the editor toolbar — pick
+  a Markdown, plain-text, or RTF file and its contents drop into the body. (RTF
+  comes in as plain text.) If the entry is empty the file becomes the body; if
+  you've already written something, the file is added below it after a `---`
+  divider, so nothing you typed is lost. This brings the text *into the entry*;
+  to attach a file as media instead, use **Add from Files…** in the Media row.
 - Set your **mood** with the 0–5 stars. Tap a star to set it; tap the same star
   again to clear it.
 - Add **tags** by clicking the chips under the title. Manage the tag list (and
