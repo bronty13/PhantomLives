@@ -135,8 +135,12 @@ The blank-page journal that's genuinely usable day one. No integrations yet.
   reminders as entry context.
 - **Location + Map view** (CoreLocation + MapKit): geotag entries, browse them
   on a map.
-- **Weather** (WeatherKit): record conditions, temp, sunrise/sunset, moon phase
-  for the entry's date+place.
+- ❌ **Weather** (WeatherKit): **dropped — out of scope.** Implemented against the
+  WeatherKit REST API, then reverted: it requires sending the entry's
+  coordinates to Apple over the network, which breaks PurpleDiary's no-network /
+  local-first guarantee. Not pursued unless that posture is explicitly revisited.
+  (A fully-offline manual "conditions" field remains a possible future
+  alternative, using the reserved `weatherSummary`/`tempC` columns.)
 - ✅ **Tracker tags + graphs**: define custom metrics (number+unit / duration /
   yes-no), log per entry, plot daily-average trends in the dashboard (Swift
   Charts). Trackers section + entry-editor logging row + per-tracker Insights
