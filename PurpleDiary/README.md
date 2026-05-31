@@ -8,7 +8,8 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
 
 > **Status:** Phase 1 complete (core journal + privacy core: encryption-at-rest,
 > app-lock, 24-word recovery key). Phase 2 shipped: **Insights**, **export**,
-> **trackers**, and **Photos import**. Map view and sync are scoped for later.
+> **trackers**, and **media** (Photos import + filesystem photo/video import +
+> in-app viewer). Map view and sync are scoped for later.
 > Network-based auto-context (e.g. WeatherKit) is **out of scope** — PurpleDiary
 > stays fully offline. See SCOPING.md / HANDOFF.md.
 
@@ -23,9 +24,13 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
 - **Calendar** — month grid; days with entries are dotted; click to jump or
   create.
 - **Search** — ranked across title / body / tags / people.
-- **Photos import** — "Add photos from this day" on an entry pulls in the
-  photos you took on that date (PhotoKit); chosen photos are stored as
-  SQLCipher-encrypted BLOBs in the database. *(Phase 2)*
+- **Photos & video** — "Add from Photos" pulls in the photos you took on the
+  entry's date (PhotoKit), with a date picker to browse any other day and a
+  "Show all recent" toggle for the whole library. "Add from Files…" imports
+  photos **and videos** from anywhere on your Mac. Click any thumbnail to view
+  it full-size (image) or play it (video, AVKit). All media is stored as
+  SQLCipher-encrypted BLOBs in the database — photos downscaled, videos
+  byte-for-byte. *(Phase 2)*
 - **Trackers** — define custom quantified metrics (number + unit, duration, or
   yes/no), log them per entry, and graph the trend. *(Phase 2)*
 - **Insights** — Swift Charts dashboard over your entries: summary cards

@@ -55,6 +55,22 @@ enum PhotosImportService {
         return assets
     }
 
+    /// The most recent image assets across the whole library, newest first,
+    /// capped at `limit` so the picker grid never tries to page thousands of
+    /// previews at once. Backs the "Show all recent" toggle. Caller must already
+    /// hold authorization.
+    static func recentAssets(limit: Int = 300) -> [PHAsset] {
+        let options = PHFetchOptions()
+        options.predicate = NSPredicate(format: "mediaType == %d", PHAssetMediaType.image.rawValue)
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        options.fetchLimit = limit
+
+        let result = PHAsset.fetchAssets(with: options)
+        var assets: [PHAsset] = []
+        result.enumerateObjects { asset, _, _ in assets.append(asset) }
+        return assets
+    }
+
     /// A small preview image for the suggestion grid (fast, may be degraded).
     static func preview(for asset: PHAsset, edge: CGFloat = 200) async -> NSImage? {
         await requestImage(asset, target: CGSize(width: edge * 2, height: edge * 2),

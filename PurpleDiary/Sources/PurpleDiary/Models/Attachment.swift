@@ -42,13 +42,18 @@ struct Attachment: Codable, FetchableRecord, MutablePersistableRecord, Identifia
     }
 
     var isImage: Bool { mimeType.hasPrefix("image/") }
+    var isVideo: Bool { kind == "video" || mimeType.hasPrefix("video/") }
 }
 
 /// Lightweight projection for the editor's photo strip: identity + thumbnail +
-/// dimensions, without paging the full-resolution `data` BLOB into memory.
+/// dimensions + media kind, without paging the full-resolution `data` BLOB into
+/// memory. `kind`/`mimeType` let the strip badge videos and the viewer pick
+/// image-vs-player without loading the bytes.
 struct AttachmentThumb: Identifiable, Hashable, FetchableRecord {
     var id: String
     var entryId: String
+    var kind: String
+    var mimeType: String
     var filename: String
     var thumbnailData: Data?
     var width: Int
@@ -57,9 +62,13 @@ struct AttachmentThumb: Identifiable, Hashable, FetchableRecord {
     init(row: Row) {
         id = row["id"]
         entryId = row["entry_id"]
+        kind = row["kind"]
+        mimeType = row["mime_type"]
         filename = row["filename"]
         thumbnailData = row["thumbnail_data"]
         width = row["width"]
         height = row["height"]
     }
+
+    var isVideo: Bool { kind == "video" || mimeType.hasPrefix("video/") }
 }

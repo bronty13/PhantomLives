@@ -638,12 +638,18 @@ final class DatabaseService {
         }
     }
 
+    /// One full attachment row (including the `data` BLOB) by id — backs the
+    /// full-size viewer / video player.
+    func attachment(id: String) throws -> Attachment? {
+        try dbPool.read { db in try Attachment.fetchOne(db, key: id) }
+    }
+
     /// Lightweight thumbnails (no full `data` BLOB) for one entry — drives the
     /// editor's photo strip.
     func attachmentThumbs(forEntry entryId: String) throws -> [AttachmentThumb] {
         try dbPool.read { db in
             let rows = try Row.fetchAll(db, sql: """
-                SELECT id, entry_id, filename, thumbnail_data, width, height
+                SELECT id, entry_id, kind, mime_type, filename, thumbnail_data, width, height
                 FROM attachments WHERE entry_id = ? ORDER BY created_at ASC
                 """, arguments: [entryId])
             return rows.map { AttachmentThumb(row: $0) }
