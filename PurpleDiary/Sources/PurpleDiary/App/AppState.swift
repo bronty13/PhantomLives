@@ -19,6 +19,17 @@ final class AppState: ObservableObject {
     @Published var trackerValuesByEntry: [String: [Int64: Double]] = [:] // entry.id → (trackerTagId → value)
     @Published var attachmentCountByEntry: [String: Int] = [:]           // entry.id → photo count
 
+    // MARK: - Journals (Phase 3)
+
+    @Published var journals: [Journal] = []
+    @Published var entryCountByJournal: [String: Int] = [:]              // journal.id → entry count
+    /// Active journal filter. `nil` = "All journals" (still excludes hidden,
+    /// locked journals). A specific id narrows Timeline/Calendar/Search/Insights.
+    @Published var selectedJournalId: String? = nil
+    /// Hidden journals the user has unlocked for *this session only* (never
+    /// persisted — a relaunch re-locks them).
+    @Published var unlockedHiddenJournalIds: Set<String> = []
+
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
 
@@ -174,6 +185,8 @@ final class AppState: ObservableObject {
             tags    = try DatabaseService.shared.fetchAllTags()
             people  = try DatabaseService.shared.fetchAllPeople()
             trackerTags = try DatabaseService.shared.fetchAllTrackerTags()
+            journals = try DatabaseService.shared.fetchAllJournals()
+            entryCountByJournal = try DatabaseService.shared.entryCountByJournal()
             try reloadJoins()
             if selectedEntryId == nil { selectedEntryId = entries.first?.id }
         } catch {
@@ -185,7 +198,17 @@ final class AppState: ObservableObject {
     func reloadEntries() {
         do {
             entries = try DatabaseService.shared.fetchAllEntries()
+            entryCountByJournal = try DatabaseService.shared.entryCountByJournal()
             try reloadJoins()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func reloadJournals() {
+        do {
+            journals = try DatabaseService.shared.fetchAllJournals()
+            entryCountByJournal = try DatabaseService.shared.entryCountByJournal()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -232,11 +255,119 @@ final class AppState: ObservableObject {
         return entries.first { $0.id == id }
     }
 
+    // MARK: - Journals: visibility
+
+    var journalsById: [String: Journal] {
+        Dictionary(uniqueKeysWithValues: journals.map { ($0.id, $0) })
+    }
+
+    /// Journals that should appear in the sidebar's switcher and be selectable:
+    /// non-hidden journals plus any hidden ones unlocked this session.
+    var visibleJournals: [Journal] {
+        journals.filter { !$0.isHidden || unlockedHiddenJournalIds.contains($0.id) }
+    }
+
+    var hasHiddenJournals: Bool { journals.contains { $0.isHidden } }
+
+    /// Pure visibility rule, factored out for testing. An entry is shown when its
+    /// journal isn't hidden (or has been unlocked this session) AND it matches
+    /// the active journal filter (`nil` selection = all visible journals).
+    static func entryIsVisible(entryJournalId: String,
+                               selectedJournalId: String?,
+                               journalIsHidden: Bool,
+                               journalIsUnlocked: Bool) -> Bool {
+        if journalIsHidden && !journalIsUnlocked { return false }
+        if let sel = selectedJournalId, sel != entryJournalId { return false }
+        return true
+    }
+
+    /// Entries the Timeline / Calendar / Search / Insights should operate on,
+    /// after applying the hidden-journal gate and the active journal filter.
+    var visibleEntries: [Entry] {
+        entries.filter { entry in
+            let journal = journalsById[entry.journalId]
+            let hidden = journal?.isHidden ?? false
+            return Self.entryIsVisible(
+                entryJournalId: entry.journalId,
+                selectedJournalId: selectedJournalId,
+                journalIsHidden: hidden,
+                journalIsUnlocked: unlockedHiddenJournalIds.contains(entry.journalId)
+            )
+        }
+    }
+
+    // MARK: - Journals: mutations
+
+    @discardableResult
+    func createJournal(name: String, colorHex: String = "#7C5CFF", symbol: String = "book.closed") throws -> Journal {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let journal = Journal.newDraft(name: trimmed.isEmpty ? "Untitled" : trimmed,
+                                       colorHex: colorHex, symbol: symbol,
+                                       sortOrder: (journals.map(\.sortOrder).max() ?? 0) + 1)
+        try DatabaseService.shared.insertJournal(journal)
+        reloadJournals()
+        return journal
+    }
+
+    func updateJournal(_ journal: Journal) throws {
+        try DatabaseService.shared.updateJournal(journal)
+        reloadJournals()
+    }
+
+    func setJournalHidden(_ hidden: Bool, journalId: String) throws {
+        guard var j = journalsById[journalId] else { return }
+        j.isHidden = hidden
+        try DatabaseService.shared.updateJournal(j)
+        if hidden {
+            unlockedHiddenJournalIds.remove(journalId)
+            if selectedJournalId == journalId { selectedJournalId = nil }
+        }
+        reloadJournals()
+    }
+
+    func deleteJournal(id: String) throws {
+        guard id != Journal.defaultId else { return }
+        try DatabaseService.shared.deleteJournal(id: id)
+        if selectedJournalId == id { selectedJournalId = nil }
+        unlockedHiddenJournalIds.remove(id)
+        reloadJournals()
+        reloadEntries()   // entries were reassigned to the default journal
+    }
+
+    /// Move a single entry into another journal.
+    func setEntryJournal(_ journalId: String, entryId: String) throws {
+        try DatabaseService.shared.setJournal(journalId, forEntry: entryId)
+        reloadEntries()
+    }
+
+    /// Unlock a hidden journal for this session via the app-lock gate (Touch ID /
+    /// device password / passphrase). On success the journal becomes selectable
+    /// and its entries appear. No-op for non-hidden journals.
+    func unlockHiddenJournal(_ journalId: String) async {
+        guard let j = journalsById[journalId], j.isHidden else { return }
+        if unlockedHiddenJournalIds.contains(journalId) { return }
+        let result = await BiometricAuthService.authenticate(
+            reason: "unlock the “\(j.name)” journal",
+            biometryOnly: settings.biometryOnlyMode
+        )
+        if result == .success {
+            unlockedHiddenJournalIds.insert(journalId)
+        } else if case .unavailable = result {
+            // No biometrics/passcode on this Mac — reveal rather than lock the
+            // user out of their own data (app-lock has the same fallback).
+            unlockedHiddenJournalIds.insert(journalId)
+        }
+    }
+
     // MARK: - Entry mutations
 
     @discardableResult
     func createEntry(date: Date = Date(), title: String = "") throws -> Entry {
-        let entry = Entry.newDraft(date: date, title: title)
+        // New entries land in the active journal (or the default when "All" is
+        // selected). A hidden journal is only selectable once unlocked, so this
+        // never silently writes into a locked journal.
+        let journalId = selectedJournalId ?? Journal.defaultId
+        let entry = Entry.newDraft(date: date, title: title, journalId: journalId)
         try DatabaseService.shared.insertEntry(entry)
         reloadEntries()
         selectedEntryId = entry.id

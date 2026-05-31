@@ -161,6 +161,29 @@ The blank-page journal that's genuinely usable day one. No integrations yet.
   is already protected. (Full multi-device conflict resolution is a stretch goal.)
 - **Import** from Day One (JSON/zip) and our own JSON export.
 
+### Phase 3+ build-out (Day One–parity, privacy-respecting) — supersedes the framing above
+
+After a feature comparison against Day One, Diarium, Journey, Diaro, Apple
+Journal, and Obsidian, the post-Phase-2 work is re-planned as the phases below.
+Every item is **fully on-device** (no network); explicitly avoided as
+network-dependent: cloud sync, web app, live weather, map tiles, AI-over-entries,
+fitness/social integrations. Each phase is its own build/test/PR.
+
+| Phase | Scope | Status |
+|---|---|---|
+| **3 — Journals** | Multiple journals; **hidden/locked** journals (Option A: app-level visibility gate — filtered out of Timeline/Calendar/Search/Insights until unlocked for the session). Sidebar switcher, per-entry journal, move-between, export schema v4. | ✅ **done** |
+| **4 — Reflection** | "On This Day" flashback (local date query) + a **bundled static** prompt library rotating daily. | planned |
+| **5 — Templates** | Reusable entry scaffolds with auto-filled date. | planned |
+| **6 — Calendar heatmap + reminders** | Word-count intensity on the calendar; local `UNUserNotificationCenter` daily reminder. | planned |
+| **7 — Attachments+** | PDF / document attachments; PencilKit drawing entries. Extends the encrypted-BLOB attachment model. | planned |
+| **8 — Importers** | Day One / Diarium / Journey JSON import (file-based, offline). | planned |
+| **9 — Vault (Option B)** | Per-journal **cryptographic** separation: a hidden journal sealed under its own passphrase-wrapped key (AES-GCM), opaque even with the app open. Borrows PurpleLife's vault pattern. The last pole. | planned |
+
+The original "Phase 3 — Memory, sync, migration" bullets fold in here:
+On-This-Day/reminders → Phases 4 & 6; Day One import → Phase 8;
+bring-your-own-cloud sync remains **deferred** (a synced encrypted file is
+already protected, but conflict resolution is out of scope for now).
+
 ## 7. Key decisions still open (for later, not blockers)
 
 1. **Encryption mechanism** — SQLCipher (whole-DB, transparent, needs the

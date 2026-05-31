@@ -21,7 +21,10 @@ PhantomLives conventions.
 Insights dashboard, Export (MD/HTML/PDF/JSON), Trackers + graphs, and media —
 Photos import (auto-assembled day, browse any day / all-recent), filesystem
 import of photos, **video, and audio**, and a full-size viewer (image / AVKit
-video / compact audio player).
+video / compact audio player). Phase 3 shipped: **journals** (multiple +
+hidden/locked, Option A visibility gate). Phases 4–9 roadmapped in `SCOPING.md`
+(reflection, templates, calendar heatmap + reminders, attachments+, importers,
+per-journal encryption vault).
 Deferred: Calendar import, Map view, sync. Weather/WeatherKit was built and
 **reverted** — it required network egress (lat/long → Apple), which conflicts
 with the no-network guarantee.
@@ -54,9 +57,17 @@ View → appState.someMutation() → DatabaseService.shared → appState.reload<
 
 `AppState` owns the published slices the UI binds to:
 `entries`, `tags`, `people`, `tagsByEntry`, `peopleByEntry`, `trackerTags`,
-`trackerValuesByEntry`, `attachmentCountByEntry`, plus selection
-(`selectedSection`, `selectedEntryId`) and the privacy/lock state (`keyStore`,
-`appLocked`, `pendingRecoveryKey`, `dbUnrecoverable`).
+`trackerValuesByEntry`, `attachmentCountByEntry`, `journals`,
+`entryCountByJournal`, plus selection (`selectedSection`, `selectedEntryId`,
+`selectedJournalId`, `unlockedHiddenJournalIds`) and the privacy/lock state
+(`keyStore`, `appLocked`, `pendingRecoveryKey`, `dbUnrecoverable`).
+
+**Journal filtering:** Timeline, Calendar, Search, and Insights read
+`appState.visibleEntries` (not `entries`), which applies the active journal
+filter (`selectedJournalId`, `nil` = All) and the hidden-journal gate (a hidden
+journal's entries are excluded unless its id is in `unlockedHiddenJournalIds`,
+populated for the session by `unlockHiddenJournal` via `BiometricAuthService`).
+The rule is the pure, tested `AppState.entryIsVisible(…)`.
 
 `reloadAll()` refetches every slice; `reloadEntries()` / `reloadTags()` /
 `reloadPeople()` / `reloadTrackers()` are the narrower paths. Per-entry joins
@@ -80,8 +91,9 @@ View → appState.someMutation() → DatabaseService.shared → appState.reload<
 
 ## 4. Data model & migrations
 
-GRDB records in `Models/`: `Entry`, `Mood`, `Tag` (+ `EntryTag`), `Person`
-(+ `EntryPerson`), `TrackerTag` (+ `TrackerValue`, `TrackerKind`), `Attachment`
+GRDB records in `Models/`: `Entry` (now carries `journalId`), `Mood`, `Tag`
+(+ `EntryTag`), `Person` (+ `EntryPerson`), `TrackerTag` (+ `TrackerValue`,
+`TrackerKind`), `Journal`, `Attachment`
 (+ `AttachmentThumb` projection — carries `kind`/`mimeType` so the strip can
 badge video and the viewer can pick image-vs-player without paging the BLOB),
 `AppSettings`. Attachments cover **photos, video, and audio**: a video/audio
@@ -99,7 +111,8 @@ encrypted install at launch. The frozen set is asserted by
 |---|---|
 | `v1_initial` | `entries` (incl. nullable lat/long/place/weather columns reserved up front), `tags`, `entry_tags`, `people`, `entry_people` |
 | `v2_trackers` | `tracker_tags`, `tracker_values` (cascade with entry + tracker) |
-| `v3_attachments` | `attachments` (photo/video BLOBs + thumbnail, cascade with entry) |
+| `v3_attachments` | `attachments` (photo/video/audio BLOBs + thumbnail, cascade with entry) |
+| `v4_journals` | `journals` (+ seeded default journal `Journal.defaultId`); adds NOT NULL `entries.journal_id` (existing rows back-fill to default via the column DEFAULT) + index. Hidden = app-level visibility only. |
 
 To change shipped schema/data: **add a new migration**, never edit an existing
 one. Append its id to the frozen-set test deliberately.
@@ -166,19 +179,21 @@ feature, keep it offline.
   ever added.) See the repo memory `reference-macos-photokit-tcc-entitlement`.
 - **Migrations immutable** (§4). **SQLCipher link order** (§5).
 
-## 8. Tests (`Tests/PurpleDiaryTests/`, 87 total)
+## 8. Tests (`Tests/PurpleDiaryTests/`, 95 total)
 
 Migration round-trip + cascades + frozen-set guard; model Codable + word count +
 `TrackerKind` formatting; `SearchService` ranking; `BackupService`
 debounce/retention/verify; crypto (AES-GCM, PBKDF2), BIP39 recovery,
 `KeyStore` unlock round-trips, SQLCipher at-rest (ciphertext on disk, wrong-key
 rejection, plaintext→cipher migration); `StatsService` (totals/streaks/tracker
-series); `ExportService` render paths (MD/HTML/JSON incl. escaping + schema v3);
+series); `ExportService` render paths (MD/HTML/JSON incl. escaping + schema v4);
 `SecurityDocView` markdown parser; attachment CRUD/dedupe + thumb projection
 (kind/mime) + fetch-by-id + `ImageProcessing` resize; `FileImportService`
 classification (image/video/audio/unsupported) + image- and audio-from-file
 build; `TextImportService` merge rule + Markdown/plain-text/RTF reading;
-`AppState.entryIsEmpty` discard-empty-entry predicate. PhotoKit live import,
+`AppState.entryIsEmpty` discard-empty-entry predicate; `Journal` data layer
+(default + back-fill + move + delete-reassign) and `AppState.entryIsVisible`
+journal-visibility predicate. PhotoKit live import,
 video poster decoding, and AVKit playback are verified by hand (no headless TCC
 / no AVFoundation media fixture).
 
@@ -187,7 +202,7 @@ video poster decoding, and AVKit playback are verified by hand (no headless TCC
 ```
 Sources/PurpleDiary/
 ├── App/      PurpleDiaryApp, AppState, AppDelegate, AppMenuCommands, Version, Info.plist, entitlements
-├── Models/   Entry, Mood, Tag, Person, TrackerTag, Attachment, AppSettings
+├── Models/   Entry, Mood, Tag, Person, TrackerTag, Journal, Attachment, AppSettings
 ├── Services/ DatabaseService(+SQLCipher), BackupService, SearchService, SampleDataService,
 │             ExportService, ImageProcessing, VideoProcessing, PhotosImportService,
 │             FileImportService, TextImportService, StatsService, KeyStore, KeychainStore,

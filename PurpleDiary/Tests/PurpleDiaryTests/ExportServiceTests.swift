@@ -14,7 +14,7 @@ final class ExportServiceTests: XCTestCase {
                        mood: Int = 0, words: Int = 0) -> Entry {
         let now = iso.string(from: Date())
         return Entry(id: id, date: date, title: title, bodyMarkdown: body,
-                     moodRating: mood, wordCount: words,
+                     moodRating: mood, wordCount: words, journalId: Journal.defaultId,
                      latitude: nil, longitude: nil, placeName: nil,
                      weatherSummary: nil, temperatureC: nil,
                      createdAt: now, updatedAt: now)
@@ -98,11 +98,14 @@ final class ExportServiceTests: XCTestCase {
             peopleByEntry: ["E1": people],
             trackerTags: trackers,
             trackerValuesByEntry: ["E1": [7: 6, 8: 1]],
-            attachmentCountByEntry: ["E1": 3]
+            attachmentCountByEntry: ["E1": 3],
+            journals: [Journal.newDraft(name: "Journal"), Journal.newDraft(name: "Secret", isHidden: true)]
         )
         let decoded = try JSONDecoder().decode(ExportService.JournalExport.self, from: data)
         XCTAssertEqual(decoded.schemaVersion, ExportService.jsonSchemaVersion)
-        XCTAssertEqual(decoded.schemaVersion, 3)
+        XCTAssertEqual(decoded.schemaVersion, 4)
+        XCTAssertEqual(decoded.journals.count, 2)
+        XCTAssertEqual(decoded.entries.allSatisfy { $0.journalId == Journal.defaultId }, true)
         XCTAssertEqual(decoded.app, "PurpleDiary")
         XCTAssertEqual(decoded.entryCount, 3)
         XCTAssertEqual(decoded.entries.count, 3)

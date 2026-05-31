@@ -14,6 +14,7 @@ struct EntryEditorView: View {
     @State private var mood: Mood = .unset
     @State private var selectedTagIds: Set<Int64> = []
     @State private var trackerValues: [Int64: Double] = [:]
+    @State private var journalId: String = Journal.defaultId
     @State private var loaded = false
     @State private var saveTask: Task<Void, Never>?
 
@@ -46,6 +47,7 @@ struct EntryEditorView: View {
                 DatePicker("", selection: $date, displayedComponents: [.date, .hourAndMinute])
                     .labelsHidden()
                     .datePickerStyle(.field)
+                journalMenu
                 Spacer()
                 MoodStarsView(mood: $mood, starSize: 18)
             }
@@ -53,6 +55,33 @@ struct EntryEditorView: View {
                 .textFieldStyle(.plain)
                 .font(.title2.weight(.semibold))
         }
+    }
+
+    /// Move this entry between journals. Only journals currently visible
+    /// (non-hidden or unlocked) are offered.
+    private var journalMenu: some View {
+        Menu {
+            ForEach(appState.visibleJournals) { j in
+                Button {
+                    moveToJournal(j.id)
+                } label: {
+                    Label(j.name, systemImage: j.id == journalId ? "checkmark" : j.symbol)
+                }
+            }
+        } label: {
+            Label(appState.journalsById[journalId]?.name ?? "Journal", systemImage: "book.closed")
+                .font(.caption)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Move this entry to another journal")
+    }
+
+    private func moveToJournal(_ id: String) {
+        guard loaded, id != journalId else { return }
+        journalId = id
+        do { try appState.setEntryJournal(id, entryId: entry.id) }
+        catch { appState.errorMessage = error.localizedDescription }
     }
 
     // MARK: - Tags
@@ -105,6 +134,7 @@ struct EntryEditorView: View {
         mood = entry.mood
         selectedTagIds = Set((try? DatabaseService.shared.tagIDs(forEntry: entry.id)) ?? [])
         trackerValues = (try? DatabaseService.shared.trackerValues(forEntry: entry.id)) ?? [:]
+        journalId = entry.journalId
         loaded = true
     }
 

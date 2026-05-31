@@ -114,6 +114,7 @@ struct ExportSheet: View {
                     trackerTags: appState.trackerTags,
                     trackerValuesByEntry: appState.trackerValuesByEntry,
                     attachmentCountByEntry: appState.attachmentCountByEntry,
+                    journals: appState.journals,
                     exportDir: exportDir
                 )
                 resultURL = url

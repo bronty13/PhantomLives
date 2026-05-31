@@ -49,7 +49,7 @@ struct TimelineView: View {
             }
         }
         .overlay {
-            if appState.entries.isEmpty {
+            if appState.visibleEntries.isEmpty {
                 emptyState
             }
         }
@@ -96,7 +96,7 @@ struct TimelineView: View {
     private var groupedEntries: [EntryGroup] {
         let fmt = DateFormatter()
         fmt.dateFormat = "LLLL yyyy"
-        let sorted = appState.entries.sorted { $0.date > $1.date }
+        let sorted = appState.visibleEntries.sorted { $0.date > $1.date }
         var order: [String] = []
         var buckets: [String: [Entry]] = [:]
         for entry in sorted {

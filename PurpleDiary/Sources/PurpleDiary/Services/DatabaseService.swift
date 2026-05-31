@@ -361,6 +361,33 @@ final class DatabaseService {
             try db.create(index: "idx_attachments_entry", on: "attachments", columns: ["entry_id"])
         }
 
+        // Phase-3 journals. Append-only (v1…v3 stay frozen). Creates the
+        // `journals` table, seeds the always-present default journal, adds a
+        // NOT NULL `journal_id` to `entries` (existing rows back-fill to the
+        // default via the column DEFAULT), and indexes it. Hidden journals are
+        // an app-level visibility gate at this phase — bytes remain under the
+        // single DB DEK. See SecurityMiscTests' frozen-migration guard.
+        migrator.registerMigration("v4_journals") { db in
+            try db.create(table: "journals") { t in
+                t.column("id", .text).primaryKey()
+                t.column("name", .text).notNull().defaults(to: "Journal")
+                t.column("color_hex", .text).notNull().defaults(to: "#7C5CFF")
+                t.column("symbol", .text).notNull().defaults(to: "book.closed")
+                t.column("is_hidden", .integer).notNull().defaults(to: 0)
+                t.column("sort_order", .integer).notNull().defaults(to: 0)
+                t.column("created_at", .text).notNull().defaults(to: "")
+            }
+            try db.execute(sql: """
+                INSERT INTO journals (id, name, color_hex, symbol, is_hidden, sort_order, created_at)
+                VALUES (?, 'Journal', '#7C5CFF', 'book.closed', 0, 0, ?)
+                """, arguments: [Journal.defaultId, Self.isoNow()])
+            // Existing entries back-fill to the default journal via the DEFAULT.
+            try db.alter(table: "entries") { t in
+                t.add(column: "journal_id", .text).notNull().defaults(to: Journal.defaultId)
+            }
+            try db.create(index: "idx_entries_journal", on: "entries", columns: ["journal_id"])
+        }
+
         try migrator.migrate(writer)
     }
 
@@ -441,6 +468,64 @@ final class DatabaseService {
         guard !ids.isEmpty else { return 0 }
         return try dbPool.write { db in
             try Entry.deleteAll(db, keys: ids)
+        }
+    }
+
+    // MARK: - Journals
+
+    /// All journals, default first, then by sort order and name.
+    func fetchAllJournals() throws -> [Journal] {
+        try dbPool.read { db in
+            try Journal
+                .order(Column("sort_order").asc, Column("name").asc)
+                .fetchAll(db)
+                .sorted { a, b in
+                    if a.isDefault != b.isDefault { return a.isDefault }   // default pinned first
+                    if a.sortOrder != b.sortOrder { return a.sortOrder < b.sortOrder }
+                    return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+                }
+        }
+    }
+
+    func insertJournal(_ journal: Journal) throws {
+        try dbPool.write { db in
+            var mutable = journal
+            try mutable.insert(db)
+        }
+    }
+
+    func updateJournal(_ journal: Journal) throws {
+        try dbPool.write { db in try journal.update(db) }
+    }
+
+    /// Delete a journal, first reassigning its entries to the default journal so
+    /// nothing is lost. The default journal itself cannot be deleted.
+    func deleteJournal(id: String) throws {
+        guard id != Journal.defaultId else { return }
+        try dbPool.write { db in
+            try db.execute(sql: "UPDATE entries SET journal_id = ? WHERE journal_id = ?",
+                           arguments: [Journal.defaultId, id])
+            _ = try Journal.deleteOne(db, key: id)
+        }
+    }
+
+    /// Move a single entry into a journal.
+    func setJournal(_ journalId: String, forEntry entryId: String) throws {
+        try dbPool.write { db in
+            try db.execute(sql: "UPDATE entries SET journal_id = ?, updated_at = ? WHERE id = ?",
+                           arguments: [journalId, Self.isoNow(), entryId])
+        }
+    }
+
+    /// entry counts per journal id — feeds the sidebar badges.
+    func entryCountByJournal() throws -> [String: Int] {
+        try dbPool.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT journal_id, COUNT(*) AS n FROM entries GROUP BY journal_id
+                """)
+            var out: [String: Int] = [:]
+            for row in rows { out[row["journal_id"]] = row["n"] }
+            return out
         }
     }
 
