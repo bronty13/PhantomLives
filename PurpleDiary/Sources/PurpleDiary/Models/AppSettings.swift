@@ -28,10 +28,16 @@ struct AppSettings: Codable {
     var lockEnabled: Bool = false
     var lockOnLaunch: Bool = true
     var requireBiometrics: Bool = true         // allow Touch ID to unlock
+    var biometryOnlyMode: Bool = false         // Touch ID only, no password fallback
 
     // Sample data — one-shot flag so first launch seeds sample entries, but a
     // later delete isn't silently undone next launch.
     var sampleDataEverInstalled: Bool = false
+
+    // IDs of entries created by the sample-data facility (first-launch seed +
+    // bulk "Add 100"). Lets "Remove All Sample Entries" delete exactly what the
+    // app generated without touching the user's own entries.
+    var sampleDataIds: [String] = []
 }
 
 @MainActor
@@ -83,8 +89,31 @@ final class SettingsStore: ObservableObject {
 extension AppSettings {
     /// `~/Library/Application Support/PurpleDiary/`. Shared by the database,
     /// settings, and backup services so they all agree on one location.
+    ///
+    /// Under XCTest this routes to a fresh per-process temp directory instead of
+    /// the user's real Application Support. Once `diary.sqlite` is
+    /// SQLCipher-encrypted, a test that constructed the singleton (or a
+    /// `KeyStore`) against the real support dir couldn't decrypt it (no key
+    /// resolver at test time) and could disturb the user's real keystore — so
+    /// every consumer agrees on an isolated, disposable path during tests.
     static var supportDirectory: URL {
+        if isUnderXCTest { return testSupportDirectory }
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return support.appendingPathComponent("PurpleDiary", isDirectory: true)
     }
+
+    private static let isUnderXCTest: Bool =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+
+    /// Per-process Application-Support stand-in used under XCTest. Created fresh
+    /// on first read so each test process starts with a clean DB + no stale
+    /// settings/keystore.
+    private static let testSupportDirectory: URL = {
+        let url = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("PurpleDiary-tests-\(ProcessInfo.processInfo.processIdentifier)",
+                                    isDirectory: true)
+        try? FileManager.default.removeItem(at: url)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }()
 }

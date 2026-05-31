@@ -2,6 +2,8 @@
 
 PurpleDiary is your private journal. Everything stays on your Mac — there's no
 account and nothing leaves your computer unless you choose to export or sync it.
+Your journal is **encrypted at rest**: the database on disk is unreadable
+without the key, which lives in your Mac's Keychain.
 
 ## Writing an entry
 
@@ -55,18 +57,53 @@ In **Settings → Backup** you can:
   written first).
 - **Reveal in Finder**.
 
+## Locking & encryption
+
+Your journal database is **encrypted on disk** (SQLCipher / AES-256). The key
+is generated on first launch and stored in your Mac's login Keychain, so the app
+opens silently for you but the file is useless to anyone who copies it off your
+Mac.
+
+**Recovery key.** On first launch PurpleDiary shows you a **24-word recovery
+key** and asks you to save it (write it down, print it, or store it in a password
+manager). It can unlock your journal if your Mac's Keychain entry is ever lost
+(e.g. after an OS reinstall). Treat it like a seed phrase — anyone with it can
+read your journal. You can regenerate it anytime in **Settings → Security**.
+
+**App-lock.** Turn on **Settings → Security → Require unlock** to put a lock
+screen in front of the app:
+
+- **Lock on launch** shows the lock screen each time you open PurpleDiary.
+- The app also locks when it loses focus.
+- Unlock with **Touch ID** / your Mac password — or, if you set a passphrase,
+  by typing it.
+- **Touch ID only** disables the password fallback (recover by quitting and
+  turning it back off if your sensor stops working).
+- **Lock Now** (⌘L, or the menu) locks immediately.
+
+**Passphrase (optional).** Add a passphrase for a second layer beyond the
+Keychain — then even someone who can unlock your Mac's Keychain can't open the
+journal without it. Change or remove it anytime in Settings → Security.
+
+If the Keychain key is ever lost, PurpleDiary shows a recovery screen where you
+enter your 24-word recovery key — or reset and start fresh (your old, unreadable
+data is quarantined on disk rather than deleted, just in case).
+
 ## Settings
 
-- **General** — daily word goal, week-start day, restore sample entries, and the
-  app version + database location.
+- **General** — daily word goal, week-start day; restore the original sample
+  entries, **add 100 sample entries** to try things at scale, or **remove all
+  sample entries** the app generated; app version + database location.
 - **Appearance** — light/dark/system and the accent color.
-- **Lock** — toggles for requiring a passcode and Touch ID. *(This phase the
-  toggles persist but the lock screen itself is still being built.)*
-- **Backup** — described above.
+- **Security** — encryption status, app-lock toggles, Touch ID options,
+  passphrase, and recovery-key management (above).
+- **Backup** — described above. Backups capture the encrypted database plus the
+  key envelopes, so a restore on another Mac can be unlocked with your passphrase
+  or recovery key.
 
 ## What's coming
 
 The "auto-assembled day" features that define Diarium — pulling in your photos,
 calendar, location, and weather — plus mood/tracker graphs, a map of your
-entries, encryption-at-rest, and bring-your-own-cloud sync are planned for the
-next phases. See `SCOPING.md` in the project for the full roadmap.
+entries, and bring-your-own-cloud sync are planned for the next phases. See
+`SCOPING.md` in the project for the full roadmap.

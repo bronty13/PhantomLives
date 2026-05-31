@@ -199,7 +199,11 @@ enum BackupService {
         var tagCount = 0
         var personCount = 0
         do {
-            let pool = try DatabasePool(path: dbCandidate.path)
+            // Open with the live key so an *encrypted* archive (the normal case
+            // once at-rest encryption is on) can be read. With no key in scope
+            // this is a bare config and plaintext archives still verify.
+            let pool = try DatabasePool(path: dbCandidate.path,
+                                        configuration: DatabaseService.makeConfiguration())
             try pool.read { db in
                 migrations  = try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations ORDER BY identifier")
                 entryCount  = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM entries") ?? 0
