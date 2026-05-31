@@ -177,7 +177,52 @@ fitness/social integrations. Each phase is its own build/test/PR.
 | **6 — Calendar heatmap + reminders** | Word-count intensity on the calendar; local `UNUserNotificationCenter` daily reminder. | ✅ **done** |
 | **7 — Attachments+** | PDF / document / any-file attachments (PDFKit reader + thumbnail). Extends the encrypted-BLOB model. **Drawing deferred** — PencilKit isn't a native-macOS fit. | ✅ **done** (drawing deferred) |
 | **8 — Importers** | PurpleDiary round-trip + Day One / Diarium / Journey JSON import (file-based, offline). | ✅ **done** |
-| **9 — Vault (Option B)** | Per-journal **cryptographic** separation: a hidden journal sealed under its own passphrase-wrapped key (AES-GCM), opaque even with the app open. Borrows PurpleLife's vault pattern. The last pole. | planned |
+| **9 — Vault (Option B)** | Per-journal **cryptographic** separation: a hidden journal sealed under its own passphrase-wrapped key (AES-GCM), opaque even with the app open. Borrows PurpleLife's vault pattern. The last pole. | 📐 **design locked** (below) |
+
+### Phase 9 — Vault: locked design (build as a focused, self-contained PR)
+
+A **vault journal** is a journal whose entry **titles, bodies, and attachment
+bytes** are sealed under a per-journal content key — ciphertext **even when the
+app is open and SQLCipher is unlocked** — until the user enters that journal's
+passphrase for the session. This is strictly stronger than Phase-3 "hidden"
+(which is only a visibility filter). Confirmed decisions:
+
+- **Key model — per-journal passphrase.** Each vault journal has a random
+  256-bit **content key (CK)**. CK is wrapped two ways and stored in a
+  `vault_envelopes` row per journal: (1) by a **passphrase-derived KEK**
+  (PBKDF2-HMAC-SHA256, per-journal salt, 300k iters → AES-256-GCM wrap), and
+  (2) by a **recovery-key-derived KEK** (from the existing 24-word phrase) so a
+  lost passphrase isn't permanent lockout. Reuse `Crypto` (AES-GCM + PBKDF2) and
+  `RecoveryKey`.
+- **Recovery — also wrapped under the 24-word key.** Creating a vault therefore
+  needs the recovery phrase once (to make the recovery wrap). Document that the
+  recovery phrase is a master key for vaults too.
+- **Export/backup.** The launch **backup keeps ciphertext** automatically — the
+  DB it zips already holds CK-sealed blobs + the `vault_envelopes`, so a restore
+  + passphrase (or recovery phrase) reopens it; no special backup code needed.
+  **Export (MD/HTML/PDF/JSON) skips locked vault journals** (only emits unlocked
+  content). This *changes* today's Phase-3 behavior where export includes hidden
+  journals — update `SECURITY.md` accordingly.
+
+Implementation outline:
+- **Migration v6_vault**: `vault_envelopes` (`journal_id` PK, `salt`, `iters`,
+  `pass_wrap` BLOB, `recovery_wrap` BLOB) + `journals.is_vault` (default 0).
+- **VaultService**: createVault(journalId, passphrase, recoveryWords) → random
+  CK, write both wraps; unlock(journalId, passphrase|recoveryWords) → CK held in
+  a session-only in-memory map; changePassphrase; removeVault (decrypt-in-place).
+- **Transparent crypto at the data layer**: when an entry belongs to a locked
+  vault journal, its `title`/`body_markdown` (and attachment `data`/`thumbnail`)
+  are stored as CK-AES-GCM ciphertext with a sentinel prefix; `DatabaseService`
+  encrypts on write and decrypts on read **only when CK is in scope**. Reads of a
+  locked vault entry return sealed placeholders (never plaintext). This is the
+  highest-risk surface — needs exhaustive round-trip + "locked returns
+  ciphertext" + "wrong passphrase fails" tests before merge.
+- **UI**: a journal context-menu "Make Vault…" (set passphrase + confirm
+  recovery phrase); the sidebar lock flow routes vault journals through a
+  passphrase prompt (not just Touch ID); Settings → Security shows vault status.
+- **Guardrails**: all-or-nothing per PR (no half-migrated state); a vaulted
+  entry must be decryptable by either the passphrase or the recovery phrase
+  before the encrypting write commits.
 
 The original "Phase 3 — Memory, sync, migration" bullets fold in here:
 On-This-Day/reminders → Phases 4 & 6; Day One import → Phase 8;
