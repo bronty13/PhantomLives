@@ -1,0 +1,7 @@
+# SwiftPM intermediate build outputs and git-submodule metadata that
+# resolve back in if `swift package` is run inside Vendor/*/. None of
+# this is needed for the SwiftPM consumption from PurpleLife's main
+# project — Xcode builds these targets into its own derived-data tree.
+*/.build/
+*/.git/
+*/.swiftpm/

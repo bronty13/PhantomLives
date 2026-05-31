@@ -6,9 +6,18 @@ options:
   xcodeVersion: "16"
 
 packages:
+  # Vendored SQLCipher 4.6.1 amalgamation (CommonCrypto-based — no OpenSSL,
+  # no Homebrew). Provides the encrypted-at-rest SQLite. See
+  # Vendor/SQLCipher/PROVENANCE.md for the tarball SHA-256 + build flags.
+  SQLCipher:
+    path: Vendor/SQLCipher
+  # Vendored GRDB.swift, patched so its CSQLite target re-exports the vendored
+  # SQLCipher's sqlite3.h. That makes GRDB's `sqlite3_*` calls resolve into
+  # SQLCipher's statically-linked symbols instead of the system
+  # libsqlite3.dylib — i.e. the whole DB becomes SQLCipher-encrypted once a
+  # PRAGMA key is set. See Vendor/GRDB/Package.swift for the patch context.
   GRDB:
-    url: https://github.com/groue/GRDB.swift
-    from: "6.0.0"
+    path: Vendor/GRDB
 
 targets:
   PurpleDiary:
@@ -26,6 +35,10 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Sources/PurpleDiary/App/PurpleDiary.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     dependencies:
+      # SQLCipher BEFORE GRDB so the linker resolves SQLCipher's `sqlite3_*`
+      # symbols (static archive) before GRDB's CSQLite, which would otherwise
+      # pull in the system libsqlite3.dylib and shadow our static symbols.
+      - package: SQLCipher
       - package: GRDB
     scheme:
       testTargets:
@@ -38,6 +51,7 @@ targets:
       - path: Tests/PurpleDiaryTests
     dependencies:
       - target: PurpleDiary
+      - package: SQLCipher
       - package: GRDB
     settings:
       base:

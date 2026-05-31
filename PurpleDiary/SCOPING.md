@@ -3,9 +3,11 @@
 *A native macOS journaling app inspired by [Diarium](https://diariumapp.com),
 built to PhantomLives conventions.*
 
-> **Status:** scoping / not yet implemented. Working name **PurpleDiary**
-> (swap freely — used throughout as a placeholder). This doc is the design
-> brief; no code has been written yet.
+> **Status:** Phase 1 implemented. The MVP journal (entries, mood, tags,
+> people, timeline, calendar, search), launch-time backup, and the **privacy
+> core** — SQLCipher encryption-at-rest, app-lock (Touch ID / passphrase), and a
+> 24-word recovery key — are built and build-verified. Remaining Phase-1 polish
+> and Phases 2–3 are below. Working name **PurpleDiary**.
 
 ---
 
@@ -107,16 +109,16 @@ Conventions inherited verbatim from the repo (per `CLAUDE.md`):
 ### Phase 1 — MVP (manual journal + privacy core)
 The blank-page journal that's genuinely usable day one. No integrations yet.
 
-- Entry CRUD with a **Markdown editor** (copy `MusicJournal/MarkdownEditor.swift`)
-  + native spellcheck; multiple entries per day; live word count + daily goal.
-- **Tags, people, mood star-rating** on entries.
-- **Calendar view** (month grid, days with entries marked) + **chronological
-  timeline** (reuse Timeliner's vertical timeline) + entry list.
-- **Search** across title/body/tags/people (copy `SearchService` ranking).
-- **App-lock**: password + Touch ID via `LocalAuthentication`; lock-on-launch
-  and lock-on-background. **Encryption-at-rest** via SQLCipher (GRDB supports
-  it) or an `EncryptedJSON`-style envelope (PurpleIRC reference).
-- **Auto-backup on launch** + full Backup settings UI (standard).
+- ✅ Entry CRUD with a **Markdown editor** + native spellcheck; multiple entries
+  per day; live word count (daily-goal indicator pending).
+- ✅ **Tags, people, mood star-rating** on entries.
+- ✅ **Calendar view** (month grid, days with entries marked) + **chronological
+  timeline** + entry list.
+- ✅ **Search** across title/body/tags/people (`SearchService` ranking).
+- ✅ **App-lock**: passphrase + Touch ID via `LocalAuthentication`;
+  lock-on-launch and lock-on-background. **Encryption-at-rest** via SQLCipher
+  (whole-DB, vendored GRDB+SQLCipher). Plus a 24-word BIP39 recovery key.
+- ✅ **Auto-backup on launch** + full Backup settings UI (standard).
 - Themes + per-slot fonts (copy Timeliner's theme/font system).
 - Sample entries seeded on first launch (so it's not empty).
 - Test suite: migration round-trip + immutability guard, model Codable,

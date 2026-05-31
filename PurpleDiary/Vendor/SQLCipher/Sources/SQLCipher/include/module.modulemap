@@ -1,0 +1,11 @@
+// SQLCipher module map — pulls in sqlite3.h with SQLCipher patches
+// applied. The `sqlite3_*` symbols are provided by the in-tree
+// `sqlite3.c` compilation unit, NOT by linking the system
+// `libsqlite3.dylib`; that's the whole point. No `link "sqlite3"`
+// directive (that would force `-lsqlite3` and re-introduce the system
+// library), no `[system]` attribute (this is in-tree source, not a
+// vendor SDK).
+module SQLCipher {
+    header "sqlite3.h"
+    export *
+}

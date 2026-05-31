@@ -5,10 +5,10 @@ Local-first, private, no account — your journal lives in a single SQLite
 database on your Mac. See [SCOPING.md](SCOPING.md) for the full design brief and
 phased roadmap.
 
-> **Status:** Phase-1 scaffold. The core journal (write, browse, search, tag,
-> mood, backup) is in place. Auto-assembled days (Photos/Calendar/WeatherKit),
-> tracker tags, map view, encryption-at-rest, and sync are scoped for later
-> phases — see SCOPING.md.
+> **Status:** Phase 1. The core journal (write, browse, search, tag, mood,
+> backup) plus the **privacy core** — encryption-at-rest, app-lock, and a 24-word
+> recovery key — are in place. Auto-assembled days (Photos/Calendar/WeatherKit),
+> tracker tags, map view, and sync are scoped for later phases — see SCOPING.md.
 
 ## At a glance (Phase 1)
 
@@ -24,8 +24,14 @@ phased roadmap.
 - **Auto-backup at every launch** — zips the support directory to
   `~/Downloads/PurpleDiary backup/` with 14-day retention; verify and restore
   from Settings → Backup. (PhantomLives convention.)
-- **App-lock toggles** — UI present; lock screen + Keychain wiring is the next
-  milestone.
+- **Encryption at rest** — the whole `diary.sqlite` is SQLCipher-encrypted
+  (AES-256). The data key lives in the login Keychain; a one-shot
+  `sqlcipher_export()` migration upgrades an existing plaintext DB on first
+  launch (the launch backup captures the plaintext first).
+- **App-lock** — optional lock screen (Touch ID / device password / passphrase),
+  lock-on-launch, lock-on-background, ⌘L. Configured in Settings → Security.
+- **24-word recovery key** — BIP39 phrase shown on first launch; unlocks the DB
+  if the Keychain entry is ever lost. No cloud involved.
 
 ## Build
 
@@ -54,7 +60,19 @@ manual version bumping.
 ```
 
 Test suite covers GRDB migrations + cascade behavior, model Codable/word-count,
-search ranking, and BackupService debounce/retention/verify.
+search ranking, BackupService debounce/retention/verify, and the privacy core:
+AES-GCM crypto, BIP39 recovery-key encode/decode/checksum, KeyStore
+passphrase/recovery unlock round-trips, SQLCipher at-rest (ciphertext on disk,
+wrong-key rejection, plaintext→SQLCipher migration), and the sample-data facility.
+
+## Encryption & dependencies
+
+GRDB and SQLCipher 4.6.1 are **vendored** under `Vendor/` (local SwiftPM
+packages) — there's no Homebrew or OpenSSL requirement. SQLCipher's `sqlite3_*`
+symbols shadow the system `libsqlite3.dylib` at link time (SQLCipher is listed
+before GRDB in `project.yml`, and GRDB's `CSQLite` is patched to re-export the
+vendored header), so a `PRAGMA key` on every connection encrypts the whole
+database. See `Vendor/SQLCipher/PROVENANCE.md`.
 
 ## Project layout
 
@@ -63,9 +81,13 @@ PurpleDiary/
 ├── Sources/PurpleDiary/
 │   ├── App/          # PurpleDiaryApp, AppState, AppDelegate, AppMenuCommands, Version, Info.plist
 │   ├── Models/       # Entry, Mood, Tag, Person, AppSettings (GRDB records)
-│   ├── Services/     # DatabaseService, BackupService, SearchService, SampleDataService, WindowStateGuard
-│   └── Views/        # ContentView (HStack sidebar), Timeline, EntryEditor, Calendar, Search, People, Tags, Settings/, Shared/
+│   ├── Services/     # DatabaseService(+SQLCipher), BackupService, SearchService, SampleDataService,
+│   │                 #   KeyStore, KeychainStore, Crypto, RecoveryKey, BIP39Wordlist,
+│   │                 #   BootState, BiometricAuthService, WindowStateGuard
+│   └── Views/        # ContentView (HStack sidebar), Timeline, EntryEditor, Calendar, Search, People,
+│                     #   Tags, AppLockScreen, RecoveryScreen, RecoveryKeySaveSheet, Settings/, Shared/
 ├── Tests/PurpleDiaryTests/
+├── Vendor/           # GRDB.swift + SQLCipher 4.6.1 (local SwiftPM packages)
 ├── Scripts/generate-icon.swift
 ├── project.yml · build-app.sh · install.sh · run-tests.sh
 ```

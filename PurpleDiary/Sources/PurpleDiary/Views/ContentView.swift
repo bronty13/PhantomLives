@@ -19,6 +19,25 @@ struct ContentView: View {
     @State private var showingResetConfirm: Bool = false
 
     var body: some View {
+        // Privacy gates take over the whole window, in priority order:
+        // 1. unrecoverable DB (encrypted, key gone) → recovery screen
+        // 2. a freshly-generated recovery key the user must save
+        // 3. the app-lock screen
+        // Otherwise the normal journal UI.
+        Group {
+            if let message = appState.dbUnrecoverable {
+                RecoveryScreen(message: message)
+            } else if let words = appState.pendingRecoveryKey {
+                RecoveryKeySaveSheet(words: words) { appState.confirmRecoveryKeySaved() }
+            } else if appState.appLocked {
+                AppLockScreen()
+            } else {
+                mainContent
+            }
+        }
+    }
+
+    private var mainContent: some View {
         HStack(spacing: 0) {
             if sidebarVisible {
                 SidebarView()
@@ -64,6 +83,9 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .windowResetRequested)) { _ in
             showingResetConfirm = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .lockRequested)) { _ in
+            appState.lockApp()
         }
         .alert("Reset window state?", isPresented: $showingResetConfirm) {
             Button("Cancel", role: .cancel) {}

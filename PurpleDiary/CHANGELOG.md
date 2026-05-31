@@ -2,6 +2,63 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Phase 1: privacy core (encryption-at-rest + app-lock)
+
+### Added
+- **Encryption at rest (SQLCipher).** The whole `diary.sqlite` is now
+  SQLCipher-encrypted (AES-256). GRDB + SQLCipher 4.6.1 are vendored under
+  `Vendor/` (SQLCipher before GRDB so its `sqlite3_*` symbols win at link time;
+  GRDB's `CSQLite` re-exports the vendored header). Every connection sets
+  `PRAGMA key`; with no key the build behaves like plain SQLite (the test path).
+- **Plaintext→SQLCipher upgrade migration.** On the first launch after this
+  ships, an existing plaintext DB is detected (SQLite magic-header probe) and
+  copied into a keyed sibling via `sqlcipher_export()`, then atomically renamed.
+  The launch backup runs *before* the migration so the plaintext state is
+  captured as a safety net.
+- **KeyStore + Keychain.** A 256-bit data-encryption key is generated on first
+  launch and cached in the login Keychain (local-only — no iCloud/cloud). A
+  `boot_state.json` "ever-booted" marker prevents minting a fresh key (and
+  orphaning data) if the Keychain entry is lost out-of-band.
+- **24-word BIP39 recovery key.** Shown on first launch (mandatory save sheet
+  with a 3-word typeback) and stored only inside an encrypted
+  `recovery_envelope.json`. Unlocks the DB if the Keychain entry is ever lost.
+  Regenerate anytime in Settings → Security.
+- **App-lock.** Optional lock screen (Touch ID / device password via
+  `LocalAuthentication`, or passphrase), lock-on-launch, lock-on-background
+  (focus loss), and a Lock PurpleDiary menu item (⌘L). Recovery screen for the
+  key-lost case (enter recovery key, or reset — old data is quarantined, not
+  deleted).
+- **Optional passphrase** wrapping the DEK (set/change/remove in Settings →
+  Security), independent of the recovery key.
+- **Settings → Security** tab (replaces the old toggles-only Lock tab):
+  encryption status, lock options, Touch-ID-only mode, passphrase management,
+  recovery-key regeneration.
+- **Sample-data facility (Settings → General):** "Add 100 Sample Entries"
+  (bulk, one transaction, spread across ~120 days) and "Remove All Sample
+  Entries", tracked precisely via `AppSettings.sampleDataIds` so removal only
+  touches app-generated entries.
+- New services: `Crypto`, `KeyStore`, `KeychainStore`, `RecoveryKey`,
+  `BIP39Wordlist`, `BootState`, `BiometricAuthService`; new views
+  `AppLockScreen`, `RecoveryScreen`, `RecoveryKeySaveSheet`.
+
+### Changed
+- `BackupService.verifyArchive` now opens the extracted DB with the live key so
+  the "Test" button works on encrypted archives.
+
+### Notes
+- **Build-verified on macOS (2026-05-30).** `./run-tests.sh` → **37/37 passing**
+  (16 prior + Crypto 4, RecoveryKey 8, KeyStore 4, AtRest 3, SampleData 2).
+  `./build-app.sh` builds Release clean (no warnings), Developer-ID-signed.
+  Exercised end-to-end on a real upgrade: an existing 7-entry plaintext
+  `diary.sqlite` migrated to SQLCipher (on-disk header confirmed non-plaintext),
+  the pre-migration plaintext DB was captured in the launch backup, the recovery
+  sheet appeared, and after a relaunch the timeline read all 7 entries from the
+  encrypted DB. Lock screen (⌘L) and Settings → Security verified visually.
+- Decisions: SQLCipher whole-DB (per SCOPING §7) over column-wrapping; recovery
+  is the user-held BIP39 key only (no iCloud/CloudKit DEK escrow), matching
+  PurpleDiary's local-first ethos. `settings.json` stays plaintext (no journal
+  content; only non-sensitive prefs).
+
 ## [Unreleased] — Phase 1 scaffold
 
 ### Added
@@ -50,9 +107,6 @@ All notable changes to PurpleDiary are documented here.
   applies, 6 default tags + 4 sample entries seed on first launch, backup-on-
   launch and Run Backup Now both write valid zips to `~/Downloads/PurpleDiary
   backup/` (verified the archive's inner `diary.sqlite` round-trips its rows).
-- App-lock is UI-only this phase; the lock screen, passphrase/Keychain wiring,
-  and SQLCipher encryption-at-rest are the next Phase-1 milestone (see
-  SCOPING.md).
-- App-lock is UI-only this phase; the lock screen, passphrase/Keychain wiring,
-  and SQLCipher encryption-at-rest are the next Phase-1 milestone (see
-  SCOPING.md).
+- App-lock was UI-only in the scaffold; the lock screen, passphrase/Keychain
+  wiring, and SQLCipher encryption-at-rest landed in the privacy-core milestone
+  above.

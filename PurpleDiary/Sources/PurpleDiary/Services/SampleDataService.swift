@@ -1,14 +1,14 @@
 import Foundation
 
-/// Seeds a handful of sample entries on first launch so the app isn't an empty
-/// void for a new user. One-shot: gated by `sampleDataEverInstalled` so a later
-/// delete isn't silently undone. An explicit "Restore Sample Data" button in
-/// Settings → General re-adds them.
+/// Seeds sample entries and provides a bulk populate / remove facility
+/// (Settings → General). Every entry the service creates has its id recorded in
+/// `AppSettings.sampleDataIds`, so "Remove All Sample Entries" deletes exactly
+/// what the app generated and never touches the user's own entries.
 @MainActor
 enum SampleDataService {
 
-    /// Installs samples iff this is the first run AND the journal is empty.
-    /// Returns true if anything was inserted (caller should reload).
+    /// Installs the canned samples iff this is the first run AND the journal is
+    /// empty. Returns true if anything was inserted (caller should reload).
     @discardableResult
     static func installIfFirstRunCompleted(existing entries: [Entry], settingsStore: SettingsStore) -> Bool {
         guard !settingsStore.settings.sampleDataEverInstalled else { return false }
@@ -20,13 +20,13 @@ enum SampleDataService {
         settingsStore.save()
 
         guard entries.isEmpty else { return false }
-        return restoreSamples()
+        return restoreSamples(settingsStore: settingsStore)
     }
 
-    /// Unconditionally insert the sample entries. Wired to the
-    /// Settings → General "Restore Sample Data" button.
+    /// Insert the four canned sample entries. Wired to Settings → General's
+    /// "Restore Sample Entries" button.
     @discardableResult
-    static func restoreSamples() -> Bool {
+    static func restoreSamples(settingsStore: SettingsStore) -> Bool {
         let cal = Calendar.current
         let now = Date()
         let samples: [(daysAgo: Int, title: String, body: String, mood: Mood)] = [
@@ -44,7 +44,7 @@ enum SampleDataService {
              .okay),
         ]
 
-        var inserted = false
+        var ids: [String] = []
         for sample in samples {
             let date = cal.date(byAdding: .day, value: -sample.daysAgo, to: now) ?? now
             var entry = Entry.newDraft(date: date, title: sample.title)
@@ -52,11 +52,97 @@ enum SampleDataService {
             entry.mood = sample.mood
             do {
                 try DatabaseService.shared.insertEntry(entry)
-                inserted = true
+                ids.append(entry.id)
             } catch {
                 NSLog("PurpleDiary: failed to seed sample entry — \(error.localizedDescription)")
             }
         }
-        return inserted
+        recordSampleIds(ids, settingsStore: settingsStore)
+        return !ids.isEmpty
+    }
+
+    /// Bulk-generate `count` varied sample entries spread across the past ~120
+    /// days. One write transaction. Returns the number inserted. Wired to
+    /// Settings → General's "Add 100 Sample Entries" button.
+    @discardableResult
+    static func populate(count: Int = 100, settingsStore: SettingsStore) -> Int {
+        guard count > 0 else { return 0 }
+        let cal = Calendar.current
+        let now = Date()
+        let spanDays = 120
+
+        var entries: [Entry] = []
+        entries.reserveCapacity(count)
+        for i in 0..<count {
+            // Spread across the window, oldest first, with a little jitter so
+            // multiple entries can land on the same day.
+            let dayOffset = Int(Double(i) / Double(max(count - 1, 1)) * Double(spanDays))
+            let hour = Int.random(in: 6...22)
+            let minute = Int.random(in: 0...59)
+            var date = cal.date(byAdding: .day, value: -(spanDays - dayOffset), to: now) ?? now
+            date = cal.date(bySettingHour: hour, minute: minute, second: 0, of: date) ?? date
+
+            let (title, body) = Self.generatedContent(index: i)
+            var entry = Entry.newDraft(date: date, title: title)
+            entry.bodyMarkdown = body
+            entry.mood = Mood(rawValue: Int.random(in: 0...5)) ?? .unset
+            entries.append(entry)
+        }
+
+        do {
+            try DatabaseService.shared.bulkInsertEntries(entries)
+        } catch {
+            NSLog("PurpleDiary: bulk sample insert failed — \(error.localizedDescription)")
+            return 0
+        }
+        recordSampleIds(entries.map(\.id), settingsStore: settingsStore)
+        return entries.count
+    }
+
+    /// Delete every entry the facility generated (tracked in `sampleDataIds`)
+    /// and clear the list. Tolerant of ids the user already deleted by hand.
+    @discardableResult
+    static func removeAllSamples(settingsStore: SettingsStore) -> Int {
+        let removed = (try? DatabaseService.shared.deleteEntries(ids: settingsStore.settings.sampleDataIds)) ?? 0
+        var s = settingsStore.settings
+        s.sampleDataIds = []
+        settingsStore.settings = s
+        settingsStore.save()
+        return removed
+    }
+
+    // MARK: - Helpers
+
+    private static func recordSampleIds(_ ids: [String], settingsStore: SettingsStore) {
+        guard !ids.isEmpty else { return }
+        var s = settingsStore.settings
+        s.sampleDataIds.append(contentsOf: ids)
+        settingsStore.settings = s
+        settingsStore.save()
+    }
+
+    private static let titlePool = [
+        "Morning pages", "A quiet day", "Notes to self", "Something good happened",
+        "Working through it", "On the train", "Late night thoughts", "Weekend plans",
+        "Gratitude list", "A small frustration", "Reading again", "Cooking experiment",
+        "Phone call with a friend", "Trying to slow down", "Big idea", "Just checking in",
+    ]
+    private static let bodyPool = [
+        "Today felt **lighter** than yesterday. I'm not sure why, but I'll take it.",
+        "Three things I'm grateful for:\n- coffee that was actually hot\n- a walk between meetings\n- an early night",
+        "Kept circling the same worry. Writing it down helped more than I expected.",
+        "Made progress on the thing I'd been avoiding. *Momentum* is real.",
+        "Rain all afternoon. Stayed in, read, didn't feel guilty about it.",
+        "Talked to someone I hadn't spoken to in months. We picked up right where we left off.",
+        "A reminder that **rest is productive too**. Trying to believe it.",
+        "Small win: I closed the laptop at a reasonable hour for once.",
+        "Felt scattered today. Tomorrow I'll pick one thing and actually finish it.",
+        "The light at sunset was ridiculous. Stood at the window for a full minute.",
+    ]
+
+    private static func generatedContent(index: Int) -> (title: String, body: String) {
+        let title = titlePool[index % titlePool.count]
+        let body = bodyPool[(index / titlePool.count + index) % bodyPool.count]
+        return (title, body)
     }
 }
