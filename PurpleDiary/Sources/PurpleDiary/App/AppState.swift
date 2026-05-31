@@ -79,6 +79,14 @@ final class AppState: ObservableObject {
     // MARK: - Init
 
     init() {
+        // Make sure the database file and settings.json exist on disk before
+        // the launch backup runs. DatabaseService.shared is otherwise created
+        // lazily below; without this the very first launch would archive an
+        // empty support directory (zip "Nothing to do!") and write a 0-file
+        // backup — defeating the safety net on exactly the launch that first
+        // applies a migration.
+        _ = DatabaseService.shared
+        settingsStore.save()
         // Auto-backup-on-launch — runs synchronously before the UI reads the
         // database, so a failure here never races a partial read. Errors are
         // logged, not thrown.
