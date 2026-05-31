@@ -35,14 +35,14 @@ final class ImportTests: XCTestCase {
         XCTAssertEqual(work.entries.first?.tags, ["focus"])
     }
 
-    func testApplyAddsEntriesAndIsAdditive() throws {
+    func testApplyAddsEntriesAndIsAdditive() async throws {
         let bundle = ImportService.Bundle(sourceName: "Test", journals: [
             .init(name: "Imported Trips", entries: [
                 .init(date: "2026-01-01T10:00:00Z", title: "Trip", body: "hi", moodRating: 3, tags: ["travel"])
             ])
         ])
         let before = try DatabaseService.shared.fetchAllEntries().count
-        let added = try ImportService.apply(bundle)
+        let added = try await ImportService.apply(bundle)
         XCTAssertEqual(added, 1)
         XCTAssertEqual(try DatabaseService.shared.fetchAllEntries().count, before + 1)
         // A destination journal was created and the tag exists.
@@ -90,6 +90,40 @@ final class ImportTests: XCTestCase {
 
     func testAutoDetectFallsBackAndThrowsOnGarbage() {
         XCTAssertThrowsError(try ImportService.parse(data("{\"nope\":true}"), format: .auto))
+    }
+
+    func testDayOneResolvesAndImportsMediaFromSiblingFolder() async throws {
+        // Lay out an extracted Day One export: Journal.json + photos/<md5>.jpg
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pd-dayone-\(UUID().uuidString)")
+        let photos = dir.appendingPathComponent("photos")
+        try FileManager.default.createDirectory(at: photos, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // A real PNG written as <md5>.jpg (NSImage decodes by content, classify by ext).
+        let img = NSImage(size: NSSize(width: 24, height: 24))
+        img.lockFocus(); NSColor.systemPurple.setFill(); NSRect(x: 0, y: 0, width: 24, height: 24).fill(); img.unlockFocus()
+        let png = NSBitmapImageRep(data: img.tiffRepresentation!)!.representation(using: .png, properties: [:])!
+        try png.write(to: photos.appendingPathComponent("abc123.jpg"))
+
+        let json = """
+        { "entries": [ { "creationDate":"2026-05-31T09:00:00Z", "text":"with a photo",
+          "photos":[{"md5":"abc123","type":"jpg","identifier":"X"}] } ] }
+        """
+        let jsonURL = dir.appendingPathComponent("Journal.json")
+        try json.write(to: jsonURL, atomically: true, encoding: .utf8)
+
+        let bundle = try ImportService.parse(contentsOf: jsonURL, format: .dayOne)
+        let entry = try XCTUnwrap(bundle.journals.first?.entries.first)
+        XCTAssertEqual(entry.mediaFiles.count, 1, "the sibling photo should be resolved")
+
+        let added = try await ImportService.apply(bundle)
+        XCTAssertEqual(added, 1)
+        // The imported entry (in the "Day One" journal) should carry one attachment.
+        let dayOne = try XCTUnwrap(DatabaseService.shared.fetchAllJournals().first { $0.name == "Day One" })
+        let imported = try DatabaseService.shared.fetchAllEntries().filter { $0.journalId == dayOne.id }
+        let withPhoto = try imported.first { try !DatabaseService.shared.attachmentThumbs(forEntry: $0.id).isEmpty }
+        XCTAssertNotNil(withPhoto, "imported Day One entry should have its photo attached")
     }
 
     // MARK: - Helpers

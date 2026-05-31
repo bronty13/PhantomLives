@@ -47,6 +47,18 @@ final class JournalTests: XCTestCase {
         XCTAssertEqual(try DatabaseService.shared.fetchEntry(id: e.id)?.journalId, j.id)
     }
 
+    func testDeleteJournalWithEntriesRemovesThem() throws {
+        let j = Journal.newDraft(name: "Throwaway Import")
+        try DatabaseService.shared.insertJournal(j)
+        let e = Entry.newDraft(title: "test import", journalId: j.id)
+        try DatabaseService.shared.insertEntry(e)
+
+        try DatabaseService.shared.deleteJournal(id: j.id, deleteEntries: true)
+        XCTAssertNil(try DatabaseService.shared.fetchEntry(id: e.id),
+                     "deleteEntries:true should remove the journal's entries, not reassign them")
+        XCTAssertFalse(try DatabaseService.shared.fetchAllJournals().contains { $0.id == j.id })
+    }
+
     func testCannotDeleteDefaultJournal() throws {
         try DatabaseService.shared.deleteJournal(id: Journal.defaultId)
         XCTAssertTrue(try DatabaseService.shared.fetchAllJournals().contains { $0.id == Journal.defaultId })
