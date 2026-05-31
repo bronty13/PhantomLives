@@ -166,7 +166,7 @@ feature, keep it offline.
   ever added.) See the repo memory `reference-macos-photokit-tcc-entitlement`.
 - **Migrations immutable** (§4). **SQLCipher link order** (§5).
 
-## 8. Tests (`Tests/PurpleDiaryTests/`, 76 total)
+## 8. Tests (`Tests/PurpleDiaryTests/`, 81 total)
 
 Migration round-trip + cascades + frozen-set guard; model Codable + word count +
 `TrackerKind` formatting; `SearchService` ranking; `BackupService`
@@ -177,7 +177,8 @@ series); `ExportService` render paths (MD/HTML/JSON incl. escaping + schema v3);
 `SecurityDocView` markdown parser; attachment CRUD/dedupe + thumb projection
 (kind/mime) + fetch-by-id + `ImageProcessing` resize; `FileImportService`
 classification (image/video/audio/unsupported) + image- and audio-from-file
-build. PhotoKit live import, video poster decoding, and AVKit playback are
+build; `AppState.entryIsEmpty` discard-empty-entry predicate. PhotoKit live
+import, video poster decoding, and AVKit playback are
 verified by hand (no headless TCC / no AVFoundation media fixture).
 
 ## 9. Where things live

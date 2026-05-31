@@ -2,6 +2,23 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Phase 2: Discard never-filled-in entries
+
+### Changed
+- **A new entry you never fill in is silently discarded.** ⌘N still inserts an
+  entry immediately (so it shows in the timeline and the editor can bind to it),
+  but on leaving the editor — switching entries, changing sections, or closing —
+  an entry that is *completely empty* (blank title **and** body, no mood, no
+  tags, no logged trackers, no attachments) is deleted instead of saved. No
+  "discard?" prompt — zero friction. The bar is strict, so an entry with any
+  content (even just a photo or a mood) is always kept.
+
+### Notes
+- New `AppState.entryIsEmpty(…)` (pure predicate) + `discardEntryIfEmpty(…)`;
+  `EntryEditorView.onDisappear` runs `leaveEditor()` (discard-if-empty, else
+  persist). **+5 tests** over the empty/non-empty predicate. Pre-existing blank
+  entries are not swept automatically — this prevents new accumulation.
+
 ## [Unreleased] — Phase 2: Audio attachments
 
 ### Added
