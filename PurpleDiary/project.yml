@@ -33,6 +33,14 @@ targets:
         buildPhase:
           copyFiles:
             destination: resources
+      # Bundled writing-prompt library (Phase 4 Reflection). Static content,
+      # rotated daily on-device — no network. Kept outside the Sources glob
+      # (like Docs/SECURITY.md) so it's bundled once as a resource.
+      - path: Resources/Prompts.json
+        type: file
+        buildPhase:
+          copyFiles:
+            destination: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.bronty13.PurpleDiary

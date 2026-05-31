@@ -2,6 +2,27 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Phase 4: Reflection (On This Day + writing prompts)
+
+### Added
+- **On This Day.** A new sidebar section surfaces entries you wrote on today's
+  date in previous years, grouped by "N years ago," newest first. Purely a local
+  look-back over your own journal — nothing is fetched. Respects the active
+  journal + hidden-journal filter; tap an entry to jump to it.
+- **Writing prompts.** When an entry's body is empty, the editor shows a gentle
+  prompt card (✨) drawn from a **bundled** library of ~48 prompts across
+  categories (reflection, gratitude, memory, growth, …). The prompt is stable for
+  the day; **Use** drops it into the body as a quote to write under, and the
+  shuffle button cycles to another. Prompts ship in the app — no network, nothing
+  generated.
+
+### Notes
+- New `PromptService` (bundled `Resources/Prompts.json` + deterministic daily
+  rotation) and `OnThisDayService` (pure month/day matching). New
+  `Section.onThisDay` + `OnThisDayView`. **+7 tests** (prompt index wrap /
+  stability / advance / cycle / bundled-file decodes; On-This-Day matching +
+  years-ago label). 102 total.
+
 ## [Unreleased] — Phase 3: Journals (multiple + hidden)
 
 ### Added

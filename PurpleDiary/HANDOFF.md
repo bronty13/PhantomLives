@@ -22,8 +22,10 @@ Insights dashboard, Export (MD/HTML/PDF/JSON), Trackers + graphs, and media —
 Photos import (auto-assembled day, browse any day / all-recent), filesystem
 import of photos, **video, and audio**, and a full-size viewer (image / AVKit
 video / compact audio player). Phase 3 shipped: **journals** (multiple +
-hidden/locked, Option A visibility gate). Phases 4–9 roadmapped in `SCOPING.md`
-(reflection, templates, calendar heatmap + reminders, attachments+, importers,
+hidden/locked, Option A visibility gate). Phase 4 shipped: **reflection** —
+"On This Day" (entries from today's date in past years) + bundled writing
+prompts (daily-rotating, shown on an empty entry). Phases 5–9 roadmapped in
+`SCOPING.md` (templates, calendar heatmap + reminders, attachments+, importers,
 per-journal encryption vault).
 Deferred: Calendar import, Map view, sync. Weather/WeatherKit was built and
 **reverted** — it required network egress (lat/long → Apple), which conflicts
@@ -179,7 +181,7 @@ feature, keep it offline.
   ever added.) See the repo memory `reference-macos-photokit-tcc-entitlement`.
 - **Migrations immutable** (§4). **SQLCipher link order** (§5).
 
-## 8. Tests (`Tests/PurpleDiaryTests/`, 95 total)
+## 8. Tests (`Tests/PurpleDiaryTests/`, 102 total)
 
 Migration round-trip + cascades + frozen-set guard; model Codable + word count +
 `TrackerKind` formatting; `SearchService` ranking; `BackupService`
@@ -193,7 +195,8 @@ classification (image/video/audio/unsupported) + image- and audio-from-file
 build; `TextImportService` merge rule + Markdown/plain-text/RTF reading;
 `AppState.entryIsEmpty` discard-empty-entry predicate; `Journal` data layer
 (default + back-fill + move + delete-reassign) and `AppState.entryIsVisible`
-journal-visibility predicate. PhotoKit live import,
+journal-visibility predicate; `PromptService` daily rotation + bundled-JSON
+decode and `OnThisDayService` month/day matching. PhotoKit live import,
 video poster decoding, and AVKit playback are verified by hand (no headless TCC
 / no AVFoundation media fixture).
 
@@ -205,12 +208,14 @@ Sources/PurpleDiary/
 ├── Models/   Entry, Mood, Tag, Person, TrackerTag, Journal, Attachment, AppSettings
 ├── Services/ DatabaseService(+SQLCipher), BackupService, SearchService, SampleDataService,
 │             ExportService, ImageProcessing, VideoProcessing, PhotosImportService,
-│             FileImportService, TextImportService, StatsService, KeyStore, KeychainStore,
-│             Crypto, RecoveryKey, BIP39Wordlist, BootState, BiometricAuthService, WindowStateGuard
+│             FileImportService, TextImportService, PromptService, OnThisDayService,
+│             StatsService, KeyStore, KeychainStore, Crypto, RecoveryKey, BIP39Wordlist,
+│             BootState, BiometricAuthService, WindowStateGuard
 └── Views/    ContentView (HStack sidebar) + DetailRouterView, SidebarView, TimelineView,
-              EntryEditorView, CalendarView, InsightsView, SearchView, PeopleView, TagsView,
-              TrackersView, PhotoImportView, AttachmentViewerSheet, ExportSheet, AppLockScreen,
-              RecoveryScreen, RecoveryKeySaveSheet, SecurityDocView, Settings/, Shared/
+              EntryEditorView, CalendarView, OnThisDayView, InsightsView, SearchView, PeopleView,
+              TagsView, TrackersView, PhotoImportView, AttachmentViewerSheet, ExportSheet,
+              AppLockScreen, RecoveryScreen, RecoveryKeySaveSheet, SecurityDocView, Settings/, Shared/
 Vendor/       GRDB.swift + SQLCipher 4.6.1 (local SwiftPM packages)
+Resources/Prompts.json   Bundled writing-prompt library (Phase 4)
 Docs/SECURITY.md   Security & Privacy whitepaper (also rendered in-app via Help)
 ```
