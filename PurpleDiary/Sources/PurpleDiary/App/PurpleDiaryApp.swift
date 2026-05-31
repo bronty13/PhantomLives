@@ -25,6 +25,16 @@ struct PurpleDiaryApp: App {
             AppMenuCommands()
         }
 
+        // In-app SECURITY.md viewer. Reachable from Help → Security & Privacy
+        // whitepaper. Bundle-loaded markdown rendered by a small hand-rolled
+        // block parser; see SecurityDocView.
+        Window("Security & Privacy", id: "security-doc") {
+            SecurityDocView()
+                .tint(appState.effectiveAccentColor)
+                .preferredColorScheme(appState.preferredColorScheme)
+        }
+        .defaultSize(width: 760, height: 720)
+
         Settings {
             SettingsView()
                 .environmentObject(appState)
