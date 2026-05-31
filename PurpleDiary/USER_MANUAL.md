@@ -38,6 +38,24 @@ entries.
   a line chart for each tracker you keep (see below). It's all computed from your
   entries on your Mac — nothing is sent anywhere.
 
+## Photos
+
+PurpleDiary can pull in the photos you took on an entry's date so your day
+arrives pre-assembled.
+
+- In the editor, find the **Photos** row and click **Add photos from this day**.
+- The first time, macOS asks for permission to your photo library — choose
+  **Allow Access to All Photos** (or **Select Photos…** to share only some).
+  You can change this later in System Settings → Privacy & Security → Photos.
+- A grid of the photos taken on that entry's date appears. Click to select the
+  ones you want, then **Add**. They show up as thumbnails on the entry; hover and
+  click the ✕ to remove one.
+
+Your photos are copied **into your encrypted journal** (stored right inside the
+database, so they're protected by the same encryption and included in backups) —
+nothing is ever uploaded. Imported photos are scaled down to a sensible size so
+the database stays manageable.
+
 ## Trackers
 
 Trackers let you log a number on each entry and watch it trend over time —
@@ -70,9 +88,11 @@ Want a copy of your journal outside the app? Choose **File → Export Journal…
 - **PDF** — the same layout as the HTML, paginated — handy for printing or
   keeping a fixed archive.
 - **JSON** — a complete, structured copy of every entry, tag, person, and
-  tracker (with the values you logged). This is the one to keep if you ever want
-  to re-import your journal later. (Markdown and HTML exports show each entry's
-  logged tracker values on a 📊 line too.)
+  tracker (with the values you logged), plus a photo count per entry. This is the
+  one to keep if you ever want to re-import your journal later. (Markdown and HTML
+  exports show each entry's logged tracker values on a 📊 line and a 🖼️ photo
+  count too.) Exports note how many photos an entry has, but the photo files
+  themselves stay safely inside your encrypted journal and its backups.
 
 Files are saved to **`~/Downloads/PurpleDiary/`** by default (you can change the
 folder in Settings → General → Export), named
@@ -157,7 +177,7 @@ app.
 
 ## What's coming
 
-The "auto-assembled day" features that define Diarium — pulling in your photos,
-calendar, location, and weather — plus mood/tracker graphs, a map of your
-entries, and bring-your-own-cloud sync are planned for the next phases. See
+More of the "auto-assembled day" features that define Diarium — pulling in your
+calendar, location, and weather (photos already work, above) — plus a map of your
+entries and bring-your-own-cloud sync are planned for the next phases. See
 `SCOPING.md` in the project for the full roadmap.

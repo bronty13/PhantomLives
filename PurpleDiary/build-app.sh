@@ -12,6 +12,7 @@ fi
 
 PRODUCT_NAME="PurpleDiary"
 BUNDLE_ID="com.bronty13.PurpleDiary"
+ENTITLEMENTS="Sources/PurpleDiary/App/PurpleDiary.entitlements"
 COMMIT_COUNT="$(git rev-list --count HEAD 2>/dev/null || echo 0)"
 SHORT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 SHORT_VERSION="${SHORT_VERSION:-1.0.${COMMIT_COUNT}}"
@@ -70,14 +71,20 @@ ditto --noextattr "$ICNS_PATH" "$DEST_APP/Contents/Resources/AppIcon.icns"
 
 # Code sign
 CERT="$(security find-identity -v -p codesigning 2>/dev/null | grep "Developer ID Application" | head -1 | awk '{print $2}' || echo "")"
+# --entitlements is load-bearing: the photo-import path needs
+# com.apple.security.personal-information.photos-library, and under the
+# Hardened Runtime (--options runtime) TCC won't even show the Photos prompt
+# without it. The re-sign here would otherwise strip whatever XcodeGen embedded.
+ENT_ARG=()
+if [ -f "$ENTITLEMENTS" ]; then ENT_ARG=(--entitlements "$ENTITLEMENTS"); fi
 if [ -n "$CERT" ]; then
     echo "Signing with Developer ID: $CERT"
     xattr -cr "$DEST_APP"
-    codesign --sign "$CERT" --options runtime --timestamp --deep --force "$DEST_APP"
+    codesign --sign "$CERT" --options runtime --timestamp --deep --force "${ENT_ARG[@]}" "$DEST_APP"
 else
     echo "No Developer ID found — using ad-hoc signing"
     xattr -cr "$DEST_APP"
-    codesign --sign - --deep --force "$DEST_APP"
+    codesign --sign - --deep --force "${ENT_ARG[@]}" "$DEST_APP"
 fi
 
 echo ""

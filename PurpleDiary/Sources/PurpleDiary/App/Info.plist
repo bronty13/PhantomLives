@@ -31,6 +31,8 @@
 	<string>14.0</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026. All rights reserved.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>PurpleDiary can suggest photos you took on an entry's date so your day arrives pre-assembled. Photos you choose are copied into your encrypted journal; nothing is uploaded.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSPrintInfoIsShared</key>

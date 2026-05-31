@@ -11,9 +11,18 @@
       security-scoped URL bookmarks), so the file API needs whatever the
       logged-in user can see.
 
-      No network entitlement in Phase 1: PurpleDiary is fully offline. The
-      Phase-2 auto-context services (WeatherKit, etc.) will add the entitlements
-      they need at that time.
+      No network entitlement: PurpleDiary is fully offline.
+
+      Photos access (Phase-2 photo import): under the Hardened Runtime — which
+      Developer-ID signing enables — TCC REFUSES to show the Photos permission
+      prompt for a kTCCServicePhotos request unless the binary carries this
+      entitlement, even though the app is NOT sandboxed. With it absent, tccd
+      logs "requires entitlement com.apple.security.personal-information.photos-library
+      but it is missing" and PHPhotoLibrary.requestAuthorization returns .denied
+      with no dialog. NSPhotoLibraryUsageDescription (Info.plist) is also
+      required, but is not sufficient on its own.
     -->
+    <key>com.apple.security.personal-information.photos-library</key>
+    <true/>
 </dict>
 </plist>

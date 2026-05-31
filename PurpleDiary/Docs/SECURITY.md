@@ -38,6 +38,11 @@ In scope:
   the *page* level, the entire SQLite file — every table, index, and internal
   structure — is ciphertext. There is no plaintext "shadow" of your entries
   anywhere in the file.
+- **Photo attachments.** Photos you import onto an entry are stored as BLOBs
+  *inside* `diary.sqlite` (the downscaled JPEG plus a small thumbnail), so they
+  inherit the same SQLCipher encryption at rest as your text — there are no
+  separate plaintext image files on disk, and they ride along inside the
+  encrypted backup zip.
 - **The encryption key itself.** The 256-bit data-encryption key (DEK) is
   stored in the macOS login Keychain by default, and can additionally be wrapped
   under a passphrase-derived key you choose (opt-in). It is never written to
@@ -117,7 +122,7 @@ Here's what's encrypted, and how:
 
 | File | Encryption | Notes |
 |---|---|---|
-| `diary.sqlite` (entire file) | **SQLCipher 4.6.1** | AES-256-CBC page encryption + HMAC-SHA512 per-page authentication. Vendored amalgamation, CommonCrypto backend. Every entry, the schema, and all indexes are opaque ciphertext without the DEK. |
+| `diary.sqlite` (entire file) | **SQLCipher 4.6.1** | AES-256-CBC page encryption + HMAC-SHA512 per-page authentication. Vendored amalgamation, CommonCrypto backend. Every entry, the schema, all indexes, **and imported photo attachments (stored as BLOBs)** are opaque ciphertext without the DEK. |
 | `keystore.json` | **Wrapped DEK** | Present only when a passphrase is set. Holds the DEK wrapped under a passphrase-derived KEK (AES-256-GCM), plus the salt and KDF iteration count. Never contains the DEK in the clear. |
 | `recovery_envelope.json` | **Wrapped DEK** | Always present after first launch. Holds the DEK wrapped under a key derived from your 24-word recovery phrase, plus salt + iteration count. Never contains the DEK in the clear. |
 | `boot_state.json` | **Plaintext marker** | A small "this install has booted before" flag. Carries no key material and no journal content — it exists to prevent minting a *fresh* DEK (and orphaning your encrypted data) if the Keychain entry is lost out-of-band. |
@@ -369,9 +374,11 @@ backup after the migration contains only the encrypted database.
   and never journal content, so the privacy cost is low — but it is plaintext on
   disk, unlike the database. If your threat model requires even your preferences
   to be opaque, that's not covered today.
-- **No attachments yet.** This build stores text entries only. When photo/file
-  attachments land (a later phase), their at-rest encryption story will be
-  documented here before they ship.
+- **Photo attachments are in the database.** Photos you import are stored as
+  BLOBs inside the SQLCipher database (see §1, §3), so they're encrypted at rest
+  and captured by backups like everything else. PurpleDiary downscales imports
+  to a reasonable size; it does not yet support video/audio/arbitrary-file
+  attachments.
 - **Keychain ACL trust boundary.** The DEK uses `kSecAttrAccessibleWhenUnlocked`
   and is not gated behind Touch ID at the Keychain level (app-lock is a separate
   gate). A user-level attacker on a running, unlocked Mac can reach the DEK
@@ -417,4 +424,4 @@ an update here. The repository history is the canonical chronology.
 
 ---
 
-*Drafted 2026-05-30. Last reviewed 2026-05-30.*
+*Drafted 2026-05-30. Last reviewed 2026-05-31 (photo attachments stored as encrypted BLOBs).*

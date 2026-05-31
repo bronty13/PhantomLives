@@ -5,10 +5,10 @@ Local-first, private, no account — your journal lives in a single SQLite
 database on your Mac. See [SCOPING.md](SCOPING.md) for the full design brief and
 phased roadmap.
 
-> **Status:** Phase 1. The core journal (write, browse, search, tag, mood,
-> backup) plus the **privacy core** — encryption-at-rest, app-lock, and a 24-word
-> recovery key — are in place. Auto-assembled days (Photos/Calendar/WeatherKit),
-> tracker tags, map view, and sync are scoped for later phases — see SCOPING.md.
+> **Status:** Phase 1 complete (core journal + privacy core: encryption-at-rest,
+> app-lock, 24-word recovery key). Phase 2 in progress: **Insights**, **export**,
+> **trackers**, and **Photos import** are in. Calendar/WeatherKit, map view, and
+> sync are scoped for later — see SCOPING.md.
 
 ## At a glance (Phase 1)
 
@@ -21,6 +21,9 @@ phased roadmap.
 - **Calendar** — month grid; days with entries are dotted; click to jump or
   create.
 - **Search** — ranked across title / body / tags / people.
+- **Photos import** — "Add photos from this day" on an entry pulls in the
+  photos you took on that date (PhotoKit); chosen photos are stored as
+  SQLCipher-encrypted BLOBs in the database. *(Phase 2)*
 - **Trackers** — define custom quantified metrics (number + unit, duration, or
   yes/no), log them per entry, and graph the trend. *(Phase 2)*
 - **Insights** — Swift Charts dashboard over your entries: summary cards
@@ -30,8 +33,8 @@ phased roadmap.
 - **Export** — save the whole journal as **Markdown**, **HTML**, **PDF**, or
   **JSON** from File → Export Journal… (⇧⌘E) or Settings → General. Entries are
   grouped by month; files land in `~/Downloads/PurpleDiary/`. JSON is a
-  versioned, round-trippable dump (now schema v2, including trackers) for
-  backup/re-import. *(Phase 2)*
+  versioned, round-trippable dump (now schema v3, including trackers and
+  per-entry photo counts) for backup/re-import. *(Phase 2)*
 - **Auto-backup at every launch** — zips the support directory to
   `~/Downloads/PurpleDiary backup/` with 14-day retention; verify and restore
   from Settings → Backup. (PhantomLives convention.)
@@ -80,8 +83,9 @@ search ranking, BackupService debounce/retention/verify, and the privacy core:
 AES-GCM crypto, BIP39 recovery-key encode/decode/checksum, KeyStore
 passphrase/recovery unlock round-trips, SQLCipher at-rest (ciphertext on disk,
 wrong-key rejection, plaintext→SQLCipher migration), the sample-data facility,
-the Insights stats aggregation (including tracker series), tracker migration +
-cascade and Codable, and the Markdown/HTML/JSON export render paths.
+the Insights stats aggregation (including tracker series), tracker + attachment
+migrations / cascade / Codable, image downscaling + thumbnailing, and the
+Markdown/HTML/JSON export render paths.
 
 ## Encryption & dependencies
 
@@ -98,12 +102,13 @@ database. See `Vendor/SQLCipher/PROVENANCE.md`.
 PurpleDiary/
 ├── Sources/PurpleDiary/
 │   ├── App/          # PurpleDiaryApp, AppState, AppDelegate, AppMenuCommands, Version, Info.plist
-│   ├── Models/       # Entry, Mood, Tag, Person, TrackerTag, AppSettings (GRDB records)
+│   ├── Models/       # Entry, Mood, Tag, Person, TrackerTag, Attachment, AppSettings (GRDB records)
 │   ├── Services/     # DatabaseService(+SQLCipher), BackupService, SearchService, SampleDataService,
-│   │                 #   ExportService, KeyStore, KeychainStore, Crypto, RecoveryKey, BIP39Wordlist,
-│   │                 #   BootState, BiometricAuthService, StatsService, WindowStateGuard
+│   │                 #   ExportService, ImageProcessing, PhotosImportService, KeyStore, KeychainStore,
+│   │                 #   Crypto, RecoveryKey, BIP39Wordlist, BootState, BiometricAuthService,
+│   │                 #   StatsService, WindowStateGuard
 │   └── Views/        # ContentView (HStack sidebar), Timeline, EntryEditor, Calendar, Insights, Search,
-│                     #   People, Tags, Trackers, ExportSheet, AppLockScreen, RecoveryScreen,
+│                     #   People, Tags, Trackers, PhotoImport, ExportSheet, AppLockScreen, RecoveryScreen,
 │                     #   RecoveryKeySaveSheet, SecurityDocView, Settings/, Shared/
 ├── Tests/PurpleDiaryTests/
 ├── Vendor/           # GRDB.swift + SQLCipher 4.6.1 (local SwiftPM packages)

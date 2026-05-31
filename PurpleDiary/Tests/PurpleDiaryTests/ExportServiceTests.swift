@@ -97,11 +97,12 @@ final class ExportServiceTests: XCTestCase {
             tagsByEntry: ["E1": [Tag(rowId: 1, name: "gratitude", colorHex: "#7C5CFF")]],
             peopleByEntry: ["E1": people],
             trackerTags: trackers,
-            trackerValuesByEntry: ["E1": [7: 6, 8: 1]]
+            trackerValuesByEntry: ["E1": [7: 6, 8: 1]],
+            attachmentCountByEntry: ["E1": 3]
         )
         let decoded = try JSONDecoder().decode(ExportService.JournalExport.self, from: data)
         XCTAssertEqual(decoded.schemaVersion, ExportService.jsonSchemaVersion)
-        XCTAssertEqual(decoded.schemaVersion, 2)
+        XCTAssertEqual(decoded.schemaVersion, 3)
         XCTAssertEqual(decoded.app, "PurpleDiary")
         XCTAssertEqual(decoded.entryCount, 3)
         XCTAssertEqual(decoded.entries.count, 3)
@@ -117,6 +118,8 @@ final class ExportServiceTests: XCTestCase {
         // Two tracker values logged on E1, sorted by tracker name (Exercise, Water).
         XCTAssertEqual(e1.trackers.map(\.tracker), ["Exercise", "Water"])
         XCTAssertEqual(e1.trackers.first { $0.tracker == "Water" }?.value, 6)
+        XCTAssertEqual(e1.attachmentCount, 3)
+        XCTAssertEqual(decoded.entries.first { $0.id == "E2" }?.attachmentCount, 0)
     }
 
     // MARK: - Grouping

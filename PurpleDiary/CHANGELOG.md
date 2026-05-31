@@ -2,6 +2,41 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Phase 2: Photos import (auto-assembled day)
+
+### Added
+- **Photos import** — the first "auto-assembled day" feature. The entry editor
+  gains a **Photos** row with **"Add photos from this day"**, which (after a
+  one-time Photos permission grant) shows the photos you took on that entry's
+  date as a selectable grid; the ones you pick are attached to the entry.
+  Attached photos show as a removable thumbnail strip.
+- **Encrypted-at-rest attachments.** Imported photos are downscaled (≤2048px
+  JPEG) and stored as **BLOBs inside `diary.sqlite`**, so they inherit the
+  database's SQLCipher encryption and ride along in the backup zip — there are
+  no separate plaintext image files. A small JPEG thumbnail is stored alongside.
+  Imports are deduped against the originating `PHAsset` so the same photo isn't
+  added twice.
+- New `v3_attachments` migration (`attachments` table, `ON DELETE CASCADE` with
+  its entry). Append-only — `v1_initial`/`v2_trackers` stay frozen; the
+  immutability guard now expects `["v1_initial","v2_trackers","v3_attachments"]`.
+- New `Attachment` model, `ImageProcessing` (downscale + thumbnail), and
+  `PhotosImportService` (PhotoKit authorization + fetch-by-date + import).
+- **Export** now notes photos: JSON bumps to **`schemaVersion: 3`** with a
+  per-entry `attachmentCount`; Markdown/HTML show a `🖼️ N photos` line. (Export
+  references counts, not the image bytes — those stay encrypted in the DB.)
+- `Info.plist` gains `NSPhotoLibraryUsageDescription`. The app stays
+  non-sandboxed; no new entitlement required.
+
+### Notes
+- Build-verified on macOS: clean Developer-ID Release build; **70/70 tests**
+  (64 prior + attachment migration/cascade, attachment CRUD/count/dedupe, and
+  four `ImageProcessing` resize tests; the JSON export test now asserts the v3
+  `attachmentCount`). The `v3_attachments` migration applied cleanly to the
+  existing encrypted database. The editor Photos row and the suggestion sheet
+  render; the live PhotoKit grant + import is completed interactively (the macOS
+  Photos prompt only surfaces for a user-launched app, not an automation-launched
+  one) — see the SECURITY.md update documenting attachments as encrypted BLOBs.
+
 ## [Unreleased] — Phase 2: Tracker tags + graphs
 
 ### Added
