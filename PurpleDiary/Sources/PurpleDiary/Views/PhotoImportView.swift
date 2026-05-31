@@ -22,7 +22,7 @@ struct EntryPhotosSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Photos & Video")
+                Text("Media")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -46,7 +46,7 @@ struct EntryPhotosSection: View {
             }
 
             if thumbs.isEmpty {
-                Text("No photos or video yet. Pull in the ones you took on \(dayString), browse another day, or add files from your Mac.")
+                Text("No media yet. Pull in the photos you took on \(dayString), browse another day, or add photos, video, or audio from your Mac.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
@@ -85,11 +85,12 @@ struct EntryPhotosSection: View {
                     if let data = thumb.thumbnailData, let img = NSImage(data: data) {
                         Image(nsImage: img).resizable().scaledToFill()
                     } else {
-                        Image(systemName: thumb.isVideo ? "video" : "photo")
+                        Image(systemName: placeholderGlyph(thumb))
                             .font(.title2).foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(thumb.isAudio ? Color.secondary.opacity(0.08) : .clear)
                     }
-                    if thumb.isVideo {
+                    if thumb.isVideo || thumb.isAudio {
                         Image(systemName: "play.circle.fill")
                             .symbolRenderingMode(.palette)
                             .foregroundStyle(.white, .black.opacity(0.45))
@@ -101,7 +102,7 @@ struct EntryPhotosSection: View {
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2)))
             }
             .buttonStyle(.plain)
-            .help(thumb.isVideo ? "Play this video" : "View this photo")
+            .help(thumb.isVideo ? "Play this video" : thumb.isAudio ? "Play this audio" : "View this photo")
 
             Button {
                 remove(thumb)
@@ -113,8 +114,19 @@ struct EntryPhotosSection: View {
             }
             .buttonStyle(.plain)
             .padding(3)
-            .help(thumb.isVideo ? "Remove this video from the entry" : "Remove this photo from the entry")
+            .help(removeHelp(thumb))
         }
+    }
+
+    private func placeholderGlyph(_ thumb: AttachmentThumb) -> String {
+        if thumb.isVideo { return "video" }
+        if thumb.isAudio { return "music.note" }
+        return "photo"
+    }
+
+    private func removeHelp(_ thumb: AttachmentThumb) -> String {
+        let noun = thumb.isVideo ? "video" : thumb.isAudio ? "audio clip" : "photo"
+        return "Remove this \(noun) from the entry"
     }
 
     /// NSOpenPanel for filesystem images + videos; imports each chosen file into
@@ -125,7 +137,7 @@ struct EntryPhotosSection: View {
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
         panel.allowedContentTypes = FileImportService.allowedContentTypes
-        panel.message = "Choose photos or videos to add to this entry"
+        panel.message = "Choose photos, videos, or audio to add to this entry"
         panel.prompt = "Add"
         guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
         let urls = panel.urls

@@ -42,6 +42,12 @@ struct AttachmentViewerSheet: View {
                 } else {
                     placeholder("video.slash", "Couldn’t play this video.")
                 }
+            } else if attachment.isAudio {
+                if let player {
+                    AudioPlayerView(player: player, filename: attachment.filename)
+                } else {
+                    placeholder("speaker.slash", "Couldn’t play this audio.")
+                }
             } else if let img = NSImage(data: attachment.data) {
                 Image(nsImage: img)
                     .resizable()
@@ -88,6 +94,7 @@ struct AttachmentViewerSheet: View {
         if a.width > 0, a.height > 0 { parts.append("\(a.width)×\(a.height)") }
         parts.append(byteString(a.sizeBytes))
         if a.isVideo { parts.append("video") }
+        else if a.isAudio { parts.append("audio") }
         return parts.joined(separator: " · ")
     }
 
@@ -104,11 +111,12 @@ struct AttachmentViewerSheet: View {
             return
         }
         attachment = a
-        guard a.isVideo else { return }
+        guard a.isVideo || a.isAudio else { return }
         // AVPlayer needs a URL — spill the bytes to a temp file with the right
         // extension so the player can infer the container.
+        let fallbackExt = a.isAudio ? "m4a" : "mov"
         let ext = URL(fileURLWithPath: a.filename).pathExtension.isEmpty
-            ? (UTType(a.mimeType)?.preferredFilenameExtension ?? "mov")
+            ? (UTType(a.mimeType)?.preferredFilenameExtension ?? fallbackExt)
             : URL(fileURLWithPath: a.filename).pathExtension
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("pd-view-\(a.id).\(ext)")
@@ -136,5 +144,88 @@ struct AttachmentViewerSheet: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do { try a.data.write(to: url, options: .atomic) }
         catch { appState.errorMessage = error.localizedDescription }
+    }
+}
+
+/// A compact audio transport: a music-note hero card plus play/pause, a
+/// draggable scrubber, and elapsed / remaining time. AVKit's `VideoPlayer`
+/// renders a black rectangle for audio, so this gives audio a proper face.
+struct AudioPlayerView: View {
+    let player: AVPlayer
+    let filename: String
+
+    @State private var isPlaying = false
+    @State private var current: Double = 0      // seconds
+    @State private var duration: Double = 0      // seconds
+    @State private var scrubbing = false
+    @State private var observer: Any?
+
+    var body: some View {
+        VStack(spacing: 22) {
+            Spacer()
+            Image(systemName: "waveform")
+                .font(.system(size: 64, weight: .regular))
+                .foregroundStyle(.secondary)
+                .frame(width: 160, height: 160)
+                .background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 18))
+            Text(filename)
+                .font(.headline).lineLimit(1).truncationMode(.middle)
+                .frame(maxWidth: 420)
+
+            VStack(spacing: 4) {
+                Slider(value: $current, in: 0...max(duration, 0.1)) { editing in
+                    scrubbing = editing
+                    if !editing {
+                        player.seek(to: CMTime(seconds: current, preferredTimescale: 600))
+                    }
+                }
+                .frame(maxWidth: 420)
+                HStack {
+                    Text(timeString(current)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    Spacer()
+                    Text(timeString(duration)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: 420)
+            }
+
+            Button(action: toggle) {
+                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                    .font(.system(size: 52))
+                    .symbolRenderingMode(.hierarchical)
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.space, modifiers: [])
+            Spacer()
+        }
+        .padding(24)
+        .task { await setup() }
+        .onDisappear {
+            if let observer { player.removeTimeObserver(observer) }
+            player.pause()
+        }
+    }
+
+    private func setup() async {
+        if let secs = try? await player.currentItem?.asset.load(.duration).seconds,
+           secs.isFinite { duration = secs }
+        observer = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.2, preferredTimescale: 600), queue: .main
+        ) { time in
+            if !scrubbing { current = time.seconds }
+            if duration <= 0.1, let d = player.currentItem?.duration.seconds, d.isFinite { duration = d }
+        }
+        player.play()
+        isPlaying = true
+    }
+
+    private func toggle() {
+        if isPlaying { player.pause() } else { player.play() }
+        isPlaying.toggle()
+    }
+
+    private func timeString(_ seconds: Double) -> String {
+        guard seconds.isFinite, seconds >= 0 else { return "0:00" }
+        let total = Int(seconds.rounded())
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 }

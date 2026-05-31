@@ -20,7 +20,8 @@ PhantomLives conventions.
 **Status:** Phase 1 complete (journal + privacy core). Phase 2 shipped:
 Insights dashboard, Export (MD/HTML/PDF/JSON), Trackers + graphs, and media —
 Photos import (auto-assembled day, browse any day / all-recent), filesystem
-import of photos **and video**, and a full-size image/video viewer.
+import of photos, **video, and audio**, and a full-size viewer (image / AVKit
+video / compact audio player).
 Deferred: Calendar import, Map view, sync. Weather/WeatherKit was built and
 **reverted** — it required network egress (lat/long → Apple), which conflicts
 with the no-network guarantee.
@@ -83,9 +84,10 @@ GRDB records in `Models/`: `Entry`, `Mood`, `Tag` (+ `EntryTag`), `Person`
 (+ `EntryPerson`), `TrackerTag` (+ `TrackerValue`, `TrackerKind`), `Attachment`
 (+ `AttachmentThumb` projection — carries `kind`/`mimeType` so the strip can
 badge video and the viewer can pick image-vs-player without paging the BLOB),
-`AppSettings`. Attachments cover **photos and video**: a video is just an
-`attachments` row with `kind = "video"` and the movie's raw bytes in `data` —
-no schema change was needed, so the migration set stayed frozen.
+`AppSettings`. Attachments cover **photos, video, and audio**: a video/audio
+clip is just an `attachments` row with `kind = "video"`/`"audio"` and the raw
+bytes in `data` (audio has no thumbnail) — no schema change was needed for any
+of them, so the migration set stayed frozen.
 
 Migrations live **only** in `DatabaseService.applyMigrations(to:)` (so tests run
 the real migrator against an in-memory DB). They are **append-only and
@@ -164,7 +166,7 @@ feature, keep it offline.
   ever added.) See the repo memory `reference-macos-photokit-tcc-entitlement`.
 - **Migrations immutable** (§4). **SQLCipher link order** (§5).
 
-## 8. Tests (`Tests/PurpleDiaryTests/`, 75 total)
+## 8. Tests (`Tests/PurpleDiaryTests/`, 76 total)
 
 Migration round-trip + cascades + frozen-set guard; model Codable + word count +
 `TrackerKind` formatting; `SearchService` ranking; `BackupService`
@@ -174,8 +176,9 @@ rejection, plaintext→cipher migration); `StatsService` (totals/streaks/tracker
 series); `ExportService` render paths (MD/HTML/JSON incl. escaping + schema v3);
 `SecurityDocView` markdown parser; attachment CRUD/dedupe + thumb projection
 (kind/mime) + fetch-by-id + `ImageProcessing` resize; `FileImportService`
-classification + image-from-file build. PhotoKit live import and video poster
-decoding are verified by hand (no headless TCC / no AVFoundation movie fixture).
+classification (image/video/audio/unsupported) + image- and audio-from-file
+build. PhotoKit live import, video poster decoding, and AVKit playback are
+verified by hand (no headless TCC / no AVFoundation media fixture).
 
 ## 9. Where things live
 
