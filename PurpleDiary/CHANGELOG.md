@@ -2,6 +2,42 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Phase 3: Journals (multiple + hidden)
+
+### Added
+- **Multiple journals.** A new **JOURNALS** section in the sidebar lets you keep
+  separate notebooks (Personal, Work, Travel, …). Each entry belongs to one
+  journal; pick **All Journals** to see everything or a single journal to focus.
+  Create with the **＋**, and right-click a journal to rename, recolor, hide, or
+  delete (deleting moves its entries back to the default journal — nothing is
+  lost). New entries land in the journal you're currently viewing.
+- **Hidden journals.** Mark a journal **Hidden** to lock it out of the Timeline,
+  Calendar, Search, and Insights. A hidden journal shows a 🔒 in the sidebar;
+  click it and authenticate (Touch ID / device password / passphrase) to reveal
+  it **for the session** — it re-locks on relaunch.
+- **Move an entry between journals** from a menu in the entry editor header.
+
+### Changed
+- New `v4_journals` migration: a `journals` table, a seeded default journal, and
+  a back-filled `entries.journal_id`. Append-only — `v1…v3` stay frozen; the
+  immutability guard now expects `[…, "v4_journals"]`.
+- Export JSON bumps to **`schemaVersion: 4`** with a top-level `journals` array
+  and a per-entry `journalId` (full-fidelity, including hidden journals, for
+  backup/re-import).
+
+### Security note
+- At this phase "hidden" is an **app-level visibility gate** — a hidden journal's
+  bytes are still under the single database key, exactly as encrypted as
+  everything else, and a full export includes them. Per-journal *cryptographic*
+  separation (a journal sealed under its own passphrase, opaque even with the
+  app open) is a later phase — see `SCOPING.md` → Phase 9 (Vault).
+
+### Notes
+- New `Journal` model + `AppState` journal slices / `visibleEntries` /
+  `entryIsVisible` predicate. **+8 tests** (default journal, back-fill,
+  move, delete-reassign, can't-delete-default, visibility gate + selection,
+  Codable). 95 total.
+
 ## [Unreleased] — Phase 2: Import text files into an entry
 
 ### Added

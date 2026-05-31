@@ -14,6 +14,7 @@ struct Entry: Codable, FetchableRecord, MutablePersistableRecord, Identifiable, 
     var bodyMarkdown: String
     var moodRating: Int             // 0 = unset, 1...5 stars
     var wordCount: Int              // denormalized for stats / writing-goal UI
+    var journalId: String           // owning journal; defaults to Journal.defaultId
 
     // Phase-2 auto-context (nullable until the import services populate them).
     var latitude: Double?
@@ -34,6 +35,7 @@ struct Entry: Codable, FetchableRecord, MutablePersistableRecord, Identifiable, 
         case bodyMarkdown = "body_markdown"
         case moodRating = "mood_rating"
         case wordCount = "word_count"
+        case journalId = "journal_id"
         case latitude
         case longitude
         case placeName = "place_name"
@@ -61,7 +63,8 @@ struct Entry: Codable, FetchableRecord, MutablePersistableRecord, Identifiable, 
 }
 
 extension Entry {
-    static func newDraft(date: Date = Date(), title: String = "") -> Entry {
+    static func newDraft(date: Date = Date(), title: String = "",
+                         journalId: String = Journal.defaultId) -> Entry {
         let now = ISO8601DateFormatter().string(from: Date())
         return Entry(
             id: UUID().uuidString,
@@ -70,6 +73,7 @@ extension Entry {
             bodyMarkdown: "",
             moodRating: Mood.unset.rawValue,
             wordCount: 0,
+            journalId: journalId,
             latitude: nil,
             longitude: nil,
             placeName: nil,

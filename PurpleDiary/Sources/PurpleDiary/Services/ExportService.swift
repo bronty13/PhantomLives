@@ -69,6 +69,7 @@ enum ExportService {
         trackerTags: [TrackerTag] = [],
         trackerValuesByEntry: [String: [Int64: Double]] = [:],
         attachmentCountByEntry: [String: Int] = [:],
+        journals: [Journal] = [],
         exportDir: URL
     ) async throws -> URL {
         let fm = FileManager.default
@@ -97,7 +98,8 @@ enum ExportService {
                 let data = try encodeJSON(entries: sorted, people: people, tagsByEntry: tagsByEntry,
                                           peopleByEntry: peopleByEntry, trackerTags: trackerTags,
                                           trackerValuesByEntry: trackerValuesByEntry,
-                                          attachmentCountByEntry: attachmentCountByEntry)
+                                          attachmentCountByEntry: attachmentCountByEntry,
+                                          journals: journals)
                 try data.write(to: url, options: .atomic)
             case .pdf:
                 let html = renderHTML(entries: sorted, tagsByEntry: tagsByEntry, peopleByEntry: peopleByEntry,
@@ -302,6 +304,7 @@ enum ExportService {
         var entries: [EntryExport]
         var people: [PersonExport]
         var trackers: [TrackerDefExport]
+        var journals: [JournalDefExport]
     }
     struct EntryExport: Codable, Equatable {
         var id: String
@@ -310,6 +313,7 @@ enum ExportService {
         var bodyMarkdown: String
         var moodRating: Int
         var wordCount: Int
+        var journalId: String
         var tags: [String]
         var people: [String]          // person ids linked to this entry
         var trackers: [TrackerValueExport]   // values logged on this entry
@@ -337,8 +341,15 @@ enum ExportService {
         var tracker: String           // tracker name (stable id for re-import)
         var value: Double
     }
+    struct JournalDefExport: Codable, Equatable {
+        var id: String
+        var name: String
+        var colorHex: String
+        var symbol: String
+        var isHidden: Bool
+    }
 
-    static let jsonSchemaVersion = 3
+    static let jsonSchemaVersion = 4
 
     static func buildExportModel(
         entries: [Entry],
@@ -347,7 +358,8 @@ enum ExportService {
         peopleByEntry: [String: [Person]],
         trackerTags: [TrackerTag] = [],
         trackerValuesByEntry: [String: [Int64: Double]] = [:],
-        attachmentCountByEntry: [String: Int] = [:]
+        attachmentCountByEntry: [String: Int] = [:],
+        journals: [Journal] = []
     ) -> JournalExport {
         let trackerNameById: [Int64: String] = Dictionary(
             uniqueKeysWithValues: trackerTags.compactMap { t in t.rowId.map { ($0, t.name) } }
@@ -365,6 +377,7 @@ enum ExportService {
                 bodyMarkdown: e.bodyMarkdown,
                 moodRating: e.moodRating,
                 wordCount: e.wordCount,
+                journalId: e.journalId,
                 tags: (tagsByEntry[e.id] ?? []).map(\.name),
                 people: (peopleByEntry[e.id] ?? []).map(\.id),
                 trackers: trackerVals,
@@ -387,6 +400,10 @@ enum ExportService {
             people: people.map { PersonExport(id: $0.id, name: $0.name, notes: $0.notes) },
             trackers: trackerTags.map {
                 TrackerDefExport(name: $0.name, unit: $0.unit, kind: $0.kind.rawValue, colorHex: $0.colorHex)
+            },
+            journals: journals.map {
+                JournalDefExport(id: $0.id, name: $0.name, colorHex: $0.colorHex,
+                                 symbol: $0.symbol, isHidden: $0.isHidden)
             }
         )
     }
@@ -398,12 +415,14 @@ enum ExportService {
         peopleByEntry: [String: [Person]],
         trackerTags: [TrackerTag] = [],
         trackerValuesByEntry: [String: [Int64: Double]] = [:],
-        attachmentCountByEntry: [String: Int] = [:]
+        attachmentCountByEntry: [String: Int] = [:],
+        journals: [Journal] = []
     ) throws -> Data {
         let model = buildExportModel(entries: entries, people: people,
                                      tagsByEntry: tagsByEntry, peopleByEntry: peopleByEntry,
                                      trackerTags: trackerTags, trackerValuesByEntry: trackerValuesByEntry,
-                                     attachmentCountByEntry: attachmentCountByEntry)
+                                     attachmentCountByEntry: attachmentCountByEntry,
+                                     journals: journals)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         return try encoder.encode(model)

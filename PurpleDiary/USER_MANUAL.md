@@ -30,6 +30,35 @@ without the key, which lives in your Mac's Keychain.
 Edits save automatically a beat after you stop typing, and again when you switch
 entries.
 
+## Journals
+
+Keep separate notebooks — Personal, Work, Travel, a dream journal — each with its
+own entries.
+
+- The **JOURNALS** list lives at the bottom of the sidebar. **All Journals** shows
+  everything; click a single journal to focus just its entries (Timeline,
+  Calendar, Search, and Insights all narrow to it).
+- Click the **＋** to create one. Right-click a journal to **rename**, **recolor**,
+  **hide**, or **delete** it. Deleting a journal moves its entries back into the
+  default "Journal" — nothing is lost.
+- New entries go into whichever journal you're currently viewing (or the default
+  if you're on All Journals). Move an entry between journals with the **journal
+  menu** in the editor header (next to the date).
+
+### Hidden journals
+
+Mark a journal **Hidden** (right-click → *Hide*) to keep it private: its entries
+disappear from the Timeline, Calendar, Search, and Insights, and it shows a 🔒 in
+the sidebar. Click the locked journal and authenticate (Touch ID, your device
+password, or your passphrase) to reveal it **for this session** — it locks itself
+again when you relaunch PurpleDiary.
+
+> Note: at this stage "hidden" means *hidden from view*. The entries are still
+> stored with the same strong encryption as the rest of your journal (and a full
+> export still includes them) — they're just kept out of sight behind your
+> unlock. A future update will add an optional vault mode that keeps a journal
+> encrypted under its own separate passphrase even while the app is open.
+
 ## Browsing
 
 - **Timeline** — all entries, newest first, grouped by month. Click one to open

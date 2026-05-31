@@ -9,9 +9,11 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
 > **Status:** Phase 1 complete (core journal + privacy core: encryption-at-rest,
 > app-lock, 24-word recovery key). Phase 2 shipped: **Insights**, **export**,
 > **trackers**, and **media** (Photos import + filesystem photo/video/audio
-> import + in-app viewer/player). Map view and sync are scoped for later.
-> Network-based auto-context (e.g. WeatherKit) is **out of scope** — PurpleDiary
-> stays fully offline. See SCOPING.md / HANDOFF.md.
+> import + in-app viewer/player). Phase 3 shipped: **journals** (multiple +
+> hidden). Phases 4–9 are roadmapped in SCOPING.md (reflection, templates,
+> calendar heatmap + reminders, attachments+, importers, and a per-journal
+> encryption vault). Network-based auto-context (e.g. WeatherKit) is **out of
+> scope** — PurpleDiary stays fully offline. See SCOPING.md / HANDOFF.md.
 
 ## At a glance (Phase 1)
 
@@ -19,6 +21,10 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
   entries per day. Live word count. **Import…** in the editor toolbar pulls a
   Markdown/text/RTF file's contents into the body (smart merge — sets an empty
   body, or appends after a `---` separator). *(Phase 2)*
+- **Journals** — keep separate notebooks; each entry belongs to one. Pick **All
+  Journals** or focus a single one from the sidebar. Mark a journal **Hidden** to
+  lock it out of the Timeline, Calendar, Search, and Insights until you unlock it
+  (Touch ID / passphrase) for the session. *(Phase 3)*
 - **Mood** — 0–5 star rating per entry.
 - **Tags** — named, colored, toggleable per entry; six seeded on first launch.
 - **People** — a global list of recurring people you can link to entries.

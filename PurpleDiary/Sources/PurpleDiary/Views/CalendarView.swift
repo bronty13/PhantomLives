@@ -57,7 +57,7 @@ struct CalendarView: View {
     }
 
     private func dayCell(_ day: Date) -> some View {
-        let entriesOnDay = appState.entries.filter { cal.isDate($0.dateValue, inSameDayAs: day) }
+        let entriesOnDay = appState.visibleEntries.filter { cal.isDate($0.dateValue, inSameDayAs: day) }
         let isToday = cal.isDateInToday(day)
         return Button {
             open(day: day, existing: entriesOnDay)

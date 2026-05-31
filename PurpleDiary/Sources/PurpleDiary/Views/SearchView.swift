@@ -61,7 +61,7 @@ struct SearchView: View {
         guard !appState.searchQuery.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
         return SearchService.search(
             appState.searchQuery,
-            in: appState.entries,
+            in: appState.visibleEntries,
             tagsByEntry: appState.tagsByEntry,
             peopleByEntry: appState.peopleByEntry
         )

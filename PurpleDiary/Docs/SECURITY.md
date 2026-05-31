@@ -384,6 +384,17 @@ backup after the migration contains only the encrypted database.
   captured by backups like everything else. Photos are downscaled; **video and
   audio are stored uncompressed**, so a large file noticeably grows the database
   and every launch backup. Arbitrary-file attachments are not yet supported.
+- **Hidden journals are a visibility gate, not separate encryption (today).** A
+  journal marked *hidden* is filtered out of the Timeline, Calendar, Search, and
+  Insights until you unlock it for the session (Touch ID / device password /
+  passphrase). But its entries are stored under the **same single database key**
+  as everything else — they are exactly as encrypted at rest as any other entry,
+  no more and no less, and a full export includes them. A snooper at an *unlocked*
+  Mac who bypasses the app could still read a hidden journal's bytes from the
+  open database. True per-journal cryptographic separation — a journal sealed
+  under its own passphrase-wrapped key, opaque even with the app open — is a
+  planned later phase (Vault; see `SCOPING.md`). Until then, treat "hidden" as
+  "kept out of sight," not "separately encrypted."
 - **Keychain ACL trust boundary.** The DEK uses `kSecAttrAccessibleWhenUnlocked`
   and is not gated behind Touch ID at the Keychain level (app-lock is a separate
   gate). A user-level attacker on a running, unlocked Mac can reach the DEK

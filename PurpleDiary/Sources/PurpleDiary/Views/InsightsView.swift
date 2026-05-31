@@ -8,12 +8,12 @@ struct InsightsView: View {
     @EnvironmentObject private var appState: AppState
 
     private var stats: StatsService.DiaryStats {
-        StatsService.compute(entries: appState.entries, tagsByEntry: appState.tagsByEntry)
+        StatsService.compute(entries: appState.visibleEntries, tagsByEntry: appState.tagsByEntry)
     }
 
     var body: some View {
         Group {
-            if appState.entries.isEmpty {
+            if appState.visibleEntries.isEmpty {
                 emptyState
             } else {
                 ScrollView {
@@ -136,7 +136,7 @@ struct InsightsView: View {
             if let rid = tracker.rowId {
                 let series = StatsService.trackerSeries(
                     trackerId: rid,
-                    entries: appState.entries,
+                    entries: appState.visibleEntries,
                     valuesByEntry: appState.trackerValuesByEntry
                 )
                 if !series.isEmpty {
