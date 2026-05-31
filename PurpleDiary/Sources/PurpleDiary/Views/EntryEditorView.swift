@@ -30,7 +30,7 @@ struct EntryEditorView: View {
             .padding(20)
         }
         .onAppear(perform: loadIfNeeded)
-        .onDisappear(perform: flushSave)
+        .onDisappear(perform: leaveEditor)
         .onChange(of: title) { _, _ in scheduleSave() }
         .onChange(of: body_) { _, _ in scheduleSave() }
         .onChange(of: date) { _, _ in scheduleSave() }
@@ -118,10 +118,18 @@ struct EntryEditorView: View {
         }
     }
 
-    private func flushSave() {
+    /// Leaving the editor (switching entries, sections, or closing): cancel the
+    /// debounce, then either discard a never-filled-in entry or persist real
+    /// edits. The discard is silent — no "delete blank entry?" prompt — because
+    /// a completely empty entry has nothing to lose. See `AppState.entryIsEmpty`.
+    private func leaveEditor() {
         saveTask?.cancel()
         saveTask = nil
-        if loaded { persist() }
+        guard loaded else { return }
+        if appState.discardEntryIfEmpty(entry.id, title: title, body: body_, mood: mood) {
+            return
+        }
+        persist()
     }
 
     private func persist() {

@@ -255,6 +255,38 @@ final class AppState: ObservableObject {
         if selectedEntryId == nil { selectedEntryId = entries.first?.id }
     }
 
+    /// True when an entry carries *no information at all*: blank title and body,
+    /// no mood, no tags, no logged trackers, and no attachments. Used to silently
+    /// discard a new entry the user opened but never filled in. The bar is
+    /// deliberately strict (everything empty) so we never drop an entry that has
+    /// any content — e.g. a photo or a mood with no text.
+    static func entryIsEmpty(title: String, body: String, mood: Mood,
+                             tagCount: Int, trackerCount: Int, attachmentCount: Int) -> Bool {
+        title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && mood == .unset
+            && tagCount == 0
+            && trackerCount == 0
+            && attachmentCount == 0
+    }
+
+    /// Delete `entryId` iff it is completely empty per `entryIsEmpty`, combining
+    /// the (possibly still-unsaved) editor fields with the persisted tags /
+    /// tracker values / attachments. Returns true if it was discarded. This is
+    /// the zero-friction "don't keep blank entries" path — no confirmation
+    /// prompt, because there's nothing to lose.
+    @discardableResult
+    func discardEntryIfEmpty(_ entryId: String, title: String, body: String, mood: Mood) -> Bool {
+        let tagCount = (try? DatabaseService.shared.tagIDs(forEntry: entryId).count) ?? 0
+        let trackerCount = (try? DatabaseService.shared.trackerValues(forEntry: entryId).count) ?? 0
+        let attachmentCount = (try? DatabaseService.shared.attachmentThumbs(forEntry: entryId).count) ?? 0
+        guard Self.entryIsEmpty(title: title, body: body, mood: mood,
+                                tagCount: tagCount, trackerCount: trackerCount,
+                                attachmentCount: attachmentCount) else { return false }
+        try? deleteEntry(id: entryId)
+        return true
+    }
+
     // MARK: - Tag mutations
 
     func saveTag(_ tag: Tag) throws {
