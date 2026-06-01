@@ -246,8 +246,8 @@ export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated }: 
   const rotateSelected = () => rotatePaths([...selected]);
   const rotateAll = () => rotatePaths(allMedia.map((f) => f.inZipPath));
   const allSelected = allMedia.length > 0 && selected.size === allMedia.length;
-  const toggleSelectAll = () =>
-    setSelected(allSelected ? new Set() : new Set(allMedia.map((f) => f.inZipPath)));
+  const selectAll = () => setSelected(new Set(allMedia.map((f) => f.inZipPath)));
+  const clearSelection = () => setSelected(new Set());
 
   // ── Working title editor. Draft mirrors the effective title; saving
   //   sets the override (empty clears it), then refreshes the parent so
@@ -469,10 +469,26 @@ export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated }: 
         <>Click a tile to cycle <code>0° → 90° → 180° → 270°</code>, or tick clips and use <strong>Rotate selected</strong> / <strong>Rotate all</strong> to turn them 90° at a time. The preview rotates instantly. Applies during the next image/video process run.</>
       }>
         <div className="mb-3 flex items-center gap-2 flex-wrap text-xs">
-          <label className="flex items-center gap-1.5 cursor-pointer">
-            <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
-            {allSelected ? 'Deselect all' : 'Select all'}
-          </label>
+          <button
+            type="button"
+            className="sm-button secondary text-xs"
+            disabled={allSelected}
+            onClick={selectAll}
+          >
+            Select all
+          </button>
+          <button
+            type="button"
+            className="sm-button secondary text-xs"
+            disabled={selected.size === 0}
+            onClick={clearSelection}
+          >
+            Clear selection
+          </button>
+          <span style={{ color: 'rgb(var(--surface-muted))' }}>
+            {selected.size} of {allMedia.length} selected
+          </span>
+          <span style={{ flex: 1 }} />
           <button
             type="button"
             className="sm-button secondary text-xs"

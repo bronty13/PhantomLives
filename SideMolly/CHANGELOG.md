@@ -4,6 +4,15 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.1] — 2026-06-01
+
+### Fixed — Clearer rotation-selection controls
+
+The single Select-all/Deselect-all toggle was awkward with a partial
+selection (it read "Select all", so clearing a few ticked clips meant
+select-all-then-deselect). Replaced it with explicit **Select all** and
+**Clear selection** buttons plus an "n of N selected" readout.
+
 ## [0.24.0] — 2026-06-01
 
 ### Added — Multi-select rotation (Edit → Step 1)
