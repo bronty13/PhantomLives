@@ -143,11 +143,22 @@ fn resolve_folder_name(template: &str, b: &BundleResolution) -> String {
     sanitize_filename(&out)
 }
 
-/// Take `2026-05-22 18:34:21` → `2026-05-22`. Falls back to whatever
-/// prefix we can find (`bundles.ingested_at` is always present and
-/// always starts with the date when stored via `datetime('now')`).
+/// Take `2026-05-22 18:34:21` → `2026-05-22`. Handles both the
+/// space-separated SQLite form (`datetime('now')` → `YYYY-MM-DD HH:MM:SS`)
+/// and the ISO-8601 form with a `T` separator (`2026-06-01T09:15:22`),
+/// which is what re-ingest now writes. Falls back to the whole string
+/// when no separator is present.
+///
+/// Caught 2026-06-01: ISO `T` timestamps sailed through the old
+/// space-only split untouched, so the Dropbox destination folder came
+/// out as `2026-06-01T09-15-22 Title` (the `:` sanitised to `-`) instead
+/// of the intended `2026-06-01 Title`.
 fn extract_date(timestamp: &str) -> String {
-    timestamp.split(' ').next().unwrap_or(timestamp).to_string()
+    timestamp
+        .split(|c| c == ' ' || c == 'T')
+        .next()
+        .unwrap_or(timestamp)
+        .to_string()
 }
 
 /// Replace filesystem-hostile chars with `-`. We're permissive on
@@ -556,6 +567,23 @@ mod tests {
             resolve_folder_name("{date} {title}", &r),
             "2026-05-22 and before too soon it was JUNE",
         );
+    }
+
+    #[test]
+    fn iso_t_timestamp_strips_time_from_folder_date() {
+        // Re-ingest writes ingested_at ISO-style with a `T` separator.
+        // The folder must still be `YYYY-MM-DD Title`, not the full
+        // timestamp. Regression guard for the 2026-06-01 bug where
+        // folders came out as `2026-06-01T09-15-22 Title`.
+        let r = b("2026-05-29-0003", "Work Place Custom", Some("CoC"),
+                  "2026-06-01T09:15:22");
+        assert_eq!(
+            resolve_folder_name("{date} {title}", &r),
+            "2026-06-01 Work Place Custom",
+        );
+        assert_eq!(extract_date("2026-06-01T09:15:22"), "2026-06-01");
+        assert_eq!(extract_date("2026-05-22 18:34:21"), "2026-05-22");
+        assert_eq!(extract_date("2026-05-22"), "2026-05-22");
     }
 
     #[test]

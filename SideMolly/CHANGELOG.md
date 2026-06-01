@@ -4,6 +4,28 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.1] — 2026-06-01
+
+### Fixed — Dropbox destination folder no longer carries a timestamp
+
+The Copy-to-Dropbox folder name came out as `2026-06-01T09-15-22 Title`
+instead of the intended `2026-06-01 Title`. `extract_date` stripped the
+time by splitting `ingested_at` on a space, but re-ingest now stores the
+timestamp ISO-8601 style with a `T` separator (`2026-06-01T09:15:22`), so
+the whole timestamp survived and `sanitize_filename` turned its colons
+into dashes. `extract_date` now splits on either ` ` or `T`, yielding the
+bare `YYYY-MM-DD`. Regression test added.
+
+This also un-stuck **Copy to Dropbox appearing to "do nothing"**: with the
+folder name corrected, an already-copied bundle's destination path differs
+from the stale timestamped one on record, so its assembled file shows as
+`new` and the button re-enables. (When the assembled file genuinely is
+already at the correct path with matching contents, the button stays
+disabled — that's the intended "already in sync" state.)
+
+> Note: the previously-created timestamped folders
+> (`…T09-15-22 Title`) are now orphaned in Dropbox — safe to delete.
+
 ## [0.21.0] — 2026-06-01
 
 ### Added — Per-bundle output format (16:9 horizontal / 9:16 vertical)
