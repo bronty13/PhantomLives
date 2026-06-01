@@ -107,7 +107,10 @@ struct ExportSheet: View {
             do {
                 let url = try await ExportService.export(
                     format: format,
-                    entries: appState.entries,
+                    // visibleEntries excludes locked vault journals (so their
+                    // sealed ciphertext never lands in an export) and carries
+                    // unlocked vault entries as in-memory plaintext.
+                    entries: appState.visibleEntries,
                     people: appState.people,
                     tagsByEntry: appState.tagsByEntry,
                     peopleByEntry: appState.peopleByEntry,

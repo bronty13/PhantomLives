@@ -2,6 +2,37 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Phase 9: Vault (transparent sealing data path)
+
+### Added (internal — still no UI; foundation for the create/unlock flows)
+- **Transparent seal-on-write / unseal-on-read.** `DatabaseService` now seals a
+  vault journal's entry **title + body** under its content key before the row
+  touches disk, and unseals transparently on fetch when the vault is unlocked
+  for the session. On disk a vault entry is `pdvlt1:`-prefixed ciphertext (the
+  plaintext and even the title never appear); in memory it reads back normally.
+  Word counts are computed from the plaintext *before* sealing, so stats stay
+  correct. A write into a **locked** vault is refused (`VaultWriteError`) rather
+  than persisting plaintext.
+- **Locked-vault visibility gate.** `AppState.visibleEntries` now treats a vault
+  journal as hidden whenever its key isn't in the session, so locked vault
+  entries are excluded from Timeline / Calendar / Search / Insights — and from
+  **export** (export now runs over `visibleEntries`, so a locked vault never
+  leaks ciphertext and an unlocked one exports as plaintext).
+- **Vault-aware journal moves.** Moving an entry into a vault seals it on the way
+  in; moving it out unseals it; cross-vault re-keying is handled. Moving into or
+  out of a *locked* vault is refused.
+- **`sealEntries(inJournal:using:)`** — the data-layer step the upcoming
+  Make-Vault flow uses to seal a journal's existing plaintext entries in one
+  transaction (idempotent; already-sealed rows are skipped).
+- **+7 tests** (seal-on-disk / unseal-on-read, stays-sealed-when-locked,
+  refuse-write-to-locked, move-in-seals / move-out-unseals, refuse-move-into-locked,
+  convert-existing-plaintext + no-op re-run, visibility gate) → **142**.
+
+### Notes
+- Still **no Make-Vault / unlock UI** — no journal is a vault yet in normal use,
+  so this remains behavior-neutral for existing installs. The create/unlock
+  flows and sidebar lock glyph are the next step, built on this tested data path.
+
 ## [Unreleased] — Phase 9: Vault (cryptographic foundation)
 
 ### Added (internal — no behavior change yet)

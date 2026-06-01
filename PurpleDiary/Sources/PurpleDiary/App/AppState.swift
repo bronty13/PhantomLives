@@ -287,29 +287,38 @@ final class AppState: ObservableObject {
 
     var hasHiddenJournals: Bool { journals.contains { $0.isHidden } }
 
-    /// Pure visibility rule, factored out for testing. An entry is shown when its
-    /// journal isn't hidden (or has been unlocked this session) AND it matches
-    /// the active journal filter (`nil` selection = all visible journals).
+    /// Pure visibility rule, factored out for testing. An entry is shown when:
+    /// its journal isn't hidden (or has been unlocked this session), AND its
+    /// journal isn't a *locked* vault (a vault is opaque until its content key
+    /// is in the session), AND it matches the active journal filter (`nil`
+    /// selection = all accessible journals).
     static func entryIsVisible(entryJournalId: String,
                                selectedJournalId: String?,
                                journalIsHidden: Bool,
-                               journalIsUnlocked: Bool) -> Bool {
+                               journalIsUnlocked: Bool,
+                               journalIsVault: Bool = false,
+                               vaultIsUnlocked: Bool = false) -> Bool {
         if journalIsHidden && !journalIsUnlocked { return false }
+        if journalIsVault && !vaultIsUnlocked { return false }
         if let sel = selectedJournalId, sel != entryJournalId { return false }
         return true
     }
 
     /// Entries the Timeline / Calendar / Search / Insights should operate on,
-    /// after applying the hidden-journal gate and the active journal filter.
+    /// after applying the hidden-journal gate, the locked-vault gate, and the
+    /// active journal filter.
     var visibleEntries: [Entry] {
         entries.filter { entry in
             let journal = journalsById[entry.journalId]
             let hidden = journal?.isHidden ?? false
+            let vault = journal?.isVault ?? false
             return Self.entryIsVisible(
                 entryJournalId: entry.journalId,
                 selectedJournalId: selectedJournalId,
                 journalIsHidden: hidden,
-                journalIsUnlocked: unlockedHiddenJournalIds.contains(entry.journalId)
+                journalIsUnlocked: unlockedHiddenJournalIds.contains(entry.journalId),
+                journalIsVault: vault,
+                vaultIsUnlocked: VaultService.isUnlocked(entry.journalId)
             )
         }
     }

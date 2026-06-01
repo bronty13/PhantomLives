@@ -445,21 +445,26 @@ final class DatabaseService {
     // MARK: - Entries
 
     func fetchAllEntries() throws -> [Entry] {
-        try dbPool.read { db in
+        let vaultIds = try vaultJournalIds()
+        let raw = try dbPool.read { db in
             try Entry.order(Column("date").desc).fetchAll(db)
         }
+        return raw.map { unsealForRead($0, vaultIds: vaultIds) }
     }
 
     func fetchEntry(id: String) throws -> Entry? {
-        try dbPool.read { db in
-            try Entry.fetchOne(db, key: id)
-        }
+        let vaultIds = try vaultJournalIds()
+        guard let raw = try dbPool.read({ db in try Entry.fetchOne(db, key: id) }) else { return nil }
+        return unsealForRead(raw, vaultIds: vaultIds)
     }
 
     func insertEntry(_ entry: Entry) throws {
+        let vaultIds = try vaultJournalIds()
+        var prepared = entry
+        prepared.refreshWordCount()
+        prepared = try sealForWrite(prepared, vaultIds: vaultIds)
         try dbPool.write { db in
-            var mutable = entry
-            mutable.refreshWordCount()
+            var mutable = prepared
             try mutable.insert(db)
         }
     }
@@ -469,19 +474,26 @@ final class DatabaseService {
     /// and atomic rollback if any row fails. Word counts are refreshed per row.
     func bulkInsertEntries(_ entries: [Entry]) throws {
         guard !entries.isEmpty else { return }
+        let vaultIds = try vaultJournalIds()
+        let prepared: [Entry] = try entries.map { entry in
+            var mutable = entry
+            mutable.refreshWordCount()
+            return try sealForWrite(mutable, vaultIds: vaultIds)
+        }
         try dbPool.write { db in
-            for entry in entries {
+            for entry in prepared {
                 var mutable = entry
-                mutable.refreshWordCount()
                 try mutable.insert(db)
             }
         }
     }
 
     func updateEntry(_ entry: Entry) throws {
+        let vaultIds = try vaultJournalIds()
         var stamped = entry
         stamped.updatedAt = Self.isoNow()
         stamped.refreshWordCount()
+        stamped = try sealForWrite(stamped, vaultIds: vaultIds)
         try dbPool.write { db in
             try stamped.update(db)
         }
@@ -549,11 +561,42 @@ final class DatabaseService {
         }
     }
 
-    /// Move a single entry into a journal.
+    /// Move a single entry into a journal, re-keying its text across the vault
+    /// boundary: unseal with the source vault's key (if any) and re-seal under
+    /// the destination vault's key (if any). Moving in or out of a *locked*
+    /// vault throws `VaultWriteError.lockedVault` — we can neither read the
+    /// source plaintext nor seal for the destination without the session key.
     func setJournal(_ journalId: String, forEntry entryId: String) throws {
+        let vaultIds = try vaultJournalIds()
+        guard let raw = try dbPool.read({ db in try Entry.fetchOne(db, key: entryId) }) else { return }
+        let srcVault = vaultIds.contains(raw.journalId)
+        let dstVault = vaultIds.contains(journalId)
+
+        // Fast path: neither side is a vault — a plain journal_id update.
+        if !srcVault && !dstVault {
+            try dbPool.write { db in
+                try db.execute(sql: "UPDATE entries SET journal_id = ?, updated_at = ? WHERE id = ?",
+                               arguments: [journalId, Self.isoNow(), entryId])
+            }
+            return
+        }
+
+        var title = raw.title
+        var body = raw.bodyMarkdown
+        if srcVault {
+            guard let srcKey = VaultService.key(for: raw.journalId) else { throw VaultWriteError.lockedVault }
+            title = VaultService.unseal(title, key: srcKey) ?? title
+            body = VaultService.unseal(body, key: srcKey) ?? body
+        }
+        if dstVault {
+            guard let dstKey = VaultService.key(for: journalId) else { throw VaultWriteError.lockedVault }
+            title = VaultService.seal(title, key: dstKey)
+            body = VaultService.seal(body, key: dstKey)
+        }
         try dbPool.write { db in
-            try db.execute(sql: "UPDATE entries SET journal_id = ?, updated_at = ? WHERE id = ?",
-                           arguments: [journalId, Self.isoNow(), entryId])
+            try db.execute(sql: """
+                UPDATE entries SET journal_id = ?, title = ?, body_markdown = ?, updated_at = ? WHERE id = ?
+                """, arguments: [journalId, title, body, Self.isoNow(), entryId])
         }
     }
 
@@ -584,6 +627,84 @@ final class DatabaseService {
         try dbPool.write { db in
             try db.execute(sql: "UPDATE journals SET is_vault = ? WHERE id = ?",
                            arguments: [isVault ? 1 : 0, journalId])
+        }
+    }
+
+    // MARK: - Vault transparent sealing (Phase 9)
+
+    enum VaultWriteError: Error, LocalizedError {
+        /// Attempted to write (or move into/out of) a vault entry while the vault
+        /// is locked — refused so a vault's plaintext never lands on disk and a
+        /// sealed entry is never orphaned by re-keying it with no key in hand.
+        case lockedVault
+        var errorDescription: String? {
+            "This entry belongs to a locked vault. Unlock the vault before saving or moving it."
+        }
+    }
+
+    /// Journal ids flagged `is_vault` — the set whose entry text is sealed under
+    /// a per-journal content key. One small read, resolved at each entry
+    /// boundary so seal/unseal decisions never go stale against a converted
+    /// journal.
+    func vaultJournalIds() throws -> Set<String> {
+        try dbPool.read { db in
+            Set(try String.fetchAll(db, sql: "SELECT id FROM journals WHERE is_vault = 1"))
+        }
+    }
+
+    /// Decrypt a vault entry's title + body for in-memory use. Non-vault
+    /// entries — and vault entries whose journal is locked (no session key) or
+    /// sealed under a key we can't produce — pass through unchanged; a locked
+    /// entry stays sealed and is gated out of every view by
+    /// `AppState.visibleEntries`.
+    private func unsealForRead(_ entry: Entry, vaultIds: Set<String>) -> Entry {
+        guard vaultIds.contains(entry.journalId),
+              let key = VaultService.key(for: entry.journalId) else { return entry }
+        var e = entry
+        e.title = VaultService.unseal(entry.title, key: key) ?? entry.title
+        e.bodyMarkdown = VaultService.unseal(entry.bodyMarkdown, key: key) ?? entry.bodyMarkdown
+        return e
+    }
+
+    /// Seal a vault entry's title + body before it touches disk. Non-vault
+    /// entries pass through. A *locked* vault throws `lockedVault` rather than
+    /// persist plaintext — unless the text is already sealed (an unchanged
+    /// round-trip), which is left intact.
+    private func sealForWrite(_ entry: Entry, vaultIds: Set<String>) throws -> Entry {
+        guard vaultIds.contains(entry.journalId) else { return entry }
+        guard let key = VaultService.key(for: entry.journalId) else {
+            if VaultService.isSealed(entry.title) || VaultService.isSealed(entry.bodyMarkdown) {
+                return entry
+            }
+            throw VaultWriteError.lockedVault
+        }
+        var e = entry
+        e.title = VaultService.seal(entry.title, key: key)
+        e.bodyMarkdown = VaultService.seal(entry.bodyMarkdown, key: key)
+        return e
+    }
+
+    /// Seal every not-yet-sealed entry in a journal under `key` — the data-layer
+    /// step of converting an existing journal into a vault. Reads each row's
+    /// current plaintext and rewrites it sealed in one transaction; rows already
+    /// sealed are skipped so a re-run (or partial prior conversion) is a no-op.
+    /// Crypto runs on the main actor here, before the write closure.
+    func sealEntries(inJournal journalId: String, using key: SymmetricKey) throws {
+        let rows = try dbPool.read { db in
+            try Entry.filter(Column("journal_id") == journalId).fetchAll(db)
+        }
+        let sealed: [Entry] = rows.compactMap { e in
+            let titleSealed = VaultService.isSealed(e.title)
+            let bodySealed = VaultService.isSealed(e.bodyMarkdown)
+            if titleSealed && bodySealed { return nil }
+            var m = e
+            if !titleSealed { m.title = VaultService.seal(e.title, key: key) }
+            if !bodySealed { m.bodyMarkdown = VaultService.seal(e.bodyMarkdown, key: key) }
+            return m
+        }
+        guard !sealed.isEmpty else { return }
+        try dbPool.write { db in
+            for e in sealed { try e.update(db) }
         }
     }
 

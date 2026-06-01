@@ -127,7 +127,7 @@ encrypted install at launch. The frozen set is asserted by
 | `v3_attachments` | `attachments` (photo/video/audio BLOBs + thumbnail, cascade with entry) |
 | `v4_journals` | `journals` (+ seeded default journal `Journal.defaultId`); adds NOT NULL `entries.journal_id` (existing rows back-fill to default via the column DEFAULT) + index. Hidden = app-level visibility only. |
 | `v5_templates` | `templates` (reusable entry scaffolds; two starter templates seeded on first run by `seedDefaultTemplatesIfEmpty`). |
-| `v6_vault` | `journals.is_vault` + `vault_envelopes` (per-journal content key wrapped under passphrase **and** 24-word recovery key). Phase-9 vault crypto foundation; transparent sealing + UI not wired yet. |
+| `v6_vault` | `journals.is_vault` + `vault_envelopes` (per-journal content key wrapped under passphrase **and** 24-word recovery key). Phase-9 vault crypto foundation. Transparent sealing data path now wired (`DatabaseService` seals title+body on write / unseals on read for unlocked vaults; locked vaults gated from `visibleEntries` + export); Make-Vault/unlock UI not wired yet. |
 
 To change shipped schema/data: **add a new migration**, never edit an existing
 one. Append its id to the frozen-set test deliberately.
@@ -194,7 +194,7 @@ feature, keep it offline.
   ever added.) See the repo memory `reference-macos-photokit-tcc-entitlement`.
 - **Migrations immutable** (§4). **SQLCipher link order** (§5).
 
-## 8. Tests (`Tests/PurpleDiaryTests/`, 135 total)
+## 8. Tests (`Tests/PurpleDiaryTests/`, 142 total)
 
 Migration round-trip + cascades + frozen-set guard; model Codable + word count +
 `TrackerKind` formatting; `SearchService` ranking; `BackupService`
@@ -211,7 +211,11 @@ build; `TextImportService` merge rule + Markdown/plain-text/RTF reading;
 journal-visibility predicate; `PromptService` daily rotation + bundled-JSON
 decode and `OnThisDayService` month/day matching; `TemplateService` token
 render + `Template` CRUD/seed; `CalendarHeatmap` level/opacity buckets +
-`NotificationService` reminder time-clamp/body. PhotoKit live import,
+`NotificationService` reminder time-clamp/body; **vault crypto core**
+(`VaultService` dual-wrap envelope, seal/unseal, session keys) and the **vault
+data path** (`DatabaseService` seal-on-write/unseal-on-read, refuse-write-to-locked,
+vault-aware moves, `sealEntries` convert + the locked-vault `entryIsVisible`
+gate). PhotoKit live import,
 video poster decoding, and AVKit playback are verified by hand (no headless TCC
 / no AVFoundation media fixture).
 
