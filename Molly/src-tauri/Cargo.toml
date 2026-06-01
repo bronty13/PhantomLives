@@ -1,6 +1,6 @@
 [package]
 name = "molly"
-version = "1.23.0"
+version = "1.24.0"
 description = "Molly — content creator central hub"
 authors = ["Robert Olen <robert.olen@gmail.com>"]
 edition = "2021"

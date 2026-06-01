@@ -14,6 +14,13 @@ import {
 } from '../../data/reddit';
 import { listContentTags, type ContentTag } from '../../data/contentTags';
 import { todayIso } from '../../data/dailyTasks';
+import { useRotationSettings } from '../../state/redditRotation';
+import {
+  effectiveRotation,
+  REST_DAYS_MIN,
+  REST_DAYS_MAX,
+  type RotationMode,
+} from '../../lib/rotationRule';
 
 const ROT_LABEL: Record<Rotation, string> = { fresh: 'Ready', soon: 'Tomorrow', wait: 'Resting' };
 const ROT_BG: Record<Rotation, string> = { fresh: '#eafbf1', soon: '#fef9e7', wait: '#fcebeb' };
@@ -35,6 +42,25 @@ export function SubredditsSection({ active }: Props) {
   const [editing, setEditing] = useState<{ id: number | 'new'; input: SubredditInput } | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+
+  const { mode, restDays, setMode, setRestDays } = useRotationSettings();
+  const today = useMemo(() => todayIso(), []);
+
+  // The badge to actually show — derived from last-posted in auto mode,
+  // the stored flag in manual mode. Everything (display, filter, sort)
+  // keys off this so they all agree.
+  function effRot(s: Subreddit): Rotation {
+    return effectiveRotation({ mode, restDays, stored: s.rotation, lastPostedAt: s.lastPostedAt, today });
+  }
+
+  const rotationHint =
+    mode === 'manual'
+      ? 'Marking posted sets “Resting”; tap ↺ to flip a sub back to Ready.'
+      : restDays <= 0
+        ? 'Subs stay Ready right after posting (no rest).'
+        : restDays === 1
+          ? 'A sub you post to shows Ready again the next day.'
+          : `A sub you post to rests, then shows Ready ${restDays} days later.`;
 
   const personaCode = active.code === 'ALL' ? null : active.code;
 
@@ -60,7 +86,7 @@ export function SubredditsSection({ active }: Props) {
     let rows = subs.filter((s) => {
       if (q && !s.name.toLowerCase().includes(q) && !s.notes.toLowerCase().includes(q)) return false;
       if (tagFilter !== '' && s.tagId !== tagFilter) return false;
-      if (rotFilter !== '' && s.rotation !== rotFilter) return false;
+      if (rotFilter !== '' && effRot(s) !== rotFilter) return false;
       return true;
     });
     const rotOrder: Record<Rotation, number> = { fresh: 0, soon: 1, wait: 2 };
@@ -79,11 +105,12 @@ export function SubredditsSection({ active }: Props) {
           if (!b.lastPostedAt) return -1;
           return b.lastPostedAt.localeCompare(a.lastPostedAt);
         }
-        case 'rotation': return rotOrder[a.rotation] - rotOrder[b.rotation] || a.name.localeCompare(b.name);
+        case 'rotation': return rotOrder[effRot(a)] - rotOrder[effRot(b)] || a.name.localeCompare(b.name);
       }
     });
     return rows;
-  }, [subs, search, tagFilter, rotFilter, sortKey, tagById]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subs, search, tagFilter, rotFilter, sortKey, tagById, mode, restDays, today]);
 
   function emptyInput(): SubredditInput {
     return {
@@ -129,6 +156,20 @@ export function SubredditsSection({ active }: Props) {
   async function markPosted(s: Subreddit) {
     try { await markSubredditPosted(s.id, todayIso()); setStatus(`Marked r/${s.name} as posted today.`); await refresh(); }
     catch (e) { setStatus(String(e)); }
+  }
+  // Manual-mode reset: flip the stored flag back to "Ready". (In auto mode
+  // the badge resets itself as the rest window elapses, so no button shows.)
+  async function resetToReady(s: Subreddit) {
+    try {
+      await updateSubreddit(s.id, {
+        personaCode: s.personaCode,
+        name: s.name, tagId: s.tagId,
+        verified: s.verified, karmaReq: s.karmaReq,
+        rotation: 'fresh', notes: s.notes,
+      });
+      setStatus(`Reset r/${s.name} to Ready.`);
+      await refresh();
+    } catch (e) { setStatus(`Couldn't reset: ${String(e)}`); }
   }
   async function changeCategory(s: Subreddit, newTagId: number | null) {
     if ((newTagId ?? null) === (s.tagId ?? null)) return;
@@ -202,6 +243,34 @@ export function SubredditsSection({ active }: Props) {
           </select>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2 mb-3 text-xs">
+          <span className="uppercase tracking-wider opacity-60">🔄 Rotation reset</span>
+          <select
+            className="pretty-input"
+            value={mode}
+            onChange={(e) => setMode(e.target.value as RotationMode)}
+            title="How a sub returns to Ready after you mark it posted"
+          >
+            <option value="auto">Auto — rest, then Ready</option>
+            <option value="manual">Manual — I reset it myself</option>
+          </select>
+          {mode === 'auto' && (
+            <label className="flex items-center gap-1">
+              <span className="opacity-60">rest for</span>
+              <input
+                type="number"
+                className="pretty-input w-16 text-center"
+                min={REST_DAYS_MIN}
+                max={REST_DAYS_MAX}
+                value={restDays}
+                onChange={(e) => setRestDays(Number(e.target.value))}
+              />
+              <span className="opacity-60">day{restDays === 1 ? '' : 's'}</span>
+            </label>
+          )}
+          <span className="opacity-50 italic">{rotationHint}</span>
+        </div>
+
         {filtered.length === 0 ? (
           <div className="text-sm opacity-60 italic">No subs match the current filters.</div>
         ) : (
@@ -254,16 +323,31 @@ export function SubredditsSection({ active }: Props) {
                       </td>
                       <td className="py-2 pr-2 text-xs opacity-70">{s.karmaReq}</td>
                       <td className="py-2 pr-2">
-                        <span
-                          className="px-2 py-0.5 rounded-full text-[11px] font-semibold"
-                          style={{ background: ROT_BG[s.rotation], color: ROT_FG[s.rotation] }}
-                        >
-                          {ROT_LABEL[s.rotation]}
-                        </span>
+                        {(() => {
+                          const r = effRot(s);
+                          return (
+                            <span
+                              className="px-2 py-0.5 rounded-full text-[11px] font-semibold"
+                              style={{ background: ROT_BG[r], color: ROT_FG[r] }}
+                            >
+                              {ROT_LABEL[r]}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="py-2 pr-2 text-xs opacity-70 font-mono">{s.lastPostedAt ?? '—'}</td>
                       <td className="py-2 pr-2 text-xs opacity-70 max-w-[140px] truncate" title={s.notes}>{s.notes}</td>
                       <td className="py-2 pr-2 text-right whitespace-nowrap">
+                        {mode === 'manual' && effRot(s) !== 'fresh' && (
+                          <button
+                            type="button"
+                            className="text-base opacity-60 hover:opacity-100 px-1"
+                            onClick={() => resetToReady(s)}
+                            title="Reset to Ready"
+                          >
+                            ↺
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="text-base opacity-60 hover:opacity-100 px-1"
@@ -312,6 +396,7 @@ export function SubredditsSection({ active }: Props) {
           isNew={editing.id === 'new'}
           tags={tags}
           busy={busy}
+          mode={mode}
           onChange={(input) => setEditing({ ...editing, input })}
           onCancel={() => setEditing(null)}
           onSave={save}
@@ -324,12 +409,13 @@ export function SubredditsSection({ active }: Props) {
 }
 
 function SubEditor({
-  input, isNew, tags, busy, onChange, onCancel, onSave,
+  input, isNew, tags, busy, mode, onChange, onCancel, onSave,
 }: {
   input: SubredditInput;
   isNew: boolean;
   tags: ContentTag[];
   busy: boolean;
+  mode: RotationMode;
   onChange: (input: SubredditInput) => void;
   onCancel: () => void;
   onSave: () => void;
@@ -371,15 +457,21 @@ function SubEditor({
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-xs uppercase tracking-wider opacity-60">Rotation</span>
-          <select
-            className="pretty-input"
-            value={input.rotation}
-            onChange={(e) => onChange({ ...input, rotation: e.target.value as Rotation })}
-          >
-            <option value="fresh">Ready to post</option>
-            <option value="soon">Tomorrow</option>
-            <option value="wait">Resting</option>
-          </select>
+          {mode === 'manual' ? (
+            <select
+              className="pretty-input"
+              value={input.rotation}
+              onChange={(e) => onChange({ ...input, rotation: e.target.value as Rotation })}
+            >
+              <option value="fresh">Ready to post</option>
+              <option value="soon">Tomorrow</option>
+              <option value="wait">Resting</option>
+            </select>
+          ) : (
+            <span className="pretty-input opacity-60 italic flex items-center">
+              Auto — set by last-posted date
+            </span>
+          )}
         </label>
         <label className="flex items-center gap-2 text-sm col-span-2">
           <input

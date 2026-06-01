@@ -31,7 +31,7 @@ export function SocialView({ active }: Props) {
   return (
     <div className="p-8 max-w-6xl space-y-4">
       <div>
-        <h2 className="display-font text-2xl font-bold persona-accent">🪙 Social</h2>
+        <h2 className="display-font text-2xl font-bold persona-accent">🐷 Social</h2>
         <p className="opacity-70 text-sm">
           Daily piggy-bank for every platform. Drop a coin each time you post; the streak grows
           when you hit every platform's goal for the day.
@@ -41,7 +41,7 @@ export function SocialView({ active }: Props) {
 
       <div className="flex flex-wrap gap-1.5">
         <TabPill
-          label="🪙 Piggy bank"
+          label="🐷 Piggy bank"
           active={section.kind === 'piggy'}
           onClick={() => setSection({ kind: 'piggy' })}
         />

@@ -160,9 +160,31 @@ A daily to-do list that resets at midnight (yesterday's tasks don't disappear �
 A table of every subreddit you post to, **per persona**. Thirty-three CoC subs are pre-loaded as a starting set ("Curse of Curves" defaults pulled from your old ops hub). Each row shows:
 
 - **⭐** — tap to star your favourites (they sort to the top).
-- **r/name**, **Category** (a pretty colored chip, pulled from your Content tags taxonomy), **Verified?** checkbox, **Karma req** (e.g. "50+"), **Rotation** (Ready / Tomorrow / Resting), **Last posted**, **Notes**.
-- **✓** — mark posted today (flips rotation to "Resting" + stamps the date + writes a row to the Post log automatically).
+- **r/name**, **Category** (a pretty colored chip, pulled from your Content tags taxonomy), **Verified?** checkbox, **Karma req** (e.g. "50+"), **Rotation** (Ready 💚 / Tomorrow 💛 / Resting 💗), **Last posted**, **Notes**.
+- **✓** — mark posted today (sets the sub Resting + stamps the date + writes a row to the Post log automatically).
 - **✎** — edit. **✕** — delete (post-log history survives).
+
+#### 🔄 Rotation reset — *new!* it actually comes back to Ready now 🌟
+
+I fixed a sneaky little thing: a sub you marked posted used to get stuck on
+"Resting" *forever* 😅 — it never floated back up to Ready on its own. Now
+**you choose how it resets**, with the little **🔄 Rotation reset** control
+right above the table:
+
+- **Auto** (this is the default, and I think you'll love it 💕) — after you
+  mark a sub posted it rests for a few days and then pops back to **Ready**
+  all by itself. You pick **how many days** it rests (I set it to **2** to
+  start). With a 2-day rest: the day you post it says *Resting*, the next day
+  it says *Tomorrow* (almost ready!), and the day after that it's *Ready* 💚.
+  Set the rest to **1** if you like to come back the very next day, or **0**
+  if a sub is always fair game. In Auto mode you don't set Rotation by
+  hand — I work it out from when you last posted. ✨
+- **Manual** — if you'd rather drive it yourself, switch to Manual and a
+  little **↺** button shows up on every resting sub; tap it to flip that sub
+  back to Ready whenever *you* say it's time. The Rotation dropdown in the
+  editor comes back in this mode too.
+
+Your choice (and the rest-days number) is remembered, so you only set it once. 🩷
 
 Filter by **search**, **category**, **rotation**. Sort by **starred + A-Z / Category / Last posted / Rotation**. Click **+ Add sub** to add a new one.
 

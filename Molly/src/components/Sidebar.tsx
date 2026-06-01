@@ -33,7 +33,7 @@ const NAV: NavItem[] = [
   { key: 'customers', label: 'Customers', icon: <span>👯‍♀️</span>, hint: 'Customer tracker' },
   { key: 'helper',    label: "Molly Helper", icon: <span>💅</span>, hint: 'Site launcher + reminders' },
   { key: 'promos',    label: 'Promos',    icon: <span>📣</span>, hint: 'Reddit / X / Instagram promo posts' },
-  { key: 'social',    label: 'Social',    icon: <span>🪙</span>, hint: 'Piggy bank · daily post goals · streaks · Reddit deep tools' },
+  { key: 'social',    label: 'Social',    icon: <span>🐷</span>, hint: 'Piggy bank · daily post goals · streaks · Reddit deep tools' },
   { key: 'income',    label: 'Income',    icon: <span>💖</span>, hint: 'Adhoc + per-site' },
   { key: 'expenses',  label: 'Expenses',  icon: <span>🧾</span>, hint: 'One-off + recurring' },
   { key: 'reports',   label: 'Reports',   icon: <span>📊</span>, hint: 'MTD / YTD / per persona' },

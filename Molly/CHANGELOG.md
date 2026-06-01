@@ -4,6 +4,38 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.24.0] — 2026-06-01
+
+### Fixed — 🐷 Social icon was invisible on Windows
+
+The Social nav item (and the Social header, the "Piggy bank" tab, the
+Settings daily-goal label, and two encouragement strings) used the coin
+emoji **🪙 (U+1FA99)**, which was added in Unicode 14.0. Windows' default
+emoji font (Segoe UI Emoji) only ships glyphs through Unicode 13.0, so the
+coin rendered as an invisible/tofu box on Windows — it looked fine on macOS
+because Apple Color Emoji has it. No amount of cache-clearing fixes a
+missing glyph. Swapped all seven coin uses to **🐷 pig face** (Unicode 6.0),
+which is on-theme for the piggy-bank motif and renders on every platform.
+
+### Fixed — 📌 Subreddit rotation now actually resets
+
+`rotation` was a frozen flag: marking a sub posted flipped it to "Resting"
+and **nothing ever moved it back**, so a sub stayed "Resting" forever unless
+you hand-edited it. Rotation is now configurable in the Subreddit tracker:
+
+- **Auto (default, 2-day rest):** the badge is derived from the last-posted
+  date and walks **Resting → Tomorrow → Ready** as the rest window elapses.
+  The rest length is an editable number of days (0–30). At 2 days: posted
+  today = Resting, yesterday = Tomorrow, 2+ days ago (or never) = Ready.
+- **Manual:** keeps the old hand-set flag and adds a **↺ Reset to Ready**
+  button on each resting sub, plus the Rotation dropdown in the editor.
+
+In Auto mode the editor's Rotation field shows a read-only "set by
+last-posted date" note. The mode + rest-days preference persists in
+`app_settings` (keys `reddit.rotation.mode` / `reddit.rotation.restDays`);
+no migration. The derivation rule (`src/lib/rotationRule.ts`) is pure and
+unit-tested.
+
 ## [1.23.0] — 2026-05-29
 
 ### Added — ▶️ YouTube bundle type

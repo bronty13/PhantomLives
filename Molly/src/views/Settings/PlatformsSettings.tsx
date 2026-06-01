@@ -88,7 +88,7 @@ export function PlatformsSettings() {
               <input type="number" className="pretty-input" value={draft.sortOrder} onChange={(e) => setDraft({ ...draft, sortOrder: Number(e.target.value) || 0 })} />
             </label>
             <label className="flex flex-col gap-1 col-span-3">
-              <span className="text-xs uppercase tracking-wider opacity-60">Daily goal 🪙</span>
+              <span className="text-xs uppercase tracking-wider opacity-60">Daily goal 🐷</span>
               <input
                 type="number"
                 min={0}
@@ -121,7 +121,7 @@ export function PlatformsSettings() {
                     <span className="font-semibold">{p.name}</span>
                     <span className="font-mono text-xs opacity-60">[{p.shortCode}]</span>
                     <span className="text-xs opacity-60">
-                      {p.dailyGoal > 0 ? `🪙 ${p.dailyGoal}/day` : '⏸️ paused'}
+                      {p.dailyGoal > 0 ? `🐷 ${p.dailyGoal}/day` : '⏸️ paused'}
                     </span>
                   </div>
                   <div className="flex gap-2">
