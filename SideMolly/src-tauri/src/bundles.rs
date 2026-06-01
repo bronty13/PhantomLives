@@ -66,6 +66,12 @@ pub enum BundleError {
     AppData(String),
     #[error("bundle not found: {0}")]
     NotFound(String),
+    /// Two different source zips carry the same bundleUid. SideMolly keys
+    /// bundles (and their `work/<uid>/` workspace) on uid, so only one zip
+    /// can own a uid. The first-ingested zip wins; later collisions are
+    /// skipped rather than clobbering the workspace in a re-ingest loop.
+    #[error("duplicate uid {uid}: already ingested from {existing_path}")]
+    DuplicateUid { uid: String, existing_path: String },
 }
 
 impl serde::Serialize for BundleError {
@@ -301,7 +307,6 @@ pub(crate) fn persist_validated(
             title            = excluded.title,
             source_zip_path  = excluded.source_zip_path,
             source_zip_sha256= excluded.source_zip_sha256,
-            ingested_at      = excluded.ingested_at,
             verify_status    = 'verified',
             verify_error     = NULL,
             manifest_source  = excluded.manifest_source,
@@ -370,6 +375,26 @@ pub(crate) fn persist_validated(
 /// Borrow-flavoured ingest. Exists so the watched-folder watcher can
 /// drive ingest in a loop without cloning the AppHandle each iteration.
 /// The `#[tauri::command]` wrapper below just forwards.
+/// If `uid` is already owned by a DIFFERENT, still-present source zip,
+/// returns that zip's path — meaning ingesting `path` would collide and
+/// should be refused. Returns `None` when the uid is free, owned by this
+/// same `path` (a legitimate re-ingest), or owned by a row whose source
+/// zip no longer exists on disk (stale — let the new one take over).
+fn colliding_source_path(
+    conn: &Connection,
+    uid: &str,
+    path: &str,
+) -> rusqlite::Result<Option<String>> {
+    let existing: Option<String> = conn
+        .query_row(
+            "SELECT source_zip_path FROM bundles WHERE uid = ?1",
+            params![uid],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(existing.filter(|e| e != path && Path::new(e).exists()))
+}
+
 pub fn ingest_bundle_inner<R: Runtime>(
     handle: &AppHandle<R>,
     path: &str,
@@ -388,6 +413,23 @@ pub fn ingest_bundle_inner<R: Runtime>(
     };
 
     let mut conn = open_conn(handle)?;
+
+    // Duplicate-uid guard. SideMolly keys bundles + the `work/<uid>/`
+    // workspace on uid, so two zips with the same bundleUid can't both
+    // exist — they'd ping-pong: each scan re-ingests the one not currently
+    // owning the row, flipping `source_zip_path`, re-emitting
+    // `bundle-ingested` (Inbox flash) and clobbering the shared workspace.
+    // First zip ingested for a uid wins; a later collision is refused here,
+    // before extraction, so the workspace is never clobbered. Caught
+    // 2026-06-01: `ATW SPITCUSTOM.zip` and `Test 2.zip` both = uid
+    // 2026-05-29-0002.
+    if let Some(existing) = colliding_source_path(&conn, &manifest.uid, path)? {
+        return Err(BundleError::DuplicateUid {
+            uid: manifest.uid.clone(),
+            existing_path: existing,
+        });
+    }
+
     let file_count = persist_validated(
         &mut conn,
         &validated,
@@ -1803,7 +1845,51 @@ mod tests {
         conn.execute_batch(include_str!("../migrations/014_dropbox_template_default.sql")).unwrap();
         conn.execute_batch(include_str!("../migrations/015_posting.sql")).unwrap();
         conn.execute_batch(include_str!("../migrations/016_posting_assets_and_fansite.sql")).unwrap();
+        conn.execute_batch(include_str!("../migrations/017_posting_log.sql")).unwrap();
+        conn.execute_batch(include_str!("../migrations/018_bundle_type_widen.sql")).unwrap();
         conn
+    }
+
+    #[test]
+    fn colliding_source_path_detects_duplicate_uid() {
+        use std::fs;
+        let conn = fresh_db();
+        let dir = tempfile::TempDir::new().unwrap();
+        let zip_a = dir.path().join("a.zip");
+        let zip_b = dir.path().join("b.zip");
+        fs::write(&zip_a, b"a").unwrap();
+        fs::write(&zip_b, b"b").unwrap();
+        let a = zip_a.to_string_lossy().to_string();
+        let b = zip_b.to_string_lossy().to_string();
+
+        // uid "u" is owned by zip A.
+        conn.execute(
+            "INSERT INTO bundles (uid, bundle_type, source_zip_path, manifest_json)
+             VALUES ('u','content', ?1, '{}')",
+            params![a],
+        ).unwrap();
+
+        // A different zip with the same uid collides → returns A's path.
+        assert_eq!(colliding_source_path(&conn, "u", &b).unwrap(), Some(a.clone()));
+        // The owning zip itself is a legitimate re-ingest, not a collision.
+        assert_eq!(colliding_source_path(&conn, "u", &a).unwrap(), None);
+        // A free uid never collides.
+        assert_eq!(colliding_source_path(&conn, "free", &b).unwrap(), None);
+        // If the recorded owner no longer exists on disk, it's stale — the
+        // new zip may take over (no collision).
+        fs::remove_file(&zip_a).unwrap();
+        assert_eq!(colliding_source_path(&conn, "u", &b).unwrap(), None);
+    }
+
+    #[test]
+    fn youtube_bundle_type_accepted_after_migration_018() {
+        let conn = fresh_db();
+        let ok = conn.execute(
+            "INSERT INTO bundles (uid, bundle_type, source_zip_path, manifest_json)
+             VALUES ('yt','youtube','/yt','{}')",
+            [],
+        );
+        assert!(ok.is_ok(), "youtube must be accepted: {ok:?}");
     }
 
     #[test]

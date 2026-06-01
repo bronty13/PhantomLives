@@ -123,6 +123,12 @@ pub fn run() {
             sql: include_str!("../migrations/017_posting_log.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 18,
+            description: "bundle-type-widen",
+            sql: include_str!("../migrations/018_bundle_type_widen.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -740,6 +746,7 @@ mod migration_smoke {
             (15, "posting", include_str!("../migrations/015_posting.sql")),
             (16, "posting-assets-and-fansite", include_str!("../migrations/016_posting_assets_and_fansite.sql")),
             (17, "posting-log", include_str!("../migrations/017_posting_log.sql")),
+            (18, "bundle-type-widen", include_str!("../migrations/018_bundle_type_widen.sql")),
         ];
         for (v, name, sql) in migrations {
             conn.execute_batch(sql)
@@ -773,6 +780,14 @@ mod migration_smoke {
             [],
         );
         assert!(bad.is_err(), "CHECK on bundle_type should reject 'nonsense'");
+
+        // Migration 018 widened the CHECK to admit Molly's 'youtube' type.
+        let yt = conn.execute(
+            "INSERT INTO bundles (uid, bundle_type, source_zip_path, manifest_json)
+             VALUES ('yt', 'youtube', '/yt', '{}')",
+            [],
+        );
+        assert!(yt.is_ok(), "CHECK on bundle_type should accept 'youtube' after migration 018");
 
         // bundle_files CHECK constraints likewise.
         conn.execute(
@@ -835,6 +850,7 @@ mod migration_immutability {
         (15, "6a0add1e30d2adb380c0d32e7dba9b3b2337e64d365f8fbff3777056ae81d42f"),
         (16, "76eb7e7c6f4a684c8cb1e48d23ce43b29289e57f276d32c264123eb1857a6326"),
         (17, "786bea0eb6e0e2a7acb240f58e9575dd3613c74444b8fcc01c7b7f52acb49ebc"),
+        (18, "d702e588f454e025904a7bafb807765f2e6dc498dd6129bb1eeba4ae904bef5e"),
     ];
 
     /// Source-of-truth for "which migrations ship at compile time". Must
@@ -860,6 +876,7 @@ mod migration_immutability {
         (15, "015_posting.sql",                    include_str!("../migrations/015_posting.sql")),
         (16, "016_posting_assets_and_fansite.sql", include_str!("../migrations/016_posting_assets_and_fansite.sql")),
         (17, "017_posting_log.sql",                include_str!("../migrations/017_posting_log.sql")),
+        (18, "018_bundle_type_widen.sql",          include_str!("../migrations/018_bundle_type_widen.sql")),
     ];
 
     fn sha256_hex(s: &str) -> String {

@@ -4,6 +4,48 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] — 2026-06-01
+
+### Added — Accept Molly's `youtube` bundle type
+
+Molly began emitting bundles with `bundleType: "youtube"`; SideMolly's
+`bundles.bundle_type` CHECK (migration 002) only allowed
+`('content','custom','fansite')`, so those bundles failed ingest with
+`CHECK constraint failed` and never appeared in the Inbox. Migration
+`018_bundle_type_widen.sql` rebuilds the table to add `'youtube'` (the
+007/010/016 table-rebuild recipe). Frontend: `bundleType` union widened,
+`bundleTypeEmoji` gains a ▶️ case **and a `📦` default** (it previously
+returned `undefined` for any unknown type), and `youtube` is added to the
+posting `kind` options. Unknown/`youtube` types route to the existing
+`GenericRunner` Post tab.
+
+### Fixed — Watched folder flashing (duplicate-uid ping-pong)
+
+Two zips in the watch folder sharing the same `bundleUid` (e.g. a real
+bundle and a leftover test export) caused a perpetual re-ingest loop:
+`bundles` is keyed by `uid` but `already_ingested` keyed on
+`source_zip_path`, so the row's path matched only one zip and the other
+re-ingested every scan — flipping `source_zip_path`, re-emitting
+`bundle-ingested` (Inbox flash), bumping `ingested_at`, and clobbering the
+shared `work/<uid>/` workspace. `ingest_bundle_inner` now refuses a zip
+whose uid is already owned by a different, still-present zip
+(`BundleError::DuplicateUid`), before extraction; the watcher logs it as a
+skip with a one-line warning. First zip ingested for a uid wins.
+
+### Fixed — Stray folder events no longer re-ingest everything
+
+FS events used to force a full-directory re-ingest (`force_reingest=true`),
+re-emitting `bundle-ingested` for *every* bundle on any folder activity
+(Finder/Dropbox touch, a large file still settling). The watcher now
+re-ingests **only the specific zip(s)** named in the event.
+
+### Fixed — `ingested_at` no longer changes on re-ingest
+
+Re-ingesting a bundle overwrote `ingested_at` with the current time, which
+re-sorted the Inbox and (since the Dropbox folder uses `{date}`) drifted
+the export folder's date to "today". The UPSERT now preserves the original
+`ingested_at` on conflict, matching how `created_at` is already handled.
+
 ## [0.21.1] — 2026-06-01
 
 ### Fixed — Dropbox destination folder no longer carries a timestamp

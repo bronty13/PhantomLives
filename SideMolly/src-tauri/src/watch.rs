@@ -238,6 +238,18 @@ fn scan_dir<R: Runtime>(
                 result.ingested += 1;
                 let _ = handle.emit("bundle-ingested", &r);
             }
+            // A duplicate uid is not a failure — the uid is already owned by
+            // another zip. Skip it (keep the first) and warn once so the
+            // user knows to remove/rename the dupe. Counting it as `failed`
+            // would falsely flag the folder as broken.
+            Err(BundleError::DuplicateUid { uid, existing_path }) => {
+                result.skipped += 1;
+                eprintln!(
+                    "[sidemolly:watch] duplicate uid {uid}; skipping {} \
+                     (already ingested from {existing_path})",
+                    path.display(),
+                );
+            }
             Err(e) => {
                 result.failed += 1;
                 result.errors.push(format!("{}: {e}", path.display()));
@@ -304,9 +316,15 @@ fn run_watcher<R: Runtime>(handle: AppHandle<R>) {
             Ok(event) if has_interesting_path(&event) => {
                 // Debounce: any file may still be flushing.
                 thread::sleep(Duration::from_millis(FS_EVENT_DEBOUNCE_MS));
-                // FS events trigger a re-scan (force re-ingest is fine —
-                // the underlying UPSERT keeps things consistent).
-                let _ = scan_dir(&handle, &watch_dir, true);
+                // Re-ingest ONLY the zip(s) the event actually touched —
+                // not the whole directory. A write event implies that file
+                // changed, so re-ingest it (the duplicate-uid guard still
+                // protects against same-uid clobbering). Re-scanning the
+                // whole dir with force=true (the old behaviour) re-ingested
+                // and re-emitted EVERY bundle on any stray folder event
+                // (Finder/Dropbox touches, a large file still settling),
+                // which made the Inbox flash. Caught 2026-06-01.
+                ingest_changed_paths(&handle, &event);
             }
             Ok(_) => {}
             Err(e) => eprintln!("[sidemolly:watch] event err: {e}"),
@@ -319,6 +337,35 @@ fn run_watcher<R: Runtime>(handle: AppHandle<R>) {
 
 fn has_interesting_path(event: &notify::Event) -> bool {
     event.paths.iter().any(|p| is_bundle_zip(p))
+}
+
+/// Ingest only the bundle zip(s) named in an FS event. De-dupes paths
+/// within the event, ingests each, and emits `bundle-ingested` on success.
+/// Duplicate-uid collisions and hard errors are logged but never abort the
+/// loop. Unlike a full-dir rescan, this leaves already-ingested, untouched
+/// bundles alone — so a stray folder event no longer re-emits everything.
+fn ingest_changed_paths<R: Runtime>(handle: &AppHandle<R>, event: &notify::Event) {
+    let mut seen: Vec<PathBuf> = Vec::new();
+    for path in event.paths.iter().filter(|p| is_bundle_zip(p)) {
+        if seen.contains(path) { continue; }
+        seen.push(path.clone());
+        let path_str = path.to_string_lossy().to_string();
+        match ingest_bundle_inner(handle, &path_str) {
+            Ok(r) => {
+                let _ = handle.emit("bundle-ingested", &r);
+            }
+            Err(BundleError::DuplicateUid { uid, existing_path }) => {
+                eprintln!(
+                    "[sidemolly:watch] duplicate uid {uid}; skipping {} \
+                     (already ingested from {existing_path})",
+                    path.display(),
+                );
+            }
+            Err(e) => {
+                eprintln!("[sidemolly:watch] ingest failed for {}: {e}", path.display());
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

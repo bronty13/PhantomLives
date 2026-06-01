@@ -40,7 +40,7 @@ export interface ScanResult {
 
 export interface BundleSummary {
   uid: string;
-  bundleType: 'content' | 'custom' | 'fansite';
+  bundleType: 'content' | 'custom' | 'fansite' | 'youtube';
   personaCode: string | null;
   title: string;
   ingestedAt: string;
@@ -460,7 +460,7 @@ export function revealDropboxDest(uid: string): Promise<void> {
 
 // ----- Phase 7: Posting primitives -----
 
-export type PostingKind = 'content' | 'custom' | 'fansite' | 'any';
+export type PostingKind = 'content' | 'custom' | 'fansite' | 'youtube' | 'any';
 export type PostingState = 'pending' | 'scheduled' | 'posted' | 'skipped';
 
 export interface PostingTarget {
@@ -804,11 +804,15 @@ export function personaChipColor(code: string | null): { bg: string; fg: string;
   }
 }
 
-export function bundleTypeEmoji(t: BundleSummary['bundleType']): string {
+export function bundleTypeEmoji(t: string): string {
   switch (t) {
     case 'content': return '🎬';
     case 'custom':  return '🎁';
     case 'fansite': return '📅';
+    case 'youtube': return '▶️';
+    // Forward-compat: any future Molly type still gets a usable glyph
+    // instead of rendering `undefined`.
+    default:        return '📦';
   }
 }
 

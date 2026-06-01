@@ -16,7 +16,7 @@ import {
   type PostingTarget, type PostingTargetInput, type PostingKind,
 } from '../../data/bundles';
 
-const KINDS: PostingKind[] = ['any', 'content', 'custom', 'fansite'];
+const KINDS: PostingKind[] = ['any', 'content', 'custom', 'fansite', 'youtube'];
 const PERSONAS: Array<{ code: string | null; label: string }> = [
   { code: null,  label: 'Any persona' },
   { code: 'CoC', label: 'CoC' },

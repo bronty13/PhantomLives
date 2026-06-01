@@ -13,7 +13,8 @@ post-bundle back to Molly to record what actually happened.
   and extracts it into a per-bundle workspace.
 - **Work a bundle** — open it from the **Inbox** and move through the
   **Edit → Process → Post** tabs. The Post tab adapts to the bundle
-  type: 🎬 Content, 🎁 Custom, or 📅 FanSite.
+  type: 🎬 Content, 🎁 Custom, or 📅 FanSite. ▶️ YouTube (and any other
+  type Molly adds later) gets a generic per-platform posting checklist.
 - **Ship it back** — compose a post-bundle ZIP that records what you
   posted; Molly ingests it to close the loop. The ZIP lands in
   `~/Downloads/Molly post-bundles/<uid>-post.zip`, and a plain
