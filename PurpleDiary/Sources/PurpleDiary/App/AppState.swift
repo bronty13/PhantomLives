@@ -390,6 +390,7 @@ final class AppState: ObservableObject {
                                               recoveryWords: recoveryWords)
         try DatabaseService.shared.setJournalVault(true, journalId: journalId)
         try DatabaseService.shared.sealEntries(inJournal: journalId, using: ck)
+        try DatabaseService.shared.rekeyAttachments(inJournal: journalId, key: ck, seal: true)
         reloadJournals()
         reloadEntries()
     }
@@ -428,6 +429,7 @@ final class AppState: ObservableObject {
     func removeVault(journalId: String) throws {
         guard let ck = VaultService.key(for: journalId) else { throw VaultService.VaultError.locked }
         try DatabaseService.shared.unsealEntries(inJournal: journalId, using: ck)
+        try DatabaseService.shared.rekeyAttachments(inJournal: journalId, key: ck, seal: false)
         try DatabaseService.shared.setJournalVault(false, journalId: journalId)
         try DatabaseService.shared.deleteVaultEnvelope(journalId: journalId)
         VaultService.lock(journalId)

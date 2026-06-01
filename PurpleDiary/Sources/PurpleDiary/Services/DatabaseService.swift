@@ -581,23 +581,29 @@ final class DatabaseService {
             return
         }
 
+        var srcKey: SymmetricKey?
+        var dstKey: SymmetricKey?
         var title = raw.title
         var body = raw.bodyMarkdown
         if srcVault {
-            guard let srcKey = VaultService.key(for: raw.journalId) else { throw VaultWriteError.lockedVault }
-            title = VaultService.unseal(title, key: srcKey) ?? title
-            body = VaultService.unseal(body, key: srcKey) ?? body
+            guard let k = VaultService.key(for: raw.journalId) else { throw VaultWriteError.lockedVault }
+            srcKey = k
+            title = VaultService.unseal(title, key: k) ?? title
+            body = VaultService.unseal(body, key: k) ?? body
         }
         if dstVault {
-            guard let dstKey = VaultService.key(for: journalId) else { throw VaultWriteError.lockedVault }
-            title = VaultService.seal(title, key: dstKey)
-            body = VaultService.seal(body, key: dstKey)
+            guard let k = VaultService.key(for: journalId) else { throw VaultWriteError.lockedVault }
+            dstKey = k
+            title = VaultService.seal(title, key: k)
+            body = VaultService.seal(body, key: k)
         }
         try dbPool.write { db in
             try db.execute(sql: """
                 UPDATE entries SET journal_id = ?, title = ?, body_markdown = ?, updated_at = ? WHERE id = ?
                 """, arguments: [journalId, title, body, Self.isoNow(), entryId])
         }
+        // Re-key the entry's attachment blobs across the same boundary.
+        try rekeyAttachmentsForEntry(entryId, srcKey: srcKey, dstKey: dstKey)
     }
 
     /// entry counts per journal id — feeds the sidebar badges.
@@ -684,6 +690,42 @@ final class DatabaseService {
         return e
     }
 
+    /// `(isVault, key)` for the journal owning `entryId`. `key` is nil when the
+    /// vault is locked. A non-vault entry returns `(false, nil)`. Used to decide
+    /// attachment-blob sealing, which follows the owning entry's journal.
+    private func vaultContextForEntry(_ entryId: String) throws -> (isVault: Bool, key: SymmetricKey?) {
+        let row = try dbPool.read { db in
+            try Row.fetchOne(db, sql: """
+                SELECT j.id AS jid, j.is_vault AS isv
+                FROM entries e JOIN journals j ON j.id = e.journal_id
+                WHERE e.id = ?
+                """, arguments: [entryId])
+        }
+        guard let row, (row["isv"] as Int64? ?? 0) == 1 else { return (false, nil) }
+        let jid: String = row["jid"]
+        return (true, VaultService.key(for: jid))
+    }
+
+    /// Decrypt an attachment's sealed `data` / `thumbnail_data` under `key`.
+    /// Plaintext blobs (non-vault, or sealed under a key we don't have) pass
+    /// through unchanged.
+    private func unsealAttachment(_ a: Attachment, key: SymmetricKey) -> Attachment {
+        var m = a
+        if VaultService.isSealedData(a.data), let d = VaultService.unsealData(a.data, key: key) { m.data = d }
+        if let t = a.thumbnailData, VaultService.isSealedData(t), let u = VaultService.unsealData(t, key: key) {
+            m.thumbnailData = u
+        }
+        return m
+    }
+
+    private func unsealThumb(_ t: AttachmentThumb, key: SymmetricKey) -> AttachmentThumb {
+        guard let data = t.thumbnailData, VaultService.isSealedData(data),
+              let u = VaultService.unsealData(data, key: key) else { return t }
+        var m = t
+        m.thumbnailData = u
+        return m
+    }
+
     func deleteVaultEnvelope(journalId: String) throws {
         try dbPool.write { db in _ = try VaultEnvelope.deleteOne(db, key: journalId) }
     }
@@ -707,6 +749,70 @@ final class DatabaseService {
         try dbPool.write { db in
             for e in plain { try e.update(db) }
         }
+    }
+
+    /// Seal (`seal == true`) or unseal (`false`) every attachment blob belonging
+    /// to a journal's entries under `key` — the attachment counterpart of
+    /// `sealEntries` / `unsealEntries`. Idempotent: blobs already in the target
+    /// state are skipped. Crypto runs on the main actor here, before the write.
+    func rekeyAttachments(inJournal journalId: String, key: SymmetricKey, seal: Bool) throws {
+        let rows = try dbPool.read { db in
+            try Attachment
+                .filter(sql: "entry_id IN (SELECT id FROM entries WHERE journal_id = ?)", arguments: [journalId])
+                .fetchAll(db)
+        }
+        let changed: [Attachment] = rows.compactMap { a in
+            let dataSealed = VaultService.isSealedData(a.data)
+            let thumbSealed = a.thumbnailData.map(VaultService.isSealedData) ?? true   // nil ⇒ nothing to do
+            if seal {
+                if dataSealed && thumbSealed { return nil }
+                var m = a
+                if !dataSealed { m.data = VaultService.sealData(a.data, key: key) }
+                if let t = a.thumbnailData, !VaultService.isSealedData(t) {
+                    m.thumbnailData = VaultService.sealData(t, key: key)
+                }
+                return m
+            } else {
+                let hasSealed = dataSealed || (a.thumbnailData.map(VaultService.isSealedData) ?? false)
+                if !hasSealed { return nil }
+                var m = a
+                if dataSealed, let d = VaultService.unsealData(a.data, key: key) { m.data = d }
+                if let t = a.thumbnailData, VaultService.isSealedData(t), let u = VaultService.unsealData(t, key: key) {
+                    m.thumbnailData = u
+                }
+                return m
+            }
+        }
+        guard !changed.isEmpty else { return }
+        try dbPool.write { db in for a in changed { try a.update(db) } }
+    }
+
+    /// Re-key one entry's attachment blobs when it crosses a journal boundary:
+    /// unseal with `srcKey` (moving out of a vault) then seal with `dstKey`
+    /// (moving into one). Either may be nil.
+    private func rekeyAttachmentsForEntry(_ entryId: String, srcKey: SymmetricKey?, dstKey: SymmetricKey?) throws {
+        guard srcKey != nil || dstKey != nil else { return }
+        let rows = try dbPool.read { db in
+            try Attachment.filter(Column("entry_id") == entryId).fetchAll(db)
+        }
+        guard !rows.isEmpty else { return }
+        let changed: [Attachment] = rows.map { a in
+            var dataBytes = a.data
+            var thumbBytes = a.thumbnailData
+            if let srcKey {
+                if VaultService.isSealedData(dataBytes), let d = VaultService.unsealData(dataBytes, key: srcKey) { dataBytes = d }
+                if let t = thumbBytes, VaultService.isSealedData(t), let u = VaultService.unsealData(t, key: srcKey) { thumbBytes = u }
+            }
+            if let dstKey {
+                if !VaultService.isSealedData(dataBytes) { dataBytes = VaultService.sealData(dataBytes, key: dstKey) }
+                if let t = thumbBytes, !VaultService.isSealedData(t) { thumbBytes = VaultService.sealData(t, key: dstKey) }
+            }
+            var m = a
+            m.data = dataBytes
+            m.thumbnailData = thumbBytes
+            return m
+        }
+        try dbPool.write { db in for a in changed { try a.update(db) } }
     }
 
     /// Seal every not-yet-sealed entry in a journal under `key` — the data-layer
@@ -958,47 +1064,67 @@ final class DatabaseService {
     /// Full attachment rows (including the `data` BLOB) for one entry, oldest
     /// first. Used by export and by the full-image viewer.
     func attachments(forEntry entryId: String) throws -> [Attachment] {
-        try dbPool.read { db in
+        let key = try vaultContextForEntry(entryId).key
+        let raw = try dbPool.read { db in
             try Attachment
                 .filter(Column("entry_id") == entryId)
                 .order(Column("created_at").asc)
                 .fetchAll(db)
         }
+        guard let key else { return raw }
+        return raw.map { unsealAttachment($0, key: key) }
     }
 
     /// One full attachment row (including the `data` BLOB) by id — backs the
     /// full-size viewer / video player.
     func attachment(id: String) throws -> Attachment? {
-        try dbPool.read { db in try Attachment.fetchOne(db, key: id) }
+        guard let raw = try dbPool.read({ db in try Attachment.fetchOne(db, key: id) }) else { return nil }
+        guard let key = try vaultContextForEntry(raw.entryId).key else { return raw }
+        return unsealAttachment(raw, key: key)
     }
 
     /// One lightweight thumbnail projection by id (no full `data` BLOB) — backs
     /// inline-media rendering in the editor preview.
     func attachmentThumb(id: String) throws -> AttachmentThumb? {
-        try dbPool.read { db in
+        guard let thumb = try dbPool.read({ db -> AttachmentThumb? in
             let row = try Row.fetchOne(db, sql: """
                 SELECT id, entry_id, kind, mime_type, filename, thumbnail_data, width, height
                 FROM attachments WHERE id = ?
                 """, arguments: [id])
             return row.map { AttachmentThumb(row: $0) }
-        }
+        }) else { return nil }
+        guard let key = try vaultContextForEntry(thumb.entryId).key else { return thumb }
+        return unsealThumb(thumb, key: key)
     }
 
     /// Lightweight thumbnails (no full `data` BLOB) for one entry — drives the
     /// editor's photo strip.
     func attachmentThumbs(forEntry entryId: String) throws -> [AttachmentThumb] {
-        try dbPool.read { db in
-            let rows = try Row.fetchAll(db, sql: """
+        let key = try vaultContextForEntry(entryId).key
+        let raw = try dbPool.read { db in
+            try Row.fetchAll(db, sql: """
                 SELECT id, entry_id, kind, mime_type, filename, thumbnail_data, width, height
                 FROM attachments WHERE entry_id = ? ORDER BY created_at ASC
-                """, arguments: [entryId])
-            return rows.map { AttachmentThumb(row: $0) }
+                """, arguments: [entryId]).map { AttachmentThumb(row: $0) }
         }
+        guard let key else { return raw }
+        return raw.map { unsealThumb($0, key: key) }
     }
 
     func insertAttachment(_ attachment: Attachment) throws {
+        let ctx = try vaultContextForEntry(attachment.entryId)
+        var prepared = attachment
+        if ctx.isVault {
+            // Adding media to a vault entry: seal its bytes. Refuse if the vault
+            // is locked rather than write plaintext into it.
+            guard let key = ctx.key else { throw VaultWriteError.lockedVault }
+            prepared.data = VaultService.sealData(attachment.data, key: key)
+            if let thumb = attachment.thumbnailData {
+                prepared.thumbnailData = VaultService.sealData(thumb, key: key)
+            }
+        }
         try dbPool.write { db in
-            var mutable = attachment
+            var mutable = prepared
             try mutable.insert(db)
         }
     }

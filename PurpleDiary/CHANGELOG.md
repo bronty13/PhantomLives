@@ -2,6 +2,29 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Phase 9: Vault (attachment sealing — vault is now complete)
+
+### Added
+- **Vaults now seal attachment bytes too.** A vault entry's photo / video / audio
+  `data` and `thumbnail_data` BLOBs are sealed under the journal's content key
+  (AES-256-GCM, raw-bytes `pdvlt1:` prefix) — ciphertext on disk just like the
+  title and body, transparently decrypted on read while the vault is unlocked.
+  Adding media to a *locked* vault is refused rather than written in the clear.
+- **Sealing follows the entry through every path.** Converting a journal to a
+  vault seals its existing attachments; removing the vault decrypts them in place;
+  moving an entry into or out of a vault re-keys its attachment blobs in both
+  directions (alongside the title/body re-key already in place).
+- **+4 tests** (`VaultAttachmentTests`): insert seals blobs + read decrypts,
+  insert-into-locked refused, convert seals existing attachments + remove unseals,
+  move-into-vault seals / move-out unseals → **152**.
+
+### Notes
+- This closes the Phase-9 vault: titles, bodies, **and** attachment bytes are all
+  sealed. Metadata that stays queryable under the single DB key (entry date, mood,
+  word count, tags; attachment filename / MIME / dimensions / size) is documented
+  in `Docs/SECURITY.md` — a vault hides content, not the existence or rough size
+  of entries.
+
 ## [Unreleased] — Phase 9: Vault (create / unlock / manage)
 
 ### Added

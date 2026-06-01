@@ -127,7 +127,7 @@ encrypted install at launch. The frozen set is asserted by
 | `v3_attachments` | `attachments` (photo/video/audio BLOBs + thumbnail, cascade with entry) |
 | `v4_journals` | `journals` (+ seeded default journal `Journal.defaultId`); adds NOT NULL `entries.journal_id` (existing rows back-fill to default via the column DEFAULT) + index. Hidden = app-level visibility only. |
 | `v5_templates` | `templates` (reusable entry scaffolds; two starter templates seeded on first run by `seedDefaultTemplatesIfEmpty`). |
-| `v6_vault` | `journals.is_vault` + `vault_envelopes` (per-journal content key wrapped under passphrase **and** 24-word recovery key). Phase-9 vault crypto foundation. Transparent sealing data path wired (`DatabaseService` seals title+body on write / unseals on read for unlocked vaults; locked vaults gated from `visibleEntries` + export). Make-Vault / unlock / change-passphrase / remove UI shipped in the sidebar; app-lock re-seals vaults. v1 seals title+body (attachment bytes are the documented fast-follow). |
+| `v6_vault` | `journals.is_vault` + `vault_envelopes` (per-journal content key wrapped under passphrase **and** 24-word recovery key). Phase-9 vault crypto foundation. Transparent sealing data path wired (`DatabaseService` seals title+body on write / unseals on read for unlocked vaults; locked vaults gated from `visibleEntries` + export). Make-Vault / unlock / change-passphrase / remove UI shipped in the sidebar; app-lock re-seals vaults. Seals entry title+body **and attachment bytes** (data + thumbnails). |
 
 To change shipped schema/data: **add a new migration**, never edit an existing
 one. Append its id to the frozen-set test deliberately.
@@ -194,7 +194,7 @@ feature, keep it offline.
   ever added.) See the repo memory `reference-macos-photokit-tcc-entitlement`.
 - **Migrations immutable** (§4). **SQLCipher link order** (§5).
 
-## 8. Tests (`Tests/PurpleDiaryTests/`, 148 total)
+## 8. Tests (`Tests/PurpleDiaryTests/`, 152 total)
 
 Migration round-trip + cascades + frozen-set guard; model Codable + word count +
 `TrackerKind` formatting; `SearchService` ranking; `BackupService`
@@ -217,7 +217,9 @@ data path** (`DatabaseService` seal-on-write/unseal-on-read, refuse-write-to-loc
 vault-aware moves, `sealEntries`/`unsealEntries` convert + the locked-vault
 `entryIsVisible` gate) and **vault management** (`createVault` dual-wrap
 verification guardrail, `changePassphrase` re-wrap, `removeVault` decrypt-in-place,
-each with locked-state guards). PhotoKit live import,
+each with locked-state guards) and **attachment blob sealing** (`sealData`/
+`unsealData`, seal-on-insert + refuse-locked, read-time decrypt, `rekeyAttachments`
+convert/remove + per-entry move re-key). PhotoKit live import,
 video poster decoding, and AVKit playback are verified by hand (no headless TCC
 / no AVFoundation media fixture).
 

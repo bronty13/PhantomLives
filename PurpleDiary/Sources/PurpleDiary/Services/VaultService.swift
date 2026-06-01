@@ -131,6 +131,27 @@ enum VaultService {
 
     static func isSealed(_ text: String) -> Bool { text.hasPrefix(sentinel) }
 
+    /// Raw-bytes form of `sentinel`, prefixing sealed BLOBs (attachment `data` /
+    /// `thumbnail_data`). Real media never begins with these bytes (JPEG/PNG/MP4/
+    /// PDF magic numbers differ), so a prefix match reliably means "sealed".
+    static let dataSentinel = Data(sentinel.utf8)
+
+    /// Seal arbitrary bytes under the content key → `pdvlt1:` + AES-GCM blob.
+    static func sealData(_ data: Data, key: SymmetricKey) -> Data {
+        guard let ct = try? Crypto.encrypt(data, using: key) else { return data }
+        return dataSentinel + ct
+    }
+
+    /// Unseal a `pdvlt1:`-prefixed blob, or nil if the key is wrong. Non-sentinel
+    /// input is returned unchanged (plaintext bytes).
+    static func unsealData(_ data: Data, key: SymmetricKey) -> Data? {
+        guard data.starts(with: dataSentinel) else { return data }
+        let ct = Data(data.dropFirst(dataSentinel.count))
+        return try? Crypto.decrypt(ct, using: key)
+    }
+
+    static func isSealedData(_ data: Data) -> Bool { data.starts(with: dataSentinel) }
+
     // MARK: - Persistence
 
     static func saveEnvelope(_ env: VaultEnvelope) throws {

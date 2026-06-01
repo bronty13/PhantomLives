@@ -394,9 +394,11 @@ backup after the migration contains only the encrypted database.
   database. For genuine per-journal cryptographic separation, use a **Vault**
   (below). Treat "hidden" as "kept out of sight," not "separately encrypted."
 - **Vault journals are separately encrypted, even with the app open.** A journal
-  made into a *vault* (right-click → Make Vault…) has each entry's **title and
-  body** sealed under a per-journal random 256-bit content key (CK), AES-256-GCM,
-  with a `pdvlt1:` sentinel. CK is wrapped two ways in the `vault_envelopes` table
+  made into a *vault* (right-click → Make Vault…) has each entry's **title, body,
+  and attachment bytes** (the `data` and `thumbnail_data` BLOBs) sealed under a
+  per-journal random 256-bit content key (CK), AES-256-GCM, with a `pdvlt1:`
+  sentinel (a raw-bytes prefix for blobs). CK is wrapped two ways in the
+  `vault_envelopes` table
   — under a **passphrase-derived KEK** (PBKDF2-HMAC-SHA256, 300k iters, per-journal
   salt) and under a **KEK derived from the 24-word recovery key** — so a forgotten
   passphrase isn't permanent lockout. CK lives only in an in-memory session map
@@ -406,9 +408,13 @@ backup after the migration contains only the encrypted database.
   bypasses the app sees only ciphertext), are gated out of all views, and are
   **skipped by export** (only unlocked vaults emit plaintext). Creating a vault
   verifies *both* wraps round-trip back to CK before any entry is sealed
-  (all-or-nothing). **Scope (v1): titles and bodies are sealed; attachment bytes
-  are not yet** — they remain under the single database DEK like other media. The
-  recovery key is a master key for vaults too: anyone holding it can open them.
+  (all-or-nothing). Sealing follows the entry through convert (Make Vault),
+  remove (decrypt-in-place), and moves across journals (re-keyed in both
+  directions). **Metadata not sealed:** an entry's date, mood, word count, tags,
+  and an attachment's filename/MIME/dimensions/`size_bytes` stay queryable under
+  the single DB DEK, so a vault hides *content*, not the fact that entries exist
+  or their rough size. The recovery key is a master key for vaults too: anyone
+  holding it can open them.
 - **Keychain ACL trust boundary.** The DEK uses `kSecAttrAccessibleWhenUnlocked`
   and is not gated behind Touch ID at the Keychain level (app-lock is a separate
   gate). A user-level attacker on a running, unlocked Mac can reach the DEK

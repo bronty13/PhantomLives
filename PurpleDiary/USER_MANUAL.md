@@ -71,11 +71,12 @@ again when you relaunch PurpleDiary.
 
 ### Vault journals (sealed under their own passphrase)
 
-A **Vault** is the strongest privacy option. The titles and text of every entry
-in a vault journal are sealed under a passphrase that's *yours alone* — they stay
-encrypted **even while PurpleDiary is open**, until you type that passphrase for
-the session. (A hidden journal is only filtered from view; a vault's entries are
-genuine ciphertext on disk.)
+A **Vault** is the strongest privacy option. The titles, text, **and attached
+photos, videos, and audio** of every entry in a vault journal are sealed under a
+passphrase that's *yours alone* — they stay encrypted **even while PurpleDiary is
+open**, until you type that passphrase for the session. (A hidden journal is only
+filtered from view; a vault's entries and their media are genuine ciphertext on
+disk.)
 
 **Make a journal a vault:** right-click it → **Make Vault…**. You'll set a
 passphrase and paste your 24-word recovery key. PurpleDiary then seals every
