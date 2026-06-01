@@ -237,6 +237,29 @@ pub fn probe_video_height(path: &Path) -> Option<u32> {
     s.trim().parse::<u32>().ok()
 }
 
+/// Probe a video's coded pixel dimensions `(width, height)` via ffprobe.
+/// Returns `None` when ffprobe is unavailable, errors, or the output is
+/// unparseable. Note: this is the *coded* size and ignores any
+/// rotation/display-matrix metadata — callers that care about visual
+/// orientation must fold in the file's `rotation_degrees`.
+pub fn probe_video_dimensions(path: &Path) -> Option<(u32, u32)> {
+    let bin = ffprobe_bin();
+    let output = Command::new(bin)
+        .args([
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width,height",
+            "-of", "csv=p=0:s=x",
+        ])
+        .arg(path)
+        .output()
+        .ok()?;
+    if !output.status.success() { return None; }
+    let s = String::from_utf8(output.stdout).ok()?;
+    let (w, h) = s.trim().split_once('x')?;
+    Some((w.trim().parse().ok()?, h.trim().parse().ok()?))
+}
+
 fn generate_video_thumb(src: &Path, dst: &Path) -> Option<PathBuf> {
     let bin = ffmpeg_bin();
     // Tmp suffix ends in `.jpg` so ffmpeg can sniff the output muxer

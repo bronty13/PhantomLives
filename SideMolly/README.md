@@ -85,9 +85,9 @@ SideMolly/
 | 2 | Molly PR: add `manifest.json` to bundle output |
 | 3 | Per-bundle file workspace + image ops (watermark / strip / rename) |
 | 4 | Video ops (trim / transcode / watermark / thumbnail via FFmpeg) |
-| 4.5 | Auto-Assembly pipeline (title + xfades + voice-isolated master) |
+| 4.5 | Auto-Assembly pipeline (title + xfades + voice-isolated `<Title>.mp4`, 16:9 or 9:16 per-bundle) |
 | 5 | Transcription (MLX → whisper.cpp) with diarization |
-| 6 | Dropbox local-folder copy |
+| 6 | Dropbox local-folder copy (assembled `<Title>.mp4` only) |
 | 7 | Posting primitives |
 | 8 | 🎬 Content Post Runner |
 | 9 | 🎁 Custom Post Runner |

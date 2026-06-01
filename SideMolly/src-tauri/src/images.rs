@@ -153,6 +153,39 @@ pub fn process_image(
     Ok(())
 }
 
+/// Draw `text` in white with a soft dark outline so it stays legible on
+/// any background. A plain white watermark vanishes over bright video or
+/// pale photos — the PaperDaisy strokes are thin and there was no
+/// contrast halo — which is why the watermark "couldn't be seen". The
+/// outline gives every glyph a dark edge.
+///
+/// `fill_alpha` is the user's configured opacity (so the watermark stays
+/// as subtle as they asked); the outline alpha is derived from it but
+/// floored so even a faint fill reads, and capped so a near-solid fill
+/// doesn't grow a heavy black box. `font_size` scales the outline width.
+fn draw_text_with_outline(
+    canvas: &mut RgbaImage,
+    x: i32,
+    y: i32,
+    scale: PxScale,
+    font: &FontRef<'_>,
+    text: &str,
+    fill_alpha: u8,
+    font_size: f32,
+) {
+    let t = ((font_size / 24.0).round() as i32).max(1);
+    let outline_alpha = ((fill_alpha as u16) * 2).clamp(100, 200) as u8;
+    let outline = Rgba([0, 0, 0, outline_alpha]);
+    // 8-direction stroke at offset `t` — axes + diagonals.
+    for (dx, dy) in [
+        (-t, 0), (t, 0), (0, -t), (0, t),
+        (-t, -t), (-t, t), (t, -t), (t, t),
+    ] {
+        draw_text_mut(canvas, outline, x + dx, y + dy, scale, font, text);
+    }
+    draw_text_mut(canvas, Rgba([255, 255, 255, fill_alpha]), x, y, scale, font, text);
+}
+
 /// Render `profile.text` onto `img` per the position + opacity in the
 /// profile. Mutates `img` in place. Uses the bundled font bytes.
 fn draw_watermark(
@@ -187,8 +220,7 @@ fn draw_watermark(
     };
 
     let alpha = (profile.opacity_percent as f32 / 100.0 * 255.0) as u8;
-    let color = Rgba([255, 255, 255, alpha]);
-    draw_text_mut(img, color, x, y, scale, &font, &profile.text);
+    draw_text_with_outline(img, x, y, scale, &font, &profile.text, alpha, font_size);
     Ok(())
 }
 
@@ -215,16 +247,19 @@ pub fn render_watermark_png(
     let scale = PxScale::from(font_size);
     let (tw, th) = text_size(scale, &font, &profile.text);
 
-    // Breathing room around the glyphs so descenders + edges don't
-    // clip when alpha-composited. Tight crop saves overlay bytes.
-    let pad: u32 = 6;
+    // Breathing room around the glyphs so descenders + edges + the
+    // contrast outline don't clip when alpha-composited. Tight crop
+    // saves overlay bytes; the `+ outline_t` keeps the stroke in-frame.
+    let outline_t = ((font_size / 24.0).round() as u32).max(1);
+    let pad: u32 = 6 + outline_t;
     let w = (tw + 2 * pad).max(1);
     let h = (th + 2 * pad).max(1);
     let mut canvas: RgbaImage = ImageBuffer::from_pixel(w, h, Rgba([0, 0, 0, 0]));
 
     let alpha = (profile.opacity_percent.min(100) as f32 / 100.0 * 255.0) as u8;
-    let color = Rgba([255, 255, 255, alpha]);
-    draw_text_mut(&mut canvas, color, pad as i32, pad as i32, scale, &font, &profile.text);
+    draw_text_with_outline(
+        &mut canvas, pad as i32, pad as i32, scale, &font, &profile.text, alpha, font_size,
+    );
 
     let mut out = Vec::with_capacity((w * h * 2) as usize);
     canvas
@@ -523,6 +558,29 @@ mod tests {
         // glyph stroke region.
         let corner = img.get_pixel(0, 0);
         assert_eq!(corner[3], 0, "outside-glyph alpha must be 0 (transparent)");
+    }
+
+    #[test]
+    fn render_watermark_png_has_dark_outline_for_contrast() {
+        // Even at a low fill opacity, the legibility outline must paint
+        // some dark, non-transparent pixels so the watermark reads on a
+        // bright background (the "can't even see it" fix).
+        let profile = WatermarkProfile {
+            text: "CurseOfCurves".into(), opacity_percent: 20,
+            position: WatermarkPosition::BottomRight,
+            font_size_pct: 4.0, margin_pct: 2.5,
+        };
+        let bytes = render_watermark_png(&profile, PAPER_DAISY, 60.0).unwrap();
+        let img = image::load_from_memory(&bytes).unwrap().to_rgba8();
+        let mut dark_opaque = false;
+        for p in img.pixels() {
+            // Outline pixels: dark RGB with meaningful alpha.
+            if p[3] > 60 && p[0] < 80 && p[1] < 80 && p[2] < 80 {
+                dark_opaque = true;
+                break;
+            }
+        }
+        assert!(dark_opaque, "watermark should carry a dark contrast outline");
     }
 
     #[test]

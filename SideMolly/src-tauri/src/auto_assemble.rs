@@ -1,7 +1,8 @@
 // Phase 4.5 — Auto-Assembly pipeline.
 //
 // One-click "make me the master cut" — composes every video in a bundle
-// into a single landscape 16:9 master MP4 with:
+// into a single `<Title>.mp4` cut (16:9 landscape or 9:16 portrait, the
+// user picks per-bundle on the Edit tab) with:
 //
 //   ┌── title 10s ──┐ xfade ┌── v₁ normalized ──┐ xfade ┌── v₂ ──┐ xfade … ┌── v_N ──┐ → fade-to-black
 //   │ <bundle title>│   1s  │ + watermark        │   1s  │ + WM    │         │ + WM     │
@@ -201,10 +202,86 @@ pub struct EnqueueAutoAssembleResult {
 // Public Tauri command — kicks off the whole pipeline.
 // ---------------------------------------------------------------------------
 
+/// Output orientation chosen per-bundle on the Edit tab. The bundle's
+/// videos can't be assumed to all be landscape or all portrait, so the
+/// user picks at assemble time. We don't store a second resolution — we
+/// reuse the configured Settings → Auto-Assembly dimensions and swap the
+/// long/short edges to match the chosen orientation (e.g. 1920×1080 ↔
+/// 1080×1920).
+fn target_dims(settings: &AutoAssemblySettings, format: Option<&str>) -> (i64, i64) {
+    let long = settings.target_width.max(settings.target_height);
+    let short = settings.target_width.min(settings.target_height);
+    match format {
+        Some("vertical") | Some("9:16") => (short, long), // 9:16 portrait
+        _ => (long, short),                               // 16:9 landscape (default)
+    }
+}
+
+/// Every video in a bundle that has an extracted working file, ordered
+/// by fansite day + position so the master cut follows the bundle's
+/// natural sequence. Row shape: `(bundle_file_id, in_zip_path,
+/// working_path, rotation_degrees)`.
+fn collect_bundle_videos(
+    conn: &Connection,
+    uid: &str,
+) -> Result<Vec<(i64, String, String, i64)>, BundleError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, in_zip_path, working_path, rotation_degrees
+           FROM bundle_files
+          WHERE bundle_uid = ?1 AND kind = 'video'
+                AND working_path IS NOT NULL AND working_path != ''
+          ORDER BY
+              CASE WHEN fansite_day_of_month IS NULL THEN 0 ELSE fansite_day_of_month END,
+              position,
+              in_zip_path",
+    )?;
+    let videos = stmt
+        .query_map(params![uid], |row| Ok((
+            row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?,
+        )))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(videos)
+}
+
+/// Probe a bundle's clips and pick the majority visual orientation,
+/// folding each file's `rotation_degrees` into the probed dimensions
+/// (90°/270° swap width/height). Ties and un-probeable bundles default
+/// to landscape — the historical assumption — so a flaky ffprobe never
+/// silently produces a portrait master.
+fn detect_orientation(videos: &[(i64, String, String, i64)]) -> &'static str {
+    let mut portrait = 0i32;
+    let mut landscape = 0i32;
+    for (_, _, working, rot) in videos {
+        if let Some((mut w, mut h)) =
+            crate::thumbnails::probe_video_dimensions(Path::new(working))
+        {
+            if *rot == 90 || *rot == 270 {
+                std::mem::swap(&mut w, &mut h);
+            }
+            if h > w { portrait += 1; } else { landscape += 1; }
+        }
+    }
+    if portrait > landscape { "vertical" } else { "horizontal" }
+}
+
+/// Probe a bundle's clips and report the auto-detected output
+/// orientation ("horizontal" / "vertical"). The Edit tab calls this to
+/// preselect the Format radio when the user hasn't picked one yet.
+#[tauri::command]
+pub fn detect_bundle_format<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+) -> Result<String, BundleError> {
+    let conn = open_conn(&handle)?;
+    let videos = collect_bundle_videos(&conn, &uid)?;
+    Ok(detect_orientation(&videos).to_string())
+}
+
 #[tauri::command]
 pub fn enqueue_auto_assemble<R: Runtime>(
     handle: AppHandle<R>,
     uid: String,
+    format: Option<String>,
 ) -> Result<EnqueueAutoAssembleResult, BundleError> {
     let workspace = bundle_workspace_dir(&work_root(&handle)?, &uid);
     let auto_dir = workspace.join("auto");
@@ -235,6 +312,28 @@ pub fn enqueue_auto_assemble<R: Runtime>(
     ).optional()?
         .ok_or_else(|| BundleError::NotFound(format!("bundle {uid}")))?;
 
+    // Pull every video with a working path. Ordered by fansite day +
+    // position so the master cut respects the bundle's natural sequence.
+    // Collected up front so we can auto-detect the output orientation
+    // from the clips before sizing the title card / watermark / normalize.
+    let videos = collect_bundle_videos(&conn, &uid)?;
+    if videos.is_empty() {
+        return Err(BundleError::NotFound(format!(
+            "bundle {uid} has no videos to assemble"
+        )));
+    }
+
+    // Resolve the output orientation. An explicit "horizontal"/"vertical"
+    // wins; "auto" (or no choice) probes the clips and picks the majority
+    // orientation so the master matches the footage instead of forcing a
+    // letterboxed 16:9 onto portrait clips.
+    let resolved_format = match format.as_deref() {
+        Some("horizontal") | Some("16:9") => "horizontal",
+        Some("vertical") | Some("9:16") => "vertical",
+        _ => detect_orientation(&videos),
+    };
+    let (target_width, target_height) = target_dims(&settings, Some(resolved_format));
+
     // Resolve persona watermark text + render the watermark PNG once.
     // Reuses the per-media-kind loader so the user's Settings → Watermark
     // image_enabled/video_enabled flags are honored. If the persona has
@@ -251,6 +350,11 @@ pub fn enqueue_auto_assemble<R: Runtime>(
         .map(|p| p.text.clone())
         .or_else(|| default_persona_watermark(persona_code.as_deref()))
         .unwrap_or_else(|| "PhantomLives".to_string());
+    // The title card spells the persona out with spaces ("Curse Of
+    // Curves") while the per-clip watermark keeps the compact brand
+    // form ("CurseOfCurves"). Only the title-card text is humanized;
+    // the watermark PNG below still uses the raw profile text.
+    let persona_title_text = humanize_persona(&persona_watermark_text);
 
     // Pre-render the per-clip watermark PNG (when persona's video
     // watermark is enabled). One PNG sized for the normalize target
@@ -264,8 +368,8 @@ pub fn enqueue_auto_assemble<R: Runtime>(
             opacity_percent: ((p.opacity_percent as f32 * 1.25).min(100.0)) as u8,
             ..p.clone()
         };
-        let base_font = (settings.target_height as f32) * p.font_size_pct / 100.0;
-        let cap = (settings.target_height as f32) * 0.08;
+        let base_font = (target_height as f32) * p.font_size_pct / 100.0;
+        let cap = (target_height as f32) * 0.08;
         let font_size_px = base_font.min(cap).max(24.0);
         let png_bytes = crate::images::render_watermark_png(&boosted, &font_bytes, font_size_px)?;
         let path = auto_dir.join("watermark.png");
@@ -281,31 +385,6 @@ pub fn enqueue_auto_assemble<R: Runtime>(
         .unwrap_or_else(|| "bottom-right".to_string());
     let watermark_margin_pct = profile.as_ref().map(|p| p.margin_pct as f64).unwrap_or(2.5);
 
-    // Pull every video with a working path. Ordered by fansite day +
-    // position so the master cut respects the bundle's natural sequence.
-    let mut stmt = conn.prepare(
-        "SELECT id, in_zip_path, working_path, rotation_degrees
-           FROM bundle_files
-          WHERE bundle_uid = ?1 AND kind = 'video'
-                AND working_path IS NOT NULL AND working_path != ''
-          ORDER BY
-              CASE WHEN fansite_day_of_month IS NULL THEN 0 ELSE fansite_day_of_month END,
-              position,
-              in_zip_path",
-    )?;
-    let videos: Vec<(i64, String, String, i64)> = stmt
-        .query_map(params![uid], |row| Ok((
-            row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?,
-        )))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    drop(stmt);
-
-    if videos.is_empty() {
-        return Err(BundleError::NotFound(format!(
-            "bundle {uid} has no videos to assemble"
-        )));
-    }
-
     let mut job_ids: Vec<i64> = Vec::with_capacity(videos.len() + 2);
     let mut errors: Vec<String> = Vec::new();
     let mut input_paths_for_master: Vec<String> = Vec::with_capacity(videos.len() + 1);
@@ -316,11 +395,11 @@ pub fn enqueue_auto_assemble<R: Runtime>(
         bundle_uid: uid.clone(),
         output_path: title_path.to_string_lossy().to_string(),
         title: if title.is_empty() { uid.clone() } else { title.clone() },
-        persona_watermark: persona_watermark_text.clone(),
+        persona_watermark: persona_title_text.clone(),
         duration_secs: settings.title_duration_secs,
         fps: settings.target_fps,
-        width: settings.target_width,
-        height: settings.target_height,
+        width: target_width,
+        height: target_height,
     };
     let title_job_id = crate::jobs::enqueue(
         &conn,
@@ -343,8 +422,8 @@ pub fn enqueue_auto_assemble<R: Runtime>(
             bundle_file_id: *bundle_file_id,
             working_path: working.clone(),
             output_path: vpath.to_string_lossy().to_string(),
-            width: settings.target_width,
-            height: settings.target_height,
+            width: target_width,
+            height: target_height,
             fps: settings.target_fps,
             rotation_degrees: *rot_deg,
             watermark_png_path: watermark_png_path.clone(),
@@ -364,7 +443,14 @@ pub fn enqueue_auto_assemble<R: Runtime>(
     }
 
     // ── Job N+2: assemble master via xfade chain ─────────────────────────
-    let master_path = auto_dir.join("master.mp4");
+    // Name the consolidated cut after the bundle title (`<Title>.mp4`)
+    // so the delivered file is self-describing. Reader sites resolve the
+    // same name via `bundles::resolve_master_cut_path` (with a legacy
+    // `master.mp4` fallback for cuts assembled before this change).
+    let master_path = auto_dir.join(format!(
+        "{}.mp4",
+        crate::bundles::master_cut_basename(&title),
+    ));
     let asm_params = AssembleMasterParams {
         bundle_uid: uid.clone(),
         output_path: master_path.to_string_lossy().to_string(),
@@ -400,6 +486,28 @@ fn default_persona_watermark(persona_code: Option<&str>) -> Option<String> {
         "Sa"  => Some("SheerAttraction".into()),
         _ => None,
     }
+}
+
+/// Turn a compact CamelCase persona handle into a spaced display name
+/// for the title card: "CurseOfCurves" → "Curse Of Curves". Inserts a
+/// space before any uppercase letter that follows a lowercase letter or
+/// digit, so it's a no-op on text that already has spaces (the watermark
+/// overlay keeps the compact form unchanged — see `enqueue_auto_assemble`).
+fn humanize_persona(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 4);
+    let mut prev: Option<char> = None;
+    for c in s.chars() {
+        if c.is_uppercase() {
+            if let Some(p) = prev {
+                if p.is_lowercase() || p.is_ascii_digit() {
+                    out.push(' ');
+                }
+            }
+        }
+        out.push(c);
+        prev = Some(c);
+    }
+    out
 }
 
 fn open_conn<R: Runtime>(handle: &AppHandle<R>) -> Result<Connection, BundleError> {
@@ -956,6 +1064,42 @@ mod tests {
         assert!(json.contains("\"deepfilternetEnabled\""), "{json}");
         assert!(json.contains("\"watermarkPngPath\""), "{json}");
         let _back: NormalizeVideoParams = serde_json::from_str(&json).unwrap();
+    }
+
+    #[test]
+    fn humanize_persona_spaces_camelcase() {
+        assert_eq!(humanize_persona("CurseOfCurves"), "Curse Of Curves");
+        assert_eq!(humanize_persona("PrincessOfAddiction"), "Princess Of Addiction");
+        assert_eq!(humanize_persona("SheerAttraction"), "Sheer Attraction");
+        assert_eq!(humanize_persona("PhantomLives"), "Phantom Lives");
+        // Idempotent on already-spaced text.
+        assert_eq!(humanize_persona("Curse Of Curves"), "Curse Of Curves");
+        // Leaves a leading capital + single word alone.
+        assert_eq!(humanize_persona("Molly"), "Molly");
+    }
+
+    #[test]
+    fn detect_orientation_defaults_landscape_when_unprobeable() {
+        // Un-probeable / missing files leave the tally at 0/0 → landscape,
+        // preserving the historical assumption rather than guessing.
+        assert_eq!(detect_orientation(&[]), "horizontal");
+        let videos = vec![
+            (1i64, "a.mov".into(), "/nope/a.mov".into(), 0i64),
+        ];
+        assert_eq!(detect_orientation(&videos), "horizontal");
+    }
+
+    #[test]
+    fn target_dims_swaps_long_short_edge_by_format() {
+        let s = AutoAssemblySettings {
+            target_width: 1920, target_height: 1080, target_fps: 30,
+            xfade_duration_secs: 1.0, title_duration_secs: 10.0,
+            audio_enhance_enabled: true, deepfilternet_enabled: false,
+        };
+        assert_eq!(target_dims(&s, Some("horizontal")), (1920, 1080));
+        assert_eq!(target_dims(&s, None), (1920, 1080)); // default landscape
+        assert_eq!(target_dims(&s, Some("vertical")), (1080, 1920));
+        assert_eq!(target_dims(&s, Some("9:16")), (1080, 1920));
     }
 
     #[test]

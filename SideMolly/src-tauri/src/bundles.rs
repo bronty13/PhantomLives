@@ -1445,6 +1445,54 @@ pub fn list_job_runs<R: Runtime>(
     Ok(crate::jobs::list_runs(&conn, job_id)?)
 }
 
+/// Sanitize a bundle title into a filesystem-safe base name for the
+/// assembled "master cut" file. Replaces path separators and characters
+/// illegal on Windows/macOS, trims surrounding whitespace and dots.
+/// Falls back to `"master"` when the title is empty or sanitizes to
+/// nothing, so we never produce a dotfile or an empty filename.
+pub fn master_cut_basename(title: &str) -> String {
+    let cleaned: String = title
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            c if c.is_control() => ' ',
+            c => c,
+        })
+        .collect();
+    let cleaned = cleaned.trim().trim_matches('.').trim().to_string();
+    if cleaned.is_empty() { "master".to_string() } else { cleaned }
+}
+
+/// Resolve the on-disk path of a bundle's assembled master cut.
+///
+/// New assembles name the file `<Title>.mp4` (see [`master_cut_basename`]);
+/// bundles assembled before that change wrote `master.mp4`. To keep both
+/// working we prefer the title-named file, fall back to a legacy
+/// `master.mp4` when only that exists, and otherwise return the
+/// title-named path (the destination a fresh assemble will write to).
+pub fn resolve_master_cut_path(workspace: &Path, title: &str) -> PathBuf {
+    let auto = workspace.join("auto");
+    let titled = auto.join(format!("{}.mp4", master_cut_basename(title)));
+    if titled.exists() { return titled; }
+    let legacy = auto.join("master.mp4");
+    if legacy.exists() { return legacy; }
+    titled
+}
+
+/// Look up a bundle's title (empty string when NULL or the bundle is
+/// missing). Small helper so the master-cut resolvers can name files by
+/// title from any command that only carries a uid + connection.
+pub fn fetch_bundle_title(conn: &Connection, uid: &str) -> Result<String, BundleError> {
+    Ok(conn
+        .query_row(
+            "SELECT COALESCE(title, '') FROM bundles WHERE uid = ?1",
+            params![uid],
+            |r| r.get::<_, String>(0),
+        )
+        .optional()?
+        .unwrap_or_default())
+}
+
 /// Status snapshot of the auto-assembled master MP4 for a bundle.
 /// Frontend uses this to render the "Master cut" card on the Edit tab
 /// — exists/missing flag, file size, last-modified timestamp so the
@@ -1466,7 +1514,9 @@ pub fn get_master_cut_status<R: Runtime>(
     uid: String,
 ) -> Result<MasterCutStatus, BundleError> {
     let workspace = crate::extract::bundle_workspace_dir(&work_root(&handle)?, &uid);
-    let master_path = workspace.join("auto").join("master.mp4");
+    let conn = open_conn(&handle)?;
+    let title = fetch_bundle_title(&conn, &uid)?;
+    let master_path = resolve_master_cut_path(&workspace, &title);
     let (exists, size_bytes, modified_at) = match fs::metadata(&master_path) {
         Ok(m) => {
             let modified = m.modified().ok()
@@ -1494,10 +1544,12 @@ pub fn reveal_master_cut<R: Runtime>(
     uid: String,
 ) -> Result<(), BundleError> {
     let workspace = crate::extract::bundle_workspace_dir(&work_root(&handle)?, &uid);
-    let master_path = workspace.join("auto").join("master.mp4");
+    let conn = open_conn(&handle)?;
+    let title = fetch_bundle_title(&conn, &uid)?;
+    let master_path = resolve_master_cut_path(&workspace, &title);
     if !master_path.exists() {
         return Err(BundleError::NotFound(format!(
-            "master.mp4 not yet at {}", master_path.display()
+            "master cut not yet at {}", master_path.display()
         )));
     }
     fsutil::reveal_in_file_browser(&master_path)?;
@@ -1510,10 +1562,12 @@ pub fn open_master_cut<R: Runtime>(
     uid: String,
 ) -> Result<(), BundleError> {
     let workspace = crate::extract::bundle_workspace_dir(&work_root(&handle)?, &uid);
-    let master_path = workspace.join("auto").join("master.mp4");
+    let conn = open_conn(&handle)?;
+    let title = fetch_bundle_title(&conn, &uid)?;
+    let master_path = resolve_master_cut_path(&workspace, &title);
     if !master_path.exists() {
         return Err(BundleError::NotFound(format!(
-            "master.mp4 not yet at {}", master_path.display()
+            "master cut not yet at {}", master_path.display()
         )));
     }
     // Use the system default opener — QuickLook / VLC / preferred player.
@@ -1532,6 +1586,61 @@ pub fn open_master_cut<R: Runtime>(
             .map_err(|e| BundleError::Io(std::io::Error::other(format!("start: {e}"))))?;
     }
     Ok(())
+}
+
+/// Result of wiping a bundle's regenerable processing outputs.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClearProcessingResult {
+    pub processed_rows: i64,
+    pub job_rows: i64,
+    pub log_rows: i64,
+    pub dirs_removed: Vec<String>,
+}
+
+/// Testing aid — delete every regenerable processing artifact for a
+/// bundle so a fresh Edit-tab run starts from a clean slate WITHOUT
+/// re-ingesting. Removes the `auto/`, `processed/`, and `transcripts/`
+/// output directories plus the exported `processing.log`, and clears the
+/// matching `processed_files`, `jobs` (FK-cascades to `job_runs`), and
+/// `processing_log` rows. Leaves the extracted source/working files and
+/// the bundle row itself untouched, so the user can immediately re-run
+/// process / auto-assemble / transcribe.
+#[tauri::command]
+pub fn clear_bundle_processing<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+) -> Result<ClearProcessingResult, BundleError> {
+    let workspace = crate::extract::bundle_workspace_dir(&work_root(&handle)?, &uid);
+
+    let mut dirs_removed: Vec<String> = Vec::new();
+    for sub in ["auto", "processed", "transcripts"] {
+        let dir = workspace.join(sub);
+        if dir.exists() {
+            fs::remove_dir_all(&dir)?;
+            dirs_removed.push(sub.to_string());
+        }
+    }
+    // The exported processing.log sidecar, if one was written.
+    let _ = fs::remove_file(workspace.join("processing.log"));
+
+    let conn = open_conn(&handle)?;
+    let processed_rows = conn.execute(
+        "DELETE FROM processed_files
+          WHERE bundle_file_id IN
+                (SELECT id FROM bundle_files WHERE bundle_uid = ?1)",
+        params![uid],
+    )? as i64;
+    let job_rows = conn.execute(
+        "DELETE FROM jobs WHERE bundle_uid = ?1",
+        params![uid],
+    )? as i64;
+    let log_rows = conn.execute(
+        "DELETE FROM processing_log WHERE bundle_uid = ?1",
+        params![uid],
+    )? as i64;
+
+    Ok(ClearProcessingResult { processed_rows, job_rows, log_rows, dirs_removed })
 }
 
 /// Reveal a processed file in Finder/Explorer. Scoped by

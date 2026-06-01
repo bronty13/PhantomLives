@@ -414,6 +414,17 @@ pub fn dispatch_transcribe_video<R: Runtime>(
     //   -o <tmp.json> -f json [-m <model>]
     let mut cmd = Command::new(&engine.command);
     cmd.args(&engine.leading_args);
+    // Finder-launched macOS apps inherit a stripped PATH (/usr/bin:/bin:
+    // /usr/sbin:/sbin) that omits /opt/homebrew/bin and /usr/local/bin.
+    // transcribe.py's bootstrap probes `shutil.which("ffmpeg")` and, when
+    // it can't find ffmpeg on that minimal PATH, falls into
+    // `brew install ffmpeg` — which then crashes because `brew` isn't on
+    // PATH either. Prepend the Homebrew bin dirs so the child sees the
+    // already-installed ffmpeg (and brew, if the bootstrap ever needs it)
+    // and never enters the install branch. Caught 2026-06-01: job failed
+    // with "ffmpeg not found — installing via Homebrew ..." → FileNotFound
+    // on `brew`.
+    cmd.env("PATH", augmented_path());
     cmd.args([
         "-i", src.to_str().ok_or_else(|| BundleError::Io(std::io::Error::other(
             "source path is not valid UTF-8",
@@ -592,6 +603,27 @@ fn srt_ts(seconds: f64) -> String {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// Build a PATH for spawned subprocesses that includes the Homebrew bin
+/// directories, prepended to whatever PATH this process inherited.
+///
+/// Finder-launched macOS apps get `/usr/bin:/bin:/usr/sbin:/sbin` and
+/// nothing else, so spawned tools (transcribe.py and the ffmpeg / brew it
+/// shells out to) can't be found. We prepend the two conventional
+/// Homebrew prefixes (Apple-silicon `/opt/homebrew/bin`, Intel
+/// `/usr/local/bin`) so `which`-style lookups in the child resolve.
+/// De-dupes against the inherited PATH so we don't grow it unboundedly
+/// across nested spawns.
+fn augmented_path() -> String {
+    let inherited = std::env::var("PATH").unwrap_or_default();
+    let mut parts: Vec<&str> = vec!["/opt/homebrew/bin", "/usr/local/bin"];
+    for p in inherited.split(':') {
+        if !p.is_empty() && !parts.contains(&p) {
+            parts.push(p);
+        }
+    }
+    parts.join(":")
+}
+
 fn open_conn<R: Runtime>(handle: &AppHandle<R>) -> Result<Connection, BundleError> {
     let dir = handle.path()
         .resolve("", tauri::path::BaseDirectory::AppLocalData)
@@ -652,6 +684,20 @@ mod tests {
         // appearing inside string values — there are none here, but
         // the anchor pattern `: NaN,` etc. would skip them anyway).
         assert_eq!(parsed["text"].as_str().unwrap(), " hello world.");
+    }
+
+    #[test]
+    fn augmented_path_prepends_homebrew_bins_and_dedupes() {
+        let p = augmented_path();
+        let parts: Vec<&str> = p.split(':').collect();
+        // Homebrew prefixes come first, in order.
+        assert_eq!(parts[0], "/opt/homebrew/bin", "{p}");
+        assert_eq!(parts[1], "/usr/local/bin", "{p}");
+        // No duplicates anywhere in the result.
+        let mut seen = std::collections::HashSet::new();
+        for part in &parts {
+            assert!(seen.insert(*part), "duplicate PATH entry {part:?} in {p}");
+        }
     }
 
     #[test]

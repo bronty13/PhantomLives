@@ -25,12 +25,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import {
-  clearBundleLog, enqueueAutoAssemble, enqueueBundleTranscripts,
+  clearBundleLog, clearBundleProcessing, detectBundleFormat,
+  enqueueAutoAssemble, enqueueBundleTranscripts,
   enqueueBundleVideoOps, exportBundleLog, fmtSize, getBundleThumbnails,
   getMasterCutStatus, getProcessedPreviews, getTranscribeStatus,
   listLogEntries, listProcessedFiles, listTranscripts, openMasterCut,
   processBundleImages, revealBundleLog, revealMasterCut, revealProcessedFile,
   revealTranscript, revealWorkingFile, setBundleFileRotation,
+  type AssemblyFormat, type DetectedFormat,
   type BundleFileRow, type BundleSummary, type ImageOpsInput, type JobRow,
   type LogRow, type MasterCutStatus, type ProcessedFileRow,
   type TranscribeStatus, type TranscriptRow, type VideoOpsInput,
@@ -84,6 +86,16 @@ export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated: _u
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [master, setMaster] = useState<MasterCutStatus | null>(null);
+  // Per-bundle output orientation for the master cut. Defaults to 'auto'
+  // (backend probes the clips); an explicit pick is remembered across
+  // reloads (localStorage keyed by uid). `detectedFormat` holds what
+  // 'auto' currently resolves to, for the hint next to the radio.
+  const fmtKey = `sm.assemblyFormat.${summary.uid}`;
+  const [assemblyFormat, setAssemblyFormat] = useState<AssemblyFormat>(() => {
+    const saved = localStorage.getItem(fmtKey);
+    return saved === 'vertical' || saved === 'horizontal' ? saved : 'auto';
+  });
+  const [detectedFormat, setDetectedFormat] = useState<DetectedFormat | null>(null);
   const [transcripts, setTranscripts] = useState<TranscriptRow[]>([]);
   const [transcribeStatus, setTranscribeStatus] = useState<TranscribeStatus | null>(null);
   const [logRows, setLogRows] = useState<LogRow[]>([]);
@@ -135,6 +147,42 @@ export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated: _u
     }
   }, [summary.uid]);
   useEffect(() => { refreshProcessed(); }, [refreshProcessed, refreshSignal]);
+
+  // ── Auto-detect the clips' orientation for the Format hint / 'auto'.
+  useEffect(() => {
+    let alive = true;
+    detectBundleFormat(summary.uid)
+      .then((f) => { if (alive) setDetectedFormat(f); })
+      .catch(() => { if (alive) setDetectedFormat(null); });
+    return () => { alive = false; };
+  }, [summary.uid]);
+
+  // ── Testing aid: wipe regenerable processing outputs for this bundle.
+  const clearProcessing = async () => {
+    if (!confirm(
+      'Clear ALL processing for this bundle?\n\n' +
+      'Deletes the auto-assemble, processed-media, and transcript outputs ' +
+      '(files + queue + log rows). Your imported source clips stay put, so ' +
+      'you can re-run everything from scratch. This cannot be undone.'
+    )) return;
+    setBusy(true);
+    setBusyLabel('Clearing processing…');
+    setLastResult(null);
+    try {
+      const r = await clearBundleProcessing(summary.uid);
+      setLastResult({
+        ok: 0, skipped: 0, errors: [],
+        what: `🧹 Cleared processing — ${r.dirsRemoved.length} folder${r.dirsRemoved.length === 1 ? '' : 's'}, ` +
+          `${r.processedRows} processed row${r.processedRows === 1 ? '' : 's'}, ${r.jobRows} job${r.jobRows === 1 ? '' : 's'} removed.`,
+      });
+      await refreshProcessed();
+    } catch (e) {
+      setLastResult({ ok: 0, skipped: 0, errors: [String(e)], what: 'clear processing failed' });
+    } finally {
+      setBusy(false);
+      setBusyLabel(null);
+    }
+  };
 
   // ── Optimistic rotation: update local state immediately, then write
   //   to the DB. No full bundle refetch — that was causing the scroll
@@ -211,10 +259,13 @@ export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated: _u
     setBusyLabel(`Queueing auto-assembly — title + ${videos.length} clip${videos.length === 1 ? '' : 's'} + master…`);
     setLastResult(null);
     try {
-      const r = await enqueueAutoAssemble(summary.uid);
+      const r = await enqueueAutoAssemble(summary.uid, assemblyFormat);
+      const effective = assemblyFormat === 'auto' ? (detectedFormat ?? 'horizontal') : assemblyFormat;
+      const fmtLabel = (assemblyFormat === 'auto' ? 'auto → ' : '') +
+        (effective === 'vertical' ? '9:16 vertical' : '16:9 horizontal');
       setLastResult({
         ok: r.jobIds.length, skipped: 0, errors: r.errors,
-        what: `🎞 Auto-assembly queued — ${r.videoCount} clip${r.videoCount === 1 ? '' : 's'} + title + master · running below ↓`,
+        what: `🎞 Auto-assembly queued (${fmtLabel}) — ${r.videoCount} clip${r.videoCount === 1 ? '' : 's'} + title + master · running below ↓`,
       });
     } catch (e) {
       setLastResult({ ok: 0, skipped: 0, errors: [String(e)], what: 'auto-assemble failed' });
@@ -396,9 +447,34 @@ export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated: _u
           ──────────────────────────────────────────────────────────── */}
       {videos.length > 0 && (
         <StepCard num={3} title="Auto-assemble master cut" subtitle={
-          <>One-click <strong>master.mp4</strong>: 10s title card → 1.0s cross-dissolves between every clip (normalized to 1920×1080, watermarked, audio-enhanced) → 1.0s fade-to-black. Output lands at <code>…/work/{summary.uid}/auto/master.mp4</code>. Tune defaults in <em>Settings → Auto-Assembly</em>.</>
+          <>One-click <strong>&lt;Title&gt;.mp4</strong>: 10s title card → 1.0s cross-dissolves between every clip (normalized, watermarked, audio-enhanced) → 1.0s fade-to-black. Pick the output format below. Output lands at <code>…/work/{summary.uid}/auto/&lt;Title&gt;.mp4</code>. Tune defaults in <em>Settings → Auto-Assembly</em>.</>
         }>
-          <div className="flex justify-end mb-3">
+          <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+            <fieldset className="flex items-center gap-3 text-sm">
+              <span className="text-zinc-500">Format:</span>
+              {([
+                ['auto', detectedFormat
+                  ? `✨ Auto (${detectedFormat === 'vertical' ? '9:16' : '16:9'})`
+                  : '✨ Auto'],
+                ['horizontal', '🖥 16:9 Horizontal'],
+                ['vertical', '📱 9:16 Vertical'],
+              ] as [AssemblyFormat, string][]).map(([val, label]) => (
+                <label key={val} className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="assemblyFormat"
+                    value={val}
+                    checked={assemblyFormat === val}
+                    disabled={busy || jobs.busy}
+                    onChange={() => {
+                      setAssemblyFormat(val);
+                      localStorage.setItem(fmtKey, val);
+                    }}
+                  />
+                  {label}
+                </label>
+              ))}
+            </fieldset>
             <button
               type="button"
               className="sm-button"
@@ -496,6 +572,26 @@ export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated: _u
           onClear={clearLog}
         />
       </StepCard>
+
+      {/* ────────────────────────────────────────────────────────────
+          Testing — reset processing
+          ──────────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between gap-3 flex-wrap px-1 py-2 text-xs"
+           style={{ color: 'rgb(var(--surface-muted))' }}>
+        <span>
+          🧪 <strong>Testing:</strong> wipe this bundle's auto-assemble,
+          processed-media, and transcript outputs (files + queue + log) so
+          you can re-run from scratch. Imported source clips are kept.
+        </span>
+        <button
+          type="button"
+          className="sm-button secondary text-sm"
+          disabled={busy || jobs.busy}
+          onClick={clearProcessing}
+        >
+          🧹 Clear processing
+        </button>
+      </div>
     </div>
   );
 }
@@ -720,12 +816,12 @@ function MasterCutCard({ master, onOpen, onReveal }: {
             ▶ Open
           </button>
           <button type="button" className="sm-button secondary text-sm" onClick={onReveal}
-                  title="Reveal master.mp4 in Finder">
+                  title="Reveal the master cut in Finder">
             📁 Reveal
           </button>
           <button type="button" className="sm-button secondary text-sm"
                   onClick={() => navigator.clipboard.writeText(master.masterPath).catch(() => {})}
-                  title="Copy master.mp4 path">
+                  title="Copy the master cut path">
             ⧉ Copy path
           </button>
         </div>

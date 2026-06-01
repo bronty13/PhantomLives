@@ -236,12 +236,16 @@ fn resolve_bundle(conn: &Connection, uid: &str) -> Result<BundleResolution, Bund
         .ok_or_else(|| BundleError::NotFound(format!("bundle {uid}")))
 }
 
-/// Collect every artifact we'd ship for this bundle:
-///   - processed_files outputs (images + videos + auto-assembled)
-///   - master.mp4 (Phase 4.5 output, if it exists)
-///   - transcripts (.txt + .srt + .json sidecars, if they exist)
+/// Collect the artifact(s) we ship to Dropbox for this bundle.
 ///
-/// Returns (source_path, destination_filename, kind) tuples.
+/// **Only the assembled master cut.** Per Robert's 2026-06-01 request,
+/// Distribute → Copy to Dropbox ships *only* the final assembled video —
+/// not the redundant per-clip processed videos (already folded into the
+/// master), the processed images, or the transcript sidecars. Those still
+/// live in the bundle workspace; they're just not pushed to Dropbox.
+///
+/// Returns (source_path, destination_filename, kind) tuples — at most one
+/// entry (the master), or empty when no master cut has been assembled yet.
 fn enumerate_artifacts<R: Runtime>(
     handle: &AppHandle<R>,
     conn: &Connection,
@@ -249,58 +253,15 @@ fn enumerate_artifacts<R: Runtime>(
 ) -> Result<Vec<(PathBuf, String, String)>, BundleError> {
     let mut out: Vec<(PathBuf, String, String)> = Vec::new();
 
-    // Processed files (from the processed_files table). UPSERT
-    // semantics mean we have one row per (bundle_file_id, op_kind);
-    // the destination filename is the basename of output_path which
-    // is already `<stem>__<op_kind>.<ext>`.
-    let mut stmt = conn.prepare(
-        "SELECT pf.output_path, bf.kind
-           FROM processed_files pf
-           JOIN bundle_files bf ON bf.id = pf.bundle_file_id
-          WHERE bf.bundle_uid = ?1
-          ORDER BY pf.created_at",
-    )?;
-    let rows: Vec<(String, String)> = stmt
-        .query_map(params![uid], |r| Ok((r.get(0)?, r.get(1)?)))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    drop(stmt);
-    for (output_path, kind) in rows {
-        let src = PathBuf::from(&output_path);
-        if let Some(name) = src.file_name().map(|s| s.to_string_lossy().to_string()) {
-            out.push((src, name, kind));
-        }
-    }
-
-    // Master cut.
+    // Master cut — the assembled file, and the only thing we copy.
     let workspace = bundle_workspace_dir(&work_root(handle)?, uid);
-    let master = workspace.join("auto").join("master.mp4");
+    let title = crate::bundles::fetch_bundle_title(conn, uid)?;
+    let master = crate::bundles::resolve_master_cut_path(&workspace, &title);
     if master.exists() {
-        out.push((master, "master.mp4".into(), "master".into()));
-    }
-
-    // Transcripts (txt + srt + json sidecars per video).
-    let tx_dir = workspace.join("transcripts");
-    if tx_dir.is_dir() {
-        if let Ok(entries) = fs::read_dir(&tx_dir) {
-            let mut tx_entries: Vec<PathBuf> = entries
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| p.is_file())
-                .collect();
-            tx_entries.sort();
-            for p in tx_entries {
-                let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("");
-                let kind = match ext {
-                    "txt" => "transcript-txt",
-                    "srt" => "transcript-srt",
-                    "json" => "transcript-json",
-                    _ => continue,
-                };
-                if let Some(name) = p.file_name().map(|s| s.to_string_lossy().to_string()) {
-                    out.push((p, name, kind.into()));
-                }
-            }
-        }
+        let name = master.file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "master.mp4".into());
+        out.push((master, name, "master".into()));
     }
 
     Ok(out)

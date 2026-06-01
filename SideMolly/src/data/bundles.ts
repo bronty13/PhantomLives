@@ -724,8 +724,37 @@ export function setWorkerPaused(paused: boolean): Promise<void> {
   return invoke('set_worker_paused', { paused });
 }
 
-export function enqueueAutoAssemble(uid: string): Promise<EnqueueAutoAssembleResult> {
-  return invoke<EnqueueAutoAssembleResult>('enqueue_auto_assemble', { uid });
+/** Output orientation for the auto-assembled master cut. The bundle's
+ *  clips can't be assumed to all be landscape or all portrait, so the
+ *  user picks per-bundle on the Edit tab. `'auto'` lets the backend
+ *  probe the clips and pick the majority orientation. */
+export type AssemblyFormat = 'auto' | 'horizontal' | 'vertical';
+/** What `'auto'` resolves to — never `'auto'` itself. */
+export type DetectedFormat = 'horizontal' | 'vertical';
+
+export function enqueueAutoAssemble(
+  uid: string,
+  format: AssemblyFormat = 'auto',
+): Promise<EnqueueAutoAssembleResult> {
+  return invoke<EnqueueAutoAssembleResult>('enqueue_auto_assemble', { uid, format });
+}
+
+/** Probe the bundle's clips and report the auto-detected orientation. */
+export function detectBundleFormat(uid: string): Promise<DetectedFormat> {
+  return invoke<DetectedFormat>('detect_bundle_format', { uid });
+}
+
+export interface ClearProcessingResult {
+  processedRows: number;
+  jobRows: number;
+  logRows: number;
+  dirsRemoved: string[];
+}
+
+/** Testing aid — wipe a bundle's regenerable processing outputs
+ *  (auto/processed/transcripts dirs + DB rows) without re-ingesting. */
+export function clearBundleProcessing(uid: string): Promise<ClearProcessingResult> {
+  return invoke<ClearProcessingResult>('clear_bundle_processing', { uid });
 }
 
 export interface MasterCutStatus {

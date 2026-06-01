@@ -456,13 +456,16 @@ pub fn list_bundle_assets<R: Runtime>(
     let workspace = crate::extract::bundle_workspace_dir(
         &crate::bundles::work_root(&handle)?, &uid,
     );
-    let master = workspace.join("auto").join("master.mp4");
+    let title = crate::bundles::fetch_bundle_title(&conn, &uid)?;
+    let master = crate::bundles::resolve_master_cut_path(&workspace, &title);
     if master.exists() {
         let size = fs::metadata(&master).ok().map(|m| m.len() as i64).unwrap_or(0);
+        let label = master.file_name().map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "master.mp4".into());
         out.push(BundleAsset {
             kind: "master".into(),
             path: master.to_string_lossy().to_string(),
-            label: "master.mp4".into(),
+            label,
             size_bytes: size,
             in_zip_path: None,
         });

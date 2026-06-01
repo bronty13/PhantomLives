@@ -1,9 +1,11 @@
-// Phase 6 — Distribute tab. Ships processed bundle artifacts to the
-// user's local Dropbox folder. Two phases per bundle:
+// Phase 6 — Distribute tab. Ships the bundle's assembled master cut to
+// the user's local Dropbox folder. Only the assembled file is copied —
+// the per-clip processed videos, images, and transcripts stay in the
+// workspace (Robert's 2026-06-01 request). Two phases per bundle:
 //
-//   1. Dry-run preview — list every artifact that would be copied,
-//      with status (new / skip / changed / missing) per row. Driven
-//      by the sha256 we recorded on previous copies (idempotent).
+//   1. Dry-run preview — show the master cut that would be copied,
+//      with status (new / skip / changed / missing). Driven by the
+//      sha256 we recorded on previous copies (idempotent).
 //
 //   2. Copy — actually write the files. Skips already-clean ones
 //      (sha unchanged), copies the rest atomically (.sm-dropbox-tmp
@@ -171,8 +173,9 @@ export function DistributeTab({ summary, refreshSignal }: Props) {
 
         {items.length === 0 ? (
           <div className="text-sm" style={{ color: 'rgb(var(--surface-muted))' }}>
-            Nothing to copy yet. Process some media (Edit tab → Step 2) or
-            build a master cut (Edit → Step 3) and come back.
+            Nothing to copy yet. Build the assembled master cut
+            (Edit → Step 3) and come back — only the assembled file is
+            copied to Dropbox.
           </div>
         ) : (
           <ul className="flex flex-col gap-1">

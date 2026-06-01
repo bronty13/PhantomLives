@@ -4,6 +4,92 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] — 2026-06-01
+
+### Added — Per-bundle output format (16:9 horizontal / 9:16 vertical)
+
+Auto-assembly no longer assumes every bundle is landscape. Edit → Step 3
+now carries a **Format** choice (🖥 16:9 Horizontal / 📱 9:16 Vertical);
+the selection is remembered per-bundle (localStorage keyed by uid) and
+passed to `enqueue_auto_assemble`.
+
+- New `enqueue_auto_assemble(uid, format)` parameter. The backend reuses
+  the configured Settings → Auto-Assembly resolution and swaps the
+  long/short edge to match the orientation (e.g. 1920×1080 ↔ 1080×1920)
+  via the new `target_dims` helper — the title card, per-clip normalize,
+  and watermark sizing all follow the chosen dimensions.
+- **`✨ Auto` is the default and detects orientation from the clips.**
+  When the format is `auto` (or unset), the backend probes every clip
+  (`thumbnails::probe_video_dimensions`, folding in each file's
+  `rotation_degrees`) and picks the majority orientation
+  (`detect_orientation`); ties / un-probeable bundles default to
+  landscape. The new `detect_bundle_format` command feeds the Edit tab so
+  the Auto radio shows what it resolved to, e.g. `✨ Auto (9:16)`.
+
+### Added — 🧹 Clear processing (testing reset)
+
+Edit tab gained a **Clear processing** control (and `clear_bundle_processing`
+command) that wipes a bundle's regenerable outputs — the `auto/`,
+`processed/`, and `transcripts/` workspace folders plus the
+`processed_files`, `jobs` (FK-cascades to `job_runs`), and
+`processing_log` rows — so you can re-run the whole Edit pipeline from
+scratch. Imported source/working clips and the bundle row are left
+untouched, so no re-ingest is needed.
+
+### Changed — Consolidated cut is named `<Title>.mp4`, not `master.mp4`
+
+The assembled output now takes the bundle title as its filename
+(`<Title>.mp4`) so the delivered file is self-describing. Title is
+sanitized for the filesystem (`master_cut_basename`) and falls back to
+`master` when empty.
+
+- All reader sites resolve the file via the new
+  `bundles::resolve_master_cut_path`, which prefers the title-named file
+  and **falls back to a legacy `master.mp4`** for cuts assembled before
+  this release — `get/reveal/open_master_cut`, the Content/Custom runner
+  asset list (`list_bundle_assets`), and the Dropbox export
+  (`enumerate_artifacts`) all stay working for old and new bundles.
+
+### Fixed — Persona on the title card now reads with spaces
+
+The 10s title card spells the persona out ("Curse Of Curves") via the
+new `humanize_persona` CamelCase splitter, while the bottom-right video
+**watermark keeps the compact brand form** ("CurseOfCurves"). The split
+is idempotent on text that already has spaces.
+
+### Fixed — Watermark is actually visible now
+
+The per-clip (and per-image) watermark gained a dark contrast outline
+(`draw_text_with_outline`). A plain white watermark — thin PaperDaisy
+strokes at the default 20–25% opacity — washed out over bright video and
+pale photos, so it "couldn't be seen". Every glyph now carries an
+8-direction dark halo whose alpha is derived from (but floored above) the
+user's configured opacity, so the mark reads on any background without
+changing how subtle the user asked it to be. The render-PNG padding grew
+to keep the outline in-frame.
+
+### Fixed — Transcription no longer crashes hunting for ffmpeg
+
+Per-video transcription failed with `ffmpeg not found — installing via
+Homebrew ...` followed by a `brew`-not-found traceback. SideMolly runs
+from `/Applications`, so it inherits the stripped Finder `PATH`
+(`/usr/bin:/bin:/usr/sbin:/sbin`) that omits `/opt/homebrew/bin`. The
+spawned `transcribe.py` couldn't see the installed ffmpeg, fell into its
+`brew install ffmpeg` bootstrap branch, and then crashed because `brew`
+wasn't on `PATH` either. `dispatch_transcribe_video` now injects an
+augmented `PATH` (new `augmented_path` helper prepends the Homebrew bin
+dirs) into the child process, so ffmpeg resolves and the install branch
+is never reached.
+
+### Changed — Copy to Dropbox ships only the assembled file
+
+Distribute → Copy to Dropbox (and its dry-run preview) now copies **only
+the assembled master cut** — not the redundant per-clip processed videos
+(already folded into the master), the processed images, or the transcript
+sidecars. Those still live in the bundle workspace; they're simply no
+longer pushed to Dropbox. `enumerate_artifacts` was trimmed to return just
+the master cut.
+
 ## [0.20.1] — 2026-05-27
 
 ### Fixed — Post-bundle layout reverted to flat, Molly-compatible structure
