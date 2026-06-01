@@ -384,17 +384,31 @@ backup after the migration contains only the encrypted database.
   captured by backups like everything else. Photos are downscaled; **video and
   audio are stored uncompressed**, so a large file noticeably grows the database
   and every launch backup. Arbitrary-file attachments are not yet supported.
-- **Hidden journals are a visibility gate, not separate encryption (today).** A
-  journal marked *hidden* is filtered out of the Timeline, Calendar, Search, and
-  Insights until you unlock it for the session (Touch ID / device password /
-  passphrase). But its entries are stored under the **same single database key**
-  as everything else — they are exactly as encrypted at rest as any other entry,
-  no more and no less, and a full export includes them. A snooper at an *unlocked*
-  Mac who bypasses the app could still read a hidden journal's bytes from the
-  open database. True per-journal cryptographic separation — a journal sealed
-  under its own passphrase-wrapped key, opaque even with the app open — is a
-  planned later phase (Vault; see `SCOPING.md`). Until then, treat "hidden" as
-  "kept out of sight," not "separately encrypted."
+- **Hidden journals are a visibility gate, not separate encryption.** A journal
+  marked *hidden* is filtered out of the Timeline, Calendar, Search, and Insights
+  until you unlock it for the session (Touch ID / device password / passphrase).
+  But its entries are stored under the **same single database key** as everything
+  else — they are exactly as encrypted at rest as any other entry, no more and no
+  less, and a full export includes them. A snooper at an *unlocked* Mac who
+  bypasses the app could still read a hidden journal's bytes from the open
+  database. For genuine per-journal cryptographic separation, use a **Vault**
+  (below). Treat "hidden" as "kept out of sight," not "separately encrypted."
+- **Vault journals are separately encrypted, even with the app open.** A journal
+  made into a *vault* (right-click → Make Vault…) has each entry's **title and
+  body** sealed under a per-journal random 256-bit content key (CK), AES-256-GCM,
+  with a `pdvlt1:` sentinel. CK is wrapped two ways in the `vault_envelopes` table
+  — under a **passphrase-derived KEK** (PBKDF2-HMAC-SHA256, 300k iters, per-journal
+  salt) and under a **KEK derived from the 24-word recovery key** — so a forgotten
+  passphrase isn't permanent lockout. CK lives only in an in-memory session map
+  while unlocked; it is dropped on app-lock (⌘L), on relaunch, and on **Lock Vault
+  Now**. Consequences that strengthen the model: a locked vault's entries are
+  ciphertext on disk *and* in the open database (a snooper at an unlocked Mac who
+  bypasses the app sees only ciphertext), are gated out of all views, and are
+  **skipped by export** (only unlocked vaults emit plaintext). Creating a vault
+  verifies *both* wraps round-trip back to CK before any entry is sealed
+  (all-or-nothing). **Scope (v1): titles and bodies are sealed; attachment bytes
+  are not yet** — they remain under the single database DEK like other media. The
+  recovery key is a master key for vaults too: anyone holding it can open them.
 - **Keychain ACL trust boundary.** The DEK uses `kSecAttrAccessibleWhenUnlocked`
   and is not gated behind Touch ID at the Keychain level (app-lock is a separate
   gate). A user-level attacker on a running, unlocked Mac can reach the DEK

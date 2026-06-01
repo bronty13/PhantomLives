@@ -12,6 +12,12 @@ struct SidebarView: View {
     @State private var renameText = ""
     @State private var deleting: Journal?
 
+    // Vault flows (Phase 9)
+    @State private var makingVault: Journal?
+    @State private var unlockingVault: Journal?
+    @State private var changingPassphrase: Journal?
+    @State private var removingVault: Journal?
+
     /// Preset colors offered when recoloring a journal.
     private let presetColors = ["#7C5CFF", "#3FA9F5", "#3FB950", "#E8A93B", "#F08C2E", "#D14B5C", "#888888"]
 
@@ -71,6 +77,22 @@ struct SidebarView: View {
             } else {
                 Text("This journal has no entries.")
             }
+        }
+        .sheet(item: $makingVault) { j in MakeVaultSheet(journal: j).environmentObject(appState) }
+        .sheet(item: $unlockingVault) { j in VaultUnlockSheet(journal: j).environmentObject(appState) }
+        .sheet(item: $changingPassphrase) { j in ChangeVaultPassphraseSheet(journal: j).environmentObject(appState) }
+        .confirmationDialog(
+            removingVault.map { "Remove vault from “\($0.name)”?" } ?? "Remove vault?",
+            isPresented: Binding(get: { removingVault != nil }, set: { if !$0 { removingVault = nil } }),
+            titleVisibility: .visible,
+            presenting: removingVault
+        ) { journal in
+            Button("Decrypt & Remove Vault", role: .destructive) {
+                try? appState.removeVault(journalId: journal.id)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("This decrypts every entry back to normal storage (still encrypted at rest by the database, but no longer sealed behind this passphrase). The vault must be unlocked to do this.")
         }
     }
 
@@ -152,6 +174,7 @@ struct SidebarView: View {
         let isSelected = appState.selectedJournalId == nil
         let total = appState.journals
             .filter { !$0.isHidden || appState.unlockedHiddenJournalIds.contains($0.id) }
+            .filter { !$0.isVault || appState.isVaultUnlocked($0.id) }
             .reduce(0) { $0 + (appState.entryCountByJournal[$1.id] ?? 0) }
         return Button {
             appState.selectedJournalId = nil
@@ -165,10 +188,15 @@ struct SidebarView: View {
     }
 
     private func journalRow(_ journal: Journal) -> some View {
-        let locked = journal.isHidden && !appState.unlockedHiddenJournalIds.contains(journal.id)
+        let lockedVault = journal.isVault && !appState.isVaultUnlocked(journal.id)
+        let lockedHidden = journal.isHidden && !appState.unlockedHiddenJournalIds.contains(journal.id)
+        let locked = lockedVault || lockedHidden
         let isSelected = appState.selectedJournalId == journal.id
         return Button {
-            if locked {
+            if lockedVault {
+                // A vault needs its passphrase, not just Touch ID.
+                unlockingVault = journal
+            } else if lockedHidden {
                 Task { await appState.unlockHiddenJournal(journal.id)
                        if appState.unlockedHiddenJournalIds.contains(journal.id) {
                            appState.selectedJournalId = journal.id
@@ -181,7 +209,9 @@ struct SidebarView: View {
                             color: Color(hex: journal.colorHex) ?? .purple,
                             name: journal.name,
                             count: appState.entryCountByJournal[journal.id] ?? 0,
-                            locked: locked, isSelected: isSelected)
+                            locked: locked,
+                            lockSymbol: lockedVault ? "lock.shield.fill" : "lock.fill",
+                            isSelected: isSelected)
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 6)
@@ -189,9 +219,10 @@ struct SidebarView: View {
     }
 
     private func journalRowLabel(symbol: String, color: Color, name: String,
-                                 count: Int, locked: Bool, isSelected: Bool) -> some View {
+                                 count: Int, locked: Bool, lockSymbol: String = "lock.fill",
+                                 isSelected: Bool) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: locked ? "lock.fill" : symbol)
+            Image(systemName: locked ? lockSymbol : symbol)
                 .frame(width: 18)
                 .foregroundStyle(locked ? .secondary : color)
             Text(name)
@@ -230,6 +261,18 @@ struct SidebarView: View {
         Button(journal.isHidden ? "Show in Timeline & Search" : "Hide (lock out of Timeline & Search)") {
             try? appState.setJournalHidden(!journal.isHidden, journalId: journal.id)
         }
+
+        Divider()
+        if !journal.isVault {
+            Button { makingVault = journal } label: { Label("Make Vault…", systemImage: "lock.shield") }
+        } else if appState.isVaultUnlocked(journal.id) {
+            Button { appState.lockVault(journalId: journal.id) } label: { Label("Lock Vault Now", systemImage: "lock.fill") }
+            Button { changingPassphrase = journal } label: { Text("Change Vault Passphrase…") }
+            Button(role: .destructive) { removingVault = journal } label: { Text("Remove Vault…") }
+        } else {
+            Button { unlockingVault = journal } label: { Label("Unlock Vault…", systemImage: "lock.open") }
+        }
+
         if !journal.isDefault {
             Divider()
             Button(role: .destructive) { deleting = journal } label: { Text("Delete Journal…") }

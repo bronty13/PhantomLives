@@ -64,11 +64,41 @@ the sidebar. Click the locked journal and authenticate (Touch ID, your device
 password, or your passphrase) to reveal it **for this session** — it locks itself
 again when you relaunch PurpleDiary.
 
-> Note: at this stage "hidden" means *hidden from view*. The entries are still
-> stored with the same strong encryption as the rest of your journal (and a full
-> export still includes them) — they're just kept out of sight behind your
-> unlock. A future update will add an optional vault mode that keeps a journal
-> encrypted under its own separate passphrase even while the app is open.
+> Note: "hidden" means *hidden from view*. The entries are still stored with the
+> same strong encryption as the rest of your journal — they're just kept out of
+> sight behind your unlock. For a stronger guarantee, turn the journal into a
+> **Vault** (below).
+
+### Vault journals (sealed under their own passphrase)
+
+A **Vault** is the strongest privacy option. The titles and text of every entry
+in a vault journal are sealed under a passphrase that's *yours alone* — they stay
+encrypted **even while PurpleDiary is open**, until you type that passphrase for
+the session. (A hidden journal is only filtered from view; a vault's entries are
+genuine ciphertext on disk.)
+
+**Make a journal a vault:** right-click it → **Make Vault…**. You'll set a
+passphrase and paste your 24-word recovery key. PurpleDiary then seals every
+existing entry in that journal. The recovery key matters: if you ever forget the
+passphrase, it's the only other way in — so a forgotten passphrase is never a
+permanent lockout. (For the same reason, **anyone with your recovery key can open
+your vaults** — guard it like a seed phrase.)
+
+**Day to day:** a locked vault shows a 🛡️ lock in the sidebar. Click it and enter
+the passphrase to unlock it **for this session** — it re-seals automatically when
+you relaunch PurpleDiary or lock the app (⌘L). While locked, a vault's entries are
+left out of the Timeline, Calendar, Search, Insights — **and out of exports**, so
+a sealed journal never leaks into a backup file you share.
+
+From a vault's right-click menu you can also **Lock Vault Now**, **Change Vault
+Passphrase…**, or **Remove Vault…** (which decrypts its entries back to normal
+storage — still encrypted at rest like everything else, just no longer behind the
+separate passphrase). Forgot the passphrase? Click the vault and choose **Forgot
+passphrase?** to unlock with your 24-word recovery key instead.
+
+> Everything here is offline. There is no cloud, no server, and no way to reset a
+> vault passphrase from outside — the passphrase and recovery key never leave your
+> Mac, and PurpleDiary stores neither in readable form.
 
 ## Reflecting
 
@@ -190,6 +220,11 @@ folder in Settings → General → Export), named
 `PurpleDiary-Journal-<date-time>.<format>`. After an export, tap **Reveal in
 Finder** to jump straight to the file. Everything stays on your Mac — exporting
 just writes a file; nothing is uploaded anywhere.
+
+> **Vaults and exports:** a locked vault journal is skipped entirely — its sealed
+> entries never appear in an export. Unlock a vault first if you want its entries
+> included (they'll be written as normal readable text in the file, so only export
+> a vault to somewhere you trust).
 
 ## Importing from another app
 

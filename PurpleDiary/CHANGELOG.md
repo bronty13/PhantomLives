@@ -2,6 +2,37 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Phase 9: Vault (create / unlock / manage)
+
+### Added
+- **Vault journals — the feature is now usable.** Right-click a journal →
+  **Make Vault…** to seal its entries' titles and bodies under a passphrase of
+  your own. The flow takes a passphrase (with confirm) and your 24-word recovery
+  key, verifies it's really your recovery key, then seals every existing entry.
+  Even with PurpleDiary open, a vault's entries are ciphertext on disk until you
+  unlock it for the session.
+- **Unlock / lock from the sidebar.** A locked vault shows a 🛡️ lock glyph;
+  clicking it opens a passphrase prompt (with a **Forgot passphrase?** → 24-word
+  recovery key path). The context menu adds **Lock Vault Now**, **Change Vault
+  Passphrase…**, and **Remove Vault…** (decrypt-in-place back to normal storage).
+- **App-lock re-seals vaults.** Locking the app (⌘L / losing focus) now drops all
+  vault session keys and session-unlocked hidden journals, so unlocking the app
+  doesn't silently reveal a vault.
+- **All-or-nothing creation guardrail.** `createVault` verifies both the
+  passphrase wrap *and* the recovery wrap unwrap back to the content key before
+  persisting the envelope or sealing any entry — a vault you can't reopen is never
+  created.
+- **+6 tests** (`VaultManagementTests`): create leaves it unlocked + openable both
+  ways, make-vault seals existing entries, change-passphrase re-wraps only the
+  passphrase side (recovery untouched) + requires unlocked, remove-vault decrypts
+  in place + requires unlocked → **148**.
+
+### Changed
+- **Docs:** `USER_MANUAL.md` gains a "Vault journals" section + an export note;
+  `Docs/SECURITY.md` documents the vault threat model (per-journal CK, dual-wrap,
+  session-only key, export/visibility gating, v1 seals title+body not attachments)
+  and downgrades the "hidden = visibility only" caveat to point at vaults.
+
 ## [Unreleased] — Phase 9: Vault (transparent sealing data path)
 
 ### Added (internal — still no UI; foundation for the create/unlock flows)

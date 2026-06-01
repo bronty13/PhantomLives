@@ -127,7 +127,7 @@ encrypted install at launch. The frozen set is asserted by
 | `v3_attachments` | `attachments` (photo/video/audio BLOBs + thumbnail, cascade with entry) |
 | `v4_journals` | `journals` (+ seeded default journal `Journal.defaultId`); adds NOT NULL `entries.journal_id` (existing rows back-fill to default via the column DEFAULT) + index. Hidden = app-level visibility only. |
 | `v5_templates` | `templates` (reusable entry scaffolds; two starter templates seeded on first run by `seedDefaultTemplatesIfEmpty`). |
-| `v6_vault` | `journals.is_vault` + `vault_envelopes` (per-journal content key wrapped under passphrase **and** 24-word recovery key). Phase-9 vault crypto foundation. Transparent sealing data path now wired (`DatabaseService` seals title+body on write / unseals on read for unlocked vaults; locked vaults gated from `visibleEntries` + export); Make-Vault/unlock UI not wired yet. |
+| `v6_vault` | `journals.is_vault` + `vault_envelopes` (per-journal content key wrapped under passphrase **and** 24-word recovery key). Phase-9 vault crypto foundation. Transparent sealing data path wired (`DatabaseService` seals title+body on write / unseals on read for unlocked vaults; locked vaults gated from `visibleEntries` + export). Make-Vault / unlock / change-passphrase / remove UI shipped in the sidebar; app-lock re-seals vaults. v1 seals title+body (attachment bytes are the documented fast-follow). |
 
 To change shipped schema/data: **add a new migration**, never edit an existing
 one. Append its id to the frozen-set test deliberately.
@@ -194,7 +194,7 @@ feature, keep it offline.
   ever added.) See the repo memory `reference-macos-photokit-tcc-entitlement`.
 - **Migrations immutable** (§4). **SQLCipher link order** (§5).
 
-## 8. Tests (`Tests/PurpleDiaryTests/`, 142 total)
+## 8. Tests (`Tests/PurpleDiaryTests/`, 148 total)
 
 Migration round-trip + cascades + frozen-set guard; model Codable + word count +
 `TrackerKind` formatting; `SearchService` ranking; `BackupService`
@@ -214,8 +214,10 @@ render + `Template` CRUD/seed; `CalendarHeatmap` level/opacity buckets +
 `NotificationService` reminder time-clamp/body; **vault crypto core**
 (`VaultService` dual-wrap envelope, seal/unseal, session keys) and the **vault
 data path** (`DatabaseService` seal-on-write/unseal-on-read, refuse-write-to-locked,
-vault-aware moves, `sealEntries` convert + the locked-vault `entryIsVisible`
-gate). PhotoKit live import,
+vault-aware moves, `sealEntries`/`unsealEntries` convert + the locked-vault
+`entryIsVisible` gate) and **vault management** (`createVault` dual-wrap
+verification guardrail, `changePassphrase` re-wrap, `removeVault` decrypt-in-place,
+each with locked-state guards). PhotoKit live import,
 video poster decoding, and AVKit playback are verified by hand (no headless TCC
 / no AVFoundation media fixture).
 
@@ -234,7 +236,7 @@ Sources/PurpleDiary/
 └── Views/    ContentView (HStack sidebar) + DetailRouterView, SidebarView, TimelineView,
               EntryEditorView, CalendarView, OnThisDayView, InsightsView, SearchView, PeopleView,
               TagsView, TrackersView, PhotoImportView, AttachmentViewerSheet, ExportSheet,
-              TemplatesSheet, ImportSheet, AppLockScreen, RecoveryScreen, RecoveryKeySaveSheet, SecurityDocView, Settings/, Shared/
+              TemplatesSheet, ImportSheet, VaultSheets (Make/Unlock/ChangePassphrase), AppLockScreen, RecoveryScreen, RecoveryKeySaveSheet, SecurityDocView, Settings/, Shared/
 Vendor/       GRDB.swift + SQLCipher 4.6.1 (local SwiftPM packages)
 Resources/Prompts.json   Bundled writing-prompt library (Phase 4)
 Docs/SECURITY.md   Security & Privacy whitepaper (also rendered in-app via Help)

@@ -370,6 +370,71 @@ final class AppState: ObservableObject {
         reloadEntries()
     }
 
+    // MARK: - Vault (Phase 9)
+
+    func isVaultUnlocked(_ journalId: String) -> Bool { VaultService.isUnlocked(journalId) }
+
+    /// True if `phrase` is this install's master recovery phrase — gates the
+    /// Make-Vault flow so a vault's content key is only ever wrapped under a
+    /// phrase the user can actually reproduce.
+    func verifyMasterRecoveryPhrase(_ phrase: String) -> Bool {
+        keyStore.verifyRecoveryPhrase(phrase)
+    }
+
+    /// Convert a journal into a vault: create + verify the dual-wrapped envelope,
+    /// flag the journal, then seal its existing entries. The flag is set *before*
+    /// sealing so a mid-way failure leaves readable plaintext-in-a-vault (which
+    /// the next edit / a re-run re-seals) rather than orphaned ciphertext.
+    func makeVault(journalId: String, passphrase: String, recoveryWords: [String]) throws {
+        let ck = try VaultService.createVault(journalId: journalId, passphrase: passphrase,
+                                              recoveryWords: recoveryWords)
+        try DatabaseService.shared.setJournalVault(true, journalId: journalId)
+        try DatabaseService.shared.sealEntries(inJournal: journalId, using: ck)
+        reloadJournals()
+        reloadEntries()
+    }
+
+    /// Unlock a vault for the session via its passphrase. On success the journal
+    /// and its entries become visible again.
+    @discardableResult
+    func unlockVault(journalId: String, passphrase: String) -> Bool {
+        let ok = VaultService.unlock(journalId: journalId, passphrase: passphrase)
+        if ok { reloadEntries() }
+        return ok
+    }
+
+    /// Unlock a vault via the 24-word recovery key (forgot-passphrase path).
+    @discardableResult
+    func unlockVault(journalId: String, recoveryWords: [String]) -> Bool {
+        let ok = VaultService.unlock(journalId: journalId, recoveryWords: recoveryWords)
+        if ok { reloadEntries() }
+        return ok
+    }
+
+    /// Re-lock a vault: drop its session key and re-gate it. Clears the filter
+    /// selection if it pointed at this journal.
+    func lockVault(journalId: String) {
+        VaultService.lock(journalId)
+        if selectedJournalId == journalId { selectedJournalId = nil }
+        reloadEntries()
+    }
+
+    func changeVaultPassphrase(journalId: String, newPassphrase: String) throws {
+        try VaultService.changePassphrase(journalId: journalId, newPassphrase: newPassphrase)
+    }
+
+    /// Remove a vault: decrypt its entries back to plaintext, drop the flag and
+    /// the envelope. Requires the vault to be unlocked (key in the session).
+    func removeVault(journalId: String) throws {
+        guard let ck = VaultService.key(for: journalId) else { throw VaultService.VaultError.locked }
+        try DatabaseService.shared.unsealEntries(inJournal: journalId, using: ck)
+        try DatabaseService.shared.setJournalVault(false, journalId: journalId)
+        try DatabaseService.shared.deleteVaultEnvelope(journalId: journalId)
+        VaultService.lock(journalId)
+        reloadJournals()
+        reloadEntries()
+    }
+
     /// Unlock a hidden journal for this session via the app-lock gate (Touch ID /
     /// device password / passphrase). On success the journal becomes selectable
     /// and its entries appear. No-op for non-hidden journals.
@@ -646,9 +711,12 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Lock the application: wipe the in-memory DEK when a passphrase is set
-    /// (so a memory snapshot can't reveal it) and show the lock screen.
+    /// Lock the application: drop every vault session key (so the lock screen
+    /// truly re-seals vaults), wipe the in-memory DEK when a passphrase is set
+    /// (so a memory snapshot can't reveal it), and show the lock screen.
     func lockApp() {
+        VaultService.lockAll()
+        unlockedHiddenJournalIds.removeAll()
         if keyStore.hasPassphrase { _ = keyStore.lock() }
         appLocked = true
     }

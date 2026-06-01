@@ -684,6 +684,31 @@ final class DatabaseService {
         return e
     }
 
+    func deleteVaultEnvelope(journalId: String) throws {
+        try dbPool.write { db in _ = try VaultEnvelope.deleteOne(db, key: journalId) }
+    }
+
+    /// Reverse of `sealEntries`: decrypt a journal's sealed entries back to
+    /// plaintext under `key` — the data-layer step of *removing* a vault. Rows
+    /// not sealed are skipped (idempotent). Crypto runs on the main actor here,
+    /// before the write closure.
+    func unsealEntries(inJournal journalId: String, using key: SymmetricKey) throws {
+        let rows = try dbPool.read { db in
+            try Entry.filter(Column("journal_id") == journalId).fetchAll(db)
+        }
+        let plain: [Entry] = rows.compactMap { e in
+            guard VaultService.isSealed(e.title) || VaultService.isSealed(e.bodyMarkdown) else { return nil }
+            var m = e
+            if let t = VaultService.unseal(e.title, key: key) { m.title = t }
+            if let b = VaultService.unseal(e.bodyMarkdown, key: key) { m.bodyMarkdown = b }
+            return m
+        }
+        guard !plain.isEmpty else { return }
+        try dbPool.write { db in
+            for e in plain { try e.update(db) }
+        }
+    }
+
     /// Seal every not-yet-sealed entry in a journal under `key` — the data-layer
     /// step of converting an existing journal into a vault. Reads each row's
     /// current plaintext and rewrites it sealed in one transaction; rows already

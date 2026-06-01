@@ -43,6 +43,26 @@ enum VaultService {
     /// plaintext (e.g. a journal that isn't a vault, or pre-seal rows).
     static let sentinel = "pdvlt1:"
 
+    enum VaultError: Error, LocalizedError {
+        /// A dual-wrap failed to round-trip back to the content key before any
+        /// entry was sealed — we refuse to create a vault we couldn't reopen.
+        case wrapVerificationFailed
+        /// An operation needs the vault unlocked (content key in the session).
+        case locked
+        /// No envelope on disk for this journal.
+        case noEnvelope
+        var errorDescription: String? {
+            switch self {
+            case .wrapVerificationFailed:
+                return "Could not verify the vault key wraps. The vault was not created and nothing was sealed."
+            case .locked:
+                return "The vault is locked. Unlock it first."
+            case .noEnvelope:
+                return "This journal has no vault envelope."
+            }
+        }
+    }
+
     // MARK: - Session keys (in-memory only; cleared on relaunch / app-lock)
 
     private static var sessionKeys: [String: SymmetricKey] = [:]
@@ -118,6 +138,40 @@ enum VaultService {
     }
     static func loadEnvelope(journalId: String) throws -> VaultEnvelope? {
         try DatabaseService.shared.vaultEnvelope(journalId: journalId)
+    }
+
+    /// Create a vault for `journalId`: mint a content key, dual-wrap it
+    /// (passphrase + recovery), **verify both wraps round-trip back to the same
+    /// key before anything is persisted** (the all-or-nothing guardrail — a
+    /// vault entry must be openable by passphrase *or* recovery before any
+    /// encrypting write commits), save the envelope, and hold the key in the
+    /// session. Returns the content key so the caller can seal existing entries.
+    @discardableResult
+    static func createVault(journalId: String, passphrase: String, recoveryWords: [String]) throws -> SymmetricKey {
+        let (ck, env) = try makeEnvelope(journalId: journalId, passphrase: passphrase, recoveryWords: recoveryWords)
+        let ckRaw = ck.withUnsafeBytes { Data($0) }
+        guard let viaPass = unwrap(env, passphrase: passphrase),
+              viaPass.withUnsafeBytes({ Data($0) }) == ckRaw,
+              let viaRec = unwrap(env, recoveryWords: recoveryWords),
+              viaRec.withUnsafeBytes({ Data($0) }) == ckRaw
+        else { throw VaultError.wrapVerificationFailed }
+        try saveEnvelope(env)
+        sessionKeys[journalId] = ck
+        return ck
+    }
+
+    /// Re-wrap the content key under a new passphrase, keeping the recovery wrap
+    /// intact. Requires the vault to be unlocked (content key in the session).
+    static func changePassphrase(journalId: String, newPassphrase: String) throws {
+        guard let ck = sessionKeys[journalId] else { throw VaultError.locked }
+        guard var env = (try? loadEnvelope(journalId: journalId)) ?? nil else { throw VaultError.noEnvelope }
+        let ckData = ck.withUnsafeBytes { Data($0) }
+        let salt = Crypto.randomBytes(16)
+        let kek = try Crypto.deriveKey(passphrase: newPassphrase, salt: salt, iterations: iterations)
+        env.passSalt = salt
+        env.passIters = iterations
+        env.passWrap = try Crypto.encrypt(ckData, using: kek)
+        try saveEnvelope(env)
     }
 
     /// Unlock a vault for the session via passphrase; true on success.
