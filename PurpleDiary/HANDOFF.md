@@ -155,11 +155,23 @@ symbols bind to SQLCipher, not system libsqlite3). `project.yml` lists
   passphrase via `BiometricAuthService`), lock-on-launch + lock-on-background,
   ⌘L. `RecoveryScreen` handles the key-lost case (enter recovery key / reset →
   old data quarantined, not deleted).
+- **Vaults (Phase 9, on top of the DEK)**: a journal flagged `is_vault` has each
+  entry's title, body, **and attachment blobs** sealed under a per-journal content
+  key (`VaultService`, `pdvlt1:` sentinel). CK is dual-wrapped in `vault_envelopes`
+  under a passphrase **and** a fresh 24-word recovery key generated *for that
+  vault* at creation (shown once: copy / save-to-file). CK is session-only,
+  dropped on ⌘L. `DatabaseService` seals on write / unseals on read only when
+  unlocked; locked vaults are gated from `visibleEntries` + export.
+  `MakeVaultSheet` / `VaultUnlockSheet` / `ChangeVaultPassphraseSheet` drive it
+  from the sidebar; both recovery fields accept a clean line / numbered list / a
+  pasted-or-**Read-from-file** saved key via `RecoveryKey.candidatePhrases`.
 
 Files: `Crypto`, `KeyStore`, `KeychainStore`, `RecoveryKey`, `BIP39Wordlist`,
-`BootState`, `BiometricAuthService`, `DatabaseService` (the SQLCipher wiring +
-`migratePlaintextToSQLCipher`). Photos attachments are BLOBs inside the
-encrypted DB, so they inherit encryption-at-rest with no extra crypto.
+`BootState`, `BiometricAuthService`, `VaultService`, `DatabaseService` (the
+SQLCipher wiring + `migratePlaintextToSQLCipher` + vault seal/unseal). Non-vault
+photo attachments are BLOBs inside the encrypted DB, so they inherit
+encryption-at-rest with no extra crypto; vault attachments are additionally
+CK-sealed.
 
 ## 6. No network — a hard constraint
 
@@ -194,11 +206,13 @@ feature, keep it offline.
   ever added.) See the repo memory `reference-macos-photokit-tcc-entitlement`.
 - **Migrations immutable** (§4). **SQLCipher link order** (§5).
 
-## 8. Tests (`Tests/PurpleDiaryTests/`, 152 total)
+## 8. Tests (`Tests/PurpleDiaryTests/`, 156 total)
 
 Migration round-trip + cascades + frozen-set guard; model Codable + word count +
 `TrackerKind` formatting; `SearchService` ranking; `BackupService`
-debounce/retention/verify; crypto (AES-GCM, PBKDF2), BIP39 recovery,
+debounce/retention/verify; crypto (AES-GCM, PBKDF2), BIP39 recovery
+(+ `candidatePhrases` paste-back extraction from a clean line / numbered list /
+full saved-file-with-prose / garbage-rejected),
 `KeyStore` unlock round-trips, SQLCipher at-rest (ciphertext on disk, wrong-key
 rejection, plaintext→cipher migration); `StatsService` (totals/streaks/tracker
 series); `ExportService` render paths (MD/HTML/JSON incl. escaping + schema v4);

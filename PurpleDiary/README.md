@@ -13,8 +13,10 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
 > hidden). Phase 4 shipped: **reflection** (On This Day + writing prompts).
 > Phase 5 shipped: **templates**. Phase 6 shipped: **calendar heatmap + daily
 > reminder**. Phase 7 shipped: **PDF & file attachments**. Phase 8 shipped:
-> **importers** (PurpleDiary / Day One / Journey / Diarium JSON). Phase 9 (a
-> per-journal encryption **vault**) is roadmapped in SCOPING.md.
+> **importers** (PurpleDiary / Day One / Journey / Diarium JSON). Phase 9 shipped:
+> per-journal encryption **vaults** — a journal's entry titles, bodies, and
+> attachment bytes sealed under their own passphrase, ciphertext even with the app
+> open.
 > Network-based auto-context (e.g. WeatherKit) is **out of scope** — PurpleDiary
 > stays fully offline. See SCOPING.md / HANDOFF.md.
 
@@ -28,6 +30,12 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
   Journals** or focus a single one from the sidebar. Mark a journal **Hidden** to
   lock it out of the Timeline, Calendar, Search, and Insights until you unlock it
   (Touch ID / passphrase) for the session. *(Phase 3)*
+- **Vaults** — turn a journal into a **vault** (right-click → Make Vault…) to seal
+  its entries' titles, bodies, and attached media under their own passphrase —
+  ciphertext on disk even while the app is open, until you unlock it for the
+  session. Each vault gets its own generated 24-word recovery key (copy / save to
+  file) so a forgotten passphrase isn't permanent lockout; locked vaults are
+  skipped by search and export. *(Phase 9)*
 - **Mood** — 0–5 star rating per entry.
 - **Tags** — named, colored, toggleable per entry; six seeded on first launch.
 - **People** — a global list of recurring people you can link to entries.
@@ -65,8 +73,9 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
 - **Export** — save the whole journal as **Markdown**, **HTML**, **PDF**, or
   **JSON** from File → Export Journal… (⇧⌘E) or Settings → General. Entries are
   grouped by month; files land in `~/Downloads/PurpleDiary/`. JSON is a
-  versioned, round-trippable dump (now schema v3, including trackers and
-  per-entry photo counts) for backup/re-import. *(Phase 2)*
+  versioned, round-trippable dump (schema v4, including journals, trackers, and
+  per-entry photo counts) for backup/re-import. Locked vaults are skipped.
+  *(Phase 2)*
 - **Auto-backup at every launch** — zips the support directory to
   `~/Downloads/PurpleDiary backup/` with 14-day retention; verify and restore
   from Settings → Backup. (PhantomLives convention.)
@@ -78,6 +87,10 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
   lock-on-launch, lock-on-background, ⌘L. Configured in Settings → Security.
 - **24-word recovery key** — BIP39 phrase shown on first launch; unlocks the DB
   if the Keychain entry is ever lost. No cloud involved.
+- **Per-journal vaults** — seal a journal's entry titles, bodies, and attachment
+  bytes under a per-journal content key (AES-256-GCM), dual-wrapped under a
+  passphrase and a generated 24-word recovery key. Ciphertext even with the app
+  and DB open; the key is session-only and dropped on ⌘L. *(Phase 9)*
 - **Security & Privacy whitepaper** — a full trust document
   ([`Docs/SECURITY.md`](Docs/SECURITY.md)) readable in-app via **Help → Security
   & Privacy whitepaper…**. Covers the encryption-at-rest design, the recovery
@@ -116,8 +129,10 @@ AES-GCM crypto, BIP39 recovery-key encode/decode/checksum, KeyStore
 passphrase/recovery unlock round-trips, SQLCipher at-rest (ciphertext on disk,
 wrong-key rejection, plaintext→SQLCipher migration), the sample-data facility,
 the Insights stats aggregation (including tracker series), tracker + attachment
-migrations / cascade / Codable, image downscaling + thumbnailing, and the
-Markdown/HTML/JSON export render paths.
+migrations / cascade / Codable, image downscaling + thumbnailing, the
+Markdown/HTML/JSON export render paths, and the **vault** (dual-wrap envelope,
+seal/unseal of entry text + attachment blobs, locked-vault gating, create /
+change-passphrase / remove, and recovery-key paste-back extraction).
 
 ## Encryption & dependencies
 
