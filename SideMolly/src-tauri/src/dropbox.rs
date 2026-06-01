@@ -234,7 +234,7 @@ struct BundleResolution {
 
 fn resolve_bundle(conn: &Connection, uid: &str) -> Result<BundleResolution, BundleError> {
     conn.query_row(
-        "SELECT uid, COALESCE(title, ''), persona_code, ingested_at
+        "SELECT uid, COALESCE(NULLIF(title_override,''), title, ''), persona_code, ingested_at
            FROM bundles WHERE uid = ?1",
         params![uid],
         |r| Ok(BundleResolution {

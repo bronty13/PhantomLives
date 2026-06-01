@@ -42,7 +42,12 @@ export interface BundleSummary {
   uid: string;
   bundleType: 'content' | 'custom' | 'fansite' | 'youtube';
   personaCode: string | null;
+  /** Effective title — the working override when set, else the original. */
   title: string;
+  /** Molly's original manifest title (always preserved). */
+  originalTitle: string;
+  /** Raw working override ("" = none). */
+  titleOverride: string;
   ingestedAt: string;
   verifyStatus: 'pending' | 'verified' | 'failed';
   bundleState: 'new' | 'in_progress' | 'shipped' | 'archived';
@@ -294,6 +299,28 @@ export function setBundleFileRotation(
   degrees: 0 | 90 | 180 | 270,
 ): Promise<void> {
   return invoke('set_bundle_file_rotation', { uid, inZipPath, degrees });
+}
+
+export interface RotationUpdate {
+  inZipPath: string;
+  rotationDegrees: number;
+}
+
+/** Batch-advance the rotation of the listed files by `deltaDegrees`
+ *  (default +90 CW), wrapping per file. Returns the new absolute rotation
+ *  for each so the UI can update without a refetch. */
+export function rotateBundleFiles(
+  uid: string,
+  inZipPaths: string[],
+  deltaDegrees = 90,
+): Promise<RotationUpdate[]> {
+  return invoke<RotationUpdate[]>('rotate_bundle_files', { uid, inZipPaths, deltaDegrees });
+}
+
+/** Set ("" clears) a bundle's working-title override. Returns the refreshed
+ *  detail so the caller can update display + the master-cut card. */
+export function setBundleTitleOverride(uid: string, title: string): Promise<BundleDetail> {
+  return invoke<BundleDetail>('set_bundle_title_override', { uid, title });
 }
 
 // ----- Phase 4.5 auto-assembly -----

@@ -89,6 +89,11 @@ pub struct Report {
     pub persona_code: Option<String>,
     pub report_composed_at: String,   // RFC3339 UTC
     pub bundle_state: String,
+    /// Molly's original manifest title.
+    pub original_title: String,
+    /// The title actually used for processing/output — equals
+    /// `original_title` unless SideMolly set a working override.
+    pub working_title: String,
     pub targets: Vec<ReportTarget>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bundle_level_notes: Option<String>,
@@ -137,7 +142,16 @@ pub fn compose_post_bundle<R: Runtime>(
     let report = build_report(&conn, &uid)?;
     let report_json = serde_json::to_string_pretty(&report)
         .map_err(|e| BundleError::Io(std::io::Error::other(format!("report serialize: {e}"))))?;
-    let notes_md = "".to_string();  // Phase 11 ships empty; UI can populate later.
+    // Human-readable notes. Records a working-title change when one was
+    // made (report.json carries the structured originalTitle/workingTitle).
+    let notes_md = if report.working_title != report.original_title {
+        format!(
+            "Title changed for processing: \"{}\" → \"{}\".\n",
+            report.original_title, report.working_title,
+        )
+    } else {
+        String::new()
+    };
 
     // Posting log (Phase 13) — the append-only audit trail, oldest-first
     // for a stable, diff-friendly file. Carried back so Molly can
@@ -484,14 +498,20 @@ fn open_conn<R: Runtime>(handle: &AppHandle<R>) -> Result<Connection, BundleErro
 }
 
 fn build_report(conn: &Connection, uid: &str) -> Result<Report, BundleError> {
-    let row: Option<(String, Option<String>, String)> = conn.query_row(
-        "SELECT bundle_type, persona_code, bundle_state
+    let row: Option<(String, Option<String>, String, String, String)> = conn.query_row(
+        "SELECT bundle_type, persona_code, bundle_state,
+                COALESCE(title, ''), COALESCE(title_override, '')
            FROM bundles WHERE uid = ?1",
         params![uid],
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
     ).optional()?;
-    let (bundle_type, persona_code, bundle_state) = row
+    let (bundle_type, persona_code, bundle_state, original_title, title_override) = row
         .ok_or_else(|| BundleError::NotFound(format!("bundle {uid}")))?;
+    let working_title = if title_override.trim().is_empty() {
+        original_title.clone()
+    } else {
+        title_override
+    };
 
     let mut stmt = conn.prepare(
         "SELECT pt.name, pt.name, bp.state, bp.posted_at, bp.posted_url,
@@ -534,6 +554,8 @@ fn build_report(conn: &Connection, uid: &str) -> Result<Report, BundleError> {
         persona_code,
         report_composed_at: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
         bundle_state,
+        original_title,
+        working_title,
         targets,
         bundle_level_notes: None,
     })
@@ -604,6 +626,8 @@ mod tests {
             persona_code: Some("CoC".into()),
             report_composed_at: "2026-05-25T18:42:00Z".into(),
             bundle_state: "shipped".into(),
+            original_title: "Original".into(),
+            working_title: "Original".into(),
             targets: vec![ReportTarget {
                 target_id: "c4s".into(),
                 target_name: "Clips4Sale".into(),

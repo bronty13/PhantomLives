@@ -327,7 +327,8 @@ pub fn enqueue_auto_assemble<R: Runtime>(
     // Pull bundle persona + title + type. Title feeds the title-card text;
     // bundle_type decides the YouTube intro/outro assembly variant below.
     let (title, persona_code, bundle_type): (String, Option<String>, String) = conn.query_row(
-        "SELECT COALESCE(title, ''), persona_code, bundle_type FROM bundles WHERE uid = ?1",
+        "SELECT COALESCE(NULLIF(title_override,''), title, ''), persona_code, bundle_type
+           FROM bundles WHERE uid = ?1",
         params![uid],
         |r| Ok((
             r.get::<_, String>(0)?,

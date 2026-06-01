@@ -4,6 +4,34 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.0] — 2026-06-01
+
+### Added — Multi-select rotation (Edit → Step 1)
+
+Rotation is no longer one clip at a time. Tick a checkbox on any clips and use
+**Rotate selected** (or **Rotate all**) to turn them 90° CW per press — each clip
+rotates from its own current angle, so a mixed selection stays independent.
+Single-tile click still cycles 0→90→180→270 as before. New batch command
+`rotate_bundle_files(uid, in_zip_paths, delta_degrees)` does the wrap-around
+update atomically and returns the new angles so the grid updates instantly.
+
+### Added — Editable working title (all bundle types)
+
+The Edit tab now has a **Working title** editor. Molly's original title is always
+preserved; the override drives the **effective title** used everywhere —
+master-cut filename, title card, Dropbox `{title}` folder, posting `{title}` URL,
+and all display (Inbox, header). The original shows as an "edited from…" hint and
+**Reset to original** clears it.
+
+- New `title_override` column (migration 020, plain `ALTER TABLE … ADD COLUMN`).
+  Effective title = `COALESCE(NULLIF(title_override,''), title)`, applied in
+  `fetch_bundle_title`, auto-assembly, Dropbox, posting, and `list/get_bundle`.
+- Command `set_bundle_title_override(uid, title)` ("" clears); the change is
+  written to the processing log.
+- **Post-bundle logs it**: `report.json` gains `originalTitle` + `workingTitle`,
+  and `notes.md` (previously empty) records `Title changed for processing:
+  "<original>" → "<working>".` when they differ.
+
 ## [0.23.0] — 2026-06-01
 
 ### Added — Per-persona intro / outro for YouTube masters

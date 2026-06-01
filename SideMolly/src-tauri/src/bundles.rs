@@ -116,12 +116,29 @@ pub struct BundleSummary {
     pub uid: String,
     pub bundle_type: String,
     pub persona_code: Option<String>,
+    /// Effective title — the working override when set, else the original.
+    /// This is what processing + the whole UI use.
     pub title: String,
+    /// Molly's original manifest title, always preserved. Equals `title`
+    /// unless a working override is set (shows as the "edited from" hint).
+    pub original_title: String,
+    /// The raw working override ("" = none). Lets the Edit-tab title editor
+    /// distinguish "no override" from "override equal to original".
+    pub title_override: String,
     pub ingested_at: String,
     pub verify_status: String,
     pub bundle_state: String,
     pub file_count: i64,
     pub source_zip_path: String,
+}
+
+/// Result row for the batch rotation command — the new absolute rotation
+/// for one file, so the UI can update without a full refetch.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RotationUpdate {
+    pub in_zip_path: String,
+    pub rotation_degrees: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -717,6 +734,100 @@ pub fn set_bundle_file_rotation<R: Runtime>(
     Ok(())
 }
 
+/// Advance a rotation by `delta` degrees, normalized into [0, 360).
+/// Handles negative deltas (CCW) too.
+fn wrap_rotation(current: i64, delta: i64) -> i64 {
+    ((current + delta) % 360 + 360) % 360
+}
+
+/// Batch rotate: advance each listed file's rotation by `delta_degrees`
+/// (normally +90 CW), wrapping in [0,360). Each file rotates relative to
+/// its own current value, so a mixed selection stays independent. Returns
+/// the new absolute rotation per file so the UI updates without a refetch.
+/// Backs the Edit tab's "Rotate selected" / "Rotate all" controls.
+#[tauri::command]
+pub fn rotate_bundle_files<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+    in_zip_paths: Vec<String>,
+    delta_degrees: i64,
+) -> Result<Vec<RotationUpdate>, BundleError> {
+    if delta_degrees % 90 != 0 {
+        return Err(BundleError::Io(std::io::Error::other(format!(
+            "rotation delta must be a multiple of 90, got {delta_degrees}"
+        ))));
+    }
+    let mut conn = open_conn(&handle)?;
+    let tx = conn.transaction()?;
+    let mut updates: Vec<RotationUpdate> = Vec::with_capacity(in_zip_paths.len());
+    for in_zip in &in_zip_paths {
+        let current: Option<i64> = tx
+            .query_row(
+                "SELECT rotation_degrees FROM bundle_files
+                  WHERE bundle_uid = ?1 AND in_zip_path = ?2",
+                params![uid, in_zip],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let Some(current) = current else { continue }; // skip unknown paths
+        let next = wrap_rotation(current, delta_degrees);
+        tx.execute(
+            "UPDATE bundle_files SET rotation_degrees = ?1
+              WHERE bundle_uid = ?2 AND in_zip_path = ?3",
+            params![next, uid, in_zip],
+        )?;
+        updates.push(RotationUpdate {
+            in_zip_path: in_zip.clone(),
+            rotation_degrees: next,
+        });
+    }
+    tx.commit()?;
+    Ok(updates)
+}
+
+/// Set (or clear, with `""`) a bundle's working-title override. The
+/// original `title` is preserved; the override drives the effective title
+/// used by processing/output and shown in the UI. The change is recorded
+/// in the processing log so the post-bundle can surface it.
+#[tauri::command]
+pub fn set_bundle_title_override<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+    title: String,
+) -> Result<BundleDetail, BundleError> {
+    let new_override = title.trim().to_string();
+    let conn = open_conn(&handle)?;
+    let original: String = conn
+        .query_row(
+            "SELECT COALESCE(title, '') FROM bundles WHERE uid = ?1",
+            params![uid],
+            |r| r.get(0),
+        )
+        .optional()?
+        .ok_or_else(|| BundleError::NotFound(format!("bundle {uid}")))?;
+    let n = conn.execute(
+        "UPDATE bundles SET title_override = ?1, updated_at = datetime('now')
+          WHERE uid = ?2",
+        params![new_override, uid],
+    )?;
+    if n == 0 {
+        return Err(BundleError::NotFound(format!("bundle {uid}")));
+    }
+    // Log the change so the post-bundle can report it.
+    let (msg, details) = if new_override.is_empty() || new_override == original {
+        ("title reset to original".to_string(), original.clone())
+    } else {
+        ("title overridden for processing".to_string(), new_override.clone())
+    };
+    crate::processing_log::write(
+        &conn, Some(&uid), None, Some("title"),
+        crate::processing_log::Level::Info,
+        &msg, Some(&original), Some(&details),
+    );
+    drop(conn);
+    get_bundle(handle, uid)
+}
+
 #[tauri::command]
 pub fn reveal_working_file<R: Runtime>(
     handle: AppHandle<R>,
@@ -746,9 +857,11 @@ pub fn reveal_working_file<R: Runtime>(
 pub fn list_bundles<R: Runtime>(handle: AppHandle<R>) -> Result<Vec<BundleSummary>, BundleError> {
     let conn = open_conn(&handle)?;
     let mut stmt = conn.prepare(
-        "SELECT b.uid, b.bundle_type, b.persona_code, b.title, b.ingested_at,
+        "SELECT b.uid, b.bundle_type, b.persona_code,
+                COALESCE(NULLIF(b.title_override,''), b.title) AS title, b.ingested_at,
                 b.verify_status, b.bundle_state, b.source_zip_path,
-                (SELECT COUNT(*) FROM bundle_files f WHERE f.bundle_uid = b.uid) AS file_count
+                (SELECT COUNT(*) FROM bundle_files f WHERE f.bundle_uid = b.uid) AS file_count,
+                b.title AS original_title, b.title_override
          FROM bundles b
          ORDER BY b.ingested_at DESC",
     )?;
@@ -764,6 +877,8 @@ pub fn list_bundles<R: Runtime>(handle: AppHandle<R>) -> Result<Vec<BundleSummar
                 bundle_state: row.get(6)?,
                 source_zip_path: row.get(7)?,
                 file_count: row.get(8)?,
+                original_title: row.get(9)?,
+                title_override: row.get(10)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -778,10 +893,11 @@ pub fn get_bundle<R: Runtime>(
     let conn = open_conn(&handle)?;
 
     let (summary, manifest_json): (BundleSummary, String) = conn.query_row(
-        "SELECT b.uid, b.bundle_type, b.persona_code, b.title, b.ingested_at,
+        "SELECT b.uid, b.bundle_type, b.persona_code,
+                COALESCE(NULLIF(b.title_override,''), b.title) AS title, b.ingested_at,
                 b.verify_status, b.bundle_state, b.source_zip_path,
                 (SELECT COUNT(*) FROM bundle_files f WHERE f.bundle_uid = b.uid) AS file_count,
-                b.manifest_json
+                b.manifest_json, b.title AS original_title, b.title_override
          FROM bundles b
          WHERE b.uid = ?1",
         params![uid],
@@ -797,6 +913,8 @@ pub fn get_bundle<R: Runtime>(
                     bundle_state: row.get(6)?,
                     source_zip_path: row.get(7)?,
                     file_count: row.get(8)?,
+                    original_title: row.get(10)?,
+                    title_override: row.get(11)?,
                 },
                 row.get(9)?,
             ))
@@ -1521,13 +1639,14 @@ pub fn resolve_master_cut_path(workspace: &Path, title: &str) -> PathBuf {
     titled
 }
 
-/// Look up a bundle's title (empty string when NULL or the bundle is
-/// missing). Small helper so the master-cut resolvers can name files by
-/// title from any command that only carries a uid + connection.
+/// Look up a bundle's EFFECTIVE title — the working override when set, else
+/// the original (empty string when NULL or the bundle is missing). This is
+/// what drives the master-cut filename, posting URLs, etc., so a working
+/// title flows through every processing path that calls this.
 pub fn fetch_bundle_title(conn: &Connection, uid: &str) -> Result<String, BundleError> {
     Ok(conn
         .query_row(
-            "SELECT COALESCE(title, '') FROM bundles WHERE uid = ?1",
+            "SELECT COALESCE(NULLIF(title_override, ''), title, '') FROM bundles WHERE uid = ?1",
             params![uid],
             |r| r.get::<_, String>(0),
         )
@@ -1847,7 +1966,36 @@ mod tests {
         conn.execute_batch(include_str!("../migrations/016_posting_assets_and_fansite.sql")).unwrap();
         conn.execute_batch(include_str!("../migrations/017_posting_log.sql")).unwrap();
         conn.execute_batch(include_str!("../migrations/018_bundle_type_widen.sql")).unwrap();
+        conn.execute_batch(include_str!("../migrations/019_persona_clips.sql")).unwrap();
+        conn.execute_batch(include_str!("../migrations/020_bundle_title_override.sql")).unwrap();
         conn
+    }
+
+    #[test]
+    fn wrap_rotation_advances_and_wraps() {
+        assert_eq!(wrap_rotation(0, 90), 90);
+        assert_eq!(wrap_rotation(270, 90), 0);   // wraps past 360
+        assert_eq!(wrap_rotation(180, 90), 270);
+        assert_eq!(wrap_rotation(0, -90), 270);  // CCW
+        assert_eq!(wrap_rotation(90, 360), 90);  // full turn is a no-op
+    }
+
+    #[test]
+    fn fetch_bundle_title_prefers_override() {
+        let conn = fresh_db();
+        conn.execute(
+            "INSERT INTO bundles (uid, bundle_type, source_zip_path, manifest_json, title)
+             VALUES ('u', 'content', '/u', '{}', 'Original Title')",
+            [],
+        ).unwrap();
+        // No override → original.
+        assert_eq!(fetch_bundle_title(&conn, "u").unwrap(), "Original Title");
+        // Override set → effective is the override.
+        conn.execute("UPDATE bundles SET title_override = 'Working Title' WHERE uid='u'", []).unwrap();
+        assert_eq!(fetch_bundle_title(&conn, "u").unwrap(), "Working Title");
+        // Cleared back to '' → original again.
+        conn.execute("UPDATE bundles SET title_override = '' WHERE uid='u'", []).unwrap();
+        assert_eq!(fetch_bundle_title(&conn, "u").unwrap(), "Original Title");
     }
 
     #[test]

@@ -15,6 +15,14 @@ post-bundle back to Molly to record what actually happened.
   **Edit → Process → Post** tabs. The Post tab adapts to the bundle
   type: 🎬 Content, 🎁 Custom, or 📅 FanSite. ▶️ YouTube (and any other
   type Molly adds later) gets a generic per-platform posting checklist.
+- **Rotate clips** — in Edit → Step 1, click a tile to cycle its rotation,
+  or tick several clips and use **Rotate selected** / **Rotate all** to turn
+  them 90° clockwise at a time. Rotation is applied when you process/assemble.
+- **Working title** — the Edit tab has a ✏️ **Working title** field. Edit it
+  to change the title used for the master-cut filename, title card, Dropbox
+  folder, and posting. Molly's original is preserved (shown as an "edited
+  from…" hint), the change is logged in the post-bundle, and **Reset to
+  original** reverts it.
 - **Ship it back** — compose a post-bundle ZIP that records what you
   posted; Molly ingests it to close the loop. The ZIP lands in
   `~/Downloads/Molly post-bundles/<uid>-post.zip`, and a plain

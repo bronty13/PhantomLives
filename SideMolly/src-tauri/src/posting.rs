@@ -197,7 +197,7 @@ pub fn list_bundle_postings<R: Runtime>(
 
     // Bundle lookup for URL template resolution.
     let bundle: Option<(String, String, Option<String>, String)> = conn.query_row(
-        "SELECT bundle_type, COALESCE(title, ''), persona_code, ingested_at
+        "SELECT bundle_type, COALESCE(NULLIF(title_override,''), title, ''), persona_code, ingested_at
            FROM bundles WHERE uid = ?1",
         params![uid],
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),

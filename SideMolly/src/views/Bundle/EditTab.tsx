@@ -31,10 +31,11 @@ import {
   getMasterCutStatus, getProcessedPreviews, getTranscribeStatus,
   listLogEntries, listProcessedFiles, listTranscripts, openMasterCut,
   processBundleImages, revealBundleLog, revealMasterCut, revealProcessedFile,
-  revealTranscript, revealWorkingFile, setBundleFileRotation,
+  revealTranscript, revealWorkingFile, rotateBundleFiles, setBundleFileRotation,
+  setBundleTitleOverride,
   type AssemblyFormat, type DetectedFormat,
   type BundleFileRow, type BundleSummary, type ImageOpsInput, type JobRow,
-  type LogRow, type MasterCutStatus, type ProcessedFileRow,
+  type LogRow, type MasterCutStatus, type ProcessedFileRow, type RotationUpdate,
   type TranscribeStatus, type TranscriptRow, type VideoOpsInput,
 } from '../../data/bundles';
 import type { BundleJobsSnapshot } from '../../lib/useBundleJobs';
@@ -64,7 +65,7 @@ interface Props {
   onFileUpdated?: () => void;
 }
 
-export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated: _unused }: Props) {
+export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated }: Props) {
   // ── Local file mirror so rotation clicks update instantly without
   //   round-tripping through a full getBundle() refetch. Sync from prop
   //   when bundle UID changes (navigated to a different bundle) or when
@@ -214,6 +215,74 @@ export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated: _u
     } catch (e) { alert(String(e)); }
   };
 
+  // ── Multi-select rotation. Tick clips, then rotate the selection (or
+  //   all) 90° CW per press. The batch command returns the new rotation
+  //   per file, which we merge into localFiles (same optimistic feel).
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Clear the selection when navigating to a different bundle.
+  useEffect(() => { setSelected(new Set()); }, [summary.uid]);
+
+  const toggleSelected = useCallback((inZipPath: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(inZipPath)) next.delete(inZipPath); else next.add(inZipPath);
+      return next;
+    });
+  }, []);
+
+  const rotatePaths = useCallback(async (paths: string[]) => {
+    if (paths.length === 0) return;
+    try {
+      const updates: RotationUpdate[] = await rotateBundleFiles(summary.uid, paths, 90);
+      const byPath = new Map(updates.map((u) => [u.inZipPath, u.rotationDegrees]));
+      setLocalFiles((arr) =>
+        arr.map((f) => byPath.has(f.inZipPath)
+          ? { ...f, rotationDegrees: byPath.get(f.inZipPath)! as Rotation }
+          : f),
+      );
+    } catch (e) { alert(String(e)); }
+  }, [summary.uid]);
+
+  const rotateSelected = () => rotatePaths([...selected]);
+  const rotateAll = () => rotatePaths(allMedia.map((f) => f.inZipPath));
+  const allSelected = allMedia.length > 0 && selected.size === allMedia.length;
+  const toggleSelectAll = () =>
+    setSelected(allSelected ? new Set() : new Set(allMedia.map((f) => f.inZipPath)));
+
+  // ── Working title editor. Draft mirrors the effective title; saving
+  //   sets the override (empty clears it), then refreshes the parent so
+  //   the header + all processing pick up the new title.
+  const [titleDraft, setTitleDraft] = useState(summary.title);
+  const [savingTitle, setSavingTitle] = useState(false);
+  useEffect(() => { setTitleDraft(summary.title); }, [summary.uid, summary.title]);
+  const titleDirty = titleDraft.trim() !== summary.title.trim();
+  const titleOverridden = summary.titleOverride.trim() !== ''
+    && summary.titleOverride.trim() !== summary.originalTitle.trim();
+
+  const saveTitle = async () => {
+    setSavingTitle(true);
+    try {
+      await setBundleTitleOverride(summary.uid, titleDraft.trim());
+      onFileUpdated?.();
+    } catch (e) {
+      alert(String(e));
+    } finally {
+      setSavingTitle(false);
+    }
+  };
+  const resetTitle = async () => {
+    setSavingTitle(true);
+    try {
+      await setBundleTitleOverride(summary.uid, '');
+      setTitleDraft(summary.originalTitle);
+      onFileUpdated?.();
+    } catch (e) {
+      alert(String(e));
+    } finally {
+      setSavingTitle(false);
+    }
+  };
+
   // ── Run handlers (process / auto-assemble).
   const runProcessImages = async () => {
     setBusy(true);
@@ -348,12 +417,88 @@ export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated: _u
   return (
     <div className="flex flex-col gap-6">
       {/* ────────────────────────────────────────────────────────────
+          Working title — preserves Molly's original, used in processing
+          ──────────────────────────────────────────────────────────── */}
+      <div className="sm-card">
+        <div className="font-semibold mb-1">✏️ Working title</div>
+        <div className="text-xs mb-2" style={{ color: 'rgb(var(--surface-muted))' }}>
+          Used for the master-cut filename, title card, Dropbox folder, and posting.
+          Molly's original is preserved and the change is logged in the post-bundle.
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            type="text"
+            className="sm-input flex-1 min-w-[16rem]"
+            value={titleDraft}
+            disabled={savingTitle}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && titleDirty) saveTitle(); }}
+            placeholder={summary.originalTitle || '(untitled)'}
+          />
+          <button
+            type="button"
+            className="sm-button"
+            disabled={savingTitle || !titleDirty}
+            onClick={saveTitle}
+          >
+            💾 Save title
+          </button>
+          {titleOverridden && (
+            <button
+              type="button"
+              className="sm-button secondary text-xs"
+              disabled={savingTitle}
+              onClick={resetTitle}
+              title="Revert to Molly's original title"
+            >
+              Reset to original
+            </button>
+          )}
+        </div>
+        {titleOverridden && (
+          <div className="text-xs mt-2" style={{ color: 'rgb(var(--surface-muted))' }}>
+            Edited from original: <em>{summary.originalTitle || '(untitled)'}</em>
+          </div>
+        )}
+      </div>
+
+      {/* ────────────────────────────────────────────────────────────
           STEP 1 — Review & rotate
           ──────────────────────────────────────────────────────────── */}
       <StepCard num={1} title="Review &amp; rotate" subtitle={
-        <>Click any tile to cycle <code>0° → 90° → 180° → 270°</code>. The preview rotates instantly so you can verify before processing. Applies during the next image/video process run.</>
+        <>Click a tile to cycle <code>0° → 90° → 180° → 270°</code>, or tick clips and use <strong>Rotate selected</strong> / <strong>Rotate all</strong> to turn them 90° at a time. The preview rotates instantly. Applies during the next image/video process run.</>
       }>
-        <RotationGrid files={allMedia} thumbs={thumbs} onClick={cycleRotation} />
+        <div className="mb-3 flex items-center gap-2 flex-wrap text-xs">
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
+            {allSelected ? 'Deselect all' : 'Select all'}
+          </label>
+          <button
+            type="button"
+            className="sm-button secondary text-xs"
+            disabled={selected.size === 0}
+            onClick={rotateSelected}
+            title={selected.size === 0 ? 'Tick one or more clips first' : `Rotate ${selected.size} selected 90° CW`}
+          >
+            ↻ Rotate selected ({selected.size})
+          </button>
+          <button
+            type="button"
+            className="sm-button secondary text-xs"
+            disabled={allMedia.length === 0}
+            onClick={rotateAll}
+            title="Rotate every clip 90° CW"
+          >
+            ↻ Rotate all
+          </button>
+        </div>
+        <RotationGrid
+          files={allMedia}
+          thumbs={thumbs}
+          onClick={cycleRotation}
+          selected={selected}
+          onToggleSelect={toggleSelected}
+        />
         <div className="mt-3 flex items-center justify-between text-xs" style={{ color: 'rgb(var(--surface-muted))' }}>
           <span>
             {rotationCount > 0 ? (
@@ -834,10 +979,12 @@ function MasterCutCard({ master, onOpen, onReveal }: {
   );
 }
 
-function RotationGrid({ files, thumbs, onClick }: {
+function RotationGrid({ files, thumbs, onClick, selected, onToggleSelect }: {
   files: BundleFileRow[];
   thumbs: Record<string, string>;
   onClick: (inZipPath: string, current: Rotation) => void;
+  selected: Set<string>;
+  onToggleSelect: (inZipPath: string) => void;
 }) {
   return (
     <div
@@ -848,18 +995,33 @@ function RotationGrid({ files, thumbs, onClick }: {
         const rot = (f.rotationDegrees ?? 0) as Rotation;
         const isVideo = f.kind === 'video';
         const dataUrl = thumbs[f.inZipPath];
+        const isSelected = selected.has(f.inZipPath);
         return (
           <button
             key={f.inZipPath}
             type="button"
             onClick={() => onClick(f.inZipPath, rot)}
-            className="flex flex-col items-stretch text-left p-1.5 rounded transition"
+            className="relative flex flex-col items-stretch text-left p-1.5 rounded transition"
             style={{
-              border: `1px solid ${rot === 0 ? 'rgb(var(--surface-border))' : 'rgb(var(--surface-accent))'}`,
+              border: `1px solid ${isSelected ? 'rgb(var(--surface-accent))' : rot === 0 ? 'rgb(var(--surface-border))' : 'rgb(var(--surface-accent))'}`,
+              outline: isSelected ? '2px solid rgb(var(--surface-accent) / 0.5)' : 'none',
               background: 'rgb(var(--surface-card))',
             }}
             title={`Click to rotate (current: ${ROTATION_LABEL[rot]})`}
           >
+            {/* Selection checkbox — stops propagation so ticking doesn't rotate. */}
+            <label
+              className="absolute top-1 left-1 z-10 flex items-center justify-center rounded"
+              style={{ background: 'rgb(var(--surface-card) / 0.85)', padding: 2 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={() => onToggleSelect(f.inZipPath)}
+                title="Select for batch rotate"
+              />
+            </label>
             <div
               className="w-full overflow-hidden flex items-center justify-center"
               style={{

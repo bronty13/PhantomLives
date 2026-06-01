@@ -136,6 +136,12 @@ pub fn run() {
             sql: include_str!("../migrations/019_persona_clips.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 20,
+            description: "bundle-title-override",
+            sql: include_str!("../migrations/020_bundle_title_override.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -245,6 +251,8 @@ pub fn run() {
             bundles::get_master_cut_status,
             bundles::reveal_master_cut,
             bundles::open_master_cut,
+            bundles::rotate_bundle_files,
+            bundles::set_bundle_title_override,
             watch::get_watch_settings,
             watch::set_watch_dir,
             watch::scan_watch_dir_now,
@@ -290,7 +298,7 @@ mod camel_case_contract {
     };
     use crate::post_bundle::{ComposeResult, PostBundleStatus};
     use crate::bundles::{BundleDetail, BundleFileRow, BundleSummary, ExportThumb,
-        ImageProgressEvent, IngestResult};
+        ImageProgressEvent, IngestResult, RotationUpdate};
     use crate::manifest::{BundleManifest, FanDay};
     use crate::persona_clips::PersonaClipRow;
     use serde_json::Value;
@@ -347,10 +355,17 @@ mod camel_case_contract {
         assert_camel(&serde_json::to_value(BundleSummary {
             uid: String::new(), bundle_type: String::new(),
             persona_code: None, title: String::new(),
+            original_title: String::new(), title_override: String::new(),
             ingested_at: String::new(), verify_status: String::new(),
             bundle_state: String::new(), file_count: 0,
             source_zip_path: String::new(),
         }).unwrap(), "BundleSummary");
+    }
+
+    #[test] fn rotation_update_is_camel_case() {
+        assert_camel(&serde_json::to_value(RotationUpdate {
+            in_zip_path: String::new(), rotation_degrees: 90,
+        }).unwrap(), "RotationUpdate");
     }
 
     #[test] fn persona_clip_row_is_camel_case() {
@@ -619,6 +634,7 @@ mod camel_case_contract {
             summary: BundleSummary {
                 uid: String::new(), bundle_type: String::new(),
                 persona_code: None, title: String::new(),
+                original_title: String::new(), title_override: String::new(),
                 ingested_at: String::new(), verify_status: String::new(),
                 bundle_state: String::new(), file_count: 0,
                 source_zip_path: String::new(),
@@ -768,6 +784,7 @@ mod migration_smoke {
             (17, "posting-log", include_str!("../migrations/017_posting_log.sql")),
             (18, "bundle-type-widen", include_str!("../migrations/018_bundle_type_widen.sql")),
             (19, "persona-clips", include_str!("../migrations/019_persona_clips.sql")),
+            (20, "bundle-title-override", include_str!("../migrations/020_bundle_title_override.sql")),
         ];
         for (v, name, sql) in migrations {
             conn.execute_batch(sql)
@@ -831,6 +848,22 @@ mod migration_smoke {
             [],
         );
         assert!(bad_role.is_err(), "CHECK on persona_clips.role should reject 'sidebar'");
+
+        // Migration 020 added bundles.title_override (defaults to '').
+        conn.execute(
+            "INSERT INTO bundles (uid, bundle_type, source_zip_path, manifest_json, title)
+             VALUES ('tt', 'youtube', '/tt', '{}', 'Original')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "UPDATE bundles SET title_override = 'Working' WHERE uid = 'tt'",
+            [],
+        ).unwrap();
+        let eff: String = conn.query_row(
+            "SELECT COALESCE(NULLIF(title_override,''), title, '') FROM bundles WHERE uid = 'tt'",
+            [], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(eff, "Working", "effective title should prefer the override");
     }
 }
 
@@ -881,6 +914,7 @@ mod migration_immutability {
         (17, "786bea0eb6e0e2a7acb240f58e9575dd3613c74444b8fcc01c7b7f52acb49ebc"),
         (18, "d702e588f454e025904a7bafb807765f2e6dc498dd6129bb1eeba4ae904bef5e"),
         (19, "f91d7ddfaf209570c6a19aabda9bbdd8b4b22212f6bd32d2742be3340ba423e0"),
+        (20, "582d27200ef5c8ad0cbf27c020696fde9515070db28afd9c9864a949daf807ac"),
     ];
 
     /// Source-of-truth for "which migrations ship at compile time". Must
@@ -908,6 +942,7 @@ mod migration_immutability {
         (17, "017_posting_log.sql",                include_str!("../migrations/017_posting_log.sql")),
         (18, "018_bundle_type_widen.sql",          include_str!("../migrations/018_bundle_type_widen.sql")),
         (19, "019_persona_clips.sql",              include_str!("../migrations/019_persona_clips.sql")),
+        (20, "020_bundle_title_override.sql",      include_str!("../migrations/020_bundle_title_override.sql")),
     ];
 
     fn sha256_hex(s: &str) -> String {
