@@ -9,6 +9,7 @@ mod fsutil;
 mod images;
 mod jobs;
 mod manifest;
+mod persona_clips;
 mod post_bundle;
 mod posting;
 mod processing_log;
@@ -129,6 +130,12 @@ pub fn run() {
             sql: include_str!("../migrations/018_bundle_type_widen.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 19,
+            description: "persona-clips",
+            sql: include_str!("../migrations/019_persona_clips.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -242,6 +249,10 @@ pub fn run() {
             watch::set_watch_dir,
             watch::scan_watch_dir_now,
             watch::reveal_watch_dir,
+            persona_clips::list_persona_clips,
+            persona_clips::upload_persona_clip,
+            persona_clips::set_persona_clip_enabled,
+            persona_clips::clear_persona_clip,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -281,6 +292,7 @@ mod camel_case_contract {
     use crate::bundles::{BundleDetail, BundleFileRow, BundleSummary, ExportThumb,
         ImageProgressEvent, IngestResult};
     use crate::manifest::{BundleManifest, FanDay};
+    use crate::persona_clips::PersonaClipRow;
     use serde_json::Value;
 
     fn assert_camel(value: &Value, type_name: &'static str) {
@@ -339,6 +351,14 @@ mod camel_case_contract {
             bundle_state: String::new(), file_count: 0,
             source_zip_path: String::new(),
         }).unwrap(), "BundleSummary");
+    }
+
+    #[test] fn persona_clip_row_is_camel_case() {
+        assert_camel(&serde_json::to_value(PersonaClipRow {
+            persona_code: String::new(), role: String::new(),
+            clip_path: String::new(), enabled: false,
+            updated_at: String::new(),
+        }).unwrap(), "PersonaClipRow");
     }
 
     #[test] fn auto_assembly_settings_is_camel_case() {
@@ -747,6 +767,7 @@ mod migration_smoke {
             (16, "posting-assets-and-fansite", include_str!("../migrations/016_posting_assets_and_fansite.sql")),
             (17, "posting-log", include_str!("../migrations/017_posting_log.sql")),
             (18, "bundle-type-widen", include_str!("../migrations/018_bundle_type_widen.sql")),
+            (19, "persona-clips", include_str!("../migrations/019_persona_clips.sql")),
         ];
         for (v, name, sql) in migrations {
             conn.execute_batch(sql)
@@ -761,6 +782,7 @@ mod migration_smoke {
             "processing_log",
             "dropbox_settings", "dropbox_copies",
             "posting_targets", "bundle_postings", "posting_log",
+            "persona_clips",
         ];
         for t in expected_tables {
             let count: i64 = conn
@@ -802,6 +824,13 @@ mod migration_smoke {
             [],
         );
         assert!(bad_kind.is_err(), "CHECK on bundle_files.kind should reject 'nonsense'");
+
+        // Migration 019 persona_clips: role CHECK is real.
+        let bad_role = conn.execute(
+            "INSERT INTO persona_clips (persona_code, role) VALUES ('CoC', 'sidebar')",
+            [],
+        );
+        assert!(bad_role.is_err(), "CHECK on persona_clips.role should reject 'sidebar'");
     }
 }
 
@@ -851,6 +880,7 @@ mod migration_immutability {
         (16, "76eb7e7c6f4a684c8cb1e48d23ce43b29289e57f276d32c264123eb1857a6326"),
         (17, "786bea0eb6e0e2a7acb240f58e9575dd3613c74444b8fcc01c7b7f52acb49ebc"),
         (18, "d702e588f454e025904a7bafb807765f2e6dc498dd6129bb1eeba4ae904bef5e"),
+        (19, "f91d7ddfaf209570c6a19aabda9bbdd8b4b22212f6bd32d2742be3340ba423e0"),
     ];
 
     /// Source-of-truth for "which migrations ship at compile time". Must
@@ -877,6 +907,7 @@ mod migration_immutability {
         (16, "016_posting_assets_and_fansite.sql", include_str!("../migrations/016_posting_assets_and_fansite.sql")),
         (17, "017_posting_log.sql",                include_str!("../migrations/017_posting_log.sql")),
         (18, "018_bundle_type_widen.sql",          include_str!("../migrations/018_bundle_type_widen.sql")),
+        (19, "019_persona_clips.sql",              include_str!("../migrations/019_persona_clips.sql")),
     ];
 
     fn sha256_hex(s: &str) -> String {

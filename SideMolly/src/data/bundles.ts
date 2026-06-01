@@ -181,6 +181,40 @@ export function setWatermarkProfile(profile: WatermarkProfile): Promise<void> {
   return invoke('set_watermark_profile', { profile });
 }
 
+// ----- Per-persona intro/outro clips (YouTube master assembly) -----
+
+export type PersonaClipRole = 'intro' | 'outro';
+
+export interface PersonaClip {
+  personaCode: string;
+  role: PersonaClipRole;
+  clipPath: string;
+  enabled: boolean;
+  updatedAt: string;
+}
+
+export function listPersonaClips(): Promise<PersonaClip[]> {
+  return invoke<PersonaClip[]>('list_persona_clips');
+}
+
+export function uploadPersonaClip(
+  personaCode: string, role: PersonaClipRole, sourcePath: string,
+): Promise<PersonaClip> {
+  return invoke<PersonaClip>('upload_persona_clip', { personaCode, role, sourcePath });
+}
+
+export function setPersonaClipEnabled(
+  personaCode: string, role: PersonaClipRole, enabled: boolean,
+): Promise<PersonaClip> {
+  return invoke<PersonaClip>('set_persona_clip_enabled', { personaCode, role, enabled });
+}
+
+export function clearPersonaClip(
+  personaCode: string, role: PersonaClipRole,
+): Promise<void> {
+  return invoke('clear_persona_clip', { personaCode, role });
+}
+
 export function processBundleImages(uid: string, ops: ImageOpsInput): Promise<ProcessImagesResult> {
   return invoke<ProcessImagesResult>('process_bundle_images', { uid, ops });
 }

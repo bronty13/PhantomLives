@@ -22,6 +22,31 @@ post-bundle back to Molly to record what actually happened.
   (report, notes, posting log, artifacts) — open that folder to browse
   the artifacts directly, without unzipping.
 
+## YouTube intro / outro clips (Settings → Intro / Outro)
+
+For ▶️ **YouTube** bundles, the assembled master can be bookended with a
+persona-specific **intro** and **outro** clip:
+
+```
+intro → clip1 ⤫ clip2 ⤫ … ⤫ clip[n] → outro     (⤫ = cross-dissolve)
+```
+
+The intro **replaces** the generated title card for YouTube bundles. Both are
+**off by default** — nothing changes until you upload a clip and turn it on.
+
+- Open **Settings → Intro / Outro**. There's a card per persona, each with an
+  **Intro** and an **Outro** row.
+- Click **Upload…**, pick a video (`.mp4`/`.mov`/`.m4v`/`.webm`), then tick
+  **Enabled**. The same clip is reused for every YouTube bundle of that persona
+  until you **Replace…** or **Remove** it.
+- Intro/outro are resized to the bundle's format (16:9 or 9:16) and get the
+  persona watermark + audio polish, just like the content clips, so the
+  cross-dissolves join cleanly.
+
+Leave either off and the master simply skips it (intro off → straight into the
+clips; both off → just the clips). This only affects YouTube bundles — Content,
+Custom, and FanSite masters are unchanged (title card + clips).
+
 ## FanSite posting (📅 Bundle → Post)
 
 FanSite bundles are posted before the start of each month, on a

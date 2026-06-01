@@ -217,6 +217,26 @@ fn target_dims(settings: &AutoAssemblySettings, format: Option<&str>) -> (i64, i
     }
 }
 
+/// Final ordered ffmpeg input list for a YouTube master: optional intro
+/// first, then the clips in order, then optional outro last. Pure so the
+/// prepend / append / both-off / neither cases are unit-testable without
+/// touching ffmpeg.
+fn youtube_master_inputs(
+    intro: Option<String>,
+    clips: &[String],
+    outro: Option<String>,
+) -> Vec<String> {
+    let mut out = Vec::with_capacity(clips.len() + 2);
+    if let Some(i) = intro {
+        out.push(i);
+    }
+    out.extend(clips.iter().cloned());
+    if let Some(o) = outro {
+        out.push(o);
+    }
+    out
+}
+
 /// Every video in a bundle that has an extracted working file, ordered
 /// by fansite day + position so the master cut follows the bundle's
 /// natural sequence. Row shape: `(bundle_file_id, in_zip_path,
@@ -304,13 +324,19 @@ pub fn enqueue_auto_assemble<R: Runtime>(
         ));
     }
 
-    // Pull bundle persona + title for the title-card text.
-    let (title, persona_code): (String, Option<String>) = conn.query_row(
-        "SELECT COALESCE(title, ''), persona_code FROM bundles WHERE uid = ?1",
+    // Pull bundle persona + title + type. Title feeds the title-card text;
+    // bundle_type decides the YouTube intro/outro assembly variant below.
+    let (title, persona_code, bundle_type): (String, Option<String>, String) = conn.query_row(
+        "SELECT COALESCE(title, ''), persona_code, bundle_type FROM bundles WHERE uid = ?1",
         params![uid],
-        |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?)),
+        |r| Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, Option<String>>(1)?,
+            r.get::<_, String>(2)?,
+        )),
     ).optional()?
         .ok_or_else(|| BundleError::NotFound(format!("bundle {uid}")))?;
+    let is_youtube = bundle_type == "youtube";
 
     // Pull every video with a working path. Ordered by fansite day +
     // position so the master cut respects the bundle's natural sequence.
@@ -386,61 +412,111 @@ pub fn enqueue_auto_assemble<R: Runtime>(
     let watermark_margin_pct = profile.as_ref().map(|p| p.margin_pct as f64).unwrap_or(2.5);
 
     let mut job_ids: Vec<i64> = Vec::with_capacity(videos.len() + 2);
-    let mut errors: Vec<String> = Vec::new();
-    let mut input_paths_for_master: Vec<String> = Vec::with_capacity(videos.len() + 1);
+    let errors: Vec<String> = Vec::new();
 
-    // ── Job 1: title card ────────────────────────────────────────────────
-    let title_path = auto_dir.join("title.mp4");
-    let title_params = RenderTitleParams {
-        bundle_uid: uid.clone(),
-        output_path: title_path.to_string_lossy().to_string(),
-        title: if title.is_empty() { uid.clone() } else { title.clone() },
-        persona_watermark: persona_title_text.clone(),
-        duration_secs: settings.title_duration_secs,
-        fps: settings.target_fps,
-        width: target_width,
-        height: target_height,
-    };
-    let title_job_id = crate::jobs::enqueue(
-        &conn,
-        "render_title",
-        &serde_json::to_string(&title_params).unwrap_or_else(|_| "{}".into()),
-        Some(&uid),
-        None,
-    )?;
-    job_ids.push(title_job_id);
-    input_paths_for_master.push(title_path.to_string_lossy().to_string());
-
-    // ── Jobs 2..N+1: per-video normalize+watermark+audio ─────────────────
-    for (i, (bundle_file_id, in_zip, working, rot_deg)) in videos.iter().enumerate() {
-        let vname = format!("v{:02}.mp4", i + 1);
-        let vpath = auto_dir.join(&vname);
-        input_paths_for_master.push(vpath.to_string_lossy().to_string());
-
-        let norm_params = NormalizeVideoParams {
+    // Normalize-job helper. Every segment — title-card replacement intro,
+    // each clip, and the outro — is sized to the target dims, watermarked,
+    // and audio-enhanced identically so assemble_master's xfade chain joins
+    // them seamlessly. `file_id = -1` marks the synthetic intro/outro
+    // segments (no bundle_files row); dispatch_normalize_video ignores it.
+    let enqueue_norm = |source: &str, output: &Path, rotation: i64,
+                        in_zip: Option<&str>, file_id: i64|
+     -> Result<i64, BundleError> {
+        let p = NormalizeVideoParams {
             bundle_uid: uid.clone(),
-            bundle_file_id: *bundle_file_id,
-            working_path: working.clone(),
-            output_path: vpath.to_string_lossy().to_string(),
+            bundle_file_id: file_id,
+            working_path: source.to_string(),
+            output_path: output.to_string_lossy().to_string(),
             width: target_width,
             height: target_height,
             fps: settings.target_fps,
-            rotation_degrees: *rot_deg,
+            rotation_degrees: rotation,
             watermark_png_path: watermark_png_path.clone(),
             watermark_position: watermark_position.clone(),
             watermark_margin_pct,
             audio_enhance: settings.audio_enhance_enabled,
             deepfilternet_enabled: settings.deepfilternet_enabled,
         };
-        let nid = crate::jobs::enqueue(
+        let id = crate::jobs::enqueue(
             &conn,
             "normalize_video",
-            &serde_json::to_string(&norm_params).unwrap_or_else(|_| "{}".into()),
+            &serde_json::to_string(&p).unwrap_or_else(|_| "{}".into()),
             Some(&uid),
-            Some(in_zip),
+            in_zip,
         )?;
-        job_ids.push(nid);
+        Ok(id)
+    };
+
+    // ── Lead segment ─────────────────────────────────────────────────────
+    // Non-YouTube bundles get the generated title card. For YouTube, the
+    // persona's intro clip (when enabled + present) REPLACES the title
+    // card — no title card is rendered. Intro off → straight into clips.
+    let intro_path: Option<String> = if is_youtube {
+        match crate::persona_clips::enabled_clip_path(&conn, persona_code.as_deref(), "intro")? {
+            Some(src) => {
+                let out = auto_dir.join("intro.mp4");
+                job_ids.push(enqueue_norm(&src, &out, 0, None, -1)?);
+                Some(out.to_string_lossy().to_string())
+            }
+            None => None,
+        }
+    } else {
+        let title_path = auto_dir.join("title.mp4");
+        let title_params = RenderTitleParams {
+            bundle_uid: uid.clone(),
+            output_path: title_path.to_string_lossy().to_string(),
+            title: if title.is_empty() { uid.clone() } else { title.clone() },
+            persona_watermark: persona_title_text.clone(),
+            duration_secs: settings.title_duration_secs,
+            fps: settings.target_fps,
+            width: target_width,
+            height: target_height,
+        };
+        let title_job_id = crate::jobs::enqueue(
+            &conn,
+            "render_title",
+            &serde_json::to_string(&title_params).unwrap_or_else(|_| "{}".into()),
+            Some(&uid),
+            None,
+        )?;
+        job_ids.push(title_job_id);
+        Some(title_path.to_string_lossy().to_string())
+    };
+
+    // ── Per-video normalize+watermark+audio ──────────────────────────────
+    let mut clip_paths: Vec<String> = Vec::with_capacity(videos.len());
+    for (i, (bundle_file_id, in_zip, working, rot_deg)) in videos.iter().enumerate() {
+        let vpath = auto_dir.join(format!("v{:02}.mp4", i + 1));
+        job_ids.push(enqueue_norm(working, &vpath, *rot_deg, Some(in_zip), *bundle_file_id)?);
+        clip_paths.push(vpath.to_string_lossy().to_string());
     }
+
+    // ── Trailing segment: YouTube outro (when enabled + present) ─────────
+    let outro_path: Option<String> = if is_youtube {
+        match crate::persona_clips::enabled_clip_path(&conn, persona_code.as_deref(), "outro")? {
+            Some(src) => {
+                let out = auto_dir.join("outro.mp4");
+                job_ids.push(enqueue_norm(&src, &out, 0, None, -1)?);
+                Some(out.to_string_lossy().to_string())
+            }
+            None => None,
+        }
+    } else {
+        None
+    };
+
+    // Final ffmpeg input order. YouTube: [intro?, clips…, outro?].
+    // Everything else: [title/lead, clips…] (lead is always Some here).
+    let input_paths_for_master: Vec<String> = if is_youtube {
+        youtube_master_inputs(intro_path, &clip_paths, outro_path)
+    } else {
+        let mut v = Vec::with_capacity(clip_paths.len() + 1);
+        if let Some(lead) = intro_path {
+            v.push(lead);
+        }
+        v.extend(clip_paths);
+        v
+    };
 
     // ── Job N+2: assemble master via xfade chain ─────────────────────────
     // Name the consolidated cut after the bundle title (`<Title>.mp4`)
@@ -620,7 +696,14 @@ pub fn dispatch_normalize_video<R: Runtime>(
     // unless something unmounted it mid-batch. We re-check defensively
     // and fall back to source audio with a logged warning rather than
     // failing the whole clip.
-    let cleaned_audio: Option<PathBuf> = if params.deepfilternet_enabled {
+    // Whether the source has any audio stream. A persona intro/outro
+    // bumper (or an odd content clip) may be silent; [0:a] then doesn't
+    // exist and both this normalize AND the later acrossfade in
+    // assemble_master hard-fail. When absent we synthesize a silent stereo
+    // track below. DeepFilterNet is also skipped (nothing to denoise).
+    let source_has_audio = probe_has_audio(src);
+
+    let cleaned_audio: Option<PathBuf> = if params.deepfilternet_enabled && source_has_audio {
         match crate::thumbnails::deep_filter_bin() {
             Some(bin) => Some(extract_and_denoise_audio(src, &dst, bin)?),
             None => {
@@ -641,10 +724,25 @@ pub fn dispatch_normalize_video<R: Runtime>(
         "-loglevel".into(), "error".into(),
         "-i".into(), src.to_string_lossy().to_string(),
     ];
+    // Track input slots so the watermark PNG index stays correct no matter
+    // which optional audio inputs we add.
+    let mut next_input: usize = 1; // 0 == the source
     let mut input_index_audio: usize = 0; // [0:a] by default
+    let mut needs_shortest = false;
     if let Some(p) = &cleaned_audio {
         argv.extend(["-i".into(), p.to_string_lossy().to_string()]);
-        input_index_audio = 1; // audio now lives on the 2nd input
+        input_index_audio = next_input; // DFN-cleaned audio
+        next_input += 1;
+    } else if !source_has_audio {
+        // Feed a silent stereo track and trim it to the video length with
+        // -shortest, so silent bumpers still produce a valid [N:a] stream.
+        argv.extend([
+            "-f".into(), "lavfi".into(),
+            "-i".into(), "anullsrc=channel_layout=stereo:sample_rate=48000".into(),
+        ]);
+        input_index_audio = next_input;
+        next_input += 1;
+        needs_shortest = true;
     }
 
     // Build the filter graph:
@@ -674,11 +772,10 @@ pub fn dispatch_normalize_video<R: Runtime>(
         .map(|p| Path::new(p).exists())
         .unwrap_or(false);
 
-    // Watermark PNG slots in AFTER any DeepFilterNet cleaned-audio
-    // input, so its filter-graph index depends on whether that input
-    // was added. With cleaned audio:  [2:v] for the watermark.
-    // Without cleaned audio:          [1:v] for the watermark.
-    let wm_input_index = if cleaned_audio.is_some() { 2 } else { 1 };
+    // Watermark PNG slots in AFTER any optional audio inputs (DFN-cleaned
+    // audio or the silent fallback), so its filter-graph index is whatever
+    // the running input counter has reached.
+    let wm_input_index = next_input;
 
     let filter_complex = if has_watermark {
         let wm = params.watermark_png_path.as_ref().unwrap();
@@ -728,6 +825,10 @@ pub fn dispatch_normalize_video<R: Runtime>(
         "-movflags".into(), "+faststart".into(),
         "-map_metadata".into(), "-1".into(),
     ]);
+    if needs_shortest {
+        // Bound the infinite anullsrc track to the video length.
+        argv.push("-shortest".into());
+    }
     argv.push(tmp.to_string_lossy().to_string());
 
     run_ffmpeg(&argv, &tmp, &dst)?;
@@ -964,6 +1065,28 @@ fn probe_duration(path: &Path) -> Option<f64> {
     String::from_utf8(output.stdout).ok()?.trim().parse().ok()
 }
 
+/// True if `path` has at least one audio stream. Used to decide whether to
+/// synthesize a silent track during normalize (a silent source otherwise
+/// breaks `[0:a]` mapping here and the acrossfade in assemble_master).
+/// Conservatively returns `true` on a probe failure so we don't strip real
+/// audio when ffprobe hiccups — the worst case is the original behaviour.
+fn probe_has_audio(path: &Path) -> bool {
+    let bin = crate::thumbnails::ffprobe_bin();
+    let output = Command::new(bin)
+        .args([
+            "-v", "error",
+            "-select_streams", "a",
+            "-show_entries", "stream=index",
+            "-of", "csv=p=0",
+        ])
+        .arg(path)
+        .output();
+    match output {
+        Ok(o) if o.status.success() => !String::from_utf8_lossy(&o.stdout).trim().is_empty(),
+        _ => true,
+    }
+}
+
 /// Spawn ffmpeg with the given argv, bound wall-clock, capture stderr,
 /// atomic rename on success. Same pattern as `video::process_video`.
 fn run_ffmpeg(argv: &[String], tmp: &Path, dst: &Path) -> Result<(), BundleError> {
@@ -1025,6 +1148,31 @@ fn run_ffmpeg(argv: &[String], tmp: &Path, dst: &Path) -> Result<(), BundleError
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn youtube_master_inputs_orders_intro_clips_outro() {
+        let clips = vec!["v01".to_string(), "v02".to_string()];
+        // Both bumpers on.
+        assert_eq!(
+            youtube_master_inputs(Some("intro".into()), &clips, Some("outro".into())),
+            vec!["intro", "v01", "v02", "outro"],
+        );
+        // Intro only.
+        assert_eq!(
+            youtube_master_inputs(Some("intro".into()), &clips, None),
+            vec!["intro", "v01", "v02"],
+        );
+        // Outro only.
+        assert_eq!(
+            youtube_master_inputs(None, &clips, Some("outro".into())),
+            vec!["v01", "v02", "outro"],
+        );
+        // Neither (default) — just the clips.
+        assert_eq!(
+            youtube_master_inputs(None, &clips, None),
+            vec!["v01", "v02"],
+        );
+    }
 
     #[test]
     fn drawtext_escape_handles_colons_and_commas() {

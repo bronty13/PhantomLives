@@ -4,6 +4,37 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] — 2026-06-01
+
+### Added — Per-persona intro / outro for YouTube masters
+
+YouTube bundles can now be bookended with a persona-specific intro and outro
+clip. The assembled master becomes `intro → clip1 ⤫ clip2 ⤫ … ⤫ clip[n] →
+outro` (⤫ = cross-dissolve between every segment), and for YouTube the intro
+**replaces** the generated title card (no title card). Both are off by default
+until a clip is uploaded and enabled; the same clip is reused for every bundle
+of that persona until changed.
+
+- **Settings → Intro / Outro** — a new per-persona pane (modeled on the
+  Watermark pane) to upload, enable/disable, and remove an intro and an outro
+  per persona. Only affects ▶️ YouTube bundles.
+- New `persona_clips` table (migration 019, keyed by `(persona_code, role)`),
+  storing the clip path + enabled flag. Uploaded videos are copied to
+  `~/Downloads/SideMolly/persona-clips/`. Commands: `list_persona_clips`,
+  `upload_persona_clip`, `set_persona_clip_enabled`, `clear_persona_clip`.
+- Assembly: `enqueue_auto_assemble` now branches on `bundle_type == "youtube"`,
+  skipping the title card and prepending/appending normalized intro/outro
+  segments to the xfade chain. Intro/outro get the same sizing, persona
+  watermark, and audio polish as content clips, so the cross-dissolves join
+  seamlessly. `dispatch_assemble_master` is unchanged.
+
+### Fixed — Silent source clips no longer break normalize/assembly
+
+`normalize_video` assumed every source had an audio stream; a silent clip (e.g.
+a music-less bumper) would fail the `[0:a]` map and the downstream
+`acrossfade`. It now probes for audio and synthesizes a silent stereo track
+(trimmed to video length) when none is present.
+
 ## [0.22.0] — 2026-06-01
 
 ### Added — Accept Molly's `youtube` bundle type
