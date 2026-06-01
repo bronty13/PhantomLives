@@ -4,6 +4,13 @@ All notable changes to PurpleDiary are documented here.
 
 ## [Unreleased] — Vault & recovery: paste-back-tolerant key entry
 
+### Added
+- **Read from file…** on both recovery-key fields (vault unlock + app recovery
+  screen). Pick the recovery-key file you saved and PurpleDiary loads it straight
+  into the field (defaults to `~/Downloads/PurpleDiary/`); the BIP39 extraction
+  above pulls the 24 words out of it. So the full loop is now click-only: Make
+  Vault → Save to file… → later, Forgot passphrase? → Read from file… → Unlock.
+
 ### Fixed
 - **Pasting a saved recovery-key file back now works.** The recovery-key fields
   (vault unlock *and* the app-level recovery screen) previously needed exactly 24

@@ -94,6 +94,9 @@ struct RecoveryUnlockView: View {
                 .overlay(RoundedRectangle(cornerRadius: 6)
                     .stroke(Color.secondary.opacity(0.25), lineWidth: 1))
             HStack {
+                Button { if let text = RecoveryKeyFile.read() { phrase = text; error = nil } } label: {
+                    Label("Read from file…", systemImage: "doc.text")
+                }
                 Text(looksComplete ? "✓ recovery key detected" : "Enter your 24 words")
                     .font(.caption)
                     .foregroundStyle(looksComplete ? .green : .secondary)
@@ -124,5 +127,26 @@ struct RecoveryUnlockView: View {
             }
         }
         error = "That recovery key didn't unlock your journal. Check for typos and try again."
+    }
+}
+
+/// Shared open-panel that loads a saved recovery-key text file and returns its
+/// contents. `RecoveryKey.candidatePhrases` then extracts the 24 words from
+/// whatever formatting the file uses (numbered list + prose, or a clean line).
+enum RecoveryKeyFile {
+    static func read() -> String? {
+        let panel = NSOpenPanel()
+        panel.title = "Choose recovery key file"
+        panel.message = "Pick the recovery-key file you saved (a plain-text file)."
+        panel.allowedContentTypes = [.plainText, .text]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        if let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
+            let dir = downloads.appendingPathComponent("PurpleDiary", isDirectory: true)
+            if FileManager.default.fileExists(atPath: dir.path) { panel.directoryURL = dir }
+        }
+        guard panel.runModal() == .OK, let url = panel.url,
+              let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        return text
     }
 }

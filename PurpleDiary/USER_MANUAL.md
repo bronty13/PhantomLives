@@ -97,7 +97,8 @@ From a vault's right-click menu you can also **Lock Vault Now**, **Change Vault
 Passphrase…**, or **Remove Vault…** (which decrypts its entries back to normal
 storage — still encrypted at rest like everything else, just no longer behind the
 separate passphrase). Forgot the passphrase? Click the vault and choose **Forgot
-passphrase?** to unlock with your 24-word recovery key instead.
+passphrase?**, then either paste the 24 words or tap **Read from file…** to pick
+the recovery-key file you saved — PurpleDiary pulls the words out of it for you.
 
 > Everything here is offline. There is no cloud, no server, and no way to reset a
 > vault passphrase from outside — the passphrase and recovery key never leave your

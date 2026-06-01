@@ -183,10 +183,15 @@ struct VaultUnlockSheet: View {
                     .font(.system(.callout, design: .monospaced))
                     .frame(height: 72)
                     .overlay(RoundedRectangle(cornerRadius: 6).stroke(.secondary.opacity(0.3)))
-                if !recovery.isEmpty {
-                    Text(recoveryCandidates.isEmpty ? "Enter all 24 words" : "✓ recovery key detected")
-                        .font(.caption2)
-                        .foregroundStyle(recoveryCandidates.isEmpty ? Color.secondary : Color.green)
+                HStack {
+                    Button { readFromFile() } label: {
+                        Label("Read from file…", systemImage: "doc.text")
+                    }
+                    if !recovery.isEmpty {
+                        Text(recoveryCandidates.isEmpty ? "Enter all 24 words" : "✓ recovery key detected")
+                            .font(.caption2)
+                            .foregroundStyle(recoveryCandidates.isEmpty ? Color.secondary : Color.green)
+                    }
                 }
             } else {
                 SecureField("Passphrase", text: $passphrase)
@@ -210,6 +215,12 @@ struct VaultUnlockSheet: View {
         }
         .padding(24)
         .frame(width: 440)
+    }
+
+    /// Load a saved recovery-key file into the field; `candidatePhrases` then
+    /// pulls the 24 words out of whatever formatting it has.
+    private func readFromFile() {
+        if let text = RecoveryKeyFile.read() { recovery = text; error = nil }
     }
 
     private func unlock() {
