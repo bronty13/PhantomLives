@@ -2,6 +2,22 @@
 
 All notable changes to PurpleDiary are documented here.
 
+## [Unreleased] — Vault & recovery: paste-back-tolerant key entry
+
+### Fixed
+- **Pasting a saved recovery-key file back now works.** The recovery-key fields
+  (vault unlock *and* the app-level recovery screen) previously needed exactly 24
+  bare space-separated words, so pasting back a **Save to file…** export — which
+  is numbered (`1. word`) and wrapped in prose — wasn't recognized as the 24
+  words. New `RecoveryKey.candidatePhrases(in:)` tokenizes arbitrary text,
+  ignores numbering/punctuation, keeps only BIP39 words, and returns every
+  contiguous 24-word window whose checksum passes; the unlock fields try each.
+  You can now paste the whole saved file, a numbered list, or a clean line — all
+  of them unlock. The fields show a "✓ recovery key detected" affordance.
+- **+4 tests** (`RecoveryKeyTests`): candidate extraction from a clean line, a
+  numbered list, the full saved-file format (prose header + numbered words), and
+  rejection of garbage → **156**.
+
 ## [Unreleased] — Phase 9: Vault (attachment sealing — vault is now complete)
 
 ### Added

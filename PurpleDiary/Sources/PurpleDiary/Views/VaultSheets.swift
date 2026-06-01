@@ -159,8 +159,10 @@ struct VaultUnlockSheet: View {
     @State private var showRecovery = false
     @State private var error: String?
 
-    private var recoveryWords: [String] {
-        recovery.split { $0 == " " || $0 == "\n" || $0 == "\t" }.map { String($0).lowercased() }
+    /// Checksum-valid phrases extracted from the recovery field — tolerant of a
+    /// pasted-back saved key file (numbering + prose) or a clean line.
+    private var recoveryCandidates: [[String]] {
+        RecoveryKey.candidatePhrases(in: recovery)
     }
 
     var body: some View {
@@ -173,11 +175,19 @@ struct VaultUnlockSheet: View {
                 .font(.callout).foregroundStyle(.secondary)
 
             if showRecovery {
-                Text("Enter your 24-word recovery key").font(.subheadline).bold()
+                Text("Enter this vault's 24-word recovery key").font(.subheadline).bold()
+                Text("Numbering, line breaks, and surrounding text are fine — paste the whole saved key file if you like.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 TextEditor(text: $recovery)
                     .font(.system(.callout, design: .monospaced))
-                    .frame(height: 64)
+                    .frame(height: 72)
                     .overlay(RoundedRectangle(cornerRadius: 6).stroke(.secondary.opacity(0.3)))
+                if !recovery.isEmpty {
+                    Text(recoveryCandidates.isEmpty ? "Enter all 24 words" : "✓ recovery key detected")
+                        .font(.caption2)
+                        .foregroundStyle(recoveryCandidates.isEmpty ? Color.secondary : Color.green)
+                }
             } else {
                 SecureField("Passphrase", text: $passphrase)
                     .textFieldStyle(.roundedBorder)
@@ -195,7 +205,7 @@ struct VaultUnlockSheet: View {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("Unlock") { unlock() }
                     .buttonStyle(.borderedProminent)
-                    .disabled(showRecovery ? recoveryWords.count != 24 : passphrase.isEmpty)
+                    .disabled(showRecovery ? recoveryCandidates.isEmpty : passphrase.isEmpty)
             }
         }
         .padding(24)
@@ -204,9 +214,16 @@ struct VaultUnlockSheet: View {
 
     private func unlock() {
         error = nil
-        let ok = showRecovery
-            ? appState.unlockVault(journalId: journal.id, recoveryWords: recoveryWords)
-            : appState.unlockVault(journalId: journal.id, passphrase: passphrase)
+        var ok = false
+        if showRecovery {
+            // Try each checksum-valid candidate; the right one unwraps the vault.
+            for words in recoveryCandidates where appState.unlockVault(journalId: journal.id, recoveryWords: words) {
+                ok = true
+                break
+            }
+        } else {
+            ok = appState.unlockVault(journalId: journal.id, passphrase: passphrase)
+        }
         if ok {
             appState.selectedJournalId = journal.id
             dismiss()

@@ -144,6 +144,33 @@ enum RecoveryKey {
         (try? entropy(from: phrase)) != nil
     }
 
+    /// Pull every checksum-valid 24-word phrase out of arbitrary pasted text.
+    ///
+    /// The user might paste a clean space-separated line, a numbered list
+    /// (`1. abandon …`), or a whole saved file with prose around the words.
+    /// We tokenize on non-letters (so numbering/punctuation vanish), lowercase,
+    /// keep only BIP39 words (so prose that isn't a dictionary word is dropped),
+    /// then return each contiguous 24-word window whose checksum passes. Random
+    /// prose practically never checksums, so the real phrase is normally the only
+    /// hit; callers that need certainty (the actual key must decrypt an envelope)
+    /// try each candidate. Returns `[]` when no valid phrase is present.
+    static func candidatePhrases(in text: String) -> [[String]] {
+        let cleaned = String(text.lowercased().map { $0.isLetter ? $0 : " " })
+        let tokens = cleaned
+            .split(whereSeparator: { $0.isWhitespace })
+            .map(String.init)
+            .filter { BIP39Wordlist.indexByWord[$0] != nil }
+        guard tokens.count >= wordCount else { return [] }
+        var out: [[String]] = []
+        for start in 0...(tokens.count - wordCount) {
+            let window = Array(tokens[start..<(start + wordCount)])
+            if (try? entropy(from: window)) != nil, !out.contains(window) {
+                out.append(window)
+            }
+        }
+        return out
+    }
+
     // MARK: - KDF helper
 
     /// Derive a 256-bit KEK from a recovery phrase + salt. Uses the

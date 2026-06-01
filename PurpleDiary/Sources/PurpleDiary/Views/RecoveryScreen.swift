@@ -73,17 +73,17 @@ struct RecoveryUnlockView: View {
     @State private var error: String?
     @State private var working = false
 
-    private var wordCount: Int {
-        phrase.split(whereSeparator: { $0.isWhitespace }).count
+    /// Checksum-valid 24-word phrases found in whatever was typed/pasted —
+    /// tolerant of numbering and prose (e.g. pasting back a saved key file).
+    private var candidates: [[String]] {
+        RecoveryKey.candidatePhrases(in: phrase)
     }
-    private var looksComplete: Bool {
-        wordCount == RecoveryKey.wordCount
-    }
+    private var looksComplete: Bool { !candidates.isEmpty }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title).font(.headline)
-            Text("Type or paste all 24 words, separated by spaces. Case and extra spaces don't matter.")
+            Text("Type or paste all 24 words. Numbering, line breaks, case, and surrounding text are fine — paste the whole saved key file if you like.")
                 .font(.callout).foregroundStyle(.secondary)
             TextEditor(text: $phrase)
                 .font(.system(.body, design: .monospaced))
@@ -94,7 +94,7 @@ struct RecoveryUnlockView: View {
                 .overlay(RoundedRectangle(cornerRadius: 6)
                     .stroke(Color.secondary.opacity(0.25), lineWidth: 1))
             HStack {
-                Text("\(wordCount)/\(RecoveryKey.wordCount) words")
+                Text(looksComplete ? "✓ recovery key detected" : "Enter your 24 words")
                     .font(.caption)
                     .foregroundStyle(looksComplete ? .green : .secondary)
                 if let error {
@@ -115,12 +115,14 @@ struct RecoveryUnlockView: View {
     private func attempt() {
         working = true
         defer { working = false }
-        switch onUnlock(phrase) {
-        case .success:
-            error = nil
-            onSuccess()
-        case .failure:
-            error = "That recovery key didn't unlock your journal. Check for typos and try again."
+        // Try each checksum-valid candidate; the right one decrypts the envelope.
+        for words in candidates {
+            if case .success = onUnlock(RecoveryKey.format(words)) {
+                error = nil
+                onSuccess()
+                return
+            }
         }
+        error = "That recovery key didn't unlock your journal. Check for typos and try again."
     }
 }
