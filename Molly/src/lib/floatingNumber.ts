@@ -10,13 +10,16 @@ export function showFloatingMoney(opts: {
   amountDollars: number;
   tier: CelebrationTier;
   emojis?: readonly string[];
+  /** Override the pill text (e.g. "+1.2k 🎉" for follower deltas). When
+   *  omitted, the classic "+$X" money formatter is used. */
+  text?: string;
 }): void {
   if (typeof document === 'undefined') return;
-  const { amountDollars, tier, emojis = [] } = opts;
+  const { amountDollars, tier, emojis = [], text } = opts;
   const baseLeft = Math.round(window.innerWidth / 2 + (Math.random() * 200 - 100));
   const baseTop = Math.round(window.innerHeight * 0.45);
 
-  spawnPill(amountDollars, tier, baseLeft, baseTop);
+  spawnPill(amountDollars, tier, baseLeft, baseTop, text);
   for (let i = 0; i < emojis.length; i++) {
     spawnEmoji(emojis[i], baseLeft, baseTop, i, emojis.length);
   }
@@ -25,12 +28,12 @@ export function showFloatingMoney(opts: {
   }
 }
 
-function spawnPill(amountDollars: number, tier: CelebrationTier, left: number, top: number) {
+function spawnPill(amountDollars: number, tier: CelebrationTier, left: number, top: number, text?: string) {
   const fontSize = tier <= 2 ? '1.6rem' : tier === 3 ? '2.2rem' : tier === 4 ? '2.8rem' : '3.6rem';
   const padding = tier <= 2 ? '0.4rem 0.9rem' : '0.6rem 1.2rem';
   const driftMs = tier === 5 ? 2200 : 1500;
   const driftPx = tier === 5 ? 140 : 80;
-  const formatted = `+$${amountDollars.toFixed(amountDollars >= 1000 ? 0 : 2)}`;
+  const formatted = text ?? `+$${amountDollars.toFixed(amountDollars >= 1000 ? 0 : 2)}`;
 
   const el = document.createElement('div');
   el.textContent = formatted;

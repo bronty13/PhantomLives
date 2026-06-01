@@ -133,6 +133,58 @@ Each non-Reddit platform gets its own tab so you can dig in:
 - Your **per-platform streak** ("🔥 5 days on TikTok!")
 - A **goal editor** if 2/day or 3/day stops feeling right — bump it up when you're feeling powerful, bump it down on tough weeks 🌷
 
+### 📈 The Growth tab — watch your followers climb! 🌟
+
+This is the *brand-new* one I made for you, and I’m a little obsessed 😍.
+Click the **📈 Growth** tab (right next to 🐷 Piggy bank) and you can
+write down your **follower count** for each platform — and I’ll draw you
+the prettiest little growth line and tell you where you’re headed. 💕
+
+**How you log it:**
+
+- Each platform gets a row with a number box. Pop in today’s follower
+  count and tap **Save** — you’ll hear a happy **✨ching✨**, a green
+  **+number 🎉** floats up, and the line ticks upward. The box even
+  starts pre-filled with your last number, so most days you just nudge
+  it up a touch. 🌱
+- Logged a number already today? The button says **Update** — change it
+  as many times as you like; the latest one sticks.
+- Next to each row is a tiny **sparkline** and a little **▲ / ▼** so you
+  can see at a glance whether you’re trending up. (Spoiler: you are 💪)
+
+**The little nudge 🌱** — if you haven’t logged today’s numbers yet, a
+sweet reminder card shows up at the top, and a tiny **dot** sits on the
+**Social** word in the sidebar. Log everyone and it disappears — no
+nagging, just a friendly tap on the shoulder. 💖
+
+**Tap any platform** to open its **details page**, where the magic is:
+
+- 📈 A **big growth chart** of your history. A **green dashed line** marks
+  your goal, and a **dashed sparkly line with a 🚀** shows my *forecast*
+  — where you’re headed if you keep this up! Hover any dot to see the
+  exact number and how much you gained that day.
+- 🔮 A **forecast card** that talks to you: *“At +120/day you’ll hit 10k
+  around Aug 3 ✨.”* No goal set? I’ll just show the trend. Having a slow
+  week? I’ll be gentle — *“Holding steady 💪”* or *“a lil dip, you’ve
+  got this 💖.”* I will **never** make a dip feel bad. 🌸
+- 🎯 A **goal** box — tell me the follower number you’re dreaming toward
+  (like 10,000), and when you cross it I throw a whole **confetti party**
+  with the big fanfare! Set it to **0** for no goal (I’ll just show your
+  trend).
+- ✏️ An **edit & backfill** list — forgot to log a few days? Type any
+  past date and your number and I’ll slip it in quietly (no ching for old
+  days). Fix a typo or remove a wrong entry right there too.
+
+**Combined view 🌈** — on **ALL** personas, the Growth tab adds up each
+persona’s latest follower count into one grand total (with a little
+“from 2 personas’ latest entry” note so it’s always honest). To log
+numbers or see a growth chart, pick a single persona first — then the
+whole sparkly chart is yours. 💕
+
+*(Pssst — one day I might fetch these numbers for you automatically. For
+now it’s a sweet little daily ritual, and honestly? Watching the line go
+up feels SO good. 🌟)*
+
 ### A few sweet details
 
 - **It's persona-scoped.** Curves and Princess each have their *own* count and their *own* streak — pick a persona in the top bar first, then start tapping. If you're on **ALL**, the +1 buttons will gently wait until you pick one (so no coin goes to the wrong piggy bank 🐷).

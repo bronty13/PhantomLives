@@ -26,6 +26,7 @@ import { MollysLogView } from './views/MollysLog/MollysLogView';
 import { ReportsView } from './views/Reports/ReportsView';
 import { materializeOccurrences, pendingCounts } from './data/occurrences';
 import { materializeRecurringExpenses } from './data/expenses';
+import { listFollowersToday, todayIsoLocal } from './data/socialFollowers';
 
 export default function App() {
   const { personas, active, choose, loading, error, refresh } = usePersonas();
@@ -46,6 +47,21 @@ export default function App() {
   }, [promosEnabled, promosFlagLoaded, view]);
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [pendingTotal, setPendingTotal] = useState(0);
+  const [socialNeedsEntry, setSocialNeedsEntry] = useState(false);
+
+  // Nudge-dot: any platform unlogged today for the active persona. Only
+  // meaningful per-persona (you can't log to "ALL"), so suppress on ALL.
+  const refreshSocialNudge = useCallback(async () => {
+    if (active.code === 'ALL') { setSocialNeedsEntry(false); return; }
+    try {
+      const rows = await listFollowersToday(active.code, todayIsoLocal());
+      setSocialNeedsEntry(rows.some((r) => r.todayCount == null));
+    } catch (e) {
+      console.warn('follower nudge check failed', e);
+    }
+  }, [active.code]);
+
+  useEffect(() => { void refreshSocialNudge(); }, [refreshSocialNudge]);
 
   const refreshCounts = useCallback(async () => {
     try {
@@ -127,7 +143,7 @@ export default function App() {
       // the single render-cycle gap.
       body = promosEnabled ? <PromosListView active={active} /> : null;
       break;
-    case 'social':    body = <SocialView active={active} />; break;
+    case 'social':    body = <SocialView active={active} onFollowersChanged={refreshSocialNudge} />; break;
     case 'income':    body = <IncomeView active={active} />; break;
     case 'expenses':  body = <ExpensesView active={active} onChanged={refreshCounts} />; break;
     case 'reports':   body = <ReportsView active={active} />; break;
@@ -144,6 +160,7 @@ export default function App() {
           visible={sidebarVisible}
           pendingCount={pendingTotal}
           promosEnabled={promosEnabled}
+          socialNeedsEntry={socialNeedsEntry}
         />
         <div className="flex-1 flex flex-col min-w-0">
           <PersonaSwitcher

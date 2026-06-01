@@ -11,6 +11,8 @@ interface SidebarProps {
   pendingCount?: number;     // overdue + today; shows red badge on Reminders
   /** Feature flag — when false the Promos nav entry is hidden. */
   promosEnabled?: boolean;
+  /** When true, a gentle ● dot appears on Social — today's followers are unlogged. */
+  socialNeedsEntry?: boolean;
 }
 
 interface NavItem {
@@ -41,7 +43,7 @@ const NAV: NavItem[] = [
   { key: 'manual',    label: 'Manual',    icon: <span>💌</span>, hint: 'Sallie’s in-app user guide' },
 ];
 
-export function Sidebar({ active, onSelect, visible, pendingCount = 0, promosEnabled = true }: SidebarProps) {
+export function Sidebar({ active, onSelect, visible, pendingCount = 0, promosEnabled = true, socialNeedsEntry = false }: SidebarProps) {
   const [version, setVersion] = useState<string>('');
   useEffect(() => {
     getVersion().then(setVersion).catch(() => setVersion(''));
@@ -90,6 +92,14 @@ export function Sidebar({ active, onSelect, visible, pendingCount = 0, promosEna
                 >
                   {pendingCount > 99 ? '99+' : pendingCount}
                 </span>
+              )}
+              {item.key === 'social' && socialNeedsEntry && (
+                <span
+                  className="rounded-full"
+                  style={{ width: 8, height: 8, background: 'rgb(var(--persona-accent))' }}
+                  title="Log today's follower counts"
+                  aria-label="Today's follower counts not logged yet"
+                />
               )}
             </button>
           );

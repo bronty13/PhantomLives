@@ -4,6 +4,48 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.0] — 2026-06-01
+
+### Added — 📈 Daily follower-count tracking (Social → Growth)
+
+A new **📈 Growth** tab in the Social hub. Sallie logs each platform's
+follower count daily; Molly shows the trend and projects where she's
+headed. Sibling to the piggy-bank, but with **snapshot** semantics
+(one absolute number per persona/platform/day, UPSERT — latest wins),
+deliberately *not* the increment model of `social_post_drops`.
+
+- **Overview**: per-platform row with today's entry input (pre-filled
+  from the latest known count), latest value, Δ vs the previous logged
+  day with ▲/▼ trend arrow, and a hand-rolled SVG **sparkline**. A
+  gentle nudge card lists platforms not yet logged today; a ● dot rides
+  the Social sidebar item until today's counts are in (per-persona;
+  suppressed on ALL).
+- **Drill-down**: a hand-rolled SVG **line chart** (history + dashed
+  green goal line + dashed forecast tail to the goal, with hover
+  tooltips), a **forecast card**, a stats strip (latest, this-week Δ,
+  avg/day, goal %), an **editable history** with backfill/edit/delete of
+  any past date, and a per-platform **follower goal** editor.
+- **Forecast** (`src/lib/followerForecast.ts`, pure + unit-tested):
+  least-squares regression over the last 14 logged points → followers/day
+  and an ETA to the goal. Sparse-data-safe (skipped days weighted by
+  real day-gaps), and always *kind* — a decline never shows a sad sound,
+  a red number, or a negative/∞ ETA; far-off goals don't print a date
+  decades out.
+- **Per-persona** with an **ALL = combined** view: each persona's latest
+  snapshot is summed (carry-forward, since personas log on different
+  days) with an honest "from N personas' latest entry" footnote and a
+  per-persona breakdown on drill-down.
+- **Delight**: logging fires the existing Web-Audio chime + a green
+  floating "+Δ 🎉" pill + a tiered encouragement; crossing the follower
+  goal throws the full milestone fanfare + screen flash. Backfilling a
+  past date saves quietly.
+
+Schema: migration `037_social_followers.sql` adds `social_follower_counts`
+and a `follower_goal` column on `social_platforms` (mirroring how 035
+added `daily_goal`). Rust module `social_followers.rs` is a thin store
+(validate + upsert + read); all trend/forecast math lives in the
+testable TS lib. The new coin→pig nav fix from 1.24.0 is unaffected.
+
 ## [1.24.0] — 2026-06-01
 
 ### Fixed — 🐷 Social icon was invisible on Windows

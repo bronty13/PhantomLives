@@ -20,6 +20,7 @@ mod masterclipper;
 mod notes;
 mod reddit;
 mod social_drops;
+mod social_followers;
 mod return_file;
 mod site_credentials;
 
@@ -243,6 +244,12 @@ pub fn run() {
             sql: include_str!("../migrations/036_youtube_bundle.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 37,
+            description: "social-followers",
+            sql: include_str!("../migrations/037_social_followers.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -446,6 +453,13 @@ pub fn run() {
             social_drops::compute_social_overall_streak,
             social_drops::compute_social_platform_streak,
             social_drops::set_social_platform_goal,
+            social_followers::upsert_follower_count,
+            social_followers::list_followers_today,
+            social_followers::list_follower_history,
+            social_followers::list_logged_follower_history,
+            social_followers::list_combined_followers_today,
+            social_followers::set_social_platform_follower_goal,
+            social_followers::delete_follower_count,
             hours::hours_start_session,
             hours::hours_stop_session,
             hours::hours_list_sessions,
@@ -1190,6 +1204,7 @@ mod migration_smoke {
             (34, "return-file-import",           include_str!("../migrations/034_return_file_import.sql")),
             (35, "social-drops",                 include_str!("../migrations/035_social_drops.sql")),
             (36, "youtube-bundle",               include_str!("../migrations/036_youtube_bundle.sql")),
+            (37, "social-followers",             include_str!("../migrations/037_social_followers.sql")),
         ];
 
         for (v, name, sql) in migrations {
@@ -1209,7 +1224,7 @@ mod migration_smoke {
             "schedules", "occurrences",
             "income_adhoc", "income_site",
             "expenses", "expenses_recurring",
-            "social_platforms", "social_promos",
+            "social_platforms", "social_promos", "social_follower_counts",
             "mollys_log",
             "c4s_clips", "c4s_imports",
             "bundles", "bundle_fan_days", "bundle_files", "bundle_categories", "bundle_prohibited_words",

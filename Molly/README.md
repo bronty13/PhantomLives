@@ -128,6 +128,7 @@ Molly/
 | 1.15 | 🎁🎉🏷️ Phase 14 — Bundle previews (inline image/video + 5 sample frames per video) · Holidays on the Calendar (18 US defaults, fixed + nth-weekday, two-color split-tone pills) · Content tags (global taxonomy on bundles, per-day FanSite tags, clip tags) · two Calendar overlay toggles (FanSite tags + Clip tags, per-persona). |
 | 1.16 | 🎁 Content-tag propagation — bundle-publish mirrors bundle-level tags onto the clip row; content tags flow into `info.md` + `Molly.log` inside the published ZIP. |
 | 1.17 | 🔴⏱🎨 Phase 15 — Reddit sidebar tab (Today / Subreddits / Post log / Captions / Hours) · 🎁 Reward milestones (global, multiple goals) · 🎨 Dark mode (light/dark/system) · 🌼 Licensed Paper Daisy font · removed unwanted "CoC/PoA content release" defaults · 3rd Calendar overlay for Reddit posts. **v1.17.1 hotfix** for migration-hash crash. |
+| 1.25 | 📈 Daily follower-count tracking (Social → Growth) — per-platform daily snapshot, hand-rolled SVG sparkline + line chart, least-squares forecast/ETA to an optional follower goal, editable history + backfill, per-persona with an ALL=combined view, gentle nudge card + sidebar dot, celebratory sound/visual on entry. |
 | ⏸ 8 | Per-site sales-report parsers (deferred — see [PHASE_8_PARSERS.md](PHASE_8_PARSERS.md)). |
 
 ## Built with love

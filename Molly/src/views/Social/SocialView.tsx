@@ -3,20 +3,26 @@ import type { Persona } from '../../state/personas';
 import { listPlatforms, type SocialPlatform } from '../../data/socialPlatforms';
 import { PiggyBank } from './PiggyBank';
 import { PlatformTab } from './PlatformTab';
+import { FollowersTab } from './FollowersTab';
+import { FollowerPlatformView } from './FollowerPlatformView';
 import { RedditView } from '../Reddit/RedditView';
 
 interface Props {
   active: Persona;
+  /** Called after a follower entry changes, so the sidebar nudge-dot refreshes. */
+  onFollowersChanged?: () => void;
 }
 
 type Section =
   | { kind: 'piggy' }
+  | { kind: 'followers' }                 // follower-growth overview
+  | { kind: 'followers-platform'; platformId: number }
   | { kind: 'reddit' }                    // existing Reddit deep tools
   | { kind: 'platform'; platformId: number };
 
 const REDDIT_PLATFORM_ID = 1;
 
-export function SocialView({ active }: Props) {
+export function SocialView({ active, onFollowersChanged }: Props) {
   const [platforms, setPlatforms] = useState<SocialPlatform[]>([]);
   const [section, setSection] = useState<Section>({ kind: 'piggy' });
 
@@ -33,8 +39,8 @@ export function SocialView({ active }: Props) {
       <div>
         <h2 className="display-font text-2xl font-bold persona-accent">🐷 Social</h2>
         <p className="opacity-70 text-sm">
-          Daily piggy-bank for every platform. Drop a coin each time you post; the streak grows
-          when you hit every platform's goal for the day.
+          Daily piggy-bank for posting + follower-growth tracking for every platform. Drop a coin each
+          time you post, and log your follower counts to watch your line climb. 📈
           {active.code !== 'ALL' && <> Filtered to <strong>{active.name}</strong>.</>}
         </p>
       </div>
@@ -44,6 +50,11 @@ export function SocialView({ active }: Props) {
           label="🐷 Piggy bank"
           active={section.kind === 'piggy'}
           onClick={() => setSection({ kind: 'piggy' })}
+        />
+        <TabPill
+          label="📈 Growth"
+          active={section.kind === 'followers' || section.kind === 'followers-platform'}
+          onClick={() => setSection({ kind: 'followers' })}
         />
         {platforms.map((p) => {
           // Reddit gets its own deep tab (existing tools). The piggy
@@ -68,6 +79,21 @@ export function SocialView({ active }: Props) {
 
       <div>
         {section.kind === 'piggy'    && <PiggyBank active={active} />}
+        {section.kind === 'followers' && (
+          <FollowersTab
+            active={active}
+            onOpenPlatform={(platformId) => setSection({ kind: 'followers-platform', platformId })}
+            onChanged={onFollowersChanged}
+          />
+        )}
+        {section.kind === 'followers-platform' && (
+          <FollowerPlatformView
+            active={active}
+            platformId={section.platformId}
+            onBack={() => setSection({ kind: 'followers' })}
+            onChanged={onFollowersChanged}
+          />
+        )}
         {section.kind === 'platform' && (
           <PlatformTab active={active} platformId={section.platformId} />
         )}
