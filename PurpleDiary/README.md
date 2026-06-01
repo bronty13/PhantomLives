@@ -35,7 +35,10 @@ roadmap, [HANDOFF.md](HANDOFF.md) for the architecture snapshot, and
   ciphertext on disk even while the app is open, until you unlock it for the
   session. Each vault gets its own generated 24-word recovery key (copy / save to
   file) so a forgotten passphrase isn't permanent lockout; locked vaults are
-  skipped by search and export. *(Phase 9)*
+  skipped by search and export. Recovery is click-only: **Save to file…** the key
+  at creation, then later **Forgot passphrase? → Read from file…** to load it
+  straight back (the unlock and app-recovery fields also accept a pasted saved
+  file — numbered list or prose and all). *(Phase 9)*
 - **Mood** — 0–5 star rating per entry.
 - **Tags** — named, colored, toggleable per entry; six seeded on first launch.
 - **People** — a global list of recurring people you can link to entries.

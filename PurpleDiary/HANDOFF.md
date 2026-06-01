@@ -4,8 +4,9 @@ Engineer-facing orientation for anyone picking up PurpleDiary. Read this before
 non-trivial changes. For the design brief and roadmap see `SCOPING.md`; for the
 security model see `Docs/SECURITY.md`; for user-facing help see `USER_MANUAL.md`.
 
-Last updated: 2026-05-31 (end of Phase-2 feature work: Insights, Export,
-Trackers, Photos import).
+Last updated: 2026-06-01 (Phase 9 vault complete — title/body + attachment
+sealing, create/unlock/manage UI, paste-back-tolerant recovery; vault seal
+now fails closed rather than falling back to plaintext).
 
 ---
 

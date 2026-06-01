@@ -36,7 +36,7 @@ final class VaultTests: XCTestCase {
     func testSealUnsealRoundTrip() throws {
         let (ck, _) = try VaultService.makeEnvelope(journalId: "J1", passphrase: "pw", recoveryWords: recovery)
         let secret = "Dear diary — today was *private*.\n\nWith newlines."
-        let sealed = VaultService.seal(secret, key: ck)
+        let sealed = try VaultService.seal(secret, key: ck)
         XCTAssertTrue(VaultService.isSealed(sealed))
         XCTAssertFalse(sealed.contains("private"), "ciphertext doesn't expose the plaintext")
         XCTAssertEqual(VaultService.unseal(sealed, key: ck), secret)
@@ -45,7 +45,7 @@ final class VaultTests: XCTestCase {
     func testUnsealWithWrongKeyFailsAndPlaintextPassesThrough() throws {
         let (ck, _) = try VaultService.makeEnvelope(journalId: "J1", passphrase: "pw", recoveryWords: recovery)
         let other = SymmetricKey(size: .bits256)
-        let sealed = VaultService.seal("secret", key: ck)
+        let sealed = try VaultService.seal("secret", key: ck)
         XCTAssertNil(VaultService.unseal(sealed, key: other), "wrong key can't unseal")
         // Non-sentinel text is treated as plaintext and returned unchanged.
         XCTAssertEqual(VaultService.unseal("just plain text", key: ck), "just plain text")

@@ -1,8 +1,31 @@
 # Changelog
 
-All notable changes to PurpleDiary are documented here.
+All notable changes to PurpleDiary are documented here. Versions are
+git-derived (`1.0.<commit-count>`), matching what the built app reports.
 
-## [Unreleased] — Vault & recovery: paste-back-tolerant key entry
+## [1.0.588] — 2026-06-01 — Vault hardening + changelog versioning
+
+### Changed
+- **A vault now refuses to fall back to plaintext if sealing ever fails.**
+  `VaultService.seal` / `sealData` previously returned the *unencrypted*
+  title / body / attachment bytes when AES-GCM encryption failed, which would
+  silently write cleartext into a vault. They now `throw VaultError.sealFailed`
+  and the surrounding write aborts instead — a vault can never persist
+  plaintext. The failure path is near-unreachable with CryptoKit on a valid
+  key, so this is defense-in-depth, not a fix for an observed leak.
+- **The changelog is now versioned.** Every prior section was stacked under a
+  single rolling `[Unreleased]` heading; each is now stamped with the
+  git-derived version (`1.0.<commit-count>`) and the date it shipped, so a given
+  build maps to its notes. No content changed — only the headings.
+
+### Docs
+- HANDOFF "last updated" line refreshed to the shipped Phase-9 state; README now
+  documents the **Read from file…** recovery-key affordance (already in the
+  USER_MANUAL).
+- Tests unchanged and green (**156/156**); the existing vault round-trip tests
+  now exercise the throwing `seal` / `sealData` signatures.
+
+## [1.0.578] — 2026-06-01 — Vault & recovery: paste-back-tolerant key entry
 
 ### Added
 - **Read from file…** on both recovery-key fields (vault unlock + app recovery
@@ -25,7 +48,7 @@ All notable changes to PurpleDiary are documented here.
   numbered list, the full saved-file format (prose header + numbered words), and
   rejection of garbage → **156**.
 
-## [Unreleased] — Phase 9: Vault (attachment sealing — vault is now complete)
+## [1.0.575] — 2026-06-01 — Phase 9: Vault (attachment sealing — vault is now complete)
 
 ### Added
 - **Vaults now seal attachment bytes too.** A vault entry's photo / video / audio
@@ -48,7 +71,7 @@ All notable changes to PurpleDiary are documented here.
   in `Docs/SECURITY.md` — a vault hides content, not the existence or rough size
   of entries.
 
-## [Unreleased] — Phase 9: Vault (create / unlock / manage)
+## [1.0.574] — 2026-06-01 — Phase 9: Vault (create / unlock / manage)
 
 ### Added
 - **Vault journals — the feature is now usable.** Right-click a journal →
@@ -81,7 +104,7 @@ All notable changes to PurpleDiary are documented here.
   session-only key, export/visibility gating, v1 seals title+body not attachments)
   and downgrades the "hidden = visibility only" caveat to point at vaults.
 
-## [Unreleased] — Phase 9: Vault (transparent sealing data path)
+## [1.0.573] — 2026-05-31 — Phase 9: Vault (transparent sealing data path)
 
 ### Added (internal — still no UI; foundation for the create/unlock flows)
 - **Transparent seal-on-write / unseal-on-read.** `DatabaseService` now seals a
@@ -112,7 +135,7 @@ All notable changes to PurpleDiary are documented here.
   so this remains behavior-neutral for existing installs. The create/unlock
   flows and sidebar lock glyph are the next step, built on this tested data path.
 
-## [Unreleased] — Phase 9: Vault (cryptographic foundation)
+## [1.0.572] — 2026-05-31 — Phase 9: Vault (cryptographic foundation)
 
 ### Added (internal — no behavior change yet)
 - **Vault cryptographic core.** Lays the groundwork for per-journal sealed
@@ -134,7 +157,7 @@ All notable changes to PurpleDiary are documented here.
   **+7 tests** (passphrase + recovery unwrap, wrong-key rejection, seal/unseal
   round-trip + wrong-key, envelope DB round-trip, session unlock/lock) → 135.
 
-## [Unreleased] — Inline media in entries
+## [1.0.571] — 2026-05-31 — Inline media in entries
 
 ### Added
 - **Place media inside the body, with a caption and text before/after.** Any
@@ -163,7 +186,7 @@ All notable changes to PurpleDiary are documented here.
   segment parse incl. consecutive/plain, Day One rewrite map + marker fallback,
   end-to-end Day One inline import) → 128 total.
 
-## [Unreleased] — Fixes: Day One media import + delete-journal choice
+## [1.0.570] — 2026-05-31 — Fixes: Day One media import + delete-journal choice
 
 ### Fixed
 - **Day One import now brings in photos & videos.** Day One stores media in
@@ -183,7 +206,7 @@ All notable changes to PurpleDiary are documented here.
   async (imports media via `FileImportService`). **+2 tests** (Day One media
   resolve→import; delete-with-entries) → 122 total.
 
-## [Unreleased] — Phase 8: Importers
+## [1.0.568] — 2026-05-31 — Phase 8: Importers
 
 ### Added
 - **Import journals** from JSON (File → **Import Journal…**, ⇧⌘I). Four sources:
@@ -205,7 +228,7 @@ All notable changes to PurpleDiary are documented here.
   120 total. Third-party parsers are verified against synthetic samples —
   confirm with a real export.
 
-## [Unreleased] — Phase 7: PDF & file attachments
+## [1.0.567] — 2026-05-31 — Phase 7: PDF & file attachments
 
 ### Added
 - **PDF attachments.** "Add from Files…" now accepts **PDFs** — stored as
@@ -232,7 +255,7 @@ All notable changes to PurpleDiary are documented here.
   **+2 tests** (classify pdf/file, generic-file verbatim, PDF thumbnail/pagecount,
   unreadable→nil). 114 total.
 
-## [Unreleased] — Phase 6: Calendar heatmap + daily reminder
+## [1.0.566] — 2026-05-31 — Phase 6: Calendar heatmap + daily reminder
 
 ### Added
 - **Calendar heatmap.** Calendar days are now shaded by how much you wrote that
@@ -252,7 +275,7 @@ All notable changes to PurpleDiary are documented here.
   levels + monotonic opacity; reminder time clamping + deterministic body).
   112 total.
 
-## [Unreleased] — Phase 5: Templates
+## [1.0.565] — 2026-05-31 — Phase 5: Templates
 
 ### Added
 - **Entry templates.** Reusable scaffolds for entries. The toolbar **New Entry**
@@ -272,7 +295,7 @@ All notable changes to PurpleDiary are documented here.
   **+6 tests** (token render: substitute / case-insensitive / unknown-left-alone;
   CRUD; seed; Codable). 108 total.
 
-## [Unreleased] — Phase 4: Reflection (On This Day + writing prompts)
+## [1.0.564] — 2026-05-31 — Phase 4: Reflection (On This Day + writing prompts)
 
 ### Added
 - **On This Day.** A new sidebar section surfaces entries you wrote on today's
@@ -293,7 +316,7 @@ All notable changes to PurpleDiary are documented here.
   stability / advance / cycle / bundled-file decodes; On-This-Day matching +
   years-ago label). 102 total.
 
-## [Unreleased] — Phase 3: Journals (multiple + hidden)
+## [1.0.563] — 2026-05-31 — Phase 3: Journals (multiple + hidden)
 
 ### Added
 - **Multiple journals.** A new **JOURNALS** section in the sidebar lets you keep
@@ -329,7 +352,7 @@ All notable changes to PurpleDiary are documented here.
   move, delete-reassign, can't-delete-default, visibility gate + selection,
   Codable). 95 total.
 
-## [Unreleased] — Phase 2: Import text files into an entry
+## [1.0.562] — 2026-05-31 — Phase 2: Import text files into an entry
 
 ### Added
 - **Import a text file into the entry body.** The Markdown editor's toolbar gains
@@ -345,7 +368,7 @@ All notable changes to PurpleDiary are documented here.
   the button lives in `MarkdownEditor`. Build-verified; **+6 tests** (merge rule
   + Markdown/plain-text/RTF reading).
 
-## [Unreleased] — Phase 2: Discard never-filled-in entries
+## [1.0.560] — 2026-05-31 — Phase 2: Discard never-filled-in entries
 
 ### Changed
 - **A new entry you never fill in is silently discarded.** ⌘N still inserts an
@@ -362,7 +385,7 @@ All notable changes to PurpleDiary are documented here.
   persist). **+5 tests** over the empty/non-empty predicate. Pre-existing blank
   entries are not swept automatically — this prevents new accumulation.
 
-## [Unreleased] — Phase 2: Audio attachments
+## [1.0.559] — 2026-05-31 — Phase 2: Audio attachments
 
 ### Added
 - **Add audio from Files.** The **"Add from Files…"** picker now accepts **audio**
@@ -383,7 +406,7 @@ All notable changes to PurpleDiary are documented here.
 - Build-verified; **76/76 tests** (audio content-type classification + verbatim
   audio-from-file import added). Audio playback verified by hand (AVKit).
 
-## [Unreleased] — Phase 2: Browse-any-day photos, filesystem import, media viewer
+## [1.0.558] — 2026-05-31 — Phase 2: Browse-any-day photos, filesystem import, media viewer
 
 ### Added
 - **Browse beyond the entry's day in the Photos picker.** "Add from Photos"
@@ -421,7 +444,7 @@ All notable changes to PurpleDiary are documented here.
   poster decoding is verified by hand (needs a real movie + AVFoundation),
   consistent with the live PhotoKit import.
 
-## [Unreleased] — Phase 2: Photos import (auto-assembled day)
+## [1.0.556] — 2026-05-31 — Phase 2: Photos import (auto-assembled day)
 
 ### Added
 - **Photos import** — the first "auto-assembled day" feature. The entry editor
@@ -456,7 +479,7 @@ All notable changes to PurpleDiary are documented here.
   Photos prompt only surfaces for a user-launched app, not an automation-launched
   one) — see the SECURITY.md update documenting attachments as encrypted BLOBs.
 
-## [Unreleased] — Phase 2: Tracker tags + graphs
+## [1.0.555] — 2026-05-31 — Phase 2: Tracker tags + graphs
 
 ### Added
 - **Trackers** — define your own quantified metrics (cups of water, hours of
@@ -491,7 +514,7 @@ All notable changes to PurpleDiary are documented here.
   defined, logged on an entry, and rendered as a point on its Insights chart),
   then removed.
 
-## [Unreleased] — Phase 2: Export (Markdown / HTML / PDF / JSON)
+## [1.0.554] — 2026-05-30 — Phase 2: Export (Markdown / HTML / PDF / JSON)
 
 ### Added
 - **Whole-journal export** in four formats, via **File → Export Journal… (⇧⌘E)**
@@ -528,7 +551,7 @@ All notable changes to PurpleDiary are documented here.
   stars and preserved line breaks (the PDF/`WKWebView` path the unit tests can't
   cover).
 
-## [Unreleased] — Security & Privacy whitepaper + in-app viewer
+## [1.0.553] — 2026-05-30 — Security & Privacy whitepaper + in-app viewer
 
 ### Added
 - **`Docs/SECURITY.md` — a full Security & Privacy whitepaper.** A read-it-end-
@@ -557,7 +580,7 @@ All notable changes to PurpleDiary are documented here.
   Security & Privacy menu item was confirmed present and reachable; the rendered
   window was not screenshotted this round because the Mac was at the lock screen.
 
-## [Unreleased] — Phase 2: Insights dashboard
+## [1.0.552] — 2026-05-30 — Phase 2: Insights dashboard
 
 ### Added
 - **Insights** sidebar section — a statistics dashboard built on Swift Charts
@@ -579,7 +602,7 @@ All notable changes to PurpleDiary are documented here.
   visually against a 7-entry journal (7 entries / 137 words / 5 days / avg mood
   3.2, with the mood line + monthly bars rendering).
 
-## [Unreleased] — Phase 1: privacy core (encryption-at-rest + app-lock)
+## [1.0.551] — 2026-05-30 — Phase 1: privacy core (encryption-at-rest + app-lock)
 
 ### Added
 - **Encryption at rest (SQLCipher).** The whole `diary.sqlite` is now
@@ -636,7 +659,7 @@ All notable changes to PurpleDiary are documented here.
   PurpleDiary's local-first ethos. `settings.json` stays plaintext (no journal
   content; only non-sensitive prefs).
 
-## [Unreleased] — Phase 1 scaffold
+## [1.0.548] — 2026-05-30 — Phase 1 scaffold
 
 ### Added
 - Initial project scaffold: SwiftUI + GRDB/SQLite macOS app modeled on

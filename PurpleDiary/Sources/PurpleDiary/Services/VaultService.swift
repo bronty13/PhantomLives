@@ -51,6 +51,9 @@ enum VaultService {
         case locked
         /// No envelope on disk for this journal.
         case noEnvelope
+        /// Encrypting content for a vault failed. We refuse to fall back to
+        /// writing the plaintext into the vault — the caller must abort the write.
+        case sealFailed
         var errorDescription: String? {
             switch self {
             case .wrapVerificationFailed:
@@ -59,6 +62,8 @@ enum VaultService {
                 return "The vault is locked. Unlock it first."
             case .noEnvelope:
                 return "This journal has no vault envelope."
+            case .sealFailed:
+                return "Could not encrypt content for the vault. Nothing was written."
             }
         }
     }
@@ -113,8 +118,10 @@ enum VaultService {
     }
 
     /// Seal a string under the content key → `pdvlt1:<base64(AES-GCM)>`.
-    static func seal(_ text: String, key: SymmetricKey) -> String {
-        guard let ct = try? Crypto.encrypt(Data(text.utf8), using: key) else { return text }
+    /// Throws `VaultError.sealFailed` rather than silently returning the
+    /// plaintext if encryption fails — a vault must never persist cleartext.
+    static func seal(_ text: String, key: SymmetricKey) throws -> String {
+        guard let ct = try? Crypto.encrypt(Data(text.utf8), using: key) else { throw VaultError.sealFailed }
         return sentinel + ct.base64EncodedString()
     }
 
@@ -137,8 +144,10 @@ enum VaultService {
     static let dataSentinel = Data(sentinel.utf8)
 
     /// Seal arbitrary bytes under the content key → `pdvlt1:` + AES-GCM blob.
-    static func sealData(_ data: Data, key: SymmetricKey) -> Data {
-        guard let ct = try? Crypto.encrypt(data, using: key) else { return data }
+    /// Throws `VaultError.sealFailed` rather than silently returning the
+    /// plaintext bytes if encryption fails — a vault must never persist cleartext.
+    static func sealData(_ data: Data, key: SymmetricKey) throws -> Data {
+        guard let ct = try? Crypto.encrypt(data, using: key) else { throw VaultError.sealFailed }
         return dataSentinel + ct
     }
 

@@ -594,8 +594,8 @@ final class DatabaseService {
         if dstVault {
             guard let k = VaultService.key(for: journalId) else { throw VaultWriteError.lockedVault }
             dstKey = k
-            title = VaultService.seal(title, key: k)
-            body = VaultService.seal(body, key: k)
+            title = try VaultService.seal(title, key: k)
+            body = try VaultService.seal(body, key: k)
         }
         try dbPool.write { db in
             try db.execute(sql: """
@@ -685,8 +685,8 @@ final class DatabaseService {
             throw VaultWriteError.lockedVault
         }
         var e = entry
-        e.title = VaultService.seal(entry.title, key: key)
-        e.bodyMarkdown = VaultService.seal(entry.bodyMarkdown, key: key)
+        e.title = try VaultService.seal(entry.title, key: key)
+        e.bodyMarkdown = try VaultService.seal(entry.bodyMarkdown, key: key)
         return e
     }
 
@@ -761,15 +761,15 @@ final class DatabaseService {
                 .filter(sql: "entry_id IN (SELECT id FROM entries WHERE journal_id = ?)", arguments: [journalId])
                 .fetchAll(db)
         }
-        let changed: [Attachment] = rows.compactMap { a in
+        let changed: [Attachment] = try rows.compactMap { a in
             let dataSealed = VaultService.isSealedData(a.data)
             let thumbSealed = a.thumbnailData.map(VaultService.isSealedData) ?? true   // nil ⇒ nothing to do
             if seal {
                 if dataSealed && thumbSealed { return nil }
                 var m = a
-                if !dataSealed { m.data = VaultService.sealData(a.data, key: key) }
+                if !dataSealed { m.data = try VaultService.sealData(a.data, key: key) }
                 if let t = a.thumbnailData, !VaultService.isSealedData(t) {
-                    m.thumbnailData = VaultService.sealData(t, key: key)
+                    m.thumbnailData = try VaultService.sealData(t, key: key)
                 }
                 return m
             } else {
@@ -796,7 +796,7 @@ final class DatabaseService {
             try Attachment.filter(Column("entry_id") == entryId).fetchAll(db)
         }
         guard !rows.isEmpty else { return }
-        let changed: [Attachment] = rows.map { a in
+        let changed: [Attachment] = try rows.map { a in
             var dataBytes = a.data
             var thumbBytes = a.thumbnailData
             if let srcKey {
@@ -804,8 +804,8 @@ final class DatabaseService {
                 if let t = thumbBytes, VaultService.isSealedData(t), let u = VaultService.unsealData(t, key: srcKey) { thumbBytes = u }
             }
             if let dstKey {
-                if !VaultService.isSealedData(dataBytes) { dataBytes = VaultService.sealData(dataBytes, key: dstKey) }
-                if let t = thumbBytes, !VaultService.isSealedData(t) { thumbBytes = VaultService.sealData(t, key: dstKey) }
+                if !VaultService.isSealedData(dataBytes) { dataBytes = try VaultService.sealData(dataBytes, key: dstKey) }
+                if let t = thumbBytes, !VaultService.isSealedData(t) { thumbBytes = try VaultService.sealData(t, key: dstKey) }
             }
             var m = a
             m.data = dataBytes
@@ -824,13 +824,13 @@ final class DatabaseService {
         let rows = try dbPool.read { db in
             try Entry.filter(Column("journal_id") == journalId).fetchAll(db)
         }
-        let sealed: [Entry] = rows.compactMap { e in
+        let sealed: [Entry] = try rows.compactMap { e in
             let titleSealed = VaultService.isSealed(e.title)
             let bodySealed = VaultService.isSealed(e.bodyMarkdown)
             if titleSealed && bodySealed { return nil }
             var m = e
-            if !titleSealed { m.title = VaultService.seal(e.title, key: key) }
-            if !bodySealed { m.bodyMarkdown = VaultService.seal(e.bodyMarkdown, key: key) }
+            if !titleSealed { m.title = try VaultService.seal(e.title, key: key) }
+            if !bodySealed { m.bodyMarkdown = try VaultService.seal(e.bodyMarkdown, key: key) }
             return m
         }
         guard !sealed.isEmpty else { return }
@@ -1118,9 +1118,9 @@ final class DatabaseService {
             // Adding media to a vault entry: seal its bytes. Refuse if the vault
             // is locked rather than write plaintext into it.
             guard let key = ctx.key else { throw VaultWriteError.lockedVault }
-            prepared.data = VaultService.sealData(attachment.data, key: key)
+            prepared.data = try VaultService.sealData(attachment.data, key: key)
             if let thumb = attachment.thumbnailData {
-                prepared.thumbnailData = VaultService.sealData(thumb, key: key)
+                prepared.thumbnailData = try VaultService.sealData(thumb, key: key)
             }
         }
         try dbPool.write { db in
