@@ -29,11 +29,13 @@ All notable changes to PurpleDiary are documented here.
 
 ### Added
 - **Vault journals — the feature is now usable.** Right-click a journal →
-  **Make Vault…** to seal its entries' titles and bodies under a passphrase of
-  your own. The flow takes a passphrase (with confirm) and your 24-word recovery
-  key, verifies it's really your recovery key, then seals every existing entry.
-  Even with PurpleDiary open, a vault's entries are ciphertext on disk until you
-  unlock it for the session.
+  **Make Vault…** to seal its entries under a passphrase of your own. The flow
+  takes a passphrase (with confirm) and shows a **freshly-generated 24-word
+  recovery key for this vault** in a readable grid — **Copy to clipboard** and
+  **Save to file…** (to `~/Downloads/PurpleDiary/`), with a confirm checkbox — so
+  a forgotten passphrase is never permanent lockout. Each vault has its own
+  independent recovery key (not the app's master key). Even with PurpleDiary open,
+  a vault's entries are ciphertext on disk until you unlock it for the session.
 - **Unlock / lock from the sidebar.** A locked vault shows a 🛡️ lock glyph;
   clicking it opens a passphrase prompt (with a **Forgot passphrase?** → 24-word
   recovery key path). The context menu adds **Lock Vault Now**, **Change Vault

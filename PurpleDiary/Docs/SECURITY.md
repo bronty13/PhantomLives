@@ -400,8 +400,10 @@ backup after the migration contains only the encrypted database.
   sentinel (a raw-bytes prefix for blobs). CK is wrapped two ways in the
   `vault_envelopes` table
   — under a **passphrase-derived KEK** (PBKDF2-HMAC-SHA256, 300k iters, per-journal
-  salt) and under a **KEK derived from the 24-word recovery key** — so a forgotten
-  passphrase isn't permanent lockout. CK lives only in an in-memory session map
+  salt) and under a **KEK derived from a fresh 24-word recovery key generated for
+  that vault** (shown once at creation; copy / save-to-file) — so a forgotten
+  passphrase isn't permanent lockout. Each vault's recovery key is independent of
+  the app-wide DEK recovery key. CK lives only in an in-memory session map
   while unlocked; it is dropped on app-lock (⌘L), on relaunch, and on **Lock Vault
   Now**. Consequences that strengthen the model: a locked vault's entries are
   ciphertext on disk *and* in the open database (a snooper at an unlocked Mac who
@@ -413,8 +415,8 @@ backup after the migration contains only the encrypted database.
   directions). **Metadata not sealed:** an entry's date, mood, word count, tags,
   and an attachment's filename/MIME/dimensions/`size_bytes` stay queryable under
   the single DB DEK, so a vault hides *content*, not the fact that entries exist
-  or their rough size. The recovery key is a master key for vaults too: anyone
-  holding it can open them.
+  or their rough size. A vault's own recovery key opens that vault: anyone holding
+  it can read it, so it's saved with seed-phrase care.
 - **Keychain ACL trust boundary.** The DEK uses `kSecAttrAccessibleWhenUnlocked`
   and is not gated behind Touch ID at the Keychain level (app-lock is a separate
   gate). A user-level attacker on a running, unlocked Mac can reach the DEK

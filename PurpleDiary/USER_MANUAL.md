@@ -79,11 +79,13 @@ filtered from view; a vault's entries and their media are genuine ciphertext on
 disk.)
 
 **Make a journal a vault:** right-click it → **Make Vault…**. You'll set a
-passphrase and paste your 24-word recovery key. PurpleDiary then seals every
-existing entry in that journal. The recovery key matters: if you ever forget the
-passphrase, it's the only other way in — so a forgotten passphrase is never a
-permanent lockout. (For the same reason, **anyone with your recovery key can open
-your vaults** — guard it like a seed phrase.)
+passphrase, and PurpleDiary generates a **fresh 24-word recovery key just for this
+vault** — copy it to your clipboard or **Save to file…**, tick "I've saved this
+recovery key," and PurpleDiary seals every entry in the journal. The recovery key
+matters: if you ever forget the passphrase, it's the only other way in — so a
+forgotten passphrase is never a permanent lockout. (For the same reason, **anyone
+with that recovery key can open this vault** — guard it like a seed phrase. Each
+vault has its own key, separate from your app-wide recovery key.)
 
 **Day to day:** a locked vault shows a 🛡️ lock in the sidebar. Click it and enter
 the passphrase to unlock it **for this session** — it re-seals automatically when

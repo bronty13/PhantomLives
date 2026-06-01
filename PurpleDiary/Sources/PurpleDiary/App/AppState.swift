@@ -374,13 +374,6 @@ final class AppState: ObservableObject {
 
     func isVaultUnlocked(_ journalId: String) -> Bool { VaultService.isUnlocked(journalId) }
 
-    /// True if `phrase` is this install's master recovery phrase — gates the
-    /// Make-Vault flow so a vault's content key is only ever wrapped under a
-    /// phrase the user can actually reproduce.
-    func verifyMasterRecoveryPhrase(_ phrase: String) -> Bool {
-        keyStore.verifyRecoveryPhrase(phrase)
-    }
-
     /// Convert a journal into a vault: create + verify the dual-wrapped envelope,
     /// flag the journal, then seal its existing entries. The flag is set *before*
     /// sealing so a mid-way failure leaves readable plaintext-in-a-vault (which

@@ -226,21 +226,6 @@ final class KeyStore: ObservableObject {
         cacheDEKInKeychain()
     }
 
-    /// Verify `phrase` is this install's recovery phrase **without** changing
-    /// state. Used when creating a vault — whose content key is also wrapped
-    /// under the master recovery phrase — so we never seal under a phrase the
-    /// user can't reproduce. Returns false for typos, the wrong phrase, or when
-    /// there's no recovery envelope.
-    func verifyRecoveryPhrase(_ phrase: String) -> Bool {
-        guard hasRecoveryEnvelope,
-              (try? RecoveryKey.entropy(from: phrase)) != nil,
-              let env = try? loadRecoveryEnvelope(),
-              let kek = try? RecoveryKey.deriveKEK(phrase: phrase, salt: env.salt, iterations: env.iterations),
-              (try? Crypto.decrypt(env.wrappedDEK, using: kek)) != nil
-        else { return false }
-        return true
-    }
-
     // MARK: - Recovery envelope helpers
 
     /// Generate a fresh 24-word phrase, wrap the supplied DEK, persist the
