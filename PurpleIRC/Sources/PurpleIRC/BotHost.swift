@@ -25,7 +25,12 @@ import CryptoKit
 ///   - `state`    { networkId, networkName, state }
 ///   - `inbound`  { networkId, networkName, command, params, prefix }
 ///   - `outbound` { networkId, networkName, line }
-///   - `nick`     { networkId, networkName, nick }
+///   - `nick`     { networkId, networkName, nick }            (own nick changed)
+///   - `nickchange` { networkId, networkName, old, new, isSelf }
+///   - `watchedQueryAutoOpened` { networkId, networkName, bufferID, from }
+///
+/// Every event also fans out under the generic `event` name with a `kind`
+/// field added, so a handler can observe everything in one place.
 @MainActor
 final class BotHost: ObservableObject {
     @Published var scripts: [BotScript] = []
@@ -39,6 +44,23 @@ final class BotHost: ObservableObject {
     private var commandHandlers: [String: JSValue] = [:]
     private var timers: [Int: Task<Void, Never>] = [:]
     private var nextTimerID = 1
+
+    /// Ephemeral capability tokens minted fresh on every `rebuildContext`,
+    /// mapping an opaque token → the script's persistent store id. Each
+    /// script's wrapper closes over ONLY its own token (IIFE-local), and the
+    /// store bridge resolves the token here. A script therefore can't reach
+    /// another script's store by passing its UUID — the underscore bridge no
+    /// longer trusts a JS-supplied id. Tokens are random per rebuild so they
+    /// can't be guessed or carried across reloads.
+    private var storeTokens: [String: UUID] = [:]
+
+    /// Hard cap on concurrently-live JS timers across all scripts. Stops a
+    /// single script from spawning thousands of fast-repeating callbacks that
+    /// peg the main actor.
+    private static let maxTimers = 64
+    /// Floor on timer/timeout intervals (ms). Below this a tight repeating
+    /// timer would starve the main actor.
+    private static let minTimerIntervalMS = 50
 
     private weak var chatModel: ChatModel?
     private var cancellable: AnyCancellable?
@@ -217,6 +239,7 @@ final class BotHost: ObservableObject {
         timers.removeAll()
         eventHandlers.removeAll()
         commandHandlers.removeAll()
+        storeTokens.removeAll()
 
         guard let ctx = JSContext() else {
             appendLog(.error, "Failed to create JSContext")
@@ -234,11 +257,28 @@ final class BotHost: ObservableObject {
         for s in scripts where s.enabled {
             let src = scriptSource(s)
             guard !src.isEmpty else { continue }
-            let wrapped = wrapScriptSource(src, scriptID: s.id)
+            // Mint a fresh, opaque store token for this script and bake it
+            // into its wrapper. The token (not the script UUID) is what the
+            // store bridge trusts.
+            let token = UUID().uuidString
+            storeTokens[token] = s.id
+            let wrapped = wrapScriptSource(src, storeToken: token)
             ctx.evaluateScript(wrapped, withSourceURL: URL(string: "purple-bot:///\(s.filename)"))
             appendLog(.info, "Loaded \(s.name)")
         }
         context = ctx
+    }
+
+    /// Reserve a timer id if we're under the global cap, else log and refuse.
+    /// Returns nil when the cap is hit so the JS shim hands the script `0`.
+    private func allocateTimerSlot() -> Int? {
+        guard timers.count < Self.maxTimers else {
+            appendLog(.error, "Timer limit (\(Self.maxTimers)) reached — ignoring setTimer/setTimeout. Clear timers you no longer need.")
+            return nil
+        }
+        let id = nextTimerID
+        nextTimerID += 1
+        return id
     }
 
     private func installGlobals(on ctx: JSContext) {
@@ -310,11 +350,11 @@ final class BotHost: ObservableObject {
 
         // irc.setTimer(ms, cb) → id ; repeats forever until cleared.
         let setTimerBlock: @convention(block) (Int, JSValue) -> Int = { [weak self] ms, cb in
-            guard let self else { return 0 }
-            let id = self.nextTimerID; self.nextTimerID += 1
+            guard let self, let id = self.allocateTimerSlot() else { return 0 }
+            let interval = UInt64(max(Self.minTimerIntervalMS, ms)) * 1_000_000
             self.timers[id] = Task { @MainActor in
                 while !Task.isCancelled {
-                    try? await Task.sleep(nanoseconds: UInt64(max(10, ms)) * 1_000_000)
+                    try? await Task.sleep(nanoseconds: interval)
                     if Task.isCancelled { return }
                     cb.call(withArguments: [])
                 }
@@ -325,10 +365,10 @@ final class BotHost: ObservableObject {
 
         // irc.setTimeout(ms, cb) → id ; fires once.
         let setTimeoutBlock: @convention(block) (Int, JSValue) -> Int = { [weak self] ms, cb in
-            guard let self else { return 0 }
-            let id = self.nextTimerID; self.nextTimerID += 1
+            guard let self, let id = self.allocateTimerSlot() else { return 0 }
+            let interval = UInt64(max(Self.minTimerIntervalMS, ms)) * 1_000_000
             self.timers[id] = Task { @MainActor in
-                try? await Task.sleep(nanoseconds: UInt64(max(10, ms)) * 1_000_000)
+                try? await Task.sleep(nanoseconds: interval)
                 if Task.isCancelled { return }
                 cb.call(withArguments: [])
                 self.timers.removeValue(forKey: id)
@@ -374,30 +414,33 @@ final class BotHost: ObservableObject {
 
         // Per-script persistent store. Each script's source is wrapped in
         // an IIFE that synthesises a script-local `irc.store` object whose
-        // four methods proxy to these underscore-prefixed Swift blocks
-        // with the script's UUID. The wrapper lives in `wrapScriptSource`.
-        // Scripts MUST NOT call these directly — they're private to the
-        // wrapper. Behaviour on a missing/malformed UUID is silent no-op.
-        let storeGetBlock: @convention(block) (String, String) -> Any? = { [weak self] sid, key in
-            guard let uuid = UUID(uuidString: sid), let self else { return nil }
+        // four methods proxy to these underscore-prefixed Swift blocks with
+        // the script's EPHEMERAL store TOKEN (not its UUID). The bridge
+        // resolves the token to a store id via `storeTokens`; a token a
+        // script didn't receive resolves to nothing, so one script can't
+        // address another's store even if it learns the other's UUID. The
+        // wrapper lives in `wrapScriptSource`. Behaviour on an unknown token
+        // is a silent no-op.
+        let storeGetBlock: @convention(block) (String, String) -> Any? = { [weak self] token, key in
+            guard let self, let uuid = self.storeTokens[token] else { return nil }
             return self.scriptStore.get(scriptID: uuid, key: key)
         }
         irc.setObject(storeGetBlock, forKeyedSubscript: "_storeGet" as NSString)
 
-        let storeSetBlock: @convention(block) (String, String, Any?) -> Void = { [weak self] sid, key, value in
-            guard let uuid = UUID(uuidString: sid), let self else { return }
+        let storeSetBlock: @convention(block) (String, String, Any?) -> Void = { [weak self] token, key, value in
+            guard let self, let uuid = self.storeTokens[token] else { return }
             self.scriptStore.set(scriptID: uuid, key: key, value: value)
         }
         irc.setObject(storeSetBlock, forKeyedSubscript: "_storeSet" as NSString)
 
-        let storeDeleteBlock: @convention(block) (String, String) -> Void = { [weak self] sid, key in
-            guard let uuid = UUID(uuidString: sid), let self else { return }
+        let storeDeleteBlock: @convention(block) (String, String) -> Void = { [weak self] token, key in
+            guard let self, let uuid = self.storeTokens[token] else { return }
             self.scriptStore.delete(scriptID: uuid, key: key)
         }
         irc.setObject(storeDeleteBlock, forKeyedSubscript: "_storeDelete" as NSString)
 
-        let storeKeysBlock: @convention(block) (String) -> [String] = { [weak self] sid in
-            guard let uuid = UUID(uuidString: sid), let self else { return [] }
+        let storeKeysBlock: @convention(block) (String) -> [String] = { [weak self] token in
+            guard let self, let uuid = self.storeTokens[token] else { return [] }
             return self.scriptStore.keys(scriptID: uuid)
         }
         irc.setObject(storeKeysBlock, forKeyedSubscript: "_storeKeys" as NSString)
@@ -406,27 +449,27 @@ final class BotHost: ObservableObject {
     }
 
     /// Wrap a user script in an IIFE that hands it a per-script `irc`
-    /// object (script ID baked in via `__PURPLEBOT_SID`). The wrapper
-    /// makes `irc.store.get/set/delete/keys` route to the script's own
-    /// JSON file under `scripts/<id>.store.json` without the script
-    /// having to know its own ID. Top-level `var` declarations become
-    /// IIFE-local — a tiny behaviour change from the previous bare
-    /// `evaluateScript` path. Line numbers in exceptions shift by the
-    /// prelude line count; the exception handler logs that line offset
-    /// verbatim, so a stack trace at "line 3" inside a wrapped script
-    /// maps to "line 1" of the user-visible source.
-    private func wrapScriptSource(_ src: String, scriptID: UUID) -> String {
-        let sid = scriptID.uuidString
+    /// object with its store token baked in via the IIFE-local
+    /// `__PURPLEBOT_TOKEN`. The wrapper makes `irc.store.get/set/delete/keys`
+    /// route to the script's own JSON file without the script having to
+    /// know its own id — and because the token is IIFE-local and minted
+    /// fresh per rebuild, one script can't read another's token to reach
+    /// its store. Top-level `var` declarations become IIFE-local — a tiny
+    /// behaviour change from the previous bare `evaluateScript` path. Line
+    /// numbers in exceptions shift by the prelude line count; the exception
+    /// handler logs that line offset verbatim, so a stack trace at "line 3"
+    /// inside a wrapped script maps to "line 1" of the user-visible source.
+    private func wrapScriptSource(_ src: String, storeToken: String) -> String {
         return """
         (function() {
           'use strict';
-          const __PURPLEBOT_SID = '\(sid)';
+          const __PURPLEBOT_TOKEN = '\(storeToken)';
           const irc = Object.assign({}, globalThis.irc, {
             store: {
-              get: function(k) { return globalThis.irc._storeGet(__PURPLEBOT_SID, k); },
-              set: function(k, v) { globalThis.irc._storeSet(__PURPLEBOT_SID, k, v); },
-              delete: function(k) { globalThis.irc._storeDelete(__PURPLEBOT_SID, k); },
-              keys: function() { return globalThis.irc._storeKeys(__PURPLEBOT_SID); }
+              get: function(k) { return globalThis.irc._storeGet(__PURPLEBOT_TOKEN, k); },
+              set: function(k, v) { globalThis.irc._storeSet(__PURPLEBOT_TOKEN, k, v); },
+              delete: function(k) { globalThis.irc._storeDelete(__PURPLEBOT_TOKEN, k); },
+              keys: function() { return globalThis.irc._storeKeys(__PURPLEBOT_TOKEN); }
             }
           });
         \(src)

@@ -12,6 +12,45 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
+## [1.0.592] — 2026-06-01
+
+### Security (audit follow-ups — batch 3, PurpleBot hardening)
+
+Three scripting-host findings from the 2026-06-01 audit, plus a doc-sync
+LOW and the scripting test-gap.
+
+- **PurpleBot scripts can't reach each other's store** (`BotHost.swift`).
+  The `irc.store` bridge trusted a script-supplied id, so a script that
+  knew another's UUID could `globalThis.irc._storeGet(otherUUID, key)`
+  its way into a different script's store. The bridge now resolves an
+  **ephemeral capability token** minted fresh per reload and baked only
+  into that script's own IIFE scope — a script can't forge or discover
+  another's token, so the store id is no longer a trust boundary the
+  script controls.
+- **A bad trigger regex can't freeze the app** (`BotEngine.swift`).
+  User-supplied (raw-regex) `TriggerRule`s ran on every PRIVMSG on the
+  main actor with no bound, so a catastrophic-backtracking pattern hung
+  the UI. Matches now run under a 200 ms wall-clock budget on a
+  background queue; a rule that blows the budget is auto-disabled (with a
+  logged + in-buffer notice) so it can't keep stalling. Input is capped
+  at 1 KB, and literal/escaped rules skip the watchdog (they aren't
+  ReDoS-prone).
+- **A script can't spin the main actor with timers** (`BotHost.swift`).
+  `irc.setTimer`/`setTimeout` had a 10 ms floor and no count limit, so
+  one script could spawn thousands of fast callbacks. Now capped at 64
+  concurrent timers with a 50 ms minimum interval; over the cap returns
+  `0` and logs.
+- **Bot event docs match reality** (`BotHost.swift`). The documented
+  event list now includes `nickchange` and `watchedQueryAutoOpened` and
+  notes the generic `event` fan-out.
+
+### Tests
+
+- +3 (342 → 345): new `BotHostTests` — tampered-source contentHash
+  rejection, per-script store separation, and an end-to-end check that a
+  script forging another's UUID through the store bridge gets nothing
+  back (closes the scripting test-gap finding).
+
 ## [1.0.591] — 2026-06-01
 
 ### Security (audit follow-ups — batch 2 from `AUDIT.md`)

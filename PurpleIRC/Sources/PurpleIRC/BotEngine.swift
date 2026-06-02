@@ -125,7 +125,9 @@ final class BotEngine {
 
         let isChannel = target.hasPrefix("#") || target.hasPrefix("&")
         let replyTarget = isChannel ? target : from
-        let stripped = IRCFormatter.stripCodes(text)
+        // Cap the haystack: IRC lines are wire-bounded anyway, and a shorter
+        // input shrinks the worst case for a pathological user regex.
+        let stripped = String(IRCFormatter.stripCodes(text).prefix(Self.maxHaystack))
 
         for rule in settings.triggerRules {
             guard rule.enabled, !rule.pattern.isEmpty else { continue }
@@ -221,10 +223,33 @@ final class BotEngine {
         let groups: [String]    // capture groups 1..N; index 0 is the whole match
     }
 
+    /// Longest input we'll ever run a trigger regex against.
+    private static let maxHaystack = 1024
+    /// Wall-clock budget for a single user-supplied regex match. A real
+    /// pattern finishes in microseconds; only catastrophic backtracking
+    /// approaches this. Literal/escaped rules skip the watchdog entirely.
+    private static let matchBudget: TimeInterval = 0.2
+
     private func firstMatch(rule: TriggerRule, in haystack: String) -> MatchResult? {
         guard let regex = regex(for: rule) else { return nil }
-        let full = NSRange(haystack.startIndex..., in: haystack)
-        guard let m = regex.firstMatch(in: haystack, options: [], range: full) else { return nil }
+        let m: NSTextCheckingResult?
+        if rule.isRegex {
+            // User-supplied raw regex: run under a wall-clock budget so a
+            // catastrophic-backtracking pattern can't freeze the main actor.
+            switch Self.timedFirstMatch(regex, in: haystack, budget: Self.matchBudget) {
+            case .timedOut:
+                disableRule(rule, reason: "pattern exceeded \(Int(Self.matchBudget * 1000))ms (likely catastrophic backtracking)")
+                return nil
+            case .match(let result):
+                m = result
+            }
+        } else {
+            // Literal mode is escaped + boundary-wrapped — not ReDoS-prone, so
+            // skip the thread hop.
+            let full = NSRange(haystack.startIndex..., in: haystack)
+            m = regex.firstMatch(in: haystack, options: [], range: full)
+        }
+        guard let m else { return nil }
         let whole = (Range(m.range, in: haystack)).map { String(haystack[$0]) } ?? ""
         var groups: [String] = [whole]
         for i in 1..<m.numberOfRanges {
@@ -261,6 +286,45 @@ final class BotEngine {
         } catch {
             return nil
         }
+    }
+
+    private enum TimedMatch { case match(NSTextCheckingResult?), timedOut }
+    private final class MatchBox: @unchecked Sendable { var result: NSTextCheckingResult? }
+
+    /// Run `regex.firstMatch` with a hard wall-clock budget. `NSRegularExpression`
+    /// can't be interrupted mid-match, so a catastrophic-backtracking pattern
+    /// would otherwise spin forever — and on the main actor that freezes the
+    /// UI. We run the match on a background queue and stop *waiting* after
+    /// `budget`; the worker thread is abandoned (it unwinds eventually) but
+    /// the caller returns promptly. A well-formed pattern signals in
+    /// microseconds, so the common case adds no perceptible latency.
+    nonisolated private static func timedFirstMatch(_ regex: NSRegularExpression,
+                                                    in haystack: String,
+                                                    budget: TimeInterval) -> TimedMatch {
+        let sem = DispatchSemaphore(value: 0)
+        let box = MatchBox()
+        DispatchQueue.global(qos: .userInitiated).async {
+            let full = NSRange(haystack.startIndex..., in: haystack)
+            box.result = regex.firstMatch(in: haystack, options: [], range: full)
+            sem.signal()
+        }
+        if sem.wait(timeout: .now() + budget) == .timedOut {
+            return .timedOut
+        }
+        return .match(box.result)
+    }
+
+    /// Disable a rule that blew the match budget so it can't keep stalling,
+    /// and tell the user why. Recompile cache is cleared so the disabled
+    /// state takes effect immediately.
+    private func disableRule(_ rule: TriggerRule, reason: String) {
+        if let i = model?.settings.settings.triggerRules.firstIndex(where: { $0.id == rule.id }) {
+            model?.settings.settings.triggerRules[i].enabled = false
+        }
+        clearRegexCache()
+        let label = rule.name.isEmpty ? rule.pattern : rule.name
+        AppLog.shared.warn("Trigger rule '\(label)' auto-disabled: \(reason). Re-enable in Setup ▸ Bot after fixing the pattern.", category: "Bot")
+        model?.activeConnection?.appendInfoOnSelected("⚠️ Trigger rule '\(label)' was auto-disabled: \(reason).")
     }
 
     /// Replace `$nick`, `$channel`, `$match`, `$1..$9` placeholders. Unknown
