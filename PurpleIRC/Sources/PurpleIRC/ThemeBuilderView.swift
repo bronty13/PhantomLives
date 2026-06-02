@@ -383,14 +383,16 @@ struct ThemeBuilderView: View {
     private func colorBinding(hex: Binding<String>) -> Binding<Color> {
         Binding(
             get: { Color(hex: hex.wrappedValue) ?? .gray },
-            set: { hex.wrappedValue = $0.hexRGB }
+            // hexARGB so opacity the user dials into the ColorPicker
+            // (supportsOpacity: true) actually persists — hexRGB dropped it.
+            set: { hex.wrappedValue = $0.hexARGB }
         )
     }
 
     private func overrideBinding(tag: ChatLineKindTag) -> Binding<Color> {
         Binding(
             get: { Color(hex: draft.kindOverrideHex[tag.rawValue] ?? "") ?? .gray },
-            set: { draft.kindOverrideHex[tag.rawValue] = $0.hexRGB }
+            set: { draft.kindOverrideHex[tag.rawValue] = $0.hexARGB }
         )
     }
 

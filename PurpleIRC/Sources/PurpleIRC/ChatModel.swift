@@ -1105,7 +1105,7 @@ final class ChatModel: ObservableObject {
         )
     }
 
-    func sendInput(_ text: String) {
+    func sendInput(_ text: String, aliasDepth: Int = 0) {
         guard let conn = activeConnection else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         // /ignore and /unignore mutate persisted settings; everything else
@@ -1119,8 +1119,16 @@ final class ChatModel: ObservableObject {
             // settings; expansion may itself begin with a slash. Looked up
             // BEFORE built-ins so the user can shadow built-ins on purpose.
             if let expansion = settings.settings.userAliases[cmd], !expansion.isEmpty {
+                // Depth guard: a self- or mutually-referential alias
+                // (`/alias foo /foo`) would otherwise recurse forever and
+                // crash the app — and the alias persists, so it'd crash on
+                // every launch-command.
+                guard aliasDepth < 16 else {
+                    conn.appendInfoOnSelected("Alias '/\(cmd)' expands too deeply (recursive alias?) — stopped.")
+                    return
+                }
                 let expanded = expansion + (rest.isEmpty ? "" : " \(rest)")
-                sendInput(expanded)
+                sendInput(expanded, aliasDepth: aliasDepth + 1)
                 return
             }
             switch cmd {

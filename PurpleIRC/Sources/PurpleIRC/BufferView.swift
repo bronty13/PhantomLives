@@ -487,12 +487,21 @@ struct BufferView: View {
             return
         }
         let lower = q.lowercased()
+        // Remember which match the user is currently on, so a new line
+        // arriving in a busy channel doesn't snap the cursor back to 1/N
+        // (which makes ⌘G cycling unusable while traffic flows).
+        let focusedID = findMatchIDs.indices.contains(findMatchCursor)
+            ? findMatchIDs[findMatchCursor] : nil
         // Match against the stripped text (no mIRC codes) so the user searches
         // what they see, not the raw wire bytes.
         findMatchIDs = buffer.lines
             .filter { IRCFormatter.stripCodes($0.text).lowercased().contains(lower) }
             .map { $0.id }
-        findMatchCursor = 0
+        if let focusedID, let idx = findMatchIDs.firstIndex(of: focusedID) {
+            findMatchCursor = idx
+        } else {
+            findMatchCursor = 0
+        }
     }
 
     private func cycleFind(forward: Bool) {
@@ -1255,7 +1264,7 @@ struct MessageRow: View {
                         font: model.chatFont,
                         suppressMenu: isSelf)
                 Text(renderedText(linkColor: .accentColor))
-                    .font(.system(.body))
+                    .font(model.chatFont)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             }
@@ -1265,7 +1274,7 @@ struct MessageRow: View {
                         color: actionC ?? colorForNick(nick, theme: theme),
                         font: model.chatFont,
                         italic: true)
-                Text(renderedText(linkColor: .accentColor)).italic()
+                Text(renderedText(linkColor: .accentColor)).font(model.chatFont).italic()
             }
         case .notice(let from):
             HStack(alignment: .firstTextBaseline, spacing: 0) {

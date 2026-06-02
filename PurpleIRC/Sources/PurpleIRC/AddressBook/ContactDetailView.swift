@@ -324,9 +324,12 @@ struct ContactDetailView: View {
         for provider in providers {
             if provider.canLoadObject(ofClass: NSImage.self) {
                 provider.loadObject(ofClass: NSImage.self) { obj, _ in
-                    guard let img = obj as? NSImage,
-                          let data = PhotoUtilities.downscaleAndEncode(img) else { return }
+                    guard let img = obj as? NSImage else { return }
+                    // Downscale on the main actor: it uses NSImage.lockFocus,
+                    // which is AppKit drawing and unsafe on the arbitrary
+                    // background queue this completion fires on.
                     Task { @MainActor in
+                        guard let data = PhotoUtilities.downscaleAndEncode(img) else { return }
                         entry.photoData = data
                     }
                 }
@@ -335,9 +338,10 @@ struct ContactDetailView: View {
             if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
                 provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) { item, _ in
                     guard let urlData = item as? Data,
-                          let url = URL(dataRepresentation: urlData, relativeTo: nil),
-                          let data = PhotoUtilities.loadDownscaled(from: url) else { return }
+                          let url = URL(dataRepresentation: urlData, relativeTo: nil) else { return }
+                    // loadDownscaled also lockFocus-draws, so run it on main.
                     Task { @MainActor in
+                        guard let data = PhotoUtilities.loadDownscaled(from: url) else { return }
                         entry.photoData = data
                     }
                 }

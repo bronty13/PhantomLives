@@ -696,9 +696,9 @@ struct UserTheme: Codable, Identifiable, Hashable {
             joinColorHex:          base.joinColor.hexRGB,
             partColorHex:          base.partColor.hexRGB,
             nickNickColorHex:      base.nickNickColor.hexRGB,
-            mentionBackgroundHex:  base.mentionBackground.hexRGB,
-            watchlistBackgroundHex: base.watchlistBackground.hexRGB,
-            findBackgroundHex:     base.findBackground.hexRGB,
+            mentionBackgroundHex:  base.mentionBackground.hexARGB,
+            watchlistBackgroundHex: base.watchlistBackground.hexARGB,
+            findBackgroundHex:     base.findBackground.hexARGB,
             nickPaletteHex: base.nickPalette.map { $0.hexRGB }
         )
     }
@@ -794,6 +794,24 @@ extension Color {
         return String(format: "#%02X%02X%02X", r, g, b)
         #else
         return "#000000"
+        #endif
+    }
+
+    /// #AARRGGBB representation, preserving the alpha channel. `hexRGB`
+    /// flattens opacity to fully-opaque, which is wrong for theme slots
+    /// that deliberately use translucency (mention / watch / find
+    /// highlight backgrounds at ~0.18–0.30). `Color(hex:)` parses the
+    /// 8-digit form back, so this round-trips.
+    var hexARGB: String {
+        #if canImport(AppKit)
+        let ns = NSColor(self).usingColorSpace(.sRGB) ?? NSColor.black
+        let a = Int(round(ns.alphaComponent * 255))
+        let r = Int(round(ns.redComponent * 255))
+        let g = Int(round(ns.greenComponent * 255))
+        let b = Int(round(ns.blueComponent * 255))
+        return String(format: "#%02X%02X%02X%02X", a, r, g, b)
+        #else
+        return "#FF000000"
         #endif
     }
 }

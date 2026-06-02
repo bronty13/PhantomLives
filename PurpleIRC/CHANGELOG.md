@@ -12,6 +12,42 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
+## [1.0.600] — 2026-06-02
+
+### Fixed (audit follow-ups — batch 11, the remaining MEDIUM findings)
+
+Closes the five MEDIUM findings that were still open. With this, every
+HIGH and MEDIUM finding from the audit is resolved.
+
+- **A recursive alias can't crash the app** (`ChatModel.swift`).
+  `/alias foo /foo` (or a mutual pair) expanded forever and overflowed
+  the stack — and since aliases persist, it crashed on the next launch
+  too. Alias expansion now stops after a depth limit with a clear notice.
+- **Find-bar cursor holds its place in a busy channel** (`BufferView.swift`).
+  Every incoming line snapped the match cursor back to 1/N, making ⌘G
+  cycling unusable; recompute now preserves the focused match by id.
+- **Channel messages honour the chat-font setting** (`BufferView.swift`).
+  PRIVMSG/ACTION bodies were hardcoded to the system body font, so Cmd-+/-
+  and the Appearance font size didn't affect the text you actually read.
+  They now use the configured `chatFont`, matching nicks and notices.
+- **Avatar drag-drop no longer draws off the main thread**
+  (`ContactDetailView.swift`, `PhotoUtilities.swift`). Downscaling used
+  `NSImage.lockFocus` (AppKit drawing) on the background queue an
+  `NSItemProvider` completion fires on — undefined behaviour. The drop
+  handlers now hop to the main actor before downscaling.
+- **Theme opacity is preserved** (`SoundsAndThemes.swift`,
+  `ThemeBuilderView.swift`). Colour slots serialized via `hexRGB`, which
+  drops the alpha channel, so any opacity you set (and the built-in
+  ~0.18 mention/watch/find highlight backgrounds when duplicating a
+  theme) flattened to solid blocks over the text. Added an alpha-aware
+  `hexARGB` and use it for the builder bindings and the translucent
+  highlight slots.
+
+### Tests
+
+- +4 (365 → 369): `Color hex` suite — `hexARGB` preserves alpha and
+  round-trips, `hexRGB` still drops it, 6/8-digit parsing.
+
 ## [1.0.599] — 2026-06-02
 
 ### Security & correctness (audit follow-ups — batch 10, DCC robustness)

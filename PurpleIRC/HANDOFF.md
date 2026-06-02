@@ -15,9 +15,11 @@ user-presence ACL on the cached-DEK read, verified on hardware), and
 DEK 32-byte guard, IRCv3 tag CR/LF strip, settings clamping, dead-code),
 1.0.596 (UI perf), 1.0.597 (backup/log: purge protects index.json,
 SeenStore nick cap, restore throws on wrong dir), 1.0.598
-(state/concurrency), and 1.0.599 (DCC robustness: size-cap, TOCTOU,
-port-range validation, IPv4 octet check). **42 of 61 closed, 3 partial.**
-See the "Audit backlog" entry under Known gaps. Tier #18 (sidebar off
+(state/concurrency), 1.0.599 (DCC robustness), and 1.0.600 (the 5
+remaining MEDIUM: alias-recursion crash guard, find-bar cursor, chat
+font, off-main lockFocus, theme opacity). **Every HIGH and MEDIUM is now
+closed; 47 of 61 closed, 3 partial, 11 LOW open.** See the "Audit
+backlog" entry under Known gaps. Tier #18 (sidebar off
 `NavigationSplitView` → manual `HStack` + `WindowStateGuard`/`AppDelegate`;
 gitignore Finder ` 2.app` dupes; doc sync). Tier #13 (perf + robustness sweep,
 1.0.234–235), Tier #14 (refactor pass — SetupView split, typed
@@ -685,9 +687,10 @@ EncryptedJSON slice offset, DEK 32-byte guard, IRCv3 tag CR/LF strip,
 settings clamping, dead-code), and 1.0.596 (UI perf: cached row
 DateFormatter, cached watchlist membership set, extracted+tested collapse
 grouping), 1.0.597 (backup/log purge/cap/restore), and 1.0.598
-(state/concurrency), and 1.0.599 (DCC robustness). **42 of 61 closed,
-3 partial.** Start in `AUDIT.md` before the items below — remaining open
-picks (all LOW):
+(state/concurrency), 1.0.599 (DCC robustness), and 1.0.600 (the last 5
+MEDIUM findings). **47 of 61 closed, 3 partial — every HIGH and MEDIUM is
+done; the 11 open are all LOW.** Start in `AUDIT.md` before the items
+below — remaining open picks (all LOW):
 - **PBKDF2 → memory-hard KDF** (`Crypto.swift:42`) — fixed-iteration,
   no calibration/migration. Has a migration wrinkle (existing envelopes
   use PBKDF2) — design before touching.

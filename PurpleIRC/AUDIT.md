@@ -64,7 +64,14 @@ debounce per-instance (3 LOW). Left the `events.sink` Task-defer nit open
 bytes at the advertised size (disk-fill DoS), create the destination only
 once the peer connects (TOCTOU), validate the listener port range before
 forming it (inverted-range trap), and validate IPv4 octets (4 LOW).
-**42 of 61 fully closed, 3 partial; 16 open.**
+**42 of 61 fully closed, 3 partial.**
+
+**Progress — 2026-06-02 (1.0.600):** the 5 MEDIUM findings that were still
+open (an earlier note wrongly called all MEDIUMs done) — alias-recursion
+crash guard, find-bar cursor preservation, PRIVMSG/ACTION chat font,
+PhotoUtilities off-main lockFocus, and theme-builder opacity (hexARGB).
+**With this, every HIGH and MEDIUM finding is closed.** **47 of 61 fully
+closed, 3 partial; 11 open (all LOW).**
 
 ## 🔴 High
 
@@ -145,7 +152,7 @@ forming it (inverted-range trap), and validate IPv4 octets (4 LOW).
 - **Fix:** Stop using a FIFO. Pass a per-connection correlation token through `NWProtocolFramer.Options` set-able state or, more simply, generate a unique key in `IRCClient.connect`, embed it in the CONNECT/handshake path, and store configs in a `[Key: ProxyConfig]` dictionary keyed by that token so each framer retrieves exactly its own config. At minimum, serialize connect() so only one proxied handshake is ever pending at a time, and document/enforce that invariant.
 - **Severity note:** CONFIRMED REAL. I re-read ProxyFramer.swift (lines 40-58, 74-76) and IRCClient.connect (lines 47-127). The mechanism is exactly as described: ProxyConfig is delivered to framer instances through a single process-global FIFO (`pendingConfigs`) with NO key correlating a pushed config to the consuming framer instance. `IRCClient.connect` runs `ProxyFramer.pushConfig(...)` synchronously (on MainActor, via…
 
-#### 11. [ ] Theme builder lets users set opacity but hexRGB silently discards it, forcing opaque backgrounds
+#### 11. [x] Theme builder lets users set opacity but hexRGB silently discards it, forcing opaque backgrounds  _(fixed 1.0.600 — hexARGB serializer)_
 
 - **Where:** `SoundsAndThemes.swift:788-798 (hexRGB); ThemeBuilderView.swift:150,165`
 - **Category:** correctness · **Subsystem:** settings-integrations
@@ -159,14 +166,14 @@ forming it (inverted-range trap), and validate IPv4 octets (4 LOW).
 - **Problem:** SayInActiveBufferIntent and the AppleScript `say in active buffer` command run IRCSanitize.field(text) (which only strips CR/LF/NUL) and then call host.sendInput(safe). ChatModel.sendInput treats any string beginning with '/' as a slash command. So a Shortcut, Focus automation, or AppleScript that 'says' /quit, /raw <arbitrary IRC>, /msg <target> <text>, /join, etc. does NOT post a literal chat line — it executes the corresponding app/protocol command. These intents are documented as sending a plain line to the active buffer, and the parallel SendIRCMessageIntent/PurpleSendMessageCommand correctly wrap input in `/msg`, so the inconsistency is real. A malicious or careless shared Shortcut can thus drive arbitrary protocol output (/raw) or quit the app (/quit, when quitConfirmationEnabled is off) with no user-facing target. (/nuke is mitigated by its own confirmation sheet, but /raw and /quit are not.)
 - **Fix:** For the literal-say surfaces, neutralize a leading slash before dispatch (e.g. prefix with a zero-width guard, send via a sendChat(text:) path that bypasses the slash dispatcher, or escape a leading '/' as '//'). Keep the slash dispatcher only for the in-app input bar where the user typed it intentionally.
 
-#### 13. [ ] PhotoUtilities.downscaleAndEncode uses NSImage lockFocus off the main thread in the drag-drop path
+#### 13. [x] PhotoUtilities.downscaleAndEncode uses NSImage lockFocus off the main thread in the drag-drop path  _(fixed 1.0.600 — drop handlers hop to main)_
 
 - **Where:** `PhotoUtilities.swift:39-69 (downscale/downscaleAndEncode); ContactDetailView.swift:326-328`
 - **Category:** correctness · **Subsystem:** settings-integrations
 - **Problem:** downscale() calls NSImage.lockFocus()/unlockFocus() and draws into a graphics context — AppKit drawing operations that are only valid on the main thread. The docstring claims the function is a 'Pure function; safe to call off-main.' It is invoked from handlePhotoDrop via NSItemProvider.loadObject(ofClass: NSImage.self) { ... }, whose completion handler is delivered on an arbitrary background queue. Running lockFocus/unlockFocus off the main thread is undefined behavior and can produce a corrupted/blank avatar or crash. (The NSOpenPanel.begin path happens to run on the main thread, masking the bug there.)
 - **Fix:** Hop to the main actor before calling downscaleAndEncode in the drop handler, or rewrite downscale() to use a thread-safe path (CGContext / NSBitmapImageRep with an explicit CGContext, or vImage/CoreImage) instead of lockFocus, and correct the 'safe off-main' docstring.
 
-#### 14. [ ] User alias expansion has no recursion guard — self/mutually-referential alias crashes the app
+#### 14. [x] User alias expansion has no recursion guard — self/mutually-referential alias crashes the app  _(fixed 1.0.600 — aliasDepth guard)_
 
 - **Where:** `ChatModel.swift:1108-1112`
 - **Category:** correctness · **Subsystem:** state-concurrency · claimed high, adjusted **medium**
@@ -174,14 +181,14 @@ forming it (inverted-range trap), and validate IPv4 octets (4 LOW).
 - **Fix:** Thread an expansion-depth parameter (e.g. `sendInput(_ text:, aliasDepth: Int = 0)`) and bail with an info line once a small cap (say 10) is exceeded, or carry a Set of already-expanded alias names and refuse to expand one twice in a single chain. Add a regression test that `/alias foo /foo` followed by `/foo` terminates.
 - **Severity note:** Confirmed by reading ChatModel.swift:1095-1112 and the alias-creation paths. In sendInput, userAliases[cmd] is looked up BEFORE the built-in command switch (line 1108) and the expansion is fed straight back into sendInput (line 1110) with no depth counter, visited-set, or cycle detection anywhere in the file (grep for depth/visited/recursion returns nothing). A self-referential alias /alias foo /foo yields…
 
-#### 15. [ ] PRIVMSG and ACTION message bodies ignore the user's configured chat font
+#### 15. [x] PRIVMSG and ACTION message bodies ignore the user's configured chat font  _(fixed 1.0.600 — use model.chatFont)_
 
 - **Where:** `BufferView.swift:1236-1238, 1247`
 - **Category:** correctness · **Subsystem:** ui-buffer
 - **Problem:** In MessageRow.content, the privmsg case renders its message body with a hardcoded `.font(.system(.body))` and the action case sets no font at all, while the nick tags and the notice body both use `model.chatFont`. `chatFont` reflects the user's configurable family/size (ChatModel.chatFont, driven by chatFontSize / Cmd-+/-). The result: when the user bumps the chat font size, channel message *text* stays at the system default while the nick prefix and notices grow — visually inconsistent and the increase/decrease-font controls partially do nothing for the primary content the user reads. The header comment for renderedText claims privmsg/action/notice 'all share the overlay', but they do not share the font.
 - **Fix:** Apply `.font(model.chatFont)` to the privmsg and action body Text views, matching the notice case at line 1254.
 
-#### 16. [ ] Find-bar cursor jumps back to match 1 on every incoming line in a busy channel
+#### 16. [x] Find-bar cursor jumps back to match 1 on every incoming line in a busy channel  _(fixed 1.0.600 — preserve focused match by id)_
 
 - **Where:** `BufferView.swift:385-400, 461-475`
 - **Category:** correctness · **Subsystem:** ui-buffer

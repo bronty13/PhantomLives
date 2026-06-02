@@ -34,8 +34,12 @@ enum PhotoUtilities {
 
     /// Downscale `image` to at most `maxDimension` px on its longest
     /// side, then re-encode as JPEG. Single-step pipeline — accepts
-    /// any NSImage, returns base64-friendly Data. Pure function;
-    /// safe to call off-main.
+    /// any NSImage, returns base64-friendly Data.
+    ///
+    /// MUST be called on the main thread: `downscale` uses
+    /// `NSImage.lockFocus`, an AppKit drawing API that is undefined
+    /// behaviour off the main thread. (Drag-drop callers hop to the main
+    /// actor before calling this.)
     static func downscaleAndEncode(_ image: NSImage) -> Data? {
         let scaled = downscale(image, to: maxDimension)
         guard let tiff = scaled.tiffRepresentation,
