@@ -26,7 +26,12 @@ closed, 2 partial.**
 **Progress — 2026-06-01 (1.0.592):** PurpleBot hardening. Fixed 3 LOW
 security (store-bridge token isolation, trigger-regex ReDoS budget, JS
 timer cap) + 1 LOW quality (event docs); scripting test-gap partly
-closed (`[~]`). **16 of 61 fully closed, 3 partial; 42 open.**
+closed (`[~]`). **16 of 61 fully closed, 3 partial.**
+
+**Progress — 2026-06-01 (1.0.593):** assistant / Ollama. Fixed 5 LOW
+(local/LAN host enforcement, URL validation, request timeouts, generation
+cancellation, last-writer race) + closed the assistant test-gap. **22 of
+61 fully closed, 3 partial; 36 open.**
 
 ## 🔴 High
 
@@ -169,22 +174,22 @@ closed (`[~]`). **16 of 61 fully closed, 3 partial; 42 open.**
 
 ### assistant-ai
 
-- [ ] **Private IRC chat content is POSTed to an unvalidated, arbitrary URL despite UI promising it stays local** — `OllamaClient.swift:45-48, 131-149` (security)
+- [x] **Private IRC chat content is POSTed to an unvalidated, arbitrary URL despite UI promising it stays local** — `OllamaClient.swift:45-48, 131-149` (security) _(fixed 1.0.593 — local/LAN host enforced)_
   - _Problem:_ OllamaClient.init(rawURL:) accepts any string URL(string:) can parse — no scheme allow-list, no host check, no localhost/loopback restriction. AssistantEngine.generate feeds the recent buffer history (other users' private query messages, see AssistantEngine.buildMessages → IRCFormatter.stripCodes(line.text)) straight into client.chat, which POSTs the full conversation as JSON to baseURL. The Setup toggle text states 'engages a local model running under Ollama' and the help copy frames the whole feature as local-only, but a user (or a mistakenly/maliciously pre-seeded settings file) can set ollamaURL to http://evil.com or ftp://host and every drafted reply silently exfiltrates the other party's private messages to that endpoint over plaintext. There is no consent gate distinguishing localhost from a remote host, and HTTP (not HTTPS) is the documented default. Verified: URL(string:"ftp://evil.com") and URL(string:"http://evil.com/sub") both parse and send.
   - _Fix:_ Validate in init(rawURL:): require scheme http/https and reject when the resolved host is not a loopback/private address unless the user has explicitly opted into a remote endpoint via a separate, clearly-labeled 'allow remote Ollama' setting. At minimum reject non-http(s) schemes and surface a warning in AssistantSetupSection when the host is not localhost/127.0.0.1/::1, so the 'stays on your machine' framing matches reality.
-- [ ] **URL missing a scheme (e.g. "localhost:11434") parses successfully but builds a malformed request URL** — `OllamaClient.swift:45-48, 125-127, 131-134` (correctness)
+- [x] **URL missing a scheme (e.g. "localhost:11434") parses successfully but builds a malformed request URL** — `OllamaClient.swift:45-48, 125-127, 131-134` (correctness) _(fixed 1.0.593 — scheme+host validated)_
   - _Problem:_ The most common user mistake — typing 'localhost:11434' without 'http://' — is not caught. URL(string:"localhost:11434") returns a non-nil URL whose scheme is 'localhost' and host is nil; appendingPathComponent then yields 'localhost:11434/api/version', which URLSession rejects with an opaque transport error rather than the clear invalidBaseURL message the code intends. The init's guard only catches strings URL(string:) cannot parse at all, which is almost nothing. Verified empirically: URL(string:"localhost:11434")?.scheme == "localhost", host == nil.
   - _Fix:_ After parsing, assert url.scheme is http/https and url.host is non-empty; otherwise throw Error.invalidBaseURL so the user gets the actionable 'Bad Ollama URL' message and the Setup 'Test' button surfaces it.
-- [ ] **In-flight generation has no cancellation and overwrites state for a buffer the user already disengaged** — `AssistantEngine.swift:141-177, 86-97` (correctness)
+- [x] **In-flight generation has no cancellation and overwrites state for a buffer the user already disengaged** — `AssistantEngine.swift:141-177, 86-97` (correctness) _(fixed 1.0.593 — per-buffer Task cancel + engaged guard)_
   - _Problem:_ generate() sets .generating then spawns a detached Task that, on completion, unconditionally writes stateForBuffer[bufferID] = .ready(suggestion). It never re-checks isEngaged(bufferID:) before writing. If the user disengages (/assist toggle, which sets engagedBuffers.remove + .idle) or dismisses while a request is in flight, the late-arriving response resurrects a suggestion strip on a buffer the user explicitly turned off. There is also no stored Task handle, so dismiss/disengage cannot cancel the outstanding network call — a hung or slow Ollama keeps the request alive with no way to abort.
   - _Fix:_ Store the Task per bufferID; cancel and clear it in toggleEngagement(off)/dismissSuggestion. Before writing .ready/.failed, guard isEngaged(bufferID:) && !Task.isCancelled. This also fixes the concurrent-request race below.
-- [ ] **Concurrent generations race; last network response to return wins regardless of message order** — `AssistantEngine.swift:126-177, 228-242` (correctness)
+- [x] **Concurrent generations race; last network response to return wins regardless of message order** — `AssistantEngine.swift:126-177, 228-242` (correctness) _(fixed 1.0.593 — generation token, latest-only)_
   - _Problem:_ Both the inbound-PRIVMSG path (handle → generate) and the Regenerate/Suggest-now button (requestSuggestion → generate) start a fresh Task each call with no de-duplication and no generation token. If two messages arrive in quick succession (or the user hits Regenerate while a request is pending), two overlapping requests run; whichever HTTP response returns last overwrites stateForBuffer, so a suggestion for an older message can clobber the suggestion for the newest one. Nothing serializes generations per buffer.
   - _Fix:_ Track an incrementing generation id (or the single current Task) per bufferID; ignore a completion whose generation id is no longer current. Cancel the prior Task before starting a new one for the same buffer.
-- [ ] **No request timeout — a stalled Ollama leaves the strip stuck in 'Drafting…' indefinitely** — `OllamaClient.swift:125-149` (correctness)
+- [x] **No request timeout — a stalled Ollama leaves the strip stuck in 'Drafting…' indefinitely** — `OllamaClient.swift:125-149` (correctness) _(fixed 1.0.593 — 10s health / 60s chat timeouts)_
   - _Problem:_ All requests go through URLSession.shared with default timeouts (60s request / 7-day resource) and no per-request timeoutInterval. A local model that hangs mid-generation (large prompt, swapped-out model) holds the .generating state with no user-visible recovery other than Dismiss — which, per the cancellation finding, does not actually abort the call. The chat() call in particular can legitimately take a long time, but there is no bounded ceiling or cancel.
   - _Fix:_ Set an explicit timeoutInterval on the URLRequest (short for /api/version and /api/tags health checks, longer but bounded for /api/chat), and tie Task cancellation to the Dismiss/disengage actions so the user can abort a stuck generation.
-- [ ] **Entire assistant subsystem (Ollama client, prompt builder, reply cleanup) has zero tests** — `AssistantEngine.swift:182-224` (test-gap)
+- [x] **Entire assistant subsystem (Ollama client, prompt builder, reply cleanup) has zero tests** — `AssistantEngine.swift:182-224` (test-gap) _(closed 1.0.593 — new Assistant suite)_
   - _Problem:_ Tests/PurpleIRCTests contains no Assistant* or Ollama* test file (verified by directory listing), yet this subsystem contains risky logic with edge cases: AssistantEngine.cleanup() quote-stripping false-positives (a reply that legitimately starts and ends with an apostrophe like 'tis the season' has both stripped — verified), buildMessages context-window slicing and role assignment, OllamaClient URL handling, and the 404→modelNotFound translation in extractedModelName. The repo's own release-hygiene rule #5 requires tests for risky logic. cleanup() and buildMessages are pure static functions trivially unit-testable.
   - _Fix:_ Add AssistantEngineTests covering cleanup() (label stripping, quote stripping false-positives, empty/short input) and buildMessages() (role assignment for self vs other, contextLines=0 and oversized, action lines), plus OllamaClientTests for rawURL validation and the 404 model-name extraction.
 

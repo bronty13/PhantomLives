@@ -12,6 +12,39 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
+## [1.0.593] — 2026-06-01
+
+### Security & correctness (audit follow-ups — batch 4, assistant / Ollama)
+
+Five LOW findings across the local-LLM assistant, plus the assistant
+test-gap.
+
+- **Private chat can't be POSTed to a public host** (`OllamaClient.swift`).
+  The assistant is framed as local, but the Ollama URL was used as-is, so
+  a mistyped/hostile value could ship your conversation to an arbitrary
+  server. The client now requires a well-formed `http(s)` URL with a host
+  (a bare `localhost:11434` with no scheme is rejected) AND that the host
+  is local/LAN — loopback, RFC1918, link-local, `*.local`/`*.lan`/etc., or
+  a single-label intranet name. A public host is refused with a clear
+  message. (#21/#22)
+- **Requests are bounded** (`OllamaClient.swift`). Explicit timeouts —
+  10 s for health/model-list, 60 s for chat — so a stalled Ollama can't
+  leave the suggestion strip spinning. (#25)
+- **Generations cancel and don't clobber** (`AssistantEngine.swift`).
+  Each buffer tracks its in-flight generation Task plus a monotonic
+  generation token. A new request (or disengaging / dismissing the strip)
+  cancels the previous one, and a completing reply only publishes if it's
+  the latest generation for a buffer that's still engaged — so a slow
+  earlier reply can't overwrite a newer one, and a reply can't land in a
+  buffer you already left. (#23/#24)
+
+### Tests
+
+- +6 (345 → 351): new `Assistant` suite — Ollama URL/local-host
+  validation (accept local/LAN, reject malformed + public),
+  `isLocalHost` classification, reply `cleanup`, and `buildMessages`
+  role mapping. Closes the assistant test-gap finding (#26).
+
 ## [1.0.592] — 2026-06-01
 
 ### Security (audit follow-ups — batch 3, PurpleBot hardening)

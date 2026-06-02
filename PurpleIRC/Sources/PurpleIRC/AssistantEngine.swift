@@ -60,6 +60,15 @@ final class AssistantEngine: ObservableObject {
 
     private var cancellables: Set<AnyCancellable> = []
 
+    /// In-flight generation Task per buffer, so a new request (or a
+    /// disengage) cancels the previous one instead of racing it.
+    private var inFlight: [UUID: Task<Void, Never>] = [:]
+    /// Monotonic generation counter per buffer. A completing request only
+    /// applies its result if it's still the latest generation for a buffer
+    /// that's still engaged — so a slow earlier reply can't overwrite a
+    /// newer one (last-writer-wins race) or land in a buffer the user left.
+    private var generation: [UUID: Int] = [:]
+
     /// Wire the engine to ChatModel's merged event stream. Called by
     /// `ChatModel.init`.
     func attach(eventStream: AnyPublisher<(UUID, IRCConnectionEvent), Never>,
@@ -87,6 +96,9 @@ final class AssistantEngine: ObservableObject {
         if engagedBuffers.contains(bufferID) {
             engagedBuffers.remove(bufferID)
             personaForBuffer.removeValue(forKey: bufferID)
+            // Cancel and invalidate any in-flight generation so a reply that
+            // lands after disengage can't repopulate the strip.
+            cancelGeneration(bufferID: bufferID)
             stateForBuffer[bufferID] = .idle
             return false
         }
@@ -133,7 +145,16 @@ final class AssistantEngine: ObservableObject {
     /// Discard the current suggestion. Strip falls back to "engaged but
     /// idle" — the next inbound message will trigger generation again.
     func dismissSuggestion(bufferID: UUID) {
+        cancelGeneration(bufferID: bufferID)
         stateForBuffer[bufferID] = .idle
+    }
+
+    /// Cancel any in-flight generation for a buffer and bump its generation
+    /// token so a result already on its way back is discarded.
+    private func cancelGeneration(bufferID: UUID) {
+        inFlight[bufferID]?.cancel()
+        inFlight[bufferID] = nil
+        generation[bufferID, default: 0] += 1
     }
 
     /// Pulled out of `requestSuggestion` so both the new-message path
@@ -152,9 +173,14 @@ final class AssistantEngine: ObservableObject {
         let messages = Self.buildMessages(persona: persona,
                                           lines: lines,
                                           contextLines: settings.contextLineCount)
+
+        // Supersede any previous in-flight request for this buffer.
+        inFlight[bufferID]?.cancel()
+        let gen = (generation[bufferID] ?? 0) + 1
+        generation[bufferID] = gen
         stateForBuffer[bufferID] = .generating
 
-        Task { @MainActor in
+        inFlight[bufferID] = Task { @MainActor in
             do {
                 let client = try OllamaClient(rawURL: settings.ollamaURL)
                 let reply = try await client.chat(
@@ -162,6 +188,10 @@ final class AssistantEngine: ObservableObject {
                     messages: messages,
                     temperature: settings.temperature,
                     maxTokens: settings.maxResponseTokens)
+                try Task.checkCancellation()
+                // Stale-result guard: only the latest generation for a buffer
+                // that's still engaged may publish.
+                guard generation[bufferID] == gen, isEngaged(bufferID: bufferID) else { return }
                 let trimmed = Self.cleanup(reply)
                 let suggestion = AssistantSuggestion(
                     connectionID: connectionID,
@@ -170,16 +200,22 @@ final class AssistantEngine: ObservableObject {
                     text: trimmed,
                     error: nil)
                 stateForBuffer[bufferID] = .ready(suggestion)
+            } catch is CancellationError {
+                // Superseded / disengaged — leave state to the newer owner.
+            } catch let urlErr as URLError where urlErr.code == .cancelled {
+                // URLSession-level cancellation from Task.cancel().
             } catch {
+                guard generation[bufferID] == gen, isEngaged(bufferID: bufferID) else { return }
                 stateForBuffer[bufferID] = .failed(error.localizedDescription)
             }
+            if generation[bufferID] == gen { inFlight[bufferID] = nil }
         }
     }
 
     /// Trim quotes / leading "Assistant:" / trailing whitespace that
     /// some models prepend even with explicit instructions not to. Keeps
     /// the strip's preview tight without re-engineering the prompt.
-    private static func cleanup(_ raw: String) -> String {
+    nonisolated static func cleanup(_ raw: String) -> String {
         var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         for label in ["Assistant:", "AI:", "Reply:", "Response:"] {
             if s.lowercased().hasPrefix(label.lowercased()) {
@@ -199,7 +235,7 @@ final class AssistantEngine: ObservableObject {
     /// expects. We feed `contextLines` of the most recent buffer history
     /// so the model has continuity, then end with the freshest inbound
     /// line as the user turn it should reply to.
-    static func buildMessages(persona: AssistantPersona,
+    nonisolated static func buildMessages(persona: AssistantPersona,
                               lines: [ChatLine],
                               contextLines: Int) -> [OllamaClient.Message] {
         var out: [OllamaClient.Message] = [

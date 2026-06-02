@@ -19,6 +19,7 @@ struct OllamaClient {
 
     enum Error: Swift.Error, LocalizedError {
         case invalidBaseURL(String)
+        case nonLocalHost(String)
         case transport(URLError)
         case httpStatus(Int, body: String)
         case decoding(String)
@@ -26,7 +27,8 @@ struct OllamaClient {
 
         var errorDescription: String? {
             switch self {
-            case .invalidBaseURL(let s):     return "Bad Ollama URL: \(s)"
+            case .invalidBaseURL(let s):     return "Bad Ollama URL: \(s) — use a full http(s) URL like http://localhost:11434"
+            case .nonLocalHost(let h):       return "The assistant only talks to a local Ollama. '\(h)' looks like a public host — your private chat would leave this machine, so the request was blocked. Use localhost or a LAN address."
             case .transport(let err):        return "Network error: \(err.localizedDescription)"
             case .httpStatus(let code, let body):
                 return "Ollama returned HTTP \(code): \(body.prefix(200))"
@@ -36,15 +38,59 @@ struct OllamaClient {
         }
     }
 
+    /// Request timeouts. Health/list calls should fail fast; a chat
+    /// generation can legitimately take a while on a big model, but is
+    /// still bounded so a stalled server can't wedge the suggestion strip
+    /// forever (and an engaged buffer that's disengaged cancels the Task).
+    private static let healthTimeout: TimeInterval = 10
+    private static let chatTimeout: TimeInterval = 60
+
     init(baseURL: URL) {
         self.baseURL = baseURL
     }
 
-    /// Convenience init with explicit error handling — used by ChatModel
-    /// when constructing from user-entered settings.
+    /// Convenience init with explicit error handling — used by ChatModel /
+    /// Setup when constructing from a user-entered string. Validates that
+    /// the URL is a well-formed http(s) endpoint (a bare `localhost:11434`
+    /// has no scheme and is rejected) AND that the host is local/LAN, so
+    /// private chat content can't be POSTed to an arbitrary public server.
     init(rawURL: String) throws {
-        guard let url = URL(string: rawURL) else { throw Error.invalidBaseURL(rawURL) }
+        guard let url = URL(string: rawURL),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = url.host, !host.isEmpty else {
+            throw Error.invalidBaseURL(rawURL)
+        }
+        guard Self.isLocalHost(host) else { throw Error.nonLocalHost(host) }
         self.baseURL = url
+    }
+
+    /// True when `host` is loopback, an RFC1918 / link-local IPv4 literal,
+    /// an IPv6 loopback / link-local / unique-local literal, an mDNS/intranet
+    /// name (`*.local`, `*.lan`, `*.internal`, `*.home`), or a single-label
+    /// host (no dots) — i.e. somewhere on this machine or its LAN. A public
+    /// hostname or routable IP returns false.
+    static func isLocalHost(_ host: String) -> Bool {
+        let h = host.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        if h == "localhost" || h == "127.0.0.1" || h == "::1" { return true }
+        if h.hasSuffix(".local") || h.hasSuffix(".lan")
+            || h.hasSuffix(".internal") || h.hasSuffix(".home")
+            || h.hasSuffix(".localdomain") { return true }
+        // IPv4 literal → check the routability blocks.
+        let octets = h.split(separator: ".").compactMap { UInt32($0) }
+        if octets.count == 4, octets.allSatisfy({ $0 <= 255 }) {
+            if octets[0] == 127 { return true }                           // loopback
+            if octets[0] == 10 { return true }                            // 10/8
+            if octets[0] == 192 && octets[1] == 168 { return true }       // 192.168/16
+            if octets[0] == 172 && (16...31).contains(octets[1]) { return true } // 172.16/12
+            if octets[0] == 169 && octets[1] == 254 { return true }       // link-local
+            return false                                                  // routable IPv4
+        }
+        // IPv6 link-local (fe80::/10) or unique-local (fc00::/7).
+        if h.hasPrefix("fe80") || h.hasPrefix("fc") || h.hasPrefix("fd") { return true }
+        // Single-label intranet name (no dots, not an IPv6 literal).
+        if !h.contains(".") && !h.contains(":") { return true }
+        return false
     }
 
     // MARK: - Wire types
@@ -125,6 +171,7 @@ struct OllamaClient {
     private func get<T: Decodable>(_ path: String) async throws -> T {
         var req = URLRequest(url: baseURL.appendingPathComponent(path))
         req.httpMethod = "GET"
+        req.timeoutInterval = Self.healthTimeout
         return try await send(req)
     }
 
@@ -133,6 +180,7 @@ struct OllamaClient {
     {
         var req = URLRequest(url: baseURL.appendingPathComponent(path))
         req.httpMethod = "POST"
+        req.timeoutInterval = Self.chatTimeout
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         do {
             req.httpBody = try JSONEncoder().encode(body)
