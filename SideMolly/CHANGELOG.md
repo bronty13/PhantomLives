@@ -4,6 +4,45 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.0] — 2026-06-02
+
+### Added — SideMollySummary PDF
+
+Each bundle can now produce a **SideMollySummary** — a one-document PDF that
+gathers, in order: the applicable metadata (varying by bundle type), a grid of
+medium thumbnails, a cleaned-up concatenation of every video transcript, and the
+full processing log. Generate it from a bundle's **Distribute** tab; it's also
+regenerated automatically and copied to Dropbox alongside the assembled master
+cut.
+
+- **Metadata** is built per bundle type and is expandable for new types: Title,
+  Working title (only when overridden), Description (typed text, or — for an
+  audio description — the transcribed audio), Categories, Go-Live Date, Date
+  Processed (the master-cut assembly time), and for **custom** bundles Site/URL,
+  Deliver-to, and Price (or "Handled in platform").
+- **Transcript** section concatenates every video's `.txt` and cleans it: blank
+  lines and stray whitespace removed, sentences capitalized and terminated with
+  a period followed by two spaces.
+- Rendered with `genpdf` (automatic wrapping + pagination + JPEG embedding);
+  body font is bundled Liberation Sans (OFL).
+- New module `summary.rs`; commands `generate_bundle_summary`,
+  `reveal_bundle_summary`. New `transcribe::transcribe_audio_to_text` for the
+  on-demand audio-description transcript.
+
+### Changed — Configurable thumbnail count (default 30)
+
+The export-thumbnail selection is no longer hard-capped at 10. A new
+**Settings → Summary → Thumbnail count** (default 30) drives **both** the summary
+PDF grid and the thumbnails included in the post-bundle returned to Molly.
+
+- Migration `022`: widens the `bundle_export_thumbs` position CHECK
+  (`position >= 1`) via table rebuild, and adds the `summary_settings` singleton.
+- `bundles::reselect_export_thumbs` rebuilds the (deterministic, UID-seeded)
+  selection to the configured count; it's re-run before composing a summary or a
+  post-bundle. Commands `get_summary_settings` / `set_summary_settings`.
+- The post-bundle's `artifacts/thumbnails/` now carries this curated selection
+  rather than every per-file thumbnail.
+
 ## [0.25.0] — 2026-06-02
 
 ### Added — Inbox completion lifecycle & filtering

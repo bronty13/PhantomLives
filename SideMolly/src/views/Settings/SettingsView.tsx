@@ -5,10 +5,11 @@ import { BackupSettings } from './BackupSettings';
 import { DropboxSettings } from './DropboxSettings';
 import { IntroOutroSettings } from './IntroOutroSettings';
 import { PlatformsSettings } from './PlatformsSettings';
+import { SummarySettings } from './SummarySettings';
 import { WatchSettings } from './WatchSettings';
 import { WatermarkSettings } from './WatermarkSettings';
 
-type SettingsTab = 'appearance' | 'watch' | 'watermark' | 'autoassemble' | 'introoutro' | 'dropbox' | 'platforms' | 'backup' | 'about';
+type SettingsTab = 'appearance' | 'watch' | 'watermark' | 'autoassemble' | 'introoutro' | 'dropbox' | 'summary' | 'platforms' | 'backup' | 'about';
 
 const TABS: { key: SettingsTab; label: string; icon: string }[] = [
   { key: 'appearance',   label: 'Appearance',     icon: '🎨' },
@@ -17,6 +18,7 @@ const TABS: { key: SettingsTab; label: string; icon: string }[] = [
   { key: 'autoassemble', label: 'Auto-Assembly',  icon: '🎞' },
   { key: 'introoutro',   label: 'Intro / Outro',  icon: '▶️' },
   { key: 'dropbox',      label: 'Dropbox',        icon: '📦' },
+  { key: 'summary',      label: 'Summary',        icon: '📄' },
   { key: 'platforms',    label: 'Platforms',      icon: '🚀' },
   { key: 'backup',       label: 'Backup',         icon: '💾' },
   { key: 'about',        label: 'About',          icon: 'ℹ️' },
@@ -59,6 +61,7 @@ export function SettingsView() {
       {tab === 'autoassemble' && <AutoAssemblySettings />}
       {tab === 'introoutro' && <IntroOutroSettings />}
       {tab === 'dropbox' && <DropboxSettings />}
+      {tab === 'summary' && <SummarySettings />}
       {tab === 'platforms' && <PlatformsSettings />}
       {tab === 'backup' && <BackupSettings />}
       {tab === 'about' && (

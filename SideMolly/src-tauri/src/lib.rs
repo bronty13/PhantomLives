@@ -13,6 +13,7 @@ mod persona_clips;
 mod post_bundle;
 mod posting;
 mod processing_log;
+mod summary;
 mod thumbnails;
 mod transcribe;
 mod video;
@@ -148,6 +149,12 @@ pub fn run() {
             sql: include_str!("../migrations/021_bundle_completed_at.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 22,
+            description: "summary-pdf",
+            sql: include_str!("../migrations/022_summary_pdf.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -261,6 +268,10 @@ pub fn run() {
             bundles::set_bundle_title_override,
             bundles::set_bundle_completed,
             bundles::delete_bundle,
+            bundles::get_summary_settings,
+            bundles::set_summary_settings,
+            summary::generate_bundle_summary,
+            summary::reveal_bundle_summary,
             watch::get_watch_settings,
             watch::set_watch_dir,
             watch::scan_watch_dir_now,
@@ -306,7 +317,7 @@ mod camel_case_contract {
     };
     use crate::post_bundle::{ComposeResult, PostBundleStatus};
     use crate::bundles::{BundleDetail, BundleFileRow, BundleSummary, ExportThumb,
-        ImageProgressEvent, IngestResult, RotationUpdate};
+        ImageProgressEvent, IngestResult, RotationUpdate, SummarySettings};
     use crate::manifest::{BundleManifest, FanDay};
     use crate::persona_clips::PersonaClipRow;
     use serde_json::Value;
@@ -368,6 +379,18 @@ mod camel_case_contract {
             bundle_state: String::new(), completed_at: None, file_count: 0,
             source_zip_path: String::new(),
         }).unwrap(), "BundleSummary");
+    }
+
+    #[test] fn summary_settings_is_camel_case() {
+        assert_camel(&serde_json::to_value(SummarySettings {
+            thumb_count: 30,
+        }).unwrap(), "SummarySettings");
+    }
+
+    #[test] fn summary_result_is_camel_case() {
+        assert_camel(&serde_json::to_value(crate::summary::SummaryResult {
+            output_path: String::new(),
+        }).unwrap(), "SummaryResult");
     }
 
     #[test] fn rotation_update_is_camel_case() {
@@ -794,6 +817,7 @@ mod migration_smoke {
             (19, "persona-clips", include_str!("../migrations/019_persona_clips.sql")),
             (20, "bundle-title-override", include_str!("../migrations/020_bundle_title_override.sql")),
             (21, "bundle-completed-at", include_str!("../migrations/021_bundle_completed_at.sql")),
+            (22, "summary-pdf", include_str!("../migrations/022_summary_pdf.sql")),
         ];
         for (v, name, sql) in migrations {
             conn.execute_batch(sql)
@@ -808,7 +832,7 @@ mod migration_smoke {
             "processing_log",
             "dropbox_settings", "dropbox_copies",
             "posting_targets", "bundle_postings", "posting_log",
-            "persona_clips",
+            "persona_clips", "summary_settings",
         ];
         for t in expected_tables {
             let count: i64 = conn
@@ -889,6 +913,37 @@ mod migration_smoke {
             [], |r| r.get(0),
         ).unwrap();
         assert_eq!(done.as_deref(), Some("2026-06-02T10:00:00"), "completed_at should be settable");
+
+        // Migration 022: bundle_export_thumbs CHECK widened past 10. Needs a
+        // backing bundle_file row to satisfy the FK.
+        conn.execute(
+            "INSERT INTO bundle_files (bundle_uid, in_zip_path, original_name, kind, sha256)
+             VALUES ('ok', 'p30', 'p30', 'image', 's')",
+            [],
+        ).unwrap();
+        let fid: i64 = conn.query_row(
+            "SELECT id FROM bundle_files WHERE bundle_uid='ok' AND in_zip_path='p30'",
+            [], |r| r.get(0),
+        ).unwrap();
+        let pos30 = conn.execute(
+            "INSERT INTO bundle_export_thumbs (bundle_uid, bundle_file_id, position, thumbnail_path)
+             VALUES ('ok', ?1, 30, '/t.jpg')",
+            rusqlite::params![fid],
+        );
+        assert!(pos30.is_ok(), "export-thumb position 30 should insert after migration 022 widened the CHECK");
+        let bad_pos = conn.execute(
+            "INSERT INTO bundle_export_thumbs (bundle_uid, bundle_file_id, position, thumbnail_path)
+             VALUES ('ok', ?1, 0, '/t0.jpg')",
+            rusqlite::params![fid],
+        );
+        assert!(bad_pos.is_err(), "export-thumb position 0 should still be rejected (CHECK position >= 1)");
+
+        // Migration 022: summary_settings singleton seeded with default 30.
+        let thumb_count: i64 = conn.query_row(
+            "SELECT thumb_count FROM summary_settings WHERE id = 1",
+            [], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(thumb_count, 30, "summary_settings.thumb_count should default to 30");
     }
 }
 
@@ -941,6 +996,7 @@ mod migration_immutability {
         (19, "f91d7ddfaf209570c6a19aabda9bbdd8b4b22212f6bd32d2742be3340ba423e0"),
         (20, "582d27200ef5c8ad0cbf27c020696fde9515070db28afd9c9864a949daf807ac"),
         (21, "cc6ba6c61e52d28a3e3fc6c4eb28e4a9ed058a1af26072fe62865e069fbee87d"),
+        (22, "a6e9416b14235de39328af9308e3f7aecb7331aae6d4d67121d6955442ade6d5"),
     ];
 
     /// Source-of-truth for "which migrations ship at compile time". Must
@@ -970,6 +1026,7 @@ mod migration_immutability {
         (19, "019_persona_clips.sql",              include_str!("../migrations/019_persona_clips.sql")),
         (20, "020_bundle_title_override.sql",      include_str!("../migrations/020_bundle_title_override.sql")),
         (21, "021_bundle_completed_at.sql",        include_str!("../migrations/021_bundle_completed_at.sql")),
+        (22, "022_summary_pdf.sql",                include_str!("../migrations/022_summary_pdf.sql")),
     ];
 
     fn sha256_hex(s: &str) -> String {

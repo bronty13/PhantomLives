@@ -264,7 +264,7 @@ fn enumerate_artifacts<R: Runtime>(
 ) -> Result<Vec<(PathBuf, String, String)>, BundleError> {
     let mut out: Vec<(PathBuf, String, String)> = Vec::new();
 
-    // Master cut — the assembled file, and the only thing we copy.
+    // Master cut — the assembled file.
     let workspace = bundle_workspace_dir(&work_root(handle)?, uid);
     let title = crate::bundles::fetch_bundle_title(conn, uid)?;
     let master = crate::bundles::resolve_master_cut_path(&workspace, &title);
@@ -273,6 +273,18 @@ fn enumerate_artifacts<R: Runtime>(
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "master.mp4".into());
         out.push((master, name, "master".into()));
+    }
+
+    // SideMollySummary PDF — copied alongside the master when present.
+    // copy_to_dropbox regenerates it fresh just before enumerating.
+    let summary = workspace
+        .join("auto")
+        .join(format!("{} — Summary.pdf", crate::bundles::master_cut_basename(&title)));
+    if summary.exists() {
+        let name = summary.file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "Summary.pdf".into());
+        out.push((summary, name, "summary".into()));
     }
 
     Ok(out)
@@ -369,6 +381,11 @@ pub fn copy_to_dropbox<R: Runtime>(
     let folder = resolve_folder_name(&settings.template, &bundle);
     let dest_dir = PathBuf::from(&settings.root_path).join(&folder);
     fs::create_dir_all(&dest_dir)?;
+
+    // Regenerate the SideMollySummary PDF so the copied copy reflects the
+    // bundle's current state. Best-effort: a failure (missing transcript, font
+    // glitch) must never block copying the master cut.
+    let _ = crate::summary::try_generate_for_dropbox(&handle, &uid);
 
     let artifacts = enumerate_artifacts(&handle, &conn, &uid)?;
     let mut copied = 0i64;

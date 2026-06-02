@@ -366,6 +366,36 @@ export function setAutoAssemblySettings(settings: AutoAssemblySettings): Promise
   return invoke('set_auto_assembly_settings', { settings });
 }
 
+// ---- SideMollySummary PDF ----
+
+export interface SummarySettings {
+  /** Export thumbnails sampled — drives both the summary PDF grid and the
+   *  post-bundle sent to Molly. Default 30. */
+  thumbCount: number;
+}
+
+export interface SummaryResult {
+  outputPath: string;
+}
+
+export function getSummarySettings(): Promise<SummarySettings> {
+  return invoke<SummarySettings>('get_summary_settings');
+}
+
+export function setSummarySettings(settings: SummarySettings): Promise<void> {
+  return invoke('set_summary_settings', { settings });
+}
+
+/** Generate (or regenerate) the SideMollySummary PDF for a bundle. */
+export function generateBundleSummary(uid: string): Promise<SummaryResult> {
+  return invoke<SummaryResult>('generate_bundle_summary', { uid });
+}
+
+/** Reveal a previously-generated summary PDF in Finder. */
+export function revealBundleSummary(uid: string): Promise<void> {
+  return invoke('reveal_bundle_summary', { uid });
+}
+
 export interface DeepFilterNetStatus {
   installed: boolean;
   binPath: string | null;

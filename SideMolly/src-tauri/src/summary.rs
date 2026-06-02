@@ -1,0 +1,640 @@
+//! SideMollySummary — a one-document PDF per bundle.
+//!
+//! Gathers, in order: applicable metadata (varying by bundle type), a grid of
+//! medium thumbnails (the configured export-thumb selection), a cleaned-up
+//! concatenation of every video transcript, and the full processing log.
+//!
+//! Written to `work/<uid>/auto/<MasterBasename> — Summary.pdf` and copied to
+//! Dropbox alongside the assembled master cut. Rendered with `genpdf`
+//! (automatic text wrapping + pagination + JPEG embedding); the body font is
+//! bundled Liberation Sans (OFL), embedded at compile time.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use rusqlite::{params, Connection, OptionalExtension};
+use serde::Serialize;
+use tauri::{AppHandle, Manager, Runtime};
+
+use genpdf::{elements, fonts, style, Element as _};
+
+use crate::bundles::{self, BundleError};
+use crate::manifest::BundleManifest;
+
+const FONT_REGULAR: &[u8] = include_bytes!("../resources/fonts/LiberationSans-Regular.ttf");
+const FONT_BOLD: &[u8] = include_bytes!("../resources/fonts/LiberationSans-Bold.ttf");
+const FONT_ITALIC: &[u8] = include_bytes!("../resources/fonts/LiberationSans-Italic.ttf");
+const FONT_BOLD_ITALIC: &[u8] = include_bytes!("../resources/fonts/LiberationSans-BoldItalic.ttf");
+
+/// Columns in the thumbnail grid.
+const GRID_COLS: usize = 3;
+/// DPI used when embedding a 256px thumbnail so it lands at ~medium width
+/// (≈59 mm) inside a ~62 mm column on an A4 page with 12 mm margins.
+const THUMB_DPI: f64 = 110.0;
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SummaryResult {
+    pub output_path: String,
+}
+
+fn open_conn<R: Runtime>(handle: &AppHandle<R>) -> Result<Connection, BundleError> {
+    let dir = handle
+        .path()
+        .resolve("", tauri::path::BaseDirectory::AppLocalData)
+        .map_err(|e| BundleError::Io(std::io::Error::other(format!("appdata path: {e}"))))?;
+    let conn = Connection::open(dir.join("sidemolly.db"))?;
+    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    Ok(conn)
+}
+
+fn pdf_err(context: &str, e: genpdf::error::Error) -> BundleError {
+    BundleError::Io(std::io::Error::other(format!("pdf {context}: {e}")))
+}
+
+// ---------------------------------------------------------------------------
+// Pure helpers (unit-tested)
+// ---------------------------------------------------------------------------
+
+/// Normalize a concatenation of raw whisper `.txt` transcripts into flowing
+/// prose: drop blank lines, collapse internal whitespace, split into sentences
+/// on `.?!`, capitalize each sentence's first letter, and guarantee each ends
+/// with terminal punctuation followed by two spaces. Best-effort when the
+/// source lacks punctuation (capitalizes the start, appends a period).
+pub(crate) fn clean_transcript(raw: &str) -> String {
+    // Collapse every run of whitespace (incl. the per-segment newlines) to a
+    // single space. This alone removes blank lines and stray indentation.
+    let flat: String = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.is_empty() {
+        return String::new();
+    }
+
+    // Split into sentences, keeping the terminal punctuation on each.
+    let mut sentences: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    for ch in flat.chars() {
+        cur.push(ch);
+        if matches!(ch, '.' | '!' | '?') {
+            let s = cur.trim();
+            if !s.is_empty() {
+                sentences.push(s.to_string());
+            }
+            cur.clear();
+        }
+    }
+    let tail = cur.trim();
+    if !tail.is_empty() {
+        sentences.push(tail.to_string());
+    }
+
+    let cleaned: Vec<String> = sentences
+        .iter()
+        .map(|s| {
+            let mut s = s.trim().to_string();
+            // Capitalize the first alphabetic character.
+            if let Some(idx) = s.find(|c: char| c.is_alphabetic()) {
+                let first = s[idx..].chars().next().unwrap();
+                let upper: String = first.to_uppercase().collect();
+                s.replace_range(idx..idx + first.len_utf8(), &upper);
+            }
+            // Guarantee terminal punctuation.
+            if !s.ends_with(['.', '!', '?']) {
+                s.push('.');
+            }
+            s
+        })
+        .collect();
+
+    // Two spaces between sentences.
+    cleaned.join("  ")
+}
+
+/// Format a price in cents as `$X.XX`, or the platform note when handled there.
+fn format_price(price_cents: Option<i64>, handled_in_platform: bool) -> String {
+    if handled_in_platform {
+        "Handled in platform".to_string()
+    } else if let Some(c) = price_cents {
+        format!("${:.2}", c as f64 / 100.0)
+    } else {
+        "—".to_string()
+    }
+}
+
+fn nonempty(s: &Option<String>) -> Option<String> {
+    s.as_ref().map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
+}
+
+/// Build the label/value metadata rows for a bundle, varying by type. Adding a
+/// new bundle type means extending the single `match` below — that's the
+/// "expandable for new bundle types" contract. The `description` value is
+/// resolved by the caller (typed text or audio transcript) and passed in.
+pub(crate) fn summary_fields(
+    m: &BundleManifest,
+    title_override: &str,
+    description: &str,
+    processed_at: Option<&str>,
+) -> Vec<(String, String)> {
+    let mut f: Vec<(String, String)> = Vec::new();
+
+    f.push(("Title".into(), if m.title.trim().is_empty() { "(untitled)".into() } else { m.title.trim().into() }));
+
+    let ov = title_override.trim();
+    if !ov.is_empty() && ov != m.title.trim() {
+        f.push(("Working title".into(), ov.to_string()));
+    }
+
+    if !description.trim().is_empty() {
+        f.push(("Description".into(), description.trim().to_string()));
+    }
+    if !m.categories.is_empty() {
+        f.push(("Categories".into(), m.categories.join(", ")));
+    }
+    if let Some(g) = nonempty(&m.go_live_date) {
+        f.push(("Go-Live Date".into(), g));
+    }
+    f.push((
+        "Date Processed".into(),
+        processed_at.map(|s| s.to_string()).unwrap_or_else(|| "— (not yet assembled)".into()),
+    ));
+
+    match m.bundle_type.as_str() {
+        "custom" => {
+            match m.delivery_kind.as_deref() {
+                Some("url") => {
+                    if let Some(u) = nonempty(&m.delivery_url) {
+                        f.push(("Delivery URL".into(), u));
+                    }
+                }
+                _ => {
+                    if let Some(s) = nonempty(&m.delivery_site_name) {
+                        f.push(("Site".into(), s));
+                    }
+                }
+            }
+            if !m.delivery_recipient.trim().is_empty() {
+                f.push(("Deliver to".into(), m.delivery_recipient.trim().to_string()));
+            }
+            f.push(("Price".into(), format_price(m.price_cents, m.handled_in_platform)));
+        }
+        "fansite" => {
+            if let (Some(y), Some(mo)) = (m.fansite_year, m.fansite_month) {
+                f.push(("FanSite Month".into(), format!("{y}-{mo:02}")));
+            }
+            f.push(("Scheduled Days".into(), m.fan_days.len().to_string()));
+        }
+        _ => {}
+    }
+
+    f
+}
+
+// ---------------------------------------------------------------------------
+// Data gathering
+// ---------------------------------------------------------------------------
+
+/// `updated_at` of the most recent finished `assemble_master` job — our
+/// "Date Processed". None when the bundle hasn't been assembled.
+fn assembly_date(conn: &Connection, uid: &str) -> Option<String> {
+    conn.query_row(
+        "SELECT updated_at FROM jobs
+          WHERE bundle_uid = ?1 AND kind = 'assemble_master' AND status = 'done'
+          ORDER BY updated_at DESC LIMIT 1",
+        params![uid],
+        |r| r.get::<_, String>(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+}
+
+/// Working path of a specific in-zip file, if extracted.
+fn working_path_for(conn: &Connection, uid: &str, in_zip_path: &str) -> Option<String> {
+    conn.query_row(
+        "SELECT working_path FROM bundle_files WHERE bundle_uid = ?1 AND in_zip_path = ?2",
+        params![uid, in_zip_path],
+        |r| r.get::<_, Option<String>>(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+    .flatten()
+    .filter(|p| !p.is_empty())
+}
+
+/// Resolve the Description value: typed text verbatim, or — for an audio
+/// description — the transcribed + cleaned audio. Degrades to an honest note
+/// when transcription isn't possible.
+fn resolve_description(conn: &Connection, m: &BundleManifest) -> String {
+    match m.description_mode.as_deref() {
+        Some("text") => m.description_text.trim().to_string(),
+        Some("audio") => {
+            let Some(rel) = nonempty(&m.description_audio_path) else {
+                return "(audio description — file not recorded)".into();
+            };
+            match working_path_for(conn, &m.uid, &rel) {
+                Some(wp) => match crate::transcribe::transcribe_audio_to_text(Path::new(&wp)) {
+                    Ok(text) => {
+                        let cleaned = clean_transcript(&text);
+                        if cleaned.is_empty() {
+                            "(audio description — transcript was empty)".into()
+                        } else {
+                            cleaned
+                        }
+                    }
+                    Err(_) => "(audio description — transcript unavailable; transcribe engine not installed)".into(),
+                },
+                None => "(audio description — audio file not found in workspace)".into(),
+            }
+        }
+        _ => m.description_text.trim().to_string(),
+    }
+}
+
+/// Concatenate every video's `.txt` transcript (in bundle order), cleaned.
+fn concat_video_transcripts(conn: &Connection, uid: &str, workspace: &Path) -> String {
+    let tx_dir = workspace.join("transcripts");
+    let mut raw = String::new();
+    let mut stmt = match conn.prepare(
+        "SELECT in_zip_path FROM bundle_files
+          WHERE bundle_uid = ?1 AND kind = 'video'
+          ORDER BY CASE WHEN fansite_day_of_month IS NULL THEN 0 ELSE fansite_day_of_month END,
+                   position, in_zip_path",
+    ) {
+        Ok(s) => s,
+        Err(_) => return String::new(),
+    };
+    let rows = stmt.query_map(params![uid], |r| r.get::<_, String>(0));
+    if let Ok(rows) = rows {
+        for in_zip in rows.flatten() {
+            let stem = Path::new(&in_zip)
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let txt = tx_dir.join(format!("{stem}.txt"));
+            if let Ok(content) = fs::read_to_string(&txt) {
+                raw.push_str(&content);
+                raw.push('\n');
+            }
+        }
+    }
+    clean_transcript(&raw)
+}
+
+/// Full processing log, oldest-first: (timestamp, level, kind, message).
+fn read_full_log(conn: &Connection, uid: &str) -> Vec<(String, String, String, String)> {
+    let mut out = Vec::new();
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT timestamp, level, COALESCE(kind, ''), message
+           FROM processing_log WHERE bundle_uid = ?1 ORDER BY id ASC",
+    ) else {
+        return out;
+    };
+    if let Ok(rows) = stmt.query_map(params![uid], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, String>(2)?,
+            r.get::<_, String>(3)?,
+        ))
+    }) {
+        for row in rows.flatten() {
+            out.push(row);
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+
+fn heading(text: &str, size: u8) -> impl genpdf::Element {
+    elements::Paragraph::new(text).styled(style::Style::new().bold().with_font_size(size))
+}
+
+fn kv_line(label: &str, value: &str) -> elements::Paragraph {
+    let mut p = elements::Paragraph::default();
+    p.push_styled(format!("{label}:  "), style::Style::new().bold());
+    p.push(value.to_string());
+    p
+}
+
+/// Core builder, separated from the Tauri command so it's exercisable from a
+/// thin wrapper. Returns the output path.
+fn build_summary<R: Runtime>(handle: &AppHandle<R>, uid: &str) -> Result<PathBuf, BundleError> {
+    let conn = open_conn(handle)?;
+
+    // Refresh the export-thumb selection to the configured count so the grid
+    // (and the post-bundle that shares it) reflect the current setting.
+    let count = bundles::thumb_count(&conn);
+    bundles::reselect_export_thumbs(&conn, uid, count)?;
+
+    // Load manifest + working-title override (effective title comes from
+    // fetch_bundle_title below).
+    let (manifest_json, title_override): (String, String) = conn
+        .query_row(
+            "SELECT manifest_json, title_override FROM bundles WHERE uid = ?1",
+            params![uid],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?
+        .ok_or_else(|| BundleError::NotFound(format!("bundle {uid}")))?;
+    let manifest: BundleManifest = serde_json::from_str(&manifest_json).unwrap_or_default();
+
+    let effective_title = bundles::fetch_bundle_title(&conn, uid)?;
+    let workspace = crate::extract::bundle_workspace_dir(&bundles::work_root(handle)?, uid);
+
+    let processed_at = assembly_date(&conn, uid);
+    let description = resolve_description(&conn, &manifest);
+    let fields = summary_fields(&manifest, &title_override, &description, processed_at.as_deref());
+    let transcript = concat_video_transcripts(&conn, uid, &workspace);
+    let log = read_full_log(&conn, uid);
+    let thumbs = bundles::export_thumb_paths(&conn, uid)?;
+
+    // ---- Build the document ----
+    let font_family = fonts::FontFamily {
+        regular: fonts::FontData::new(FONT_REGULAR.to_vec(), None).map_err(|e| pdf_err("font", e))?,
+        bold: fonts::FontData::new(FONT_BOLD.to_vec(), None).map_err(|e| pdf_err("font", e))?,
+        italic: fonts::FontData::new(FONT_ITALIC.to_vec(), None).map_err(|e| pdf_err("font", e))?,
+        bold_italic: fonts::FontData::new(FONT_BOLD_ITALIC.to_vec(), None).map_err(|e| pdf_err("font", e))?,
+    };
+    let mut doc = genpdf::Document::new(font_family);
+    doc.set_title(format!("SideMollySummary — {effective_title}"));
+    doc.set_minimal_conformance();
+    doc.set_font_size(11);
+    let mut deco = genpdf::SimplePageDecorator::new();
+    deco.set_margins(genpdf::Margins::all(12));
+    doc.set_page_decorator(deco);
+
+    // Header.
+    let persona = manifest.persona_code.clone().unwrap_or_else(|| "—".into());
+    doc.push(heading("SideMollySummary", 20));
+    doc.push(
+        elements::Paragraph::new(format!("{persona} · {} · {effective_title}", manifest.bundle_type))
+            .styled(style::Style::new().italic().with_font_size(11)),
+    );
+    doc.push(elements::Break::new(1.0));
+
+    // Metadata.
+    doc.push(heading("Metadata", 14));
+    for (label, value) in &fields {
+        doc.push(kv_line(label, value));
+    }
+    doc.push(elements::Break::new(1.0));
+
+    // Thumbnails grid. Load all embeddable images first (skip unreadable /
+    // alpha thumbnails), then lay them out in fixed-width rows, padding the
+    // trailing row so every row has exactly GRID_COLS cells.
+    let images: Vec<elements::Image> = thumbs
+        .iter()
+        .filter(|p| {
+            let l = p.to_lowercase();
+            l.ends_with(".jpg") || l.ends_with(".jpeg")
+        })
+        .filter_map(|p| elements::Image::from_path(p).ok())
+        .map(|i| i.with_dpi(THUMB_DPI).with_alignment(genpdf::Alignment::Center))
+        .collect();
+    if !images.is_empty() {
+        doc.push(heading(&format!("Thumbnails ({})", images.len()), 14));
+        let mut table = elements::TableLayout::new(vec![1; GRID_COLS]);
+        let mut iter = images.into_iter().peekable();
+        while iter.peek().is_some() {
+            let mut row = table.row();
+            for _ in 0..GRID_COLS {
+                match iter.next() {
+                    Some(img) => row.push_element(img.padded(genpdf::Margins::all(2))),
+                    None => row.push_element(elements::Paragraph::new("")),
+                }
+            }
+            row.push().map_err(|e| pdf_err("table row", e))?;
+        }
+        doc.push(table);
+        doc.push(elements::Break::new(1.0));
+    }
+
+    // Transcript.
+    doc.push(heading("Transcript", 14));
+    if transcript.is_empty() {
+        doc.push(
+            elements::Paragraph::new("(No video transcripts yet — run Transcribe on the Edit tab.)")
+                .styled(style::Style::new().italic()),
+        );
+    } else {
+        doc.push(elements::Paragraph::new(transcript));
+    }
+    doc.push(elements::Break::new(1.0));
+
+    // Processing log.
+    doc.push(heading(&format!("Processing log ({})", log.len()), 14));
+    if log.is_empty() {
+        doc.push(elements::Paragraph::new("(empty)").styled(style::Style::new().italic()));
+    } else {
+        let small = style::Style::new().with_font_size(8);
+        for (ts, level, kind, message) in &log {
+            let prefix = if kind.is_empty() {
+                format!("{ts}  [{level}]  ")
+            } else {
+                format!("{ts}  [{level}]  {kind}: ")
+            };
+            let mut p = elements::Paragraph::default();
+            p.push_styled(prefix, small.clone());
+            p.push_styled(message.clone(), small.clone());
+            doc.push(p);
+        }
+    }
+
+    // ---- Render ----
+    let auto = workspace.join("auto");
+    fs::create_dir_all(&auto)?;
+    let out_path = auto.join(format!("{} — Summary.pdf", bundles::master_cut_basename(&effective_title)));
+    doc.render_to_file(&out_path).map_err(|e| pdf_err("render", e))?;
+
+    crate::processing_log::write(
+        &conn,
+        Some(uid),
+        None,
+        Some("summary"),
+        crate::processing_log::Level::Info,
+        "SideMollySummary PDF generated",
+        None,
+        out_path.file_name().and_then(|s| s.to_str()),
+    );
+
+    Ok(out_path)
+}
+
+// ---------------------------------------------------------------------------
+// Commands
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn generate_bundle_summary<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+) -> Result<SummaryResult, BundleError> {
+    let path = build_summary(&handle, &uid)?;
+    Ok(SummaryResult { output_path: path.to_string_lossy().to_string() })
+}
+
+#[tauri::command]
+pub fn reveal_bundle_summary<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+) -> Result<(), BundleError> {
+    let conn = open_conn(&handle)?;
+    let title = bundles::fetch_bundle_title(&conn, &uid)?;
+    let workspace = crate::extract::bundle_workspace_dir(&bundles::work_root(&handle)?, &uid);
+    let path = workspace
+        .join("auto")
+        .join(format!("{} — Summary.pdf", bundles::master_cut_basename(&title)));
+    if !path.exists() {
+        return Err(BundleError::NotFound(format!("summary PDF for {uid} (generate it first)")));
+    }
+    crate::fsutil::reveal_in_file_browser(&path)?;
+    Ok(())
+}
+
+/// Best-effort generation used by the Dropbox copy path: never propagates a
+/// failure (a missing transcript or font glitch must not block the master-cut
+/// copy). Returns the path on success.
+pub fn try_generate_for_dropbox<R: Runtime>(handle: &AppHandle<R>, uid: &str) -> Option<PathBuf> {
+    match build_summary(handle, uid) {
+        Ok(p) => Some(p),
+        Err(e) => {
+            eprintln!("[sidemolly] summary generation for {uid} failed (continuing): {e}");
+            None
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::manifest::BundleManifest;
+
+    #[test]
+    fn clean_transcript_removes_blank_lines_and_double_spaces_sentences() {
+        let raw = "hello there.\n\n  \nhow are you?\n";
+        assert_eq!(clean_transcript(raw), "Hello there.  How are you?");
+    }
+
+    #[test]
+    fn clean_transcript_capitalizes_and_adds_terminal_period() {
+        assert_eq!(clean_transcript("just some words"), "Just some words.");
+        assert_eq!(clean_transcript("a   b.\tc"), "A b.  C.");
+    }
+
+    #[test]
+    fn clean_transcript_is_idempotent() {
+        let once = clean_transcript("hi there. how ARE you?  fine.");
+        assert_eq!(clean_transcript(&once), once);
+    }
+
+    #[test]
+    fn clean_transcript_empty_input() {
+        assert_eq!(clean_transcript("   \n\n  "), "");
+    }
+
+    #[test]
+    fn embedded_fonts_load_and_render_a_pdf() {
+        // De-risks the bundled Liberation Sans TTFs + the genpdf render path
+        // without needing an AppHandle: build a tiny document and confirm it
+        // writes a non-empty `%PDF` file.
+        let font_family = fonts::FontFamily {
+            regular: fonts::FontData::new(FONT_REGULAR.to_vec(), None).unwrap(),
+            bold: fonts::FontData::new(FONT_BOLD.to_vec(), None).unwrap(),
+            italic: fonts::FontData::new(FONT_ITALIC.to_vec(), None).unwrap(),
+            bold_italic: fonts::FontData::new(FONT_BOLD_ITALIC.to_vec(), None).unwrap(),
+        };
+        let mut doc = genpdf::Document::new(font_family);
+        doc.set_minimal_conformance();
+        doc.push(heading("SideMollySummary smoke", 16));
+        doc.push(elements::Paragraph::new("Hello — rendered with the bundled font."));
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let out = dir.path().join("smoke.pdf");
+        doc.render_to_file(&out).expect("genpdf should render with the embedded fonts");
+
+        let bytes = std::fs::read(&out).unwrap();
+        assert!(bytes.len() > 200, "rendered PDF should be non-trivial");
+        assert_eq!(&bytes[..4], b"%PDF", "output should be a PDF");
+    }
+
+    #[test]
+    fn format_price_variants() {
+        assert_eq!(format_price(Some(4900), false), "$49.00");
+        assert_eq!(format_price(Some(500), false), "$5.00");
+        assert_eq!(format_price(None, true), "Handled in platform");
+        assert_eq!(format_price(Some(4900), true), "Handled in platform");
+        assert_eq!(format_price(None, false), "—");
+    }
+
+    fn content_manifest() -> BundleManifest {
+        BundleManifest {
+            uid: "u".into(),
+            bundle_type: "content".into(),
+            title: "My Clip".into(),
+            categories: vec!["Solo".into(), "Toys".into()],
+            go_live_date: Some("2026-06-10".into()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn summary_fields_content_shows_base_fields() {
+        let m = content_manifest();
+        let f = summary_fields(&m, "", "A short blurb", Some("2026-06-02T10:00:00"));
+        let map: std::collections::HashMap<_, _> = f.iter().cloned().collect();
+        assert_eq!(map.get("Title").unwrap(), "My Clip");
+        assert_eq!(map.get("Description").unwrap(), "A short blurb");
+        assert_eq!(map.get("Categories").unwrap(), "Solo, Toys");
+        assert_eq!(map.get("Go-Live Date").unwrap(), "2026-06-10");
+        assert_eq!(map.get("Date Processed").unwrap(), "2026-06-02T10:00:00");
+        assert!(!map.contains_key("Working title"), "no override → no working-title row");
+        assert!(!map.contains_key("Price"), "content bundle has no price row");
+    }
+
+    #[test]
+    fn summary_fields_working_title_only_when_overridden() {
+        let m = content_manifest();
+        // Override equal to original → not shown.
+        let same = summary_fields(&m, "My Clip", "", None);
+        assert!(!same.iter().any(|(k, _)| k == "Working title"));
+        // Distinct override → shown.
+        let diff = summary_fields(&m, "Better Name", "", None);
+        let row = diff.iter().find(|(k, _)| k == "Working title").unwrap();
+        assert_eq!(row.1, "Better Name");
+    }
+
+    #[test]
+    fn summary_fields_custom_shows_delivery_and_price() {
+        let m = BundleManifest {
+            uid: "c".into(),
+            bundle_type: "custom".into(),
+            title: "Order #42".into(),
+            delivery_kind: Some("site".into()),
+            delivery_site_name: Some("C4S messages".into()),
+            delivery_recipient: "@buyer".into(),
+            price_cents: Some(4900),
+            ..Default::default()
+        };
+        let f = summary_fields(&m, "", "", None);
+        let map: std::collections::HashMap<_, _> = f.iter().cloned().collect();
+        assert_eq!(map.get("Site").unwrap(), "C4S messages");
+        assert_eq!(map.get("Deliver to").unwrap(), "@buyer");
+        assert_eq!(map.get("Price").unwrap(), "$49.00");
+    }
+
+    #[test]
+    fn summary_fields_custom_handled_in_platform() {
+        let m = BundleManifest {
+            bundle_type: "custom".into(),
+            title: "Order".into(),
+            handled_in_platform: true,
+            ..Default::default()
+        };
+        let f = summary_fields(&m, "", "", None);
+        let map: std::collections::HashMap<_, _> = f.iter().cloned().collect();
+        assert_eq!(map.get("Price").unwrap(), "Handled in platform");
+    }
+}

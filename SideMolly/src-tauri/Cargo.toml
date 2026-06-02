@@ -1,6 +1,6 @@
 [package]
 name = "sidemolly"
-version = "0.25.0"
+version = "0.26.0"
 description = "SideMolly — Molly bundle workbench"
 authors = ["Robert Olen <robert.olen@gmail.com>"]
 edition = "2021"
@@ -62,6 +62,11 @@ notify = "6"
 # spawn the launch-time + ongoing watcher task. Default features off —
 # tauri's runtime configuration sets what we need.
 tokio = { version = "1", default-features = false, features = ["time", "rt", "sync", "macros"] }
+# SideMollySummary PDF generation. genpdf handles text wrapping + automatic
+# pagination + JPEG embedding so we don't hand-roll a layout engine. Body font
+# is bundled Liberation Sans (OFL, redistributable) loaded via include_bytes!;
+# the `images` feature pulls genpdf's own image decoder for the thumbnail grid.
+genpdf = { version = "0.2", features = ["images"] }
 
 [dev-dependencies]
 tempfile = "3"

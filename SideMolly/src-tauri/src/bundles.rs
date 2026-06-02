@@ -526,31 +526,11 @@ pub fn ingest_bundle_inner<R: Runtime>(
     }
     let thumbnail_count = thumb_rows.len() as i64;
 
-    // ---- 10 random export thumbnails ----
-    // Selection is stable across re-ingests for the moment: DELETE +
-    // INSERT replaces the picks each time. Phase 11 (post-bundle
-    // composition) reads from bundle_export_thumbs.
-    conn.execute(
-        "DELETE FROM bundle_export_thumbs WHERE bundle_uid = ?1",
-        params![manifest.uid],
-    )?;
-    let mut picks = thumb_rows.clone();
-    pseudo_shuffle(&mut picks, &manifest.uid);
-    picks.truncate(10);
-    for (i, (id, _in_zip, path)) in picks.iter().enumerate() {
-        conn.execute(
-            "INSERT INTO bundle_export_thumbs
-                (bundle_uid, bundle_file_id, position, thumbnail_path)
-             VALUES (?1, ?2, ?3, ?4)",
-            params![
-                manifest.uid,
-                id,
-                (i + 1) as i64,
-                path.to_string_lossy().to_string(),
-            ],
-        )?;
-    }
-    let export_thumb_count = picks.len() as i64;
+    // ---- export thumbnails ----
+    // Stable shuffle then cap at the configured count. Drives both the
+    // post-bundle's artifacts/thumbnails payload and the SideMollySummary
+    // PDF grid. Re-runnable: reselect_export_thumbs replaces the picks.
+    let export_thumb_count = reselect_export_thumbs(&conn, &manifest.uid, thumb_count(&conn))?;
 
     Ok(IngestResult {
         uid: manifest.uid,
@@ -588,6 +568,83 @@ fn pseudo_shuffle<T>(items: &mut Vec<T>, key: &str) {
         let j = (state as usize) % (i + 1);
         items.swap(i, j);
     }
+}
+
+/// Configured export-thumbnail count (default 30). Governs both the
+/// post-bundle's `artifacts/thumbnails/` payload and the SideMollySummary
+/// PDF grid. Falls back to 30 if the singleton row is somehow absent.
+pub(crate) fn thumb_count(conn: &Connection) -> i64 {
+    conn.query_row("SELECT thumb_count FROM summary_settings WHERE id = 1", [], |r| r.get(0))
+        .unwrap_or(30)
+}
+
+/// (Re)build a bundle's export-thumbnail selection: a stable, UID-seeded
+/// shuffle of every media file that has a thumbnail, capped at `count`. The
+/// shuffle is deterministic, so a larger `count` is a strict superset of a
+/// smaller one. Re-runnable any time the count changes or before composing a
+/// summary / post-bundle. Returns how many were selected.
+pub(crate) fn reselect_export_thumbs(
+    conn: &Connection,
+    uid: &str,
+    count: i64,
+) -> Result<i64, BundleError> {
+    let mut candidates: Vec<(i64, PathBuf)> = Vec::new();
+    {
+        let mut stmt = conn.prepare(
+            "SELECT id, thumbnail_path FROM bundle_files
+              WHERE bundle_uid = ?1 AND thumbnail_path IS NOT NULL AND thumbnail_path <> ''
+              ORDER BY id",
+        )?;
+        let rows = stmt.query_map(params![uid], |row| {
+            let id: i64 = row.get(0)?;
+            let p: String = row.get(1)?;
+            Ok((id, PathBuf::from(p)))
+        })?;
+        for r in rows { candidates.push(r?); }
+    }
+    pseudo_shuffle(&mut candidates, uid);
+    candidates.truncate(count.max(0) as usize);
+
+    conn.execute("DELETE FROM bundle_export_thumbs WHERE bundle_uid = ?1", params![uid])?;
+    for (i, (id, path)) in candidates.iter().enumerate() {
+        conn.execute(
+            "INSERT INTO bundle_export_thumbs
+                (bundle_uid, bundle_file_id, position, thumbnail_path)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![uid, id, (i + 1) as i64, path.to_string_lossy().to_string()],
+        )?;
+    }
+    Ok(candidates.len() as i64)
+}
+
+/// User-configurable settings for the SideMollySummary PDF + the export-thumb
+/// selection it shares with the post-bundle.
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SummarySettings {
+    pub thumb_count: i64,
+}
+
+#[tauri::command]
+pub fn get_summary_settings<R: Runtime>(
+    handle: AppHandle<R>,
+) -> Result<SummarySettings, BundleError> {
+    let conn = open_conn(&handle)?;
+    Ok(SummarySettings { thumb_count: thumb_count(&conn) })
+}
+
+#[tauri::command]
+pub fn set_summary_settings<R: Runtime>(
+    handle: AppHandle<R>,
+    settings: SummarySettings,
+) -> Result<(), BundleError> {
+    let conn = open_conn(&handle)?;
+    let count = settings.thumb_count.clamp(1, 200);
+    conn.execute(
+        "UPDATE summary_settings SET thumb_count = ?1, updated_at = datetime('now') WHERE id = 1",
+        params![count],
+    )?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -692,6 +749,20 @@ pub fn get_export_thumbnails<R: Runtime>(
                 thumbnail_path: row.get(2)?,
             })
         })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+/// Just the export-thumbnail file paths for a bundle, ordered by position.
+/// Conn-based helper for the SideMollySummary PDF + post-bundle compose, which
+/// both already hold a connection.
+pub(crate) fn export_thumb_paths(conn: &Connection, uid: &str) -> Result<Vec<String>, BundleError> {
+    let mut stmt = conn.prepare(
+        "SELECT thumbnail_path FROM bundle_export_thumbs
+          WHERE bundle_uid = ?1 ORDER BY position",
+    )?;
+    let rows = stmt
+        .query_map(params![uid], |row| row.get::<_, String>(0))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(rows)
 }
@@ -2036,6 +2107,7 @@ mod tests {
         conn.execute_batch(include_str!("../migrations/019_persona_clips.sql")).unwrap();
         conn.execute_batch(include_str!("../migrations/020_bundle_title_override.sql")).unwrap();
         conn.execute_batch(include_str!("../migrations/021_bundle_completed_at.sql")).unwrap();
+        conn.execute_batch(include_str!("../migrations/022_summary_pdf.sql")).unwrap();
         conn
     }
 
@@ -2323,6 +2395,39 @@ mod tests {
             .query_row("SELECT completed_at FROM bundles WHERE uid='c'", [], |r| r.get(0))
             .unwrap();
         assert!(reactivated.is_none(), "reactivate clears completed_at back to NULL");
+    }
+
+    #[test]
+    fn reselect_export_thumbs_honors_count_and_is_superset() {
+        let conn = fresh_db();
+        conn.execute(
+            "INSERT INTO bundles (uid, bundle_type, source_zip_path, manifest_json)
+             VALUES ('e','content','/e','{}')",
+            [],
+        ).unwrap();
+        // 6 media files, each with a thumbnail.
+        for i in 0..6 {
+            conn.execute(
+                "INSERT INTO bundle_files (bundle_uid, in_zip_path, original_name, kind, sha256, thumbnail_path)
+                 VALUES ('e', ?1, ?1, 'image', 's', ?2)",
+                params![format!("Photos/{i}.jpg"), format!("/thumbs/{i}.jpg")],
+            ).unwrap();
+        }
+        let picks = |conn: &Connection| -> Vec<i64> {
+            conn.prepare("SELECT bundle_file_id FROM bundle_export_thumbs WHERE bundle_uid='e' ORDER BY position")
+                .unwrap().query_map([], |r| r.get(0)).unwrap()
+                .collect::<rusqlite::Result<Vec<_>>>().unwrap()
+        };
+
+        assert_eq!(reselect_export_thumbs(&conn, "e", 2).unwrap(), 2);
+        let first2 = picks(&conn);
+        assert_eq!(reselect_export_thumbs(&conn, "e", 4).unwrap(), 4);
+        let first4 = picks(&conn);
+        // Deterministic superset: the first 2 picks survive into the larger set.
+        assert_eq!(&first4[..2], &first2[..], "a larger count is a stable superset of a smaller one");
+        // Cap is bounded by the number of thumbnailed files.
+        assert_eq!(reselect_export_thumbs(&conn, "e", 100).unwrap(), 6,
+                   "selection can't exceed available thumbnails");
     }
 
     #[test]

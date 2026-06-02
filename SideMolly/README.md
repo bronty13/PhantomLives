@@ -95,3 +95,13 @@ SideMolly/
 | 11 | 📤 Post-bundle composition + Molly ingest (joint release) |
 | 12 | 🛠 Jobs panel |
 | 13 | 📅 FanSite multi-site workflow (per-persona roster, per-day media staging, posting log) |
+
+### Beyond the phase plan
+
+- **SideMollySummary** — a per-bundle PDF (metadata + thumbnail grid + cleaned
+  transcripts + processing log), generated from the Distribute tab and copied
+  to Dropbox alongside the master cut. Thumbnail count is configurable in
+  **Settings → Summary** (default 30) and is shared with the post-bundle. PDF
+  via `genpdf` + bundled Liberation Sans (`src-tauri/src/summary.rs`).
+- **Inbox completion lifecycle** — mark bundles complete/active, filter, and
+  delete from the Inbox toolbar.

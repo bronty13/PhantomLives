@@ -507,6 +507,73 @@ pub fn dispatch_transcribe_video<R: Runtime>(
     Ok(())
 }
 
+/// Synchronously transcribe a single audio/video file to plain text, reusing
+/// the same engine resolution + invocation as the job dispatcher. Used by the
+/// SideMollySummary PDF to turn a short audio *description* into text on
+/// demand. Returns the `.txt` rendering. Errors (engine missing, run failed)
+/// are surfaced so callers can degrade gracefully — this never writes sidecars.
+pub fn transcribe_audio_to_text(src: &Path) -> Result<String, BundleError> {
+    let engine = resolve_engine().ok_or_else(|| {
+        BundleError::NotFound("transcribe engine not installed".into())
+    })?;
+    if !src.exists() {
+        return Err(BundleError::NotFound(src.to_string_lossy().to_string()));
+    }
+    let tmp_dir = std::env::temp_dir().join("sidemolly-desc-transcribe");
+    fs::create_dir_all(&tmp_dir)?;
+    let tmp_json = tmp_dir.join(format!("desc-{}.json", std::process::id()));
+
+    let mut cmd = Command::new(&engine.command);
+    cmd.args(&engine.leading_args);
+    cmd.env("PATH", augmented_path());
+    cmd.args([
+        "-i", src.to_str().ok_or_else(|| BundleError::Io(std::io::Error::other(
+            "source path is not valid UTF-8")))?,
+        "-o", tmp_json.to_str().ok_or_else(|| BundleError::Io(std::io::Error::other(
+            "tmp path is not valid UTF-8")))?,
+        "-f", "json",
+    ]);
+    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+
+    let started = Instant::now();
+    let mut child = cmd.spawn().map_err(|e| BundleError::Io(std::io::Error::other(
+        format!("transcribe spawn ({}): {e}", engine.command))))?;
+    let status = loop {
+        match child.try_wait()? {
+            Some(s) => break s,
+            None => {
+                if started.elapsed() > TRANSCRIBE_TIMEOUT {
+                    let _ = child.kill();
+                    let _ = fs::remove_file(&tmp_json);
+                    return Err(BundleError::Io(std::io::Error::other("transcribe timed out")));
+                }
+                std::thread::sleep(Duration::from_millis(500));
+            }
+        }
+    };
+    if !status.success() {
+        let mut stderr = String::new();
+        if let Some(mut s) = child.stderr.take() {
+            use std::io::Read;
+            let _ = s.read_to_string(&mut stderr);
+        }
+        let _ = fs::remove_file(&tmp_json);
+        return Err(BundleError::Io(std::io::Error::other(format!(
+            "transcribe exit {:?}: {}",
+            status.code(),
+            stderr.trim().chars().take(400).collect::<String>(),
+        ))));
+    }
+
+    let json_bytes = fs::read(&tmp_json)?;
+    let _ = fs::remove_file(&tmp_json);
+    let cleaned = sanitize_python_json_literals(&String::from_utf8_lossy(&json_bytes));
+    let parsed: WhisperJson = serde_json::from_str(&cleaned).map_err(|e| {
+        BundleError::Io(std::io::Error::other(format!("transcribe wrote non-JSON: {e}")))
+    })?;
+    Ok(render_txt(&parsed))
+}
+
 // ---------------------------------------------------------------------------
 // Whisper JSON → txt / srt
 // ---------------------------------------------------------------------------

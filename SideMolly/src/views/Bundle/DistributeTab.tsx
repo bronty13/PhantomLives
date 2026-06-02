@@ -18,7 +18,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   copyToDropbox, dryRunDropbox, fmtSize, getDropboxSettings,
-  revealDropboxDest,
+  generateBundleSummary, revealBundleSummary, revealDropboxDest,
   type BundleSummary,
   type CopyResultSummary, type DropboxSettings, type DryRunSummary,
 } from '../../data/bundles';
@@ -161,6 +161,9 @@ export function DistributeTab({ summary, refreshSignal }: Props) {
         )}
       </section>
 
+      {/* ─── SideMollySummary PDF ──────────────────────────────── */}
+      <SummarySection uid={summary.uid} onGenerated={refresh} />
+
       {/* ─── Preview table ───────────────────────────────────── */}
       <section className="sm-card">
         <div className="flex items-baseline justify-between mb-2">
@@ -186,6 +189,53 @@ export function DistributeTab({ summary, refreshSignal }: Props) {
         )}
       </section>
     </div>
+  );
+}
+
+function SummarySection({ uid, onGenerated }: { uid: string; onGenerated: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const generate = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await generateBundleSummary(uid);
+      setResult(r.outputPath);
+      // Refresh the Dropbox preview so the freshly-written PDF shows up.
+      onGenerated();
+      revealBundleSummary(uid).catch(() => {});
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="sm-card">
+      <div className="font-semibold mb-1">📄 SideMollySummary</div>
+      <div className="text-xs" style={{ color: 'rgb(var(--surface-muted))' }}>
+        A one-page PDF — metadata, a thumbnail grid, the cleaned-up video
+        transcripts, and the full processing log. It's regenerated and copied to
+        Dropbox automatically alongside the master cut; generate it here to
+        preview. (Thumbnail count is set in <strong>Settings → Summary</strong>.)
+      </div>
+      <div className="flex items-center gap-2 mt-3">
+        <button type="button" className="sm-button" disabled={busy} onClick={generate}>
+          {busy ? '⏳ Generating…' : '📄 Generate summary PDF'}
+        </button>
+      </div>
+      {error && (
+        <div className="mt-3 text-xs" style={{ color: '#7a0000' }}>⚠ {error}</div>
+      )}
+      {result && !error && (
+        <div className="mt-3 text-xs" style={{ color: '#0f5d33' }}>
+          ✓ Generated — <code className="break-all">{result}</code>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -241,6 +291,7 @@ function statusPill(s: string): { glyph: string; bg: string; fg: string } {
 function kindGlyph(kind: string): string {
   if (kind === 'image' || kind.startsWith('image_')) return '🖼';
   if (kind === 'master') return '🎬';
+  if (kind === 'summary') return '📄';
   if (kind.startsWith('transcript')) return '📝';
   if (kind === 'video' || kind.startsWith('video_')) return '🎥';
   return '·';

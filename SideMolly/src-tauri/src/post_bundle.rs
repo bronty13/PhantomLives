@@ -12,7 +12,7 @@
 //   │   ├── processing.log              (optional — auto-included when present)
 //   │   └── artifacts/
 //   │       ├── transcripts/<stem>.txt + .srt   (if generated in Phase 5)
-//   │       └── thumbnails/<stem>.jpg            (per-file thumbnails)
+//   │       └── thumbnails/<stem>.jpg            (export-thumb selection, configurable count)
 //   └── hashes.json                     (inner-zip hash + per-entry hashes)
 //
 // Sidecar: a plain, unzipped `<UID>-post/` folder is written next to the
@@ -563,7 +563,7 @@ fn build_report(conn: &Connection, uid: &str) -> Result<Report, BundleError> {
 
 fn collect_artifacts<R: Runtime>(
     handle: &AppHandle<R>,
-    _conn: &Connection,
+    conn: &Connection,
     uid: &str,
     out: &mut BTreeMap<String, Vec<u8>>,
 ) -> Result<(), BundleError> {
@@ -588,21 +588,18 @@ fn collect_artifacts<R: Runtime>(
         }
     }
 
-    // Per-file thumbnails (Phase 1c). Locked-in payload per §9.1.
-    // Files live in `<workspace>/thumbs/<stem>.jpg`.
-    let thumb_dir = workspace.join("thumbs");
-    if thumb_dir.is_dir() {
-        if let Ok(entries) = fs::read_dir(&thumb_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if !path.is_file() { continue; }
-                let Some(ext) = path.extension().and_then(|s| s.to_str()) else { continue };
-                if ext != "jpg" && ext != "jpeg" { continue; }
-                let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-                if let Ok(bytes) = fs::read(&path) {
-                    out.insert(format!("artifacts/thumbnails/{name}"), bytes);
-                }
-            }
+    // Thumbnails: the export-thumbnail selection (configurable count, default
+    // 30 — shared with the SideMollySummary PDF). Reselect to the current
+    // count first so the payload reflects the setting, then copy each picked
+    // JPEG into artifacts/thumbnails/.
+    let count = crate::bundles::thumb_count(conn);
+    crate::bundles::reselect_export_thumbs(conn, uid, count)?;
+    for path in crate::bundles::export_thumb_paths(conn, uid)? {
+        let p = std::path::Path::new(&path);
+        let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
+        if name.is_empty() { continue; }
+        if let Ok(bytes) = fs::read(p) {
+            out.insert(format!("artifacts/thumbnails/{name}"), bytes);
         }
     }
 
