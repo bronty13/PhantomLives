@@ -3,8 +3,10 @@
 Snapshot of where the project stands so a future session (human or AI)
 can pick up without re-deriving everything from the commit history.
 Last updated: 2026-06-01. Multi-agent audit landed — 61 verified
-findings (2 high · 14 medium · 45 low) now tracked in `AUDIT.md`; see
-the "Audit backlog" entry under Known gaps. Tier #18 (sidebar off
+findings (2 high · 14 medium · 45 low) tracked in `AUDIT.md`; first
+fix batch shipped (1.0.590): both HIGH items + the shared-Watchlist
+root cause behind 5 MEDIUMs + 1 LOW, **7 of 61 closed**. See the
+"Audit backlog" entry under Known gaps. Tier #18 (sidebar off
 `NavigationSplitView` → manual `HStack` + `WindowStateGuard`/`AppDelegate`;
 gitignore Finder ` 2.app` dupes; doc sync). Tier #13 (perf + robustness sweep,
 1.0.234–235), Tier #14 (refactor pass — SetupView split, typed
@@ -657,17 +659,22 @@ A multi-agent audit (2026-06-01) swept all 10 subsystems for security /
 correctness / quality issues, with every finding adversarially
 re-verified against the source. **61 confirmed findings (2 high · 14
 medium · 45 low)** are tracked as a tick-off backlog in `AUDIT.md`.
-Start there before the items below — the highest-value picks:
-- **HIGH** — `restore()` wipes Application Support with no pre-restore
-  safety backup (`BackupService.swift:322`), violating the repo backup
-  standard; AppLog's encrypted-log loader uses aligned `load(as:)` on an
-  unaligned slice and **traps on launch** once `app.log` has >1 record
-  (`AppLog.swift:137`, one-word `loadUnaligned` fix).
-- **Watchlist root cause** — a single shared `WatchlistService` with
-  un-namespaced per-network state is behind 5 medium findings (presence
-  flapping, wrong-socket MONITOR/ISON routing, cross-network disconnect
-  wipe, single-timer polling). Key state per-network (UUID) or one
-  service per connection to close them all at once.
+**First batch shipped 1.0.590 (7 closed, 54 open)** — both HIGH items,
+the per-network `WatchlistService` refactor (5 MEDIUMs), and 1 LOW.
+Start in `AUDIT.md` before the items below — the next highest-value
+open picks among the remaining MEDIUMs:
+- **ProxyFramer FIFO config swap** (`ProxyFramer.swift:40`) — two
+  proxied networks connecting close together can pop each other's proxy
+  config (creds + target). Key configs by a per-connection token.
+- **Keychain DEK has no device-only / biometric ACL**
+  (`KeychainStore.swift:48`) — "Require Touch ID" is a pure UI overlay;
+  the cached DEK returns with no prompt and is migration-eligible.
+- **DCC SSRF + wildcard bind** (`DCC.swift:348`, `:581`) — offered host
+  isn't validated against the IRC sender; listener silently falls back
+  to `0.0.0.0`.
+- **"Say" AppIntent/AppleScript runs slash-commands**
+  (`AppIntents.swift:88`) — a Shortcut that "says" `/quit` or `/raw`
+  executes it. Neutralize a leading `/` on the literal-say surfaces.
 
 ### DCC — passive mode + RESUME
 Active DCC SEND/CHAT works on-LAN. Behind NAT it needs:

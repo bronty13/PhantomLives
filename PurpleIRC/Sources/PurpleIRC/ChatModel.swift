@@ -2010,19 +2010,13 @@ final class ChatModel: ObservableObject {
 // MARK: - WatchlistDelegate
 
 extension ChatModel: WatchlistDelegate {
-    /// Route watchlist-sourced raw lines to whichever connection currently
-    /// looks live. We prefer the active connection; if it isn't connected,
-    /// fall back to the first `.connected` one. Multi-connection watchlist
-    /// routing (picking the right network per watched nick) is a future
-    /// concern — today there's effectively one connection at a time.
-    func watchlistSendRaw(_ line: String) {
-        if let active = activeConnection, active.state == .connected {
-            active.watchlistRouteSendRaw(line)
-            return
-        }
-        if let other = connections.first(where: { $0.state == .connected }) {
-            other.watchlistRouteSendRaw(line)
-        }
+    /// Route a watchlist-sourced raw line to the connection that owns the
+    /// watch session — `network` is the originating `IRCConnection.id`.
+    /// Each network polls/monitors on its own socket, so the line must go
+    /// to that exact connection rather than whichever is currently active.
+    func watchlistSendRaw(_ line: String, network: UUID) {
+        guard let conn = connections.first(where: { $0.id == network }) else { return }
+        conn.watchlistRouteSendRaw(line)
     }
 
     func watchlistPostInfo(_ text: String) {
@@ -2185,11 +2179,12 @@ extension ChatModel: WatchlistDelegate {
     /// UI can surface them inline.
     func performRestore(from archiveURL: URL) throws {
         AppLog.shared.notice(
-            "Restore triggered from \(archiveURL.path)",
+            "Restore triggered from \(archiveURL.path); a pre-restore safety backup is written first.",
             category: "Restore")
         try BackupService.restore(
             from: archiveURL,
             into: settings.supportDirectoryURL,
+            backupDir: backupDirectoryURL,
             key: keyStore.currentKey)
         AppLog.shared.notice("Restore complete; terminating to relaunch.",
                               category: "Restore")

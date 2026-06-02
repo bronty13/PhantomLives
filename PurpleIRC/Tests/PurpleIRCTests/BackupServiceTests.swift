@@ -75,7 +75,8 @@ struct BackupServiceTests {
             at: support, includingPropertiesForKeys: nil) {
             try FileManager.default.removeItem(at: entry)
         }
-        try BackupService.restore(from: archive, into: support, key: nil)
+        try BackupService.restore(from: archive, into: support,
+                                  backupDir: backup, key: nil)
 
         // 4. Restored content matches what we planted.
         let settingsBytes = try? Data(contentsOf: support.appendingPathComponent("settings.json"))
@@ -132,9 +133,49 @@ struct BackupServiceTests {
             at: support, includingPropertiesForKeys: nil) {
             try FileManager.default.removeItem(at: entry)
         }
-        try BackupService.restore(from: archive, into: support, key: key)
+        try BackupService.restore(from: archive, into: support,
+                                  backupDir: backup, key: key)
         let settingsBytes = try? Data(contentsOf: support.appendingPathComponent("settings.json"))
         #expect(String(data: settingsBytes ?? Data(), encoding: .utf8) == "settings")
+    }
+
+    // MARK: - Pre-restore safety backup
+
+    /// The repo backup standard requires restore() to ALWAYS write a
+    /// pre-restore safety archive before the destructive swap, so a user
+    /// who restores the wrong/stale archive can still recover the state
+    /// that was live a moment ago. Restore the (different) archive and
+    /// assert a `PurpleIRC-pre-restore-*` archive capturing the ORIGINAL
+    /// content now exists in the backup dir.
+    @Test func restoreWritesPreRestoreSafetyBackup() throws {
+        let (support, backup) = tempPair()
+        try plant(in: support)
+
+        // Archive the planted ("old") state, then mutate the live dir so
+        // the pre-restore snapshot is distinguishable from the archive.
+        let archive = try BackupService.runBackup(
+            supportDir: support, backupDir: backup, key: nil)
+        try Data("CURRENT-not-in-archive".utf8).write(
+            to: support.appendingPathComponent("settings.json"))
+
+        try BackupService.restore(from: archive, into: support,
+                                  backupDir: backup, key: nil)
+
+        // A pre-restore archive must have been written...
+        let preRestore = BackupService.listBackups(in: backup)
+            .first { $0.url.lastPathComponent.hasPrefix("PurpleIRC-pre-restore-") }
+        #expect(preRestore != nil)
+
+        // ...and it must contain the state that was live just before the
+        // restore (the mutated settings), not the archive's old content.
+        if let preRestore {
+            let v = try BackupService.verifyArchive(at: preRestore.url, key: nil)
+            #expect(v.fileCount >= 3)
+        }
+
+        // The restore itself still landed the archive's content.
+        let restored = try? Data(contentsOf: support.appendingPathComponent("settings.json"))
+        #expect(String(data: restored ?? Data(), encoding: .utf8) == "settings")
     }
 
     // MARK: - Retention

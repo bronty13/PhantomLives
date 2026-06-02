@@ -25,7 +25,11 @@ struct HighlightHit: Identifiable, Equatable {
 
 @MainActor
 protocol WatchlistDelegate: AnyObject {
-    func watchlistSendRaw(_ line: String)
+    /// Send a watchlist-sourced raw line (MONITOR / ISON) on a specific
+    /// network's socket — `network` is the originating `IRCConnection.id`,
+    /// so the line reaches the connection that registered it rather than
+    /// whichever one happens to be active.
+    func watchlistSendRaw(_ line: String, network: UUID)
     func watchlistPostInfo(_ text: String)
 }
 
@@ -53,10 +57,20 @@ final class WatchlistService: ObservableObject {
     var contactAlertOverrideResolver: ((String) -> ContactAlertOverride?)? = nil
 
     private weak var delegate: WatchlistDelegate?
-    private var supportsMonitor = false
-    private var serverMonitorLimit: Int = 0
-    private var isonTimer: Timer?
-    private var seenInChannel: Set<String> = []
+
+    /// All watch state that is genuinely per-network. Previously these
+    /// were single shared fields, which let one connection's disconnect /
+    /// ISON reply / MONITOR capability clobber every other network's
+    /// state (presence flapping, wrong-socket MONITOR/ISON routing,
+    /// single-timer polling). Keyed by `IRCConnection.id`.
+    private struct NetworkWatchState {
+        var presence: [String: WatchPresence] = [:]
+        var supportsMonitor = false
+        var serverMonitorLimit = 0
+        var isonTimer: Timer?
+    }
+    private var networks: [UUID: NetworkWatchState] = [:]
+
     /// Per-nick last-alert timestamp for short-window dedupe across the
     /// MONITOR / ISON / observed-activity sources. Without this, a watched
     /// user's PRIVMSG firing handleObservedActivity at roughly the same
@@ -88,131 +102,169 @@ final class WatchlistService: ObservableObject {
         let removes = watched.filter { !next.contains($0.lowercased()) }
 
         watched = list
-        for n in list where presence[n.lowercased()] == nil {
-            presence[n.lowercased()] = .unknown
+        // Drop no-longer-watched nicks from every network's presence slice.
+        for id in networks.keys {
+            for k in Array(networks[id]!.presence.keys) where !next.contains(k) {
+                networks[id]!.presence.removeValue(forKey: k)
+            }
         }
-        for k in Array(presence.keys) where !next.contains(k) {
-            presence.removeValue(forKey: k)
-        }
+        recomputeAllAggregates()
 
         syncRemote(adding: adds, removing: removes)
     }
 
+    // MARK: - Aggregate presence (the OR across all networks)
+
+    /// Rebuild the published `presence` map (the per-nick status the UI
+    /// shows) from every network's slice. A nick is online if it's online
+    /// on *any* connected network, offline only if known-offline on at
+    /// least one and online on none, else unknown. This is what stops a
+    /// nick's absence on network B from flipping a nick that's online on
+    /// network A.
+    private func recomputeAllAggregates() {
+        var agg: [String: WatchPresence] = [:]
+        for n in watched {
+            agg[n.lowercased()] = aggregatePresence(for: n.lowercased())
+        }
+        presence = agg
+    }
+
+    private func aggregatePresence(for key: String) -> WatchPresence {
+        var hasOnline = false
+        var hasKnown = false
+        for st in networks.values {
+            if let p = st.presence[key] {
+                if p == .online { hasOnline = true }
+                if p != .unknown { hasKnown = true }
+            }
+        }
+        return hasOnline ? .online : (hasKnown ? .offline : .unknown)
+    }
+
+    /// Set a watched nick's presence on one network, refresh the
+    /// aggregate, and fire the online alert only when the *aggregate*
+    /// transitions into online (was not online anywhere, now is). Basing
+    /// the alert on the aggregate transition — rather than a single
+    /// network's view — is what eliminates cross-network alert flapping
+    /// and the old `seenInChannel` re-alert suppression hack in one move.
+    private func markPresence(nick: String,
+                              on network: UUID,
+                              to newValue: WatchPresence,
+                              source: String) {
+        let key = nick.lowercased()
+        guard watched.contains(where: { $0.lowercased() == key }) else { return }
+        let aggBefore = presence[key] ?? .unknown
+        networks[network, default: NetworkWatchState()].presence[key] = newValue
+        let aggAfter = aggregatePresence(for: key)
+        if presence[key] != aggAfter { presence[key] = aggAfter }
+        if aggAfter == .online && aggBefore != .online {
+            fireOnlineAlert(nick: nick, source: source)
+        }
+    }
+
     // MARK: - Server capability
 
-    func handleISupport(_ tokens: [String]) {
+    func handleISupport(_ tokens: [String], network: UUID) {
+        var st = networks[network] ?? NetworkWatchState()
         for t in tokens {
             if t.hasPrefix("MONITOR=") {
-                let n = Int(t.dropFirst("MONITOR=".count)) ?? 100
-                supportsMonitor = true
-                serverMonitorLimit = n
+                st.supportsMonitor = true
+                st.serverMonitorLimit = Int(t.dropFirst("MONITOR=".count)) ?? 100
             } else if t == "MONITOR" {
-                supportsMonitor = true
-                serverMonitorLimit = 100
+                st.supportsMonitor = true
+                st.serverMonitorLimit = 100
             }
         }
+        networks[network] = st
     }
 
-    func onWelcomeCompleted() {
-        if supportsMonitor {
-            register(allWatched: true)
+    func onWelcomeCompleted(network: UUID) {
+        if networks[network]?.supportsMonitor == true {
+            register(network: network)
         } else {
-            startISONPolling()
+            startISONPolling(network: network)
         }
     }
 
-    func onDisconnected() {
-        isonTimer?.invalidate()
-        isonTimer = nil
-        for k in presence.keys { presence[k] = .unknown }
-        seenInChannel.removeAll()
-        supportsMonitor = false
-        serverMonitorLimit = 0
+    func onDisconnected(network: UUID) {
+        networks[network]?.isonTimer?.invalidate()
+        // Drop only the disconnecting network's slice. Other networks keep
+        // their presence, timers, and MONITOR capability untouched.
+        networks.removeValue(forKey: network)
+        recomputeAllAggregates()
     }
 
+    /// A watched-list change pushes the diff to every connected
+    /// MONITOR-capable network on its own socket. ISON networks need no
+    /// push — their next poll() already sends the updated list.
     private func syncRemote(adding: [String], removing: [String]) {
         guard let d = delegate else { return }
-        if supportsMonitor {
+        for (id, st) in networks where st.supportsMonitor {
             if !adding.isEmpty {
-                d.watchlistSendRaw("MONITOR + \(adding.joined(separator: ","))")
+                d.watchlistSendRaw("MONITOR + \(adding.joined(separator: ","))", network: id)
             }
             if !removing.isEmpty {
-                d.watchlistSendRaw("MONITOR - \(removing.joined(separator: ","))")
+                d.watchlistSendRaw("MONITOR - \(removing.joined(separator: ","))", network: id)
             }
         }
     }
 
-    private func register(allWatched: Bool) {
-        guard let d = delegate, !watched.isEmpty else { return }
-        let limit = max(1, serverMonitorLimit)
+    private func register(network: UUID) {
+        guard let d = delegate, let st = networks[network], !watched.isEmpty else { return }
+        let limit = max(1, st.serverMonitorLimit)
         for chunk in watched.chunked(into: limit) {
-            d.watchlistSendRaw("MONITOR + \(chunk.joined(separator: ","))")
+            d.watchlistSendRaw("MONITOR + \(chunk.joined(separator: ","))", network: network)
         }
     }
 
     // MARK: - MONITOR numerics
 
-    func handleMonitorOnline(_ targets: [String]) {
+    func handleMonitorOnline(_ targets: [String], network: UUID) {
         for t in targets {
             let nick = t.split(separator: "!").first.map(String.init) ?? t
-            let key = nick.lowercased()
-            let prev = presence[key] ?? .unknown
-            presence[key] = .online
-            if prev != .online {
-                fireOnlineAlert(nick: nick, source: "MONITOR")
-            }
+            markPresence(nick: nick, on: network, to: .online, source: "MONITOR")
         }
     }
 
-    func handleMonitorOffline(_ targets: [String]) {
+    func handleMonitorOffline(_ targets: [String], network: UUID) {
         for t in targets {
             let nick = t.split(separator: "!").first.map(String.init) ?? t
-            let key = nick.lowercased()
-            presence[key] = .offline
+            markPresence(nick: nick, on: network, to: .offline, source: "MONITOR")
         }
     }
 
     // MARK: - JOIN/PRIVMSG bridge
 
-    func handleObservedActivity(nick: String, reason: String) {
-        guard watched.contains(where: { $0.caseInsensitiveCompare(nick) == .orderedSame }) else { return }
-        let key = nick.lowercased()
-        let prev = presence[key] ?? .unknown
-        presence[key] = .online
-        if prev != .online && !seenInChannel.contains(key) {
-            fireOnlineAlert(nick: nick, source: reason)
-        }
-        seenInChannel.insert(key)
+    func handleObservedActivity(nick: String, reason: String, network: UUID) {
+        markPresence(nick: nick, on: network, to: .online, source: reason)
     }
 
     // MARK: - ISON fallback polling
 
-    private func startISONPolling() {
-        isonTimer?.invalidate()
+    private func startISONPolling(network: UUID) {
+        networks[network]?.isonTimer?.invalidate()
         guard !watched.isEmpty else { return }
-        poll()
-        isonTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.poll() }
+        poll(network: network)
+        let timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.poll(network: network) }
         }
+        networks[network, default: NetworkWatchState()].isonTimer = timer
     }
 
-    private func poll() {
+    private func poll(network: UUID) {
         guard let d = delegate, !watched.isEmpty else { return }
         for chunk in watched.chunked(into: 15) {
-            d.watchlistSendRaw("ISON " + chunk.joined(separator: " "))
+            d.watchlistSendRaw("ISON " + chunk.joined(separator: " "), network: network)
         }
     }
 
-    func handleISON(_ onlineNicks: [String]) {
+    func handleISON(_ onlineNicks: [String], network: UUID) {
         let onlineLower = Set(onlineNicks.map { $0.lowercased() })
         for n in watched {
-            let k = n.lowercased()
-            let prev = presence[k] ?? .unknown
-            let nowOnline = onlineLower.contains(k)
-            presence[k] = nowOnline ? .online : .offline
-            if nowOnline && prev != .online {
-                fireOnlineAlert(nick: n, source: "ISON")
-            }
+            markPresence(nick: n,
+                         on: network,
+                         to: onlineLower.contains(n.lowercased()) ? .online : .offline,
+                         source: "ISON")
         }
     }
 

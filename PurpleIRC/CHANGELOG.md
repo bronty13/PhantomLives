@@ -12,6 +12,58 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
+## [1.0.590] — 2026-06-01
+
+### Fixed (audit follow-ups — first batch from `AUDIT.md`)
+
+Driven by the multi-agent audit recorded in `AUDIT.md` (2026-06-01).
+This batch closes the two HIGH findings and the shared-`WatchlistService`
+root cause behind five MEDIUM findings.
+
+- **App Log viewer no longer crashes on launch** (HIGH). The encrypted
+  app-log loader read its 4-byte length prefix with `load(as:)`, which
+  *traps* on a misaligned access — and after the first record the slice
+  base is almost never 4-byte aligned, so opening the App Log viewer (or
+  `loadFromDisk` at launch) crashed once `app.log` held more than one
+  record. Switched to `loadUnaligned`, matching `LogStore`'s loader.
+  (`AppLog.swift`.)
+- **Restore now writes a pre-restore safety backup first** (HIGH).
+  `BackupService.restore()` wiped Application Support with no snapshot of
+  the current state — a wrong/stale archive meant irrecoverable loss of
+  live settings/keystore/logs, the exact clobber the backup standard
+  exists to prevent. Restore now writes a `PurpleIRC-pre-restore-<stamp>`
+  archive into the backup dir and only proceeds once it succeeds (an
+  empty support dir, zip exit 12, is tolerated — nothing to lose).
+  (`BackupService.restore`, `ChatModel.performRestore`.)
+- **Watchlist state is now per-network** (5 MEDIUM). A single shared
+  `WatchlistService` held un-namespaced state across every connection,
+  so one network could clobber another's watch state. All of these are
+  fixed by keying state on `IRCConnection.id`:
+  - One network's disconnect no longer wipes every network's presence,
+    timers, and MONITOR capability.
+  - A nick's absence in one network's ISON reply no longer flips it
+    offline (and re-fires "is online") when it's still online elsewhere
+    — presence is now the OR across networks, and the online alert fires
+    on the *aggregate* transition.
+  - MONITOR / ISON lines are written to the socket of the network that
+    registered them, not whichever connection happens to be active.
+  - Each non-MONITOR network gets its own ISON poll timer instead of a
+    single shared timer that only ever polled one socket.
+  - `WatchlistDelegate.watchlistSendRaw` now carries the originating
+    network id; the old `allWatched` dead parameter and the
+    `seenInChannel` re-alert hack are gone (the aggregate-transition
+    alert subsumes the latter). (`WatchlistService.swift`,
+    `IRCConnection.swift`, `ChatModel.swift`.)
+
+### Tests
+
+- +6 tests (332 → 338): five in a new `WatchlistServiceTests` suite
+  (cross-network presence aggregation, disconnect isolation, per-socket
+  MONITOR/ISON routing, watched-list-diff routing, per-network
+  MONITOR online/offline) and one in `BackupServiceTests` asserting the
+  pre-restore safety archive is written and captures the pre-restore
+  state.
+
 ## [1.0.509] — 2026-05-24
 
 ### Changed (sidebar layout + window-state hardening)

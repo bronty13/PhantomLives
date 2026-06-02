@@ -39,7 +39,8 @@ enum BackupService {
     @discardableResult
     static func runBackup(supportDir: URL,
                           backupDir: URL,
-                          key: SymmetricKey?) throws -> URL {
+                          key: SymmetricKey?,
+                          archivePrefix: String = "PurpleIRC-") throws -> URL {
         let fm = FileManager.default
         try fm.createDirectory(at: backupDir, withIntermediateDirectories: true)
 
@@ -86,10 +87,10 @@ enum BackupService {
             var bytes = Data(EncryptedJSON.magic)
             bytes.append(sealed)
             payload = bytes
-            outputURL = backupDir.appendingPathComponent("PurpleIRC-\(stamp).zip.enc")
+            outputURL = backupDir.appendingPathComponent("\(archivePrefix)\(stamp).zip.enc")
         } else {
             payload = zipData
-            outputURL = backupDir.appendingPathComponent("PurpleIRC-\(stamp).zip")
+            outputURL = backupDir.appendingPathComponent("\(archivePrefix)\(stamp).zip")
         }
         try payload.write(to: outputURL, options: .atomic)
         return outputURL
@@ -269,10 +270,15 @@ enum BackupService {
     /// is removed before extraction. The caller should have asked the
     /// user to confirm and should terminate the app afterwards so the
     /// next launch reads the restored state from a clean process.
-    /// `backupDirURL` is preserved if it's inside the support dir
-    /// (defensive, though ours is in ~/Downloads by default).
+    ///
+    /// Per the repo backup standard, a `PurpleIRC-pre-restore-<stamp>`
+    /// safety archive is written into `backupDir` *before* the
+    /// destructive swap. `runBackup` throws on failure, which aborts the
+    /// restore with the live support dir untouched — so a restore can
+    /// never destroy the current state without first capturing it.
     static func restore(from archiveURL: URL,
                         into supportDir: URL,
+                        backupDir: URL,
                         key: SymmetricKey?) throws {
         let fm = FileManager.default
         let raw = try Data(contentsOf: archiveURL)
@@ -323,6 +329,22 @@ enum BackupService {
         // Refuses to operate on a non-PurpleIRC directory just like
         // FactoryReset.wipe — same safety guard, same reason.
         guard supportDir.lastPathComponent == "PurpleIRC" else { return }
+
+        // 4a. Safety net: snapshot the current state before we destroy it.
+        // If this throws (disk full, zip crash, …) the restore aborts here
+        // and the live support dir is left fully intact. The one tolerated
+        // case is zip exit 12 ("nothing to do") — an empty support dir has
+        // nothing to lose, so there's no safety archive to write and the
+        // restore proceeds.
+        do {
+            _ = try runBackup(supportDir: supportDir,
+                              backupDir: backupDir,
+                              key: key,
+                              archivePrefix: "PurpleIRC-pre-restore-")
+        } catch BackupError.zipFailed(let status, _) where status == 12 {
+            // Empty support dir — nothing to back up, safe to continue.
+        }
+
         if let existing = try? fm.contentsOfDirectory(at: supportDir,
                                                        includingPropertiesForKeys: nil) {
             for url in existing {

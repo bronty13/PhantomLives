@@ -626,7 +626,7 @@ final class IRCConnection: ObservableObject, Identifiable {
             appendInfo("Disconnected.")
             AppLog.shared.notice("Disconnected from \(profile.host).", category: logCat)
             haveRegisteredWatchlist = false
-            watchlist.onDisconnected()
+            watchlist.onDisconnected(network: id)
             // Drop any half-open BATCH/chathistory state so a reconnect
             // doesn't see ghosts left over from the previous session.
             // Also drop the per-nick maps so a reconnect to the same
@@ -642,7 +642,7 @@ final class IRCConnection: ObservableObject, Identifiable {
             appendError("Connection failed: \(err)")
             AppLog.shared.error("Connection failed: \(err)", category: logCat)
             haveRegisteredWatchlist = false
-            watchlist.onDisconnected()
+            watchlist.onDisconnected(network: id)
             openBatches.removeAll()
             chatHistoryFetched.removeAll()
             whoisOriginByNick.removeAll(keepingCapacity: true)
@@ -878,13 +878,13 @@ final class IRCConnection: ObservableObject, Identifiable {
             }
         case "005":
             let tokens = Array(msg.params.dropFirst().dropLast())
-            watchlist.handleISupport(tokens)
+            watchlist.handleISupport(tokens, network: id)
             logNumeric(msg)
         case "376", "422":
             logNumeric(msg)
             if !haveRegisteredWatchlist {
                 haveRegisteredWatchlist = true
-                watchlist.onWelcomeCompleted()
+                watchlist.onWelcomeCompleted(network: id)
                 runPostWelcome()
                 let caps = client.enabledCaps.sorted().joined(separator: ", ")
                 AppLog.shared.info(
@@ -896,7 +896,7 @@ final class IRCConnection: ObservableObject, Identifiable {
         case "303":
             let names = (msg.params.last ?? "")
                 .split(separator: " ").map { String($0) }.filter { !$0.isEmpty }
-            watchlist.handleISON(names)
+            watchlist.handleISON(names, network: id)
         case "321":
             // RPL_LISTSTART — some daemons send it, some don't. Swallow either
             // way; we already flipped the loading flag when /LIST was issued.
@@ -908,9 +908,9 @@ final class IRCConnection: ObservableObject, Identifiable {
             // RPL_LISTEND — the directory is complete.
             channelList.end()
         case "730":
-            watchlist.handleMonitorOnline(monitorTargets(from: msg))
+            watchlist.handleMonitorOnline(monitorTargets(from: msg), network: id)
         case "731":
-            watchlist.handleMonitorOffline(monitorTargets(from: msg))
+            watchlist.handleMonitorOffline(monitorTargets(from: msg), network: id)
         case "732", "733", "734":
             logNumeric(msg)
         case "900", "901", "902", "903", "904", "905", "906", "907":
@@ -1110,7 +1110,7 @@ final class IRCConnection: ObservableObject, Identifiable {
         }
 
         if !isNotice {
-            watchlist.handleObservedActivity(nick: from, reason: "message")
+            watchlist.handleObservedActivity(nick: from, reason: "message", network: id)
         }
 
         // CTCP handling (everything wrapped in \u0001 except ACTION).
@@ -1465,7 +1465,7 @@ final class IRCConnection: ObservableObject, Identifiable {
             // when the cap is live. No-op if the cap wasn't granted.
             requestChatHistory(for: chan)
         } else {
-            watchlist.handleObservedActivity(nick: who, reason: "JOIN \(chan)")
+            watchlist.handleObservedActivity(nick: who, reason: "JOIN \(chan)", network: id)
             appendTo(bufferIndex: bIdx, line: ChatLine(
                 timestamp: when,
                 kind: .join(nick: who),

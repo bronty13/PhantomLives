@@ -10,16 +10,22 @@ backlog. Tick items off as they're fixed.
 
 Status legend: `[ ]` open · `[x]` fixed (note the commit).
 
+**Progress — 2026-06-01 (1.0.590):** first batch landed. Both HIGH
+findings fixed (AppLog launch crash; pre-restore safety backup), plus the
+shared-`WatchlistService` root cause behind 5 MEDIUM findings (now keyed
+per-network) and the `seenInChannel` re-alert LOW finding. **7 of 61
+closed; 54 open.**
+
 ## 🔴 High
 
-#### 1. [ ] Restore performs a destructive wipe with no pre-restore safety backup
+#### 1. [x] Restore performs a destructive wipe with no pre-restore safety backup  _(fixed 1.0.590)_
 
 - **Where:** `BackupService.swift:322-339`
 - **Category:** correctness · **Subsystem:** backup-data
 - **Problem:** BackupService.restore() removes every file under the live support directory and moves the archive contents in, but never takes a safety backup of the current state first. The mandated backup standard for this codebase explicitly requires 'Restore — replace live Application Support directory with the archive. ALWAYS create a <AppName>-pre-restore-…zip safety backup first.' If the user restores the wrong archive, or the chosen archive is valid-but-stale, the live settings/keystore/logs/seen/history are gone irrecoverably — the exact 'settings clobber' incident this subsystem was built to protect against. ChatModel.performRestore() (ChatModel.swift:2186) also does not snapshot first.
 - **Fix:** Before wiping supportDir, call runBackup(supportDir:backupDir:key:) (or write a dedicated PurpleIRC-pre-restore-<stamp>.zip[.enc] into the backup dir) so the pre-restore state is recoverable. Only proceed with the destructive swap once that safety archive has been written successfully.
 
-#### 2. [ ] AppLog encrypted-log loader uses aligned load(as:) on an unaligned Data slice — traps at runtime
+#### 2. [x] AppLog encrypted-log loader uses aligned load(as:) on an unaligned Data slice — traps at runtime  _(fixed 1.0.590)_
 
 - **Where:** `AppLog.swift:137`
 - **Category:** correctness · **Subsystem:** backup-data
@@ -28,7 +34,7 @@ Status legend: `[ ]` open · `[x]` fixed (note the commit).
 
 ## 🟠 Medium
 
-#### 3. [ ] Single connection disconnect wipes watch presence for every network
+#### 3. [x] Single connection disconnect wipes watch presence for every network  _(fixed 1.0.590)_
 
 - **Where:** `WatchlistService.swift:124-131`
 - **Category:** correctness · **Subsystem:** addressbook-watch · claimed high, adjusted **medium**
@@ -36,7 +42,7 @@ Status legend: `[ ]` open · `[x]` fixed (note the commit).
 - **Fix:** Key all watch state (presence, seenInChannel, supportsMonitor, isonTimer, lastAlertAt) per-network (e.g. by network UUID), or instantiate one WatchlistService per IRCConnection. onDisconnected must only clear the disconnecting network's slice, not the global maps.
 - **Severity note:** Confirmed against the actual code. (1) WatchlistService is a single shared instance: ChatModel.swift:326 `let watchlist = WatchlistService()`, captured by every IRCConnection via init (IRCConnection.swift:329-331). (2) Each connection calls `watchlist.onDisconnected()` on its own `.disconnected` and `.failed` state transitions (IRCConnection.swift:629 and 645), and these are real production paths driven by…
 
-#### 4. [ ] ISON marks nicks online on one network as offline, causing alert flapping across networks
+#### 4. [x] ISON marks nicks online on one network as offline, causing alert flapping across networks  _(fixed 1.0.590)_
 
 - **Where:** `WatchlistService.swift:206-217`
 - **Category:** correctness · **Subsystem:** addressbook-watch · claimed high, adjusted **medium**
@@ -44,7 +50,7 @@ Status legend: `[ ]` open · `[x]` fixed (note the commit).
 - **Fix:** Track presence per (network, nick). An ISON/MONITOR result from one connection must only update that connection's presence; the aggregate 'online anywhere' status (used by the address-book row) should be the OR across networks, so absence on one network never flips a nick that is online on another.
 - **Severity note:** The structural premise is confirmed: WatchlistService is a single shared instance (ChatModel.swift:326) injected by reference into every IRCConnection (IRCConnection.swift:329-331), and `presence` is keyed only by lowercased bare nick with no network qualification (WatchlistService.swift:34, 206-217). All connections call handleISON / handleMonitorOnline/Offline / handleObservedActivity / onDisconnected on the same…
 
-#### 5. [ ] MONITOR/ISON commands are routed to the wrong connection
+#### 5. [x] MONITOR/ISON commands are routed to the wrong connection  _(fixed 1.0.590)_
 
 - **Where:** `WatchlistService.swift:133-151, 199-204`
 - **Category:** correctness · **Subsystem:** addressbook-watch · claimed high, adjusted **medium**
@@ -52,7 +58,7 @@ Status legend: `[ ]` open · `[x]` fixed (note the commit).
 - **Fix:** Make WatchlistDelegate methods take the originating network identity (or scope the service per connection) so MONITOR/ISON lines are written to the socket they belong to. Remove the unused `allWatched` parameter.
 - **Severity note:** CONFIRMED by reading the code. WatchlistService is a single shared instance (ChatModel.swift:326), reference-shared into every IRCConnection (ChatModel.swift:595, IRCConnection.swift:329-331), with a single delegate set once to ChatModel (ChatModel.swift:461). All outbound MONITOR/ISON lines flow through ChatModel.watchlistSendRaw (ChatModel.swift:2018-2026), which routes to activeConnection (or the first .connected…
 
-#### 6. [ ] Shared ISON poll timer: only one non-MONITOR network ever gets polled
+#### 6. [x] Shared ISON poll timer: only one non-MONITOR network ever gets polled  _(fixed 1.0.590)_
 
 - **Where:** `WatchlistService.swift:190-204`
 - **Category:** correctness · **Subsystem:** addressbook-watch
@@ -136,7 +142,7 @@ Status legend: `[ ]` open · `[x]` fixed (note the commit).
 
 ### addressbook-watch
 
-- [ ] **seenInChannel suppresses all re-alerts after the first sighting until any disconnect** — `WatchlistService.swift:177-186` (correctness)
+- [x] **seenInChannel suppresses all re-alerts after the first sighting until any disconnect** _(fixed 1.0.590 — seenInChannel removed; alerts now fire on aggregate offline→online transition)_ — `WatchlistService.swift:177-186` (correctness)
   - _Problem:_ handleObservedActivity inserts the nick into seenInChannel on first sighting and never removes it on PART/QUIT/offline. The guard `prev != .online && !seenInChannel.contains(key)` then permanently blocks the JOIN/PRIVMSG online-alert path for that nick: after a watched user is seen once, quits, and rejoins, no alert fires (the dedupe window is 3s, but seenInChannel persists indefinitely). The set is only cleared in onDisconnected — i.e. on a network drop — so the intended 'notify me when they come back' behaviour is silently dead for the entire session on a stable connection.
   - _Fix:_ Remove the nick from seenInChannel when MONITOR/ISON/part/quit reports it offline (and key it per-network). The 3s lastAlertAt dedupe window already prevents the simultaneous double-banner the comment cites, so seenInChannel as a permanent latch is redundant and harmful.
 - [ ] **handleObservedActivity fires watch alerts for a same-named stranger on a different network** — `WatchlistService.swift:177-186` (correctness)

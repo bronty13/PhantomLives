@@ -134,7 +134,10 @@ final class AppLog: ObservableObject {
             let body = data.subdata(in: EncryptedJSON.magic.count..<data.count)
             var offset = 0
             while offset + 4 <= body.count {
-                let len = Int(body[offset..<offset+4].withUnsafeBytes { $0.load(as: UInt32.self).bigEndian })
+                // `loadUnaligned` is required: after the first record the slice
+                // base is almost never 4-byte aligned, and `load(as:)` traps on
+                // a misaligned access. Mirrors LogStore.decodeEncryptedFile.
+                let len = Int(body[offset..<offset+4].withUnsafeBytes { $0.loadUnaligned(as: UInt32.self).bigEndian })
                 offset += 4
                 guard offset + len <= body.count else { break }
                 let chunk = body.subdata(in: offset..<offset+len)
