@@ -58,7 +58,13 @@ per-line log-index backfill on an actual buffer-set change, capped
 SessionHistoryStore reads at 32MB before decode, and made the backup
 debounce per-instance (3 LOW). Left the `events.sink` Task-defer nit open
 (removing it risks reentrant hot-path dispatch). **38 of 61 fully closed,
-3 partial; 20 open.**
+3 partial.**
+
+**Progress — 2026-06-02 (1.0.599):** DCC robustness cluster. Cap received
+bytes at the advertised size (disk-fill DoS), create the destination only
+once the peer connects (TOCTOU), validate the listener port range before
+forming it (inverted-range trap), and validate IPv4 octets (4 LOW).
+**42 of 61 fully closed, 3 partial; 16 open.**
 
 ## 🔴 High
 
@@ -261,16 +267,16 @@ debounce per-instance (3 LOW). Left the `events.sink` Task-defer nit open
 
 ### dcc
 
-- [ ] **Receiver writes unbounded bytes, ignoring advertised size (disk-fill DoS)** — `DCC.swift:484-502` (security)
+- [x] **Receiver writes unbounded bytes, ignoring advertised size (disk-fill DoS)** — `DCC.swift:484-502` (security) _(fixed 1.0.599 — writes capped at advertised size when known)_
   - _Problem:_ In readLoop the receiver writes every received chunk to disk and only checks the size cap AFTER writing. A malicious DCC SEND can advertise size=10 but stream gigabytes: each chunk is written via t.fileHandle?.write(contentsOf: data) and bytesTransferred is incremented before the `bytesTransferred >= totalBytes` test. Because the connection is never torn down mid-chunk, the file grows without bound until the peer closes it or the disk fills. The transfer is user-accepted, but the user consented to a 10-byte file, not an unbounded one. There is no per-chunk clamp to totalBytes and no absolute byte ceiling.
   - _Fix:_ Before writing, clamp the chunk to the remaining advertised bytes (remaining = totalBytes - bytesTransferred) and tear down the connection once the cap is reached; treat any data beyond totalBytes as a protocol violation and finish(transfer:failure:). Also enforce a hard maximum even when totalBytes == 0.
-- [ ] **acceptTransfer truncates/creates the destination before the connection is known-good (TOCTOU + clobber)** — `DCC.swift:237-244` (correctness)
+- [x] **acceptTransfer truncates/creates the destination before the connection is known-good (TOCTOU + clobber)** — `DCC.swift:237-244` (correctness) _(fixed 1.0.599 — destination created only on .ready)_
   - _Problem:_ On accept the code immediately calls FileManager.default.createFile(atPath: destination.path, contents: nil), which truncates any existing file at that path to zero bytes, then opens a write handle — all before the TCP connection to the peer is even attempted. If the peer is unreachable or the connection fails, the user's pre-existing file (the NSSavePanel allows picking an existing name) has already been destroyed and replaced with an empty file. There is also a classic TOCTOU window between createFile and FileHandle(forWritingTo:) on the same path. Failure leaves a zero-byte file behind with no cleanup.
   - _Fix:_ Open/create the destination atomically with O_CREAT|O_EXCL into a temp file in the destination directory, stream into it, and rename into place only on successful completion. Defer file creation until the connection reaches .ready, and on failure remove the partial/empty file.
-- [ ] **createListener never validates the configured port range (empty/inverted range silently yields no listener; out-of-bounds crashes)** — `DCC.swift:354-374` (correctness)
+- [x] **createListener never validates the configured port range (empty/inverted range silently yields no listener; out-of-bounds crashes)** — `DCC.swift:354-374` (correctness) _(fixed 1.0.599 — range validated before forming the Range)_
   - _Problem:_ portRangeStart/portRangeEnd are settings-pushed Ints with no validation. If a user sets start > end the range `portRangeStart...portRangeEnd` traps at runtime (Swift ClosedRange precondition failure -> crash). If values are pushed outside 1...65535, UInt16(p) is `UInt16(p)` (a failable-less conversion) which traps for p > 65535 or p < 0. The createListener body assumes a sane range and uses non-failable UInt16(p).
   - _Fix:_ Clamp/validate the range when settings are applied (1...65535, start <= end) and iterate with a guarded UInt16(exactly: p) conversion instead of the trapping UInt16(p) initializer.
-- [ ] **ipv4StringToInt does not validate octet bounds, advertising a corrupt IP** — `DCC.swift:575-579` (correctness)
+- [x] **ipv4StringToInt does not validate octet bounds, advertising a corrupt IP** — `DCC.swift:575-579` (correctness) _(fixed 1.0.599 — octets validated; unit-tested)_
   - _Problem:_ ipv4StringToInt parses dotted parts with UInt32($0) but never checks each octet is <= 255. A misconfigured externalIPOverride like '999.1.1.1' parses to four UInt32 parts and is bit-shifted/ORed into a 32-bit value, silently producing a wrong integer IP that is then advertised to the peer in the DCC SEND/CHAT line. The peer then dials a bogus address and the transfer fails with no clear cause.
   - _Fix:_ Validate parts.count == 4 AND every part <= 255 (use UInt8 conversion). Return nil and fail the offer with a clear 'invalid external IP' message rather than advertising a silently-truncated integer.
 - [x] **No automated tests for the security-critical sanitizeFilename / decodeHost / range logic** — `DCC.swift:581-634` (test-gap) _(partly closed 1.0.591 — DCCSecurityTests covers host validation)_

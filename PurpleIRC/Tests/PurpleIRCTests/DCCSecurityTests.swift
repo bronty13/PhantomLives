@@ -50,6 +50,17 @@ struct DCCSecurityTests {
         #expect(svc.validatedPeerHost("999.1.1.1") == nil)
     }
 
+    @Test func ipv4StringToIntValidatesOctets() {
+        let svc = service()
+        // 192.168.0.1 → 3232235521 (round-trips with validatedPeerHost).
+        #expect(svc.ipv4StringToInt("192.168.0.1") == 3_232_235_521)
+        #expect(svc.ipv4StringToInt("1.2.3.4") == 16_909_060)
+        // Malformed: out-of-range octet, wrong arity → 0 (no garbage int).
+        #expect(svc.ipv4StringToInt("999.1.1.1") == 0)
+        #expect(svc.ipv4StringToInt("1.2.3") == 0)
+        #expect(svc.ipv4StringToInt("not.an.ip.addr") == 0)
+    }
+
     @Test func ipv6LiteralsRoutableAcceptedLocalRejected() {
         let svc = service()
         #expect(svc.validatedPeerHost("2001:db8::1") == "2001:db8::1")

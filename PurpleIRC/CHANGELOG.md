@@ -12,6 +12,33 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
+## [1.0.599] — 2026-06-02
+
+### Security & correctness (audit follow-ups — batch 10, DCC robustness)
+
+Four LOW findings in DCC file transfer.
+
+- **A sender can't fill your disk** (`DCC.swift`). The receiver wrote
+  every byte it received, ignoring the advertised file size — a peer
+  could advertise 1 KB and stream gigabytes. Writes are now capped at
+  the advertised size (size 0 = "unknown" stays uncapped).
+- **Accept no longer clobbers an existing file on a dead connection**
+  (`DCC.swift`). The destination was truncated/created up-front, so a
+  connection that never established left an existing same-named file
+  emptied (TOCTOU). The file is now created only once the peer is
+  actually connected.
+- **Bad DCC port-range settings can't crash or silently disable
+  transfers** (`DCC.swift`). An inverted range (`start > end`) trapped
+  forming the `Range`, and an out-of-bounds value crashed the port
+  conversion; the range is now validated first.
+- **A malformed advertised IP can't encode a garbage integer**
+  (`DCC.swift`). `ipv4StringToInt` now requires four in-range octets.
+
+### Tests
+
+- +1 (364 → 365): `ipv4StringToInt` round-trips valid IPv4 and returns 0
+  for out-of-range / malformed input.
+
 ## [1.0.598] — 2026-06-02
 
 ### Fixed (audit follow-ups — batch 9, state/concurrency)

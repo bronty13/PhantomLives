@@ -249,12 +249,6 @@ final class DCCService: ObservableObject {
             return
         }
         t.destinationURL = destination
-        FileManager.default.createFile(atPath: destination.path, contents: nil)
-        guard let fh = try? FileHandle(forWritingTo: destination) else {
-            t.state = .failed("Can't open destination file")
-            return
-        }
-        t.fileHandle = fh
         t.state = .connecting
         guard let portEP = NWEndpoint.Port(rawValue: port) else {
             t.state = .failed("Bad port \(port)"); return
@@ -266,6 +260,16 @@ final class DCCService: ObservableObject {
                 guard let self, let t else { return }
                 switch state {
                 case .ready:
+                    // Create/truncate the destination only now that the peer
+                    // is actually connected. Doing it up-front (TOCTOU) would
+                    // clobber an existing file to empty even when the
+                    // connection never establishes.
+                    FileManager.default.createFile(atPath: destination.path, contents: nil)
+                    guard let fh = try? FileHandle(forWritingTo: destination) else {
+                        self.finish(transfer: t, failure: "Can't open destination file")
+                        return
+                    }
+                    t.fileHandle = fh
                     t.state = .transferring
                     self.readLoop(transfer: t)
                 case .failed(let err):
@@ -360,6 +364,13 @@ final class DCCService: ObservableObject {
     // MARK: - Listener plumbing
 
     private func createListener(bindHost: String) -> (listener: NWListener, port: UInt16, usedWildcard: Bool)? {
+        // Validate the configured range before forming the Range — an
+        // inverted (start > end) range would TRAP, and an out-of-bounds
+        // value would crash the `UInt16(p)` conversion below.
+        guard portRangeStart >= 1, portRangeEnd <= 65_535,
+              portRangeStart <= portRangeEnd else {
+            return nil
+        }
         // Bind to the specific advertised IP so we don't accept connections
         // on every interface. Failing that (interface not present, IP not
         // resolvable), fall back to wildcard so DCC still works on hosts
@@ -499,12 +510,24 @@ final class DCCService: ObservableObject {
             Task { @MainActor [weak self, weak t] in
                 guard let self, let t else { return }
                 if let data, !data.isEmpty {
-                    try? t.fileHandle?.write(contentsOf: data)
-                    t.bytesTransferred += UInt64(data.count)
-                    // Cumulative 4-byte big-endian ack.
-                    let ackVal = UInt32(truncatingIfNeeded: t.bytesTransferred).bigEndian
-                    let ackData = withUnsafeBytes(of: ackVal) { Data($0) }
-                    conn.send(content: ackData, completion: .contentProcessed { _ in })
+                    // Never write more than the advertised size — a peer that
+                    // keeps sending past it would otherwise fill the disk.
+                    // (Size 0 means "unknown", so it stays uncapped.)
+                    var chunk = data
+                    if t.totalBytes > 0 {
+                        let remaining = t.totalBytes - min(t.bytesTransferred, t.totalBytes)
+                        if UInt64(chunk.count) > remaining {
+                            chunk = chunk.prefix(Int(remaining))
+                        }
+                    }
+                    if !chunk.isEmpty {
+                        try? t.fileHandle?.write(contentsOf: chunk)
+                        t.bytesTransferred += UInt64(chunk.count)
+                        // Cumulative 4-byte big-endian ack.
+                        let ackVal = UInt32(truncatingIfNeeded: t.bytesTransferred).bigEndian
+                        let ackData = withUnsafeBytes(of: ackVal) { Data($0) }
+                        conn.send(content: ackData, completion: .contentProcessed { _ in })
+                    }
                 }
                 if let error {
                     self.finish(transfer: t, failure: error.localizedDescription)
@@ -589,9 +612,12 @@ final class DCCService: ObservableObject {
         return candidate
     }
 
-    private func ipv4StringToInt(_ s: String) -> UInt32 {
+    // Internal (not private) so the octet validation is unit-tested.
+    func ipv4StringToInt(_ s: String) -> UInt32 {
         let parts = s.split(separator: ".").compactMap { UInt32($0) }
-        guard parts.count == 4 else { return 0 }
+        // Require exactly four octets, each within range — otherwise a
+        // malformed address would encode a garbage integer into the offer.
+        guard parts.count == 4, parts.allSatisfy({ $0 <= 255 }) else { return 0 }
         return (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]
     }
 
