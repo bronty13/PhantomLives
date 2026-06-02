@@ -202,7 +202,7 @@ enum BackupService {
         let zipData: Data
         if isEncrypted {
             guard let key else { throw RestoreError.missingKeyForEncryptedArchive }
-            let body = raw.suffix(from: EncryptedJSON.magic.count)
+            let body = raw.dropFirst(EncryptedJSON.magic.count)
             do {
                 zipData = try Crypto.decrypt(Data(body), using: key)
             } catch {
@@ -288,7 +288,7 @@ enum BackupService {
         let zipData: Data
         if EncryptedJSON.hasMagic(raw) {
             guard let key else { throw RestoreError.missingKeyForEncryptedArchive }
-            let body = raw.suffix(from: EncryptedJSON.magic.count)
+            let body = raw.dropFirst(EncryptedJSON.magic.count)
             do {
                 zipData = try Crypto.decrypt(Data(body), using: key)
             } catch {

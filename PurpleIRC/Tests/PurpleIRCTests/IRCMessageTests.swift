@@ -139,9 +139,13 @@ struct IRCMessageTests {
     }
 
     @Test func tagValueEscapesAreUnescaped() {
-        // \: → ;   \s → space   \\ → \   \r/\n → CR/LF
+        // \: → ;   \s → space   \\ → \ . The `\r` / `\n` escapes are
+        // deliberately DROPPED rather than decoded to raw CR/LF — re-
+        // introducing line terminators into a parsed value would undo the
+        // parser's no-control-chars-from-the-wire invariant (see
+        // unescapeTagValue). So the trailing \r\n contributes nothing.
         let msg = IRCMessage.parse("@k=a\\sb\\:c\\\\d\\r\\n :a PING :x")
-        #expect(msg?.tags["k"] == "a b;c\\d\r\n")
+        #expect(msg?.tags["k"] == "a b;c\\d")
     }
 
     @Test func dropsAccountWhenServerSendsStar() {

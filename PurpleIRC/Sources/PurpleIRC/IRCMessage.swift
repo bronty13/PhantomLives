@@ -119,8 +119,15 @@ struct IRCMessage {
             switch iter.next() {
             case ":"?:  out.append(";")
             case "s"?:  out.append(" ")
-            case "r"?:  out.append("\r")
-            case "n"?:  out.append("\n")
+            // The IRCv3 spec maps `\r` / `\n` back to real CR / LF, but
+            // re-introducing raw line terminators into a parsed value undoes
+            // the parser's no-control-chars-from-the-wire invariant (the same
+            // reason `parse` rejects NUL) and is an injection vector for any
+            // consumer that later builds a wire line. Drop them: the tag
+            // values we use (time, account, msgid, …) never legitimately
+            // carry line breaks.
+            case "r"?:  break
+            case "n"?:  break
             case "\\"?: out.append("\\")
             case let other?: out.append(other)
             case nil:

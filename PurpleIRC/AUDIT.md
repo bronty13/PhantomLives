@@ -36,7 +36,12 @@ cancellation, last-writer race) + closed the assistant test-gap. **22 of
 **Progress — 2026-06-02 (1.0.594):** completed MEDIUM #7 — the cached DEK
 read is now gated behind a user-presence Keychain ACL (was partial after
 device-only landed in 1.0.591). Verified on hardware. **23 of 61 fully
-closed, 2 partial; 36 open.**
+closed, 2 partial.**
+
+**Progress — 2026-06-02 (1.0.595):** LOW correctness/robustness cluster.
+Fixed EncryptedJSON sliced-Data offset, DEK 32-byte guard, IRCv3 tag
+CR/LF stripping, settings clamping, and two dead-code cleanups (6 LOW).
+**29 of 61 fully closed, 2 partial; 30 open.**
 
 ## 🔴 High
 
@@ -221,13 +226,13 @@ closed, 2 partial; 36 open.**
 - [ ] **BlobStore.writeToTempFile writes decrypted plaintext to a predictable temp path with default perms and never cleans up** — `BlobStore.swift:195-203` (security)
   - _Problem:_ For an attachment-encryption feature, decrypted blob bytes are written to FileManager.temporaryDirectory/PurpleIRC-blobs/<filename> via plain write(options: .atomic) with no posixPermissions tightening (inherits umask, typically 0644) and no cleanup. This defeats the at-rest encryption: the plaintext of every opened attachment persists in a stable, group/world-readable location until the OS reaps it. Contrast with EncryptedJSON.safeWrite and KeyStore.persist which both chmod 0600. Other local users / processes can read sealed attachments after the user opens one.
   - _Fix:_ Write into a per-call unique subdirectory created with 0700, set 0600 on the file (setAttributes posixPermissions), and delete the temp tree when the consuming view/document closes (or use NSFileCoordinator/an explicit reap). Do not reuse a shared, stable directory across blobs.
-- [ ] **EncryptedJSON.unwrap uses Data.suffix(from:) with an absolute offset — wrong/crashing on sliced Data** — `EncryptedJSON.swift:49-50` (correctness)
+- [x] **EncryptedJSON.unwrap uses Data.suffix(from:) with an absolute offset — wrong/crashing on sliced Data** — `EncryptedJSON.swift:49-50` (correctness) _(fixed 1.0.595 — dropFirst; also BackupService)_
   - _Problem:_ `file.suffix(from: magic.count)` treats magic.count (5) as an index into Data's own index space. Data slices do NOT re-base to 0, so if `file` is ever a slice with a non-zero startIndex (e.g. a caller passes data[range], or a future refactor), suffix(from: 5) either strips the wrong bytes (when startIndex>5) or traps with an out-of-bounds index (when startIndex>5 is false but 5 < startIndex... and also when startIndex>5 it silently drops real ciphertext). Today's callers pass full Data(contentsOf:), so it happens to work, but the contract is fragile and silently incorrect for slices. The sibling parser in LogStore.decodeEncryptedFile correctly uses cursor relative to data.count only because that data is also a fresh read.
   - _Fix:_ Use a base-relative drop: `let body = file.dropFirst(magic.count)` (dropFirst is count-based, not index-based) before constructing Data(body), or normalise with `Data(file).dropFirst(magic.count)`.
 - [ ] **KeychainStore.setData delete-then-add is non-atomic — a crash between the two leaves the credential/DEK item destroyed** — `KeychainStore.swift:44-61` (correctness)
   - _Problem:_ setData unconditionally `try? delete(account:)` then SecItemAdd. If the process is killed between delete and add (or SecItemAdd fails with anything other than the dup it was avoiding), the prior value is gone with no rollback. For the DEK cache this is recoverable (passphrase re-unlock), but for a credential being re-saved it silently loses the stored password. SecItemUpdate (or add-then-on-dup-update) avoids the window.
   - _Fix:_ Attempt SecItemAdd first; on errSecDuplicateItem fall back to SecItemUpdate with the new kSecValueData, so the existing item is only mutated, never destroyed before the replacement exists.
-- [ ] **DEK Keychain cache accepts a 16-byte value, silently building an AES-128 key instead of the 256-bit DEK** — `KeyStore.swift:88-94` (correctness)
+- [x] **DEK Keychain cache accepts a 16-byte value, silently building an AES-128 key instead of the 256-bit DEK** — `KeyStore.swift:88-94` (correctness) _(fixed 1.0.595 — require exactly 32 bytes)_
   - _Problem:_ refreshState accepts any cached blob with count >= 16 and feeds it to SymmetricKey(data:). The real DEK is 32 bytes (bits256). A truncated/corrupt 16-byte cache passes the guard and produces a 128-bit key; every subsequent decrypt then fails the GCM tag and surfaces as generic corruption/lock confusion rather than a clear cache-miss. The threshold should match the actual key size.
   - _Fix:_ Require `cached.count == 32` (or kCCKeySizeAES256); on mismatch treat as a miss and fall to .locked, optionally deleting the malformed item.
 - [ ] **PBKDF2 KDF is fixed-iteration with no calibration and no migration; weaker than a memory-hard KDF for disk-image brute force** — `Crypto.swift:42-61` (security)
@@ -260,10 +265,10 @@ closed, 2 partial; 36 open.**
 - [x] **ProxyFramer.lastError is unsynchronized shared mutable static, read/cleared from a different queue than it is written** — `ProxyFramer.swift:45, 270` (correctness) _(fixed 1.0.591 — lock-guarded via takeLastError)_
   - _Problem:_ `static var lastError: String?` is written by `fail(...)` on the framer's transport queue and read+cleared by `IRCClient` in the connection's `stateUpdateHandler` (a different DispatchQueue) without any lock, unlike the sibling `pendingConfigs` which is guarded by `configQueueLock`. This is a data race on a non-Sendable `String?`. With multiple proxied connections it also has no per-connection scoping, so connection A's failure reason can be attributed to connection B's failure dialog (or cleared out from under it), producing misleading error messages. The `pendingConfigs` field got a lock; this one was missed.
   - _Fix:_ Move the failure reason off the global static: stash it per-framer and surface it via the framer's input/metadata, or at minimum guard `lastError` with the existing `configQueueLock` (or a dedicated lock) on every read/write/clear and key it per connection so reasons can't cross-attribute between concurrent connections.
-- [ ] **IRCv3 tag-value unescaping re-introduces real CR/LF into parsed tag values after the NUL guard** — `IRCMessage.swift:112-134` (security)
+- [x] **IRCv3 tag-value unescaping re-introduces real CR/LF into parsed tag values after the NUL guard** — `IRCMessage.swift:112-134` (security) _(fixed 1.0.595 — \r/\n escapes dropped)_
   - _Problem:_ `IRCMessage.parse` rejects a raw NUL in the whole line (good), but `unescapeTagValue` then decodes the escape sequences `\r`→CR and `\n`→LF inside tag values *after* that guard. A malicious server can therefore place literal CR/LF inside any tag value (account, msgid, batch id/type, etc.) — confirmed by the existing test `tagValueEscapesAreUnescaped` asserting the value becomes `a b;c\d\r\n` with real CR/LF. These values are stored (e.g. `accountByNick[from] = acct`, batch type/params used for buffer matching and rendered into info lines) and could corrupt log lines or buffer-key matching. They are not currently re-serialized onto the wire (outbound paths re-run IRCSanitize.line), so this is defense-in-depth rather than an active injection, but a tag value that flows into any future send path or file slug would bypass the NUL-only line guard.
   - _Fix:_ After unescaping, strip or reject CR/LF/NUL from tag values (e.g. run each unescaped value through IRCSanitize.field), or refuse the whole message if any tag value contains a control terminator. Add a parser test asserting tag values can never contain CR/LF/NUL.
-- [ ] **306 (away set) writes a no-op ternary, leaving dead/confusing code** — `IRCConnection.swift:854-858` (quality)
+- [x] **306 (away set) writes a no-op ternary, leaving dead/confusing code** — `IRCConnection.swift:854-858` (quality) _(fixed 1.0.595)_
   - _Problem:_ The `306` handler sets `awayReason` from a ternary whose both branches are identical (`"away" : "away"`), so the `profile.realName.isEmpty` test does nothing. This is dead logic that reads as if the realName was meant to be used, and will mislead future maintainers.
   - _Fix:_ Replace with `awayReason = awayReason ?? "away"` (or drop the realName reference entirely). If a richer default was intended, wire in the actual value; otherwise simplify.
 - [ ] **No test coverage for maskForDisplay when credential lines are prefixed by IRCv3 message tags** — `IRCMessage.swift:183-206` (test-gap)
@@ -290,13 +295,13 @@ closed, 2 partial; 36 open.**
 
 ### settings-integrations
 
-- [ ] **Dead helper runOnMain in AppleScriptCommands** — `AppleScriptCommands.swift:41-50` (quality)
+- [x] **Dead helper runOnMain in AppleScriptCommands** — `AppleScriptCommands.swift:41-50` (quality) _(fixed 1.0.595 — removed)_
   - _Problem:_ runOnMain(_:) is defined (with a DispatchQueue.main.sync fallback) but never referenced — every command instead uses MainActor.assumeIsolated. It is dead code that also embeds a different (and riskier, sync-deadlock-prone) threading strategy than the rest of the file, which is misleading for future maintainers.
   - _Fix:_ Delete runOnMain, or actually route the command bodies through it if a non-main-thread dispatch path is genuinely needed.
 - [ ] **eventSounds decoder fallback diverges from the struct default (missing highlight/privateMessage)** — `SettingsStore.swift:761-769 vs 921-929` (quality)
   - _Problem:_ The stored-property default for eventSounds includes "highlight": "Funk" (and privateMessage). The decoder's fallback used when the eventSounds key is entirely absent omits "highlight". The two should be one source of truth; the drift means a very old settings.json missing the key decodes to a different sound map than a fresh install, and a maintainer adding a new SoundEventKind must remember to edit both literals. The user impact is minor (a missing key resolves to silent), but it is an easy correctness footgun.
   - _Fix:_ Hoist the default map to a single static constant and reference it from both the property initializer and the decoder fallback.
-- [ ] **Numeric appearance settings (chatFontSize, viewZoom, purgeLogsAfterDays) are not clamped on decode** — `SettingsStore.swift:933 (chatFontSize), 720/viewZoom, 907 (purgeLogsAfterDays)` (correctness)
+- [x] **Numeric appearance settings (chatFontSize, viewZoom, purgeLogsAfterDays) are not clamped on decode** — `SettingsStore.swift:933 (chatFontSize), 720/viewZoom, 907 (purgeLogsAfterDays)` (correctness) _(fixed 1.0.595 — chatFontSize/purgeLogsAfterDays clamped; viewZoom is ephemeral + already clamped at /zoom)_
   - _Problem:_ The Behavior tab clamps chatFontSize to 10-24 (per its own comment) and zoom is treated as ephemeral, but AppSettings.init(from:) accepts whatever numbers are on disk with no validation. A hand-edited or corrupted/restored settings.json with chatFontSize: 0 (or negative), viewZoom: 0, or a negative purgeLogsAfterDays bypasses the UI guard and is applied directly to the renderer / purge logic. Because settings.json is also what auto-backup zips and restores, a bad value can persist across reinstalls.
   - _Fix:_ Clamp these to their valid ranges in the decoder (e.g. chatFontSize = max(8, min(48, decoded)); purgeLogsAfterDays = max(0, decoded)) so corrupt/hand-edited files can't produce an unscannable or misbehaving UI.
 

@@ -38,17 +38,6 @@ private func chatHost() -> ChatModel? {
     MainActor.assumeIsolated { AppleScriptBridge.host }
 }
 
-@MainActor
-private func runOnMain(_ block: () -> String) -> String {
-    if Thread.isMainThread {
-        return block()
-    } else {
-        var result = ""
-        DispatchQueue.main.sync { result = block() }
-        return result
-    }
-}
-
 // MARK: - Commands
 
 /// `tell application "PurpleIRC" to connect`

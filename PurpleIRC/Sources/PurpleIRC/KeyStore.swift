@@ -64,6 +64,10 @@ final class KeyStore: ObservableObject {
     private let keychainDEKAccount: String
     private static let kdfIterations = 300_000
     private static let saltLength = 16
+    /// The DEK is a 256-bit key. A cache slot that isn't exactly this many
+    /// bytes is corrupt/truncated — accepting a 16-byte value would silently
+    /// build an AES-128 key from half a DEK, so reject anything else.
+    private static let dekByteCount = 32
 
     // MARK: - On-disk representation
 
@@ -104,7 +108,7 @@ final class KeyStore: ObservableObject {
         case .readable:
             // Ungated (or device-allowed) cache — silent unlock, as before.
             if let cached = KeychainStore.getData(for: keychainDEKAccount),
-               cached.count >= 16 {
+               cached.count == Self.dekByteCount {
                 self.dek = SymmetricKey(data: cached)
                 self.state = .unlocked
                 self.hasBiometricCache = false
@@ -135,7 +139,7 @@ final class KeyStore: ObservableObject {
     @discardableResult
     func unlockWithCachedKey(context: LAContext) -> Bool {
         guard let cached = KeychainStore.getData(for: keychainDEKAccount, context: context),
-              cached.count >= 16 else { return false }
+              cached.count == Self.dekByteCount else { return false }
         self.dek = SymmetricKey(data: cached)
         self.state = .unlocked
         self.hasBiometricCache = false

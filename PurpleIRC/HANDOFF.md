@@ -10,9 +10,11 @@ batches shipped — 1.0.590 (HIGH items + per-network Watchlist), 1.0.591
 trigger-regex ReDoS budget, JS timer cap, event docs), and 1.0.593
 (assistant: local-host enforcement, URL validation, request timeouts,
 generation cancellation + last-writer race), and 1.0.594 (completed #7 —
-user-presence ACL on the cached-DEK read, verified on hardware). **23 of
-61 closed, 2 partial.** See the "Audit backlog" entry under Known gaps.
-Tier #18 (sidebar off
+user-presence ACL on the cached-DEK read, verified on hardware), and
+1.0.595 (LOW correctness/robustness cluster: EncryptedJSON slice offset,
+DEK 32-byte guard, IRCv3 tag CR/LF strip, settings clamping, dead-code).
+**29 of 61 closed, 2 partial.** See the "Audit backlog" entry under
+Known gaps. Tier #18 (sidebar off
 `NavigationSplitView` → manual `HStack` + `WindowStateGuard`/`AppDelegate`;
 gitignore Finder ` 2.app` dupes; doc sync). Tier #13 (perf + robustness sweep,
 1.0.234–235), Tier #14 (refactor pass — SetupView split, typed
@@ -675,14 +677,22 @@ JS timer cap, event docs; 4 LOW), and **1.0.593** (assistant: local/LAN
 host enforcement, Ollama URL validation, request timeouts, generation
 cancellation + last-writer race, first assistant tests; 5 LOW), and
 **1.0.594** (completed #7 — user-presence ACL on the cached-DEK read,
-verified on hardware). **23 of 61 closed, 2 partial.** Start in
-`AUDIT.md` before the items below — remaining higher-value open picks:
+verified on hardware), and **1.0.595** (LOW correctness/robustness:
+EncryptedJSON slice offset, DEK 32-byte guard, IRCv3 tag CR/LF strip,
+settings clamping, dead-code). **29 of 61 closed, 2 partial.** Start in
+`AUDIT.md` before the items below — remaining open picks (all LOW):
 - **PBKDF2 → memory-hard KDF** (`Crypto.swift:42`) — fixed-iteration,
-  no calibration/migration.
-- **Remaining LOW correctness/quality cluster** — crypto edge cases
-  (EncryptedJSON offset, KeychainStore non-atomic upsert, DEK 16-byte
-  accept), UI perf nits (per-row DateFormatter, watchlist Set rebuild),
-  backup/log edge cases (LogStore.purge index, SeenStore growth).
+  no calibration/migration. Has a migration wrinkle (existing envelopes
+  use PBKDF2) — design before touching.
+- **UI perf** — per-row DateFormatter alloc + watchlist Set rebuild in
+  `BufferView` (`#59`/`#60`); collapse/grouping untested (`#61`).
+- **Backup/log edge cases** — `LogStore.purge` deletes `index.json` by
+  mtime (`#27`), `SeenStore` unbounded nick growth (`#28`), restore
+  silent no-op on non-PurpleIRC dir (`#30`), `KeychainStore` non-atomic
+  upsert (`#34`).
+- **state-concurrency LOW** — unstructured Task per log append (`#55`),
+  `events.sink` defers (`#56`), `ChatModel.lastBackupAt` global static
+  (`#58`), SessionHistoryStore decode-before-trim (`#57`).
 
 ### DCC — passive mode + RESUME
 Active DCC SEND/CHAT works on-LAN. Behind NAT it needs:

@@ -904,7 +904,10 @@ struct AppSettings: Codable {
         self.enablePersistentLogs = try c.decodeIfPresent(Bool.self, forKey: .enablePersistentLogs) ?? false
         self.logMotdAndNumerics = try c.decodeIfPresent(Bool.self, forKey: .logMotdAndNumerics) ?? false
         self.purgeLogsEnabled = try c.decodeIfPresent(Bool.self, forKey: .purgeLogsEnabled) ?? false
-        self.purgeLogsAfterDays = try c.decodeIfPresent(Int.self, forKey: .purgeLogsAfterDays) ?? 90
+        // Clamp on load so a corrupt / hand-edited file can't drive a
+        // nonsensical retention window. 0 = keep forever.
+        self.purgeLogsAfterDays = min(36_500, max(0,
+            try c.decodeIfPresent(Int.self, forKey: .purgeLogsAfterDays) ?? 90))
         self.ctcpRepliesEnabled = try c.decodeIfPresent(Bool.self, forKey: .ctcpRepliesEnabled) ?? true
         self.ctcpVersionString = try c.decodeIfPresent(String.self, forKey: .ctcpVersionString)
             ?? "PurpleIRC — https://github.com/bronty13/PhantomLives"
@@ -930,7 +933,10 @@ struct AppSettings: Codable {
         self.themeID = try c.decodeIfPresent(String.self, forKey: .themeID) ?? "classic"
         self.timestampFormat = try c.decodeIfPresent(String.self, forKey: .timestampFormat) ?? "HH:mm:ss"
         self.chatFontFamily = try c.decodeIfPresent(ChatFontFamily.self, forKey: .chatFontFamily) ?? .systemMono
-        self.chatFontSize = try c.decodeIfPresent(Double.self, forKey: .chatFontSize) ?? 13
+        // Clamp to a sane, legible range — a 0 / negative / absurd value
+        // from a corrupt file would otherwise produce an unusable layout.
+        self.chatFontSize = min(48, max(8,
+            try c.decodeIfPresent(Double.self, forKey: .chatFontSize) ?? 13))
         self.boldChatText = try c.decodeIfPresent(Bool.self, forKey: .boldChatText) ?? false
         self.relaxedRowSpacing = try c.decodeIfPresent(Bool.self, forKey: .relaxedRowSpacing) ?? false
         self.collapseJoinPart = try c.decodeIfPresent(Bool.self, forKey: .collapseJoinPart) ?? true

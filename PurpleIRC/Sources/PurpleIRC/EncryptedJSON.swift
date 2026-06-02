@@ -46,7 +46,10 @@ enum EncryptedJSON {
     static func unwrap(_ file: Data, key: SymmetricKey?) throws -> Data {
         guard hasMagic(file) else { return file }
         guard let key else { throw EnvelopeError.lockedButEncrypted }
-        let body = file.suffix(from: magic.count)
+        // `dropFirst` is index-agnostic; `suffix(from: magic.count)` treats
+        // `magic.count` as an ABSOLUTE index and traps / slices wrong when
+        // `file` is itself a Data slice with a non-zero startIndex.
+        let body = file.dropFirst(magic.count)
         return try Crypto.decrypt(Data(body), using: key)
     }
 

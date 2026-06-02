@@ -12,6 +12,41 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
+## [1.0.595] — 2026-06-02
+
+### Fixed (audit follow-ups — batch 6, LOW correctness/robustness cluster)
+
+Six LOW findings; no behavioural change for well-formed data.
+
+- **`EncryptedJSON.unwrap` no longer mis-slices a `Data` slice**
+  (`EncryptedJSON.swift`, `BackupService.swift`). It used
+  `suffix(from: magic.count)`, which treats the count as an *absolute*
+  index and reads the wrong bytes (or traps) when handed a `Data` whose
+  `startIndex` isn't 0. Switched to the index-agnostic `dropFirst`.
+- **The cached DEK must be exactly 32 bytes** (`KeyStore.swift`). A
+  truncated/corrupt 16-byte cache slot was accepted, silently building an
+  AES-128 key from half a DEK; now anything but a full 256-bit key is
+  rejected (→ passphrase unlock).
+- **IRCv3 tag values can't smuggle CR/LF** (`IRCMessage.swift`). The
+  `\r` / `\n` tag escapes were decoded back into raw line terminators,
+  undoing the parser's no-control-chars-from-the-wire guarantee; they're
+  now dropped (the tags we consume never carry line breaks). Other
+  escapes (`\:`, `\s`, `\\`) are unchanged.
+- **Appearance settings are clamped on load** (`SettingsStore.swift`).
+  A corrupt/hand-edited file can no longer set `chatFontSize` to 0 or an
+  absurd value (clamped 8–48) or a negative `purgeLogsAfterDays`
+  (clamped ≥ 0). `viewZoom` is ephemeral and already clamped at `/zoom`.
+- **Dead code removed:** the unused `runOnMain` helper
+  (`AppleScriptCommands.swift`) and a no-op ternary in the RPL_NOWAWAY
+  (306) handler (`IRCConnection.swift`).
+
+### Tests
+
+- +5 (351 → 356): new `LOW cluster fixes` suite — `unwrap` on a
+  non-zero-`startIndex` slice, IRCv3 tag CR/LF stripping (+ other escapes
+  preserved), and `chatFontSize` / `purgeLogsAfterDays` clamping. Updated
+  the existing tag-escape test for the new CR/LF behaviour.
+
 ## [1.0.594] — 2026-06-02
 
 ### Security (audit follow-up — #7 completed, biometric-gated DEK read)

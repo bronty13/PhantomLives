@@ -862,8 +862,10 @@ final class IRCConnection: ObservableObject, Identifiable {
             logNumeric(msg)
         case "306": // away set
             isAway = true
+            // 306 (RPL_NOWAWAY) carries no reason; default a placeholder when
+            // the user didn't set one via /away <reason>.
             if awayReason == nil {
-                awayReason = profile.realName.isEmpty ? "away" : "away"
+                awayReason = "away"
             }
             emit(.awayChanged(isAway: true, reason: awayReason))
             logNumeric(msg)
