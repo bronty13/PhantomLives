@@ -73,6 +73,17 @@ PhotoUtilities off-main lockFocus, and theme-builder opacity (hexARGB).
 **With this, every HIGH and MEDIUM finding is closed.** **47 of 61 fully
 closed, 3 partial; 11 open (all LOW).**
 
+**Progress — 2026-06-02 (1.0.601):** persistence/security LOW cluster +
+test coverage. Backup excludes a nested backup dir, BlobStore temp
+exports use a random 0600 subdir with a stale sweep, eventSounds has a
+single default source, and `maskForDisplay` now masks tag/prefix-prefixed
+credential lines. Added `EncryptedJSON` envelope tests. **53 of 61 fully
+closed, 2 partial; 6 open (all LOW).** Remaining: same-named-stranger
+watch alert (inherent to nick-based watching), fuzzy-matcher tuning,
+address-book per-render fold (perf), KeychainStore non-atomic upsert,
+PBKDF2→memory-hard KDF (needs a versioned-envelope migration decision),
+and the `events.sink` reentrancy nit (deferred).
+
 ## 🔴 High
 
 #### 1. [x] Restore performs a destructive wipe with no pre-restore safety backup  _(fixed 1.0.590)_
@@ -241,7 +252,7 @@ closed, 3 partial; 11 open (all LOW).**
 - [x] **SeenStore table has unbounded nick growth — only per-nick history is capped** — `SeenStore.swift:163` (correctness) _(fixed 1.0.597 — per-network nickCap, oldest-seen eviction)_
   - _Problem:_ Each per-nick history array is capped at historyCap (50), but the number of distinct nicks stored per network — `tables[networkID]` — has no cap or eviction. Every nick ever observed via record()/recordNickChange() (including every quit/join/nick-change from large channels and netsplits, and transient/throwaway nicks) is retained forever and rewritten to disk on every debounced flush (writeToDisk encodes the entire table each time). On a busy network this grows without bound, inflating the seen JSON file, the per-write encryption cost, and the on-launch backup size indefinitely.
   - _Fix:_ Add a max-entries cap per network (e.g. evict the oldest-timestamp entries beyond N, or age out entries older than a retention window) inside record/recordNickChange before scheduleWrite, mirroring the historyCap pattern.
-- [ ] **Backup zip excludes downloads/ but not a backup directory placed inside the support dir** — `BackupService.swift:58-65` (correctness)
+- [x] **Backup zip excludes downloads/ but not a backup directory placed inside the support dir** — `BackupService.swift:58-65` (correctness) _(fixed 1.0.601 — excludes a backup dir nested in support)_
   - _Problem:_ The zip command excludes only `downloads/*` and `*.DS_Store`. The backup directory is user-configurable (BackupSettingsView pickDirectory) and NukeService lists `backups` as a real support-dir subtree (NukeService.swift:122). If a user points backupDirectory at a path inside the support dir (e.g. the historical ~/Library/Application Support/PurpleIRC/backups/), each launch backup will recursively include all prior backups, causing quadratic/exponential archive growth. There is no guard that the backup target lies outside supportDir.
   - _Fix:_ If backupDir is inside supportDir, add its relative path to the zip exclude list (or refuse and warn). At minimum add `-x "backups/*"` to match the NukeService subtree list, and validate backupDirectoryURL is not a descendant of supportDirectoryURL.
 - [x] **Restore silently no-ops (reports success) when supportDir name is not 'PurpleIRC'** — `BackupService.swift:325` (correctness) _(fixed 1.0.597 — throws unexpectedSupportDir)_
@@ -253,7 +264,7 @@ closed, 3 partial; 11 open (all LOW).**
 
 ### crypto-persistence
 
-- [ ] **BlobStore.writeToTempFile writes decrypted plaintext to a predictable temp path with default perms and never cleans up** — `BlobStore.swift:195-203` (security)
+- [x] **BlobStore.writeToTempFile writes decrypted plaintext to a predictable temp path with default perms and never cleans up** — `BlobStore.swift:195-203` (security) _(fixed 1.0.601 — random per-export subdir, 0600, stale sweep)_
   - _Problem:_ For an attachment-encryption feature, decrypted blob bytes are written to FileManager.temporaryDirectory/PurpleIRC-blobs/<filename> via plain write(options: .atomic) with no posixPermissions tightening (inherits umask, typically 0644) and no cleanup. This defeats the at-rest encryption: the plaintext of every opened attachment persists in a stable, group/world-readable location until the OS reaps it. Contrast with EncryptedJSON.safeWrite and KeyStore.persist which both chmod 0600. Other local users / processes can read sealed attachments after the user opens one.
   - _Fix:_ Write into a per-call unique subdirectory created with 0700, set 0600 on the file (setAttributes posixPermissions), and delete the temp tree when the consuming view/document closes (or use NSFileCoordinator/an explicit reap). Do not reuse a shared, stable directory across blobs.
 - [x] **EncryptedJSON.unwrap uses Data.suffix(from:) with an absolute offset — wrong/crashing on sliced Data** — `EncryptedJSON.swift:49-50` (correctness) _(fixed 1.0.595 — dropFirst; also BackupService)_
@@ -268,7 +279,7 @@ closed, 3 partial; 11 open (all LOW).**
 - [ ] **PBKDF2 KDF is fixed-iteration with no calibration and no migration; weaker than a memory-hard KDF for disk-image brute force** — `Crypto.swift:42-61` (security)
   - _Problem:_ The threat model is explicitly a copied/stolen disk image (KeyStore header comments + Crypto comments). PBKDF2-HMAC-SHA256 at a hardcoded 300k iterations is GPU/ASIC-friendly and far cheaper to attack than a memory-hard KDF (scrypt/Argon2id) for the same unlock latency; the comparison to "what 1Password/Signal use" is outdated (both moved to memory-hard parameters). The Envelope stores `iterations` for future-proofing but there is no calibration to hardware and no upgrade-on-unlock path, so the parameter is frozen at the first-shipped value forever.
   - _Fix:_ Move to Argon2id (or scrypt) for the KEK derivation; failing that, calibrate PBKDF2 iterations to ~250-500ms on the host at setup, persist the chosen count (already in Envelope), and rewrap with stronger params on a successful unlock when the stored count is below current target.
-- [ ] **No tests cover EncryptedJSON envelope, safeWrite downgrade-guard, file 0600 perms, or BlobStore plaintext temp leak** — `EncryptedJSON.swift:35-86` (test-gap)
+- [x] **No tests cover EncryptedJSON envelope, safeWrite downgrade-guard, file 0600 perms, or BlobStore plaintext temp leak** — `EncryptedJSON.swift:35-86` (test-gap) _(closed 1.0.601 — EncryptedJSONTests)_
   - _Problem:_ KeyStoreTests exercises Crypto primitives and KeyStore lifecycle but there is no test for EncryptedJSON.wrap/unwrap round-trip, hasMagic detection, the safeWrite refusal-to-downgrade-encrypted-to-plaintext invariant (the file's headline safety property), the 0600 permission tightening on written files, or the BlobStore temp-file behaviour. These are the riskiest correctness/security paths in the subsystem (the suffix(from:) bug and the plaintext temp leak both sit in untested code).
   - _Fix:_ Add tests: wrap/unwrap round-trip incl. a sliced-Data input (would catch the suffix bug); safeWrite returns .skippedLockedEncrypted and leaves the encrypted file intact when key==nil; written files are mode 0600; BlobStore.writeToTempFile output is not world-readable and a traversal filename stays inside the temp dir.
 
@@ -301,7 +312,7 @@ closed, 3 partial; 11 open (all LOW).**
 - [x] **306 (away set) writes a no-op ternary, leaving dead/confusing code** — `IRCConnection.swift:854-858` (quality) _(fixed 1.0.595)_
   - _Problem:_ The `306` handler sets `awayReason` from a ternary whose both branches are identical (`"away" : "away"`), so the `profile.realName.isEmpty` test does nothing. This is dead logic that reads as if the realName was meant to be used, and will mislead future maintainers.
   - _Fix:_ Replace with `awayReason = awayReason ?? "away"` (or drop the realName reference entirely). If a richer default was intended, wire in the actual value; otherwise simplify.
-- [ ] **No test coverage for maskForDisplay when credential lines are prefixed by IRCv3 message tags** — `IRCMessage.swift:183-206` (test-gap)
+- [x] **No test coverage for maskForDisplay when credential lines are prefixed by IRCv3 message tags** — `IRCMessage.swift:183-206` (test-gap) _(closed 1.0.601 — and fixed: masking now tolerates a tags/prefix lead)_
   - _Problem:_ `maskForDisplay` anchors the PASS and AUTHENTICATE regexes with `^` (`^PASS\s+...`, `^AUTHENTICATE\s+\S+`). With the `message-tags`/`echo-message` caps enabled (both on the desiredCaps list), an inbound echoed line can legitimately begin with an `@tag` block, e.g. `@time=... :me!u@h PRIVMSG NickServ :IDENTIFY pw` — the NickServ branch matches anywhere so that one is covered, but a tag-prefixed `AUTHENTICATE`/`PASS` echo (or any future tagged credential line) would slip past the `^` anchor and surface the secret in the raw-log viewer. The mask tests exercise only un-prefixed and `:prefix `-prefixed forms; there is no test for an `@tags`-prefixed credential line.
   - _Fix:_ Either tolerate an optional leading `@\S+\s+` (and optional `:prefix\s+`) in the PASS/AUTHENTICATE patterns, or strip tags/prefix before masking. Add tests covering `@time=... AUTHENTICATE <b64>` and tag-prefixed PASS echoes to lock the behavior.
 
@@ -328,7 +339,7 @@ closed, 3 partial; 11 open (all LOW).**
 - [x] **Dead helper runOnMain in AppleScriptCommands** — `AppleScriptCommands.swift:41-50` (quality) _(fixed 1.0.595 — removed)_
   - _Problem:_ runOnMain(_:) is defined (with a DispatchQueue.main.sync fallback) but never referenced — every command instead uses MainActor.assumeIsolated. It is dead code that also embeds a different (and riskier, sync-deadlock-prone) threading strategy than the rest of the file, which is misleading for future maintainers.
   - _Fix:_ Delete runOnMain, or actually route the command bodies through it if a non-main-thread dispatch path is genuinely needed.
-- [ ] **eventSounds decoder fallback diverges from the struct default (missing highlight/privateMessage)** — `SettingsStore.swift:761-769 vs 921-929` (quality)
+- [x] **eventSounds decoder fallback diverges from the struct default (missing highlight/privateMessage)** — `SettingsStore.swift:761-769 vs 921-929` (quality) _(fixed 1.0.601 — single defaultEventSounds source)_
   - _Problem:_ The stored-property default for eventSounds includes "highlight": "Funk" (and privateMessage). The decoder's fallback used when the eventSounds key is entirely absent omits "highlight". The two should be one source of truth; the drift means a very old settings.json missing the key decodes to a different sound map than a fresh install, and a maintainer adding a new SoundEventKind must remember to edit both literals. The user impact is minor (a missing key resolves to silent), but it is an easy correctness footgun.
   - _Fix:_ Hoist the default map to a single static constant and reference it from both the property initializer and the decoder fallback.
 - [x] **Numeric appearance settings (chatFontSize, viewZoom, purgeLogsAfterDays) are not clamped on decode** — `SettingsStore.swift:933 (chatFontSize), 720/viewZoom, 907 (purgeLogsAfterDays)` (correctness) _(fixed 1.0.595 — chatFontSize/purgeLogsAfterDays clamped; viewZoom is ephemeral + already clamped at /zoom)_

@@ -188,17 +188,26 @@ enum IRCSanitize {
     /// The wire send is left untouched. Returns the input unchanged when
     /// no credential pattern matches.
     static func maskForDisplay(_ line: String) -> String {
-        if let r = line.range(of: #"^PASS\s+\S.*$"#,
+        // Tolerate an optional leading IRCv3 tags segment (`@...`) and/or a
+        // source prefix (`:...`) before the command, so a PASS/AUTHENTICATE
+        // that arrives tag- or prefix-prefixed is still masked. We split the
+        // lead off and anchor the credential match to the COMMAND, which
+        // keeps the words from matching inside a PRIVMSG body.
+        let leadRange = line.range(of: #"^(?:@\S+\s+)?(?::\S+\s+)?"#,
+                                   options: .regularExpression)
+        let lead = leadRange.map { String(line[$0]) } ?? ""
+        let rest = leadRange.map { String(line[$0.upperBound...]) } ?? line
+        if let r = rest.range(of: #"^PASS\s+\S.*$"#,
                               options: [.regularExpression, .caseInsensitive]) {
-            return line.replacingCharacters(in: r, with: "PASS ****")
+            return lead + rest.replacingCharacters(in: r, with: "PASS ****")
         }
-        if let r = line.range(of: #"^AUTHENTICATE\s+\S+"#,
+        if let r = rest.range(of: #"^AUTHENTICATE\s+\S+"#,
                               options: [.regularExpression, .caseInsensitive]) {
             // Leave control markers (+, *) visible — they carry no secret.
-            let payload = line[r].split(separator: " ", maxSplits: 1)
+            let payload = rest[r].split(separator: " ", maxSplits: 1)
                 .last.map(String.init) ?? ""
             if payload == "+" || payload == "*" { return line }
-            return line.replacingCharacters(in: r, with: "AUTHENTICATE ****")
+            return lead + rest.replacingCharacters(in: r, with: "AUTHENTICATE ****")
         }
         // PRIVMSG NickServ :IDENTIFY [acct] pass — match outbound (no prefix)
         // and the inbound echo (`:nick!user@host PRIVMSG NickServ :IDENTIFY ...`)

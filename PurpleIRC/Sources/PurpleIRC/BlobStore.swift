@@ -194,11 +194,29 @@ actor BlobStore {
     /// (the OS will reap the temp dir). nil = blob missing or locked.
     func writeToTempFile(_ id: UUID) -> URL? {
         guard let plain = read(id), let rec = record(id) else { return nil }
-        let tmpDir = FileManager.default.temporaryDirectory
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory
             .appendingPathComponent("PurpleIRC-blobs", isDirectory: true)
-        try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
-        let url = tmpDir.appendingPathComponent(rec.filename)
-        try? plain.write(to: url, options: .atomic)
+        try? fm.createDirectory(at: root, withIntermediateDirectories: true)
+        // Best-effort sweep of exports from earlier sessions so decrypted
+        // plaintext doesn't accumulate in /tmp forever.
+        if let kids = try? fm.contentsOfDirectory(
+            at: root, includingPropertiesForKeys: [.contentModificationDateKey]) {
+            let cutoff = Date().addingTimeInterval(-3600)
+            for k in kids {
+                let m = (try? k.resourceValues(forKeys: [.contentModificationDateKey])
+                    .contentModificationDate) ?? .distantFuture
+                if m < cutoff { try? fm.removeItem(at: k) }
+            }
+        }
+        // Unpredictable per-export subdir + owner-only perms, so the
+        // decrypted plaintext isn't sitting at a guessable, world-readable
+        // path while another app has it open.
+        let dir = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent(rec.filename)
+        guard (try? plain.write(to: url, options: .atomic)) != nil else { return nil }
+        try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
         return url
     }
 

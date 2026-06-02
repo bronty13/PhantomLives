@@ -12,6 +12,34 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
+## [1.0.601] — 2026-06-02
+
+### Security & correctness (audit follow-ups — batch 12, persistence + masking)
+
+Closes the safe persistence/security LOW findings and two test-gaps.
+
+- **Credential masking survives a tags/prefix lead** (`IRCMessage.swift`).
+  `maskForDisplay` anchored `PASS`/`AUTHENTICATE` at column 0, so a
+  credential line carrying an IRCv3 tags segment or a source prefix would
+  slip through unmasked in logs. It now strips an optional `@tags`/`:prefix`
+  lead before matching — without masking the words inside a chat body.
+- **Decrypted blob exports aren't left at a guessable world-readable path**
+  (`BlobStore.swift`). `writeToTempFile` now writes into a random per-export
+  subdir with `0600` perms and sweeps exports older than an hour.
+- **A nested backup dir isn't recursively archived** (`BackupService.swift`).
+  If the backup directory lives inside the support dir (non-default), the
+  zip now excludes it so backups don't grow into each other.
+- **Sound defaults have one source of truth** (`SettingsStore.swift`). The
+  `init(from:)` fallback for `eventSounds` diverged from the stored-property
+  default (it omitted `highlight`); both now use `defaultEventSounds`.
+
+### Tests
+
+- +7 (369 → 376): new `EncryptedJSON` suite (plaintext passthrough,
+  encrypted round-trip, unwrap-without-key throws, safeWrite
+  refuse-to-clobber, 0600 perms); `maskForDisplay` tag/prefix masking +
+  chat-body non-masking; `eventSounds` default parity on minimal decode.
+
 ## [1.0.600] — 2026-06-02
 
 ### Fixed (audit follow-ups — batch 11, the remaining MEDIUM findings)

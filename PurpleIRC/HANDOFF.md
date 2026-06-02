@@ -16,10 +16,12 @@ DEK 32-byte guard, IRCv3 tag CR/LF strip, settings clamping, dead-code),
 1.0.596 (UI perf), 1.0.597 (backup/log: purge protects index.json,
 SeenStore nick cap, restore throws on wrong dir), 1.0.598
 (state/concurrency), 1.0.599 (DCC robustness), and 1.0.600 (the 5
-remaining MEDIUM: alias-recursion crash guard, find-bar cursor, chat
-font, off-main lockFocus, theme opacity). **Every HIGH and MEDIUM is now
-closed; 47 of 61 closed, 3 partial, 11 LOW open.** See the "Audit
-backlog" entry under Known gaps. Tier #18 (sidebar off
+remaining MEDIUM), and 1.0.601 (persistence/security LOW + masking:
+tag/prefix-aware credential masking, BlobStore temp hardening, nested
+backup-dir exclusion, eventSounds default parity, EncryptedJSON tests).
+**Every HIGH and MEDIUM is closed; 53 of 61 closed, 2 partial, 6 LOW
+open.** See the "Audit backlog" entry under Known gaps. Tier #18
+(sidebar off
 `NavigationSplitView` → manual `HStack` + `WindowStateGuard`/`AppDelegate`;
 gitignore Finder ` 2.app` dupes; doc sync). Tier #13 (perf + robustness sweep,
 1.0.234–235), Tier #14 (refactor pass — SetupView split, typed
@@ -687,20 +689,25 @@ EncryptedJSON slice offset, DEK 32-byte guard, IRCv3 tag CR/LF strip,
 settings clamping, dead-code), and 1.0.596 (UI perf: cached row
 DateFormatter, cached watchlist membership set, extracted+tested collapse
 grouping), 1.0.597 (backup/log purge/cap/restore), and 1.0.598
-(state/concurrency), 1.0.599 (DCC robustness), and 1.0.600 (the last 5
-MEDIUM findings). **47 of 61 closed, 3 partial — every HIGH and MEDIUM is
-done; the 11 open are all LOW.** Start in `AUDIT.md` before the items
-below — remaining open picks (all LOW):
-- **PBKDF2 → memory-hard KDF** (`Crypto.swift:42`) — fixed-iteration,
-  no calibration/migration. Has a migration wrinkle (existing envelopes
-  use PBKDF2) — design before touching.
-- **Deliberately deferred** — `events.sink` Task-defer removal (`#56`):
-  redundant hops, but removing them makes reactions run reentrantly
-  mid-emission; the deferral is plausibly intentional. Needs runtime
-  validation, not a blind change.
-- **Misc LOW** — `KeychainStore` non-atomic upsert (`#34`), backup zip
-  doesn't exclude a backup dir nested in support (`#29`), assorted
-  DCC/crypto/theme correctness nits + remaining test-gaps.
+(state/concurrency), 1.0.599 (DCC robustness), 1.0.600 (the last 5
+MEDIUM findings), and 1.0.601 (persistence/security LOW + masking).
+**53 of 61 closed, 2 partial — every HIGH and MEDIUM is done; 6 LOW
+open.** Start in `AUDIT.md`. The 6 remaining (all LOW):
+- **PBKDF2 → memory-hard KDF** (`Crypto.swift:42`) — needs a
+  versioned-envelope + lazy-rewrap migration design decision before
+  implementing (existing keystores are PBKDF2-wrapped).
+- **`events.sink` Task-defer removal** (`#56`) — deferred; redundant
+  hops but removing them runs reactions reentrantly mid-emission. Needs
+  runtime validation, not a blind change.
+- **KeychainStore non-atomic upsert** (`#34`) — delete-then-add; a crash
+  between loses the item. Recoverable (passphrase / re-enter), and the
+  biometry-ACL path complicates an in-place update.
+- **Address-book per-render sighting fold** (`#20`, perf), **fuzzy
+  contact matcher false positives on short nicks** (`#19`), and the
+  **same-named-stranger watch alert** (`#18`, largely inherent to
+  nick-based watching across networks).
+- Two partial test-gaps (`#31` verifyArchive corruption, `#51`
+  scripting output-sanitize / command-alias dispatch).
 
 ### DCC — passive mode + RESUME
 Active DCC SEND/CHAT works on-LAN. Behind NAT it needs:

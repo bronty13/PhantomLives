@@ -56,13 +56,23 @@ enum BackupService {
         // contents look like ./settings.json rather than absolute paths.
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
-        process.arguments = [
+        var zipArgs = [
             "-rqX",
             tempZip.path,
             ".",
             "-x", "downloads/*",
             "-x", "*.DS_Store"
         ]
+        // If the backup directory lives INSIDE the support dir (non-default
+        // config), exclude it so we don't recursively archive previous
+        // backups into the new one (runaway growth).
+        let supportPath = supportDir.standardizedFileURL.path
+        let backupPath = backupDir.standardizedFileURL.path
+        if backupPath.hasPrefix(supportPath + "/") {
+            let rel = String(backupPath.dropFirst(supportPath.count + 1))
+            zipArgs.append(contentsOf: ["-x", "\(rel)/*"])
+        }
+        process.arguments = zipArgs
         process.currentDirectoryURL = supportDir
         let stderrPipe = Pipe()
         process.standardError = stderrPipe

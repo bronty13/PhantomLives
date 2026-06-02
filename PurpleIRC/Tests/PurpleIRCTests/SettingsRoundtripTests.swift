@@ -50,6 +50,12 @@ struct SettingsRoundtripTests {
         #expect(settings.timestampFormat == "HH:mm:ss")
         #expect(settings.themeID == "classic")
         #expect(!settings.servers.isEmpty)            // bundled defaults
+        // The decoder fallback must match the struct default exactly — it
+        // used to omit "highlight" (and "privateMessage"), so a settings
+        // file without the key decoded to a different sound map than a
+        // fresh install.
+        #expect(settings.eventSounds == AppSettings.defaultEventSounds)
+        #expect(settings.eventSounds["highlight"] == "Funk")
     }
 
     @Test func decodesPayloadMissingFutureFields() throws {

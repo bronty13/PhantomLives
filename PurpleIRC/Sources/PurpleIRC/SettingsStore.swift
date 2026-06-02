@@ -757,8 +757,12 @@ struct AppSettings: Codable {
 
     // Sounds + theme
     var soundsEnabled: Bool = true
-    /// Map of `SoundEventKind.rawValue` → NSSound name. Empty string = silent.
-    var eventSounds: [String: String] = [
+    /// Canonical default sound map — single source of truth shared by the
+    /// stored-property default below AND the `init(from:)` fallback, so a
+    /// settings file missing the key decodes to the same defaults a fresh
+    /// install gets (previously the two diverged: the decoder fallback was
+    /// missing `highlight`).
+    static let defaultEventSounds: [String: String] = [
         "mention": "Glass",
         "watchlistHit": "Purr",
         "privateMessage": "Ping",
@@ -767,6 +771,8 @@ struct AppSettings: Codable {
         "ctcp": "",
         "highlight": "Funk"
     ]
+    /// Map of `SoundEventKind.rawValue` → NSSound name. Empty string = silent.
+    var eventSounds: [String: String] = AppSettings.defaultEventSounds
     var themeID: String = "classic"
 
     /// User-built themes — `UserTheme` snapshots with hex color slots
@@ -922,14 +928,7 @@ struct AppSettings: Codable {
         self.dccPortRangeEnd = try c.decodeIfPresent(Int.self, forKey: .dccPortRangeEnd) ?? 49200
         self.soundsEnabled = try c.decodeIfPresent(Bool.self, forKey: .soundsEnabled) ?? true
         self.eventSounds = try c.decodeIfPresent([String: String].self, forKey: .eventSounds)
-            ?? [
-                "mention": "Glass",
-                "watchlistHit": "Purr",
-                "privateMessage": "Ping",
-                "connect": "Hero",
-                "disconnect": "Basso",
-                "ctcp": ""
-            ]
+            ?? AppSettings.defaultEventSounds
         self.themeID = try c.decodeIfPresent(String.self, forKey: .themeID) ?? "classic"
         self.timestampFormat = try c.decodeIfPresent(String.self, forKey: .timestampFormat) ?? "HH:mm:ss"
         self.chatFontFamily = try c.decodeIfPresent(ChatFontFamily.self, forKey: .chatFontFamily) ?? .systemMono

@@ -56,6 +56,21 @@ struct IRCSanitizeTests {
         #expect(IRCSanitize.maskForDisplay("pass hunter2") == "PASS ****")
     }
 
+    @Test func maskHidesTagOrPrefixedCredentials() {
+        // A credential line carrying an IRCv3 tags segment and/or a source
+        // prefix must still be masked (the command isn't at column 0).
+        #expect(IRCSanitize.maskForDisplay("@time=2024 PASS hunter2") == "@time=2024 PASS ****")
+        #expect(IRCSanitize.maskForDisplay(":srv PASS hunter2") == ":srv PASS ****")
+        #expect(IRCSanitize.maskForDisplay("@a=b :srv AUTHENTICATE Zm9v") == "@a=b :srv AUTHENTICATE ****")
+    }
+
+    @Test func maskLeavesChatBodyMentioningPassAlone() {
+        // "PASS" inside a PRIVMSG body is not a credential command — masking
+        // the command must not over-match the message text.
+        let line = "PRIVMSG #chan :the PASS phrase is secret"
+        #expect(IRCSanitize.maskForDisplay(line) == line)
+    }
+
     @Test func maskLeavesAuthenticateControlMarkersVisible() {
         // `+` and `*` carry no secret — they're the SASL "ready for
         // payload" / "abort" control bytes. The viewer must see them so
