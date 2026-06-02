@@ -60,6 +60,28 @@ enum Crypto {
         return SymmetricKey(data: Data(derived))
     }
 
+    /// OWASP-2023 floor for PBKDF2-HMAC-SHA256 on desktop-class hardware.
+    /// Calibration may pick MORE, never less.
+    static let pbkdf2FloorIterations = 600_000
+
+    /// Pick a PBKDF2 iteration count calibrated to this host: time a short
+    /// probe, scale it to `targetMillis`, and clamp up to the floor. Keeps
+    /// interactive unlock near the target while staying expensive to brute
+    /// force on a copied disk image. (Memory-hardness remains a known gap —
+    /// see AUDIT #36; this closes the fixed-iteration / no-calibration half
+    /// without a new dependency.)
+    static func calibratedPBKDF2Iterations(targetMillis: Double = 300,
+                                           floor: Int = pbkdf2FloorIterations) -> Int {
+        let probe = 80_000
+        let salt = randomBytes(16)
+        let start = DispatchTime.now()
+        _ = try? deriveKey(passphrase: "calibration-probe", salt: salt, iterations: probe)
+        let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
+        guard elapsedMs > 0 else { return floor }
+        let scaled = Int((Double(probe) * targetMillis / elapsedMs).rounded())
+        return max(floor, scaled)
+    }
+
     /// Cryptographically-strong random bytes. Used for DEK generation and
     /// salts. `SymmetricKey(size:)` works for keys; this helper exists for
     /// non-key byte strings (salts, nonces before CryptoKit's randomness).

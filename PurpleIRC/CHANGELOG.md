@@ -12,6 +12,36 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
+## [1.0.603] — 2026-06-02
+
+### Security (audit follow-up — #36, KDF hardening)
+
+Strengthens the passphrase key-derivation that protects the on-disk
+keystore. No user data is re-encrypted, and your passphrase is unchanged.
+
+- **PBKDF2 is now calibrated, not a fixed 300k** (`Crypto.swift`). At
+  setup/passphrase-change the iteration count is timed to ~300 ms on this
+  Mac and clamped up to an OWASP-2023 floor of 600,000 — so a copied
+  keystore is markedly more expensive to brute-force, while interactive
+  unlock stays snappy.
+- **Versioned envelope + lazy upgrade** (`KeyStore.swift`). The keystore
+  file is now v2 and records its KDF algorithm. On a passphrase unlock,
+  an envelope wrapped at a materially weaker count (an old 300k file, or
+  one made on slower hardware) is transparently re-wrapped at the
+  stronger count — the same DEK, re-derived KEK, fresh salt; never
+  downgraded, never re-encrypting your messages. A pre-v2 file decodes
+  and upgrades seamlessly.
+
+A memory-hard KDF (Argon2id) would close the finding fully but requires a
+libsodium dependency; it's deliberately deferred, and the versioned
+envelope makes adding it later a clean drop-in. Tracked in `AUDIT.md`.
+
+### Tests
+
+- +3 (380 → 383): calibration respects the floor; the upgrade decision
+  never downgrades and ignores sub-1.5× timing noise; setup writes a v2
+  envelope at/above the floor with the algorithm recorded.
+
 ## [1.0.602] — 2026-06-02
 
 ### Fixed (audit follow-ups — batch 13, last safe LOW nits)

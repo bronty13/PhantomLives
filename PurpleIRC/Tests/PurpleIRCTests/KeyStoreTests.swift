@@ -81,6 +81,36 @@ struct KeyStoreTests {
         #expect(try store.decrypt(cipher) == plain)
     }
 
+    // MARK: - KDF hardening (#36)
+
+    @Test func calibratedIterationsRespectFloor() {
+        #expect(Crypto.calibratedPBKDF2Iterations() >= Crypto.pbkdf2FloorIterations)
+        // A tiny target still can't drop below the floor.
+        #expect(Crypto.calibratedPBKDF2Iterations(targetMillis: 1) >= Crypto.pbkdf2FloorIterations)
+    }
+
+    @Test func upgradeDecisionNeverDowngradesAndIgnoresNoise() {
+        // Materially stronger target → upgrade.
+        #expect(KeyStore.upgradedIterations(stored: 300_000, target: 600_000) == 600_000)
+        #expect(KeyStore.upgradedIterations(stored: 600_000, target: 1_000_000) == 1_000_000)
+        // Within the 1.5× noise margin → no churn.
+        #expect(KeyStore.upgradedIterations(stored: 600_000, target: 800_000) == nil)
+        // Never downgrade.
+        #expect(KeyStore.upgradedIterations(stored: 600_000, target: 300_000) == nil)
+        #expect(KeyStore.upgradedIterations(stored: 600_000, target: 600_000) == nil)
+    }
+
+    @Test func setupWritesV2EnvelopeAtFloor() throws {
+        let dir = tempDir()
+        let store = KeyStore(supportDirectoryURL: dir)
+        try store.setup(passphrase: "pw")
+        let data = try Data(contentsOf: dir.appendingPathComponent("keystore.json"))
+        let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        #expect(obj?["version"] as? Int == 2)
+        #expect((obj?["iterations"] as? Int ?? 0) >= Crypto.pbkdf2FloorIterations)
+        #expect(obj?["algorithm"] as? String == "pbkdf2sha256")
+    }
+
     @Test func unlockFromDiskWithRightPassphrase() throws {
         let dir = tempDir()
         let plain = Data("persisted".utf8)

@@ -62,7 +62,10 @@ final class KeyStore: ObservableObject {
     /// separate installs (including test temp directories) don't share a
     /// DEK cache slot. Hash-truncated so the account name stays short.
     private let keychainDEKAccount: String
-    private static let kdfIterations = 300_000
+    /// PBKDF2 iteration count for NEW or upgraded wraps, calibrated to this
+    /// host once at init (clamped to the OWASP floor). Existing envelopes
+    /// keep their own stored count until a lazy upgrade on unlock.
+    private let kdfTarget: Int
     private static let saltLength = 16
     /// The DEK is a 256-bit key. A cache slot that isn't exactly this many
     /// bytes is corrupt/truncated — accepting a 16-byte value would silently
@@ -76,8 +79,23 @@ final class KeyStore: ObservableObject {
     private struct Envelope: Codable {
         var version: Int = 1
         var salt: Data                // passphrase KDF salt
-        var iterations: Int           // KDF iterations (future-proofing)
+        var iterations: Int           // KDF iterations (per-envelope)
         var wrappedDEK: Data          // AES-GCM combined-format sealed box
+        /// KDF identifier. Optional so a pre-v2 file (which lacks the key)
+        /// decodes as `nil` = legacy PBKDF2-HMAC-SHA256. Adding an
+        /// Argon2id case later is then just a new value here.
+        var algorithm: String? = nil
+    }
+    /// Current envelope format version written by this build.
+    private static let currentEnvelopeVersion = 2
+    private static let pbkdf2Algorithm = "pbkdf2sha256"
+
+    /// The re-wrap iteration count if `stored` is materially weaker than the
+    /// calibrated `target`, else nil. The 1.5× margin keeps calibration
+    /// timing noise from triggering a re-wrap on every launch, and we NEVER
+    /// downgrade (a slower machine must not weaken a strong envelope).
+    static func upgradedIterations(stored: Int, target: Int) -> Int? {
+        target > Int(Double(stored) * 1.5) ? target : nil
     }
 
     // MARK: - Init
@@ -91,6 +109,8 @@ final class KeyStore: ObservableObject {
         let pathHash = SHA256.hash(data: Data(supportDirectoryURL.path.utf8))
             .map { String(format: "%02x", $0) }.joined()
         self.keychainDEKAccount = "dek-v1-\(pathHash)"
+        // Calibrate the KDF cost to this host once (cheap ~tens-of-ms probe).
+        self.kdfTarget = Crypto.calibratedPBKDF2Iterations()
         refreshState()
     }
 
@@ -169,18 +189,23 @@ final class KeyStore: ObservableObject {
     func setup(passphrase: String) throws {
         guard state == .notSetup else { throw KeyStoreError.alreadySetup }
         let newDEK = SymmetricKey(size: .bits256)
-        let salt = Crypto.randomBytes(Self.saltLength)
-        let kek = try Crypto.deriveKey(passphrase: passphrase,
-                                       salt: salt,
-                                       iterations: Self.kdfIterations)
-        let wrapped = try Crypto.encrypt(newDEK.rawData, using: kek)
-        let env = Envelope(salt: salt,
-                           iterations: Self.kdfIterations,
-                           wrappedDEK: wrapped)
-        try persist(env)
+        try persist(wrap(dek: newDEK, passphrase: passphrase, iterations: kdfTarget))
         self.dek = newDEK
         self.state = .unlocked
         cacheDEKInKeychain()
+    }
+
+    /// Build a v2 envelope wrapping `dek` under a PBKDF2 KEK derived from
+    /// `passphrase` at `iterations` (fresh random salt each time).
+    private func wrap(dek: SymmetricKey, passphrase: String, iterations: Int) throws -> Envelope {
+        let salt = Crypto.randomBytes(Self.saltLength)
+        let kek = try Crypto.deriveKey(passphrase: passphrase, salt: salt, iterations: iterations)
+        let wrapped = try Crypto.encrypt(dek.rawData, using: kek)
+        return Envelope(version: Self.currentEnvelopeVersion,
+                        salt: salt,
+                        iterations: iterations,
+                        wrappedDEK: wrapped,
+                        algorithm: Self.pbkdf2Algorithm)
     }
 
     /// Derive KEK from `passphrase`, unwrap DEK, store in memory. Throws
@@ -196,9 +221,19 @@ final class KeyStore: ObservableObject {
         } catch {
             throw KeyStoreError.passphraseMismatch
         }
-        self.dek = SymmetricKey(data: rawDEK)
+        let dekKey = SymmetricKey(data: rawDEK)
+        self.dek = dekKey
         self.state = .unlocked
         cacheDEKInKeychain()
+        // Lazy KDF upgrade: if this envelope was wrapped at a materially
+        // weaker iteration count than this host's calibrated target (an old
+        // 300k file, or a faster machine), re-wrap the SAME DEK at the
+        // stronger count. No user data is re-encrypted; failure is non-fatal.
+        if let newIters = Self.upgradedIterations(stored: env.iterations, target: kdfTarget) {
+            if let upgraded = try? wrap(dek: dekKey, passphrase: passphrase, iterations: newIters) {
+                try? persist(upgraded)
+            }
+        }
     }
 
     /// Drop the in-memory DEK and remove the Keychain cache. Next launch
@@ -224,17 +259,10 @@ final class KeyStore: ObservableObject {
         } catch {
             throw KeyStoreError.passphraseMismatch
         }
-        // Re-wrap the same DEK with the new passphrase + fresh salt.
+        // Re-wrap the same DEK with the new passphrase at the calibrated
+        // (and at least floor) iteration count.
         let dekKey = SymmetricKey(data: verified)
-        let newSalt = Crypto.randomBytes(Self.saltLength)
-        let newKEK = try Crypto.deriveKey(passphrase: newPassphrase,
-                                          salt: newSalt,
-                                          iterations: Self.kdfIterations)
-        let newWrapped = try Crypto.encrypt(dekKey.rawData, using: newKEK)
-        let newEnv = Envelope(salt: newSalt,
-                              iterations: Self.kdfIterations,
-                              wrappedDEK: newWrapped)
-        try persist(newEnv)
+        try persist(wrap(dek: dekKey, passphrase: newPassphrase, iterations: kdfTarget))
         // Keep current session unlocked; refresh the Keychain cache too.
         self.dek = dekKey
         self.state = .unlocked

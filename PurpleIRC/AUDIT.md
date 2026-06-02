@@ -84,12 +84,21 @@ closed, 2 partial; 6 open (all LOW).**
 matcher now requires a ≥3-char needle (no more spurious short-nick
 matches), and the address-book list skips the cross-network sighting
 fold unless the recency filter needs it. **55 of 61 fully closed, 2
-partial; 4 open.** The 4 remaining are intentionally left: same-named-
-stranger watch alert (`#18`, inherent to nick-based watching),
-KeychainStore non-atomic upsert (`#34`, recoverable + ACL-path
-complication), PBKDF2→memory-hard KDF (`#36`, needs a versioned-envelope
-migration decision), and the `events.sink` reentrancy nit (`#56`,
-deferred). Plus 2 partial test-gaps (`#31`, `#51`).
+partial; 4 open.**
+
+**Progress — 2026-06-02 (1.0.603):** KDF hardening (#36, Option 1).
+PBKDF2 is now host-calibrated to ~300 ms with an OWASP-2023 600k floor,
+behind a versioned (v2) envelope that lazily re-wraps a weaker/older
+keystore to the stronger count on the next passphrase unlock (never
+downgrades; no user data re-encrypted). Memory-hardness (Argon2id) is
+deliberately deferred — it'd add a libsodium dependency — and the
+versioned envelope makes it a clean future drop-in, so #36 is now
+**partial** rather than open. **55 of 61 fully closed, 3 partial; 3 open.**
+The 3 fully-open are intentionally left: same-named-stranger watch alert
+(`#18`, inherent to nick-based watching), KeychainStore non-atomic
+upsert (`#34`, recoverable + ACL-path complication), and the
+`events.sink` reentrancy nit (`#56`, deferred). Plus partial test-gaps
+(`#31`, `#51`).
 
 ## 🔴 High
 
@@ -283,7 +292,7 @@ deferred). Plus 2 partial test-gaps (`#31`, `#51`).
 - [x] **DEK Keychain cache accepts a 16-byte value, silently building an AES-128 key instead of the 256-bit DEK** — `KeyStore.swift:88-94` (correctness) _(fixed 1.0.595 — require exactly 32 bytes)_
   - _Problem:_ refreshState accepts any cached blob with count >= 16 and feeds it to SymmetricKey(data:). The real DEK is 32 bytes (bits256). A truncated/corrupt 16-byte cache passes the guard and produces a 128-bit key; every subsequent decrypt then fails the GCM tag and surfaces as generic corruption/lock confusion rather than a clear cache-miss. The threshold should match the actual key size.
   - _Fix:_ Require `cached.count == 32` (or kCCKeySizeAES256); on mismatch treat as a miss and fall to .locked, optionally deleting the malformed item.
-- [ ] **PBKDF2 KDF is fixed-iteration with no calibration and no migration; weaker than a memory-hard KDF for disk-image brute force** — `Crypto.swift:42-61` (security)
+- [~] **PBKDF2 KDF is fixed-iteration with no calibration and no migration; weaker than a memory-hard KDF for disk-image brute force** — `Crypto.swift:42-61` (security) _(1.0.603 — calibration + OWASP 600k floor + versioned-envelope migration with lazy upgrade-on-unlock done; memory-hardness (Argon2id) deferred by decision — would add a libsodium dep. The versioned envelope makes it a clean future drop-in.)_
   - _Problem:_ The threat model is explicitly a copied/stolen disk image (KeyStore header comments + Crypto comments). PBKDF2-HMAC-SHA256 at a hardcoded 300k iterations is GPU/ASIC-friendly and far cheaper to attack than a memory-hard KDF (scrypt/Argon2id) for the same unlock latency; the comparison to "what 1Password/Signal use" is outdated (both moved to memory-hard parameters). The Envelope stores `iterations` for future-proofing but there is no calibration to hardware and no upgrade-on-unlock path, so the parameter is frozen at the first-shipped value forever.
   - _Fix:_ Move to Argon2id (or scrypt) for the KEK derivation; failing that, calibrate PBKDF2 iterations to ~250-500ms on the host at setup, persist the chosen count (already in Envelope), and rewrap with stronger params on a successful unlock when the stored count is below current target.
 - [x] **No tests cover EncryptedJSON envelope, safeWrite downgrade-guard, file 0600 perms, or BlobStore plaintext temp leak** — `EncryptedJSON.swift:35-86` (test-gap) _(closed 1.0.601 — EncryptedJSONTests)_

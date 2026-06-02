@@ -19,10 +19,11 @@ SeenStore nick cap, restore throws on wrong dir), 1.0.598
 remaining MEDIUM), and 1.0.601 (persistence/security LOW + masking:
 tag/prefix-aware credential masking, BlobStore temp hardening, nested
 backup-dir exclusion, eventSounds default parity, EncryptedJSON tests),
-and 1.0.602 (fuzzy-matcher ≥3-char needle, address-book per-render fold
-skip). **Every HIGH and MEDIUM is closed; 55 of 61 closed, 2 partial,
-4 LOW open** (the 4 are intentionally left — see below). Tier #18
-(sidebar off
+1.0.602 (fuzzy-matcher ≥3-char needle, address-book per-render fold
+skip), and 1.0.603 (KDF hardening: calibrated PBKDF2 + 600k floor +
+versioned-envelope lazy upgrade). **Every HIGH and MEDIUM is closed;
+55 of 61 closed, 3 partial, 3 LOW open** (the rest intentionally left —
+see below). Tier #18 (sidebar off
 `NavigationSplitView` → manual `HStack` + `WindowStateGuard`/`AppDelegate`;
 gitignore Finder ` 2.app` dupes; doc sync). Tier #13 (perf + robustness sweep,
 1.0.234–235), Tier #14 (refactor pass — SetupView split, typed
@@ -692,12 +693,13 @@ DateFormatter, cached watchlist membership set, extracted+tested collapse
 grouping), 1.0.597 (backup/log purge/cap/restore), and 1.0.598
 (state/concurrency), 1.0.599 (DCC robustness), 1.0.600 (the last 5
 MEDIUM findings), 1.0.601 (persistence/security LOW + masking), and
-1.0.602 (last safe LOW nits). **55 of 61 closed, 2 partial — every HIGH
-and MEDIUM is done; 4 LOW open, all intentionally left:**
-- **PBKDF2 → memory-hard KDF** (`#36`, `Crypto.swift:42`) — needs a
-  versioned-envelope + lazy-rewrap migration design decision before
-  implementing (existing keystores are PBKDF2-wrapped) + an algorithm
-  choice (scrypt = no dep, Argon2id = adds one).
+1.0.602 (last safe LOW nits), and 1.0.603 (KDF hardening). **55 of 61
+closed, 3 partial — every HIGH and MEDIUM is done; 3 LOW open:**
+- **`#36` Argon2id (memory-hard) — partial.** Calibration + 600k floor +
+  versioned-envelope migration shipped (1.0.603); only memory-hardness
+  remains, deferred because Argon2id needs a libsodium dependency. The v2
+  envelope records `algorithm`, so adding an `argon2id` case later is a
+  clean drop-in (no new migration).
 - **`events.sink` Task-defer removal** (`#56`) — deferred; redundant
   hops but removing them runs reactions reentrantly mid-emission. Needs
   runtime validation, not a blind change.
