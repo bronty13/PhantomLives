@@ -12,6 +12,34 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
+## [1.0.596] — 2026-06-02
+
+### Performance (audit follow-ups — batch 7, chat-row rendering)
+
+Three LOW findings in `BufferView`'s per-row rendering. No visible
+change — purely fewer allocations per row on every render/hover.
+
+- **Timestamps reuse a cached `DateFormatter`** (`BufferView.swift`).
+  Each row allocated a fresh `DateFormatter` (expensive) on every body
+  re-evaluation. A small process-wide cache keyed by the pattern reuses
+  one formatter; patterns change rarely.
+- **Watched-user check no longer rebuilds a Set per row**
+  (`BufferView.swift`, `WatchlistService.swift`). The "is this line from
+  a watched user?" test rebuilt a lowercased `Set` from the whole watched
+  list for every row. `WatchlistService` now keeps a cached lowercased
+  membership set (updated only when the list changes) behind a new
+  `isWatched(_:)`; the row extracts its nick and does a single O(1) check.
+- **Collapse grouping extracted + tested** (`BufferView.swift`). The
+  join/part/quit/nick coalescing was inline and untested; pulled it into
+  a pure `groupRows(_:collapse:window:)` (behaviour unchanged) and added
+  coverage.
+
+### Tests
+
+- +5 (356 → 361): new `BufferView row grouping` suite — collapse off,
+  3-event run → one summary, single-event run stays raw, a non-membership
+  line breaks the run, and events outside the 300s window don't group.
+
 ## [1.0.595] — 2026-06-02
 
 ### Fixed (audit follow-ups — batch 6, LOW correctness/robustness cluster)

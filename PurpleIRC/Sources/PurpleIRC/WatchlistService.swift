@@ -37,6 +37,10 @@ protocol WatchlistDelegate: AnyObject {
 final class WatchlistService: ObservableObject {
     @Published private(set) var presence: [String: WatchPresence] = [:]
     @Published private(set) var watched: [String] = []
+    /// Lowercased membership set, kept in sync with `watched`, so per-row
+    /// "is this from a watched user?" checks are O(1) without rebuilding a
+    /// Set on every chat-row render. Updated only in `setWatchedList`.
+    private var watchedLower: Set<String> = []
     @Published private(set) var recentHits: [WatchHit] = []
     @Published private(set) var recentHighlights: [HighlightHit] = []
     @Published private(set) var notificationsAuthorized: Bool = false
@@ -93,6 +97,12 @@ final class WatchlistService: ObservableObject {
         self.delegate = d
     }
 
+    /// O(1) case-insensitive membership test against the watched list,
+    /// backed by the cached `watchedLower` set.
+    func isWatched(_ nick: String) -> Bool {
+        watchedLower.contains(nick.lowercased())
+    }
+
     // MARK: - Sync watched list from settings
 
     func setWatchedList(_ list: [String]) {
@@ -102,6 +112,7 @@ final class WatchlistService: ObservableObject {
         let removes = watched.filter { !next.contains($0.lowercased()) }
 
         watched = list
+        watchedLower = next
         // Drop no-longer-watched nicks from every network's presence slice.
         for id in networks.keys {
             for k in Array(networks[id]!.presence.keys) where !next.contains(k) {

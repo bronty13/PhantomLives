@@ -41,7 +41,12 @@ closed, 2 partial.**
 **Progress — 2026-06-02 (1.0.595):** LOW correctness/robustness cluster.
 Fixed EncryptedJSON sliced-Data offset, DEK 32-byte guard, IRCv3 tag
 CR/LF stripping, settings clamping, and two dead-code cleanups (6 LOW).
-**29 of 61 fully closed, 2 partial; 30 open.**
+**29 of 61 fully closed, 2 partial.**
+
+**Progress — 2026-06-02 (1.0.596):** UI perf cluster. Cached the per-row
+DateFormatter, replaced the per-row watchlist Set rebuild with a cached
+membership set, and extracted + tested the join/part collapse grouping
+(3 LOW). **32 of 61 fully closed, 2 partial; 27 open.**
 
 ## 🔴 High
 
@@ -322,13 +327,13 @@ CR/LF stripping, settings clamping, and two dead-code cleanups (6 LOW).
 
 ### ui-buffer
 
-- [ ] **DateFormatter allocated per row on every body re-evaluation (including hover)** — `BufferView.swift:1058-1065` (quality)
+- [x] **DateFormatter allocated per row on every body re-evaluation (including hover)** — `BufferView.swift:1058-1065` (quality) _(fixed 1.0.596 — TimestampFormatterCache)_
   - _Problem:_ MessageRow.formattedTimestamp is a computed property that creates a brand-new DateFormatter on every access. It is accessed from `body`, which re-evaluates whenever the row's `@State hovering` flips (line 1052/1090) — i.e. every mouse-over and mouse-out of any visible row, on top of every theme/font tick. DateFormatter construction + dateFormat parse is comparatively expensive; doing it per-visible-row per-hover is an avoidable churn on the hot render path the file otherwise works hard to optimize.
   - _Fix:_ Cache a static DateFormatter keyed by pattern (or a small static cache), or format via a shared formatter stored on ChatModel so the row only does a lookup + format, not an allocation.
-- [ ] **Watchlist Set rebuilt from scratch per row on every render/hover** — `BufferView.swift:1186-1198` (quality)
+- [x] **Watchlist Set rebuilt from scratch per row on every render/hover** — `BufferView.swift:1186-1198` (quality) _(fixed 1.0.596 — cached watchedLower set + isWatched)_
   - _Problem:_ MessageRow.isFromWatchedUser builds `Set(model.watchlist.watched.map { $0.lowercased() })` every time it is evaluated. It is read from `leadingBadge` and `highlightBackground`, both consumed by `body`, which re-evaluates on each hover toggle and theme/font change. Each evaluation allocates an array, lowercases every watched nick, and builds a Set — repeated per visible row, per render. For users with large watchlists scrolling a busy buffer this is needless O(W) work per row per frame.
   - _Fix:_ Expose a precomputed lowercased Set on WatchlistService (rebuilt only when `watched` changes) and have MessageRow query that, instead of rebuilding the Set in every row.
-- [ ] **Collapse/grouping logic (flushRun, 300s window, single-event suppression) is untested** — `BufferView.swift:126-167` (test-gap)
+- [x] **Collapse/grouping logic (flushRun, 300s window, single-event suppression) is untested** — `BufferView.swift:126-167` (test-gap) _(closed 1.0.596 — extracted groupRows + BufferGroupingTests)_
   - _Problem:_ The join/part/quit/nick coalescing in refreshRenderedRows + flushRun + isMembershipKind contains the riskiest pure logic in this file: the 300-second run-break window, the rule that a single-event run renders as a raw line rather than a summary, and the interaction with the message-kind filter (filtered lines must be dropped before grouping). MessageKindFilterTests covers `includes(_:)` thoroughly but there is no test for the grouping pipeline. Because these are private methods on a SwiftUI View they are also not reachable by tests as written, so a regression (e.g. an off-by-one in the run reset, or a netsplit getting merged across an hour of silence) would ship silently. The MessageKindFilterTests header itself frames this rendering path as the same data-loss risk class as a prior incident.
   - _Fix:_ Extract the grouping into a free/static function taking ([ChatLine], filter, collapse) -> [RenderedRow] (testable), and add tests for: 300s boundary split, single-event-run-stays-raw, filtered-out membership lines not forming summaries, and mixed runs producing correct summary counts.
 

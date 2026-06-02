@@ -12,9 +12,10 @@ trigger-regex ReDoS budget, JS timer cap, event docs), and 1.0.593
 generation cancellation + last-writer race), and 1.0.594 (completed #7 —
 user-presence ACL on the cached-DEK read, verified on hardware), and
 1.0.595 (LOW correctness/robustness cluster: EncryptedJSON slice offset,
-DEK 32-byte guard, IRCv3 tag CR/LF strip, settings clamping, dead-code).
-**29 of 61 closed, 2 partial.** See the "Audit backlog" entry under
-Known gaps. Tier #18 (sidebar off
+DEK 32-byte guard, IRCv3 tag CR/LF strip, settings clamping, dead-code),
+and 1.0.596 (UI perf: cached row DateFormatter + watchlist membership
+set, extracted/tested collapse grouping). **32 of 61 closed, 2 partial.**
+See the "Audit backlog" entry under Known gaps. Tier #18 (sidebar off
 `NavigationSplitView` → manual `HStack` + `WindowStateGuard`/`AppDelegate`;
 gitignore Finder ` 2.app` dupes; doc sync). Tier #13 (perf + robustness sweep,
 1.0.234–235), Tier #14 (refactor pass — SetupView split, typed
@@ -679,13 +680,13 @@ cancellation + last-writer race, first assistant tests; 5 LOW), and
 **1.0.594** (completed #7 — user-presence ACL on the cached-DEK read,
 verified on hardware), and **1.0.595** (LOW correctness/robustness:
 EncryptedJSON slice offset, DEK 32-byte guard, IRCv3 tag CR/LF strip,
-settings clamping, dead-code). **29 of 61 closed, 2 partial.** Start in
-`AUDIT.md` before the items below — remaining open picks (all LOW):
+settings clamping, dead-code), and 1.0.596 (UI perf: cached row
+DateFormatter, cached watchlist membership set, extracted+tested collapse
+grouping). **32 of 61 closed, 2 partial.** Start in `AUDIT.md` before the
+items below — remaining open picks (all LOW):
 - **PBKDF2 → memory-hard KDF** (`Crypto.swift:42`) — fixed-iteration,
   no calibration/migration. Has a migration wrinkle (existing envelopes
   use PBKDF2) — design before touching.
-- **UI perf** — per-row DateFormatter alloc + watchlist Set rebuild in
-  `BufferView` (`#59`/`#60`); collapse/grouping untested (`#61`).
 - **Backup/log edge cases** — `LogStore.purge` deletes `index.json` by
   mtime (`#27`), `SeenStore` unbounded nick growth (`#28`), restore
   silent no-op on non-PurpleIRC dir (`#30`), `KeychainStore` non-atomic

@@ -3,6 +3,23 @@ import SwiftUI
 import AppKit
 #endif
 
+/// Process-wide cache of `DateFormatter`s keyed by pattern. A chat buffer
+/// re-evaluates every visible row's body on each state change (and on
+/// hover); allocating a fresh `DateFormatter` per row is measurably
+/// expensive. Patterns change rarely (one, usually), so the cache stays
+/// tiny. Main-actor-confined since all row rendering is on the main actor.
+@MainActor
+enum TimestampFormatterCache {
+    private static var cache: [String: DateFormatter] = [:]
+    static func formatter(for pattern: String) -> DateFormatter {
+        if let f = cache[pattern] { return f }
+        let f = DateFormatter()
+        f.dateFormat = pattern
+        cache[pattern] = f
+        return f
+    }
+}
+
 struct BufferView: View {
     @EnvironmentObject var model: ChatModel
     let bufferIndex: Int
@@ -125,41 +142,45 @@ struct BufferView: View {
     /// triggers in `messagesPane` and from `.onAppear`.
     private func refreshRenderedRows() {
         let filter = effectiveFilter
-        let collapse = model.settings.settings.collapseJoinPart
         let lines = buffer.lines.filter { filter.includes($0.kind) }
-        guard collapse else {
-            renderedRows = lines.map { .line($0) }
-            return
-        }
+        renderedRows = Self.groupRows(lines,
+                                      collapse: model.settings.settings.collapseJoinPart)
+    }
+
+    /// Pure grouping: coalesce runs of join/part/quit/nick into a single
+    /// summary entry. Extracted from `refreshRenderedRows` (which handles
+    /// filtering) so the collapse algorithm is unit-testable in isolation.
+    /// A run breaks on a non-membership line, when `collapse` is off, or
+    /// when the gap to the previous membership line exceeds `window`
+    /// seconds. Single-line runs render as the raw line (a one-event pill
+    /// is noisier than the line itself).
+    static func groupRows(_ lines: [ChatLine],
+                          collapse: Bool,
+                          window: TimeInterval = 300) -> [RenderedRow] {
+        guard collapse else { return lines.map { .line($0) } }
         var out: [RenderedRow] = []
         out.reserveCapacity(lines.count)
         var run: [ChatLine] = []
+        func flush() {
+            defer { run.removeAll(keepingCapacity: false) }
+            guard !run.isEmpty else { return }
+            if run.count == 1 { out.append(.line(run[0])); return }
+            out.append(.summary(id: run[0].id, entries: run))
+        }
         for line in lines {
-            if Self.isMembershipKind(line.kind),
-               (run.isEmpty || line.timestamp.timeIntervalSince(run.last!.timestamp) < 300) {
+            if isMembershipKind(line.kind),
+               (run.isEmpty || line.timestamp.timeIntervalSince(run.last!.timestamp) < window) {
                 run.append(line)
                 continue
             }
-            flushRun(&run, into: &out)
+            flush()
             out.append(.line(line))
         }
-        flushRun(&run, into: &out)
-        renderedRows = out
+        flush()
+        return out
     }
 
-    private func flushRun(_ run: inout [ChatLine], into out: inout [RenderedRow]) {
-        defer { run.removeAll(keepingCapacity: false) }
-        guard !run.isEmpty else { return }
-        // Single-event runs render as the original line — a "1 user joined"
-        // pill is more noise than the raw line.
-        if run.count == 1 {
-            out.append(.line(run[0]))
-            return
-        }
-        out.append(.summary(id: run[0].id, entries: run))
-    }
-
-    private static func isMembershipKind(_ kind: ChatLine.Kind) -> Bool {
+    static func isMembershipKind(_ kind: ChatLine.Kind) -> Bool {
         switch kind {
         case .join, .part, .quit, .nick: return true
         default:                          return false
@@ -1059,9 +1080,9 @@ struct MessageRow: View {
         let pattern = model.settings.settings.timestampFormat.isEmpty
             ? "HH:mm:ss"
             : model.settings.settings.timestampFormat
-        let f = DateFormatter()
-        f.dateFormat = pattern
-        return f.string(from: line.timestamp)
+        // Reuse a cached formatter per pattern — allocating a DateFormatter
+        // for every row on every body re-eval (including hover) is costly.
+        return TimestampFormatterCache.formatter(for: pattern).string(from: line.timestamp)
     }
 
     var body: some View {
@@ -1184,17 +1205,17 @@ struct MessageRow: View {
     }
 
     private var isFromWatchedUser: Bool {
-        let watched = Set(model.watchlist.watched.map { $0.lowercased() })
+        // Extract the relevant nick, then do a single O(1) membership check
+        // — no rebuilding a Set from the watched list on every row render.
+        let nick: String
         switch line.kind {
-        case .privmsg(let nick, let isSelf) where !isSelf:
-            return watched.contains(nick.lowercased())
-        case .action(let nick):
-            return watched.contains(nick.lowercased())
-        case .join(let nick), .part(let nick, _), .quit(let nick, _):
-            return watched.contains(nick.lowercased())
+        case .privmsg(let n, let isSelf) where !isSelf: nick = n
+        case .action(let n):                            nick = n
+        case .join(let n), .part(let n, _), .quit(let n, _): nick = n
         default:
             return false
         }
+        return model.watchlist.isWatched(nick)
     }
 
     @ViewBuilder
