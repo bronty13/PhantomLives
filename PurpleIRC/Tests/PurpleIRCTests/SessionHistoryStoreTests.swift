@@ -38,6 +38,25 @@ struct SessionHistoryStoreTests {
         return nh
     }
 
+    /// A file larger than the cap is treated as corrupt and ignored, so
+    /// `load` can't be made to read+decode an arbitrarily large file. Uses
+    /// a sparse truncate so no real bytes are written.
+    @Test func oversizedHistoryFileIsIgnored() throws {
+        let support = tempSupportDir()
+        let store = SessionHistoryStore(supportDirectoryURL: support)
+        store.save(networkSlug: "net", history: sampleHistory())
+
+        let historyDir = support.appendingPathComponent("history", isDirectory: true)
+        let file = try FileManager.default.contentsOfDirectory(
+            at: historyDir, includingPropertiesForKeys: nil).first!
+        let fh = try FileHandle(forWritingTo: file)
+        try fh.truncate(atOffset: SessionHistoryStore.maxFileBytes + 1)
+        try fh.close()
+
+        let loaded = store.load(networkSlug: "net")
+        #expect(loaded.buffers.isEmpty)
+    }
+
     @Test func emptyLoadOnFreshStore() {
         let store = SessionHistoryStore(supportDirectoryURL: tempSupportDir())
         let h = store.load(networkSlug: "anything")

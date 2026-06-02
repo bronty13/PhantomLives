@@ -333,6 +333,15 @@ final class ChatModel: ObservableObject {
     /// Merged event stream across all connections. PurpleBot subscribes here.
     let events = PassthroughSubject<(UUID, IRCConnectionEvent), Never>()
 
+    /// Debounce timestamp for the launch/auto backup. Per-instance (not a
+    /// process-global static) so separate ChatModels — notably test
+    /// instances — don't share one model's debounce window.
+    private var lastBackupAt: Date = .distantPast
+
+    /// Last set of (network, buffer) keys handed to `backfillIndex`, so the
+    /// per-line `conn.$buffers` firings don't re-spawn an identical backfill.
+    private var lastBackfillSignature: Set<String> = []
+
     /// In-app scripting host (PurpleBot). See BotHost.swift.
     let bot: BotHost
 
@@ -1794,6 +1803,13 @@ final class ChatModel: ObservableObject {
             for q in snap.queries  { pairs.append((network: networkName, buffer: q)) }
         }
         guard !pairs.isEmpty else { return }
+        // This runs on every `conn.$buffers` change — which, because Buffer
+        // is a value type, fires on every line append. The backfill only
+        // matters when the SET of (network, buffer) pairs changes, so skip
+        // (and don't spawn a Task) when it's identical to the last run.
+        let signature = Set(pairs.map { "\($0.network)\u{1}\($0.buffer)" })
+        guard signature != lastBackfillSignature else { return }
+        lastBackfillSignature = signature
         let store = logStore
         Task { await store.backfillIndex(pairs) }
     }
@@ -2129,16 +2145,15 @@ extension ChatModel: WatchlistDelegate {
     /// surface as crash dialogs to a user who's just launching the app.
     /// Throttled to at most one backup per 60 seconds so the
     /// init-time + post-unlock pair don't both write a copy.
-    private static var lastBackupAt: Date = .distantPast
     private static let backupMinInterval: TimeInterval = 60
 
     func runBackupIfEnabled() {
         guard settings.settings.backupEnabled else { return }
         let now = Date()
-        if now.timeIntervalSince(Self.lastBackupAt) < Self.backupMinInterval {
+        if now.timeIntervalSince(lastBackupAt) < Self.backupMinInterval {
             return
         }
-        Self.lastBackupAt = now
+        lastBackupAt = now
 
         let supportDir = settings.supportDirectoryURL
         let backupDir = backupDirectoryURL
@@ -2176,7 +2191,7 @@ extension ChatModel: WatchlistDelegate {
     /// success, throws on failure so the UI can surface the error.
     @discardableResult
     func runBackupNow() async throws -> URL {
-        Self.lastBackupAt = Date()
+        lastBackupAt = Date()
         let supportDir = settings.supportDirectoryURL
         let backupDir = backupDirectoryURL
         let key = keyStore.currentKey

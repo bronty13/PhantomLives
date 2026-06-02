@@ -18,6 +18,10 @@ final class SessionHistoryStore: ObservableObject {
     /// ~150KB of JSON before encryption — comfortable to roundtrip on
     /// every save without burning the disk.
     static let linesPerBuffer = 200
+    /// Hard ceiling on a per-network history file. Anything larger is
+    /// treated as corrupt/tampered and ignored, so `load` can't be made to
+    /// read + JSON-decode an arbitrarily large file into memory.
+    static let maxFileBytes: UInt64 = 32 * 1024 * 1024
 
     private let baseDir: URL
     private var key: SymmetricKey?
@@ -49,6 +53,13 @@ final class SessionHistoryStore: ObservableObject {
     /// after decode so a tampered or bloated file can't blow up memory.
     func load(networkSlug: String) -> NetworkHistory {
         let url = fileURL(for: networkSlug)
+        // Bound memory BEFORE reading/decoding: trimming per-buffer line
+        // count after a full decode doesn't help if a tampered/bloated file
+        // is gigabytes. A file past the cap is treated as corrupt.
+        if let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? UInt64,
+           size > Self.maxFileBytes {
+            return NetworkHistory()
+        }
         guard let data = try? Data(contentsOf: url) else {
             return NetworkHistory()
         }

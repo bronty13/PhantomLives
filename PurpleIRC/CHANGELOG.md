@@ -12,6 +12,36 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
+## [1.0.598] — 2026-06-02
+
+### Fixed (audit follow-ups — batch 9, state/concurrency)
+
+Three LOW findings; no visible change.
+
+- **Log-index backfill no longer fires per message** (`ChatModel.swift`).
+  It was wired to `conn.$buffers`, which — because `Buffer` is a value
+  type — publishes on every line append, spawning a Task and full
+  re-scan each time. It now skips (no Task) unless the set of
+  (network, buffer) pairs actually changed.
+- **Session-history reads are size-bounded** (`SessionHistoryStore.swift`).
+  `load` read and JSON-decoded the whole file before trimming per-buffer,
+  so a bloated/tampered file could be fully materialized in memory. A
+  32 MB file-size check now rejects oversized files before reading.
+- **Backup debounce is per-instance** (`ChatModel.swift`). `lastBackupAt`
+  was a process-global `static` shared across every `ChatModel` (e.g.
+  test instances), so one model's backup suppressed another's debounce.
+  Now an instance property.
+
+Not changed: the three `events.sink` `Task { @MainActor }` hops are
+technically redundant (events fire on the main actor) but removing them
+makes the work run reentrantly mid-emission; the deferral is plausibly
+intentional, so it's left as-is (tracked in `AUDIT.md`).
+
+### Tests
+
+- +1 (363 → 364): `SessionHistoryStore` ignores an oversized (sparse-
+  truncated) file.
+
 ## [1.0.597] — 2026-06-02
 
 ### Fixed (audit follow-ups — batch 8, backup / log robustness)

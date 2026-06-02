@@ -51,8 +51,14 @@ membership set, and extracted + tested the join/part collapse grouping
 **Progress — 2026-06-02 (1.0.597):** backup/log cluster. LogStore.purge
 now only deletes log-shaped files (protects index.json), SeenStore caps
 per-network nick count, and restore throws on a non-PurpleIRC support dir
-instead of a silent success (3 LOW). **35 of 61 fully closed, 3 partial;
-23 open.**
+instead of a silent success (3 LOW). **35 of 61 fully closed, 3 partial.**
+
+**Progress — 2026-06-02 (1.0.598):** state-concurrency cluster. Gated the
+per-line log-index backfill on an actual buffer-set change, capped
+SessionHistoryStore reads at 32MB before decode, and made the backup
+debounce per-instance (3 LOW). Left the `events.sink` Task-defer nit open
+(removing it risks reentrant hot-path dispatch). **38 of 61 fully closed,
+3 partial; 20 open.**
 
 ## 🔴 High
 
@@ -318,16 +324,16 @@ instead of a silent success (3 LOW). **35 of 61 fully closed, 3 partial;
 
 ### state-concurrency
 
-- [ ] **backfillLogIndexFromLiveState runs on every chat-line append, spawning an unstructured Task and full re-scan per message** — `ChatModel.swift:655-663` (quality)
+- [x] **backfillLogIndexFromLiveState runs on every chat-line append, spawning an unstructured Task and full re-scan per message** — `ChatModel.swift:655-663` (quality) _(fixed 1.0.598 — skips when the (network,buffer) set is unchanged)_
   - _Problem:_ The `conn.$buffers` Combine sink fires on every mutation of the published `buffers` array. Because appendLine mutates a Buffer's `lines` in place, the array republishes on EVERY inbound/outbound message. Each fire calls backfillLogIndexFromLiveState(), which walks every connection, every non-server buffer, and every lastSession entry to rebuild `pairs` (ChatModel.swift:1759-1783) and then spawns a fresh `Task { await store.backfillIndex(pairs) }`. On a busy channel this is O(messages × buffers) work plus an unbounded stream of detached tasks hammering the LogStore actor — pure churn, since the (network,buffer) index only changes when a buffer is created or closed, not when a line is appended. The maybeSaveSnapshot call in the same sink is gated by a cheap equality check, but the backfill is not.
   - _Fix:_ Trigger the backfill only when the set of buffer identities/names actually changes — e.g. map `$buffers` to `buffers.map { $0.name }` (or buffer IDs), apply `.removeDuplicates()`, and only then call backfillLogIndexFromLiveState(). That collapses per-line spam down to per-buffer-shape changes.
-- [ ] **Three events.sink subscribers unnecessarily defer work through Task { @MainActor }, decoupling reactions from event delivery** — `ChatModel.swift:486-514` (quality)
+- [ ] **Three events.sink subscribers unnecessarily defer work through Task { @MainActor }, decoupling reactions from event delivery** — `ChatModel.swift:486-514` (quality) _(deferred — events fire on the main actor so the hops are redundant, but removing them makes the work run reentrantly mid-emission; the deferral is plausibly intentional. Not worth the hot-path regression risk for a quality nit.)_
   - _Problem:_ events is a MainActor-isolated PassthroughSubject and every send already occurs on the main actor (conn.events.sink → self.events.send at line 647-649). The sound, activity-feed, and pop-on-watch subscribers each wrap their body in `Task { @MainActor in ... }`, which serves no isolation purpose (the sink already runs on MainActor) and instead defers the reaction to a later run-loop turn. This makes these reactions run strictly after all synchronous subscribers and after any already-queued main-actor work, so e.g. the Watch Monitor feed and pop-query activation can lag behind the buffer mutation that produced them, and the pop-query guard at activatePoppedQuery has to re-validate that the buffer still exists precisely because of this deferral window.
   - _Fix:_ Drop the Task wrappers and call the handlers synchronously inside the sink (the closures are already on the main actor); if isolation can't be proven to the compiler, mark the sink closures or restructure so the work runs inline rather than on a deferred task.
-- [ ] **SessionHistoryStore.load decodes the entire on-disk file before trimming, so a bloated/tampered history file is fully materialized in memory** — `SessionHistoryStore.swift:50-64` (security)
+- [x] **SessionHistoryStore.load decodes the entire on-disk file before trimming, so a bloated/tampered history file is fully materialized in memory** — `SessionHistoryStore.swift:50-64` (security) _(fixed 1.0.598 — 32MB file-size cap before read/decode)_
   - _Problem:_ The doc comment claims the per-buffer cap protects against a 'tampered or bloated file' that could 'blow up memory', but the trim at lines 60-62 happens AFTER JSONDecoder fully decodes the whole NetworkHistory (every buffer, every line) into memory. EncryptedJSON.unwrap (EncryptedJSON.swift:46) likewise reads/decrypts the full Data with no size ceiling. An attacker (or corruption) that produces a multi-hundred-MB history JSON for one network forces the entire thing into RAM on launch before any cap applies, so the stated mitigation does not actually bound peak memory.
   - _Fix:_ Reject files above a sane on-disk size ceiling (e.g. a few MB) before decoding, or stream-decode and cap per buffer during decode. At minimum correct the comment so it doesn't claim a guarantee the post-decode trim doesn't provide.
-- [ ] **ChatModel.lastBackupAt is a process-global static shared across all ChatModel instances** — `ChatModel.swift:2122-2131` (correctness)
+- [x] **ChatModel.lastBackupAt is a process-global static shared across all ChatModel instances** — `ChatModel.swift:2122-2131` (correctness) _(fixed 1.0.598 — per-instance property)_
   - _Problem:_ The launch-backup throttle uses a `private static var lastBackupAt`. It is keyed to the type, not the instance, so any second ChatModel created in the same process (test harness creating multiple models, or a future multi-window setup) shares the timestamp: instance B's launch backup is silently suppressed because instance A wrote a backup within the 60s window, even though B's support dir / key may differ. runBackupNow (line 2169) also stamps the same shared static. For a per-model concern this should be instance state.
   - _Fix:_ Make lastBackupAt an instance property (`private var lastBackupAt`) unless the throttle is genuinely meant to be cross-instance; if it must stay static, document why and guard against the multi-instance suppression.
 
