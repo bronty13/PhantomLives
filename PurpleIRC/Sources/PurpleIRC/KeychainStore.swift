@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import LocalAuthentication
 
 /// Thin wrapper around `SecItemAdd` / `SecItemCopyMatching` / `SecItemDelete`.
 /// Two use cases:
@@ -41,39 +42,93 @@ enum KeychainStore {
 
     // MARK: - Raw data storage (used for the wrapped DEK cache)
 
-    static func setData(_ data: Data, for account: String) throws {
+    static func setData(_ data: Data, for account: String,
+                        requireBiometry: Bool = false) throws {
         // Delete any existing item first — avoids the usual SecItemAdd "dup"
         // dance when the value has changed.
         try? delete(account: account)
-        let attrs: [String: Any] = [
+        var attrs: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecValueData as String: data,
+        ]
+        var aclApplied = false
+        if requireBiometry {
+            // Gate reads behind user presence (Touch ID, or device password
+            // fallback). `kSecAttrAccessControl` is mutually exclusive with
+            // `kSecAttrAccessible`, so it carries the device-only protection
+            // class itself. If the ACL can't be built (ad-hoc build, no
+            // biometry hardware), we fall through to plain device-only
+            // storage so caching still works — never a lockout.
+            var err: Unmanaged<CFError>?
+            if let ac = SecAccessControlCreateWithFlags(
+                nil,
+                kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+                .userPresence,
+                &err) {
+                attrs[kSecAttrAccessControl as String] = ac
+                aclApplied = true
+            }
+        }
+        if !aclApplied {
             // `…ThisDeviceOnly` is load-bearing security, not a nicety: it
             // keeps the wrapped DEK and the stored credentials OUT of iCloud
             // Keychain sync, Keychain migration, and encrypted backups. A
             // plain `WhenUnlocked` item travels to other devices, where the
             // DEK alone unwraps every encrypted file without the passphrase.
             // Device-only pins confidentiality to this Mac.
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        ]
+            attrs[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        }
         let status = SecItemAdd(attrs as CFDictionary, nil)
         guard status == errSecSuccess else { throw Error.unexpectedStatus(status) }
     }
 
-    static func getData(for account: String) -> Data? {
-        let query: [String: Any] = [
+    /// Fetch raw data. Pass a (possibly already-authenticated) `LAContext`
+    /// for a biometry-gated item; reading such an item without a context
+    /// triggers the system Touch ID prompt synchronously.
+    static func getData(for account: String, context: LAContext? = nil) -> Data? {
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
+        if let context {
+            query[kSecUseAuthenticationContext as String] = context
+        }
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         guard status == errSecSuccess else { return nil }
         return result as? Data
+    }
+
+    /// Result of a non-interactive existence probe.
+    enum CacheProbe { case absent, readable, requiresAuth }
+
+    /// Check whether an item exists and whether reading it would require a
+    /// user-presence prompt — WITHOUT prompting. Used at launch to decide
+    /// between a silent unlock, a biometric unlock, or the passphrase, all
+    /// before any sensitive data is decrypted.
+    static func probe(account: String) -> CacheProbe {
+        let ctx = LAContext()
+        ctx.interactionNotAllowed = true
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseAuthenticationContext as String: ctx
+        ]
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        switch status {
+        case errSecSuccess:             return .readable
+        case errSecInteractionNotAllowed: return .requiresAuth
+        default:                        return .absent
+        }
     }
 
     static func delete(account: String) throws {

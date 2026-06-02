@@ -993,6 +993,10 @@ final class ChatModel: ObservableObject {
         watchlist.bounceDock = s.bounceDockOnWatchHit
         watchlist.systemNotifications = s.systemNotificationsOnWatchHit
         watchlist.soundName = s.eventSounds["watchlistHit"] ?? "Glass"
+        // Push the "Require Touch ID" preference so the cached DEK is stored
+        // behind (or without) a user-presence ACL. Re-stamps on change while
+        // unlocked; a no-op when the gate already matches.
+        keyStore.applyBiometricPreference(s.requireBiometricsOnLaunch)
     }
 
     // MARK: - Active-connection forwarding (back-compat surface for views)

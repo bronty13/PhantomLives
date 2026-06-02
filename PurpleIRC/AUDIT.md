@@ -31,7 +31,12 @@ closed (`[~]`). **16 of 61 fully closed, 3 partial.**
 **Progress — 2026-06-01 (1.0.593):** assistant / Ollama. Fixed 5 LOW
 (local/LAN host enforcement, URL validation, request timeouts, generation
 cancellation, last-writer race) + closed the assistant test-gap. **22 of
-61 fully closed, 3 partial; 36 open.**
+61 fully closed, 3 partial.**
+
+**Progress — 2026-06-02 (1.0.594):** completed MEDIUM #7 — the cached DEK
+read is now gated behind a user-presence Keychain ACL (was partial after
+device-only landed in 1.0.591). Verified on hardware. **23 of 61 fully
+closed, 2 partial; 36 open.**
 
 ## 🔴 High
 
@@ -82,7 +87,7 @@ cancellation, last-writer race) + closed the assistant test-gap. **22 of
 - **Problem:** isonTimer is a single field on the shared service. When a second non-MONITOR network finishes welcome it calls startISONPolling again, which invalidates the first network's timer and starts a new one. poll() then sends ISON only via the shared delegate (the active/first-connected socket). Result: across N non-MONITOR networks there is exactly one timer and it polls a single socket, so watched-nick presence is never tracked on any but one network.
 - **Fix:** Maintain one timer per connection (or per-connection WatchlistService) and have poll() target the specific connection it belongs to rather than the shared delegate's active socket.
 
-#### 7. [~] DEK and credentials cached in Keychain without device-only protection or biometric ACL — "Require Touch ID" does not actually gate the key  _(partial 1.0.591: device-only storage + corrected UI copy; biometric-gated DEK read deferred — touches the unlock path)_
+#### 7. [x] DEK and credentials cached in Keychain without device-only protection or biometric ACL — "Require Touch ID" does not actually gate the key  _(fixed across 1.0.591 device-only + UI copy and 1.0.594 user-presence ACL on the cached-DEK read; verified on hardware)_
 
 - **Where:** `KeychainStore.swift:48-58`
 - **Category:** security · **Subsystem:** crypto-persistence · claimed high, adjusted **medium**

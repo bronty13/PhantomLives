@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import LocalAuthentication
 
 /// Holds the data-encryption key (DEK) used to seal `settings.json` and log
 /// files. Passphrase-based unlock uses the classic KEK/DEK split:
@@ -39,6 +40,19 @@ final class KeyStore: ObservableObject {
     }
 
     @Published private(set) var state: UnlockState = .notSetup
+
+    /// True when a DEK cache exists that needs a user-presence prompt to
+    /// read (the "Require Touch ID" gate is active). Set by `refreshState`
+    /// via a non-interactive Keychain probe, so it's known at launch
+    /// BEFORE any encrypted settings are decrypted — the launch UI keys the
+    /// biometric-unlock flow off this rather than the (still-encrypted)
+    /// `requireBiometricsOnLaunch` preference.
+    @Published private(set) var hasBiometricCache: Bool = false
+
+    /// When true, `cacheDEKInKeychain` stores the DEK behind a user-presence
+    /// ACL. Pushed by ChatModel from `requireBiometricsOnLaunch` via
+    /// `applyBiometricPreference`.
+    private(set) var requireBiometricGate = false
 
     private let fileURL: URL
     /// Current DEK. Non-nil iff state == .unlocked. Never serialised directly.
@@ -81,20 +95,65 @@ final class KeyStore: ObservableObject {
     func refreshState() {
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             state = .notSetup
+            hasBiometricCache = false
             return
         }
-        // Try the Keychain cache first. `getData` returns nil on miss or when
-        // the item is gated by an auth that the user declined.
-        if let cached = KeychainStore.getData(for: keychainDEKAccount),
-           cached.count >= 16 {
-            self.dek = SymmetricKey(data: cached)
-            self.state = .unlocked
-            // Re-stamp the cache so a DEK written by an older build (when
-            // items were `WhenUnlocked`, hence sync/migration-eligible) is
-            // upgraded to device-only on the next launch. Idempotent.
-            cacheDEKInKeychain()
-        } else {
+        // Probe the Keychain WITHOUT prompting so we can pick the right
+        // unlock path before decrypting anything.
+        switch KeychainStore.probe(account: keychainDEKAccount) {
+        case .readable:
+            // Ungated (or device-allowed) cache — silent unlock, as before.
+            if let cached = KeychainStore.getData(for: keychainDEKAccount),
+               cached.count >= 16 {
+                self.dek = SymmetricKey(data: cached)
+                self.state = .unlocked
+                self.hasBiometricCache = false
+                // Re-stamp so a DEK written by an older build (plain
+                // `WhenUnlocked`, sync/migration-eligible) is upgraded to
+                // device-only. Idempotent.
+                cacheDEKInKeychain()
+            } else {
+                self.state = .locked
+                self.hasBiometricCache = false
+            }
+        case .requiresAuth:
+            // A user-presence-gated cache exists; stay locked until the UI
+            // runs the biometric unlock (`unlockWithCachedKey`).
             self.state = .locked
+            self.hasBiometricCache = true
+        case .absent:
+            self.state = .locked
+            self.hasBiometricCache = false
+        }
+    }
+
+    /// Read the gated DEK cache using an already-authenticated `LAContext`
+    /// (reused from the launch Touch ID prompt so the user isn't asked
+    /// twice). Returns true on success; on failure the caller falls back to
+    /// the passphrase. Never a lockout — the envelope + passphrase always
+    /// recover the DEK.
+    @discardableResult
+    func unlockWithCachedKey(context: LAContext) -> Bool {
+        guard let cached = KeychainStore.getData(for: keychainDEKAccount, context: context),
+              cached.count >= 16 else { return false }
+        self.dek = SymmetricKey(data: cached)
+        self.state = .unlocked
+        self.hasBiometricCache = false
+        return true
+    }
+
+    /// Apply the user's "Require Touch ID" preference. Flips the gate flag
+    /// and, when the preference actually changed while unlocked, re-stamps
+    /// the cached DEK with or without the user-presence ACL so the next
+    /// launch behaves accordingly. Called by ChatModel as settings load and
+    /// whenever the toggle changes.
+    func applyBiometricPreference(_ on: Bool) {
+        let changed = (on != requireBiometricGate)
+        requireBiometricGate = on
+        if changed, state == .unlocked {
+            cacheDEKInKeychain()
+            // Reflect the new gate immediately for any UI observing it.
+            hasBiometricCache = on
         }
     }
 
@@ -241,6 +300,7 @@ final class KeyStore: ObservableObject {
 
     private func cacheDEKInKeychain() {
         guard let dek else { return }
-        try? KeychainStore.setData(dek.rawData, for: keychainDEKAccount)
+        try? KeychainStore.setData(dek.rawData, for: keychainDEKAccount,
+                                   requireBiometry: requireBiometricGate)
     }
 }

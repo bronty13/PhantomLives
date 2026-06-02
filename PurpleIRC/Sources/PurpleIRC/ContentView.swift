@@ -1,4 +1,5 @@
 import SwiftUI
+import LocalAuthentication
 
 /// Root view — gates the real UI behind the KeyStore's unlock state when the
 /// user has opted in to encryption. `.notSetup` (no encryption) and
@@ -38,32 +39,63 @@ struct RootView: View {
         }
     }
 
-    /// Called once on appear. If the user opted into biometric gate AND the
-    /// keystore silently unlocked via the Keychain, prompt Touch ID before
-    /// we let them through. If they fail / cancel, lock the keystore and
-    /// fall back to the passphrase sheet.
+    /// Called once on appear. Three paths:
+    ///
+    /// 1. A user-presence-gated DEK cache exists (`hasBiometricCache`) — the
+    ///    DEK isn't in memory yet. Prompt Touch ID and read the cache with
+    ///    that same authenticated context (no double prompt). This signal is
+    ///    a Keychain probe, so it works before the encrypted preference is
+    ///    even readable. Cancel / fail → passphrase sheet.
+    /// 2. Legacy: an ungated cache silently unlocked AND the (now-readable)
+    ///    preference asks for biometrics — gate the UI with a prompt, then
+    ///    upgrade the cache so the next launch takes path 1.
+    /// 3. Otherwise — drop straight through (or show the passphrase sheet
+    ///    when locked).
     private func initialGate() {
-        let biometricsRequired = model.settings.settings.requireBiometricsOnLaunch
-        if biometricsRequired,
-           model.keyStore.state == .unlocked,
+        // Path 1 — gated cache: authenticate, then read with the same context.
+        if model.keyStore.hasBiometricCache, BiometricGate.isAvailable {
+            biometricPending = true
+            Task {
+                let ctx = LAContext()
+                let reason = "Unlock PurpleIRC to view encrypted settings and logs."
+                ctx.localizedReason = reason
+                // Let the subsequent Keychain read reuse this authentication
+                // instead of prompting a second time.
+                ctx.touchIDAuthenticationAllowableReuseDuration = 10
+                let ok = (try? await ctx.evaluatePolicy(
+                    .deviceOwnerAuthentication, localizedReason: reason)) ?? false
+                if ok, model.keyStore.unlockWithCachedKey(context: ctx) {
+                    model.settings.reload()
+                    biometricPending = false
+                } else {
+                    biometricPending = false
+                    refreshUnlockSheet()   // fall back to passphrase
+                }
+            }
+            return
+        }
+        // Path 2 — legacy ungated-but-unlocked cache + preference on.
+        if model.keyStore.state == .unlocked,
+           model.settings.settings.requireBiometricsOnLaunch,
            BiometricGate.isAvailable {
             biometricPending = true
             Task {
                 let ok = await BiometricGate.verify(
-                    reason: "Unlock PurpleIRC to view encrypted settings and logs."
-                )
+                    reason: "Unlock PurpleIRC to view encrypted settings and logs.")
                 if ok {
+                    // Upgrade the cache so next launch is properly gated.
+                    model.keyStore.applyBiometricPreference(true)
                     biometricPending = false
                 } else {
-                    // User cancelled or biometry failed — drop to passphrase.
                     model.keyStore.lock()
                     biometricPending = false
                     refreshUnlockSheet()
                 }
             }
-        } else {
-            refreshUnlockSheet()
+            return
         }
+        // Path 3 — nothing to gate.
+        refreshUnlockSheet()
     }
 
     private func refreshUnlockSheet() {

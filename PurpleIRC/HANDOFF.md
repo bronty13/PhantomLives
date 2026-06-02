@@ -9,8 +9,9 @@ batches shipped — 1.0.590 (HIGH items + per-network Watchlist), 1.0.591
 "Say" slash-command), 1.0.592 (PurpleBot: store-token isolation,
 trigger-regex ReDoS budget, JS timer cap, event docs), and 1.0.593
 (assistant: local-host enforcement, URL validation, request timeouts,
-generation cancellation + last-writer race). **22 of 61 closed, 3
-partial.** See the "Audit backlog" entry under Known gaps.
+generation cancellation + last-writer race), and 1.0.594 (completed #7 —
+user-presence ACL on the cached-DEK read, verified on hardware). **23 of
+61 closed, 2 partial.** See the "Audit backlog" entry under Known gaps.
 Tier #18 (sidebar off
 `NavigationSplitView` → manual `HStack` + `WindowStateGuard`/`AppDelegate`;
 gitignore Finder ` 2.app` dupes; doc sync). Tier #13 (perf + robustness sweep,
@@ -672,13 +673,10 @@ slash-command bypass; 4 MEDIUM + 2 LOW), **1.0.592** (PurpleBot:
 store-bridge token isolation, trigger-regex ReDoS budget + auto-disable,
 JS timer cap, event docs; 4 LOW), and **1.0.593** (assistant: local/LAN
 host enforcement, Ollama URL validation, request timeouts, generation
-cancellation + last-writer race, first assistant tests; 5 LOW). **22 of
-61 closed, 3 partial.** Start in `AUDIT.md` before the items below —
-remaining higher-value open picks:
-- **`#7` biometric-gated DEK read** (`KeyStore.swift`) — device-only
-  landed; making "Require Touch ID" actually gate the cached-key *read*
-  (real `SecAccessControl` + `LAContext`) is still open. Touches the
-  launch/unlock path — test with real Touch ID hardware.
+cancellation + last-writer race, first assistant tests; 5 LOW), and
+**1.0.594** (completed #7 — user-presence ACL on the cached-DEK read,
+verified on hardware). **23 of 61 closed, 2 partial.** Start in
+`AUDIT.md` before the items below — remaining higher-value open picks:
 - **PBKDF2 → memory-hard KDF** (`Crypto.swift:42`) — fixed-iteration,
   no calibration/migration.
 - **Remaining LOW correctness/quality cluster** — crypto edge cases

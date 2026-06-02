@@ -12,6 +12,36 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
+## [1.0.594] — 2026-06-02
+
+### Security (audit follow-up — #7 completed, biometric-gated DEK read)
+
+Finishes finding #7. Batch 2 (1.0.591) made the cached DEK device-only,
+closing the off-device exfiltration vector and correcting the UI copy.
+This change makes "Require Touch ID on launch" a real cryptographic gate
+on the cached key, not just a UI overlay.
+
+- **The cached DEK now sits behind a user-presence Keychain ACL**
+  (`KeychainStore.swift`, `KeyStore.swift`). When the toggle is on, the
+  key is stored with `SecAccessControlCreateWithFlags(...
+  ThisDeviceOnly, .userPresence)`, so even a process reading the Keychain
+  directly must pass Touch ID (or the device password) — the gate no
+  longer lives only in the app's blur overlay.
+- **Launch flow reworked around a no-prompt probe** (`KeyStore.refreshState`,
+  `ContentView.swift`). The encrypted `requireBiometricsOnLaunch`
+  preference can't be read until the DEK is unlocked (chicken-and-egg),
+  so launch now keys off a non-interactive Keychain probe
+  (`hasBiometricCache`): a gated cache triggers one Touch ID prompt whose
+  authenticated `LAContext` is reused for the key read (no double
+  prompt). Existing installs upgrade to a gated cache automatically on
+  the next unlock.
+- **No lockout, by construction.** If the ACL can't be created (ad-hoc
+  build / no biometry hardware) the key falls back to plain device-only
+  storage; if the prompt is cancelled or fails, the passphrase sheet
+  takes over. The passphrase + on-disk envelope always recover the DEK.
+  Verified on hardware: single prompt on launch, cancel → passphrase
+  fallback, toggle-off → silent unlock.
+
 ## [1.0.593] — 2026-06-01
 
 ### Security & correctness (audit follow-ups — batch 4, assistant / Ollama)
