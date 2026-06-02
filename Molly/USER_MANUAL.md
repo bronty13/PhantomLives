@@ -475,6 +475,8 @@ What to fill in:
 - **Categories** — at least three. Type to filter / create; drag the chips to reorder. They save UPPERCASE. Past categories from any bundle show as suggestions.
 - **Go-live date** — required, no past dates. If today or within 5 days, Molly gently asks *"Are you allowing enough time for editing?"*.
 - **Files** — at least one video or image. Drag rows to reorder. Each file is renamed `00001_…` in the final ZIP so Robert can rely on the order.
+- **🖼️ Thumbnail Image** — *optional!* A pretty little cover image (jpg/png/webp) to ride along in the bundle. Pick one and you'll see it preview right there. Don't want one? Just skip it. 💕
+- **🎞️ Teaser GIF** — *also optional!* An animated teaser (.gif) tucked into the bundle. You can drop in a `.gif` you already have **or** tap **✨ Make a GIF from a video** and Molly will whip one up for you (see GIF Studio below 🌟).
 - **Special instructions** — optional free-text for Robert.
 
 ### Publishing
@@ -484,13 +486,14 @@ When you're ready, click **🎁 Review & Publish…**. A wizard slides in from t
 - **Photos** render as big thumbs — click any one to fill the screen.
 - **Videos** play inline with a controls bar, plus a strip of **5 sample frames** Molly grabs automatically (just like MasterClipper does). Click a sample frame to enlarge it AND seek the player to that timestamp so you can re-watch the moment.
 - If your Mac has a weird codec the player can't decode, Molly tells you politely — your file is still saved in the bundle either way.
+- If you added a **🖼️ Thumbnail** or **🎞️ Teaser GIF**, they show up in a little **Preview assets** row so you can admire them one last time before they ship. ✨
 
 The **Pre-flight checks** section lists anything still missing; click any issue to jump straight to the field that needs love. Below the files you'll see your **content tags** (more on those below) so you can confirm they look right before sending.
 
 When everything's green, click **✨ Approve & Publish**. Molly:
 
 1. Hashes every file (re-reads from disk; refuses if anything's changed since upload).
-2. Writes an inner ZIP with `info.md`, `Molly.log`, plus `Audio/`, `Video/`, `Photos/` folders.
+2. Writes an inner ZIP with `info.md`, `Molly.log`, plus `Audio/`, `Video/`, `Photos/`, and `Preview/` folders (your thumbnail + teaser GIF live in `Preview/` 🖼️🎞️).
 3. Wraps that inner ZIP plus `hashes.json` into an outer ZIP at `~/Downloads/Molly bundles/<UID> <title>.zip` (e.g. `2026-05-26-0001 May Custom for @username.zip`). If the bundle has no title yet, the filename falls back to just `<UID>.zip`.
 4. Creates (or updates) a row in **Clips** with status `Bundled` so the go-live date shows on your Calendar.
 
@@ -596,6 +599,30 @@ When it finishes, you see a result card with:
 After import, the bundle row in your Bundles list gets a green **✓ Imported · cleanup `MM-DD`** badge so you can see at a glance which bundles are still waiting on a return file. The cleanup itself runs at the next app launch (or the next time the auto-purge sweep fires) — the original ZIP at `~/Downloads/Molly bundles/<UID>.zip` is removed when the 3-day window passes. If the ZIP was already gone (because the older 60-day auto-purge already cleaned it up), the badge reads **✓ Imported · already cleaned up**.
 
 Every import also drops a one-line entry into **Molly's Log** so you have a permanent journal of when each bundle's return file came in.
+
+---
+
+## 🎞️ GIF Studio — make a teaser GIF, right here 💕
+
+You know how you'd hop over to *video-gif-converter.com* to turn a clip into a little teaser GIF? I brought that whole thing **inside Molly** so you never have to leave! 🌟 Find me at **🎞️ GIF Studio** in the sidebar — or, when you're building a Content bundle, tap **✨ Make a GIF from a video** right on the Teaser GIF slot.
+
+Here's how we make magic together:
+
+1. **Pick a video** — choose one you already added to the bundle, or tap **📁 Pick from disk** to grab any video file.
+2. **Trim it** — drag the **Start** and **End** sliders to snip out just the juicy bit. (I'll keep it to 15 seconds so the GIF stays cute and small.)
+3. **Set the look** — choose **frame rate** (smoothness), **width** (size), and **quality** (how many colors). Higher = prettier but heavier. 💖
+4. **Crop** — *optional!* Drag a box right on the preview to crop in tight. Changed your mind? Tap **Clear crop**.
+5. **Caption** — *optional!* Type a little overlay text and pick **top** or **bottom**.
+6. Tap **✨ Generate GIF** and watch the progress bar twirl. When it's done you'll see your GIF loop right there. 🥰
+
+Then:
+
+- **🎁 Use as Teaser GIF** (only when you opened me from a bundle) drops the GIF straight into that bundle's teaser slot — done!
+- **⬇️ Download** saves it wherever you like (I default to `~/Downloads/Molly GIF/`).
+
+It all happens right on your own machine — no uploading anything anywhere. ✨
+
+*A tiny note from me:* on a Mac, some `.mov` files are shy and won't preview — if a video won't load, try an `.mp4`. On your Windows machine everything plays nicely. 🩷
 
 ---
 

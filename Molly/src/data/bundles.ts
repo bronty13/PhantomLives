@@ -73,6 +73,13 @@ export interface Bundle {
   descriptionAudioRelpath: string | null;
   descriptionAudioAbsolutePath: string | null;
   descriptionAudioOriginalName: string | null;
+  // Optional Content-bundle preview assets (cover image + animated teaser).
+  thumbnailRelpath: string | null;
+  thumbnailAbsolutePath: string | null;
+  thumbnailOriginalName: string | null;
+  teaserGifRelpath: string | null;
+  teaserGifAbsolutePath: string | null;
+  teaserGifOriginalName: string | null;
   deliveryKind: 'site' | 'url' | null;
   deliverySiteId: number | null;
   deliveryUrl: string | null;
@@ -189,6 +196,28 @@ export async function saveBundleFile(
 
 export async function deleteBundleFile(fileId: number): Promise<void> {
   await invoke('delete_bundle_file', { fileId });
+}
+
+/// Persist GIF bytes encoded in the frontend (the GIF Creator) as a bundle
+/// file. Returns a BundleFileInfo to lift onto teaser_gif_* like an upload.
+export async function saveBundleGif(
+  bundleUid: string,
+  bytes: Uint8Array,
+  originalName: string,
+): Promise<BundleFileInfo> {
+  return invoke<BundleFileInfo>('save_bundle_gif', {
+    bundleUid,
+    bytes: Array.from(bytes),
+    originalName,
+  });
+}
+
+/// Write raw bytes to a user-chosen absolute path (GIF Creator "Download").
+export async function writeBytesToPath(
+  targetPath: string,
+  bytes: Uint8Array,
+): Promise<void> {
+  await invoke('write_bytes_to_path', { targetPath, bytes: Array.from(bytes) });
 }
 
 export async function reorderBundleFiles(

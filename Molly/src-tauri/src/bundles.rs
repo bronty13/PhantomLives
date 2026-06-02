@@ -191,6 +191,17 @@ pub struct Bundle {
     /// Resolved against app_data_dir for `convertFileSrc` consumption.
     pub description_audio_absolute_path: Option<String>,
     pub description_audio_original_name: Option<String>,
+    /// Optional preview assets (Content bundle): a static cover thumbnail
+    /// and an animated teaser GIF. Like the audio description, each lives
+    /// on the bundles row rather than in bundle_files. The absolute_path
+    /// fields are resolved for `convertFileSrc`; original_name is derived
+    /// from the relpath's `<uuid>_<orig>` tail.
+    pub thumbnail_relpath: Option<String>,
+    pub thumbnail_absolute_path: Option<String>,
+    pub thumbnail_original_name: Option<String>,
+    pub teaser_gif_relpath: Option<String>,
+    pub teaser_gif_absolute_path: Option<String>,
+    pub teaser_gif_original_name: Option<String>,
     pub delivery_kind: Option<String>,
     pub delivery_site_id: Option<i64>,
     pub delivery_url: Option<String>,
@@ -918,6 +929,18 @@ fn absolute_for(support_dir: &Path, relpath: &str) -> String {
     }
 }
 
+/// Recover the user-facing original filename from a stored attachment
+/// relpath of the shape `attachments/.../<uuid>_<orig>`. Used for the
+/// single-slot attachments that live on the bundles row (audio, thumbnail,
+/// teaser). Returns None when there's no relpath.
+fn original_name_from_relpath(relpath: Option<&str>) -> Option<String> {
+    relpath.and_then(|p| {
+        let last = p.rsplit('/').next()?;
+        let after_uuid = last.splitn(2, '_').nth(1)?;
+        Some(after_uuid.to_string())
+    })
+}
+
 fn load_categories_for(conn: &Connection, uid: &str) -> Result<Vec<BundleCategory>, BundleError> {
     let mut stmt = conn.prepare(
         "SELECT name, position FROM bundle_categories WHERE bundle_uid = ?1 ORDER BY position",
@@ -981,6 +1004,7 @@ pub(crate) fn pure_get_bundle(
         "SELECT uid, COALESCE(bundle_kind, bundle_type) AS bundle_type, persona_code, state, title, content_date, go_live_date,
                 special_instructions, description_mode, description_text,
                 description_audio_relpath,
+                thumbnail_relpath, teaser_gif_relpath,
                 delivery_kind, delivery_site_id, delivery_url, delivery_recipient,
                 price_cents, handled_in_platform,
                 fansite_year, fansite_month,
@@ -998,16 +1022,21 @@ pub(crate) fn pure_get_bundle(
     let tag_ids = load_tag_ids(conn, uid)?;
     let summary = row_to_summary(row, warn_threshold_days, file_count, tag_ids)?;
     let description_audio_relpath: Option<String> = row.get("description_audio_relpath")?;
-    let description_audio_original_name = description_audio_relpath
-        .as_deref()
-        .and_then(|p| {
-            // attachments/.../<uuid>_<orig>
-            let last = p.rsplit('/').next()?;
-            let after_uuid = last.splitn(2, '_').nth(1)?;
-            Some(after_uuid.to_string())
-        });
-
+    let description_audio_original_name =
+        original_name_from_relpath(description_audio_relpath.as_deref());
     let description_audio_absolute_path = description_audio_relpath
+        .as_deref()
+        .map(|rel| absolute_for(support_dir, rel));
+
+    let thumbnail_relpath: Option<String> = row.get("thumbnail_relpath")?;
+    let thumbnail_original_name = original_name_from_relpath(thumbnail_relpath.as_deref());
+    let thumbnail_absolute_path = thumbnail_relpath
+        .as_deref()
+        .map(|rel| absolute_for(support_dir, rel));
+
+    let teaser_gif_relpath: Option<String> = row.get("teaser_gif_relpath")?;
+    let teaser_gif_original_name = original_name_from_relpath(teaser_gif_relpath.as_deref());
+    let teaser_gif_absolute_path = teaser_gif_relpath
         .as_deref()
         .map(|rel| absolute_for(support_dir, rel));
 
@@ -1019,6 +1048,12 @@ pub(crate) fn pure_get_bundle(
         description_audio_relpath,
         description_audio_absolute_path,
         description_audio_original_name,
+        thumbnail_relpath,
+        thumbnail_absolute_path,
+        thumbnail_original_name,
+        teaser_gif_relpath,
+        teaser_gif_absolute_path,
+        teaser_gif_original_name,
         delivery_kind: row.get("delivery_kind")?,
         delivery_site_id: row.get("delivery_site_id")?,
         delivery_url: row.get("delivery_url")?,
@@ -1226,6 +1261,57 @@ fn build_snapshot(
         None
     };
 
+    // Resolve the optional preview assets (Content type) — thumbnail + teaser
+    // GIF. Same shape as the audio description: a single file living on the
+    // bundles row, hashed at upload, composed under Preview/ in the ZIP. The
+    // sha falls back to disk-empty (verified against the live file) when the
+    // stored hash is somehow missing.
+    let resolve_slot = |rel: &str,
+                        sha_col: &str,
+                        original_name: &Option<String>,
+                        default_name: &str|
+     -> Result<FileEntry, BundleError> {
+        let abs = resolve_relative(support_dir, rel)?;
+        let stored: Option<String> = conn
+            .query_row(
+                &format!("SELECT {sha_col} FROM bundles WHERE uid = ?1"),
+                params![bundle.summary.uid],
+                |r| r.get(0),
+            )
+            .ok()
+            .flatten();
+        Ok(FileEntry {
+            original_name: original_name
+                .clone()
+                .unwrap_or_else(|| default_name.to_string()),
+            abs_path: abs,
+            relpath_for_error: rel.to_string(),
+            kind: FileKind::Image,
+            position: 0,
+            sha256_db: stored.unwrap_or_default(),
+            fansite_day_of_month: None,
+        })
+    };
+
+    let thumbnail = match &bundle.thumbnail_relpath {
+        Some(rel) => Some(resolve_slot(
+            rel,
+            "thumbnail_sha256",
+            &bundle.thumbnail_original_name,
+            "thumbnail",
+        )?),
+        None => None,
+    };
+    let teaser_gif = match &bundle.teaser_gif_relpath {
+        Some(rel) => Some(resolve_slot(
+            rel,
+            "teaser_gif_sha256",
+            &bundle.teaser_gif_original_name,
+            "teaser.gif",
+        )?),
+        None => None,
+    };
+
     // Resolve all bundle_files rows to FileEntry. For FanSite we look up
     // each row's day_of_month via the fan_days table.
     let mut day_by_id = std::collections::HashMap::new();
@@ -1316,6 +1402,8 @@ fn build_snapshot(
         special_instructions: bundle.special_instructions.clone(),
         description_text: bundle.description_text.clone(),
         description_audio,
+        thumbnail,
+        teaser_gif,
         categories: bundle.categories.iter().map(|c| c.name.clone()).collect(),
         tags: bundle_tag_names,
         delivery_kind: bundle.delivery_kind.clone(),
@@ -1696,6 +1784,89 @@ pub fn delete_bundle_file<R: Runtime>(
         let _ = fs::remove_file(&abs);
     }
     renumber_positions(&conn, &uid, fansite_day_id)?;
+    Ok(())
+}
+
+/// Persist raw bytes produced in the frontend (the GIF Creator's encoded
+/// output) as a bundle file. Mirrors the tail of `save_bundle_file` but
+/// writes the provided bytes instead of copying a source path. Returns a
+/// `BundleFileInfo` the caller then lifts onto `teaser_gif_*` exactly like
+/// an uploaded teaser. Always stored with `kind = "image"` (a GIF is an
+/// image kind, same as an uploaded teaser).
+#[tauri::command]
+pub fn save_bundle_gif<R: Runtime>(
+    handle: AppHandle<R>,
+    bundle_uid: String,
+    bytes: Vec<u8>,
+    original_name: String,
+) -> Result<BundleFileInfo, BundleError> {
+    let app_data = app_data_dir(&handle)?;
+    // Default + force a .gif extension so the slot is unambiguous.
+    let mut basename = original_name.trim().to_string();
+    if basename.is_empty() {
+        basename = "teaser.gif".to_string();
+    }
+    if !basename.to_ascii_lowercase().ends_with(".gif") {
+        basename.push_str(".gif");
+    }
+    let cat = format!("bundles/{bundle_uid}/files");
+    let safe_base = sanitize_component(&basename);
+    let target_dir = app_data.join("attachments").join(&cat);
+    fs::create_dir_all(&target_dir)?;
+    let uuid = uuid::Uuid::new_v4().simple().to_string();
+    let target_name = format!("{uuid}_{safe_base}");
+    let target_path = target_dir.join(&target_name);
+    fs::write(&target_path, &bytes)?;
+    let size_bytes = fs::metadata(&target_path)?.len() as i64;
+    let sha = bundle_zip::sha256_file(&target_path)?;
+    let relpath = format!("attachments/{cat}/{target_name}");
+
+    let conn = open_conn(&app_data)?;
+    let next_pos: i64 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(position), 0) FROM bundle_files
+             WHERE bundle_uid = ?1 AND fansite_day_id IS NULL",
+            params![bundle_uid],
+            |r| r.get(0),
+        )
+        .unwrap_or(0)
+        + 1;
+    conn.execute(
+        "INSERT INTO bundle_files (bundle_uid, fansite_day_id, position, relpath,
+                                   original_name, kind, size_bytes, sha256)
+         VALUES (?1, NULL, ?2, ?3, ?4, 'image', ?5, ?6)",
+        params![bundle_uid, next_pos, relpath, basename, size_bytes, sha],
+    )?;
+    let id = conn.last_insert_rowid();
+    conn.execute(
+        "UPDATE bundles SET updated_at = datetime('now') WHERE uid = ?1",
+        params![bundle_uid],
+    )?;
+    let absolute_path = absolute_for(&app_data, &relpath);
+    Ok(BundleFileInfo {
+        id,
+        bundle_uid,
+        fansite_day_id: None,
+        position: next_pos,
+        relpath,
+        absolute_path,
+        original_name: basename,
+        kind: "image".to_string(),
+        size_bytes,
+        sha256: sha,
+    })
+}
+
+/// Write raw bytes to a user-chosen absolute path — backs the GIF Creator's
+/// "Download" action (the frontend picks the path via the save dialog).
+/// Creates the parent directory on demand.
+#[tauri::command]
+pub fn write_bytes_to_path(target_path: String, bytes: Vec<u8>) -> Result<(), BundleError> {
+    let path = Path::new(&target_path);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, &bytes)?;
     Ok(())
 }
 
@@ -2184,6 +2355,7 @@ mod tests {
             include_str!("../migrations/028_clip_tags.sql"),
             include_str!("../migrations/034_return_file_import.sql"),
             include_str!("../migrations/036_youtube_bundle.sql"),
+            include_str!("../migrations/038_bundle_preview_assets.sql"),
         ] {
             conn.execute_batch(sql).unwrap();
         }
@@ -2487,6 +2659,12 @@ mod tests {
             description_audio_relpath: None,
             description_audio_absolute_path: None,
             description_audio_original_name: None,
+            thumbnail_relpath: None,
+            thumbnail_absolute_path: None,
+            thumbnail_original_name: None,
+            teaser_gif_relpath: None,
+            teaser_gif_absolute_path: None,
+            teaser_gif_original_name: None,
             delivery_kind: None,
             delivery_site_id: None,
             delivery_url: None,

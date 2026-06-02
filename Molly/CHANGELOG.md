@@ -4,6 +4,41 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.26.0] — 2026-06-02
+
+### Added — 🖼️ Content-bundle preview assets + 🎞️ GIF Studio
+
+Two related features. A **Content bundle** can now carry two optional
+preview assets, and a new in-app **GIF Studio** can make a teaser GIF
+without leaving Molly.
+
+- **Preview assets on Content bundles**: optional **Thumbnail Image**
+  (jpg/png/webp) and **Teaser GIF** (.gif). Both follow the same pattern
+  as the audio description — stored on the `bundles` row (not
+  `bundle_files`), hashed at upload, and composed into the published ZIP
+  under a `Preview/` folder (`Preview/thumbnail_*`, `Preview/teaser_*`).
+  They appear in the Publish review screen, in `info.md` / `Molly.log`,
+  and in a new optional `preview` object in `manifest.json` (additive;
+  `manifestVersion` stays `1`, so existing SideMolly consumers are
+  unaffected). Migration `038_bundle_preview_assets.sql` adds the four
+  nullable columns.
+- **GIF Studio**: a new sidebar tool (🎞️) and a "✨ Make a GIF from a
+  video" button on the Teaser GIF slot. Pick a video (from the bundle or
+  from disk), trim start/end, set frame rate, output width, and quality,
+  drag to crop, and add a caption — then preview, download, or drop it
+  straight into the teaser slot. Encoding is **100% client-side**
+  (canvas frame capture + `gifenc`), so it needs no ffmpeg and behaves
+  identically on Windows. Clips are capped at 15s / 25fps / 640px wide.
+- New Tauri commands `save_bundle_gif` (persists encoded bytes as a
+  bundle file) and `write_bytes_to_path` (backs the Download action,
+  defaulting to `~/Downloads/Molly GIF/`).
+
+### Notes
+
+- `gifenc` added as a frontend dependency (tiny, MIT, no transitive deps).
+- On macOS, some `.mov`/HEVC sources won't decode in the WebView; the GIF
+  Studio surfaces a hint to try an `.mp4`. Windows (WebView2) decodes both.
+
 ## [1.25.0] — 2026-06-01
 
 ### Added — 📈 Daily follower-count tracking (Social → Growth)

@@ -250,6 +250,12 @@ pub fn run() {
             sql: include_str!("../migrations/037_social_followers.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 38,
+            description: "bundle-preview-assets",
+            sql: include_str!("../migrations/038_bundle_preview_assets.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -330,6 +336,8 @@ pub fn run() {
             bundles::create_bundle,
             bundles::update_bundle_fields,
             bundles::save_bundle_file,
+            bundles::save_bundle_gif,
+            bundles::write_bytes_to_path,
             bundles::delete_bundle_file,
             bundles::reorder_bundle_files,
             bundles::set_bundle_categories,
@@ -695,6 +703,12 @@ mod camel_case_contract {
             description_audio_relpath: None,
             description_audio_absolute_path: None,
             description_audio_original_name: None,
+            thumbnail_relpath: None,
+            thumbnail_absolute_path: None,
+            thumbnail_original_name: None,
+            teaser_gif_relpath: None,
+            teaser_gif_absolute_path: None,
+            teaser_gif_original_name: None,
             delivery_kind: None,
             delivery_site_id: None,
             delivery_url: None,
@@ -1205,6 +1219,7 @@ mod migration_smoke {
             (35, "social-drops",                 include_str!("../migrations/035_social_drops.sql")),
             (36, "youtube-bundle",               include_str!("../migrations/036_youtube_bundle.sql")),
             (37, "social-followers",             include_str!("../migrations/037_social_followers.sql")),
+            (38, "bundle-preview-assets",        include_str!("../migrations/038_bundle_preview_assets.sql")),
         ];
 
         for (v, name, sql) in migrations {

@@ -20,8 +20,10 @@ import { ContentTagPicker } from './components/ContentTagPicker';
 import { DescriptionField } from './components/DescriptionField';
 import { GoLiveDatePicker } from './components/GoLiveDatePicker';
 import { OrderedFileList } from './components/OrderedFileList';
+import { PreviewAssetField } from './components/PreviewAssetField';
 import { SpecialInstructionsField } from './components/SpecialInstructionsField';
 import { TitleField } from './components/TitleField';
+import { GifCreator } from '../GifStudio/GifCreator';
 
 interface Props {
   uid: string;
@@ -40,6 +42,7 @@ export function ContentBundleForm({ uid, onPublishRequested, onClose, onDeleted,
   const [contentTags, setContentTags] = useState<ContentTag[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [gifOpen, setGifOpen] = useState(false);
 
   // reload depends only on `uid`; deliberately NOT on any parent callback,
   // since an unstable parent callback would cause this useCallback's
@@ -143,6 +146,46 @@ export function ContentBundleForm({ uid, onPublishRequested, onClose, onDeleted,
     });
   }
 
+  // --- Optional preview assets (thumbnail + teaser GIF) ---------------
+  // Same lift pattern as audio: save_bundle_file drops the bytes into the
+  // bundle's files dir and returns a row; we move the relpath/sha onto the
+  // bundles row and delete the stray bundle_files row so it isn't counted
+  // as a media deliverable.
+  async function liftSlot(info: BundleFileInfo, relCol: string, shaCol: string) {
+    await withBusy(async () => {
+      const conn = await db();
+      await conn.execute(
+        `UPDATE bundles SET ${relCol} = $1, ${shaCol} = $2, updated_at = datetime('now') WHERE uid = $3`,
+        [info.relpath, info.sha256, uid],
+      );
+      await conn.execute('DELETE FROM bundle_files WHERE id = $1', [info.id]);
+      await reload();
+    });
+  }
+  async function clearSlot(relCol: string, shaCol: string) {
+    await withBusy(async () => {
+      const conn = await db();
+      const rows = await conn.select<{ rel: string | null }[]>(
+        `SELECT ${relCol} AS rel FROM bundles WHERE uid = $1`,
+        [uid],
+      );
+      const rel = rows[0]?.rel;
+      await conn.execute(
+        `UPDATE bundles SET ${relCol} = NULL, ${shaCol} = NULL, updated_at = datetime('now') WHERE uid = $1`,
+        [uid],
+      );
+      if (rel) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        try { await invoke('delete_attachment', { relativePath: rel }); } catch { /* tolerate missing file */ }
+      }
+      await reload();
+    });
+  }
+  const onThumbnailSaved = (info: BundleFileInfo) => liftSlot(info, 'thumbnail_relpath', 'thumbnail_sha256');
+  const onThumbnailRemoved = () => clearSlot('thumbnail_relpath', 'thumbnail_sha256');
+  const onTeaserSaved = (info: BundleFileInfo) => liftSlot(info, 'teaser_gif_relpath', 'teaser_gif_sha256');
+  const onTeaserRemoved = () => clearSlot('teaser_gif_relpath', 'teaser_gif_sha256');
+
   async function onPickFiles(srcPaths: string[]) {
     await withBusy(async () => {
       for (const src of srcPaths) {
@@ -233,6 +276,43 @@ export function ContentBundleForm({ uid, onPublishRequested, onClose, onDeleted,
           disabled={busy || locked}
         />
 
+        <PreviewAssetField
+          bundleUid={uid}
+          label="Thumbnail Image"
+          emoji="🖼️"
+          hint="Optional cover image included in the bundle (jpg/png/webp)."
+          accept={['jpg', 'jpeg', 'png', 'webp']}
+          pickTitle="Pick a thumbnail image"
+          filterName="Image"
+          relpath={bundle.thumbnailRelpath}
+          absolutePath={bundle.thumbnailAbsolutePath}
+          originalName={bundle.thumbnailOriginalName}
+          onSaved={onThumbnailSaved}
+          onRemoved={onThumbnailRemoved}
+          disabled={busy || locked}
+        />
+
+        <PreviewAssetField
+          bundleUid={uid}
+          label="Teaser GIF"
+          emoji="🎞️"
+          hint="Optional animated teaser included in the bundle (.gif). Make one from a video with the button."
+          accept={['gif']}
+          pickTitle="Pick a teaser GIF"
+          filterName="GIF"
+          relpath={bundle.teaserGifRelpath}
+          absolutePath={bundle.teaserGifAbsolutePath}
+          originalName={bundle.teaserGifOriginalName}
+          onSaved={onTeaserSaved}
+          onRemoved={onTeaserRemoved}
+          disabled={busy || locked}
+          accessory={
+            <button type="button" className="pretty-button secondary" disabled={busy || locked} onClick={() => setGifOpen(true)}>
+              ✨ Make a GIF from a video
+            </button>
+          }
+        />
+
         <CategoryChipPicker
           selected={selectedCategories}
           suggestions={suggestions}
@@ -275,6 +355,20 @@ export function ContentBundleForm({ uid, onPublishRequested, onClose, onDeleted,
           🎁 Review &amp; Publish…
         </button>
       </div>
+
+      {gifOpen && (
+        <GifCreator
+          bundleVideos={bundle.files
+            .filter((f) => f.kind === 'video')
+            .map((f) => ({ absolutePath: f.absolutePath, name: f.originalName }))}
+          onUseAsTeaser={async (bytes, name) => {
+            const { saveBundleGif } = await import('../../data/bundles');
+            const info = await saveBundleGif(uid, bytes, name);
+            await onTeaserSaved(info);
+          }}
+          onClose={() => setGifOpen(false)}
+        />
+      )}
     </div>
   );
 }

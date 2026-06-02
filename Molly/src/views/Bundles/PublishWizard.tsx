@@ -127,6 +127,24 @@ export function PublishWizard({ uid, onClose, onPublished }: Props) {
                     <span className="opacity-60 italic">No description set.</span>
                   )}
                 </ReviewSection>
+                {bundle.summary.bundleType === 'content' && (bundle.thumbnailAbsolutePath || bundle.teaserGifAbsolutePath) && (
+                  <ReviewSection title="Preview assets">
+                    <div className="flex flex-wrap gap-4">
+                      {bundle.thumbnailAbsolutePath && (
+                        <figure className="space-y-1">
+                          <img src={convertFileSrc(bundle.thumbnailAbsolutePath)} alt="Thumbnail" className="rounded-lg border border-pink-200 max-h-40" />
+                          <figcaption className="text-xs opacity-60">🖼️ Thumbnail — {bundle.thumbnailOriginalName}</figcaption>
+                        </figure>
+                      )}
+                      {bundle.teaserGifAbsolutePath && (
+                        <figure className="space-y-1">
+                          <img src={convertFileSrc(bundle.teaserGifAbsolutePath)} alt="Teaser GIF" className="rounded-lg border border-pink-200 max-h-40" />
+                          <figcaption className="text-xs opacity-60">🎞️ Teaser — {bundle.teaserGifOriginalName}</figcaption>
+                        </figure>
+                      )}
+                    </div>
+                  </ReviewSection>
+                )}
                 {bundle.summary.bundleType === 'content' && (
                   <ReviewSection title={`Categories (${bundle.categories.length})`}>
                     {bundle.categories.length === 0 ? (

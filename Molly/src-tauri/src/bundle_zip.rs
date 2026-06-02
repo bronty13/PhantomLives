@@ -119,6 +119,10 @@ pub struct BundleSnapshot {
     // Content
     pub description_text: String,
     pub description_audio: Option<FileEntry>,
+    /// Optional preview assets (Content type): a static cover thumbnail and
+    /// an animated teaser GIF. Composed under `Preview/` in the inner ZIP.
+    pub thumbnail: Option<FileEntry>,
+    pub teaser_gif: Option<FileEntry>,
     pub categories: Vec<String>, // already UPPERCASE, in position order
 
     /// Bundle-level content-tag names, in sort order. Populated for
@@ -203,6 +207,10 @@ struct ManifestDoc {
     go_live_date: Option<String>,
     special_instructions: String,
     description: ManifestDescription,
+    /// Optional preview assets (Content bundles). Paths are relative to the
+    /// inner ZIP root, matching the `Preview/...` entries. Additive in
+    /// manifest v1 — older consumers ignore unknown keys.
+    preview: ManifestPreview,
     categories: Vec<String>,
     /// Bundle-level content tags (Content + Custom). FanSite uses
     /// per-day tags on `fanSite.days[i].tags` and leaves this empty.
@@ -220,6 +228,15 @@ struct ManifestDescription {
     mode: &'static str,
     text: String,
     audio_path: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ManifestPreview {
+    /// In-zip path of the cover thumbnail, or null when none.
+    thumbnail_path: Option<String>,
+    /// In-zip path of the teaser GIF, or null when none.
+    teaser_gif_path: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -307,6 +324,23 @@ pub fn compose_bundle(
         let bytes = read_and_verify(audio)?;
         let sha = sha256_hex(&bytes);
         let path = format!("Audio/{}", sanitize_name(&audio.original_name));
+        media.push((path, bytes, sha));
+    }
+
+    // Preview assets (Content type only) — thumbnail + teaser GIF. Like the
+    // audio description these live outside `files`; each gets a stable,
+    // prefixed path under Preview/ so the in-zip layout (and therefore the
+    // outer SHA-256) is deterministic.
+    if let Some(thumb) = &snapshot.thumbnail {
+        let bytes = read_and_verify(thumb)?;
+        let sha = sha256_hex(&bytes);
+        let path = format!("Preview/thumbnail_{}", sanitize_name(&thumb.original_name));
+        media.push((path, bytes, sha));
+    }
+    if let Some(teaser) = &snapshot.teaser_gif {
+        let bytes = read_and_verify(teaser)?;
+        let sha = sha256_hex(&bytes);
+        let path = format!("Preview/teaser_{}", sanitize_name(&teaser.original_name));
         media.push((path, bytes, sha));
     }
 
@@ -589,6 +623,23 @@ fn render_info_md(s: &BundleSnapshot) -> String {
                 md.push_str("_(none)_\n\n");
             }
 
+            if s.thumbnail.is_some() || s.teaser_gif.is_some() {
+                md.push_str("## Preview assets\n\n");
+                if let Some(thumb) = &s.thumbnail {
+                    md.push_str(&format!(
+                        "- **Thumbnail:** `Preview/thumbnail_{}`\n",
+                        sanitize_name(&thumb.original_name)
+                    ));
+                }
+                if let Some(teaser) = &s.teaser_gif {
+                    md.push_str(&format!(
+                        "- **Teaser GIF:** `Preview/teaser_{}`\n",
+                        sanitize_name(&teaser.original_name)
+                    ));
+                }
+                md.push('\n');
+            }
+
             if s.bundle_type != BundleType::YouTube {
                 md.push_str("## Categories\n\n");
                 if s.categories.is_empty() {
@@ -775,6 +826,18 @@ fn render_molly_log(
                 }
             } else {
                 log.push_str("Description mode:   (none)\n");
+            }
+            if let Some(thumb) = &s.thumbnail {
+                log.push_str(&format!(
+                    "Thumbnail:          Preview/thumbnail_{}\n",
+                    sanitize_name(&thumb.original_name)
+                ));
+            }
+            if let Some(teaser) = &s.teaser_gif {
+                log.push_str(&format!(
+                    "Teaser GIF:         Preview/teaser_{}\n",
+                    sanitize_name(&teaser.original_name)
+                ));
             }
             if s.bundle_type != BundleType::YouTube {
                 log.push_str(&format!("Categories ({}):\n", s.categories.len()));
@@ -964,6 +1027,18 @@ pub fn render_manifest_json(snapshot: &BundleSnapshot) -> Vec<u8> {
         }
     };
 
+    // ---- Preview assets (Content bundles) ----
+    let preview = ManifestPreview {
+        thumbnail_path: snapshot
+            .thumbnail
+            .as_ref()
+            .map(|t| format!("Preview/thumbnail_{}", sanitize_name(&t.original_name))),
+        teaser_gif_path: snapshot
+            .teaser_gif
+            .as_ref()
+            .map(|t| format!("Preview/teaser_{}", sanitize_name(&t.original_name))),
+    };
+
     // ---- Delivery (Custom bundles) ----
     let delivery = ManifestDelivery {
         kind: snapshot.delivery_kind.clone(),
@@ -1038,6 +1113,7 @@ pub fn render_manifest_json(snapshot: &BundleSnapshot) -> Vec<u8> {
         go_live_date: snapshot.go_live_date.clone(),
         special_instructions: snapshot.special_instructions.clone(),
         description,
+        preview,
         categories: snapshot.categories.clone(),
         tags: snapshot.tags.clone(),
         delivery,
@@ -1137,6 +1213,8 @@ mod tests {
             special_instructions: "be cute".to_string(),
             description_text: "Hello there".to_string(),
             description_audio: None,
+            thumbnail: None,
+            teaser_gif: None,
             categories: vec!["BBW".into(), "STUFFING".into(), "SOLO".into()],
             tags: vec!["tits".into(), "panties".into()],
             delivery_kind: None,
@@ -1334,6 +1412,7 @@ mod tests {
             persona_code: None, title: "T".into(), content_date: "2026-06-01".into(),
             go_live_date: None, special_instructions: String::new(),
             description_text: String::new(), description_audio: None,
+            thumbnail: None, teaser_gif: None,
             categories: Vec::new(), tags: Vec::new(),
             delivery_kind: None, delivery_site_name: None, delivery_url: None,
             delivery_recipient: String::new(), price_cents: None, handled_in_platform: false,
@@ -1380,6 +1459,8 @@ mod tests {
             special_instructions: String::new(),
             description_text: String::new(),
             description_audio: None,
+            thumbnail: None,
+            teaser_gif: None,
             categories: Vec::new(),
             tags: Vec::new(),
             delivery_kind: None,
@@ -1518,6 +1599,75 @@ mod tests {
         assert_eq!(doc["delivery"]["handledInPlatform"], false);
         assert!(doc["fanSite"]["year"].is_null());
         assert_eq!(doc["fanSite"]["days"].as_array().unwrap().len(), 0);
+
+        // No preview assets in the base fixture — the object is present but null.
+        assert!(doc["preview"]["thumbnailPath"].is_null());
+        assert!(doc["preview"]["teaserGifPath"].is_null());
+    }
+
+    #[test]
+    fn compose_includes_preview_assets() {
+        let work = tempfile::tempdir().unwrap();
+        let mut snap = fixture_content(work.path());
+        let thumb = write_tmp(work.path(), "cover.png", b"PNG-thumb-bytes");
+        let teaser = write_tmp(work.path(), "loop.gif", b"GIF89a-teaser-bytes");
+        snap.thumbnail = Some(FileEntry {
+            original_name: "cover.png".into(),
+            abs_path: thumb.clone(),
+            relpath_for_error: "attachments/bundles/x/files/cover.png".into(),
+            kind: FileKind::Image,
+            position: 0,
+            sha256_db: sha256_file(&thumb).unwrap(),
+            fansite_day_of_month: None,
+        });
+        snap.teaser_gif = Some(FileEntry {
+            original_name: "loop.gif".into(),
+            abs_path: teaser.clone(),
+            relpath_for_error: "attachments/bundles/x/files/loop.gif".into(),
+            kind: FileKind::Image,
+            position: 0,
+            sha256_db: sha256_file(&teaser).unwrap(),
+            fansite_day_of_month: None,
+        });
+
+        let out = tempfile::tempdir().unwrap();
+        let artifact = compose_bundle(&snap, out.path()).unwrap();
+
+        // (a) Both assets land under Preview/ in the inner zip.
+        let outer_bytes = fs::read(&artifact.path).unwrap();
+        let outer_entries = read_entries(&outer_bytes);
+        let inner_entries = read_entries(&outer_entries[0].1);
+        let inner_names: Vec<String> = inner_entries.iter().map(|(n, _)| n.clone()).collect();
+        assert!(inner_names.contains(&"Preview/thumbnail_cover.png".to_string()));
+        assert!(inner_names.contains(&"Preview/teaser_loop.gif".to_string()));
+
+        // (b) hashes.json carries both Preview/ entries.
+        let manifest_bytes = read_outer_manifest_bytes(&artifact.path);
+        let doc: serde_json::Value = serde_json::from_slice(&manifest_bytes).unwrap();
+        assert_eq!(doc["preview"]["thumbnailPath"], "Preview/thumbnail_cover.png");
+        assert_eq!(doc["preview"]["teaserGifPath"], "Preview/teaser_loop.gif");
+
+        // (c) Determinism: composing the same snapshot again is byte-identical.
+        let out2 = tempfile::tempdir().unwrap();
+        let artifact2 = compose_bundle(&snap, out2.path()).unwrap();
+        assert_eq!(artifact.outer_sha256, artifact2.outer_sha256);
+    }
+
+    #[test]
+    fn compose_without_preview_assets_is_backward_compatible() {
+        // A Content bundle with no preview assets produces a manifest whose
+        // preview object is null/null and an unchanged outer SHA across runs.
+        let work = tempfile::tempdir().unwrap();
+        let snap = fixture_content(work.path());
+        let out1 = tempfile::tempdir().unwrap();
+        let out2 = tempfile::tempdir().unwrap();
+        let a = compose_bundle(&snap, out1.path()).unwrap();
+        let b = compose_bundle(&snap, out2.path()).unwrap();
+        assert_eq!(a.outer_sha256, b.outer_sha256);
+        let manifest = read_outer_manifest_bytes(&a.path);
+        let doc: serde_json::Value = serde_json::from_slice(&manifest).unwrap();
+        assert!(doc["preview"]["thumbnailPath"].is_null());
+        assert!(doc["preview"]["teaserGifPath"].is_null());
     }
 
     #[test]
@@ -1536,6 +1686,8 @@ mod tests {
             special_instructions: String::new(),
             description_text: String::new(),
             description_audio: None,
+            thumbnail: None,
+            teaser_gif: None,
             categories: Vec::new(),
             tags: Vec::new(),
             delivery_kind: Some("site".to_string()),
@@ -1593,6 +1745,8 @@ mod tests {
             special_instructions: String::new(),
             description_text: String::new(),
             description_audio: None,
+            thumbnail: None,
+            teaser_gif: None,
             categories: Vec::new(),
             tags: Vec::new(),
             delivery_kind: None,
@@ -1685,6 +1839,8 @@ mod tests {
                 sha256_db: audio_sha,
                 fansite_day_of_month: None,
             }),
+            thumbnail: None,
+            teaser_gif: None,
             categories: vec!["BBW".into()],
             tags: Vec::new(),
             delivery_kind: None,
