@@ -124,15 +124,72 @@ fn nonempty(s: &Option<String>) -> Option<String> {
     s.as_ref().map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
 }
 
+/// Seconds → `MM:SS` (minutes uncapped, so a 75-minute video reads `75:00`).
+fn format_duration_mmss(secs: f64) -> String {
+    let total = secs.max(0.0) as u64; // floor
+    format!("{:02}:{:02}", total / 60, total % 60)
+}
+
+/// Bytes → `"12.4 MB"`.
+fn format_size_mb(bytes: u64) -> String {
+    format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+}
+
+/// Streaming SHA-256 of a file (the master cut can be hundreds of MB).
+fn sha256_file(path: &Path) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 65536];
+    loop {
+        let n = file.read(&mut buf).ok()?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Some(format!("{:x}", hasher.finalize()))
+}
+
+/// Gather the assembled master cut's size / length / hash, or `None` when the
+/// bundle hasn't been assembled yet.
+fn gather_assembled(workspace: &Path, title: &str) -> Option<AssembledInfo> {
+    let master = bundles::resolve_master_cut_path(workspace, title);
+    if !master.exists() {
+        return None;
+    }
+    let size = std::fs::metadata(&master).map(|m| m.len()).unwrap_or(0);
+    Some(AssembledInfo {
+        filename: master.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
+        size_mb: format_size_mb(size),
+        length: crate::thumbnails::probe_video_duration(&master)
+            .map(format_duration_mmss)
+            .unwrap_or_else(|| "—".into()),
+        sha256: sha256_file(&master).unwrap_or_else(|| "—".into()),
+    })
+}
+
+/// Verification + size details of the assembled master cut, gathered (with
+/// file I/O) by the caller and rendered after "Date Processed".
+pub(crate) struct AssembledInfo {
+    pub filename: String,
+    pub size_mb: String,
+    pub length: String,
+    pub sha256: String,
+}
+
 /// Build the label/value metadata rows for a bundle, varying by type. Adding a
 /// new bundle type means extending the single `match` below — that's the
 /// "expandable for new bundle types" contract. The `description` value is
-/// resolved by the caller (typed text or audio transcript) and passed in.
+/// resolved by the caller (typed text or audio transcript) and passed in;
+/// `assembled` carries the master-cut details rendered after Date Processed.
 pub(crate) fn summary_fields(
     m: &BundleManifest,
     title_override: &str,
     description: &str,
     processed_at: Option<&str>,
+    assembled: Option<&AssembledInfo>,
 ) -> Vec<(String, String)> {
     let mut f: Vec<(String, String)> = Vec::new();
 
@@ -156,6 +213,14 @@ pub(crate) fn summary_fields(
         "Date Processed".into(),
         processed_at.map(|s| s.to_string()).unwrap_or_else(|| "— (not yet assembled)".into()),
     ));
+
+    // Assembled master-cut details (size / length / verification hash).
+    if let Some(a) = assembled {
+        f.push(("Assembled file".into(), a.filename.clone()));
+        f.push(("File size".into(), a.size_mb.clone()));
+        f.push(("Length".into(), a.length.clone()));
+        f.push(("SHA-256".into(), a.sha256.clone()));
+    }
 
     match m.bundle_type.as_str() {
         "custom" => {
@@ -395,7 +460,8 @@ fn build_summary<R: Runtime>(handle: &AppHandle<R>, uid: &str) -> Result<PathBuf
 
     let processed_at = assembly_date(&conn, uid);
     let description = resolve_description(&conn, &manifest);
-    let fields = summary_fields(&manifest, &title_override, &description, processed_at.as_deref());
+    let assembled = gather_assembled(&workspace, &effective_title);
+    let fields = summary_fields(&manifest, &title_override, &description, processed_at.as_deref(), assembled.as_ref());
     let transcript = concat_video_transcripts(&conn, uid, &workspace);
     let log = read_full_log(&conn, uid);
 
@@ -623,7 +689,7 @@ mod tests {
     #[test]
     fn summary_fields_content_shows_base_fields() {
         let m = content_manifest();
-        let f = summary_fields(&m, "", "A short blurb", Some("2026-06-02T10:00:00"));
+        let f = summary_fields(&m, "", "A short blurb", Some("2026-06-02T10:00:00"), None);
         let map: std::collections::HashMap<_, _> = f.iter().cloned().collect();
         assert_eq!(map.get("Title").unwrap(), "My Clip");
         assert_eq!(map.get("Description").unwrap(), "A short blurb");
@@ -638,10 +704,10 @@ mod tests {
     fn summary_fields_working_title_only_when_overridden() {
         let m = content_manifest();
         // Override equal to original → not shown.
-        let same = summary_fields(&m, "My Clip", "", None);
+        let same = summary_fields(&m, "My Clip", "", None, None);
         assert!(!same.iter().any(|(k, _)| k == "Working title"));
         // Distinct override → shown.
-        let diff = summary_fields(&m, "Better Name", "", None);
+        let diff = summary_fields(&m, "Better Name", "", None, None);
         let row = diff.iter().find(|(k, _)| k == "Working title").unwrap();
         assert_eq!(row.1, "Better Name");
     }
@@ -658,7 +724,7 @@ mod tests {
             price_cents: Some(4900),
             ..Default::default()
         };
-        let f = summary_fields(&m, "", "", None);
+        let f = summary_fields(&m, "", "", None, None);
         let map: std::collections::HashMap<_, _> = f.iter().cloned().collect();
         assert_eq!(map.get("Site").unwrap(), "C4S messages");
         assert_eq!(map.get("Deliver to").unwrap(), "@buyer");
@@ -673,8 +739,49 @@ mod tests {
             handled_in_platform: true,
             ..Default::default()
         };
-        let f = summary_fields(&m, "", "", None);
+        let f = summary_fields(&m, "", "", None, None);
         let map: std::collections::HashMap<_, _> = f.iter().cloned().collect();
         assert_eq!(map.get("Price").unwrap(), "Handled in platform");
+    }
+
+    #[test]
+    fn format_duration_mmss_floors_and_pads() {
+        assert_eq!(format_duration_mmss(0.0), "00:00");
+        assert_eq!(format_duration_mmss(49.7), "00:49");
+        assert_eq!(format_duration_mmss(130.0), "02:10");
+        assert_eq!(format_duration_mmss(3725.0), "62:05"); // minutes uncapped
+    }
+
+    #[test]
+    fn format_size_mb_rounds() {
+        assert_eq!(format_size_mb(12_582_912), "12.0 MB"); // 12 MiB
+        assert_eq!(format_size_mb(0), "0.0 MB");
+    }
+
+    #[test]
+    fn summary_fields_includes_assembled_details_after_date_processed() {
+        let m = content_manifest();
+        let info = AssembledInfo {
+            filename: "My Clip.mp4".into(),
+            size_mb: "12.4 MB".into(),
+            length: "01:23".into(),
+            sha256: "abc123".into(),
+        };
+        let f = summary_fields(&m, "", "", Some("2026-06-02T10:00:00"), Some(&info));
+        let labels: Vec<&str> = f.iter().map(|(k, _)| k.as_str()).collect();
+        let dp = labels.iter().position(|&l| l == "Date Processed").unwrap();
+        // Assembled rows land immediately after Date Processed, in order.
+        assert_eq!(&labels[dp + 1..dp + 5], &["Assembled file", "File size", "Length", "SHA-256"]);
+        let map: std::collections::HashMap<_, _> = f.iter().cloned().collect();
+        assert_eq!(map.get("File size").unwrap(), "12.4 MB");
+        assert_eq!(map.get("Length").unwrap(), "01:23");
+        assert_eq!(map.get("SHA-256").unwrap(), "abc123");
+    }
+
+    #[test]
+    fn summary_fields_omits_assembled_when_absent() {
+        let m = content_manifest();
+        let f = summary_fields(&m, "", "", None, None);
+        assert!(!f.iter().any(|(k, _)| k == "Assembled file"));
     }
 }

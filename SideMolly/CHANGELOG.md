@@ -4,6 +4,16 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.1] — 2026-06-02
+
+### Added — Assembled-file details on the summary
+
+The SideMolly Summary now lists the assembled master cut right after **Date
+Processed**: its **filename**, **file size** (MB), **length** (MM:SS), and
+**SHA-256** for verification — computed from the master cut at generation time
+(the same value that's recorded when it's copied to Dropbox, so a recipient can
+hash the `.mp4` and compare). Omitted when the bundle hasn't been assembled yet.
+
 ## [0.27.0] — 2026-06-02
 
 ### Changed — "SideMolly Summary" + sampled, rotation-corrected frames

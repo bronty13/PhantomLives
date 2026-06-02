@@ -44,9 +44,11 @@ bundle in one place, in this order:
 1. **Metadata** — Title, Working title (only if you changed it), Description
    (the typed text, or — for an audio description — the transcribed audio),
    Categories, Go-Live Date, and Date Processed (when the master cut was
-   assembled). **Custom** bundles also show the Site/URL, who it's delivered
-   to, and the Price (or "Handled in platform"). The fields shown adapt to the
-   bundle type.
+   assembled). Right after Date Processed, the **assembled file** details:
+   filename, file size (MB), length (MM:SS), and the SHA-256 hash so anyone
+   can verify the `.mp4` they received. **Custom** bundles also show the
+   Site/URL, who it's delivered to, and the Price (or "Handled in platform").
+   The fields shown adapt to the bundle type.
 2. **Frames** — a grid of frames sampled from the bundle's videos. The total
    number of frames is the count you set in Settings (default 30), spread
    evenly across the videos — three videos at 30 frames means ten from each,
