@@ -2,9 +2,11 @@
 
 Snapshot of where the project stands so a future session (human or AI)
 can pick up without re-deriving everything from the commit history.
-Last updated: 2026-05-24. Tier #18 (sidebar off `NavigationSplitView`
-→ manual `HStack` + `WindowStateGuard`/`AppDelegate`; gitignore Finder
-` 2.app` dupes; doc sync). Tier #13 (perf + robustness sweep,
+Last updated: 2026-06-01. Multi-agent audit landed — 61 verified
+findings (2 high · 14 medium · 45 low) now tracked in `AUDIT.md`; see
+the "Audit backlog" entry under Known gaps. Tier #18 (sidebar off
+`NavigationSplitView` → manual `HStack` + `WindowStateGuard`/`AppDelegate`;
+gitignore Finder ` 2.app` dupes; doc sync). Tier #13 (perf + robustness sweep,
 1.0.234–235), Tier #14 (refactor pass — SetupView split, typed
 BufferKey, BufferInputState, 1.0.236–238), Tier #15 (quick-wins
 batch — pop-on-watch, irc.store, activity sparkline, Shortcuts.app
@@ -649,6 +651,23 @@ Support directory (everything optionally encrypted):
 ```
 
 ## Known gaps (good "pick up here" work)
+
+### Audit backlog → `AUDIT.md`
+A multi-agent audit (2026-06-01) swept all 10 subsystems for security /
+correctness / quality issues, with every finding adversarially
+re-verified against the source. **61 confirmed findings (2 high · 14
+medium · 45 low)** are tracked as a tick-off backlog in `AUDIT.md`.
+Start there before the items below — the highest-value picks:
+- **HIGH** — `restore()` wipes Application Support with no pre-restore
+  safety backup (`BackupService.swift:322`), violating the repo backup
+  standard; AppLog's encrypted-log loader uses aligned `load(as:)` on an
+  unaligned slice and **traps on launch** once `app.log` has >1 record
+  (`AppLog.swift:137`, one-word `loadUnaligned` fix).
+- **Watchlist root cause** — a single shared `WatchlistService` with
+  un-namespaced per-network state is behind 5 medium findings (presence
+  flapping, wrong-socket MONITOR/ISON routing, cross-network disconnect
+  wipe, single-timer polling). Key state per-network (UUID) or one
+  service per connection to close them all at once.
 
 ### DCC — passive mode + RESUME
 Active DCC SEND/CHAT works on-LAN. Behind NAT it needs:
