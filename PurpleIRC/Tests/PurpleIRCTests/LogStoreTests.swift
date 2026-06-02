@@ -74,6 +74,28 @@ struct LogStoreTests {
         #expect(text == nil)
     }
 
+    /// purge() must only delete log-shaped files — a stale `index.json`
+    /// older than the cutoff must survive, or every log is orphaned.
+    @Test func purgeKeepsIndexAndRemovesOldLogs() throws {
+        let dir = tempDir()
+        let fm = FileManager.default
+        let netDir = dir.appendingPathComponent("net", isDirectory: true)
+        try fm.createDirectory(at: netDir, withIntermediateDirectories: true)
+        let indexURL = dir.appendingPathComponent("index.json")
+        let logURL = netDir.appendingPathComponent("buffer.log")
+        try Data("{}".utf8).write(to: indexURL)
+        try Data("old line\n".utf8).write(to: logURL)
+        let old = Date().addingTimeInterval(-100 * 86_400)
+        try fm.setAttributes([.modificationDate: old], ofItemAtPath: indexURL.path)
+        try fm.setAttributes([.modificationDate: old], ofItemAtPath: logURL.path)
+
+        let store = LogStore(baseURL: dir)
+        let removed = runAsync { await store.purge(olderThanDays: 30) }
+        #expect(removed == 1)                          // only the .log
+        #expect(fm.fileExists(atPath: indexURL.path))  // index survived
+        #expect(!fm.fileExists(atPath: logURL.path))   // log purged
+    }
+
     @Test func readBySlugMatchesReadByName() {
         let dir = tempDir()
         let store = LogStore(baseURL: dir)

@@ -180,6 +180,12 @@ actor LogStore {
             options: [.skipsHiddenFiles]
         )
         while let url = enumerator?.nextObject() as? URL {
+            // Only purge log-shaped files. Without this guard a stale
+            // `index.json` (or any other bookkeeping file) older than the
+            // cutoff would be deleted, orphaning every log.
+            let name = url.lastPathComponent
+            guard name.hasSuffix(".log") || name.hasSuffix(".log.plain")
+                    || name.hasSuffix(".log.1") else { continue }
             let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey])
             guard values?.isRegularFile == true,
                   let modDate = values?.contentModificationDate,

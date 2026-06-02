@@ -12,6 +12,32 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
+## [1.0.597] — 2026-06-02
+
+### Fixed (audit follow-ups — batch 8, backup / log robustness)
+
+Three LOW correctness findings.
+
+- **Log purge no longer orphans the index** (`LogStore.swift`). The
+  age-based purge removed *any* regular file older than the cutoff,
+  including `index.json` — which would orphan every log. It now only
+  deletes log-shaped files (`*.log`, `*.log.plain`, `*.log.1`).
+- **The `/seen` table is bounded** (`SeenStore.swift`). Only per-nick
+  history was capped; the number of distinct nicks per network grew
+  forever. Added a 5,000-nick-per-network cap that evicts the
+  oldest-seen entries, bounding both memory and the on-disk JSON.
+- **Restore refuses an unexpected directory loudly** (`BackupService.swift`).
+  Restoring into a support dir not named `PurpleIRC` silently no-op'd
+  while the caller reported success; it now throws
+  `unexpectedSupportDir` so the user learns nothing was restored. The
+  directory is left untouched.
+
+### Tests
+
+- +2 (361 → 363): `LogStore` purge keeps `index.json` while removing old
+  logs; `BackupService` restore throws on (and leaves untouched) a
+  non-`PurpleIRC` destination — also chipping at the backup test-gap.
+
 ## [1.0.596] — 2026-06-02
 
 ### Performance (audit follow-ups — batch 7, chat-row rendering)

@@ -117,6 +117,11 @@ final class SeenStore {
     /// nick connect from a different host yesterday" question without
     /// blowing up on heavily-active users.
     static let historyCap = 50
+    /// Maximum number of distinct nicks tracked per network. Without this
+    /// the table grew without bound on a busy network — every nick ever
+    /// seen stayed forever. When over the cap, the oldest-seen entries are
+    /// evicted. Generous: most channels are far smaller.
+    static let nickCap = 5_000
 
     /// Record an activity event. `kind` must be one of
     /// "msg"/"join"/"part"/"quit"/"nick". `userHost` is the `user@host`
@@ -161,7 +166,20 @@ final class SeenStore {
             entry.history.removeLast(entry.history.count - Self.historyCap)
         }
         tables[networkID, default: [:]][key] = entry
+        trimNickTable(networkID: networkID)
         scheduleWrite(networkID: networkID, slug: networkSlug)
+    }
+
+    /// Evict the oldest-seen nicks once a network's table exceeds `nickCap`,
+    /// bounding both memory and the on-disk JSON.
+    private func trimNickTable(networkID: UUID) {
+        guard var table = tables[networkID], table.count > Self.nickCap else { return }
+        let overflow = table.count - Self.nickCap
+        let victims = table.sorted { $0.value.timestamp < $1.value.timestamp }
+            .prefix(overflow)
+            .map { $0.key }
+        for k in victims { table.removeValue(forKey: k) }
+        tables[networkID] = table
     }
 
     /// Record a nick change. The old nick's entry is updated to point at

@@ -46,7 +46,13 @@ CR/LF stripping, settings clamping, and two dead-code cleanups (6 LOW).
 **Progress — 2026-06-02 (1.0.596):** UI perf cluster. Cached the per-row
 DateFormatter, replaced the per-row watchlist Set rebuild with a cached
 membership set, and extracted + tested the join/part collapse grouping
-(3 LOW). **32 of 61 fully closed, 2 partial; 27 open.**
+(3 LOW). **32 of 61 fully closed, 2 partial.**
+
+**Progress — 2026-06-02 (1.0.597):** backup/log cluster. LogStore.purge
+now only deletes log-shaped files (protects index.json), SeenStore caps
+per-network nick count, and restore throws on a non-PurpleIRC support dir
+instead of a silent success (3 LOW). **35 of 61 fully closed, 3 partial;
+23 open.**
 
 ## 🔴 High
 
@@ -210,19 +216,19 @@ membership set, and extracted + tested the join/part collapse grouping
 
 ### backup-data
 
-- [ ] **LogStore.purge() deletes index.json (and any non-log file) by mtime, orphaning all logs** — `LogStore.swift:182-193` (correctness)
+- [x] **LogStore.purge() deletes index.json (and any non-log file) by mtime, orphaning all logs** — `LogStore.swift:182-193` (correctness) _(fixed 1.0.597 — purge restricted to .log/.log.plain/.log.1)_
   - _Problem:_ purge(olderThanDays:) enumerates every regular file under baseURL and removes any older than the cutoff with no name/extension filter. The slug→friendly-name index lives at baseURL/index.json (LogStore.swift:72-74) and is only re-written when a NEW (network,buffer) pair appears (recordInIndex flushes only on shape change, line 433). For a user whose channel/network set is stable, index.json's mtime never advances, so once it ages past the retention window the purge sweep deletes it. Because filenames are one-way SHA-256 slugs (slug() at line 624), losing index.json permanently breaks resolving slugs back to channel/nick names — every log becomes an unnamed 'orphan' in enumerateAllLogs.
   - _Fix:_ Skip index.json (and arguably only act on files ending in .log/.log.1/.log.plain). e.g. `guard url.lastPathComponent != "index.json" else { continue }` plus a suffix check. Alternatively touch index.json's mtime on every purge/append so it never ages out.
-- [ ] **SeenStore table has unbounded nick growth — only per-nick history is capped** — `SeenStore.swift:163` (correctness)
+- [x] **SeenStore table has unbounded nick growth — only per-nick history is capped** — `SeenStore.swift:163` (correctness) _(fixed 1.0.597 — per-network nickCap, oldest-seen eviction)_
   - _Problem:_ Each per-nick history array is capped at historyCap (50), but the number of distinct nicks stored per network — `tables[networkID]` — has no cap or eviction. Every nick ever observed via record()/recordNickChange() (including every quit/join/nick-change from large channels and netsplits, and transient/throwaway nicks) is retained forever and rewritten to disk on every debounced flush (writeToDisk encodes the entire table each time). On a busy network this grows without bound, inflating the seen JSON file, the per-write encryption cost, and the on-launch backup size indefinitely.
   - _Fix:_ Add a max-entries cap per network (e.g. evict the oldest-timestamp entries beyond N, or age out entries older than a retention window) inside record/recordNickChange before scheduleWrite, mirroring the historyCap pattern.
 - [ ] **Backup zip excludes downloads/ but not a backup directory placed inside the support dir** — `BackupService.swift:58-65` (correctness)
   - _Problem:_ The zip command excludes only `downloads/*` and `*.DS_Store`. The backup directory is user-configurable (BackupSettingsView pickDirectory) and NukeService lists `backups` as a real support-dir subtree (NukeService.swift:122). If a user points backupDirectory at a path inside the support dir (e.g. the historical ~/Library/Application Support/PurpleIRC/backups/), each launch backup will recursively include all prior backups, causing quadratic/exponential archive growth. There is no guard that the backup target lies outside supportDir.
   - _Fix:_ If backupDir is inside supportDir, add its relative path to the zip exclude list (or refuse and warn). At minimum add `-x "backups/*"` to match the NukeService subtree list, and validate backupDirectoryURL is not a descendant of supportDirectoryURL.
-- [ ] **Restore silently no-ops (reports success) when supportDir name is not 'PurpleIRC'** — `BackupService.swift:325` (correctness)
+- [x] **Restore silently no-ops (reports success) when supportDir name is not 'PurpleIRC'** — `BackupService.swift:325` (correctness) _(fixed 1.0.597 — throws unexpectedSupportDir)_
   - _Problem:_ After fully decrypting and extracting the archive, restore() bails with a bare `return` if the support-dir guard fails, having changed nothing. The caller (ChatModel.performRestore) treats a non-throwing return as success, logs 'Restore complete; terminating to relaunch.' and quits the app. The user is told the restore worked and the app restarts unchanged, with no error surfaced. Same silent-success shape in FactoryReset.wipe (returns 0) and NukeService refusal (only logs).
   - _Fix:_ Throw a dedicated RestoreError (e.g. .refusedSuspiciousSupportDir) instead of returning silently, so performRestore surfaces it inline and does not terminate the app as if the restore succeeded.
-- [ ] **No test coverage for verifyArchive corruption/truncation, restore-into-non-PurpleIRC, or encrypted-magic false positives** — `BackupService.swift:194-340` (test-gap)
+- [~] **No test coverage for verifyArchive corruption/truncation, restore-into-non-PurpleIRC, or encrypted-magic false positives** — `BackupService.swift:194-340` (test-gap) _(partly closed 1.0.597 — restore-into-non-PurpleIRC now covered; verifyArchive corruption/truncation still untested)_
   - _Problem:_ BackupServiceTests covers happy-path round-trips, retention, list ordering, and factory-reset refusal, but the risky branches are untested: (1) verifyArchive/restore on a truncated or corrupt encrypted archive (unzipFailed / decryptFailed paths beyond the wrong-key case); (2) restore() refusing a non-'PurpleIRC' supportDir (the destructive guard at line 325 — the analogous FactoryReset guard IS tested, but restore's is not); (3) a plaintext zip whose first 5 bytes happen to collide with the PIRC magic being misrouted as encrypted. Given restore is irreversible, these guard paths warrant explicit tests.
   - _Fix:_ Add tests: restore into a temp dir not named 'PurpleIRC' asserts nothing is wiped (and, after the fix above, that it throws); verifyArchive on a byte-truncated .enc throws decryptFailed/unzipFailed; restore on a .zip with a hand-crafted PIRC-magic prefix behaves correctly.
 

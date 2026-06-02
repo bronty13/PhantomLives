@@ -160,6 +160,7 @@ enum BackupService {
         case decryptFailed
         case unzipFailed(status: Int32, stderr: String)
         case archiveEmpty
+        case unexpectedSupportDir(String)
 
         var errorDescription: String? {
             switch self {
@@ -171,6 +172,8 @@ enum BackupService {
                 return "unzip exited \(s): \(err)"
             case .archiveEmpty:
                 return "Archive contained nothing — it may be corrupted."
+            case .unexpectedSupportDir(let name):
+                return "Refusing to restore into an unexpected directory (\(name)) — the support directory must be named 'PurpleIRC'. Nothing was changed."
             }
         }
     }
@@ -327,8 +330,12 @@ enum BackupService {
 
         // 4. Wipe the live support dir contents, then move staged files in.
         // Refuses to operate on a non-PurpleIRC directory just like
-        // FactoryReset.wipe — same safety guard, same reason.
-        guard supportDir.lastPathComponent == "PurpleIRC" else { return }
+        // FactoryReset.wipe — same safety guard, same reason. Throwing
+        // (rather than a silent no-op that the caller reports as success)
+        // means the user actually learns nothing was restored.
+        guard supportDir.lastPathComponent == "PurpleIRC" else {
+            throw RestoreError.unexpectedSupportDir(supportDir.lastPathComponent)
+        }
 
         // 4a. Safety net: snapshot the current state before we destroy it.
         // If this throws (disk full, zip crash, …) the restore aborts here

@@ -178,6 +178,34 @@ struct BackupServiceTests {
         #expect(String(data: restored ?? Data(), encoding: .utf8) == "settings")
     }
 
+    /// Restore must REFUSE (throw) a destination whose final component
+    /// isn't `PurpleIRC`, instead of silently no-op'ing while the caller
+    /// reports success. The unexpected directory must be left untouched.
+    @Test func restoreRefusesNonPurpleIRCSupportDir() throws {
+        let (support, backup) = tempPair()
+        try plant(in: support)
+        let archive = try BackupService.runBackup(
+            supportDir: support, backupDir: backup, key: nil)
+
+        let wrongDir = support.deletingLastPathComponent()
+            .appendingPathComponent("NotPurpleIRC", isDirectory: true)
+        try FileManager.default.createDirectory(at: wrongDir, withIntermediateDirectories: true)
+        try Data("precious".utf8).write(to: wrongDir.appendingPathComponent("keep.txt"))
+
+        do {
+            try BackupService.restore(from: archive, into: wrongDir,
+                                      backupDir: backup, key: nil)
+            Issue.record("restore should have thrown for a non-PurpleIRC dir")
+        } catch BackupService.RestoreError.unexpectedSupportDir {
+            // expected
+        } catch {
+            Issue.record("unexpected error: \(error)")
+        }
+        // Untouched.
+        #expect(FileManager.default.fileExists(
+            atPath: wrongDir.appendingPathComponent("keep.txt").path))
+    }
+
     // MARK: - Retention
 
     @Test func trimRemovesFilesOlderThanRetentionWindow() throws {

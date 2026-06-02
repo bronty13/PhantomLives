@@ -13,9 +13,11 @@ generation cancellation + last-writer race), and 1.0.594 (completed #7 —
 user-presence ACL on the cached-DEK read, verified on hardware), and
 1.0.595 (LOW correctness/robustness cluster: EncryptedJSON slice offset,
 DEK 32-byte guard, IRCv3 tag CR/LF strip, settings clamping, dead-code),
-and 1.0.596 (UI perf: cached row DateFormatter + watchlist membership
-set, extracted/tested collapse grouping). **32 of 61 closed, 2 partial.**
-See the "Audit backlog" entry under Known gaps. Tier #18 (sidebar off
+1.0.596 (UI perf: cached row DateFormatter + watchlist membership set,
+extracted/tested collapse grouping), and 1.0.597 (backup/log: purge
+protects index.json, SeenStore nick cap, restore throws on wrong dir).
+**35 of 61 closed, 3 partial.** See the "Audit backlog" entry under
+Known gaps. Tier #18 (sidebar off
 `NavigationSplitView` → manual `HStack` + `WindowStateGuard`/`AppDelegate`;
 gitignore Finder ` 2.app` dupes; doc sync). Tier #13 (perf + robustness sweep,
 1.0.234–235), Tier #14 (refactor pass — SetupView split, typed
@@ -682,18 +684,18 @@ verified on hardware), and **1.0.595** (LOW correctness/robustness:
 EncryptedJSON slice offset, DEK 32-byte guard, IRCv3 tag CR/LF strip,
 settings clamping, dead-code), and 1.0.596 (UI perf: cached row
 DateFormatter, cached watchlist membership set, extracted+tested collapse
-grouping). **32 of 61 closed, 2 partial.** Start in `AUDIT.md` before the
-items below — remaining open picks (all LOW):
+grouping), and 1.0.597 (backup/log purge/cap/restore). **35 of 61
+closed, 3 partial.** Start in `AUDIT.md` before the items below —
+remaining open picks (all LOW):
 - **PBKDF2 → memory-hard KDF** (`Crypto.swift:42`) — fixed-iteration,
   no calibration/migration. Has a migration wrinkle (existing envelopes
   use PBKDF2) — design before touching.
-- **Backup/log edge cases** — `LogStore.purge` deletes `index.json` by
-  mtime (`#27`), `SeenStore` unbounded nick growth (`#28`), restore
-  silent no-op on non-PurpleIRC dir (`#30`), `KeychainStore` non-atomic
-  upsert (`#34`).
 - **state-concurrency LOW** — unstructured Task per log append (`#55`),
   `events.sink` defers (`#56`), `ChatModel.lastBackupAt` global static
   (`#58`), SessionHistoryStore decode-before-trim (`#57`).
+- **Misc LOW** — `KeychainStore` non-atomic upsert (`#34`), backup zip
+  doesn't exclude a backup dir nested in support (`#29`), assorted
+  DCC/crypto/theme correctness nits + remaining test-gaps.
 
 ### DCC — passive mode + RESUME
 Active DCC SEND/CHAT works on-LAN. Behind NAT it needs:
