@@ -4,6 +4,34 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.0] — 2026-06-02
+
+### Added — Inbox completion lifecycle & filtering
+
+The Inbox no longer shows every bundle forever. Each row now has a **✓ Complete**
+button that tucks the bundle out of the default **Active** view; a segmented
+**Active | Completed | All** toggle switches between them. Completed bundles can
+be **↩ Reactivated** or **🗑 Deleted** (two-step inline confirm). After a
+successful **Send to Molly**, the header offers to mark the bundle complete in
+one click.
+
+The Inbox also gains a filter toolbar: **type** chips (🎬 content / 🎁 custom /
+📅 fansite / ▶️ youtube), **persona** chips (CoC / PoA / Sa), **newest/oldest**
+sort, an ingested-**date** range, **text search** over title + UID, and an
+`n of N` count readout.
+
+- New nullable `bundles.completed_at` column (migration `021`, plain
+  `ALTER TABLE … ADD COLUMN`). `completed_at IS NULL` ⇔ Active; a timestamp ⇔
+  Completed. Orthogonal to the unused `bundle_state` workflow enum.
+- Commands `set_bundle_completed(uid, completed)` (logs the flip to the
+  processing log) and `delete_bundle(uid)`. **Delete scope:** removes the DB row
+  (FK-cascades all child tables) and the `~/Downloads/SideMolly/work/<UID>/`
+  workspace; **keeps** the sent `Molly post-bundles/<UID>-post.zip` and the
+  original incoming source zip. Workspace removal is best-effort (a missing dir
+  is not an error).
+- `list_bundles` / `get_bundle` now surface `completedAt`. Filtering/sorting is
+  client-side (`applyInboxFilters`), with vitest coverage of every dimension.
+
 ## [0.24.1] — 2026-06-01
 
 ### Fixed — Clearer rotation-selection controls

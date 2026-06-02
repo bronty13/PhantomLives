@@ -142,6 +142,12 @@ pub fn run() {
             sql: include_str!("../migrations/020_bundle_title_override.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 21,
+            description: "bundle-completed-at",
+            sql: include_str!("../migrations/021_bundle_completed_at.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -253,6 +259,8 @@ pub fn run() {
             bundles::open_master_cut,
             bundles::rotate_bundle_files,
             bundles::set_bundle_title_override,
+            bundles::set_bundle_completed,
+            bundles::delete_bundle,
             watch::get_watch_settings,
             watch::set_watch_dir,
             watch::scan_watch_dir_now,
@@ -357,7 +365,7 @@ mod camel_case_contract {
             persona_code: None, title: String::new(),
             original_title: String::new(), title_override: String::new(),
             ingested_at: String::new(), verify_status: String::new(),
-            bundle_state: String::new(), file_count: 0,
+            bundle_state: String::new(), completed_at: None, file_count: 0,
             source_zip_path: String::new(),
         }).unwrap(), "BundleSummary");
     }
@@ -636,7 +644,7 @@ mod camel_case_contract {
                 persona_code: None, title: String::new(),
                 original_title: String::new(), title_override: String::new(),
                 ingested_at: String::new(), verify_status: String::new(),
-                bundle_state: String::new(), file_count: 0,
+                bundle_state: String::new(), completed_at: None, file_count: 0,
                 source_zip_path: String::new(),
             },
             manifest: BundleManifest::default(),
@@ -785,6 +793,7 @@ mod migration_smoke {
             (18, "bundle-type-widen", include_str!("../migrations/018_bundle_type_widen.sql")),
             (19, "persona-clips", include_str!("../migrations/019_persona_clips.sql")),
             (20, "bundle-title-override", include_str!("../migrations/020_bundle_title_override.sql")),
+            (21, "bundle-completed-at", include_str!("../migrations/021_bundle_completed_at.sql")),
         ];
         for (v, name, sql) in migrations {
             conn.execute_batch(sql)
@@ -864,6 +873,22 @@ mod migration_smoke {
             [], |r| r.get(0),
         ).unwrap();
         assert_eq!(eff, "Working", "effective title should prefer the override");
+
+        // Migration 021 added bundles.completed_at (nullable; NULL = active).
+        let active: Option<String> = conn.query_row(
+            "SELECT completed_at FROM bundles WHERE uid = 'tt'",
+            [], |r| r.get(0),
+        ).unwrap();
+        assert!(active.is_none(), "completed_at should default to NULL (active)");
+        conn.execute(
+            "UPDATE bundles SET completed_at = '2026-06-02T10:00:00' WHERE uid = 'tt'",
+            [],
+        ).unwrap();
+        let done: Option<String> = conn.query_row(
+            "SELECT completed_at FROM bundles WHERE uid = 'tt'",
+            [], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(done.as_deref(), Some("2026-06-02T10:00:00"), "completed_at should be settable");
     }
 }
 
@@ -915,6 +940,7 @@ mod migration_immutability {
         (18, "d702e588f454e025904a7bafb807765f2e6dc498dd6129bb1eeba4ae904bef5e"),
         (19, "f91d7ddfaf209570c6a19aabda9bbdd8b4b22212f6bd32d2742be3340ba423e0"),
         (20, "582d27200ef5c8ad0cbf27c020696fde9515070db28afd9c9864a949daf807ac"),
+        (21, "cc6ba6c61e52d28a3e3fc6c4eb28e4a9ed058a1af26072fe62865e069fbee87d"),
     ];
 
     /// Source-of-truth for "which migrations ship at compile time". Must
@@ -943,6 +969,7 @@ mod migration_immutability {
         (18, "018_bundle_type_widen.sql",          include_str!("../migrations/018_bundle_type_widen.sql")),
         (19, "019_persona_clips.sql",              include_str!("../migrations/019_persona_clips.sql")),
         (20, "020_bundle_title_override.sql",      include_str!("../migrations/020_bundle_title_override.sql")),
+        (21, "021_bundle_completed_at.sql",        include_str!("../migrations/021_bundle_completed_at.sql")),
     ];
 
     fn sha256_hex(s: &str) -> String {

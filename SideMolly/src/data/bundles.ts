@@ -51,6 +51,9 @@ export interface BundleSummary {
   ingestedAt: string;
   verifyStatus: 'pending' | 'verified' | 'failed';
   bundleState: 'new' | 'in_progress' | 'shipped' | 'archived';
+  /** ISO timestamp the bundle was marked complete, or null while active.
+   *  null = shows in the Inbox's default Active view; set = Completed. */
+  completedAt: string | null;
   fileCount: number;
   sourceZipPath: string;
 }
@@ -114,6 +117,17 @@ export function listBundles(): Promise<BundleSummary[]> {
 
 export function getBundle(uid: string): Promise<BundleDetail> {
   return invoke<BundleDetail>('get_bundle', { uid });
+}
+
+/** Mark a bundle complete (drops out of the Active Inbox view) or reactivate. */
+export function setBundleCompleted(uid: string, completed: boolean): Promise<void> {
+  return invoke('set_bundle_completed', { uid, completed });
+}
+
+/** Delete a bundle: DB rows (cascades children) + the work/<uid>/ workspace.
+ *  Leaves the source zip and any sent post-bundle untouched. */
+export function deleteBundle(uid: string): Promise<void> {
+  return invoke('delete_bundle', { uid });
 }
 
 export function revealWorkingDir(uid: string): Promise<void> {

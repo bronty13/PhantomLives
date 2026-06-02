@@ -4,7 +4,7 @@ import { useBundleJobs } from '../../lib/useBundleJobs';
 import {
   composePostBundle, getBundle, getBundleThumbnails, getPostBundleStatus,
   personaChipColor, bundleTypeEmoji, verifyStatusBadge,
-  revealPostBundle, revealWorkingDir,
+  revealPostBundle, revealWorkingDir, setBundleCompleted,
   type BundleDetail, type PostBundleStatus,
 } from '../../data/bundles';
 import { OverviewTab } from './OverviewTab';
@@ -85,7 +85,7 @@ export function BundleWorkspace({ uid, onBack, jobSignal }: Props) {
       >
         <div className="flex items-center justify-between">
           <BackBar onBack={onBack} />
-          <SendToMollyButton uid={uid} jobs={jobs} />
+          <SendToMollyButton uid={uid} jobs={jobs} onBack={onBack} />
         </div>
 
         <div className="mt-3 flex items-start gap-4">
@@ -282,11 +282,14 @@ function TabPill({ label, icon, active, disabled, onClick }: {
 ///
 /// Disables while any job for the bundle is in flight so we don't
 /// snapshot a report mid-process.
-function SendToMollyButton({ uid, jobs }:
-  { uid: string; jobs: ReturnType<typeof useBundleJobs> }) {
+function SendToMollyButton({ uid, jobs, onBack }:
+  { uid: string; jobs: ReturnType<typeof useBundleJobs>; onBack: () => void }) {
   const [status, setStatus] = useState<PostBundleStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
+  // After a successful send, offer to mark the bundle complete so it drops
+  // out of the Active Inbox in one click.
+  const [offerComplete, setOfferComplete] = useState(false);
 
   const refresh = async () => {
     try { setStatus(await getPostBundleStatus(uid)); }
@@ -300,6 +303,7 @@ function SendToMollyButton({ uid, jobs }:
     try {
       const r = await composePostBundle(uid);
       setHint(`✓ ${r.targetCount} targets · ${r.artifactCount} artifacts · ${fmtKb(r.bytesWritten)}`);
+      setOfferComplete(true);
       await refresh();
     } catch (e) {
       setHint(String(e));
@@ -308,10 +312,37 @@ function SendToMollyButton({ uid, jobs }:
     }
   };
 
+  const markComplete = async () => {
+    try {
+      await setBundleCompleted(uid, true);
+      onBack();
+    } catch (e) {
+      setHint(String(e));
+    }
+  };
+
   const reveal = () => revealPostBundle(uid).catch((e) => alert(String(e)));
 
   const disabled = busy || jobs.busy;
   const label = status?.exists ? '🔄 Re-send to Molly' : '📤 Send to Molly';
+
+  if (offerComplete) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
+           style={{ background: '#deffee', border: '1px solid #1f9d55' }}>
+        <span className="text-xs font-semibold" style={{ color: '#0f5d33' }}>
+          Sent! Mark this bundle complete?
+        </span>
+        <button type="button" className="sm-button text-xs" onClick={markComplete}>
+          ✓ Mark complete
+        </button>
+        <button type="button" className="sm-button secondary text-xs"
+                onClick={() => setOfferComplete(false)}>
+          Not yet
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-2">

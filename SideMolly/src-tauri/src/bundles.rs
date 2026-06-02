@@ -128,6 +128,10 @@ pub struct BundleSummary {
     pub ingested_at: String,
     pub verify_status: String,
     pub bundle_state: String,
+    /// ISO timestamp the bundle was marked complete, or `None` while active.
+    /// `None` = lives in the Inbox's default Active view; `Some` = Completed.
+    /// Added in migration 021.
+    pub completed_at: Option<String>,
     pub file_count: i64,
     pub source_zip_path: String,
 }
@@ -828,6 +832,67 @@ pub fn set_bundle_title_override<R: Runtime>(
     get_bundle(handle, uid)
 }
 
+/// Mark a bundle complete (drops it out of the Inbox's default Active view)
+/// or reactivate it. Completion is a user-driven archival flag — orthogonal
+/// to the (unused) `bundle_state` workflow enum — recorded as the
+/// `completed_at` timestamp (NULL = active). The flip is written to the
+/// processing log so the post-bundle can surface it. Idempotent.
+#[tauri::command]
+pub fn set_bundle_completed<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+    completed: bool,
+) -> Result<(), BundleError> {
+    let conn = open_conn(&handle)?;
+    let stamp = if completed { Some(iso_now()) } else { None };
+    let n = conn.execute(
+        "UPDATE bundles SET completed_at = ?1, updated_at = datetime('now')
+          WHERE uid = ?2",
+        params![stamp, uid],
+    )?;
+    if n == 0 {
+        return Err(BundleError::NotFound(format!("bundle {uid}")));
+    }
+    let msg = if completed { "bundle marked complete" } else { "bundle reactivated" };
+    crate::processing_log::write(
+        &conn, Some(&uid), None, Some("lifecycle"),
+        crate::processing_log::Level::Info,
+        msg, None, stamp.as_deref(),
+    );
+    Ok(())
+}
+
+/// Delete a bundle: remove the DB row (FK cascade clears bundle_files, jobs,
+/// export thumbs, dropbox copies, postings, posting log; processing_log is
+/// SET NULL) and the on-disk `work/<UID>/` workspace. Deliberately leaves the
+/// incoming source zip and any sent `Molly post-bundles/<UID>-post.zip`
+/// (outbox record) untouched. Workspace removal is best-effort — a missing
+/// dir is not an error.
+#[tauri::command]
+pub fn delete_bundle<R: Runtime>(
+    handle: AppHandle<R>,
+    uid: String,
+) -> Result<(), BundleError> {
+    let conn = open_conn(&handle)?;
+    let n = conn.execute("DELETE FROM bundles WHERE uid = ?1", params![uid])?;
+    if n == 0 {
+        return Err(BundleError::NotFound(format!("bundle {uid}")));
+    }
+    drop(conn);
+
+    // Best-effort workspace cleanup. Never fail the delete over a missing or
+    // partially-removed directory.
+    let workspace = bundle_workspace_dir(&work_root(&handle)?, &uid);
+    if let Err(e) = fs::remove_dir_all(&workspace) {
+        if e.kind() != std::io::ErrorKind::NotFound {
+            eprintln!(
+                "[sidemolly] delete_bundle: workspace cleanup for {uid} failed: {e}"
+            );
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn reveal_working_file<R: Runtime>(
     handle: AppHandle<R>,
@@ -861,7 +926,7 @@ pub fn list_bundles<R: Runtime>(handle: AppHandle<R>) -> Result<Vec<BundleSummar
                 COALESCE(NULLIF(b.title_override,''), b.title) AS title, b.ingested_at,
                 b.verify_status, b.bundle_state, b.source_zip_path,
                 (SELECT COUNT(*) FROM bundle_files f WHERE f.bundle_uid = b.uid) AS file_count,
-                b.title AS original_title, b.title_override
+                b.title AS original_title, b.title_override, b.completed_at
          FROM bundles b
          ORDER BY b.ingested_at DESC",
     )?;
@@ -879,6 +944,7 @@ pub fn list_bundles<R: Runtime>(handle: AppHandle<R>) -> Result<Vec<BundleSummar
                 file_count: row.get(8)?,
                 original_title: row.get(9)?,
                 title_override: row.get(10)?,
+                completed_at: row.get(11)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -897,7 +963,7 @@ pub fn get_bundle<R: Runtime>(
                 COALESCE(NULLIF(b.title_override,''), b.title) AS title, b.ingested_at,
                 b.verify_status, b.bundle_state, b.source_zip_path,
                 (SELECT COUNT(*) FROM bundle_files f WHERE f.bundle_uid = b.uid) AS file_count,
-                b.manifest_json, b.title AS original_title, b.title_override
+                b.manifest_json, b.title AS original_title, b.title_override, b.completed_at
          FROM bundles b
          WHERE b.uid = ?1",
         params![uid],
@@ -915,6 +981,7 @@ pub fn get_bundle<R: Runtime>(
                     file_count: row.get(8)?,
                     original_title: row.get(10)?,
                     title_override: row.get(11)?,
+                    completed_at: row.get(12)?,
                 },
                 row.get(9)?,
             ))
@@ -1968,6 +2035,7 @@ mod tests {
         conn.execute_batch(include_str!("../migrations/018_bundle_type_widen.sql")).unwrap();
         conn.execute_batch(include_str!("../migrations/019_persona_clips.sql")).unwrap();
         conn.execute_batch(include_str!("../migrations/020_bundle_title_override.sql")).unwrap();
+        conn.execute_batch(include_str!("../migrations/021_bundle_completed_at.sql")).unwrap();
         conn
     }
 
@@ -2215,6 +2283,67 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM bundle_files WHERE bundle_uid = 'x'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(n, 0, "ON DELETE CASCADE wipes file rows");
+    }
+
+    #[test]
+    fn completed_at_round_trips() {
+        // Mirrors the SQL set_bundle_completed runs: default NULL (active),
+        // set on complete, clear on reactivate.
+        let mut conn = fresh_db();
+        let v = fixture_validated("c", &[("info.md", "a".repeat(64).as_str(), 1)]);
+        let m = fansite_manifest("c");
+        persist_validated(&mut conn, &v, &m, "molly_log", "/tmp/c.zip").unwrap();
+
+        let active: Option<String> = conn
+            .query_row("SELECT completed_at FROM bundles WHERE uid='c'", [], |r| r.get(0))
+            .unwrap();
+        assert!(active.is_none(), "freshly ingested bundle is active (completed_at NULL)");
+
+        // Mark complete.
+        let stamp = iso_now();
+        let n = conn
+            .execute(
+                "UPDATE bundles SET completed_at = ?1, updated_at = datetime('now') WHERE uid = ?2",
+                params![Some(&stamp), "c"],
+            )
+            .unwrap();
+        assert_eq!(n, 1);
+        let done: Option<String> = conn
+            .query_row("SELECT completed_at FROM bundles WHERE uid='c'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(done.as_deref(), Some(stamp.as_str()), "marked complete stores the timestamp");
+
+        // Reactivate.
+        conn.execute(
+            "UPDATE bundles SET completed_at = ?1, updated_at = datetime('now') WHERE uid = ?2",
+            params![Option::<String>::None, "c"],
+        )
+        .unwrap();
+        let reactivated: Option<String> = conn
+            .query_row("SELECT completed_at FROM bundles WHERE uid='c'", [], |r| r.get(0))
+            .unwrap();
+        assert!(reactivated.is_none(), "reactivate clears completed_at back to NULL");
+    }
+
+    #[test]
+    fn delete_bundle_workspace_removal_is_missing_dir_safe() {
+        // delete_bundle removes work/<uid>/ best-effort. A present dir is
+        // wiped; an absent one yields ErrorKind::NotFound, which the command
+        // tolerates rather than failing the delete.
+        use std::fs;
+        let root = tempfile::TempDir::new().unwrap();
+        let ws = bundle_workspace_dir(root.path(), "x");
+        fs::create_dir_all(ws.join(".thumbs")).unwrap();
+        fs::write(ws.join("info.md"), b"hi").unwrap();
+        assert!(ws.exists());
+
+        fs::remove_dir_all(&ws).expect("present workspace removes cleanly");
+        assert!(!ws.exists());
+
+        // Second removal on the now-missing dir is the NotFound case.
+        let err = fs::remove_dir_all(&ws).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::NotFound,
+                   "missing workspace surfaces NotFound (treated as OK)");
     }
 
     #[test]

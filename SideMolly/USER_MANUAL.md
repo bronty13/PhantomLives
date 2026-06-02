@@ -29,6 +29,39 @@ post-bundle back to Molly to record what actually happened.
   `<uid>-post/` folder is written next to it holding the same contents
   (report, notes, posting log, artifacts) — open that folder to browse
   the artifacts directly, without unzipping.
+- **Mark it complete** — once you're done with a bundle, click **✓ Complete**
+  on its Inbox row to tuck it out of the default view. After **Send to Molly**
+  succeeds, SideMolly also offers to complete the bundle in one click.
+
+## Organizing the Inbox
+
+The Inbox opens on **Active** bundles — everything you haven't finished yet.
+The toolbar at the top keeps it manageable:
+
+- **Active | Completed | All** — the segmented toggle switches which bundles
+  you see. *Active* hides anything you've marked complete; *Completed* shows
+  only those; *All* shows everything.
+- **Type / Persona chips** — narrow to one bundle type (🎬 content, 🎁 custom,
+  📅 fansite, ▶️ youtube) or one persona (CoC, PoA, Sa). Click **All** (or the
+  active chip again) to clear it.
+- **Sort** — newest or oldest first by ingested date.
+- **Date** — restrict to bundles ingested within a from/to window.
+- **Search** — free-text match on title or UID.
+- The `n of N` readout shows how many bundles match versus the total.
+
+Each row has actions on the right:
+
+- **✓ Complete** — mark an active bundle done; it leaves the Active view and
+  picks up a green *Completed &lt;date&gt;* stamp.
+- **↩ Reactivate** — bring a completed bundle back to Active.
+- **🗑 Delete** — remove a bundle for good. You'll get a *Delete? Yes / Cancel*
+  confirm first. Deleting removes SideMolly's record and its working folder
+  (`~/Downloads/SideMolly/work/<uid>/`) but **leaves** any post-bundle you
+  already sent (`~/Downloads/Molly post-bundles/<uid>-post.zip`) and the
+  original incoming ZIP untouched.
+
+Completing is reversible and only affects what shows in the Inbox — it doesn't
+touch files, postings, or the post-bundle. Deleting is permanent.
 
 ## YouTube intro / outro clips (Settings → Intro / Outro)
 

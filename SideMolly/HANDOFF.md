@@ -52,6 +52,7 @@ SideMolly/
 | Module | Commands |
 |---|---|
 | backup | `run_backup_now`, `list_backups`, `test_backup`, `restore_backup`, `reveal_backup_dir`, `reveal_path`, `get_backup_settings`, `set_backup_settings` |
+| bundles (lifecycle) | `set_bundle_completed`, `delete_bundle` (+ `list_bundles`/`get_bundle` now surface `completedAt`) |
 | fansite (Phase 13) | `get_fansite_plan`, `seed_fansite_targets`, `prepare_fansite_day`, `reveal_fansite_day`, `set_fansite_day`, `reset_fansite_postings`, `list_posting_log` |
 
 ACL is in `src-tauri/capabilities/default.json`.
