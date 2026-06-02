@@ -275,7 +275,7 @@ fn enumerate_artifacts<R: Runtime>(
         out.push((master, name, "master".into()));
     }
 
-    // SideMollySummary PDF — copied alongside the master when present.
+    // SideMolly Summary PDF — copied alongside the master when present.
     // copy_to_dropbox regenerates it fresh just before enumerating.
     let summary = workspace
         .join("auto")
@@ -382,7 +382,7 @@ pub fn copy_to_dropbox<R: Runtime>(
     let dest_dir = PathBuf::from(&settings.root_path).join(&folder);
     fs::create_dir_all(&dest_dir)?;
 
-    // Regenerate the SideMollySummary PDF so the copied copy reflects the
+    // Regenerate the SideMolly Summary PDF so the copied copy reflects the
     // bundle's current state. Best-effort: a failure (missing transcript, font
     // glitch) must never block copying the master cut.
     let _ = crate::summary::try_generate_for_dropbox(&handle, &uid);

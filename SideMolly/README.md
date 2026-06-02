@@ -98,10 +98,13 @@ SideMolly/
 
 ### Beyond the phase plan
 
-- **SideMollySummary** — a per-bundle PDF (metadata + thumbnail grid + cleaned
+- **SideMolly Summary** — a per-bundle PDF (metadata + a grid of
+  rotation-corrected frames sampled across the bundle's videos + cleaned
   transcripts + processing log), generated from the Distribute tab and copied
-  to Dropbox alongside the master cut. Thumbnail count is configurable in
-  **Settings → Summary** (default 30) and is shared with the post-bundle. PDF
-  via `genpdf` + bundled Liberation Sans (`src-tauri/src/summary.rs`).
+  to Dropbox alongside the master cut. Frame count is configurable in
+  **Settings → Summary** (default 30). PDF via `genpdf` + bundled Liberation
+  Sans (`src-tauri/src/summary.rs`, `frames.rs`).
+- **Edit defaults** — global (not per-persona) starting toggle states for the
+  Edit tab's image/video ops (Settings → Edit defaults; Rename defaults on).
 - **Inbox completion lifecycle** — mark bundles complete/active, filter, and
   delete from the Inbox toolbar.

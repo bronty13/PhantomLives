@@ -589,7 +589,7 @@ fn collect_artifacts<R: Runtime>(
     }
 
     // Thumbnails: the export-thumbnail selection (configurable count, default
-    // 30 — shared with the SideMollySummary PDF). Reselect to the current
+    // 30 — shared with the SideMolly Summary PDF). Reselect to the current
     // count first so the payload reflects the setting, then copy each picked
     // JPEG into artifacts/thumbnails/.
     let count = crate::bundles::thumb_count(conn);

@@ -32,13 +32,13 @@ post-bundle back to Molly to record what actually happened.
 - **Mark it complete** — once you're done with a bundle, click **✓ Complete**
   on its Inbox row to tuck it out of the default view. After **Send to Molly**
   succeeds, SideMolly also offers to complete the bundle in one click.
-- **SideMollySummary** — generate a one-page PDF that captures the whole
-  bundle (metadata, thumbnails, transcripts, processing log). It rides along
+- **SideMolly Summary** — generate a one-page PDF that captures the whole
+  bundle (metadata, sampled frames, transcripts, processing log). It rides along
   to Dropbox with the assembled master cut. See below.
 
-## SideMollySummary (Distribute → Generate summary PDF)
+## SideMolly Summary (Distribute → Generate summary PDF)
 
-The **SideMollySummary** is a single PDF that captures everything about a
+The **SideMolly Summary** is a single PDF that captures everything about a
 bundle in one place, in this order:
 
 1. **Metadata** — Title, Working title (only if you changed it), Description
@@ -47,7 +47,12 @@ bundle in one place, in this order:
    assembled). **Custom** bundles also show the Site/URL, who it's delivered
    to, and the Price (or "Handled in platform"). The fields shown adapt to the
    bundle type.
-2. **Thumbnails** — a grid of medium thumbnails sampled from the bundle.
+2. **Frames** — a grid of frames sampled from the bundle's videos. The total
+   number of frames is the count you set in Settings (default 30), spread
+   evenly across the videos — three videos at 30 frames means ten from each,
+   evenly spaced along each clip. Frames are taken **after** any rotation you
+   set on the Edit tab, so they're always the right way up. (A bundle with no
+   video falls back to a grid of its image thumbnails, also righted.)
 3. **Transcript** — every video's transcript, concatenated and tidied up
    (blank lines removed, sentences capitalized and ended with a period). If a
    bundle hasn't been transcribed yet, run **Transcribe** on the Edit tab
@@ -61,10 +66,17 @@ Open a bundle, go to the **Distribute** tab, and click
 by hand for delivery, though: every time you **Copy to Dropbox**, SideMolly
 regenerates the summary fresh and copies it next to the assembled master cut.
 
-**Thumbnail count** lives in **Settings → 📄 Summary** (default **30**). That
-one number controls both the summary's thumbnail grid *and* the thumbnails
-included in the post-bundle sent back to Molly. A bundle with fewer media files
-than the count simply shows all of them.
+**Frame count** lives in **Settings → 📄 Summary** (default **30**). It sets how
+many frames the summary samples, and also how many thumbnails go in the
+post-bundle sent back to Molly.
+
+## Edit defaults (Settings → ✏️ Edit defaults)
+
+The **Edit** tab's image and video op toggles (Watermark, Strip EXIF /
+metadata, Rename) start from these global defaults whenever you open a bundle.
+They apply to every persona — there's no per-persona variation. **Rename** is
+on by default. You can still flip any toggle per-bundle before you process;
+this pane just sets the starting point.
 
 ## Organizing the Inbox
 

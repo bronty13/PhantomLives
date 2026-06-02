@@ -4,6 +4,31 @@ All notable changes to SideMolly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and SideMolly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.0] — 2026-06-02
+
+### Changed — "SideMolly Summary" + sampled, rotation-corrected frames
+
+- Renamed the feature to **SideMolly Summary** (the PDF title, heading, and UI
+  labels now carry the space).
+- The summary's image grid now shows **frames sampled from the bundle's
+  videos** instead of one thumbnail per file: a total of N frames (the
+  configurable count, default 30) distributed evenly across the videos
+  (3 videos → 10 each), each evenly spaced across its own timeline. Frames are
+  **rotation-corrected** (ffmpeg `transpose`, matching auto-assembly) so they
+  display upright. Bundles with no video fall back to rotation-corrected
+  per-file image thumbnails. New `frames.rs`; `thumbnails::probe_video_duration`
+  + `rotated_jpeg_bytes`.
+- **Processed-output previews** (Edit tab) now show the **rotated** video
+  thumbnail so it's upright, matching the processed image previews.
+
+### Added — Global Edit defaults (Settings → Edit defaults)
+
+The Edit tab's image/video op toggles (Watermark, Strip EXIF/metadata, Rename)
+are now seeded from a **global** (not per-persona) settings pane instead of
+being hard-coded. **Rename now defaults ON** for both images and videos. New
+`edit_defaults` singleton (migration `023`) + `get_edit_defaults` /
+`set_edit_defaults`.
+
 ## [0.26.0] — 2026-06-02
 
 ### Added — SideMollySummary PDF

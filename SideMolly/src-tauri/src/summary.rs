@@ -1,4 +1,4 @@
-//! SideMollySummary — a one-document PDF per bundle.
+//! SideMolly Summary — a one-document PDF per bundle.
 //!
 //! Gathers, in order: applicable metadata (varying by bundle type), a grid of
 //! medium thumbnails (the configured export-thumb selection), a cleaned-up
@@ -319,6 +319,55 @@ fn kv_line(label: &str, value: &str) -> elements::Paragraph {
     p
 }
 
+/// Per-file image thumbnails for the no-video fallback, with each file's
+/// rotation so the grid can right them.
+fn export_thumbs_with_rotation(conn: &Connection, uid: &str) -> Result<Vec<(String, i64)>, BundleError> {
+    let mut stmt = conn.prepare(
+        "SELECT t.thumbnail_path, f.rotation_degrees
+           FROM bundle_export_thumbs t
+           JOIN bundle_files f ON f.id = t.bundle_file_id
+          WHERE t.bundle_uid = ?1 ORDER BY t.position",
+    )?;
+    let rows = stmt.query_map(params![uid], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
+    let mut v = Vec::new();
+    for r in rows {
+        v.push(r?);
+    }
+    Ok(v)
+}
+
+/// Build the grid's embeddable images: prefer N rotation-corrected frames
+/// sampled across the bundle's videos; when the bundle has no video, fall back
+/// to rotation-corrected per-file image thumbnails.
+fn build_grid_images(conn: &Connection, uid: &str, workspace: &Path, count: i64) -> Vec<elements::Image> {
+    let frames_dir = workspace.join(".frames");
+    let frames = crate::frames::sample_bundle_frames(conn, uid, count, &frames_dir).unwrap_or_default();
+    if !frames.is_empty() {
+        // ffmpeg already righted these, so embed straight from disk.
+        return frames
+            .iter()
+            .filter_map(|p| elements::Image::from_path(p).ok())
+            .map(|i| i.with_dpi(THUMB_DPI).with_alignment(genpdf::Alignment::Center))
+            .collect();
+    }
+
+    let Ok(thumbs) = export_thumbs_with_rotation(conn, uid) else {
+        return Vec::new();
+    };
+    thumbs
+        .iter()
+        .filter(|(p, _)| {
+            let l = p.to_lowercase();
+            l.ends_with(".jpg") || l.ends_with(".jpeg")
+        })
+        .filter_map(|(p, rot)| {
+            let bytes = crate::thumbnails::rotated_jpeg_bytes(Path::new(p), *rot)?;
+            elements::Image::from_reader(std::io::Cursor::new(bytes)).ok()
+        })
+        .map(|i| i.with_dpi(THUMB_DPI).with_alignment(genpdf::Alignment::Center))
+        .collect()
+}
+
 /// Core builder, separated from the Tauri command so it's exercisable from a
 /// thin wrapper. Returns the output path.
 fn build_summary<R: Runtime>(handle: &AppHandle<R>, uid: &str) -> Result<PathBuf, BundleError> {
@@ -349,7 +398,6 @@ fn build_summary<R: Runtime>(handle: &AppHandle<R>, uid: &str) -> Result<PathBuf
     let fields = summary_fields(&manifest, &title_override, &description, processed_at.as_deref());
     let transcript = concat_video_transcripts(&conn, uid, &workspace);
     let log = read_full_log(&conn, uid);
-    let thumbs = bundles::export_thumb_paths(&conn, uid)?;
 
     // ---- Build the document ----
     let font_family = fonts::FontFamily {
@@ -359,7 +407,7 @@ fn build_summary<R: Runtime>(handle: &AppHandle<R>, uid: &str) -> Result<PathBuf
         bold_italic: fonts::FontData::new(FONT_BOLD_ITALIC.to_vec(), None).map_err(|e| pdf_err("font", e))?,
     };
     let mut doc = genpdf::Document::new(font_family);
-    doc.set_title(format!("SideMollySummary — {effective_title}"));
+    doc.set_title(format!("SideMolly Summary — {effective_title}"));
     doc.set_minimal_conformance();
     doc.set_font_size(11);
     let mut deco = genpdf::SimplePageDecorator::new();
@@ -368,7 +416,7 @@ fn build_summary<R: Runtime>(handle: &AppHandle<R>, uid: &str) -> Result<PathBuf
 
     // Header.
     let persona = manifest.persona_code.clone().unwrap_or_else(|| "—".into());
-    doc.push(heading("SideMollySummary", 20));
+    doc.push(heading("SideMolly Summary", 20));
     doc.push(
         elements::Paragraph::new(format!("{persona} · {} · {effective_title}", manifest.bundle_type))
             .styled(style::Style::new().italic().with_font_size(11)),
@@ -382,18 +430,10 @@ fn build_summary<R: Runtime>(handle: &AppHandle<R>, uid: &str) -> Result<PathBuf
     }
     doc.push(elements::Break::new(1.0));
 
-    // Thumbnails grid. Load all embeddable images first (skip unreadable /
-    // alpha thumbnails), then lay them out in fixed-width rows, padding the
-    // trailing row so every row has exactly GRID_COLS cells.
-    let images: Vec<elements::Image> = thumbs
-        .iter()
-        .filter(|p| {
-            let l = p.to_lowercase();
-            l.ends_with(".jpg") || l.ends_with(".jpeg")
-        })
-        .filter_map(|p| elements::Image::from_path(p).ok())
-        .map(|i| i.with_dpi(THUMB_DPI).with_alignment(genpdf::Alignment::Center))
-        .collect();
+    // Image grid: N rotation-corrected frames sampled across the bundle's
+    // videos (falls back to per-file image thumbnails when there are none).
+    // Laid out in fixed-width rows, padding the trailing row to GRID_COLS.
+    let images = build_grid_images(&conn, uid, &workspace, count);
     if !images.is_empty() {
         doc.push(heading(&format!("Thumbnails ({})", images.len()), 14));
         let mut table = elements::TableLayout::new(vec![1; GRID_COLS]);
@@ -455,7 +495,7 @@ fn build_summary<R: Runtime>(handle: &AppHandle<R>, uid: &str) -> Result<PathBuf
         None,
         Some("summary"),
         crate::processing_log::Level::Info,
-        "SideMollySummary PDF generated",
+        "SideMolly Summary PDF generated",
         None,
         out_path.file_name().and_then(|s| s.to_str()),
     );
@@ -548,7 +588,7 @@ mod tests {
         };
         let mut doc = genpdf::Document::new(font_family);
         doc.set_minimal_conformance();
-        doc.push(heading("SideMollySummary smoke", 16));
+        doc.push(heading("SideMolly Summary smoke", 16));
         doc.push(elements::Paragraph::new("Hello — rendered with the bundled font."));
 
         let dir = tempfile::TempDir::new().unwrap();

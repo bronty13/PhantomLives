@@ -28,7 +28,7 @@ import {
   clearBundleLog, clearBundleProcessing, detectBundleFormat,
   enqueueAutoAssemble, enqueueBundleTranscripts,
   enqueueBundleVideoOps, exportBundleLog, fmtSize, getBundleThumbnails,
-  getMasterCutStatus, getProcessedPreviews, getTranscribeStatus,
+  getEditDefaults, getMasterCutStatus, getProcessedPreviews, getTranscribeStatus,
   listLogEntries, listProcessedFiles, listTranscripts, openMasterCut,
   processBundleImages, revealBundleLog, revealMasterCut, revealProcessedFile,
   revealTranscript, revealWorkingFile, rotateBundleFiles, setBundleFileRotation,
@@ -77,8 +77,19 @@ export function EditTab({ summary, files, refreshSignal, jobs, onFileUpdated }: 
   const videos = useMemo(() => localFiles.filter((f) => f.kind === 'video'), [localFiles]);
   const allMedia = useMemo(() => localFiles.filter((f) => f.kind === 'image' || f.kind === 'video'), [localFiles]);
 
-  const [imageOps, setImageOps] = useState<ImageOpsInput>({ watermark: true, stripExif: true, rename: false });
-  const [videoOps, setVideoOps] = useState<VideoOpsInput>({ watermark: true, stripMetadata: true, rename: false });
+  // Seeded from the global Edit defaults (Settings → Edit defaults) on mount;
+  // the hardcoded literals are just the pre-load fallback.
+  const [imageOps, setImageOps] = useState<ImageOpsInput>({ watermark: true, stripExif: true, rename: true });
+  const [videoOps, setVideoOps] = useState<VideoOpsInput>({ watermark: true, stripMetadata: true, rename: true });
+  useEffect(() => {
+    let alive = true;
+    getEditDefaults().then((d) => {
+      if (!alive) return;
+      setImageOps({ watermark: d.imageWatermark, stripExif: d.imageStripExif, rename: d.imageRename });
+      setVideoOps({ watermark: d.videoWatermark, stripMetadata: d.videoStripMetadata, rename: d.videoRename });
+    }).catch(() => { /* keep fallback defaults */ });
+    return () => { alive = false; };
+  }, []);
   const [busy, setBusy] = useState(false);
   const [busyLabel, setBusyLabel] = useState<string | null>(null);
   const [imageProgress, setImageProgress] = useState<ImageProgress | null>(null);

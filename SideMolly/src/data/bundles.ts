@@ -176,6 +176,25 @@ export interface ImageOpsInput {
   rename: boolean;
 }
 
+// ---- Global Edit defaults ----
+
+export interface EditDefaults {
+  imageWatermark: boolean;
+  imageStripExif: boolean;
+  imageRename: boolean;
+  videoWatermark: boolean;
+  videoStripMetadata: boolean;
+  videoRename: boolean;
+}
+
+export function getEditDefaults(): Promise<EditDefaults> {
+  return invoke<EditDefaults>('get_edit_defaults');
+}
+
+export function setEditDefaults(settings: EditDefaults): Promise<void> {
+  return invoke('set_edit_defaults', { settings });
+}
+
 export interface ProcessedFileRow {
   bundleFileId: number;
   inZipPath: string;
@@ -366,7 +385,7 @@ export function setAutoAssemblySettings(settings: AutoAssemblySettings): Promise
   return invoke('set_auto_assembly_settings', { settings });
 }
 
-// ---- SideMollySummary PDF ----
+// ---- SideMolly Summary PDF ----
 
 export interface SummarySettings {
   /** Export thumbnails sampled — drives both the summary PDF grid and the
@@ -386,7 +405,7 @@ export function setSummarySettings(settings: SummarySettings): Promise<void> {
   return invoke('set_summary_settings', { settings });
 }
 
-/** Generate (or regenerate) the SideMollySummary PDF for a bundle. */
+/** Generate (or regenerate) the SideMolly Summary PDF for a bundle. */
 export function generateBundleSummary(uid: string): Promise<SummaryResult> {
   return invoke<SummaryResult>('generate_bundle_summary', { uid });
 }

@@ -509,7 +509,7 @@ pub fn dispatch_transcribe_video<R: Runtime>(
 
 /// Synchronously transcribe a single audio/video file to plain text, reusing
 /// the same engine resolution + invocation as the job dispatcher. Used by the
-/// SideMollySummary PDF to turn a short audio *description* into text on
+/// SideMolly Summary PDF to turn a short audio *description* into text on
 /// demand. Returns the `.txt` rendering. Errors (engine missing, run failed)
 /// are surfaced so callers can degrade gracefully — this never writes sidecars.
 pub fn transcribe_audio_to_text(src: &Path) -> Result<String, BundleError> {

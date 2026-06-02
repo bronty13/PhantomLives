@@ -5,6 +5,7 @@ mod bundles;
 mod dropbox;
 mod extract;
 mod fansite;
+mod frames;
 mod fsutil;
 mod images;
 mod jobs;
@@ -155,6 +156,12 @@ pub fn run() {
             sql: include_str!("../migrations/022_summary_pdf.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 23,
+            description: "edit-defaults",
+            sql: include_str!("../migrations/023_edit_defaults.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -270,6 +277,8 @@ pub fn run() {
             bundles::delete_bundle,
             bundles::get_summary_settings,
             bundles::set_summary_settings,
+            bundles::get_edit_defaults,
+            bundles::set_edit_defaults,
             summary::generate_bundle_summary,
             summary::reveal_bundle_summary,
             watch::get_watch_settings,
@@ -316,7 +325,7 @@ mod camel_case_contract {
         PreparedDay, PreparedDayFile,
     };
     use crate::post_bundle::{ComposeResult, PostBundleStatus};
-    use crate::bundles::{BundleDetail, BundleFileRow, BundleSummary, ExportThumb,
+    use crate::bundles::{BundleDetail, BundleFileRow, BundleSummary, EditDefaults, ExportThumb,
         ImageProgressEvent, IngestResult, RotationUpdate, SummarySettings};
     use crate::manifest::{BundleManifest, FanDay};
     use crate::persona_clips::PersonaClipRow;
@@ -391,6 +400,13 @@ mod camel_case_contract {
         assert_camel(&serde_json::to_value(crate::summary::SummaryResult {
             output_path: String::new(),
         }).unwrap(), "SummaryResult");
+    }
+
+    #[test] fn edit_defaults_is_camel_case() {
+        assert_camel(&serde_json::to_value(EditDefaults {
+            image_watermark: true, image_strip_exif: true, image_rename: true,
+            video_watermark: true, video_strip_metadata: true, video_rename: true,
+        }).unwrap(), "EditDefaults");
     }
 
     #[test] fn rotation_update_is_camel_case() {
@@ -818,6 +834,7 @@ mod migration_smoke {
             (20, "bundle-title-override", include_str!("../migrations/020_bundle_title_override.sql")),
             (21, "bundle-completed-at", include_str!("../migrations/021_bundle_completed_at.sql")),
             (22, "summary-pdf", include_str!("../migrations/022_summary_pdf.sql")),
+            (23, "edit-defaults", include_str!("../migrations/023_edit_defaults.sql")),
         ];
         for (v, name, sql) in migrations {
             conn.execute_batch(sql)
@@ -832,7 +849,7 @@ mod migration_smoke {
             "processing_log",
             "dropbox_settings", "dropbox_copies",
             "posting_targets", "bundle_postings", "posting_log",
-            "persona_clips", "summary_settings",
+            "persona_clips", "summary_settings", "edit_defaults",
         ];
         for t in expected_tables {
             let count: i64 = conn
@@ -944,6 +961,13 @@ mod migration_smoke {
             [], |r| r.get(0),
         ).unwrap();
         assert_eq!(thumb_count, 30, "summary_settings.thumb_count should default to 30");
+
+        // Migration 023: edit_defaults singleton, rename defaults ON.
+        let (img_rename, vid_rename): (i64, i64) = conn.query_row(
+            "SELECT image_rename, video_rename FROM edit_defaults WHERE id = 1",
+            [], |r| Ok((r.get(0)?, r.get(1)?)),
+        ).unwrap();
+        assert_eq!((img_rename, vid_rename), (1, 1), "rename should default ON for images + videos");
     }
 }
 
@@ -997,6 +1021,7 @@ mod migration_immutability {
         (20, "582d27200ef5c8ad0cbf27c020696fde9515070db28afd9c9864a949daf807ac"),
         (21, "cc6ba6c61e52d28a3e3fc6c4eb28e4a9ed058a1af26072fe62865e069fbee87d"),
         (22, "a6e9416b14235de39328af9308e3f7aecb7331aae6d4d67121d6955442ade6d5"),
+        (23, "54ab62c7767f0a8e6499b754a55a6115319c293df790a47ce957509445ec4c16"),
     ];
 
     /// Source-of-truth for "which migrations ship at compile time". Must
@@ -1027,6 +1052,7 @@ mod migration_immutability {
         (20, "020_bundle_title_override.sql",      include_str!("../migrations/020_bundle_title_override.sql")),
         (21, "021_bundle_completed_at.sql",        include_str!("../migrations/021_bundle_completed_at.sql")),
         (22, "022_summary_pdf.sql",                include_str!("../migrations/022_summary_pdf.sql")),
+        (23, "023_edit_defaults.sql",              include_str!("../migrations/023_edit_defaults.sql")),
     ];
 
     fn sha256_hex(s: &str) -> String {

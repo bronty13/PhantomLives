@@ -3,18 +3,20 @@ import { AppearanceSettings } from './AppearanceSettings';
 import { AutoAssemblySettings } from './AutoAssemblySettings';
 import { BackupSettings } from './BackupSettings';
 import { DropboxSettings } from './DropboxSettings';
+import { EditDefaultsSettings } from './EditDefaultsSettings';
 import { IntroOutroSettings } from './IntroOutroSettings';
 import { PlatformsSettings } from './PlatformsSettings';
 import { SummarySettings } from './SummarySettings';
 import { WatchSettings } from './WatchSettings';
 import { WatermarkSettings } from './WatermarkSettings';
 
-type SettingsTab = 'appearance' | 'watch' | 'watermark' | 'autoassemble' | 'introoutro' | 'dropbox' | 'summary' | 'platforms' | 'backup' | 'about';
+type SettingsTab = 'appearance' | 'watch' | 'watermark' | 'editdefaults' | 'autoassemble' | 'introoutro' | 'dropbox' | 'summary' | 'platforms' | 'backup' | 'about';
 
 const TABS: { key: SettingsTab; label: string; icon: string }[] = [
   { key: 'appearance',   label: 'Appearance',     icon: '🎨' },
   { key: 'watch',        label: 'Watched folder', icon: '👀' },
   { key: 'watermark',    label: 'Watermark',      icon: '🖋' },
+  { key: 'editdefaults', label: 'Edit defaults',  icon: '✏️' },
   { key: 'autoassemble', label: 'Auto-Assembly',  icon: '🎞' },
   { key: 'introoutro',   label: 'Intro / Outro',  icon: '▶️' },
   { key: 'dropbox',      label: 'Dropbox',        icon: '📦' },
@@ -58,6 +60,7 @@ export function SettingsView() {
       {tab === 'appearance' && <AppearanceSettings />}
       {tab === 'watch' && <WatchSettings />}
       {tab === 'watermark' && <WatermarkSettings />}
+      {tab === 'editdefaults' && <EditDefaultsSettings />}
       {tab === 'autoassemble' && <AutoAssemblySettings />}
       {tab === 'introoutro' && <IntroOutroSettings />}
       {tab === 'dropbox' && <DropboxSettings />}

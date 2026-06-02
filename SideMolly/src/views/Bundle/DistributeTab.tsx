@@ -161,7 +161,7 @@ export function DistributeTab({ summary, refreshSignal }: Props) {
         )}
       </section>
 
-      {/* ─── SideMollySummary PDF ──────────────────────────────── */}
+      {/* ─── SideMolly Summary PDF ──────────────────────────────── */}
       <SummarySection uid={summary.uid} onGenerated={refresh} />
 
       {/* ─── Preview table ───────────────────────────────────── */}
@@ -215,7 +215,7 @@ function SummarySection({ uid, onGenerated }: { uid: string; onGenerated: () => 
 
   return (
     <section className="sm-card">
-      <div className="font-semibold mb-1">📄 SideMollySummary</div>
+      <div className="font-semibold mb-1">📄 SideMolly Summary</div>
       <div className="text-xs" style={{ color: 'rgb(var(--surface-muted))' }}>
         A one-page PDF — metadata, a thumbnail grid, the cleaned-up video
         transcripts, and the full processing log. It's regenerated and copied to

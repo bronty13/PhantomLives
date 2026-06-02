@@ -43,7 +43,7 @@ export function SummarySettings() {
   return (
     <div className="flex flex-col gap-4">
       <div className="sm-card">
-        <div className="font-semibold mb-1">SideMollySummary</div>
+        <div className="font-semibold mb-1">SideMolly Summary</div>
         <div className="text-xs" style={{ color: 'rgb(var(--surface-muted))' }}>
           The summary is a one-page PDF per bundle — metadata, a thumbnail grid,
           the cleaned-up video transcripts, and the full processing log.

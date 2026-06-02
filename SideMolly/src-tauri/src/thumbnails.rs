@@ -260,6 +260,62 @@ pub fn probe_video_dimensions(path: &Path) -> Option<(u32, u32)> {
     Some((w.trim().parse().ok()?, h.trim().parse().ok()?))
 }
 
+/// Probe a video's duration in seconds via ffprobe. `None` when ffprobe is
+/// unavailable, errors, or the value is unparseable / non-positive.
+pub fn probe_video_duration(path: &Path) -> Option<f64> {
+    let bin = ffprobe_bin();
+    let output = Command::new(bin)
+        .args([
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "csv=p=0",
+        ])
+        .arg(path)
+        .output()
+        .ok()?;
+    if !output.status.success() { return None; }
+    let s = String::from_utf8(output.stdout).ok()?;
+    let d: f64 = s.trim().parse().ok()?;
+    if d.is_finite() && d > 0.0 { Some(d) } else { None }
+}
+
+/// ffmpeg `transpose` filter chain for a per-file rotation (0/90/180/270),
+/// matching auto-assembly's orientation. Empty when no rotation.
+pub fn transpose_filter(rotation_degrees: i64) -> Option<&'static str> {
+    match rotation_degrees {
+        90 => Some("transpose=1"),               // 90° clockwise
+        270 => Some("transpose=2"),              // 90° counter-clockwise
+        180 => Some("transpose=1,transpose=1"),  // 180°
+        _ => None,
+    }
+}
+
+/// Read a JPEG and apply a per-file rotation (0/90/180/270) so it displays
+/// upright, returning re-encoded JPEG bytes. Rotation 0 (or a decode failure)
+/// returns the original bytes unchanged. Used to right thumbnails for the
+/// summary grid and the processed-output previews.
+pub fn rotated_jpeg_bytes(path: &Path, rotation_degrees: i64) -> Option<Vec<u8>> {
+    let original = std::fs::read(path).ok()?;
+    if rotation_degrees % 360 == 0 {
+        return Some(original);
+    }
+    let img = match image::load_from_memory(&original) {
+        Ok(i) => i,
+        Err(_) => return Some(original), // hand back what we have
+    };
+    let rotated = match rotation_degrees.rem_euclid(360) {
+        90 => img.rotate90(),
+        180 => img.rotate180(),
+        270 => img.rotate270(),
+        _ => img,
+    };
+    let mut out = std::io::Cursor::new(Vec::new());
+    match rotated.write_to(&mut out, image::ImageFormat::Jpeg) {
+        Ok(()) => Some(out.into_inner()),
+        Err(_) => Some(original),
+    }
+}
+
 fn generate_video_thumb(src: &Path, dst: &Path) -> Option<PathBuf> {
     let bin = ffmpeg_bin();
     // Tmp suffix ends in `.jpg` so ffmpeg can sniff the output muxer

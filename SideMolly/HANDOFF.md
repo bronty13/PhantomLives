@@ -53,7 +53,8 @@ SideMolly/
 |---|---|
 | backup | `run_backup_now`, `list_backups`, `test_backup`, `restore_backup`, `reveal_backup_dir`, `reveal_path`, `get_backup_settings`, `set_backup_settings` |
 | bundles (lifecycle) | `set_bundle_completed`, `delete_bundle` (+ `list_bundles`/`get_bundle` now surface `completedAt`) |
-| summary (`summary.rs`) | `generate_bundle_summary`, `reveal_bundle_summary`; settings `get_summary_settings`/`set_summary_settings` (`thumbCount`, default 30). PDF via `genpdf` + bundled Liberation Sans. Drives the shared `bundle_export_thumbs` selection (`bundles::reselect_export_thumbs`), which the post-bundle's `artifacts/thumbnails/` now uses too. |
+| summary (`summary.rs` + `frames.rs`) | `generate_bundle_summary`, `reveal_bundle_summary`; settings `get_summary_settings`/`set_summary_settings` (`thumbCount`, default 30). PDF via `genpdf` + bundled Liberation Sans. Grid = N rotation-corrected frames sampled across the bundle's videos (`frames::sample_bundle_frames` + `distribute`), falling back to rotation-corrected image thumbnails. `thumbnails::probe_video_duration` + `rotated_jpeg_bytes`. Post-bundle thumbnails still use the `bundle_export_thumbs` selection. |
+| edit defaults | `get_edit_defaults`/`set_edit_defaults` (global singleton, migration 023; Rename defaults ON). EditTab seeds its op toggles from these. |
 | fansite (Phase 13) | `get_fansite_plan`, `seed_fansite_targets`, `prepare_fansite_day`, `reveal_fansite_day`, `set_fansite_day`, `reset_fansite_postings`, `list_posting_log` |
 
 ACL is in `src-tauri/capabilities/default.json`.
