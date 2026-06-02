@@ -89,6 +89,10 @@ final class KeyStore: ObservableObject {
            cached.count >= 16 {
             self.dek = SymmetricKey(data: cached)
             self.state = .unlocked
+            // Re-stamp the cache so a DEK written by an older build (when
+            // items were `WhenUnlocked`, hence sync/migration-eligible) is
+            // upgraded to device-only on the next launch. Idempotent.
+            cacheDEKInKeychain()
         } else {
             self.state = .locked
         }

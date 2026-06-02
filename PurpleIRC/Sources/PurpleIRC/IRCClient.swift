@@ -104,8 +104,7 @@ final class IRCClient {
             case .waiting(let err):
                 self.onState?(.failed("Waiting: \(self.humanize(err))"))
             case .failed(let err):
-                let proxyReason = ProxyFramer.lastError
-                ProxyFramer.lastError = nil
+                let proxyReason = ProxyFramer.takeLastError()
                 let detail = self.humanize(err)
                 if let proxyReason {
                     self.onState?(.failed("\(proxyReason) (\(detail))"))

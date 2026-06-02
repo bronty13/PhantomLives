@@ -144,7 +144,8 @@ final class PurpleSayCommand: NSScriptCommand {
         let body = IRCSanitize.field((directParameter as? String) ?? "")
         guard !body.isEmpty else { return "Empty message body." }
         MainActor.assumeIsolated {
-            host.sendInput(body)
+            // Literal chat send — a leading "/" must NOT execute a command.
+            host.sendChatLiteral(body)
         }
         return "Sent."
     }

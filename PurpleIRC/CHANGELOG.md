@@ -12,6 +12,61 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
+## [1.0.591] — 2026-06-01
+
+### Security (audit follow-ups — batch 2 from `AUDIT.md`)
+
+Four MEDIUM security findings from the 2026-06-01 audit, plus one LOW
+that lived in the same file.
+
+- **DCC offers no longer dial arbitrary hosts** (`DCC.swift`). An
+  incoming `DCC SEND`/`CHAT` advertised a peer address that was handed
+  straight to `NWEndpoint.Host` on accept — a bare hostname was accepted
+  verbatim, an SSRF primitive that could make the client connect to an
+  attacker-chosen host (incl. internal services). Offers are now
+  validated to a real IP literal (integer or dotted IPv4, or an IPv6
+  literal); hostnames are refused, and loopback / link-local /
+  unspecified addresses are rejected. RFC1918 ranges stay allowed so
+  on-LAN DCC keeps working. Unit-tested (new `DCCSecurityTests`, +
+  closes the "no DCC validation tests" LOW finding).
+- **DCC wildcard bind is no longer silent** (`DCC.swift`). When the
+  listener can't bind the advertised IP and falls back to `0.0.0.0`
+  (any host that can reach the port could race the peer), the offer now
+  logs a warning and posts a visible ⚠️ notice in the buffer instead of
+  binding every interface silently.
+- **Keychain items are now device-only** (`KeychainStore.swift`). The
+  wrapped DEK and stored credentials were `kSecAttrAccessibleWhenUnlocked`,
+  which is eligible for iCloud Keychain sync, Keychain migration, and
+  backups — so the key could leave this Mac, and the DEK alone unwraps
+  every encrypted file without the passphrase. Switched to
+  `…ThisDeviceOnly`; existing caches upgrade on the next launch. The
+  Security-tab "Require Touch ID" copy was corrected: it's a launch-time
+  screen lock over the app UI, not a cryptographic gate on the cached key
+  (the prior copy over-claimed). A real biometric ACL on the DEK read is
+  deferred (it touches the critical unlock path) and remains tracked in
+  `AUDIT.md`.
+- **Proxy configs can't cross connections** (`ProxyFramer.swift`). Two
+  proxied connections starting close together could pop each other's
+  config out of the shared FIFO — connection A would then authenticate
+  to its proxy with B's credentials and tunnel to B's target. The
+  hand-off is now single-in-flight (the pending list never holds more
+  than one config), with a bounded wait so a connection that fails
+  before its stack is built can't wedge setup. The `lastError` static is
+  now lock-guarded (`takeLastError`), closing a data-race LOW finding.
+- **"Say" automation can't run commands** (`AppIntents.swift`,
+  `AppleScriptCommands.swift`). The `SayInActiveBuffer` Shortcut and the
+  AppleScript `say in active buffer` verb forwarded text verbatim to the
+  slash dispatcher, so a shared/automated "say `/quit`" or "say `/raw …`"
+  executed the command. Both now route through a new literal-chat path
+  (`ChatModel.sendChatLiteral` → `IRCConnection.sendChatLiteral`) that
+  bypasses the dispatcher, so a leading "/" is posted as chat.
+
+### Tests
+
+- +4 (338 → 342): new `DCCSecurityTests` suite covering peer-host
+  validation (integer/dotted IPv4, IPv6 literals, hostname rejection,
+  loopback/link-local/unspecified rejection, RFC1918 allowance).
+
 ## [1.0.590] — 2026-06-01
 
 ### Fixed (audit follow-ups — first batch from `AUDIT.md`)

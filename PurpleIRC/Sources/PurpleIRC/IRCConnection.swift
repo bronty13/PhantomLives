@@ -427,7 +427,16 @@ final class IRCConnection: ObservableObject, Identifiable {
             handleCommand(String(trimmed.dropFirst()), selection: selectedBuffer)
             return
         }
+        sendChatLiteral(trimmed, from: selectedBuffer)
+    }
 
+    /// Post `text` to `selectedBuffer` as a literal PRIVMSG, with NO
+    /// slash-command interpretation. `sendInput` routes its non-command
+    /// case here; the "say" automation surfaces call it directly so a
+    /// leading "/" is sent as chat rather than executed as a command.
+    func sendChatLiteral(_ text: String, from selectedBuffer: Buffer.ID?) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
         guard let bufID = selectedBuffer,
               let bufIdx = buffers.firstIndex(where: { $0.id == bufID }) else {
             return

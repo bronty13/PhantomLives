@@ -65,7 +65,7 @@ struct SecuritySetup: View {
                     Toggle("Require Touch ID on launch",
                            isOn: $settings.settings.requireBiometricsOnLaunch)
                         .disabled(keyStore.state == .notSetup)
-                    Text("When on and encryption is enabled, the Keychain's silent unlock is gated by Touch ID. Cancelling the prompt falls back to your passphrase. Touch ID is a gate in front of the cached key — it doesn't replace the passphrase.")
+                    Text("When on, PurpleIRC's window is locked behind a Touch ID prompt at launch; cancelling falls back to your passphrase. This is a screen lock over the app UI — not a cryptographic gate on the stored key. The encryption key is cached in this Mac's Keychain marked device-only, so it never syncs to iCloud or migrates to another Mac, but a process already running as you can still read it. Your passphrase remains the real secret.")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                     // Surface the live availability diagnostic so a "ready"

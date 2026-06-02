@@ -30,31 +30,73 @@ struct ProxyConfig {
 /// pass-through, so TLS (if any) and the IRC line protocol above can operate
 /// normally.
 ///
-/// Config flows into the framer via a FIFO static queue because NWProtocolFramer
+/// Config flows into the framer via a static hand-off because NWProtocolFramer
 /// only receives an `NWProtocolFramer.Instance` in its initializer and doesn't
 /// expose a user-data channel on `NWProtocolFramer.Options`.
+///
+/// The hand-off is **single-in-flight**: `pushConfig` blocks until the
+/// previously-pushed config has been consumed by its framer, so the pending
+/// list never holds more than one entry. Without this, two proxied
+/// connections starting close together could pop each other's config — and
+/// since the config carries the proxy credentials *and* the target host,
+/// connection A could authenticate to its proxy with B's password and tunnel
+/// to B's target. The gate makes the push→pop pairing deterministic; the
+/// wait is bounded so a framer that never initializes can't wedge setup.
 final class ProxyFramer: NWProtocolFramerImplementation {
     static let label = "PurpleIRCProxy"
     static let definition = NWProtocolFramer.Definition(implementation: ProxyFramer.self)
 
-    private static let configQueueLock = NSLock()
-    private static var pendingConfigs: [ProxyConfig] = []
+    private static let configCond = NSCondition()
+    private static var pendingConfig: ProxyConfig?
+    private static var inFlight = false
 
-    /// Most recent handshake failure reason — IRCClient reads this when the
-    /// connection fails so we can surface a useful error.
-    static var lastError: String?
+    /// Most recent handshake failure reason — IRCClient reads this (via
+    /// `takeLastError`) when the connection fails so we can surface a useful
+    /// error. Guarded by `configCond` like the rest of the shared state.
+    private static var _lastError: String?
+
+    /// Longest `pushConfig` will wait for the prior config to be consumed.
+    /// In practice the framer pops within milliseconds of `conn.start`; this
+    /// only guards against a connection that fails before its stack is built.
+    private static let handoffTimeout: TimeInterval = 5
 
     static func pushConfig(_ c: ProxyConfig) {
-        configQueueLock.lock()
-        pendingConfigs.append(c)
-        configQueueLock.unlock()
+        configCond.lock()
+        let deadline = Date(timeIntervalSinceNow: handoffTimeout)
+        while inFlight {
+            if !configCond.wait(until: deadline) {
+                // Timed out — the prior framer never consumed its config.
+                // Proceed rather than wedge connection setup forever.
+                break
+            }
+        }
+        inFlight = true
+        pendingConfig = c
+        configCond.unlock()
     }
 
     private static func popConfig() -> ProxyConfig? {
-        configQueueLock.lock()
-        defer { configQueueLock.unlock() }
-        guard !pendingConfigs.isEmpty else { return nil }
-        return pendingConfigs.removeFirst()
+        configCond.lock()
+        defer { configCond.unlock() }
+        let c = pendingConfig
+        pendingConfig = nil
+        inFlight = false
+        configCond.signal()
+        return c
+    }
+
+    static func takeLastError() -> String? {
+        configCond.lock()
+        defer { configCond.unlock() }
+        let e = _lastError
+        _lastError = nil
+        return e
+    }
+
+    private static func setLastError(_ reason: String) {
+        configCond.lock()
+        _lastError = reason
+        configCond.unlock()
     }
 
     private enum Phase {
@@ -267,7 +309,7 @@ final class ProxyFramer: NWProtocolFramerImplementation {
 
     private func fail(_ framer: NWProtocolFramer.Instance, _ reason: String) {
         phase = .failed
-        ProxyFramer.lastError = reason
+        ProxyFramer.setLastError(reason)
         let msg = NWProtocolFramer.Message(definition: ProxyFramer.definition)
         _ = framer.deliverInputNoCopy(length: 0, message: msg, isComplete: true)
     }

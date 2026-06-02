@@ -3,10 +3,11 @@
 Snapshot of where the project stands so a future session (human or AI)
 can pick up without re-deriving everything from the commit history.
 Last updated: 2026-06-01. Multi-agent audit landed — 61 verified
-findings (2 high · 14 medium · 45 low) tracked in `AUDIT.md`; first
-fix batch shipped (1.0.590): both HIGH items + the shared-Watchlist
-root cause behind 5 MEDIUMs + 1 LOW, **7 of 61 closed**. See the
-"Audit backlog" entry under Known gaps. Tier #18 (sidebar off
+findings (2 high · 14 medium · 45 low) tracked in `AUDIT.md`; two fix
+batches shipped — 1.0.590 (HIGH items + per-network Watchlist) and
+1.0.591 (security: DCC SSRF/bind, ProxyFramer config swap, Keychain
+device-only, "Say" slash-command). **12 of 61 closed, 2 partial.** See
+the "Audit backlog" entry under Known gaps. Tier #18 (sidebar off
 `NavigationSplitView` → manual `HStack` + `WindowStateGuard`/`AppDelegate`;
 gitignore Finder ` 2.app` dupes; doc sync). Tier #13 (perf + robustness sweep,
 1.0.234–235), Tier #14 (refactor pass — SetupView split, typed
@@ -659,22 +660,24 @@ A multi-agent audit (2026-06-01) swept all 10 subsystems for security /
 correctness / quality issues, with every finding adversarially
 re-verified against the source. **61 confirmed findings (2 high · 14
 medium · 45 low)** are tracked as a tick-off backlog in `AUDIT.md`.
-**First batch shipped 1.0.590 (7 closed, 54 open)** — both HIGH items,
-the per-network `WatchlistService` refactor (5 MEDIUMs), and 1 LOW.
-Start in `AUDIT.md` before the items below — the next highest-value
-open picks among the remaining MEDIUMs:
-- **ProxyFramer FIFO config swap** (`ProxyFramer.swift:40`) — two
-  proxied networks connecting close together can pop each other's proxy
-  config (creds + target). Key configs by a per-connection token.
-- **Keychain DEK has no device-only / biometric ACL**
-  (`KeychainStore.swift:48`) — "Require Touch ID" is a pure UI overlay;
-  the cached DEK returns with no prompt and is migration-eligible.
-- **DCC SSRF + wildcard bind** (`DCC.swift:348`, `:581`) — offered host
-  isn't validated against the IRC sender; listener silently falls back
-  to `0.0.0.0`.
-- **"Say" AppIntent/AppleScript runs slash-commands**
-  (`AppIntents.swift:88`) — a Shortcut that "says" `/quit` or `/raw`
-  executes it. Neutralize a leading `/` on the literal-say surfaces.
+Two batches shipped: **1.0.590** (both HIGH items + per-network
+`WatchlistService`, 5 MEDIUMs + 1 LOW) and **1.0.591** (security:
+DCC SSRF host validation, DCC wildcard-bind warning, ProxyFramer
+single-in-flight config hand-off, Keychain device-only, "Say"
+slash-command bypass; 4 MEDIUM + 2 LOW). **12 of 61 closed, 2 partial.**
+Start in `AUDIT.md` before the items below — remaining higher-value
+open picks:
+- **`#7` biometric-gated DEK read** (`KeyStore.swift`) — device-only
+  landed; making "Require Touch ID" actually gate the cached-key *read*
+  (real `SecAccessControl` + `LAContext`) is still open. Touches the
+  launch/unlock path — test with real Touch ID hardware.
+- **PBKDF2 → memory-hard KDF** (`Crypto.swift:42`) — fixed-iteration,
+  no calibration/migration.
+- **PurpleBot store isolation + regex/timer DoS** (`BotHost.swift`,
+  `BotEngine.swift`) — scripts can read each other's stores; user regexes
+  run with no timeout (ReDoS).
+- **Assistant prompt-injection / consent** (`OllamaClient.swift`) — IRC
+  content POSTed to an unvalidated URL with no timeout/cancellation.
 
 ### DCC — passive mode + RESUME
 Active DCC SEND/CHAT works on-LAN. Behind NAT it needs:

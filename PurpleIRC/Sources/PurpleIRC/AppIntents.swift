@@ -89,7 +89,8 @@ struct SayInActiveBufferIntent: AppIntent {
     func perform() async throws -> some IntentResult {
         let safe = IRCSanitize.field(text)
         guard !safe.isEmpty else { return .result() }
-        AppleScriptBridge.host?.sendInput(safe)
+        // Literal chat send — a leading "/" must NOT execute a command.
+        AppleScriptBridge.host?.sendChatLiteral(safe)
         return .result()
     }
 }

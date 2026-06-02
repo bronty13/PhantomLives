@@ -139,7 +139,10 @@ final class DCCService: ObservableObject {
         case "SEND":
             guard tokens.count >= 5 else { return false }
             let filename = sanitizeFilename(tokens[1])
-            let host = decodeHost(tokens[2])
+            guard let host = validatedPeerHost(tokens[2]) else {
+                connection.appendInfoOnSelected("Ignored DCC SEND offer from \(from): unsafe or invalid peer address (\(tokens[2])).")
+                return true
+            }
             guard let port = UInt16(tokens[3]) else { return false }
             let size = UInt64(tokens[4]) ?? 0
             let t = DCCTransfer(
@@ -154,7 +157,10 @@ final class DCCService: ObservableObject {
             return true
         case "CHAT":
             guard tokens.count >= 4, tokens[1].lowercased() == "chat" else { return false }
-            let host = decodeHost(tokens[2])
+            guard let host = validatedPeerHost(tokens[2]) else {
+                connection.appendInfoOnSelected("Ignored DCC CHAT offer from \(from): unsafe or invalid peer address (\(tokens[2])).")
+                return true
+            }
             guard let port = UInt16(tokens[3]) else { return false }
             let c = DCCChatSession(
                 direction: .receiving, peerNick: from, state: .offered,
@@ -190,12 +196,16 @@ final class DCCService: ObservableObject {
             t.state = .failed("No external IP — set one in Setup ▸ Behavior ▸ DCC.")
             return
         }
-        guard let (listener, port) = createListener(bindHost: ipString) else {
+        guard let (listener, port, usedWildcard) = createListener(bindHost: ipString) else {
             t.state = .failed("No available port in DCC range")
             return
         }
         t.listener = listener
         startSendListener(transfer: t, listener: listener)
+        if usedWildcard {
+            AppLog.shared.warn("DCC SEND listener bound the wildcard 0.0.0.0 (couldn't bind \(ipString)) — any host that can reach port \(port) could connect.", category: "DCC")
+            connection.appendInfoOnSelected("⚠️ DCC SEND is listening on all interfaces (couldn't bind \(ipString)); any host reaching port \(port) could connect before \(nick).")
+        }
 
         let ipInt = ipv4StringToInt(ipString)
         let safeName = fileURL.lastPathComponent.replacingOccurrences(of: " ", with: "_")
@@ -213,12 +223,16 @@ final class DCCService: ObservableObject {
             c.state = .failed("No external IP — set one in Setup ▸ Behavior ▸ DCC.")
             return
         }
-        guard let (listener, port) = createListener(bindHost: ipString) else {
+        guard let (listener, port, usedWildcard) = createListener(bindHost: ipString) else {
             c.state = .failed("No available port in DCC range")
             return
         }
         c.listener = listener
         startChatListener(session: c, listener: listener)
+        if usedWildcard {
+            AppLog.shared.warn("DCC CHAT listener bound the wildcard 0.0.0.0 (couldn't bind \(ipString)) — any host that can reach port \(port) could connect.", category: "DCC")
+            connection.appendInfoOnSelected("⚠️ DCC CHAT is listening on all interfaces (couldn't bind \(ipString)); any host reaching port \(port) could connect before \(nick).")
+        }
 
         let ipInt = ipv4StringToInt(ipString)
         let cmd = "DCC CHAT chat \(ipInt) \(port)"
@@ -345,12 +359,15 @@ final class DCCService: ObservableObject {
 
     // MARK: - Listener plumbing
 
-    private func createListener(bindHost: String) -> (NWListener, UInt16)? {
+    private func createListener(bindHost: String) -> (listener: NWListener, port: UInt16, usedWildcard: Bool)? {
         // Bind to the specific advertised IP so we don't accept connections
         // on every interface. Failing that (interface not present, IP not
         // resolvable), fall back to wildcard so DCC still works on hosts
         // whose advertised address isn't the bind address (NAT, manual
-        // override). Wildcard remains a known footgun documented in HANDOFF.
+        // override). The wildcard path is a known footgun — any host that
+        // can reach the port could race the peer — so we report it back to
+        // the caller (`usedWildcard`) to surface a warning rather than
+        // binding every interface silently.
         for p in portRangeStart...portRangeEnd {
             guard let port = NWEndpoint.Port(rawValue: UInt16(p)) else { continue }
             let params = NWParameters.tcp
@@ -359,7 +376,7 @@ final class DCCService: ObservableObject {
                 host: NWEndpoint.Host(bindHost), port: port
             )
             if let listener = try? NWListener(using: params, on: port) {
-                return (listener, UInt16(p))
+                return (listener, UInt16(p), false)
             }
         }
         // Last-ditch wildcard fallback (LAN-only setups where bind to a
@@ -369,7 +386,7 @@ final class DCCService: ObservableObject {
             let params = NWParameters.tcp
             params.allowLocalEndpointReuse = true
             if let listener = try? NWListener(using: params, on: port) {
-                return (listener, UInt16(p))
+                return (listener, UInt16(p), true)
             }
         }
         return nil
@@ -578,15 +595,48 @@ final class DCCService: ObservableObject {
         return (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]
     }
 
-    private func decodeHost(_ s: String) -> String {
-        if let n = UInt32(s) {
-            let a = (n >> 24) & 0xFF
-            let b = (n >> 16) & 0xFF
-            let c = (n >> 8) & 0xFF
-            let d = n & 0xFF
-            return "\(a).\(b).\(c).\(d)"
+    /// Decode and validate a DCC-offered peer host. Standard DCC SEND/CHAT
+    /// advertises the peer IP as a 32-bit integer; some clients send a
+    /// dotted IPv4 or an IPv6 literal. We accept ONLY a real IP literal and
+    /// reject anything that resolves to a non-routable abuse target
+    /// (loopback, link-local, unspecified). A bare hostname is refused
+    /// outright — accepting one would let a hostile peer make the client
+    /// dial an attacker-chosen host (an SSRF primitive) the moment the user
+    /// accepts. RFC1918 ranges stay allowed because on-LAN DCC is the norm.
+    /// Returns nil when the token isn't a safe IP literal.
+    /// Internal (not private) so the security-critical parsing is unit-tested.
+    func validatedPeerHost(_ token: String) -> String? {
+        // Classic DCC integer-IPv4 encoding.
+        if let n = UInt32(token) {
+            let dotted = "\((n >> 24) & 0xFF).\((n >> 16) & 0xFF).\((n >> 8) & 0xFF).\(n & 0xFF)"
+            return isSafeIPv4(dotted) ? dotted : nil
         }
-        return s
+        // Dotted-quad IPv4 literal.
+        var v4 = in_addr()
+        if inet_pton(AF_INET, token, &v4) == 1 {
+            return isSafeIPv4(token) ? token : nil
+        }
+        // IPv6 literal (CTCP DCC extension). Reject loopback / unspecified /
+        // link-local; everything else is accepted as-is.
+        var v6 = in6_addr()
+        if inet_pton(AF_INET6, token, &v6) == 1 {
+            let lower = token.lowercased()
+            if lower == "::1" || lower == "::" || lower.hasPrefix("fe80") { return nil }
+            return token
+        }
+        // Not an IP literal — refuse (no hostname → no SSRF dialing).
+        return nil
+    }
+
+    /// True when `dotted` is a routable IPv4 we'll dial. Rejects the
+    /// unspecified 0.0.0.0/8, loopback 127/8, and link-local 169.254/16
+    /// blocks; RFC1918 private ranges are intentionally allowed.
+    private func isSafeIPv4(_ dotted: String) -> Bool {
+        let o = dotted.split(separator: ".").compactMap { UInt32($0) }
+        guard o.count == 4, o.allSatisfy({ $0 <= 255 }) else { return false }
+        if o[0] == 0 || o[0] == 127 { return false }
+        if o[0] == 169 && o[1] == 254 { return false }
+        return true
     }
 
     private func tokenizeDCC(_ args: String) -> [String] {

@@ -50,11 +50,13 @@ enum KeychainStore {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecValueData as String: data,
-            // After-first-unlock is the default for generic passwords on macOS;
-            // we don't need kSecAttrAccessible for simple cases. Explicit
-            // access control (Touch ID etc.) gets layered on later via a
-            // dedicated helper for DEK storage only.
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked
+            // `…ThisDeviceOnly` is load-bearing security, not a nicety: it
+            // keeps the wrapped DEK and the stored credentials OUT of iCloud
+            // Keychain sync, Keychain migration, and encrypted backups. A
+            // plain `WhenUnlocked` item travels to other devices, where the
+            // DEK alone unwraps every encrypted file without the passphrase.
+            // Device-only pins confidentiality to this Mac.
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         ]
         let status = SecItemAdd(attrs as CFDictionary, nil)
         guard status == errSecSuccess else { throw Error.unexpectedStatus(status) }

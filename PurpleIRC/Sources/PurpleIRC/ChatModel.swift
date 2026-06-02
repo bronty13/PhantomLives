@@ -1327,6 +1327,18 @@ final class ChatModel: ObservableObject {
         conn.sendInput(text, from: conn.selectedBufferID)
     }
 
+    /// Send `text` to the active buffer as a literal chat line, bypassing
+    /// the slash-command dispatcher entirely. The "say" automation surfaces
+    /// (Shortcuts `SayInActiveBuffer`, AppleScript `say in active buffer`)
+    /// use this so a leading "/" is posted as chat — never executed as
+    /// `/quit`, `/raw`, etc. Those surfaces are documented as sending a
+    /// plain line, and a shared/automated Shortcut must not be able to
+    /// drive protocol commands or close the app.
+    func sendChatLiteral(_ text: String) {
+        guard let conn = activeConnection else { return }
+        conn.sendChatLiteral(text, from: conn.selectedBufferID)
+    }
+
     /// Surface the `/nuke` confirmation sheet. Idempotent — clicking the
     /// same flag twice while it's already true is a no-op for SwiftUI.
     func requestNuke() {

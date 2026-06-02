@@ -8,13 +8,20 @@ cited code. **64 raw findings → 61 confirmed, 3 rejected** (2 high · 14 mediu
 preconditions. The working tree was untouched by the audit; this file is the
 backlog. Tick items off as they're fixed.
 
-Status legend: `[ ]` open · `[x]` fixed (note the commit).
+Status legend: `[ ]` open · `[x]` fixed (note the commit) · `[~]` partially addressed.
 
 **Progress — 2026-06-01 (1.0.590):** first batch landed. Both HIGH
 findings fixed (AppLog launch crash; pre-restore safety backup), plus the
 shared-`WatchlistService` root cause behind 5 MEDIUM findings (now keyed
 per-network) and the `seenInChannel` re-alert LOW finding. **7 of 61
-closed; 54 open.**
+closed.**
+
+**Progress — 2026-06-01 (1.0.591):** security batch. Fixed 4 MEDIUM
+(DCC SSRF host validation, DCC wildcard-bind warning, ProxyFramer config
+swap, "Say" slash-command execution) + 2 LOW (ProxyFramer `lastError`
+data race; DCC validation tests). Keychain device-only landed; the
+biometric-gated DEK read is deferred (`[~]` #7). **12 of 61 fully
+closed, 2 partial; 47 open.**
 
 ## 🔴 High
 
@@ -65,7 +72,7 @@ closed; 54 open.**
 - **Problem:** isonTimer is a single field on the shared service. When a second non-MONITOR network finishes welcome it calls startISONPolling again, which invalidates the first network's timer and starts a new one. poll() then sends ISON only via the shared delegate (the active/first-connected socket). Result: across N non-MONITOR networks there is exactly one timer and it polls a single socket, so watched-nick presence is never tracked on any but one network.
 - **Fix:** Maintain one timer per connection (or per-connection WatchlistService) and have poll() target the specific connection it belongs to rather than the shared delegate's active socket.
 
-#### 7. [ ] DEK and credentials cached in Keychain without device-only protection or biometric ACL — "Require Touch ID" does not actually gate the key
+#### 7. [~] DEK and credentials cached in Keychain without device-only protection or biometric ACL — "Require Touch ID" does not actually gate the key  _(partial 1.0.591: device-only storage + corrected UI copy; biometric-gated DEK read deferred — touches the unlock path)_
 
 - **Where:** `KeychainStore.swift:48-58`
 - **Category:** security · **Subsystem:** crypto-persistence · claimed high, adjusted **medium**
@@ -73,21 +80,21 @@ closed; 54 open.**
 - **Fix:** For the DEK account, create the item with a SecAccessControlCreateWithFlags(kSecAttrAccessibleWhenUnlockedThisDeviceOnly, .biometryCurrentSet or .userPresence) and set kSecAttrAccessControl, gated on requireBiometricsOnLaunch; for credentials use at minimum kSecAttrAccessibleWhenUnlockedThisDeviceOnly to keep them off backups/migration. Until the ACL is real, correct the UI copy so it does not claim Touch ID gates the cached key.
 - **Severity note:** All core technical claims are confirmed by direct reading of the code. (1) KeychainStore.setData (KeychainStore.swift:48-58) stores items with kSecAttrAccessibleWhenUnlocked and NO kSecAttrAccessControl/SecAccessControl. Grepping the entire source tree found zero uses of SecAccessControl, kSecAttrAccessControl, biometryCurrentSet, userPresence, or ...ThisDeviceOnly anywhere. Confirmed. (2) The DEK is cached via…
 
-#### 8. [ ] decodeHost accepts arbitrary non-numeric hostnames and the peer address is never validated against the IRC sender
+#### 8. [x] decodeHost accepts arbitrary non-numeric hostnames and the peer address is never validated against the IRC sender  _(fixed 1.0.591)_
 
 - **Where:** `DCC.swift:581-590`
 - **Category:** security · **Subsystem:** dcc
 - **Problem:** decodeHost only integer-decodes a numeric DCC host; any non-numeric token is returned verbatim and handed straight to NWEndpoint.Host() in acceptTransfer/acceptChat. Standard DCC SEND advertises an integer IP, so a non-numeric host is already non-conformant, yet it is accepted and dialed. Nothing constrains the offered host to the IP the IRC peer is actually connected from, so a hostile user can make the client dial an attacker-chosen host/IP (including RFC1918/loopback internal services) on accept — an SSRF-style primitive. There is also no rejection of the integer form decoding to 127.0.0.1/0.0.0.0/link-local.
 - **Fix:** Require the DCC host to be a valid numeric IPv4 (or explicit IPv6 per CTCP spec); reject non-numeric tokens. Reject loopback/link-local/unspecified addresses, and where feasible surface/compare the advertised IP against the peer's known connection address so the user sees a mismatch before dialing.
 
-#### 9. [ ] Listener bind-host claim is violated by a silent wildcard fallback
+#### 9. [x] Listener bind-host claim is violated by a silent wildcard fallback  _(fixed 1.0.591 — wildcard fallback now logs + posts a visible warning)_
 
 - **Where:** `DCC.swift:348-376`
 - **Category:** security · **Subsystem:** dcc
 - **Problem:** The codebase invariant states 'DCC binds advertised IP'. createListener first tries requiredLocalEndpoint = advertised IP, but on any failure silently falls back to binding the wildcard (0.0.0.0) on the same port range — exactly the footgun the leading comment in offerSend warns about ('listening on the wildcard 0.0.0.0 would let any host that can reach the port race the peer'). The advertised IP is sent to the peer regardless, so the user believes they bound a specific interface while the socket actually accepts from any host that can reach the port. There is no user-visible signal that the secure bind failed and the wildcard was used.
 - **Fix:** Either remove the wildcard fallback (fail the offer with a clear message), or when it is used, accept only the first inbound connection and immediately verify the remote endpoint's address matches the advertised/peer IP before streaming, and surface a warning to the user that a non-specific bind was used.
 
-#### 10. [ ] ProxyFramer's global FIFO config queue can hand a connection another network's proxy config (incl. credentials + target)
+#### 10. [x] ProxyFramer's global FIFO config queue can hand a connection another network's proxy config (incl. credentials + target)  _(fixed 1.0.591 — single-in-flight hand-off)_
 
 - **Where:** `ProxyFramer.swift:40-58, 74-76`
 - **Category:** correctness · **Subsystem:** protocol-core · claimed high, adjusted **medium**
@@ -102,7 +109,7 @@ closed; 54 open.**
 - **Problem:** ThemeBuilderView presents every color slot with ColorPicker(..., supportsOpacity: true) and writes the chosen Color back through Color.hexRGB. But hexRGB only emits 6-digit #RRGGBB and never encodes the alpha channel. Any opacity a user dials in is silently dropped on save, so the slot round-trips as fully opaque. This is especially wrong for the mention / watch-hit / find backgrounds, whose built-in themes deliberately use ~0.18-0.30 opacity (e.g. .orange.opacity(0.18)). Even merely duplicating a built-in theme captures mentionBackground.hexRGB, which discards the 0.18 opacity, so the custom theme renders mention/watchlist/find highlights as solid blocks covering the text. The Color(hex:) parser even documents an #AARRGGBB form that hexRGB can never produce, confirming the asymmetry.
 - **Fix:** Add an alpha-aware serializer (e.g. hexARGB emitting #AARRGGBB when alpha < 1) and have the theme builder bindings persist/parse 8-digit hex for the background slots (mention/watchlist/find at minimum). Color(hex:) already parses the 8-digit form, so only the write path and the builder bindings need updating.
 
-#### 12. [ ] "Say" AppIntent / AppleScript verb forwards text verbatim to sendInput, so leading-slash text executes app commands
+#### 12. [x] "Say" AppIntent / AppleScript verb forwards text verbatim to sendInput, so leading-slash text executes app commands  _(fixed 1.0.591)_
 
 - **Where:** `AppIntents.swift:88-94 (SayInActiveBufferIntent); AppleScriptCommands.swift:141-151 (PurpleSayCommand)`
 - **Category:** security · **Subsystem:** settings-integrations
@@ -229,13 +236,13 @@ closed; 54 open.**
 - [ ] **ipv4StringToInt does not validate octet bounds, advertising a corrupt IP** — `DCC.swift:575-579` (correctness)
   - _Problem:_ ipv4StringToInt parses dotted parts with UInt32($0) but never checks each octet is <= 255. A misconfigured externalIPOverride like '999.1.1.1' parses to four UInt32 parts and is bit-shifted/ORed into a 32-bit value, silently producing a wrong integer IP that is then advertised to the peer in the DCC SEND/CHAT line. The peer then dials a bogus address and the transfer fails with no clear cause.
   - _Fix:_ Validate parts.count == 4 AND every part <= 255 (use UInt8 conversion). Return nil and fail the offer with a clear 'invalid external IP' message rather than advertising a silently-truncated integer.
-- [ ] **No automated tests for the security-critical sanitizeFilename / decodeHost / range logic** — `DCC.swift:581-634` (test-gap)
+- [x] **No automated tests for the security-critical sanitizeFilename / decodeHost / range logic** — `DCC.swift:581-634` (test-gap) _(partly closed 1.0.591 — DCCSecurityTests covers host validation)_
   - _Problem:_ The DCC subsystem contains the highest-risk parsing in the app (untrusted filename sanitization, untrusted host decoding, untrusted size parsing) yet there is no test target exercising it. sanitizeFilename has non-obvious behavior worth pinning: replacingOccurrences(of: "..", with: "_") is single-pass and non-recursive, and leading-dot trimming + the dot/underscore-only fallback are easy to regress. A grep of the test suite shows no DCC tests.
   - _Fix:_ Add unit tests covering sanitizeFilename (path separators, '../../etc/passwd', NUL/control bytes, dot-only, empty, 64KB names), decodeHost (numeric vs hostname vs loopback rejection), tokenizeDCC (quoted filenames with spaces), and ipv4StringToInt octet bounds.
 
 ### protocol-core
 
-- [ ] **ProxyFramer.lastError is unsynchronized shared mutable static, read/cleared from a different queue than it is written** — `ProxyFramer.swift:45, 270` (correctness)
+- [x] **ProxyFramer.lastError is unsynchronized shared mutable static, read/cleared from a different queue than it is written** — `ProxyFramer.swift:45, 270` (correctness) _(fixed 1.0.591 — lock-guarded via takeLastError)_
   - _Problem:_ `static var lastError: String?` is written by `fail(...)` on the framer's transport queue and read+cleared by `IRCClient` in the connection's `stateUpdateHandler` (a different DispatchQueue) without any lock, unlike the sibling `pendingConfigs` which is guarded by `configQueueLock`. This is a data race on a non-Sendable `String?`. With multiple proxied connections it also has no per-connection scoping, so connection A's failure reason can be attributed to connection B's failure dialog (or cleared out from under it), producing misleading error messages. The `pendingConfigs` field got a lock; this one was missed.
   - _Fix:_ Move the failure reason off the global static: stash it per-framer and surface it via the framer's input/metadata, or at minimum guard `lastError` with the existing `configQueueLock` (or a dedicated lock) on every read/write/clear and key it per connection so reasons can't cross-attribute between concurrent connections.
 - [ ] **IRCv3 tag-value unescaping re-introduces real CR/LF into parsed tag values after the NUL guard** — `IRCMessage.swift:112-134` (security)
