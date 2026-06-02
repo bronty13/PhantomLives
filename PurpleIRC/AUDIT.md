@@ -78,11 +78,18 @@ test coverage. Backup excludes a nested backup dir, BlobStore temp
 exports use a random 0600 subdir with a stale sweep, eventSounds has a
 single default source, and `maskForDisplay` now masks tag/prefix-prefixed
 credential lines. Added `EncryptedJSON` envelope tests. **53 of 61 fully
-closed, 2 partial; 6 open (all LOW).** Remaining: same-named-stranger
-watch alert (inherent to nick-based watching), fuzzy-matcher tuning,
-address-book per-render fold (perf), KeychainStore non-atomic upsert,
-PBKDF2→memory-hard KDF (needs a versioned-envelope migration decision),
-and the `events.sink` reentrancy nit (deferred).
+closed, 2 partial; 6 open (all LOW).**
+
+**Progress — 2026-06-02 (1.0.602):** last safe LOW nits. Fuzzy contact
+matcher now requires a ≥3-char needle (no more spurious short-nick
+matches), and the address-book list skips the cross-network sighting
+fold unless the recency filter needs it. **55 of 61 fully closed, 2
+partial; 4 open.** The 4 remaining are intentionally left: same-named-
+stranger watch alert (`#18`, inherent to nick-based watching),
+KeychainStore non-atomic upsert (`#34`, recoverable + ACL-path
+complication), PBKDF2→memory-hard KDF (`#36`, needs a versioned-envelope
+migration decision), and the `events.sink` reentrancy nit (`#56`,
+deferred). Plus 2 partial test-gaps (`#31`, `#51`).
 
 ## 🔴 High
 
@@ -216,10 +223,10 @@ and the `events.sink` reentrancy nit (deferred).
 - [ ] **handleObservedActivity fires watch alerts for a same-named stranger on a different network** — `WatchlistService.swift:177-186` (correctness)
   - _Problem:_ The shared service matches purely on bare nick (`watched.contains(where: caseInsensitiveCompare)`). IRCConnection feeds every network's JOIN/PRIVMSG into this one method (IRCConnection.swift:1113, 1468) with no network context. If the user watches 'alice' (intending the person on Libera), any unrelated 'alice' speaking in a channel on a second network fires the online alert and updates the global presence. Network scoping exists in the data model (LinkedNick.networkSlug, AddressEntry.matches(networkSlug:nick:)) but the watch hot-path ignores it entirely.
   - _Fix:_ Pass the network slug into handleObservedActivity and match through AddressEntry.matches(networkSlug:nick:) so a network-scoped LinkedNick only alerts on its own network, while the empty-slug 'any network' sentinel keeps the legacy everywhere behaviour.
-- [ ] **Fuzzy contact matcher produces spurious matches between short unrelated nicks** — `AddressBook/ContactMatchesView.swift:41-49` (correctness)
+- [x] **Fuzzy contact matcher produces spurious matches between short unrelated nicks** — `AddressBook/ContactMatchesView.swift:41-49` (correctness) _(fixed 1.0.602 — fuzzy match requires needle ≥3 chars; unit-tested)_
   - _Problem:_ matches(needle:candidate:) treats any substring relationship as a match, including `n.contains(c) && c.count >= 3`. So a contact nick 'bob' matches any seen/log nick containing 'bob' ('bobcat', 'mcbobby') AND, via the reversed clause, the contact 'bobby' matches seen nick 'bob'. With a 3-char floor this surfaces a lot of false 'fuzzy' cross-store hits in the contact detail's Matches section, undermining the 'is this the same person?' use case the feature is built for.
   - _Fix:_ Require a higher minimum length and/or prefix/word-boundary anchoring for the fuzzy clauses (e.g. only match when one is a prefix of the other, or when the shorter string is >=4 chars and aligns at a separator), and rank exact matches first as the UI already tries to do.
-- [ ] **Address-book list recomputes the full cross-network sighting fold for every contact on every render** — `AddressBook/AddressBookContactList.swift:97-127` (quality)
+- [x] **Address-book list recomputes the full cross-network sighting fold for every contact on every render** — `AddressBook/AddressBookContactList.swift:97-127` (quality) _(fixed 1.0.602 — fold skipped unless the recency filter needs it)_
   - _Problem:_ The doc comment claims 'Precomputes the cross-network fold (presence + last-msg time) per entry so the filter doesn't redo the work for every predicate evaluation', but nothing is precomputed: presence(for:) and lastMessageAt(for:) are called inline inside the .filter closure. lastMessageAt(for:) calls entry.allSightings(...) which loops every linkedNick × every connection × every seen-entry's full history, then sorts, just to read the first msg-kind timestamp. This O(contacts × nicks × connections × history·log) fold runs on every SwiftUI re-render (search keystroke, presence tick, selection change), and allSightings sorts the entire merged timeline only to discard all but one element.
   - _Fix:_ Compute presence + last-msg time once per entry into a dictionary before filtering (the comment's stated intent), and add a dedicated SeenStore lookup that returns the most-recent msg timestamp without building and sorting the whole timeline.
 

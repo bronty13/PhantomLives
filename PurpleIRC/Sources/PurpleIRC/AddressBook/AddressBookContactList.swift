@@ -95,12 +95,17 @@ struct AddressBookContactList: View {
     /// fold (presence + last-msg time) per entry so the filter doesn't
     /// redo the work for every predicate evaluation.
     private var visibleEntries: [AddressEntry] {
-        model.settings.settings.addressBook
+        // The last-message time needs a cross-network sighting fold per
+        // entry, so only pay for it when the recency filter actually uses
+        // it (it's `.any` by default). Otherwise `matches` ignores the
+        // value entirely.
+        let needsActivity = filter.recency != .any
+        return model.settings.settings.addressBook
             .filter { entry in
                 filter.matches(
                     entry: entry,
                     presence: presence(for: entry),
-                    lastMessageAt: lastMessageAt(for: entry))
+                    lastMessageAt: needsActivity ? lastMessageAt(for: entry) : nil)
             }
             .sorted { lhs, rhs in
                 lhs.nick.lowercased() < rhs.nick.lowercased()

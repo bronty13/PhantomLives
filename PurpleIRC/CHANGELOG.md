@@ -12,6 +12,28 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
+## [1.0.602] — 2026-06-02
+
+### Fixed (audit follow-ups — batch 13, last safe LOW nits)
+
+- **Address-book matcher stops false-positiving on short nicks**
+  (`ContactMatchesView.swift`). The fuzzy (substring) match had no
+  minimum needle length, so a 1–2 char nick ("al") matched every contact
+  that merely contained those letters. Fuzzy matching now requires a
+  needle of at least 3 characters; exact (case-insensitive) matches still
+  count at any length.
+- **Address-book list skips needless work per render**
+  (`AddressBookContactList.swift`). The visible-entries computation ran a
+  cross-network sighting fold for every contact on every render even
+  though the result is only used by the recency filter. It's now computed
+  only when the recency filter is active (it's `.any` by default).
+
+### Tests
+
+- +4 (376 → 380): `Contact matcher` suite — exact match at any length,
+  short needle no longer fuzzy-matches, long needle still does (both
+  directions), empty needle never matches.
+
 ## [1.0.601] — 2026-06-02
 
 ### Security & correctness (audit follow-ups — batch 12, persistence + masking)

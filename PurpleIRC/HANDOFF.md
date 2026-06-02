@@ -18,9 +18,10 @@ SeenStore nick cap, restore throws on wrong dir), 1.0.598
 (state/concurrency), 1.0.599 (DCC robustness), and 1.0.600 (the 5
 remaining MEDIUM), and 1.0.601 (persistence/security LOW + masking:
 tag/prefix-aware credential masking, BlobStore temp hardening, nested
-backup-dir exclusion, eventSounds default parity, EncryptedJSON tests).
-**Every HIGH and MEDIUM is closed; 53 of 61 closed, 2 partial, 6 LOW
-open.** See the "Audit backlog" entry under Known gaps. Tier #18
+backup-dir exclusion, eventSounds default parity, EncryptedJSON tests),
+and 1.0.602 (fuzzy-matcher ≥3-char needle, address-book per-render fold
+skip). **Every HIGH and MEDIUM is closed; 55 of 61 closed, 2 partial,
+4 LOW open** (the 4 are intentionally left — see below). Tier #18
 (sidebar off
 `NavigationSplitView` → manual `HStack` + `WindowStateGuard`/`AppDelegate`;
 gitignore Finder ` 2.app` dupes; doc sync). Tier #13 (perf + robustness sweep,
@@ -690,22 +691,22 @@ settings clamping, dead-code), and 1.0.596 (UI perf: cached row
 DateFormatter, cached watchlist membership set, extracted+tested collapse
 grouping), 1.0.597 (backup/log purge/cap/restore), and 1.0.598
 (state/concurrency), 1.0.599 (DCC robustness), 1.0.600 (the last 5
-MEDIUM findings), and 1.0.601 (persistence/security LOW + masking).
-**53 of 61 closed, 2 partial — every HIGH and MEDIUM is done; 6 LOW
-open.** Start in `AUDIT.md`. The 6 remaining (all LOW):
-- **PBKDF2 → memory-hard KDF** (`Crypto.swift:42`) — needs a
+MEDIUM findings), 1.0.601 (persistence/security LOW + masking), and
+1.0.602 (last safe LOW nits). **55 of 61 closed, 2 partial — every HIGH
+and MEDIUM is done; 4 LOW open, all intentionally left:**
+- **PBKDF2 → memory-hard KDF** (`#36`, `Crypto.swift:42`) — needs a
   versioned-envelope + lazy-rewrap migration design decision before
-  implementing (existing keystores are PBKDF2-wrapped).
+  implementing (existing keystores are PBKDF2-wrapped) + an algorithm
+  choice (scrypt = no dep, Argon2id = adds one).
 - **`events.sink` Task-defer removal** (`#56`) — deferred; redundant
   hops but removing them runs reactions reentrantly mid-emission. Needs
   runtime validation, not a blind change.
 - **KeychainStore non-atomic upsert** (`#34`) — delete-then-add; a crash
   between loses the item. Recoverable (passphrase / re-enter), and the
   biometry-ACL path complicates an in-place update.
-- **Address-book per-render sighting fold** (`#20`, perf), **fuzzy
-  contact matcher false positives on short nicks** (`#19`), and the
-  **same-named-stranger watch alert** (`#18`, largely inherent to
-  nick-based watching across networks).
+- **Same-named-stranger watch alert** (`#18`) — largely inherent to
+  nick-based watching across networks (IRC has no cross-network
+  identity); a "fix" risks suppressing real alerts.
 - Two partial test-gaps (`#31` verifyArchive corruption, `#51`
   scripting output-sanitize / command-alias dispatch).
 

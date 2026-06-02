@@ -42,7 +42,11 @@ struct ContactMatchResult: Equatable {
         let n = needle.lowercased()
         guard !n.isEmpty else { return false }
         let c = candidate.lowercased()
-        if c == n { return true }
+        if c == n { return true }   // exact (case-insensitive) always counts
+        // Fuzzy (substring) matches require a needle of at least 3 chars, so
+        // a 1–2 char nick like "al" doesn't spuriously match every contact
+        // that merely contains those letters ("Walter", "balance", …).
+        guard n.count >= 3 else { return false }
         if c.contains(n) { return true }
         if n.contains(c) && c.count >= 3 { return true }
         return false
