@@ -16,8 +16,10 @@ export interface SerializedTree {
   parentIdx: ArrayBuffer; // Int32Array
   firstChild: ArrayBuffer; // Int32Array (-1 = none)
   nextSibling: ArrayBuffer; // Int32Array (-1 = none)
-  selfSize: ArrayBuffer; // Float64Array
-  aggSize: ArrayBuffer; // Float64Array
+  selfSize: ArrayBuffer; // Float64Array — logical (content) size
+  aggSize: ArrayBuffer; // Float64Array — recursive logical size
+  selfAlloc: ArrayBuffer; // Float64Array — on-disk allocated size
+  aggAlloc: ArrayBuffer; // Float64Array — recursive on-disk size
   fileCount: ArrayBuffer; // Uint32Array (recursive file count)
   childCount: ArrayBuffer; // Uint32Array (direct children)
   mtimeMs: ArrayBuffer; // Float64Array
@@ -35,6 +37,8 @@ export function treeTransferList(t: SerializedTree): ArrayBuffer[] {
     t.nextSibling,
     t.selfSize,
     t.aggSize,
+    t.selfAlloc,
+    t.aggAlloc,
     t.fileCount,
     t.childCount,
     t.mtimeMs,

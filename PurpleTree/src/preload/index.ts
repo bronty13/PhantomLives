@@ -19,6 +19,7 @@ import type {
 interface Prefs {
   version: number;
   scanOptions: ScanOptions;
+  sizeMetric: 'alloc' | 'logical';
   permanentDeleteEnabled: boolean;
   exportDir: string;
   autoBackupEnabled: boolean;
@@ -71,6 +72,8 @@ const api = {
   getSummary: (scanId: string): Promise<{ stats: ScanStats; rootRow: NodeRow } | null> =>
     ipcRenderer.invoke('purpletree:get-summary', scanId),
   getRoot: (scanId: string): Promise<NodeRow | null> => ipcRenderer.invoke('purpletree:get-root', scanId),
+  setSizeMetric: (metric: 'alloc' | 'logical'): Promise<void> =>
+    ipcRenderer.invoke('purpletree:set-size-metric', metric),
 
   // Duplicates
   findDuplicates: (scanId: string): Promise<boolean> => ipcRenderer.invoke('purpletree:dup-find', scanId),

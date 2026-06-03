@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.0] - 2026-06-03
+
+- **On-disk vs logical size, toggleable.** Purple Tree now tracks both the
+  on-disk *allocated* size (blocks × 512 — what you actually reclaim; cloud
+  placeholders and sparse files show ≈ 0) and the *logical* content size. The
+  default is **on-disk** (the honest "space used" number — this is what fixes
+  the inflated totals). Toggle with the **On-disk / Logical** button in the top
+  bar; the choice persists. Duplicate detection still matches on content
+  (logical) size.
+- **Faster scans.** Each directory's files are now `lstat`-ed in parallel
+  batches across the libuv thread pool instead of one at a time — noticeably
+  quicker on large folders.
+
 ## [1.0.4] - 2026-06-03
 
 - The folder picker now pre-fills with your **last-scanned folder**, and the

@@ -16,6 +16,7 @@ type View = 'explorer' | 'duplicates' | 'largeold' | 'cache';
 interface Prefs {
   scanOptions: { followSymlinks: boolean; crossMountPoints: boolean; dedupHardLinks: boolean };
   permanentDeleteEnabled: boolean;
+  sizeMetric: 'alloc' | 'logical';
 }
 
 export default function App(): JSX.Element {
@@ -32,7 +33,20 @@ export default function App(): JSX.Element {
   const [exportOpen, setExportOpen] = useState(false);
   const [toast, setToast] = useState('');
   const [cancelling, setCancelling] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const scanIdRef = useRef<string | null>(null);
+
+  const metric = prefs?.sizeMetric ?? 'alloc';
+  const toggleMetric = async (): Promise<void> => {
+    const next = metric === 'alloc' ? 'logical' : 'alloc';
+    await api.setSizeMetric(next);
+    loadPrefs();
+    if (scanIdRef.current) {
+      const r = await api.getRoot(scanIdRef.current);
+      setRoot(r);
+    }
+    setRefreshKey((k) => k + 1);
+  };
 
   const loadPrefs = useCallback(() => {
     void api.prefsGet().then((p) => setPrefs(p as unknown as Prefs));
@@ -131,12 +145,20 @@ export default function App(): JSX.Element {
           </span>
         )}
         <div className="spacer" />
-        {status === 'ready' && stats && (
+        {status === 'ready' && root && (
           <span className="topbar-stats">
-            {formatBytes(stats.totalBytes)} · {formatCount(stats.totalFiles)} files
-            {stats.permDeniedCount > 0 && ` · ${stats.permDeniedCount} skipped`}
-            {stats.partial && ' · partial'}
+            {formatBytes(root.aggSize)} · {formatCount(root.fileCount)} files
+            {stats && stats.permDeniedCount > 0 && ` · ${stats.permDeniedCount} skipped`}
+            {stats?.partial && ' · partial'}
           </span>
+        )}
+        {status === 'ready' && (
+          <button
+            title="Toggle between on-disk (allocated) and logical (content) size"
+            onClick={() => void toggleMetric()}
+          >
+            {metric === 'alloc' ? 'On-disk' : 'Logical'}
+          </button>
         )}
         {status === 'ready' && (
           <div className="export-wrap">
@@ -241,7 +263,7 @@ export default function App(): JSX.Element {
           {view === 'cache' && <CacheCleanupView />}
 
           {status === 'ready' && scanId && root && view === 'explorer' && (
-            <div className="explorer">
+            <div className="explorer" key={`${scanId}-${refreshKey}`}>
               <Breadcrumb scanId={scanId} focusId={focusId} onNavigate={setFocusId} />
               <div className="explorer-body">
                 <div className="explorer-tree">
@@ -264,7 +286,7 @@ export default function App(): JSX.Element {
             <DuplicatesView scanId={scanId} allowPermanent={allowPermanent} />
           )}
           {status === 'ready' && scanId && view === 'largeold' && (
-            <LargeOldFilesView scanId={scanId} allowPermanent={allowPermanent} />
+            <LargeOldFilesView key={refreshKey} scanId={scanId} allowPermanent={allowPermanent} />
           )}
         </main>
       </div>

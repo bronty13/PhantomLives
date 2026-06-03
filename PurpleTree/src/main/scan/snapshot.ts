@@ -14,13 +14,15 @@ import { join } from 'node:path';
 import type { SerializedTree } from '../../shared/protocol';
 import type { SnapshotInfo } from '../../shared/types';
 
-const MAGIC = 'PTSNAP01';
+const MAGIC = 'PTSNAP02';
 const FIELDS: Array<keyof SerializedTree> = [
   'parentIdx',
   'firstChild',
   'nextSibling',
   'selfSize',
   'aggSize',
+  'selfAlloc',
+  'aggAlloc',
   'fileCount',
   'childCount',
   'mtimeMs',

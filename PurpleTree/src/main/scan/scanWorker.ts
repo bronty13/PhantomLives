@@ -43,6 +43,18 @@ function post(evt: ScanEvent, transfer?: ArrayBuffer[]): void {
   port!.postMessage(evt, transfer ?? []);
 }
 
+/** Number of entries to lstat concurrently per directory (uses the libuv pool). */
+const STAT_CONCURRENCY = 16;
+
+/**
+ * On-disk allocated size: blocks actually used × 512. Cloud placeholders and
+ * sparse files use far fewer blocks than their logical size. Windows doesn't
+ * report blocks, so fall back to the logical size there.
+ */
+function onDisk(st: { blocks: number; size: number }): number {
+  return st.blocks && st.blocks > 0 ? st.blocks * 512 : st.size;
+}
+
 /** Prefix \\?\ on Windows for paths approaching the 260-char MAX_PATH limit. */
 function longPath(p: string): string {
   if (!isWindows) return p;
@@ -107,6 +119,7 @@ async function runScan(cmd: Extract<ScanCommand, { type: 'start' }>): Promise<vo
       parent: -1,
       name: rootPath,
       selfSize: rootIsDir ? 0 : st.size,
+      allocSize: rootIsDir ? 0 : onDisk(st),
       mtimeMs: st.mtimeMs,
       atimeMs: st.atimeMs,
       flags: rootIsDir ? FLAG_DIR : 0
@@ -155,73 +168,83 @@ async function runScan(cmd: Extract<ScanCommand, { type: 'start' }>): Promise<vo
     }
 
     try {
-      // `for await` reads entries lazily and auto-closes the handle on break,
-      // return, or throw. A readdir failure mid-iteration throws here and is
-      // caught below — it never aborts the whole scan.
-      for await (const entry of dir) {
+      // Collect entry names (cheap), then lstat them in parallel batches so the
+      // libuv threadpool stays busy — much faster than one stat at a time on
+      // large directories. `for await` over the dir auto-closes the handle; a
+      // readdir failure mid-iteration throws here and is caught below.
+      const names: string[] = [];
+      for await (const entry of dir) names.push(entry.name);
+
+      for (let i = 0; i < names.length; i += STAT_CONCURRENCY) {
         if (cancelled()) break;
-        const childPath = frame.path.endsWith(pathSep)
-          ? frame.path + entry.name
-          : frame.path + pathSep + entry.name;
+        const batch = names.slice(i, i + STAT_CONCURRENCY);
+        const stats = await Promise.all(
+          batch.map(async (name) => {
+            const childPath = frame.path.endsWith(pathSep)
+              ? frame.path + name
+              : frame.path + pathSep + name;
+            try {
+              return { name, childPath, st: await lstat(longPath(childPath)) };
+            } catch {
+              return null; // unreadable entry (race / permission) — skip
+            }
+          })
+        );
 
-        let st;
-        try {
-          st = await lstat(longPath(childPath));
-        } catch {
-          // Unreadable entry (race / permission) — skip silently.
-          continue;
-        }
+        for (const r of stats) {
+          if (!r) continue;
+          const { name, childPath, st } = r;
 
-        if (st.isSymbolicLink() && !opts.followSymlinks) {
-          symlinkCount++;
+          if (st.isSymbolicLink() && !opts.followSymlinks) {
+            symlinkCount++;
+            builder.addNode({
+              parent: frame.id,
+              name,
+              selfSize: st.size,
+              allocSize: onDisk(st),
+              mtimeMs: st.mtimeMs,
+              atimeMs: st.atimeMs,
+              flags: FLAG_SYMLINK
+            });
+            continue;
+          }
+
+          if (st.isDirectory()) {
+            const crossed =
+              !opts.crossMountPoints &&
+              (st.dev !== rootDev || childPath === cloudStorageDir);
+            const childId = builder.addNode({
+              parent: frame.id,
+              name,
+              selfSize: 0,
+              mtimeMs: st.mtimeMs,
+              atimeMs: st.atimeMs,
+              flags: FLAG_DIR | (crossed ? FLAG_CROSSED_MOUNT : 0)
+            });
+            if (crossed) mountSkippedCount++;
+            else stack.push({ id: childId, path: childPath });
+            continue;
+          }
+
+          // Regular file (or device/fifo — treated as a file leaf).
+          let flags = 0;
+          if (opts.dedupHardLinks && !isWindows && st.nlink > 1) {
+            const key = `${st.dev}:${st.ino}`;
+            if (seenInodes.has(key)) flags |= FLAG_HARDLINK_DUP;
+            else seenInodes.add(key);
+          }
           builder.addNode({
             parent: frame.id,
-            name: entry.name,
+            name,
             selfSize: st.size,
+            allocSize: onDisk(st),
             mtimeMs: st.mtimeMs,
             atimeMs: st.atimeMs,
-            flags: FLAG_SYMLINK
+            flags
           });
-          continue;
+          filesScanned++;
+          if ((flags & FLAG_HARDLINK_DUP) === 0) bytes += st.size;
         }
-
-        if (st.isDirectory()) {
-          const crossed =
-            !opts.crossMountPoints &&
-            (st.dev !== rootDev || childPath === cloudStorageDir);
-          const childId = builder.addNode({
-            parent: frame.id,
-            name: entry.name,
-            selfSize: 0,
-            mtimeMs: st.mtimeMs,
-            atimeMs: st.atimeMs,
-            flags: FLAG_DIR | (crossed ? FLAG_CROSSED_MOUNT : 0)
-          });
-          if (crossed) {
-            mountSkippedCount++;
-          } else {
-            stack.push({ id: childId, path: childPath });
-          }
-          continue;
-        }
-
-        // Regular file (or device/fifo — treated as a file leaf).
-        let flags = 0;
-        if (opts.dedupHardLinks && !isWindows && st.nlink > 1) {
-          const key = `${st.dev}:${st.ino}`;
-          if (seenInodes.has(key)) flags |= FLAG_HARDLINK_DUP;
-          else seenInodes.add(key);
-        }
-        builder.addNode({
-          parent: frame.id,
-          name: entry.name,
-          selfSize: st.size,
-          mtimeMs: st.mtimeMs,
-          atimeMs: st.atimeMs,
-          flags
-        });
-        filesScanned++;
-        if ((flags & FLAG_HARDLINK_DUP) === 0) bytes += st.size;
         emitProgress();
       }
     } catch {

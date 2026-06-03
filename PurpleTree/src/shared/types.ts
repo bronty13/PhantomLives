@@ -85,6 +85,13 @@ export interface ScanProgress {
   mountSkippedCount: number;
 }
 
+/**
+ * Which size to report. `alloc` = blocks actually used on disk (du/DaisyDisk
+ * style; cloud placeholders & sparse files ≈ 0). `logical` = the file's content
+ * length (Finder "Size" style).
+ */
+export type SizeMetric = 'alloc' | 'logical';
+
 export type SortKey = 'size' | 'name' | 'count' | 'mtime' | 'type';
 export type SortDir = 'asc' | 'desc';
 export interface SortSpec {

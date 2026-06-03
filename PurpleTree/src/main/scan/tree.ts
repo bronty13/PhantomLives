@@ -18,7 +18,8 @@ import {
   FLAG_HARDLINK_DUP,
   type NodeRow,
   type SortSpec,
-  type FileFilter
+  type FileFilter,
+  type SizeMetric
 } from '../../shared/types';
 
 const INITIAL_CAPACITY = 1024;
@@ -32,6 +33,8 @@ export class TreeBuilder {
   private nextSibling: Int32Array<ArrayBuffer> = new Int32Array(this.cap).fill(-1);
   private selfSize: Float64Array<ArrayBuffer> = new Float64Array(this.cap);
   private aggSize: Float64Array<ArrayBuffer> = new Float64Array(this.cap);
+  private selfAlloc: Float64Array<ArrayBuffer> = new Float64Array(this.cap);
+  private aggAlloc: Float64Array<ArrayBuffer> = new Float64Array(this.cap);
   private fileCount: Uint32Array<ArrayBuffer> = new Uint32Array(this.cap);
   private childCount: Uint32Array<ArrayBuffer> = new Uint32Array(this.cap);
   private mtimeMs: Float64Array<ArrayBuffer> = new Float64Array(this.cap);
@@ -76,6 +79,8 @@ export class TreeBuilder {
     this.nextSibling = gi(this.nextSibling);
     this.selfSize = gf(this.selfSize);
     this.aggSize = gf(this.aggSize);
+    this.selfAlloc = gf(this.selfAlloc);
+    this.aggAlloc = gf(this.aggAlloc);
     this.fileCount = gu(this.fileCount);
     this.childCount = gu(this.childCount);
     this.mtimeMs = gf(this.mtimeMs);
@@ -92,6 +97,8 @@ export class TreeBuilder {
     parent: number;
     name: string;
     selfSize: number;
+    /** On-disk allocated size; defaults to the logical size when omitted. */
+    allocSize?: number;
     mtimeMs: number;
     atimeMs: number;
     flags: number;
@@ -100,6 +107,7 @@ export class TreeBuilder {
     const id = this.n++;
     this.parentIdx[id] = opts.parent;
     this.selfSize[id] = opts.selfSize;
+    this.selfAlloc[id] = opts.allocSize ?? opts.selfSize;
     this.mtimeMs[id] = opts.mtimeMs;
     this.atimeMs[id] = opts.atimeMs;
     this.flags[id] = opts.flags;
@@ -129,6 +137,7 @@ export class TreeBuilder {
       const isDir = (this.flags[i] & FLAG_DIR) !== 0;
       const isHardDup = (this.flags[i] & FLAG_HARDLINK_DUP) !== 0;
       this.aggSize[i] = isHardDup ? 0 : this.selfSize[i];
+      this.aggAlloc[i] = isHardDup ? 0 : this.selfAlloc[i];
       this.fileCount[i] = isDir ? 0 : 1;
     }
     // Post-order roll-up via reverse-index loop (parentId < childId holds).
@@ -136,6 +145,7 @@ export class TreeBuilder {
       const p = this.parentIdx[i];
       if (p < 0) continue;
       this.aggSize[p] += this.aggSize[i];
+      this.aggAlloc[p] += this.aggAlloc[i];
       this.fileCount[p] += this.fileCount[i];
     }
 
@@ -173,6 +183,8 @@ export class TreeBuilder {
       nextSibling: sliceI(this.nextSibling),
       selfSize: sliceF(this.selfSize),
       aggSize: sliceF(this.aggSize),
+      selfAlloc: sliceF(this.selfAlloc),
+      aggAlloc: sliceF(this.aggAlloc),
       fileCount: sliceU(this.fileCount),
       childCount: sliceU(this.childCount),
       mtimeMs: sliceF(this.mtimeMs),
@@ -194,7 +206,11 @@ export class Tree {
   private readonly nextSibling: Int32Array;
   private readonly selfSize: Float64Array;
   private readonly aggSize: Float64Array;
+  private readonly selfAlloc: Float64Array;
+  private readonly aggAlloc: Float64Array;
   private readonly fileCount: Uint32Array;
+  /** Which size to report. Defaults to logical for test/back-compat. */
+  private metric: SizeMetric = 'logical';
   private readonly childCount: Uint32Array;
   private readonly mtimeMs: Float64Array;
   private readonly atimeMs: Float64Array;
@@ -212,6 +228,8 @@ export class Tree {
     this.nextSibling = new Int32Array(t.nextSibling);
     this.selfSize = new Float64Array(t.selfSize);
     this.aggSize = new Float64Array(t.aggSize);
+    this.selfAlloc = new Float64Array(t.selfAlloc);
+    this.aggAlloc = new Float64Array(t.aggAlloc);
     this.fileCount = new Uint32Array(t.fileCount);
     this.childCount = new Uint32Array(t.childCount);
     this.mtimeMs = new Float64Array(t.mtimeMs);
@@ -219,6 +237,21 @@ export class Tree {
     this.flags = new Uint8Array(t.flags);
     this.nameBytes = new Uint8Array(t.nameBytes);
     this.nameOffsets = new Uint32Array(t.nameOffsets);
+  }
+
+  /** Switch the reported size metric (alloc = on-disk, logical = content). */
+  setMetric(m: SizeMetric): void {
+    this.metric = m;
+  }
+
+  /** Recursive subtree size in the active metric. */
+  private aggOf(id: number): number {
+    return this.metric === 'alloc' ? this.aggAlloc[id] : this.aggSize[id];
+  }
+
+  /** A node's own size in the active metric. */
+  private selfOf(id: number): number {
+    return this.metric === 'alloc' ? this.selfAlloc[id] : this.selfSize[id];
   }
 
   name(id: number): string {
@@ -248,7 +281,7 @@ export class Tree {
     return {
       id,
       name: id === 0 ? this.rootPath : this.name(id),
-      aggSize: this.aggSize[id],
+      aggSize: this.aggOf(id),
       fileCount: this.fileCount[id],
       isDir: (f & FLAG_DIR) !== 0,
       isSymlink: (f & FLAG_SYMLINK) !== 0,
@@ -274,7 +307,7 @@ export class Tree {
     let v = 0;
     switch (spec.key) {
       case 'size':
-        v = this.aggSize[a] - this.aggSize[b];
+        v = this.aggOf(a) - this.aggOf(b);
         break;
       case 'count':
         v = this.fileCount[a] - this.fileCount[b];
@@ -327,7 +360,7 @@ export class Tree {
     const matches: number[] = [];
     for (let i = 1; i < this.nodeCount; i++) {
       if (this.isDir(i)) continue;
-      if (this.selfSize[i] < minBytes) continue;
+      if (this.selfOf(i) < minBytes) continue;
       if (cutoffMs > 0 && this.atimeMs[i] > cutoffMs) continue;
       if (exts.length > 0) {
         const nm = this.name(i).toLowerCase();
@@ -337,11 +370,11 @@ export class Tree {
       }
       matches.push(i);
     }
-    matches.sort((a, b) => this.selfSize[b] - this.selfSize[a]);
+    matches.sort((a, b) => this.selfOf(b) - this.selfOf(a));
     return matches.slice(0, n).map((i) => {
       const r = this.row(i);
       // For the file list, surface the file's own size, not subtree agg.
-      r.aggSize = this.selfSize[i];
+      r.aggSize = this.selfOf(i);
       return r;
     });
   }
@@ -358,14 +391,14 @@ export class Tree {
   }
 
   stats(): { totalBytes: number; totalFiles: number } {
-    return { totalBytes: this.aggSize[0] ?? 0, totalFiles: this.fileCount[0] ?? 0 };
+    return { totalBytes: this.aggOf(0) ?? 0, totalFiles: this.fileCount[0] ?? 0 };
   }
 
   /** All non-root nodes sorted by aggregate size desc, capped — for export. */
   flatten(limit: number): NodeRow[] {
     const ids: number[] = [];
     for (let i = 1; i < this.nodeCount; i++) ids.push(i);
-    ids.sort((a, b) => this.aggSize[b] - this.aggSize[a]);
+    ids.sort((a, b) => this.aggOf(b) - this.aggOf(a));
     return ids.slice(0, limit).map((i) => this.row(i));
   }
 }

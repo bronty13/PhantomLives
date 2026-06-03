@@ -28,6 +28,12 @@ After a scan you land in **Explorer**:
 
 To delete: tick the checkboxes in the detail list and click **Delete…**.
 
+**On-disk vs Logical size.** The **On-disk / Logical** button in the top bar
+switches how sizes are reported. *On-disk* (the default) is what you'll actually
+reclaim — files that live in the cloud or are only partially downloaded show
+near-zero because they aren't really using your disk. *Logical* shows each
+file's full content size (like Finder's "Size"). Your choice is remembered.
+
 ## 3. Duplicates
 
 Open **Duplicates** and click **Find Duplicates**. Purple Tree groups files by

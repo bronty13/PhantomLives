@@ -237,6 +237,11 @@ function registerIpc(): void {
   ipcMain.handle('purpletree:get-summary', (_e, scanId: string) => controller.getSummary(scanId));
   ipcMain.handle('purpletree:get-root', (_e, scanId: string) => controller.getRoot(scanId));
 
+  ipcMain.handle('purpletree:set-size-metric', (_e, metric: 'alloc' | 'logical') => {
+    setPreferences({ sizeMetric: metric });
+    controller.setSizeMetric(metric);
+  });
+
   // ----- Duplicates -----
   ipcMain.handle('purpletree:dup-find', (_e, scanId: string) => controller.findDuplicates(scanId));
   ipcMain.handle('purpletree:dup-cancel', (_e, scanId: string) =>
@@ -342,7 +347,7 @@ function registerIpc(): void {
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.bronty13.purpletree');
-  controller.initController(sendToRenderer);
+  controller.initController(sendToRenderer, getPreferences().sizeMetric);
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window);

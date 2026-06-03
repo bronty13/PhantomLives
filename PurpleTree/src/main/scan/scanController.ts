@@ -16,7 +16,8 @@ import type {
   SortSpec,
   FileFilter,
   NodeRow,
-  RectNode
+  RectNode,
+  SizeMetric
 } from '../../shared/types';
 import { Tree } from './tree';
 import { computeTreemap } from './treemap';
@@ -25,8 +26,16 @@ import { writeSnapshot, readSnapshot } from './snapshot';
 type Sender = (channel: string, payload: unknown) => void;
 
 let sender: Sender = () => {};
-export function initController(s: Sender): void {
+let activeMetric: SizeMetric = 'alloc';
+export function initController(s: Sender, metric: SizeMetric): void {
   sender = s;
+  activeMetric = metric;
+}
+
+/** Change the size metric and re-apply it to every loaded tree. */
+export function setSizeMetric(metric: SizeMetric): void {
+  activeMetric = metric;
+  for (const tree of trees.values()) tree.setMetric(metric);
 }
 
 const EXPORT_CAP = 50_000;
@@ -102,6 +111,7 @@ export function startScan(rootPath: string, opts: ScanOptions): string {
         break;
       case 'done': {
         const tree = new Tree(evt.tree);
+        tree.setMetric(activeMetric);
         trees.set(scanId, tree);
         serialized.set(scanId, evt.tree);
         const s: ScanStats = { ...evt.stats, durationMs: Date.now() - startMs };
@@ -221,6 +231,7 @@ export async function loadSnapshot(scanId: string): Promise<{ scanId: string } |
   const ser = await readSnapshot(scanId);
   if (!ser) return null;
   const tree = new Tree(ser);
+  tree.setMetric(activeMetric);
   const liveId = newScanId();
   trees.set(liveId, tree);
   const st = tree.stats();

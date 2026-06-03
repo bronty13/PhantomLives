@@ -8,13 +8,15 @@
 import Store from 'electron-store';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { DEFAULT_SCAN_OPTIONS, type ScanOptions } from '../shared/types';
+import { DEFAULT_SCAN_OPTIONS, type ScanOptions, type SizeMetric } from '../shared/types';
 
 export interface Preferences {
   /** Bumped whenever the schema changes; migrations run on load. */
   version: number;
   /** Default options applied to new scans. */
   scanOptions: ScanOptions;
+  /** Which size to display: on-disk allocated (default) or logical content. */
+  sizeMetric: SizeMetric;
   /** Allow the guarded permanent-delete action (off = trash only). */
   permanentDeleteEnabled: boolean;
   /** Default directory for exported reports. */
@@ -41,8 +43,9 @@ function defaultBackupPath(): string {
 }
 
 const DEFAULTS: Preferences = {
-  version: 2,
+  version: 3,
   scanOptions: { ...DEFAULT_SCAN_OPTIONS },
+  sizeMetric: 'alloc',
   permanentDeleteEnabled: false,
   exportDir: defaultExportDir(),
   autoBackupEnabled: true,
@@ -81,6 +84,10 @@ function migrate(s: Store<Preferences>): void {
     s.set('windowHeight', s.get('windowHeight', DEFAULTS.windowHeight) ?? DEFAULTS.windowHeight);
     s.set('version', 2);
   }
+  if (v < 3) {
+    s.set('sizeMetric', s.get('sizeMetric', DEFAULTS.sizeMetric) ?? DEFAULTS.sizeMetric);
+    s.set('version', 3);
+  }
 }
 
 export function getPreferences(): Preferences {
@@ -88,6 +95,7 @@ export function getPreferences(): Preferences {
   return {
     version: s.get('version', DEFAULTS.version),
     scanOptions: s.get('scanOptions', DEFAULTS.scanOptions),
+    sizeMetric: s.get('sizeMetric', DEFAULTS.sizeMetric),
     permanentDeleteEnabled: s.get('permanentDeleteEnabled', DEFAULTS.permanentDeleteEnabled),
     exportDir: s.get('exportDir', DEFAULTS.exportDir),
     autoBackupEnabled: s.get('autoBackupEnabled', DEFAULTS.autoBackupEnabled),

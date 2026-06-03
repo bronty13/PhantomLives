@@ -75,6 +75,34 @@ describe('Tree aggregation', () => {
     expect(t.getChildren(0, { key: 'name', dir: 'asc' }, 10, 0)).toHaveLength(2);
   });
 
+  it('reports on-disk vs logical size per the active metric', () => {
+    const b = new TreeBuilder('/r', '/');
+    b.addNode({ parent: -1, name: '/r', selfSize: 0, mtimeMs: 0, atimeMs: 0, flags: FLAG_DIR });
+    // A "cloud placeholder": 1 MB logical, but only 4 KB actually on disk.
+    b.addNode({
+      parent: 0,
+      name: 'cloud.bin',
+      selfSize: 1_000_000,
+      allocSize: 4096,
+      mtimeMs: 0,
+      atimeMs: 0,
+      flags: 0
+    });
+    const t = new Tree(b.finalize());
+    t.setMetric('logical');
+    expect(t.row(0).aggSize).toBe(1_000_000);
+    t.setMetric('alloc');
+    expect(t.row(0).aggSize).toBe(4096);
+    // getTopFiles also follows the metric.
+    expect(t.getTopFiles(1)[0].aggSize).toBe(4096);
+  });
+
+  it('defaults allocSize to logical size when omitted', () => {
+    const t = buildSample(); // built without allocSize
+    t.setMetric('alloc');
+    expect(t.row(0).aggSize).toBe(175); // same as logical
+  });
+
   it('collectFiles returns every file path + size', () => {
     const t = buildSample();
     const files = t.collectFiles().sort((a, b) => a.path.localeCompare(b.path));
