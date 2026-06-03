@@ -29,9 +29,14 @@ without leaving Molly.
   straight into the teaser slot. Encoding is **100% client-side**
   (canvas frame capture + `gifenc`), so it needs no ffmpeg and behaves
   identically on Windows. Clips are capped at 15s / 25fps / 640px wide.
-- New Tauri commands `save_bundle_gif` (persists encoded bytes as a
-  bundle file) and `write_bytes_to_path` (backs the Download action,
-  defaulting to `~/Downloads/Molly GIF/`).
+- **Frame Grabber**: a "✨ Grab a frame from a video" button on the
+  Thumbnail Image slot. Same source picker + crop + caption as the GIF
+  wizard, but scrubs to a single key frame and captures it as a JPEG —
+  preview, then use it as the thumbnail or download it. Also client-side.
+- New Tauri commands `save_bundle_gif` / `save_bundle_frame` (persist
+  encoded bytes / captured frames as a bundle file) and
+  `write_bytes_to_path` (backs the Download action, defaulting to
+  `~/Downloads/Molly GIF/`).
 
 ### Notes
 

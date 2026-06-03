@@ -212,6 +212,20 @@ export async function saveBundleGif(
   });
 }
 
+/// Persist a key frame captured from a video (the Frame Grabber) as a bundle
+/// file. Returns a BundleFileInfo to lift onto thumbnail_* like an upload.
+export async function saveBundleFrame(
+  bundleUid: string,
+  bytes: Uint8Array,
+  originalName: string,
+): Promise<BundleFileInfo> {
+  return invoke<BundleFileInfo>('save_bundle_frame', {
+    bundleUid,
+    bytes: Array.from(bytes),
+    originalName,
+  });
+}
+
 /// Write raw bytes to a user-chosen absolute path (GIF Creator "Download").
 export async function writeBytesToPath(
   targetPath: string,

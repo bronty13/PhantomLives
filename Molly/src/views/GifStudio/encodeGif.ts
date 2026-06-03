@@ -124,6 +124,54 @@ function drawCaption(
   ctx.fillText(caption.text, x, y);
 }
 
+export interface FrameSettings {
+  /** Time in the source video to grab, in seconds. */
+  timeSec: number;
+  /** Desired output width in px; height derives from the (cropped) aspect. */
+  outputWidth: number;
+  quality: GifQuality;
+  crop?: CropBox | null;
+  caption?: CaptionSettings | null;
+  /** JPEG quality 0..1 (default 0.92). */
+  jpegQuality?: number;
+}
+
+/** Capture a single still frame from a (loaded, seekable) <video> as JPEG
+ * bytes. Shares the crop/caption/sizing path with the GIF encoder so a
+ * thumbnail looks identical to the corresponding GIF frame. DOM-dependent. */
+export async function captureFrame(
+  video: HTMLVideoElement,
+  settings: FrameSettings,
+): Promise<Uint8Array> {
+  const srcW = video.videoWidth;
+  const srcH = video.videoHeight;
+  if (!srcW || !srcH) throw new Error('Video has no decodable dimensions yet.');
+
+  const { width, height, sx, sy, sw, sh } = computeOutputSize(srcW, srcH, settings.crop, settings.outputWidth);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) throw new Error('Could not get a 2D canvas context.');
+
+  await seek(video, settings.timeSec);
+  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, width, height);
+  if (settings.caption && settings.caption.text.trim()) {
+    drawCaption(ctx, settings.caption, width, height);
+  }
+
+  return new Promise<Uint8Array>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) { reject(new Error('Could not encode the frame.')); return; }
+        blob.arrayBuffer().then((buf) => resolve(new Uint8Array(buf))).catch(reject);
+      },
+      'image/jpeg',
+      settings.jpegQuality ?? 0.92,
+    );
+  });
+}
+
 /** Capture frames from a (loaded, seekable) <video> across the trim range
  * and encode an animated GIF. DOM-dependent (the seek loop); the math it
  * relies on lives in the pure helpers above so it stays test-light. */

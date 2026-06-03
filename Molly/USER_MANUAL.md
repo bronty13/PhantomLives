@@ -475,7 +475,7 @@ What to fill in:
 - **Categories** — at least three. Type to filter / create; drag the chips to reorder. They save UPPERCASE. Past categories from any bundle show as suggestions.
 - **Go-live date** — required, no past dates. If today or within 5 days, Molly gently asks *"Are you allowing enough time for editing?"*.
 - **Files** — at least one video or image. Drag rows to reorder. Each file is renamed `00001_…` in the final ZIP so Robert can rely on the order.
-- **🖼️ Thumbnail Image** — *optional!* A pretty little cover image (jpg/png/webp) to ride along in the bundle. Pick one and you'll see it preview right there. Don't want one? Just skip it. 💕
+- **🖼️ Thumbnail Image** — *optional!* A pretty little cover image (jpg/png/webp) to ride along in the bundle. Drop in a file you already have **or** tap **✨ Grab a frame from a video** and Molly opens a little wizard so you can scrub to the *perfect* frame and snap it as your cover (see Frame Grabber below 🌟). Either way you'll see it preview right there. Don't want one? Just skip it. 💕
 - **🎞️ Teaser GIF** — *also optional!* An animated teaser (.gif) tucked into the bundle. You can drop in a `.gif` you already have **or** tap **✨ Make a GIF from a video** and Molly will whip one up for you (see GIF Studio below 🌟).
 - **Special instructions** — optional free-text for Robert.
 
@@ -623,6 +623,17 @@ Then:
 It all happens right on your own machine — no uploading anything anywhere. ✨
 
 *A tiny note from me:* on a Mac, some `.mov` files are shy and won't preview — if a video won't load, try an `.mp4`. On your Windows machine everything plays nicely. 🩷
+
+### 🖼️ Frame Grabber — snag the *perfect* cover frame
+
+This one's the GIF Studio's little twin, just for **still** covers! On a Content bundle's **🖼️ Thumbnail Image** slot, tap **✨ Grab a frame from a video**:
+
+1. **Pick a video** — bundle clip or **📁 Pick from disk**.
+2. **Scrub to the moment** — drag the slider, or nudge frame-by-frame with the **◀ −0.05s** / **+0.05s ▶** buttons until your face/pose/lighting is *just right*.
+3. **Crop & caption** — drag a crop box and add overlay text if you want, exactly like the GIF wizard.
+4. Tap **📸 Capture frame** to see your still.
+
+Then **🖼️ Use as Thumbnail** drops it straight onto the bundle, or **⬇️ Download** saves the JPEG wherever you like. Easy peasy. 💕
 
 ---
 

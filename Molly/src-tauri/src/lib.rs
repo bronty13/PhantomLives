@@ -337,6 +337,7 @@ pub fn run() {
             bundles::update_bundle_fields,
             bundles::save_bundle_file,
             bundles::save_bundle_gif,
+            bundles::save_bundle_frame,
             bundles::write_bytes_to_path,
             bundles::delete_bundle_file,
             bundles::reorder_bundle_files,

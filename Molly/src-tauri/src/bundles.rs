@@ -1787,28 +1787,18 @@ pub fn delete_bundle_file<R: Runtime>(
     Ok(())
 }
 
-/// Persist raw bytes produced in the frontend (the GIF Creator's encoded
-/// output) as a bundle file. Mirrors the tail of `save_bundle_file` but
-/// writes the provided bytes instead of copying a source path. Returns a
-/// `BundleFileInfo` the caller then lifts onto `teaser_gif_*` exactly like
-/// an uploaded teaser. Always stored with `kind = "image"` (a GIF is an
-/// image kind, same as an uploaded teaser).
-#[tauri::command]
-pub fn save_bundle_gif<R: Runtime>(
-    handle: AppHandle<R>,
+/// Shared body for the "persist frontend-produced bytes as an image bundle
+/// file" commands (GIF Creator output, captured key frames). Writes the
+/// bytes into the bundle's files dir with a UUID-prefixed name, records the
+/// row as `kind = "image"`, and returns a `BundleFileInfo` the caller lifts
+/// onto a single-slot column (`teaser_gif_*` / `thumbnail_*`). `basename`
+/// must already carry the desired extension.
+fn persist_bundle_image_bytes(
+    app_data: &Path,
     bundle_uid: String,
-    bytes: Vec<u8>,
-    original_name: String,
+    bytes: &[u8],
+    basename: String,
 ) -> Result<BundleFileInfo, BundleError> {
-    let app_data = app_data_dir(&handle)?;
-    // Default + force a .gif extension so the slot is unambiguous.
-    let mut basename = original_name.trim().to_string();
-    if basename.is_empty() {
-        basename = "teaser.gif".to_string();
-    }
-    if !basename.to_ascii_lowercase().ends_with(".gif") {
-        basename.push_str(".gif");
-    }
     let cat = format!("bundles/{bundle_uid}/files");
     let safe_base = sanitize_component(&basename);
     let target_dir = app_data.join("attachments").join(&cat);
@@ -1816,12 +1806,12 @@ pub fn save_bundle_gif<R: Runtime>(
     let uuid = uuid::Uuid::new_v4().simple().to_string();
     let target_name = format!("{uuid}_{safe_base}");
     let target_path = target_dir.join(&target_name);
-    fs::write(&target_path, &bytes)?;
+    fs::write(&target_path, bytes)?;
     let size_bytes = fs::metadata(&target_path)?.len() as i64;
     let sha = bundle_zip::sha256_file(&target_path)?;
     let relpath = format!("attachments/{cat}/{target_name}");
 
-    let conn = open_conn(&app_data)?;
+    let conn = open_conn(app_data)?;
     let next_pos: i64 = conn
         .query_row(
             "SELECT COALESCE(MAX(position), 0) FROM bundle_files
@@ -1842,7 +1832,7 @@ pub fn save_bundle_gif<R: Runtime>(
         "UPDATE bundles SET updated_at = datetime('now') WHERE uid = ?1",
         params![bundle_uid],
     )?;
-    let absolute_path = absolute_for(&app_data, &relpath);
+    let absolute_path = absolute_for(app_data, &relpath);
     Ok(BundleFileInfo {
         id,
         bundle_uid,
@@ -1855,6 +1845,48 @@ pub fn save_bundle_gif<R: Runtime>(
         size_bytes,
         sha256: sha,
     })
+}
+
+/// Persist the GIF Creator's encoded output as a bundle file. The caller
+/// lifts the returned row onto `teaser_gif_*`. Forces a `.gif` extension.
+#[tauri::command]
+pub fn save_bundle_gif<R: Runtime>(
+    handle: AppHandle<R>,
+    bundle_uid: String,
+    bytes: Vec<u8>,
+    original_name: String,
+) -> Result<BundleFileInfo, BundleError> {
+    let app_data = app_data_dir(&handle)?;
+    let mut basename = original_name.trim().to_string();
+    if basename.is_empty() {
+        basename = "teaser.gif".to_string();
+    }
+    if !basename.to_ascii_lowercase().ends_with(".gif") {
+        basename.push_str(".gif");
+    }
+    persist_bundle_image_bytes(&app_data, bundle_uid, &bytes, basename)
+}
+
+/// Persist a key frame captured from a video (the Frame Grabber wizard) as a
+/// bundle file. The caller lifts the returned row onto `thumbnail_*`. Forces
+/// a `.jpg` extension.
+#[tauri::command]
+pub fn save_bundle_frame<R: Runtime>(
+    handle: AppHandle<R>,
+    bundle_uid: String,
+    bytes: Vec<u8>,
+    original_name: String,
+) -> Result<BundleFileInfo, BundleError> {
+    let app_data = app_data_dir(&handle)?;
+    let mut basename = original_name.trim().to_string();
+    if basename.is_empty() {
+        basename = "thumbnail.jpg".to_string();
+    }
+    let lower = basename.to_ascii_lowercase();
+    if !(lower.ends_with(".jpg") || lower.ends_with(".jpeg")) {
+        basename.push_str(".jpg");
+    }
+    persist_bundle_image_bytes(&app_data, bundle_uid, &bytes, basename)
 }
 
 /// Write raw bytes to a user-chosen absolute path — backs the GIF Creator's

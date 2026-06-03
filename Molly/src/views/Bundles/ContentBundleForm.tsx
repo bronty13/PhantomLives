@@ -24,6 +24,7 @@ import { PreviewAssetField } from './components/PreviewAssetField';
 import { SpecialInstructionsField } from './components/SpecialInstructionsField';
 import { TitleField } from './components/TitleField';
 import { GifCreator } from '../GifStudio/GifCreator';
+import { FrameGrabber } from '../GifStudio/FrameGrabber';
 
 interface Props {
   uid: string;
@@ -43,6 +44,7 @@ export function ContentBundleForm({ uid, onPublishRequested, onClose, onDeleted,
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gifOpen, setGifOpen] = useState(false);
+  const [frameOpen, setFrameOpen] = useState(false);
 
   // reload depends only on `uid`; deliberately NOT on any parent callback,
   // since an unstable parent callback would cause this useCallback's
@@ -290,6 +292,11 @@ export function ContentBundleForm({ uid, onPublishRequested, onClose, onDeleted,
           onSaved={onThumbnailSaved}
           onRemoved={onThumbnailRemoved}
           disabled={busy || locked}
+          accessory={
+            <button type="button" className="pretty-button secondary" disabled={busy || locked} onClick={() => setFrameOpen(true)}>
+              ✨ Grab a frame from a video
+            </button>
+          }
         />
 
         <PreviewAssetField
@@ -367,6 +374,20 @@ export function ContentBundleForm({ uid, onPublishRequested, onClose, onDeleted,
             await onTeaserSaved(info);
           }}
           onClose={() => setGifOpen(false)}
+        />
+      )}
+
+      {frameOpen && (
+        <FrameGrabber
+          bundleVideos={bundle.files
+            .filter((f) => f.kind === 'video')
+            .map((f) => ({ absolutePath: f.absolutePath, name: f.originalName }))}
+          onUseAsThumbnail={async (bytes, name) => {
+            const { saveBundleFrame } = await import('../../data/bundles');
+            const info = await saveBundleFrame(uid, bytes, name);
+            await onThumbnailSaved(info);
+          }}
+          onClose={() => setFrameOpen(false)}
         />
       )}
     </div>
