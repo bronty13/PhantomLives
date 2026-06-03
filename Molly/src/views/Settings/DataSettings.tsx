@@ -1,10 +1,30 @@
 import { useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, Channel } from '@tauri-apps/api/core';
 
 interface ExportResult {
   path: string;
   sizeBytes: number;
   fileCount: number;
+}
+
+interface ExportProgress {
+  done: number;
+  total: number;
+}
+
+/** Fire an OS notification so Sallie knows the export finished even if she
+ * switched away during the (sometimes long) zip. Best-effort — never throws. */
+async function notifyDone(result: ExportResult) {
+  try {
+    const { isPermissionGranted, requestPermission, sendNotification } = await import('@tauri-apps/plugin-notification');
+    let granted = await isPermissionGranted();
+    if (!granted) granted = (await requestPermission()) === 'granted';
+    if (granted) {
+      sendNotification({ title: 'Molly — export complete 💖', body: `${result.fileCount} files saved. Ready to send to Robert.` });
+    }
+  } catch {
+    /* notifications optional */
+  }
 }
 
 const IS_DEV = import.meta.env.VITE_MOLLY_DEV === '1';
@@ -19,18 +39,26 @@ export function DataSettings() {
   const [result, setResult] = useState<ExportResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string>('');
+  const [progress, setProgress] = useState<ExportProgress | null>(null);
 
   async function runExport() {
     setBusy(true);
-    setStatus('');
+    setStatus('Exporting… this can take a minute for a big library.');
+    setProgress({ done: 0, total: 0 });
     try {
-      const r = await invoke<ExportResult>('export_full_data');
+      const onProgress = new Channel<ExportProgress>();
+      onProgress.onmessage = (p) => setProgress(p);
+      const r = await invoke<ExportResult>('export_full_data', { onProgress });
       setResult(r);
-      setStatus(`Exported ${r.fileCount} file${r.fileCount === 1 ? '' : 's'} (${formatBytes(r.sizeBytes)}).`);
+      setStatus(`✅ Done! Exported ${r.fileCount} file${r.fileCount === 1 ? '' : 's'} (${formatBytes(r.sizeBytes)}).`);
+      void notifyDone(r);
+      // Pop the folder open so she sees the finished file immediately.
+      try { await invoke('reveal_path', { path: r.path }); } catch { /* */ }
     } catch (e) {
       setStatus(`Export failed: ${String(e)}`);
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
 
@@ -76,12 +104,28 @@ export function DataSettings() {
         </p>
         <div className="flex flex-wrap gap-2 items-center">
           <button type="button" className="pretty-button" onClick={runExport} disabled={busy}>
-            📦 Export everything
+            {busy ? 'Exporting…' : '📦 Export everything'}
           </button>
           <button type="button" className="pretty-button secondary" onClick={revealDir} disabled={busy}>
             🗂  Reveal export folder
           </button>
         </div>
+
+        {busy && progress && (
+          <div className="mt-3">
+            <div className="h-2 bg-black/10 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-pink-400 transition-all"
+                style={{ width: progress.total > 0 ? `${Math.round((progress.done / progress.total) * 100)}%` : '8%' }}
+              />
+            </div>
+            <div className="text-xs opacity-60 mt-1">
+              {progress.total > 0
+                ? `Bundling… ${progress.done} / ${progress.total} files (${Math.round((progress.done / progress.total) * 100)}%)`
+                : 'Getting things ready…'}
+            </div>
+          </div>
+        )}
 
         <div className="mt-3 text-xs opacity-70">
           Default location: <span className="font-mono">~/Downloads/Molly export/</span> (Mac) ·{' '}

@@ -4,7 +4,9 @@ export const MAX_DURATION_S = 15;
 export const MIN_FPS = 2;
 export const MAX_FPS = 25;
 export const MIN_WIDTH = 64;
-export const MAX_WIDTH = 640;
+// GIFs balloon with resolution (palette per frame), so the cap is well below
+// the MP4's — but high enough for a crisp teaser loop.
+export const MAX_WIDTH = 960;
 /** Thumbnail images must stay under 5 MB (JPG/PNG spec). */
 export const THUMBNAIL_MAX_BYTES = 5 * 1024 * 1024;
 

@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::Local;
 use serde::Serialize;
+use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, Runtime};
 use walkdir::WalkDir;
 use zip::write::SimpleFileOptions;
@@ -75,8 +76,36 @@ pub struct ExportResult {
     pub file_count: usize,
 }
 
+/// Streamed to the frontend so the (potentially slow) export shows a progress
+/// bar instead of an unresponsive button.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportProgress {
+    pub done: usize,
+    pub total: usize,
+}
+
+fn should_skip(name: &str) -> bool {
+    name.ends_with(".DS_Store") || name.ends_with(".json.tmp")
+}
+
+/// Export runs on a blocking thread (it reads + deflates the whole app-data
+/// tree, which can take a while) so the UI stays responsive and progress
+/// events flow. `export_full_data` is the async command wrapper.
 #[tauri::command]
-pub fn export_full_data<R: Runtime>(handle: AppHandle<R>) -> Result<ExportResult, ExportError> {
+pub async fn export_full_data<R: Runtime>(
+    handle: AppHandle<R>,
+    on_progress: Channel<ExportProgress>,
+) -> Result<ExportResult, ExportError> {
+    tokio::task::spawn_blocking(move || export_blocking(handle, on_progress))
+        .await
+        .map_err(|e| ExportError::Settings(format!("export task failed: {e}")))?
+}
+
+fn export_blocking<R: Runtime>(
+    handle: AppHandle<R>,
+    on_progress: Channel<ExportProgress>,
+) -> Result<ExportResult, ExportError> {
     let app_data = app_data_dir(&handle)?;
     fs::create_dir_all(&app_data)?;
     let export_dir = fsutil::downloads_subdir(EXPORT_FOLDER);
@@ -87,6 +116,22 @@ pub fn export_full_data<R: Runtime>(handle: AppHandle<R>) -> Result<ExportResult
     let tmp_path = out_path.with_extension("zip.tmp");
 
     let app_version = handle.package_info().version.to_string();
+
+    // Count files up front so the frontend can show a real percentage. Cheap
+    // (metadata only) relative to reading + deflating every file. +1 manifest.
+    let total = WalkDir::new(&app_data)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .filter(|e| {
+            !e.path()
+                .strip_prefix(&app_data)
+                .map(|r| should_skip(&r.to_string_lossy().replace('\\', "/")))
+                .unwrap_or(true)
+        })
+        .count()
+        + 1;
+    let _ = on_progress.send(ExportProgress { done: 0, total });
 
     let mut file_count = 0usize;
     {
@@ -108,7 +153,7 @@ pub fn export_full_data<R: Runtime>(handle: AppHandle<R>) -> Result<ExportResult
             };
             if rel.as_os_str().is_empty() { continue; }
             let name = rel.to_string_lossy().replace('\\', "/");
-            if name.ends_with(".DS_Store") || name.ends_with(".json.tmp") { continue; }
+            if should_skip(&name) { continue; }
 
             if entry.file_type().is_dir() {
                 zip.add_directory(format!("{name}/"), opts)?;
@@ -118,10 +163,15 @@ pub fn export_full_data<R: Runtime>(handle: AppHandle<R>) -> Result<ExportResult
                 fs::File::open(path)?.read_to_end(&mut buf)?;
                 zip.write_all(&buf)?;
                 file_count += 1;
+                // Throttle progress events (every 8 files) to avoid spamming IPC.
+                if file_count % 8 == 0 {
+                    let _ = on_progress.send(ExportProgress { done: file_count, total });
+                }
             }
         }
         zip.finish()?;
     }
+    let _ = on_progress.send(ExportProgress { done: total, total });
 
     if out_path.exists() { let _ = fs::remove_file(&out_path); }
     fs::rename(&tmp_path, &out_path)?;

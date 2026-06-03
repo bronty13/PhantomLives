@@ -6,16 +6,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [1.29.1] — 2026-06-03
 
-### Fixed — teaser MP4 now exports at near-native resolution (sharp, not tiny)
+### Fixed — teaser MP4 exports at near-native resolution (sharp, not tiny)
 
 1.29.0's MP4 export reused the GIF width control (≤640 px), so clips came out
 small/low-res. The teaser MP4 now encodes at **near-native resolution** (the
-source size, capped at 1920 px on the long edge to keep 4K sane) instead of the
-GIF width, and uses a **quality-first encode**: libx264 `-preset medium -crf 20`
-with a `-maxrate` ceiling derived from the 100 MB / duration budget
-(`teaser_video_max_kbps`) + `-bufsize`. Short clips stay near-lossless; long
-ones fill the budget without ever overflowing 100 MB (no truncation). The GIF
-path is unchanged (still ≤640 px — GIFs balloon at high res).
+source size, capped at 1920 px on the long edge to keep 4K sane) with a
+**quality-first encode**: libx264 `-preset medium -crf 20` plus a `-maxrate`
+ceiling derived from the 100 MB / duration budget (`teaser_video_max_kbps`) +
+`-bufsize`. Short clips stay near-lossless; long ones fill the budget without
+ever overflowing 100 MB (no truncation).
+
+### Changed — bigger GIFs
+
+GIF max width raised 640 → **960 px** (default 320 → 480) for crisper teaser
+loops. Kept well below the MP4's cap because GIFs balloon at high resolution
+(palette per frame).
+
+### Added — Data export shows progress + notifies when done
+
+The Settings → Data export could take a while with no feedback (and the
+synchronous command froze the UI). `export_full_data` is now **async/off-thread**
+(`spawn_blocking`) and streams **per-file progress** over a `Channel`
+(`ExportProgress { done, total }`), shown as a progress bar. On completion it
+fires an **OS notification** (new `tauri-plugin-notification`) and reveals the
+finished `.zip` in the file browser — so Sallie knows exactly when it's ready
+even if she switched away. New permission: `notification:default`.
 
 ## [1.29.0] — 2026-06-03
 

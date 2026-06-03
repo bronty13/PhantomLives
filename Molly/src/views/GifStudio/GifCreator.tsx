@@ -40,7 +40,7 @@ interface Props {
 }
 
 const FPS_OPTIONS = [5, 8, 10, 12, 15, 20, MAX_FPS];
-const WIDTH_OPTIONS = [240, 320, 400, 480, MAX_WIDTH];
+const WIDTH_OPTIONS = [320, 480, 640, 800, MAX_WIDTH];
 
 /** In-app video→GIF/MP4 maker. The UI picks trim, fps, size, quality, crop,
  * caption; the native ffmpeg engine (src-tauri/src/media) renders the output
@@ -54,7 +54,7 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
   const [startSec, setStartSec] = useState(0);
   const [endSec, setEndSec] = useState(3);
   const [fps, setFps] = useState(12);
-  const [outputWidth, setOutputWidth] = useState(320);
+  const [outputWidth, setOutputWidth] = useState(480);
   const [quality, setQuality] = useState<GifQuality>('high');
   const [crop, setCrop] = useState<CropBox | null>(null);
   const [captionText, setCaptionText] = useState('');
