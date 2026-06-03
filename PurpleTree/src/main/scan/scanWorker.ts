@@ -15,7 +15,7 @@
  *     whole scan.
  */
 import { parentPort } from 'node:worker_threads';
-import { opendirSync, lstatSync, type Dirent } from 'node:fs';
+import { opendir, lstat } from 'node:fs/promises';
 import { sep as pathSep, join as pathJoin } from 'node:path';
 import { homedir } from 'node:os';
 import {
@@ -37,7 +37,6 @@ const port = parentPort;
 if (!port) throw new Error('scanWorker must run as a worker thread');
 
 const PROGRESS_INTERVAL_MS = 100;
-const CANCEL_CHECK_STRIDE = 256;
 const isWindows = process.platform === 'win32';
 
 function post(evt: ScanEvent, transfer?: ArrayBuffer[]): void {
@@ -57,7 +56,7 @@ interface CrawlFrame {
   path: string;
 }
 
-function runScan(cmd: Extract<ScanCommand, { type: 'start' }>): void {
+async function runScan(cmd: Extract<ScanCommand, { type: 'start' }>): Promise<void> {
   const { scanId, rootPath, opts, cancelFlag } = cmd;
   const cancelArr = new Int32Array(cancelFlag);
   const cancelled = (): boolean => Atomics.load(cancelArr, 0) !== 0;
@@ -79,7 +78,6 @@ function runScan(cmd: Extract<ScanCommand, { type: 'start' }>): void {
   let mountSkippedCount = 0;
   let symlinkCount = 0;
   let lastEmit = 0;
-  let opCounter = 0;
   let currentPath = rootPath;
 
   const emitProgress = (force = false): void => {
@@ -102,7 +100,7 @@ function runScan(cmd: Extract<ScanCommand, { type: 'start' }>): void {
   let rootDev = 0;
   let rootIsDir = true;
   try {
-    const st = lstatSync(longPath(rootPath));
+    const st = await lstat(longPath(rootPath));
     rootDev = st.dev;
     rootIsDir = st.isDirectory();
     builder.addNode({
@@ -126,8 +124,11 @@ function runScan(cmd: Extract<ScanCommand, { type: 'start' }>): void {
       const frame = stack.pop()!;
       currentPath = frame.path;
       dirsScanned++;
+      // Emit *before* opening so the UI shows the directory we're about to
+      // read — if it hangs, that path is the culprit.
+      emitProgress();
       try {
-        crawlFrame(frame);
+        await crawlFrame(frame);
       } catch {
         // No single directory may abort the scan — skip it and continue.
         builder.addFlag(frame.id, FLAG_PERM_DENIED);
@@ -137,11 +138,16 @@ function runScan(cmd: Extract<ScanCommand, { type: 'start' }>): void {
     }
   }
 
-  /** Process one directory frame: open it, read entries, enqueue subdirs. */
-  function crawlFrame(frame: CrawlFrame): void {
+  /**
+   * Process one directory frame: open it, read entries, enqueue subdirs.
+   * Uses async fs so the worker's event loop stays responsive — that is what
+   * makes the cooperative cancel flag *and* worker.terminate() actually work
+   * even when a single readdir/lstat is wedged on a hung network/cloud mount.
+   */
+  async function crawlFrame(frame: CrawlFrame): Promise<void> {
     let dir;
     try {
-      dir = opendirSync(longPath(frame.path));
+      dir = await opendir(longPath(frame.path));
     } catch {
       builder.addFlag(frame.id, FLAG_PERM_DENIED);
       permDeniedCount++;
@@ -149,27 +155,18 @@ function runScan(cmd: Extract<ScanCommand, { type: 'start' }>): void {
     }
 
     try {
-      for (;;) {
-        let entry: Dirent | null;
-        try {
-          entry = dir.readSync();
-        } catch {
-          // readdir failed mid-iteration — e.g. ETIMEDOUT on a network /
-          // cloud-backed mount (CloudStorage, SMB, MacDroid). Mark this dir
-          // and stop reading it, but NEVER abort the whole scan.
-          builder.addFlag(frame.id, FLAG_PERM_DENIED);
-          permDeniedCount++;
-          break;
-        }
-        if (entry === null) break;
-        if (++opCounter % CANCEL_CHECK_STRIDE === 0 && cancelled()) break;
+      // `for await` reads entries lazily and auto-closes the handle on break,
+      // return, or throw. A readdir failure mid-iteration throws here and is
+      // caught below — it never aborts the whole scan.
+      for await (const entry of dir) {
+        if (cancelled()) break;
         const childPath = frame.path.endsWith(pathSep)
           ? frame.path + entry.name
           : frame.path + pathSep + entry.name;
 
         let st;
         try {
-          st = lstatSync(longPath(childPath));
+          st = await lstat(longPath(childPath));
         } catch {
           // Unreadable entry (race / permission) — skip silently.
           continue;
@@ -227,12 +224,10 @@ function runScan(cmd: Extract<ScanCommand, { type: 'start' }>): void {
         if ((flags & FLAG_HARDLINK_DUP) === 0) bytes += st.size;
         emitProgress();
       }
-    } finally {
-      try {
-        dir.closeSync();
-      } catch {
-        // closing a timed-out handle can itself throw — ignore.
-      }
+    } catch {
+      // readdir failed mid-iteration (ETIMEDOUT etc.) — mark + move on.
+      builder.addFlag(frame.id, FLAG_PERM_DENIED);
+      permDeniedCount++;
     }
   }
 
@@ -268,14 +263,16 @@ async function runDuplicates(
 }
 
 port.on('message', (cmd: ScanCommand) => {
+  const scanId = 'scanId' in cmd ? cmd.scanId : 'unknown';
+  const fail = (err: unknown): void =>
+    post({ type: 'error', scanId, message: err instanceof Error ? err.message : String(err) });
   try {
     if (cmd.type === 'start') {
-      runScan(cmd);
+      void runScan(cmd).catch(fail);
     } else if (cmd.type === 'find-duplicates') {
-      void runDuplicates(cmd);
+      void runDuplicates(cmd).catch(fail);
     }
   } catch (err) {
-    const scanId = 'scanId' in cmd ? cmd.scanId : 'unknown';
-    post({ type: 'error', scanId, message: err instanceof Error ? err.message : String(err) });
+    fail(err);
   }
 });

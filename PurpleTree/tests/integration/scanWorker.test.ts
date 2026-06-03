@@ -132,4 +132,41 @@ describe.skipIf(!built)('scanWorker (built) integration', () => {
       rmSync(base, { recursive: true, force: true });
     }
   }, 20_000);
+
+  // The cooperative cancel flag must be honored. (Pre-set before start so the
+  // assertion is deterministic; the async crawl checks it every iteration, and
+  // the controller's terminate() fallback covers the hung-syscall case.)
+  it('honors the cancel flag and returns a partial result', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'pt-cancel-'));
+    try {
+      for (let i = 0; i < 50; i++) writeFileSync(join(base, `f${i}.bin`), Buffer.alloc(10));
+
+      const cancelFlag = new SharedArrayBuffer(4);
+      new Int32Array(cancelFlag)[0] = 1; // request cancel up front
+      const worker = new Worker(WORKER);
+      const done = new Promise<ScanEvent>((res, rej) => {
+        worker.on('message', (evt: ScanEvent) => {
+          if (evt.type === 'done' || evt.type === 'error') res(evt);
+        });
+        worker.on('error', rej);
+      });
+      worker.postMessage({
+        type: 'start',
+        scanId: 'cancel',
+        rootPath: base,
+        opts: DEFAULT_SCAN_OPTIONS,
+        cancelFlag
+      });
+      const evt = await done;
+      await worker.terminate();
+
+      expect(evt.type).toBe('done');
+      if (evt.type !== 'done') return;
+      expect(evt.stats.partial).toBe(true);
+      // Cancelled before descending — none of the 50 files were counted.
+      expect(evt.stats.totalFiles).toBe(0);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  }, 20_000);
 });

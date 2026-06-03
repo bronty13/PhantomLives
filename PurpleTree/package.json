@@ -1,6 +1,6 @@
 {
   "name": "purple-tree",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Purple Tree — cross-platform disk-space analyzer and file-cleanup utility",
   "main": "out/main/index.js",
   "author": "Robert Olen",

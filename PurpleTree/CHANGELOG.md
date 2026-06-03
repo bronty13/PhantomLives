@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.3] - 2026-06-03
+
+- Fix (the real one): **Cancel now works even when the scan is wedged on a hung
+  mount.** The crawl was using *synchronous* fs, so a worker thread blocked
+  inside a hung `readdirSync`/`lstatSync` (e.g. an asleep MacDroid/SMB mount)
+  could neither check the cancel flag nor be killed by `worker.terminate()` —
+  V8 can't interrupt a thread stuck in a native syscall. The crawl is now
+  **async** (`fs.promises` `opendir`/`lstat`), so the worker's event loop stays
+  responsive: the cancel flag is honored every iteration and `terminate()`
+  takes effect immediately. Added a regression test.
+- The "Scanning…" view now shows the directory it's **about to open** (not the
+  last one finished), so a hang points straight at the offending path.
+
 ## [1.0.2] - 2026-06-03
 
 - Fix: **Cancel now works during any scan.** The crawl uses synchronous fs, so
