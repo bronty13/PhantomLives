@@ -426,7 +426,21 @@ struct BufferView: View {
                 }
             }
             .onChange(of: bufferIndex) { _, _ in
+                // Switching buffers: rebuild the cached rows for the new
+                // buffer, then jump to the latest message. Without this the
+                // ScrollViewReader keeps the prior offset and the new buffer
+                // opens scrolled to the TOP. (Pre-1.0.234 this scroll only
+                // happened as a side effect of buffer.lines.count differing
+                // between buffers; same-length buffers landed at the top.)
+                // Deferred to the next runloop so the new rows are laid out
+                // before we resolve the "bottom" anchor; no animation — an
+                // animated jump on switch reads as jank.
                 refreshRenderedRows()
+                if !showFind {
+                    DispatchQueue.main.async {
+                        proxy.scrollTo("bottom", anchor: .bottom)
+                    }
+                }
             }
             .onChange(of: effectiveFilter) { _, _ in
                 refreshRenderedRows()

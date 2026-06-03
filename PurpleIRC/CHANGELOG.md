@@ -12,6 +12,25 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
+## [Unreleased] — 2026-06-03
+
+### Fixed
+
+- **Switching buffers no longer jumps to the top of the scrollback**
+  (`BufferView.swift`). When you click from one channel/query to
+  another, the messages pane now scrolls to the latest message as
+  expected. The `bufferIndex` `onChange` (added in the 1.0.234 perf
+  sweep, when `renderedRows` became cached) refreshed the row list but
+  never re-anchored the scroll, so the `ScrollViewReader` kept the prior
+  buffer's offset and opened the new buffer scrolled to the top.
+  Previously a scroll-to-bottom only happened by coincidence — as a side
+  effect of `buffer.lines.count` differing between the two buffers — so
+  same-length buffers landed at the top. The switch now explicitly
+  scrolls to the `"bottom"` anchor (deferred one runloop so the new rows
+  are laid out first; no animation, since an animated jump on switch
+  reads as jank). Skipped while the Find bar is open, matching the
+  new-message path.
+
 ## [1.0.603] — 2026-06-02
 
 ### Security (audit follow-up — #36, KDF hardening)
