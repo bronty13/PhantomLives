@@ -1,3 +1,4 @@
+import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
 import { computeOutputSize, drawCaption, type CaptionSettings, type CropBox } from './encodeGif';
 
 // MP4 clip spec (per requirements): max 60s, max 100 MB.
@@ -61,6 +62,12 @@ function elementAudioTracks(video: CapturableVideo): MediaStreamTrack[] {
   } catch {
     return [];
   }
+}
+
+/** Force a dimension even — H.264 requires even width/height. */
+function even(n: number): number {
+  const v = Math.max(2, Math.round(n));
+  return v % 2 === 1 ? v - 1 : v;
 }
 
 /** Record the trimmed/cropped/captioned clip in real time via MediaRecorder.
@@ -174,4 +181,279 @@ export async function recordClip(
       try { video.currentTime = start; } catch (e) { video.removeEventListener('seeked', onSeeked); reject(e as Error); }
     }
   });
+}
+
+// ── WebCodecs MP4 path ──────────────────────────────────────────────────────
+// MediaRecorder's MP4 (the path Chromium/WebView2 takes on Windows) writes its
+// index/duration metadata at the *end* of the file in a streaming layout.
+// Chromium and VLC tolerate that, but Windows' own players (Movies & TV, Media
+// Player) and most upload targets reject it as corrupt — duration reads 0, no
+// seek table up front. So when WebCodecs is available we encode H.264 ourselves
+// and mux a proper progressive MP4 (moov at the front, real duration) via
+// mp4-muxer. WKWebView (the maintainer's Mac) lacks MediaStreamTrackProcessor,
+// so it cleanly falls back to the MediaRecorder/.webm path above.
+
+export type ClipEngine = 'webcodecs' | 'mediarecorder';
+
+/** True when this engine can produce a real, seekable MP4 via WebCodecs +
+ * MediaStreamTrackProcessor (canvas → H.264, element audio → AAC). */
+export function webCodecsClipSupported(): boolean {
+  return (
+    typeof VideoEncoder !== 'undefined' &&
+    typeof AudioEncoder !== 'undefined' &&
+    typeof VideoFrame !== 'undefined' &&
+    typeof EncodedVideoChunk !== 'undefined' &&
+    typeof MediaStreamTrackProcessor !== 'undefined'
+  );
+}
+
+/** Pick the clip engine + resulting container. WebCodecs (real .mp4) wins when
+ * available; otherwise we fall back to MediaRecorder (.mp4 or .webm). */
+export function bestClipEngine(): { engine: ClipEngine; ext: 'mp4' | 'webm' } | null {
+  if (webCodecsClipSupported()) return { engine: 'webcodecs', ext: 'mp4' };
+  const t = supportedClipType();
+  return t ? { engine: 'mediarecorder', ext: t.ext as 'mp4' | 'webm' } : null;
+}
+
+// H.264 codec strings to try, most-compatible first: Baseline 3.0, Main 4.0,
+// High 4.0. Baseline is what stubborn Windows players like best.
+export const AVC_CANDIDATES = ['avc1.42E01E', 'avc1.4D0028', 'avc1.640028'];
+
+/** First H.264 config the local VideoEncoder will accept, or null. Pure-ish
+ * (async, queries the platform) — the candidate list is unit-tested. */
+export async function pickAvcCodec(
+  width: number,
+  height: number,
+  bitrate: number,
+  framerate: number,
+): Promise<string | null> {
+  for (const codec of AVC_CANDIDATES) {
+    try {
+      const support = await VideoEncoder.isConfigSupported({
+        codec,
+        width,
+        height,
+        bitrate,
+        framerate,
+        avc: { format: 'avc' },
+      });
+      if (support.supported) return codec;
+    } catch {
+      /* try the next profile */
+    }
+  }
+  return null;
+}
+
+/** Record the trimmed/cropped/captioned clip into a real progressive MP4 using
+ * WebCodecs + mp4-muxer. Same draw pipeline as the GIF/MediaRecorder paths, so
+ * crop + caption match exactly. Real-time: takes ~clip length. */
+export async function recordClipWebCodecs(
+  video: HTMLVideoElement,
+  raw: ClipSettings,
+  onProgress?: (fraction: number) => void,
+): Promise<{ bytes: Uint8Array; mimeType: string; ext: string; audioIncluded: boolean }> {
+  if (!webCodecsClipSupported()) throw new Error("This system can't encode MP4 with WebCodecs.");
+
+  const srcW = video.videoWidth;
+  const srcH = video.videoHeight;
+  if (!srcW || !srcH) throw new Error('Video has no decodable dimensions yet.');
+
+  const start = Math.max(0, Math.min(raw.startSec, video.duration || raw.startSec));
+  const end = Math.min(raw.endSec, start + MP4_MAX_DURATION_S, video.duration || raw.endSec);
+  const durationSec = Math.max(0.2, end - start);
+
+  const sz = computeOutputSize(srcW, srcH, raw.crop, raw.outputWidth);
+  const width = even(sz.width);
+  const height = even(sz.height);
+  const { sx, sy, sw, sh } = sz;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Could not get a 2D canvas context.');
+
+  const videoBps = clipVideoBitrate(durationSec, raw.includeAudio);
+  const codec = await pickAvcCodec(width, height, videoBps, raw.fps);
+  if (!codec) throw new Error('No H.264 encoder configuration is supported here.');
+
+  // Source audio: unmute so the captured track carries real samples.
+  const wasMuted = video.muted;
+  let audioTrack: MediaStreamTrack | null = null;
+  if (raw.includeAudio) {
+    video.muted = false;
+    audioTrack = elementAudioTracks(video as CapturableVideo)[0] ?? null;
+  }
+
+  let encError: Error | null = null;
+  const fail = (e: unknown) => { if (!encError) encError = e instanceof Error ? e : new Error(String(e)); };
+
+  // Encoders + muxer are built lazily once we know the audio params (sample
+  // rate / channels come from the first AudioData frame).
+  let muxer: Muxer<ArrayBufferTarget> | null = null;
+  let videoEncoder: VideoEncoder | null = null;
+  let audioEncoder: AudioEncoder | null = null;
+  let audioIncluded = false;
+  let audioReader: ReadableStreamDefaultReader<AudioData> | null = null;
+  let audioPump: Promise<void> | null = null;
+
+  const restore = () => { video.muted = wasMuted; };
+  const encodeAudio = (data: AudioData) => {
+    try { audioEncoder?.encode(data); } catch (e) { fail(e); } finally { data.close(); }
+  };
+
+  try {
+    // Seek to the trim start before playing so the first frame is right.
+    await new Promise<void>((resolve, reject) => {
+      if (Math.abs(video.currentTime - start) < 0.05) { resolve(); return; }
+      const onSeeked = () => { video.removeEventListener('seeked', onSeeked); resolve(); };
+      video.addEventListener('seeked', onSeeked);
+      try { video.currentTime = start; } catch (e) { video.removeEventListener('seeked', onSeeked); reject(e as Error); }
+    });
+    await video.play();
+
+    // Learn audio params from the first frame (with a short timeout so a
+    // silent / track-less source degrades to a clean video-only MP4).
+    let firstAudio: AudioData | null = null;
+    if (audioTrack) {
+      const proc = new MediaStreamTrackProcessor<AudioData>({ track: audioTrack });
+      audioReader = proc.readable.getReader();
+      const timeout = new Promise<{ timedOut: true }>((res) => setTimeout(() => res({ timedOut: true }), 1500));
+      const first = await Promise.race([audioReader.read(), timeout]);
+      if ('timedOut' in first || first.done || !first.value) {
+        try { await audioReader.cancel(); } catch { /* */ }
+        audioReader = null;
+        if ('value' in first && first.value) first.value.close();
+      } else {
+        firstAudio = first.value;
+        const cfg: AudioEncoderConfig = {
+          codec: 'mp4a.40.2',
+          sampleRate: firstAudio.sampleRate,
+          numberOfChannels: firstAudio.numberOfChannels,
+          bitrate: AUDIO_BPS,
+        };
+        let aacOk = false;
+        try { aacOk = (await AudioEncoder.isConfigSupported(cfg)).supported ?? false; } catch { aacOk = false; }
+        audioIncluded = aacOk;
+        if (!aacOk) {
+          // No AAC encoder — ship a clean silent MP4 rather than a broken one.
+          firstAudio.close();
+          firstAudio = null;
+          try { await audioReader.cancel(); } catch { /* */ }
+          audioReader = null;
+        }
+      }
+    }
+
+    // Build the muxer (fast-start MP4 with moov up front) and encoders.
+    muxer = new Muxer({
+      target: new ArrayBufferTarget(),
+      fastStart: 'in-memory',
+      firstTimestampBehavior: 'offset',
+      video: { codec: 'avc', width, height, frameRate: raw.fps },
+      ...(audioIncluded && firstAudio
+        ? { audio: { codec: 'aac' as const, numberOfChannels: firstAudio.numberOfChannels, sampleRate: firstAudio.sampleRate } }
+        : {}),
+    });
+
+    videoEncoder = new VideoEncoder({
+      output: (chunk, meta) => { try { muxer!.addVideoChunk(chunk, meta); } catch (e) { fail(e); } },
+      error: fail,
+    });
+    videoEncoder.configure({ codec, width, height, bitrate: videoBps, framerate: raw.fps, avc: { format: 'avc' } });
+
+    if (audioIncluded && firstAudio) {
+      audioEncoder = new AudioEncoder({
+        output: (chunk, meta) => { try { muxer!.addAudioChunk(chunk, meta); } catch (e) { fail(e); } },
+        error: fail,
+      });
+      audioEncoder.configure({
+        codec: 'mp4a.40.2',
+        sampleRate: firstAudio.sampleRate,
+        numberOfChannels: firstAudio.numberOfChannels,
+        bitrate: AUDIO_BPS,
+      });
+      encodeAudio(firstAudio);
+      firstAudio = null;
+      // Pump the rest of the audio track concurrently until it ends.
+      const reader = audioReader!;
+      audioPump = (async () => {
+        while (!encError) {
+          const { value, done } = await reader.read();
+          if (done || !value) break;
+          encodeAudio(value);
+        }
+      })();
+    }
+
+    // Draw + encode video in real time until we hit the trim end, with a
+    // wall-clock backstop that guarantees we never exceed durationSec (≤60s).
+    const frameIntervalUs = Math.round(1_000_000 / raw.fps);
+    let t0 = 0;
+    let frameIdx = 0;
+    let lastTs = -1;
+
+    await new Promise<void>((resolve) => {
+      let rafId = 0;
+      let hardStop: ReturnType<typeof setTimeout> | null = null;
+      let stopped = false;
+      const finish = () => {
+        if (stopped) return;
+        stopped = true;
+        if (rafId) cancelAnimationFrame(rafId);
+        if (hardStop) { clearTimeout(hardStop); hardStop = null; }
+        resolve();
+      };
+
+      const draw = () => {
+        if (stopped) return;
+        if (encError) { finish(); return; }
+        ctx.drawImage(video, sx, sy, sw, sh, 0, 0, width, height);
+        if (raw.caption && raw.caption.text.trim()) drawCaption(ctx, raw.caption, width, height);
+        const t = video.currentTime;
+        onProgress?.(Math.min(1, (t - start) / durationSec));
+
+        // Emit a frame at most once per fps interval, timestamps strictly
+        // increasing. 'offset' in the muxer rebases the first to zero.
+        const nowUs = Math.round((performance.now() - t0) * 1000);
+        if (lastTs < 0 || nowUs - lastTs >= frameIntervalUs * 0.5) {
+          const ts = lastTs < 0 ? 0 : Math.max(nowUs, lastTs + 1);
+          try {
+            const frame = new VideoFrame(canvas, { timestamp: ts });
+            // Keyframe at the start and every ~2s for seekability.
+            videoEncoder!.encode(frame, { keyFrame: frameIdx % (raw.fps * 2) === 0 });
+            frame.close();
+            lastTs = ts;
+            frameIdx++;
+          } catch (e) { fail(e); finish(); return; }
+        }
+
+        if (t >= end - 0.02 || video.ended) { finish(); return; }
+        rafId = requestAnimationFrame(draw);
+      };
+
+      t0 = performance.now();
+      hardStop = setTimeout(finish, durationSec * 1000 + 300);
+      rafId = requestAnimationFrame(draw);
+    });
+
+    try { video.pause(); } catch { /* */ }
+
+    // Stop audio capture so the pump drains, then flush both encoders.
+    if (audioTrack) { try { audioTrack.stop(); } catch { /* */ } }
+    if (audioPump) { try { await audioPump; } catch (e) { fail(e); } }
+    if (videoEncoder.state !== 'closed') await videoEncoder.flush();
+    if (audioEncoder && audioEncoder.state !== 'closed') await audioEncoder.flush();
+    if (encError) throw encError;
+
+    muxer.finalize();
+    const bytes = new Uint8Array(muxer.target.buffer);
+    return { bytes, mimeType: 'video/mp4', ext: 'mp4', audioIncluded };
+  } finally {
+    restore();
+    try { videoEncoder?.state !== 'closed' && videoEncoder?.close(); } catch { /* */ }
+    try { audioEncoder?.state !== 'closed' && audioEncoder?.close(); } catch { /* */ }
+    if (audioReader) { try { await audioReader.cancel(); } catch { /* */ } }
+  }
 }

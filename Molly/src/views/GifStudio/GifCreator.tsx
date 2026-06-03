@@ -12,7 +12,7 @@ import {
   type GifQuality,
   type GifSettings,
 } from './encodeGif';
-import { recordClip, supportedClipType, MP4_MAX_DURATION_S, MP4_MAX_BYTES } from './recordMp4';
+import { recordClip, recordClipWebCodecs, bestClipEngine, MP4_MAX_DURATION_S, MP4_MAX_BYTES } from './recordMp4';
 import { useVideoStage } from './useVideoStage';
 
 export interface GifSource {
@@ -206,7 +206,7 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
     }
   }
 
-  const clipType = supportedClipType();
+  const clipType = bestClipEngine();
 
   async function exportMp4() {
     const v = videoRef.current;
@@ -217,7 +217,10 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
     setRecProgress(0);
     if (mp4) { URL.revokeObjectURL(mp4.url); setMp4(null); }
     try {
-      const out = await recordClip(
+      // WebCodecs gives a real, seekable .mp4 (plays everywhere, incl. Windows);
+      // MediaRecorder is the fallback on engines without it (e.g. macOS WebKit → .webm).
+      const record = clipType.engine === 'webcodecs' ? recordClipWebCodecs : recordClip;
+      const out = await record(
         v,
         { startSec, endSec, fps, outputWidth, crop: settings.crop, caption: settings.caption, includeAudio: true },
         (f) => setRecProgress(f),

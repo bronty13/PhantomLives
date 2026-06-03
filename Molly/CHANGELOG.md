@@ -4,6 +4,42 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.28.0] — 2026-06-03
+
+### Fixed — teaser MP4s now play on Windows (real, seekable MP4 via WebCodecs)
+
+Teaser clips exported on Windows came out corrupt/unplayable in Windows'
+own players (Movies & TV, Media Player) and most upload targets, even
+though no error was thrown and the same clip played fine on macOS.
+
+Root cause: the clip recorder used the browser engine's `MediaRecorder`.
+On Windows (WebView2/Chromium) that produced a `video/mp4` whose
+index/duration metadata (`moov`) was written at the **end** of the file in
+a streaming layout — Chromium and VLC tolerate it, but Windows' native
+players reject it (duration reads 0, no seek table up front). macOS WebKit
+can't `MediaRecorder` MP4 at all, so it silently fell back to `.webm`,
+which played — hence "works on Mac, broken on Windows."
+
+Fix: when WebCodecs is available (WebView2 on Windows), Molly now encodes
+H.264 itself (canvas → `VideoEncoder`) plus AAC audio (source track →
+`AudioEncoder`) and muxes a **progressive MP4 with `moov` at the front and
+a real duration** via `mp4-muxer` (`fastStart: 'in-memory'`). The result
+is a standard, seekable `.mp4` that plays in Windows players and uploads
+cleanly. The draw pipeline is unchanged, so trim + crop + caption still
+match the GIF exactly.
+
+- Falls back gracefully: engines without WebCodecs/`MediaStreamTrackProcessor`
+  (e.g. the maintainer's macOS WebKit) keep the existing MediaRecorder path
+  and still emit `.webm` for local testing.
+- If a system has WebCodecs but no AAC encoder, the clip ships as a clean
+  **silent** MP4 rather than a corrupt one.
+- H.264 profile is negotiated most-compatible-first (Baseline 3.0 → Main 4.0
+  → High 4.0); a keyframe is forced at the start and every ~2s for seekability;
+  output dimensions are forced even (H.264 requirement).
+- New dependency: `mp4-muxer`. New tests cover codec-candidate ordering and
+  engine selection; the 100 MB bitrate-budget tests still apply (the WebCodecs
+  path reuses `clipVideoBitrate`).
+
 ## [1.27.4] — 2026-06-03
 
 ### Fixed — crop overlay now matches the actual video box

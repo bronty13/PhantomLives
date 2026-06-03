@@ -627,9 +627,9 @@ Right next to **Generate GIF** there's a **🎬 Export MP4 clip** button! It mak
 - **From inside a bundle**, tap **🎁 Add to bundle** and the clip joins that bundle's files as a video — no downloading needed.
 - **From GIF Studio**, tap **⬇️ Download** and it saves to your **Downloads** folder as `yourclip_tease.mp4`.
 
-Your MP4s stay nice and tidy — **up to 60 seconds** and **under 100 MB** — so they're easy to send. On your Windows machine you'll get a true `.mp4`; everything happens right on your own computer, nothing uploaded anywhere. ✨
+Your MP4s stay nice and tidy — **up to 60 seconds** and **under 100 MB** — so they're easy to send. On your Windows machine you'll get a **true, real `.mp4`** that opens right up in Movies & TV, Media Player, and anywhere you upload it — I build the video properly now so it's never a fussy "this file is corrupt" again. 💖 And everything happens right on your own computer, nothing uploaded anywhere. ✨
 
-*A tiny note from me:* on a Mac, some `.mov` files are shy and won't preview — if a video won't load, try an `.mp4`. On your Windows machine everything plays nicely. 🩷
+*A tiny note from me:* on a Mac, some `.mov` files are shy and won't preview — if a video won't load, try an `.mp4`. On your Windows machine your clips play nicely everywhere. 🩷
 
 ### 🖼️ Frame Grabber — snag the *perfect* cover frame
 
