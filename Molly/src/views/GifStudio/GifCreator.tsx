@@ -2,17 +2,21 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { downloadDir, join } from '@tauri-apps/api/path';
 import {
-  captureAndEncode,
   clampSettings,
+  computeOutputSize,
+  renderCaptionPng,
   MAX_DURATION_S,
   MAX_FPS,
   MAX_WIDTH,
+  MP4_MAX_DURATION_S,
+  MP4_MAX_BYTES,
   type CropBox,
   type GifQuality,
   type GifSettings,
 } from './encodeGif';
-import { recordClip, recordClipWebCodecs, bestClipEngine, MP4_MAX_DURATION_S, MP4_MAX_BYTES } from './recordMp4';
-import { loadVideoObjectUrl, DECODE_HELP } from './sourceUrl';
+import { probeVideo, generateGif, generateTeaserMp4, type CropPx } from '../../data/gifStudio';
+import { DECODE_HELP } from './sourceUrl';
+import { useVideoSource } from './useVideoSource';
 import { useVideoStage } from './useVideoStage';
 
 export interface GifSource {
@@ -38,9 +42,9 @@ interface Props {
 const FPS_OPTIONS = [5, 8, 10, 12, 15, 20, MAX_FPS];
 const WIDTH_OPTIONS = [240, 320, 400, 480, MAX_WIDTH];
 
-/** In-app video→GIF maker. 100% client-side (canvas seek + gifenc) so it
- * works identically on Windows with no ffmpeg. Mirrors the controls of a
- * browser converter: trim, fps, size, quality, crop, caption. */
+/** In-app video→GIF/MP4 maker. The UI picks trim, fps, size, quality, crop,
+ * caption; the native ffmpeg engine (src-tauri/src/media) renders the output
+ * from the original file, so any iPhone/Windows format works. */
 export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeaser, onUseClip, onClose, embedded = false }: Props) {
   const inBundle = !!onUseAsTeaser;
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -66,22 +70,10 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
   const [recProgress, setRecProgress] = useState(0);
   const [mp4, setMp4] = useState<{ url: string; bytes: Uint8Array; ext: string; audioIncluded: boolean } | null>(null);
 
-  // Load the source as a same-origin blob: URL (not convertFileSrc, which is
-  // cross-origin and taints the canvas on Windows — see sourceUrl.ts).
-  const [videoSrc, setVideoSrc] = useState<string | null>(null);
-  const [loadingSrc, setLoadingSrc] = useState(false);
-  useEffect(() => {
-    if (!source) { setVideoSrc(null); return; }
-    let url: string | null = null;
-    let cancelled = false;
-    setLoadingSrc(true);
-    setError(null);
-    loadVideoObjectUrl(source.absolutePath, source.name)
-      .then((u) => { if (cancelled) { URL.revokeObjectURL(u); return; } url = u; setVideoSrc(u); })
-      .catch((e) => { if (!cancelled) setError(`Couldn't load that video: ${e}`); })
-      .finally(() => { if (!cancelled) setLoadingSrc(false); });
-    return () => { cancelled = true; if (url) URL.revokeObjectURL(url); };
-  }, [source]);
+  // Decodable preview URL for scrubbing only (never drawn to a canvas, so
+  // convertFileSrc is fine); undecodable sources get a native H.264 proxy.
+  const { videoSrc, status: srcStatus, error: srcError } = useVideoSource(source);
+  const srcReady = srcStatus === 'ready';
 
   const stage = useVideoStage(videoRef, source?.absolutePath);
 
@@ -104,13 +96,6 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
     const d = v.duration || 0;
     setDuration(d);
     setEndSec(Math.min(d || 3, Math.max(1, Math.min(3, d || 3))));
-    // No decodable frames (e.g. iPhone HEVC on Windows) → tell Sallie now,
-    // not only when she hits Export.
-    if (!v.videoWidth || !v.videoHeight) setError(DECODE_HELP);
-  }
-
-  function onVideoError() {
-    setError(DECODE_HELP);
   }
 
   async function pickFromDisk() {
@@ -171,15 +156,34 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
   };
   const clamped = clampSettings(settings, duration || MAX_DURATION_S);
 
+  // Map a (possibly cropped) source to the pixel crop rect + output dims the
+  // native engine wants — same math as the canvas path used, so the caption
+  // PNG (sized to the output) and ffmpeg's crop/scale agree to the pixel.
+  async function geometryFor(outputWidth: number, crop: CropBox | null | undefined, caption: GifSettings['caption']) {
+    if (!source) throw new Error('Pick a video first.');
+    const probe = await probeVideo(source.absolutePath);
+    const g = computeOutputSize(probe.width, probe.height, crop, outputWidth);
+    const cropPx: CropPx | null = crop ? { sx: g.sx, sy: g.sy, sw: g.sw, sh: g.sh } : null;
+    const captionPng = caption && caption.text.trim()
+      ? Array.from(await renderCaptionPng(caption, g.width, g.height))
+      : null;
+    return { probe, width: g.width, height: g.height, cropPx, captionPng };
+  }
+
   async function generate() {
-    const v = videoRef.current;
-    if (!v || !source) { setError('Pick a video first.'); return; }
+    if (!source) { setError('Pick a video first.'); return; }
     setEncoding(true);
     setError(null);
-    setProgress({ done: 0, total: 0 });
+    setProgress({ done: 0, total: 100 });
     if (result) { URL.revokeObjectURL(result.url); setResult(null); }
     try {
-      const bytes = await captureAndEncode(v, settings, (done, total) => setProgress({ done, total }));
+      const { probe, width, height, cropPx, captionPng } = await geometryFor(clamped.outputWidth, clamped.crop, clamped.caption);
+      const bytes = await generateGif({
+        absolutePath: source.absolutePath,
+        startSec: clamped.startSec, endSec: clamped.endSec, fps: clamped.fps,
+        outWidth: width, outHeight: height, crop: cropPx,
+        isHdr: probe.isHdr, quality: clamped.quality, captionPng,
+      }, (f) => setProgress({ done: Math.round(f * 100), total: 100 }));
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'image/gif' }));
       setResult({ url, bytes });
     } catch (e) {
@@ -229,32 +233,30 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
     }
   }
 
-  const clipType = bestClipEngine();
-
   async function exportMp4() {
-    const v = videoRef.current;
-    if (!v || !source) { setError('Pick a video first.'); return; }
-    if (!clipType) { setError("This system's browser engine can't record video."); return; }
+    if (!source) { setError('Pick a video first.'); return; }
     setRecording(true);
     setError(null);
     setRecProgress(0);
     if (mp4) { URL.revokeObjectURL(mp4.url); setMp4(null); }
     try {
-      // WebCodecs gives a real, seekable .mp4 (plays everywhere, incl. Windows);
-      // MediaRecorder is the fallback on engines without it (e.g. macOS WebKit → .webm).
-      const record = clipType.engine === 'webcodecs' ? recordClipWebCodecs : recordClip;
-      const out = await record(
-        v,
-        { startSec, endSec, fps, outputWidth, crop: settings.crop, caption: settings.caption, includeAudio: true },
-        (f) => setRecProgress(f),
-      );
-      const url = URL.createObjectURL(new Blob([out.bytes as BlobPart], { type: out.mimeType }));
-      setMp4({ url, bytes: out.bytes, ext: out.ext, audioIncluded: out.audioIncluded });
-      if (out.bytes.length > MP4_MAX_BYTES) {
-        setError(`Heads up: that clip came out ${(out.bytes.length / (1024 * 1024)).toFixed(0)} MB, over the 100 MB target. Try a shorter trim, smaller width, or lower fps.`);
+      // MP4 allows a longer clip than the GIF (≤60s); use the raw trim capped
+      // to the MP4 ceiling, not the GIF-clamped 15s.
+      const endCapped = Math.min(endSec, startSec + MP4_MAX_DURATION_S);
+      const { probe, width, height, cropPx, captionPng } = await geometryFor(outputWidth, settings.crop, settings.caption);
+      const bytes = await generateTeaserMp4({
+        absolutePath: source.absolutePath,
+        startSec, endSec: endCapped,
+        outWidth: width, outHeight: height, crop: cropPx,
+        isHdr: probe.isHdr, includeAudio: true, captionPng,
+      }, (f) => setRecProgress(f));
+      const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'video/mp4' }));
+      setMp4({ url, bytes, ext: 'mp4', audioIncluded: probe.hasAudio });
+      if (bytes.length > MP4_MAX_BYTES) {
+        setError(`Heads up: that clip came out ${(bytes.length / (1024 * 1024)).toFixed(0)} MB, over the 100 MB target. Try a shorter trim or smaller width.`);
       }
     } catch (e) {
-      setError(`Couldn't record the clip: ${e}. ${DECODE_HELP}`);
+      setError(`Couldn't make the clip: ${e}. ${DECODE_HELP}`);
     } finally {
       setRecording(false);
       setRecProgress(0);
@@ -335,7 +337,10 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
           )}
           <button type="button" className="pretty-button secondary" onClick={pickFromDisk}>📁 Pick from disk</button>
           {source && <span className="text-sm opacity-70 font-mono truncate max-w-[16rem]">{source.name}</span>}
-          {loadingSrc && <span className="text-xs text-pink-600">loading video…</span>}
+          {srcStatus === 'loading' && <span className="text-xs text-pink-600">loading video…</span>}
+          {srcStatus === 'preparing' && (
+            <span className="text-xs text-pink-600">✨ Preparing iPhone video…</span>
+          )}
         </div>
 
         {videoSrc ? (
@@ -346,7 +351,6 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
                 ref={videoRef}
                 src={videoSrc}
                 onLoadedMetadata={onLoadedMetadata}
-                onError={onVideoError}
                 className="block max-h-[40vh] max-w-full"
                 muted
                 playsInline
@@ -437,19 +441,18 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
 
             {/* Generate */}
             <div className="flex items-center gap-3 flex-wrap">
-              <button type="button" className="pretty-button" onClick={generate} disabled={encoding || recording || loadingSrc || !videoSrc}>
+              <button type="button" className="pretty-button" onClick={generate} disabled={encoding || recording || !srcReady}>
                 {encoding ? 'Making GIF…' : '✨ Generate GIF'}
               </button>
-              <button type="button" className="pretty-button secondary" onClick={exportMp4} disabled={encoding || recording || loadingSrc || !videoSrc || !clipType}
-                title={clipType ? '' : "This system's browser engine can't record video"}>
-                {recording ? 'Recording clip…' : '🎬 Export MP4 clip'}
+              <button type="button" className="pretty-button secondary" onClick={exportMp4} disabled={encoding || recording || !srcReady}>
+                {recording ? 'Making clip…' : '🎬 Export MP4 clip'}
               </button>
               {progress && progress.total > 0 && (
                 <div className="flex-1 min-w-[8rem]">
                   <div className="h-2 bg-pink-100 rounded-full overflow-hidden">
                     <div className="h-full bg-pink-400" style={{ width: `${(progress.done / progress.total) * 100}%` }} />
                   </div>
-                  <div className="text-xs opacity-60 mt-1">Frame {progress.done} / {progress.total}</div>
+                  <div className="text-xs opacity-60 mt-1">Making GIF… {Math.round((progress.done / progress.total) * 100)}%</div>
                 </div>
               )}
               {recording && (
@@ -457,12 +460,12 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
                   <div className="h-2 bg-pink-100 rounded-full overflow-hidden">
                     <div className="h-full bg-pink-400" style={{ width: `${recProgress * 100}%` }} />
                   </div>
-                  <div className="text-xs opacity-60 mt-1">Recording in real time — {Math.round(recProgress * 100)}%</div>
+                  <div className="text-xs opacity-60 mt-1">Making clip… {Math.round(recProgress * 100)}%</div>
                 </div>
               )}
             </div>
             <div className="text-xs opacity-50">
-              MP4 records in real time (so it takes about as long as the clip), keeps your trim + crop + caption, includes audio, and is capped at {MP4_MAX_DURATION_S}s / 100 MB.{!clipType && ' (Not supported by this system’s video engine.)'}
+              The MP4 keeps your trim + crop + caption, includes audio, and is capped at {MP4_MAX_DURATION_S}s / 100 MB.
             </div>
             {(endSec - startSec) > MP4_MAX_DURATION_S && (
               <div className="text-xs text-amber-700">
@@ -493,23 +496,20 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
             {mp4 && (
               <div className="space-y-2 border-t border-black/5 pt-3">
                 <div className="text-xs font-semibold opacity-75">
-                  {mp4.ext === 'mp4' ? 'MP4' : 'Clip'} preview ({(mp4.bytes.length / (1024 * 1024)).toFixed(1)} MB{mp4.audioIncluded ? ' · with audio' : ' · no audio'})
+                  MP4 preview ({(mp4.bytes.length / (1024 * 1024)).toFixed(1)} MB{mp4.audioIncluded ? ' · with audio' : ' · no audio'})
                 </div>
                 <video src={mp4.url} controls playsInline className="rounded-lg border border-pink-200 w-full max-h-[55vh] bg-black" />
                 <div className="flex gap-2">
                   {inBundle && onUseClip ? (
                     <button type="button" className="pretty-button" onClick={addClipToBundle} disabled={busy}>
-                      🎁 Add {mp4.ext.toUpperCase()} to bundle
+                      🎁 Add MP4 to bundle
                     </button>
                   ) : (
                     <button type="button" className="pretty-button secondary" onClick={downloadMp4} disabled={busy}>
-                      ⬇️ Download {mp4.ext.toUpperCase()}
+                      ⬇️ Download MP4
                     </button>
                   )}
                 </div>
-                {mp4.ext !== 'mp4' && (
-                  <div className="text-xs text-amber-700">This system recorded a .{mp4.ext} (its engine can't make MP4). On Windows you'll get a real .mp4.</div>
-                )}
               </div>
             )}
           </>
@@ -519,7 +519,7 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
           </div>
         )}
 
-        {error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{error}</div>}
+        {(error || srcError) && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{error || srcError}</div>}
       </>
   );
 

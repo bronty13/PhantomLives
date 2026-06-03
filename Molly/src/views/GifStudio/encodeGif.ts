@@ -1,7 +1,5 @@
-import { GIFEncoder, quantize, applyPalette } from 'gifenc';
-
-// Caps mirror what a browser video→GIF tool enforces: keep the encode
-// snappy and memory bounded. Stated in the UI so Sallie isn't surprised.
+// Caps mirror what a video→GIF tool enforces: keep the encode snappy and the
+// output small. Stated in the UI so Sallie isn't surprised.
 export const MAX_DURATION_S = 15;
 export const MIN_FPS = 2;
 export const MAX_FPS = 25;
@@ -9,6 +7,10 @@ export const MIN_WIDTH = 64;
 export const MAX_WIDTH = 640;
 /** Thumbnail images must stay under 5 MB (JPG/PNG spec). */
 export const THUMBNAIL_MAX_BYTES = 5 * 1024 * 1024;
+
+// Teaser MP4 caps (enforced in the native engine + surfaced in the UI).
+export const MP4_MAX_DURATION_S = 60;
+export const MP4_MAX_BYTES = 100 * 1024 * 1024;
 
 export type GifQuality = 'high' | 'medium' | 'low';
 
@@ -91,21 +93,6 @@ export function computeOutputSize(
   return { width, height, sx, sy, sw, sh };
 }
 
-function seek(video: HTMLVideoElement, time: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const onSeeked = () => { cleanup(); resolve(); };
-    const onError = () => { cleanup(); reject(new Error('seek failed')); };
-    const cleanup = () => {
-      video.removeEventListener('seeked', onSeeked);
-      video.removeEventListener('error', onError);
-    };
-    video.addEventListener('seeked', onSeeked);
-    video.addEventListener('error', onError);
-    // Clamp into a safely-seekable range.
-    video.currentTime = Math.max(0, Math.min(time, (video.duration || time) - 0.001));
-  });
-}
-
 export function drawCaption(
   ctx: CanvasRenderingContext2D,
   caption: CaptionSettings,
@@ -138,92 +125,22 @@ export interface FrameSettings {
   jpegQuality?: number;
 }
 
-/** Capture a single still frame from a (loaded, seekable) <video> as JPEG
- * bytes. Shares the crop/caption/sizing path with the GIF encoder so a
- * thumbnail looks identical to the corresponding GIF frame. DOM-dependent. */
-export async function captureFrame(
-  video: HTMLVideoElement,
-  settings: FrameSettings,
+/** Render a caption onto a transparent PNG sized to the OUTPUT W×H, so the
+ * native ffmpeg engine can composite it with `overlay`. Reuses the exact
+ * `drawCaption` look (white fill + black stroke, top/bottom). DOM-dependent. */
+export async function renderCaptionPng(
+  caption: CaptionSettings,
+  width: number,
+  height: number,
 ): Promise<Uint8Array> {
-  const srcW = video.videoWidth;
-  const srcH = video.videoHeight;
-  if (!srcW || !srcH) throw new Error('Video has no decodable dimensions yet.');
-
-  const { width, height, sx, sy, sw, sh } = computeOutputSize(srcW, srcH, settings.crop, settings.outputWidth);
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Could not get a 2D canvas context.');
-
-  await seek(video, settings.timeSec);
-  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, width, height);
-  if (settings.caption && settings.caption.text.trim()) {
-    drawCaption(ctx, settings.caption, width, height);
-  }
-
-  const toJpeg = (quality: number) =>
-    new Promise<Uint8Array>((resolve, reject) => {
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) { reject(new Error('Could not encode the frame.')); return; }
-          blob.arrayBuffer().then((buf) => resolve(new Uint8Array(buf))).catch(reject);
-        },
-        'image/jpeg',
-        quality,
-      );
-    });
-
-  // Thumbnails must stay under 5 MB (spec). At sane widths a frame is far
-  // smaller, but step the JPEG quality down if a busy frame runs over.
-  let quality = settings.jpegQuality ?? 0.92;
-  let bytes = await toJpeg(quality);
-  while (bytes.length > THUMBNAIL_MAX_BYTES && quality > 0.4) {
-    quality -= 0.12;
-    bytes = await toJpeg(quality);
-  }
-  return bytes;
-}
-
-/** Capture frames from a (loaded, seekable) <video> across the trim range
- * and encode an animated GIF. DOM-dependent (the seek loop); the math it
- * relies on lives in the pure helpers above so it stays test-light. */
-export async function captureAndEncode(
-  video: HTMLVideoElement,
-  rawSettings: GifSettings,
-  onProgress?: (done: number, total: number) => void,
-): Promise<Uint8Array> {
-  const settings = clampSettings(rawSettings, video.duration);
-  const srcW = video.videoWidth;
-  const srcH = video.videoHeight;
-  if (!srcW || !srcH) throw new Error('Video has no decodable dimensions yet.');
-
-  const { width, height, sx, sy, sw, sh } = computeOutputSize(srcW, srcH, settings.crop, settings.outputWidth);
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) throw new Error('Could not get a 2D canvas context.');
-
-  const total = frameCount(settings.startSec, settings.endSec, settings.fps);
-  const delay = frameDelayMs(settings.fps);
-  const maxColors = paletteColors(settings.quality);
-  const step = total > 1 ? (settings.endSec - settings.startSec) / (total - 1) : 0;
-
-  const gif = GIFEncoder();
-  for (let i = 0; i < total; i++) {
-    const t = settings.startSec + step * i;
-    await seek(video, t);
-    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, width, height);
-    if (settings.caption && settings.caption.text.trim()) {
-      drawCaption(ctx, settings.caption, width, height);
-    }
-    const { data } = ctx.getImageData(0, 0, width, height);
-    const palette = quantize(data, maxColors);
-    const index = applyPalette(data, palette);
-    gif.writeFrame(index, width, height, { palette, delay, repeat: 0 });
-    onProgress?.(i + 1, total);
-  }
-  gif.finish();
-  return gif.bytes();
+  ctx.clearRect(0, 0, width, height); // transparent background
+  drawCaption(ctx, caption, width, height);
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) throw new Error('Could not encode the caption overlay.');
+  return new Uint8Array(await blob.arrayBuffer());
 }

@@ -627,9 +627,9 @@ Right next to **Generate GIF** there's a **🎬 Export MP4 clip** button! It mak
 - **From inside a bundle**, tap **🎁 Add to bundle** and the clip joins that bundle's files as a video — no downloading needed.
 - **From GIF Studio**, tap **⬇️ Download** and it saves to your **Downloads** folder as `yourclip_tease.mp4`.
 
-Your MP4s stay nice and tidy — **up to 60 seconds** and **under 100 MB** — so they're easy to send. On your Windows machine you'll get a **true, real `.mp4`** that opens right up in Movies & TV, Media Player, and anywhere you upload it — I build the video properly now so it's never a fussy "this file is corrupt" again. 💖 And everything happens right on your own computer, nothing uploaded anywhere. ✨
+Your MP4s stay nice and tidy — **up to 60 seconds** and **under 100 MB** — so they're easy to send. You'll get a **true, real `.mp4`** that opens right up in Movies & TV, Media Player, and anywhere you upload it. 💖 And everything happens right on your own computer, nothing uploaded anywhere. ✨
 
-*A tiny note from me:* if I say I **can't read a video's format**, it's almost always an **iPhone video** (those `.mov` clips in fancy HEVC/H.265). Windows doesn't know how to open those out of the box, but two easy fixes: ① pop into the **Microsoft Store** and grab the **free "HEVC Video Extensions"**, then reopen the clip 💝, or ② use an **`.mp4`** version. (On a Mac they just work — Macs speak iPhone natively 🍎.) Once the video previews, your GIF, MP4, and thumbnail will all be happy too! 🌈
+*A tiny note from me:* I now understand **iPhone videos all by myself** 📱✨ — even the fancy HEVC/H.265 and HDR clips your phone records. When you pick one of those, you might see a quick **"Preparing iPhone video…"** while I get it ready (just a few seconds), and then your GIF, MP4, and thumbnail all come out perfectly — no converting, no installing anything, nothing for you to do. I brought a little video engine along inside me so it Just Works™. 🌈🩷
 
 ### 🖼️ Frame Grabber — snag the *perfect* cover frame
 

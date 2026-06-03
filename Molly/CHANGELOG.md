@@ -4,6 +4,52 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.29.0] — 2026-06-03
+
+### Changed — GIF Studio now runs on a bundled native ffmpeg (any iPhone format works)
+
+Replaced the entire WebView-based media pipeline (canvas + gifenc + WebCodecs/
+mp4-muxer, with an ffmpeg-WASM fallback) with a **bundled native ffmpeg engine**
+driven from Rust. The WebView could not decode iPhone **HEVC/H.265** on Windows
+(WebView2 has no HEVC decoder), and ffmpeg-WASM was unusably slow (minutes on an
+M5 Max — single-threaded software HEVC decode). Now Molly decodes/encodes
+**any current iPhone/Windows format** — HEVC, H.264, **Dolby Vision HDR**,
+ProRes — for GIFs, teaser MP4s, and frame thumbnails.
+
+- **New Rust media engine** (`src-tauri/src/media/`): `probe_video`,
+  `make_preview_proxy`, `generate_gif`, `generate_teaser_mp4`, `grab_frame`.
+  Input-seeks the original file (`-ss` before `-i`) so only the trimmed segment
+  is processed — fast even for long 4K sources. Output bytes returned over the
+  binary IPC channel; progress streamed via a per-call `Channel`.
+- **GIF** via palettegen/paletteuse (quality → 256/128/64 colors); **MP4** via
+  libx264 + AAC + faststart (yuv420p, ≤60 s, 100 MB backstop); **frame** via a
+  single `-frames:v 1`. Crop/scale from the frontend's `computeOutputSize`
+  pixels; caption rendered to a transparent PNG (the existing `drawCaption`
+  look) and composited via `overlay`.
+- **HDR → SDR tone-mapping** (zscale + `tonemap=hable`) applied only when the
+  source is HDR (ffprobe `color_transfer`), so iPhone Dolby Vision clips don't
+  come out washed-out. iPhone DV Profile 8.4 has an HLG-compatible base layer,
+  so this works without libplacebo. Degrades gracefully (skips tone-map) if the
+  resolved ffmpeg lacks zimg.
+- **Preview**: the source `<video>` is now scrub-only (never drawn to a canvas),
+  so `convertFileSrc` is used directly — no more canvas-taint workarounds.
+  Undecodable sources get a fast low-res H.264 **proxy** for scrubbing while the
+  real output is rendered from the original at full quality.
+- **Bundling**: ffmpeg/ffprobe GPL static builds are CI-downloaded
+  (BtbN win64-gpl / OSXExperts arm64), verified (arch + zscale + libx264), and
+  shipped via `bundle.resources` (~+80–100 MB/installer). Discovery prefers the
+  bundled binary, then a Settings override, then PATH (dev Macs / SideMolly).
+  See `THIRD_PARTY_LICENSES.md` (GPL). Aligns with SideMolly's ffmpeg pipeline
+  for a future merge.
+- **Removed**: `gifenc`, `mp4-muxer`, `@ffmpeg/ffmpeg`, `@ffmpeg/core`,
+  `@ffmpeg/util`; `recordMp4.ts`, `transcode.ts`, canvas encoders in
+  `encodeGif.ts`. Net frontend bundle shrinks (no 32 MB WASM).
+- Tests: 22 new Rust tests (filtergraph/crop/HDR/probe builders); the exact
+  filtergraphs were smoke-tested against real ffmpeg.
+
+> This supersedes the 1.28.x stopgaps (WebCodecs MP4 mux, same-origin blob,
+> `.mov` MIME, ffmpeg-WASM). Those are gone — the native engine subsumes them.
+
 ## [1.28.3] — 2026-06-03
 
 ### Fixed — .mov sources no longer rejected by a wrong blob MIME; clearer codec guidance

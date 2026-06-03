@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { downloadDir, join } from '@tauri-apps/api/path';
-import { captureFrame, type CropBox, type GifQuality } from './encodeGif';
-import { loadVideoObjectUrl, DECODE_HELP } from './sourceUrl';
+import { computeOutputSize, renderCaptionPng, type CropBox } from './encodeGif';
+import { probeVideo, grabFrame } from '../../data/gifStudio';
+import { DECODE_HELP } from './sourceUrl';
+import { useVideoSource } from './useVideoSource';
 import { useVideoStage } from './useVideoStage';
 import type { GifSource } from './GifCreator';
 
@@ -26,7 +28,6 @@ export function FrameGrabber({ bundleVideos = [], initialVideo = null, onUseAsTh
   const [duration, setDuration] = useState(0);
   const [timeSec, setTimeSec] = useState(0);
   const [outputWidth, setOutputWidth] = useState(640);
-  const [quality] = useState<GifQuality>('high');
   const [crop, setCrop] = useState<CropBox | null>(null);
   const [captionText, setCaptionText] = useState('');
   const [captionPos, setCaptionPos] = useState<'top' | 'bottom'>('bottom');
@@ -35,22 +36,11 @@ export function FrameGrabber({ bundleVideos = [], initialVideo = null, onUseAsTh
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Same-origin blob: URL (not convertFileSrc) so the canvas stays
-  // origin-clean on Windows — see sourceUrl.ts.
-  const [videoSrc, setVideoSrc] = useState<string | null>(null);
-  const [loadingSrc, setLoadingSrc] = useState(false);
-  useEffect(() => {
-    if (!source) { setVideoSrc(null); return; }
-    let url: string | null = null;
-    let cancelled = false;
-    setLoadingSrc(true);
-    setError(null);
-    loadVideoObjectUrl(source.absolutePath, source.name)
-      .then((u) => { if (cancelled) { URL.revokeObjectURL(u); return; } url = u; setVideoSrc(u); })
-      .catch((e) => { if (!cancelled) setError(`Couldn't load that video: ${e}`); })
-      .finally(() => { if (!cancelled) setLoadingSrc(false); });
-    return () => { cancelled = true; if (url) URL.revokeObjectURL(url); };
-  }, [source]);
+  // Decodable, same-origin blob: URL — reads bytes (origin-clean, not
+  // convertFileSrc) and transcodes undecodable sources (iPhone HEVC) to H.264
+  // in-app. See useVideoSource.ts.
+  const { videoSrc, status: srcStatus, error: srcError } = useVideoSource(source);
+  const srcReady = srcStatus === 'ready';
 
   const stage = useVideoStage(videoRef, source?.absolutePath);
 
@@ -117,18 +107,23 @@ export function FrameGrabber({ bundleVideos = [], initialVideo = null, onUseAsTh
   }, []);
 
   async function capture() {
-    const v = videoRef.current;
-    if (!v || !source) { setError('Pick a video first.'); return; }
+    if (!source) { setError('Pick a video first.'); return; }
     setBusy(true);
     setError(null);
     if (result) { URL.revokeObjectURL(result.url); setResult(null); }
     try {
-      const bytes = await captureFrame(v, {
+      const useCrop = crop && crop.w > 0.02 && crop.h > 0.02 ? crop : null;
+      const caption = captionText.trim() ? { text: captionText.trim(), position: captionPos, sizeFrac: 0.09 } as const : null;
+      const probe = await probeVideo(source.absolutePath);
+      const g = computeOutputSize(probe.width, probe.height, useCrop, outputWidth);
+      const captionPng = caption ? Array.from(await renderCaptionPng(caption, g.width, g.height)) : null;
+      const bytes = await grabFrame({
+        absolutePath: source.absolutePath,
         timeSec,
-        outputWidth,
-        quality,
-        crop: crop && crop.w > 0.02 && crop.h > 0.02 ? crop : null,
-        caption: captionText.trim() ? { text: captionText.trim(), position: captionPos, sizeFrac: 0.09 } : null,
+        outWidth: g.width, outHeight: g.height,
+        crop: useCrop ? { sx: g.sx, sy: g.sy, sw: g.sw, sh: g.sh } : null,
+        isHdr: probe.isHdr,
+        captionPng,
       });
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'image/jpeg' }));
       setResult({ url, bytes });
@@ -197,7 +192,10 @@ export function FrameGrabber({ bundleVideos = [], initialVideo = null, onUseAsTh
           )}
           <button type="button" className="pretty-button secondary" onClick={pickFromDisk}>📁 Pick from disk</button>
           {source && <span className="text-sm opacity-70 font-mono truncate max-w-[16rem]">{source.name}</span>}
-          {loadingSrc && <span className="text-xs text-pink-600">loading video…</span>}
+          {srcStatus === 'loading' && <span className="text-xs text-pink-600">loading video…</span>}
+          {srcStatus === 'preparing' && (
+            <span className="text-xs text-pink-600">✨ Preparing iPhone video…</span>
+          )}
         </div>
 
         {videoSrc ? (
@@ -252,7 +250,7 @@ export function FrameGrabber({ bundleVideos = [], initialVideo = null, onUseAsTh
               </label>
             )}
 
-            <button type="button" className="pretty-button" onClick={capture} disabled={busy || loadingSrc || !videoSrc}>
+            <button type="button" className="pretty-button" onClick={capture} disabled={busy || !srcReady}>
               {busy ? 'Working…' : '📸 Capture frame'}
             </button>
 
@@ -277,7 +275,7 @@ export function FrameGrabber({ bundleVideos = [], initialVideo = null, onUseAsTh
           </div>
         )}
 
-        {error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{error}</div>}
+        {(error || srcError) && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{error || srcError}</div>}
       </div>
     </div>
   );

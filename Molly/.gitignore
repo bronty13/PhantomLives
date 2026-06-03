@@ -21,3 +21,8 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 *.swp
+
+# Bundled ffmpeg/ffprobe static binaries: CI downloads them per-platform
+# before `tauri build`; never commit (~80-100 MB). Keep the dir via .gitkeep.
+src-tauri/resources/ffmpeg/*
+!src-tauri/resources/ffmpeg/.gitkeep

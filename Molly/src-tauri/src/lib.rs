@@ -17,6 +17,7 @@ mod holidays;
 mod hours;
 mod log;
 mod masterclipper;
+mod media;
 mod notes;
 mod reddit;
 mod social_drops;
@@ -342,6 +343,11 @@ pub fn run() {
             bundles::file_size,
             bundles::write_bytes_to_path,
             bundles::read_file_bytes,
+            media::commands::probe_video,
+            media::commands::make_preview_proxy,
+            media::commands::generate_gif,
+            media::commands::generate_teaser_mp4,
+            media::commands::grab_frame,
             bundles::delete_bundle_file,
             bundles::reorder_bundle_files,
             bundles::set_bundle_categories,
@@ -516,6 +522,8 @@ mod camel_case_contract {
     use crate::export::ExportResult;
     use crate::history::HistoryEntryRef;
     use crate::log::LogEntryRef;
+    use crate::media::commands::Progress;
+    use crate::media::probe::ProbeResult;
     use serde_json::Value;
 
     fn assert_camel(value: &Value, type_name: &'static str) {
@@ -532,6 +540,26 @@ mod camel_case_contract {
     fn settings_is_camel_case() {
         let v = serde_json::to_value(Settings::default()).unwrap();
         assert_camel(&v, "Settings");
+    }
+
+    #[test]
+    fn probe_result_is_camel_case() {
+        let v = serde_json::to_value(ProbeResult {
+            width: 0,
+            height: 0,
+            duration_sec: 0.0,
+            is_hdr: false,
+            has_audio: false,
+            codec: String::new(),
+        })
+        .unwrap();
+        assert_camel(&v, "ProbeResult");
+    }
+
+    #[test]
+    fn media_progress_is_camel_case() {
+        let v = serde_json::to_value(Progress { fraction: 0.0 }).unwrap();
+        assert_camel(&v, "Progress");
     }
 
     #[test]

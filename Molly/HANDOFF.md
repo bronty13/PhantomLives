@@ -237,7 +237,7 @@ Updater is wired against `https://github.com/bronty13/PhantomLives/releases/late
 - **App data location**: `~/Library/Application Support/com.phantomlives.molly/` (Mac), `%APPDATA%\com.phantomlives.molly\` (Windows). Everything Molly knows lives there.
 - **Never edit a shipped migration's bytes** — `tauri-plugin-sql` SHA-hashes every migration on first apply and refuses to open the DB if a previously-applied migration's content ever changes (`migration N was previously applied but has been modified`). To remove or rename seed data, **write a new migration** that does the DELETE / UPDATE. Cost us v1.17.0 → had to ship a hotfix v1.17.1 that restored 006_schedules.sql to its byte-exact original and leaned on migration 032 to do the actual deletion. Lesson re-pinned here on purpose.
 - **Can't widen a CHECK constraint in a migration — use a new unconstrained column instead.** `bundles.bundle_type` has `CHECK (bundle_type IN ('content','custom','fansite'))`. Relaxing a CHECK requires rebuilding the table, but `bundles` is the parent of six `ON DELETE CASCADE` children. Inside a `tauri-plugin-sql` migration `foreign_keys` is forced ON (sqlx default) and the script runs in a transaction where `PRAGMA foreign_keys` / `legacy_alter_table` / `defer_foreign_keys` are **all no-ops** (verified empirically — the rebuild silently cascade-deletes the children). v1.23.0's YouTube type therefore added `bundle_kind` via a plain `ALTER TABLE ADD COLUMN` (migration 036) and made it the authoritative discriminator: Rust reads `COALESCE(bundle_kind, bundle_type) AS bundle_type` everywhere, YouTube rows store `bundle_type='content'` + `bundle_kind='youtube'`. **Any future bundle type goes in `bundle_kind` — never touch the `bundle_type` CHECK.** `BundleType::YouTube` shares Content's ZIP layout (Video/ + Audio/) minus categories.
-- **GIF Studio is macOS↔Windows codec/canvas hell** — see the dedicated section below. Two non-negotiables: (1) load video sources as **same-origin `blob:` URLs**, never `convertFileSrc` (cross-origin taints the canvas on Windows → all pixel ops fail); (2) Windows' WebView **cannot decode HEVC** (all of Sallie's iPhone footage), so undecodable sources must be **transcoded in-app** (ffmpeg-WASM, 1.29.0). Never verify a change here on macOS alone — WebKit hides both problems.
+- **GIF Studio = native ffmpeg, not the WebView** (1.29.0+; see the section below). All decode/encode is the bundled ffmpeg in `src-tauri/src/media/` — the WebView only previews/scrubs. Don't reintroduce canvas-based encoding (Windows WebView2 can't decode HEVC; ffmpeg-WASM is too slow). When editing the engine, the dev Mac's Homebrew ffmpeg may lack zimg (no `zscale`) so the HDR tone-map silently degrades locally — the bundled CI build always has zimg (guardrail). The real HDR/Windows test is the shipped build on Sallie's iPhone footage.
 - **Calendar overlay query date format** — Rust `printf('%04d-%02d-%02d', year, month, day)` matches the JS `isoDateKey()` zero-pad shape. If you tweak either side, the other has to keep up — there's a test in `content_tags::tests::range_query_resolves_dates_and_filters_by_persona` that pins this.
 
 ## GIF Studio / teaser pipeline (1.27–1.29) — Windows codec realities
@@ -276,25 +276,37 @@ The 1.28.x journey (read before touching this code):
    makes Chromium refuse it; only set explicit types for `mp4`/`webm` and leave
    the rest blank so the engine sniffs the bytes.
 
-### Current blocker + decision: in-app HEVC transcode (1.29.0, in progress)
+### Resolution: native ffmpeg media engine (1.29.0, shipped)
 
-Sallie's iPhone footage is **HEVC / H.265** (Apple "High Efficiency" — HEVC
-whether the container is `.mov` or `.mp4`). **WebView2/Chromium has no HEVC
-decoder**, so `<video>.videoWidth === 0` and nothing can be drawn. WKWebView on
-macOS *does* decode HEVC, hence the Mac/Windows split. Per the owner: the fix
-**must be built into Molly** — no "install the HEVC extension" / "use a
-different file" guidance (that copy in 1.28.3's `DECODE_HELP` is a stopgap to be
-removed once transcoding lands).
+Sallie's iPhone footage is **HEVC / H.265** (Apple "High Efficiency"; often
+Dolby Vision HDR), whether the container is `.mov` or `.mp4`. **WebView2 has no
+HEVC decoder**, so the WebView pipeline was a dead end; **ffmpeg-WASM was too
+slow** (minutes on an M5 Max — single-threaded software HEVC decode). The
+1.28.x WebView fixes (WebCodecs mux, same-origin blob, `.mov` MIME) and the
+brief ffmpeg-WASM attempt were all removed.
 
-**Decision (approved): bundle ffmpeg compiled to WebAssembly** (`@ffmpeg/ffmpeg`
-+ self-hosted `@ffmpeg/core`). On load, if the WebView can't decode the source
-(`videoWidth === 0`), transcode it to H.264 `.mp4` in-app ("Preparing iPhone
-video…"), then feed that to the existing pipeline. Chosen over a native ffmpeg
-sidecar specifically because **WASM runs identically on macOS and Windows, so it
-can be verified on the maintainer's Mac before shipping** — ending the
-Windows-blind iteration cycle. Trade-off: +~30 MB bundle, a few seconds per
-clip. (Native sidecar = faster but per-platform binaries, CI/signing churn, and
-unverifiable on Mac.)
+**Now: a bundled native ffmpeg engine in `src-tauri/src/media/`** does all
+decode/encode. Layers: `filters.rs` (pure argv/filtergraph builders, fully
+unit-tested), `probe.rs` (ffprobe → dims/duration/HDR/audio), `engine.rs`
+(spawn + `-progress` parse + timeout + stderr tail), `ffmpeg_path.rs`
+(bundled → Settings override → PATH discovery + `supports_zscale`), `temp.rs`
+(job dirs + proxy cache), `commands.rs` (`probe_video`, `make_preview_proxy`,
+`generate_gif`, `generate_teaser_mp4`, `grab_frame`). It input-seeks the
+original (`-ss` before `-i`), tone-maps HDR→SDR via zscale **only when HDR is
+detected** (degrades if the ffmpeg lacks zimg), and renders the caption as a
+transparent PNG composited via `overlay` (no libfreetype needed — the failure
+SideMolly hit). The preview `<video>` is scrub-only (never canvassed), so it
+uses `convertFileSrc`; undecodable sources get a low-res H.264 proxy
+(`make_preview_proxy`) while output is rendered from the original.
+
+ffmpeg/ffprobe are **GPL static builds**, CI-downloaded (BtbN win64 / OSXExperts
+arm64), verified (arch + zscale + libx264), shipped via `bundle.resources`
+(`resources/ffmpeg/*`, gitignored, ~+80–100 MB/installer) — sealed by the
+existing ad-hoc `codesign --deep` (no notarization to trip on). See
+`THIRD_PARTY_LICENSES.md`. The engine/filters/probe layers are intentionally
+Tauri-light so they can lift into a shared `phantomlives-media` crate when
+**SideMolly merges into Molly** (SideMolly already has a system-ffmpeg pipeline
+in `video.rs`/`thumbnails.rs`; this is the bundled superset).
 
 ## Tests
 
