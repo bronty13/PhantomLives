@@ -4,6 +4,28 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed — updater feed decoupled from the repo-wide "latest" release
+
+Molly's updater endpoint pointed at
+`releases/latest/download/latest.json`. In this monorepo `releases/latest`
+is repo-wide, so a SideMolly release becomes GitHub's "latest" — and that
+release carries `sidemolly-latest.json`, not `latest.json`, so Molly's
+updater would **404 and silently stop finding updates** whenever SideMolly
+shipped more recently than Molly.
+
+- Endpoint now points at a stable, Molly-scoped prerelease:
+  `releases/download/molly-updater-feed/latest.json`.
+- `release-molly.yml` gained a step that creates (once) and re-uploads
+  `latest.json` to the `molly-updater-feed` prerelease on every Molly
+  release. Install URLs inside the manifest are absolute (versioned tag),
+  so they resolve regardless of where the manifest is hosted.
+- Ships with the next tagged release; takes effect for that build onward.
+- Note: this is independent of the Windows updater "unsupported Zip archive"
+  error (a `zip`-reader issue in the *installed* plugin-updater), which is
+  still under investigation.
+
 ## [1.28.1] — 2026-06-03
 
 ### Fixed — WebCodecs MP4 export no longer fails with a tainted-canvas SecurityError

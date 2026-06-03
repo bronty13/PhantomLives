@@ -63,7 +63,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/bronty13/PhantomLives/releases/latest/download/latest.json"
+        "https://github.com/bronty13/PhantomLives/releases/download/molly-updater-feed/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY5ODRDNzUxREE4ODFCMTEKUldRUkc0amFVY2VFK1M2cS9QODY0Smtzem42eVJueW1YRG82Tzg0OE1zN0liZ1ZzdnZPVGdheTUK"
     }

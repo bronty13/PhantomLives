@@ -320,6 +320,27 @@ jobs:
         run: |
           gh release upload "$TAG" latest.json --clobber
 
+      # Keep a stable, Molly-scoped feed release current. Molly's updater
+      # endpoint points at `releases/download/molly-updater-feed/latest.json`
+      # rather than the repo-wide `releases/latest/...`: in this monorepo a
+      # SideMolly release becomes GitHub's "latest", and that release has no
+      # `latest.json` asset, so Molly's updater would 404 and silently stop
+      # finding updates. A dedicated prerelease holding the newest manifest
+      # decouples Molly's feed from whatever shipped most recently. The
+      # install URLs inside latest.json are absolute (they point at the
+      # versioned tag), so they resolve regardless of where the manifest lives.
+      - name: Refresh Molly-scoped updater feed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view molly-updater-feed >/dev/null 2>&1; then
+            gh release create molly-updater-feed \
+              --title "Molly updater feed" \
+              --notes "Auto-maintained pointer to the newest Molly release manifest for the in-app updater. Do not delete." \
+              --prerelease
+          fi
+          gh release upload molly-updater-feed latest.json --clobber
+
       # Flip the draft to published. Required for the Tauri updater —
       # `releases/latest/download/latest.json` only resolves against
       # published releases, and `releases/download/<tag>/...` 404s for
