@@ -374,6 +374,10 @@ export function ContentBundleForm({ uid, onPublishRequested, onClose, onDeleted,
             const info = await saveBundleGif(uid, bytes, name);
             await onTeaserSaved(info);
           }}
+          onUseClip={async (bytes, name) => {
+            const { saveBundleClip } = await import('../../data/bundles');
+            await withBusy(async () => { await saveBundleClip(uid, bytes, name); await reload(); });
+          }}
           onClose={() => setGifOpen(false)}
         />
       )}

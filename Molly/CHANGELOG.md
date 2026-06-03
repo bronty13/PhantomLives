@@ -4,6 +4,19 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.27.2] — 2026-06-03
+
+### Changed — exports default to Downloads + `_tease`; bundle wizard attaches instead of downloading
+
+- **Save dialogs default to the OS Downloads folder** (Windows + macOS) via
+  `downloadDir()`, instead of an unanchored path.
+- **Teaser exports are pre-named `<source>_tease.<ext>`** (GIF + MP4).
+- **From a Content bundle, the wizard no longer prompts to download.** It
+  attaches its output to the bundle: GIF → **Use as Teaser GIF**, captured
+  frame → **Use as Thumbnail**, and the **MP4 → Add to bundle** (saved as a
+  bundle video file via the new `save_bundle_clip` command). The Download
+  buttons now appear only in the standalone **GIF Studio**.
+
 ## [1.27.1] — 2026-06-03
 
 ### Fixed — 🎬 MP4 length cap + preview sizing

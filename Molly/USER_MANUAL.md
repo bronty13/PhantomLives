@@ -615,14 +615,17 @@ Here's how we make magic together:
 5. **Caption** — *optional!* Type a little overlay text and pick **top** or **bottom**.
 6. Tap **✨ Generate GIF** and watch the progress bar twirl. When it's done you'll see your GIF loop right there. 🥰
 
-Then:
+Then it depends where you opened me from:
 
-- **🎁 Use as Teaser GIF** (only when you opened me from a bundle) drops the GIF straight into that bundle's teaser slot — done!
-- **⬇️ Download** saves it wherever you like (I default to your `Downloads\Molly GIF` folder).
+- **From inside a bundle** (you tapped *Make a GIF* on the Teaser slot): you'll see **🎁 Use as Teaser GIF** — one tap drops it straight into that bundle's teaser slot, no file-saving fuss. 💖
+- **From the standalone 🎬 GIF Studio**: you'll see **⬇️ Download GIF**, which pops open your **Downloads** folder with the name already filled in as `yourclip_tease.gif`. ✨
 
 ### 🎬 Want a real video clip instead? (MP4!)
 
-Right next to **Generate GIF** there's a **🎬 Export MP4 clip** button! It makes a proper little **video** — *with sound* 🔊 — using the exact same trim, crop, and caption you set up. Tap it and I'll record your clip in real time (so it takes about as long as the clip plays — a 10-second clip takes ~10 seconds 🕐), then show you a preview you can play. Hit **⬇️ Download** to save it.
+Right next to **Generate GIF** there's a **🎬 Export MP4 clip** button! It makes a proper little **video** — *with sound* 🔊 — using the exact same trim, crop, and caption you set up. Tap it and I'll record your clip in real time (so it takes about as long as the clip plays — a 10-second clip takes ~10 seconds 🕐), then show you a preview you can play.
+
+- **From inside a bundle**, tap **🎁 Add to bundle** and the clip joins that bundle's files as a video — no downloading needed.
+- **From GIF Studio**, tap **⬇️ Download** and it saves to your **Downloads** folder as `yourclip_tease.mp4`.
 
 Your MP4s stay nice and tidy — **up to 60 seconds** and **under 100 MB** — so they're easy to send. On your Windows machine you'll get a true `.mp4`; everything happens right on your own computer, nothing uploaded anywhere. ✨
 
@@ -637,7 +640,7 @@ This one's the GIF Studio's little twin, just for **still** covers! On a Content
 3. **Crop & caption** — drag a crop box and add overlay text if you want, exactly like the GIF wizard.
 4. Tap **📸 Capture frame** to see your still.
 
-Then **🖼️ Use as Thumbnail** drops it straight onto the bundle, or **⬇️ Download** saves the JPEG wherever you like. Easy peasy. 💕
+Then tap **🖼️ Use as Thumbnail** and it drops straight onto the bundle — no file-saving, just done. Easy peasy. 💕
 
 ---
 

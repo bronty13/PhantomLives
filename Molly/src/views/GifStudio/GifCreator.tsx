@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { downloadDir, join } from '@tauri-apps/api/path';
 import {
   captureAndEncode,
   clampSettings,
@@ -25,6 +26,9 @@ interface Props {
   initialVideo?: GifSource | null;
   /** When provided, shows a "Use as Teaser GIF" button (bundle context). */
   onUseAsTeaser?: (bytes: Uint8Array, name: string) => Promise<void>;
+  /** When provided (bundle context), the MP4 attaches to the bundle as a
+   * video file ("Add to bundle") instead of offering a download. */
+  onUseClip?: (bytes: Uint8Array, name: string) => Promise<void>;
   onClose: () => void;
   /** Render inline (standalone GIF Studio) instead of as a modal overlay. */
   embedded?: boolean;
@@ -36,7 +40,8 @@ const WIDTH_OPTIONS = [240, 320, 400, 480, MAX_WIDTH];
 /** In-app video→GIF maker. 100% client-side (canvas seek + gifenc) so it
  * works identically on Windows with no ffmpeg. Mirrors the controls of a
  * browser converter: trim, fps, size, quality, crop, caption. */
-export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeaser, onClose, embedded = false }: Props) {
+export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeaser, onUseClip, onClose, embedded = false }: Props) {
+  const inBundle = !!onUseAsTeaser;
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [source, setSource] = useState<GifSource | null>(initialVideo);
   const [duration, setDuration] = useState(0);
@@ -162,7 +167,7 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
 
   function defaultGifName(): string {
     const base = (source?.name ?? 'teaser').replace(/\.[^.]+$/, '');
-    return `${base}.gif`;
+    return `${base}_tease.gif`;
   }
 
   async function useAsTeaser() {
@@ -186,12 +191,11 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
     try {
       const target = await save({
         title: 'Save GIF',
-        defaultPath: defaultGifName(),
+        defaultPath: await join(await downloadDir(), defaultGifName()),
         filters: [{ name: 'GIF', extensions: ['gif'] }],
       });
       if (!target) return;
       const { writeBytesToPath } = await import('../../data/bundles');
-      // Default the dir to ~/Downloads/Molly GIF/ when the user didn't navigate.
       await writeBytesToPath(target, result.bytes);
     } catch (e) {
       setError(String(e));
@@ -231,7 +235,21 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
 
   function defaultClipName(): string {
     const base = (source?.name ?? 'teaser').replace(/\.[^.]+$/, '');
-    return `${base}.${mp4?.ext ?? 'mp4'}`;
+    return `${base}_tease.${mp4?.ext ?? 'mp4'}`;
+  }
+
+  async function addClipToBundle() {
+    if (!mp4 || !onUseClip) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onUseClip(mp4.bytes, defaultClipName());
+      onClose();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function downloadMp4() {
@@ -241,7 +259,7 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
     try {
       const target = await save({
         title: 'Save clip',
-        defaultPath: defaultClipName(),
+        defaultPath: await join(await downloadDir(), defaultClipName()),
         filters: [{ name: mp4.ext.toUpperCase(), extensions: [mp4.ext] }],
       });
       if (!target) return;
@@ -425,14 +443,15 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
                 <div className="text-xs font-semibold opacity-75">GIF preview ({Math.round(result.bytes.length / 1024)} KB)</div>
                 <img src={result.url} alt="Generated GIF preview" className="rounded-lg border border-pink-200 max-h-[40vh]" />
                 <div className="flex gap-2">
-                  {onUseAsTeaser && (
+                  {inBundle ? (
                     <button type="button" className="pretty-button" onClick={useAsTeaser} disabled={busy}>
                       🎁 Use as Teaser GIF
                     </button>
+                  ) : (
+                    <button type="button" className="pretty-button" onClick={download} disabled={busy}>
+                      ⬇️ Download GIF
+                    </button>
                   )}
-                  <button type="button" className="pretty-button secondary" onClick={download} disabled={busy}>
-                    ⬇️ Download GIF
-                  </button>
                 </div>
               </div>
             )}
@@ -445,9 +464,15 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
                 </div>
                 <video src={mp4.url} controls playsInline className="rounded-lg border border-pink-200 w-full max-h-[55vh] bg-black" />
                 <div className="flex gap-2">
-                  <button type="button" className="pretty-button secondary" onClick={downloadMp4} disabled={busy}>
-                    ⬇️ Download {mp4.ext.toUpperCase()}
-                  </button>
+                  {inBundle && onUseClip ? (
+                    <button type="button" className="pretty-button" onClick={addClipToBundle} disabled={busy}>
+                      🎁 Add {mp4.ext.toUpperCase()} to bundle
+                    </button>
+                  ) : (
+                    <button type="button" className="pretty-button secondary" onClick={downloadMp4} disabled={busy}>
+                      ⬇️ Download {mp4.ext.toUpperCase()}
+                    </button>
+                  )}
                 </div>
                 {mp4.ext !== 'mp4' && (
                   <div className="text-xs text-amber-700">This system recorded a .{mp4.ext} (its engine can't make MP4). On Windows you'll get a real .mp4.</div>

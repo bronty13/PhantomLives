@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { downloadDir, join } from '@tauri-apps/api/path';
 import { captureFrame, type CropBox, type GifQuality } from './encodeGif';
 import type { GifSource } from './GifCreator';
 
@@ -144,7 +145,7 @@ export function FrameGrabber({ bundleVideos = [], initialVideo = null, onUseAsTh
     setBusy(true);
     setError(null);
     try {
-      const target = await save({ title: 'Save image', defaultPath: defaultName(), filters: [{ name: 'JPEG', extensions: ['jpg'] }] });
+      const target = await save({ title: 'Save image', defaultPath: await join(await downloadDir(), defaultName()), filters: [{ name: 'JPEG', extensions: ['jpg'] }] });
       if (!target) return;
       const { writeBytesToPath } = await import('../../data/bundles');
       await writeBytesToPath(target, result.bytes);
@@ -239,10 +240,11 @@ export function FrameGrabber({ bundleVideos = [], initialVideo = null, onUseAsTh
                 <div className="text-xs font-semibold opacity-75">Preview ({Math.round(result.bytes.length / 1024)} KB)</div>
                 <img src={result.url} alt="Captured frame preview" className="rounded-lg border border-pink-200 max-h-[40vh]" />
                 <div className="flex gap-2">
-                  {onUseAsThumbnail && (
+                  {onUseAsThumbnail ? (
                     <button type="button" className="pretty-button" onClick={useAsThumbnail} disabled={busy}>🖼️ Use as Thumbnail</button>
+                  ) : (
+                    <button type="button" className="pretty-button secondary" onClick={download} disabled={busy}>⬇️ Download</button>
                   )}
-                  <button type="button" className="pretty-button secondary" onClick={download} disabled={busy}>⬇️ Download</button>
                 </div>
               </div>
             )}

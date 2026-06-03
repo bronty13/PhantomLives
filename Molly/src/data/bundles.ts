@@ -226,6 +226,20 @@ export async function saveBundleFrame(
   });
 }
 
+/// Persist a recorded MP4/WebM clip as a bundle media file (kind 'video'),
+/// kept in the bundle's files. Backs the bundle wizard's "Add to bundle".
+export async function saveBundleClip(
+  bundleUid: string,
+  bytes: Uint8Array,
+  originalName: string,
+): Promise<BundleFileInfo> {
+  return invoke<BundleFileInfo>('save_bundle_clip', {
+    bundleUid,
+    bytes: Array.from(bytes),
+    originalName,
+  });
+}
+
 /// Write raw bytes to a user-chosen absolute path (GIF Creator "Download").
 export async function writeBytesToPath(
   targetPath: string,

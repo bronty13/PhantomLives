@@ -1793,11 +1793,12 @@ pub fn delete_bundle_file<R: Runtime>(
 /// row as `kind = "image"`, and returns a `BundleFileInfo` the caller lifts
 /// onto a single-slot column (`teaser_gif_*` / `thumbnail_*`). `basename`
 /// must already carry the desired extension.
-fn persist_bundle_image_bytes(
+fn persist_bundle_blob_bytes(
     app_data: &Path,
     bundle_uid: String,
     bytes: &[u8],
     basename: String,
+    kind: &str,
 ) -> Result<BundleFileInfo, BundleError> {
     let cat = format!("bundles/{bundle_uid}/files");
     let safe_base = sanitize_component(&basename);
@@ -1824,8 +1825,8 @@ fn persist_bundle_image_bytes(
     conn.execute(
         "INSERT INTO bundle_files (bundle_uid, fansite_day_id, position, relpath,
                                    original_name, kind, size_bytes, sha256)
-         VALUES (?1, NULL, ?2, ?3, ?4, 'image', ?5, ?6)",
-        params![bundle_uid, next_pos, relpath, basename, size_bytes, sha],
+         VALUES (?1, NULL, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![bundle_uid, next_pos, relpath, basename, kind, size_bytes, sha],
     )?;
     let id = conn.last_insert_rowid();
     conn.execute(
@@ -1841,7 +1842,7 @@ fn persist_bundle_image_bytes(
         relpath,
         absolute_path,
         original_name: basename,
-        kind: "image".to_string(),
+        kind: kind.to_string(),
         size_bytes,
         sha256: sha,
     })
@@ -1864,7 +1865,7 @@ pub fn save_bundle_gif<R: Runtime>(
     if !basename.to_ascii_lowercase().ends_with(".gif") {
         basename.push_str(".gif");
     }
-    persist_bundle_image_bytes(&app_data, bundle_uid, &bytes, basename)
+    persist_bundle_blob_bytes(&app_data, bundle_uid, &bytes, basename, "image")
 }
 
 /// Persist a key frame captured from a video (the Frame Grabber wizard) as a
@@ -1886,7 +1887,26 @@ pub fn save_bundle_frame<R: Runtime>(
     if !(lower.ends_with(".jpg") || lower.ends_with(".jpeg")) {
         basename.push_str(".jpg");
     }
-    persist_bundle_image_bytes(&app_data, bundle_uid, &bytes, basename)
+    persist_bundle_blob_bytes(&app_data, bundle_uid, &bytes, basename, "image")
+}
+
+/// Persist a recorded MP4/WebM clip (the GIF wizard's MP4 export) as a bundle
+/// media file with `kind = "video"`, kept in `bundle_files` (NOT lifted onto
+/// a slot) so it shows up as a deliverable in the bundle. Backs the bundle
+/// wizard's "Add to bundle" action.
+#[tauri::command]
+pub fn save_bundle_clip<R: Runtime>(
+    handle: AppHandle<R>,
+    bundle_uid: String,
+    bytes: Vec<u8>,
+    original_name: String,
+) -> Result<BundleFileInfo, BundleError> {
+    let app_data = app_data_dir(&handle)?;
+    let mut basename = original_name.trim().to_string();
+    if basename.is_empty() {
+        basename = "teaser.mp4".to_string();
+    }
+    persist_bundle_blob_bytes(&app_data, bundle_uid, &bytes, basename, "video")
 }
 
 /// Byte size of a file at `path`. Backs frontend pre-flight checks (e.g. the
