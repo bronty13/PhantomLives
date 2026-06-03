@@ -4,6 +4,29 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.29.2] — 2026-06-03
+
+### Fixed — in-app updater works on Windows (no more "unsupported Zip archive")
+
+The Windows in-app updater failed at install time with `unsupported Zip
+archive: Compression method not supported`, forcing manual installs. Root
+cause: the release workflow hand-wrapped the NSIS `setup.exe` into a
+`.nsis.zip` using PowerShell's `Compress-Archive`, and the resulting
+archive's compression is rejected by `tauri-plugin-updater`'s `zip` reader.
+
+The Tauri v2 Windows updater consumes the **raw NSIS installer** directly —
+the `.nsis.zip` is only the legacy "v1Compatible" path. Fix: drop the zip
+entirely. The release workflow now signs the `setup.exe` itself
+(`tauri signer sign`) and `latest.json`'s `windows-x86_64.url` points at the
+`.exe`, eliminating the zip-extraction step (and the bug) altogether.
+
+This is **server-side effective**: because the fix lives in the published
+`latest.json`, an install already on 1.29.1 will update cleanly the next time
+it checks — the updater simply downloads and runs the signed `.exe`.
+
+No app-code change; this is a CI/release-pipeline fix. The macOS updater
+(`.app.tar.gz`) path is unchanged.
+
 ## [1.29.1] — 2026-06-03
 
 ### Fixed — teaser MP4 exports at near-native resolution (sharp, not tiny)

@@ -170,12 +170,12 @@ jobs:
         shell: bash
         run: pnpm tauri build ${{ matrix.args }}
 
-      # `tauri build` produces platform installers (.dmg, .nsis, .msi)
-      # but NOT the updater bundles (.app.tar.gz / .nsis.zip). That's
-      # historically tauri-action's job and the action only does it when
-      # configured to release. We do it ourselves so we don't have to
-      # depend on tauri-action's hidden state. `tauri signer sign` reads
-      # TAURI_SIGNING_PRIVATE_KEY from env and writes <FILE>.sig next to
+      # `tauri build` produces the platform installers (.dmg, .nsis .exe,
+      # .msi) but not their updater signatures. We sign them ourselves so we
+      # don't depend on tauri-action's hidden state: mac re-tars the
+      # re-codesigned .app into .app.tar.gz and signs that; Windows signs the
+      # raw NSIS setup.exe directly (no .zip — see below). `tauri signer sign`
+      # reads TAURI_SIGNING_PRIVATE_KEY from env and writes <FILE>.sig next to
       # the input.
       - name: Pack + sign mac updater bundle
         if: matrix.platform == 'macos-14'
@@ -226,7 +226,16 @@ jobs:
           ls -la "$BUNDLE"
           ls -la "$DMG_BUNDLE" 2>/dev/null || true
 
-      - name: Pack + sign windows updater bundle
+      # Sign the raw NSIS installer (.exe) for the updater — do NOT wrap it
+      # in a .zip. The Tauri v2 Windows updater consumes the raw installer
+      # directly when latest.json points at the .exe; the .nsis.zip is the
+      # legacy "v1Compatible" path. We previously hand-zipped the .exe with
+      # PowerShell's `Compress-Archive`, but that archive's compression is
+      # rejected by tauri-plugin-updater's `zip` reader at install time with
+      # "unsupported Zip archive: Compression method not supported", which
+      # silently broke Sallie's in-app updater and forced manual installs.
+      # Signing the .exe itself removes the zip layer (and the bug) entirely.
+      - name: Sign windows updater installer (raw .exe)
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         env:
@@ -236,14 +245,13 @@ jobs:
           $version = (Get-Content package.json | ConvertFrom-Json).version
           $bundle = "src-tauri/target/release/bundle/nsis"
           $exe = Join-Path $bundle "Molly_${version}_x64-setup.exe"
-          $zip = Join-Path $bundle "Molly_${version}_x64-setup.nsis.zip"
           if (-not (Test-Path $exe)) {
             Write-Host "$exe not found"
             Get-ChildItem -Path $bundle -ErrorAction SilentlyContinue
             exit 1
           }
-          Compress-Archive -Path $exe -DestinationPath $zip -Force
-          pnpm tauri signer sign $zip
+          # Produces Molly_<version>_x64-setup.exe.sig next to the installer.
+          pnpm tauri signer sign $exe
           Get-ChildItem -Path $bundle
 
       - name: Upload bundles + signatures (mac)
@@ -326,9 +334,10 @@ jobs:
           done
           MAC_SIG=$(cat "$MAC_SIG_FILE" 2>/dev/null || echo "")
 
-          # Windows updater bundle signature is the NSIS .zip.sig.
+          # Windows updater signature is over the raw NSIS installer .exe
+          # (no .zip — see the "Sign windows updater installer" build step).
           WIN_SIG_FILE=""
-          for candidate in sigs/Molly_${VERSION}_x64-setup.nsis.zip.sig sigs/Molly_x64-setup.nsis.zip.sig; do
+          for candidate in sigs/Molly_${VERSION}_x64-setup.exe.sig sigs/Molly_x64-setup.exe.sig; do
             if [ -f "$candidate" ]; then WIN_SIG_FILE="$candidate"; break; fi
           done
           WIN_SIG=$(cat "$WIN_SIG_FILE" 2>/dev/null || echo "")
@@ -348,7 +357,7 @@ jobs:
               },
               "windows-x86_64": {
                 "signature": "${WIN_SIG}",
-                "url": "${BASE}/Molly_${VERSION}_x64-setup.nsis.zip"
+                "url": "${BASE}/Molly_${VERSION}_x64-setup.exe"
               }
             }
           }
