@@ -112,7 +112,7 @@ Molly/
 │   │   ├── hours.rs                      # Phase 15 — clock sessions + totals (today/week/month/all) + reward milestones (global)
 │   │   ├── daily_tasks.rs                # Phase 15 — daily to-do list (keyed by for_date + persona)
 │   │   └── fsutil.rs                     # ~/Downloads/<sub> resolution + Finder reveal
-│   ├── migrations/                       # 36 migrations (run automatically on launch)
+│   ├── migrations/                       # 38 migrations (run automatically on launch)
 │   │   ├── 001_init.sql                  # personas + app_settings
 │   │   ├── 002_sites.sql                 # site entries, preloaded
 │   │   ├── 003_taxonomy.sql              # products + interests
@@ -148,7 +148,9 @@ Molly/
 │   │   ├── 033_ui_theme.sql              # Phase 15 — app_settings ('ui.theme', 'light') seed
 │   │   ├── 034_return_file_import.sql    # v1.20.0 — bundles.completed_at/delete_after + bundle_postings + bundle_posting_files + return_file_imports
 │   │   ├── 035_social_drops.sql          # v1.21.0 — Social hub daily piggy-bank (social_platforms.daily_goal + social_drops)
-│   │   └── 036_youtube_bundle.sql        # v1.23.0 — bundles.bundle_kind discriminator (safe ALTER; escapes the bundle_type CHECK trap)
+│   │   ├── 036_youtube_bundle.sql        # v1.23.0 — bundles.bundle_kind discriminator (safe ALTER; escapes the bundle_type CHECK trap)
+│   │   ├── 037_social_followers.sql      # v1.25.0 — daily follower-count snapshots + per-platform goal
+│   │   └── 038_bundle_preview_assets.sql # v1.26.0 — optional thumbnail + teaser GIF columns on bundles (single-slot, like audio)
 │   ├── icons/                            # Generated icon set (from molly.svg)
 │   ├── capabilities/default.json         # Tauri ACL — which plugin commands the frontend can invoke
 │   ├── tauri.conf.json
@@ -189,7 +191,7 @@ All cross-boundary types use `#[serde(rename_all = "camelCase")]` — enforced b
 | history | `add_history_entry_with_attachment`, `download_history_attachment` (rusqlite BLOB I/O — bytes never cross IPC) |
 | log | `add_log_entry_with_attachment`, `download_log_attachment` (rusqlite BLOB I/O for Molly's Log) |
 | c4s | `replace_c4s_clips` (atomic overlay-replace + count-verify), `delete_all_c4s_data` |
-| bundles | `create_bundle`, `update_bundle_fields`, `save_bundle_file`, `delete_bundle_file`, `reorder_bundle_files`, `set_bundle_categories`, `list_bundles`, `get_bundle`, `delete_bundle_draft`, `publish_bundle`, `delete_published_bundle`, `list_bundle_archives`, `reveal_bundles_dir`, `open_bundle_archive`, `auto_purge_old_bundles`, `get_bundler_settings`, `set_bundler_settings`, `list_prohibited_words`, `add_prohibited_word`, `remove_prohibited_word`, `create_fan_day`, `update_fan_day_message`, `delete_fan_day` |
+| bundles | `create_bundle`, `update_bundle_fields`, `save_bundle_file`, `save_bundle_gif`, `save_bundle_frame`, `write_bytes_to_path`, `delete_bundle_file`, `reorder_bundle_files`, `set_bundle_categories`, `list_bundles`, `get_bundle`, `delete_bundle_draft`, `publish_bundle`, `delete_published_bundle`, `list_bundle_archives`, `reveal_bundles_dir`, `open_bundle_archive`, `auto_purge_old_bundles`, `get_bundler_settings`, `set_bundler_settings`, `list_prohibited_words`, `add_prohibited_word`, `remove_prohibited_word`, `create_fan_day`, `update_fan_day_message`, `delete_fan_day` |
 | keystore (crypto) | `keystore_status`, `keystore_init`, `keystore_unlock`, `keystore_lock`, `keystore_change_passphrase`, `keystore_wipe`, `keystore_set_stay_unlocked` — passphrase-derived KEK wrapping a per-install DEK, rate-limited unlock counter. |
 | site_credentials | `list_site_credentials`, `create_site_credential`, `update_site_credential`, `set_site_credential_password`, `clear_site_credential_password`, `set_site_credential_primary`, `delete_site_credential` — primary + sub credentials per site, encrypted via the Phase 10 keystore. |
 | background_jobs | `list_jobs`, `get_job`, `update_job_cadence`, `set_job_paused`, `run_job_now`, `list_job_runs`, `read_job_run_log`. Scheduler ticks in `App.tsx` on launch + every 30 minutes, dispatched into `atw.rs`. |

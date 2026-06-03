@@ -129,6 +129,7 @@ Molly/
 | 1.16 | 🎁 Content-tag propagation — bundle-publish mirrors bundle-level tags onto the clip row; content tags flow into `info.md` + `Molly.log` inside the published ZIP. |
 | 1.17 | 🔴⏱🎨 Phase 15 — Reddit sidebar tab (Today / Subreddits / Post log / Captions / Hours) · 🎁 Reward milestones (global, multiple goals) · 🎨 Dark mode (light/dark/system) · 🌼 Licensed Paper Daisy font · removed unwanted "CoC/PoA content release" defaults · 3rd Calendar overlay for Reddit posts. **v1.17.1 hotfix** for migration-hash crash. |
 | 1.25 | 📈 Daily follower-count tracking (Social → Growth) — per-platform daily snapshot, hand-rolled SVG sparkline + line chart, least-squares forecast/ETA to an optional follower goal, editable history + backfill, per-persona with an ALL=combined view, gentle nudge card + sidebar dot, celebratory sound/visual on entry. |
+| 1.26 | 🖼️🎞️ Content-bundle preview assets (optional Thumbnail Image + Teaser GIF, composed into the published ZIP under `Preview/` + a new `preview` object in `manifest.json`) · **GIF Studio** sidebar tool + per-slot wizards to make a teaser GIF or grab a key-frame thumbnail from any video, 100% client-side (canvas + `gifenc`, no ffmpeg, Windows-safe) with trim/fps/size/quality/crop/caption. Migration 038. |
 | ⏸ 8 | Per-site sales-report parsers (deferred — see [PHASE_8_PARSERS.md](PHASE_8_PARSERS.md)). |
 
 ## Built with love
