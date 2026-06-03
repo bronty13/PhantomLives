@@ -4,6 +4,29 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.29.3] — 2026-06-03
+
+### Fixed — no more console window flashing during video processing (Windows)
+
+The bundled `ffmpeg.exe` / `ffprobe.exe` are console-subsystem binaries; spawned
+from Molly's GUI process on Windows they popped a black console window over the
+UI for the whole render. Every spawn site in `src-tauri/src/media/` now routes
+through `media::no_window()`, which sets `CREATE_NO_WINDOW` on Windows (no-op on
+macOS/Linux). No window, no flash.
+
+### Changed — teaser MP4 encodes much faster (same quality)
+
+Switched the teaser MP4 x264 preset from `medium` to `veryfast`. Quality is
+governed by `-crf 20` (a constant-quality target, independent of preset) and
+size by the `-maxrate` budget, so the visual result is ~identical — the faster
+preset just reaches it in a fraction of the encode time, at the cost of slightly
+larger files that stay comfortably inside the 100 MB cap. This is the main lever
+for Windows software-encode speed.
+
+Note: hardware-accelerated *decode* (`-hwaccel`) is the remaining speed lever for
+heavy 4K HEVC sources but interacts with the HDR tone-map path; deferred until it
+can be verified on Windows without regressing HDR color.
+
 ## [1.29.2] — 2026-06-03
 
 ### Fixed — in-app updater works on Windows (no more "unsupported Zip archive")

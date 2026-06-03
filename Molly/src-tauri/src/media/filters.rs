@@ -169,9 +169,14 @@ pub fn teaser_args(
     // Quality-first: CRF 20 (visually high) with a `maxrate` ceiling derived
     // from the 100 MB / duration budget, so short clips stay near-lossless and
     // long ones fill the budget without ever overflowing it (no truncation).
+    // `veryfast` (was `medium`): CRF targets a *quality* level independent of
+    // preset, so the visual result is ~identical — the faster preset just
+    // reaches it less efficiently (slightly larger files, comfortably inside
+    // the 100 MB budget) in a fraction of the encode time. This is the big
+    // lever for Windows software-encode speed without sacrificing how it looks.
     a.extend([
         "-c:v".into(), "libx264".into(),
-        "-preset".into(), "medium".into(),
+        "-preset".into(), "veryfast".into(),
         "-crf".into(), "20".into(),
         "-maxrate".into(), format!("{video_max_kbps}k"),
         "-bufsize".into(), format!("{}k", video_max_kbps.saturating_mul(2)),
@@ -339,7 +344,7 @@ mod tests {
         let with_audio = teaser_args("in.mov", "out.mp4", None, 0.3, 2.7, &spec, true, 8000);
         let joined = with_audio.join(" ");
         assert!(joined.contains("-c:v libx264"));
-        assert!(joined.contains("-preset medium"));
+        assert!(joined.contains("-preset veryfast"));
         assert!(joined.contains("-crf 20"));
         assert!(joined.contains("-maxrate 8000k"));
         assert!(joined.contains("-bufsize 16000k"));

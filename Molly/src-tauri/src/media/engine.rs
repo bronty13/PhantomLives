@@ -41,16 +41,16 @@ pub async fn run_ffmpeg(
     timeout_secs: u64,
     mut on_progress: impl FnMut(f64),
 ) -> Result<(), MediaError> {
-    let mut child = Command::new(bin)
-        .args(args)
+    let mut cmd = Command::new(bin);
+    cmd.args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => MediaError::BinaryMissing,
-            _ => MediaError::Io(e),
-        })?;
+        .stderr(Stdio::piped());
+    crate::media::no_window(&mut cmd); // no console-window flash on Windows
+    let mut child = cmd.spawn().map_err(|e| match e.kind() {
+        std::io::ErrorKind::NotFound => MediaError::BinaryMissing,
+        _ => MediaError::Io(e),
+    })?;
 
     let stdout = child.stdout.take().ok_or_else(|| MediaError::Probe("no stdout".into()))?;
     let stderr = child.stderr.take().ok_or_else(|| MediaError::Probe("no stderr".into()))?;

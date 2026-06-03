@@ -93,11 +93,10 @@ pub async fn supports_zscale<R: Runtime>(handle: &AppHandle<R>) -> bool {
     *ZSCALE
         .get_or_init(|| async {
             let bin = ffmpeg_bin(handle);
-            match tokio::process::Command::new(&bin)
-                .args(["-hide_banner", "-filters"])
-                .output()
-                .await
-            {
+            let mut cmd = tokio::process::Command::new(&bin);
+            cmd.args(["-hide_banner", "-filters"]);
+            crate::media::no_window(&mut cmd); // no console-window flash on Windows
+            match cmd.output().await {
                 Ok(o) => String::from_utf8_lossy(&o.stdout)
                     .lines()
                     .any(|l| l.split_whitespace().nth(1) == Some("zscale")),

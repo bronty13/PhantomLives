@@ -38,3 +38,20 @@ impl serde::Serialize for MediaError {
         s.serialize_str(&self.to_string())
     }
 }
+
+/// Apply Windows' `CREATE_NO_WINDOW` so spawning the bundled console-subsystem
+/// `ffmpeg.exe`/`ffprobe.exe` from Molly's GUI process doesn't flash a black
+/// console window over the UI during every render/probe. No-op off Windows.
+/// Every spawn site in this module routes through here.
+#[cfg(windows)]
+pub(crate) fn no_window(cmd: &mut tokio::process::Command) -> &mut tokio::process::Command {
+    // winbase.h CREATE_NO_WINDOW. tokio::process::Command exposes this inherent
+    // method on Windows (no CommandExt import needed).
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    cmd.creation_flags(CREATE_NO_WINDOW)
+}
+
+#[cfg(not(windows))]
+pub(crate) fn no_window(cmd: &mut tokio::process::Command) -> &mut tokio::process::Command {
+    cmd
+}

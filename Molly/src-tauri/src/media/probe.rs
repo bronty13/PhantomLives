@@ -18,14 +18,16 @@ pub struct ProbeResult {
 
 pub async fn probe<R: Runtime>(handle: &AppHandle<R>, path: &str) -> Result<ProbeResult, MediaError> {
     let bin = ffmpeg_path::ffprobe_bin(handle);
-    let out = Command::new(&bin)
-        .args([
-            "-v", "error",
-            "-show_streams",
-            "-show_format",
-            "-of", "json",
-            path,
-        ])
+    let mut cmd = Command::new(&bin);
+    cmd.args([
+        "-v", "error",
+        "-show_streams",
+        "-show_format",
+        "-of", "json",
+        path,
+    ]);
+    crate::media::no_window(&mut cmd); // no console-window flash on Windows
+    let out = cmd
         .output()
         .await
         .map_err(|e| MediaError::Probe(format!("spawn ffprobe: {e}")))?;
