@@ -297,6 +297,7 @@ export async function recordClipWebCodecs(
   let audioIncluded = false;
   let audioReader: ReadableStreamDefaultReader<AudioData> | null = null;
   let audioPump: Promise<void> | null = null;
+  let videoReader: ReadableStreamDefaultReader<VideoFrame> | null = null;
 
   const restore = () => { video.muted = wasMuted; };
   const encodeAudio = (data: AudioData) => {
@@ -387,13 +388,40 @@ export async function recordClipWebCodecs(
       })();
     }
 
-    // Draw + encode video in real time until we hit the trim end, with a
-    // wall-clock backstop that guarantees we never exceed durationSec (≤60s).
-    const frameIntervalUs = Math.round(1_000_000 / raw.fps);
-    let t0 = 0;
+    // Capture the canvas as a video track and pump its frames into the
+    // encoder. We deliberately do NOT build frames with `new VideoFrame(canvas)`
+    // — that constructor enforces a strict origin-clean check and throws on
+    // Tauri asset-protocol video sources ("VideoFrames can't be created from
+    // tainted sources"), even though the canvas is fine for captureStream /
+    // getImageData. Reading the canvas's own captureStream is the exact route
+    // MediaRecorder used (which worked), and isn't subject to that check.
+    // Prime the canvas with the start frame so captureStream's first sample
+    // isn't blank.
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, width, height);
+    if (raw.caption && raw.caption.text.trim()) drawCaption(ctx, raw.caption, width, height);
+    const canvasStream = canvas.captureStream(raw.fps);
+    const videoTrack = canvasStream.getVideoTracks()[0];
+    const videoProc = new MediaStreamTrackProcessor<VideoFrame>({ track: videoTrack });
+    videoReader = videoProc.readable.getReader();
     let frameIdx = 0;
-    let lastTs = -1;
+    const reader = videoReader;
+    const videoPump = (async () => {
+      while (!encError) {
+        const { value, done } = await reader.read();
+        if (done || !value) break;
+        try {
+          // Keyframe at the start and every ~2s for seekability. 'offset' in
+          // the muxer rebases the captureStream timestamps to start at zero.
+          videoEncoder!.encode(value, { keyFrame: frameIdx % (raw.fps * 2) === 0 });
+          frameIdx++;
+        } catch (e) { fail(e); }
+        value.close();
+      }
+    })();
 
+    // Draw the trimmed/cropped/captioned frames in real time; captureStream
+    // samples the canvas at `fps`. Stop at the trim end, with a wall-clock
+    // backstop that guarantees we never exceed durationSec (≤60s).
     await new Promise<void>((resolve) => {
       let rafId = 0;
       let hardStop: ReturnType<typeof setTimeout> | null = null;
@@ -413,35 +441,20 @@ export async function recordClipWebCodecs(
         if (raw.caption && raw.caption.text.trim()) drawCaption(ctx, raw.caption, width, height);
         const t = video.currentTime;
         onProgress?.(Math.min(1, (t - start) / durationSec));
-
-        // Emit a frame at most once per fps interval, timestamps strictly
-        // increasing. 'offset' in the muxer rebases the first to zero.
-        const nowUs = Math.round((performance.now() - t0) * 1000);
-        if (lastTs < 0 || nowUs - lastTs >= frameIntervalUs * 0.5) {
-          const ts = lastTs < 0 ? 0 : Math.max(nowUs, lastTs + 1);
-          try {
-            const frame = new VideoFrame(canvas, { timestamp: ts });
-            // Keyframe at the start and every ~2s for seekability.
-            videoEncoder!.encode(frame, { keyFrame: frameIdx % (raw.fps * 2) === 0 });
-            frame.close();
-            lastTs = ts;
-            frameIdx++;
-          } catch (e) { fail(e); finish(); return; }
-        }
-
         if (t >= end - 0.02 || video.ended) { finish(); return; }
         rafId = requestAnimationFrame(draw);
       };
 
-      t0 = performance.now();
       hardStop = setTimeout(finish, durationSec * 1000 + 300);
       rafId = requestAnimationFrame(draw);
     });
 
     try { video.pause(); } catch { /* */ }
 
-    // Stop audio capture so the pump drains, then flush both encoders.
+    // Stop both capture tracks so the pumps see `done` and drain, then flush.
+    try { videoTrack.stop(); } catch { /* */ }
     if (audioTrack) { try { audioTrack.stop(); } catch { /* */ } }
+    try { await videoPump; } catch (e) { fail(e); }
     if (audioPump) { try { await audioPump; } catch (e) { fail(e); } }
     if (videoEncoder.state !== 'closed') await videoEncoder.flush();
     if (audioEncoder && audioEncoder.state !== 'closed') await audioEncoder.flush();
@@ -454,6 +467,7 @@ export async function recordClipWebCodecs(
     restore();
     try { videoEncoder?.state !== 'closed' && videoEncoder?.close(); } catch { /* */ }
     try { audioEncoder?.state !== 'closed' && audioEncoder?.close(); } catch { /* */ }
+    if (videoReader) { try { await videoReader.cancel(); } catch { /* */ } }
     if (audioReader) { try { await audioReader.cancel(); } catch { /* */ } }
   }
 }

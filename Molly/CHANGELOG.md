@@ -4,6 +4,39 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.28.1] — 2026-06-03
+
+### Fixed — WebCodecs MP4 export no longer fails with a tainted-canvas SecurityError
+
+1.28.0's WebCodecs encoder built frames with `new VideoFrame(canvas, …)`. On
+Windows (WebView2) the source `<video>` is loaded via Tauri's asset protocol
+(`convertFileSrc`), which is a cross-origin source with no
+`Access-Control-Allow-Origin` header (Tauri doesn't expose one — see
+tauri-apps/tauri#12999). The `VideoFrame` *constructor* enforces a strict
+origin-clean check and threw:
+
+> `SecurityError: Failed to construct 'VideoFrame': VideoFrames can't be
+> created from tainted sources.`
+
+…so MP4 export was completely broken on Windows in 1.28.0 (worse than 1.27.4,
+which at least produced a file).
+
+Fix: feed the encoder from the canvas's **`captureStream()` → `MediaStreamTrackProcessor`**
+instead of constructing `VideoFrame`s ourselves. That's the exact capture
+route the previous MediaRecorder path used (which worked), and frames
+delivered by the stream pipeline aren't subject to the constructor's
+tainted-source check. `crossOrigin="anonymous"` was rejected as a fix because
+Tauri's asset protocol can't supply the matching CORS header, which would just
+break video loading instead.
+
+- The on-screen preview, GIF export, and trim/crop/caption are all unchanged.
+- Keyframe cadence (start + every ~2s) and the `'offset'` muxer timestamp
+  rebasing are preserved; the captureStream supplies frame timestamps.
+
+> ⚠️ Like the 1.28.0 encoder, this path only runs under WebCodecs/WebView2
+> (Windows) and can't be exercised on the maintainer's macOS WebKit (which
+> falls back to MediaRecorder/`.webm`). Needs a Windows smoke test.
+
 ## [1.28.0] — 2026-06-03
 
 ### Fixed — teaser MP4s now play on Windows (real, seekable MP4 via WebCodecs)
