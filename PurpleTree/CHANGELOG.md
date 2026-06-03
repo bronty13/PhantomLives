@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.2] - 2026-06-03
+
+- Fix: **a large scan no longer *appears* frozen.** v1.1.1's "force-emit the
+  directory before opening" diagnostic fired on every directory — on a big home
+  folder that's hundreds of thousands of IPC messages, which backed up the
+  renderer and stalled the scan-complete handoff, so a healthy, progressing
+  scan looked stuck. Reverted to a throttled (≤10/sec) progress emit. (Verified
+  with a headless probe: a full home scan of 1.92M files / 1.94 TB completes in
+  ~75 s with zero stalls.)
+- Fix: the macOS app menu showed lowercase "purple-tree" (the npm package name)
+  in About/Hide/Quit. Pinned the display name to "Purple Tree" via
+  `app.setName` + a top-level `productName`.
+
 ## [1.1.1] - 2026-06-03
 
 - Fix: **a scan can no longer hang forever on a dead mount.** Every filesystem

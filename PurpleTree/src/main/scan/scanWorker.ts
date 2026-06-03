@@ -156,9 +156,11 @@ async function runScan(cmd: Extract<ScanCommand, { type: 'start' }>): Promise<vo
       const frame = stack.pop()!;
       currentPath = frame.path;
       dirsScanned++;
-      // Force-emit *before* opening so the UI always shows the directory we're
-      // about to read — if it then wedges, that path is the culprit.
-      emitProgress(true);
+      // Throttled emit (≤10/sec) before opening so the UI shows the directory
+      // we're about to read. Must NOT be force=true: on a tree with hundreds
+      // of thousands of dirs, force-emitting every one floods the renderer with
+      // IPC and makes a healthy, progressing scan *look* frozen.
+      emitProgress();
       try {
         await crawlFrame(frame);
       } catch {

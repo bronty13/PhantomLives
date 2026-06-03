@@ -27,6 +27,12 @@ import {
 import { listSnapshots } from './scan/snapshot';
 import type { ScanOptions, SortSpec, FileFilter, ExportFormat } from '../shared/types';
 
+// Electron derives app.getName() from package.json's top-level `name`
+// ("purple-tree") when no top-level `productName` is present — which would
+// show "About purple-tree" etc. in the macOS app menu. Pin the display name to
+// match the bundle/title/About box.
+app.setName('Purple Tree');
+
 let mainWindow: BrowserWindow | null = null;
 
 function sendToRenderer(channel: string, payload: unknown): void {
