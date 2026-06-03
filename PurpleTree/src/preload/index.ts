@@ -115,6 +115,8 @@ const api = {
   onScanComplete: (cb: (s: ScanStats) => void): Unsub => on('purpletree:scan-complete', cb),
   onScanError: (cb: (e: { scanId: string; message: string }) => void): Unsub =>
     on('purpletree:scan-error', cb),
+  onScanCancelled: (cb: (e: { scanId: string }) => void): Unsub =>
+    on('purpletree:scan-cancelled', cb),
   onDupProgress: (cb: (e: { scanId: string; progress: DuplicateProgress }) => void): Unsub =>
     on('purpletree:dup-progress', cb),
   onDupDone: (cb: (e: { scanId: string; result: DuplicateScanResult }) => void): Unsub =>

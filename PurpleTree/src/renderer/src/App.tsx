@@ -31,6 +31,7 @@ export default function App(): JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [toast, setToast] = useState('');
+  const [cancelling, setCancelling] = useState(false);
   const scanIdRef = useRef<string | null>(null);
 
   const loadPrefs = useCallback(() => {
@@ -46,6 +47,7 @@ export default function App(): JSX.Element {
     setScanId(id);
     setStatus('scanning');
     setProgress(null);
+    setCancelling(false);
     setView('explorer');
   }, []);
 
@@ -56,6 +58,7 @@ export default function App(): JSX.Element {
     });
     const offDone = api.onScanComplete((s) => {
       if (s.scanId !== scanIdRef.current) return;
+      setCancelling(false);
       setStats(s);
       void api.getRoot(s.scanId).then((r) => {
         setRoot(r);
@@ -65,9 +68,17 @@ export default function App(): JSX.Element {
     });
     const offErr = api.onScanError((e) => {
       if (e.scanId === scanIdRef.current) {
+        setCancelling(false);
         setStatus('error');
         setToast(`Scan failed: ${e.message}`);
       }
+    });
+    const offCancelled = api.onScanCancelled((e) => {
+      if (e.scanId !== scanIdRef.current) return;
+      setCancelling(false);
+      scanIdRef.current = null;
+      setStatus('empty');
+      setToast('Scan cancelled.');
     });
     const offMenu = api.onMenu((action) => {
       if (action === 'open-folder') void chooseFolder();
@@ -79,6 +90,7 @@ export default function App(): JSX.Element {
       offProg();
       offDone();
       offErr();
+      offCancelled();
       offMenu();
     };
   }, [chooseFolder, loadPrefs]);
@@ -200,7 +212,16 @@ export default function App(): JSX.Element {
                     </p>
                   </>
                 )}
-                <button onClick={() => scanId && void api.cancelScan(scanId)}>Cancel</button>
+                <button
+                  disabled={cancelling}
+                  onClick={() => {
+                    if (!scanId) return;
+                    setCancelling(true);
+                    void api.cancelScan(scanId);
+                  }}
+                >
+                  {cancelling ? 'Cancelling…' : 'Cancel'}
+                </button>
               </div>
             </div>
           )}

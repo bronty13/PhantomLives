@@ -84,6 +84,13 @@ launch, to `~/Downloads/Purple Tree backup/`. In **Settings → Backup** you can
   another user's folder, or your whole drive, grant Purple Tree **Full Disk
   Access** in System Settings → Privacy & Security, then rescan. Locations it
   can't read are skipped and counted (shown as "skipped").
+- **Cloud & network drives:** by default Purple Tree skips
+  `~/Library/CloudStorage/` (iCloud Drive, Google Drive, OneDrive, Dropbox, and
+  phone/SD mounts like MacDroid). They're remote, not local disk, and scanning
+  them is slow and inflates the totals with files that aren't really taking up
+  space on your Mac. To include them, turn on **Settings → Cross mount points**.
+- **Stuck scan?** Click **Cancel** — it now always stops within about a second,
+  even if it's churning through a slow network mount.
 - **Symlinks** are listed but not followed (so totals stay honest and scans
   can't loop).
 - **Hard links** are de-duplicated in folder totals on macOS; on Windows they're

@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.0.2] - 2026-06-03
+
+- Fix: **Cancel now works during any scan.** The crawl uses synchronous fs, so
+  while it was blocked inside a slow/hung syscall (e.g. a network/cloud mount)
+  it couldn't reach the cooperative cancel-flag check and Cancel appeared to do
+  nothing. Cancel now sets the flag *and* hard-terminates the worker after an
+  800 ms grace period, so it always stops promptly; the button shows
+  "Cancelling…" and the UI resets via a new `scan-cancelled` event.
+- Default: **skip the `~/Library/CloudStorage/` tree** (iCloud Drive, Google
+  Drive, OneDrive, Dropbox, MacDroid, etc.). These cloud/network providers
+  report the same device id as the home volume, so the mount check missed them;
+  walking them is slow (remote readdirs) and inflates totals with logical sizes
+  of files that aren't on local disk. Enable **Settings → Cross mount points**
+  to include them.
+
 ## [1.0.1] - 2026-06-03
 
 - Fix: a directory whose `readdir` fails mid-iteration — e.g. `ETIMEDOUT` on a

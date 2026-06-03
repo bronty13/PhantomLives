@@ -16,7 +16,8 @@
  */
 import { parentPort } from 'node:worker_threads';
 import { opendirSync, lstatSync, type Dirent } from 'node:fs';
-import { sep as pathSep } from 'node:path';
+import { sep as pathSep, join as pathJoin } from 'node:path';
+import { homedir } from 'node:os';
 import {
   FLAG_DIR,
   FLAG_SYMLINK,
@@ -63,6 +64,13 @@ function runScan(cmd: Extract<ScanCommand, { type: 'start' }>): void {
 
   const builder = new TreeBuilder(rootPath, pathSep);
   const seenInodes = new Set<string>();
+
+  // Cloud/network provider mounts (~/Library/CloudStorage/iCloud Drive,
+  // GoogleDrive-…, OneDrive-…, MacDroid-…, etc.) report the same device id as
+  // the home volume, so the st_dev mount check misses them. They're remote, not
+  // local disk, and slow remote readdirs make scans crawl — so by default
+  // (crossMountPoints off) we don't descend into the CloudStorage tree.
+  const cloudStorageDir = pathJoin(homedir(), 'Library', 'CloudStorage');
 
   let filesScanned = 0;
   let dirsScanned = 0;
@@ -181,7 +189,9 @@ function runScan(cmd: Extract<ScanCommand, { type: 'start' }>): void {
         }
 
         if (st.isDirectory()) {
-          const crossed = !opts.crossMountPoints && st.dev !== rootDev;
+          const crossed =
+            !opts.crossMountPoints &&
+            (st.dev !== rootDev || childPath === cloudStorageDir);
           const childId = builder.addNode({
             parent: frame.id,
             name: entry.name,

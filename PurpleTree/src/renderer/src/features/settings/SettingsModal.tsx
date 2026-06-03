@@ -79,7 +79,8 @@ export default function SettingsModal({ onClose, onPrefsChanged }: Props): JSX.E
                   void patch({ scanOptions: { ...prefs.scanOptions, crossMountPoints: e.target.checked } })
                 }
               />
-              Cross mount points / other volumes while scanning
+              Cross mount points / other volumes, incl. cloud mounts
+              (~/Library/CloudStorage)
             </label>
             <label className="row-check">
               <input

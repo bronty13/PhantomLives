@@ -39,8 +39,37 @@ const stats = new Map<string, ScanStats>();
 interface ActiveOp {
   worker: Worker;
   cancel: Int32Array;
+  cancelTimer?: ReturnType<typeof setTimeout>;
 }
 const active = new Map<string, ActiveOp>();
+
+/** Grace period before a cooperative cancel escalates to a hard terminate. */
+const CANCEL_GRACE_MS = 800;
+
+/**
+ * Cancel an operation: set the cooperative flag (clean partial result if the
+ * worker is between syscalls), then hard-terminate after a grace period if it
+ * hasn't stopped — the worker uses *synchronous* fs, so a slow/hung syscall
+ * (e.g. a network/cloud mount) would otherwise ignore the flag indefinitely.
+ */
+function cancelOp(key: string, cancelledChannel: string, scanId: string): void {
+  const op = active.get(key);
+  if (!op || op.cancelTimer) return;
+  Atomics.store(op.cancel, 0, 1);
+  op.cancelTimer = setTimeout(() => {
+    if (active.get(key) === op) {
+      void op.worker.terminate();
+      active.delete(key);
+      sender(cancelledChannel, { scanId });
+    }
+  }, CANCEL_GRACE_MS);
+}
+
+function clearOp(key: string): void {
+  const op = active.get(key);
+  if (op?.cancelTimer) clearTimeout(op.cancelTimer);
+  active.delete(key);
+}
 let counter = 0;
 
 function newScanId(): string {
@@ -78,30 +107,29 @@ export function startScan(rootPath: string, opts: ScanOptions): string {
         const s: ScanStats = { ...evt.stats, durationMs: Date.now() - startMs };
         stats.set(scanId, s);
         sender('purpletree:scan-complete', s);
-        active.delete(scanId);
+        clearOp(scanId);
         void worker.terminate();
         break;
       }
       case 'error':
         sender('purpletree:scan-error', { scanId, message: evt.message });
-        active.delete(scanId);
+        clearOp(scanId);
         void worker.terminate();
         break;
     }
   });
   worker.on('error', (err) => {
     sender('purpletree:scan-error', { scanId, message: err.message });
-    active.delete(scanId);
+    clearOp(scanId);
   });
 
   worker.postMessage({ type: 'start', scanId, rootPath, opts, cancelFlag: sab });
   return scanId;
 }
 
-/** Cooperatively cancel a running scan (worker returns its partial tree). */
+/** Cancel a running scan (cooperative flag, then hard terminate if needed). */
 export function cancelScan(scanId: string): void {
-  const op = active.get(scanId);
-  if (op) Atomics.store(op.cancel, 0, 1);
+  cancelOp(scanId, 'purpletree:scan-cancelled', scanId);
 }
 
 /** Kick off duplicate detection over a completed scan's files. */
@@ -116,21 +144,20 @@ export function findDuplicates(scanId: string): boolean {
     if (evt.type === 'dup-progress') sender('purpletree:dup-progress', evt);
     else if (evt.type === 'dup-done') {
       sender('purpletree:dup-done', evt);
-      active.delete(dupKey);
+      clearOp(dupKey);
       void worker.terminate();
     }
   });
   worker.on('error', (err) => {
     sender('purpletree:dup-error', { scanId, message: err.message });
-    active.delete(dupKey);
+    clearOp(dupKey);
   });
   worker.postMessage({ type: 'find-duplicates', scanId, files, cancelFlag: sab });
   return true;
 }
 
 export function cancelDuplicates(scanId: string): void {
-  const op = active.get(`dup:${scanId}`);
-  if (op) Atomics.store(op.cancel, 0, 1);
+  cancelOp(`dup:${scanId}`, 'purpletree:dup-cancelled', scanId);
 }
 
 // ----- Slice queries (the renderer pulls these; never the whole tree) -----
