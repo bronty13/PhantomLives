@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.4] - 2026-06-03
+
+- The folder picker now pre-fills with your **last-scanned folder**, and the
+  main window **remembers its size** between launches.
+- Added an end-to-end integration test for the duplicate finder against the
+  built worker (xxhash-wasm + chunked hashing + staged pipeline). 57 tests.
+
 ## [1.0.3] - 2026-06-03
 
 - Fix (the real one): **Cancel now works even when the scan is wedged on a hung

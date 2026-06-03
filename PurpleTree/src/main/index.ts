@@ -36,9 +36,10 @@ function sendToRenderer(channel: string, payload: unknown): void {
 }
 
 function createMainWindow(): BrowserWindow {
+  const prefs = getPreferences();
   const win = new BrowserWindow({
-    width: 1340,
-    height: 860,
+    width: prefs.windowWidth,
+    height: prefs.windowHeight,
     minWidth: 960,
     minHeight: 600,
     show: false,
@@ -54,6 +55,13 @@ function createMainWindow(): BrowserWindow {
   });
 
   win.on('ready-to-show', () => win.show());
+  // Remember the window size between launches (size only — not position, to
+  // avoid restoring off-screen when displays change).
+  win.on('close', () => {
+    if (win.isDestroyed()) return;
+    const [w, h] = win.getSize();
+    setPreferences({ windowWidth: w, windowHeight: h });
+  });
   win.webContents.setWindowOpenHandler((details) => {
     void shell.openExternal(details.url);
     return { action: 'deny' };
@@ -69,9 +77,11 @@ function createMainWindow(): BrowserWindow {
 
 async function pickDirectory(): Promise<string | null> {
   if (!mainWindow) return null;
+  const last = getPreferences().lastScanRoot;
   const r = await dialog.showOpenDialog(mainWindow, {
     title: 'Choose a folder to scan',
-    properties: ['openDirectory', 'createDirectory']
+    properties: ['openDirectory', 'createDirectory'],
+    ...(last ? { defaultPath: last } : {})
   });
   if (r.canceled || r.filePaths.length === 0) return null;
   return r.filePaths[0];
@@ -202,9 +212,10 @@ function registerIpc(): void {
   ipcMain.handle('purpletree:pick-directory', () => pickDirectory());
 
   // ----- Scan -----
-  ipcMain.handle('purpletree:scan-start', (_e, rootPath: string, opts: ScanOptions) =>
-    controller.startScan(rootPath, opts)
-  );
+  ipcMain.handle('purpletree:scan-start', (_e, rootPath: string, opts: ScanOptions) => {
+    setPreferences({ lastScanRoot: rootPath });
+    return controller.startScan(rootPath, opts);
+  });
   ipcMain.handle('purpletree:scan-cancel', (_e, scanId: string) => controller.cancelScan(scanId));
 
   ipcMain.handle(

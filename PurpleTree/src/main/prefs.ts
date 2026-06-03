@@ -25,6 +25,12 @@ export interface Preferences {
   backupRetentionDays: number;
   /** ms epoch of the last successful backup (debounce + UI readout). */
   lastBackupMs: number;
+  // ----- UX state -----
+  /** Last folder the user scanned (pre-fills the folder picker). */
+  lastScanRoot: string;
+  /** Main window size, restored on next launch. */
+  windowWidth: number;
+  windowHeight: number;
 }
 
 function defaultExportDir(): string {
@@ -35,14 +41,17 @@ function defaultBackupPath(): string {
 }
 
 const DEFAULTS: Preferences = {
-  version: 1,
+  version: 2,
   scanOptions: { ...DEFAULT_SCAN_OPTIONS },
   permanentDeleteEnabled: false,
   exportDir: defaultExportDir(),
   autoBackupEnabled: true,
   backupPath: defaultBackupPath(),
   backupRetentionDays: 14,
-  lastBackupMs: 0
+  lastBackupMs: 0,
+  lastScanRoot: '',
+  windowWidth: 1340,
+  windowHeight: 860
 };
 
 let store: Store<Preferences> | null = null;
@@ -66,7 +75,12 @@ function migrate(s: Store<Preferences>): void {
     s.set('lastBackupMs', s.get('lastBackupMs', 0) ?? 0);
     s.set('version', 1);
   }
-  // Future: if (v < 2) { ... s.set('version', 2); }
+  if (v < 2) {
+    s.set('lastScanRoot', s.get('lastScanRoot', '') ?? '');
+    s.set('windowWidth', s.get('windowWidth', DEFAULTS.windowWidth) ?? DEFAULTS.windowWidth);
+    s.set('windowHeight', s.get('windowHeight', DEFAULTS.windowHeight) ?? DEFAULTS.windowHeight);
+    s.set('version', 2);
+  }
 }
 
 export function getPreferences(): Preferences {
@@ -79,7 +93,10 @@ export function getPreferences(): Preferences {
     autoBackupEnabled: s.get('autoBackupEnabled', DEFAULTS.autoBackupEnabled),
     backupPath: s.get('backupPath', DEFAULTS.backupPath),
     backupRetentionDays: s.get('backupRetentionDays', DEFAULTS.backupRetentionDays),
-    lastBackupMs: s.get('lastBackupMs', DEFAULTS.lastBackupMs)
+    lastBackupMs: s.get('lastBackupMs', DEFAULTS.lastBackupMs),
+    lastScanRoot: s.get('lastScanRoot', DEFAULTS.lastScanRoot),
+    windowWidth: s.get('windowWidth', DEFAULTS.windowWidth),
+    windowHeight: s.get('windowHeight', DEFAULTS.windowHeight)
   };
 }
 

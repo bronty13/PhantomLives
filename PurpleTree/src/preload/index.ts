@@ -25,6 +25,9 @@ interface Prefs {
   backupPath: string;
   backupRetentionDays: number;
   lastBackupMs: number;
+  lastScanRoot: string;
+  windowWidth: number;
+  windowHeight: number;
 }
 
 type Unsub = () => void;
