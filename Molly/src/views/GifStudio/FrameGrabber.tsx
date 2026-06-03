@@ -3,6 +3,7 @@ import { open, save } from '@tauri-apps/plugin-dialog';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { downloadDir, join } from '@tauri-apps/api/path';
 import { captureFrame, type CropBox, type GifQuality } from './encodeGif';
+import { useVideoStage } from './useVideoStage';
 import type { GifSource } from './GifCreator';
 
 interface Props {
@@ -35,6 +36,7 @@ export function FrameGrabber({ bundleVideos = [], initialVideo = null, onUseAsTh
   const [error, setError] = useState<string | null>(null);
 
   const videoSrc = source ? convertFileSrc(source.absolutePath) : null;
+  const stage = useVideoStage(videoRef, source?.absolutePath);
 
   useEffect(() => () => { if (result) URL.revokeObjectURL(result.url); }, [result]);
 
@@ -186,7 +188,8 @@ export function FrameGrabber({ bundleVideos = [], initialVideo = null, onUseAsTh
             {/* Preview + crop overlay */}
             <div className="relative inline-block max-w-full bg-black/5 rounded-lg overflow-hidden select-none">
               <video ref={videoRef} src={videoSrc} onLoadedMetadata={onLoadedMetadata} className="block max-h-[44vh] max-w-full" muted playsInline preload="auto" />
-              <div ref={overlayRef} className="absolute inset-0 cursor-crosshair"
+              <div ref={overlayRef} className="absolute cursor-crosshair"
+                style={stage ? { left: stage.left, top: stage.top, width: stage.width, height: stage.height } : { inset: 0 }}
                 onMouseDown={onOverlayDown} onMouseMove={onOverlayMove} onMouseUp={onOverlayUp} onMouseLeave={onOverlayUp}>
                 {cropStyle && <div className="absolute border-2 border-pink-400 bg-pink-300/20" style={cropStyle} />}
               </div>

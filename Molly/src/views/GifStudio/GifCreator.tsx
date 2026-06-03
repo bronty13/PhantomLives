@@ -13,6 +13,7 @@ import {
   type GifSettings,
 } from './encodeGif';
 import { recordClip, supportedClipType, MP4_MAX_DURATION_S, MP4_MAX_BYTES } from './recordMp4';
+import { useVideoStage } from './useVideoStage';
 
 export interface GifSource {
   absolutePath: string;
@@ -66,6 +67,7 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
   const [mp4, setMp4] = useState<{ url: string; bytes: Uint8Array; ext: string; audioIncluded: boolean } | null>(null);
 
   const videoSrc = source ? convertFileSrc(source.absolutePath) : null;
+  const stage = useVideoStage(videoRef, source?.absolutePath);
 
   // Revoke object URLs when results change / unmount.
   useEffect(() => () => { if (result) URL.revokeObjectURL(result.url); }, [result]);
@@ -324,7 +326,8 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
               />
               <div
                 ref={overlayRef}
-                className="absolute inset-0 cursor-crosshair"
+                className="absolute cursor-crosshair"
+                style={stage ? { left: stage.left, top: stage.top, width: stage.width, height: stage.height } : { inset: 0 }}
                 onMouseDown={onOverlayDown}
                 onMouseMove={onOverlayMove}
                 onMouseUp={onOverlayUp}

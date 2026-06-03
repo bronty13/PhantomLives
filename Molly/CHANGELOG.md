@@ -4,6 +4,18 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.27.4] — 2026-06-03
+
+### Fixed — crop overlay now matches the actual video box
+
+The crop overlay was sized to a wrapper that could be wider than the
+rendered video (the video sat left-aligned in a wider container), so
+dragging across the visible frame only reached part-way and "select
+whole frame" couldn't cover it — in both 16:9 and 9:16. The overlay is
+now measured to the `<video>` element's real on-screen box
+(`useVideoStage`, via a ResizeObserver), so a corner-to-corner drag and
+"select whole frame" both map to the entire frame regardless of aspect.
+
 ## [1.27.3] — 2026-06-03
 
 ### Changed — clearer teaser label + "whole frame" crop
