@@ -152,6 +152,7 @@ pub fn teaser_args(
     dur_sec: f64,
     spec: &FilterSpec,
     include_audio: bool,
+    video_max_kbps: u32,
 ) -> Vec<String> {
     let mut a = base_args();
     a.extend(["-ss".into(), fmt_secs(start_sec), "-t".into(), fmt_secs(dur_sec)]);
@@ -165,10 +166,15 @@ pub fn teaser_args(
         // `?` makes the audio map optional so silent sources don't error.
         a.extend(["-map".into(), "0:a?".into()]);
     }
+    // Quality-first: CRF 20 (visually high) with a `maxrate` ceiling derived
+    // from the 100 MB / duration budget, so short clips stay near-lossless and
+    // long ones fill the budget without ever overflowing it (no truncation).
     a.extend([
         "-c:v".into(), "libx264".into(),
-        "-crf".into(), "23".into(),
-        "-preset".into(), "veryfast".into(),
+        "-preset".into(), "medium".into(),
+        "-crf".into(), "20".into(),
+        "-maxrate".into(), format!("{video_max_kbps}k"),
+        "-bufsize".into(), format!("{}k", video_max_kbps.saturating_mul(2)),
         "-pix_fmt".into(), "yuv420p".into(),
     ]);
     if include_audio {
@@ -181,6 +187,16 @@ pub fn teaser_args(
     ]);
     a.push(out.into());
     a
+}
+
+/// Video bitrate ceiling (kbps) that keeps `dur_sec` under the 100 MB cap,
+/// leaving room for audio. Used as x264 `-maxrate` alongside CRF. Pure.
+pub fn teaser_video_max_kbps(dur_sec: f64, include_audio: bool) -> u32 {
+    let d = dur_sec.max(0.2);
+    // 100 MB * 8 bits * 0.95 headroom, in kbits, over the duration.
+    let total_kbps = (104_857_600.0 * 8.0 * 0.95 / d / 1000.0) as u32;
+    let audio_kbps = if include_audio { 128 } else { 0 };
+    total_kbps.saturating_sub(audio_kbps).max(1000)
 }
 
 /// argv for a single-frame JPEG grab.
@@ -320,9 +336,13 @@ mod tests {
     #[test]
     fn teaser_args_have_h264_aac_faststart_and_optional_audio() {
         let spec = spec(None, false, None, false);
-        let with_audio = teaser_args("in.mov", "out.mp4", None, 0.3, 2.7, &spec, true);
+        let with_audio = teaser_args("in.mov", "out.mp4", None, 0.3, 2.7, &spec, true, 8000);
         let joined = with_audio.join(" ");
         assert!(joined.contains("-c:v libx264"));
+        assert!(joined.contains("-preset medium"));
+        assert!(joined.contains("-crf 20"));
+        assert!(joined.contains("-maxrate 8000k"));
+        assert!(joined.contains("-bufsize 16000k"));
         assert!(joined.contains("-pix_fmt yuv420p"));
         assert!(joined.contains("-movflags +faststart"));
         assert!(joined.contains("-c:a aac"));
@@ -330,10 +350,21 @@ mod tests {
         assert!(joined.contains("-ss 0.300 -t 2.700"));
         assert!(joined.contains("-fs 104857600"));
 
-        let no_audio = teaser_args("in.mov", "out.mp4", None, 0.0, 5.0, &spec, false);
+        let no_audio = teaser_args("in.mov", "out.mp4", None, 0.0, 5.0, &spec, false, 8000);
         let j2 = no_audio.join(" ");
         assert!(!j2.contains("-c:a aac"));
         assert!(!j2.contains("0:a?"));
+    }
+
+    #[test]
+    fn teaser_budget_fits_100mb_and_clamps() {
+        // 60s with audio: total ~13.3 Mbps − 128 kbps audio, comfortably > 1 Mbps.
+        let k = teaser_video_max_kbps(60.0, true);
+        assert!(k > 10_000 && k < 14_000);
+        // total bits ≈ (k + 128) kbps * 60s, must stay under 100 MB.
+        assert!(((k + 128) as f64) * 1000.0 * 60.0 / 8.0 <= 104_857_600.0);
+        // Very long clip clamps to the 1 Mbps floor.
+        assert_eq!(teaser_video_max_kbps(100_000.0, true), 1000);
     }
 
     #[test]
@@ -370,7 +401,7 @@ mod tests {
         let s = spec(None, false, Some(12), false);
         for args in [
             gif_args("i", "o.gif", None, 1.0, 2.0, &s, 256),
-            teaser_args("i", "o.mp4", None, 1.0, 2.0, &s, true),
+            teaser_args("i", "o.mp4", None, 1.0, 2.0, &s, true, 8000),
             frame_args("i", "o.jpg", None, 1.0, &s),
         ] {
             let j = args.join(" ");

@@ -161,6 +161,7 @@ pub async fn generate_teaser_mp4<R: Runtime>(
         dur,
         &spec,
         params.include_audio,
+        filters::teaser_video_max_kbps(dur, params.include_audio),
     );
     let bin = ffmpeg_path::ffmpeg_bin(&handle);
     engine::run_ffmpeg(&bin, &args, dur, 600, |f| {

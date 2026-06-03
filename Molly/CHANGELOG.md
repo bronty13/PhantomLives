@@ -4,6 +4,19 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.29.1] — 2026-06-03
+
+### Fixed — teaser MP4 now exports at near-native resolution (sharp, not tiny)
+
+1.29.0's MP4 export reused the GIF width control (≤640 px), so clips came out
+small/low-res. The teaser MP4 now encodes at **near-native resolution** (the
+source size, capped at 1920 px on the long edge to keep 4K sane) instead of the
+GIF width, and uses a **quality-first encode**: libx264 `-preset medium -crf 20`
+with a `-maxrate` ceiling derived from the 100 MB / duration budget
+(`teaser_video_max_kbps`) + `-bufsize`. Short clips stay near-lossless; long
+ones fill the budget without ever overflowing 100 MB (no truncation). The GIF
+path is unchanged (still ≤640 px — GIFs balloon at high res).
+
 ## [1.29.0] — 2026-06-03
 
 ### Changed — GIF Studio now runs on a bundled native ffmpeg (any iPhone format works)

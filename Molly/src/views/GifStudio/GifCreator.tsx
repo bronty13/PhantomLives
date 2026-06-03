@@ -243,7 +243,10 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
       // MP4 allows a longer clip than the GIF (≤60s); use the raw trim capped
       // to the MP4 ceiling, not the GIF-clamped 15s.
       const endCapped = Math.min(endSec, startSec + MP4_MAX_DURATION_S);
-      const { probe, width, height, cropPx, captionPng } = await geometryFor(outputWidth, settings.crop, settings.caption);
+      // Encode near native resolution for quality (not the small GIF width);
+      // computeOutputSize caps to the source, and the engine fits it under
+      // 100 MB via a budget-derived bitrate ceiling. 1920 keeps 4K sane.
+      const { probe, width, height, cropPx, captionPng } = await geometryFor(1920, settings.crop, settings.caption);
       const bytes = await generateTeaserMp4({
         absolutePath: source.absolutePath,
         startSec, endSec: endCapped,
