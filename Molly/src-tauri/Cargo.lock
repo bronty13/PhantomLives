@@ -2555,7 +2555,7 @@ dependencies = [
 
 [[package]]
 name = "molly"
-version = "1.28.2"
+version = "1.28.3"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",

@@ -4,6 +4,32 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.28.3] — 2026-06-03
+
+### Fixed — .mov sources no longer rejected by a wrong blob MIME; clearer codec guidance
+
+Two follow-ups to the 1.28.2 blob-source change:
+
+- **`.mov` MIME regression.** 1.28.2 labelled the source blob by extension,
+  tagging `.mov` as `video/quicktime` — a type Chromium/WebView2 does **not**
+  advertise support for, so the `<video>` element refused the file even when
+  the H.264 inside was perfectly decodable. Now we only set explicit,
+  known-good types for `mp4`/`webm` and leave `mov`/`mkv`/`avi` blank so the
+  engine sniffs the bytes (the same way `convertFileSrc` used to).
+- **Honest, helpful decode error.** The old message said "On a Mac, .mov
+  files sometimes won't decode" — backwards and confusing on Windows. When the
+  WebView genuinely can't decode a video's frames (`videoWidth === 0`), Molly
+  now explains it's usually an **iPhone HEVC/H.265 .mov** (Chromium/WebView2
+  has no HEVC decoder; Safari/WKWebView on macOS does — hence "works on my
+  Mac"), and points to an **H.264 .mp4** or Microsoft's free **"HEVC Video
+  Extensions"**. It's surfaced on load (not just at export) across GIF export,
+  MP4 export, and the Frame Grabber.
+
+> Known limitation: Molly still can't *decode* HEVC itself on Windows — it
+> relies on the WebView. iPhone HEVC clips need either the HEVC Video
+> Extensions installed or conversion to H.264. Auto-transcoding is a possible
+> future addition.
+
 ## [1.28.2] — 2026-06-03
 
 ### Fixed — the *real* Windows fix: source video loads same-origin so the canvas isn't tainted

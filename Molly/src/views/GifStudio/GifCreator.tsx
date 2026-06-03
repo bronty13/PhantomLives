@@ -12,7 +12,7 @@ import {
   type GifSettings,
 } from './encodeGif';
 import { recordClip, recordClipWebCodecs, bestClipEngine, MP4_MAX_DURATION_S, MP4_MAX_BYTES } from './recordMp4';
-import { loadVideoObjectUrl } from './sourceUrl';
+import { loadVideoObjectUrl, DECODE_HELP } from './sourceUrl';
 import { useVideoStage } from './useVideoStage';
 
 export interface GifSource {
@@ -104,6 +104,13 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
     const d = v.duration || 0;
     setDuration(d);
     setEndSec(Math.min(d || 3, Math.max(1, Math.min(3, d || 3))));
+    // No decodable frames (e.g. iPhone HEVC on Windows) → tell Sallie now,
+    // not only when she hits Export.
+    if (!v.videoWidth || !v.videoHeight) setError(DECODE_HELP);
+  }
+
+  function onVideoError() {
+    setError(DECODE_HELP);
   }
 
   async function pickFromDisk() {
@@ -176,7 +183,7 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'image/gif' }));
       setResult({ url, bytes });
     } catch (e) {
-      setError(`Couldn't make the GIF: ${e}. On a Mac, .mov files sometimes won't decode — try an .mp4.`);
+      setError(`Couldn't make the GIF: ${e}. ${DECODE_HELP}`);
     } finally {
       setEncoding(false);
       setProgress(null);
@@ -247,7 +254,7 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
         setError(`Heads up: that clip came out ${(out.bytes.length / (1024 * 1024)).toFixed(0)} MB, over the 100 MB target. Try a shorter trim, smaller width, or lower fps.`);
       }
     } catch (e) {
-      setError(`Couldn't record the clip: ${e}. On a Mac, .mov files sometimes won't decode — try an .mp4.`);
+      setError(`Couldn't record the clip: ${e}. ${DECODE_HELP}`);
     } finally {
       setRecording(false);
       setRecProgress(0);
@@ -339,6 +346,7 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
                 ref={videoRef}
                 src={videoSrc}
                 onLoadedMetadata={onLoadedMetadata}
+                onError={onVideoError}
                 className="block max-h-[40vh] max-w-full"
                 muted
                 playsInline

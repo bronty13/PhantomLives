@@ -1,17 +1,28 @@
 import { readFileBytes } from '../../data/bundles';
 
-/** Guess a video MIME type from a filename so the <video> element and any
- * decoder pick the right demuxer. */
+/** Friendly guidance shown when the WebView can't decode a source video's
+ * frames. The usual Windows culprit is iPhone HEVC/H.265 (.mov) — Chromium /
+ * WebView2 has no built-in HEVC decoder (Safari/WKWebView on macOS does, which
+ * is why such clips work on a Mac but not Windows). */
+export const DECODE_HELP =
+  "Windows may not be able to decode this video's format — iPhone HEVC/H.265 .mov clips are the usual culprit. " +
+  'Try an H.264 .mp4, or install Microsoft’s free "HEVC Video Extensions" from the Store and reopen the video.';
+
+/** Pick a blob MIME type the WebView will actually accept. We give explicit,
+ * known-good types for the containers Chromium/WebView2 supports natively, and
+ * leave the rest blank so the engine sniffs the bytes instead of rejecting an
+ * unsupported container label. (Notably `video/quicktime` for .mov is NOT
+ * something Chromium claims to support — labelling a .mov that way makes the
+ * <video> element refuse it even when the H.264 inside is perfectly decodable,
+ * so we let .mov sniff.) */
 function videoMimeFor(name: string): string {
   const ext = name.toLowerCase().split('.').pop() ?? '';
   switch (ext) {
     case 'mp4':
     case 'm4v': return 'video/mp4';
-    case 'mov': return 'video/quicktime';
     case 'webm': return 'video/webm';
-    case 'mkv': return 'video/x-matroska';
-    case 'avi': return 'video/x-msvideo';
-    default: return 'video/mp4';
+    // mov / mkv / avi and anything else: let the engine sniff the bytes.
+    default: return '';
   }
 }
 

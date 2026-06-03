@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { downloadDir, join } from '@tauri-apps/api/path';
 import { captureFrame, type CropBox, type GifQuality } from './encodeGif';
-import { loadVideoObjectUrl } from './sourceUrl';
+import { loadVideoObjectUrl, DECODE_HELP } from './sourceUrl';
 import { useVideoStage } from './useVideoStage';
 import type { GifSource } from './GifCreator';
 
@@ -133,7 +133,7 @@ export function FrameGrabber({ bundleVideos = [], initialVideo = null, onUseAsTh
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'image/jpeg' }));
       setResult({ url, bytes });
     } catch (e) {
-      setError(`Couldn't grab the frame: ${e}. On a Mac, .mov files sometimes won't decode — try an .mp4.`);
+      setError(`Couldn't grab the frame: ${e}. ${DECODE_HELP}`);
     } finally {
       setBusy(false);
     }

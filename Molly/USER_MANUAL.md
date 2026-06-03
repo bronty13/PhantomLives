@@ -629,7 +629,7 @@ Right next to **Generate GIF** there's a **🎬 Export MP4 clip** button! It mak
 
 Your MP4s stay nice and tidy — **up to 60 seconds** and **under 100 MB** — so they're easy to send. On your Windows machine you'll get a **true, real `.mp4`** that opens right up in Movies & TV, Media Player, and anywhere you upload it — I build the video properly now so it's never a fussy "this file is corrupt" again. 💖 And everything happens right on your own computer, nothing uploaded anywhere. ✨
 
-*A tiny note from me:* on a Mac, some `.mov` files are shy and won't preview — if a video won't load, try an `.mp4`. On your Windows machine your clips play nicely everywhere. 🩷
+*A tiny note from me:* if I say I **can't read a video's format**, it's almost always an **iPhone video** (those `.mov` clips in fancy HEVC/H.265). Windows doesn't know how to open those out of the box, but two easy fixes: ① pop into the **Microsoft Store** and grab the **free "HEVC Video Extensions"**, then reopen the clip 💝, or ② use an **`.mp4`** version. (On a Mac they just work — Macs speak iPhone natively 🍎.) Once the video previews, your GIF, MP4, and thumbnail will all be happy too! 🌈
 
 ### 🖼️ Frame Grabber — snag the *perfect* cover frame
 
