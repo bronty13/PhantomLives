@@ -502,6 +502,24 @@ The app **must** be launched from the `.app` bundle for SwiftUI's `WindowGroup`,
     cleanup) — note explicitly that the build was skipped and why.
   - Tests are failing — fix them first, then build.
   - User explicitly said don't build / don't install in this turn.
+- **NEVER substitute `npm run build && ./install.sh` (or `./install.sh`
+  alone) for `./build-app.sh` on Electron apps.** `npm run build` only
+  rebuilds the JS into `out/`; it does NOT repackage the `.app`.
+  `install.sh` copies the *pre-packaged* bundle from `dist/`, so this
+  combo ships a STALE binary to `/Applications` while still printing
+  "Launching" as if it worked. Only `build-app.sh` runs
+  `electron-builder --dir` to regenerate `dist/` first. (Incident:
+  PurpleTree v1.0.2–v1.1.1 were "shipped" this way; `/Applications`
+  stayed frozen at v1.0.1 across 6 builds and no fix reached the user.)
+- **MANDATORY post-install version check — every time, no exceptions.**
+  After `build-app.sh`, confirm the deployed bundle actually updated:
+  `defaults read "/Applications/<App>.app/Contents/Info.plist"
+  CFBundleShortVersionString` MUST equal the `version` in the
+  subproject's `package.json` (Electron) or the git-derived version
+  (Swift). If it doesn't match, the install silently failed — a live old
+  instance can make `open` re-focus the stale copy. Recover with
+  `pkill -9 -f "<App>"` then re-run `build-app.sh`, and re-verify. Do not
+  report "installed/launched" until the version check passes.
 - After UI/icon changes on macOS, always force-clear icon caches (`touch app bundle`, `killall Finder Dock`) and rebuild — visible icon updates often need a second cache-bust pass.
 - After any build, launch the app and confirm the change is visible before declaring done.
 - Run the full test suite before committing; report pass/fail count (e.g., '455/455 passing').
