@@ -316,7 +316,7 @@ export function ContentBundleForm({ uid, onPublishRequested, onClose, onDeleted,
           disabled={busy || locked}
           accessory={
             <button type="button" className="pretty-button secondary" disabled={busy || locked} onClick={() => setGifOpen(true)}>
-              ✨ Make a GIF from a video
+              ✨ Make Teaser Video/GIF
             </button>
           }
         />

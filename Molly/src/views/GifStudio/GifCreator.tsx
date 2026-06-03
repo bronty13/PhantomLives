@@ -283,7 +283,7 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
       <>
         {!embedded && (
           <div className="flex items-center justify-between">
-            <h2 className="display-font text-xl font-bold">🎞️ Make a GIF from a video</h2>
+            <h2 className="display-font text-xl font-bold">🎞️ Make a Teaser Video/GIF</h2>
             <button type="button" onClick={onClose} className="pretty-button secondary text-xs">Close</button>
           </div>
         )}
@@ -336,7 +336,9 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
               </div>
             </div>
             <div className="text-xs opacity-60">
-              Drag on the preview to crop. {crop && <button type="button" className="underline" onClick={() => setCrop(null)}>Clear crop</button>}
+              Cropping is optional — without it you get the whole frame. Drag on the preview to crop, or{' '}
+              <button type="button" className="underline" onClick={() => setCrop({ x: 0, y: 0, w: 1, h: 1 })}>select whole frame</button>.
+              {crop && <> · <button type="button" className="underline" onClick={() => setCrop(null)}>Clear crop</button></>}
             </div>
 
             {/* Trim */}

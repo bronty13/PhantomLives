@@ -4,6 +4,16 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.27.3] — 2026-06-03
+
+### Changed — clearer teaser label + "whole frame" crop
+
+- **Relabeled** the bundle teaser action and wizard title from "Make a GIF
+  from a video" to **"Make Teaser Video/GIF"**, since it now produces both.
+- **Crop tool now has a "select whole frame" button** in both the GIF/Video
+  wizard and the Frame Grabber, and clarifies that cropping is optional
+  (no crop = the full frame). Makes it easy to keep the entire 16:9 frame.
+
 ## [1.27.2] — 2026-06-03
 
 ### Changed — exports default to Downloads + `_tease`; bundle wizard attaches instead of downloading

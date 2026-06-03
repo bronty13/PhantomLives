@@ -192,7 +192,9 @@ export function FrameGrabber({ bundleVideos = [], initialVideo = null, onUseAsTh
               </div>
             </div>
             <div className="text-xs opacity-60">
-              Drag on the preview to crop. {crop && <button type="button" className="underline" onClick={() => setCrop(null)}>Clear crop</button>}
+              Cropping is optional — without it you get the whole frame. Drag on the preview to crop, or{' '}
+              <button type="button" className="underline" onClick={() => setCrop({ x: 0, y: 0, w: 1, h: 1 })}>select whole frame</button>.
+              {crop && <> · <button type="button" className="underline" onClick={() => setCrop(null)}>Clear crop</button></>}
             </div>
 
             {/* Scrub */}
