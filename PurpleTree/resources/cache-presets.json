@@ -1,0 +1,74 @@
+[
+  {
+    "id": "mac-user-caches",
+    "label": "User Caches",
+    "description": "App caches under ~/Library/Caches. Apps rebuild these automatically; safe to clear when an app is quit.",
+    "platform": "darwin",
+    "riskLevel": "medium",
+    "paths": ["${HOME}/Library/Caches"]
+  },
+  {
+    "id": "mac-user-logs",
+    "label": "User Logs",
+    "description": "Diagnostic logs under ~/Library/Logs. Removing them only loses history.",
+    "platform": "darwin",
+    "riskLevel": "low",
+    "paths": ["${HOME}/Library/Logs"]
+  },
+  {
+    "id": "mac-trash",
+    "label": "Trash",
+    "description": "Items already in your Trash (~/.Trash). Emptying frees the space for good.",
+    "platform": "darwin",
+    "riskLevel": "low",
+    "paths": ["${HOME}/.Trash"]
+  },
+  {
+    "id": "mac-xcode-derived",
+    "label": "Xcode DerivedData",
+    "description": "Xcode build intermediates (~/Library/Developer/Xcode/DerivedData). Rebuilt on next build.",
+    "platform": "darwin",
+    "riskLevel": "low",
+    "paths": ["${HOME}/Library/Developer/Xcode/DerivedData"]
+  },
+  {
+    "id": "mac-ios-device-support",
+    "label": "iOS Device Support",
+    "description": "Cached symbols for old iOS versions (~/Library/Developer/Xcode/iOS DeviceSupport). Re-downloaded when you connect a device.",
+    "platform": "darwin",
+    "riskLevel": "medium",
+    "paths": ["${HOME}/Library/Developer/Xcode/iOS DeviceSupport"]
+  },
+  {
+    "id": "mac-npm-cache",
+    "label": "npm Cache",
+    "description": "npm's package cache (~/.npm/_cacache). Re-downloaded on next install.",
+    "platform": "darwin",
+    "riskLevel": "low",
+    "paths": ["${HOME}/.npm/_cacache"]
+  },
+  {
+    "id": "win-temp",
+    "label": "Temp Files",
+    "description": "Per-user temp files (%LOCALAPPDATA%\\Temp and %TMP%). Safe to clear when apps are closed.",
+    "platform": "win32",
+    "riskLevel": "low",
+    "paths": ["${LOCALAPPDATA}\\Temp", "${TMPDIR}"]
+  },
+  {
+    "id": "win-thumbnail-cache",
+    "label": "Thumbnail Cache",
+    "description": "Explorer thumbnail/icon caches. Rebuilt automatically as you browse.",
+    "platform": "win32",
+    "riskLevel": "medium",
+    "paths": ["${LOCALAPPDATA}\\Microsoft\\Windows\\Explorer"]
+  },
+  {
+    "id": "win-npm-cache",
+    "label": "npm Cache",
+    "description": "npm's package cache (%LOCALAPPDATA%\\npm-cache). Re-downloaded on next install.",
+    "platform": "win32",
+    "riskLevel": "low",
+    "paths": ["${LOCALAPPDATA}\\npm-cache"]
+  }
+]

@@ -1,0 +1,102 @@
+/**
+ * @file prefs.ts — per-install user preferences.
+ *
+ * Persists to `<userData>/purple-tree-prefs.json` via electron-store. The
+ * schema is versioned so migrations can run across releases without losing
+ * user customisations.
+ */
+import Store from 'electron-store';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { DEFAULT_SCAN_OPTIONS, type ScanOptions } from '../shared/types';
+
+export interface Preferences {
+  /** Bumped whenever the schema changes; migrations run on load. */
+  version: number;
+  /** Default options applied to new scans. */
+  scanOptions: ScanOptions;
+  /** Allow the guarded permanent-delete action (off = trash only). */
+  permanentDeleteEnabled: boolean;
+  /** Default directory for exported reports. */
+  exportDir: string;
+  // ----- Backup standard -----
+  autoBackupEnabled: boolean;
+  backupPath: string;
+  backupRetentionDays: number;
+  /** ms epoch of the last successful backup (debounce + UI readout). */
+  lastBackupMs: number;
+}
+
+function defaultExportDir(): string {
+  return join(homedir(), 'Downloads', 'Purple Tree');
+}
+function defaultBackupPath(): string {
+  return join(homedir(), 'Downloads', 'Purple Tree backup');
+}
+
+const DEFAULTS: Preferences = {
+  version: 1,
+  scanOptions: { ...DEFAULT_SCAN_OPTIONS },
+  permanentDeleteEnabled: false,
+  exportDir: defaultExportDir(),
+  autoBackupEnabled: true,
+  backupPath: defaultBackupPath(),
+  backupRetentionDays: 14,
+  lastBackupMs: 0
+};
+
+let store: Store<Preferences> | null = null;
+function getStore(): Store<Preferences> {
+  if (!store) {
+    store = new Store<Preferences>({ name: 'purple-tree-prefs', defaults: DEFAULTS });
+    migrate(store);
+  }
+  return store;
+}
+
+function migrate(s: Store<Preferences>): void {
+  const v = s.get('version', 0);
+  if (v < 1) {
+    s.set('scanOptions', s.get('scanOptions', DEFAULTS.scanOptions) ?? DEFAULTS.scanOptions);
+    s.set('permanentDeleteEnabled', s.get('permanentDeleteEnabled', false) ?? false);
+    s.set('exportDir', s.get('exportDir', DEFAULTS.exportDir) ?? DEFAULTS.exportDir);
+    s.set('autoBackupEnabled', s.get('autoBackupEnabled', true) ?? true);
+    s.set('backupPath', s.get('backupPath', DEFAULTS.backupPath) ?? DEFAULTS.backupPath);
+    s.set('backupRetentionDays', s.get('backupRetentionDays', 14) ?? 14);
+    s.set('lastBackupMs', s.get('lastBackupMs', 0) ?? 0);
+    s.set('version', 1);
+  }
+  // Future: if (v < 2) { ... s.set('version', 2); }
+}
+
+export function getPreferences(): Preferences {
+  const s = getStore();
+  return {
+    version: s.get('version', DEFAULTS.version),
+    scanOptions: s.get('scanOptions', DEFAULTS.scanOptions),
+    permanentDeleteEnabled: s.get('permanentDeleteEnabled', DEFAULTS.permanentDeleteEnabled),
+    exportDir: s.get('exportDir', DEFAULTS.exportDir),
+    autoBackupEnabled: s.get('autoBackupEnabled', DEFAULTS.autoBackupEnabled),
+    backupPath: s.get('backupPath', DEFAULTS.backupPath),
+    backupRetentionDays: s.get('backupRetentionDays', DEFAULTS.backupRetentionDays),
+    lastBackupMs: s.get('lastBackupMs', DEFAULTS.lastBackupMs)
+  };
+}
+
+/** Merge-set: only provided keys are overwritten (version is migration-managed). */
+export function setPreferences(patch: Partial<Preferences>): Preferences {
+  const s = getStore();
+  for (const [k, v] of Object.entries(patch)) {
+    if (k === 'version') continue;
+    s.set(k as keyof Preferences, v as never);
+  }
+  return getPreferences();
+}
+
+export function resetPreferences(): Preferences {
+  const s = getStore();
+  for (const [k, v] of Object.entries(DEFAULTS)) {
+    s.set(k as keyof Preferences, v as never);
+  }
+  return getPreferences();
+}
