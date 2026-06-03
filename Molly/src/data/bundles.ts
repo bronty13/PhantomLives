@@ -248,6 +248,13 @@ export async function writeBytesToPath(
   await invoke('write_bytes_to_path', { targetPath, bytes: Array.from(bytes) });
 }
 
+/** Read a file's raw bytes over the binary IPC channel (efficient for media —
+ * returns an ArrayBuffer, not a JSON number array). */
+export async function readFileBytes(absolutePath: string): Promise<Uint8Array> {
+  const buf = await invoke<ArrayBuffer>('read_file_bytes', { path: absolutePath });
+  return new Uint8Array(buf);
+}
+
 export async function reorderBundleFiles(
   bundleUid: string,
   orderedIds: number[],

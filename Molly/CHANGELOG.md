@@ -4,7 +4,37 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.28.2] — 2026-06-03
+
+### Fixed — the *real* Windows fix: source video loads same-origin so the canvas isn't tainted
+
+This is the root cause behind both 1.28.0 (corrupt MP4) and 1.28.1 (it threw
+instead). The source `<video>` was loaded with `convertFileSrc`, i.e. Tauri's
+asset protocol — a **cross-origin** source with no CORS header. On Windows
+(WebView2) drawing that video onto a canvas **taints** the canvas, and a
+tainted canvas blocks *every* pixel operation the studio relies on:
+
+- `getImageData` → **GIF export** (so the GIF wizard was silently broken on
+  Windows too — same root cause, just never reported),
+- `new VideoFrame()` / `captureStream()` → **MP4 export** (the 1.28.0 / 1.28.1
+  errors), and
+- `toBlob` / `toDataURL` → **Frame Grabber** thumbnails.
+
+Fix: load the source from a **same-origin `blob:` URL** built from the file's
+bytes (new `read_file_bytes` command transfers them over the raw binary IPC
+channel; `loadVideoObjectUrl` wraps them in a `Blob`). A `blob:` URL is
+same-origin, so the canvas stays origin-clean and GIF, MP4, and Frame Grabber
+all work on Windows. Seeking stays instant (the whole file is in the blob),
+which the trim sliders depend on.
+
+- Both GIF Creator and Frame Grabber switched off `convertFileSrc`; export
+  buttons disable while the source loads, with a "loading video…" hint.
+- `crossOrigin="anonymous"` was not an option: Tauri's asset protocol can't
+  supply the matching `Access-Control-Allow-Origin` header
+  (tauri-apps/tauri#12999), so it would only break loading.
+- Trade-off: the source file is read fully into memory. Fine for typical
+  teaser sources; revisit with a CORS-enabled custom protocol if huge sources
+  become a problem.
 
 ### Changed — updater feed decoupled from the repo-wide "latest" release
 

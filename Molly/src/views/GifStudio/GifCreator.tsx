@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import { downloadDir, join } from '@tauri-apps/api/path';
 import {
   captureAndEncode,
@@ -13,6 +12,7 @@ import {
   type GifSettings,
 } from './encodeGif';
 import { recordClip, recordClipWebCodecs, bestClipEngine, MP4_MAX_DURATION_S, MP4_MAX_BYTES } from './recordMp4';
+import { loadVideoObjectUrl } from './sourceUrl';
 import { useVideoStage } from './useVideoStage';
 
 export interface GifSource {
@@ -66,7 +66,23 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
   const [recProgress, setRecProgress] = useState(0);
   const [mp4, setMp4] = useState<{ url: string; bytes: Uint8Array; ext: string; audioIncluded: boolean } | null>(null);
 
-  const videoSrc = source ? convertFileSrc(source.absolutePath) : null;
+  // Load the source as a same-origin blob: URL (not convertFileSrc, which is
+  // cross-origin and taints the canvas on Windows — see sourceUrl.ts).
+  const [videoSrc, setVideoSrc] = useState<string | null>(null);
+  const [loadingSrc, setLoadingSrc] = useState(false);
+  useEffect(() => {
+    if (!source) { setVideoSrc(null); return; }
+    let url: string | null = null;
+    let cancelled = false;
+    setLoadingSrc(true);
+    setError(null);
+    loadVideoObjectUrl(source.absolutePath, source.name)
+      .then((u) => { if (cancelled) { URL.revokeObjectURL(u); return; } url = u; setVideoSrc(u); })
+      .catch((e) => { if (!cancelled) setError(`Couldn't load that video: ${e}`); })
+      .finally(() => { if (!cancelled) setLoadingSrc(false); });
+    return () => { cancelled = true; if (url) URL.revokeObjectURL(url); };
+  }, [source]);
+
   const stage = useVideoStage(videoRef, source?.absolutePath);
 
   // Revoke object URLs when results change / unmount.
@@ -312,6 +328,7 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
           )}
           <button type="button" className="pretty-button secondary" onClick={pickFromDisk}>📁 Pick from disk</button>
           {source && <span className="text-sm opacity-70 font-mono truncate max-w-[16rem]">{source.name}</span>}
+          {loadingSrc && <span className="text-xs text-pink-600">loading video…</span>}
         </div>
 
         {videoSrc ? (
@@ -412,10 +429,10 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
 
             {/* Generate */}
             <div className="flex items-center gap-3 flex-wrap">
-              <button type="button" className="pretty-button" onClick={generate} disabled={encoding || recording}>
+              <button type="button" className="pretty-button" onClick={generate} disabled={encoding || recording || loadingSrc || !videoSrc}>
                 {encoding ? 'Making GIF…' : '✨ Generate GIF'}
               </button>
-              <button type="button" className="pretty-button secondary" onClick={exportMp4} disabled={encoding || recording || !clipType}
+              <button type="button" className="pretty-button secondary" onClick={exportMp4} disabled={encoding || recording || loadingSrc || !videoSrc || !clipType}
                 title={clipType ? '' : "This system's browser engine can't record video"}>
                 {recording ? 'Recording clip…' : '🎬 Export MP4 clip'}
               </button>

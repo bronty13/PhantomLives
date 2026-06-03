@@ -1931,6 +1931,20 @@ pub fn write_bytes_to_path(target_path: String, bytes: Vec<u8>) -> Result<(), Bu
     Ok(())
 }
 
+/// Read a file's raw bytes, returned over the binary IPC channel (raw, not a
+/// JSON number array) so large media transfers stay efficient. Backs loading a
+/// source video into a same-origin `blob:` URL in the GIF Creator / Frame
+/// Grabber. `convertFileSrc` serves files via Tauri's asset protocol, which is
+/// a *cross-origin* source with no CORS header — drawing such a `<video>` to a
+/// canvas taints it, and on Windows (WebView2) that blocks every pixel read
+/// (`getImageData`, `VideoFrame`, `captureStream`). A `blob:` URL is
+/// same-origin, so the canvas stays origin-clean.
+#[tauri::command]
+pub fn read_file_bytes(path: String) -> Result<tauri::ipc::Response, BundleError> {
+    let bytes = fs::read(Path::new(&path))?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 fn renumber_positions(
     conn: &Connection,
     uid: &str,

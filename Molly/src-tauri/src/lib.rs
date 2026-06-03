@@ -341,6 +341,7 @@ pub fn run() {
             bundles::save_bundle_clip,
             bundles::file_size,
             bundles::write_bytes_to_path,
+            bundles::read_file_bytes,
             bundles::delete_bundle_file,
             bundles::reorder_bundle_files,
             bundles::set_bundle_categories,

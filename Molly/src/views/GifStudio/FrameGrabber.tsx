@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import { downloadDir, join } from '@tauri-apps/api/path';
 import { captureFrame, type CropBox, type GifQuality } from './encodeGif';
+import { loadVideoObjectUrl } from './sourceUrl';
 import { useVideoStage } from './useVideoStage';
 import type { GifSource } from './GifCreator';
 
@@ -35,7 +35,23 @@ export function FrameGrabber({ bundleVideos = [], initialVideo = null, onUseAsTh
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const videoSrc = source ? convertFileSrc(source.absolutePath) : null;
+  // Same-origin blob: URL (not convertFileSrc) so the canvas stays
+  // origin-clean on Windows — see sourceUrl.ts.
+  const [videoSrc, setVideoSrc] = useState<string | null>(null);
+  const [loadingSrc, setLoadingSrc] = useState(false);
+  useEffect(() => {
+    if (!source) { setVideoSrc(null); return; }
+    let url: string | null = null;
+    let cancelled = false;
+    setLoadingSrc(true);
+    setError(null);
+    loadVideoObjectUrl(source.absolutePath, source.name)
+      .then((u) => { if (cancelled) { URL.revokeObjectURL(u); return; } url = u; setVideoSrc(u); })
+      .catch((e) => { if (!cancelled) setError(`Couldn't load that video: ${e}`); })
+      .finally(() => { if (!cancelled) setLoadingSrc(false); });
+    return () => { cancelled = true; if (url) URL.revokeObjectURL(url); };
+  }, [source]);
+
   const stage = useVideoStage(videoRef, source?.absolutePath);
 
   useEffect(() => () => { if (result) URL.revokeObjectURL(result.url); }, [result]);
@@ -181,6 +197,7 @@ export function FrameGrabber({ bundleVideos = [], initialVideo = null, onUseAsTh
           )}
           <button type="button" className="pretty-button secondary" onClick={pickFromDisk}>📁 Pick from disk</button>
           {source && <span className="text-sm opacity-70 font-mono truncate max-w-[16rem]">{source.name}</span>}
+          {loadingSrc && <span className="text-xs text-pink-600">loading video…</span>}
         </div>
 
         {videoSrc ? (
@@ -235,7 +252,7 @@ export function FrameGrabber({ bundleVideos = [], initialVideo = null, onUseAsTh
               </label>
             )}
 
-            <button type="button" className="pretty-button" onClick={capture} disabled={busy}>
+            <button type="button" className="pretty-button" onClick={capture} disabled={busy || loadingSrc || !videoSrc}>
               {busy ? 'Working…' : '📸 Capture frame'}
             </button>
 
