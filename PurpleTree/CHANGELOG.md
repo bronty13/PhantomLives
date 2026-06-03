@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.1.1] - 2026-06-03
+
+- Fix: **a scan can no longer hang forever on a dead mount.** Every filesystem
+  operation (`opendir`, `readdir`, `lstat`, `closedir`) now has a 20-second
+  timeout; if one wedges — e.g. an asleep SMB/network mount anywhere in the
+  tree, not just `~/Library/CloudStorage` — Purple Tree marks that directory
+  skipped and continues instead of stalling the whole crawl. (Previous async
+  rewrite made the scan *cancellable*; this makes it *self-healing*.)
+- The "Scanning…" view now force-shows the directory it's **about to open**, so
+  if it pauses you can see exactly which path is slow/stuck.
+
 ## [1.1.0] - 2026-06-03
 
 - **On-disk vs logical size, toggleable.** Purple Tree now tracks both the

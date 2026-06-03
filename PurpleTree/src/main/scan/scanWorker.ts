@@ -47,6 +47,25 @@ function post(evt: ScanEvent, transfer?: ArrayBuffer[]): void {
 const STAT_CONCURRENCY = 16;
 
 /**
+ * Hard ceiling on any single fs operation. A wedged readdir/lstat on a dead
+ * network/cloud mount (SMB asleep, etc.) would otherwise stall the whole scan
+ * forever — one hung syscall blocks the sequential crawl. On timeout we skip
+ * that entry/dir and continue. The underlying promise is abandoned (its libuv
+ * thread frees when the syscall eventually returns).
+ */
+const OP_TIMEOUT_MS = 20_000;
+
+class TimeoutError extends Error {}
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new TimeoutError('operation timed out')), ms);
+  });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer)) as Promise<T>;
+}
+
+/**
  * On-disk allocated size: blocks actually used × 512. Cloud placeholders and
  * sparse files use far fewer blocks than their logical size. Windows doesn't
  * report blocks, so fall back to the logical size there.
@@ -137,9 +156,9 @@ async function runScan(cmd: Extract<ScanCommand, { type: 'start' }>): Promise<vo
       const frame = stack.pop()!;
       currentPath = frame.path;
       dirsScanned++;
-      // Emit *before* opening so the UI shows the directory we're about to
-      // read — if it hangs, that path is the culprit.
-      emitProgress();
+      // Force-emit *before* opening so the UI always shows the directory we're
+      // about to read — if it then wedges, that path is the culprit.
+      emitProgress(true);
       try {
         await crawlFrame(frame);
       } catch {
@@ -160,20 +179,33 @@ async function runScan(cmd: Extract<ScanCommand, { type: 'start' }>): Promise<vo
   async function crawlFrame(frame: CrawlFrame): Promise<void> {
     let dir;
     try {
-      dir = await opendir(longPath(frame.path));
+      dir = await withTimeout(opendir(longPath(frame.path)), OP_TIMEOUT_MS);
     } catch {
+      // opendir failed or timed out (perm-denied, or a wedged mount) — skip.
       builder.addFlag(frame.id, FLAG_PERM_DENIED);
       permDeniedCount++;
       return;
     }
 
     try {
-      // Collect entry names (cheap), then lstat them in parallel batches so the
-      // libuv threadpool stays busy — much faster than one stat at a time on
-      // large directories. `for await` over the dir auto-closes the handle; a
-      // readdir failure mid-iteration throws here and is caught below.
+      // Read entry names with a per-read timeout (a wedged readdir on a dead
+      // mount can hang here), then lstat them in parallel batches so the libuv
+      // threadpool stays busy. Manual read()+close() (not `for await`) so each
+      // read can be bounded by withTimeout.
       const names: string[] = [];
-      for await (const entry of dir) names.push(entry.name);
+      for (;;) {
+        if (cancelled()) break;
+        let entry;
+        try {
+          entry = await withTimeout(dir.read(), OP_TIMEOUT_MS);
+        } catch {
+          builder.addFlag(frame.id, FLAG_PERM_DENIED);
+          permDeniedCount++;
+          break; // wedged readdir — stop reading this dir, keep the rest
+        }
+        if (entry === null) break;
+        names.push(entry.name);
+      }
 
       for (let i = 0; i < names.length; i += STAT_CONCURRENCY) {
         if (cancelled()) break;
@@ -184,9 +216,9 @@ async function runScan(cmd: Extract<ScanCommand, { type: 'start' }>): Promise<vo
               ? frame.path + name
               : frame.path + pathSep + name;
             try {
-              return { name, childPath, st: await lstat(longPath(childPath)) };
+              return { name, childPath, st: await withTimeout(lstat(longPath(childPath)), OP_TIMEOUT_MS) };
             } catch {
-              return null; // unreadable entry (race / permission) — skip
+              return null; // unreadable / timed-out entry — skip
             }
           })
         );
@@ -248,9 +280,17 @@ async function runScan(cmd: Extract<ScanCommand, { type: 'start' }>): Promise<vo
         emitProgress();
       }
     } catch {
-      // readdir failed mid-iteration (ETIMEDOUT etc.) — mark + move on.
+      // Unexpected error while processing the dir — mark + move on.
       builder.addFlag(frame.id, FLAG_PERM_DENIED);
       permDeniedCount++;
+    } finally {
+      // Manual read() means we own closing the handle (bounded by a timeout so
+      // a wedged close can't hang the scan either).
+      try {
+        await withTimeout(dir.close(), OP_TIMEOUT_MS);
+      } catch {
+        /* ignore */
+      }
     }
   }
 
