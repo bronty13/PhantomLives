@@ -114,19 +114,30 @@ export async function recordClip(
 
   return await new Promise((resolve, reject) => {
     let rafId = 0;
+    let hardStop: ReturnType<typeof setTimeout> | null = null;
     const restore = () => { video.muted = wasMuted; };
-    const cleanup = () => { cancelAnimationFrame(rafId); try { video.pause(); } catch { /* */ } restore(); };
+    const stop = () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      if (hardStop) { clearTimeout(hardStop); hardStop = null; }
+      if (rec.state !== 'inactive') rec.stop();
+    };
+    const cleanup = () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      if (hardStop) { clearTimeout(hardStop); hardStop = null; }
+      try { video.pause(); } catch { /* */ }
+      restore();
+    };
 
     const draw = () => {
       ctx.drawImage(video, sx, sy, sw, sh, 0, 0, width, height);
       if (raw.caption && raw.caption.text.trim()) drawCaption(ctx, raw.caption, width, height);
       const t = video.currentTime;
       onProgress?.(Math.min(1, (t - start) / durationSec));
-      if (t >= end - 0.02 || video.ended) {
-        cancelAnimationFrame(rafId);
-        if (rec.state !== 'inactive') rec.stop();
-        return;
-      }
+      // Stop at the trim end. `>=` against the absolute end-time handles the
+      // common case; the wall-clock backstop below guarantees the clip can
+      // never exceed durationSec (≤ 60s) even if playback didn't begin
+      // exactly at `start` (a missed/slow seek).
+      if (t >= end - 0.02 || video.ended) { stop(); return; }
       rafId = requestAnimationFrame(draw);
     };
 
@@ -140,16 +151,27 @@ export async function recordClip(
     };
     rec.onerror = () => { cleanup(); reject(new Error('Recording failed.')); };
 
-    const onSeeked = () => {
-      video.removeEventListener('seeked', onSeeked);
+    const begin = () => {
       try {
         rec.start();
+        // Hard ceiling: never record longer than the clamped duration,
+        // regardless of where playback actually started. +300ms covers the
+        // MediaRecorder stop tail.
+        hardStop = setTimeout(stop, durationSec * 1000 + 300);
         video.play()
           .then(() => { rafId = requestAnimationFrame(draw); })
           .catch((e) => { cleanup(); reject(e); });
       } catch (e) { cleanup(); reject(e as Error); }
     };
-    video.addEventListener('seeked', onSeeked);
-    try { video.currentTime = start; } catch (e) { reject(e as Error); }
+
+    const onSeeked = () => { video.removeEventListener('seeked', onSeeked); begin(); };
+    // Setting currentTime to its current value fires no 'seeked' event, so
+    // start directly when we're already at (or essentially at) `start`.
+    if (Math.abs(video.currentTime - start) < 0.05) {
+      begin();
+    } else {
+      video.addEventListener('seeked', onSeeked);
+      try { video.currentTime = start; } catch (e) { video.removeEventListener('seeked', onSeeked); reject(e as Error); }
+    }
   });
 }

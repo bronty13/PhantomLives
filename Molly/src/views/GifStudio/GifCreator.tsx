@@ -413,6 +413,11 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
             <div className="text-xs opacity-50">
               MP4 records in real time (so it takes about as long as the clip), keeps your trim + crop + caption, includes audio, and is capped at {MP4_MAX_DURATION_S}s / 100 MB.{!clipType && ' (Not supported by this system’s video engine.)'}
             </div>
+            {(endSec - startSec) > MP4_MAX_DURATION_S && (
+              <div className="text-xs text-amber-700">
+                Your trim is {(endSec - startSec).toFixed(0)}s — the MP4 will be capped at the first {MP4_MAX_DURATION_S}s. Tighten the trim if you want the whole moment.
+              </div>
+            )}
 
             {/* GIF result */}
             {result && (
@@ -438,7 +443,7 @@ export function GifCreator({ bundleVideos = [], initialVideo = null, onUseAsTeas
                 <div className="text-xs font-semibold opacity-75">
                   {mp4.ext === 'mp4' ? 'MP4' : 'Clip'} preview ({(mp4.bytes.length / (1024 * 1024)).toFixed(1)} MB{mp4.audioIncluded ? ' · with audio' : ' · no audio'})
                 </div>
-                <video src={mp4.url} controls className="rounded-lg border border-pink-200 max-h-[40vh]" />
+                <video src={mp4.url} controls playsInline className="rounded-lg border border-pink-200 w-full max-h-[55vh] bg-black" />
                 <div className="flex gap-2">
                   <button type="button" className="pretty-button secondary" onClick={downloadMp4} disabled={busy}>
                     ⬇️ Download {mp4.ext.toUpperCase()}

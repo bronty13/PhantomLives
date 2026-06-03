@@ -4,6 +4,20 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.27.1] — 2026-06-03
+
+### Fixed — 🎬 MP4 length cap + preview sizing
+
+- **MP4 could exceed the 60s cap.** If playback didn't begin exactly at the
+  trim's start (a missed/slow seek), the recorder stopped at the absolute
+  end-time and overran. Added a **hard wall-clock backstop** — a recording
+  can never run longer than the clamped duration (≤60s) — and made the
+  start-seek reliable (begin immediately when already at the start point).
+  The trim UI now also warns when the selection exceeds 60s.
+- **MP4 preview rendered small at the bottom.** The result `<video>` now
+  fills the width (`w-full`, up to 55vh, on a black backing) so the clip is
+  easy to see and scrub.
+
 ## [1.27.0] — 2026-06-03
 
 ### Added — 🎬 MP4 export from the GIF wizard + thumbnail spec guards
