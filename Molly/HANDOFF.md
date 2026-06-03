@@ -237,7 +237,64 @@ Updater is wired against `https://github.com/bronty13/PhantomLives/releases/late
 - **App data location**: `~/Library/Application Support/com.phantomlives.molly/` (Mac), `%APPDATA%\com.phantomlives.molly\` (Windows). Everything Molly knows lives there.
 - **Never edit a shipped migration's bytes** — `tauri-plugin-sql` SHA-hashes every migration on first apply and refuses to open the DB if a previously-applied migration's content ever changes (`migration N was previously applied but has been modified`). To remove or rename seed data, **write a new migration** that does the DELETE / UPDATE. Cost us v1.17.0 → had to ship a hotfix v1.17.1 that restored 006_schedules.sql to its byte-exact original and leaned on migration 032 to do the actual deletion. Lesson re-pinned here on purpose.
 - **Can't widen a CHECK constraint in a migration — use a new unconstrained column instead.** `bundles.bundle_type` has `CHECK (bundle_type IN ('content','custom','fansite'))`. Relaxing a CHECK requires rebuilding the table, but `bundles` is the parent of six `ON DELETE CASCADE` children. Inside a `tauri-plugin-sql` migration `foreign_keys` is forced ON (sqlx default) and the script runs in a transaction where `PRAGMA foreign_keys` / `legacy_alter_table` / `defer_foreign_keys` are **all no-ops** (verified empirically — the rebuild silently cascade-deletes the children). v1.23.0's YouTube type therefore added `bundle_kind` via a plain `ALTER TABLE ADD COLUMN` (migration 036) and made it the authoritative discriminator: Rust reads `COALESCE(bundle_kind, bundle_type) AS bundle_type` everywhere, YouTube rows store `bundle_type='content'` + `bundle_kind='youtube'`. **Any future bundle type goes in `bundle_kind` — never touch the `bundle_type` CHECK.** `BundleType::YouTube` shares Content's ZIP layout (Video/ + Audio/) minus categories.
+- **GIF Studio is macOS↔Windows codec/canvas hell** — see the dedicated section below. Two non-negotiables: (1) load video sources as **same-origin `blob:` URLs**, never `convertFileSrc` (cross-origin taints the canvas on Windows → all pixel ops fail); (2) Windows' WebView **cannot decode HEVC** (all of Sallie's iPhone footage), so undecodable sources must be **transcoded in-app** (ffmpeg-WASM, 1.29.0). Never verify a change here on macOS alone — WebKit hides both problems.
 - **Calendar overlay query date format** — Rust `printf('%04d-%02d-%02d', year, month, day)` matches the JS `isoDateKey()` zero-pad shape. If you tweak either side, the other has to keep up — there's a test in `content_tags::tests::range_query_resolves_dates_and_filters_by_persona` that pins this.
+
+## GIF Studio / teaser pipeline (1.27–1.29) — Windows codec realities
+
+`src/views/GifStudio/` turns a source video into a teaser **GIF** (`encodeGif.ts`,
+`gifenc`), an **MP4** clip (`recordMp4.ts`), or a single **thumbnail** frame
+(`FrameGrabber.tsx`). All three share one pipeline: load the source into a
+`<video>`, draw frames (trim + crop + caption) onto a 2D `<canvas>`, then read
+pixels off that canvas. Entry points: `GifCreator.tsx`, `FrameGrabber.tsx`,
+embedded from `ContentBundleForm.tsx` (which passes `bundleVideos` filtered to
+`kind === 'video'`). `sourceUrl.ts` loads the source; `read_file_bytes`
+(bundles.rs) streams the bytes over the raw binary IPC channel.
+
+This area is a minefield because **macOS WebKit and Windows WebView2 (Chromium)
+differ on exactly the two things it depends on**: canvas origin-clean rules and
+video codec support. The maintainer is on macOS; the only user (Sallie) is on
+Windows and shoots **everything on an iPhone**. So "works on my Mac" means
+almost nothing here — every change in this folder needs a Windows test.
+
+The 1.28.x journey (read before touching this code):
+
+1. **Corrupt MP4 on Windows (1.28.0).** MP4 came from the browser's
+   `MediaRecorder`, which on WebView2 writes the `moov`/duration atom at the
+   *end* in a streaming layout — Windows' native players reject it. Fixed by
+   encoding H.264 with **WebCodecs** + muxing a fast-start MP4 with
+   **`mp4-muxer`** (`fastStart: 'in-memory'`, `firstTimestampBehavior: 'offset'`).
+2. **Tainted-canvas `SecurityError` (1.28.0→1.28.2).** The source `<video>` was
+   loaded via `convertFileSrc` (Tauri asset protocol) — a **cross-origin**
+   source with no CORS header (tauri-apps/tauri#12999). Drawing it taints the
+   canvas, and on Windows a tainted canvas blocks *every* pixel op
+   (`getImageData` → GIF, `VideoFrame`/`captureStream` → MP4, `toBlob` →
+   thumbnail). Fixed by loading the source from a **same-origin `blob:` URL**
+   (`loadVideoObjectUrl` → `read_file_bytes` → `Blob`). `crossOrigin="anonymous"`
+   is NOT an option (Tauri can't send the matching ACAO header).
+3. **`.mov` MIME regression (1.28.3).** Labelling the blob `video/quicktime`
+   makes Chromium refuse it; only set explicit types for `mp4`/`webm` and leave
+   the rest blank so the engine sniffs the bytes.
+
+### Current blocker + decision: in-app HEVC transcode (1.29.0, in progress)
+
+Sallie's iPhone footage is **HEVC / H.265** (Apple "High Efficiency" — HEVC
+whether the container is `.mov` or `.mp4`). **WebView2/Chromium has no HEVC
+decoder**, so `<video>.videoWidth === 0` and nothing can be drawn. WKWebView on
+macOS *does* decode HEVC, hence the Mac/Windows split. Per the owner: the fix
+**must be built into Molly** — no "install the HEVC extension" / "use a
+different file" guidance (that copy in 1.28.3's `DECODE_HELP` is a stopgap to be
+removed once transcoding lands).
+
+**Decision (approved): bundle ffmpeg compiled to WebAssembly** (`@ffmpeg/ffmpeg`
++ self-hosted `@ffmpeg/core`). On load, if the WebView can't decode the source
+(`videoWidth === 0`), transcode it to H.264 `.mp4` in-app ("Preparing iPhone
+video…"), then feed that to the existing pipeline. Chosen over a native ffmpeg
+sidecar specifically because **WASM runs identically on macOS and Windows, so it
+can be verified on the maintainer's Mac before shipping** — ending the
+Windows-blind iteration cycle. Trade-off: +~30 MB bundle, a few seconds per
+clip. (Native sidecar = faster but per-platform binaries, CI/signing churn, and
+unverifiable on Mac.)
 
 ## Tests
 
