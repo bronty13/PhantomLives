@@ -282,10 +282,11 @@ export function ContentBundleForm({ uid, onPublishRequested, onClose, onDeleted,
           bundleUid={uid}
           label="Thumbnail Image"
           emoji="🖼️"
-          hint="Optional cover image included in the bundle (jpg/png/webp)."
-          accept={['jpg', 'jpeg', 'png', 'webp']}
+          hint="Optional cover image included in the bundle (JPG/PNG, max 5 MB)."
+          accept={['jpg', 'jpeg', 'png']}
           pickTitle="Pick a thumbnail image"
           filterName="Image"
+          maxBytes={5 * 1024 * 1024}
           relpath={bundle.thumbnailRelpath}
           absolutePath={bundle.thumbnailAbsolutePath}
           originalName={bundle.thumbnailOriginalName}

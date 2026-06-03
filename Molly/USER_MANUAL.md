@@ -475,7 +475,7 @@ What to fill in:
 - **Categories** — at least three. Type to filter / create; drag the chips to reorder. They save UPPERCASE. Past categories from any bundle show as suggestions.
 - **Go-live date** — required, no past dates. If today or within 5 days, Molly gently asks *"Are you allowing enough time for editing?"*.
 - **Files** — at least one video or image. Drag rows to reorder. Each file is renamed `00001_…` in the final ZIP so Robert can rely on the order.
-- **🖼️ Thumbnail Image** — *optional!* A pretty little cover image (jpg/png/webp) to ride along in the bundle. Drop in a file you already have **or** tap **✨ Grab a frame from a video** and Molly opens a little wizard so you can scrub to the *perfect* frame and snap it as your cover (see Frame Grabber below 🌟). Either way you'll see it preview right there. Don't want one? Just skip it. 💕
+- **🖼️ Thumbnail Image** — *optional!* A pretty little cover image to ride along in the bundle. It should be a **JPG or PNG** and **under 5 MB** (I'll gently let you know if a file's too big). Drop in a file you already have **or** tap **✨ Grab a frame from a video** and Molly opens a little wizard so you can scrub to the *perfect* frame and snap it as your cover (see Frame Grabber below 🌟) — frames I capture are always tucked safely under 5 MB for you. Either way you'll see it preview right there. Don't want one? Just skip it. 💕
 - **🎞️ Teaser GIF** — *also optional!* An animated teaser (.gif) tucked into the bundle. You can drop in a `.gif` you already have **or** tap **✨ Make a GIF from a video** and Molly will whip one up for you (see GIF Studio below 🌟).
 - **Special instructions** — optional free-text for Robert.
 
@@ -618,9 +618,13 @@ Here's how we make magic together:
 Then:
 
 - **🎁 Use as Teaser GIF** (only when you opened me from a bundle) drops the GIF straight into that bundle's teaser slot — done!
-- **⬇️ Download** saves it wherever you like (I default to `~/Downloads/Molly GIF/`).
+- **⬇️ Download** saves it wherever you like (I default to your `Downloads\Molly GIF` folder).
 
-It all happens right on your own machine — no uploading anything anywhere. ✨
+### 🎬 Want a real video clip instead? (MP4!)
+
+Right next to **Generate GIF** there's a **🎬 Export MP4 clip** button! It makes a proper little **video** — *with sound* 🔊 — using the exact same trim, crop, and caption you set up. Tap it and I'll record your clip in real time (so it takes about as long as the clip plays — a 10-second clip takes ~10 seconds 🕐), then show you a preview you can play. Hit **⬇️ Download** to save it.
+
+Your MP4s stay nice and tidy — **up to 60 seconds** and **under 100 MB** — so they're easy to send. On your Windows machine you'll get a true `.mp4`; everything happens right on your own computer, nothing uploaded anywhere. ✨
 
 *A tiny note from me:* on a Mac, some `.mov` files are shy and won't preview — if a video won't load, try an `.mp4`. On your Windows machine everything plays nicely. 🩷
 

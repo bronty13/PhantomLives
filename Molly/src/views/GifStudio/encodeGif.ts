@@ -7,6 +7,8 @@ export const MIN_FPS = 2;
 export const MAX_FPS = 25;
 export const MIN_WIDTH = 64;
 export const MAX_WIDTH = 640;
+/** Thumbnail images must stay under 5 MB (JPG/PNG spec). */
+export const THUMBNAIL_MAX_BYTES = 5 * 1024 * 1024;
 
 export type GifQuality = 'high' | 'medium' | 'low';
 
@@ -104,7 +106,7 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
-function drawCaption(
+export function drawCaption(
   ctx: CanvasRenderingContext2D,
   caption: CaptionSettings,
   width: number,
@@ -160,16 +162,27 @@ export async function captureFrame(
     drawCaption(ctx, settings.caption, width, height);
   }
 
-  return new Promise<Uint8Array>((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) { reject(new Error('Could not encode the frame.')); return; }
-        blob.arrayBuffer().then((buf) => resolve(new Uint8Array(buf))).catch(reject);
-      },
-      'image/jpeg',
-      settings.jpegQuality ?? 0.92,
-    );
-  });
+  const toJpeg = (quality: number) =>
+    new Promise<Uint8Array>((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) { reject(new Error('Could not encode the frame.')); return; }
+          blob.arrayBuffer().then((buf) => resolve(new Uint8Array(buf))).catch(reject);
+        },
+        'image/jpeg',
+        quality,
+      );
+    });
+
+  // Thumbnails must stay under 5 MB (spec). At sane widths a frame is far
+  // smaller, but step the JPEG quality down if a busy frame runs over.
+  let quality = settings.jpegQuality ?? 0.92;
+  let bytes = await toJpeg(quality);
+  while (bytes.length > THUMBNAIL_MAX_BYTES && quality > 0.4) {
+    quality -= 0.12;
+    bytes = await toJpeg(quality);
+  }
+  return bytes;
 }
 
 /** Capture frames from a (loaded, seekable) <video> across the trim range

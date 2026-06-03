@@ -23,6 +23,8 @@ interface Props {
   onRemoved: () => Promise<void>;
   /** Extra control rendered beside the pick button (e.g. "Make a GIF"). */
   accessory?: ReactNode;
+  /** Reject a picked file larger than this many bytes (e.g. 5 MB thumbnail cap). */
+  maxBytes?: number;
   disabled?: boolean;
 }
 
@@ -32,7 +34,7 @@ interface Props {
  * relpath onto the bundles row (not bundle_files). Shows an inline preview. */
 export function PreviewAssetField({
   bundleUid, label, hint, emoji, accept, pickTitle, filterName,
-  relpath, absolutePath, originalName, onSaved, onRemoved, accessory, disabled,
+  relpath, absolutePath, originalName, onSaved, onRemoved, accessory, maxBytes, disabled,
 }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +49,18 @@ export function PreviewAssetField({
         filters: [{ name: filterName, extensions: accept }],
       });
       if (!picked || typeof picked !== 'string') return;
+      const ext = picked.split('.').pop()?.toLowerCase() ?? '';
+      if (!accept.includes(ext)) {
+        setError(`Please pick a ${accept.join(' / ').toUpperCase()} file.`);
+        return;
+      }
+      if (maxBytes != null) {
+        const size = await invoke<number>('file_size', { path: picked });
+        if (size > maxBytes) {
+          setError(`That file is ${(size / (1024 * 1024)).toFixed(1)} MB — the limit is ${(maxBytes / (1024 * 1024)).toFixed(0)} MB. Pick a smaller one.`);
+          return;
+        }
+      }
       const info = await invoke<BundleFileInfo>('save_bundle_file', {
         bundleUid, srcPath: picked, kind: 'image', fansiteDayId: null,
       });

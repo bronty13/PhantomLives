@@ -4,6 +4,28 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.27.0] — 2026-06-03
+
+### Added — 🎬 MP4 export from the GIF wizard + thumbnail spec guards
+
+- **MP4 export**: the GIF Studio / "Make a GIF from a video" wizard now has
+  an **🎬 Export MP4 clip** button beside Generate GIF. It records the
+  **same trim + crop + caption** as the GIF, **with audio**, capped at
+  **60s / 100 MB**. Recording is **in-app via MediaRecorder** (canvas video
+  track + the source's audio track) — no ffmpeg, so it works on Windows
+  (WebView2 → real `.mp4`) and macOS (WebKit; falls back to `.webm` if the
+  engine can't emit MP4, with a visible note). A bitrate budget keeps the
+  file under 100 MB; the wizard warns if a clip still comes out over.
+- **Thumbnail spec enforced**: the Content-bundle **Thumbnail Image** slot
+  now accepts **JPG/PNG only** (dropped WebP) and **rejects files over
+  5 MB** before import (new `file_size` command). The **Frame Grabber**'s
+  captured JPEG steps its quality down automatically to stay under 5 MB.
+
+### Notes
+
+- MP4 recording is real-time, so it takes about as long as the clip length.
+- `clipVideoBitrate` (pure, unit-tested) computes the size-safe bitrate.
+
 ## [1.26.0] — 2026-06-02
 
 ### Added — 🖼️ Content-bundle preview assets + 🎞️ GIF Studio

@@ -1889,6 +1889,15 @@ pub fn save_bundle_frame<R: Runtime>(
     persist_bundle_image_bytes(&app_data, bundle_uid, &bytes, basename)
 }
 
+/// Byte size of a file at `path`. Backs frontend pre-flight checks (e.g. the
+/// 5 MB thumbnail cap) so we can reject an oversize pick before copying it.
+#[tauri::command]
+pub fn file_size(path: String) -> Result<u64, BundleError> {
+    let meta = fs::metadata(Path::new(&path))
+        .map_err(|_| BundleError::Invalid(format!("file not found: {path}")))?;
+    Ok(meta.len())
+}
+
 /// Write raw bytes to a user-chosen absolute path — backs the GIF Creator's
 /// "Download" action (the frontend picks the path via the save dialog).
 /// Creates the parent directory on demand.
