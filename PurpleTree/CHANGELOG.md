@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.1] - 2026-06-03
+
+- Fix: a directory whose `readdir` fails mid-iteration — e.g. `ETIMEDOUT` on a
+  network / cloud-backed mount (`~/Library/CloudStorage/…`, SMB, MacDroid) — no
+  longer aborts the entire scan. The worker now catches `readdir`/`closedir`
+  errors per-directory (like it already did for `opendir`/`lstat`), marks the
+  directory permission-denied, and continues. A whole-disk scan that hit a timed-
+  out Switch mount used to die with "Scan failed: ETIMEDOUT"; it now skips that
+  one folder and finishes. Added a regression test (unreadable directory still
+  completes the scan).
+
 ## [1.0.0] - 2026-06-03
 
 Initial release. A cross-platform disk-space analyzer and file-cleanup utility.

@@ -5,7 +5,15 @@
  */
 import { describe, it, expect } from 'vitest';
 import { Worker } from 'node:worker_threads';
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync, existsSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  symlinkSync,
+  chmodSync,
+  rmSync,
+  existsSync
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Tree } from '../../src/main/scan/tree';
@@ -55,6 +63,8 @@ describe.skipIf(!built)('scanWorker (built) integration', () => {
 
       expect(evt.type).toBe('done');
       if (evt.type !== 'done') return;
+      // The locked dir below is restored in `finally`; ensure cleanup works.
+      expect(evt.stats.partial).toBe(false);
 
       const tree = new Tree(evt.tree);
       const root = tree.row(0);
@@ -71,6 +81,54 @@ describe.skipIf(!built)('scanWorker (built) integration', () => {
       expect(names).toContain('sub');
       expect(names).toContain('empty');
     } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  // Regression: an unreadable directory must NOT abort the whole scan.
+  // (Shipped as a fix after a real ETIMEDOUT on a CloudStorage mount killed a
+  // full-disk scan. We can't force ETIMEDOUT here, but a chmod-000 dir hits the
+  // same "one directory errors out" resilience path and must still finish.)
+  it('skips an unreadable directory and still completes', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'pt-locked-'));
+    const locked = join(base, 'locked');
+    try {
+      writeFileSync(join(base, 'ok.bin'), Buffer.alloc(700));
+      mkdirSync(locked);
+      writeFileSync(join(locked, 'hidden.bin'), Buffer.alloc(300));
+      chmodSync(locked, 0o000); // owner can't opendir -> EACCES
+
+      const cancelFlag = new SharedArrayBuffer(4);
+      const worker = new Worker(WORKER);
+      const done = new Promise<ScanEvent>((res, rej) => {
+        worker.on('message', (evt: ScanEvent) => {
+          if (evt.type === 'done' || evt.type === 'error') res(evt);
+        });
+        worker.on('error', rej);
+      });
+      worker.postMessage({
+        type: 'start',
+        scanId: 'locked',
+        rootPath: base,
+        opts: DEFAULT_SCAN_OPTIONS,
+        cancelFlag
+      });
+      const evt = await done;
+      await worker.terminate();
+
+      // The scan completes (does NOT error out) despite the locked dir.
+      expect(evt.type).toBe('done');
+      if (evt.type !== 'done') return;
+      expect(evt.stats.partial).toBe(false);
+      expect(evt.stats.permDeniedCount).toBeGreaterThanOrEqual(1);
+      // Readable file counted; locked content not (can't read it).
+      expect(evt.stats.totalBytes).toBe(700);
+    } finally {
+      try {
+        chmodSync(locked, 0o755);
+      } catch {
+        /* ignore */
+      }
       rmSync(base, { recursive: true, force: true });
     }
   }, 20_000);

@@ -10,7 +10,9 @@
  *   - lstat, never stat: count links, never follow them (cycle-safe).
  *   - skip other volumes unless crossMountPoints is set.
  *   - de-dup hard links by (dev,ino) on mac/linux (Windows ino is unreliable).
- *   - any opendir/lstat error → mark perm-denied, count, continue. Never crash.
+ *   - any opendir/readdir/lstat error (incl. ETIMEDOUT on network/cloud mounts)
+ *     → mark perm-denied, count, continue. One bad directory never aborts the
+ *     whole scan.
  */
 import { parentPort } from 'node:worker_threads';
 import { opendirSync, lstatSync, type Dirent } from 'node:fs';
@@ -108,93 +110,119 @@ function runScan(cmd: Extract<ScanCommand, { type: 'start' }>): void {
     return;
   }
 
-  if (rootIsDir) {
-    const stack: CrawlFrame[] = [{ id: 0, path: rootPath }];
+  const stack: CrawlFrame[] = [{ id: 0, path: rootPath }];
 
+  if (rootIsDir) {
     while (stack.length > 0) {
       if (cancelled()) break;
       const frame = stack.pop()!;
       currentPath = frame.path;
       dirsScanned++;
-
-      let dir;
       try {
-        dir = opendirSync(longPath(frame.path));
+        crawlFrame(frame);
       } catch {
+        // No single directory may abort the scan — skip it and continue.
         builder.addFlag(frame.id, FLAG_PERM_DENIED);
         permDeniedCount++;
-        continue;
       }
+      emitProgress();
+    }
+  }
 
-      try {
+  /** Process one directory frame: open it, read entries, enqueue subdirs. */
+  function crawlFrame(frame: CrawlFrame): void {
+    let dir;
+    try {
+      dir = opendirSync(longPath(frame.path));
+    } catch {
+      builder.addFlag(frame.id, FLAG_PERM_DENIED);
+      permDeniedCount++;
+      return;
+    }
+
+    try {
+      for (;;) {
         let entry: Dirent | null;
-        while ((entry = dir.readSync()) !== null) {
-          if (++opCounter % CANCEL_CHECK_STRIDE === 0 && cancelled()) break;
-          const childPath =
-            frame.path.endsWith(pathSep) ? frame.path + entry.name : frame.path + pathSep + entry.name;
+        try {
+          entry = dir.readSync();
+        } catch {
+          // readdir failed mid-iteration — e.g. ETIMEDOUT on a network /
+          // cloud-backed mount (CloudStorage, SMB, MacDroid). Mark this dir
+          // and stop reading it, but NEVER abort the whole scan.
+          builder.addFlag(frame.id, FLAG_PERM_DENIED);
+          permDeniedCount++;
+          break;
+        }
+        if (entry === null) break;
+        if (++opCounter % CANCEL_CHECK_STRIDE === 0 && cancelled()) break;
+        const childPath = frame.path.endsWith(pathSep)
+          ? frame.path + entry.name
+          : frame.path + pathSep + entry.name;
 
-          let st;
-          try {
-            st = lstatSync(longPath(childPath));
-          } catch {
-            // Unreadable entry (race / permission) — skip silently.
-            continue;
-          }
+        let st;
+        try {
+          st = lstatSync(longPath(childPath));
+        } catch {
+          // Unreadable entry (race / permission) — skip silently.
+          continue;
+        }
 
-          if (st.isSymbolicLink() && !opts.followSymlinks) {
-            symlinkCount++;
-            builder.addNode({
-              parent: frame.id,
-              name: entry.name,
-              selfSize: st.size,
-              mtimeMs: st.mtimeMs,
-              atimeMs: st.atimeMs,
-              flags: FLAG_SYMLINK
-            });
-            continue;
-          }
-
-          if (st.isDirectory()) {
-            const crossed = !opts.crossMountPoints && st.dev !== rootDev;
-            const childId = builder.addNode({
-              parent: frame.id,
-              name: entry.name,
-              selfSize: 0,
-              mtimeMs: st.mtimeMs,
-              atimeMs: st.atimeMs,
-              flags: FLAG_DIR | (crossed ? FLAG_CROSSED_MOUNT : 0)
-            });
-            if (crossed) {
-              mountSkippedCount++;
-            } else {
-              stack.push({ id: childId, path: childPath });
-            }
-            continue;
-          }
-
-          // Regular file (or device/fifo — treated as a file leaf).
-          let flags = 0;
-          if (opts.dedupHardLinks && !isWindows && st.nlink > 1) {
-            const key = `${st.dev}:${st.ino}`;
-            if (seenInodes.has(key)) flags |= FLAG_HARDLINK_DUP;
-            else seenInodes.add(key);
-          }
+        if (st.isSymbolicLink() && !opts.followSymlinks) {
+          symlinkCount++;
           builder.addNode({
             parent: frame.id,
             name: entry.name,
             selfSize: st.size,
             mtimeMs: st.mtimeMs,
             atimeMs: st.atimeMs,
-            flags
+            flags: FLAG_SYMLINK
           });
-          filesScanned++;
-          if ((flags & FLAG_HARDLINK_DUP) === 0) bytes += st.size;
-          emitProgress();
+          continue;
         }
-      } finally {
-        dir.closeSync();
+
+        if (st.isDirectory()) {
+          const crossed = !opts.crossMountPoints && st.dev !== rootDev;
+          const childId = builder.addNode({
+            parent: frame.id,
+            name: entry.name,
+            selfSize: 0,
+            mtimeMs: st.mtimeMs,
+            atimeMs: st.atimeMs,
+            flags: FLAG_DIR | (crossed ? FLAG_CROSSED_MOUNT : 0)
+          });
+          if (crossed) {
+            mountSkippedCount++;
+          } else {
+            stack.push({ id: childId, path: childPath });
+          }
+          continue;
+        }
+
+        // Regular file (or device/fifo — treated as a file leaf).
+        let flags = 0;
+        if (opts.dedupHardLinks && !isWindows && st.nlink > 1) {
+          const key = `${st.dev}:${st.ino}`;
+          if (seenInodes.has(key)) flags |= FLAG_HARDLINK_DUP;
+          else seenInodes.add(key);
+        }
+        builder.addNode({
+          parent: frame.id,
+          name: entry.name,
+          selfSize: st.size,
+          mtimeMs: st.mtimeMs,
+          atimeMs: st.atimeMs,
+          flags
+        });
+        filesScanned++;
+        if ((flags & FLAG_HARDLINK_DUP) === 0) bytes += st.size;
+        emitProgress();
       }
-      emitProgress();
+    } finally {
+      try {
+        dir.closeSync();
+      } catch {
+        // closing a timed-out handle can itself throw — ignore.
+      }
     }
   }
 
@@ -215,7 +243,9 @@ function runScan(cmd: Extract<ScanCommand, { type: 'start' }>): void {
   post({ type: 'done', stats, tree }, treeTransferList(tree));
 }
 
-async function runDuplicates(cmd: Extract<ScanCommand, { type: 'find-duplicates' }>): Promise<void> {
+async function runDuplicates(
+  cmd: Extract<ScanCommand, { type: 'find-duplicates' }>
+): Promise<void> {
   const { scanId, files, cancelFlag } = cmd;
   const cancelArr = new Int32Array(cancelFlag);
   const result = await findDuplicates(files, {
