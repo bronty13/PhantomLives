@@ -12,15 +12,18 @@ Pure CLI tools, Python scripts, and dev-only utilities are still exempt — they
 
 ## What `install.sh` does
 
-Three steps, in order:
+Four steps, in order — **steps 1 and 4 are the anti-stale-instance guarantee and must never be weakened** (see CLAUDE.md → "Stale running applications"):
 
-1. **Quit the running copy** — `osascript -e 'tell application "<AppName>" to quit' >/dev/null 2>&1 || true`. Give Launch Services a moment (`sleep 1`) to release the bundle lock.
+1. **Force-terminate every running copy, and wait until it's actually gone.** A graceful `osascript -e 'tell application "<AppName>" to quit'` is fine as a *first* nudge, but it can be **blocked indefinitely** — a quit-confirmation dialog (PurpleIRC has one), an unsaved-changes prompt, or a hung run loop all leave the old process alive. So follow it with a `pkill -9` loop that polls until `pgrep` reports the process gone, matched by the **executable path** (`<App>.app/Contents/MacOS/<App>`) so unrelated processes are never hit. If the process still won't die after the timeout, **abort** — never copy over a survivor, because the next step's `open` would just re-focus it.
 2. **Replace `/Applications/<AppName>.app`** — `rm -rf` then `ditto --noextattr <project-dir>/<AppName>.app /Applications/<AppName>.app`. `ditto --noextattr` matters: it strips the iCloud File Provider xattrs that re-attach mid-copy and break `codesign --verify`.
-3. **Relaunch** — `open /Applications/<AppName>.app`. Skip with a `--no-open` flag for CI / scripted use.
+3. **Relaunch a guaranteed-new instance** — `open -n /Applications/<AppName>.app`. The `-n` flag forces a brand-new instance instead of re-focusing a survivor. Skip with a `--no-open` flag for CI / scripted use.
+4. **Prove the running process is the new one.** Capture the new binary's mtime (`stat -f %m`) before `open`, then poll for the launched PID and assert its start time (`ps -o lstart=` → epoch) is **≥ binary mtime**. If the running process predates the binary, a stale instance survived — **abort loudly**. On success, print one line the caller can grep: `Verified: <App> <version> running fresh (pid …, started …)`.
+
+Why step 4 and not "just check `CFBundleShortVersionString`": Swift app versions are **git-derived** (`1.0.<commit-count>`), so two builds between commits report the *same* version — a version-string check passes even when the running app is stale. Process-start-time vs binary-mtime is the only check that actually proves freshness.
 
 The script lives at the subproject root (`<SubProject>/install.sh`), is `chmod +x`-ed in git, refuses to run when the local `<App>.app` doesn't exist yet (run `./build-app.sh` first), and tolerates a missing `/Applications/<AppName>.app` (first install).
 
-Reference implementation: `SlackSucker/install.sh`.
+Reference implementation: **`PurpleIRC/install.sh`** (the hardened four-step version above). Older app `install.sh`s still on the graceful-quit-only pattern are stale-instance hazards — retrofit them to this on next touch.
 
 ## `build-app.sh` chain
 
@@ -68,7 +71,8 @@ The `rm -rf /Applications/<AppName>.app` + `ditto * /Applications/<AppName>.app`
 "Bash(rm -rf /Applications/<AppName>.app)",
 "Bash(ditto --noextattr * /Applications/<AppName>.app)",
 "Bash(osascript -e 'tell application \"<AppName>\" to quit')",
-"Bash(open /Applications/<AppName>.app)"
+"Bash(pkill -9 -f <AppName>.app/Contents/MacOS/<AppName>)",
+"Bash(open -n /Applications/<AppName>.app)"
 ```
 
 Substitute `<AppName>` per subproject. These are scoped per project, so the permissions stay narrow.

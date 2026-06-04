@@ -890,6 +890,7 @@ struct ContactRow: View {
             }
             Button("WHOIS \(entry.nick)")  { model.sendInput("/whois \(entry.nick)") }
             Button("WHOWAS \(entry.nick)") { model.sendInput("/whowas \(entry.nick)") }
+            Button("Find “\(entry.nick)” in logs…") { model.findNickInLogs(entry.nick) }
             Divider()
             if entry.watch {
                 Button("Stop notifying when online") { setWatch(false) }
@@ -1016,6 +1017,10 @@ struct BufferRow: View {
             let id = buffer.id
             DispatchQueue.main.async { model.closeBuffer(id: id) }
         }
+        Divider()
+        // Fuzzy authored-by log search — finds this nick's history even under
+        // decorated / renamed variants (john_doe → johndoe1, johnny1, …).
+        Button("Find “\(nick)” in logs…") { model.findNickInLogs(nick) }
         Divider()
         Button("WHOIS \(nick)")  { model.sendInput("/whois \(nick)") }
         Button("WHOWAS \(nick)") { model.sendInput("/whowas \(nick)") }

@@ -1420,6 +1420,7 @@ struct MessageRow: View {
         Button("Open query with \(nick)") { model.sendInput("/query \(nick)") }
         Button("WHOIS \(nick)")            { model.sendInput("/whois \(nick)") }
         Button("WHOWAS \(nick)")           { model.sendInput("/whowas \(nick)") }
+        Button("Find “\(nick)” in logs…")  { model.findNickInLogs(nick) }
         Divider()
         Button("CTCP VERSION") { model.sendInput("/ctcp \(nick) VERSION") }
         Button("CTCP PING")    { model.sendInput("/ctcp \(nick) PING \(Int(Date().timeIntervalSince1970))") }

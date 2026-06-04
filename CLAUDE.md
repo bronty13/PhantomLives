@@ -157,15 +157,36 @@ When a subproject's Python code uses a self-bootstrapping `.venv` (e.g. `transcr
   `electron-builder --dir` to regenerate `dist/` first. (Incident:
   PurpleTree v1.0.2–v1.1.1 were "shipped" this way; `/Applications`
   stayed frozen at v1.0.1 across 6 builds and no fix reached the user.)
-- **MANDATORY post-install version check — every time, no exceptions.**
-  After `build-app.sh`, confirm the deployed bundle actually updated:
-  `defaults read "/Applications/<App>.app/Contents/Info.plist"
-  CFBundleShortVersionString` MUST equal the `version` in the
-  subproject's `package.json` (Electron) or the git-derived version
-  (Swift). If it doesn't match, the install silently failed — a live old
-  instance can make `open` re-focus the stale copy. Recover with
-  `pkill -9 -f "<App>"` then re-run `build-app.sh`, and re-verify. Do not
-  report "installed/launched" until the version check passes.
+- **MANDATORY post-install freshness proof — every time, no exceptions.**
+  After `build-app.sh`, you must PROVE the running app is the binary you
+  just built — not merely that a file on disk changed. Two layers:
+  1. **Process-freshness (the real guarantee).** `install.sh` force-kills
+     every running instance, waits until it's gone, `open -n`s a new one,
+     and asserts the running process's start time is **≥ the new binary's
+     mtime**, printing `Verified: <App> <version> running fresh (pid …,
+     started …)`. You MUST see that line. Its absence = the install did
+     not prove freshness = **not done**.
+  2. **Version string (secondary).** `defaults read
+     "/Applications/<App>.app/Contents/Info.plist"
+     CFBundleShortVersionString` should match `package.json` (Electron) or
+     the git-derived version (Swift). NOTE: this check alone is **not
+     sufficient** — Swift versions are git-derived, so two builds between
+     commits report the *same* number and a stale instance passes the
+     version check. Trust the process-freshness proof, not the version.
+- **Stale running applications — the recurring failure mode, now closed.**
+  A graceful quit (`osascript … quit`, Cmd-Q, `sleep` then `open`) can be
+  **blocked indefinitely**: a quit-confirmation dialog (PurpleIRC has
+  one), an unsaved-changes prompt, or a hung run loop leaves the old
+  process alive, and a plain `open` then re-focuses the STALE copy while
+  printing "Launching" as if it worked. **Never trust a graceful quit to
+  have terminated an app.** Every app `install.sh` MUST: (a) `pkill -9 -f
+  "<App>.app/Contents/MacOS/<App>"` in a loop until `pgrep` shows it gone,
+  aborting if it won't die; (b) relaunch with `open -n`; (c) prove
+  freshness via process-start-time ≥ binary-mtime. If you ever find an
+  app's `install.sh` still on the graceful-quit-only pattern, **harden it
+  to the four-step standard before shipping** — do not work around it
+  per-turn. Reference: `PurpleIRC/install.sh`; full spec in
+  `docs/install-sh-standard.md` → "What install.sh does".
 - After UI/icon changes on macOS, always force-clear icon caches (`touch app bundle`, `killall Finder Dock`) and rebuild — visible icon updates often need a second cache-bust pass.
 - After any build, launch the app and confirm the change is visible before declaring done.
 - Run the full test suite before committing; report pass/fail count (e.g., '455/455 passing').

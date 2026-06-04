@@ -18,8 +18,11 @@ count (`1.0.<count>`).
 
 - **Right-click a nick → “Find … in logs” — fuzzy authored-by log search**
   (`NickFuzzyMatcher.swift`, `NickFindView.swift`, `LogStore.swift`,
-  `BufferView.swift`). The sidebar user-list context menu gains a **Find
-  “<nick>” in logs…** item that opens a dedicated sheet listing every
+  `BufferView.swift`, `ContentView.swift`). A **Find “<nick>” in logs…**
+  item now appears on **every** nick context menu — the left-sidebar
+  query/PM rows, address-book contact rows, the channel user-list pane, and
+  nicks clicked in the message body — and opens a dedicated sheet listing
+  every
   persisted log line *authored by* that nick — and by fuzzy **variants** of
   it, so finding `john_doe` also surfaces `johndoe`, `johndoe1`, `johnny1`,
   and (when loosened) `jdough1`. Matching normalises away the usual IRC
@@ -33,6 +36,23 @@ count (`1.0.<count>`).
   powers it; jump routing was factored into `ChatModel.jumpToLogHit` and is
   now shared with the unified-search sheet. Covered by the new `Nick fuzzy
   matcher` suite plus `searchAuthored` tests.
+
+### Changed (dev tooling — stale-instance fix)
+
+- **`install.sh` now force-kills and *proves* the relaunched app is fresh**
+  (`install.sh`). The old script did a graceful `osascript … quit` + `sleep
+  1`, which a quit-confirmation dialog (PurpleIRC has one), an unsaved-state
+  prompt, or a hung run loop can block indefinitely — leaving the old
+  process alive so `open` re-focused the **stale** copy while printing
+  "Launching" as if it worked. The hardened script: (1) `pkill -9` in a loop
+  until the process is provably gone (matched by executable path), aborting
+  if it won't die; (2) relaunches with `open -n` (new instance, never
+  re-focus); (3) asserts the running process's start time is ≥ the new
+  binary's mtime and prints `Verified: PurpleIRC <version> running fresh`.
+  Version-string checks alone can't catch this — Swift versions are
+  git-derived, so two builds between commits report the same number. This is
+  now the repo-wide `install.sh` standard (see `docs/install-sh-standard.md`
+  and CLAUDE.md → "Stale running applications").
 
 ### Fixed
 
