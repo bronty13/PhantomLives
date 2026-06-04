@@ -1,7 +1,7 @@
 import { createMap } from './maps';
 import { createNode, setNodeChecked, setNodeNote, setNodeIcon } from './nodes';
 import { createEdge } from './edges';
-import { layoutTree } from '../lib/autoLayout';
+import { layoutBilateral } from '../lib/autoLayout';
 import type { MindGraph } from '../lib/graph';
 
 export interface ImportNode {
@@ -42,7 +42,7 @@ export async function importGraph(
       nodes: nodes.map((n) => ({ id: n.ref, label: n.label, x: 0, y: 0 })),
       edges: edges.map((e, i) => ({ id: `e${i}`, source: e.source, target: e.target })),
     };
-    positionByRef = new Map(layoutTree(graph).map((p) => [p.id, { x: p.x, y: p.y }]));
+    positionByRef = new Map(layoutBilateral(graph).map((p) => [p.id, { x: p.x, y: p.y }]));
   }
 
   const idByRef = new Map<string, string>();

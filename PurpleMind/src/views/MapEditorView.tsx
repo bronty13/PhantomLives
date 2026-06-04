@@ -39,7 +39,7 @@ import {
 import { listEdges, createEdge, deleteEdge } from '../data/edges';
 import { saveViewport, touchMap } from '../data/maps';
 import { getExportDir } from '../data/appSettings';
-import { layoutTree } from '../lib/autoLayout';
+import { layoutBilateral } from '../lib/autoLayout';
 import { toMarkdown, fromMarkdown } from '../lib/markdownOutline';
 import { serializeMap, parseMap, type RichNode } from '../lib/mapSerialize';
 import { base64FromString } from '../lib/base64';
@@ -250,20 +250,24 @@ function Editor({ mapId, title, onMapsChanged }: EditorProps) {
     [nodes, hidden, styles, commitLabel, toggleCollapse, toggleCheck, openNoteFor],
   );
 
-  const displayEdges = useMemo(
-    () =>
-      edges
-        .filter((e) => !hidden.has(e.source) && !hidden.has(e.target))
-        .map((e) => {
-          const childStyle = styles.get(e.target);
-          return {
-            ...e,
-            type: 'branch',
-            data: { color: childStyle?.branchColor ?? '#9361db', depth: childStyle?.depth ?? 1 },
-          };
-        }),
-    [edges, hidden, styles],
-  );
+  const displayEdges = useMemo(() => {
+    const xOf = new Map(nodes.map((n) => [n.id, n.position.x]));
+    return edges
+      .filter((e) => !hidden.has(e.source) && !hidden.has(e.target))
+      .map((e) => {
+        const childStyle = styles.get(e.target);
+        // Route via the side the child sits on so left-fanning branches use
+        // the parent's left handle → child's right handle (no crossing).
+        const leftFlow = (xOf.get(e.target) ?? 0) < (xOf.get(e.source) ?? 0);
+        return {
+          ...e,
+          type: 'branch',
+          sourceHandle: leftFlow ? 'sl' : 'sr',
+          targetHandle: leftFlow ? 'tr' : 'tl',
+          data: { color: childStyle?.branchColor ?? '#9361db', depth: childStyle?.depth ?? 1 },
+        };
+      });
+  }, [edges, hidden, styles, nodes]);
 
   const onConnect = useCallback(
     (c: Connection) => {
@@ -412,7 +416,7 @@ function Editor({ mapId, title, onMapsChanged }: EditorProps) {
       nodes: full.nodes.filter((n) => !hidden.has(n.id)),
       edges: full.edges.filter((e) => !hidden.has(e.source) && !hidden.has(e.target)),
     };
-    const positions = layoutTree(visible);
+    const positions = layoutBilateral(visible);
     const byId = new Map(positions.map((p) => [p.id, p]));
     setNodes((ns) => ns.map((n) => {
       const p = byId.get(n.id);

@@ -24,11 +24,15 @@ const r = (n: number) => Math.round(n * 100) / 100;
 
 export function taperedRibbonPath(i: RibbonInput): string {
   const samples = Math.max(6, i.samples ?? 24);
-  // Horizontal-biased control points (matches left-to-right layout).
-  const dx = Math.max(40, Math.abs(i.tx - i.sx) * 0.5);
-  const c1x = i.sx + dx;
+  // Horizontal-biased control points that follow the flow direction, so a
+  // left-flowing connector (target left of source) bows leftward rather than
+  // bulging the wrong way.
+  const k = (i.tx - i.sx) * 0.5;
+  const sgn = k >= 0 ? 1 : -1;
+  const mag = Math.max(40, Math.abs(k));
+  const c1x = i.sx + sgn * mag;
   const c1y = i.sy;
-  const c2x = i.tx - dx;
+  const c2x = i.tx - sgn * mag;
   const c2y = i.ty;
 
   const at = (t: number): P => {

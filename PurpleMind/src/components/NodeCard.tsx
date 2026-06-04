@@ -99,7 +99,12 @@ export function NodeCard({ id, data, selected }: NodeProps) {
       style={{ ...containerStyle, ...(selected ? { boxShadow: `0 0 0 2px ${color}` } : {}) }}
       onDoubleClick={() => setEditing(true)}
     >
-      <Handle type="target" position={Position.Left} />
+      {/* Handles on both sides so branches can flow left or right (bilateral
+          layout). Edges pick the side via geometry; ids: t=target, s=source,
+          l=left, r=right. */}
+      <Handle type="target" position={Position.Left} id="tl" />
+      <Handle type="source" position={Position.Left} id="sl" />
+      <Handle type="target" position={Position.Right} id="tr" />
 
       <div className="flex items-center gap-1.5">
         {checkable && (
@@ -158,7 +163,7 @@ export function NodeCard({ id, data, selected }: NodeProps) {
         )}
       </div>
 
-      <Handle type="source" position={Position.Right} />
+      <Handle type="source" position={Position.Right} id="sr" />
 
       {(d.childCount ?? 0) > 0 && (
         <button

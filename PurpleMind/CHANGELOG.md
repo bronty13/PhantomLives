@@ -20,6 +20,9 @@ node graph.
   underline.
 - **Tapered branch connectors** — filled ribbons in the branch color, thick at
   the parent and thin toward the child (custom `BranchEdge`).
+- **Bilateral layout** — `✨ Tidy` (and imported maps) now fan the branches out
+  to *both* sides of the central root, balanced by branch size (MindNode-style),
+  with connectors routing cleanly from each side.
 - **Collapsible branches** — a fold toggle on any node with children hides/shows
   its subtree (stored `collapsed`); hidden nodes drop out of layout and export.
 - **Keyboard-tree editing** — `Tab` = child · `Enter` = sibling · `Space` = edit
