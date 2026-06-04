@@ -91,8 +91,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: |
-          $found = Get-ChildItem -Path dist -Recurse -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -match '\.(exe|exe\.blockmap)$' -or $_.Name -eq 'latest.yml' }
+          # Only the installer + its metadata at the dist root — NOT the
+          # unpacked helpers (Purple Tree.exe, elevate.exe) under win-unpacked/.
+          $found = Get-ChildItem -Path dist -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match 'Setup .*\.exe(\.blockmap)?$' -or $_.Name -eq 'latest.yml' }
           $found | Select-Object FullName
           if (-not $found -or $found.Count -eq 0) {
             Write-Host "::error::no Windows artifacts found under dist/"
@@ -114,6 +116,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
+          # --repo avoids needing a git checkout to infer owner/repo.
+          GH_REPO: ${{ github.repository }}
         run: |
-          gh release edit "$TAG" --draft=false
+          gh release edit "$TAG" --repo "$GH_REPO" --draft=false
           echo "Published $TAG"
