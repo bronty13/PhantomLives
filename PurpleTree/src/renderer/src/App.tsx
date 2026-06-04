@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { NodeRow, ScanProgress, ScanStats, RectNode, ExportFormat } from '../../shared/types';
-import { formatBytes, formatCount } from './features/common/format';
+import { formatBytes, formatCount, formatDuration, formatRate } from './features/common/format';
 import FolderTree from './features/tree/FolderTree';
 import DetailList from './features/tree/DetailList';
 import TreemapCanvas from './features/treemap/TreemapCanvas';
@@ -34,7 +34,11 @@ export default function App(): JSX.Element {
   const [toast, setToast] = useState('');
   const [cancelling, setCancelling] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [rate, setRate] = useState(0);
   const scanIdRef = useRef<string | null>(null);
+  const scanStartRef = useRef<number>(0);
+  const rateSampleRef = useRef<{ t: number; files: number } | null>(null);
 
   const metric = prefs?.sizeMetric ?? 'alloc';
   const toggleMetric = async (): Promise<void> => {
@@ -56,9 +60,13 @@ export default function App(): JSX.Element {
     const opts = (await api.prefsGet()).scanOptions;
     const id = await api.startScan(dir, opts);
     scanIdRef.current = id;
+    scanStartRef.current = Date.now();
+    rateSampleRef.current = null;
     setScanId(id);
     setStatus('scanning');
     setProgress(null);
+    setRate(0);
+    setElapsedMs(0);
     setCancelling(false);
     setView('explorer');
   }, []);
@@ -75,7 +83,16 @@ export default function App(): JSX.Element {
       if (p) void startScanOf(p);
     });
     const offProg = api.onScanProgress((p) => {
-      if (p.scanId === scanIdRef.current) setProgress(p);
+      if (p.scanId !== scanIdRef.current) return;
+      const now = Date.now();
+      const prev = rateSampleRef.current;
+      if (prev && now > prev.t) {
+        const inst = ((p.filesScanned - prev.files) * 1000) / (now - prev.t);
+        setRate((r) => (r <= 0 ? inst : r * 0.7 + inst * 0.3)); // smooth (EMA)
+      }
+      rateSampleRef.current = { t: now, files: p.filesScanned };
+      setElapsedMs(now - scanStartRef.current);
+      setProgress(p);
     });
     const offDone = api.onScanComplete((s) => {
       if (s.scanId !== scanIdRef.current) return;
@@ -115,6 +132,14 @@ export default function App(): JSX.Element {
       offMenu();
     };
   }, [chooseFolder, loadPrefs, startScanOf]);
+
+  // Keep the elapsed clock ticking during scanning even when progress events
+  // pause (e.g. the final tree-build phase emits none).
+  useEffect(() => {
+    if (status !== 'scanning') return;
+    const iv = setInterval(() => setElapsedMs(Date.now() - scanStartRef.current), 500);
+    return () => clearInterval(iv);
+  }, [status]);
 
   const onPick = (node: RectNode): void => {
     if (node.isDir) setFocusId(node.id);
@@ -235,6 +260,10 @@ export default function App(): JSX.Element {
                     <p className="scan-counts">
                       {formatCount(progress.filesScanned)} files ·{' '}
                       {formatCount(progress.dirsScanned)} folders · {formatBytes(progress.bytes)}
+                    </p>
+                    <p className="scan-rate">
+                      {formatDuration(elapsedMs)} elapsed · {formatRate(rate)} files/sec
+                      {progress.permDeniedCount > 0 && ` · ${formatCount(progress.permDeniedCount)} skipped`}
                     </p>
                     <p className="scan-path" title={progress.currentPath}>
                       {progress.currentPath}

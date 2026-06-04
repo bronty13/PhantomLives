@@ -202,6 +202,11 @@ button:disabled {
 .scan-counts {
   font-weight: 600;
 }
+.scan-rate {
+  color: var(--violet);
+  font-variant-numeric: tabular-nums;
+  margin-top: -4px;
+}
 .scan-path {
   max-width: 520px;
   overflow: hidden;

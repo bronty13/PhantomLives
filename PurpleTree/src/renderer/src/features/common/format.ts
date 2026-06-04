@@ -30,6 +30,21 @@ export function formatCount(n: number): string {
   return n.toLocaleString();
 }
 
+/** Elapsed duration from ms, e.g. 75200 -> "1:15". */
+export function formatDuration(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return `${m}:${String(rem).padStart(2, '0')}`;
+}
+
+/** Compact rate, e.g. 18342 -> "18.3k". */
+export function formatRate(perSec: number): string {
+  if (!Number.isFinite(perSec) || perSec <= 0) return '0';
+  if (perSec >= 1000) return `${(perSec / 1000).toFixed(1)}k`;
+  return String(Math.round(perSec));
+}
+
 /** Stable-ish color per depth for treemap tiles (purple family). */
 export function depthColor(depth: number): string {
   const palette = ['#7c3aed', '#8b5cf6', '#a78bfa', '#c4b5fd', '#ddd6fe', '#ede9fe'];

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0] - 2026-06-03
+
+- The **Scanning…** screen now shows **elapsed time** and a live **files/sec**
+  rate (plus a skipped-count when relevant), so a long scan is obviously alive
+  instead of just spinning. (No fake ETA — the total isn't known until the scan
+  finishes.) The clock keeps ticking through the final tree-build phase too.
+
 ## [1.1.3] - 2026-06-03
 
 - **THE fix: scans of very large folders now complete instead of freezing near
