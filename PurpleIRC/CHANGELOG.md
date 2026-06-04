@@ -64,6 +64,25 @@ count (`1.0.<count>`).
   only — no control flow changes — so the next occurrence is
   self-diagnosing.
 
+### Changed (crash-surface reduction)
+
+- **New messages no longer *animate* the scroll-to-bottom**
+  (`BufferView.swift`). Two crash reports from the macOS 26.5 VM (1.0.602
+  @ ~2.7 h uptime and 1.0.616 @ ~5 min) show the identical fault — an
+  `NSException` thrown from `-[NSWindow _postWindowNeedsUpdateConstraints]`
+  while SwiftUI's `NSHostingView` re-entrantly invalidates constraints
+  *inside* `CA::Transaction::commit()`, with an animation in flight. Both
+  crash well after connections are established, so the trigger is
+  steady-state churn, and the highest-frequency animation during normal
+  chat was the per-incoming-line `withAnimation { proxy.scrollTo("bottom") }`.
+  That animation is now a plain (non-animated) `scrollTo`, which is
+  redundant follow-up to the `.defaultScrollAnchor(.bottom)` added above —
+  so the pane still tracks the newest line, without spinning up a
+  CoreAnimation transaction + window layout commit on every message. This
+  is a mitigation of the crash *surface*, not a confirmed root-cause fix;
+  the `ExceptionLogger` breadcrumb stays in place to capture the exact
+  reason if it recurs.
+
 ## [1.0.603] — 2026-06-02
 
 ### Security (audit follow-up — #36, KDF hardening)

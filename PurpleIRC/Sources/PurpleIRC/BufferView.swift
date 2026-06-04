@@ -426,9 +426,14 @@ struct BufferView: View {
                     }
                 }
                 if !showFind {
-                    withAnimation(.linear(duration: 0.1)) {
-                        proxy.scrollTo("bottom", anchor: .bottom)
-                    }
+                    // Non-animated. A per-incoming-line *animated* scrollTo
+                    // drove a CoreAnimation transaction + window layout commit
+                    // on every message — the exact churn the macOS-26
+                    // layout-cycle crash rides on (NSHostingView re-entrantly
+                    // invalidating constraints during CA::Transaction::commit).
+                    // .defaultScrollAnchor(.bottom) above already keeps the
+                    // pane pinned to the newest line; this is a plain snap.
+                    proxy.scrollTo("bottom", anchor: .bottom)
                 }
             }
             .onChange(of: bufferIndex) { _, _ in
