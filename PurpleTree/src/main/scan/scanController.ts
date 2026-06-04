@@ -23,7 +23,9 @@ import type {
 import { Tree } from './tree';
 import { computeTreemap } from './treemap';
 import { computeSunburst } from './sunburst';
-import { writeSnapshot, readSnapshot } from './snapshot';
+import { writeSnapshot, readSnapshot, listSnapshots } from './snapshot';
+import { diffDirSizes } from './diff';
+import type { SnapshotDiff } from '../../shared/types';
 
 type Sender = (channel: string, payload: unknown) => void;
 
@@ -251,6 +253,26 @@ export async function saveSnapshot(scanId: string): Promise<boolean> {
   if (!tree || !ser) return false;
   await writeSnapshot(scanId, ser, tree.stats());
   return true;
+}
+
+/** Compare two saved snapshots by folder; older vs newer auto-ordered by date. */
+export async function diffSnapshots(idA: string, idB: string): Promise<SnapshotDiff | null> {
+  const infos = await listSnapshots();
+  const ia = infos.find((s) => s.scanId === idA);
+  const ib = infos.find((s) => s.scanId === idB);
+  if (!ia || !ib) return null;
+  const [older, newer] = ia.createdMs <= ib.createdMs ? [ia, ib] : [ib, ia];
+  const serOlder = await readSnapshot(older.scanId);
+  const serNewer = await readSnapshot(newer.scanId);
+  if (!serOlder || !serNewer) return null;
+  // Loaded transiently and dropped on return (not added to the live store).
+  const tOlder = new Tree(serOlder);
+  tOlder.setMetric(activeMetric);
+  const tNewer = new Tree(serNewer);
+  tNewer.setMetric(activeMetric);
+  const entries = diffDirSizes(tOlder.dirSizes(), tNewer.dirSizes());
+  const totalDelta = tNewer.stats().totalBytes - tOlder.stats().totalBytes;
+  return { a: older, b: newer, totalDelta, entries };
 }
 
 /** Load a previously-saved snapshot into memory under a fresh scanId. */

@@ -71,6 +71,18 @@ the related apps first so their caches aren't in use.
   reports default to `~/Downloads/Purple Tree/` (or your Downloads on Windows).
 - **Save Snapshot** stores the scan so you can reload it later and compare.
 
+## 6½. Snapshots — track changes over time
+
+The **📸 Snapshots** tab lists every scan you've saved. From here you can:
+
+- **Open** an old snapshot to browse it like a fresh scan.
+- **Delete** ones you don't need.
+- Tick **two** snapshots and click **Compare** to see what changed between them —
+  which folders grew, shrank, appeared, or vanished, biggest change first, with
+  before → after sizes and a +/− delta. Great for "what ate my 20 GB this week?"
+
+Save snapshots over time with **Save Snapshot** in the top bar after a scan.
+
 ## 7. Deleting safely
 
 By default **everything goes to the Trash / Recycle Bin** and can be restored.

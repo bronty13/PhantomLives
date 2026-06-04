@@ -224,4 +224,25 @@ export interface SnapshotInfo {
   sizeBytes: number;
 }
 
+/** One folder's change between two snapshots. */
+export interface DiffEntry {
+  path: string;
+  /** Aggregate size in the older snapshot (0 if absent). */
+  sizeA: number;
+  /** Aggregate size in the newer snapshot (0 if absent). */
+  sizeB: number;
+  /** sizeB - sizeA (positive = grew). */
+  delta: number;
+  status: 'grew' | 'shrank' | 'added' | 'removed';
+}
+
+export interface SnapshotDiff {
+  a: SnapshotInfo;
+  b: SnapshotInfo;
+  /** Total bytes change across the whole tree (rootB - rootA). */
+  totalDelta: number;
+  /** Top folder changes, biggest absolute delta first. */
+  entries: DiffEntry[];
+}
+
 export type ExportFormat = 'csv' | 'html' | 'json';

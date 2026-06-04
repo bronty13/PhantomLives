@@ -24,7 +24,7 @@ import {
   testBackup,
   restoreBackup
 } from './backup/backupService';
-import { listSnapshots } from './scan/snapshot';
+import { listSnapshots, deleteSnapshot } from './scan/snapshot';
 import type { ScanOptions, SortSpec, FileFilter, ExportFormat } from '../shared/types';
 
 // Electron derives app.getName() from package.json's top-level `name`
@@ -359,6 +359,10 @@ function registerIpc(): void {
   ipcMain.handle('purpletree:snapshot-list', () => listSnapshots());
   ipcMain.handle('purpletree:snapshot-save', (_e, scanId: string) => controller.saveSnapshot(scanId));
   ipcMain.handle('purpletree:snapshot-load', (_e, scanId: string) => controller.loadSnapshot(scanId));
+  ipcMain.handle('purpletree:snapshot-delete', (_e, scanId: string) => deleteSnapshot(scanId));
+  ipcMain.handle('purpletree:snapshot-diff', (_e, idA: string, idB: string) =>
+    controller.diffSnapshots(idA, idB)
+  );
 }
 
 app.whenReady().then(() => {

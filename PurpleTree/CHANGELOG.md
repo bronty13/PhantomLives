@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.4.0] - 2026-06-03
+
+- **Snapshot compare.** New **📸 Snapshots** tab: list, open, or delete saved
+  scans, and tick two to **Compare** — see which folders grew, shrank, appeared,
+  or vanished between them, biggest change first, with before → after sizes and
+  a signed delta (plus the overall total change). Save scans with **Save
+  Snapshot** in the top bar. Diffs honor your current On-disk/Logical setting.
+  (Folder-level diff computed in main from the two snapshots' directory sizes.)
+
 ## [1.3.0] - 2026-06-03
 
 - **Sunburst view.** A DaisyDisk-style radial visualization alongside the

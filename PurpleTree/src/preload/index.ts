@@ -12,6 +12,7 @@ import type {
   DeleteResult,
   BackupInfo,
   SnapshotInfo,
+  SnapshotDiff,
   ExportFormat,
   DuplicateScanResult,
   DuplicateProgress
@@ -119,6 +120,10 @@ const api = {
   snapshotSave: (scanId: string): Promise<boolean> => ipcRenderer.invoke('purpletree:snapshot-save', scanId),
   snapshotLoad: (scanId: string): Promise<{ scanId: string } | null> =>
     ipcRenderer.invoke('purpletree:snapshot-load', scanId),
+  snapshotDelete: (scanId: string): Promise<void> =>
+    ipcRenderer.invoke('purpletree:snapshot-delete', scanId),
+  snapshotDiff: (idA: string, idB: string): Promise<SnapshotDiff | null> =>
+    ipcRenderer.invoke('purpletree:snapshot-diff', idA, idB),
 
   // Events (main -> renderer)
   onScanProgress: (cb: (p: ScanProgress) => void): Unsub => on('purpletree:scan-progress', cb),

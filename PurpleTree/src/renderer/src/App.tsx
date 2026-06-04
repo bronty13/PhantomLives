@@ -9,10 +9,11 @@ import Breadcrumb from './features/treemap/Breadcrumb';
 import DuplicatesView from './features/duplicates/DuplicatesView';
 import LargeOldFilesView from './features/largeold/LargeOldFilesView';
 import CacheCleanupView from './features/cache/CacheCleanupView';
+import SnapshotsView from './features/snapshots/SnapshotsView';
 import SettingsModal from './features/settings/SettingsModal';
 
 const api = window.purpleTree;
-type View = 'explorer' | 'duplicates' | 'largeold' | 'cache';
+type View = 'explorer' | 'duplicates' | 'largeold' | 'cache' | 'snapshots';
 
 interface Prefs {
   scanOptions: { followSymlinks: boolean; crossMountPoints: boolean; dedupHardLinks: boolean };
@@ -154,6 +155,19 @@ export default function App(): JSX.Element {
     setFocusId(crumbs.length >= 2 ? crumbs[crumbs.length - 2].id : 0);
   };
 
+  const onSnapshotLoaded = (liveId: string): void => {
+    scanIdRef.current = liveId;
+    setScanId(liveId);
+    void api.getSummary(liveId).then((s) => {
+      if (!s) return;
+      setRoot(s.rootRow);
+      setStats(s.stats);
+      setFocusId(0);
+      setStatus('ready');
+      setView('explorer');
+    });
+  };
+
   const doExport = async (format: ExportFormat): Promise<void> => {
     setExportOpen(false);
     if (!scanId) return;
@@ -241,11 +255,17 @@ export default function App(): JSX.Element {
             <button className={view === 'cache' ? 'active' : ''} onClick={() => setView('cache')}>
               🧹 Cache Cleanup
             </button>
+            <button
+              className={view === 'snapshots' ? 'active' : ''}
+              onClick={() => setView('snapshots')}
+            >
+              📸 Snapshots
+            </button>
           </nav>
         )}
 
         <main className="main">
-          {status === 'empty' && view !== 'cache' && (
+          {status === 'empty' && view !== 'cache' && view !== 'snapshots' && (
             <div className="empty-state">
               <div className="empty-card">
                 <div className="empty-icon">🌳</div>
@@ -292,7 +312,7 @@ export default function App(): JSX.Element {
             </div>
           )}
 
-          {status === 'error' && view !== 'cache' && (
+          {status === 'error' && view !== 'cache' && view !== 'snapshots' && (
             <div className="empty-state">
               <div className="empty-card">
                 <div className="empty-icon">⚠️</div>
@@ -305,6 +325,7 @@ export default function App(): JSX.Element {
           )}
 
           {view === 'cache' && <CacheCleanupView />}
+          {view === 'snapshots' && <SnapshotsView onLoaded={onSnapshotLoaded} />}
 
           {status === 'ready' && scanId && root && view === 'explorer' && (
             <div className="explorer" key={`${scanId}-${refreshKey}`}>

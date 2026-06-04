@@ -406,6 +406,15 @@ export class Tree {
     return { totalBytes: this.aggOf(0) ?? 0, totalFiles: this.fileCount[0] ?? 0 };
   }
 
+  /** Map of every directory's absolute path → aggregate size (active metric). */
+  dirSizes(): Map<string, number> {
+    const m = new Map<string, number>();
+    for (let i = 0; i < this.nodeCount; i++) {
+      if (this.isDir(i)) m.set(this.path(i), this.aggOf(i));
+    }
+    return m;
+  }
+
   /** All non-root nodes sorted by aggregate size desc, capped — for export. */
   flatten(limit: number): NodeRow[] {
     const ids: number[] = [];
