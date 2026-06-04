@@ -1,0 +1,49 @@
+[package]
+name = "purplemind"
+version = "0.1.0"
+description = "PurpleMind — a soft, friendly cross-platform mindmap studio"
+authors = ["Robert Olen <robert.olen@gmail.com>"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "purplemind_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-process = "2"
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+tauri-plugin-updater = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Auto-backup zips the entire app_data/ tree on launch.
+zip = { version = "2", default-features = false, features = ["deflate"] }
+walkdir = "2"
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"
+dirs = "5"
+# Migration smoke test: applies every shipped migration to a fresh in-memory
+# SQLite. Bundled feature keeps the binary self-contained (no system
+# libsqlite3 dep).
+rusqlite = { version = "0.31", features = ["bundled"] }
+# SHA-256 hashing for the migration-immutability guardrail test.
+sha2 = "0.10"
+# Decode the base64 export payloads (PNG/SVG/PDF/JSON/Markdown) handed over
+# IPC from the frontend before writing them to ~/Downloads/PurpleMind/.
+base64 = "0.22"
+
+[dev-dependencies]
+tempfile = "3"
+filetime = "0.2"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

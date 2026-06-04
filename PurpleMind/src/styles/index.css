@@ -1,0 +1,133 @@
+/* Paper Daisy is the soft rounded display font, bundled as a Tauri resource
+   and served by Vite from src/assets in dev. The @tauri-apps resource copy is
+   for the packaged app; in the webview we load it via this @font-face. */
+@font-face {
+  font-family: 'Paper Daisy';
+  src: url('../assets/PaperDaisy.ttf') format('truetype');
+  font-display: swap;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Soft purple brand ramp (RGB triples; alpha applied via Tailwind). */
+    --brand-50: 245 240 252;
+    --brand-100: 237 228 250;
+    --brand-200: 221 204 246;
+    --brand-300: 198 167 238;
+    --brand-400: 171 130 230;
+    --brand-500: 147 97 219;
+    --brand-600: 124 74 196;
+    --brand-700: 99 58 158;
+
+    /* Light-mode surface tokens. */
+    --surface-base: 250 248 254;
+    --surface-card: 255 255 255;
+    --surface-input: 248 244 253;
+    --surface-border: 228 219 242;
+    --surface-text: 46 36 64;
+    --surface-muted: 124 112 142;
+  }
+
+  html.dark {
+    /* Dark-mode surface tokens; brand ramp stays the same so accents pop. */
+    --surface-base: 20 17 28;
+    --surface-card: 30 26 41;
+    --surface-input: 38 33 52;
+    --surface-border: 54 47 72;
+    --surface-text: 236 230 246;
+    --surface-muted: 159 150 178;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    background-color: rgb(var(--surface-base));
+    color: rgb(var(--surface-text));
+    font-family:
+      'Nunito', 'SF Pro Rounded', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Don't show the text cursor / selection on chrome; the canvas + inputs
+     opt back in. */
+  button {
+    cursor: pointer;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-2xl px-3.5 py-2
+      text-sm font-semibold transition-colors disabled:cursor-not-allowed
+      disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-brand-500 text-white hover:bg-brand-600 shadow-cute;
+  }
+  .btn-ghost {
+    @apply btn text-surface-text hover:bg-surface-input;
+  }
+  .btn-soft {
+    @apply btn bg-surface-input text-surface-text hover:bg-brand-100
+      dark:hover:bg-surface-border;
+  }
+  .field {
+    @apply w-full rounded-xl border border-surface-border bg-surface-input
+      px-3 py-2 text-sm text-surface-text outline-none
+      focus:border-brand-400 focus:ring-2 focus:ring-brand-200
+      dark:focus:ring-brand-700;
+  }
+  .card {
+    @apply rounded-2xl border border-surface-border bg-surface-card;
+  }
+}
+
+/* React Flow theming — keep the canvas in the brand palette and dark-aware. */
+.react-flow__attribution {
+  display: none;
+}
+.react-flow__background {
+  background-color: rgb(var(--surface-base));
+}
+.react-flow__edge-path {
+  stroke: rgb(var(--brand-400));
+  stroke-width: 2;
+}
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:focus .react-flow__edge-path {
+  stroke: rgb(var(--brand-600));
+  stroke-width: 3;
+}
+.react-flow__handle {
+  width: 10px;
+  height: 10px;
+  background: rgb(var(--brand-500));
+  border: 2px solid rgb(var(--surface-card));
+}
+.react-flow__controls {
+  border-radius: 0.75rem;
+  overflow: hidden;
+  box-shadow: 0 8px 24px -10px rgb(var(--brand-500) / 0.4);
+}
+.react-flow__controls-button {
+  background: rgb(var(--surface-card));
+  border-bottom: 1px solid rgb(var(--surface-border));
+  color: rgb(var(--surface-text));
+  fill: rgb(var(--surface-text));
+}
+.react-flow__controls-button:hover {
+  background: rgb(var(--surface-input));
+}
+.react-flow__minimap {
+  border-radius: 0.75rem;
+  overflow: hidden;
+}

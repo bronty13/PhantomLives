@@ -1,0 +1,69 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "PurpleMind",
+  "version": "0.1.0",
+  "identifier": "com.phantomlives.purplemind",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1422",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "PurpleMind",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1024,
+        "minHeight": 640,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "transparent": false,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "category": "Productivity",
+    "shortDescription": "A soft, friendly mindmap studio",
+    "longDescription": "PurpleMind — a cross-platform mindmapping studio. Sketch ideas on an infinite canvas, connect them into maps, tidy them with auto-layout, and export to PNG, SVG, PDF, JSON, or a Markdown outline.",
+    "copyright": "© 2026 Robert Olen",
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": [
+      "resources/fonts/PaperDaisy.ttf"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
+    "windows": {
+      "wix": {
+        "language": "en-US"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/bronty13/PhantomLives/releases/latest/download/purplemind-latest.json"
+      ],
+      "pubkey": "PLACEHOLDER_REPLACE_WITH_REAL_MINISIGN_PUBKEY_BEFORE_FIRST_RELEASE"
+    }
+  }
+}
