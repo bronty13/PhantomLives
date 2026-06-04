@@ -93,7 +93,11 @@ function workerPath(): string {
 function spawn(): { worker: Worker; cancel: Int32Array; sab: SharedArrayBuffer } {
   const sab = new SharedArrayBuffer(4);
   const cancel = new Int32Array(sab);
-  const worker = new Worker(workerPath());
+  // Raise the worker's V8 old-space ceiling well above the default so very
+  // large trees (millions of nodes) don't OOM the worker mid-build.
+  const worker = new Worker(workerPath(), {
+    resourceLimits: { maxOldGenerationSizeMb: 4096 }
+  });
   return { worker, cancel, sab };
 }
 
@@ -110,6 +114,8 @@ export function startScan(rootPath: string, opts: ScanOptions): string {
         sender('purpletree:scan-progress', evt.progress);
         break;
       case 'done': {
+        if (process.env.PT_DEBUG)
+          console.error('[PT] done received:', evt.stats.totalFiles, 'files; building tree');
         const tree = new Tree(evt.tree);
         tree.setMetric(activeMetric);
         trees.set(scanId, tree);
@@ -117,6 +123,7 @@ export function startScan(rootPath: string, opts: ScanOptions): string {
         const s: ScanStats = { ...evt.stats, durationMs: Date.now() - startMs };
         stats.set(scanId, s);
         sender('purpletree:scan-complete', s);
+        if (process.env.PT_DEBUG) console.error('[PT] scan-complete sent');
         clearOp(scanId);
         void worker.terminate();
         break;
@@ -129,8 +136,21 @@ export function startScan(rootPath: string, opts: ScanOptions): string {
     }
   });
   worker.on('error', (err) => {
+    if (process.env.PT_DEBUG) console.error('[PT] worker error:', err.message);
     sender('purpletree:scan-error', { scanId, message: err.message });
     clearOp(scanId);
+  });
+  // If the worker dies WITHOUT posting done/error (e.g. V8 OOM hard-kills it on
+  // a very large tree), unstick the UI instead of leaving it on "Scanning".
+  worker.on('exit', (code) => {
+    if (process.env.PT_DEBUG) console.error('[PT] worker exit code:', code, 'stillActive:', active.has(scanId));
+    if (active.has(scanId)) {
+      sender('purpletree:scan-error', {
+        scanId,
+        message: `Scan stopped unexpectedly (worker exit ${code}) — likely out of memory on a very large folder.`
+      });
+      clearOp(scanId);
+    }
   });
 
   worker.postMessage({ type: 'start', scanId, rootPath, opts, cancelFlag: sab });

@@ -52,9 +52,7 @@ export default function App(): JSX.Element {
     void api.prefsGet().then((p) => setPrefs(p as unknown as Prefs));
   }, []);
 
-  const chooseFolder = useCallback(async () => {
-    const dir = await api.pickDirectory();
-    if (!dir) return;
+  const startScanOf = useCallback(async (dir: string) => {
     const opts = (await api.prefsGet()).scanOptions;
     const id = await api.startScan(dir, opts);
     scanIdRef.current = id;
@@ -65,8 +63,17 @@ export default function App(): JSX.Element {
     setView('explorer');
   }, []);
 
+  const chooseFolder = useCallback(async () => {
+    const dir = await api.pickDirectory();
+    if (dir) await startScanOf(dir);
+  }, [startScanOf]);
+
   useEffect(() => {
     loadPrefs();
+    // Debug: auto-start a scan when launched with PT_AUTOSCAN (no-op normally).
+    void api.autoscanPath().then((p) => {
+      if (p) void startScanOf(p);
+    });
     const offProg = api.onScanProgress((p) => {
       if (p.scanId === scanIdRef.current) setProgress(p);
     });
@@ -107,7 +114,7 @@ export default function App(): JSX.Element {
       offCancelled();
       offMenu();
     };
-  }, [chooseFolder, loadPrefs]);
+  }, [chooseFolder, loadPrefs, startScanOf]);
 
   const onPick = (node: RectNode): void => {
     if (node.isDir) setFocusId(node.id);

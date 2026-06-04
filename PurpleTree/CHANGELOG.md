@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.1.3] - 2026-06-03
+
+- **THE fix: scans of very large folders now complete instead of freezing near
+  the end.** Diagnosed with a headless probe + a debug autoscan harness: the
+  crawl finished fine (1.97M files), but `TreeBuilder.finalize()` ran the worker
+  out of memory — it held a 2.4M-entry `string[]` of names and then allocated
+  2.4M *more* temporary `Uint8Array`s to pack them. Names are now encoded
+  incrementally into a single growing buffer *during* the scan (no string array,
+  no per-name allocation spike); peak worker memory fell from ~1.9 GB to well
+  under 1 GB. Also raised the worker's V8 old-space ceiling to 4 GB as a safety
+  net for even larger trees.
+- Robustness: if a scan worker ever dies without finishing (OOM, crash), the UI
+  now surfaces an error instead of hanging forever on "Scanning…".
+- (Debug-only, env-gated: `PT_DEBUG` milestone logging and `PT_AUTOSCAN` to
+  reproduce the full GUI scan pipeline headlessly. No-ops in normal use.)
+
 ## [1.1.2] - 2026-06-03
 
 - Fix: **a large scan no longer *appears* frozen.** v1.1.1's "force-emit the

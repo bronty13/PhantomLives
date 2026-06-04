@@ -40,7 +40,13 @@ export class TreeBuilder {
   private mtimeMs: Float64Array<ArrayBuffer> = new Float64Array(this.cap);
   private atimeMs: Float64Array<ArrayBuffer> = new Float64Array(this.cap);
   private flags: Uint8Array<ArrayBuffer> = new Uint8Array(this.cap);
-  private names: string[] = [];
+  // Names are encoded into one growing UTF-8 buffer *as nodes are added* — not
+  // held as a 2.4M-entry string[] and re-encoded into 2.4M Uint8Arrays at
+  // finalize (that spike OOM'd the worker on large trees).
+  private nameBuf: Uint8Array<ArrayBuffer> = new Uint8Array(1 << 16);
+  private nameLen = 0;
+  private nameOffsets: Uint32Array<ArrayBuffer> = new Uint32Array(this.cap + 1);
+  private enc = new TextEncoder();
 
   constructor(
     public readonly rootPath: string,
@@ -86,7 +92,25 @@ export class TreeBuilder {
     this.mtimeMs = gf(this.mtimeMs);
     this.atimeMs = gf(this.atimeMs);
     this.flags = g8(this.flags);
+    const no = new Uint32Array(next + 1);
+    no.set(this.nameOffsets);
+    this.nameOffsets = no;
     this.cap = next;
+  }
+
+  /** Append a name's UTF-8 bytes to the growing name buffer; returns nothing. */
+  private appendName(name: string): void {
+    // Worst case 3 bytes per UTF-16 unit covers BMP and surrogate pairs.
+    const need = this.nameLen + name.length * 3;
+    if (need > this.nameBuf.length) {
+      let cap = this.nameBuf.length * 2;
+      while (cap < need) cap *= 2;
+      const b = new Uint8Array(cap);
+      b.set(this.nameBuf.subarray(0, this.nameLen));
+      this.nameBuf = b;
+    }
+    const { written } = this.enc.encodeInto(name, this.nameBuf.subarray(this.nameLen));
+    this.nameLen += written;
   }
 
   /**
@@ -111,7 +135,8 @@ export class TreeBuilder {
     this.mtimeMs[id] = opts.mtimeMs;
     this.atimeMs[id] = opts.atimeMs;
     this.flags[id] = opts.flags;
-    this.names[id] = opts.name;
+    this.nameOffsets[id] = this.nameLen;
+    this.appendName(opts.name);
     if (opts.parent >= 0) {
       // Prepend to the parent's child list (O(1); order is irrelevant since
       // the renderer sorts at query time).
@@ -149,24 +174,11 @@ export class TreeBuilder {
       this.fileCount[p] += this.fileCount[i];
     }
 
-    // Pack names into one UTF-8 buffer + offsets.
-    const enc = new TextEncoder();
-    const encoded: Uint8Array[] = new Array(n);
-    let total = 0;
-    for (let i = 0; i < n; i++) {
-      const e = enc.encode(this.names[i] ?? '');
-      encoded[i] = e;
-      total += e.length;
-    }
-    const nameBytes = new Uint8Array(total);
-    const nameOffsets = new Uint32Array(n + 1);
-    let off = 0;
-    for (let i = 0; i < n; i++) {
-      nameOffsets[i] = off;
-      nameBytes.set(encoded[i], off);
-      off += encoded[i].length;
-    }
-    nameOffsets[n] = off;
+    // Names were encoded incrementally during addNode — just cap the offsets
+    // and slice the buffers to their used length. No per-name allocation here.
+    this.nameOffsets[n] = this.nameLen;
+    const nameBytes = this.nameBuf.slice(0, this.nameLen);
+    const nameOffsets = this.nameOffsets.slice(0, n + 1);
 
     // Slice each typed array to exactly n elements and detach its buffer.
     const sliceI = (a: Int32Array<ArrayBuffer>): ArrayBuffer => a.slice(0, n).buffer;

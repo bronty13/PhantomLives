@@ -217,6 +217,11 @@ function registerIpc(): void {
 
   ipcMain.handle('purpletree:pick-directory', () => pickDirectory());
 
+  // Debug-only: lets the renderer auto-start a scan of $PT_AUTOSCAN on launch
+  // (bypasses the folder picker) so the full GUI pipeline can be reproduced
+  // headlessly. Returns null in normal use.
+  ipcMain.handle('purpletree:autoscan-path', () => process.env.PT_AUTOSCAN ?? null);
+
   // ----- Scan -----
   ipcMain.handle('purpletree:scan-start', (_e, rootPath: string, opts: ScanOptions) => {
     setPreferences({ lastScanRoot: rootPath });

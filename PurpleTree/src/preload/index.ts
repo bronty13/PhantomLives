@@ -43,6 +43,7 @@ const api = {
     ipcRenderer.invoke('purpletree:ping'),
 
   pickDirectory: (): Promise<string | null> => ipcRenderer.invoke('purpletree:pick-directory'),
+  autoscanPath: (): Promise<string | null> => ipcRenderer.invoke('purpletree:autoscan-path'),
 
   // Scan
   startScan: (rootPath: string, opts: ScanOptions): Promise<string> =>

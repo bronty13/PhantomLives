@@ -297,7 +297,10 @@ async function runScan(cmd: Extract<ScanCommand, { type: 'start' }>): Promise<vo
   }
 
   emitProgress(true);
+  if (process.env.PT_DEBUG)
+    console.error('[wkr] crawl complete; nodes=', builder.count, 'files=', filesScanned, '; finalizing');
   const tree = builder.finalize();
+  if (process.env.PT_DEBUG) console.error('[wkr] finalized; posting done');
   const stats: ScanStats = {
     scanId,
     rootPath,
