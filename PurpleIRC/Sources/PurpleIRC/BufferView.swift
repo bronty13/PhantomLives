@@ -403,6 +403,12 @@ struct BufferView: View {
             // (Classic, High Contrast) fall through to .textBackgroundColor.
             .background(model.theme.chatBackground)
             .foregroundStyle(model.theme.chatForeground)
+            // Rest at the newest message and re-anchor to the bottom whenever
+            // the content size changes (new lines, buffer switch). This is the
+            // native macOS-14+ mechanism that backstops the explicit
+            // `scrollTo("bottom")` calls below — without it a reused ScrollView
+            // keeps the previous buffer's offset on switch.
+            .defaultScrollAnchor(.bottom)
             .onChange(of: buffer.lines.count) { _, _ in
                 // Lines changed — refresh the cached row list. Was previously
                 // a computed var that recomputed on every body pass.
@@ -432,14 +438,10 @@ struct BufferView: View {
                 // opens scrolled to the TOP. (Pre-1.0.234 this scroll only
                 // happened as a side effect of buffer.lines.count differing
                 // between buffers; same-length buffers landed at the top.)
-                // Deferred to the next runloop so the new rows are laid out
-                // before we resolve the "bottom" anchor; no animation — an
-                // animated jump on switch reads as jank.
+                // No animation — an animated jump on switch reads as jank.
                 refreshRenderedRows()
                 if !showFind {
-                    DispatchQueue.main.async {
-                        proxy.scrollTo("bottom", anchor: .bottom)
-                    }
+                    jumpToBottom(proxy)
                 }
             }
             .onChange(of: effectiveFilter) { _, _ in
@@ -458,8 +460,25 @@ struct BufferView: View {
             }
             .onAppear {
                 refreshRenderedRows()
-                proxy.scrollTo("bottom", anchor: .bottom)
+                jumpToBottom(proxy)
             }
+        }
+    }
+
+    /// Snap the messages pane to the newest line. A buffer switch swaps the
+    /// whole row list into a *reused* ScrollView whose `LazyVStack` hasn't
+    /// realized the rows below the fold yet, so a single `scrollTo` lands
+    /// short — the buffer opens "scrolled up to an earlier point." Re-assert
+    /// across the next couple of runloops so the final resting position is the
+    /// true bottom once those rows realize. No animation: this is a jump to a
+    /// new buffer, not a follow of live messages.
+    private func jumpToBottom(_ proxy: ScrollViewProxy) {
+        proxy.scrollTo("bottom", anchor: .bottom)
+        DispatchQueue.main.async {
+            proxy.scrollTo("bottom", anchor: .bottom)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
+            proxy.scrollTo("bottom", anchor: .bottom)
         }
     }
 

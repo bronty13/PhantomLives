@@ -30,6 +30,21 @@ count (`1.0.<count>`).
   are laid out first; no animation, since an animated jump on switch
   reads as jank). Skipped while the Find bar is open, matching the
   new-message path.
+- **Follow-up: returning to a conversation no longer lands part-way up
+  the scrollback** (`BufferView.swift`). The prior fix scrolled to
+  `"bottom"` after a single `DispatchQueue.main.async` hop, but because
+  `BufferView` (and its `ScrollView`) is *reused* across buffer switches
+  — `ContentView` builds `BufferView(bufferIndex:)` with no `.id()`, so
+  switching only mutates `bufferIndex` — the `LazyVStack` hadn't realized
+  the rows below the fold one runloop later, so the scroll landed short
+  and the buffer opened "scrolled up to an earlier point in time." Now:
+  (1) the `ScrollView` carries `.defaultScrollAnchor(.bottom)` so it
+  natively rests at, and re-anchors to, the newest line when the content
+  size changes; and (2) a `jumpToBottom(_:)` helper re-asserts the
+  `scrollTo("bottom")` across the next couple of runloops (immediate +
+  `async` + `+0.06 s`) so the final resting position is the true bottom
+  once the off-screen rows realize. Used by both the buffer-switch
+  `onChange` and `onAppear`.
 
 ## [1.0.603] — 2026-06-02
 
