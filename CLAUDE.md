@@ -9,41 +9,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Cross-Mac dev setup
 
-**This repo must live at `~/dev/PhantomLives/`. It must NOT live anywhere under `~/Documents/` or `~/Desktop/`.** The maintainer works across two Macs with different usernames; `~/dev/` is consistent on both and stays out of iCloud's reach.
+**This repo must live at `~/dev/PhantomLives/`. It must NOT live anywhere under `~/Documents/` or `~/Desktop/`.** The maintainer works across two Macs with different usernames; `~/dev/` is consistent on both and stays out of iCloud's reach — `~/Documents/` is iCloud-synced and corrupts build artifacts (` 2`-suffixed dupes), throttles `mv`/`ditto`, and slows every syscall.
 
-### Why `~/Documents/` is broken for dev work
-
-macOS's "Desktop & Documents Folders" iCloud sync (System Settings → Apple ID → iCloud Drive → Options) makes `~/Documents/` an iCloud-managed location. The iCloud File Provider (`bird` + `fileproviderd`) intercepts every filesystem syscall on iCloud-managed paths. For a polyglot monorepo like this one the consequences are catastrophic:
-
-- **Build artifacts get duplicated and corrupted across machines.** SwiftPM's `.build/`, Cargo's `target/`, Electron's `dist/`, npm's `node_modules/`, Xcode's `DerivedData/` all sync to iCloud whether you want them to or not — `.gitignore` is irrelevant because iCloud doesn't read it. When Mac A's artifacts collide with Mac B's, iCloud renames the conflict with a ` 2` suffix: `Sparkle 2/`, `GRDB 2.swift/`, `RootView 2.swift`, `dist 2/`, `PurpleIRC 2.app/`, `WHATS_NEW_1.13 2.md`. The build manifest still references the unsuffixed name, so SwiftPM fails with `the package manifest at … cannot be accessed`, npm fails with `MODULE_NOT_FOUND`, etc.
-- **`mv` is no longer atomic.** Trying to move a tree out of `~/Documents/` (even to another local path) is intercepted by `fileproviderd` and routed through a per-file async copy that pegs CPU at 100 % and crawls. `ditto` and `cp -a` are throttled the same way. A 12 GB move that should be a metadata rename takes 10+ hours and may hang.
-- **Per-file syscalls are slow.** Every `stat`, `open`, `write` on a path under `~/Documents/` may have to consult `fileproviderd` first. Builds with thousands of files take measurably longer than at `~/dev/`.
-
-### Migrating an existing checkout out of `~/Documents/`
-
-If you find yourself with a repo at `~/Documents/GitHub/PhantomLives/`, do **NOT** try to `mv`, `cp`, `ditto`, or `rsync` it to `~/dev/`. iCloud will block or wreck the operation. The reliable path:
-
-1. `cd ~/Documents/GitHub/PhantomLives && git status` — note uncommitted modifications and untracked source files you care about.
-2. `git diff > /tmp/dirty.patch` — capture all working-tree modifications in one file.
-3. `git clone https://github.com/<owner>/PhantomLives.git ~/dev/PhantomLives` — fresh clone from origin bypasses iCloud entirely. Takes seconds.
-4. `cd ~/dev/PhantomLives && git apply /tmp/dirty.patch` — restore modifications.
-5. `rsync -a` the untracked source files you want to keep. Skip anything with a ` 2` in the name — those are iCloud corruption, not real source.
-6. Copy `.claude/settings.local.json` and rewrite any hardcoded `/Users/<name>/Documents/GitHub/PhantomLives/…` paths to `~/dev/PhantomLives/…`.
-7. Verify with a representative build (`PurpleDedup/build-app.sh`, `Molly/build-app.sh`, etc.) before deleting OLD.
-8. `rm -rf ~/Documents/GitHub/PhantomLives`. iCloud will be slow but eventually clears, and the deletion will sync to other Macs — make sure they're ready or have already been migrated.
-
-Clean clone is ~141 MB. OLD was 12 GB because of accumulated build caches. None of that needs to move.
-
-### Per-Mac setup checklist (do once per machine)
-
-The repo content is shared via git, but these pieces live in macOS Keychain / system settings and have to be set up on each machine independently — do not try to sync them via iCloud or Dropbox:
-
-1. **Full Xcode selected:** `sudo xcode-select -s /Applications/Xcode.app`. Required for any subproject using SwiftUI `#Preview {}` macros (the `PreviewsMacros` plugin only ships with full Xcode, not Command Line Tools).
-2. **Apple Developer ID signing identity** in the login Keychain. `security find-identity -v -p codesigning` should list `Developer ID Application: <Name> (TEAMID)`. Subprojects' `build-app.sh` auto-detects this; without it, the script falls back to ad-hoc signing (works locally, breaks notarization).
-3. **Sparkle EdDSA private key** in the login Keychain for Sparkle-using apps (currently PurpleDedup). The public half goes into `~/.zshrc` as `SPARKLE_PUBLIC_KEY`. See `## Swift app build prerequisites` section 2 below for details.
-4. **Notarytool keychain profile** for release builds: `xcrun notarytool store-credentials "<App>-Notary" --apple-id <id> --team-id <id>`. Per-subproject; only needed when cutting a release from this Mac.
-5. **Homebrew prereqs** vary per subproject — see each subproject's README. Common: `rust`, `pnpm`, `librsvg`, `imagemagick`, `slackdump`.
-6. **Git hooks** are NOT carried by `git clone` — re-run any subproject's hook installer after cloning. Installers: `PurplePDF/scripts/install-git-hooks.sh` (single-project hook for PurplePDF) and `PurpleTree/scripts/install-git-hooks.sh` (a **dispatching** hook that runs every `*/scripts/bump-and-log.mjs` under the repo root — each no-ops unless its own subproject is staged, so it's safe to share; prefer running this one). Either installs a pre-commit hook that auto-bumps the touched subproject's patch version + prepends a CHANGELOG entry. Without it, version bumps must be done by hand.
+→ Full detail (why `~/Documents/` breaks builds, how to migrate a checkout out of it, the per-Mac one-time setup checklist for Xcode / signing / Sparkle / notarytool / Homebrew / git hooks) is in **`docs/cross-mac-dev-setup.md`** — read it when migrating a checkout or setting up a new machine.
 
 ## Repository shape
 
@@ -74,116 +42,9 @@ These apply to **every** code, config, script, test, or doc change. Do not skip 
 
 ## Molly release messaging — a love note from Molly to Sallie
 
-**Every time we cut a Molly release, replace the auto-generated GitHub
-release body with a hand-crafted message from Molly to Sallie.** The
-auto-message ("Auto-built from tag molly-vX.Y.Z…") is fine for
-machines but ugly for the human reading it. Sallie *is* the user;
-treat the release notes as a personal note from her app.
+**Every time we cut a Molly release, replace the auto-generated GitHub release body with a hand-crafted, 200%-cute first-person message from Molly to Sallie — and update USER_MANUAL.md + other Sallie-facing docs (`WHATS_NEW_*.md`, in-app help) in the same voice. A doc out of step with the app is a release blocker.**
 
-### Docs are part of the release — no exceptions
-
-**Before every Molly release commit, update USER_MANUAL.md (and any
-other Sallie-facing docs — `WHATS_NEW_*.md`, in-app help text) in the
-same 200%-cute voice as the rest of the manual.** A "technically
-accurate but textbook" doc update doesn't count. If the manual still
-describes the old behaviour for a feature/screen/flow that changed,
-that is a **release blocker** — bump a `.1` and re-cut rather than
-shipping a manual that's out of step with the app.
-
-Voice split:
-
-- **200% cute** (Sallie-facing): `USER_MANUAL.md`, `WHATS_NEW_*.md`,
-  in-app help / tooltip text, GitHub release body.
-- **Normal dev voice** (engineer-facing, but still kept current):
-  `README.md`, `CHANGELOG.md`, `HANDOFF.md`, code comments,
-  `DESIGN.md`, `ROADMAP.md`.
-
-Both must be current at release time — only the *voice* differs.
-
-### Tone
-
-- **200% cute.** This is non-negotiable. Sparkles ✨ hearts 💖 stars 🌟,
-  warm encouraging voice, sweet pet-name energy. Molly is talking to her
-  best friend.
-- First-person from **Molly**, second-person to **Sallie**. (`"I added"`,
-  `"You can now"` — never `"the app"` or `"users"`.)
-- Frame everything around what *Sallie does and feels*, never engineering
-  internals. "I cleaned up the Custom Bundle form so when you pick URL
-  link you don't have to fill in fluff Robert is going to override
-  anyway" — not "validate_custom_delivery now keys off delivery_kind."
-- Encouragement, not interrogation. If something needs verification,
-  invite her: *"will you peek at X for me?"* — not *"please test X"*.
-
-### Structure
-
-Use this skeleton; tweak when the release calls for it but keep the
-sections recognisable:
-
-```markdown
-💖 **Hey Sallie!** 💖
-
-Itty-bitty note from your girl Molly — I got some makeover sparkles!
-(v{VERSION}, fresh out of the oven 🧁)
-
-## ✨ What's new since {PREV_VERSION}
-
-- 🪙 **Headline feature** — one or two sentences, in Sallie-language.
-- 🎁 **Smaller bug fix** — what was annoying, what's better now.
-- *(group related fixes; one bullet per shipped change is fine)*
-
-## 🪟 Updating on your Windows machine
-
-Open Molly → **Settings → Updates → Check for updates** and let me
-swoop in! Or grab the installer fresh from this page if the in-app
-updater is being shy.
-
-## 🧪 Will you peek at these for me?
-
-1. **First thing Sallie should try** — concrete click path
-   (Sidebar → 🪙 Social → tap +1 on TikTok — should ✨ching✨ and the
-   bar goes green at 2/2).
-2. **Edge case worth a glance** — what to watch for.
-3. **Regression check** — a previously-working flow that touched
-   the same code, just to be safe.
-
-## 💌 If something feels wonky
-
-Yell at me through Claude Code — I'll get it sorted same day. 🩷
-
-xoxo,
-Molly 🪙✨
-```
-
-### Required content
-
-- **Diff window**: include every commit between `molly-v<PREV>` and
-  `molly-v<NEW>` (use `git log molly-v<PREV>..molly-v<NEW> --oneline
-  -- Molly/`) — not just the headline version. Sallie hops several
-  patch versions sometimes; don't drop the in-between fixes.
-- **Windows-only test steps.** Sallie runs Windows exclusively. No
-  macOS-specific instructions, paths, or screenshots. "Right-click the
-  app" on macOS = "Properties → Unblock" on Windows; pick the Windows
-  one. If a feature was only manually verified on macOS by you, say so
-  honestly: *"I built this on a Mac so will you give it an extra
-  squeeze on Windows for me?"*
-- **Concrete click path** for the headline feature — exact sidebar
-  → tab → button sequence Sallie needs to follow to see the change.
-- **One regression check** when the change touches an existing flow —
-  pairs nicely with each headline item.
-
-### Workflow
-
-After `gh run watch` reports the publish-feed job has flipped the
-draft to published, immediately:
-
-1. Compose the message in a heredoc.
-2. `gh release edit molly-v<VERSION> --notes "$(cat <<'EOF' ... EOF)"`
-   to replace the auto-generated body.
-3. Confirm with `gh release view molly-v<VERSION>` that the new body
-   landed.
-
-Don't wait for the user to ask. Cute message → release body update →
-*then* announce to the user that the release is live.
+→ The full voice guide, tone rules, message skeleton, required content (diff window, Windows-only test steps, concrete click path, regression check), and `gh release edit` workflow live in **`docs/molly-release-messaging.md`** — read it before cutting any Molly release.
 
 ## SQL migrations are immutable
 
@@ -219,228 +80,21 @@ Rules:
 
 ## Auto-backup-on-launch
 
-Every PhantomLives app that owns persistent user data (a SQLite database, a JSON store, a settings bundle the user can't easily recreate) **must** run an automatic backup on app launch. This is the safety net that lets us ship migrations and destructive features without fear.
+Every PhantomLives app that owns persistent user data (a SQLite DB, JSON store, or settings bundle the user can't easily recreate) **must** run an automatic backup on launch (zip of `~/Library/Application Support/<AppName>/` → `~/Downloads/<AppName> backup/`, 14-day retention, 5-min debounce, never throws) **and** ship the full Settings → Backup UI. Both are ship blockers if missing.
 
-Default behavior:
-
-- **Location**: `~/Downloads/<AppName> backup/` (sibling to the regular output dir, with a trailing ` backup`).
-- **Filename**: `<AppName>-YYYY-MM-DD-HHmmss.zip`. Recognizable prefix so the trim logic and listing UI can scope to "our" archives without nuking unrelated zips a user dropped in the same folder.
-- **Contents**: zip of the entire `~/Library/Application Support/<AppName>/` directory (DB + settings + attachments).
-- **Retention**: 14 days by default. `0` means keep forever.
-- **Debounce**: skip the launch-time run if the previous successful backup is under 5 minutes old. Prevents debugging-session relaunches from filling the backup folder.
-- **Failure mode**: log via `NSLog`, never throw. The app must launch even if backup fails (volume unmounted, disk full, etc.). The error surfaces in Settings → Backup.
-- **User overrides** persist in `settings.json`: `autoBackupEnabled`, `backupPath`, `backupRetentionDays`, `lastBackupAt`.
-
-**Required UI (Settings → Backup) — non-negotiable** for any app
-with persistent user data. Missing controls = ship blocker.
-
-- Toggle for `autoBackupEnabled` (default **on**).
-- Text field + "Choose…" picker for the backup directory; show the
-  resolved path below in monospaced caption. "Default" button restores
-  the convention path.
-- Stepper for retention days (0…365; `0` = keep forever).
-- **Run Backup Now** button — calls `BackupService.runBackup()`
-  unconditionally (ignores the 5-min launch debounce).
-- **Reveal in Finder** button for the backup directory.
-- **Recent backups** list with per-row actions:
-  - **Test** — verify the archive (extract to tempdir, confirm
-    payload + DB presence, count rows non-destructively).
-  - **Restore** — replace live Application Support directory with the
-    archive. ALWAYS create a `<AppName>-pre-restore-…zip` safety
-    backup first.
-  - **Reveal in Finder**.
-- Last-backup timestamp readout.
-- Status line showing the most recent operation result or failure
-  reason.
-
-Required tests:
-
-- **debounce** — second call within 5 min is a no-op
-- **retention trim** — only files matching the `<AppName>-` prefix in the backup dir are removed when older than the retention window; unrelated files are left alone
-- **target-directory auto-create** — `runBackup` succeeds when the destination directory doesn't exist yet
-- **list ordering** — `listBackups` returns newest-first
-
-Reference implementation: `Timeliner/Sources/Timeliner/Services/BackupService.swift` (the launch-time auto-run, debounce, retention trim, verify, and restore pieces). `MasterClipper/Sources/MasterClipper/Services/BackupService.swift` is the older sibling without the launch-time auto-run — when MasterClipper is next touched, fold the launch-time hook in to bring it into compliance.
+→ Full spec (filename convention, retention/debounce/failure behavior, complete required-UI checklist, required tests, and the `Timeliner` reference implementation) is in **`docs/auto-backup-on-launch.md`** — read it when adding or auditing backup support.
 
 ## Sidebar layout: avoid `NavigationSplitView`
 
-**For new macOS apps: do NOT use `NavigationSplitView` for the top-level
-sidebar. Use a manual `HStack` with a fixed-width sidebar.** This is the
-empirically-verified pattern after this codebase has burned through
-three+ fix attempts.
+**For new macOS apps: do NOT use `NavigationSplitView` for the top-level sidebar. Use a manual `HStack` with a fixed-width `.frame(width:)` sidebar** (the MusicJournal/PurpleReel pattern). `NavigationSplitView` on macOS 14+ does not reliably honor its column-width constraints and mis-restores persisted divider state — this codebase has burned through three+ fix attempts.
 
-### The bug
-
-`NavigationSplitView` on macOS 14+ (Sonoma / Sequoia / Tahoe) does not
-reliably honor `.navigationSplitViewColumnWidth(min:ideal:max:)` at
-runtime — even when the persisted state is **within** the declared
-range, the sidebar can render narrower than its `min`. Apple
-FB10749141 was partially fixed on iPadOS 18 but not on macOS. The
-problem compounds because AppKit persists split-view divider positions
-in **two** places — `UserDefaults` (`"NSSplitView Subview Frames *"`)
-and `~/Library/Saved Application State/<bundleId>.savedState/` — and
-restores from either. Wiping `UserDefaults` alone is not enough, and
-even with both stores in a valid state the runtime layout still
-mis-renders.
-
-### The canonical fix: MusicJournal pattern
-
-A plain `HStack` with explicit sidebar `.frame(width:)`. With manual
-layout we own every pixel; AppKit's window-restoration machinery has
-no split-view divider to mis-restore.
-
-```swift
-struct ContentView: View {
-    @AppStorage("sidebarVisible") private var sidebarVisible: Bool = true
-    var body: some View {
-        HStack(spacing: 0) {
-            if sidebarVisible {
-                SidebarView()
-                    .frame(width: 240)
-                    .background(.ultraThinMaterial)
-                Divider()
-            }
-            DetailView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.18)) { sidebarVisible.toggle() }
-                } label: { Label("Toggle Sidebar", systemImage: "sidebar.left") }
-                .keyboardShortcut("s", modifiers: [.control, .command])
-            }
-        }
-    }
-}
-```
-
-Resizability is a nice-to-have and re-opens the persistence-corruption
-door — defer until explicitly requested.
-
-### Defense in depth: `WindowStateGuard`
-
-For nested `HSplitView` / `VSplitView` inside the detail tree (e.g.
-PurpleReel splits the asset table above the player), still ship
-`Services/WindowStateGuard.swift` and wire it from
-`AppDelegate.applicationWillFinishLaunching`:
-
-```swift
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    static let windowResetVersion = 1
-    func applicationWillFinishLaunching(_ notification: Notification) {
-        WindowStateGuard.applyOnLaunch(appName: "<AppName>",
-                                        resetVersion: Self.windowResetVersion)
-    }
-}
-```
-
-The guard does two things on each launch:
-
-1. **Preflight purge**: strips `"NSSplitView Subview Frames *"` keys
-   from `UserDefaults` AND wipes the bundle's `.savedState/` directory
-   whenever a stale frame key was found. Idempotent, runs every launch.
-2. **Versioned one-shot reset**: when source-declared
-   `windowResetVersion` exceeds the user's stored version, wipes the
-   entire window-state surface (NSWindow frames, sidebar separation,
-   `.savedState`). Bump in source to invalidate every install.
-
-Also expose a `Window → Reset Window State…` menu item calling
-`WindowStateGuard.forceReset(...)` for user-visible recovery.
-
-### Reference implementation
-
-- `PurpleReel/Sources/PurpleReel/Views/ContentView.swift` — HStack
-  layout (copy verbatim into new apps).
-- `PurpleReel/Sources/PurpleReel/Services/WindowStateGuard.swift` —
-  guard helper (copy verbatim).
-- `PurpleReel/Sources/PurpleReel/App/AppDelegate.swift` — minimal
-  delegate wired via `@NSApplicationDelegateAdaptor`.
-- `MusicJournal/Sources/MusicJournal/Views/ContentView.swift` —
-  original incident report and HStack template.
-
-### Apps still on `NavigationSplitView` (retrofit on next touch)
-
-PurpleLife, PurpleTracker, PurpleIRC, PurpleDedup, Timeliner,
-MasterClipper. All have been bitten by this bug in some form. None
-are crash-broken today (their `WindowStateGuard`-style hacks cover
-the worst cases) but the only durable fix is to drop
-`NavigationSplitView` for the manual HStack pattern.
+→ The bug writeup, copy-verbatim `ContentView` + `WindowStateGuard` code, reference files, and the list of apps still on `NavigationSplitView` (retrofit on next touch) are in **`docs/sidebar-layout.md`** — read it before building a new app's top-level layout or touching window-state code.
 
 ## `install.sh` standard for `.app` subprojects
 
-**Every PhantomLives macOS-app subproject (anything with a `build-app.sh` that produces a `.app` bundle) ships an `install.sh`, and `build-app.sh` auto-chains into it.** Building defaults to *build + install + relaunch* — one command does everything. This rule was made unconditional in 2026-05-19 because the conditional gating below was producing accidentally-divergent dev workflows across subprojects.
+**Every PhantomLives macOS-app subproject (anything with a `build-app.sh` that produces a `.app` bundle) ships an `install.sh`, and `build-app.sh` auto-chains into it** — so `./build-app.sh` defaults to *build + install (to `/Applications/<App>.app` via `ditto --noextattr`) + relaunch*, with `--no-install` / `--no-open` / `BUILD_ONLY=1` opt-outs. Installing to `/Applications/` (not the project tree) keeps TCC grants, Launch Services, and codesigning stable. Pure CLI/Python tools are exempt.
 
-The conditional rationale still applies (the *why* below is still load-bearing), it's just now applied universally:
-
-- TCC entitlements (Full Disk Access, Accessibility, Automation) key grants on the `(team ID, bundle ID, cdhash)` tuple — running from `/Applications/<App>.app` keeps Launch Services + System Settings → Privacy from spawning duplicate stale entries on every rebuild.
-- URL schemes, AppleScript dictionaries, Shortcuts intents, Spotlight metadata — all bind to the resolved bundle path that Launch Services indexes.
-- Daily-use launching from Spotlight / Dock / Cmd+Tab needs a stable bundle path.
-
-Pure CLI tools, Python scripts, and dev-only utilities are still exempt — they don't have `build-app.sh` to begin with.
-
-### What `install.sh` does
-
-Three steps, in order:
-
-1. **Quit the running copy** — `osascript -e 'tell application "<AppName>" to quit' >/dev/null 2>&1 || true`. Give Launch Services a moment (`sleep 1`) to release the bundle lock.
-2. **Replace `/Applications/<AppName>.app`** — `rm -rf` then `ditto --noextattr <project-dir>/<AppName>.app /Applications/<AppName>.app`. `ditto --noextattr` matters: it strips the iCloud File Provider xattrs that re-attach mid-copy and break `codesign --verify`.
-3. **Relaunch** — `open /Applications/<AppName>.app`. Skip with a `--no-open` flag for CI / scripted use.
-
-The script lives at the subproject root (`<SubProject>/install.sh`), is `chmod +x`-ed in git, refuses to run when the local `<App>.app` doesn't exist yet (run `./build-app.sh` first), and tolerates a missing `/Applications/<AppName>.app` (first install).
-
-Reference implementation: `SlackSucker/install.sh`.
-
-### `build-app.sh` chain
-
-Every `build-app.sh` ends with this canonical block after the build succeeds:
-
-```bash
-# Auto-install: replace /Applications/<App>.app and relaunch. Opt out
-# with `--no-install` (CI builds, signature inspection) or `--no-open`
-# (install without focus-stealing relaunch). Per the install.sh standard.
-if [ "${BUILD_ONLY:-0}" != "1" ] && [[ ! " $* " =~ " --no-install " ]]; then
-    INSTALL_FLAGS=""
-    if [[ " $* " =~ " --no-open " ]]; then INSTALL_FLAGS="--no-open"; fi
-    if [ -x "$(dirname "$0")/install.sh" ]; then
-        "$(dirname "$0")/install.sh" $INSTALL_FLAGS
-    fi
-fi
-```
-
-The `BUILD_ONLY=1` env-var override is for one-off invocations from scripts that genuinely want only the .app bundle (PR previews, signature checks). The `--no-install` flag is the same idea on the command line.
-
-### Developer workflow
-
-```sh
-./build-app.sh                       # build + install + relaunch
-./build-app.sh --no-open             # build + install, no focus steal
-./build-app.sh --no-install          # build only (legacy behavior)
-BUILD_ONLY=1 ./build-app.sh          # same, via env
-./install.sh                          # re-install last-built bundle
-./install.sh --no-open               # re-install without launching
-```
-
-The pre-2026-05-19 two-line idiom (`./build-app.sh && ./install.sh`) still works (install.sh is idempotent — running it twice just does the kill-replace-relaunch cycle twice), but it's redundant now.
-
-### Why `/Applications/`, not the project tree?
-
-- **TCC stability**: macOS Privacy & Security entries follow the cdhash of the *exact path* that was authorised. Running from `~/Documents/GitHub/PhantomLives/<Sub>/<App>.app` and from `/Applications/<App>.app` would each accumulate their own Full Disk Access grant; rebuilds in the project tree rotate the cdhash and force re-granting permissions on every iteration.
-- **Launch Services hygiene**: launching the same `.app` from two paths makes Spotlight / Cmd+Tab pick a phantom copy after Finder auto-renames duplicates to ` 2.app` / ` 3.app`. Pinning to `/Applications/` and rebuilding through ditto eliminates the duplicates entirely.
-- **No iCloud File Provider interference**: the project tree may be inside `~/Documents/GitHub/…` which is iCloud-synced on many maintainers' machines. The File Provider re-attaches `com.apple.fileprovider.fpfs#P` and `com.apple.FinderInfo` xattrs to `.app` bundles at arbitrary times, which trips `codesign --verify`. `/Applications/` is local-only.
-
-### Per-session Claude permission
-
-The `rm -rf /Applications/<AppName>.app` + `ditto * /Applications/<AppName>.app` operations live behind the auto-mode classifier's "modifying shared infrastructure" gate. To let Claude run `install.sh` end-to-end without prompting, add the matching rules to `.claude/settings.local.json`:
-
-```json
-"Bash(rm -rf /Applications/<AppName>.app)",
-"Bash(ditto --noextattr * /Applications/<AppName>.app)",
-"Bash(osascript -e 'tell application \"<AppName>\" to quit')",
-"Bash(open /Applications/<AppName>.app)"
-```
-
-Substitute `<AppName>` per subproject. These are scoped per project, so the permissions stay narrow.
+→ Full detail (the three install steps, the canonical `build-app.sh` chain block, developer-workflow command table, the `/Applications/` rationale, and the `.claude/settings.local.json` permission rules) is in **`docs/install-sh-standard.md`** — read it when creating or fixing a subproject's `install.sh`/`build-app.sh`.
 
 ## Per-subproject commands
 
@@ -448,8 +102,8 @@ Substitute `<AppName>` per subproject. These are scoped per project, so the perm
 |---|---|---|
 | `PurpleIRC/` (Swift, SwiftUI macOS app) | `./build-app.sh` → `PurpleIRC.app` (or `swift build`; `CONFIG=debug` for debug). UI only activates from the `.app` bundle. | `./run-tests.sh` — wrapper that adds `Testing.framework` rpath for Command Line Tools setups; plain `swift test` works with full Xcode. |
 | `MusicJournal/` (Swift, SwiftUI macOS app) | XcodeGen project (`project.yml`); regenerate with `xcodegen generate`, build via `MusicJournal.xcodeproj`. Depends on GRDB. | `xcodebuild test` (no test targets currently configured in `project.yml`). |
-| `Timeliner/` (Swift, SwiftUI macOS app) | `./build-app.sh` → `Timeliner.app` (XcodeGen + GRDB; produces a Developer-ID-signed `.app`). Auto-runs the launch-time backup standard above. | `./run-tests.sh` — XCTest, 18 tests across migration / Codable / search / export / backup. |
-| `SlackSucker/` (Swift, SwiftUI macOS app wrapping the `slackdump` CLI) | `./build-app.sh` → `SlackSucker.app` (plain SwiftPM; bundles the slackdump binary from `$SLACKDUMP_BIN` or `which slackdump`; Developer-ID-signed). Then `./install.sh` to deploy to `/Applications/`. Auto-runs the launch-time backup standard. | `./run-tests.sh` — Swift Testing, 41 tests across argv building / line buffer / stdout parsing / channel JSON parser / file organizer / chat exporter / settings round-trip / backup debounce + retention + listing. |
+| `Timeliner/` (Swift, SwiftUI macOS app) | `./build-app.sh` → `Timeliner.app` (XcodeGen + GRDB; produces a Developer-ID-signed `.app`). Auto-runs the launch-time backup standard (see `docs/auto-backup-on-launch.md`). | `./run-tests.sh` — XCTest, 18 tests across migration / Codable / search / export / backup. |
+| `SlackSucker/` (Swift, SwiftUI macOS app wrapping the `slackdump` CLI) | `./build-app.sh` → `SlackSucker.app` (plain SwiftPM; bundles the slackdump binary from `$SLACKDUMP_BIN` or `which slackdump`; Developer-ID-signed). Then `./install.sh` to deploy to `/Applications/`. Auto-runs the launch-time backup standard (see `docs/auto-backup-on-launch.md`). | `./run-tests.sh` — Swift Testing, 41 tests across argv building / line buffer / stdout parsing / channel JSON parser / file organizer / chat exporter / settings round-trip / backup debounce + retention + listing. |
 | `PurplePDF/` (TypeScript, Electron 31 + React 18 + Vite, cross-platform macOS/Windows PDF reader & editor) | `./build-app.sh` → `Purple PDF.app` in `/Applications/` (host-arch, adhoc-signed, build + install + relaunch in one shot; `--no-install` / `--no-open` / `BUILD_ONLY=1` opt-outs). `npm install` runs automatically on first invocation. Universal2 release DMG via `scripts/build-app.sh` or `npm run dist:mac` (needs Apple Developer ID + notarization env). | `npm test` — vitest, 22 tests across `projectOrder`, `autosave`, `images-to-pdf`, `bump-and-log`, and a smoke test. `npm run typecheck` for `tsc --noEmit` against `tsconfig.node.json` + `tsconfig.web.json`. |
 | `PurpleTree/` (TypeScript, Electron 31 + React 18 + Vite, cross-platform macOS/Windows disk-space analyzer & file-cleanup utility — TreeSize/WinDirStat/DaisyDisk equivalent) | `./build-app.sh` → `Purple Tree.app` in `/Applications/` (host-arch, adhoc-signed, build + install + relaunch; `--no-install` / `--no-open` / `BUILD_ONLY=1` opt-outs). `npm install` runs automatically on first invocation. Universal2 release DMG via `npm run dist:mac`. Scan engine runs in a Node `worker_thread` (`src/main/scan/scanWorker.ts`, a 2nd electron-vite main input). ESM-only deps (`d3-hierarchy`, `xxhash-wasm`) are excluded from `externalizeDepsPlugin` so they bundle as CJS. | `npm test` — vitest, 53 unit tests (`protectedPaths`, `dupePipeline`, `tokens`, `report`, `tree`, `backup`) + 1 built-worker integration test (`tests/integration/scanWorker.test.ts`). `npm run typecheck` for `tsc --noEmit` against `tsconfig.node.json` + `tsconfig.web.json`. |
 | `messages-exporter/` (Python) | `./install.sh` (user) or `./install.sh --system` (sudo). Then `export_messages "<contact>" --start ... --end ...`. Requires Full Disk Access for the terminal. | `python3 test_export_messages.py` |
@@ -467,16 +121,7 @@ When a subproject's Python code uses a self-bootstrapping `.venv` (e.g. `transcr
 
 ## PurpleIRC architecture (the largest subproject)
 
-`PurpleIRC/HANDOFF.md` is the canonical architecture snapshot — read it before non-trivial changes. Quick mental model:
-
-- **`ChatModel`** (`@MainActor`) — top-level store; holds the connection list and shared services (`WatchlistService`, `SettingsStore`, `LogStore`, `BotHost`, `BotEngine`, `KeyStore`, `DCCService`, `SessionHistoryStore`).
-- **`IRCConnection`** — one per network. Owns an `IRCClient`, buffers, reconnect state, and a per-connection event subject.
-- **`IRCClient`** — RFC 1459 parsing + `NWConnection` transport; SASL (PLAIN/EXTERNAL) and IRCv3 CAP negotiation live here. `ProxyFramer` plugs in at the bottom of the protocol stack.
-- **Event fan-out** — every line / state change flows through the `Sendable` `IRCConnectionEvent` enum. `ChatModel.events` merges all connections (UUID-tagged) and is what bots, watchlist, and the assistant subscribe to.
-- **Persistence** — `EncryptedJSON` + `KeyStore` wrap a passphrase-derived KEK around a per-install DEK; AES-256-GCM seals every persistence file. Settings live at `~/Library/Application Support/PurpleIRC/`.
-- **`build-app.sh`** derives `CFBundleShortVersionString` from git (`1.0.<commit-count>`) and `CFBundleVersion` from `<count>.<short-sha>`. Version-bump rule #1 above is satisfied automatically by committing — no manual edit needed for the bundle version.
-
-The app **must** be launched from the `.app` bundle for SwiftUI's `WindowGroup`, `UNUserNotificationCenter` authorization, and the AppleScript dictionary to work; `swift run` alone won't fully activate the UI.
+`PurpleIRC/HANDOFF.md` is the canonical architecture snapshot — read it before non-trivial changes. A quick mental model (`ChatModel` → `IRCConnection` → `IRCClient`, the `IRCConnectionEvent` fan-out, `EncryptedJSON`/`KeyStore` persistence, git-derived bundle versioning, and the "must launch from the `.app` bundle" rule) is in **`docs/purpleirc-architecture.md`** — read it before working in PurpleIRC.
 
 ## Git Workflow
 
@@ -535,59 +180,9 @@ After any icon or UI change:
 
 ## Swift app build prerequisites (read before invoking `build-app.sh`)
 
-These two environment requirements bite hard if missed — diagnostics are misleading. Check both before running any subproject's `build-app.sh` and before assuming a tool bug.
+Three environment gotchas with misleading diagnostics: (1) `#Preview` macros need full Xcode (`sudo xcode-select -s /Applications/Xcode.app`), else `PreviewsMacros … not found`; (2) Sparkle apps need `SPARKLE_PUBLIC_KEY` in the env or the updater dies with an EdDSA-key error; (3) ` 2`-suffixed dupes in `.build/` are iCloud corruption — `rm -rf .build` and get the repo out of `~/Documents/`.
 
-### 1. Full Xcode toolchain required for `#Preview` macros
-
-SwiftPM packages that contain `#Preview { … }` blocks compile via the `PreviewsMacros` plugin, which **only ships with full Xcode** — not with Command Line Tools. If `xcode-select -p` returns `/Library/Developer/CommandLineTools`, the build fails partway through compilation with:
-
-```
-error: external macro implementation type 'PreviewsMacros.SwiftUIView'
-       could not be found for macro 'Preview(_:body:)';
-       plugin for module 'PreviewsMacros' not found
-```
-
-This is misleading — it looks like a missing dependency. It's a toolchain mismatch.
-
-**Fix without sudo (one-off):** prefix the invocation:
-```sh
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer ./build-app.sh
-```
-
-**Fix system-wide (recommended for dev machines):**
-```sh
-sudo xcode-select -s /Applications/Xcode.app
-```
-
-Subprojects currently known to contain `#Preview` blocks: **none** — PurpleDedup carried the last one until it was removed (commit `3b26576`, 2026-05-24), so every SwiftUI subproject now builds under Command Line Tools. Any new SwiftUI subproject is likely to reintroduce them, at which point this requirement applies again; grep for `#Preview` if a build dies with `PreviewsMacros … not found`.
-
-### 2. Sparkle apps need `SPARKLE_PUBLIC_KEY` in the environment
-
-Subprojects that integrate Sparkle (PurpleDedup, and any future app that wants in-app auto-update) read `SPARKLE_PUBLIC_KEY` from the environment at build time and bake it into the bundle's `Info.plist` as `SUPublicEDKey`. If the variable is unset, `build-app.sh` falls back to the literal placeholder `PLACEHOLDER_RUN_generate_keys_AND_SET_SPARKLE_PUBLIC_KEY`. Sparkle refuses to initialize with that value and the running app emits:
-
-```
-(Sparkle) The provided EdDSA key could not be decoded.
-(Sparkle) Fatal updater error (1): The EdDSA public key is not valid for <App>.
-```
-
-The user sees "updater failed to start" or the Check for Updates… menu does nothing.
-
-**Recovery options, in priority order:**
-
-1. **Use the existing production keypair.** On the machine where the keypair was originally generated, run `~/.../.build/artifacts/sparkle/Sparkle/bin/generate_keys -p` to print the public half (the private key lives in that Mac's login Keychain). Copy the base64 string to the dev machine and add `export SPARKLE_PUBLIC_KEY="…"` to `~/.zshrc`, then `source ~/.zshrc` and rebuild.
-2. **Generate a fresh dev keypair on the current Mac** if the prod key is unreachable. Run `.build/artifacts/sparkle/Sparkle/bin/generate_keys` once — it mints a keypair, stores the private key in Keychain, and prints the public key. Persist via `~/.zshrc` as above. Trade-off: locally-built bundles will not verify updates signed by the prod private key (fine for dev iteration; not fine for release).
-3. **Strip `SUPublicEDKey` entirely** (last-resort) by setting it to empty in the bundle. Sparkle then never initializes; the Updates menu items go dead but everything else works. Use only for one-off testing.
-
-Subprojects currently known to embed Sparkle: **PurpleDedup**.
-
-### 3. ` 2`-suffixed dupes in `.build/` are iCloud corruption, not SwiftPM bugs
-
-If `.build/checkouts/` contains sibling ` 2`-suffixed copies (`Sparkle 2/`, `GRDB 2.swift/`, etc.) and the build fails with `the package manifest at … cannot be accessed`, the cause is almost always iCloud Drive syncing `.build/` between machines and renaming conflicts. See `## Cross-Mac dev setup` at the top of this file — the repo must live outside `~/Documents/`. Recovery is `rm -rf .build` and rebuild, but the underlying problem will reappear if the repo is still inside an iCloud-managed path.
-
-Other causes of the same symptom (rarer):
-
-- **Interrupted SwiftPM mid-fetch.** `pkill swift-build` or Ctrl-C during dependency resolution can also leave `.build/checkouts/` half-baked. Same fix.
-- **Renamed user account.** `.build/` caches absolute paths referencing `/Users/<old>/...`; rename invalidates them. Same fix.
+→ Full symptoms, error text, and recovery steps for all three are in **`docs/swift-build-prerequisites.md`** — read it when a Swift `build-app.sh` fails in a confusing way (and before assuming a tool bug).
 
 ## File Hygiene
 
