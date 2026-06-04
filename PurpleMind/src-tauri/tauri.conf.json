@@ -63,7 +63,7 @@
       "endpoints": [
         "https://github.com/bronty13/PhantomLives/releases/latest/download/purplemind-latest.json"
       ],
-      "pubkey": "PLACEHOLDER_REPLACE_WITH_REAL_MINISIGN_PUBKEY_BEFORE_FIRST_RELEASE"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM4MTlCNDFFRjE0MzRBNzQKUldSMFNrUHhIclFaeUxpeGFjLzFwbzZHUllxbTZxdlB1aDdLTXg5OVFiQnRpT0RTY1YvQTVOUloK"
     }
   }
 }
