@@ -1,29 +1,65 @@
 import type { MindGraph } from './graph';
 
 export const PURPLEMIND_DOC_FORMAT = 'purplemind.map';
-export const PURPLEMIND_DOC_VERSION = 1;
+export const PURPLEMIND_DOC_VERSION = 2;
+
+export interface DocNode {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  color: string | null;
+  icon?: string | null;
+  checked?: number | null;
+  note?: string | null;
+  collapsed?: number;
+}
 
 export interface MapDoc {
   format: typeof PURPLEMIND_DOC_FORMAT;
   version: number;
   title: string;
-  nodes: { id: string; label: string; x: number; y: number; color: string | null }[];
+  nodes: DocNode[];
   edges: { id: string; source: string; target: string }[];
 }
 
+/** A node enriched with the optional item attributes, for serialization. */
+export interface RichNode {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  color?: string | null;
+  icon?: string | null;
+  checked?: number | null;
+  note?: string | null;
+  collapsed?: number;
+}
+
 /** Serialize a map + its graph to the PurpleMind `.json` document format. */
-export function serializeMap(title: string, graph: MindGraph): string {
+export function serializeMap(
+  title: string,
+  graph: MindGraph,
+  attrs?: Map<string, Partial<RichNode>>,
+): string {
   const doc: MapDoc = {
     format: PURPLEMIND_DOC_FORMAT,
     version: PURPLEMIND_DOC_VERSION,
     title,
-    nodes: graph.nodes.map((n) => ({
-      id: n.id,
-      label: n.label,
-      x: n.x,
-      y: n.y,
-      color: n.color ?? null,
-    })),
+    nodes: graph.nodes.map((n) => {
+      const a = attrs?.get(n.id);
+      return {
+        id: n.id,
+        label: n.label,
+        x: n.x,
+        y: n.y,
+        color: n.color ?? null,
+        icon: a?.icon ?? null,
+        checked: a?.checked ?? null,
+        note: a?.note ?? null,
+        collapsed: a?.collapsed ?? 0,
+      };
+    }),
     edges: graph.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
   };
   return JSON.stringify(doc, null, 2);
@@ -31,7 +67,17 @@ export function serializeMap(title: string, graph: MindGraph): string {
 
 export interface ParsedMap {
   title: string;
-  nodes: { id: string; label: string; x: number; y: number; color: string | null }[];
+  nodes: {
+    id: string;
+    label: string;
+    x: number;
+    y: number;
+    color: string | null;
+    icon: string | null;
+    checked: number | null;
+    note: string | null;
+    collapsed: number;
+  }[];
   edges: { source: string; target: string }[];
 }
 
@@ -66,6 +112,10 @@ export function parseMap(json: string): ParsedMap {
       x: Number.isFinite(n.x) ? (n.x as number) : 0,
       y: Number.isFinite(n.y) ? (n.y as number) : 0,
       color: typeof n.color === 'string' ? n.color : null,
+      icon: typeof n.icon === 'string' ? n.icon : null,
+      checked: n.checked === 0 || n.checked === 1 ? n.checked : null,
+      note: typeof n.note === 'string' ? n.note : null,
+      collapsed: n.collapsed === 1 ? 1 : 0,
     };
   });
 

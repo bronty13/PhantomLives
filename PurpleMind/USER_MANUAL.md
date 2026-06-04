@@ -36,6 +36,35 @@ A map is made of **nodes** (your ideas) joined by **connections**.
 - **Move things:** just drag. Your layout is remembered.
 - **Delete:** select a node or connection and press **Delete** (or
   **Backspace**). Deleting a node removes its connections too.
+- **Collapse a branch:** any node with children shows a little circle on its
+  right — click it to **fold** the branch away (the circle then shows how many
+  children are hidden); click again to unfold.
+
+### How a map looks (root, branches, items)
+
+PurpleMind styles your map by its shape, automatically:
+
+- The **central topic** is a big bordered card.
+- Each **main branch** off the center gets its **own color**, and everything
+  hanging off that branch — plus its connecting lines — shares that color.
+- Deeper **items** appear as text on a colored underline.
+
+So you don't have to color anything by hand — but you can: select a main branch
+and pick a swatch to recolor that whole branch, or select a single deeper node
+to recolor just it.
+
+### Keyboard shortcuts (fast mindmapping)
+
+With a node selected (and not currently typing in it):
+
+| Key | Does |
+|---|---|
+| **Tab** | Add a **child** of the selected node |
+| **Enter** | Add a **sibling** (a child of the same parent) |
+| **Space** | **Edit** the selected node's text |
+| **Esc** | Cancel editing |
+| **← ↑ → ↓** | Move the selection (←parent · →first child · ↑/↓ siblings) |
+| **Delete / Backspace** | Delete the selected node or link |
 
 ### Getting around the canvas
 
@@ -48,8 +77,14 @@ A map is made of **nodes** (your ideas) joined by **connections**.
 
 - **✨ Tidy** instantly arranges your map into a neat left-to-right tree —
   perfect when things get messy.
-- **Colours:** select one or more nodes, then click a colour swatch in the
-  toolbar to tint them. The **∅** swatch resets to the default purple.
+- **Colours:** select one or more nodes, then click a colour swatch. The **∅**
+  swatch returns a node to its automatic branch colour.
+- **Icons (😀):** select a node and pick an emoji to show before its label.
+- **Checkboxes (☑):** select a node and click ☑ to give it a checkbox; click the
+  box on the node to mark it done (the text gets a strikethrough). Click ☑ again
+  to remove the checkbox. Checked items export to Markdown as `- [x]`.
+- **Notes (📝):** select a node and click 📝 to attach a longer note. Nodes with
+  a note show a small 📝 so you know it's there.
 
 ## Saving a copy (Export)
 

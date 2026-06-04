@@ -9,6 +9,11 @@ export interface NodeRow {
   color: string | null;
   created_at: string;
   updated_at: string;
+  /** null = no checkbox · 0 = unchecked · 1 = checked. */
+  checked: number | null;
+  note: string | null;
+  collapsed: number;
+  icon: string | null;
 }
 
 export async function listNodes(mapId: string): Promise<NodeRow[]> {
@@ -34,7 +39,20 @@ export async function createNode(
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [id, mapId, label, x, y, color, ts, ts],
   );
-  return { id, map_id: mapId, label, x, y, color, created_at: ts, updated_at: ts };
+  return {
+    id,
+    map_id: mapId,
+    label,
+    x,
+    y,
+    color,
+    created_at: ts,
+    updated_at: ts,
+    checked: null,
+    note: null,
+    collapsed: 0,
+    icon: null,
+  };
 }
 
 export async function updateNodeLabel(id: string, label: string): Promise<void> {
@@ -92,4 +110,42 @@ export async function deleteNode(id: string): Promise<void> {
   const d = await db();
   // incident + outgoing edges cascade via FK.
   await d.execute('DELETE FROM nodes WHERE id = ?', [id]);
+}
+
+/** Set the checkbox state: null removes it, 0 = unchecked, 1 = checked. */
+export async function setNodeChecked(id: string, checked: number | null): Promise<void> {
+  const d = await db();
+  await d.execute('UPDATE nodes SET checked = ?, updated_at = ? WHERE id = ?', [
+    checked,
+    nowIso(),
+    id,
+  ]);
+}
+
+export async function setNodeNote(id: string, note: string | null): Promise<void> {
+  const d = await db();
+  const value = note && note.trim() ? note : null;
+  await d.execute('UPDATE nodes SET note = ?, updated_at = ? WHERE id = ?', [
+    value,
+    nowIso(),
+    id,
+  ]);
+}
+
+export async function setNodeCollapsed(id: string, collapsed: boolean): Promise<void> {
+  const d = await db();
+  await d.execute('UPDATE nodes SET collapsed = ?, updated_at = ? WHERE id = ?', [
+    collapsed ? 1 : 0,
+    nowIso(),
+    id,
+  ]);
+}
+
+export async function setNodeIcon(id: string, icon: string | null): Promise<void> {
+  const d = await db();
+  await d.execute('UPDATE nodes SET icon = ?, updated_at = ? WHERE id = ?', [
+    icon || null,
+    nowIso(),
+    id,
+  ]);
 }

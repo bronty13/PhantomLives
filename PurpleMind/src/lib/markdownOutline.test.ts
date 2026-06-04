@@ -50,6 +50,36 @@ describe('fromMarkdown', () => {
   });
 });
 
+describe('checkboxes', () => {
+  it('emits [x]/[ ] for checked/unchecked nodes', () => {
+    const graph = g(
+      [
+        ['r', 'Tasks'],
+        ['a', 'Done'],
+        ['b', 'Todo'],
+      ],
+      [
+        ['r', 'a'],
+        ['r', 'b'],
+      ],
+    );
+    const checked = new Map<string, number | null>([
+      ['a', 1],
+      ['b', 0],
+    ]);
+    expect(toMarkdown(graph, checked)).toBe('- Tasks\n  - [x] Done\n  - [ ] Todo\n');
+  });
+
+  it('parses [x]/[ ] back into checked state and strips the box from the label', () => {
+    const parsed = fromMarkdown('- Tasks\n  - [x] Done\n  - [ ] Todo\n');
+    expect(parsed.nodes.map((n) => [n.label, n.checked])).toEqual([
+      ['Tasks', null],
+      ['Done', 1],
+      ['Todo', 0],
+    ]);
+  });
+});
+
 describe('round-trip', () => {
   it('toMarkdown → fromMarkdown preserves labels and tree shape', () => {
     const graph = g(

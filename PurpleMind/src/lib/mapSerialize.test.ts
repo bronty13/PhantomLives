@@ -35,6 +35,22 @@ describe('serializeMap / parseMap', () => {
     expect(parsed.edges).toEqual([{ source: 'a', target: 'a' }]);
   });
 
+  it('round-trips icon / checked / note attributes', () => {
+    const attrs = new Map([
+      ['n2', { icon: '⭐', checked: 1, note: 'remember this' }],
+    ]);
+    const json = serializeMap('Attrs', graph, attrs);
+    const parsed = parseMap(json);
+    const child = parsed.nodes.find((n) => n.id === 'n2')!;
+    expect(child.icon).toBe('⭐');
+    expect(child.checked).toBe(1);
+    expect(child.note).toBe('remember this');
+    // A node without attrs gets the safe defaults.
+    const root = parsed.nodes.find((n) => n.id === 'n1')!;
+    expect(root.checked).toBeNull();
+    expect(root.icon).toBeNull();
+  });
+
   it('rejects non-PurpleMind documents', () => {
     expect(() => parseMap('{"hello":1}')).toThrow(/not a PurpleMind map/i);
     expect(() => parseMap('not json')).toThrow(/valid JSON/i);

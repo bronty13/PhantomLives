@@ -5,12 +5,20 @@ mod fsutil;
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 pub fn run() {
-    let migrations = vec![Migration {
-        version: 1,
-        description: "init",
-        sql: include_str!("../migrations/001_init.sql"),
-        kind: MigrationKind::Up,
-    }];
+    let migrations = vec![
+        Migration {
+            version: 1,
+            description: "init",
+            sql: include_str!("../migrations/001_init.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 2,
+            description: "node-items",
+            sql: include_str!("../migrations/002_node_items.sql"),
+            kind: MigrationKind::Up,
+        },
+    ];
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -134,8 +142,10 @@ mod migration_smoke {
         let conn = Connection::open_in_memory().expect("open :memory:");
         conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
 
-        let migrations: &[(u32, &str, &str)] =
-            &[(1, "init", include_str!("../migrations/001_init.sql"))];
+        let migrations: &[(u32, &str, &str)] = &[
+            (1, "init", include_str!("../migrations/001_init.sql")),
+            (2, "node-items", include_str!("../migrations/002_node_items.sql")),
+        ];
         for (v, name, sql) in migrations {
             conn.execute_batch(sql)
                 .unwrap_or_else(|e| panic!("migration {v} ({name}) failed: {e}"));
@@ -189,6 +199,42 @@ mod migration_smoke {
             .unwrap();
         assert_eq!(nodes_left, 0, "deleting a map cascades to nodes");
         assert_eq!(edges_left, 0, "deleting a map cascades to edges");
+
+        // Migration 002 added checked / note / collapsed / icon to nodes.
+        conn.execute(
+            "INSERT INTO maps (id, title, created_at, updated_at) VALUES ('m2','M2','t','t')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO nodes (id, map_id, label, x, y, created_at, updated_at, checked, note, collapsed, icon)
+             VALUES ('n3','m2','Item',0,0,'t','t',1,'a note',1,'💡')",
+            [],
+        )
+        .unwrap();
+        let (checked, note, collapsed, icon): (Option<i64>, Option<String>, i64, Option<String>) = conn
+            .query_row(
+                "SELECT checked, note, collapsed, icon FROM nodes WHERE id = 'n3'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(checked, Some(1));
+        assert_eq!(note.as_deref(), Some("a note"));
+        assert_eq!(collapsed, 1);
+        assert_eq!(icon.as_deref(), Some("💡"));
+
+        // checked defaults to NULL (no checkbox) when not provided.
+        conn.execute(
+            "INSERT INTO nodes (id, map_id, label, x, y, created_at, updated_at)
+             VALUES ('n4','m2','Plain',0,0,'t','t')",
+            [],
+        )
+        .unwrap();
+        let default_checked: Option<i64> = conn
+            .query_row("SELECT checked FROM nodes WHERE id = 'n4'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(default_checked, None, "checked defaults to NULL = no checkbox");
     }
 }
 
@@ -215,16 +261,18 @@ mod migration_immutability {
     /// Frozen hashes of every shipped migration. Editing a migration after
     /// it's been added to this list is a build break — by design. Append a
     /// new line ONLY when ADDING a new migration file.
-    const EXPECTED_MIGRATION_HASHES: &[(u32, &str)] = &[(
-        1,
-        "6deea4e7d12ce95b8a79b78be1cd1eabc736da83fc07d4798a5612af52686061",
-    )];
+    const EXPECTED_MIGRATION_HASHES: &[(u32, &str)] = &[
+        (1, "6deea4e7d12ce95b8a79b78be1cd1eabc736da83fc07d4798a5612af52686061"),
+        (2, "6bdbf0a781f05ecd29acb776b2b64b9ace35a35139153f586a0159f0edcfc523"),
+    ];
 
     /// Source-of-truth for "which migrations ship at compile time". Must stay
     /// aligned with the `migrations` vec in `run()` above + the `migrations`
     /// array in `migration_smoke::all_migrations_apply_cleanly`.
-    const MIGRATION_FILES: &[(u32, &str, &str)] =
-        &[(1, "001_init.sql", include_str!("../migrations/001_init.sql"))];
+    const MIGRATION_FILES: &[(u32, &str, &str)] = &[
+        (1, "001_init.sql", include_str!("../migrations/001_init.sql")),
+        (2, "002_node_items.sql", include_str!("../migrations/002_node_items.sql")),
+    ];
 
     fn sha256_hex(s: &str) -> String {
         let mut h = Sha256::new();

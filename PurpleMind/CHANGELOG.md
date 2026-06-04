@@ -4,6 +4,44 @@ All notable changes to PurpleMind are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 semantic versioning.
 
+## [0.2.0] — 2026-06-04
+
+The "real mindmap" release — maps now read like MindNode instead of a generic
+node graph.
+
+### Added
+
+- **Per-branch colors** — each top-level branch off the root gets its own hue
+  from a palette; descendants and connectors inherit it. Coloring a top-level
+  topic recolors its whole branch; coloring a deeper node overrides just that
+  node. (Derived from structure — no stored color needed.)
+- **Tiered node styles** — a prominent central **root** card, filled pastel
+  **topic** boxes, and **leaf items** rendered as text on a branch-colored
+  underline.
+- **Tapered branch connectors** — filled ribbons in the branch color, thick at
+  the parent and thin toward the child (custom `BranchEdge`).
+- **Collapsible branches** — a fold toggle on any node with children hides/shows
+  its subtree (stored `collapsed`); hidden nodes drop out of layout and export.
+- **Keyboard-tree editing** — `Tab` = child · `Enter` = sibling · `Space` = edit
+  label · `Esc` = cancel · arrows = navigate (←parent, →first child, ↑/↓
+  siblings).
+- **Per-node emoji icons** — pick from a curated set (toolbar 😀); shown before
+  the label.
+- **Checkboxes & notes** — toolbar ☑ adds/removes a checkbox on the selection
+  (click it to mark done, with strikethrough); 📝 attaches a note (shown as a
+  📝 indicator). Checkboxes export to Markdown as `- [x]`/`- [ ]`.
+
+### Changed
+
+- JSON export/import (doc format v2) and Markdown now carry icon, checkbox,
+  note, and collapsed state.
+- Minimap node colors follow the new branch colors.
+
+### Migrations
+
+- **002_node_items** adds `checked` / `note` / `collapsed` / `icon` to `nodes`
+  (additive; 001 stays frozen). Guarded by `migration_immutability`.
+
 ## [0.1.0] — 2026-06-04
 
 Initial release. A cross-platform (macOS + Windows) mindmap studio built on the

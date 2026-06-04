@@ -22,7 +22,8 @@ PurpleMind/
 │   ├── App.tsx                  map list + view routing + sidebar
 │   ├── components/
 │   │   ├── Sidebar.tsx          fixed-width nav (no NavigationSplitView)
-│   │   ├── NodeCard.tsx         custom React Flow node (inline-edit label)
+│   │   ├── NodeCard.tsx         tiered node (root/topic/item) + checkbox/icon/note/fold
+│   │   ├── BranchEdge.tsx       custom tapered, branch-coloured edge
 │   │   └── ExportMenu.tsx       export/import dropdown
 │   ├── data/                    DB access (one module per concern)
 │   │   ├── db.ts                Database.load singleton + newId/nowIso
@@ -31,9 +32,13 @@ PurpleMind/
 │   │   └── importMap.ts         build a new map from a parsed graph
 │   ├── lib/                     PURE, unit-tested helpers
 │   │   ├── graph.ts             MindGraph type + buildForest (spanning forest)
+│   │   ├── branchStyle.ts       depth→tier + per-branch colour + override  (+ .test)
+│   │   ├── visibility.ts        collapsed nodes → hidden descendant set     (+ .test)
+│   │   ├── color.ts             hex parse / mix / readable-text helpers
+│   │   ├── ribbon.ts            tapered-ribbon SVG path geometry            (+ .test)
 │   │   ├── autoLayout.ts        tidy tree layout            (+ .test)
-│   │   ├── markdownOutline.ts   tree ↔ indented bullets     (+ .test)
-│   │   ├── mapSerialize.ts      PurpleMind .json (de)serialize (+ .test)
+│   │   ├── markdownOutline.ts   tree ↔ indented bullets (w/ [x] checkboxes) (+ .test)
+│   │   ├── mapSerialize.ts      PurpleMind .json (de)serialize, doc v2      (+ .test)
 │   │   ├── exportImage.ts       html-to-image + jsPDF render (DOM, not unit-tested)
 │   │   └── base64.ts            encoding helpers
 │   ├── state/uiTheme.ts         light/dark/auto (pm-theme)
@@ -57,9 +62,18 @@ PurpleMind/
 `nodes(id, map_id→maps, label, x, y, color, …)`,
 `edges(id, map_id→maps, source_id→nodes, target_id→nodes)` — all FK
 `ON DELETE CASCADE`, so deleting a map (or a node) cleans up its children. This
-mirrors React Flow's node/edge model directly. **The file is frozen** by
-`migration_immutability` — schema changes go in a new `002_*.sql` and append a
-hash to `EXPECTED_MIGRATION_HASHES`.
+mirrors React Flow's node/edge model directly. **Migration `002_node_items`**
+adds `checked` / `note` / `collapsed` / `icon` to `nodes`. Both files are frozen
+by `migration_immutability` — further schema changes go in a new `003_*.sql` and
+append a hash to `EXPECTED_MIGRATION_HASHES`.
+
+**Branch colour & tier are derived, not stored.** `branchStyle.ts` computes
+each node's depth→tier, palette branch colour (inherited by descendants), and
+effective colour (manual `nodes.color` override wins; an override on a depth-1
+node recolours its branch). `MapEditorView` runs it each render and merges the
+result into the node/edge data handed to React Flow. Collapse uses stored
+`collapsed`; `visibility.ts` turns the collapsed set into the hidden-descendant
+set, and the editor filters those out of what React Flow renders + lays out.
 
 ## Tauri command surface
 

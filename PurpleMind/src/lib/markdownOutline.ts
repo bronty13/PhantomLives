@@ -7,14 +7,19 @@ const INDENT = '  '; // two spaces per level
  * reduced to a spanning forest (see buildForest) so each node appears exactly
  * once; cross-links beyond the tree are not represented in the outline.
  */
-export function toMarkdown(graph: MindGraph): string {
+export function toMarkdown(
+  graph: MindGraph,
+  checkedOf?: Map<string, number | null>,
+): string {
   const { roots, children } = buildForest(graph);
   const labelOf = new Map(graph.nodes.map((n) => [n.id, n.label]));
   const lines: string[] = [];
 
   const walk = (id: string, depth: number) => {
     const label = (labelOf.get(id) ?? '').replace(/\r?\n/g, ' ').trim();
-    lines.push(`${INDENT.repeat(depth)}- ${label}`);
+    const checked = checkedOf?.get(id);
+    const box = checked === 1 ? '[x] ' : checked === 0 ? '[ ] ' : '';
+    lines.push(`${INDENT.repeat(depth)}- ${box}${label}`);
     for (const k of children.get(id) ?? []) walk(k, depth + 1);
   };
   for (const r of roots) walk(r, 0);
@@ -23,7 +28,7 @@ export function toMarkdown(graph: MindGraph): string {
 }
 
 export interface ParsedOutline {
-  nodes: { tempId: string; label: string }[];
+  nodes: { tempId: string; label: string; checked: number | null }[];
   edges: { source: string; target: string }[];
 }
 
@@ -34,7 +39,7 @@ export interface ParsedOutline {
  * caller assigns real ids and runs auto-layout for positions.
  */
 export function fromMarkdown(text: string): ParsedOutline {
-  const nodes: { tempId: string; label: string }[] = [];
+  const nodes: { tempId: string; label: string; checked: number | null }[] = [];
   const edges: { source: string; target: string }[] = [];
   // Stack of {indent, id} tracking the current ancestor chain.
   const stack: { indent: number; id: string }[] = [];
@@ -46,11 +51,20 @@ export function fromMarkdown(text: string): ParsedOutline {
     const match = expanded.match(/^(\s*)(?:[-*+]\s+)?(.*)$/);
     if (!match) continue;
     const indent = match[1].length;
-    const label = match[2].trim();
+    let label = match[2].trim();
+    if (label === '') continue;
+
+    // Optional GitHub-style checkbox prefix: `[ ]` / `[x]`.
+    let checked: number | null = null;
+    const box = label.match(/^\[( |x|X)\]\s*(.*)$/);
+    if (box) {
+      checked = box[1].toLowerCase() === 'x' ? 1 : 0;
+      label = box[2].trim();
+    }
     if (label === '') continue;
 
     const tempId = `t${counter++}`;
-    nodes.push({ tempId, label });
+    nodes.push({ tempId, label, checked });
 
     // Pop ancestors at the same or deeper indent.
     while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();

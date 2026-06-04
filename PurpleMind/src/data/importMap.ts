@@ -1,5 +1,5 @@
 import { createMap } from './maps';
-import { createNode } from './nodes';
+import { createNode, setNodeChecked, setNodeNote, setNodeIcon } from './nodes';
 import { createEdge } from './edges';
 import { layoutTree } from '../lib/autoLayout';
 import type { MindGraph } from '../lib/graph';
@@ -11,6 +11,9 @@ export interface ImportNode {
   x?: number;
   y?: number;
   color?: string | null;
+  icon?: string | null;
+  checked?: number | null;
+  note?: string | null;
 }
 
 export interface ImportEdge {
@@ -47,6 +50,9 @@ export async function importGraph(
     const pos = positionByRef.get(n.ref) ?? { x: n.x ?? 0, y: n.y ?? 0 };
     const row = await createNode(map.id, n.label, pos.x, pos.y, n.color ?? null);
     idByRef.set(n.ref, row.id);
+    if (n.icon) await setNodeIcon(row.id, n.icon);
+    if (n.checked === 0 || n.checked === 1) await setNodeChecked(row.id, n.checked);
+    if (n.note) await setNodeNote(row.id, n.note);
   }
   for (const e of edges) {
     const source = idByRef.get(e.source);

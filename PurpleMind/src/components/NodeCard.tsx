@@ -1,27 +1,58 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { useEffect, useRef, useState } from 'react';
+import type { Tier } from '../lib/branchStyle';
+import { mix } from '../lib/color';
 
 export interface MindNodeData {
   label: string;
-  color: string | null;
+  /** Effective colour (branch colour or manual override). */
+  color: string;
+  tier: Tier;
+  /** Optional emoji icon shown before the label. */
+  icon?: string | null;
+  /** null = no checkbox · 0 = unchecked · 1 = checked. */
+  checked?: number | null;
+  /** Whether this node has a note attached (shows a 📝 indicator). */
+  hasNote?: boolean;
+  /** Number of (direct) children — drives the fold toggle. */
+  childCount?: number;
+  /** Whether this node's subtree is collapsed. */
+  collapsed?: boolean;
+  /** Bumped by the editor to programmatically enter edit mode (keyboard). */
+  editEpoch?: number;
   onCommitLabel: (id: string, label: string) => void;
+  onToggleCollapse?: (id: string) => void;
+  onToggleCheck?: (id: string) => void;
   [key: string]: unknown;
 }
 
 /**
- * A soft rounded mind-map node. Double-click (or the Enter shortcut from the
- * editor) drops into inline editing; blur / Enter commits, Escape cancels.
- * Left handle is the connection target, right handle the source.
+ * A tiered mind-map node:
+ *   - root  → large neutral bordered card,
+ *   - topic → filled pastel box in the branch colour,
+ *   - item  → text sitting on a branch-colour underline.
+ * Plus optional emoji icon, checkbox, note indicator, and a fold toggle for
+ * nodes with children. Double-click (or the keyboard edit signal) edits the
+ * label inline.
  */
 export function NodeCard({ id, data, selected }: NodeProps) {
   const d = data as MindNodeData;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(d.label);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const lastEpoch = useRef<number | undefined>(d.editEpoch);
 
   useEffect(() => {
     if (!editing) setDraft(d.label);
   }, [d.label, editing]);
+
+  // Keyboard "edit" signal from the editor.
+  useEffect(() => {
+    if (d.editEpoch !== undefined && d.editEpoch !== lastEpoch.current) {
+      lastEpoch.current = d.editEpoch;
+      setEditing(true);
+    }
+  }, [d.editEpoch]);
 
   useEffect(() => {
     if (editing && inputRef.current) {
@@ -36,42 +67,99 @@ export function NodeCard({ id, data, selected }: NodeProps) {
     if (next !== d.label) d.onCommitLabel(id, next);
   };
 
-  const accent = d.color ?? 'rgb(var(--brand-500))';
+  const color = d.color;
+  const checkable = d.checked === 0 || d.checked === 1;
+  const done = d.checked === 1;
+
+  // Per-tier container styling.
+  let containerStyle: React.CSSProperties = {};
+  let containerClass =
+    'relative min-w-[90px] max-w-[300px] transition-shadow';
+  let textClass = 'whitespace-pre-wrap break-words';
+
+  if (d.tier === 'root') {
+    containerClass += ' rounded-2xl border-[3px] bg-surface-card px-5 py-3 shadow-cute font-bold text-base text-surface-text';
+    containerStyle = { borderColor: color };
+  } else if (d.tier === 'topic') {
+    const fill = mix(color, '#ffffff', 0.82);
+    containerClass += ' rounded-2xl px-4 py-2.5 font-semibold shadow-cute';
+    containerStyle = { background: fill, border: `1.5px solid ${mix(color, '#ffffff', 0.45)}`, color: '#2a2140' };
+  } else {
+    // item — text on a coloured underline, no box fill.
+    containerClass += ' px-2 py-1.5 font-medium text-surface-text';
+    containerStyle = { borderBottom: `3px solid ${color}`, borderRadius: 2 };
+  }
+  if (selected) containerClass += ' ring-2 ring-offset-1 ring-offset-transparent';
 
   return (
     <div
-      className={`min-w-[120px] max-w-[280px] rounded-2xl border bg-surface-card px-3.5 py-2.5
-        text-sm font-semibold text-surface-text shadow-cute transition-shadow
-        ${selected ? 'ring-2 ring-brand-400' : ''}`}
-      style={{ borderColor: accent, borderLeftWidth: 5 }}
+      className={containerClass}
+      style={{ ...containerStyle, ...(selected ? { boxShadow: `0 0 0 2px ${color}` } : {}) }}
       onDoubleClick={() => setEditing(true)}
     >
       <Handle type="target" position={Position.Left} />
-      {editing ? (
-        <textarea
-          ref={inputRef}
-          className="w-full resize-none bg-transparent outline-none"
-          rows={Math.max(1, draft.split('\n').length)}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              commit();
-            } else if (e.key === 'Escape') {
-              setDraft(d.label);
-              setEditing(false);
-            }
-            e.stopPropagation();
-          }}
-        />
-      ) : (
-        <div className="whitespace-pre-wrap break-words">
-          {d.label || <span className="text-surface-muted">Untitled</span>}
-        </div>
-      )}
+
+      <div className="flex items-center gap-1.5">
+        {checkable && (
+          <button
+            type="button"
+            className="grid h-4 w-4 shrink-0 place-items-center rounded border text-[10px] leading-none"
+            style={{ borderColor: color, background: done ? color : 'transparent', color: '#fff' }}
+            title={done ? 'Mark not done' : 'Mark done'}
+            onClick={(e) => {
+              e.stopPropagation();
+              d.onToggleCheck?.(id);
+            }}
+          >
+            {done ? '✓' : ''}
+          </button>
+        )}
+        {d.icon && <span className="shrink-0 text-base leading-none">{d.icon}</span>}
+
+        {editing ? (
+          <textarea
+            ref={inputRef}
+            className="w-full resize-none bg-transparent outline-none"
+            rows={Math.max(1, draft.split('\n').length)}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                commit();
+              } else if (e.key === 'Escape') {
+                setDraft(d.label);
+                setEditing(false);
+              }
+              e.stopPropagation();
+            }}
+          />
+        ) : (
+          <div className={`${textClass} ${done ? 'line-through opacity-60' : ''}`}>
+            {d.label || <span className="opacity-50">Untitled</span>}
+          </div>
+        )}
+
+        {d.hasNote && <span className="shrink-0 text-xs opacity-70" title="Has a note">📝</span>}
+      </div>
+
       <Handle type="source" position={Position.Right} />
+
+      {(d.childCount ?? 0) > 0 && (
+        <button
+          type="button"
+          className="absolute top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded-full border text-[11px] font-bold leading-none"
+          style={{ right: -26, borderColor: color, background: 'rgb(var(--surface-card))', color }}
+          title={d.collapsed ? 'Expand' : 'Collapse'}
+          onClick={(e) => {
+            e.stopPropagation();
+            d.onToggleCollapse?.(id);
+          }}
+        >
+          {d.collapsed ? (d.childCount ?? '') : '−'}
+        </button>
+      )}
     </div>
   );
 }
