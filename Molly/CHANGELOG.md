@@ -4,6 +4,24 @@ All notable changes to Molly are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Molly uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.29.4] — 2026-06-04
+
+### Fixed — short video clips no longer fail with "maxrate out of range" (Windows)
+
+Making a teaser clip from a very short selection (under ~0.37 s) crashed the
+render with `ffmpeg failed (exit-34): … Value 3984460000.000000 for parameter
+'maxrate' out of range … Result too large`. The x264 `-maxrate` ceiling is
+derived from the 100 MB size budget divided by the clip's duration — for a
+fraction-of-a-second clip that math explodes into the gigabits-per-second range,
+overflowing the 32-bit (≈2.147 Gbps) limit x264 accepts for `-maxrate`/`-bufsize`
+(and `-bufsize` is 2× `-maxrate`, halving the usable headroom).
+
+The bitrate ceiling is now capped at 100 Mbps. That never affects how a clip
+looks: quality is set by `-crf 20` and total size is still hard-capped at 100 MB
+by `-fs`, so the ceiling is pure overflow protection no real teaser approaches.
+Added a regression test (`teaser_max_kbps_caps_short_clips_within_x264_range`)
+covering sub-second durations.
+
 ## [1.29.3] — 2026-06-03
 
 ### Fixed — no more console window flashing during video processing (Windows)

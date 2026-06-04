@@ -201,7 +201,14 @@ pub fn teaser_video_max_kbps(dur_sec: f64, include_audio: bool) -> u32 {
     // 100 MB * 8 bits * 0.95 headroom, in kbits, over the duration.
     let total_kbps = (104_857_600.0 * 8.0 * 0.95 / d / 1000.0) as u32;
     let audio_kbps = if include_audio { 128 } else { 0 };
-    total_kbps.saturating_sub(audio_kbps).max(1000)
+    // Cap at 100 Mbps. The 100 MB / duration budget explodes for short clips
+    // (a 0.2 s clip yields ~3.98 Gbps), and x264's `-maxrate`/`-bufsize` take a
+    // 32-bit bits/s value (INT_MAX ≈ 2.147 Gbps) — `bufsize` is 2× this, so the
+    // effective ceiling is INT_MAX/2. Without this, any clip under ~0.37 s made
+    // x264 abort with "maxrate out of range". The cap never bites real quality:
+    // CRF 20 sets the quality target and `-fs 104857600` hard-caps file size, so
+    // 100 Mbps is pure headroom no teaser ever approaches.
+    total_kbps.saturating_sub(audio_kbps).clamp(1000, 100_000)
 }
 
 /// argv for a single-frame JPEG grab.
@@ -370,6 +377,25 @@ mod tests {
         assert!(((k + 128) as f64) * 1000.0 * 60.0 / 8.0 <= 104_857_600.0);
         // Very long clip clamps to the 1 Mbps floor.
         assert_eq!(teaser_video_max_kbps(100_000.0, true), 1000);
+    }
+
+    #[test]
+    fn teaser_max_kbps_caps_short_clips_within_x264_range() {
+        // x264 `-maxrate`/`-bufsize` take a 32-bit bits/s value (INT_MAX ≈
+        // 2.147 Gbps); `bufsize` is 2× maxrate, so maxrate must stay ≤ ~1.07
+        // Gbps. The raw 100 MB / duration budget overflowed this for short
+        // clips (regression: a ~0.2 s clip emitted 3984460k ≈ 3.98 Gbps and
+        // x264 aborted with "maxrate out of range").
+        for &dur in &[0.05, 0.1, 0.2, 0.37, 1.0] {
+            for &audio in &[true, false] {
+                let k = teaser_video_max_kbps(dur, audio);
+                assert!(k <= 100_000, "dur={dur} audio={audio} → {k}k exceeds cap");
+                // maxrate and 2× bufsize both stay inside x264's INT_MAX bits/s.
+                assert!((k as u64) * 2 * 1000 < i32::MAX as u64);
+            }
+        }
+        // The cap actually bites for sub-second clips.
+        assert_eq!(teaser_video_max_kbps(0.2, true), 100_000);
     }
 
     #[test]
