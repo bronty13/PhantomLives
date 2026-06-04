@@ -16,7 +16,9 @@ Molly/SideMolly stack (Tauri 2 + React 19 + TypeScript + Tailwind + SQLite).
 - **Infinite canvas editor** (React Flow) — add nodes (toolbar, `＋ Child`, or
   double-click the canvas), edit labels inline, drag to move, connect nodes by
   dragging between handles, delete with ⌫/Delete, pan/zoom, minimap, and
-  fit-to-view.
+  fit-to-view. **Unlimited nesting depth** — a newly added node becomes the
+  selection, so repeatedly clicking `＋ Child` chains node → child →
+  grandchild → … as deep as you like.
 - **Auto-layout** — one-click `✨ Tidy` arranges the map as a left-to-right
   tidy tree.
 - **Per-node colours** — a swatch palette tints selected nodes.

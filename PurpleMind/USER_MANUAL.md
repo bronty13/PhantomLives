@@ -27,7 +27,10 @@ A map is made of **nodes** (your ideas) joined by **connections**.
 - **Edit a node:** **double-click** it and type. Press **Enter** to save, or
   **Shift+Enter** for a line break. **Escape** cancels.
 - **Add a connected child:** select a node, then click **＋ Child** — a new node
-  appears already linked to it.
+  appears already linked to it. The new child becomes selected automatically, so
+  you can **keep clicking ＋ Child to go deeper** (child → grandchild → …) for as
+  many levels as you want. Click a different node first to branch from there
+  instead.
 - **Connect two nodes:** drag from the little dot on the right edge of one node
   to another node. (Duplicate links are merged automatically.)
 - **Move things:** just drag. Your layout is remembered.

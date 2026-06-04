@@ -156,12 +156,16 @@ function Editor({ mapId, title, onMapsChanged }: EditorProps) {
   const addNodeAt = useCallback(
     async (flowX: number, flowY: number, label = 'New idea') => {
       const row = await createNode(mapId, label, flowX, flowY);
+      // Select the new node (and deselect the rest) so the next `＋ Child`
+      // nests *under it* — this is what lets you build arbitrarily deep
+      // levels: node → child → grandchild → … just by clicking ＋ Child.
       setNodes((ns) => [
-        ...ns,
+        ...ns.map((n) => (n.selected ? { ...n, selected: false } : n)),
         {
           id: row.id,
           type: 'mind',
           position: { x: row.x, y: row.y },
+          selected: true,
           data: { label: row.label, color: row.color, onCommitLabel: commitLabel } as MindNodeData,
         },
       ]);
@@ -181,16 +185,20 @@ function Editor({ mapId, title, onMapsChanged }: EditorProps) {
     void addNodeAt(pos.x, pos.y);
   }, [rf, addNodeAt]);
 
-  // Add a child connected to the (single) selected node.
+  // Add a child connected to the (single) selected node. Siblings are
+  // staggered vertically by how many children the parent already has so they
+  // don't land exactly on top of each other (`✨ Tidy` re-flows them cleanly).
   const addChild = useCallback(() => {
     const selected = nodes.find((n) => n.selected);
     if (!selected) return;
+    const siblingCount = edges.filter((e) => e.source === selected.id).length;
+    const childY = selected.position.y + siblingCount * 96;
     void (async () => {
-      const childId = await addNodeAt(selected.position.x + 240, selected.position.y, 'New idea');
+      const childId = await addNodeAt(selected.position.x + 240, childY, 'New idea');
       const edge = await createEdge(mapId, selected.id, childId);
       if (edge) setEdges((es) => addEdge({ id: edge.id, source: edge.source_id, target: edge.target_id }, es));
     })();
-  }, [nodes, addNodeAt, mapId, setEdges]);
+  }, [nodes, edges, addNodeAt, mapId, setEdges]);
 
   const applyColor = useCallback(
     (color: string | null) => {
