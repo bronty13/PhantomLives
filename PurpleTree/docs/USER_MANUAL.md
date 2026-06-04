@@ -18,10 +18,16 @@ the partial result.
 After a scan you land in **Explorer**:
 
 - **Folder tree (left):** click any folder to focus it; expand with the ▸ arrow.
-- **Treemap (center):** every rectangle is a folder or file, sized by how much
-  space it uses — big blocks are your space hogs. **Click a folder rectangle to
-  drill in.** Click a file rectangle to reveal it in Finder/Explorer. Use the
-  **breadcrumb** at the top to jump back up.
+- **Treemap / Sunburst (center):** two ways to see the same thing — switch with
+  the toggle above the chart.
+  - *Treemap:* every rectangle is a folder or file, sized by how much space it
+    uses — big blocks are your space hogs.
+  - *Sunburst:* a radial view — rings are folder depth, and each segment's slice
+    of the circle is its share of space. The center disc is the current folder;
+    click it to go **up** a level.
+  In both, **click a folder to drill in**, click a file to reveal it in
+  Finder/Explorer, and hover for name + size. Use the **breadcrumb** at the top
+  to jump back up.
 - **Detail list (bottom):** the current folder's contents. Click a column header
   (**Name / Size / Files / Modified**) to sort. Double-click a folder to open
   it, or a file to reveal it.

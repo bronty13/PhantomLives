@@ -17,10 +17,12 @@ import type {
   FileFilter,
   NodeRow,
   RectNode,
+  ArcNode,
   SizeMetric
 } from '../../shared/types';
 import { Tree } from './tree';
 import { computeTreemap } from './treemap';
+import { computeSunburst } from './sunburst';
 import { writeSnapshot, readSnapshot } from './snapshot';
 
 type Sender = (channel: string, payload: unknown) => void;
@@ -219,6 +221,11 @@ export function getTreemap(
 ): RectNode[] {
   const tree = trees.get(scanId);
   return tree ? computeTreemap(tree, focusId, width, height, maxDepth) : [];
+}
+
+export function getSunburst(scanId: string, focusId: number, maxDepth?: number): ArcNode[] {
+  const tree = trees.get(scanId);
+  return tree ? computeSunburst(tree, focusId, maxDepth) : [];
 }
 
 export function getSummary(scanId: string): { stats: ScanStats; rootRow: NodeRow } | null {

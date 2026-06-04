@@ -113,6 +113,21 @@ export interface RectNode {
   isDir: boolean;
 }
 
+/** One arc segment in a computed sunburst layout. Angles in radians; radii
+ *  normalized to [0,1] (the renderer scales them to the canvas). */
+export interface ArcNode {
+  id: number;
+  name: string;
+  path: string;
+  size: number;
+  depth: number;
+  isDir: boolean;
+  a0: number;
+  a1: number;
+  r0: number;
+  r1: number;
+}
+
 /** Filter for the "large & old files" view. */
 export interface FileFilter {
   /** Minimum file size in bytes (0 = no minimum). */

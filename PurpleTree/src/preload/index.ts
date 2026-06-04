@@ -7,6 +7,7 @@ import type {
   FileFilter,
   NodeRow,
   RectNode,
+  ArcNode,
   ResolvedCachePreset,
   DeleteResult,
   BackupInfo,
@@ -70,6 +71,8 @@ const api = {
     depth?: number
   ): Promise<RectNode[]> =>
     ipcRenderer.invoke('purpletree:get-treemap', scanId, focusId, width, height, depth),
+  getSunburst: (scanId: string, focusId: number, depth?: number): Promise<ArcNode[]> =>
+    ipcRenderer.invoke('purpletree:get-sunburst', scanId, focusId, depth),
   getSummary: (scanId: string): Promise<{ stats: ScanStats; rootRow: NodeRow } | null> =>
     ipcRenderer.invoke('purpletree:get-summary', scanId),
   getRoot: (scanId: string): Promise<NodeRow | null> => ipcRenderer.invoke('purpletree:get-root', scanId),

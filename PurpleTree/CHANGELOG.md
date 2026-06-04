@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.0] - 2026-06-03
+
+- **Sunburst view.** A DaisyDisk-style radial visualization alongside the
+  treemap — concentric rings by folder depth, segments sized by share of space.
+  Toggle **Treemap / Sunburst** above the chart. Click a segment to drill into a
+  folder (or reveal a file); the center disc shows the current folder and clicks
+  up one level. Hover for name + size. Computed in main via d3 partition (shared
+  bounded hierarchy with the treemap), painted on canvas.
+
 ## [1.2.0] - 2026-06-03
 
 - The **Scanning…** screen now shows **elapsed time** and a live **files/sec**

@@ -327,13 +327,41 @@ button:disabled {
   font-size: 11.5px;
 }
 
-/* Treemap */
+/* Viz toggle bar */
+.viz-bar {
+  display: flex;
+  gap: 4px;
+  padding: 5px 8px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+.viz-bar button {
+  border: none;
+  background: transparent;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.viz-bar button.active {
+  background: var(--violet);
+  color: #fff;
+}
+
+/* Treemap / Sunburst */
 .treemap-wrap {
   flex: 1;
   position: relative;
   min-height: 160px;
   background: var(--violet-deep);
   overflow: hidden;
+}
+.sunburst-wrap {
+  display: grid;
+  place-items: center;
+}
+.sunburst-wrap canvas {
+  background: var(--violet-deep);
 }
 .treemap-wrap canvas {
   display: block;

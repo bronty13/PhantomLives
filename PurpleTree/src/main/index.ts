@@ -245,6 +245,11 @@ function registerIpc(): void {
     (_e, scanId: string, focusId: number, w: number, h: number, depth?: number) =>
       controller.getTreemap(scanId, focusId, w, h, depth)
   );
+  ipcMain.handle(
+    'purpletree:get-sunburst',
+    (_e, scanId: string, focusId: number, depth?: number) =>
+      controller.getSunburst(scanId, focusId, depth)
+  );
   ipcMain.handle('purpletree:get-summary', (_e, scanId: string) => controller.getSummary(scanId));
   ipcMain.handle('purpletree:get-root', (_e, scanId: string) => controller.getRoot(scanId));
 

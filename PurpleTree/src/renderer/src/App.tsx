@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { NodeRow, ScanProgress, ScanStats, RectNode, ExportFormat } from '../../shared/types';
+import type { NodeRow, ScanProgress, ScanStats, ExportFormat } from '../../shared/types';
 import { formatBytes, formatCount, formatDuration, formatRate } from './features/common/format';
 import FolderTree from './features/tree/FolderTree';
 import DetailList from './features/tree/DetailList';
 import TreemapCanvas from './features/treemap/TreemapCanvas';
+import SunburstCanvas from './features/treemap/SunburstCanvas';
 import Breadcrumb from './features/treemap/Breadcrumb';
 import DuplicatesView from './features/duplicates/DuplicatesView';
 import LargeOldFilesView from './features/largeold/LargeOldFilesView';
@@ -28,6 +29,7 @@ export default function App(): JSX.Element {
   const [root, setRoot] = useState<NodeRow | null>(null);
   const [focusId, setFocusId] = useState(0);
   const [view, setView] = useState<View>('explorer');
+  const [viz, setViz] = useState<'treemap' | 'sunburst'>('treemap');
   const [sidebar, setSidebar] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -141,9 +143,15 @@ export default function App(): JSX.Element {
     return () => clearInterval(iv);
   }, [status]);
 
-  const onPick = (node: RectNode): void => {
+  const onPick = (node: { id: number; isDir: boolean; path: string }): void => {
     if (node.isDir) setFocusId(node.id);
     else void api.reveal(node.path);
+  };
+
+  const navigateUp = async (): Promise<void> => {
+    if (!scanId || focusId === 0) return;
+    const crumbs = await api.getBreadcrumb(scanId, focusId);
+    setFocusId(crumbs.length >= 2 ? crumbs[crumbs.length - 2].id : 0);
   };
 
   const doExport = async (format: ExportFormat): Promise<void> => {
@@ -306,7 +314,30 @@ export default function App(): JSX.Element {
                   <FolderTree scanId={scanId} root={root} focusId={focusId} onSelect={setFocusId} />
                 </div>
                 <div className="explorer-right">
-                  <TreemapCanvas scanId={scanId} focusId={focusId} onPick={onPick} />
+                  <div className="viz-bar">
+                    <button
+                      className={viz === 'treemap' ? 'active' : ''}
+                      onClick={() => setViz('treemap')}
+                    >
+                      ▦ Treemap
+                    </button>
+                    <button
+                      className={viz === 'sunburst' ? 'active' : ''}
+                      onClick={() => setViz('sunburst')}
+                    >
+                      ◎ Sunburst
+                    </button>
+                  </div>
+                  {viz === 'treemap' ? (
+                    <TreemapCanvas scanId={scanId} focusId={focusId} onPick={onPick} />
+                  ) : (
+                    <SunburstCanvas
+                      scanId={scanId}
+                      focusId={focusId}
+                      onPick={onPick}
+                      onUp={() => void navigateUp()}
+                    />
+                  )}
                   <DetailList
                     scanId={scanId}
                     focusId={focusId}

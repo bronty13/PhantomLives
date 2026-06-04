@@ -7,20 +7,9 @@
  * main lets us reuse the in-memory tree without shipping it to the renderer.
  */
 import { hierarchy, treemap, treemapSquarify } from 'd3-hierarchy';
-import type { RectNode, SortSpec } from '../../shared/types';
+import type { RectNode } from '../../shared/types';
 import type { Tree } from './tree';
-
-interface DataNode {
-  id: number;
-  name: string;
-  path: string;
-  size: number;
-  isDir: boolean;
-  depth: number;
-  children?: DataNode[];
-}
-
-const SIZE_DESC: SortSpec = { key: 'size', dir: 'desc' };
+import { buildHierarchyData, type DataNode } from './hierarchyData';
 
 /**
  * @param tree    the scanned tree
@@ -38,27 +27,9 @@ export function computeTreemap(
   maxDepth = 3,
   budget = 2000
 ): RectNode[] {
-  if (width <= 0 || height <= 0 || focusId < 0 || focusId >= tree.nodeCount) return [];
-
-  let count = 0;
-  const build = (id: number, depth: number): DataNode => {
-    const r = tree.row(id);
-    const node: DataNode = { id, name: r.name, path: r.path, size: r.aggSize, isDir: r.isDir, depth };
-    count++;
-    if (r.isDir && depth < maxDepth && r.childCount > 0 && count < budget) {
-      // Largest children first so the budget is spent on the biggest rects.
-      const kids = tree.getChildren(id, SIZE_DESC, r.childCount, 0).filter((c) => c.aggSize > 0);
-      const children: DataNode[] = [];
-      for (const kid of kids) {
-        if (count >= budget) break;
-        children.push(build(kid.id, depth + 1));
-      }
-      if (children.length > 0) node.children = children;
-    }
-    return node;
-  };
-
-  const data = build(focusId, 0);
+  if (width <= 0 || height <= 0) return [];
+  const data = buildHierarchyData(tree, focusId, maxDepth, budget);
+  if (!data) return [];
 
   const root = hierarchy<DataNode>(data)
     .sum((d) => (d.children && d.children.length ? 0 : d.size))
