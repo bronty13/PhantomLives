@@ -29,7 +29,10 @@ node graph.
   the label.
 - **Checkboxes & notes** — toolbar ☑ adds/removes a checkbox on the selection
   (click it to mark done, with strikethrough); 📝 attaches a note (shown as a
-  📝 indicator). Checkboxes export to Markdown as `- [x]`/`- [ ]`.
+  📝 indicator you can click to view/edit). Checkboxes export to Markdown as
+  `- [x]`/`- [ ]`.
+- **Reopen last map on launch** — the most recently opened map is restored on
+  startup instead of the welcome screen.
 
 ### Changed
 

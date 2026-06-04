@@ -125,6 +125,15 @@ function Editor({ mapId, title, onMapsChanged }: EditorProps) {
     [mapId, setNodes],
   );
 
+  const openNoteFor = useCallback(
+    (id: string) => {
+      const node = nodes.find((n) => n.id === id);
+      if (!node) return;
+      setNoteEditor({ id, value: (node.data as BaseData).note ?? '' });
+    },
+    [nodes],
+  );
+
   const mkData = useCallback(
     (over: Partial<BaseData>): BaseData => ({
       label: '',
@@ -234,10 +243,11 @@ function Editor({ mapId, title, onMapsChanged }: EditorProps) {
             onCommitLabel: commitLabel,
             onToggleCollapse: toggleCollapse,
             onToggleCheck: toggleCheck,
+            onOpenNote: openNoteFor,
           };
           return { ...n, data };
         }),
-    [nodes, hidden, styles, commitLabel, toggleCollapse, toggleCheck],
+    [nodes, hidden, styles, commitLabel, toggleCollapse, toggleCheck, openNoteFor],
   );
 
   const displayEdges = useMemo(
@@ -383,9 +393,8 @@ function Editor({ mapId, title, onMapsChanged }: EditorProps) {
 
   const openNoteEditor = useCallback(() => {
     const sel = nodes.find((n) => n.selected);
-    if (!sel) return;
-    setNoteEditor({ id: sel.id, value: (sel.data as BaseData).note ?? '' });
-  }, [nodes]);
+    if (sel) openNoteFor(sel.id);
+  }, [nodes, openNoteFor]);
 
   const saveNote = useCallback(() => {
     if (!noteEditor) return;

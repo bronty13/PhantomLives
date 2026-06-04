@@ -36,10 +36,37 @@ export default function App() {
     [activeMapId],
   );
 
+  const LAST_MAP_KEY = 'pm-last-map';
+
+  // Initial load: list maps and reopen the last-opened map if it still exists.
   useEffect(() => {
-    void refreshMaps();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    void (async () => {
+      const rows = await listMaps();
+      setMaps(rows);
+      const last = (() => {
+        try {
+          return localStorage.getItem(LAST_MAP_KEY);
+        } catch {
+          return null;
+        }
+      })();
+      if (last && rows.some((m) => m.id === last)) {
+        setActiveMapId(last);
+        setView('editor');
+      }
+      setLoaded(true);
+    })();
   }, []);
+
+  // Remember the active map so we can reopen it next launch.
+  useEffect(() => {
+    if (!activeMapId) return;
+    try {
+      localStorage.setItem(LAST_MAP_KEY, activeMapId);
+    } catch {
+      /* private mode — ignore */
+    }
+  }, [activeMapId]);
 
   const handleNewMap = useCallback(async () => {
     const map = await createMap('Untitled map');

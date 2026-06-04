@@ -23,6 +23,7 @@ export interface MindNodeData {
   onCommitLabel: (id: string, label: string) => void;
   onToggleCollapse?: (id: string) => void;
   onToggleCheck?: (id: string) => void;
+  onOpenNote?: (id: string) => void;
   [key: string]: unknown;
 }
 
@@ -85,8 +86,9 @@ export function NodeCard({ id, data, selected }: NodeProps) {
     containerClass += ' rounded-2xl px-4 py-2.5 font-semibold shadow-cute';
     containerStyle = { background: fill, border: `1.5px solid ${mix(color, '#ffffff', 0.45)}`, color: '#2a2140' };
   } else {
-    // item — text on a coloured underline, no box fill.
-    containerClass += ' px-2 py-1.5 font-medium text-surface-text';
+    // item — text on a coloured underline, no box fill. A min width keeps a
+    // short or empty item from collapsing into a bare sliver/box when selected.
+    containerClass += ' min-w-[72px] px-2 py-1.5 font-medium text-surface-text';
     containerStyle = { borderBottom: `3px solid ${color}`, borderRadius: 2 };
   }
   if (selected) containerClass += ' ring-2 ring-offset-1 ring-offset-transparent';
@@ -137,11 +139,23 @@ export function NodeCard({ id, data, selected }: NodeProps) {
           />
         ) : (
           <div className={`${textClass} ${done ? 'line-through opacity-60' : ''}`}>
-            {d.label || <span className="opacity-50">Untitled</span>}
+            {d.label || <span className="italic opacity-40">New idea…</span>}
           </div>
         )}
 
-        {d.hasNote && <span className="shrink-0 text-xs opacity-70" title="Has a note">📝</span>}
+        {d.hasNote && (
+          <button
+            type="button"
+            className="shrink-0 text-xs opacity-70 hover:opacity-100"
+            title="View note"
+            onClick={(e) => {
+              e.stopPropagation();
+              d.onOpenNote?.(id);
+            }}
+          >
+            📝
+          </button>
+        )}
       </div>
 
       <Handle type="source" position={Position.Right} />
