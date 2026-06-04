@@ -36,6 +36,16 @@ node graph.
   `- [x]`/`- [ ]`.
 - **Reopen last map on launch** — the most recently opened map is restored on
   startup instead of the welcome screen.
+- **Drag-to-reparent** — drop a node onto another to make it the new parent
+  (guards against cycles); ✨ Tidy re-flows.
+- **Search / filter** — a toolbar search box highlights matching nodes and dims
+  the rest; Enter cycles through matches; ⌘/Ctrl+F focuses it.
+- **Tidy keyboard shortcut** — ⌘/Ctrl+Shift+L.
+- **Mermaid mindmap export** — export the map as a Markdown file containing a
+  `mermaid` mindmap diagram that renders visually in GitHub / Obsidian / VS Code
+  (alongside the plain bullet outline).
+- **Copy to clipboard** — copy the map as a Mermaid mindmap or as a Markdown
+  outline (uses Tauri's clipboard plugin; works on macOS + Windows).
 
 ### Changed
 

@@ -38,6 +38,7 @@ PurpleMind/
 │   │   ├── ribbon.ts            tapered-ribbon SVG path geometry            (+ .test)
 │   │   ├── autoLayout.ts        tidy tree layout            (+ .test)
 │   │   ├── markdownOutline.ts   tree ↔ indented bullets (w/ [x] checkboxes) (+ .test)
+│   │   ├── mermaid.ts           Mermaid `mindmap` diagram (.md visualization) (+ .test)
 │   │   ├── mapSerialize.ts      PurpleMind .json (de)serialize, doc v2      (+ .test)
 │   │   ├── exportImage.ts       html-to-image + jsPDF render (DOM, not unit-tested)
 │   │   └── base64.ts            encoding helpers
@@ -81,6 +82,12 @@ set, and the editor filters those out of what React Flow renders + lays out.
 |---|---|---|
 | `run_backup_now` / `list_backups` / `test_backup` / `restore_backup` / `reveal_backup_dir` / `reveal_path` / `get_backup_settings` / `set_backup_settings` | `backup` | Backup management (Settings UI). |
 | `export_dir` / `save_export` | `export` | Resolve default dir; write a base64 export payload to `~/Downloads/PurpleMind/`. |
+
+Clipboard copy (Mermaid / outline) uses **`tauri-plugin-clipboard-manager`**
+(`clipboard-manager:allow-write-text` capability), not `navigator.clipboard`,
+so it works on macOS + Windows. Component DOM tests (`Sidebar`, `ExportMenu`)
+use `@testing-library/react` + jsdom via a per-file `// @vitest-environment
+jsdom` directive.
 
 IPC structs are `#[serde(rename_all = "camelCase")]`; the `camel_case_contract`
 test fails the build if a new boundary struct leaks snake_case.

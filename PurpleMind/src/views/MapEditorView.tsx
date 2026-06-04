@@ -19,10 +19,11 @@ import '@xyflow/react/dist/style.css';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readTextFile } from '@tauri-apps/plugin-fs';
+import { writeText as clipboardWriteText } from '@tauri-apps/plugin-clipboard-manager';
 
 import { NodeCard, type MindNodeData } from '../components/NodeCard';
 import { BranchEdge } from '../components/BranchEdge';
-import { ExportMenu, type ExportFormat, type ImportKind } from '../components/ExportMenu';
+import { ExportMenu, type ExportFormat, type ImportKind, type CopyKind } from '../components/ExportMenu';
 import {
   listNodes,
   createNode,
@@ -41,6 +42,7 @@ import { saveViewport, touchMap } from '../data/maps';
 import { getExportDir } from '../data/appSettings';
 import { layoutBilateral } from '../lib/autoLayout';
 import { toMarkdown, fromMarkdown } from '../lib/markdownOutline';
+import { toMermaidMindmap, toMermaidMarkdownDoc } from '../lib/mermaid';
 import { serializeMap, parseMap, type RichNode } from '../lib/mapSerialize';
 import { base64FromString } from '../lib/base64';
 import { renderPng, renderSvg, renderPdf } from '../lib/exportImage';
@@ -82,6 +84,9 @@ function Editor({ mapId, title, onMapsChanged }: EditorProps) {
   const [status, setStatus] = useState('');
   const [iconOpen, setIconOpen] = useState(false);
   const [noteEditor, setNoteEditor] = useState<{ id: string; value: string } | null>(null);
+  const [search, setSearch] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  const matchCursor = useRef(0);
   const rf = useReactFlow();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const vpTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -223,6 +228,18 @@ function Editor({ mapId, title, onMapsChanged }: EditorProps) {
 
   // Nodes/edges actually handed to React Flow: visible only, with derived
   // style merged into each node's data and branch colour onto each edge.
+  // Search matches (by label, case-insensitive).
+  const matches = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return { set: new Set<string>(), ids: [] as string[] };
+    const ids = nodes
+      .filter((n) => (n.data as BaseData).label.toLowerCase().includes(q))
+      .map((n) => n.id);
+    return { set: new Set(ids), ids };
+  }, [nodes, search]);
+
+  const searching = matches.ids.length > 0 || search.trim().length > 0;
+
   const displayNodes = useMemo(
     () =>
       nodes
@@ -240,6 +257,8 @@ function Editor({ mapId, title, onMapsChanged }: EditorProps) {
             childCount: st?.childCount ?? 0,
             collapsed: base.collapsed,
             editEpoch: base.editEpoch,
+            dimmed: searching && !matches.set.has(n.id),
+            highlit: searching && matches.set.has(n.id),
             onCommitLabel: commitLabel,
             onToggleCollapse: toggleCollapse,
             onToggleCheck: toggleCheck,
@@ -247,7 +266,7 @@ function Editor({ mapId, title, onMapsChanged }: EditorProps) {
           };
           return { ...n, data };
         }),
-    [nodes, hidden, styles, commitLabel, toggleCollapse, toggleCheck, openNoteFor],
+    [nodes, hidden, styles, searching, matches, commitLabel, toggleCollapse, toggleCheck, openNoteFor],
   );
 
   const displayEdges = useMemo(() => {
@@ -285,8 +304,40 @@ function Editor({ mapId, title, onMapsChanged }: EditorProps) {
   const onNodeDragStop = useCallback(
     (_e: unknown, node: Node) => {
       void updateNodePosition(node.id, node.position.x, node.position.y).then(() => touchMap(mapId));
+
+      // Drag-to-reparent: dropped onto another node → make it the new parent.
+      const overlaps = rf.getIntersectingNodes(node).filter((n) => n.id !== node.id);
+      if (overlaps.length === 0) return;
+      const target = overlaps[0];
+
+      const { children } = buildForest(graphSnapshot());
+      const isDescendant = (root: string, candidate: string): boolean => {
+        const stack = [...(children.get(root) ?? [])];
+        while (stack.length) {
+          const c = stack.pop()!;
+          if (c === candidate) return true;
+          stack.push(...(children.get(c) ?? []));
+        }
+        return false;
+      };
+      if (isDescendant(node.id, target.id)) return; // would create a cycle
+
+      const parentEdges = edges.filter((e) => e.target === node.id);
+      if (parentEdges.some((e) => e.source === target.id)) return; // already child of target
+
+      void (async () => {
+        for (const pe of parentEdges) await deleteEdge(pe.id);
+        const created = await createEdge(mapId, target.id, node.id);
+        setEdges((es) => {
+          let next = es.filter((e) => !parentEdges.some((pe) => pe.id === e.id));
+          if (created) next = addEdge({ id: created.id, source: created.source_id, target: created.target_id }, next);
+          return next;
+        });
+        await touchMap(mapId);
+        setStatus(`Re-parented "${(node.data as BaseData).label || 'node'}" — ✨ Tidy to re-flow.`);
+      })();
     },
-    [mapId],
+    [mapId, rf, edges, graphSnapshot, setEdges],
   );
 
   const onNodesDelete = useCallback(
@@ -446,13 +497,35 @@ function Editor({ mapId, title, onMapsChanged }: EditorProps) {
     [nodes, rf, setNodes],
   );
 
-  // ---- Keyboard-tree editing -------------------------------------------------
+  // Center the next search match and select it (Enter in the search box).
+  const centerNextMatch = useCallback(() => {
+    if (matches.ids.length === 0) return;
+    const i = matchCursor.current % matches.ids.length;
+    matchCursor.current = i + 1;
+    selectOnly(matches.ids[i]);
+  }, [matches, selectOnly]);
+
+  // ---- Keyboard shortcuts ----------------------------------------------------
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const tag = (document.activeElement?.tagName ?? '').toLowerCase();
-      if (tag === 'textarea' || tag === 'input' || (document.activeElement as HTMLElement)?.isContentEditable) {
-        return; // let inline editing / fields handle keys
+      const inField =
+        tag === 'textarea' || tag === 'input' || (document.activeElement as HTMLElement)?.isContentEditable;
+
+      // Global (work without a selection); skip while typing in a field.
+      if (!inField && (e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'l') {
+        e.preventDefault();
+        tidy();
+        return;
       }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+        return;
+      }
+      if (inField) return; // let inline editing / fields handle other keys
+
       const sel = nodes.find((n) => n.selected);
       if (!sel) return;
       const graph = graphSnapshot();
@@ -495,7 +568,7 @@ function Editor({ mapId, title, onMapsChanged }: EditorProps) {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [nodes, hidden, graphSnapshot, addChildOf, beginEdit, selectOnly]);
+  }, [nodes, hidden, graphSnapshot, addChildOf, beginEdit, selectOnly, tidy]);
 
   // ---- Export / import -------------------------------------------------------
   const attrsMap = useCallback(
@@ -509,6 +582,31 @@ function Editor({ mapId, title, onMapsChanged }: EditorProps) {
     [nodes],
   );
 
+  const onCopy = useCallback(
+    (kind: CopyKind) => {
+      void (async () => {
+        try {
+          let text: string;
+          if (kind === 'mermaid') {
+            text = toMermaidMindmap(title, graphSnapshot());
+          } else {
+            const checkedOf = new Map(nodes.map((n) => [n.id, (n.data as BaseData).checked]));
+            text = toMarkdown(graphSnapshot(), checkedOf);
+          }
+          await clipboardWriteText(text);
+          setStatus(
+            kind === 'mermaid'
+              ? 'Mermaid mindmap copied to clipboard.'
+              : 'Outline copied to clipboard as Markdown.',
+          );
+        } catch (e) {
+          setStatus(`Copy failed: ${e}`);
+        }
+      })();
+    },
+    [nodes, title, graphSnapshot],
+  );
+
   const onExport = useCallback(
     (format: ExportFormat) => {
       void (async () => {
@@ -518,6 +616,7 @@ function Editor({ mapId, title, onMapsChanged }: EditorProps) {
           const dirOverride = (await getExportDir()) || null;
           let base64: string;
           let ext: string;
+          let suffix = '';
           if (format === 'png') {
             base64 = (await renderPng(displayNodes)).base64;
             ext = 'png';
@@ -530,12 +629,17 @@ function Editor({ mapId, title, onMapsChanged }: EditorProps) {
           } else if (format === 'json') {
             base64 = base64FromString(serializeMap(title, graphSnapshot(), attrsMap()));
             ext = 'json';
+          } else if (format === 'mermaid') {
+            base64 = base64FromString(toMermaidMarkdownDoc(title, graphSnapshot()));
+            ext = 'md';
+            suffix = 'mindmap';
           } else {
             const checkedOf = new Map(nodes.map((n) => [n.id, (n.data as BaseData).checked]));
             base64 = base64FromString(toMarkdown(graphSnapshot(), checkedOf));
             ext = 'md';
+            suffix = 'outline';
           }
-          const filename = `${title}_${stamp()}.${ext}`;
+          const filename = `${title}${suffix ? `_${suffix}` : ''}_${stamp()}.${ext}`;
           const res = await invoke<{ outputPath: string }>('save_export', {
             filename,
             contentBase64: base64,
@@ -617,8 +721,38 @@ function Editor({ mapId, title, onMapsChanged }: EditorProps) {
         </h1>
         <button type="button" className="btn-soft" onClick={addNodeCentre}>＋ Node</button>
         <button type="button" className="btn-soft" onClick={addChild} disabled={!anySelected}>＋ Child</button>
-        <button type="button" className="btn-soft" onClick={tidy}>✨ Tidy</button>
+        <button type="button" className="btn-soft" onClick={tidy} title="Tidy (⌘/Ctrl+Shift+L)">✨ Tidy</button>
         <button type="button" className="btn-soft" onClick={() => rf.fitView({ padding: 0.2, duration: 300 })}>⤢ Fit</button>
+
+        <span className="mx-1 h-5 w-px bg-surface-border" />
+
+        <div className="relative flex items-center">
+          <input
+            ref={searchRef}
+            type="text"
+            className="field h-8 w-40 pr-12 text-sm"
+            placeholder="Search… (⌘/Ctrl+F)"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              matchCursor.current = 0;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                centerNextMatch();
+              } else if (e.key === 'Escape') {
+                setSearch('');
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+          />
+          {search.trim() && (
+            <span className="pointer-events-none absolute right-2 text-xs text-surface-muted">
+              {matches.ids.length}
+            </span>
+          )}
+        </div>
 
         <span className="mx-1 h-5 w-px bg-surface-border" />
 
@@ -653,7 +787,7 @@ function Editor({ mapId, title, onMapsChanged }: EditorProps) {
         </div>
 
         <div className="ml-auto">
-          <ExportMenu busy={busy} onExport={onExport} onImport={onImport} />
+          <ExportMenu busy={busy} onExport={onExport} onImport={onImport} onCopy={onCopy} />
         </div>
       </div>
 

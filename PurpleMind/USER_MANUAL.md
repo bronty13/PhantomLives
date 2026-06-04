@@ -65,6 +65,8 @@ With a node selected (and not currently typing in it):
 | **Esc** | Cancel editing |
 | **← ↑ → ↓** | Move the selection (←parent · →first child · ↑/↓ siblings) |
 | **Delete / Backspace** | Delete the selected node or link |
+| **⌘/Ctrl+Shift+L** | Tidy (auto-arrange) |
+| **⌘/Ctrl+F** | Jump to the search box |
 
 ### Getting around the canvas
 
@@ -75,8 +77,12 @@ With a node selected (and not currently typing in it):
 
 ### Make it tidy & pretty
 
-- **✨ Tidy** instantly arranges your map into a neat left-to-right tree —
-  perfect when things get messy.
+- **✨ Tidy** instantly fans your map out to both sides of the center —
+  perfect when things get messy. (Shortcut: **⌘/Ctrl+Shift+L**.)
+- **Re-parent by dragging:** drop a node *on top of* another node to make it
+  the new parent. Then ✨ Tidy to re-flow.
+- **Search (⌘/Ctrl+F):** type in the toolbar search box to highlight matching
+  nodes and dim the rest; press **Enter** to jump to each match in turn.
 - **Colours:** select one or more nodes, then click a colour swatch. The **∅**
   swatch returns a node to its automatic branch colour.
 - **Icons (😀):** select a node and pick an emoji to show before its label.
@@ -96,11 +102,16 @@ Open the **⤓ Export / Import** menu (top-right of a map) and pick a format:
 | **Vector (SVG)** | Crisp at any size; editing in design tools. |
 | **Document (PDF)** | Printing or sharing a clean page. |
 | **PurpleMind map (JSON)** | A perfect backup you can re-import later. |
-| **Outline (Markdown)** | A plain bullet list of your ideas for any text app. |
+| **Mindmap diagram (.md / Mermaid)** | A Markdown file that *renders as a mindmap* in GitHub, Obsidian, Notion, VS Code — anywhere Mermaid is supported. |
+| **Outline (.md)** | A plain bullet list of your ideas for any text app. |
 
 Exports are saved to a **PurpleMind** folder in your **Downloads** by default,
 and the file pops open in Finder/Explorer so you can find it. You can change
 where exports go in **Settings → Export location**.
+
+**Copy to clipboard:** the same menu has a *Copy to clipboard* section — grab
+your map as a **Mermaid mindmap** (paste it into a `mermaid` code block) or as a
+plain **Markdown outline**, ready to paste anywhere.
 
 ## Bringing ideas in (Import)
 

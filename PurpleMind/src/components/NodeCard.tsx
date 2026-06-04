@@ -20,6 +20,9 @@ export interface MindNodeData {
   collapsed?: boolean;
   /** Bumped by the editor to programmatically enter edit mode (keyboard). */
   editEpoch?: number;
+  /** Search: dim non-matches, highlight matches. */
+  dimmed?: boolean;
+  highlit?: boolean;
   onCommitLabel: (id: string, label: string) => void;
   onToggleCollapse?: (id: string) => void;
   onToggleCheck?: (id: string) => void;
@@ -92,6 +95,8 @@ export function NodeCard({ id, data, selected }: NodeProps) {
     containerStyle = { borderBottom: `3px solid ${color}`, borderRadius: 2 };
   }
   if (selected) containerClass += ' ring-2 ring-offset-1 ring-offset-transparent';
+  if (d.highlit) containerClass += ' ring-2 ring-amber-400';
+  if (d.dimmed) containerClass += ' opacity-30';
 
   return (
     <div
