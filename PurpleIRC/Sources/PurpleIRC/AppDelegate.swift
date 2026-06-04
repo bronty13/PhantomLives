@@ -16,6 +16,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static let windowResetVersion = 1
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        // Arm the exception breadcrumb as early as possible so a layout-cycle
+        // NSException (the no-app-frames SwiftUI crash) records its reason.
+        ExceptionLogger.install()
         WindowStateGuard.applyOnLaunch(
             appName: "PurpleIRC",
             resetVersion: Self.windowResetVersion

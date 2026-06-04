@@ -46,6 +46,24 @@ count (`1.0.<count>`).
   once the off-screen rows realize. Used by both the buffer-switch
   `onChange` and `onAppear`.
 
+### Diagnostics
+
+- **Capture the reason behind the SwiftUI layout-cycle crash**
+  (`ExceptionLogger.swift`, wired from `AppDelegate`). A crash report
+  from a macOS 26.5 VM showed an `EXC_BREAKPOINT` thrown from
+  `-[NSWindow _postWindowNeedsUpdateConstraints]` during a CoreAnimation
+  transaction commit (a SwiftUI `@State` update flushed mid-layout, with
+  an animation in flight) — but with **no PurpleIRC frames on the stack
+  and no `exceptionReason` in the `.ips`**, so the trigger can't be
+  pinned from the report alone. We now swizzle
+  `-[NSApplication reportException:]` (and set
+  `NSSetUncaughtExceptionHandler` as a backstop) to record the exception
+  name + reason + callstack to a plaintext, unencrypted breadcrumb at
+  `~/Library/Application Support/PurpleIRC/last-exception.log` and via
+  `NSLog`, before deferring to AppKit's original handling. Diagnostics
+  only — no control flow changes — so the next occurrence is
+  self-diagnosing.
+
 ## [1.0.603] — 2026-06-02
 
 ### Security (audit follow-up — #36, KDF hardening)
