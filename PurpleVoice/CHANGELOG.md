@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Window sizing
+
+- **Console no longer clipped on launch** — the main window now opens
+  tall enough (min height 680, default 940×800) to show the full
+  processing console, including the bottom row of knobs and the
+  engine/loudness/output pickers. Previously the window opened at 460pt
+  and the bottom controls sat below the fold until you scrolled or
+  resized. The larger minimum also rescues already-restored windows that
+  were saved too short.
+
 ### App icon
 
 - **Real app icon** — replaced the generic Swift icon with a purple

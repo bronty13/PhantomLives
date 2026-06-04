@@ -13,9 +13,16 @@ struct PurpleVoiceApp: App {
                 .environmentObject(queue)
                 .environmentObject(settings)
                 .environmentObject(presetStore)
-                .frame(minWidth: 720, minHeight: 460)
+                // minHeight fits the full processing console (drop target
+                // + preset bar + profile + knob row + toggles + pickers,
+                // ~670pt) so the bottom knobs aren't clipped below the
+                // fold on launch. Both panes scroll below this anyway.
+                .frame(minWidth: 720, minHeight: 680)
         }
         .windowResizability(.contentMinSize)
+        // First-launch size; restored window frames win on later launches,
+        // but the larger minHeight above still clamps a too-short restore up.
+        .defaultSize(width: 940, height: 800)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("Add Clips…") {
