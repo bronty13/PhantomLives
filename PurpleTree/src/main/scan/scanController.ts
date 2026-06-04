@@ -24,7 +24,7 @@ import { Tree } from './tree';
 import { computeTreemap } from './treemap';
 import { computeSunburst } from './sunburst';
 import { writeSnapshot, readSnapshot, listSnapshots } from './snapshot';
-import { diffDirSizes } from './diff';
+import { diffSizes } from './diff';
 import type { SnapshotDiff } from '../../shared/types';
 
 type Sender = (channel: string, payload: unknown) => void;
@@ -270,7 +270,7 @@ export async function diffSnapshots(idA: string, idB: string): Promise<SnapshotD
   tOlder.setMetric(activeMetric);
   const tNewer = new Tree(serNewer);
   tNewer.setMetric(activeMetric);
-  const entries = diffDirSizes(tOlder.dirSizes(), tNewer.dirSizes());
+  const entries = diffSizes(tOlder.allSizes(), tNewer.allSizes());
   const totalDelta = tNewer.stats().totalBytes - tOlder.stats().totalBytes;
   return { a: older, b: newer, totalDelta, entries };
 }

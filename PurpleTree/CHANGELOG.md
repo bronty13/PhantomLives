@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.4.1] - 2026-06-03
+
+- Snapshot compare now reveals **file-level** changes, not just folders: every
+  added / removed / resized **file** shows up alongside the folder rollups, with
+  a 📁/📄 type marker and an **All / Files / Folders** filter. (Tip: the diff
+  uses your On-disk/Logical setting — switch to **Logical** and re-Compare to
+  catch byte-exact edits that on-disk block rounding would hide.) New end-to-end
+  test verifies added/removed/resized files surface correctly.
+
 ## [1.4.0] - 2026-06-03
 
 - **Snapshot compare.** New **📸 Snapshots** tab: list, open, or delete saved

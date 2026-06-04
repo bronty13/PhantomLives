@@ -21,6 +21,7 @@ export default function SnapshotsView({ onLoaded }: Props): JSX.Element {
   const [selected, setSelected] = useState<string[]>([]);
   const [diff, setDiff] = useState<SnapshotDiff | null>(null);
   const [busy, setBusy] = useState(false);
+  const [filter, setFilter] = useState<'all' | 'files' | 'folders'>('all');
 
   const reload = (): void => {
     void api.snapshotList().then(setSnaps);
@@ -98,25 +99,34 @@ export default function SnapshotsView({ onLoaded }: Props): JSX.Element {
             <strong style={{ color: statusColor(diff.totalDelta >= 0 ? 'grew' : 'shrank') }}>
               {signed(diff.totalDelta)}
             </strong>
-            {diff.entries.length === 0 && <span className="muted"> · no folder changes</span>}
+            {diff.entries.length === 0 && <span className="muted"> · no changes detected</span>}
+            <span className="diff-filter">
+              {(['all', 'files', 'folders'] as const).map((f) => (
+                <button key={f} className={filter === f ? 'active' : ''} onClick={() => setFilter(f)}>
+                  {f === 'all' ? 'All' : f === 'files' ? 'Files' : 'Folders'}
+                </button>
+              ))}
+            </span>
           </div>
           <div className="diff-rows">
-            {diff.entries.map((e) => (
-              <div key={e.path} className="diff-row" onDoubleClick={() => void api.reveal(e.path)}>
-                <span className="diff-badge" style={{ background: statusColor(e.status) }}>
-                  {e.status}
-                </span>
-                <span className="diff-path" title={e.path}>
-                  {e.path}
-                </span>
-                <span className="diff-sizes muted">
-                  {formatBytes(e.sizeA)} → {formatBytes(e.sizeB)}
-                </span>
-                <span className="diff-delta" style={{ color: statusColor(e.status) }}>
-                  {signed(e.delta)}
-                </span>
-              </div>
-            ))}
+            {diff.entries
+              .filter((e) => filter === 'all' || (filter === 'files' ? !e.isDir : e.isDir))
+              .map((e) => (
+                <div key={e.path} className="diff-row" onDoubleClick={() => void api.reveal(e.path)}>
+                  <span className="diff-badge" style={{ background: statusColor(e.status) }}>
+                    {e.status}
+                  </span>
+                  <span className="diff-path" title={e.path}>
+                    {e.isDir ? '📁' : '📄'} {e.path}
+                  </span>
+                  <span className="diff-sizes muted">
+                    {formatBytes(e.sizeA)} → {formatBytes(e.sizeB)}
+                  </span>
+                  <span className="diff-delta" style={{ color: statusColor(e.status) }}>
+                    {signed(e.delta)}
+                  </span>
+                </div>
+              ))}
           </div>
         </div>
       )}

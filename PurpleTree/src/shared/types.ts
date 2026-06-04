@@ -224,12 +224,13 @@ export interface SnapshotInfo {
   sizeBytes: number;
 }
 
-/** One folder's change between two snapshots. */
+/** One path's change between two snapshots (a file or a folder). */
 export interface DiffEntry {
   path: string;
-  /** Aggregate size in the older snapshot (0 if absent). */
+  isDir: boolean;
+  /** Size in the older snapshot (0 if absent). Folder = aggregate, file = own. */
   sizeA: number;
-  /** Aggregate size in the newer snapshot (0 if absent). */
+  /** Size in the newer snapshot (0 if absent). */
   sizeB: number;
   /** sizeB - sizeA (positive = grew). */
   delta: number;

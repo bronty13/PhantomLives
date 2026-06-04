@@ -406,11 +406,16 @@ export class Tree {
     return { totalBytes: this.aggOf(0) ?? 0, totalFiles: this.fileCount[0] ?? 0 };
   }
 
-  /** Map of every directory's absolute path → aggregate size (active metric). */
-  dirSizes(): Map<string, number> {
-    const m = new Map<string, number>();
+  /**
+   * Map every node's absolute path → {size, isDir} (active metric). Folders use
+   * their aggregate size, files their own size. Feeds the snapshot diff so it
+   * can reveal file-level changes, not just folder rollups.
+   */
+  allSizes(): Map<string, { size: number; isDir: boolean }> {
+    const m = new Map<string, { size: number; isDir: boolean }>();
     for (let i = 0; i < this.nodeCount; i++) {
-      if (this.isDir(i)) m.set(this.path(i), this.aggOf(i));
+      const dir = this.isDir(i);
+      m.set(this.path(i), { size: dir ? this.aggOf(i) : this.selfOf(i), isDir: dir });
     }
     return m;
   }

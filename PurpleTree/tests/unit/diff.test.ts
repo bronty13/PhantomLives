@@ -1,43 +1,50 @@
 import { describe, it, expect } from 'vitest';
-import { diffDirSizes } from '../../src/main/scan/diff';
+import { diffSizes } from '../../src/main/scan/diff';
 
-describe('diffDirSizes', () => {
-  const older = new Map([
-    ['/r', 100],
-    ['/r/keep', 50],
-    ['/r/grow', 20],
-    ['/r/shrink', 30],
-    ['/r/gone', 10]
+type SizeMap = Map<string, { size: number; isDir: boolean }>;
+const dir = (size: number) => ({ size, isDir: true });
+const file = (size: number) => ({ size, isDir: false });
+
+describe('diffSizes', () => {
+  const older: SizeMap = new Map([
+    ['/r', dir(100)],
+    ['/r/keep', dir(50)],
+    ['/r/grow', dir(20)],
+    ['/r/shrink.bin', file(30)],
+    ['/r/gone.bin', file(10)]
   ]);
-  const newer = new Map([
-    ['/r', 130],
-    ['/r/keep', 50], // unchanged -> dropped
-    ['/r/grow', 60], // +40
-    ['/r/shrink', 5], // -25
-    ['/r/new', 15] // added
+  const newer: SizeMap = new Map([
+    ['/r', dir(130)],
+    ['/r/keep', dir(50)], // unchanged -> dropped
+    ['/r/grow', dir(60)], // +40
+    ['/r/shrink.bin', file(5)], // -25
+    ['/r/new.bin', file(15)] // added
   ]);
 
   it('classifies grew / shrank / added / removed and drops unchanged', () => {
-    const d = diffDirSizes(older, newer);
-    const byPath = Object.fromEntries(d.map((e) => [e.path, e]));
-    expect(byPath['/r/keep']).toBeUndefined(); // unchanged
+    const byPath = Object.fromEntries(diffSizes(older, newer).map((e) => [e.path, e]));
+    expect(byPath['/r/keep']).toBeUndefined();
     expect(byPath['/r/grow'].status).toBe('grew');
     expect(byPath['/r/grow'].delta).toBe(40);
-    expect(byPath['/r/shrink'].status).toBe('shrank');
-    expect(byPath['/r/shrink'].delta).toBe(-25);
-    expect(byPath['/r/new'].status).toBe('added');
-    expect(byPath['/r/new'].sizeA).toBe(0);
-    expect(byPath['/r/gone'].status).toBe('removed');
-    expect(byPath['/r/gone'].sizeB).toBe(0);
+    expect(byPath['/r/shrink.bin'].status).toBe('shrank');
+    expect(byPath['/r/shrink.bin'].delta).toBe(-25);
+    expect(byPath['/r/new.bin'].status).toBe('added');
+    expect(byPath['/r/gone.bin'].status).toBe('removed');
+  });
+
+  it('preserves the file/folder type of each entry', () => {
+    const byPath = Object.fromEntries(diffSizes(older, newer).map((e) => [e.path, e]));
+    expect(byPath['/r/grow'].isDir).toBe(true); // folder
+    expect(byPath['/r/new.bin'].isDir).toBe(false); // file
+    expect(byPath['/r/gone.bin'].isDir).toBe(false); // removed file keeps its type
   });
 
   it('sorts by absolute delta, biggest first', () => {
-    const d = diffDirSizes(older, newer);
-    const deltas = d.map((e) => Math.abs(e.delta));
+    const deltas = diffSizes(older, newer).map((e) => Math.abs(e.delta));
     for (let i = 1; i < deltas.length; i++) expect(deltas[i - 1]).toBeGreaterThanOrEqual(deltas[i]);
   });
 
   it('honors the limit', () => {
-    expect(diffDirSizes(older, newer, 2)).toHaveLength(2);
+    expect(diffSizes(older, newer, 2)).toHaveLength(2);
   });
 });

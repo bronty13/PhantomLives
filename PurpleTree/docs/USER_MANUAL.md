@@ -78,8 +78,12 @@ The **📸 Snapshots** tab lists every scan you've saved. From here you can:
 - **Open** an old snapshot to browse it like a fresh scan.
 - **Delete** ones you don't need.
 - Tick **two** snapshots and click **Compare** to see what changed between them —
-  which folders grew, shrank, appeared, or vanished, biggest change first, with
-  before → after sizes and a +/− delta. Great for "what ate my 20 GB this week?"
+  every **file and folder** that grew, shrank, appeared, or vanished, biggest
+  change first, with before → after sizes and a +/− delta. Use the
+  **All / Files / Folders** filter to focus on just the files (the real detail)
+  or just folder rollups. Great for "what ate my 20 GB this week?" *Tip:* the
+  diff uses your **On-disk / Logical** setting — flip to Logical and Compare
+  again to catch small byte-exact edits.
 
 Save snapshots over time with **Save Snapshot** in the top bar after a scan.
 

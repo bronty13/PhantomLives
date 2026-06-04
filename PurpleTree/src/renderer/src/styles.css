@@ -687,6 +687,27 @@ button:disabled {
 .diff-head {
   background: var(--sel);
   padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.diff-filter {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+.diff-filter button {
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 2px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.diff-filter button.active {
+  background: var(--violet);
+  color: #fff;
+  border-color: var(--violet);
 }
 .diff-rows {
   max-height: 46vh;
