@@ -13,6 +13,8 @@
 const { execSync } = require('node:child_process');
 
 exports.default = async function stripXattrs(context) {
+  // macOS-only: there are no xattrs to strip on Windows/Linux builds.
+  if (context.electronPlatformName !== 'darwin') return;
   const appPath = `${context.appOutDir}/${context.packager.appInfo.productFilename}.app`;
   const q = JSON.stringify(appPath);
   try {
