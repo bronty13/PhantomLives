@@ -393,7 +393,7 @@ function Editor({ mapId, title, onMapsChanged }: EditorProps) {
             pannable
             zoomable
             nodeColor={(n) => ((n.data as MindNodeData)?.color ?? 'rgb(147 97 219)') as string}
-            maskColor="rgb(0 0 0 / 0.08)"
+            nodeStrokeColor="transparent"
           />
         </ReactFlow>
       </div>

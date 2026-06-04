@@ -130,4 +130,17 @@
 .react-flow__minimap {
   border-radius: 0.75rem;
   overflow: hidden;
+  border: 1px solid rgb(var(--surface-border));
+  box-shadow: 0 8px 24px -10px rgb(var(--brand-500) / 0.4);
+  /* React Flow v12 theming hooks — kept in surface tokens so the minimap
+     follows the light/dark flip instead of defaulting to a light panel. */
+  --xy-minimap-background-color: rgb(var(--surface-card));
+  --xy-minimap-background-color-default: rgb(var(--surface-card));
+  --xy-minimap-mask-background-color: rgb(var(--surface-base) / 0.55);
+  --xy-minimap-mask-background-color-default: rgb(var(--surface-base) / 0.55);
+}
+/* The inner SVG paints its own background; make it transparent so the
+   themed container colour shows through on both themes. */
+.react-flow__minimap-svg {
+  background: transparent;
 }
