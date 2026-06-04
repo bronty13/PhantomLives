@@ -1,5 +1,17 @@
 # PurpleVoice Changelog
 
+## Unreleased
+
+### App icon
+
+- **Real app icon** — replaced the generic Swift icon with a purple
+  gradient tile featuring a white microphone and voice-wave arcs.
+- The icon is rendered deterministically at build time from
+  `Scripts/generate-icon.swift` (all 10 iconset sizes, 16→1024) and
+  packed to `AppIcon.icns` by `build-app.sh` via `iconutil` — nothing
+  binary is checked in. Falls back to a checked-in `Resources/AppIcon.icns`
+  if present, then the generic icon.
+
 ## v0.4.0 — 2026-05-28
 
 A pro mixing-console UI with presets. The fine-tune adjustments come out

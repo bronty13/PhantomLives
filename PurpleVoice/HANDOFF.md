@@ -291,6 +291,8 @@ PurpleVoice/
 ├── build-app.sh                     # build → sign → install → relaunch (one command)
 ├── install.sh                       # quit-running → replace /Applications/ → install CLI wrapper → relaunch
 ├── run-tests.sh                     # Testing.framework rpath wrapper
+├── Scripts/
+│   └── generate-icon.swift          # deterministic AppIcon renderer used by build-app.sh
 ├── README.md
 ├── USER_MANUAL.md                   # end-user walkthrough (presets, console, CLI, troubleshooting)
 ├── CHANGELOG.md
@@ -396,8 +398,6 @@ The scrub-lifecycle test is the canonical regression check for the v0.3
   two-pass would be more accurate for podcast publishing.
 - **Sparkle auto-update** — not wired. PurpleDedup has the pattern if
   this becomes important.
-- **App icon** — `Resources/AppIcon.icns` not yet created. Bundle uses
-  the generic Swift icon.
 
 ## Per-session Claude permission
 

@@ -45,9 +45,15 @@ mkdir -p "$MACOS" "$RESOURCES"
 
 cp "$BIN_PATH/PurpleVoice" "$MACOS/PurpleVoice"
 
-# Optional AppIcon.icns — generated separately, checked in once it
-# exists. Until then the .app gets the generic Swift icon (harmless).
-if [ -f "Resources/AppIcon.icns" ]; then
+# App icon: generate deterministic iconset PNGs from Scripts/generate-icon.swift
+# and pack them to AppIcon.icns. If iconutil isn't available, fall back to a
+# checked-in Resources/AppIcon.icns when present; otherwise the generic app icon
+# is used.
+if [ -f "Scripts/generate-icon.swift" ] && command -v iconutil >/dev/null 2>&1; then
+    ICONSET_DIR="$WORK_DIR/AppIcon.iconset"
+    swift "Scripts/generate-icon.swift" "$ICONSET_DIR" >/dev/null
+    iconutil -c icns "$ICONSET_DIR" -o "$RESOURCES/AppIcon.icns"
+elif [ -f "Resources/AppIcon.icns" ]; then
     cp "Resources/AppIcon.icns" "$RESOURCES/AppIcon.icns"
 fi
 
