@@ -101,6 +101,7 @@ stream across every connection, UUID-tagged so listeners can scope.
 | 16 | Person model + world-class Address Book workspace (LinkedNick / ContactAlertOverride / migration; non-modal Window(id: "address-book") via ⇧⌘B; sectioned detail with linked nicks, alert overrides, activity timeline, hostmask history, shared channels; Suggest Links sheet; Setup → Address Book tab removed) | Done | `1.0.243` |
 | 17 | Cross-network unified search ⌘⇧F (`LogStore.search` + `UnifiedSearchView`; case-sensitivity + network filter chips + click-to-jump routing through existing `/join` / `/query` auto-create) | Done | `1.0.247` |
 | 18 | Sidebar off `NavigationSplitView` → manual `HStack` (fixed 220 px, `@AppStorage("sidebarVisible")` toggle ⌃⌘S); `WindowStateGuard` + `AppDelegate` (resetVersion 1) + Window → Reset Window State…; gitignore Finder ` 2.app`/` 3.app` dupes + delete stray bundle; README/HANDOFF doc sync | Done | 2026-05-24 |
+| 19 | Fuzzy "Find nick in logs" — user-list right-click → dedicated `NickFindView` sheet over `LogStore.searchAuthored` (authored-by, not mention); `NickFuzzyMatcher` (normalize + Jaro-Winkler + log-line author parse); live fuzziness slider + matched-variant chips; jump routing factored into shared `ChatModel.jumpToLogHit` (also used by `UnifiedSearchView`) | Done | 2026-06-04 |
 
 ## Security & robustness pass (1.0.92, 2026-04-30)
 

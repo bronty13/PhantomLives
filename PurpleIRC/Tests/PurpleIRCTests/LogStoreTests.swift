@@ -356,4 +356,49 @@ struct LogStoreTests {
         let ok = LogStore.parseLogTimestamp("2026-05-12T12:00:00.000Z body")
         #expect(ok != nil)
     }
+
+    // MARK: - searchAuthored() — fuzzy authored-by nick search
+
+    /// Authored-by search returns the target's own lines plus fuzzy variants
+    /// (decoration / alt-padding), and crucially EXCLUDES a line that merely
+    /// *mentions* the nick but was written by someone else.
+    @Test func searchAuthoredMatchesVariantsAndExcludesMentions() async {
+        let store = LogStore(baseURL: tempDir())
+        await store.append(network: "Libera", buffer: "#swift", line: "<john_doe> first")
+        await store.append(network: "Libera", buffer: "#swift", line: "<johndoe1> alt-nick line")
+        await store.append(network: "Libera", buffer: "#swift", line: "* johnny waves")
+        // Mention only — authored by bob, just talking about john_doe.
+        await store.append(network: "Libera", buffer: "#swift", line: "<bob> hey john_doe you around?")
+        // Unrelated author.
+        await store.append(network: "Libera", buffer: "#swift", line: "<zelda> hi all")
+
+        let hits = await store.searchAuthored(nick: "john_doe", threshold: 0.84)
+        let authors = Set(hits.compactMap { $0.matchedNick })
+        #expect(authors.contains("john_doe"))
+        #expect(authors.contains("johndoe1"))
+        #expect(authors.contains("johnny"))
+        #expect(!authors.contains("bob"))     // mention-only excluded
+        #expect(!authors.contains("zelda"))   // unrelated excluded
+        // bob's mention line must not appear at all.
+        #expect(!hits.contains { $0.line.contains("hey john_doe") })
+    }
+
+    @Test func searchAuthoredThresholdControlsReach() async {
+        let store = LogStore(baseURL: tempDir())
+        await store.append(network: "Net", buffer: "#chan", line: "<jdough1> distant variant")
+        // Too far at the default fuzziness…
+        let tight = await store.searchAuthored(nick: "john_doe", threshold: 0.84)
+        #expect(tight.isEmpty)
+        // …reachable once loosened.
+        let loose = await store.searchAuthored(nick: "john_doe", threshold: 0.50)
+        #expect(loose.count == 1)
+        #expect(loose.first?.matchedNick == "jdough1")
+    }
+
+    @Test func searchAuthoredEmptyNickReturnsEmpty() async {
+        let store = LogStore(baseURL: tempDir())
+        await store.append(network: "Net", buffer: "#chan", line: "<alice> hi")
+        let hits = await store.searchAuthored(nick: "   ", threshold: 0.5)
+        #expect(hits.isEmpty)
+    }
 }

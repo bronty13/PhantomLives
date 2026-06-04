@@ -12,7 +12,27 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
-## [Unreleased] — 2026-06-03
+## [Unreleased] — 2026-06-04
+
+### Added
+
+- **Right-click a nick → “Find … in logs” — fuzzy authored-by log search**
+  (`NickFuzzyMatcher.swift`, `NickFindView.swift`, `LogStore.swift`,
+  `BufferView.swift`). The sidebar user-list context menu gains a **Find
+  “<nick>” in logs…** item that opens a dedicated sheet listing every
+  persisted log line *authored by* that nick — and by fuzzy **variants** of
+  it, so finding `john_doe` also surfaces `johndoe`, `johndoe1`, `johnny1`,
+  and (when loosened) `jdough1`. Matching normalises away the usual IRC
+  decoration (`_ | ^ - [ ] { }` and backtick), trailing alt-padding digits,
+  and away-suffixes, then scores the remainder with prefix-weighted
+  **Jaro-Winkler** similarity. A **fuzziness slider** in the sheet tunes
+  recall live (Looser ↔ Exact; default 0.84), chips show which variant nicks
+  matched, and clicking a result jumps to its buffer. Unlike the ⌘⇧F unified
+  search (plain substring), this keys off the line's **author**, so lines
+  that merely *mention* the nick are excluded. New `LogStore.searchAuthored`
+  powers it; jump routing was factored into `ChatModel.jumpToLogHit` and is
+  now shared with the unified-search sheet. Covered by the new `Nick fuzzy
+  matcher` suite plus `searchAuthored` tests.
 
 ### Fixed
 

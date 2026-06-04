@@ -335,6 +335,14 @@ actor LogStore {
         /// malformed lines (which shouldn't happen for files we wrote,
         /// but parser shouldn't panic on imports).
         let timestamp: Date?
+        /// For fuzzy authored-by searches (`searchAuthored`): the actual
+        /// author nick that matched the target (e.g. `johnny1` when the
+        /// user searched `john_doe`). nil for plain substring `search`.
+        var matchedNick: String? = nil
+        /// Fuzzy similarity score `0...1` of `matchedNick` against the
+        /// search target. 0 for plain substring `search`. Lets the
+        /// authored-by UI rank the strongest variant matches first.
+        var score: Double = 0
     }
 
     /// Scan every known log file for `query`. Walks both named-index
@@ -389,6 +397,93 @@ actor LogStore {
             if hits.count >= limit { return hits }
         }
         return hits
+    }
+
+    /// Fuzzy "authored-by" search: every logged line whose *author* is the
+    /// given `nick` or a variant of it (`john_doe` → `johndoe1`, `johnny1`,
+    /// …). Unlike `search`, this parses the author token out of each line
+    /// (via `NickFuzzyMatcher.authors`) and keeps the line only when an
+    /// author fuzzily matches — so mention-only lines (someone else *talking
+    /// about* the nick) are excluded.
+    ///
+    /// `threshold` is the fuzziness knob surfaced by the Find sheet's slider
+    /// (lower = looser, more variants). Results come back sorted by descending
+    /// match score, then most-recent-first, so the strongest variants lead.
+    func searchAuthored(nick: String, threshold: Double, limit: Int = 500) -> [SearchHit] {
+        let target = nick.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !target.isEmpty else { return [] }
+        var hits: [SearchHit] = []
+
+        let result = enumerateAllLogs()
+        for entry in result.named {
+            guard let text = read(network: entry.network, buffer: entry.buffer) else { continue }
+            scanAuthored(text,
+                         network: entry.network, buffer: entry.buffer,
+                         networkSlug: slug(entry.network), bufferSlug: slug(entry.buffer),
+                         target: target, threshold: threshold, hits: &hits, limit: limit)
+            if hits.count >= limit { break }
+        }
+        if hits.count < limit {
+            for orphan in result.orphans {
+                guard let text = readBySlug(networkSlug: orphan.networkSlug,
+                                            bufferSlug: orphan.bufferSlug) else { continue }
+                scanAuthored(text,
+                             network: orphan.networkSlug, buffer: orphan.bufferSlug,
+                             networkSlug: orphan.networkSlug, bufferSlug: orphan.bufferSlug,
+                             target: target, threshold: threshold, hits: &hits, limit: limit)
+                if hits.count >= limit { break }
+            }
+        }
+        // Strongest variant matches first; break ties by recency so the most
+        // useful lines are at the top of the Find sheet.
+        return hits.sorted {
+            if $0.score != $1.score { return $0.score > $1.score }
+            return ($0.timestamp ?? .distantPast) > ($1.timestamp ?? .distantPast)
+        }
+    }
+
+    /// Per-file worker for `searchAuthored`. Strips the timestamp prefix off
+    /// each line, extracts the author nick(s), and keeps the line when one
+    /// fuzzily matches the target. Records the matched variant + its score on
+    /// the hit so the UI can show which nicks turned up and rank them.
+    private func scanAuthored(_ text: String,
+                              network: String, buffer: String,
+                              networkSlug: String, bufferSlug: String,
+                              target: String, threshold: Double,
+                              hits: inout [SearchHit], limit: Int) {
+        var lineNumber = 0
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            lineNumber += 1
+            let lineStr = String(line)
+            // Body = everything after the leading ISO-8601 timestamp.
+            let body: String
+            if let sp = lineStr.firstIndex(of: " ") {
+                body = String(lineStr[lineStr.index(after: sp)...])
+            } else {
+                body = lineStr
+            }
+            // Best (highest-scoring) matching author on this line, if any.
+            var best: (nick: String, score: Double)? = nil
+            for author in NickFuzzyMatcher.authors(ofLogLineBody: body) {
+                guard NickFuzzyMatcher.matches(target: target, candidate: author,
+                                               threshold: threshold) else { continue }
+                let s = NickFuzzyMatcher.similarity(target, author)
+                if best == nil || s > best!.score { best = (author, s) }
+            }
+            guard let match = best else { continue }
+            hits.append(SearchHit(
+                network: network,
+                buffer: buffer,
+                networkSlug: networkSlug,
+                bufferSlug: bufferSlug,
+                lineNumber: lineNumber,
+                line: lineStr,
+                timestamp: Self.parseLogTimestamp(lineStr),
+                matchedNick: match.nick,
+                score: match.score
+            ))
+            if hits.count >= limit { return }
+        }
     }
 
     /// Per-file scan worker. Splits on newlines, runs the substring

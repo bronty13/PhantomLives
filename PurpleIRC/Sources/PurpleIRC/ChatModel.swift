@@ -321,6 +321,44 @@ final class ChatModel: ObservableObject {
         let onSubmit: (String) -> Void
     }
 
+    /// Drives the dedicated "Find <nick> in logs" sheet (NickFindView),
+    /// presented via `.sheet(item:)`. Set by the user-list context menu's
+    /// Find action; nil dismisses.
+    @Published var nickFindTarget: NickFindRequest? = nil
+
+    struct NickFindRequest: Identifiable {
+        let id = UUID()
+        let nick: String
+    }
+
+    /// Open the fuzzy authored-by log search for `nick` (right-click → Find).
+    func findNickInLogs(_ nick: String) {
+        nickFindTarget = NickFindRequest(nick: nick)
+    }
+
+    /// Route to the buffer a log-search hit came from. Shared by the unified
+    /// search sheet and the Find-nick sheet. Finds the connection by
+    /// network-slug, then selects an already-open buffer or, failing that,
+    /// re-materialises it via `/join` (channels) or `/query` (nicks). Callers
+    /// dismiss their own sheet afterwards.
+    func jumpToLogHit(_ hit: LogStore.SearchHit) {
+        let conn = connections.first { SeenStore.slug(for: $0.displayName) == hit.networkSlug }
+        guard let conn else { return }
+        if activeConnectionID != conn.id {
+            activeConnectionID = conn.id
+        }
+        if let existing = conn.buffers.first(where: {
+            $0.name.caseInsensitiveCompare(hit.buffer) == .orderedSame
+        }) {
+            conn.selectedBufferID = existing.id
+        } else if hit.buffer.hasPrefix("#") || hit.buffer.hasPrefix("&")
+                    || hit.buffer.hasPrefix("+") || hit.buffer.hasPrefix("!") {
+            sendInput("/join \(hit.buffer)")
+        } else {
+            sendInput("/query \(hit.buffer)")
+        }
+    }
+
     /// Single shared watchlist across all connections. See IRCConnection doc
     /// on why this is shared rather than per-connection.
     let watchlist = WatchlistService()

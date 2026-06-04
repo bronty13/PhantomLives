@@ -269,37 +269,11 @@ struct UnifiedSearchView: View {
 
     // MARK: - Jump-to-result
 
-    /// Switch to the right `IRCConnection` and select the matching
-    /// buffer. If the buffer isn't currently open, kick the user there
-    /// via `/join` (channels) or `/query` (queries / unknowns) so the
-    /// connection's auto-create path materialises a fresh one.
+    /// Switch to the right `IRCConnection` and select the matching buffer,
+    /// then close the sheet. Routing lives in `ChatModel.jumpToLogHit` so the
+    /// Find-nick sheet shares the exact same behaviour.
     private func jumpTo(_ hit: LogStore.SearchHit) {
-        // 1. Find the connection whose slug matches.
-        let conn = model.connections.first { conn in
-            SeenStore.slug(for: conn.displayName) == hit.networkSlug
-        }
-        if let conn {
-            if model.activeConnectionID != conn.id {
-                model.activeConnectionID = conn.id
-            }
-            // 2. Try to find an already-open buffer with matching name
-            //    (case-insensitive). The buffer name stored in the log
-            //    index IS the display name, so this is a clean compare.
-            if let existing = conn.buffers.first(where: {
-                $0.name.caseInsensitiveCompare(hit.buffer) == .orderedSame
-            }) {
-                conn.selectedBufferID = existing.id
-            } else {
-                // 3. Not open — route via slash command. Channels start
-                //    with #/&/+/!. Anything else is a query / nick.
-                if hit.buffer.hasPrefix("#") || hit.buffer.hasPrefix("&")
-                    || hit.buffer.hasPrefix("+") || hit.buffer.hasPrefix("!") {
-                    model.sendInput("/join \(hit.buffer)")
-                } else {
-                    model.sendInput("/query \(hit.buffer)")
-                }
-            }
-        }
+        model.jumpToLogHit(hit)
         dismiss()
     }
 

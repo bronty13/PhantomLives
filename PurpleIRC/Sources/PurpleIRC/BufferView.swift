@@ -640,6 +640,10 @@ struct BufferView: View {
         Button("WHOIS \(nick)") { model.sendInput("/whois \(nick)") }
         Button("WHOWAS \(nick)") { model.sendInput("/whowas \(nick)") }
         Divider()
+        // Fuzzy authored-by log search — finds this nick's history even under
+        // decorated / renamed variants (john_doe → johndoe1, johnny1, …).
+        Button("Find “\(nick)” in logs…") { model.findNickInLogs(nick) }
+        Divider()
         if isInAddressBook(nick) {
             Button("Remove from address book") {
                 removeFromAddressBook(nick)

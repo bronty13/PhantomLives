@@ -93,6 +93,12 @@ for the full architecture.
 - **Own-nick highlight**: messages mentioning your nick are tinted orange,
   marked with `@`, and fire the same sound / banner / dock-bounce alerts
   used for the watchlist
+- **Right-click a nick → “Find … in logs”** — a dedicated sheet that surfaces
+  every persisted log line *authored by* that nick, with **fuzzy variant
+  matching** (finding `john_doe` also turns up `johndoe1`, `johnny1`, …). A
+  live fuzziness slider tunes how far variants reach, and clicking a result
+  jumps to its buffer. Keys off the line's author, so mention-only lines are
+  excluded (unlike the ⌘⇧F substring search)
 
 ### Security posture
 

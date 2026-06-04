@@ -333,6 +333,11 @@ struct ContentView: View {
                 model.inputPrompt = nil
             }
         }
+        // Dedicated fuzzy "Find <nick> in logs" sheet — user-list right-click.
+        .sheet(item: $model.nickFindTarget) { req in
+            NickFindView(request: req)
+                .environmentObject(model)
+        }
         // Theme Builder sheet — driven by /theme builder (or any menu
         // item that wants to open the builder) via the model's
         // themeBuilderDraft flag. Live preview + per-event overrides;
