@@ -629,6 +629,8 @@ Right next to **Generate GIF** there's a **🎬 Export MP4 clip** button! It mak
 
 Your MP4s stay nice and tidy — **up to 60 seconds** and **under 100 MB** — so they're easy to send. You'll get a **true, real `.mp4`** that opens right up in Movies & TV, Media Player, and anywhere you upload it. 💖 And everything happens right on your own computer, nothing uploaded anywhere. ✨
 
+*Teeny-tiny clips are welcome too!* 🐝 Even a blink-and-you-miss-it half-second snippet exports perfectly now — trim it as short as you like and I'll keep up. 💕
+
 *A tiny note from me:* I now understand **iPhone videos all by myself** 📱✨ — even the fancy HEVC/H.265 and HDR clips your phone records. When you pick one of those, you might see a quick **"Preparing iPhone video…"** while I get it ready (just a few seconds), and then your GIF, MP4, and thumbnail all come out perfectly — no converting, no installing anything, nothing for you to do. I brought a little video engine along inside me so it Just Works™. 🌈🩷
 
 ### 🖼️ Frame Grabber — snag the *perfect* cover frame
