@@ -60,3 +60,18 @@ export function basename(p: string): string {
   const parts = p.split(/[\\/]/).filter(Boolean);
   return parts.length ? parts[parts.length - 1] : p;
 }
+
+/**
+ * Returns an rgba() background color for a size-heat row.
+ * fraction: 0–1 (item size / max size in the list).
+ * hex: 6-digit hex color string like '#7c3aed'.
+ */
+export function heatBg(fraction: number, hex: string): string {
+  if (fraction <= 0 || !/^#[0-9a-fA-F]{6}$/.test(hex)) return '';
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  // Power curve so mid-sized items are still visible; cap alpha at 0.38.
+  const alpha = Math.pow(fraction, 0.7) * 0.38;
+  return `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
+}

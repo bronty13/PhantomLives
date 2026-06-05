@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.5.0] - 2026-06-04
+
+- **Size heat shading.** Every row in the Explorer detail list and Large & Old
+  Files list is now tinted with a color whose intensity is proportional to that
+  item's size relative to the largest item visible — immediate visual hierarchy
+  with no numbers needed. Defaults to purple; customize in **Settings → General
+  → Appearance** with a color picker and five preset swatches (Purple, Blue,
+  Teal, Amber, Rose).
+- **Resizable Name column.** Drag the resize handle at the right edge of the
+  Name header to widen or narrow the column in both the Explorer detail list and
+  the Large & Old Files list. Minimum 80 px; no maximum.
+- **Hover tooltips for truncated names and paths.** Hovering over a name or path
+  cell now shows an instant floating tooltip (dark popover, no OS delay) with
+  the full filename in bold and the complete absolute path below it in lavender.
+  Works for truncated Name cells in Explorer and both the Name and Path columns
+  in Large & Old Files.
+- **Large & Old Files column header.** Added a sticky header row (Size / Name /
+  Last opened / Path) to the Large & Old Files list, consistent with the
+  Explorer detail list.
+- **Fix: Large & Old Files trash no longer requires a rescan.** Trashing files
+  from the Large & Old list now removes them from the list immediately using the
+  delete result; previously the list was only refreshed on the next full scan.
+
 ## [1.4.1] - 2026-06-03
 
 - Snapshot compare now reveals **file-level** changes, not just folders: every

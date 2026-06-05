@@ -14,6 +14,8 @@ utility — a TreeSize / WinDirStat / DaisyDisk equivalent. Built with Electron
 - **Duplicate finder** — size → partial-hash → full-hash (xxhash), with
   select-and-trash.
 - **Large & old files** — filtered view (≥ N MB and/or not opened in N months).
+- **Size heat shading** — rows in Explorer and Large & Old are tinted by relative size so space hogs stand out instantly. Color is customizable in Settings.
+- **Resizable columns** — drag the Name column header edge to resize; hover any truncated name or path for a full-path tooltip.
 - **Smart cache cleanup** — curated, per-platform safe-to-clear locations;
   always trash, never permanent; nothing selected by default; sizes shown
   before any action.

@@ -33,6 +33,8 @@ export interface Preferences {
   /** Main window size, restored on next launch. */
   windowWidth: number;
   windowHeight: number;
+  /** Hex color used for the size-heat shading in file lists (default: purple). */
+  heatmapColor: string;
 }
 
 function defaultExportDir(): string {
@@ -43,7 +45,7 @@ function defaultBackupPath(): string {
 }
 
 const DEFAULTS: Preferences = {
-  version: 3,
+  version: 4,
   scanOptions: { ...DEFAULT_SCAN_OPTIONS },
   sizeMetric: 'alloc',
   permanentDeleteEnabled: false,
@@ -54,7 +56,8 @@ const DEFAULTS: Preferences = {
   lastBackupMs: 0,
   lastScanRoot: '',
   windowWidth: 1340,
-  windowHeight: 860
+  windowHeight: 860,
+  heatmapColor: '#7c3aed'
 };
 
 let store: Store<Preferences> | null = null;
@@ -88,6 +91,10 @@ function migrate(s: Store<Preferences>): void {
     s.set('sizeMetric', s.get('sizeMetric', DEFAULTS.sizeMetric) ?? DEFAULTS.sizeMetric);
     s.set('version', 3);
   }
+  if (v < 4) {
+    s.set('heatmapColor', s.get('heatmapColor', DEFAULTS.heatmapColor) ?? DEFAULTS.heatmapColor);
+    s.set('version', 4);
+  }
 }
 
 export function getPreferences(): Preferences {
@@ -104,7 +111,8 @@ export function getPreferences(): Preferences {
     lastBackupMs: s.get('lastBackupMs', DEFAULTS.lastBackupMs),
     lastScanRoot: s.get('lastScanRoot', DEFAULTS.lastScanRoot),
     windowWidth: s.get('windowWidth', DEFAULTS.windowWidth),
-    windowHeight: s.get('windowHeight', DEFAULTS.windowHeight)
+    windowHeight: s.get('windowHeight', DEFAULTS.windowHeight),
+    heatmapColor: s.get('heatmapColor', DEFAULTS.heatmapColor)
   };
 }
 

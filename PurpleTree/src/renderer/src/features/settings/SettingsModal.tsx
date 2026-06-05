@@ -12,6 +12,7 @@ interface Prefs {
   backupPath: string;
   backupRetentionDays: number;
   lastBackupMs: number;
+  heatmapColor: string;
 }
 
 interface Props {
@@ -102,6 +103,40 @@ export default function SettingsModal({ onClose, onPrefsChanged }: Props): JSX.E
               />
               Enable permanent delete (otherwise everything goes to the Trash)
             </label>
+
+            <h3>Appearance</h3>
+            <label className="row-inline">
+              Size heat color&nbsp;
+              <input
+                type="color"
+                value={prefs.heatmapColor ?? '#7c3aed'}
+                onChange={(e) => void patch({ heatmapColor: e.target.value })}
+                style={{ width: 40, height: 26, padding: 2, cursor: 'pointer', borderRadius: 6 }}
+              />
+            </label>
+            <div className="heat-presets">
+              {[
+                { label: 'Purple', color: '#7c3aed' },
+                { label: 'Blue', color: '#2563eb' },
+                { label: 'Teal', color: '#0d9488' },
+                { label: 'Amber', color: '#d97706' },
+                { label: 'Rose', color: '#e11d48' }
+              ].map(({ label, color }) => (
+                <button
+                  key={color}
+                  title={label}
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: '50%',
+                    background: color,
+                    border: prefs.heatmapColor === color ? '2px solid #1a0b2e' : '2px solid transparent',
+                    padding: 0
+                  }}
+                  onClick={() => void patch({ heatmapColor: color })}
+                />
+              ))}
+            </div>
 
             <h3>Exports</h3>
             <div className="path-caption">Reports are saved to: {prefs.exportDir}</div>

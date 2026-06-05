@@ -30,9 +30,17 @@ After a scan you land in **Explorer**:
   to jump back up.
 - **Detail list (bottom):** the current folder's contents. Click a column header
   (**Name / Size / Files / Modified**) to sort. Double-click a folder to open
-  it, or a file to reveal it.
+  it, or a file to reveal it. Drag the resize handle at the right edge of the
+  **Name** header to widen or narrow that column. Hover a truncated name to see
+  the full filename and path in a floating tooltip.
 
 To delete: tick the checkboxes in the detail list and click **Delete…**.
+
+**Size heat shading.** Each row in the detail list is tinted with a color whose
+intensity reflects how large that item is relative to the biggest item in the
+list — the top item is always the richest color, giving you instant visual
+hierarchy. The default color is purple; open **Settings → General → Appearance**
+to pick a different color or choose from five presets.
 
 **On-disk vs Logical size.** The **On-disk / Logical** button in the top bar
 switches how sizes are reported. *On-disk* (the default) is what you'll actually
@@ -54,6 +62,11 @@ Open **Large & Old**. Pick a size threshold (e.g. *≥ 100 MB*) and/or an age
 (*Not opened in 1 year*) and Purple Tree lists matching files biggest-first.
 Great for finding forgotten downloads and stale exports. Select and delete the
 ones you don't need.
+
+The list has a sticky header row (Size / Name / Last opened / Path). Drag the
+resize handle at the right edge of the **Name** header to adjust its width.
+Hover a truncated name or path to see the full text. Rows are heat-shaded like
+the Explorer list — the color intensity reflects relative file size.
 
 ## 5. Cache Cleanup
 

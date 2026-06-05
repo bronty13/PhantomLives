@@ -433,8 +433,8 @@ button:disabled {
   flex: 0 0 22px;
 }
 .col-name {
-  flex: 1;
-  min-width: 0;
+  flex: 0 0 260px;
+  min-width: 80px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -442,6 +442,44 @@ button:disabled {
   white-space: nowrap;
   text-overflow: ellipsis;
   position: relative;
+  user-select: none;
+}
+.path-tooltip {
+  position: fixed;
+  background: var(--ink);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  max-width: 580px;
+  pointer-events: none;
+  z-index: 9999;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.3);
+  line-height: 1.6;
+}
+.tip-name {
+  font-weight: 600;
+  word-break: break-all;
+}
+.tip-path {
+  color: var(--lavender);
+  word-break: break-all;
+  font-size: 11px;
+}
+.col-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 10;
+  border-right: 2px solid transparent;
+  transition: border-color 0.15s;
+}
+.col-resize-handle:hover,
+.col-resize-handle:active {
+  border-right-color: var(--lavender);
 }
 .col-name .bar {
   position: absolute;
@@ -554,6 +592,27 @@ button:disabled {
 }
 
 /* Large & old */
+.lo-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  border-bottom: 2px solid var(--line);
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--violet-deep);
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  z-index: 1;
+}
+.lo-head-chk {
+  flex: 0 0 18px;
+}
+.lo-name-hd {
+  position: relative;
+  user-select: none;
+}
 .lo-row {
   display: flex;
   align-items: center;
@@ -572,7 +631,7 @@ button:disabled {
   font-weight: 600;
 }
 .lo-name {
-  flex: 0 0 240px;
+  flex: 0 0 220px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -836,6 +895,16 @@ button:disabled {
 .row-inline input {
   width: 70px;
   padding: 4px;
+}
+.heat-presets {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 0 2px;
+}
+.heat-presets button:hover {
+  opacity: 0.8;
+  border-color: var(--ink) !important;
 }
 .path-caption {
   font-family: ui-monospace, Menlo, monospace;

@@ -83,10 +83,30 @@ the slice-query unit tests, but has not been driven through the live GUI by
 automation. Manual smoke before release: scan `~/Downloads`, drill the treemap,
 trash a file, run the duplicate finder, and exercise Settings → Backup.
 
+## v1.5.0 additions
+
+- **`heatBg(fraction, hex)`** in `src/renderer/src/features/common/format.ts`:
+  maps a 0–1 size fraction + hex color → `rgba()` background. Uses a `0.7`
+  power curve so mid-sized items are visible; max alpha 0.38.
+- **`useColumnResize(defaultWidth, min)`** in
+  `src/renderer/src/features/common/useColumnResize.ts`: drag-to-resize hook.
+  Records start-X/W on mousedown, listens to window mousemove/mouseup, updates
+  width state. Shared by `DetailList` and `LargeOldFilesView`.
+- **Custom hover tooltips** (`path-tooltip`, `tip-name`, `tip-path` CSS classes):
+  fixed-position React tooltip rendered from `onMouseEnter`/`onMouseMove`/
+  `onMouseLeave` handlers on name/path cells. Bypasses Electron's slow native
+  `title` tooltip. Used in both `DetailList` and `LargeOldFilesView`.
+- **`heatmapColor` pref**: new field in `Preferences` (prefs.ts), default
+  `#7c3aed`. Migration v4. Exposed in Settings → General → Appearance with a
+  native color picker and five preset swatches.
+- **Vite entry-point invalidation**: Vite only re-compiles the full renderer
+  module graph when the entry-point (`src/renderer/src/App.tsx`) is dirty.
+  Always `touch src/renderer/src/App.tsx` before `npm run dist:mac` when only
+  non-entry files changed, or changes will not appear in the bundle.
+
 ## Future work
 
 - WizTree-style **MFT turbo mode** (Windows, admin) as an alternate tree
   populator behind the same `ScanEvent` protocol.
-- **Sunburst** visualization (the `getTreemap` IPC shape is already generic).
 - Snapshot **diff/compare** visualization; user-authored cache presets; live FS
   watch; perceptual image near-duplicate detection.

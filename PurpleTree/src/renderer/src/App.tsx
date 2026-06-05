@@ -19,6 +19,7 @@ interface Prefs {
   scanOptions: { followSymlinks: boolean; crossMountPoints: boolean; dedupHardLinks: boolean };
   permanentDeleteEnabled: boolean;
   sizeMetric: 'alloc' | 'logical';
+  heatmapColor: string;
 }
 
 export default function App(): JSX.Element {
@@ -182,6 +183,7 @@ export default function App(): JSX.Element {
   };
 
   const allowPermanent = prefs?.permanentDeleteEnabled ?? false;
+  const heatmapColor = prefs?.heatmapColor ?? '#7c3aed';
 
   return (
     <div className="app">
@@ -363,6 +365,7 @@ export default function App(): JSX.Element {
                     scanId={scanId}
                     focusId={focusId}
                     allowPermanent={allowPermanent}
+                    heatmapColor={heatmapColor}
                     onDrill={setFocusId}
                   />
                 </div>
@@ -374,7 +377,7 @@ export default function App(): JSX.Element {
             <DuplicatesView scanId={scanId} allowPermanent={allowPermanent} />
           )}
           {status === 'ready' && scanId && view === 'largeold' && (
-            <LargeOldFilesView key={refreshKey} scanId={scanId} allowPermanent={allowPermanent} />
+            <LargeOldFilesView key={refreshKey} scanId={scanId} allowPermanent={allowPermanent} heatmapColor={heatmapColor} />
           )}
         </main>
       </div>

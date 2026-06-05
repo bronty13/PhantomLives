@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { NodeRow, SortKey, SortSpec } from '../../../../shared/types';
-import { formatBytes, formatDate, formatCount } from '../common/format';
+import { formatBytes, formatDate, formatCount, heatBg } from '../common/format';
+import { useColumnResize } from '../common/useColumnResize';
 import DeleteConfirm from '../delete/DeleteConfirm';
 
 const api = window.purpleTree;
@@ -10,12 +11,23 @@ interface Props {
   scanId: string;
   focusId: number;
   allowPermanent: boolean;
+  heatmapColor: string;
   onDrill: (id: number) => void;
 }
 
-export default function DetailList({ scanId, focusId, allowPermanent, onDrill }: Props): JSX.Element {
+interface Tip { text: string; x: number; y: number }
+
+export default function DetailList({ scanId, focusId, allowPermanent, heatmapColor, onDrill }: Props): JSX.Element {
   const [rows, setRows] = useState<NodeRow[]>([]);
   const [sort, setSort] = useState<SortSpec>({ key: 'size', dir: 'desc' });
+  const [tip, setTip] = useState<Tip | null>(null);
+  const { width: nameWidth, onMouseDown: nameResizeDown } = useColumnResize(260);
+
+  const showTip = (e: React.MouseEvent, text: string): void =>
+    setTip({ text, x: e.clientX, y: e.clientY });
+  const moveTip = (e: React.MouseEvent): void =>
+    setTip((t) => (t ? { ...t, x: e.clientX, y: e.clientY } : null));
+  const hideTip = (): void => setTip(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [confirm, setConfirm] = useState<string[] | null>(null);
 
@@ -59,9 +71,10 @@ export default function DetailList({ scanId, focusId, allowPermanent, onDrill }:
       </div>
       <div className="detail-head">
         <span className="col-sel" />
-        <button className="col-name" onClick={() => toggleSort('name')}>
-          Name{arrow('name')}
-        </button>
+        <div className="col-name" style={{ flex: `0 0 ${nameWidth}px` }}>
+          <button onClick={() => toggleSort('name')}>Name{arrow('name')}</button>
+          <div className="col-resize-handle" onMouseDown={nameResizeDown} />
+        </div>
         <button className="col-size" onClick={() => toggleSort('size')}>
           Size{arrow('size')}
         </button>
@@ -74,11 +87,15 @@ export default function DetailList({ scanId, focusId, allowPermanent, onDrill }:
       </div>
       <div className="detail-body">
         {rows.map((r) => {
-          const pct = rows.length && rows[0].aggSize > 0 ? (r.aggSize / rows[0].aggSize) * 100 : 0;
+          const maxSize = rows[0]?.aggSize ?? 0;
+          const fraction = maxSize > 0 ? r.aggSize / maxSize : 0;
+          const pct = fraction * 100;
+          const bg = heatBg(fraction, heatmapColor);
           return (
             <div
               key={r.id}
               className={`detail-row${selected.has(r.id) ? ' selected' : ''}`}
+              style={bg ? { backgroundColor: bg } : undefined}
               onDoubleClick={() => (r.isDir ? onDrill(r.id) : void api.reveal(r.path))}
             >
               <span className="col-sel">
@@ -89,7 +106,13 @@ export default function DetailList({ scanId, focusId, allowPermanent, onDrill }:
                   onClick={(e) => e.stopPropagation()}
                 />
               </span>
-              <span className="col-name" title={r.path}>
+              <span
+                className="col-name"
+                style={{ flex: `0 0 ${nameWidth}px` }}
+                onMouseEnter={(e) => showTip(e, `${r.name}\n${r.path}`)}
+                onMouseMove={moveTip}
+                onMouseLeave={hideTip}
+              >
                 <span className="bar" style={{ width: `${pct}%` }} />
                 <span className="tree-icon">{r.isDir ? '📁' : '📄'}</span>
                 {r.name}
@@ -103,6 +126,13 @@ export default function DetailList({ scanId, focusId, allowPermanent, onDrill }:
         })}
         {rows.length === 0 && <div className="empty-row muted">This folder is empty.</div>}
       </div>
+      {tip && (
+        <div className="path-tooltip" style={{ left: tip.x + 14, top: tip.y + 18 }}>
+          {tip.text.split('\n').map((line, i) => (
+            <div key={i} className={i === 0 ? 'tip-name' : 'tip-path'}>{line}</div>
+          ))}
+        </div>
+      )}
       {confirm && (
         <DeleteConfirm
           paths={confirm}
