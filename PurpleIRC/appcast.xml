@@ -25,5 +25,17 @@
           The pre-Sparkle purpleirc-v1.0.603 GitHub release is intentionally
           absent — it has no EdDSA signature and predates the updater.)
         -->
+        <item>
+            <title>PurpleIRC 1.0.669</title>
+            <pubDate>Fri, 05 Jun 2026 19:36:42 +0000</pubDate>
+            <sparkle:version>669.75ed2a9</sparkle:version>
+            <sparkle:shortVersionString>1.0.669</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[See CHANGELOG.md for details.]]></description>
+            <enclosure
+                url="https://github.com/bronty13/PhantomLives/releases/download/purpleirc-v1.0.669/PurpleIRC-1.0.669.zip"
+                sparkle:edSignature="nyTyUVqAhmeRij7yLao9Vy+xZkByiEbaasRtDyOi1dSl1G/6tid0n59BkxDCDzgLJhSbIbhJPgqV5dx0VM7iAA==" length="4991151"
+                type="application/octet-stream" />
+        </item>
     </channel>
 </rss>
