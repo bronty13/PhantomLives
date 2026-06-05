@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+    <channel>
+        <title>PurpleIRC</title>
+        <description>PurpleIRC release feed. Each &lt;item&gt; describes one shipped build; Sparkle compares the &lt;sparkle:shortVersionString&gt; against the running app and offers the newest one.</description>
+        <link>https://github.com/bronty13/PhantomLives/tree/main/PurpleIRC</link>
+        <language>en</language>
+        <!--
+          To publish a new release, run ./Scripts/release.sh (see RELEASING.md).
+          It builds + notarizes + zips the app, signs the zip with the EdDSA
+          private key, prepends a new <item> below, and pushes this file. The
+          moment the push lands, users on a previous version see an update
+          prompt on next launch (or up to 24h later if automatic checks are on).
+
+          Sparkle reads this file via raw.githubusercontent.com, so no GitHub
+          Pages or release-asset shuffle is needed.
+
+          DO NOT hand-edit a shipped <item>. Once published, an item's
+          version + EdDSA signature pair is part of the trust chain — changing
+          it makes existing installs reject the update. Add new items above old
+          ones; keep the last few historical entries for users who skip
+          versions.
+
+          (No <item> yet: the first Sparkle-enabled release prepends one here.
+          The pre-Sparkle purpleirc-v1.0.603 GitHub release is intentionally
+          absent — it has no EdDSA signature and predates the updater.)
+        -->
+    </channel>
+</rss>

@@ -4,23 +4,28 @@
 # Application certificate and notarytool keychain profile that machine has set
 # up locally (those live in each Mac's login Keychain and are NOT synced).
 #
-# PurpleIRC has no in-app auto-updater, so a "release" is simply:
-#   a notarized + stapled .app, zipped, attached to a tagged GitHub release.
-# Notarization is what lets someone download the zip on a clean Mac and open
-# it without the "developer cannot be verified" Gatekeeper dialog.
+# PurpleIRC auto-updates via Sparkle 2. A "release" is a notarized + stapled
+# .app, zipped, EdDSA-signed, attached to a tagged GitHub release, and announced
+# in appcast.xml — which is what makes existing installs offer the update. The
+# zip is also independently usable: notarization lets someone download it on a
+# clean Mac and open it without the "developer cannot be verified" dialog.
 #
 # What this script does:
 #   1. Pre-flight: clean working tree, on `main`, fully pushed, gh authed,
-#      Developer ID cert present, notary profile present.
-#   2. Builds PurpleIRC.app via build-app.sh with NOTARIZE_PROFILE set
-#      (Developer ID sign + hardened runtime + timestamp + notarize + staple),
-#      WITHOUT touching /Applications or stealing focus (--no-install).
+#      Developer ID cert present, notary profile present, SPARKLE_PUBLIC_KEY set.
+#   2. Builds PurpleIRC.app via build-app.sh with NOTARIZE_PROFILE +
+#      SPARKLE_PUBLIC_KEY set (Developer ID sign + hardened runtime + timestamp
+#      + notarize + staple, public update key embedded), WITHOUT touching
+#      /Applications or stealing focus (--no-install).
 #   3. Proves the result: `stapler validate` + a Gatekeeper assessment
 #      (`spctl -a`), so a broken notarization fails the release loudly.
 #   4. Zips the bundle → ~/Downloads/PurpleIRC release/PurpleIRC-<version>.zip
-#      (ditto -c -k --keepParent, which preserves the signature).
+#      (ditto -c -k --keepParent, which preserves the signature) and EdDSA-signs
+#      it with Sparkle's `sign_update` (private key read from the Keychain).
 #   5. Tags the commit `purpleirc-v<version>` and creates a GitHub release with
 #      `gh`, uploading the zip and pulling notes from the CHANGELOG.
+#   6. Prepends a new <item> to appcast.xml and commits + pushes it, so the
+#      update goes live the moment the push lands.
 #
 # Version is git-derived (1.0.<repo-commit-count>) — same derivation as
 # build-app.sh — so there is no manual version bump; the release pins to
@@ -32,6 +37,11 @@
 #                      "PurpleIRC-Notary"; override via env if you named it
 #                      something else. Set up with `xcrun notarytool
 #                      store-credentials`.
+#   SPARKLE_PUBLIC_KEY The EdDSA public key (output of Sparkle's `generate_keys`),
+#                      exported in your shell rc. build-app.sh embeds it; the
+#                      matching PRIVATE key must be in this Mac's Keychain so
+#                      `sign_update` can sign the zip. Both Macs share ONE
+#                      keypair — see RELEASING.md (export/import).
 #
 # Optional:
 #   GITHUB_REPO        Defaults to bronty13/PhantomLives.
@@ -92,6 +102,23 @@ fi
 gh auth status >/dev/null 2>&1 || die "GitHub CLI not authenticated. Run \`gh auth login\`."
 note "gh authenticated ✓"
 
+# 1e. Sparkle EdDSA public key set (build-app.sh embeds it) and the sign_update
+# tool present. The matching private key must be in the Keychain — that's
+# verified for real when sign_update runs (step 5b); a missing/placeholder
+# public key is caught here before we spend a notarization round-trip.
+if [ -z "${SPARKLE_PUBLIC_KEY:-}" ] || [ "${SPARKLE_PUBLIC_KEY}" = "PLACEHOLDER_RUN_generate_keys_AND_SET_SPARKLE_PUBLIC_KEY" ]; then
+    die "SPARKLE_PUBLIC_KEY is unset (or still the placeholder). Auto-updates need
+       the EdDSA keypair. One-time setup (see RELEASING.md):
+         SPARKLE_BIN=\"\$(find .build/artifacts/sparkle/Sparkle/bin -maxdepth 1 -type d | head -1)\"
+         \"\$SPARKLE_BIN/generate_keys\"          # private→Keychain, prints public
+         export SPARKLE_PUBLIC_KEY=\"<public key>\"  # add to ~/.zshrc
+       On the SECOND Mac, import the SAME private key (generate_keys -x / -f)."
+fi
+SPARKLE_BIN="$(find .build/artifacts/sparkle/Sparkle/bin -maxdepth 1 -type d 2>/dev/null | head -1)"
+[ -x "$SPARKLE_BIN/sign_update" ] || die "Sparkle's sign_update not found under
+       .build/artifacts. Run \`swift package resolve\` first."
+note "Sparkle public key set; sign_update present ✓"
+
 # 1d. On main, clean, pushed — a release must be reproducible from origin.
 if [ "${ALLOW_DIRTY:-0}" != "1" ]; then
     BRANCH="$(git rev-parse --abbrev-ref HEAD)"
@@ -139,6 +166,7 @@ echo "== Build + notarize =="
 SHORT_VERSION="$SHORT_VERSION" BUILD_NUMBER="$BUILD_NUMBER" \
     CODESIGN_IDENTITY="$DEVID" \
     NOTARIZE_PROFILE="$NOTARIZE_PROFILE" \
+    SPARKLE_PUBLIC_KEY="$SPARKLE_PUBLIC_KEY" \
     ./build-app.sh --no-install
 
 # ---------------------------------------------------------------------------
@@ -170,6 +198,16 @@ echo "== Package =="
 rm -f "$ZIP_PATH"
 ditto -c -k --keepParent "$APP.app" "$ZIP_PATH"
 echo "  Wrote $ZIP_PATH ($(du -h "$ZIP_PATH" | cut -f1))"
+
+# 5b. EdDSA-sign the zip. `sign_update` reads the private key from the Keychain
+# and prints the `sparkle:edSignature="…" length="…"` fragment that goes in the
+# appcast <enclosure>. A failure here means the private key isn't on this Mac.
+SIGN_FRAGMENT="$("$SPARKLE_BIN/sign_update" "$ZIP_PATH" 2>/tmp/sign_update.err)" \
+    || die "sign_update failed — the EdDSA PRIVATE key isn't in this Mac's Keychain.
+       $(cat /tmp/sign_update.err 2>/dev/null)
+       The public key is set but the private half lives in the Keychain and
+       doesn't sync between Macs. Import it (generate_keys -f) — see RELEASING.md."
+note "EdDSA-signed: $SIGN_FRAGMENT"
 
 # ---------------------------------------------------------------------------
 # 6. Tag + GitHub release
@@ -208,13 +246,56 @@ gh release create "$RELEASE_TAG" \
     "$ZIP_PATH#$ZIP_NAME"
 rm -f "$NOTES_FILE"
 
+# ---------------------------------------------------------------------------
+# 7. Announce in appcast.xml — prepend the <item>, commit, push
+# ---------------------------------------------------------------------------
+echo
+echo "== Appcast =="
+DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/download/${RELEASE_TAG}/${ZIP_NAME}"
+PUB_DATE="$(date -u +"%a, %d %b %Y %H:%M:%S +0000")"
+ITEM_FILE="$(mktemp)"
+# sparkle:version carries the build number (commit count + sha) for diagnostics;
+# Sparkle compares the leading numeric component, so 1.0.<count> ordering holds.
+cat > "$ITEM_FILE" <<EOF
+        <item>
+            <title>$APP $SHORT_VERSION</title>
+            <pubDate>${PUB_DATE}</pubDate>
+            <sparkle:version>${BUILD_NUMBER}</sparkle:version>
+            <sparkle:shortVersionString>${SHORT_VERSION}</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[See CHANGELOG.md for details.]]></description>
+            <enclosure
+                url="${DOWNLOAD_URL}"
+                ${SIGN_FRAGMENT}
+                type="application/octet-stream" />
+        </item>
+EOF
+# Insert as the FIRST <item> (newest-first). If no items exist yet, insert just
+# before </channel>. awk emits the new item at whichever marker comes first.
+awk -v itemfile="$ITEM_FILE" '
+    function emit() { while ((getline line < itemfile) > 0) print line; close(itemfile); done=1 }
+    /^[[:space:]]*<item>/ && !done { emit() }
+    /<\/channel>/ && !done       { emit() }
+    { print }
+' appcast.xml > appcast.xml.new && mv appcast.xml.new appcast.xml
+rm -f "$ITEM_FILE"
+# Validate XML before committing — a malformed feed breaks Sparkle for everyone.
+xmllint --noout appcast.xml 2>/dev/null || die "appcast.xml is malformed after insert — NOT committing. Inspect it by hand."
+note "prepended <item> for $SHORT_VERSION to appcast.xml ✓"
+
+git add appcast.xml
+git commit -q -m "$APP $SHORT_VERSION: appcast"
+git push -q origin main
+note "appcast committed + pushed — update is live"
+
 echo
 echo "== Done =="
 echo "  Release:   https://github.com/$GITHUB_REPO/releases/tag/$RELEASE_TAG"
 echo "  Artifact:  $ZIP_PATH"
 echo "  Notarized: $NOTARIZED"
+echo "  Auto-update: live — existing installs see $SHORT_VERSION on next launch (or within 24h)."
 if [ "$NOTARIZED" = "yes" ]; then
-    echo "  ↳ Anyone can download the zip and open it on a clean Mac — no Gatekeeper prompt."
+    echo "  ↳ Anyone can also download the zip and open it on a clean Mac — no Gatekeeper prompt."
 else
-    echo "  ↳ Downloaders must right-click → Open the first time (not notarized)."
+    echo "  ↳ Direct downloaders must right-click → Open the first time (not notarized)."
 fi

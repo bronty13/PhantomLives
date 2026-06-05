@@ -31,6 +31,15 @@ struct PurpleIRCApp: App {
         }
         .windowToolbarStyle(.unified)
         .commands {
+            // Sparkle "Check for Updates…" — sits just under "About PurpleIRC"
+            // in the app menu (macOS convention). The auto-check toggle lives
+            // in Setup → Updates; see UpdaterController.
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    UpdaterController.shared.checkForUpdates()
+                }
+                .disabled(!UpdaterController.shared.canCheckForUpdates)
+            }
             // Replace File → New Window with our own File menu items.
             CommandGroup(replacing: .newItem) {
                 FileMenu().environmentObject(model)

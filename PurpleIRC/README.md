@@ -57,28 +57,38 @@ Drive race where `com.apple.FinderInfo` re-attaches to fresh files
 under `~/Documents` and breaks `codesign --strict`. See HANDOFF.md
 for the full architecture.
 
-### Releasing (notarized distribution)
+### Auto-updates (Sparkle) + releasing
+
+PurpleIRC auto-updates via [Sparkle 2](https://sparkle-project.org/): it
+checks its release feed on launch and roughly every 24 hours, and you can
+check any time via **PurpleIRC ▸ Check for Updates…** or **Setup ▸ Updates**.
+Updates are EdDSA-signed and verified against a key embedded in the app
+before installing.
 
 A formal, machine-independent release process produces a **notarized,
-stapled** zip and a tagged GitHub release so the app opens cleanly on any
-Mac (no Gatekeeper *"developer cannot be verified"* dialog):
+stapled, EdDSA-signed** zip, a tagged GitHub release, and a new `appcast.xml`
+entry — so existing installs are offered the update and a direct download
+still opens cleanly on any Mac:
 
 ```sh
 ./Scripts/release.sh
 ```
 
-It pre-flights signing/notary/`gh` state, builds with notarization on,
-verifies the staple (`stapler validate` + `spctl -a`), zips to
-`~/Downloads/PurpleIRC release/PurpleIRC-<version>.zip`, and tags +
-publishes `purpleirc-v<version>` via `gh`. Runs identically from either
-dev machine (Vortex / MB14) using that Mac's own keychain credentials.
+It pre-flights signing/notary/`gh`/Sparkle-key state, builds with
+notarization on, verifies the staple (`stapler validate` + `spctl -a`), zips
+to `~/Downloads/PurpleIRC release/PurpleIRC-<version>.zip`, signs it with
+`sign_update`, tags + publishes `purpleirc-v<version>` via `gh`, then
+prepends an `<item>` to `appcast.xml` and pushes it. Runs identically from
+either dev machine (Vortex / MB14) using that Mac's own keychain credentials.
 
-→ One-time per-machine setup (Developer ID cert, app-specific password,
-`xcrun notarytool store-credentials`, `gh auth`), the per-release flow, and
-troubleshooting are in **[RELEASING.md](RELEASING.md)**.
+→ One-time per-machine setup (Developer ID cert, notary profile, `gh auth`,
+the shared Sparkle EdDSA key), the per-release flow, and troubleshooting are
+in **[RELEASING.md](RELEASING.md)**.
 
 `build-app.sh` also notarizes on its own when `NOTARIZE_PROFILE` is set
-(routine personal builds leave it unset and skip notarization).
+(routine personal builds leave it unset and skip notarization); the Sparkle
+public key comes from `SPARKLE_PUBLIC_KEY` (placeholder when unset, so
+personal builds embed a safe non-installing key).
 
 ## Features
 - TLS & plain-text TCP (defaults to `irc.libera.chat:6697` over TLS)

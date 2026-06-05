@@ -16,6 +16,26 @@ count (`1.0.<count>`).
 
 ### Added
 
+- **In-app auto-updates via Sparkle 2** (`Package.swift`,
+  `Sources/PurpleIRC/UpdaterController.swift`,
+  `Sources/PurpleIRC/Setup/UpdatesSetup.swift`, `App.swift`, `SetupView.swift`,
+  `build-app.sh`, `appcast.xml`, `Scripts/release.sh`, `RELEASING.md`).
+  PurpleIRC now updates itself: it checks an EdDSA-signed release feed
+  (`appcast.xml`, served from `raw.githubusercontent.com`) on launch and every
+  24 hours, and offers the new version through Sparkle's standard UI. A
+  **Check for Updates…** item sits under the PurpleIRC app menu, and a new
+  **Setup ▸ Updates** tab carries the auto-check toggle, a **Check Now** button,
+  the last-checked time, and the running version. `build-app.sh` bundles
+  `Sparkle.framework` into `Contents/Frameworks/`, signs its nested XPC
+  services / `Updater.app` / `Autoupdate` inside-out (hardened runtime +
+  timestamp, so the whole bundle still notarizes), and stamps the Sparkle
+  Info.plist keys (`SUFeedURL`, `SUPublicEDKey`, `SUEnableAutomaticChecks`,
+  `SUScheduledCheckInterval`). `Scripts/release.sh` gained the matching publish
+  steps — EdDSA-sign the zip with `sign_update`, prepend an `<item>` to
+  `appcast.xml`, and commit + push it — so one command fully ships an update.
+  Reuses the single Sparkle signing key already in the Keychain (shared with
+  PurpleDedup; Sparkle uses one key across all your apps). Setup, the
+  cross-Mac key-sharing requirement, and troubleshooting are in `RELEASING.md`.
 - **Formal, notarized release process — `Scripts/release.sh` + `RELEASING.md`**
   (`Scripts/release.sh`, `RELEASING.md`, `build-app.sh`, `README.md`).
   PurpleIRC now has a one-command release flow that builds a

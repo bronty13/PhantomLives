@@ -36,6 +36,7 @@ struct SetupView: View {
         case assistant    = "Assistant"
         case shortcuts    = "Shortcuts & Aliases"
         case backup       = "Backup"
+        case updates      = "Updates"
         case security     = "Security"
         var id: String { rawValue }
         var systemImage: String {
@@ -58,6 +59,7 @@ struct SetupView: View {
             case .assistant:     return "brain"
             case .shortcuts:     return "command"
             case .backup:        return "externaldrive.badge.timemachine"
+            case .updates:       return "arrow.triangle.2.circlepath"
             case .security:      return "lock.shield"
             }
         }
@@ -71,7 +73,7 @@ struct SetupView: View {
         ("People & places", [.channels, .ignores, .highlights]),
         ("Behavior",        [.behavior, .notifications, .logging]),
         ("Personalization", [.appearance, .themes, .fonts, .sounds]),
-        ("Power-user",      [.bot, .scripts, .assistant, .shortcuts, .backup]),
+        ("Power-user",      [.bot, .scripts, .assistant, .shortcuts, .backup, .updates]),
         ("Security",        [.security]),
     ]
 
@@ -158,6 +160,7 @@ struct SetupView: View {
             case .assistant:     AssistantSetup(settings: settings)
             case .shortcuts:     ShortcutsAliasesSetup(settings: settings)
             case .backup:        BackupSetup(settings: settings)
+            case .updates:       UpdatesSetup()
             case .scripts:       ScriptsSetup(bot: model.bot)
             }
         }

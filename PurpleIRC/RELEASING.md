@@ -1,10 +1,12 @@
 # Releasing PurpleIRC
 
-PurpleIRC has **no in-app auto-updater** (unlike PurpleDedup, which uses
-Sparkle). A "release" here is just a **notarized, stapled `.app`, zipped and
-attached to a tagged GitHub release**. Notarization is the only thing that lets
-someone download that zip on a clean Mac and open it without the *"developer
-cannot be verified"* Gatekeeper dialog.
+PurpleIRC **auto-updates via [Sparkle 2](https://sparkle-project.org/)**. A
+release is a **notarized, stapled `.app`, zipped, EdDSA-signed, attached to a
+tagged GitHub release, and announced in `appcast.xml`** — the appcast is what
+makes existing installs offer the update (on launch + every 24h, or via
+**PurpleIRC ▸ Check for Updates…**). The zip is independently usable too:
+notarization lets someone download it on a clean Mac and open it without the
+*"developer cannot be verified"* Gatekeeper dialog.
 
 The whole flow is one command:
 
@@ -12,7 +14,9 @@ The whole flow is one command:
 ./Scripts/release.sh
 ```
 
-…once the one-time per-machine setup below is done.
+…once the one-time per-machine setup below is done. It builds + notarizes +
+zips + EdDSA-signs the app, creates the GitHub release, then prepends an
+`<item>` to `appcast.xml` and pushes it — so the update goes live in one shot.
 
 ## Two machines, one process
 
@@ -110,6 +114,70 @@ gh auth status   # should show: Logged in to github.com
 gh auth login    # if not
 ```
 
+### 5. Sparkle update-signing key (EdDSA) — reuse the one you already have
+
+Sparkle verifies every update with an **EdDSA signature**. The **public** half
+is embedded in each shipped app (build-app.sh reads `SUPublicEDKey` from
+`SPARKLE_PUBLIC_KEY`); the **private** half lives in the login Keychain and
+signs the release zip.
+
+Per Sparkle's own tooling: *"You only need one signing key, no matter how many
+apps you embed Sparkle in."* The key is stored **per Keychain**, not per app —
+so **PurpleIRC reuses the same key PurpleDedup already uses**. You almost
+certainly already have it set up. Confirm:
+
+```bash
+SPARKLE_BIN="$(find .build/artifacts/sparkle/Sparkle/bin -maxdepth 1 -type d | head -1)"
+# (run `swift package resolve` first if .build/artifacts doesn't exist yet)
+"$SPARKLE_BIN/generate_keys" -p     # prints the existing public key
+echo "$SPARKLE_PUBLIC_KEY"          # should already match, from your ~/.zshrc
+```
+
+If both print the same base64 string, you're done — `release.sh` will sign with
+the Keychain's private key and shipped apps will verify against it.
+
+**Only if no key exists yet** (`generate_keys -p` errors), create one once:
+
+```bash
+"$SPARKLE_BIN/generate_keys"        # private→Keychain, prints public
+export SPARKLE_PUBLIC_KEY="<the printed base64>"   # add to ~/.zshrc
+```
+
+Verify a build embeds the real key (not the placeholder):
+
+```bash
+./build-app.sh --no-install
+plutil -p PurpleIRC.app/Contents/Info.plist | grep SUPublicEDKey
+```
+
+> ### ⚠️ Both Macs must hold the SAME key
+>
+> Every shipped copy of PurpleIRC embeds **one** public key, so a release built
+> on *either* Vortex or MB14 must be signed with the **same private key**, or
+> installs reject the update as "improperly signed." Unlike the Developer ID
+> cert and notary profile (independent per machine), the Sparkle key must be
+> **identical** on both — and it's the same key PurpleDedup uses, so if you've
+> released PurpleDedup from both Macs it's already there.
+>
+> If one Mac is missing it, copy the key over (the SMB mount is fine for this
+> one-off):
+>
+> ```bash
+> # On the Mac that HAS the key — export it:
+> "$SPARKLE_BIN/generate_keys" -x /tmp/sparkle_private_key.pem
+> # On the other Mac — import it, then delete the file:
+> "$SPARKLE_BIN/generate_keys" -f /tmp/sparkle_private_key.pem
+> rm /tmp/sparkle_private_key.pem
+> ```
+>
+> Use the **same** `SPARKLE_PUBLIC_KEY` value in both Macs' `~/.zshrc`. Lose the
+> private key and you must ship a new key in a new release; every existing
+> install then needs a one-time manual re-download — the trust chain is by
+> design.
+
+`release.sh` requires `SPARKLE_PUBLIC_KEY` to be set and the matching private
+key to be in the Keychain (it runs `sign_update`, which fails loudly otherwise).
+
 ## Per-release flow
 
 From a **clean, committed, pushed** `main` (the version is the git commit
@@ -125,23 +193,28 @@ git pull --rebase          # pick up any commits the other Mac pushed
 `release.sh` then:
 
 1. **Pre-flight** — verifies the Developer ID cert, the `PurpleIRC-Notary`
-   profile, `gh` auth, and that you're on a clean, pushed `main`. Any missing
-   piece aborts with the exact fix.
+   profile, `gh` auth, `SPARKLE_PUBLIC_KEY` + `sign_update`, and that you're on
+   a clean, pushed `main`. Any missing piece aborts with the exact fix.
 2. **Build + notarize** — runs `build-app.sh --no-install` with
-   `NOTARIZE_PROFILE` set, so the bundle is Developer-ID-signed (hardened
-   runtime + timestamp), submitted to Apple's notary service, and stapled. It
-   does **not** touch `/Applications` or steal focus.
+   `NOTARIZE_PROFILE` + `SPARKLE_PUBLIC_KEY` set, so the bundle is
+   Developer-ID-signed (hardened runtime + timestamp), notarized + stapled, and
+   embeds the update public key. It does **not** touch `/Applications` or steal
+   focus.
 3. **Verify** — `stapler validate` + a Gatekeeper assessment (`spctl -a`). A
    broken notarization fails the release loudly rather than shipping a bundle
    that trips Gatekeeper.
-4. **Package** — `ditto -c -k --keepParent` →
+4. **Package + sign** — `ditto -c -k --keepParent` →
    `~/Downloads/PurpleIRC release/PurpleIRC-<version>.zip` (preserves the
-   signature; plain `zip` would corrupt it).
+   signature), then EdDSA-signs the zip with `sign_update`.
 5. **Publish** — tags the commit `purpleirc-v<version>` and creates a GitHub
    release with `gh`, uploading the zip and pulling notes from the matching
    `CHANGELOG.md` heading.
+6. **Announce** — prepends a new `<item>` (with the EdDSA signature + the GitHub
+   asset URL) to `appcast.xml`, validates it with `xmllint`, then commits and
+   pushes it to `main`. The update is live the moment the push lands.
 
-It prints the release URL and the local artifact path when done.
+It prints the release URL and the local artifact path when done. Existing
+installs see the update on next launch (or within ~24h).
 
 ### Version numbers
 
@@ -171,6 +244,17 @@ count) before releasing again.
   commit twice. Commit something (bumps the version) or delete the existing
   release/tag first.
 - **`gh` not authenticated** → `gh auth login`.
+- **`sign_update failed`** → the EdDSA private key isn't in *this* Mac's
+  Keychain. Import it (`generate_keys -f`, see step 5) — it's the same key
+  PurpleDedup uses.
+- **Users see "Update is improperly signed"** → the public key embedded in
+  their installed app doesn't match the private key that signed the zip. Both
+  Macs must share one key (step 5); confirm `SPARKLE_PUBLIC_KEY` matches
+  `generate_keys -p` on the Mac you released from.
+- **Sparkle never finds the new release** → confirm the appcast commit reached
+  `origin/main` and `raw.githubusercontent.com/.../PurpleIRC/appcast.xml`
+  serves the new `<item>` (CDN + browser cache can lag a minute). Validate the
+  feed with `xmllint --noout appcast.xml`.
 
 ## Escape hatches (avoid in normal use)
 

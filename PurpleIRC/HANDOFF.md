@@ -73,6 +73,14 @@ Requires macOS 14+, Swift 5.9+. Tests run via Command Line Tools' bundled
   into channel/query buffers on relaunch.
 - `AppLog` — process-wide diagnostic log (debug → critical), encrypted on
   disk when keystore is unlocked.
+- `UpdaterController` — `@MainActor` singleton wrapping Sparkle 2's
+  `SPUStandardUpdaterController` for in-app auto-updates. Config is in
+  Info.plist (`SUFeedURL` → `appcast.xml` on `raw.githubusercontent.com`,
+  `SUPublicEDKey`, 24h `SUScheduledCheckInterval`), stamped by `build-app.sh`,
+  which also bundles+signs `Sparkle.framework` into `Contents/Frameworks/`.
+  Surfaced via **Check for Updates…** (app menu) and the **Setup ▸ Updates**
+  tab. Releases are EdDSA-signed + appcast-published by `Scripts/release.sh`
+  (see `RELEASING.md`). Shares one Sparkle signing key with PurpleDedup.
 
 Event fan-out: every inbound/outbound line, state change, PRIVMSG,
 NOTICE, JOIN, etc. flows through `IRCConnectionEvent`. `Sendable` enum
