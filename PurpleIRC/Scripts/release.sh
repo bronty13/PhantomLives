@@ -120,10 +120,16 @@ SPARKLE_BIN="$(find .build/artifacts/sparkle/Sparkle/bin -maxdepth 1 -type d 2>/
 note "Sparkle public key set; sign_update present ✓"
 
 # 1d. On main, clean, pushed — a release must be reproducible from origin.
+# "Clean" is scoped to the PurpleIRC subtree (cwd): this is a polyglot monorepo,
+# so untracked/modified files in *sibling* projects (stray DBs, nested repos,
+# scratch scripts) are normal and don't affect a PurpleIRC build's
+# reproducibility. Tracked-or-untracked changes *inside PurpleIRC/* still block.
 if [ "${ALLOW_DIRTY:-0}" != "1" ]; then
     BRANCH="$(git rev-parse --abbrev-ref HEAD)"
     [ "$BRANCH" = "main" ] || die "not on main (on '$BRANCH'). Releases are cut from main. (ALLOW_DIRTY=1 to override.)"
-    [ -z "$(git status --porcelain)" ] || die "working tree is dirty. Commit or stash first. (ALLOW_DIRTY=1 to override.)"
+    [ -z "$(git status --porcelain -- .)" ] || die "PurpleIRC has uncommitted changes:
+$(git status --short -- . | sed 's/^/         /')
+       Commit or stash them first. (ALLOW_DIRTY=1 to override.)"
     git fetch origin main --quiet
     LOCAL="$(git rev-parse @)"; REMOTE="$(git rev-parse @{u} 2>/dev/null || echo none)"
     [ "$LOCAL" = "$REMOTE" ] || die "HEAD is not pushed to origin/main (local $LOCAL ≠ remote $REMOTE).
