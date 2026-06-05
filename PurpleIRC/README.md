@@ -57,6 +57,29 @@ Drive race where `com.apple.FinderInfo` re-attaches to fresh files
 under `~/Documents` and breaks `codesign --strict`. See HANDOFF.md
 for the full architecture.
 
+### Releasing (notarized distribution)
+
+A formal, machine-independent release process produces a **notarized,
+stapled** zip and a tagged GitHub release so the app opens cleanly on any
+Mac (no Gatekeeper *"developer cannot be verified"* dialog):
+
+```sh
+./Scripts/release.sh
+```
+
+It pre-flights signing/notary/`gh` state, builds with notarization on,
+verifies the staple (`stapler validate` + `spctl -a`), zips to
+`~/Downloads/PurpleIRC release/PurpleIRC-<version>.zip`, and tags +
+publishes `purpleirc-v<version>` via `gh`. Runs identically from either
+dev machine (Vortex / MB14) using that Mac's own keychain credentials.
+
+→ One-time per-machine setup (Developer ID cert, app-specific password,
+`xcrun notarytool store-credentials`, `gh auth`), the per-release flow, and
+troubleshooting are in **[RELEASING.md](RELEASING.md)**.
+
+`build-app.sh` also notarizes on its own when `NOTARIZE_PROFILE` is set
+(routine personal builds leave it unset and skip notarization).
+
 ## Features
 - TLS & plain-text TCP (defaults to `irc.libera.chat:6697` over TLS)
 - Connect form with nick / user / real name / server password

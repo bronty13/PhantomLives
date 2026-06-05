@@ -157,8 +157,97 @@ rm -rf "$FINAL_APP_DIR"
 ditto --noextattr "$APP_DIR" "$FINAL_APP_DIR"
 rm -rf "$WORK_DIR"
 
+# Optional notarization. Gatekeeper warns "developer cannot be verified" on
+# Macs the user hasn't run the app on before unless the bundle is notarized
+# AND the notarization ticket is stapled to the .app. Both are gated on the
+# NOTARIZE_PROFILE env var so routine personal builds skip them; a release
+# build (Scripts/release.sh) opts in. PurpleIRC has no in-app updater, so
+# notarization is the ONLY thing that makes a downloaded copy open cleanly on
+# someone else's Mac.
+#
+# Setup (one-time per dev machine — see RELEASING.md):
+#   1. Create an app-specific password at https://appleid.apple.com/account/manage
+#      under "App-Specific Passwords".
+#   2. Store it in the keychain as a notarytool credential profile:
+#      $ xcrun notarytool store-credentials "PurpleIRC-Notary" \
+#          --apple-id you@example.com \
+#          --team-id SRKV8T38CD \
+#          --password <the app-specific password>
+#   3. Build with NOTARIZE_PROFILE=PurpleIRC-Notary ./build-app.sh
+if [ -n "${NOTARIZE_PROFILE:-}" ]; then
+    if [ "$CODESIGN_ID" = "-" ]; then
+        echo "WARNING: NOTARIZE_PROFILE is set but the bundle is ad-hoc-signed."
+        echo "Notary will reject it — skipping. Set CODESIGN_IDENTITY to a"
+        echo "Developer ID Application cert and re-run."
+    else
+        echo "Notarizing with profile: $NOTARIZE_PROFILE"
+        # notarytool wants a zip/dmg/pkg, not a raw .app. We zip via ditto so
+        # the embedded signature is preserved bit-for-bit.
+        NOTARIZE_ZIP="$(mktemp -t purpleirc-notarize).zip"
+        ditto -c -k --keepParent "$FINAL_APP_DIR" "$NOTARIZE_ZIP"
+        # `notarytool submit --wait` exits 0 whether Apple accepted or
+        # rejected the submission — the wait completed either way. Parse the
+        # plist's <status> field to detect Invalid/Rejected verdicts; only
+        # "Accepted" gets stapled. On rejection, fetch the detailed log so the
+        # failure cause lands in /tmp/notarize.log.
+        # `|| true`: a missing/unauthorized profile (or a network blip) makes
+        # notarytool exit non-zero, which under `set -e` would abort the whole
+        # script *before the install step* — a transient notary failure must
+        # not block the local build/install. We capture the failure via the
+        # plist's <status> instead and warn (below).
+        xcrun notarytool submit "$NOTARIZE_ZIP" \
+                --keychain-profile "$NOTARIZE_PROFILE" \
+                --wait \
+                --output-format plist > /tmp/notarize.plist 2>&1 || true
+        rm -f "$NOTARIZE_ZIP"
+        # On a real submission notarytool writes a plist with :status/:id. On a
+        # pre-flight failure (bad/missing profile, auth, network) it writes a
+        # plain-text error instead, and PlistBuddy fails to parse it — detect
+        # that via PlistBuddy's exit code and mark it SubmitFailed so the
+        # warning below shows the raw error rather than mis-parsing it.
+        if /usr/libexec/PlistBuddy -c 'Print :status' /tmp/notarize.plist >/tmp/notarize.status 2>/dev/null; then
+            NOTARIZE_STATUS="$(cat /tmp/notarize.status)"
+            NOTARIZE_ID="$(/usr/libexec/PlistBuddy -c 'Print :id' /tmp/notarize.plist 2>/dev/null || echo '')"
+        else
+            NOTARIZE_STATUS="SubmitFailed"
+            NOTARIZE_ID=""
+        fi
+        rm -f /tmp/notarize.status
+        if [ "$NOTARIZE_STATUS" = "Accepted" ]; then
+            echo "Notarization accepted (id $NOTARIZE_ID)."
+            echo "Stapling ticket to ${FINAL_APP_DIR}…"
+            if xcrun stapler staple "$FINAL_APP_DIR"; then
+                NOTARIZE_OK=1
+            else
+                echo "WARNING: stapler failed — bundle is notarized but ticket isn't embedded."
+            fi
+        else
+            echo "WARNING: notarization did not succeed (status: $NOTARIZE_STATUS)."
+            if [ -z "$NOTARIZE_ID" ]; then
+                # No submission id ⇒ the submit itself failed (bad/missing
+                # profile, auth, network) rather than Apple rejecting the
+                # bundle. Show the raw notarytool error so the cause is obvious.
+                echo "         notarytool error:"
+                sed 's/^/           /' /tmp/notarize.plist 2>/dev/null | head -4
+                echo "         (Often: profile '$NOTARIZE_PROFILE' isn't stored on this"
+                echo "          Mac — see RELEASING.md. The signed bundle was still built.)"
+            else
+                echo "         Apple rejected submission $NOTARIZE_ID. Fetching log to /tmp/notarize.log…"
+                xcrun notarytool log "$NOTARIZE_ID" \
+                    --keychain-profile "$NOTARIZE_PROFILE" \
+                    /tmp/notarize.log 2>&1 || true
+                echo "         Common cause: an executable in the bundle not signed"
+                echo "         with --options runtime + --timestamp. See /tmp/notarize.log."
+            fi
+        fi
+    fi
+fi
+
 echo "Built $FINAL_APP_DIR"
 echo "Run with:  open $FINAL_APP_DIR"
+if [ "${NOTARIZE_OK:-0}" = "1" ]; then
+    echo "(Notarized + stapled — Gatekeeper will accept this bundle on any Mac.)"
+fi
 
 # Auto-install: replace /Applications/PurpleIRC.app and relaunch. Opt
 # out with `--no-install` (CI builds, signature inspection) or

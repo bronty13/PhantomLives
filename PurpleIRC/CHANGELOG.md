@@ -16,6 +16,23 @@ count (`1.0.<count>`).
 
 ### Added
 
+- **Formal, notarized release process — `Scripts/release.sh` + `RELEASING.md`**
+  (`Scripts/release.sh`, `RELEASING.md`, `build-app.sh`, `README.md`).
+  PurpleIRC now has a one-command release flow that builds a
+  **Developer-ID-signed, notarized, stapled** bundle, verifies it
+  (`stapler validate` + a `spctl -a` Gatekeeper assessment), zips it to
+  `~/Downloads/PurpleIRC release/PurpleIRC-<version>.zip`, and tags +
+  publishes `purpleirc-v<version>` via `gh`. It pre-flights signing identity,
+  the `PurpleIRC-Notary` keychain profile, `gh` auth, and a clean/pushed
+  `main`, aborting with the exact fix when anything is missing. The script is
+  **machine-independent** — it runs identically from either dev machine
+  (Vortex / MB14) using that Mac's own login-Keychain credentials (Developer
+  ID cert + notarytool profile, which don't sync between machines). To support
+  it, `build-app.sh` gained an opt-in notarization + stapling step gated on the
+  `NOTARIZE_PROFILE` env var (mirroring PurpleDedup's pattern), so routine
+  personal builds skip notarization and only releases pay the round-trip to
+  Apple's notary service. One-time per-machine setup, the per-release flow, and
+  troubleshooting live in the new `RELEASING.md`.
 - **Right-click a nick → “Find … in logs” — fuzzy authored-by log search**
   (`NickFuzzyMatcher.swift`, `NickFindView.swift`, `LogStore.swift`,
   `BufferView.swift`, `ContentView.swift`). A **Find “<nick>” in logs…**
