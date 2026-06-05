@@ -1,0 +1,183 @@
+/* PurpleMark rendered-document styles.
+   Base typographic rules + four themes (default / nord / solarized / one-dark)
+   + reading-width classes. Theme & width are selected by toggling classes on
+   <body> from Swift, so the page never has to reload to restyle. */
+
+:root {
+  --pm-max-width: 760px;          /* default reading width */
+  --pm-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --pm-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--pm-font);
+  font-size: 16px;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#content {
+  max-width: var(--pm-max-width);
+  margin: 0 auto;
+  padding: 40px 32px 96px;
+  word-wrap: break-word;
+}
+
+/* Reading-width classes (toggled on <body>). */
+body.width-narrow  { --pm-max-width: 580px; }
+body.width-default { --pm-max-width: 760px; }
+body.width-wide    { --pm-max-width: 980px; }
+body.width-full    { --pm-max-width: none; }
+
+/* ---- Block elements ---- */
+#content h1, #content h2, #content h3,
+#content h4, #content h5, #content h6 {
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 1.6em 0 0.6em;
+}
+#content h1 { font-size: 2.1em; margin-top: 0.2em; padding-bottom: 0.3em; border-bottom: 1px solid var(--pm-rule); }
+#content h2 { font-size: 1.55em; }
+#content h3 { font-size: 1.28em; }
+#content h4 { font-size: 1.1em; }
+#content h5 { font-size: 1em; }
+#content h6 { font-size: 0.9em; color: var(--pm-muted); }
+
+#content p { margin: 0 0 1em; }
+#content a { color: var(--pm-link); text-decoration: none; }
+#content a:hover { text-decoration: underline; }
+
+#content ul, #content ol { margin: 0 0 1em; padding-left: 1.7em; }
+#content li { margin: 0.25em 0; }
+#content li > ul, #content li > ol { margin: 0.25em 0; }
+
+#content blockquote {
+  margin: 0 0 1em;
+  padding: 0.2em 1em;
+  border-left: 3px solid var(--pm-rule-strong);
+  color: var(--pm-muted);
+}
+
+#content hr {
+  border: none;
+  border-top: 1px solid var(--pm-rule);
+  margin: 2em 0;
+}
+
+/* Inline code — gray rounded pill, like the OpenMark Document view. */
+#content code {
+  font-family: var(--pm-mono);
+  font-size: 0.88em;
+  background: var(--pm-code-bg);
+  padding: 0.15em 0.4em;
+  border-radius: 5px;
+}
+
+/* Fenced code blocks. */
+#content pre {
+  background: var(--pm-pre-bg);
+  border: 1px solid var(--pm-rule);
+  border-radius: 8px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  margin: 0 0 1em;
+}
+#content pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.86em;
+  line-height: 1.5;
+}
+
+/* Tables. */
+#content table {
+  border-collapse: collapse;
+  margin: 0 0 1em;
+  width: 100%;
+  font-size: 0.95em;
+}
+#content th, #content td {
+  border: 1px solid var(--pm-rule);
+  padding: 7px 12px;
+  text-align: left;
+}
+#content th { background: var(--pm-code-bg); font-weight: 600; }
+#content tr:nth-child(even) td { background: var(--pm-stripe); }
+
+#content img { max-width: 100%; border-radius: 6px; }
+
+/* Task-list checkboxes. */
+#content input[type="checkbox"] { margin-right: 0.5em; }
+
+/* Mermaid diagrams render centered. */
+#content .mermaid { text-align: center; margin: 1.2em 0; }
+
+/* ---- Themes (CSS custom properties resolved per body class) ---- */
+
+/* Default — graphite dark (matches the screenshots). */
+body.theme-default {
+  background: #1e1e1f;
+  color: #e6e6e8;
+  --pm-muted: #9a9aa2;
+  --pm-link: #6ea8fe;
+  --pm-rule: #3a3a3d;
+  --pm-rule-strong: #56565b;
+  --pm-code-bg: #2c2c2e;
+  --pm-pre-bg: #252527;
+  --pm-stripe: #232325;
+}
+
+/* Nord. */
+body.theme-nord {
+  background: #2e3440;
+  color: #d8dee9;
+  --pm-muted: #8a94a6;
+  --pm-link: #88c0d0;
+  --pm-rule: #3b4252;
+  --pm-rule-strong: #4c566a;
+  --pm-code-bg: #3b4252;
+  --pm-pre-bg: #343b48;
+  --pm-stripe: #333a47;
+}
+
+/* Solarized (dark). */
+body.theme-solarized {
+  background: #002b36;
+  color: #b9c7c6;
+  --pm-muted: #6f8a8f;
+  --pm-link: #268bd2;
+  --pm-rule: #0c3a45;
+  --pm-rule-strong: #14505f;
+  --pm-code-bg: #073642;
+  --pm-pre-bg: #063540;
+  --pm-stripe: #042e38;
+}
+
+/* One Dark. */
+body.theme-one-dark {
+  background: #282c34;
+  color: #abb2bf;
+  --pm-muted: #828a99;
+  --pm-link: #61afef;
+  --pm-rule: #3a3f4b;
+  --pm-rule-strong: #4b5263;
+  --pm-code-bg: #2f343f;
+  --pm-pre-bg: #2b303a;
+  --pm-stripe: #2c313a;
+}
+
+/* Light, system-driven fallback when no theme class present (and prefers-light). */
+body:not([class*="theme-"]) {
+  background: #ffffff;
+  color: #1d1d1f;
+  --pm-muted: #6e6e73;
+  --pm-link: #0066cc;
+  --pm-rule: #e2e2e4;
+  --pm-rule-strong: #c7c7cc;
+  --pm-code-bg: #f0f0f2;
+  --pm-pre-bg: #f6f6f8;
+  --pm-stripe: #fafafa;
+}

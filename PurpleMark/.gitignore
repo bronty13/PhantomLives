@@ -1,0 +1,10 @@
+# Generated Xcode project (regenerated from project.yml by build-app.sh)
+PurpleMark.xcodeproj/
+
+# Build products
+.build/
+DerivedData/
+PurpleMark.app/
+
+# macOS cruft
+.DS_Store

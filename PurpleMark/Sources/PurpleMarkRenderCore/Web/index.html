@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="theme-default width-default">
+  <div id="content"></div>
+
+  <script src="vendor/markdown-it.min.js"></script>
+  <script src="vendor/mermaid.min.js"></script>
+  <script src="vendor/katex/katex.min.js"></script>
+  <script src="vendor/katex/auto-render.min.js"></script>
+  <script>
+  (function () {
+    // markdown-it with GitHub-flavored options. Mermaid fenced blocks are
+    // emitted as <div class="mermaid"> so mermaid.run() can process them.
+    const md = window.markdownit({
+      html: true,
+      linkify: true,
+      typographer: true,
+      breaks: false,
+    });
+
+    const defaultFence = md.renderer.rules.fence ||
+      function (tokens, idx, options, env, self) {
+        return self.renderToken(tokens, idx, options);
+      };
+    md.renderer.rules.fence = function (tokens, idx, options, env, self) {
+      const token = tokens[idx];
+      const info = (token.info || '').trim().split(/\s+/g)[0];
+      if (info === 'mermaid') {
+        return '<div class="mermaid">' +
+          token.content.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</div>';
+      }
+      return defaultFence(tokens, idx, options, env, self);
+    };
+
+    let mermaidReady = false;
+    function initMermaid() {
+      if (mermaidReady || !window.mermaid) return;
+      const dark = document.body.className.indexOf('theme-') !== -1 &&
+        document.body.classList.contains('theme-default') === false
+        ? 'dark' : 'dark';
+      window.mermaid.initialize({
+        startOnLoad: false,
+        theme: 'dark',
+        securityLevel: 'loose',
+        fontFamily: getComputedStyle(document.body).fontFamily,
+      });
+      mermaidReady = true;
+    }
+
+    const KATEX_DELIMS = [
+      { left: '$$', right: '$$', display: true },
+      { left: '\\[', right: '\\]', display: true },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '$', right: '$', display: false },
+    ];
+
+    const contentEl = document.getElementById('content');
+
+    async function render(markdown) {
+      contentEl.innerHTML = md.render(markdown || '');
+      // KaTeX math.
+      if (window.renderMathInElement) {
+        try {
+          window.renderMathInElement(contentEl, {
+            delimiters: KATEX_DELIMS,
+            throwOnError: false,
+          });
+        } catch (e) { /* ignore math errors */ }
+      }
+      // Mermaid diagrams.
+      const blocks = contentEl.querySelectorAll('.mermaid');
+      if (blocks.length && window.mermaid) {
+        initMermaid();
+        try {
+          await window.mermaid.run({ nodes: blocks });
+        } catch (e) { /* leave raw text on failure */ }
+      }
+    }
+
+    window.PM = {
+      ready: true,
+      render: render,
+      setTheme: function (name) {
+        const valid = ['default', 'nord', 'solarized', 'one-dark'];
+        document.body.classList.forEach(function (c) {
+          if (c.indexOf('theme-') === 0) document.body.classList.remove(c);
+        });
+        if (valid.indexOf(name) !== -1) {
+          document.body.classList.add('theme-' + name);
+        }
+      },
+      setWidth: function (name) {
+        const valid = ['narrow', 'default', 'wide', 'full'];
+        document.body.classList.forEach(function (c) {
+          if (c.indexOf('width-') === 0) document.body.classList.remove(c);
+        });
+        document.body.classList.add('width-' + (valid.indexOf(name) !== -1 ? name : 'default'));
+      },
+    };
+
+    // If markdown was queued before this script ran (standalone export path),
+    // render it now.
+    if (window.__PM_PENDING__ != null) {
+      render(window.__PM_PENDING__);
+    }
+    document.dispatchEvent(new Event('pm-ready'));
+  })();
+  </script>
+</body>
+</html>

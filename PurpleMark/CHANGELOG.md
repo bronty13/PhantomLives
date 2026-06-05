@@ -1,0 +1,34 @@
+# Changelog
+
+All notable changes to PurpleMark are documented here.
+
+## [1.0.0] - 2026-06-05
+
+Initial release — a native macOS Markdown editor, default `.md` handler, and
+Finder Quick Look previewer, modeled on OpenMark.
+
+### Added
+- **Single-pane editor** with a Document (rendered) ⇄ Markdown (source) toggle.
+- **Rendered Document view** via a bundled, fully offline pipeline
+  (markdown-it + Mermaid + KaTeX) — GitHub-flavored markdown, inline Mermaid
+  diagrams, and LaTeX math, no network required.
+- **Syntax-highlighted source editor** with a line-number gutter, word wrap,
+  tab width, auto-close brackets, continue-lists, and spell check.
+- **Toolbar** matching OpenMark: sidebar toggle, eye/`</>` view switch, centered
+  title, B/I/S, text-size/theme/width menu, list/quote/code/link, export menu.
+- **Outline | Files sidebar** — a live table-of-contents with colored heading
+  badges, plus a folder browser of `.md` files.
+- **Status bar** — live word / character / line counts and reading time.
+- **Set as the default Markdown editor** (Settings → Default Application) and a
+  bundled **Quick Look preview extension** so Finder's spacebar renders `.md`
+  identically to the Document view.
+- **Export to PDF and HTML**, preserving Mermaid diagrams and math; defaults to
+  `~/Downloads/PurpleMark/`.
+- **Full settings surface**: 4 themes (Default / Nord / Solarized / One Dark),
+  default view, reading width, editor contrast, font size & family (including
+  accessibility fonts), sync-scroll, Focus mode, Typewriter mode, Zen mode.
+- **Auto-backup on launch** of PurpleMark's own state (prefs + recent files) to
+  `~/Downloads/PurpleMark backup/`, 14-day retention, 5-minute debounce, plus the
+  Settings → Backup UI.
+- `build-app.sh` / hardened `install.sh` / `run-tests.sh` per the PhantomLives
+  standards; 14 unit tests.
