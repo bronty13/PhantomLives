@@ -25,6 +25,14 @@ Type in **Markdown** view; flip to **Document** view to see it rendered, with:
 
 Everything renders offline — no internet needed.
 
+## Find & Replace
+
+In the **Markdown** view, press **⌘F** to find (or **⌘⌥F** to find & replace).
+The bar offers a case-sensitivity toggle (**Aa**), a **regex** toggle (**.\***),
+a live "N of M" match count, and **⌘G / ⇧⌘G** to step through matches. Type a
+replacement and use **Replace** or **Replace All**. Press **Esc** (or **Done**)
+to close. (Opening find automatically switches to the Markdown view.)
+
 ## Sidebar: Outline & Files
 
 - **Outline** — a live table of contents of your document's headings (H1 blue,

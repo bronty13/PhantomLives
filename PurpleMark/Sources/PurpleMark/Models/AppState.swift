@@ -28,6 +28,18 @@ final class AppState: ObservableObject {
     @Published var folder: URL?
     @Published var folderFiles: [URL] = []
 
+    /// Find & Replace bar visibility, and whether to open it with the replace
+    /// row expanded. The bar only operates on the Markdown (source) view, so
+    /// showing it forces `viewMode = .markdown`.
+    @Published var findVisible = false
+    @Published var findShowReplace = false
+
+    func showFind(replace: Bool) {
+        viewMode = .markdown
+        findShowReplace = replace
+        findVisible = true
+    }
+
     /// Last vertical scroll fraction (0…1). Carried across the Document⇄Markdown
     /// toggle so the reading position is preserved when sync-scroll is enabled.
     @Published var scrollFraction: Double = 0

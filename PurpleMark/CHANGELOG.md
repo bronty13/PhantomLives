@@ -2,6 +2,14 @@
 
 All notable changes to PurpleMark are documented here.
 
+## [1.0.3] - 2026-06-05
+
+### Added
+- **Find & Replace** in the Markdown source view — a find/replace bar (⌘F /
+  ⌘⌥F) with literal or **regex** matching, a case-sensitivity toggle, a live
+  "N of M" match count, next/previous (⌘G / ⇧⌘G) with the standard find
+  indicator, and Replace / Replace All. Matching logic is pure and unit-tested.
+
 ## [1.0.2] - 2026-06-05
 
 ### Added

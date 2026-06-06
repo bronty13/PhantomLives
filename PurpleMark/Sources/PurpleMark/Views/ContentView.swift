@@ -7,6 +7,7 @@ import PurpleMarkRenderCore
 struct ContentView: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var settings: AppSettings
+    @ObservedObject private var find = FindController.shared
 
     private let sidebarWidth: CGFloat = 248
 
@@ -20,8 +21,14 @@ struct ContentView: View {
                         .background(.ultraThinMaterial)
                     Divider()
                 }
-                EditorPane()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack(spacing: 0) {
+                    if state.findVisible {
+                        FindReplaceBar(find: find)
+                        Divider()
+                    }
+                    EditorPane()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
             if !settings.zenMode {
                 Divider()

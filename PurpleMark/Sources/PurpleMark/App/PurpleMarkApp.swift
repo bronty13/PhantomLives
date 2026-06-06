@@ -66,6 +66,19 @@ struct PurpleMarkApp: App {
             }
             .keyboardShortcut("s", modifiers: [.control, .command])
         }
+        // Find
+        CommandGroup(after: .textEditing) {
+            Section {
+                Button("Find…") { state.showFind(replace: false) }
+                    .keyboardShortcut("f")
+                Button("Find and Replace…") { state.showFind(replace: true) }
+                    .keyboardShortcut("f", modifiers: [.command, .option])
+                Button("Find Next") { FindController.shared.next() }
+                    .keyboardShortcut("g")
+                Button("Find Previous") { FindController.shared.previous() }
+                    .keyboardShortcut("g", modifiers: [.command, .shift])
+            }
+        }
         // Format
         CommandMenu("Format") {
             Button("Bold") { EditorAction.bold.post() }

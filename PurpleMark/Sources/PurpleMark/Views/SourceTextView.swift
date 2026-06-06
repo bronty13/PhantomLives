@@ -40,6 +40,7 @@ struct SourceTextView: NSViewRepresentable {
         context.coordinator.highlight()
         context.coordinator.observeScroll()
         context.coordinator.observeActions()
+        context.coordinator.observeFind()
         return scroll
     }
 
@@ -63,6 +64,7 @@ struct SourceTextView: NSViewRepresentable {
         weak var textView: NSTextView?
         weak var scrollView: NSScrollView?
         private var actionObserver: NSObjectProtocol?
+        private var findObserver: NSObjectProtocol?
         private var highlightWorkItem: DispatchWorkItem?
         private var lastReported: Double = 0
         private var lastApplied: Double?
@@ -71,6 +73,7 @@ struct SourceTextView: NSViewRepresentable {
 
         deinit {
             if let actionObserver { NotificationCenter.default.removeObserver(actionObserver) }
+            if let findObserver { NotificationCenter.default.removeObserver(findObserver) }
         }
 
         // MARK: Configuration
@@ -350,6 +353,58 @@ struct SourceTextView: NSViewRepresentable {
                 tv.replaceCharacters(in: range, with: replacement)
                 tv.didChangeText()
             }
+        }
+
+        // MARK: Find & Replace
+
+        func observeFind() {
+            findObserver = NotificationCenter.default.addObserver(
+                forName: .pmFind, object: nil, queue: .main) { [weak self] note in
+                guard let self,
+                      let box = note.object as? FindCommandBox,
+                      let tv = self.textView,
+                      tv.window?.isKeyWindow == true else { return }
+                switch box.command {
+                case .select(let range):
+                    self.findSelect(range, in: tv)
+                case .replace(let range, let replacement):
+                    self.findReplace(range, with: replacement, in: tv)
+                case .replaceAll(let ranges, let replacement):
+                    self.findReplaceAll(ranges, with: replacement, in: tv)
+                }
+            }
+        }
+
+        private func findSelect(_ range: NSRange, in tv: NSTextView) {
+            guard NSMaxRange(range) <= (tv.string as NSString).length else { return }
+            tv.setSelectedRange(range)
+            tv.scrollRangeToVisible(range)
+            tv.showFindIndicator(for: range)
+        }
+
+        private func findReplace(_ range: NSRange, with replacement: String, in tv: NSTextView) {
+            guard NSMaxRange(range) <= (tv.string as NSString).length,
+                  tv.shouldChangeText(in: range, replacementString: replacement) else { return }
+            tv.replaceCharacters(in: range, with: replacement)
+            tv.didChangeText()
+            parent.text = tv.string
+            highlight()
+        }
+
+        private func findReplaceAll(_ ranges: [NSRange], with replacement: String, in tv: NSTextView) {
+            guard !ranges.isEmpty else { return }
+            let full = NSRange(location: 0, length: (tv.string as NSString).length)
+            guard tv.shouldChangeText(in: full, replacementString: nil) else { return }
+            tv.textStorage?.beginEditing()
+            // Replace from the end backwards so earlier ranges stay valid.
+            for range in ranges.sorted(by: { $0.location > $1.location }) {
+                guard NSMaxRange(range) <= (tv.textStorage?.length ?? 0) else { continue }
+                tv.textStorage?.replaceCharacters(in: range, with: replacement)
+            }
+            tv.textStorage?.endEditing()
+            tv.didChangeText()
+            parent.text = tv.string
+            highlight()
         }
 
         // MARK: Highlighting

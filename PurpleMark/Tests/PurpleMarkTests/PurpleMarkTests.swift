@@ -215,6 +215,49 @@ final class AppSettingsTests: XCTestCase {
     }
 }
 
+final class FindControllerTests: XCTestCase {
+    @MainActor
+    func testLiteralCaseInsensitiveByDefault() {
+        let ranges = FindController.findMatches(query: "the", in: "The theme is theirs.",
+                                                regex: false, caseSensitive: false)
+        XCTAssertEqual(ranges.count, 3)
+        XCTAssertEqual(ranges.first, NSRange(location: 0, length: 3))
+    }
+
+    @MainActor
+    func testLiteralCaseSensitive() {
+        let ranges = FindController.findMatches(query: "the", in: "The theme is theirs.",
+                                                regex: false, caseSensitive: true)
+        XCTAssertEqual(ranges.count, 2) // "The" excluded
+    }
+
+    @MainActor
+    func testRegexMatches() {
+        let ranges = FindController.findMatches(query: #"\d+"#, in: "a1 b22 c333",
+                                                regex: true, caseSensitive: false)
+        XCTAssertEqual(ranges.map(\.length), [1, 2, 3])
+    }
+
+    @MainActor
+    func testInvalidRegexYieldsNoMatches() {
+        let ranges = FindController.findMatches(query: "(", in: "((((", regex: true, caseSensitive: false)
+        XCTAssertTrue(ranges.isEmpty)
+    }
+
+    @MainActor
+    func testEmptyQueryAndNoMatch() {
+        XCTAssertTrue(FindController.findMatches(query: "", in: "abc", regex: false, caseSensitive: false).isEmpty)
+        XCTAssertTrue(FindController.findMatches(query: "zzz", in: "abc", regex: false, caseSensitive: false).isEmpty)
+    }
+
+    @MainActor
+    func testOverlappingLiteralAdvancesPastEachMatch() {
+        // "aa" in "aaaa" → non-overlapping matches at 0 and 2.
+        let ranges = FindController.findMatches(query: "aa", in: "aaaa", regex: false, caseSensitive: false)
+        XCTAssertEqual(ranges.map(\.location), [0, 2])
+    }
+}
+
 final class FileServiceTests: XCTestCase {
     func testMarkdownFilesFiltersAndSorts() throws {
         let fm = FileManager.default
