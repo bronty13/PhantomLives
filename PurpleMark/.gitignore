@@ -8,3 +8,7 @@ PurpleMark.app/
 
 # macOS cruft
 .DS_Store
+
+# Release artifacts / SPM cache
+dist/
+.build/

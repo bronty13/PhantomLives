@@ -14,6 +14,7 @@ struct SettingsView: View {
             editorSection
             writingSection
             defaultAppSection
+            updatesSection
             exportSection
             BackupSection(settings: settings)
         }
@@ -133,6 +134,27 @@ struct SettingsView: View {
                     }
                 }
                 .disabled(isDefault)
+            }
+        }
+    }
+
+    // MARK: Updates
+
+    @ObservedObject private var updater = UpdaterController.shared
+
+    private var updatesSection: some View {
+        Section("Updates") {
+            Toggle("Automatically check for updates", isOn: Binding(
+                get: { updater.automaticallyChecksForUpdates },
+                set: { updater.automaticallyChecksForUpdates = $0 }))
+            HStack {
+                Button("Check for Updates Now") { updater.checkForUpdates() }
+                    .disabled(!updater.canCheckForUpdates)
+                Spacer()
+                if let date = updater.lastUpdateCheckDate {
+                    Text("Last checked \(date.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
         }
     }

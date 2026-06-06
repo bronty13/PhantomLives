@@ -5,6 +5,11 @@ options:
     macOS: "14.0"
   xcodeVersion: "16"
 
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.6.0"
+
 settings:
   base:
     SWIFT_VERSION: "5.10"
@@ -58,6 +63,7 @@ targets:
         embed: true
       - target: PurpleMarkThumbnail
         embed: true
+      - package: Sparkle
     scheme:
       testTargets:
         - PurpleMarkTests

@@ -18,6 +18,15 @@
     <key>NSPrincipalClass</key><string>NSApplication</string>
     <key>NSHumanReadableCopyright</key><string>PurpleMark</string>
 
+    <!-- Sparkle auto-update. The public EdDSA key is shared across the Purple*
+         apps; the appcast is served from the repo via raw.githubusercontent. -->
+    <key>SUFeedURL</key>
+    <string>https://raw.githubusercontent.com/bronty13/PhantomLives/main/PurpleMark/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>2q4I3WNk7qQbidXEO/Jo/U3+t2ODS9x+e3/Wqt+ClQQ=</string>
+    <key>SUEnableAutomaticChecks</key><true/>
+    <key>SUScheduledCheckInterval</key><integer>86400</integer>
+
     <!-- Default editor for Markdown. LSHandlerRank=Default asks Launch Services
          to prefer PurpleMark for these types. -->
     <key>CFBundleDocumentTypes</key>

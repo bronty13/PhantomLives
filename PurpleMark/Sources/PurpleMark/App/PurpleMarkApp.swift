@@ -24,6 +24,13 @@ struct PurpleMarkApp: App {
 
     @CommandsBuilder
     private var editorCommands: some Commands {
+        // App menu — Check for Updates…
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates…") {
+                UpdaterController.shared.checkForUpdates()
+            }
+            .disabled(!UpdaterController.shared.canCheckForUpdates)
+        }
         // File
         CommandGroup(replacing: .newItem) {
             Button("New") { state.newDocument() }

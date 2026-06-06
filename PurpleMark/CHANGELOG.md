@@ -2,6 +2,19 @@
 
 All notable changes to PurpleMark are documented here.
 
+## [1.0.2] - 2026-06-05
+
+### Added
+- **In-app auto-updates via Sparkle 2** — a "Check for Updates…" menu item and a
+  Settings → Updates section (auto-check toggle, check-now, last-checked). The
+  appcast is served from `PurpleMark/appcast.xml` via raw.githubusercontent; the
+  public EdDSA key is the shared Purple\* key.
+- **Notarized release process** — `Scripts/release.sh` builds a Developer-ID
+  signed/hardened app (Sparkle's XPCServices/Updater/Autoupdate signed
+  inside-out), packages a **notarized + stapled DMG**, EdDSA-signs it, creates the
+  GitHub release, and updates the appcast. `RELEASING.md` documents the one-time
+  per-Mac setup (shared `PurpleDedup-Notary` profile + shared Sparkle key).
+
 ## [1.0.1] - 2026-06-05
 
 ### Added

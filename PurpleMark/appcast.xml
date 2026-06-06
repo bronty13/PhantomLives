@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+    <channel>
+        <title>PurpleMark</title>
+        <description>PurpleMark release feed — native macOS Markdown editor.</description>
+        <link>https://github.com/bronty13/PhantomLives/tree/main/PurpleMark</link>
+        <language>en</language>
+        <!-- Scripts/release.sh inserts each new <item> immediately after this
+             marker (newest first). Do not hand-edit sparkle:edSignature. -->
+        <!-- ITEMS -->
+    </channel>
+</rss>

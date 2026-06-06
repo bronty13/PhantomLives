@@ -69,26 +69,41 @@ ditto --noextattr "$ICNS_PATH" "$DEST_APP/Contents/Resources/AppIcon.icns"
 
 # Code sign inside-out: framework → appex → app. Developer ID if available,
 # otherwise ad-hoc (local dev).
-CERT="$(security find-identity -v -p codesigning 2>/dev/null | grep "Developer ID Application" | head -1 | awk '{print $2}' || echo "")"
+# Allow an explicit identity override (release.sh passes CODESIGN_IDENTITY).
+CERT="${CODESIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | grep "Developer ID Application" | head -1 | awk '{print $2}' || echo "")}"
 FRAMEWORK="$DEST_APP/Contents/Frameworks/PurpleMarkRenderCore.framework"
+SPARKLE_FW="$DEST_APP/Contents/Frameworks/Sparkle.framework"
 APP_ENT="Sources/PurpleMark/App/PurpleMark.entitlements"
 QL_ENT="Sources/PurpleMarkQuickLook/PurpleMarkQuickLook.entitlements"
 THUMB_ENT="Sources/PurpleMarkThumbnail/PurpleMarkThumbnail.entitlements"
 
 xattr -cr "$DEST_APP"
+
+# Build the codesign argv once: Developer ID gets hardened runtime + a secure
+# timestamp; ad-hoc (local dev) gets neither.
 if [ -n "$CERT" ]; then
     echo "Signing with Developer ID: $CERT"
-    codesign --force --options runtime --timestamp -s "$CERT" "$FRAMEWORK"
-    codesign --force --options runtime --timestamp --entitlements "$QL_ENT" -s "$CERT" "$QL_APPEX"
-    codesign --force --options runtime --timestamp --entitlements "$THUMB_ENT" -s "$CERT" "$THUMB_APPEX"
-    codesign --force --options runtime --timestamp --entitlements "$APP_ENT" -s "$CERT" "$DEST_APP"
+    SIGN=(codesign --force --options runtime --timestamp -s "$CERT")
 else
     echo "No Developer ID found — using ad-hoc signing"
-    codesign --force -s - "$FRAMEWORK"
-    codesign --force --entitlements "$QL_ENT" -s - "$QL_APPEX"
-    codesign --force --entitlements "$THUMB_ENT" -s - "$THUMB_APPEX"
-    codesign --force --entitlements "$APP_ENT" -s - "$DEST_APP"
+    SIGN=(codesign --force -s -)
 fi
+
+# Sparkle's nested helpers must be signed inside-out before the framework.
+if [ -d "$SPARKLE_FW" ]; then
+    SV="$SPARKLE_FW/Versions/Current"
+    for xpc in "$SV/XPCServices/"*.xpc; do
+        [ -d "$xpc" ] && "${SIGN[@]}" "$xpc"
+    done
+    [ -d "$SV/Updater.app" ] && "${SIGN[@]}" "$SV/Updater.app"
+    [ -f "$SV/Autoupdate" ] && "${SIGN[@]}" "$SV/Autoupdate"
+    "${SIGN[@]}" "$SPARKLE_FW"
+fi
+
+"${SIGN[@]}" "$FRAMEWORK"
+"${SIGN[@]}" --entitlements "$QL_ENT" "$QL_APPEX"
+"${SIGN[@]}" --entitlements "$THUMB_ENT" "$THUMB_APPEX"
+"${SIGN[@]}" --entitlements "$APP_ENT" "$DEST_APP"
 
 echo ""
 echo "✓ Built: $DEST_APP"
