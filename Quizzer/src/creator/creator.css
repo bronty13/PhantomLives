@@ -85,6 +85,14 @@ input[type="checkbox"], input[type="radio"] { width: auto; accent-color: var(--c
 .radio-row { display: flex; gap: 18px; }
 .radio-row label { display: flex; gap: 6px; align-items: center; }
 .upload-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+/* Wheel choices editor */
+.choice-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.choice-row .grow { flex: 1; min-width: 0; }
+.choice-num { width: 26px; text-align: right; font-variant-numeric: tabular-nums; color: var(--c-muted, #777); font-size: 0.9rem; }
+.choice-weight { display: flex; align-items: center; gap: 6px; }
+.choice-weight .field-label { margin: 0; font-size: 0.8rem; }
+.choice-weight input { width: 64px; }
 .logo-thumb { max-height: 44px; max-width: 120px; object-fit: contain; border: 1px solid var(--c-border); border-radius: 6px; }
 .file-btn { position: relative; overflow: hidden; }
 .font-sample { display: block; margin-top: 8px; font-size: 1.3rem; }

@@ -25,6 +25,7 @@ export type AnswerKey = Record<ID, AnswerKeyEntry>;
 
 export interface DeployPayload {
   schemaVersion: number;
+  kind: 'quiz'; // discriminant vs the wheel payload (each player reads its own)
   format: DeployFormat;
   generatedAt: string;
   quiz: Quiz; // answer fields blanked
@@ -113,6 +114,7 @@ export function buildPayload(
   };
   return {
     schemaVersion: SCHEMA_VERSION,
+    kind: 'quiz',
     format,
     generatedAt,
     quiz: blanked,

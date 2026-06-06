@@ -2,8 +2,9 @@
 // and load the payload via a classic <script src="./data.js"> (works under file://).
 
 import JSZip from 'jszip';
-import type { AssetRef, Branding, Quiz } from '../../shared/model';
+import type { AssetRef, Branding, Quiz, Wheel } from '../../shared/model';
 import { buildPayload } from '../../shared/payload';
+import { buildWheelPayload } from '../../shared/wheelPayload';
 import { assetByteSize, INLINE_LIMIT_BYTES } from '../../shared/assets';
 import { dataUriToBytes, extForMime, jsonForScript } from '../../shared/dataurl';
 import { slugify } from '../../shared/util';
@@ -20,16 +21,21 @@ interface Externalized {
   files: AssetFile[];
 }
 
-/** Move inline assets larger than the limit out to assets/ and rewrite their refs. */
-export function externalizeAssets(
-  quiz: Quiz,
-  branding: Branding,
-  limit = INLINE_LIMIT_BYTES,
-): Externalized {
+interface WheelExternalized {
+  wheel: Wheel;
+  branding: Branding;
+  files: AssetFile[];
+}
+
+/**
+ * A shared "move large inline assets to assets/" helper used by both the quiz and
+ * wheel deploy paths. The returned `ext` keeps one running counter so externalized
+ * file names stay stable (logo-0, intro-1, …).
+ */
+function createExternalizer(limit: number) {
   const files: AssetFile[] = [];
   let counter = 0;
-
-  function maybeExternalize(ref: AssetRef | undefined, base: string): AssetRef | undefined {
+  function ext(ref: AssetRef | undefined, base: string): AssetRef | undefined {
     if (!ref || ref.kind !== 'inline') return ref;
     if (assetByteSize(ref) <= limit) return ref;
     const { mime, bytes } = dataUriToBytes(ref.dataUri);
@@ -37,23 +43,45 @@ export function externalizeAssets(
     files.push({ path, bytes });
     return { kind: 'file', mime, path, name: ref.name };
   }
+  function branding(b: Branding): Branding {
+    return {
+      ...b,
+      logo: ext(b.logo, 'logo'),
+      font:
+        b.font.kind === 'custom'
+          ? { ...b.font, ttf: ext(b.font.ttf, 'font') ?? b.font.ttf }
+          : b.font,
+    };
+  }
+  return { files, ext, branding };
+}
 
-  const newBranding: Branding = {
-    ...branding,
-    logo: maybeExternalize(branding.logo, 'logo'),
-    font:
-      branding.font.kind === 'custom'
-        ? { ...branding.font, ttf: maybeExternalize(branding.font.ttf, 'font') ?? branding.font.ttf }
-        : branding.font,
-  };
-
+/** Move inline assets larger than the limit out to assets/ and rewrite their refs. */
+export function externalizeAssets(
+  quiz: Quiz,
+  branding: Branding,
+  limit = INLINE_LIMIT_BYTES,
+): Externalized {
+  const x = createExternalizer(limit);
+  const newBranding = x.branding(branding);
   const newQuiz: Quiz = {
     ...quiz,
-    introMedia: maybeExternalize(quiz.introMedia, 'intro'),
-    questions: quiz.questions.map((q) => ({ ...q, image: maybeExternalize(q.image, 'qimg') })),
+    introMedia: x.ext(quiz.introMedia, 'intro'),
+    questions: quiz.questions.map((q) => ({ ...q, image: x.ext(q.image, 'qimg') })),
   };
+  return { quiz: newQuiz, branding: newBranding, files: x.files };
+}
 
-  return { quiz: newQuiz, branding: newBranding, files };
+/** Wheel variant — the only externalizable wheel asset is its optional media. */
+export function externalizeWheelAssets(
+  wheel: Wheel,
+  branding: Branding,
+  limit = INLINE_LIMIT_BYTES,
+): WheelExternalized {
+  const x = createExternalizer(limit);
+  const newBranding = x.branding(branding);
+  const newWheel: Wheel = { ...wheel, media: x.ext(wheel.media, 'media') };
+  return { wheel: newWheel, branding: newBranding, files: x.files };
 }
 
 export interface ZipPlan {
@@ -73,6 +101,22 @@ export function buildZipPlan(
   const payload = buildPayload(ext.quiz, ext.branding, 'zip', generatedAt);
   return {
     filename: `${slugify(quiz.name)}.zip`,
+    indexHtml: injectScript(template, '<script src="./data.js"></script>'),
+    dataJs: `window.__QUIZ__=${jsonForScript(payload)};`,
+    files: ext.files,
+  };
+}
+
+export function buildWheelZipPlan(
+  template: string,
+  wheel: Wheel,
+  branding: Branding,
+  generatedAt: string,
+): ZipPlan {
+  const ext = externalizeWheelAssets(wheel, branding);
+  const payload = buildWheelPayload(ext.wheel, ext.branding, 'zip', generatedAt);
+  return {
+    filename: `${slugify(wheel.name)}.zip`,
     indexHtml: injectScript(template, '<script src="./data.js"></script>'),
     dataJs: `window.__QUIZ__=${jsonForScript(payload)};`,
     files: ext.files,

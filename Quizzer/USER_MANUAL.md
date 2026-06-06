@@ -1,8 +1,8 @@
 # Quizzer — User Manual
 
-Quizzer lets you build a quiz and hand out a single file that anyone can take in
-their web browser — on a computer or a phone, even with no internet. This manual is
-for the person *creating* quizzes.
+Quizzer lets you build a quiz — or a **Spin-the-Wheel** activity — and hand out a
+single file that anyone can open in their web browser, on a computer or a phone, even
+with no internet. This manual is for the person *creating* them.
 
 ## 1. Opening Quizzer
 
@@ -10,7 +10,7 @@ Open `dist/index.html` (the Quizzer Creator) in any modern browser. Everything y
 make is saved automatically in that browser on that computer. To move your work to
 another machine, use **Export** (below).
 
-The top bar has three areas: **Quizzes**, **Branding**, and **Settings**.
+The top bar has four areas: **Quizzes**, **Wheels**, **Branding**, and **Settings**.
 
 ## 2. Set up Branding (do this first)
 
@@ -91,6 +91,36 @@ answer one question at a time, getting your feedback after each. At the end they
 their **score** and **PASS/FAIL**. If they passed and you enabled certificates, they
 can **download a PDF certificate** with their name, the date, the quiz name, and a
 signature line. Attempts are limited to the number you set.
+
+## 6b. Make a Spin-the-Wheel instead
+
+Prefer a fun prize wheel to a graded quiz? Go to **Wheels → New Spin the Wheel**.
+
+Fill in:
+
+- **Title** — also the name of the file you'll hand out.
+- **Branding** — pick one of your profiles (same look as your quizzes).
+- **Description** — rich text shown above the wheel (defaults to *"Spin the Wheel for
+  a Prize."*, which you can change here or in Settings).
+- **Image or video** — optional, shown after the description.
+- **Wheel choices** — add **1 to 30** labels (the slices of the wheel). Use **↑ / ↓**
+  to reorder and **✕** to remove.
+- **Advanced odds** (optional toggle) — give a choice a **weight** to make it more or
+  less likely; **0 = never lands**. The slices still look equal-sized — only the odds
+  change. Leave everything at 1 for a perfectly fair wheel.
+- **Number of spins permitted** — `0` means unlimited.
+- **PDF results to list** — `1` shows just the latest win on the certificate; a bigger
+  number lists that many recent spins; `0` lists the whole session.
+- **Sound on by default** — whether the wheel starts with sound on (the player can
+  toggle it).
+
+Click **Save**, then **Deploy** (single HTML or zip, exactly like a quiz).
+
+**What the player sees:** your branding, title, description, and media, then the
+wheel. They tap **SPIN**, the wheel spins with ticking sound and lands on a slice, and
+the prize appears in big animated text — with a little chime. They can mute with the
+🔊 button, and once they've spun they can **Download Result (PDF)** to keep a record of
+what they won. If you set a spin limit, the SPIN button stops once it's reached.
 
 ## 7. Save, move, and reuse quizzes
 

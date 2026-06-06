@@ -2,11 +2,13 @@
 // ~5 MB localStorage cap) for quizzes + brandings, with global settings in a meta store.
 
 import { openDB, type IDBPDatabase } from 'idb';
-import type { Branding, GlobalSettings, Quiz } from '../../shared/model';
+import type { Branding, GlobalSettings, Quiz, Wheel } from '../../shared/model';
 import { DEFAULT_GLOBAL_SETTINGS } from '../../shared/model';
 
 const DB_NAME = 'quizzer';
-const DB_VERSION = 1;
+// v2 adds the 'wheels' store for the Spin-the-Wheel activity. The upgrade is
+// additive and guarded, so existing quizzes/brandings/settings are untouched.
+const DB_VERSION = 2;
 const SETTINGS_KEY = 'global-settings';
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
@@ -23,6 +25,9 @@ function db(): Promise<IDBPDatabase> {
         }
         if (!database.objectStoreNames.contains('meta')) {
           database.createObjectStore('meta');
+        }
+        if (!database.objectStoreNames.contains('wheels')) {
+          database.createObjectStore('wheels', { keyPath: 'id' });
         }
       },
     });
@@ -66,6 +71,25 @@ export async function saveBranding(branding: Branding): Promise<void> {
 
 export async function deleteBranding(id: string): Promise<void> {
   await (await db()).delete('brandings', id);
+}
+
+// --- Wheels ----------------------------------------------------------------
+
+export async function listWheels(): Promise<Wheel[]> {
+  const all = (await (await db()).getAll('wheels')) as Wheel[];
+  return all.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function getWheel(id: string): Promise<Wheel | undefined> {
+  return (await (await db()).get('wheels', id)) as Wheel | undefined;
+}
+
+export async function saveWheel(wheel: Wheel): Promise<void> {
+  await (await db()).put('wheels', { ...wheel, updatedAt: Date.now() });
+}
+
+export async function deleteWheel(id: string): Promise<void> {
+  await (await db()).delete('wheels', id);
 }
 
 // --- Settings --------------------------------------------------------------

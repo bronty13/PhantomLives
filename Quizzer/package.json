@@ -1,20 +1,25 @@
 {
   "name": "quizzer",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Lightweight, portable quiz creator/customizer SPA that deploys self-contained, offline, branded quizzes to any browser.",
   "type": "module",
   "scripts": {
     "build:player": "vite build --config vite.player.config.ts",
     "embed:player": "node scripts/embed-player.mjs",
+    "build:wheel": "vite build --config vite.wheel.config.ts",
+    "embed:wheel": "node scripts/embed-wheel.mjs",
     "build:creator": "vite build",
-    "build": "npm run build:player && npm run embed:player && npm run build:creator",
-    "dev": "node scripts/ensure-player.mjs && vite",
+    "build": "npm run build:player && npm run embed:player && npm run build:wheel && npm run embed:wheel && npm run build:creator",
+    "dev": "node scripts/ensure-player.mjs && node scripts/ensure-wheel.mjs && vite",
     "dev:player": "vite --config vite.player.config.ts",
+    "dev:wheel": "vite --config vite.wheel.config.ts",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "restore:stubs": "node scripts/restore-stubs.mjs",
+    "check:stubs": "node scripts/check-stubs.mjs"
   },
   "dependencies": {
     "@tiptap/pm": "^2.10.3",

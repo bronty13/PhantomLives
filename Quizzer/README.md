@@ -1,17 +1,21 @@
 # Quizzer
 
-**A lightweight, portable quiz creator that deploys self-contained, branded quizzes
+**A lightweight, portable creator that deploys self-contained, branded activities
 to any browser — desktop or mobile, online or offline, no server required.**
 
-Quizzer is two products built from one codebase:
+Quizzer makes two kinds of activity from one codebase:
 
 1. **Creator** — a single-page app you run in your browser to create, edit, brand,
-   import, export, and **deploy** quizzes. All your work is stored locally in the
-   browser (IndexedDB); nothing is uploaded anywhere.
-2. **Player** — what "Deploy Quiz" produces: a self-contained quiz a respondent
-   opens in any browser. It runs entirely client-side (works from a `file://` URL,
-   offline), grades itself, shows a PASS/FAIL summary, and can issue a class-style
-   **PDF completion certificate**.
+   import, export, and **deploy** quizzes **and Spin-the-Wheels**. All your work is
+   stored locally in the browser (IndexedDB); nothing is uploaded anywhere.
+2. **Quiz player** — what "Deploy" produces for a quiz: a self-contained quiz a
+   respondent opens in any browser. It runs entirely client-side (works from a
+   `file://` URL, offline), grades itself, shows a PASS/FAIL summary, and can issue a
+   class-style **PDF completion certificate**.
+3. **Spin-the-Wheel player** — a fun, non-graded activity (its own **Wheels** section
+   in the creator): a branded, animated prize wheel with sound, an optional spins
+   limit, a big result reveal, and a **PDF that memorializes the win**. Same offline,
+   single-file portability.
 
 Runs anywhere with a modern browser: macOS, Windows, Linux, ChromeOS, iOS Safari,
 Android Chrome.
@@ -22,9 +26,9 @@ Android Chrome.
 
 ```bash
 npm install          # first time only
-npm run dev          # creator dev server (also builds the player template) → http://localhost:1500
+npm run dev          # creator dev server (also builds both player templates) → http://localhost:1500
 npm run build        # production build → dist/index.html (the creator, single file)
-npm test             # vitest (44 tests)
+npm test             # vitest (77 tests)
 npm run typecheck    # tsc --noEmit
 ```
 
@@ -35,11 +39,13 @@ To use the creator without a dev server, just `npm run build` and open
 
 | Command | What it does |
 |---|---|
-| `npm run dev` | Ensures the player template is fresh, then starts the creator dev server. |
-| `npm run dev:player` | Runs the **player** standalone (with a built-in demo quiz) on :1501. |
-| `npm run build` | `build:player` → `embed:player` → `build:creator`. **Always use this** — never `build:creator` alone. |
-| `npm run build:player` | Builds the player to `dist-player/index.html`. |
-| `npm run embed:player` | Copies the built player into `src/creator/generated/playerTemplate.ts`. |
+| `npm run dev` | Ensures both player templates are fresh, then starts the creator dev server. |
+| `npm run dev:player` | Runs the **quiz player** standalone (built-in demo quiz) on :1501. |
+| `npm run dev:wheel` | Runs the **wheel player** standalone (built-in demo wheel) on :1502. |
+| `npm run build` | `build:player → embed:player → build:wheel → embed:wheel → build:creator`. **Always use this** — never `build:creator` alone. |
+| `npm run build:player` / `build:wheel` | Builds a player bundle to `dist-player/` / `dist-wheel/`. |
+| `npm run embed:player` / `embed:wheel` | Copies a built player into its `generated/*Template.ts`. |
+| `npm run restore:stubs` / `check:stubs` | Reset both committed template stubs / fail if either is a built blob. Run before committing. |
 | `npm test` / `npm run typecheck` | Tests / type-check. |
 
 ---
@@ -61,10 +67,15 @@ src/creator ──vite──▶ dist/index.html ◀─────────�
   imports. At deploy time the creator injects the quiz + branding into that template
   and triggers a download.
 - `src/creator/generated/playerTemplate.ts` is a **committed stub**; `npm run build`
-  regenerates it from the real build. (Don't commit its built form.)
+  regenerates it from the real build. (Don't commit its built form — run
+  `npm run restore:stubs` first.)
 
-This ordering is enforced by the single `build` script — see `docs`-style notes in
-`CHANGELOG.md`.
+The **Spin-the-Wheel** activity adds a *second* player bundle on the same rail
+(`src/wheel-player ─▶ dist-wheel/index.html ─▶ wheelTemplate.ts`), so a deployed wheel
+ships only wheel code and a deployed quiz ships only quiz code. There are therefore
+**two** committed stubs — `restore:stubs` / `check:stubs` manage both.
+
+This ordering is enforced by the single `build` script (`build:creator` runs last).
 
 ### Deploy formats (chosen per deploy)
 
@@ -99,6 +110,25 @@ and the answer choices.
 
 ---
 
+## Spin the Wheel
+
+A second activity type, in the creator's **Wheels** section — a customizable prize
+wheel, not a graded quiz. Configure a title, a description (default *"Spin the Wheel
+for a Prize."*), an optional image/video, **1–30 labeled choices**, a spins-permitted
+limit (`0` = unlimited), the default sound state, and how many results the exported
+PDF lists. It reuses your branding profiles.
+
+The deployed wheel is a self-contained, offline, mobile-friendly SPA: a branded
+**canvas wheel** that spins several turns and decelerates onto a sector, synthesized
+**tick + win-chime sound** (a toggle, default on, and silent under
+`prefers-reduced-motion`, which also skips the long spin), an enforced spins limit, a
+big animated **result reveal**, and a **"Download Result (PDF)"** memorializing the
+win(s).
+
+**Fair by default, riggable on purpose.** Choices are equal-odds out of the box. Flip
+**Advanced odds** in the editor to give each choice a relative `weight` (`0` = never
+lands). The sectors always look equal-sized — only the landing probability changes.
+
 ## Branding & fonts
 
 Reusable branding profiles carry five colors, a logo, and a font, applied to the
@@ -132,12 +162,13 @@ convention. Internal creator data lives in the browser's IndexedDB.
 ## Project structure
 
 ```
-src/shared/    model, grading, obfuscation, payload, fonts, branding, certificate (used by both apps)
-src/player/    the deployed quiz app (intro → questions → feedback → summary → certificate)
-src/creator/   the authoring app (quiz list, editor, branding manager, settings, deploy)
-src/creator/deploy/   inject payload, single-file + zip builders, downloads
-scripts/       embed-player / ensure-player build glue
-tests/         vitest suites (grading, obfuscation, payload, deploy, serialize, certificate, sanitize, integration)
+src/shared/      model, grading, obfuscation, payload(s), spin math, fonts, branding, PDFs (used by all apps)
+src/player/      the deployed quiz app (intro → questions → feedback → summary → certificate)
+src/wheel-player/  the deployed Spin-the-Wheel app (canvas wheel, Web Audio, result PDF)
+src/creator/     the authoring app (quizzes + wheels lists/editors, branding, settings, deploy)
+src/creator/deploy/   inject payload, single-file + zip builders, downloads, quiz + wheel orchestrators
+scripts/         embed-/ensure-{player,wheel} build glue, restore-/check-stubs guardrails
+tests/           vitest suites (grading, obfuscation, payloads, spin math, deploy, serialize, PDFs, integration)
 ```
 
 ---

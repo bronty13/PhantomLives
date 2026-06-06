@@ -9,6 +9,8 @@ import type {
   QuestionType,
   Quiz,
   QuizBundle,
+  Wheel,
+  WheelBundle,
 } from './model';
 import {
   DEFAULT_GLOBAL_SETTINGS,
@@ -86,6 +88,41 @@ export function makeQuiz(brandingId: string, settings: GlobalSettings): Quiz {
     createdAt: 0,
     updatedAt: 0,
   };
+}
+
+export function makeWheel(brandingId: string, settings: GlobalSettings): Wheel {
+  return {
+    id: newId(),
+    name: 'Untitled Wheel',
+    descriptionHtml: `<p>${settings.defaultWheelDescription}</p>`,
+    choices: [
+      { id: newId(), text: '', weight: 1 },
+      { id: newId(), text: '', weight: 1 },
+    ],
+    spinsPermitted: settings.defaultSpinsPermitted,
+    soundDefaultOn: settings.defaultWheelSoundOn,
+    pdfResultCount: settings.defaultPdfResultCount,
+    brandingId,
+    createdAt: 0,
+    updatedAt: 0,
+  };
+}
+
+/** A fully-populated wheel bundle for previews and the wheel-player dev fallback. */
+export function demoWheel(): WheelBundle {
+  const branding = makeBranding('Acme Prizes');
+  const s = DEFAULT_GLOBAL_SETTINGS;
+  const labels = [
+    'Free Coffee', 'Try Again', '10% Off', 'Gift Card',
+    'Sticker Pack', 'Movie Ticket', 'Mystery Box', 'Bonus Spin',
+  ];
+  const wheel: Wheel = {
+    ...makeWheel(branding.id, s),
+    name: 'Prize Wheel',
+    descriptionHtml: '<p>Spin the Wheel for a Prize.</p>',
+    choices: labels.map((text) => ({ id: newId(), text, weight: 1 })),
+  };
+  return { schemaVersion: SCHEMA_VERSION, wheel, branding };
 }
 
 /** A small, fully-populated bundle for previews and dev mode. */

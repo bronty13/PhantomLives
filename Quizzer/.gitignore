@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dist-player/
+dist-wheel/
 *.local
 .DS_Store
 *.tsbuildinfo

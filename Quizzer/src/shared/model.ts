@@ -82,10 +82,16 @@ export interface GlobalSettings {
   defaultPassingPct: number; // 80
   defaultCorrectText: string;
   defaultIncorrectText: string;
+  // --- Spin-the-Wheel activity defaults (applied to new wheels) ---
+  defaultWheelDescription: string; // "Spin the Wheel for a Prize."
+  defaultSpinsPermitted: number; // 0 (unlimited)
+  defaultWheelSoundOn: boolean; // true
+  defaultPdfResultCount: number; // 1 (latest only); 0 = full session history
 }
 
 export const DEFAULT_CORRECT_TEXT = "Correct, That's Right!";
 export const DEFAULT_INCORRECT_TEXT = 'Incorrect. Sorry That is not the Correct Answer.';
+export const DEFAULT_WHEEL_DESCRIPTION = 'Spin the Wheel for a Prize.';
 
 export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
   defaultTimeLimitSec: 1800,
@@ -94,6 +100,10 @@ export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
   defaultPassingPct: 80,
   defaultCorrectText: DEFAULT_CORRECT_TEXT,
   defaultIncorrectText: DEFAULT_INCORRECT_TEXT,
+  defaultWheelDescription: DEFAULT_WHEEL_DESCRIPTION,
+  defaultSpinsPermitted: 0,
+  defaultWheelSoundOn: true,
+  defaultPdfResultCount: 1,
 };
 
 // ---------------------------------------------------------------------------
@@ -190,6 +200,45 @@ export interface Quiz {
 export interface QuizBundle {
   schemaVersion: number;
   quiz: Quiz;
+  branding: Branding;
+}
+
+// ---------------------------------------------------------------------------
+// Spin-the-Wheel — a standalone, non-graded activity (sibling to Quiz)
+// ---------------------------------------------------------------------------
+
+export const WHEEL_MIN_CHOICES = 1;
+export const WHEEL_MAX_CHOICES = 30;
+
+export interface WheelChoice {
+  id: ID;
+  text: string;
+  /**
+   * Relative landing odds. Default 1 ⇒ a fair, equal-odds wheel. `0` ⇒ the sector
+   * is shown on the wheel but can never be the result. Sectors always RENDER
+   * equal-sized; weighting only changes the landing probability (invisible rig).
+   */
+  weight: number;
+}
+
+export interface Wheel {
+  id: ID;
+  name: string; // Title (also the bundle/file title, mirrors Quiz.name)
+  descriptionHtml: string; // WYSIWYG; seeded from settings.defaultWheelDescription
+  media?: AssetRef; // optional image OR video shown after the description
+  choices: WheelChoice[]; // WHEEL_MIN_CHOICES..WHEEL_MAX_CHOICES
+  spinsPermitted: number; // 0 = unlimited
+  soundDefaultOn: boolean; // sound starts on unless the player toggles it off
+  pdfResultCount: number; // results the PDF lists: 1 = latest only, 0 = all spins
+  brandingId: ID;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** A wheel bundled with its resolved branding — the unit we export/import/deploy. */
+export interface WheelBundle {
+  schemaVersion: number;
+  wheel: Wheel;
   branding: Branding;
 }
 

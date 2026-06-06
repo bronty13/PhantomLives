@@ -48,6 +48,32 @@ big assets are inlined or externalized. The player branches on `AssetRef` shape
 format choice lives entirely in the deploy writer. This avoids the classic trap of a
 diverging "online" and "offline" build.
 
+## Why a *second* bundle for the wheel (not a discriminated single player)
+
+The Spin-the-Wheel is a genuinely different product: non-graded, no answer key, no
+attempts-as-grading, and it needs canvas + Web Audio code the quiz never uses (and
+vice-versa — the wheel needs none of grading/obfuscation/Timer/TipTap-rendered paths).
+Two options were on the table:
+
+- **(A) A second player bundle** (`src/wheel-player/`) on the same proven rail, picked
+  by activity kind at deploy time.
+- **(B) One player** that switches on a `kind` discriminant in the payload.
+
+We chose **A**. The deploy machinery (`injectScript`, `externalize*`, `packZip`) is
+already generic over the template string and the `window.__QUIZ__` global, so a second
+rail is cheap — and it keeps each deployed artifact **lean**, which matters because
+these files run from `file://` on phones: a wheel must not ship the quiz engine, nor a
+quiz the spin engine. B would bloat every file with both. The cost of A is a second
+committed stub and a longer `build` chain; both are mechanical and machine-guarded
+(`restore:stubs` / `check:stubs`). Note this is a different axis from "one player, two
+*formats*" above — that's about single-vs-zip; this is about activity *kind*.
+
+The wheel payload carries **no secret** (its choices are printed on the wheel face), so
+unlike the quiz it has no obfuscation and no strip/restore — `buildWheelPayload` ships
+the wheel verbatim. Weighting (the "rig") lives in `weight` per choice and is applied
+only by the player's `pickWinner`; sectors always render equal-sized so the rig is
+invisible.
+
 ## Why client-side grading — and the honest security stance
 
 No server means grading happens on the respondent's device, which means the correct
@@ -97,8 +123,12 @@ in-memory fallback (some mobile browsers restrict storage under `file://`).
 
 ## Testing strategy
 
-The risk is in the pure core and the deploy wiring, so that's where the 45 tests
+The risk is in the pure core and the deploy wiring, so that's where the 77 tests
 concentrate: every grader + edge cases, obfuscation round-trip, payload strip/restore,
 marker injection (incl. `</script>`/`<` escaping), zip assembly + asset externalization,
-bundle import/export, certificate generation, sanitization, and a real-template
-integration check. UI is verified by building and running the apps.
+bundle import/export, certificate + spin-result PDF generation, sanitization, and
+real-template integration checks for **both** players. The wheel adds pure spin-math
+tests (weighted `pickWinner` incl. `weight:0` never landing, target-angle ↔ landed-index
+round-trip, sector-crossing counts) so the deterministic core is proven without a DOM;
+the canvas/audio/animation is verified by building and running the wheel player. UI in
+general is verified by building and running the apps.

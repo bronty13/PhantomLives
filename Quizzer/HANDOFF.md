@@ -5,15 +5,20 @@ The canonical architecture snapshot. Read this before non-trivial changes. For t
 
 ## What it is
 
-Two products from one codebase:
+One **creator** plus **two** deployable player bundles (two activity types) from one
+codebase:
 
-- **Creator** (`src/creator/`) — a browser SPA you run to author quizzes. No server;
-  data lives in the browser's IndexedDB. Built to `dist/index.html` (single file).
-- **Player** (`src/player/`) — the deployed quiz a respondent opens. Self-contained,
-  client-side-graded, runs offline / under `file://`. Built to
-  `dist-player/index.html` (single file).
+- **Creator** (`src/creator/`) — a browser SPA you run to author **quizzes** and
+  **spin-the-wheels**. No server; data lives in the browser's IndexedDB. Built to
+  `dist/index.html` (single file).
+- **Player** (`src/player/`) — the deployed **quiz** a respondent opens. Self-contained,
+  client-side-graded, runs offline / under `file://`. Built to `dist-player/index.html`.
+- **Wheel player** (`src/wheel-player/`) — the deployed **Spin-the-Wheel** activity
+  (non-graded). Self-contained canvas wheel + Web Audio + result PDF. Built to
+  `dist-wheel/index.html`. A *separate* bundle so each deployed file stays lean — a
+  wheel ships no grading/obfuscation code; a quiz ships no canvas/audio code.
 
-Both are bundled to a single self-contained HTML by `vite-plugin-singlefile`
+All are bundled to a single self-contained HTML by `vite-plugin-singlefile`
 (everything inlined; the lone `<script type="module">` is inline, which is the only
 module form that runs under `file://`).
 
@@ -28,8 +33,15 @@ src/player ─▶ dist-player/index.html ─(embed-player.mjs)▶ src/creator/ge
 src/creator + PLAYER_TEMPLATE ─▶ dist/index.html
 ```
 
+The **wheel** has its own parallel rail (`src/wheel-player ─▶ dist-wheel/index.html
+─(embed-wheel.mjs)▶ wheelTemplate.ts`, imported as `WHEEL_TEMPLATE`). The deploy layer
+is generalized: `injectScript`, `externalize*`, and `packZip` (`buildZip.ts`) serve
+both; the creator picks the template by activity kind (`deploy/index.ts` for quizzes,
+`deploy/wheel.ts` for wheels).
+
 Build order is load-bearing and enforced by the single `npm run build` script:
-`build:player → embed:player → build:creator`. **Never run `build:creator` alone.**
+`build:player → embed:player → build:wheel → embed:wheel → build:creator`. **`build:creator`
+must stay last** (it imports both templates). **Never run `build:creator` alone.**
 
 At deploy time the creator replaces the `<!--QUIZ_PAYLOAD-->` marker in the template:
 
@@ -43,29 +55,33 @@ The player is **format-agnostic**: it always reads `window.__QUIZ__` and resolve
 each `AssetRef` (`{kind:'inline',dataUri}` or `{kind:'file',path}`) to an element
 `src`. Never `fetch`.
 
-### ⚠️ The committed-stub gotcha
+### ⚠️ The committed-stub gotcha (now TWO stubs)
 
-`src/creator/generated/playerTemplate.ts` is a **committed ~471-byte stub** (valid
-HTML with the marker, so `vite dev`/`tsc` resolve on a fresh checkout). `npm run
-build` overwrites it locally with the real ~906 KB build. **Restore the stub before
-committing** — never commit the built blob. `scripts/ensure-player.mjs` rebuilds it
-for `npm run dev` when stale.
+`src/creator/generated/playerTemplate.ts` **and** `wheelTemplate.ts` are **committed
+~500-byte stubs** (valid HTML with the marker, so `vite dev`/`tsc` resolve on a fresh
+checkout). `npm run build` overwrites **both** locally with the real ~900 KB builds.
+**Restore both stubs before committing** — never commit a built blob. Use
+`npm run restore:stubs` to reset both, and `npm run check:stubs` to fail if either is
+left as a blob (run it before committing). `scripts/ensure-{player,wheel}.mjs` rebuild
+the templates for `npm run dev` when stale.
 
 ## File map
 
 ```
 src/shared/        single source of truth, imported by BOTH apps
-  model.ts         Quiz / Branding / GlobalSettings / Question union / AssetRef
+  model.ts         Quiz / Wheel / Branding / GlobalSettings / Question union / AssetRef
   grading.ts       pure graders per type + normalize() + gradeQuiz()
   obfuscate.ts     base64+XOR answer-key scramble (deterrence, not security)
   payload.ts       buildPayload (strip+obfuscate answers) / resolveQuestions (player)
+  wheelPayload.ts  buildWheelPayload (NO obfuscation — wheel choices are public)
   branding.ts      Branding → CSS vars + @font-face
   fonts.ts         10 built-in font stacks + custom-TTF @font-face
-  certificate.ts   jsPDF completion certificate
+  certificate.ts   jsPDF quiz completion certificate
+  wheelResult.ts   jsPDF spin-result memorial PDF
   sanitize.ts      DOMPurify wrapper for WYSIWYG HTML
   assets.ts        resolveAsset / size + inline-threshold
   dataurl.ts       data-URI ⇄ bytes + jsonForScript (JSON-in-HTML escaping)
-  factory.ts       new entity factories + demoBundle()
+  factory.ts       new entity factories + demoBundle() / demoWheel()
   util.ts          shuffle / formatDuration / parseDuration / slugify
 
 src/player/        deployed quiz
@@ -74,17 +90,28 @@ src/player/        deployed quiz
   flow/            IntroScreen, Timer, QuestionView, SummaryScreen, BrandBar, RichText
   attempts.ts      per-quiz attempt count (localStorage + in-memory fallback)
 
-src/creator/       authoring app
-  App.tsx          route shell (home / edit / branding / settings) + data load
-  storage/db.ts    IndexedDB CRUD (quizzes, brandings, meta/settings)
-  storage/bundle.ts  export/import .quizzer.json
-  screens/         QuizList, QuizEditor, QuestionEditor, BrandingManager, GlobalSettings, DeployDialog
-  components/      Wysiwyg (TipTap), ColorField (react-colorful), uploadAsset
-  deploy/          injectPayload, buildZip (externalize + pack), download, index (orchestrator)
-  generated/playerTemplate.ts   committed stub (see gotcha above)
+src/wheel-player/  deployed Spin-the-Wheel (non-graded)
+  bootstrap.ts     read window.__QUIZ__ as a WheelDeployPayload (dev fallback = demoWheel)
+  App.tsx          brandbar, title, description, media, SpinWheel, result reveal, PDF
+  SpinWheel.tsx    canvas wheel + requestAnimationFrame spin + tick sounds
+  spinMath.ts      PURE: pickWinner (weighted) / targetAngle / landedIndex / crossings
+  sound.ts         Web Audio synthesized ticks + win chime (no asset files)
+  spins.ts         per-wheel spins-used count (clone of player/attempts.ts)
 
-scripts/           embed-player.mjs, ensure-player.mjs
-tests/             45 vitest suites
+src/creator/       authoring app
+  App.tsx          route shell (quizzes / edit / wheels / editWheel / branding / settings)
+  storage/db.ts    IndexedDB CRUD (quizzes, wheels, brandings, meta/settings) — DB v2
+  storage/bundle.ts / wheelBundle.ts   export/import .quizzer.json / .wheelzer.json
+  screens/         QuizList/QuizEditor/QuestionEditor, WheelList/WheelEditor/WheelDeployDialog,
+                   BrandingManager, GlobalSettings, DeployDialog
+  components/      Wysiwyg (TipTap), ColorField (react-colorful), uploadAsset
+  deploy/          injectPayload, buildZip (externalize + pack), download,
+                   index (quiz orchestrator), wheel (wheel orchestrator)
+  generated/playerTemplate.ts, wheelTemplate.ts   committed stubs (see gotcha above)
+
+scripts/           embed-{player,wheel}.mjs, ensure-{player,wheel}.mjs,
+                   restore-stubs.mjs, check-stubs.mjs
+tests/             77 vitest suites
 ```
 
 ## Data model (essentials)
@@ -96,8 +123,13 @@ tests/             45 vitest suites
   Shared base: `promptHtml`, optional `image`, `weight`, `correctText`,
   `incorrectText`, `showCorrectAnswer`.
 - `Branding` → 5 colors, optional `logo`, `font` (`builtin` | `custom` TTF).
-- Deploy payload: quiz with answer fields **blanked**; answers live only in an
-  obfuscated `answerKey`, rejoined by question id via `resolveQuestions`.
+- `Wheel` → name, `descriptionHtml`, optional `media`, `choices[]` (1–30, each
+  `{text, weight}`; weight 0 = never lands), `spinsPermitted` (0 = unlimited),
+  `soundDefaultOn`, `pdfResultCount` (1 = latest, 0 = all), `brandingId`.
+- Quiz deploy payload (`kind:'quiz'`): quiz with answer fields **blanked**; answers
+  live only in an obfuscated `answerKey`, rejoined by question id via `resolveQuestions`.
+  Wheel deploy payload (`kind:'wheel'`): the wheel verbatim — nothing hidden (choices
+  are printed on the wheel face, so there is no secret and no obfuscation).
 
 ## Grading semantics (constants in `model.ts`, covered by tests)
 
@@ -108,17 +140,26 @@ tests/             45 vitest suites
 
 ## Commands
 
-`npm run dev` (creator, ensures player template) · `npm run dev:player` (player + demo)
-· `npm run build` (the only correct full build) · `npm test` (45) · `npm run typecheck`.
+`npm run dev` (creator, ensures both templates) · `npm run dev:player` /
+`npm run dev:wheel` (a player standalone + demo) · `npm run build` (the only correct
+full build) · `npm test` (77) · `npm run typecheck` · `npm run restore:stubs` /
+`npm run check:stubs` (before committing).
 
 ## Extending — where things go
 
 - **New question type:** add to the `Question` union + `QuestionType` (`model.ts`),
   a grader case (`grading.ts`), answer-key strip/restore (`payload.ts`), an editor
   sub-form (`QuestionEditor.tsx`), a player input (`QuestionView.tsx`), and tests.
+- **New activity type (like the wheel):** add the entity + bundle to `model.ts`, a
+  factory + demo (`factory.ts`), a payload (`*Payload.ts`), a DB store + CRUD
+  (`db.ts`, bump `DB_VERSION`), bundle import/export, creator screens + a nav route
+  (`App.tsx`), a deploy orchestrator (`deploy/*.ts`) reusing `injectScript`/`packZip`,
+  and a **second player bundle** (`src/<x>-player/` + `vite.<x>.config.ts` +
+  `embed-<x>.mjs` + `ensure-<x>.mjs` + a committed stub wired into `restore-stubs.mjs`
+  / `check-stubs.mjs` + the `build` chain). Keep `build:creator` last.
 - **New branded surface:** drive it from `brandingCss()` so creator + player match.
-- **New deployable asset:** thread it through `externalizeAssets()` (`buildZip.ts`)
-  so the zip format externalizes large copies.
+- **New deployable asset:** thread it through the `createExternalizer` helper in
+  `buildZip.ts` so the zip format externalizes large copies.
 
 ## Known limitations
 

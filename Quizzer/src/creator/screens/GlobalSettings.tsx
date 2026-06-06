@@ -58,6 +58,31 @@ export function GlobalSettingsScreen({
         </label>
       </div>
 
+      <h2 style={{ marginTop: 28 }}>Spin-the-Wheel defaults</h2>
+      <p className="meta">Defaults applied to each new wheel. Existing wheels keep their own values.</p>
+      <div className="form-grid">
+        <label className="field full">
+          <span className="field-label">Default wheel description</span>
+          <input value={draft.defaultWheelDescription}
+            onChange={(e) => set('defaultWheelDescription', e.target.value)} />
+        </label>
+        <label className="field">
+          <span className="field-label">Default spins permitted (0 = unlimited)</span>
+          <input type="number" min={0} value={draft.defaultSpinsPermitted}
+            onChange={(e) => set('defaultSpinsPermitted', Math.max(0, +e.target.value))} />
+        </label>
+        <label className="field">
+          <span className="field-label">Default PDF results (1 = latest, 0 = all)</span>
+          <input type="number" min={0} value={draft.defaultPdfResultCount}
+            onChange={(e) => set('defaultPdfResultCount', Math.max(0, +e.target.value))} />
+        </label>
+        <label className="field checkbox">
+          <input type="checkbox" checked={draft.defaultWheelSoundOn}
+            onChange={(e) => set('defaultWheelSoundOn', e.target.checked)} />
+          <span>Wheel sound on by default</span>
+        </label>
+      </div>
+
       <div className="btn-row">
         <button className="btn" onClick={save}>Save Settings</button>
       </div>

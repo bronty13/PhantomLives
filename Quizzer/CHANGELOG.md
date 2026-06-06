@@ -3,6 +3,40 @@
 All notable changes to **Quizzer** are recorded here. This project follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Semantic Versioning.
 
+## 0.3.0 — 2026-06-06
+
+### Added
+
+- **Spin the Wheel** — a brand-new, standalone activity type alongside quizzes (a
+  separate **Wheels** section in the creator's top nav). It is *not* a graded quiz:
+  no questions, no pass/fail, no answer key. The creator configures a title, a
+  description (rich text, default "Spin the Wheel for a Prize."), an optional
+  image/video, **1–30 labeled choices**, a spins-permitted limit (`0` = unlimited),
+  sound-on default, and how many results the PDF lists. Reuses the existing branding
+  profiles (logo / colors / font) so the wheel matches your quizzes.
+  - **Deployed wheel SPA** (a *second* self-contained player bundle, built through the
+    same two-bundle pipeline): a branded, animated **canvas spin wheel** with the
+    choices on its sectors, synthesized **Web Audio** tick + win-chime sound (a player
+    toggle, default on, `prefers-reduced-motion` aware), an enforced spins limit
+    (localStorage, like quiz attempts), a big animated **result reveal**, and a
+    **"Download Result (PDF)"** that memorializes the win(s). Single-HTML and zip
+    formats, offline under `file://`, on desktop and mobile.
+  - **Optional weighting** (an "Advanced odds" toggle in the editor): each choice has a
+    relative `weight` (default 1 = a fair wheel; `0` = never lands). Sectors always
+    render equal-sized — only the landing probability changes.
+  - **Global settings**: defaults for wheel description, spins permitted, sound-on, and
+    PDF result count. Existing data is untouched (IndexedDB upgraded v1 → v2, additive
+    `wheels` store; settings gain defaults transparently).
+- **Build/tooling**: `build:wheel` / `embed:wheel` / `dev:wheel` scripts; the full
+  `build` now runs `build:player → embed:player → build:wheel → embed:wheel →
+  build:creator` (creator still last). `wheelTemplate.ts` joins `playerTemplate.ts` as
+  a committed stub — `npm run restore:stubs` resets **both** and `npm run check:stubs`
+  guards against committing a built blob.
+- **Tests**: 77 vitest tests (was 44) — added spin math (weighted picker, angle
+  round-trip, sector crossings), wheel payload, wheel deploy + asset externalization,
+  wheel bundle round-trip, result-PDF generation, and a real-wheel-template integration
+  check.
+
 ## 0.2.0 — 2026-06-05
 
 ### Added
