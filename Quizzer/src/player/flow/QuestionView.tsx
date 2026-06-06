@@ -1,5 +1,6 @@
 import type { ID, Question } from '../../shared/model';
 import type { GradeResult, QuestionResponse } from '../../shared/grading';
+import { resolveAsset } from '../../shared/assets';
 import { RichText } from './RichText';
 
 interface Props {
@@ -13,9 +14,16 @@ interface Props {
 }
 
 export function QuestionView({ question: q, response, onChange, submitted, result, choiceOrder }: Props) {
+  const image = resolveAsset(q.image);
+
   return (
     <div>
       <RichText html={q.promptHtml} />
+      {image && (
+        <div className="question-image">
+          <img src={image} alt="" />
+        </div>
+      )}
       <div style={{ marginTop: 12 }}>
         {renderInput()}
       </div>

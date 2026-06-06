@@ -8,8 +8,10 @@ import type {
   ShortAnswerQ,
   TrueFalseQ,
 } from '../../shared/model';
+import { resolveAsset } from '../../shared/assets';
 import { newId } from '../../shared/factory';
 import { Wysiwyg } from '../components/Wysiwyg';
+import { fileToAssetRef } from '../components/uploadAsset';
 
 const TYPE_LABELS: Record<QuestionType, string> = {
   truefalse: 'True / False',
@@ -56,6 +58,20 @@ export function QuestionEditor({
 
       <span className="field-label">Question text</span>
       <Wysiwyg value={q.promptHtml} onChange={(html) => onChange({ ...q, promptHtml: html })} />
+
+      <div className="field full">
+        <span className="field-label">Question image (optional — shown above the answers)</span>
+        <div className="upload-row">
+          {resolveAsset(q.image) && <img className="logo-thumb" src={resolveAsset(q.image)} alt="" />}
+          <input type="file" accept="image/*"
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              if (f) onChange({ ...q, image: await fileToAssetRef(f) });
+              e.target.value = '';
+            }} />
+          {q.image && <button className="btn small secondary" onClick={() => onChange({ ...q, image: undefined })}>Remove</button>}
+        </div>
+      </div>
 
       <div className="type-fields">{renderTypeFields()}</div>
 
@@ -269,6 +285,7 @@ function convertType(q: Question, type: QuestionType): Question {
   const base = {
     id: q.id,
     promptHtml: q.promptHtml,
+    image: q.image,
     weight: q.weight,
     correctText: q.correctText,
     incorrectText: q.incorrectText,

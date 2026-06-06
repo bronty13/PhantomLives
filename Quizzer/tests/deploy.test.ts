@@ -78,6 +78,13 @@ describe('externalizeAssets', () => {
     expect(res.files.length).toBe(0);
     expect(res.branding.logo?.kind).toBe('inline');
   });
+  it('externalizes a large per-question image', () => {
+    const q = quizWith();
+    q.questions[0].image = { kind: 'inline', mime: 'image/png', dataUri: bigLogo };
+    const res = externalizeAssets(q, branding);
+    expect(res.files.some((f) => f.path.startsWith('assets/qimg-'))).toBe(true);
+    expect(res.quiz.questions[0].image?.kind).toBe('file');
+  });
 });
 
 describe('buildZipPlan + packZip', () => {

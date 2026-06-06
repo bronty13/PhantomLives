@@ -50,6 +50,7 @@ export function externalizeAssets(
   const newQuiz: Quiz = {
     ...quiz,
     introMedia: maybeExternalize(quiz.introMedia, 'intro'),
+    questions: quiz.questions.map((q) => ({ ...q, image: maybeExternalize(q.image, 'qimg') })),
   };
 
   return { quiz: newQuiz, branding: newBranding, files };

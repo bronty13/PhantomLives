@@ -94,6 +94,9 @@ single source of truth shared by the creator's preview and the player):
 **Manual short-answer:** a deployed offline quiz has no human grader, so manual
 questions are **auto-credited** and labelled "self-graded" in the summary.
 
+Every question can also carry an **optional image**, shown between the question text
+and the answer choices.
+
 ---
 
 ## Branding & fonts

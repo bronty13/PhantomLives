@@ -62,6 +62,9 @@ Click **+ Add Question**, then pick a type from the dropdown:
   inside an offline quiz, so the respondent is automatically given credit and the
   question is marked "self-graded."*
 
+**Question image (optional):** each question can have an image shown between the
+question text and the answer choices — upload it right under the question text.
+
 Under **Scoring & feedback** for each question: set the point **weight**, the
 **correct/incorrect feedback** text, and whether to **reveal the correct answer**
 after the respondent submits.

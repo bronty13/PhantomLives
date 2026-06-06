@@ -105,6 +105,8 @@ export type QuestionType = 'truefalse' | 'mc' | 'multi' | 'fill' | 'short';
 export interface QuestionBase {
   id: ID;
   promptHtml: string;
+  /** Optional image shown between the question text and the answer choices. */
+  image?: AssetRef;
   weight: number; // default 1
   correctText: string;
   incorrectText: string;

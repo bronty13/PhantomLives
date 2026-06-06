@@ -3,6 +3,15 @@
 All notable changes to **Quizzer** are recorded here. This project follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Semantic Versioning.
 
+## 0.2.0 — 2026-06-05
+
+### Added
+
+- **Optional per-question image**, displayed between the question text and the
+  answer choices. Upload it in the question editor; it renders in the deployed quiz
+  and is externalized to `assets/` (like other large media) in the zip deploy format.
+  Backward-compatible — the field is optional, so older bundles still import.
+
 ## 0.1.0 — 2026-06-05
 
 Initial release. A portable quiz creator that deploys self-contained, offline,
