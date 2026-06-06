@@ -40,6 +40,22 @@ struct SoundsSetup: View {
                     }
                 }
             }
+            Section("Per-contact message sounds") {
+                Stepper(value: $settings.settings.contactSoundThrottleSeconds, in: 0...3600) {
+                    HStack {
+                        Text("Throttle (minimum seconds between sounds per contact)")
+                        Spacer()
+                        TextField("",
+                                  value: $settings.settings.contactSoundThrottleSeconds,
+                                  format: .number.grouping(.never))
+                            .frame(width: 60)
+                            .multilineTextAlignment(.trailing)
+                    }
+                }
+                Text("A contact's message sound (set per contact in the Address Book) plays on any message from them. This limits it to at most one sound per contact within the window, so a chatty contact doesn't stutter the sound. 0 = play every message. The throttle is per-nick, so different contacts can still each sound.")
+                    .font(.caption).foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .formStyle(.grouped)
     }

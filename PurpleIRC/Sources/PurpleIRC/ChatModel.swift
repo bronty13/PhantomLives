@@ -995,6 +995,26 @@ final class ChatModel: ObservableObject {
     /// is O(1) — important because that path runs for every incoming line.
     private var contactMessageSounds: [String: String] = [:]
 
+    /// Last time a per-contact message sound played, keyed by lowercased nick.
+    /// Backs the per-nick throttle (`AppSettings.contactSoundThrottleSeconds`)
+    /// so a contact's sound doesn't stutter under a burst of their messages.
+    private var lastContactSoundAt: [String: Date] = [:]
+
+    /// Throttle gate for a contact's per-nick message sound. Returns true (and
+    /// records the play time) when enough time has elapsed since the last sound
+    /// for `nick`; false to suppress. A throttle of 0 disables it entirely.
+    private func allowContactSound(nick: String) -> Bool {
+        let throttle = settings.settings.contactSoundThrottleSeconds
+        guard throttle > 0 else { return true }
+        let now = Date()
+        if let last = lastContactSoundAt[nick],
+           now.timeIntervalSince(last) < Double(throttle) {
+            return false
+        }
+        lastContactSoundAt[nick] = now
+        return true
+    }
+
     private func playSoundFor(event: IRCConnectionEvent) {
         let s = settings.settings
         switch event {
@@ -1008,8 +1028,11 @@ final class ChatModel: ObservableObject {
             // A per-contact message sound wins for ANY message from that
             // contact — channel line or private query alike (the user opted
             // this contact into being audible everywhere).
-            if let custom = contactMessageSounds[from.lowercased()] {
-                SoundPlayer.playNamed(custom, settings: s)
+            let key = from.lowercased()
+            if let custom = contactMessageSounds[key] {
+                if allowContactSound(nick: key) {
+                    SoundPlayer.playNamed(custom, settings: s)
+                }
                 return
             }
             // Otherwise: private query (target is our own nick) OR a mention —

@@ -16,6 +16,18 @@ count (`1.0.<count>`).
 
 ### Added
 
+- **"Settings…" in the app menu** (`App.swift`). Preferences were only
+  reachable via the toolbar gear because the app uses a custom Setup sheet
+  rather than a SwiftUI `Settings` scene (so the standard ⌘, item never
+  existed). The PurpleIRC app menu now carries a **Settings…** item bound to
+  **⌘,**, sitting in the conventional slot above Lock Keystore.
+- **Per-nick throttle for contact message sounds** (`SettingsStore.swift` —
+  `contactSoundThrottleSeconds`, `ChatModel.swift`, `Setup/SoundsSetup.swift`).
+  Because a contact's message sound fires on *any* line they send, a chatty
+  contact in an active channel could stutter the sound. A configurable throttle
+  (Setup → Sounds → *Per-contact message sounds*, default **5s**, `0` = off)
+  now limits each contact to at most one sound per window. It's **per-nick**, so
+  two different contacts can still each sound.
 - **Per-contact message sounds** (`SettingsStore.swift` —
   `ContactAlertOverride.messageSoundName`, `SoundsAndThemes.swift`,
   `ChatModel.swift`, `AddressBook/ContactAlertOverridesSection.swift`). Each

@@ -136,7 +136,10 @@ personal builds embed a safe non-installing key).
   sound (Address Book → Alert overrides → *Message sound*) that plays on **any**
   message from that person, a private query or a channel line. Contacts without
   one fall back to the global per-event sounds in Setup → Sounds (which carry
-  the customizable defaults for own-nick mentions, private messages, etc.)
+  the customizable defaults for own-nick mentions, private messages, etc.). A
+  configurable **per-nick throttle** (Setup → Sounds, default 5s) keeps a
+  chatty contact from stuttering the sound — at most one play per contact per
+  window
 - **Query scrollback from logs** — opening a private conversation pre-loads the
   last *N* lines from that person's saved log as scrollback, framed by `── N
   lines from logs ──` / `── end of history ──` markers, so you pick up with
@@ -165,6 +168,7 @@ personal builds embed a safe non-installing key).
 
 ### Setup window (⌘,)
 
+Open it from **PurpleIRC → Settings…** (⌘,) or the toolbar gear.
 20 tabs in 6 sidebar groups (mirroring macOS System Settings), all
 persisted to `~/Library/Application Support/PurpleIRC/settings.json`:
 

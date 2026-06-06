@@ -44,8 +44,12 @@ struct PurpleIRCApp: App {
             CommandGroup(replacing: .newItem) {
                 FileMenu().environmentObject(model)
             }
-            // App menu additions: Lock Keystore + dangerous Reset Everything.
-            CommandGroup(after: .appSettings) {
+            // App menu additions: "Settings…" (this app uses a custom Setup
+            // sheet, no SwiftUI `Settings` scene, so the standard ⌘, item
+            // doesn't exist on its own), plus Lock Keystore + the dangerous
+            // Reset Everything. Folded into one group to stay within the
+            // 10-child `@CommandsBuilder` limit.
+            CommandGroup(replacing: .appSettings) {
                 AppMenuExtras().environmentObject(model)
             }
             // Edit menu — append find / line operations after the system
@@ -123,12 +127,19 @@ private struct FileMenu: View {
     }
 }
 
-/// PurpleIRC menu extras — Lock Keystore + the dangerous reset.
-/// Inserted after the system "Settings…" item so they sit with the
-/// other app-level actions.
+/// PurpleIRC menu extras — Settings…, Lock Keystore, and the dangerous reset.
+/// This group replaces the system `.appSettings` slot: the app has no SwiftUI
+/// `Settings` scene (preferences live in a custom Setup sheet), so we supply
+/// the standard "Settings…" item (⌘,) here ourselves, then the other
+/// app-level actions below it.
 private struct AppMenuExtras: View {
     @EnvironmentObject var model: ChatModel
     var body: some View {
+        Button("Settings…") {
+            model.showSetup = true
+        }
+        .keyboardShortcut(",", modifiers: [.command])
+
         Divider()
         Button("Lock Keystore") {
             model.keyStore.lock()

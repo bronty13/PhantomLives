@@ -776,6 +776,12 @@ struct AppSettings: Codable {
 
     // Sounds + theme
     var soundsEnabled: Bool = true
+    /// Minimum seconds between per-contact message sounds *for the same nick*.
+    /// A contact's message sound fires on any line they send, so without a
+    /// throttle a chatty contact in an active channel can stutter the sound.
+    /// 0 = no throttle (play every message). Per-nick, so two different
+    /// contacts can both still beep. Default 5s.
+    var contactSoundThrottleSeconds: Int = 5
     /// Canonical default sound map — single source of truth shared by the
     /// stored-property default below AND the `init(from:)` fallback, so a
     /// settings file missing the key decodes to the same defaults a fresh
@@ -949,6 +955,8 @@ struct AppSettings: Codable {
         self.dccPortRangeStart = try c.decodeIfPresent(Int.self, forKey: .dccPortRangeStart) ?? 49152
         self.dccPortRangeEnd = try c.decodeIfPresent(Int.self, forKey: .dccPortRangeEnd) ?? 49200
         self.soundsEnabled = try c.decodeIfPresent(Bool.self, forKey: .soundsEnabled) ?? true
+        self.contactSoundThrottleSeconds = max(0, min(3600,
+            try c.decodeIfPresent(Int.self, forKey: .contactSoundThrottleSeconds) ?? 5))
         self.eventSounds = try c.decodeIfPresent([String: String].self, forKey: .eventSounds)
             ?? AppSettings.defaultEventSounds
         self.themeID = try c.decodeIfPresent(String.self, forKey: .themeID) ?? "classic"
