@@ -1,0 +1,7 @@
+node_modules/
+dist/
+dist-player/
+*.local
+.DS_Store
+*.tsbuildinfo
+coverage/

@@ -1,0 +1,134 @@
+:root {
+  --brand-primary: #5b2a86;
+  --brand-secondary: #8a4fbe;
+  --brand-accent: #d98324;
+  --brand-bg: #ffffff;
+  --brand-text: #1a1a1a;
+  --brand-font: system-ui, sans-serif;
+  --radius: 14px;
+  --shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: color-mix(in srgb, var(--brand-bg) 92%, var(--brand-primary));
+  color: var(--brand-text);
+  font-family: var(--brand-font);
+  -webkit-text-size-adjust: 100%;
+}
+
+.player {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
+}
+
+.brandbar {
+  width: 100%;
+  max-width: 760px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 4px;
+}
+.brandbar img { max-height: 48px; max-width: 180px; object-fit: contain; }
+.brandbar .qname { font-weight: 700; font-size: 1.1rem; color: var(--brand-primary); }
+
+.card {
+  width: 100%;
+  max-width: 760px;
+  background: var(--brand-bg);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 28px;
+  margin-bottom: 24px;
+}
+
+h1, h2 { color: var(--brand-primary); margin-top: 0; }
+
+.rich p:first-child { margin-top: 0; }
+.rich img, .intro-media img, .intro-media video { max-width: 100%; border-radius: 10px; }
+
+.btn {
+  appearance: none;
+  border: none;
+  border-radius: 10px;
+  padding: 13px 22px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--brand-primary);
+  color: #fff;
+  min-height: 46px;
+  transition: filter 0.15s ease;
+}
+.btn:hover:not(:disabled) { filter: brightness(1.08); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn.secondary { background: transparent; color: var(--brand-primary); box-shadow: inset 0 0 0 2px var(--brand-primary); }
+.btn.accent { background: var(--brand-accent); }
+
+.btn-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+
+.meta { color: color-mix(in srgb, var(--brand-text) 60%, transparent); font-size: 0.92rem; }
+
+.timer {
+  position: sticky;
+  top: 8px;
+  align-self: flex-end;
+  background: var(--brand-primary);
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  z-index: 5;
+}
+.timer.warning { background: #c0392b; }
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 2px solid color-mix(in srgb, var(--brand-text) 14%, transparent);
+  margin-bottom: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+.choice:hover { border-color: var(--brand-secondary); }
+.choice.selected { border-color: var(--brand-primary); background: color-mix(in srgb, var(--brand-primary) 8%, transparent); }
+.choice.correct { border-color: #1e8e3e; background: rgba(30, 142, 62, 0.12); }
+.choice.incorrect { border-color: #c0392b; background: rgba(192, 57, 43, 0.1); }
+.choice input { width: 20px; height: 20px; accent-color: var(--brand-primary); }
+
+.blank-input, .short-input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 2px solid color-mix(in srgb, var(--brand-text) 16%, transparent);
+  font: inherit;
+  margin: 6px 0;
+}
+textarea.short-input { min-height: 120px; resize: vertical; }
+
+.feedback { margin-top: 18px; padding: 14px 16px; border-radius: 10px; font-weight: 600; }
+.feedback.correct { background: rgba(30, 142, 62, 0.12); color: #1e8e3e; }
+.feedback.incorrect { background: rgba(192, 57, 43, 0.1); color: #c0392b; }
+.feedback.neutral { background: color-mix(in srgb, var(--brand-secondary) 14%, transparent); color: var(--brand-primary); }
+
+.progress { height: 8px; border-radius: 999px; background: color-mix(in srgb, var(--brand-text) 12%, transparent); overflow: hidden; margin-bottom: 18px; }
+.progress > span { display: block; height: 100%; background: var(--brand-accent); transition: width 0.25s ease; }
+
+.score-big { font-size: 3rem; font-weight: 800; color: var(--brand-primary); }
+.verdict { font-size: 1.4rem; font-weight: 800; padding: 8px 18px; border-radius: 999px; display: inline-block; }
+.verdict.pass { background: rgba(30, 142, 62, 0.15); color: #1e8e3e; }
+.verdict.fail { background: rgba(192, 57, 43, 0.12); color: #c0392b; }
+
+.field-label { display: block; font-weight: 600; margin: 12px 0 4px; }
