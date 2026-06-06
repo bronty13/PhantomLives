@@ -102,6 +102,8 @@ export function makeWheel(brandingId: string, settings: GlobalSettings): Wheel {
     spinsPermitted: settings.defaultSpinsPermitted,
     soundDefaultOn: settings.defaultWheelSoundOn,
     pdfResultCount: settings.defaultPdfResultCount,
+    resultLabel: settings.defaultResultLabel,
+    spinSeconds: settings.defaultSpinSeconds,
     brandingId,
     createdAt: 0,
     updatedAt: 0,

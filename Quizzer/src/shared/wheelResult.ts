@@ -11,6 +11,8 @@ export interface WheelResultEntry {
 
 export interface WheelResultOptions {
   wheelName: string;
+  /** Caption above the winning prize (defaults to "You won"). */
+  caption?: string;
   /** Results to memorialize, newest first. The first is shown large. */
   results: WheelResultEntry[];
   colors: { primary: string; accent: string; text: string };
@@ -59,7 +61,7 @@ export function generateWheelResult(opts: WheelResultOptions): jsPDF {
   doc.setTextColor(tr, tg, tb);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(14);
-  doc.text('You spun and won', cx, 195, { align: 'center' });
+  doc.text(opts.caption?.trim() || 'You won', cx, 195, { align: 'center' });
 
   const winner = opts.results[0]?.label ?? '—';
   doc.setTextColor(ar, ag, ab);

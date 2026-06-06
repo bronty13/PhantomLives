@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import type { Branding, Wheel, WheelChoice } from '../../shared/model';
-import { WHEEL_MAX_CHOICES, WHEEL_MIN_CHOICES } from '../../shared/model';
+import {
+  DEFAULT_RESULT_LABEL,
+  DEFAULT_SPIN_SECONDS,
+  WHEEL_MAX_CHOICES,
+  WHEEL_MIN_CHOICES,
+} from '../../shared/model';
 import { resolveAsset } from '../../shared/assets';
 import { newId } from '../../shared/factory';
 import { saveWheel } from '../storage/db';
@@ -19,7 +24,12 @@ export function WheelEditor({
   onBack: () => void;
   onSaved: () => void;
 }) {
-  const [wheel, setWheel] = useState<Wheel>(initial);
+  // Backfill fields that pre-0.3.1 saved wheels may lack at runtime.
+  const [wheel, setWheel] = useState<Wheel>(() => ({
+    ...initial,
+    resultLabel: initial.resultLabel ?? DEFAULT_RESULT_LABEL,
+    spinSeconds: initial.spinSeconds || DEFAULT_SPIN_SECONDS,
+  }));
   const [deploying, setDeploying] = useState(false);
   const [showOdds, setShowOdds] = useState(() => initial.choices.some((c) => c.weight !== 1));
   const [dirty, setDirty] = useState(false);
@@ -150,6 +160,17 @@ export function WheelEditor({
             <input type="number" min={0} value={wheel.spinsPermitted}
               onChange={(e) => set('spinsPermitted', Math.max(0, +e.target.value))} />
             <span className="meta">0 = unlimited</span>
+          </label>
+          <label className="field">
+            <span className="field-label">Spin length (seconds)</span>
+            <input type="number" min={1} max={30} value={wheel.spinSeconds}
+              onChange={(e) => set('spinSeconds', Math.min(30, Math.max(1, +e.target.value)))} />
+            <span className="meta">how long the wheel spins before it stops</span>
+          </label>
+          <label className="field full">
+            <span className="field-label">Result caption (shown above the prize)</span>
+            <input value={wheel.resultLabel} placeholder={DEFAULT_RESULT_LABEL}
+              onChange={(e) => set('resultLabel', e.target.value)} />
           </label>
           <label className="field">
             <span className="field-label">PDF results to list</span>

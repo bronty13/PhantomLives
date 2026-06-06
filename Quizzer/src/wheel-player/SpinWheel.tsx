@@ -26,10 +26,38 @@ function readableText(bg: string): string {
   return hexLuminance(bg) > 0.55 ? '#1a1a1a' : '#ffffff';
 }
 
-function truncate(text: string, max: number): string {
-  if (text.length <= max) return text;
-  if (max <= 1) return '…';
-  return `${text.slice(0, max - 1).trimEnd()}…`;
+interface FittedLabel {
+  text: string;
+  fontSize: number;
+}
+
+/**
+ * Shrink the font until the label fits the available radial run; only truncate (with
+ * an ellipsis) as a last resort once we hit the minimum readable size. Returns the
+ * text + font size to draw.
+ */
+function fitLabel(
+  ctx: CanvasRenderingContext2D,
+  raw: string,
+  family: string,
+  maxFont: number,
+  minFont: number,
+  availLen: number,
+): FittedLabel {
+  let fontSize = maxFont;
+  ctx.font = `700 ${fontSize}px ${family}`;
+  while (fontSize > minFont && ctx.measureText(raw).width > availLen) {
+    fontSize -= 0.5;
+    ctx.font = `700 ${fontSize}px ${family}`;
+  }
+  let text = raw;
+  if (ctx.measureText(text).width > availLen) {
+    while (text.length > 1 && ctx.measureText(`${text}…`).width > availLen) {
+      text = text.slice(0, -1);
+    }
+    text = `${text.trimEnd()}…`;
+  }
+  return { text, fontSize };
 }
 
 export function SpinWheel({
@@ -38,6 +66,7 @@ export function SpinWheel({
   fontFamily,
   soundOn,
   canSpin,
+  spinSeconds,
   onResult,
   onSpinStart,
 }: {
@@ -46,6 +75,7 @@ export function SpinWheel({
   fontFamily: string;
   soundOn: boolean;
   canSpin: boolean;
+  spinSeconds: number;
   onResult: (index: number) => void;
   onSpinStart?: () => void;
 }) {
@@ -53,6 +83,8 @@ export function SpinWheel({
   const rotationRef = useRef(0);
   const animatingRef = useRef(false);
   const soundOnRef = useRef(soundOn);
+  // Cache fitted labels so we don't re-measure every animation frame.
+  const layoutRef = useRef<{ sig: string; items: FittedLabel[] }>({ sig: '', items: [] });
 
   useEffect(() => {
     soundOnRef.current = soundOn;
@@ -71,11 +103,23 @@ export function SpinWheel({
 
       const palette = [colors.primary, colors.secondary];
       const hub = Math.max(14, R * 0.11);
-      // Font scales down gracefully with sector count but stays readable even at 30.
-      const fontSize = Math.max(11, Math.min(24, 300 / n + 9));
-      // Labels are drawn along the radius from the rim inward, so the available run
-      // is (rim → hub). A bigger wheel + this budget fits noticeably longer text.
-      const maxChars = Math.max(8, Math.floor((R - hub - 18) / (fontSize * 0.54)));
+      // Upper font bound scales down with sector count so labels don't overlap
+      // vertically; fitLabel then shrinks each label further to fit its radial run.
+      const maxFont = Math.max(11, Math.min(26, 300 / n + 10));
+      const minFont = 7;
+      const availLen = R - 14 - hub - 4;
+
+      // Recompute fitted labels only when the text/size/font actually change.
+      const sig = `${n}|${Math.round(R)}|${fontFamily}|${choices.map((c) => c.text).join('')}`;
+      if (layoutRef.current.sig !== sig) {
+        layoutRef.current = {
+          sig,
+          items: choices.map((c, i) =>
+            fitLabel(ctx, c.text || `Option ${i + 1}`, fontFamily, maxFont, minFont, availLen),
+          ),
+        };
+      }
+      const layout = layoutRef.current.items;
 
       ctx.clearRect(0, 0, SIZE, SIZE);
       for (let i = 0; i < n; i++) {
@@ -96,16 +140,16 @@ export function SpinWheel({
         ctx.rotate(startA + step / 2);
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
-        ctx.font = `700 ${fontSize}px ${fontFamily}`;
+        const fit = layout[i] ?? { text: choices[i].text, fontSize: maxFont };
+        ctx.font = `700 ${fit.fontSize}px ${fontFamily}`;
         const textColor = readableText(fill);
-        const label = truncate(choices[i].text || `Option ${i + 1}`, maxChars);
         // Subtle contrasting outline so labels stay legible on any brand color.
         ctx.lineJoin = 'round';
-        ctx.lineWidth = Math.max(2, fontSize * 0.16);
+        ctx.lineWidth = Math.max(2, fit.fontSize * 0.16);
         ctx.strokeStyle = textColor === '#ffffff' ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.55)';
-        ctx.strokeText(label, R - 14, 0);
+        ctx.strokeText(fit.text, R - 14, 0);
         ctx.fillStyle = textColor;
-        ctx.fillText(label, R - 14, 0);
+        ctx.fillText(fit.text, R - 14, 0);
         ctx.restore();
       }
 
@@ -159,10 +203,12 @@ export function SpinWheel({
       typeof window.matchMedia === 'function' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+    const secs = Math.min(30, Math.max(1, spinSeconds || 6));
     const base = targetAngle(winner, n, 0);
     const cur = rotationRef.current;
     const curMod = ((cur % TAU) + TAU) % TAU;
-    const turns = 5 + Math.floor(Math.random() * 3); // 5..7 full turns
+    // More turns for a longer spin so the wheel keeps a lively pace, not a crawl.
+    const turns = Math.max(4, Math.round(secs * 1.4)) + Math.floor(Math.random() * 3);
     const delta = (((base - curMod) % TAU) + TAU) % TAU + turns * TAU;
     const final = cur + delta;
 
@@ -174,7 +220,7 @@ export function SpinWheel({
     }
 
     animatingRef.current = true;
-    const duration = 4200 + Math.random() * 1400;
+    const duration = secs * 1000;
     const start = performance.now();
     let prev = cur;
 
@@ -195,7 +241,7 @@ export function SpinWheel({
       }
     };
     requestAnimationFrame(frame);
-  }, [canSpin, choices, draw, finish, onSpinStart]);
+  }, [canSpin, choices, draw, finish, onSpinStart, spinSeconds]);
 
   return (
     <div className="wheel-stage">

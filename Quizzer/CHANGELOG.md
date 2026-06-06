@@ -3,6 +3,22 @@
 All notable changes to **Quizzer** are recorded here. This project follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Semantic Versioning.
 
+## 0.3.1 — 2026-06-06
+
+### Changed (Spin the Wheel refinements)
+
+- **Wheel labels auto-fit.** Each label now shrinks its font to fit its slice instead
+  of being truncated; an ellipsis is used only as a last resort at the minimum
+  readable size. The fitted sizes are cached so this isn't per-frame work.
+- **Customizable result caption.** The reveal text above the prize (and the line on
+  the PDF) is now editable per wheel — defaults to **"You won"**, with a global
+  Settings default.
+- **Customizable spin length.** New per-wheel **spin length (seconds)** (global default
+  **6s**, up from ~5s), with the turn count scaled to keep a lively pace.
+
+(New `Wheel` fields `resultLabel` / `spinSeconds` and the matching global-settings
+defaults are backfilled for any wheel saved under 0.3.0.)
+
 ## 0.3.0 — 2026-06-06
 
 ### Added

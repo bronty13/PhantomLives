@@ -67,6 +67,16 @@ export function GlobalSettingsScreen({
             onChange={(e) => set('defaultWheelDescription', e.target.value)} />
         </label>
         <label className="field">
+          <span className="field-label">Default result caption</span>
+          <input value={draft.defaultResultLabel}
+            onChange={(e) => set('defaultResultLabel', e.target.value)} />
+        </label>
+        <label className="field">
+          <span className="field-label">Default spin length (seconds)</span>
+          <input type="number" min={1} max={30} value={draft.defaultSpinSeconds}
+            onChange={(e) => set('defaultSpinSeconds', Math.min(30, Math.max(1, +e.target.value)))} />
+        </label>
+        <label className="field">
           <span className="field-label">Default spins permitted (0 = unlimited)</span>
           <input type="number" min={0} value={draft.defaultSpinsPermitted}
             onChange={(e) => set('defaultSpinsPermitted', Math.max(0, +e.target.value))} />

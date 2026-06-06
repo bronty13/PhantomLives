@@ -109,6 +109,8 @@ Fill in:
   less likely; **0 = never lands**. The slices still look equal-sized — only the odds
   change. Leave everything at 1 for a perfectly fair wheel.
 - **Number of spins permitted** — `0` means unlimited.
+- **Spin length (seconds)** — how long the wheel spins before stopping (default 6).
+- **Result caption** — the text shown above the winning prize (default *"You won"*).
 - **PDF results to list** — `1` shows just the latest win on the certificate; a bigger
   number lists that many recent spins; `0` lists the whole session.
 - **Sound on by default** — whether the wheel starts with sound on (the player can

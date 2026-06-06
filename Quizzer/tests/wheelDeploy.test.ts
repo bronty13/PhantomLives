@@ -26,6 +26,7 @@ function wheelWith(extra: Partial<Wheel> = {}): Wheel {
       { id: 'b', text: 'Gift Card', weight: 1 },
     ],
     spinsPermitted: 0, soundDefaultOn: true, pdfResultCount: 1,
+    resultLabel: 'You won', spinSeconds: 6,
     brandingId: 'b1', createdAt: 0, updatedAt: 0,
     ...extra,
   };

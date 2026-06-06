@@ -91,6 +91,7 @@ export function App({ data }: { data: WheelData }) {
     const logo = resolveAsset(branding.logo);
     const blob = wheelResultBlob({
       wheelName: wheel.name,
+      caption: resultLabel,
       results,
       colors: branding.colors,
       logoDataUri: logo && logo.startsWith('data:') ? logo : undefined,
@@ -109,6 +110,7 @@ export function App({ data }: { data: WheelData }) {
   const media = resolveAsset(wheel.media);
   const isVideo = wheel.media?.mime?.startsWith('video');
   const description = sanitizeHtml(wheel.descriptionHtml || '');
+  const resultLabel = wheel.resultLabel ?? 'You won';
 
   return (
     <div className="wheel-app" style={css.vars as CSSProperties}>
@@ -145,13 +147,14 @@ export function App({ data }: { data: WheelData }) {
           fontFamily={css.fontFamily}
           soundOn={soundOn}
           canSpin={canSpin}
+          spinSeconds={wheel.spinSeconds || 6}
           onResult={handleResult}
           onSpinStart={() => setResult(null)}
         />
 
         {result && (
           <div className="wheel-result" key={result.nonce}>
-            <div className="result-label">You won</div>
+            {resultLabel.trim() && <div className="result-label">{resultLabel}</div>}
             <div className="result-prize">{result.text}</div>
           </div>
         )}

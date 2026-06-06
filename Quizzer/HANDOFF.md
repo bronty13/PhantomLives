@@ -125,7 +125,8 @@ tests/             77 vitest suites
 - `Branding` → 5 colors, optional `logo`, `font` (`builtin` | `custom` TTF).
 - `Wheel` → name, `descriptionHtml`, optional `media`, `choices[]` (1–30, each
   `{text, weight}`; weight 0 = never lands), `spinsPermitted` (0 = unlimited),
-  `soundDefaultOn`, `pdfResultCount` (1 = latest, 0 = all), `brandingId`.
+  `soundDefaultOn`, `pdfResultCount` (1 = latest, 0 = all), `resultLabel` (reveal
+  caption), `spinSeconds` (spin length), `brandingId`.
 - Quiz deploy payload (`kind:'quiz'`): quiz with answer fields **blanked**; answers
   live only in an obfuscated `answerKey`, rejoined by question id via `resolveQuestions`.
   Wheel deploy payload (`kind:'wheel'`): the wheel verbatim — nothing hidden (choices

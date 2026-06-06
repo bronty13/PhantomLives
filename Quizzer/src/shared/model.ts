@@ -87,11 +87,15 @@ export interface GlobalSettings {
   defaultSpinsPermitted: number; // 0 (unlimited)
   defaultWheelSoundOn: boolean; // true
   defaultPdfResultCount: number; // 1 (latest only); 0 = full session history
+  defaultResultLabel: string; // "You won" — caption above the revealed prize
+  defaultSpinSeconds: number; // 6 — how long the wheel spins
 }
 
 export const DEFAULT_CORRECT_TEXT = "Correct, That's Right!";
 export const DEFAULT_INCORRECT_TEXT = 'Incorrect. Sorry That is not the Correct Answer.';
 export const DEFAULT_WHEEL_DESCRIPTION = 'Spin the Wheel for a Prize.';
+export const DEFAULT_RESULT_LABEL = 'You won';
+export const DEFAULT_SPIN_SECONDS = 6;
 
 export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
   defaultTimeLimitSec: 1800,
@@ -104,6 +108,8 @@ export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
   defaultSpinsPermitted: 0,
   defaultWheelSoundOn: true,
   defaultPdfResultCount: 1,
+  defaultResultLabel: DEFAULT_RESULT_LABEL,
+  defaultSpinSeconds: DEFAULT_SPIN_SECONDS,
 };
 
 // ---------------------------------------------------------------------------
@@ -230,6 +236,8 @@ export interface Wheel {
   spinsPermitted: number; // 0 = unlimited
   soundDefaultOn: boolean; // sound starts on unless the player toggles it off
   pdfResultCount: number; // results the PDF lists: 1 = latest only, 0 = all spins
+  resultLabel: string; // caption shown above the revealed prize (e.g. "You won")
+  spinSeconds: number; // how long the wheel spins before it stops
   brandingId: ID;
   createdAt: number;
   updatedAt: number;
