@@ -123,7 +123,7 @@ in-memory fallback (some mobile browsers restrict storage under `file://`).
 
 ## Testing strategy
 
-The risk is in the pure core and the deploy wiring, so that's where the 77 tests
+The risk is in the pure core and the deploy wiring, so that's where the 80 tests
 concentrate: every grader + edge cases, obfuscation round-trip, payload strip/restore,
 marker injection (incl. `</script>`/`<` escaping), zip assembly + asset externalization,
 bundle import/export, certificate + spin-result PDF generation, sanitization, and

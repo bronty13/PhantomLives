@@ -96,7 +96,7 @@ src/wheel-player/  deployed Spin-the-Wheel (non-graded)
   SpinWheel.tsx    canvas wheel + requestAnimationFrame spin + tick sounds
   spinMath.ts      PURE: pickWinner (weighted) / targetAngle / landedIndex / crossings
   sound.ts         Web Audio synthesized ticks + win chime (no asset files)
-  spins.ts         per-wheel spins-used count (clone of player/attempts.ts)
+  spins.ts         per-deploy spins-used count, scoped by generatedAt (à la attempts.ts)
 
 src/creator/       authoring app
   App.tsx          route shell (quizzes / edit / wheels / editWheel / branding / settings)
@@ -111,7 +111,7 @@ src/creator/       authoring app
 
 scripts/           embed-{player,wheel}.mjs, ensure-{player,wheel}.mjs,
                    restore-stubs.mjs, check-stubs.mjs
-tests/             77 vitest suites
+tests/             80 vitest suites
 ```
 
 ## Data model (essentials)
@@ -143,7 +143,7 @@ tests/             77 vitest suites
 
 `npm run dev` (creator, ensures both templates) · `npm run dev:player` /
 `npm run dev:wheel` (a player standalone + demo) · `npm run build` (the only correct
-full build) · `npm test` (77) · `npm run typecheck` · `npm run restore:stubs` /
+full build) · `npm test` (80) · `npm run typecheck` · `npm run restore:stubs` /
 `npm run check:stubs` (before committing).
 
 ## Extending — where things go

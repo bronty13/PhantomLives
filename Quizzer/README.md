@@ -28,7 +28,7 @@ Android Chrome.
 npm install          # first time only
 npm run dev          # creator dev server (also builds both player templates) → http://localhost:1500
 npm run build        # production build → dist/index.html (the creator, single file)
-npm test             # vitest (77 tests)
+npm test             # vitest (80 tests)
 npm run typecheck    # tsc --noEmit
 ```
 
