@@ -15,6 +15,13 @@ previewer for `.md` files.
 - **Share** menu — Export to PDF / HTML, Open File, Open Folder.
 - **Status bar** — word / character / line counts and reading time.
 
+## Tabs
+
+Open several documents at once in one window. Press **⌘T** for a new tab (or the
+**+** on the tab strip), and **⌘W** to close the current tab. Opening a file
+that's already open just switches to its tab. Each tab remembers its own text,
+file, view mode, and scroll position; a dot on a tab means unsaved changes.
+
 ## Editing
 
 Type in **Markdown** view; flip to **Document** view to see it rendered, with:

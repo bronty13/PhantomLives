@@ -17,10 +17,10 @@ enum EditorAction: String {
 /// Glue for the Export menu items: runs the export and surfaces the result.
 @MainActor
 enum ExportCommands {
-    static func exportHTML(state: AppState, settings: AppSettings) {
+    static func exportHTML(doc: Document, settings: AppSettings) {
         do {
             let url = try ExportService.shared.exportHTML(
-                markdown: state.text, baseName: state.title,
+                markdown: doc.text, baseName: doc.title,
                 theme: settings.theme, width: settings.readingWidth,
                 to: settings.exportDirectory)
             reveal(url)
@@ -29,9 +29,9 @@ enum ExportCommands {
         }
     }
 
-    static func exportPDF(state: AppState, settings: AppSettings) {
+    static func exportPDF(doc: Document, settings: AppSettings) {
         ExportService.shared.exportPDF(
-            markdown: state.text, baseName: state.title,
+            markdown: doc.text, baseName: doc.title,
             theme: settings.theme, width: settings.readingWidth,
             to: settings.exportDirectory) { result in
             switch result {

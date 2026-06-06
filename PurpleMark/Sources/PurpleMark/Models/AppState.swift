@@ -3,129 +3,106 @@ import PurpleMarkRenderCore
 
 enum SidebarTab: String { case outline, files }
 
-/// The single source of truth for the editor window: the current document,
-/// the opened folder, view mode, and sidebar state. One instance is shared via
-/// `@EnvironmentObject` and also reached by the AppDelegate when Finder asks the
-/// app to open a `.md` file.
+/// Window/app-scope state: the open documents (tabs) + which is active, plus
+/// the sidebar, folder, and find UI state shared across documents.
 @MainActor
 final class AppState: ObservableObject {
     static let shared = AppState()
 
-    @Published var text: String = "" {
-        didSet {
-            guard text != oldValue else { return }
-            isDirty = (text != savedText)
-            scheduleAutoSave()
-        }
-    }
-    @Published var fileURL: URL?
-    @Published var isDirty = false
+    @Published var documents: [Document]
+    @Published var activeID: Document.ID
 
-    @Published var viewMode: ViewMode = .document
     @Published var sidebarVisible = true
     @Published var sidebarTab: SidebarTab = .outline
 
     @Published var folder: URL?
     @Published var folderFiles: [URL] = []
 
-    /// Find & Replace bar visibility, and whether to open it with the replace
-    /// row expanded. The bar only operates on the Markdown (source) view, so
-    /// showing it forces `viewMode = .markdown`.
+    /// Find & Replace bar (operates on the active document's Markdown view).
     @Published var findVisible = false
     @Published var findShowReplace = false
 
-    func showFind(replace: Bool) {
-        viewMode = .markdown
-        findShowReplace = replace
-        findVisible = true
-    }
-
-    /// Last vertical scroll fraction (0…1). Carried across the Document⇄Markdown
-    /// toggle so the reading position is preserved when sync-scroll is enabled.
-    @Published var scrollFraction: Double = 0
-
-    private var savedText: String = ""
-    private let settings = AppSettings.shared
-    private var autoSaveTask: Task<Void, Never>?
-
-    var title: String { fileURL?.lastPathComponent ?? "Untitled" }
-
-    var outline: [OutlineItem] { OutlineParser.outline(from: text) }
-    var stats: DocStats { OutlineParser.stats(from: text) }
-
     init() {
-        viewMode = settings.defaultView
+        let first = Document()
+        documents = [first]
+        activeID = first.id
     }
 
-    // MARK: - Document lifecycle
+    /// The active document. Always valid — `documents` is never empty.
+    var active: Document {
+        documents.first { $0.id == activeID } ?? documents[0]
+    }
+
+    // MARK: - Tabs / documents
 
     func newDocument() {
-        text = ""
-        savedText = ""
-        fileURL = nil
-        isDirty = false
-        viewMode = settings.defaultView
+        let doc = Document()
+        documents.append(doc)
+        activeID = doc.id
     }
 
+    func activate(_ doc: Document) { activeID = doc.id }
+
     func open(_ url: URL) {
-        guard let contents = try? String(contentsOf: url, encoding: .utf8) else {
-            NSSound.beep()
+        // If the file is already open, just focus its tab.
+        if let existing = documents.first(where: { $0.fileURL?.standardizedFileURL == url.standardizedFileURL }) {
+            activeID = existing.id
             return
         }
-        savedText = contents
-        text = contents
-        fileURL = url
-        isDirty = false
-        viewMode = settings.defaultView
-        // Opening a file inside the current folder keeps the Files sidebar; if
-        // it's elsewhere and no folder is set, adopt its parent as the folder.
-        if folder == nil {
-            setFolder(url.deletingLastPathComponent())
+        guard let doc = Document(contentsOf: url) else { NSSound.beep(); return }
+        // Replace a single pristine untitled tab instead of stacking a blank one.
+        if documents.count == 1, documents[0].fileURL == nil, !documents[0].isDirty,
+           documents[0].text.isEmpty {
+            documents[0] = doc
+        } else {
+            documents.append(doc)
         }
+        activeID = doc.id
+        if folder == nil { setFolder(url.deletingLastPathComponent()) }
         NSDocumentController.shared.noteNewRecentDocumentURL(url)
     }
 
-    @discardableResult
-    func save() -> Bool {
-        guard let url = fileURL else { return saveAs() }
-        return write(to: url)
-    }
-
-    @discardableResult
-    func saveAs() -> Bool {
-        guard let url = FileService.runSavePanel(suggestedName: fileURL?.lastPathComponent ?? "Untitled.md") else {
-            return false
-        }
-        let ok = write(to: url)
-        if ok {
-            fileURL = url
-            if folder == nil { setFolder(url.deletingLastPathComponent()) }
-            NSDocumentController.shared.noteNewRecentDocumentURL(url)
-            reloadFolderFiles()
-        }
-        return ok
-    }
-
-    private func write(to url: URL) -> Bool {
-        do {
-            try text.write(to: url, atomically: true, encoding: .utf8)
-            savedText = text
-            isDirty = false
-            return true
-        } catch {
-            NSSound.beep()
-            return false
+    func closeDocument(_ doc: Document) {
+        guard let index = documents.firstIndex(where: { $0.id == doc.id }) else { return }
+        if doc.isDirty, !confirmClose(doc) { return }
+        documents.remove(at: index)
+        if documents.isEmpty {
+            newDocument()
+        } else if doc.id == activeID {
+            activeID = documents[min(index, documents.count - 1)].id
         }
     }
 
-    private func scheduleAutoSave() {
-        autoSaveTask?.cancel()
-        guard settings.autoSave, fileURL != nil else { return }
-        autoSaveTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 800_000_000) // 0.8s debounce
-            guard !Task.isCancelled else { return }
-            await MainActor.run { _ = self?.save() }
+    func closeActiveDocument() { closeDocument(active) }
+
+    private func confirmClose(_ doc: Document) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "Close “\(doc.title)” without saving?"
+        alert.informativeText = "It has unsaved changes."
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Discard")
+        alert.addButton(withTitle: "Cancel")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:  return doc.save()
+        case .alertSecondButtonReturn: return true
+        default:                       return false
         }
+    }
+
+    // MARK: - Convenience forwarding to the active document
+
+    @discardableResult func save() -> Bool { active.save() }
+    @discardableResult func saveAs() -> Bool { active.saveAs() }
+
+    func openDialog() {
+        guard let url = FileService.runOpenPanel() else { return }
+        open(url)
+    }
+
+    func showFind(replace: Bool) {
+        active.viewMode = .markdown
+        findShowReplace = replace
+        findVisible = true
     }
 
     // MARK: - Folder browsing
@@ -143,12 +120,5 @@ final class AppState: ObservableObject {
     func reloadFolderFiles() {
         guard let folder else { folderFiles = []; return }
         folderFiles = FileService.markdownFiles(in: folder)
-    }
-
-    // MARK: - Open dialog
-
-    func openDialog() {
-        guard let url = FileService.runOpenPanel() else { return }
-        open(url)
     }
 }

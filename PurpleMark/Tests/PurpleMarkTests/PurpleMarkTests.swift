@@ -258,6 +258,64 @@ final class FindControllerTests: XCTestCase {
     }
 }
 
+final class AppStateTabTests: XCTestCase {
+    private func tempMarkdown(_ body: String) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pm-\(UUID()).md")
+        try body.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
+    @MainActor
+    func testOpenReplacesPristineUntitledThenDedupes() throws {
+        let state = AppState()
+        XCTAssertEqual(state.documents.count, 1)
+        XCTAssertNil(state.active.fileURL)
+
+        let url = try tempMarkdown("# A")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        state.open(url)
+        XCTAssertEqual(state.documents.count, 1, "pristine untitled tab is replaced, not stacked")
+        XCTAssertEqual(state.active.fileURL?.lastPathComponent, url.lastPathComponent)
+
+        state.open(url)
+        XCTAssertEqual(state.documents.count, 1, "re-opening the same file focuses its tab")
+    }
+
+    @MainActor
+    func testNewAndOpenStackTabs() throws {
+        let state = AppState()
+        let a = try tempMarkdown("# A")
+        let b = try tempMarkdown("# B")
+        defer { try? FileManager.default.removeItem(at: a); try? FileManager.default.removeItem(at: b) }
+
+        state.open(a)            // replaces pristine → 1
+        state.newDocument()      // → 2 (untitled active)
+        state.open(b)            // not pristine-single → append → 3
+        XCTAssertEqual(state.documents.count, 3)
+        XCTAssertEqual(state.active.fileURL?.lastPathComponent, b.lastPathComponent)
+    }
+
+    @MainActor
+    func testCloseActivatesNeighborAndNeverEmpties() throws {
+        let state = AppState()
+        state.newDocument()
+        state.newDocument()
+        XCTAssertEqual(state.documents.count, 3)
+
+        let active = state.active
+        state.closeDocument(active)       // non-dirty → no prompt
+        XCTAssertEqual(state.documents.count, 2)
+        XCTAssertNotEqual(state.activeID, active.id)
+
+        state.closeActiveDocument()
+        state.closeActiveDocument()       // closing the last replaces with a fresh untitled
+        XCTAssertEqual(state.documents.count, 1)
+        XCTAssertNil(state.active.fileURL)
+    }
+}
+
 final class FileServiceTests: XCTestCase {
     func testMarkdownFilesFiltersAndSorts() throws {
         let fm = FileManager.default

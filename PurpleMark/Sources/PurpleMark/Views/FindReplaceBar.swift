@@ -5,6 +5,7 @@ import SwiftUI
 struct FindReplaceBar: View {
     @EnvironmentObject var state: AppState
     @ObservedObject var find: FindController
+    @ObservedObject var doc: Document
     @FocusState private var focusedField: Field?
 
     private enum Field { case find, replace }
@@ -27,7 +28,7 @@ struct FindReplaceBar: View {
         .onChange(of: find.query) { _, _ in recompute(); if find.hasMatches { find.selectCurrent() } }
         .onChange(of: find.useRegex) { _, _ in recompute() }
         .onChange(of: find.caseSensitive) { _, _ in recompute() }
-        .onChange(of: state.text) { _, _ in recompute() }
+        .onChange(of: doc.text) { _, _ in recompute() }
     }
 
     private var findRow: some View {
@@ -99,5 +100,5 @@ struct FindReplaceBar: View {
         return "\(find.currentIndex + 1) of \(find.matchCount)"
     }
 
-    private func recompute() { find.recompute(in: state.text) }
+    private func recompute() { find.recompute(in: doc.text) }
 }

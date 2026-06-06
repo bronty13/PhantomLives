@@ -7,7 +7,10 @@ struct PurpleMarkApp: App {
     @StateObject private var settings = AppSettings.shared
 
     var body: some Scene {
-        WindowGroup {
+        // A single Window (not WindowGroup) — PurpleMark is a single-window app;
+        // multiple documents live in in-app tabs, so we never want SwiftUI to
+        // spawn extra windows for new/opened files.
+        Window("PurpleMark", id: "main") {
             ContentView()
                 .environmentObject(state)
                 .environmentObject(settings)
@@ -35,6 +38,8 @@ struct PurpleMarkApp: App {
         CommandGroup(replacing: .newItem) {
             Button("New") { state.newDocument() }
                 .keyboardShortcut("n")
+            Button("New Tab") { state.newDocument() }
+                .keyboardShortcut("t")
             Button("Open…") { state.openDialog() }
                 .keyboardShortcut("o")
             Button("Open Folder…") { state.openFolderDialog() }
@@ -45,6 +50,9 @@ struct PurpleMarkApp: App {
                     Button(url.lastPathComponent) { state.open(url) }
                 }
             }
+            Divider()
+            Button("Close Tab") { state.closeActiveDocument() }
+                .keyboardShortcut("w")
         }
         CommandGroup(replacing: .saveItem) {
             Button("Save") { _ = state.save() }
@@ -52,14 +60,14 @@ struct PurpleMarkApp: App {
             Button("Save As…") { _ = state.saveAs() }
                 .keyboardShortcut("s", modifiers: [.command, .shift])
             Divider()
-            Button("Export to PDF…") { ExportCommands.exportPDF(state: state, settings: settings) }
-            Button("Export to HTML…") { ExportCommands.exportHTML(state: state, settings: settings) }
+            Button("Export to PDF…") { ExportCommands.exportPDF(doc: state.active, settings: settings) }
+            Button("Export to HTML…") { ExportCommands.exportHTML(doc: state.active, settings: settings) }
         }
         // View
         CommandGroup(after: .toolbar) {
-            Button("Show Document") { state.viewMode = .document }
+            Button("Show Document") { state.active.viewMode = .document }
                 .keyboardShortcut("1", modifiers: .command)
-            Button("Show Markdown Source") { state.viewMode = .markdown }
+            Button("Show Markdown Source") { state.active.viewMode = .markdown }
                 .keyboardShortcut("2", modifiers: .command)
             Button(state.sidebarVisible ? "Hide Sidebar" : "Show Sidebar") {
                 state.sidebarVisible.toggle()

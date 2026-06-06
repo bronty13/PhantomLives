@@ -3,6 +3,7 @@ import SwiftUI
 /// The segmented Outline | Files sidebar. Outline (default) is the live TOC of
 /// the current document; Files browses the opened folder's markdown files.
 struct SidebarView: View {
+    @ObservedObject var doc: Document
     @EnvironmentObject var state: AppState
     @EnvironmentObject var settings: AppSettings
 
@@ -18,7 +19,7 @@ struct SidebarView: View {
             Divider()
 
             switch state.sidebarTab {
-            case .outline: OutlineList()
+            case .outline: OutlineList(doc: doc)
             case .files:   FileList()
             }
         }
@@ -27,10 +28,10 @@ struct SidebarView: View {
 
 /// Live table-of-contents with colored heading-level badges.
 private struct OutlineList: View {
-    @EnvironmentObject var state: AppState
+    @ObservedObject var doc: Document
 
     var body: some View {
-        let items = state.outline
+        let items = doc.outline
         if items.isEmpty {
             placeholder("No headings yet.\nAdd a # heading to build the outline.")
         } else {
@@ -63,8 +64,8 @@ private struct OutlineList: View {
     }
 
     private func jump(to item: OutlineItem) {
-        let totalLines = max(1, state.stats.lines - 1)
-        state.scrollFraction = max(0, min(1, Double(item.line) / Double(totalLines)))
+        let totalLines = max(1, doc.stats.lines - 1)
+        doc.scrollFraction = max(0, min(1, Double(item.line) / Double(totalLines)))
     }
 
     private func badgeColor(_ level: Int) -> Color {
@@ -132,7 +133,7 @@ private struct FileList: View {
     }
 
     private func isCurrent(_ url: URL) -> Bool {
-        state.fileURL?.standardizedFileURL == url.standardizedFileURL
+        state.active.fileURL?.standardizedFileURL == url.standardizedFileURL
     }
 }
 

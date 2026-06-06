@@ -4,16 +4,16 @@ import SwiftUI
 /// matching the OpenMark screenshots (`342 words · 2191 characters · 43 lines ·
 /// 2 min read`).
 struct StatusBar: View {
-    @EnvironmentObject var state: AppState
+    @ObservedObject var doc: Document
 
     var body: some View {
-        let s = state.stats
+        let s = doc.stats
         HStack(spacing: 6) {
             Text(parts(s))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
-            if state.isDirty {
+            if doc.isDirty {
                 Text("Edited")
                     .font(.caption)
                     .foregroundStyle(.secondary)

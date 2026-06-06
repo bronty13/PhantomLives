@@ -2,6 +2,20 @@
 
 All notable changes to PurpleMark are documented here.
 
+## [1.0.4] - 2026-06-05
+
+### Added
+- **Multiple documents in tabs** — open several `.md` files at once in a single
+  window. A tab strip appears when more than one document is open, with a `+` to
+  add tabs, per-tab dirty indicators, and a close `×`. **⌘T** new tab, **⌘W**
+  close tab; opening an already-open file focuses its tab. Each tab keeps its own
+  text, file, view mode, and scroll position.
+
+### Changed
+- The app now uses a single `Window` scene (not `WindowGroup`) — documents live
+  in in-app tabs, so the app no longer spawns extra OS windows for new/opened
+  files. Per-document state moved into a new `Document` model.
+
 ## [1.0.3] - 2026-06-05
 
 ### Added

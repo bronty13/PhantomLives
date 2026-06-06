@@ -1,10 +1,26 @@
 import SwiftUI
 import PurpleMarkRenderCore
 
-/// Root layout: a fixed-width sidebar (Outline | Files) + the single-pane editor
-/// + a status bar, with the OpenMark-style toolbar. Uses a manual `HStack`
-/// rather than `NavigationSplitView` per docs/sidebar-layout.md.
+/// Root: an optional tab bar (when more than one document is open) above the
+/// active document's window.
 struct ContentView: View {
+    @EnvironmentObject var state: AppState
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if state.documents.count > 1 {
+                TabBar()
+                Divider()
+            }
+            DocumentWindow(doc: state.active)
+        }
+    }
+}
+
+/// The editor layout for one document: fixed-width sidebar (Outline | Files) +
+/// the single-pane editor + status bar, with the OpenMark-style toolbar.
+struct DocumentWindow: View {
+    @ObservedObject var doc: Document
     @EnvironmentObject var state: AppState
     @EnvironmentObject var settings: AppSettings
     @ObservedObject private var find = FindController.shared
@@ -15,7 +31,7 @@ struct ContentView: View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 if state.sidebarVisible && !settings.zenMode {
-                    SidebarView()
+                    SidebarView(doc: doc)
                         .frame(width: sidebarWidth, alignment: .leading)
                         .clipped()
                         .background(.ultraThinMaterial)
@@ -23,21 +39,21 @@ struct ContentView: View {
                 }
                 VStack(spacing: 0) {
                     if state.findVisible {
-                        FindReplaceBar(find: find)
+                        FindReplaceBar(find: find, doc: doc)
                         Divider()
                     }
-                    EditorPane()
+                    EditorPane(doc: doc)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
             if !settings.zenMode {
                 Divider()
-                StatusBar()
+                StatusBar(doc: doc)
             }
         }
         .toolbar(settings.zenMode ? .hidden : .visible, for: .windowToolbar)
         .toolbar { toolbarContent }
-        .navigationTitle(state.title)
+        .navigationTitle(doc.title)
     }
 
     @ToolbarContentBuilder
@@ -50,7 +66,7 @@ struct ContentView: View {
             }
             .help("Toggle Sidebar (⌃⌘S)")
 
-            Picker("View", selection: $state.viewMode) {
+            Picker("View", selection: $doc.viewMode) {
                 Image(systemName: "eye").tag(ViewMode.document)
                 Image(systemName: "chevron.left.forwardslash.chevron.right").tag(ViewMode.markdown)
             }
@@ -61,15 +77,14 @@ struct ContentView: View {
 
         ToolbarItem(placement: .principal) {
             HStack(spacing: 6) {
-                Text(state.title).fontWeight(.semibold)
-                if state.isDirty {
+                Text(doc.title).fontWeight(.semibold)
+                if doc.isDirty {
                     Circle().fill(.secondary).frame(width: 6, height: 6)
                 }
             }
         }
 
         ToolbarItemGroup(placement: .primaryAction) {
-            // Inline formatting (B / I / S)
             Button { EditorAction.bold.post() } label: { Image(systemName: "bold") }
                 .help("Bold (⌘B)")
             Button { EditorAction.italic.post() } label: { Image(systemName: "italic") }
@@ -77,7 +92,6 @@ struct ContentView: View {
             Button { EditorAction.strikethrough.post() } label: { Image(systemName: "strikethrough") }
                 .help("Strikethrough")
 
-            // Text-size menu (AA)
             Menu {
                 Button("Increase Text Size") { settings.fontSize = min(24, settings.fontSize + 1) }
                 Button("Decrease Text Size") { settings.fontSize = max(12, settings.fontSize - 1) }
@@ -95,7 +109,6 @@ struct ContentView: View {
             }
             .help("Text size, theme, and width")
 
-            // Block formatting
             Button { EditorAction.unorderedList.post() } label: { Image(systemName: "list.bullet") }
                 .help("Bulleted List")
             Button { EditorAction.orderedList.post() } label: { Image(systemName: "list.number") }
@@ -107,10 +120,9 @@ struct ContentView: View {
             Button { EditorAction.link.post() } label: { Image(systemName: "link") }
                 .help("Link (⌘K)")
 
-            // Share / Export
             Menu {
-                Button("Export to PDF…") { ExportCommands.exportPDF(state: state, settings: settings) }
-                Button("Export to HTML…") { ExportCommands.exportHTML(state: state, settings: settings) }
+                Button("Export to PDF…") { ExportCommands.exportPDF(doc: doc, settings: settings) }
+                Button("Export to HTML…") { ExportCommands.exportHTML(doc: doc, settings: settings) }
                 Divider()
                 Button("Open File…") { state.openDialog() }
                 Button("Open Folder…") { state.openFolderDialog() }
@@ -122,28 +134,28 @@ struct ContentView: View {
     }
 }
 
-/// The single editor pane — Document (rendered) or Markdown (source). Scroll
-/// position is carried across the toggle when sync-scroll is enabled.
+/// The single editor pane for a document — Document (rendered) or Markdown
+/// (source). Scroll position carries across the toggle.
 private struct EditorPane: View {
-    @EnvironmentObject var state: AppState
+    @ObservedObject var doc: Document
     @EnvironmentObject var settings: AppSettings
 
     var body: some View {
         Group {
-            switch state.viewMode {
+            switch doc.viewMode {
             case .document:
                 MarkdownWebView(
-                    markdown: state.text,
+                    markdown: doc.text,
                     theme: settings.theme,
                     width: settings.readingWidth,
-                    onScroll: { f in if settings.syncScroll { state.scrollFraction = f } },
-                    scrollTo: state.scrollFraction)
+                    onScroll: { f in if settings.syncScroll { doc.scrollFraction = f } },
+                    scrollTo: doc.scrollFraction)
             case .markdown:
                 SourceTextView(
-                    text: $state.text,
+                    text: $doc.text,
                     settings: settings,
-                    onScroll: { f in if settings.syncScroll { state.scrollFraction = f } },
-                    scrollTo: state.scrollFraction)
+                    onScroll: { f in if settings.syncScroll { doc.scrollFraction = f } },
+                    scrollTo: doc.scrollFraction)
             }
         }
     }
