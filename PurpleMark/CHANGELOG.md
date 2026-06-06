@@ -2,6 +2,23 @@
 
 All notable changes to PurpleMark are documented here.
 
+## [1.0.5] - 2026-06-05
+
+### Added
+- **Custom theme editor** — create your own Document-view themes. Settings →
+  Appearance now shows all themes (the four built-ins + your custom ones) as
+  selectable swatches, with **New Custom Theme…**, **Edit…**, and **Delete**. The
+  editor has color pickers for all nine theme colors (background, text, muted,
+  links, rules, code/pre backgrounds, table stripe), a dark/light toggle (which
+  also sets the Mermaid diagram theme), and a live preview. Custom themes persist
+  to `~/Library/Application Support/PurpleMark/themes.json` and apply everywhere
+  the built-ins do (Document view + PDF/HTML export).
+
+### Changed
+- Theming is now unified through a `ThemeColors` model applied as inline CSS
+  variables (`PM.setThemeVars`), so built-in and custom themes share one render
+  path. `RenderCore.standaloneHTML` and `MarkdownWebView` take `ThemeColors`.
+
 ## [1.0.4] - 2026-06-05
 
 ### Added

@@ -79,10 +79,9 @@ final class AppSettings: ObservableObject {
 
     // MARK: Typed accessors
 
-    var theme: RenderTheme {
-        get { RenderTheme(rawValue: themeRaw) ?? .default }
-        set { themeRaw = newValue.rawValue }
-    }
+    // The selected theme is stored in `themeRaw` as a ThemeStore selection id
+    // (a built-in RenderTheme raw value or "custom:<uuid>"); resolve it via
+    // ThemeStore.colors(forID:).
     var defaultView: ViewMode {
         get { ViewMode(rawValue: defaultViewRaw) ?? .document }
         set { defaultViewRaw = newValue.rawValue }

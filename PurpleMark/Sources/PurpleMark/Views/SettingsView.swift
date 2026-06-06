@@ -6,6 +6,8 @@ import PurpleMarkRenderCore
 /// default-handler, export-location, and backup controls.
 struct SettingsView: View {
     @EnvironmentObject var settings: AppSettings
+    @EnvironmentObject var themes: ThemeStore
+    @State private var editSession: ThemeEditSession?
 
     var body: some View {
         Form {
@@ -19,7 +21,12 @@ struct SettingsView: View {
             BackupSection(settings: settings)
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 640)
+        .frame(width: 540, height: 640)
+        .sheet(item: $editSession) { session in
+            ThemeEditorView(session: session)
+                .environmentObject(themes)
+                .environmentObject(settings)
+        }
     }
 
     // MARK: General
@@ -42,13 +49,32 @@ struct SettingsView: View {
         Section("Appearance") {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Theme").font(.subheadline)
-                HStack(spacing: 10) {
-                    ForEach(RenderTheme.allCases, id: \.self) { theme in
-                        ThemeSwatch(theme: theme, selected: settings.theme == theme) {
-                            settings.theme = theme
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 90), spacing: 10)], spacing: 10) {
+                    ForEach(themes.allOptions) { option in
+                        ThemeSwatch(name: option.name,
+                                    colors: themes.colors(forID: option.id),
+                                    selected: settings.themeRaw == option.id) {
+                            settings.themeRaw = option.id
                         }
                     }
                 }
+                HStack {
+                    Button("New Custom Theme…") {
+                        let base = themes.colors(forID: settings.themeRaw)
+                        editSession = ThemeEditSession(
+                            theme: CustomTheme(name: "My Theme", colors: base), isNew: true)
+                    }
+                    if let custom = themes.customTheme(forID: settings.themeRaw) {
+                        Button("Edit…") {
+                            editSession = ThemeEditSession(theme: custom, isNew: false)
+                        }
+                        Button("Delete", role: .destructive) {
+                            themes.deleteCustom(custom.id)
+                            settings.themeRaw = RenderTheme.default.rawValue
+                        }
+                    }
+                }
+                .font(.callout)
             }
             Picker("Default view", selection: Binding(
                 get: { settings.defaultView }, set: { settings.defaultView = $0 })) {
@@ -183,53 +209,6 @@ struct SettingsView: View {
                 Button("Reset to Default") { settings.exportDirectoryPath = "" }
                     .disabled(settings.exportDirectoryPath.isEmpty)
             }
-        }
-    }
-}
-
-/// A selectable theme swatch card.
-private struct ThemeSwatch: View {
-    let theme: RenderTheme
-    let selected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(background)
-                    .frame(width: 80, height: 52)
-                    .overlay(
-                        VStack(alignment: .leading, spacing: 4) {
-                            Capsule().fill(accent).frame(width: 36, height: 4)
-                            Capsule().fill(.white.opacity(0.5)).frame(width: 48, height: 3)
-                            Capsule().fill(.white.opacity(0.35)).frame(width: 30, height: 3)
-                        }
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(selected ? Color.accentColor : .clear, lineWidth: 2))
-                Text(theme.displayName).font(.caption2)
-                    .foregroundStyle(selected ? .primary : .secondary)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var background: Color {
-        switch theme {
-        case .default:   return Color(red: 0.118, green: 0.118, blue: 0.122)
-        case .nord:      return Color(red: 0.180, green: 0.204, blue: 0.251)
-        case .solarized: return Color(red: 0.0, green: 0.169, blue: 0.212)
-        case .oneDark:   return Color(red: 0.157, green: 0.173, blue: 0.204)
-        }
-    }
-    private var accent: Color {
-        switch theme {
-        case .default:   return Color(red: 0.43, green: 0.66, blue: 0.99)
-        case .nord:      return Color(red: 0.53, green: 0.75, blue: 0.82)
-        case .solarized: return Color(red: 0.15, green: 0.55, blue: 0.82)
-        case .oneDark:   return Color(red: 0.38, green: 0.69, blue: 0.94)
         }
     }
 }

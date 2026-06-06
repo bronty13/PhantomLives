@@ -66,8 +66,12 @@ diagrams and math are preserved in both formats; the HTML is fully self-containe
 ## Settings
 
 - **General** — Zen mode, word wrap, auto-save.
-- **Appearance** — theme (Default / Nord / Solarized / One Dark), default view,
-  reading width, editor contrast.
+- **Appearance** — theme, default view, reading width, editor contrast. Pick from
+  the four built-in themes (Default / Nord / Solarized / One Dark) or **make your
+  own**: click **New Custom Theme…** to open the theme editor, set each color with
+  a color picker (with a live preview), name it, and Save. Custom themes appear
+  alongside the built-ins and can be edited or deleted; they apply to the Document
+  view and to PDF/HTML exports.
 - **Editor** — font size, editor font (including accessibility fonts), line
   numbers, sync scroll, auto-close brackets & continue lists, spell check, tab
   width.

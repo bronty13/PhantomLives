@@ -39,14 +39,12 @@
     };
 
     let mermaidReady = false;
+    window.__PM_MERMAID_THEME__ = 'dark';
     function initMermaid() {
       if (mermaidReady || !window.mermaid) return;
-      const dark = document.body.className.indexOf('theme-') !== -1 &&
-        document.body.classList.contains('theme-default') === false
-        ? 'dark' : 'dark';
       window.mermaid.initialize({
         startOnLoad: false,
-        theme: 'dark',
+        theme: window.__PM_MERMAID_THEME__ || 'dark',
         securityLevel: 'loose',
         fontFamily: getComputedStyle(document.body).fontFamily,
       });
@@ -101,6 +99,23 @@
           if (c.indexOf('width-') === 0) document.body.classList.remove(c);
         });
         document.body.classList.add('width-' + (valid.indexOf(name) !== -1 ? name : 'default'));
+      },
+      // Apply an arbitrary set of theme colors as inline CSS variables. This is
+      // the unified path for both built-in and custom themes.
+      setThemeVars: function (v) {
+        document.body.classList.forEach(function (c) {
+          if (c.indexOf('theme-') === 0) document.body.classList.remove(c);
+        });
+        const b = document.body.style;
+        if (v.background) b.background = v.background;
+        if (v.color) b.color = v.color;
+        const map = {
+          muted: '--pm-muted', link: '--pm-link', rule: '--pm-rule',
+          ruleStrong: '--pm-rule-strong', codeBg: '--pm-code-bg',
+          preBg: '--pm-pre-bg', stripe: '--pm-stripe',
+        };
+        for (const k in map) { if (v[k]) b.setProperty(map[k], v[k]); }
+        if (v.mermaid) window.__PM_MERMAID_THEME__ = v.mermaid;
       },
     };
 

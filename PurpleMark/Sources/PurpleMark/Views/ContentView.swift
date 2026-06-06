@@ -23,6 +23,7 @@ struct DocumentWindow: View {
     @ObservedObject var doc: Document
     @EnvironmentObject var state: AppState
     @EnvironmentObject var settings: AppSettings
+    @EnvironmentObject var themes: ThemeStore
     @ObservedObject private var find = FindController.shared
 
     private let sidebarWidth: CGFloat = 248
@@ -97,8 +98,8 @@ struct DocumentWindow: View {
                 Button("Decrease Text Size") { settings.fontSize = max(12, settings.fontSize - 1) }
                 Divider()
                 Picker("Theme", selection: Binding(
-                    get: { settings.theme }, set: { settings.theme = $0 })) {
-                    ForEach(RenderTheme.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                    get: { settings.themeRaw }, set: { settings.themeRaw = $0 })) {
+                    ForEach(themes.allOptions) { Text($0.name).tag($0.id) }
                 }
                 Picker("Reading Width", selection: Binding(
                     get: { settings.readingWidth }, set: { settings.readingWidth = $0 })) {
@@ -139,6 +140,7 @@ struct DocumentWindow: View {
 private struct EditorPane: View {
     @ObservedObject var doc: Document
     @EnvironmentObject var settings: AppSettings
+    @EnvironmentObject var themes: ThemeStore
 
     var body: some View {
         Group {
@@ -146,7 +148,7 @@ private struct EditorPane: View {
             case .document:
                 MarkdownWebView(
                     markdown: doc.text,
-                    theme: settings.theme,
+                    colors: themes.colors(forID: settings.themeRaw),
                     width: settings.readingWidth,
                     onScroll: { f in if settings.syncScroll { doc.scrollFraction = f } },
                     scrollTo: doc.scrollFraction)

@@ -21,7 +21,8 @@ enum ExportCommands {
         do {
             let url = try ExportService.shared.exportHTML(
                 markdown: doc.text, baseName: doc.title,
-                theme: settings.theme, width: settings.readingWidth,
+                colors: ThemeStore.shared.colors(forID: settings.themeRaw),
+                width: settings.readingWidth,
                 to: settings.exportDirectory)
             reveal(url)
         } catch {
@@ -32,7 +33,8 @@ enum ExportCommands {
     static func exportPDF(doc: Document, settings: AppSettings) {
         ExportService.shared.exportPDF(
             markdown: doc.text, baseName: doc.title,
-            theme: settings.theme, width: settings.readingWidth,
+            colors: ThemeStore.shared.colors(forID: settings.themeRaw),
+            width: settings.readingWidth,
             to: settings.exportDirectory) { result in
             switch result {
             case .success(let url): reveal(url)

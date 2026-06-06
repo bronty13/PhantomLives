@@ -52,9 +52,10 @@ final class OutlineParserTests: XCTestCase {
 
 final class RenderCoreTests: XCTestCase {
     func testStandaloneHTMLEmbedsMarkdownAndLibraries() {
-        let html = RenderCore.standaloneHTML(markdown: "# Hello PurpleMark", theme: .nord, width: .wide)
+        let html = RenderCore.standaloneHTML(markdown: "# Hello PurpleMark",
+                                             colors: .builtin(.nord), width: .wide)
         XCTAssertTrue(html.contains("# Hello PurpleMark"), "markdown should be embedded")
-        XCTAssertTrue(html.contains("theme-nord"), "theme class should be applied")
+        XCTAssertTrue(html.contains("#2e3440"), "the Nord background should be inlined on the body")
         XCTAssertTrue(html.contains("width-wide"), "reading-width class should be applied")
         XCTAssertTrue(html.contains("markdownit"), "markdown-it should be inlined")
         XCTAssertTrue(html.contains("mermaid"), "mermaid should be inlined")
@@ -62,7 +63,7 @@ final class RenderCoreTests: XCTestCase {
     }
 
     func testStandaloneHTMLInlinesFonts() {
-        let html = RenderCore.standaloneHTML(markdown: "x", theme: .default, width: .default)
+        let html = RenderCore.standaloneHTML(markdown: "x", colors: .builtin(.default), width: .default)
         XCTAssertTrue(html.contains("data:font/woff2;base64,"),
                       "KaTeX fonts should be base64-inlined for offline rendering")
     }
@@ -184,7 +185,7 @@ final class ExportServiceTests: XCTestCase {
 
         let url = try ExportService.shared.exportHTML(
             markdown: "# Exported\n\nBody text.",
-            baseName: "Notes.md", theme: .default, width: .default, to: dir)
+            baseName: "Notes.md", colors: .builtin(.default), width: .default, to: dir)
 
         XCTAssertEqual(url.pathExtension, "html")
         XCTAssertEqual(url.lastPathComponent, "Notes.html")
@@ -255,6 +256,57 @@ final class FindControllerTests: XCTestCase {
         // "aa" in "aaaa" → non-overlapping matches at 0 and 2.
         let ranges = FindController.findMatches(query: "aa", in: "aaaa", regex: false, caseSensitive: false)
         XCTAssertEqual(ranges.map(\.location), [0, 2])
+    }
+}
+
+final class ThemeColorsTests: XCTestCase {
+    func testBuiltinsAreDark() {
+        for theme in RenderTheme.allCases {
+            XCTAssertTrue(ThemeColors.builtin(theme).isDark)
+        }
+        XCTAssertFalse(ThemeColors.light.isDark)
+    }
+
+    func testCodableRoundTrip() throws {
+        let original = ThemeColors.builtin(.solarized)
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(ThemeColors.self, from: data)
+        XCTAssertEqual(original, decoded)
+    }
+
+    func testJSObjectAndInlineStyleContainColors() {
+        let c = ThemeColors.builtin(.default)
+        let js = c.jsObjectLiteral()
+        XCTAssertTrue(js.contains("\"background\""))
+        XCTAssertTrue(js.contains(c.link))
+        XCTAssertTrue(js.contains("\"mermaid\":\"dark\""))
+        let style = c.inlineBodyStyle()
+        XCTAssertTrue(style.contains("--pm-link:\(c.link)"))
+        XCTAssertTrue(style.contains("background:\(c.background)"))
+    }
+}
+
+final class ThemeStoreTests: XCTestCase {
+    @MainActor
+    func testBuiltinResolution() {
+        let store = ThemeStore()
+        XCTAssertEqual(store.colors(forID: "nord"), .builtin(.nord))
+        XCTAssertEqual(store.colors(forID: "bogus"), .builtin(.default))
+        XCTAssertEqual(store.name(forID: "one-dark"), "One Dark")
+    }
+
+    @MainActor
+    func testCustomAddResolveDelete() {
+        let store = ThemeStore()
+        let before = store.customThemes.count
+        let id = store.addCustom(name: "Sunset", colors: .light)
+        XCTAssertTrue(id.hasPrefix("custom:"))
+        XCTAssertEqual(store.colors(forID: id), .light)
+        XCTAssertEqual(store.name(forID: id), "Sunset")
+        let uuid = store.customTheme(forID: id)!.id
+        store.deleteCustom(uuid)
+        XCTAssertEqual(store.customThemes.count, before)
+        XCTAssertEqual(store.colors(forID: id), .builtin(.default)) // falls back after delete
     }
 }
 

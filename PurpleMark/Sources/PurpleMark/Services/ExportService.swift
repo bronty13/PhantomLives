@@ -28,10 +28,10 @@ final class ExportService {
     /// Writes a portable `.html` file and returns its URL.
     @discardableResult
     func exportHTML(markdown: String, baseName: String,
-                    theme: RenderTheme, width: ReadingWidth,
+                    colors: ThemeColors, width: ReadingWidth,
                     to directory: URL) throws -> URL {
         try ensureDirectory(directory)
-        let html = RenderCore.standaloneHTML(markdown: markdown, theme: theme, width: width)
+        let html = RenderCore.standaloneHTML(markdown: markdown, colors: colors, width: width)
         let url = outputURL(baseName: baseName, ext: "html", in: directory)
         do {
             try html.write(to: url, atomically: true, encoding: .utf8)
@@ -44,13 +44,13 @@ final class ExportService {
     /// Renders the document in an offscreen web view and writes a PDF. The
     /// completion handler runs on the main actor.
     func exportPDF(markdown: String, baseName: String,
-                   theme: RenderTheme, width: ReadingWidth,
+                   colors: ThemeColors, width: ReadingWidth,
                    to directory: URL,
                    completion: @escaping (Result<URL, Error>) -> Void) {
         do { try ensureDirectory(directory) }
         catch { completion(.failure(ExportError.write(error))); return }
 
-        let html = RenderCore.standaloneHTML(markdown: markdown, theme: theme, width: width)
+        let html = RenderCore.standaloneHTML(markdown: markdown, colors: colors, width: width)
         let url = outputURL(baseName: baseName, ext: "pdf", in: directory)
 
         // An offscreen window gives the web view a real size so layout (and

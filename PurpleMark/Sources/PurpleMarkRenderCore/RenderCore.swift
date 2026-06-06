@@ -65,7 +65,7 @@ public enum RenderCore {
     /// inlined — no external references, safe to write to disk or hand to a
     /// Quick Look preview. Renders entirely offline.
     public static func standaloneHTML(markdown: String,
-                                      theme: RenderTheme = .default,
+                                      colors: ThemeColors = .builtin(.default),
                                       width: ReadingWidth = .default) -> String {
         let styles = readWeb("styles.css")
         let katexCSS = inlinedKatexCSS()
@@ -85,8 +85,9 @@ public enum RenderCore {
         <style>\(katexCSS)</style>
         <style>\(styles)</style>
         </head>
-        <body class="theme-\(theme.rawValue) width-\(width.rawValue)">
+        <body class="width-\(width.rawValue)" style="\(colors.inlineBodyStyle())">
         <div id="content"></div>
+        <script>window.__PM_MERMAID_THEME__ = "\(colors.isDark ? "dark" : "default")";</script>
         <script>\(markdownIt)</script>
         <script>\(mermaid)</script>
         <script>\(katexJS)</script>

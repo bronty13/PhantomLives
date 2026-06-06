@@ -22,7 +22,7 @@ class PreviewViewController: NSViewController, QLPreviewingController {
 
     func preparePreviewOfFile(at url: URL) async throws {
         let markdown = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-        let html = RenderCore.standaloneHTML(markdown: markdown, theme: .default, width: .default)
+        let html = RenderCore.standaloneHTML(markdown: markdown, colors: .builtin(.default), width: .default)
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let delegate = LoadDelegate {

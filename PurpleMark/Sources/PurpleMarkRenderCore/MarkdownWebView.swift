@@ -6,7 +6,7 @@ import WebKit
 /// (markdown-it, mermaid, KaTeX) parse a single time and re-renders are cheap.
 public struct MarkdownWebView: NSViewRepresentable {
     public var markdown: String
-    public var theme: RenderTheme
+    public var colors: ThemeColors
     public var width: ReadingWidth
     /// Reports the vertical scroll fraction (0…1) as the user scrolls the
     /// rendered view — used to drive sync-scroll with the source editor.
@@ -15,12 +15,12 @@ public struct MarkdownWebView: NSViewRepresentable {
     public var scrollTo: Double?
 
     public init(markdown: String,
-                theme: RenderTheme,
+                colors: ThemeColors,
                 width: ReadingWidth,
                 onScroll: ((Double) -> Void)? = nil,
                 scrollTo: Double? = nil) {
         self.markdown = markdown
-        self.theme = theme
+        self.colors = colors
         self.width = width
         self.onScroll = onScroll
         self.scrollTo = scrollTo
@@ -44,7 +44,7 @@ public struct MarkdownWebView: NSViewRepresentable {
 
     public func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.parent = self
-        context.coordinator.apply(markdown: markdown, theme: theme, width: width)
+        context.coordinator.apply(markdown: markdown, colors: colors, width: width)
         if let scrollTo { context.coordinator.applyScroll(to: scrollTo) }
     }
 
@@ -52,22 +52,22 @@ public struct MarkdownWebView: NSViewRepresentable {
         var parent: MarkdownWebView
         weak var webView: WKWebView?
         private var isLoaded = false
-        private var pending: (markdown: String, theme: RenderTheme, width: ReadingWidth)?
-        private var lastApplied: (markdown: String, theme: RenderTheme, width: ReadingWidth)?
+        private var pending: (markdown: String, colors: ThemeColors, width: ReadingWidth)?
+        private var lastApplied: (markdown: String, colors: ThemeColors, width: ReadingWidth)?
 
         init(_ parent: MarkdownWebView) { self.parent = parent }
 
-        func apply(markdown: String, theme: RenderTheme, width: ReadingWidth) {
+        func apply(markdown: String, colors: ThemeColors, width: ReadingWidth) {
             if let last = lastApplied,
-               last.markdown == markdown, last.theme == theme, last.width == width {
+               last.markdown == markdown, last.colors == colors, last.width == width {
                 return
             }
-            lastApplied = (markdown, theme, width)
+            lastApplied = (markdown, colors, width)
             guard isLoaded, let webView else {
-                pending = (markdown, theme, width)
+                pending = (markdown, colors, width)
                 return
             }
-            run(markdown: markdown, theme: theme, width: width, on: webView)
+            run(markdown: markdown, colors: colors, width: width, on: webView)
         }
 
         private var lastReported: Double = 0
@@ -84,11 +84,11 @@ public struct MarkdownWebView: NSViewRepresentable {
             webView.evaluateJavaScript(js)
         }
 
-        private func run(markdown: String, theme: RenderTheme, width: ReadingWidth, on webView: WKWebView) {
+        private func run(markdown: String, colors: ThemeColors, width: ReadingWidth, on webView: WKWebView) {
             let lit = RenderCore.jsStringLiteral(markdown)
             let js = """
             if (window.PM) {
-              window.PM.setTheme('\(theme.rawValue)');
+              window.PM.setThemeVars(\(colors.jsObjectLiteral()));
               window.PM.setWidth('\(width.rawValue)');
               window.PM.render(\(lit));
             }
@@ -108,7 +108,7 @@ public struct MarkdownWebView: NSViewRepresentable {
             """
             webView.evaluateJavaScript(scrollJS)
             let p = pending ?? lastApplied
-            if let p { run(markdown: p.markdown, theme: p.theme, width: p.width, on: webView) }
+            if let p { run(markdown: p.markdown, colors: p.colors, width: p.width, on: webView) }
             pending = nil
         }
 

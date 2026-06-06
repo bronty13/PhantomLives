@@ -5,6 +5,7 @@ struct PurpleMarkApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var state = AppState.shared
     @StateObject private var settings = AppSettings.shared
+    @StateObject private var themes = ThemeStore.shared
 
     var body: some Scene {
         // A single Window (not WindowGroup) — PurpleMark is a single-window app;
@@ -14,6 +15,7 @@ struct PurpleMarkApp: App {
             ContentView()
                 .environmentObject(state)
                 .environmentObject(settings)
+                .environmentObject(themes)
                 .frame(minWidth: 720, minHeight: 480)
         }
         .commands { editorCommands }
@@ -22,6 +24,7 @@ struct PurpleMarkApp: App {
             SettingsView()
                 .environmentObject(settings)
                 .environmentObject(state)
+                .environmentObject(themes)
         }
     }
 
