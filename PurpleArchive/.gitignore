@@ -1,0 +1,18 @@
+# Build products
+.build/
+DerivedData/
+*.xcodeproj
+dist/
+*.app
+*.dmg
+
+# SwiftPM
+.swiftpm/
+Package.resolved
+
+# Vendoring scratch (sources are committed; build dirs are not)
+Vendor/**/_cmbuild/
+**/.cmake/
+
+# macOS
+.DS_Store
