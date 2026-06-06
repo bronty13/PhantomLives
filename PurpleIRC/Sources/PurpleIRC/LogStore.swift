@@ -756,6 +756,68 @@ extension ChatLine {
         }
     }
 
+    /// Best-effort reconstruction of a `ChatLine` from a persistent-log
+    /// record (`"<ISO timestamp> <toLogLine output>"`), for seeding a freshly
+    /// opened query buffer with scrollback. Logs are code-stripped text, so
+    /// this is intentionally lossy: the two unambiguous, conversation-bearing
+    /// shapes — `"<nick> text"` / `"→nick→ text"` (privmsg) and `"-nick- text"`
+    /// (notice) — are reconstructed structurally so they render with proper
+    /// nick styling; everything else (actions, joins/parts, topic changes,
+    /// info) is shown verbatim as a `.raw` line, which reads correctly without
+    /// risking a misparse. Returns nil for an empty/timestamp-less record.
+    static func fromLogRecord(_ record: String) -> ChatLine? {
+        guard let sp = record.firstIndex(of: " ") else { return nil }
+        let ts = LogStore.parseLogTimestamp(record) ?? Date()
+        let body = String(record[record.index(after: sp)...])
+        guard !body.isEmpty else { return nil }
+
+        // privmsg from someone else: "<nick> text"
+        if body.hasPrefix("<"), let close = body.firstIndex(of: ">") {
+            let nick = String(body[body.index(after: body.startIndex)..<close])
+            if !nick.isEmpty {
+                return ChatLine(timestamp: ts,
+                                kind: .privmsg(nick: nick, isSelf: false),
+                                text: trimmedRemainder(body, after: close))
+            }
+        }
+        // our own privmsg: "→nick→ text" (join is "→ nick joined" — the space
+        // after the arrow keeps the two apart).
+        if body.hasPrefix("→"), !body.hasPrefix("→ ") {
+            let afterFirst = body.index(after: body.startIndex)
+            if let close = body[afterFirst...].firstIndex(of: "→") {
+                let nick = String(body[afterFirst..<close])
+                if !nick.isEmpty {
+                    return ChatLine(timestamp: ts,
+                                    kind: .privmsg(nick: nick, isSelf: true),
+                                    text: trimmedRemainder(body, after: close))
+                }
+            }
+        }
+        // notice: "-nick- text"
+        if body.hasPrefix("-") {
+            let afterFirst = body.index(after: body.startIndex)
+            if let close = body[afterFirst...].firstIndex(of: "-") {
+                let nick = String(body[afterFirst..<close])
+                if !nick.isEmpty, !nick.contains(" ") {
+                    return ChatLine(timestamp: ts,
+                                    kind: .notice(from: nick),
+                                    text: trimmedRemainder(body, after: close))
+                }
+            }
+        }
+        // Actions, membership changes, topic, info — show the log line verbatim.
+        return ChatLine(timestamp: ts, kind: .raw, text: body)
+    }
+
+    /// The substring after `idx`, with a single leading space dropped (the
+    /// separator `toLogLine` inserts between the nick token and the message).
+    private static func trimmedRemainder(_ s: String, after idx: String.Index) -> String {
+        let start = s.index(after: idx)
+        guard start < s.endIndex else { return "" }
+        if s[start] == " " { return String(s[s.index(after: start)...]) }
+        return String(s[start...])
+    }
+
     /// Not all lines are worth persisting. Server/MOTD numeric spam is noisy
     /// and usually skipped — toggleable via settings.
     var isNoisyLogKind: Bool {

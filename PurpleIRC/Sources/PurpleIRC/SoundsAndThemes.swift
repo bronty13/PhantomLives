@@ -42,8 +42,16 @@ enum SoundPlayer {
     @MainActor
     static func play(_ kind: SoundEventKind, settings: AppSettings) {
         guard settings.soundsEnabled else { return }
-        let name = settings.eventSounds[kind.rawValue] ?? ""
-        guard !name.isEmpty, let snd = NSSound(named: name) else { return }
+        playNamed(settings.eventSounds[kind.rawValue] ?? "", settings: settings)
+    }
+
+    /// Play a specific named sound, honoring the master enable switch. Used by
+    /// the per-contact message-sound override, which names a sound directly
+    /// rather than going through the per-event map.
+    @MainActor
+    static func playNamed(_ name: String, settings: AppSettings) {
+        guard settings.soundsEnabled, !name.isEmpty,
+              let snd = NSSound(named: name) else { return }
         snd.play()
     }
 }

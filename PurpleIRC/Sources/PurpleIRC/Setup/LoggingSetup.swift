@@ -45,6 +45,25 @@ struct LoggingSetup: View {
                     Text(msg).font(.caption).foregroundStyle(.secondary)
                 }
             }
+            Section("Query history") {
+                Toggle("Restore recent history when a query opens",
+                       isOn: $settings.settings.seedQueryFromLogs)
+                Stepper(value: $settings.settings.queryHistoryLines, in: 0...1000) {
+                    HStack {
+                        Text("Lines to restore")
+                        Spacer()
+                        TextField("",
+                                  value: $settings.settings.queryHistoryLines,
+                                  format: .number.grouping(.never))
+                            .frame(width: 60)
+                            .multilineTextAlignment(.trailing)
+                    }
+                }
+                .disabled(!settings.settings.seedQueryFromLogs)
+                Text("When you open a private conversation (or someone messages you), the last N lines from that person's saved log are loaded as scrollback so you have context. Reads existing logs — nothing new is recorded unless persistent logging above is on.")
+                    .font(.caption).foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Section("Retention") {
                 Toggle("Auto-delete logs older than N days",
                        isOn: $settings.settings.purgeLogsEnabled)

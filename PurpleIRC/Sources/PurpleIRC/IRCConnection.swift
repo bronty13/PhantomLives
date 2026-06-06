@@ -108,6 +108,12 @@ final class IRCConnection: ObservableObject, Identifiable {
     /// Pushed in from `AppSettings.popQueryBufferOnWatch`.
     var popQueryBufferOnWatch: Bool = false
 
+    /// When a query buffer is freshly created, pre-load the last
+    /// `queryHistoryLines` lines from that nick's on-disk log as scrollback.
+    /// Pushed in from `AppSettings.seedQueryFromLogs` / `queryHistoryLines`.
+    var seedQueryFromLogs: Bool = true
+    var queryHistoryLines: Int = 50
+
     // User-configured highlight rules (pushed in from settings). The matcher
     // caches compiled regex so busy channels don't recompile per message.
     var highlightRules: [HighlightRule] = [] {
@@ -1069,6 +1075,43 @@ final class IRCConnection: ObservableObject, Identifiable {
         buffers[i].appendLine(endMarker)
     }
 
+    /// Pre-load a freshly-created query buffer with the last
+    /// `queryHistoryLines` lines from `name`'s on-disk log, so opening a
+    /// conversation with a contact brings its recent context back. Reads the
+    /// log off the main actor (LogStore is an actor), parses the tail into
+    /// `ChatLine`s, and inserts them above any live lines. No-op when the
+    /// feature is off, there's no log store, or the log is empty/unreadable.
+    func seedQueryHistoryIfEnabled(name: String, bufferID: Buffer.ID) {
+        guard seedQueryFromLogs, queryHistoryLines > 0, let logStore else { return }
+        let network = displayName
+        let want = queryHistoryLines
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            guard let text = await logStore.read(network: network, buffer: name),
+                  !text.isEmpty else { return }
+            let records = text.split(separator: "\n", omittingEmptySubsequences: true)
+            let history = records.suffix(want).compactMap { ChatLine.fromLogRecord(String($0)) }
+            guard !history.isEmpty else { return }
+            self.injectQueryHistory(bufferID: bufferID, lines: history)
+        }
+    }
+
+    /// Insert seeded history at the top of a buffer, framed by markers that
+    /// match the session-restore styling. Inserting at index 0 keeps any live
+    /// lines that arrived while the async log read was in flight below it.
+    private func injectQueryHistory(bufferID: Buffer.ID, lines: [ChatLine]) {
+        guard let i = buffers.firstIndex(where: { $0.id == bufferID }) else { return }
+        let top = ChatLine(
+            timestamp: lines.first?.timestamp ?? Date(),
+            kind: .info,
+            text: "── \(lines.count) line\(lines.count == 1 ? "" : "s") from logs ──")
+        let bottom = ChatLine(
+            timestamp: lines.last?.timestamp ?? Date(),
+            kind: .info,
+            text: "── end of history ──")
+        buffers[i].lines.insert(contentsOf: [top] + lines + [bottom], at: 0)
+    }
+
     /// Issue a CHATHISTORY request for a channel we just joined. No-op when
     /// the cap wasn't granted, when the request was already issued this
     /// session, or when the buffer somehow doesn't exist. Servers that don't
@@ -1199,6 +1242,7 @@ final class IRCConnection: ObservableObject, Identifiable {
             if r.created, kind == .query {
                 autoWhoisForQuery(bufferName, queryBufferID: buffers[bIdx].id)
                 maybePopQueryOnWatch(from: from, isToSelf: isToSelf, bufferID: buffers[bIdx].id)
+                seedQueryHistoryIfEnabled(name: bufferName, bufferID: buffers[bIdx].id)
             }
             appendTo(bufferIndex: bIdx, line: ChatLine(
                 timestamp: lineTime,
@@ -1787,6 +1831,7 @@ final class IRCConnection: ObservableObject, Identifiable {
             // Auto-WHOIS on /msg-spawned queries — same UX as a /query.
             if result.created, kindToCreate == .query {
                 autoWhoisForQuery(target, queryBufferID: buffers[result.index].id)
+                seedQueryHistoryIfEnabled(name: target, bufferID: buffers[result.index].id)
             }
         case "query":
             let target = rest.trimmingCharacters(in: .whitespaces)
@@ -1796,6 +1841,7 @@ final class IRCConnection: ObservableObject, Identifiable {
             selectedBufferID = buffers[result.index].id
             if result.created, kindToCreate == .query {
                 autoWhoisForQuery(target, queryBufferID: buffers[result.index].id)
+                seedQueryHistoryIfEnabled(name: target, bufferID: buffers[result.index].id)
             }
         case "me":
             guard let target = currentBufferName(), !rest.isEmpty else { return }

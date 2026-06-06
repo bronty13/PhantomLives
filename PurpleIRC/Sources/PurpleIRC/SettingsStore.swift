@@ -306,6 +306,7 @@ struct LinkedNick: Codable, Hashable, Identifiable {
 struct ContactAlertOverride: Codable, Hashable {
     enum CodingKeys: String, CodingKey {
         case systemBanner, playSound, bounceDock, customSoundName, customBannerMessage
+        case messageSoundName
     }
 
     var systemBanner: Bool? = nil
@@ -313,17 +314,25 @@ struct ContactAlertOverride: Codable, Hashable {
     var bounceDock: Bool? = nil
     var customSoundName: String? = nil
     var customBannerMessage: String? = nil
+    /// Per-contact sound played on *any* incoming message from this contact
+    /// (a query PM or a channel line — see `ChatModel.playSoundFor`). nil =
+    /// no per-contact message sound; the global per-event sounds apply
+    /// instead. Distinct from `customSoundName`, which is the watchlist-hit
+    /// sound. An `NSSound(named:)` name from `builtInSoundNames`.
+    var messageSoundName: String? = nil
 
     init(systemBanner: Bool? = nil,
          playSound: Bool? = nil,
          bounceDock: Bool? = nil,
          customSoundName: String? = nil,
-         customBannerMessage: String? = nil) {
+         customBannerMessage: String? = nil,
+         messageSoundName: String? = nil) {
         self.systemBanner = systemBanner
         self.playSound = playSound
         self.bounceDock = bounceDock
         self.customSoundName = customSoundName
         self.customBannerMessage = customBannerMessage
+        self.messageSoundName = messageSoundName
     }
 
     init(from decoder: Decoder) throws {
@@ -333,6 +342,7 @@ struct ContactAlertOverride: Codable, Hashable {
         self.bounceDock          = try c.decodeIfPresent(Bool.self,   forKey: .bounceDock)
         self.customSoundName     = try c.decodeIfPresent(String.self, forKey: .customSoundName)
         self.customBannerMessage = try c.decodeIfPresent(String.self, forKey: .customBannerMessage)
+        self.messageSoundName    = try c.decodeIfPresent(String.self, forKey: .messageSoundName)
     }
 
     /// True iff every field is at its default (nil). The custom
@@ -341,6 +351,7 @@ struct ContactAlertOverride: Codable, Hashable {
     var isDefault: Bool {
         systemBanner == nil && playSound == nil && bounceDock == nil
             && customSoundName == nil && customBannerMessage == nil
+            && messageSoundName == nil
     }
 }
 
@@ -734,6 +745,14 @@ struct AppSettings: Codable {
     var enablePersistentLogs: Bool = false
     var logMotdAndNumerics: Bool = false
 
+    /// When a query buffer is first opened (you open one, or someone PMs you),
+    /// pre-load the last `queryHistoryLines` lines from that nick's on-disk
+    /// log as scrollback so you have context. On by default. Independent of
+    /// `enablePersistentLogs` for *reading* — but there's nothing to read
+    /// unless logging was on at some point.
+    var seedQueryFromLogs: Bool = true
+    var queryHistoryLines: Int = 50
+
     /// Auto-delete logs older than `purgeLogsAfterDays` on app launch.
     /// Default off; 90 days is the suggested window when the user turns it on.
     var purgeLogsEnabled: Bool = false
@@ -909,6 +928,9 @@ struct AppSettings: Codable {
         self.highlightOnOwnNick = try c.decodeIfPresent(Bool.self, forKey: .highlightOnOwnNick) ?? true
         self.enablePersistentLogs = try c.decodeIfPresent(Bool.self, forKey: .enablePersistentLogs) ?? false
         self.logMotdAndNumerics = try c.decodeIfPresent(Bool.self, forKey: .logMotdAndNumerics) ?? false
+        self.seedQueryFromLogs = try c.decodeIfPresent(Bool.self, forKey: .seedQueryFromLogs) ?? true
+        self.queryHistoryLines = max(0, min(1000,
+            try c.decodeIfPresent(Int.self, forKey: .queryHistoryLines) ?? 50))
         self.purgeLogsEnabled = try c.decodeIfPresent(Bool.self, forKey: .purgeLogsEnabled) ?? false
         // Clamp on load so a corrupt / hand-edited file can't drive a
         // nonsensical retention window. 0 = keep forever.

@@ -47,6 +47,31 @@ struct ContactAlertOverridesSection: View {
                 }
             }
 
+            Divider()
+
+            HStack {
+                Text("Message sound:")
+                    .frame(width: 130, alignment: .leading)
+                Picker("", selection: Binding(
+                    get: { entry.alertOverride.messageSoundName ?? "" },
+                    set: { entry.alertOverride.messageSoundName = $0.isEmpty ? nil : $0 }
+                )) {
+                    Text("None").tag("")
+                    ForEach(builtInSoundNames, id: \.self) { name in
+                        Text(name.isEmpty ? "— none —" : name).tag(name)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 160)
+                if let name = entry.alertOverride.messageSoundName, !name.isEmpty {
+                    Button("▶") { NSSound(named: name)?.play() }
+                        .buttonStyle(.borderless)
+                }
+            }
+            Text("Plays on **any** message from this contact — a private query or a channel line. Leave at “None” to use the global per-event sounds on Setup → Sounds.")
+                .font(.caption).foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+
             HStack {
                 Text("Custom banner text:")
                     .frame(width: 130, alignment: .leading)

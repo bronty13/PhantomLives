@@ -14,6 +14,31 @@ count (`1.0.<count>`).
 
 ## [Unreleased] — 2026-06-06
 
+### Added
+
+- **Per-contact message sounds** (`SettingsStore.swift` —
+  `ContactAlertOverride.messageSoundName`, `SoundsAndThemes.swift`,
+  `ChatModel.swift`, `AddressBook/ContactAlertOverridesSection.swift`). Each
+  Address Book contact can pick its own sound, played on **any** incoming
+  message from that person — a private query *or* a channel line. Set it under
+  Address Book → *Alert overrides → Message sound* (with a ▶ preview). Contacts
+  without one fall back to the existing global per-event sounds in Setup →
+  Sounds, which remain the customizable defaults (own-nick mention, private
+  message, etc.). The nick→sound lookup is cached and rebuilt only when settings
+  change, so the per-message path that resolves it stays O(1).
+- **Query scrollback restored from logs** (`SettingsStore.swift` —
+  `seedQueryFromLogs` / `queryHistoryLines`, `IRCConnection.swift`,
+  `LogStore.swift` — `ChatLine.fromLogRecord`, `Setup/LoggingSetup.swift`).
+  When a query buffer is freshly opened — you open one, or someone PMs you — the
+  last *N* lines from that nick's on-disk log are loaded as scrollback, framed by
+  `── N lines from logs ──` / `── end of history ──` markers, so you resume with
+  context instead of a blank window. **On by default**; the toggle and line
+  count (default 50) live in Setup → Logging → *Query history*. The log is read
+  off the main actor and the history is inserted above any live lines; it reads
+  existing logs only and never re-writes them. New `ChatLine.fromLogRecord`
+  reconstructs privmsg/notice lines structurally (proper nick styling) and shows
+  anything else verbatim — covered by 8 new parser tests.
+
 ### Performance
 
 - **Eliminated the intermittent UI freezes in chat windows and the Address

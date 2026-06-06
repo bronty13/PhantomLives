@@ -132,6 +132,17 @@ personal builds embed a safe non-installing key).
   live fuzziness slider tunes how far variants reach, and clicking a result
   jumps to its buffer. Keys off the line's author, so mention-only lines are
   excluded (unlike the ⌘⇧F substring search)
+- **Per-contact message sounds** — each Address Book contact can name its own
+  sound (Address Book → Alert overrides → *Message sound*) that plays on **any**
+  message from that person, a private query or a channel line. Contacts without
+  one fall back to the global per-event sounds in Setup → Sounds (which carry
+  the customizable defaults for own-nick mentions, private messages, etc.)
+- **Query scrollback from logs** — opening a private conversation pre-loads the
+  last *N* lines from that person's saved log as scrollback, framed by `── N
+  lines from logs ──` / `── end of history ──` markers, so you pick up with
+  context instead of an empty window. On by default; toggle and line count live
+  in Setup → Logging → *Query history*. Reads existing logs only — nothing new
+  is recorded unless persistent logging is on
 
 ### Security posture
 

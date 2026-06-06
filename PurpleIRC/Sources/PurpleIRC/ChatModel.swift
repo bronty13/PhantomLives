@@ -989,6 +989,12 @@ final class ChatModel: ObservableObject {
         conn.selectedBufferID = bufferID
     }
 
+    /// Lowercased nick → per-contact message-sound name, for contacts that set
+    /// `AddressEntry.alertOverride.messageSoundName`. Rebuilt from the address
+    /// book in `applySettingsToAll` so the per-message lookup in `playSoundFor`
+    /// is O(1) — important because that path runs for every incoming line.
+    private var contactMessageSounds: [String: String] = [:]
+
     private func playSoundFor(event: IRCConnectionEvent) {
         let s = settings.settings
         switch event {
@@ -998,9 +1004,16 @@ final class ChatModel: ObservableObject {
             SoundPlayer.play(.disconnect, settings: s)
         case .ctcpRequest:
             SoundPlayer.play(.ctcp, settings: s)
-        case .privmsg(_, let target, _, _, let isMention):
-            // Private query (target is our own nick) OR a mention — give them
-            // different sounds. Private takes precedence if both apply.
+        case .privmsg(let from, let target, _, _, let isMention):
+            // A per-contact message sound wins for ANY message from that
+            // contact — channel line or private query alike (the user opted
+            // this contact into being audible everywhere).
+            if let custom = contactMessageSounds[from.lowercased()] {
+                SoundPlayer.playNamed(custom, settings: s)
+                return
+            }
+            // Otherwise: private query (target is our own nick) OR a mention —
+            // each its own global sound. Private takes precedence if both apply.
             let isPrivate = !target.hasPrefix("#") && !target.hasPrefix("&")
             if isPrivate {
                 SoundPlayer.play(.privateMessage, settings: s)
@@ -1012,9 +1025,28 @@ final class ChatModel: ObservableObject {
         }
     }
 
+    /// Rebuild the lowercased-nick → message-sound map from the address book.
+    /// A contact's `messageSoundName` is indexed under every linked nick (and
+    /// the primary nick) so an incoming line resolves in O(1). Called whenever
+    /// settings change (debounced) via `applySettingsToAll`.
+    private func rebuildContactMessageSounds() {
+        var map: [String: String] = [:]
+        for entry in settings.settings.addressBook {
+            guard let snd = entry.alertOverride.messageSoundName, !snd.isEmpty else { continue }
+            let primary = entry.nick.lowercased()
+            if !primary.isEmpty { map[primary] = snd }
+            for ln in entry.linkedNicks {
+                let k = ln.nick.lowercased()
+                if !k.isEmpty { map[k] = snd }
+            }
+        }
+        contactMessageSounds = map
+    }
+
     private func applySettingsToAll() {
         watchlist.setWatchedList(settings.watchedFromAddressBook)
         let s = settings.settings
+        rebuildContactMessageSounds()
         for c in connections {
             c.applyAlertOptions(
                 sound: s.playSoundOnWatchHit,
@@ -1032,6 +1064,8 @@ final class ChatModel: ObservableObject {
             c.autoReplyWhenAway = s.autoReplyWhenAway
             c.awayAutoReply = s.awayAutoReply
             c.popQueryBufferOnWatch = s.popQueryBufferOnWatch
+            c.seedQueryFromLogs = s.seedQueryFromLogs
+            c.queryHistoryLines = s.queryHistoryLines
             c.highlightRules = s.highlightRules
             c.highlightSoundName = s.eventSounds["highlight"] ?? "Funk"
             // Resolve identity per connection, if any. Takes effect on the
