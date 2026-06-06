@@ -15,6 +15,14 @@ final class AppModel: ObservableObject {
     @Published var info: ArchiveInfo?
     @Published var isEncrypted = false
 
+    // Filename-encoding fix (live picker). `rawEntries` keeps libarchive's
+    // listing; `entries` is `rawEntries` re-decoded with `selectedEncoding`.
+    private var rawEntries: [ArchiveEntry] = []
+    @Published var selectedEncoding: DetectedEncoding = EncodingDetector.candidates[0] {
+        didSet { applyEncoding() }
+    }
+    let availableEncodings = EncodingDetector.candidates
+
     // Transient UI state
     @Published var status: String = "Drop an archive to browse it, or files to compress."
     @Published var busy = false
@@ -35,11 +43,27 @@ final class AppModel: ObservableObject {
             let entries = try service.list(url)
             return (info, entries)
         } onSuccess: { [weak self] (info: ArchiveInfo, entries: [ArchiveEntry]) in
-            self?.openedURL = url
-            self?.info = info
-            self?.entries = entries
-            self?.isEncrypted = info.isEncrypted
-            self?.status = "\(info.fileCount) files · \(ByteFormat.string(info.totalUncompressedSize)) unpacked"
+            guard let self else { return }
+            self.openedURL = url
+            self.info = info
+            self.rawEntries = entries
+            self.isEncrypted = info.isEncrypted
+            // Auto-detect the filename encoding; the user can override live.
+            let detected = EncodingDetector.detect(rawNames: entries.map(\.rawNameBytes))
+            self.selectedEncoding = detected   // triggers applyEncoding()
+            self.applyEncoding()
+            self.status = "\(info.fileCount) files · \(ByteFormat.string(info.totalUncompressedSize)) unpacked"
+                + (detected.encoding != .utf8 ? " · names: \(detected.label)" : "")
+        }
+    }
+
+    /// Re-decode the open archive's entry names with `selectedEncoding`. Instant
+    /// — operates on the cached raw bytes, no re-read.
+    private func applyEncoding() {
+        if selectedEncoding.encoding == .utf8 {
+            entries = rawEntries
+        } else {
+            entries = rawEntries.map { $0.reDecoded(using: selectedEncoding.encoding) }
         }
     }
 

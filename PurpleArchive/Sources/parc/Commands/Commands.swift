@@ -11,11 +11,17 @@ struct List: AsyncParsableCommand {
     @Argument(help: "Archive to list.") var archive: String
     @Flag(name: .long, help: "Emit machine-readable JSON.") var json = false
     @Option(name: .shortAndLong, help: "Password for an encrypted archive.") var password: String?
+    @Option(name: .long, help: "Filename encoding: auto (default), utf8, cp437, shift-jis, gbk, euc-kr, big5, cp1251, cp1252.")
+    var encoding: String = "auto"
 
     func run() async throws {
         let url = URL(fileURLWithPath: archive)
-        let entries: [ArchiveEntry]
-        do { entries = try ArchiveService().list(url) }
+        let svc = ArchiveService()
+        var entries: [ArchiveEntry]
+        do {
+            let chosen = try resolveEncoding(for: url, service: svc)
+            entries = try svc.list(url, encoding: chosen)
+        }
         catch { die(error.localizedDescription) }
 
         if json {
@@ -32,6 +38,31 @@ struct List: AsyncParsableCommand {
             }
             FileHandle.standardError.write(Data("\(entries.count) entries\n".utf8))
         }
+    }
+
+    /// Map the `--encoding` flag to an optional override (nil = UTF-8 default).
+    private func resolveEncoding(for url: URL, service: ArchiveService) throws -> String.Encoding? {
+        switch encoding.lowercased() {
+        case "auto":
+            let detected = try service.detectEncoding(url)
+            return detected.encoding == .utf8 ? nil : detected.encoding
+        case "utf8", "utf-8": return nil
+        case "cp437": return cf(.dosLatinUS)
+        case "shift-jis", "shiftjis", "sjis": return .shiftJIS
+        case "cp932": return cf(.dosJapanese)
+        case "euc-jp", "eucjp": return .japaneseEUC
+        case "gbk", "gb2312": return cf(.dosChineseSimplif)
+        case "big5": return cf(.dosChineseTrad)
+        case "euc-kr", "euckr": return cf(.dosKorean)
+        case "cp1251", "windows-1251": return .windowsCP1251
+        case "cp1252", "windows-1252": return .windowsCP1252
+        case "latin1", "iso-8859-1": return .isoLatin1
+        default: die("unknown encoding “\(encoding)” (try: auto, utf8, cp437, shift-jis, gbk, euc-kr, big5, cp1251, cp1252)")
+        }
+    }
+
+    private func cf(_ enc: CFStringEncodings) -> String.Encoding {
+        String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(enc.rawValue)))
     }
 }
 

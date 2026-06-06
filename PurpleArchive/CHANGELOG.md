@@ -4,6 +4,25 @@ All notable changes to PurpleArchive are documented here.
 
 ## [Unreleased]
 
+### Phase 2a — filename-encoding fix (2026-06-06)
+
+The #1 cross-platform pain point no other Mac tool nails: archives from
+Windows/Linux store filenames in a legacy codepage with no UTF-8 flag, so a
+naïve decode yields mojibake.
+
+- **`EncodingDetector`**: scores raw entry-name bytes (kept on every
+  `ArchiveEntry`) against UTF-8 + CP437/CP850, Shift-JIS/CP932/EUC-JP,
+  GBK/Big5/EUC-KR, windows-1251/KOI8-R, windows-1252/Latin-1. Valid UTF-8 is
+  authoritative; otherwise picks by **average per-character plausibility + a
+  script-consistency bonus** (genuine names cluster in one script; mojibake
+  sprays across blocks), with a CJK-ideograph tiebreak.
+- **Live re-decode** (`ArchiveEntry.reDecoded(using:)`,
+  `ArchiveService.list(_:encoding:)` / `detectEncoding`): switch the active
+  encoding with no re-read of the archive.
+- **GUI** encoding picker in the browser header (auto-detects on open, shows the
+  guess in the status bar). **`parc l --encoding auto|utf8|cp437|shift-jis|…`**.
+- 6 encoding tests (Shift-JIS, CP437, windows-1251, UTF-8 authority, re-decode).
+
 ### Phase 1b — SwiftUI app + build/install (2026-06-06)
 
 The MVP `.app`: build + install + launch verified fresh on Apple Silicon.

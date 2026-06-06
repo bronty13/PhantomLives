@@ -47,4 +47,18 @@ public struct ArchiveEntry: Identifiable, Sendable, Hashable {
     }
 
     public var name: String { path.last ?? "" }
+
+    /// Re-decode this entry's name from its raw on-disk bytes using `encoding`,
+    /// returning a copy with a corrected `path`. Used by the live encoding
+    /// picker — no re-reading of the archive. Returns `self` unchanged if the
+    /// bytes can't be represented in `encoding`.
+    public func reDecoded(using encoding: String.Encoding) -> ArchiveEntry {
+        guard !rawNameBytes.isEmpty,
+              let decoded = EncodingDetector.decode(rawNameBytes, using: encoding) else { return self }
+        let comps = decoded.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+        return ArchiveEntry(id: id, path: comps, isDirectory: isDirectory, isSymlink: isSymlink,
+                            uncompressedSize: uncompressedSize, modified: modified,
+                            posixPermissions: posixPermissions, isEncrypted: isEncrypted,
+                            rawNameBytes: rawNameBytes)
+    }
 }

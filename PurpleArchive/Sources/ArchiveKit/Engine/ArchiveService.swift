@@ -21,6 +21,20 @@ public struct ArchiveService: Sendable {
         ArchiveEntryTree.build(from: try reader.list(url))
     }
 
+    /// List entries, re-decoding filenames with `encoding` (the live encoding
+    /// override). Pass `nil` to keep libarchive's default UTF-8 decode.
+    public func list(_ url: URL, encoding: String.Encoding?) throws -> [ArchiveEntry] {
+        let entries = try reader.list(url)
+        guard let encoding else { return entries }
+        return entries.map { $0.reDecoded(using: encoding) }
+    }
+
+    /// Guess the archive's dominant filename encoding from its raw entry-name
+    /// bytes — the fix for mojibake names in zips made on Windows/Linux.
+    public func detectEncoding(_ url: URL) throws -> DetectedEncoding {
+        EncodingDetector.detect(rawNames: try reader.list(url).map(\.rawNameBytes))
+    }
+
     public func info(_ url: URL) throws -> ArchiveInfo {
         let entries = try reader.list(url)
         let files = entries.filter { !$0.isDirectory }

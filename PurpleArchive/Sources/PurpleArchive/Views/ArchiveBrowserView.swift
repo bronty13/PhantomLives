@@ -49,6 +49,22 @@ struct ArchiveBrowserView: View {
                 }
             }
             Spacer()
+            Menu {
+                ForEach(model.availableEncodings) { enc in
+                    Button {
+                        model.selectedEncoding = enc
+                    } label: {
+                        if enc == model.selectedEncoding { Label(enc.label, systemImage: "checkmark") }
+                        else { Text(enc.label) }
+                    }
+                }
+            } label: {
+                Label(model.selectedEncoding.label, systemImage: "textformat")
+            }
+            .menuStyle(.borderlessButton)
+            .frame(width: 200)
+            .help("Filename text encoding — fix mojibake from Windows/Linux archives")
+
             Button {
                 if model.isEncrypted { showingPasswordSheet = true }
                 else { model.extractOpened() }
