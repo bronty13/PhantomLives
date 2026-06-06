@@ -12,16 +12,33 @@ struct AddressBookContactList: View {
     @Binding var showSuggestLinks: Bool
     @Binding var showManageTags: Bool
 
+    /// One filtered, presence-resolved row. Caching the resolved presence
+    /// alongside the entry means the row doesn't recompute it (and the filter
+    /// + row don't fold presence twice).
+    private struct VisibleRow: Identifiable {
+        let entry: AddressEntry
+        let presence: WatchPresence
+        var id: UUID { entry.id }
+    }
+
+    /// Cached filtered + sorted contact rows. The filter folds a cross-network
+    /// sighting timeline (recency) and a presence lookup per contact — work
+    /// that, as a computed property read by `body`, re-ran on *every* model
+    /// change, including every incoming IRC line while connected. Now it's
+    /// recomputed only when the address book, filter, or watch presence
+    /// actually changes (see `refreshVisibleRows()` + the `.onChange` cluster).
+    @State private var visibleRows: [VisibleRow] = []
+
     var body: some View {
         VStack(spacing: 0) {
             List(selection: $selection) {
-                ForEach(visibleEntries) { entry in
+                ForEach(visibleRows) { row in
                     AddressBookContactListRow(
-                        entry: entry,
-                        presence: presence(for: entry)
+                        entry: row.entry,
+                        presence: row.presence
                     )
-                    .tag(entry.id)
-                    .contextMenu { rowMenu(for: entry) }
+                    .tag(row.entry.id)
+                    .contextMenu { rowMenu(for: row.entry) }
                 }
             }
             .listStyle(.inset(alternatesRowBackgrounds: true))
@@ -79,37 +96,39 @@ struct AddressBookContactList: View {
                 }
                 .help("Manage the global tag list")
 
-                Text("\(visibleEntries.count) / \(model.settings.settings.addressBook.count)")
+                Text("\(visibleRows.count) / \(model.settings.settings.addressBook.count)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
         }
+        .onAppear { refreshVisibleRows() }
+        .onChange(of: model.settings.settings.addressBook) { _, _ in refreshVisibleRows() }
+        .onChange(of: filter) { _, _ in refreshVisibleRows() }
+        .onChange(of: model.watchlist.presence) { _, _ in refreshVisibleRows() }
     }
 
     // MARK: - Derived data
 
-    /// Address book filtered through the active filter, sorted by
-    /// case-insensitive primary nick. Precomputes the cross-network
-    /// fold (presence + last-msg time) per entry so the filter doesn't
-    /// redo the work for every predicate evaluation.
-    private var visibleEntries: [AddressEntry] {
-        // The last-message time needs a cross-network sighting fold per
-        // entry, so only pay for it when the recency filter actually uses
-        // it (it's `.any` by default). Otherwise `matches` ignores the
-        // value entirely.
+    /// Recompute the cached, filtered + sorted contact rows. Folds the
+    /// cross-network sighting timeline (only when the recency filter needs it)
+    /// and the presence lookup once per contact. Decoupled from raw IRC
+    /// traffic: recency buckets are coarse (24h/7d), so a few seconds of
+    /// staleness between presence ticks is invisible and well worth not
+    /// re-folding the whole address book on every incoming line.
+    private func refreshVisibleRows() {
         let needsActivity = filter.recency != .any
-        return model.settings.settings.addressBook
-            .filter { entry in
-                filter.matches(
-                    entry: entry,
-                    presence: presence(for: entry),
-                    lastMessageAt: needsActivity ? lastMessageAt(for: entry) : nil)
+        visibleRows = model.settings.settings.addressBook
+            .compactMap { entry -> VisibleRow? in
+                let p = presence(for: entry)
+                let lastMsg = needsActivity ? lastMessageAt(for: entry) : nil
+                guard filter.matches(entry: entry, presence: p, lastMessageAt: lastMsg) else {
+                    return nil
+                }
+                return VisibleRow(entry: entry, presence: p)
             }
-            .sorted { lhs, rhs in
-                lhs.nick.lowercased() < rhs.nick.lowercased()
-            }
+            .sorted { $0.entry.nick.lowercased() < $1.entry.nick.lowercased() }
     }
 
     private func presence(for entry: AddressEntry) -> WatchPresence {

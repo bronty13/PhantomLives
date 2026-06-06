@@ -8,7 +8,11 @@ struct AddressBookFiltersSidebar: View {
     @Binding var filter: AddressBookFilter
 
     var body: some View {
-        List(selection: tagSelectionBinding) {
+        // One pass over the address book builds every tag's usage count;
+        // previously each tag row re-scanned the whole book (O(tags × contacts)
+        // per render). Computed once here, read by id below.
+        let counts = tagCounts
+        return List(selection: tagSelectionBinding) {
             Section("Presence") {
                 ForEach(AddressBookFilter.PresenceFilter.allCases) { f in
                     Button {
@@ -104,7 +108,7 @@ struct AddressBookFiltersSidebar: View {
                                     .frame(width: 10, height: 10)
                                 Text(tag.name.isEmpty ? "Untitled tag" : tag.name)
                                 Spacer()
-                                Text("\(usageCount(for: tag))")
+                                Text("\(counts[tag.id, default: 0])")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                 if filter.tagID == tag.id {
@@ -181,15 +185,16 @@ struct AddressBookFiltersSidebar: View {
         return .purple
     }
 
-    private func usageCount(for tag: ContactTag) -> Int {
-        model.settings.settings.addressBook
-            .filter { $0.tagIDs.contains(tag.id) }
-            .count
+    /// Usage count for every tag in a single pass over the address book.
+    private var tagCounts: [UUID: Int] {
+        var counts: [UUID: Int] = [:]
+        for entry in model.settings.settings.addressBook {
+            for id in entry.tagIDs { counts[id, default: 0] += 1 }
+        }
+        return counts
     }
 
     private func relativeTimeString(_ date: Date) -> String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: date, relativeTo: Date())
+        RelativeTime.string(date)
     }
 }

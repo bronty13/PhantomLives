@@ -72,6 +72,13 @@ struct BufferView: View {
     /// toggle. See `refreshRenderedRows()` / the `.onChange` cluster in
     /// `messagesPane`.
     @State private var renderedRows: [RenderedRow] = []
+    /// Cached rank-sorted user list for the user-list pane. Was
+    /// `buffer.usersSortedByRank` read directly by the `List`, which re-sorted
+    /// the whole membership (50–500 nicks, with per-comparison mode lookups +
+    /// `localizedCaseInsensitiveCompare`) on every body pass — i.e. on every
+    /// incoming line while the channel is active. Now recomputed only when the
+    /// membership or its modes actually change. See `refreshSortedUsers()`.
+    @State private var sortedUsers: [String] = []
     /// Debounces find-bar keystrokes. Was firing `recomputeFindMatches()`
     /// (full buffer scan with mIRC-code-strip + lowercase + substring
     /// search) on every character; now only the trailing edge runs after
@@ -557,8 +564,10 @@ struct BufferView: View {
                 .padding(.horizontal, 8)
                 .padding(.top, 8)
             // Rank-sorted so ops cluster at the top — matches every classic
-            // IRC client and makes scanning for chanops much faster.
-            List(buffer.usersSortedByRank, id: \.self) { user in
+            // IRC client and makes scanning for chanops much faster. Sorted
+            // list is cached in `sortedUsers` and refreshed only on membership
+            // / mode changes, not on every render.
+            List(sortedUsers, id: \.self) { user in
                 userRow(user)
                     .contentShape(Rectangle())
                     .onTapGesture(count: 2) {
@@ -568,6 +577,14 @@ struct BufferView: View {
             }
             .listStyle(.plain)
         }
+        .onAppear { refreshSortedUsers() }
+        .onChange(of: buffer.users) { _, _ in refreshSortedUsers() }
+        .onChange(of: buffer.userModes) { _, _ in refreshSortedUsers() }
+    }
+
+    /// Recompute the cached rank-sorted user list from the active buffer.
+    private func refreshSortedUsers() {
+        sortedUsers = buffer.usersSortedByRank
     }
 
     /// One row in the user list: fixed-width mode glyph (so nicks align)
@@ -1357,15 +1374,51 @@ struct MessageRow: View {
         }
     }
 
+    /// Boxes an `AttributedString` (a value type) so it can live in `NSCache`,
+    /// which only stores class instances.
+    private final class RenderBox { let value: AttributedString; init(_ v: AttributedString) { value = v } }
+
+    /// Process-wide memo of fully-rendered message text. The mIRC parse + URL
+    /// detect + highlight overlay in `renderedText` is pure for a given
+    /// (line, link color, matched-rule color), but `var body` re-evaluates it
+    /// for every visible row on every state change (incoming message, hover,
+    /// theme tick, input edit). Memoizing collapses that to one render per
+    /// distinct styling. Bounded so a long session can't grow it without limit.
+    @MainActor
+    private static let renderCache: NSCache<NSNumber, RenderBox> = {
+        let c = NSCache<NSNumber, RenderBox>()
+        c.countLimit = 4000
+        return c
+    }()
+
     /// IRCFormatter render + URL detect + optional highlight-rule word tint.
     /// Pulled into one helper so privmsg/action/notice all share the overlay.
+    /// Result is memoized — see `renderCache`.
     private func renderedText(linkColor: Color) -> AttributedString {
+        // Cheap, constant-work key: line identity + the colors that actually
+        // affect the output. `line.text`/`highlightRanges` are immutable once
+        // the line exists, so the id pins them; the colors capture theme +
+        // matched-rule changes.
+        var hasher = Hasher()
+        hasher.combine(line.id)
+        hasher.combine(linkColor)
+        let rule = matchedRule
+        if let rule { hasher.combine(rule.id); hasher.combine(rule.colorHex) }
+        let key = NSNumber(value: hasher.finalize())
+        if let box = Self.renderCache.object(forKey: key) { return box.value }
+
         let base = IRCFormatter.renderWithLinks(line.text, linkColor: linkColor)
-        guard !line.highlightRanges.isEmpty, let rule = matchedRule else { return base }
-        // Explicit rule color wins; otherwise fall back to something visible
-        // against both light and dark themes.
-        let color = rule.colorHex.flatMap { Color(hex: $0) } ?? .orange
-        return IRCFormatter.overlayHighlights(base, ranges: line.highlightRanges, color: color)
+        let result: AttributedString
+        if !line.highlightRanges.isEmpty, let rule {
+            // Explicit rule color wins; otherwise fall back to something visible
+            // against both light and dark themes.
+            let color = rule.colorHex.flatMap { Color(hex: $0) } ?? .orange
+            result = IRCFormatter.overlayHighlights(base, ranges: line.highlightRanges, color: color)
+        } else {
+            result = base
+        }
+        Self.renderCache.setObject(RenderBox(result), forKey: key)
+        return result
     }
 
     private func colorForNick(_ nick: String, theme: Theme) -> Color {
@@ -1505,8 +1558,9 @@ struct JoinPartSummaryRow: View {
     }
 
     private var rangeLabel: String {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm:ss"
+        // Reuse the shared per-pattern formatter — allocating a DateFormatter
+        // for every collapsed summary row on every body re-eval is costly.
+        let f = TimestampFormatterCache.formatter(for: "HH:mm:ss")
         guard let first = entries.first?.timestamp,
               let last = entries.last?.timestamp,
               first != last else {

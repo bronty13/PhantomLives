@@ -285,8 +285,6 @@ struct UnifiedSearchView: View {
     }
 
     private func relative(_ date: Date) -> String {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .abbreviated
-        return f.localizedString(for: date, relativeTo: Date())
+        RelativeTime.string(date)
     }
 }

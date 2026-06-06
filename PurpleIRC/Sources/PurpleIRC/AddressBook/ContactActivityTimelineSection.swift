@@ -105,8 +105,6 @@ struct ContactActivityTimelineSection: View {
     }
 
     private func relativeTimeString(_ date: Date) -> String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: date, relativeTo: Date())
+        RelativeTime.string(date)
     }
 }

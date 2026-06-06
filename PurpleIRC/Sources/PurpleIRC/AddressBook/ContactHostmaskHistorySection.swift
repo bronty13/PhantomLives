@@ -45,8 +45,6 @@ struct ContactHostmaskHistorySection: View {
     }
 
     private func relative(_ d: Date) -> String {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .abbreviated
-        return f.localizedString(for: d, relativeTo: Date())
+        RelativeTime.string(d)
     }
 }

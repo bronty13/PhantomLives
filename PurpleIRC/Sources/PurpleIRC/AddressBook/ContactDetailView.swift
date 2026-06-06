@@ -18,6 +18,11 @@ struct ContactDetailView: View {
 
     @State private var matches: ContactMatchResult = ContactMatchResult()
     @State private var showAddTagPopover: Bool = false
+    /// Debounces the cross-store match scan. Editing the nick field used to
+    /// kick off a full seen-store scan (every connection × every seen entry)
+    /// plus a chat-log enumeration on *every keystroke*; now only the trailing
+    /// edge runs once the user pauses.
+    @State private var matchDebounce: Task<Void, Never>? = nil
 
     var body: some View {
         Form {
@@ -222,8 +227,21 @@ struct ContactDetailView: View {
         }
         .formStyle(.grouped)
         .onAppear { loadMatches() }
-        .onChange(of: entry.id) { _, _ in loadMatches() }
-        .onChange(of: entry.nick) { _, _ in loadMatches() }
+        .onChange(of: entry.id) { _, _ in loadMatches() }   // selection switch: refresh now
+        .onChange(of: entry.nick) { _, _ in scheduleLoadMatches() }  // typing: debounce
+        .onDisappear { matchDebounce?.cancel() }
+    }
+
+    /// Debounced entry-point for `loadMatches`, used while the nick field is
+    /// being typed into. Cancels any in-flight scan and runs after a short
+    /// quiet period.
+    private func scheduleLoadMatches() {
+        matchDebounce?.cancel()
+        matchDebounce = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            if Task.isCancelled { return }
+            loadMatches()
+        }
     }
 
     // MARK: - Duplicate guard

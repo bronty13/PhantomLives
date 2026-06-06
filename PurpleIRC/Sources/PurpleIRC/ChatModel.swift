@@ -583,15 +583,22 @@ final class ChatModel: ObservableObject {
         // this, the Picker in ConnectFormView silently snaps back because
         // SwiftUI never hears that the selection actually changed.
         // SwiftUI re-render bump stays instant — debouncing it would make
-        // text fields lag visibly. Regex cache invalidation is also kept
-        // instant because clearing is O(1) and stale matches would be wrong.
+        // text fields lag visibly.
         settings.objectWillChange
             .sink { [weak self] in
                 self?.objectWillChange.send()
-                // Rule edits invalidate compiled regex in the trigger/highlight
-                // engines. Cheap to clear; next evaluation recompiles.
-                self?.botEngine.clearRegexCache()
             }
+            .store(in: &cancellables)
+        // The trigger-rule regex cache only needs clearing when the rules
+        // themselves change. Clearing it on *every* `objectWillChange` meant
+        // editing any unrelated setting (away reply, theme, a server name)
+        // dropped every compiled trigger regex, forcing a full recompile on
+        // the next incoming line. Keyed on `triggerRules` + `removeDuplicates`,
+        // it now clears only on an actual rule edit.
+        settings.$settings
+            .map(\.triggerRules)
+            .removeDuplicates()
+            .sink { [weak self] _ in self?.botEngine.clearRegexCache() }
             .store(in: &cancellables)
         // Debounce the heavier consumer-side work — `onSettingsChanged()`
         // walks every connection writing alert flags, log toggles, ignore

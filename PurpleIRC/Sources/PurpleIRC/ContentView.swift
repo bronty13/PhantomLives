@@ -539,7 +539,10 @@ struct SidebarView: View {
                 AddNetworkRow()
             }
 
-            let channels = model.buffers.filter { $0.kind == .channel }
+            // One pass over `model.buffers`, partitioned by kind — was three
+            // separate `.filter` sweeps per sidebar render.
+            let parts = partitionedBuffers
+            let channels = parts.channels
             if !channels.isEmpty {
                 Section("Channels") {
                     ForEach(channels) { buf in
@@ -557,8 +560,8 @@ struct SidebarView: View {
             // sidebar reads as "channels above, anything addressed to *you*
             // below". A subtle divider + dim styling on the server rows keeps
             // them distinct from query rows above and saved/contacts below.
-            let queries  = model.buffers.filter { $0.kind == .query }
-            let servers  = model.buffers.filter { $0.kind == .server }
+            let queries  = parts.queries
+            let servers  = parts.servers
             if !queries.isEmpty || !servers.isEmpty {
                 Section("Private") {
                     ForEach(queries) { buf in
@@ -628,6 +631,23 @@ struct SidebarView: View {
         .safeAreaInset(edge: .bottom) {
             SidebarFooterView()
         }
+    }
+
+    /// Partition the active connection's buffers by kind in a single pass.
+    /// The sidebar needs all three groups every render; folding them once
+    /// avoids three separate `.filter` sweeps over `model.buffers`.
+    private var partitionedBuffers: (channels: [Buffer], queries: [Buffer], servers: [Buffer]) {
+        var channels: [Buffer] = []
+        var queries: [Buffer] = []
+        var servers: [Buffer] = []
+        for buf in model.buffers {
+            switch buf.kind {
+            case .channel: channels.append(buf)
+            case .query:   queries.append(buf)
+            case .server:  servers.append(buf)
+            }
+        }
+        return (channels, queries, servers)
     }
 
     private var savedForCurrentServer: [SavedChannel] {

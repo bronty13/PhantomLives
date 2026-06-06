@@ -178,7 +178,7 @@ struct SeenListView: View {
         let sorted = entries.sorted(using: sortOrder)
         guard !searchText.isEmpty else { return sorted }
         if useRegex {
-            guard let re = try? NSRegularExpression(pattern: searchText, options: .caseInsensitive) else {
+            guard let re = RegexCache.caseInsensitive(searchText) else {
                 return sorted
             }
             return sorted.filter { row in
@@ -199,12 +199,9 @@ struct SeenListView: View {
 
     private var regexError: String? {
         guard useRegex, !searchText.isEmpty else { return nil }
-        do {
-            _ = try NSRegularExpression(pattern: searchText, options: .caseInsensitive)
-            return nil
-        } catch {
-            return "Regex error: \(error.localizedDescription)"
-        }
+        return RegexCache.caseInsensitive(searchText) == nil
+            ? "Invalid regular expression"
+            : nil
     }
 
     private func lookup(_ id: SeenEntry.ID) -> SeenEntry? {

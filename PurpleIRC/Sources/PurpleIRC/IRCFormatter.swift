@@ -20,14 +20,21 @@ enum IRCFormatter {
     private static let controlSet: Set<Character> =
         [bold, italic, underln, strike, reverse, reset, color, mono, hexCol]
 
+    /// Shared URL link detector. `NSDataDetector` is expensive to build (it
+    /// spins up the underlying regex engine), and `renderWithLinks` runs once
+    /// per visible message row on every body re-eval — so constructing a fresh
+    /// detector per call was a measurable per-row cost under chat traffic and
+    /// hover/scroll churn. `NSDataDetector` is documented thread-safe for
+    /// concurrent `enumerateMatches`, so one process-wide instance is safe.
+    private static let linkDetector: NSDataDetector? =
+        try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+
     /// Render `raw` with both mIRC codes and URL link detection applied.
     /// Tintable at the call site via `linkColor`.
     static func renderWithLinks(_ raw: String, linkColor: Color = .accentColor) -> AttributedString {
         var attr = render(raw)
         let plain = String(attr.characters)
-        guard !plain.isEmpty,
-              let detector = try? NSDataDetector(
-                types: NSTextCheckingResult.CheckingType.link.rawValue) else {
+        guard !plain.isEmpty, let detector = linkDetector else {
             return attr
         }
         let nsRange = NSRange(plain.startIndex..<plain.endIndex, in: plain)

@@ -12,6 +12,62 @@ count (`1.0.<count>`).
 > 1:1 to the entry that introduced a change. Read the **dates**, not
 > the patch numbers, as the source of truth for "what shipped when."
 
+## [Unreleased] — 2026-06-06
+
+### Performance
+
+- **Eliminated the intermittent UI freezes in chat windows and the Address
+  Book.** All were the same root cause: expensive work running synchronously
+  on the main actor inside SwiftUI `body` / computed properties, re-triggered
+  on every render — and because `ChatModel` is one `ObservableObject`, every
+  incoming IRC line re-rendered observing views. Nine fixes:
+  - **Chat — link detection no longer rebuilds a regex engine per message**
+    (`IRCFormatter.swift`). `renderWithLinks` constructed a fresh, expensive
+    `NSDataDetector` on every call — i.e. for every visible row on every body
+    re-eval. It's now a single process-wide instance (`NSDataDetector` is
+    thread-safe for `enumerateMatches`).
+  - **Chat — rendered message text is memoized** (`BufferView.swift`,
+    `MessageRow.renderedText`). The mIRC-parse + URL-detect + highlight overlay
+    is now cached in a bounded `NSCache` keyed by line id + link/rule colors,
+    instead of recomputed on every hover, scroll, theme tick, and input
+    keystroke.
+  - **Chat — join/part summary rows reuse the shared timestamp formatter**
+    (`BufferView.swift`, `JoinPartSummaryRow.rangeLabel`) instead of allocating
+    a `DateFormatter` per row per render.
+  - **Chat — the user-list pane caches its rank-sorted order**
+    (`BufferView.swift`). `Buffer.usersSortedByRank` re-sorted the whole
+    membership (50–500 nicks, with per-comparison mode lookups) on every body
+    pass while the channel was active; it's now recomputed only when the
+    membership or its modes change.
+  - **Address Book — the contact list is recomputed only on real changes**
+    (`AddressBook/AddressBookContactList.swift`). The filtered/sorted list (and
+    its per-contact cross-network sighting fold for the recency filter) was a
+    computed property read by `body`, so it re-ran on *every* model change
+    including every incoming line. It's now cached in `@State` and refreshed
+    only when the address book, filter, or watch presence changes.
+  - **Address Book — tag usage counts fold in one pass**
+    (`AddressBook/AddressBookFiltersSidebar.swift`) instead of re-scanning the
+    whole address book once per tag row (O(tags × contacts) → O(contacts)).
+  - **Address Book — the cross-store match scan is debounced**
+    (`AddressBook/ContactDetailView.swift`). Editing a contact's nick kicked
+    off a full seen-store scan plus a chat-log enumeration on every keystroke;
+    now only the trailing edge runs after a short pause.
+  - **Shared, reused formatters** (`SharedFormatters.swift`). New `RelativeTime`
+    helper replaces per-row `RelativeDateTimeFormatter()` allocations in the
+    Address Book sidebar, activity timeline, hostmask history, unified search,
+    nick-find, and backup views.
+  - **Search regex is cached** (`SharedFormatters.swift`, `ChannelListView.swift`,
+    `SeenListView.swift`). The channel-list and seen-list search recompiled an
+    `NSRegularExpression` on every keystroke (twice — once to filter, once for
+    the error label); a shared `RegexCache` keyed by pattern fixes both.
+  - **Sidebar buffers partition in one pass** (`ContentView.swift`) instead of
+    three separate `.filter` sweeps per render.
+  - **Trigger-rule regex cache invalidation narrowed** (`ChatModel.swift`).
+    The bot engine's compiled-regex cache was cleared on *every* settings
+    `objectWillChange` — so editing any unrelated setting forced a full
+    recompile of all trigger regexes on the next incoming line. It now clears
+    only when `triggerRules` actually changes.
+
 ## [Unreleased] — 2026-06-04
 
 ### Added
