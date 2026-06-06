@@ -17,6 +17,9 @@ export interface WheelData {
   wheel: Wheel;
   branding: Branding;
   format: WheelDeployPayload['format'];
+  /** Unique per deploy — scopes the spins/history counters so each deployed file
+   *  starts fresh (a recipient still can't refresh to bypass the limit). */
+  generatedAt: string;
 }
 
 function devFallbackPayload(): WheelDeployPayload {
@@ -26,5 +29,10 @@ function devFallbackPayload(): WheelDeployPayload {
 
 export function loadWheelData(): WheelData {
   const payload = injectedPayload() ?? devFallbackPayload();
-  return { wheel: payload.wheel, branding: payload.branding, format: payload.format };
+  return {
+    wheel: payload.wheel,
+    branding: payload.branding,
+    format: payload.format,
+    generatedAt: payload.generatedAt,
+  };
 }

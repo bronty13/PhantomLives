@@ -8,25 +8,25 @@ import type { WheelData } from './bootstrap';
 import { getSpinsUsed, recordSpin } from './spins';
 import { SpinWheel } from './SpinWheel';
 
-function historyKey(id: string): string {
-  return `quizzer-wheel:${id}:history`;
+function historyKey(id: string, token: string): string {
+  return `quizzer-wheel:${id}:${token}:history`;
 }
 function soundKey(id: string): string {
   return `quizzer-wheel:${id}:sound`;
 }
 
-function loadHistory(id: string): WheelResultEntry[] {
+function loadHistory(id: string, token: string): WheelResultEntry[] {
   try {
-    const raw = localStorage.getItem(historyKey(id));
+    const raw = localStorage.getItem(historyKey(id, token));
     if (raw) return JSON.parse(raw) as WheelResultEntry[];
   } catch {
     /* ignore */
   }
   return [];
 }
-function saveHistory(id: string, history: WheelResultEntry[]): void {
+function saveHistory(id: string, token: string, history: WheelResultEntry[]): void {
   try {
-    localStorage.setItem(historyKey(id), JSON.stringify(history));
+    localStorage.setItem(historyKey(id, token), JSON.stringify(history));
   } catch {
     /* in-memory only */
   }
@@ -43,12 +43,12 @@ function loadSoundPref(id: string, fallback: boolean): boolean {
 }
 
 export function App({ data }: { data: WheelData }) {
-  const { wheel, branding } = data;
+  const { wheel, branding, generatedAt } = data;
   const css = useMemo(() => brandingCss(branding), [branding]);
 
-  const [used, setUsed] = useState(() => getSpinsUsed(wheel.id));
+  const [used, setUsed] = useState(() => getSpinsUsed(wheel.id, generatedAt));
   const [soundOn, setSoundOn] = useState(() => loadSoundPref(wheel.id, wheel.soundDefaultOn));
-  const [history, setHistory] = useState<WheelResultEntry[]>(() => loadHistory(wheel.id));
+  const [history, setHistory] = useState<WheelResultEntry[]>(() => loadHistory(wheel.id, generatedAt));
   const [result, setResult] = useState<{ text: string; nonce: number } | null>(null);
 
   const unlimited = wheel.spinsPermitted === 0;
@@ -74,11 +74,11 @@ export function App({ data }: { data: WheelData }) {
   function handleResult(index: number) {
     const text = wheel.choices[index]?.text || `Option ${index + 1}`;
     setResult({ text, nonce: Date.now() });
-    setUsed(recordSpin(wheel.id));
+    setUsed(recordSpin(wheel.id, generatedAt));
     const entry: WheelResultEntry = { label: text, at: new Date().toLocaleString() };
     setHistory((prev) => {
       const next = [...prev, entry];
-      saveHistory(wheel.id, next);
+      saveHistory(wheel.id, generatedAt, next);
       return next;
     });
   }

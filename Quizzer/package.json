@@ -1,6 +1,6 @@
 {
   "name": "quizzer",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "Lightweight, portable quiz creator/customizer SPA that deploys self-contained, offline, branded quizzes to any browser.",
   "type": "module",

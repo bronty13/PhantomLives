@@ -3,6 +3,19 @@
 All notable changes to **Quizzer** are recorded here. This project follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Semantic Versioning.
 
+## 0.3.2 — 2026-06-06
+
+### Fixed
+
+- **Spin limit could show "No spins left" on a freshly deployed wheel.** The
+  spins-used counter was keyed only by wheel id, so a re-deployed wheel (same id)
+  inherited the spins from earlier testing and could open already-exhausted. It is now
+  scoped by the per-deploy token (`generatedAt`): **every newly deployed file starts
+  with a full allowance**, while a single deployed file still counts spins across
+  refreshes (a recipient can't refresh to bypass the limit). The result history (and
+  its PDF) is scoped the same way. *Already-deployed files keep their own count; re-deploy
+  to get a fresh one.*
+
 ## 0.3.1 — 2026-06-06
 
 ### Changed (Spin the Wheel refinements)

@@ -4,25 +4,29 @@
 
 const memory = new Map<string, number>();
 
-function key(wheelId: string): string {
-  return `quizzer-wheel:${wheelId}:spins`;
+// Scope by wheel id AND the deploy token (generatedAt) so a re-deployed wheel starts
+// fresh, while a single deployed file still counts spins across refreshes.
+function key(wheelId: string, token: string): string {
+  return `quizzer-wheel:${wheelId}:${token}:spins`;
 }
 
-export function getSpinsUsed(wheelId: string): number {
+export function getSpinsUsed(wheelId: string, token: string): number {
+  const k = key(wheelId, token);
   try {
-    const raw = localStorage.getItem(key(wheelId));
+    const raw = localStorage.getItem(k);
     if (raw != null) return parseInt(raw, 10) || 0;
   } catch {
     /* fall through to memory */
   }
-  return memory.get(wheelId) ?? 0;
+  return memory.get(k) ?? 0;
 }
 
-export function recordSpin(wheelId: string): number {
-  const used = getSpinsUsed(wheelId) + 1;
-  memory.set(wheelId, used);
+export function recordSpin(wheelId: string, token: string): number {
+  const k = key(wheelId, token);
+  const used = getSpinsUsed(wheelId, token) + 1;
+  memory.set(k, used);
   try {
-    localStorage.setItem(key(wheelId), String(used));
+    localStorage.setItem(k, String(used));
   } catch {
     /* in-memory only */
   }
