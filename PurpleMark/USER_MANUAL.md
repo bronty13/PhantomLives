@@ -82,6 +82,14 @@ diagrams and math are preserved in both formats; the HTML is fully self-containe
   disk and are not part of this backup). Retention, folder, and **Run Backup
   Now** are here, with a list of recent archives.
 
+## Spotlight search
+
+PurpleMark makes your Markdown searchable in Spotlight. Search for a word that
+appears *inside* a `.md` file and Spotlight finds the file — and PurpleMark's
+bundled importer indexes each document's first heading as its title and labels it
+a "Markdown Document". (Files in excluded locations like `/tmp` aren't indexed by
+macOS.)
+
 ## Saving
 
 ⌘S saves; ⌘⇧S is Save As. With **auto-save** on, edits to an already-saved file

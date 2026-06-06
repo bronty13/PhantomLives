@@ -2,6 +2,23 @@
 
 All notable changes to PurpleMark are documented here.
 
+## [1.0.6] - 2026-06-05
+
+### Added
+- **Spotlight content importer** — a bundled `.mdimporter` CFPlugin
+  (`Contents/Library/Spotlight/PurpleMark.mdimporter`) that indexes a markdown
+  file's text content plus its first heading as the title and a "Markdown
+  Document" kind, so Spotlight can find `.md` files by their contents and show a
+  proper title. It claims the specific `net.daringfireball.markdown` type.
+  - Note: macOS already indexes `.md` *contents* via its built-in plain-text
+    importer (because PurpleMark declares markdown as conforming to
+    `public.plain-text`), so content search works regardless; this importer adds
+    the markdown-specific title/kind metadata where it's the registered handler.
+
+### Fixed
+- Test target compiled against a removed `AppSettings.theme` accessor (a 1.0.5
+  cleanup slip) — updated to use `themeRaw`. Tests build green again (33/33).
+
 ## [1.0.5] - 2026-06-05
 
 ### Added

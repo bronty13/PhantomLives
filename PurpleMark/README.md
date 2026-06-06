@@ -69,7 +69,18 @@ Debug registration:
 pluginkit -m -p com.apple.quicklook.preview   | grep -i purplemark
 pluginkit -m -p com.apple.quicklook.thumbnail | grep -i purplemark
 qlmanage -t -s 512 -o /tmp SomeFile.md        # force-render a thumbnail
+mdimport -L | grep -i purplemark              # Spotlight importer registered?
+mdimport -t -d2 ~/Downloads/Some.md           # which importer handled the file
 ```
+
+## Spotlight
+
+A bundled `.mdimporter` (`Contents/Library/Spotlight/PurpleMark.mdimporter`)
+indexes markdown content + the first heading (title) + a "Markdown Document"
+kind. macOS already content-indexes `.md` via its plain-text importer (PurpleMark
+declares the markdown UTI as conforming to `public.plain-text`), so content
+search works regardless; the bundled importer adds the markdown-specific
+title/kind where it's the registered handler for `net.daringfireball.markdown`.
 
 ## Default output location
 

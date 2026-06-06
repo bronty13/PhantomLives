@@ -199,8 +199,7 @@ final class AppSettingsTests: XCTestCase {
     @MainActor
     func testTypedAccessorsRoundTrip() {
         let s = AppSettings()
-        s.theme = .solarized
-        XCTAssertEqual(s.theme, .solarized)
+        s.themeRaw = "solarized"
         XCTAssertEqual(s.themeRaw, "solarized")
         s.defaultView = .markdown
         XCTAssertEqual(s.defaultView, .markdown)

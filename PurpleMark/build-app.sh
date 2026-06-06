@@ -69,6 +69,15 @@ ditto --noextattr "$ICNS_PATH" "$DEST_APP/Contents/Resources/AppIcon.icns"
 
 # Code sign inside-out: framework → appex → app. Developer ID if available,
 # otherwise ad-hoc (local dev).
+# Bundle the Spotlight metadata importer into Contents/Library/Spotlight/ so
+# Spotlight indexes the contents of .md files.
+SPOTLIGHT_SRC="$BUILD_DIR/DerivedData/Build/Products/Release/PurpleMark.mdimporter"
+SPOTLIGHT_DST="$DEST_APP/Contents/Library/Spotlight/PurpleMark.mdimporter"
+if [ -d "$SPOTLIGHT_SRC" ]; then
+    mkdir -p "$DEST_APP/Contents/Library/Spotlight"
+    ditto --noextattr "$SPOTLIGHT_SRC" "$SPOTLIGHT_DST"
+fi
+
 # Allow an explicit identity override (release.sh passes CODESIGN_IDENTITY).
 CERT="${CODESIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | grep "Developer ID Application" | head -1 | awk '{print $2}' || echo "")}"
 FRAMEWORK="$DEST_APP/Contents/Frameworks/PurpleMarkRenderCore.framework"
@@ -101,6 +110,7 @@ if [ -d "$SPARKLE_FW" ]; then
 fi
 
 "${SIGN[@]}" "$FRAMEWORK"
+[ -d "$SPOTLIGHT_DST" ] && "${SIGN[@]}" "$SPOTLIGHT_DST"
 "${SIGN[@]}" --entitlements "$QL_ENT" "$QL_APPEX"
 "${SIGN[@]}" --entitlements "$THUMB_ENT" "$THUMB_APPEX"
 "${SIGN[@]}" --entitlements "$APP_ENT" "$DEST_APP"
