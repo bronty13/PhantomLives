@@ -2,6 +2,19 @@
 
 All notable changes to PurpleMark are documented here.
 
+## [1.0.7] - 2026-06-05
+
+### Removed
+- The bundled Spotlight `.mdimporter` (added in 1.0.6). After registration was
+  verified post-reboot, testing confirmed it's **inert on current macOS**: the
+  system `RichText` importer wins the live index for markdown (via
+  `public.plain-text` conformance), so our importer's heading-title and "Markdown
+  Document" kind never reach the index, even though `mdimport -t` selects it.
+  **Spotlight content search still works** — macOS indexes `.md` contents because
+  PurpleMark declares the markdown UTI as conforming to `public.plain-text`
+  (verified with `mdfind` finding a file by an in-body token). Removed the dead
+  target rather than ship a Spotlight extension that has no effect.
+
 ## [1.0.6] - 2026-06-05
 
 ### Added

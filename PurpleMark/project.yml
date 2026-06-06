@@ -63,11 +63,6 @@ targets:
         embed: true
       - target: PurpleMarkThumbnail
         embed: true
-      # Build dependency only — build-app.sh copies the .mdimporter into
-      # Contents/Library/Spotlight/ (not a standard embed location).
-      - target: PurpleMarkSpotlight
-        link: false
-        embed: false
       - package: Sparkle
     scheme:
       testTargets:
@@ -111,26 +106,6 @@ targets:
       - target: PurpleMarkRenderCore
         embed: false
         link: true
-
-  # ---- Spotlight metadata importer (.mdimporter CFPlugin) ----
-  PurpleMarkSpotlight:
-    type: bundle
-    platform: macOS
-    sources:
-      - path: Sources/PurpleMarkSpotlight
-    settings:
-      base:
-        PRODUCT_NAME: PurpleMark
-        PRODUCT_BUNDLE_IDENTIFIER: com.bronty13.PurpleMark.mdimporter
-        INFOPLIST_FILE: Sources/PurpleMarkSpotlight/Info.plist
-        WRAPPER_EXTENSION: mdimporter
-        # The CFPlugIn factory symbol must stay exported for Spotlight's dlsym.
-        GCC_SYMBOLS_PRIVATE_EXTERN: NO
-        STRIP_INSTALLED_PRODUCT: NO
-        SKIP_INSTALL: YES
-    dependencies:
-      - sdk: CoreServices.framework
-      - sdk: Foundation.framework
 
   # ---- Unit tests ----
   PurpleMarkTests:

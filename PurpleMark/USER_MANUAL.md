@@ -84,11 +84,10 @@ diagrams and math are preserved in both formats; the HTML is fully self-containe
 
 ## Spotlight search
 
-PurpleMark makes your Markdown searchable in Spotlight. Search for a word that
-appears *inside* a `.md` file and Spotlight finds the file — and PurpleMark's
-bundled importer indexes each document's first heading as its title and labels it
-a "Markdown Document". (Files in excluded locations like `/tmp` aren't indexed by
-macOS.)
+Your Markdown is searchable in Spotlight — search for a word that appears *inside*
+a `.md` file and Spotlight finds the file. (This works because PurpleMark registers
+the Markdown file type with macOS; files in excluded locations like `/tmp` aren't
+indexed.)
 
 ## Saving
 
