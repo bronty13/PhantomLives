@@ -95,7 +95,7 @@ public struct LibArchiveEngine: Sendable {
         )
     }
 
-    private static func errorString(_ a: OpaquePointer) -> String {
+    static func errorString(_ a: OpaquePointer) -> String {
         if let c = archive_error_string(a) { return String(cString: c) }
         return "libarchive error \(archive_errno(a))"
     }

@@ -21,6 +21,7 @@ let package = Package(
     dependencies: [
         .package(path: "Vendor/CZstd"),
         .package(path: "Vendor/CLibArchive"),
+        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
     ],
     targets: [
         .target(
@@ -33,7 +34,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "parc",
-            dependencies: ["ArchiveKit"],
+            dependencies: [
+                "ArchiveKit",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
             path: "Sources/parc"
         ),
         .testTarget(

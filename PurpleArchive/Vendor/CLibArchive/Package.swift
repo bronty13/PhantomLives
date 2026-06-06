@@ -42,6 +42,13 @@ let package = Package(
                 .define("PLATFORM_CONFIG_H", to: "\"config.h\""),
                 .headerSearchPath("src"),
                 .headerSearchPath("include_lzma"),
+                // libarchive guards noisy `fprintf(stderr, "Header id …")`
+                // diagnostics behind `#ifdef DEBUG`. SwiftPM/Xcode define DEBUG
+                // in debug builds, which would pollute every zip read. A
+                // force-included prefix header `#undef`s it at the top of every
+                // TU — order-independent, unlike a bare `-UDEBUG` (see
+                // src/pa_prefix.h). Affects only this vendored C target.
+                .unsafeFlags(["-include", "pa_prefix.h"]),
             ],
             linkerSettings: [
                 .linkedLibrary("z"),
