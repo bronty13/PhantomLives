@@ -76,6 +76,7 @@ struct Extract: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "Output directory (default: ~/Downloads/PurpleArchive/<name>).")
     var output: String?
     @Option(name: .shortAndLong, help: "Password for an encrypted archive.") var password: String?
+    @Flag(name: .long, help: "Use (and update) the Keychain password vault.") var useVault = false
     @Flag(name: .long, help: "Skip files that already exist instead of overwriting.") var skipExisting = false
 
     func run() async throws {
@@ -87,10 +88,14 @@ struct Extract: AsyncParsableCommand {
                 .appendingPathComponent("Downloads/PurpleArchive")
             dest = base.appendingPathComponent(url.deletingPathExtension().lastPathComponent)
         }
-        let opts = ExtractOptions(destination: dest, password: password,
+        let vault = KeychainVault()
+        var effective = password
+        if useVault, effective == nil { effective = vault.password(for: url) }
+        let opts = ExtractOptions(destination: dest, password: effective,
                                   overwrite: skipExisting ? .skip : .overwrite)
         do {
             let n = try ArchiveService().extract(url, options: opts)
+            if useVault, let pw = password { vault.setPassword(pw, for: url) }   // remember on success
             print("Extracted \(n) entries → \(dest.path)")
         } catch let e as ArchiveError {
             if case .passwordRequired = e { die("password required (use -p)") }
@@ -185,6 +190,32 @@ struct Hash: AsyncParsableCommand {
             let digest = try ArchiveService().hash(URL(fileURLWithPath: file), algorithm: algorithm)
             print("\(digest)  \(file)")
         } catch { die(error.localizedDescription) }
+    }
+}
+
+// MARK: - vault
+
+struct Vault: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "vault", abstract: "Manage the Keychain password vault.",
+        subcommands: [VaultList.self, VaultForget.self])
+}
+
+struct VaultList: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "list", abstract: "List remembered archives.")
+    func run() async throws {
+        let keys = KeychainVault().storedKeys()
+        if keys.isEmpty { print("No remembered passwords.") }
+        else { keys.forEach { print($0) } }
+    }
+}
+
+struct VaultForget: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "forget", abstract: "Remove a remembered password.")
+    @Argument(help: "Archive filename key (as shown by `vault list`).") var key: String
+    func run() async throws {
+        KeychainVault().removePassword(for: key)
+        print("Forgot \(key)")
     }
 }
 

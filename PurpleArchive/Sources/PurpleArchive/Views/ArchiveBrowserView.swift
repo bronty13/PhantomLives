@@ -5,6 +5,7 @@ import SwiftUI
 struct ArchiveBrowserView: View {
     @EnvironmentObject var model: AppModel
     @State private var password = ""
+    @State private var remember = false
     @State private var showingPasswordSheet = false
 
     var body: some View {
@@ -66,8 +67,10 @@ struct ArchiveBrowserView: View {
             .help("Filename text encoding — fix mojibake from Windows/Linux archives")
 
             Button {
-                if model.isEncrypted { showingPasswordSheet = true }
-                else { model.extractOpened() }
+                if model.isEncrypted {
+                    if model.vaultPassword != nil { model.extractOpened() }  // auto-fill from Keychain
+                    else { showingPasswordSheet = true }
+                } else { model.extractOpened() }
             } label: {
                 Label("Extract", systemImage: "arrow.down.circle.fill")
             }
@@ -98,12 +101,14 @@ struct ArchiveBrowserView: View {
             Text("This archive is encrypted").font(.headline)
             SecureField("Password", text: $password)
                 .textFieldStyle(.roundedBorder).frame(width: 260)
+            Toggle("Remember in Keychain", isOn: $remember)
             HStack {
                 Spacer()
                 Button("Cancel") { showingPasswordSheet = false }
                 Button("Extract") {
                     showingPasswordSheet = false
-                    model.extractOpened(password: password)
+                    model.extractOpened(password: password, remember: remember)
+                    password = ""
                 }.keyboardShortcut(.defaultAction).tint(.purple)
             }
         }

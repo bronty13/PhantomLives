@@ -4,6 +4,20 @@ All notable changes to PurpleArchive are documented here.
 
 ## [Unreleased]
 
+### Phase 2b — Keychain password vault (2026-06-06)
+
+Type an archive password once.
+
+- **`PasswordVault`** protocol with a **`KeychainVault`** (macOS Keychain generic
+  passwords, keyed by filename so a remembered password survives the archive
+  moving) and an **`InMemoryVault`** (tests / headless fallback).
+- **GUI**: encrypted-archive extract auto-fills from the Keychain; the password
+  sheet offers "Remember in Keychain".
+- **CLI**: `parc x --use-vault [--password …]` (auto-fills, remembers on
+  success) and `parc vault list` / `parc vault forget <key>`.
+- 3 vault tests; verified end-to-end (remember → auto-fill → forget). Engine
+  suite 22/22.
+
 ### Phase 2a — filename-encoding fix (2026-06-06)
 
 The #1 cross-platform pain point no other Mac tool nails: archives from

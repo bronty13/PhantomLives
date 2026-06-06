@@ -13,7 +13,7 @@ struct Parc: AsyncParsableCommand {
         abstract: "PurpleArchive — extract, create, inspect and hash any archive.",
         version: "PurpleArchive \(ArchiveKitVersions.libarchive)+zstd\(ArchiveKitVersions.zstd)",
         subcommands: [List.self, Extract.self, Add.self, Test.self,
-                      Info.self, Hash.self, Versions.self],
+                      Info.self, Hash.self, Vault.self, Versions.self],
         defaultSubcommand: nil)
 }
 

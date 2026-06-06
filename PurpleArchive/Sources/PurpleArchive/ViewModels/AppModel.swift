@@ -8,6 +8,7 @@ import SwiftUI
 final class AppModel: ObservableObject {
     let settings: SettingsStore
     private let service = ArchiveService()
+    let vault: PasswordVault = KeychainVault()
 
     // Open archive
     @Published var openedURL: URL?
@@ -67,11 +68,17 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func extractOpened(password: String? = nil) {
+    /// Password remembered in the Keychain for the open archive, if any.
+    var vaultPassword: String? { openedURL.flatMap { vault.password(for: $0) } }
+
+    func extractOpened(password: String? = nil, remember: Bool = false) {
         guard let url = openedURL else { return }
+        // Fall back to a Keychain-remembered password when none was supplied.
+        let effective = password ?? vault.password(for: url)
+        if remember, let pw = password, !pw.isEmpty { vault.setPassword(pw, for: url) }
         let dest = settings.resolvedExtractRoot
             .appendingPathComponent(url.deletingPathExtension().lastPathComponent)
-        let opts = ExtractOptions(destination: dest, password: password)
+        let opts = ExtractOptions(destination: dest, password: effective)
         runJob("Extracting…") { [service] in
             try service.extract(url, options: opts)
             return dest
