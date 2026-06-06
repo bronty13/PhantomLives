@@ -2,6 +2,18 @@
 
 All notable changes to PurpleMark are documented here.
 
+## [1.0.1] - 2026-06-05
+
+### Added
+- **Finder thumbnails** for `.md` files — a new `PurpleMarkThumbnail`
+  `QLThumbnailProvider` app-extension draws a content-aware page preview (purple
+  accent + the document's first lines) so markdown files get a recognizable icon
+  instead of a generic one. Shared, testable renderer in
+  `PurpleMarkRenderCore/MarkdownThumbnail`.
+- **First-run prompt** offering to set PurpleMark as the default Markdown editor
+  (shown once; either choice is remembered so it never nags).
+- 4 unit tests for thumbnail preview-line extraction.
+
 ## [1.0.0] - 2026-06-05
 
 Initial release — a native macOS Markdown editor, default `.md` handler, and

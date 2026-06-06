@@ -34,11 +34,13 @@ Everything renders offline — no internet needed.
 
 ## Make PurpleMark your default Markdown editor
 
-1. Open **Settings** (⌘,) → **Default Application**.
-2. Click **Set as Default for .md**.
+The first time you launch PurpleMark, it offers to become your default Markdown
+editor — click **Set as Default**. (You can also do it later: **Settings** (⌘,)
+→ **Default Application** → **Set as Default for .md**.)
 
-Now double-clicking a `.md` file in Finder opens PurpleMark, and pressing
-**spacebar** on a `.md` file shows a PurpleMark-rendered **Quick Look** preview.
+Now double-clicking a `.md` file in Finder opens PurpleMark, pressing **spacebar**
+on a `.md` file shows a PurpleMark-rendered **Quick Look** preview, and `.md`
+files get a **content-aware thumbnail icon** (a little page preview) in Finder.
 
 ## Exporting
 

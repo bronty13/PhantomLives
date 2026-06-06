@@ -23,13 +23,14 @@ Part of the PhantomLives monorepo; one of the `Purple*` SwiftUI apps.
 
 ## Architecture
 
-Native **Swift / SwiftUI**, macOS 14+, built with **XcodeGen**. Four targets:
+Native **Swift / SwiftUI**, macOS 14+, built with **XcodeGen**. Five targets:
 
 | Target | Role |
 |---|---|
 | `PurpleMark` | The SwiftUI editor app. |
-| `PurpleMarkRenderCore` | Framework: the markdown→HTML pipeline + bundled JS/CSS/fonts. Shared by the app **and** the Quick Look extension so rendering is byte-identical. |
+| `PurpleMarkRenderCore` | Framework: the markdown→HTML pipeline + bundled JS/CSS/fonts, plus the Finder thumbnail renderer. Shared by the app and both extensions so output is consistent. |
 | `PurpleMarkQuickLook` | `QLPreviewProvider` app-extension (Finder spacebar preview). |
+| `PurpleMarkThumbnail` | `QLThumbnailProvider` app-extension (content-aware Finder icon for `.md`). |
 | `PurpleMarkTests` | XCTest unit tests. |
 
 Rendering is a hybrid native-shell + bundled-JS approach (like OpenMark /
@@ -55,16 +56,19 @@ and proves freshness).
 > Requires full Xcode (not just Command Line Tools) — `build-app.sh` auto-selects
 > `/Applications/Xcode.app` if `xcode-select` points at CLT.
 
-## Set as default / Quick Look
+## Set as default / Quick Look / thumbnails
 
-Open **Settings → Default Application → “Set as Default for .md”**. Finder Quick
-Look (spacebar) works as soon as PurpleMark has been launched once from
-`/Applications/` (Launch Services registers the bundled extension).
+On first launch PurpleMark offers to become your default Markdown editor; you can
+also set it anytime via **Settings → Default Application → “Set as Default for
+.md”**. Finder **Quick Look** (spacebar) and **thumbnails** work as soon as
+PurpleMark has been launched once from `/Applications/` (Launch Services registers
+the bundled extensions).
 
 Debug registration:
 ```sh
-qlmanage -m | grep -i purplemark
-pluginkit -m -p com.apple.quicklook.preview | grep -i purplemark
+pluginkit -m -p com.apple.quicklook.preview   | grep -i purplemark
+pluginkit -m -p com.apple.quicklook.thumbnail | grep -i purplemark
+qlmanage -t -s 512 -o /tmp SomeFile.md        # force-render a thumbnail
 ```
 
 ## Default output location

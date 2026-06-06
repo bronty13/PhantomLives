@@ -80,6 +80,63 @@ final class RenderCoreTests: XCTestCase {
     }
 }
 
+final class MarkdownThumbnailTests: XCTestCase {
+    func testPreviewLinesClassifyAndStrip() {
+        let md = """
+        # Title
+        Some **bold** body.
+        - first
+        1. second
+        > a quote
+        ```swift
+        let x = 1
+        ```
+        """
+        let lines = MarkdownThumbnail.previewLines(from: md, max: 16)
+        XCTAssertEqual(lines[0], .init(kind: .h1, text: "Title"))
+        XCTAssertEqual(lines[1], .init(kind: .normal, text: "Some bold body."))
+        XCTAssertEqual(lines[2], .init(kind: .bullet, text: "first"))
+        XCTAssertEqual(lines[3], .init(kind: .bullet, text: "second"))
+        XCTAssertEqual(lines[4], .init(kind: .quote, text: "a quote"))
+        XCTAssertEqual(lines[5].kind, .code)            // fence opener (info "swift")
+        XCTAssertTrue(lines.contains(.init(kind: .code, text: "let x = 1")))
+    }
+
+    func testPreviewLinesRespectsMax() {
+        let md = (1...50).map { "line \($0)" }.joined(separator: "\n")
+        XCTAssertEqual(MarkdownThumbnail.previewLines(from: md, max: 5).count, 5)
+    }
+
+    func testPreviewSkipsLeadingBlankLines() {
+        let lines = MarkdownThumbnail.previewLines(from: "\n\n\n# Heading", max: 8)
+        XCTAssertEqual(lines.first?.kind, .h1)
+    }
+
+    @MainActor
+    func testDrawRendersNonEmptyImage() throws {
+        let size = CGSize(width: 480, height: 620)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        MarkdownThumbnail.draw(markdown: """
+        # PurpleMark Demo
+
+        A quick check of the renderer.
+        - First item
+        - Second item
+        > A blockquote.
+        ## Section
+        Body paragraph here.
+        """, size: size)
+        image.unlockFocus()
+        let tiff = try XCTUnwrap(image.tiffRepresentation)
+        let rep = try XCTUnwrap(NSBitmapImageRep(data: tiff))
+        let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+        // Side-effect for manual inspection during development.
+        try? png.write(to: URL(fileURLWithPath: "/tmp/pm-thumb-render.png"))
+        XCTAssertGreaterThan(png.count, 2000, "thumbnail should produce a non-trivial image")
+    }
+}
+
 final class BackupServiceTests: XCTestCase {
     @MainActor
     func testRunBackupCreatesArchive() throws {

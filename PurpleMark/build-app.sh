@@ -53,9 +53,10 @@ DEST_APP="./$PRODUCT_NAME.app"
 rm -rf "$DEST_APP"
 ditto --noextattr "$SRC_APP" "$DEST_APP"
 
-# Stamp version strings into the BUILT bundle's plists (app + Quick Look appex).
-APPEX="$DEST_APP/Contents/PlugIns/PurpleMarkQuickLook.appex"
-for plist in "$DEST_APP/Contents/Info.plist" "$APPEX/Contents/Info.plist"; do
+# Stamp version strings into the BUILT bundle's plists (app + extensions).
+QL_APPEX="$DEST_APP/Contents/PlugIns/PurpleMarkQuickLook.appex"
+THUMB_APPEX="$DEST_APP/Contents/PlugIns/PurpleMarkThumbnail.appex"
+for plist in "$DEST_APP/Contents/Info.plist" "$QL_APPEX/Contents/Info.plist" "$THUMB_APPEX/Contents/Info.plist"; do
     [ -f "$plist" ] || continue
     /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SHORT_VERSION" "$plist" 2>/dev/null || true
     /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$plist" 2>/dev/null || true
@@ -72,17 +73,20 @@ CERT="$(security find-identity -v -p codesigning 2>/dev/null | grep "Developer I
 FRAMEWORK="$DEST_APP/Contents/Frameworks/PurpleMarkRenderCore.framework"
 APP_ENT="Sources/PurpleMark/App/PurpleMark.entitlements"
 QL_ENT="Sources/PurpleMarkQuickLook/PurpleMarkQuickLook.entitlements"
+THUMB_ENT="Sources/PurpleMarkThumbnail/PurpleMarkThumbnail.entitlements"
 
 xattr -cr "$DEST_APP"
 if [ -n "$CERT" ]; then
     echo "Signing with Developer ID: $CERT"
     codesign --force --options runtime --timestamp -s "$CERT" "$FRAMEWORK"
-    codesign --force --options runtime --timestamp --entitlements "$QL_ENT" -s "$CERT" "$APPEX"
+    codesign --force --options runtime --timestamp --entitlements "$QL_ENT" -s "$CERT" "$QL_APPEX"
+    codesign --force --options runtime --timestamp --entitlements "$THUMB_ENT" -s "$CERT" "$THUMB_APPEX"
     codesign --force --options runtime --timestamp --entitlements "$APP_ENT" -s "$CERT" "$DEST_APP"
 else
     echo "No Developer ID found — using ad-hoc signing"
     codesign --force -s - "$FRAMEWORK"
-    codesign --force --entitlements "$QL_ENT" -s - "$APPEX"
+    codesign --force --entitlements "$QL_ENT" -s - "$QL_APPEX"
+    codesign --force --entitlements "$THUMB_ENT" -s - "$THUMB_APPEX"
     codesign --force --entitlements "$APP_ENT" -s - "$DEST_APP"
 fi
 

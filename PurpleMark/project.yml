@@ -56,6 +56,8 @@ targets:
         link: true
       - target: PurpleMarkQuickLook
         embed: true
+      - target: PurpleMarkThumbnail
+        embed: true
     scheme:
       testTargets:
         - PurpleMarkTests
@@ -72,6 +74,25 @@ targets:
         INFOPLIST_FILE: Sources/PurpleMarkQuickLook/Info.plist
         CODE_SIGN_ENTITLEMENTS: Sources/PurpleMarkQuickLook/PurpleMarkQuickLook.entitlements
         # Extension finds RenderCore in the host app's Frameworks dir.
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../../../../Frameworks"
+    dependencies:
+      - target: PurpleMarkRenderCore
+        embed: false
+        link: true
+
+  # ---- Finder Quick Look thumbnail extension ----
+  PurpleMarkThumbnail:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Sources/PurpleMarkThumbnail
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bronty13.PurpleMark.Thumbnail
+        INFOPLIST_FILE: Sources/PurpleMarkThumbnail/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/PurpleMarkThumbnail/PurpleMarkThumbnail.entitlements
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"
           - "@executable_path/../../../../Frameworks"
