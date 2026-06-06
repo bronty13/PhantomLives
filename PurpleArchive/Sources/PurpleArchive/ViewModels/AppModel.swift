@@ -90,13 +90,15 @@ final class AppModel: ObservableObject {
 
     // MARK: - Compress
 
-    func compress(_ inputs: [URL]) { compress(inputs, password: nil) }
-
-    func compressEncrypted(_ inputs: [URL], password: String) {
-        compress(inputs, password: password)
+    func compress(_ inputs: [URL], windowsSafe: Bool = false) {
+        compress(inputs, password: nil, windowsSafe: windowsSafe)
     }
 
-    private func compress(_ inputs: [URL], password: String?) {
+    func compressEncrypted(_ inputs: [URL], password: String, windowsSafe: Bool = false) {
+        compress(inputs, password: password, windowsSafe: windowsSafe)
+    }
+
+    private func compress(_ inputs: [URL], password: String?, windowsSafe: Bool) {
         guard !inputs.isEmpty else { return }
         let format = settings.defaultFormat
         let firstName = inputs.count == 1
@@ -107,7 +109,8 @@ final class AppModel: ObservableObject {
         let opts = CompressionOptions(level: settings.settings.defaultLevel,
                                       password: password,
                                       threads: 0,
-                                      stripMacMetadata: settings.settings.stripMacMetadata)
+                                      stripMacMetadata: settings.settings.stripMacMetadata,
+                                      windowsSafeNames: windowsSafe)
         runJob("Compressing \(inputs.count) item(s) → \(format.displayName)…") { [service] in
             try FileManager.default.createDirectory(
                 at: out.deletingLastPathComponent(), withIntermediateDirectories: true)

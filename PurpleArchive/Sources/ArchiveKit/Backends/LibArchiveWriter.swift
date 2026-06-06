@@ -28,7 +28,10 @@ public struct LibArchiveWriter: Sendable {
         defer { archive_write_close(a) }
 
         // Build the (sourceURL, archiveName) work list.
-        let items = Self.enumerate(inputs, stripMacMetadata: options.stripMacMetadata)
+        var items = Self.enumerate(inputs, stripMacMetadata: options.stripMacMetadata)
+        if options.windowsSafeNames {
+            items = items.map { ($0.0, WindowsSafeNamer.sanitizePath($0.1)) }
+        }
         let total = items.count
         var done = 0
         let buffer = UnsafeMutableRawPointer.allocate(byteCount: 1 << 20, alignment: 16)

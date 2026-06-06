@@ -4,6 +4,27 @@ All notable changes to PurpleArchive are documented here.
 
 ## [Unreleased]
 
+### Phase 2c — format recommender + Windows-safe naming (2026-06-06)
+
+- **`FormatRecommender`**: suggests the best format from the payload + your
+  constraints — ZIP for encryption/Windows-compat, TAR+xz for max compression,
+  TAR+zstd as the speed/ratio default, and a store-fast path when contents are
+  already compressed (media/office). Each with a one-line rationale.
+- **`WindowsSafeNamer`**: sanitizes entry names so archives extract cleanly on
+  Windows — reserved chars (`\ / : * ? " < > |`), device names (CON/PRN/NUL/
+  COM1–9/LPT1–9), trailing dots/spaces. Opt-in `windowsSafeNames` on create.
+- **GUI**: "Recommend" button + Windows-safe toggle in the compress view.
+  **CLI**: `parc recommend [--windows|--encrypted|--max-compression]`,
+  `parc a --windows-safe`.
+- 10 new tests (recommender + namer); engine suite 32/32.
+
+**RAR note:** RAR/RAR5 reading already works via libarchive's built-in readers
+(active through `archive_read_support_format_all`). Full **unrar** vendoring (for
+the long-tail of newest RAR5 compression/encryption) and **XADMaster** (legacy
+Mac: StuffIt/Compact Pro/BinHex) are deferred — both are large C++/ObjC vendors
+that can't be responsibly verified without sample archives + tooling unavailable
+in the current build environment. They'll land when validatable.
+
 ### Phase 2b — Keychain password vault (2026-06-06)
 
 Type an archive password once.

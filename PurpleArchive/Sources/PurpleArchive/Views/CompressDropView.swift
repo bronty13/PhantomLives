@@ -8,10 +8,13 @@ struct CompressDropView: View {
     @EnvironmentObject var settings: SettingsStore
     @State private var staged: [URL] = []
     @State private var password = ""
+    @State private var windowsSafe = false
+    @State private var recommendation: String?
 
     var body: some View {
         VStack(spacing: 0) {
             controls
+            recommendationBanner
             Divider()
             dropZone
         }
@@ -30,8 +33,22 @@ struct CompressDropView: View {
 
             if settings.defaultFormat.supportsEncryption {
                 SecureField("Password (optional)", text: $password)
-                    .textFieldStyle(.roundedBorder).frame(width: 180)
+                    .textFieldStyle(.roundedBorder).frame(width: 160)
             }
+
+            Toggle("Windows-safe", isOn: $windowsSafe)
+                .help("Sanitize filenames so the archive extracts cleanly on Windows")
+
+            Button {
+                let rec = FormatRecommender.recommend(
+                    inputs: staged,
+                    constraints: .init(needsWindowsCompatibility: windowsSafe,
+                                       needsEncryption: !password.isEmpty))
+                settings.settings.defaultFormatRaw = rec.format.rawValue
+                recommendation = rec.rationale
+            } label: { Label("Recommend", systemImage: "wand.and.stars") }
+            .disabled(staged.isEmpty)
+            .help("Pick the best format for these files")
 
             Spacer()
 
@@ -44,6 +61,18 @@ struct CompressDropView: View {
             .disabled(staged.isEmpty || model.busy)
         }
         .padding(12)
+    }
+
+    @ViewBuilder private var recommendationBanner: some View {
+        if let rec = recommendation {
+            HStack(spacing: 6) {
+                Image(systemName: "wand.and.stars").foregroundStyle(.purple)
+                Text(rec).font(.caption)
+                Spacer()
+            }
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(Color.purple.opacity(0.08))
+        }
     }
 
     private var dropZone: some View {
@@ -91,16 +120,12 @@ struct CompressDropView: View {
     }
 
     private func compress() {
-        if settings.defaultFormat.supportsEncryption && !password.isEmpty {
-            settings.settings.defaultLevel = settings.settings.defaultLevel  // touch to keep store warm
-        }
-        // For encryption we route through a one-off options call.
         let inputs = staged
         if !password.isEmpty, settings.defaultFormat.supportsEncryption {
-            model.compressEncrypted(inputs, password: password)
+            model.compressEncrypted(inputs, password: password, windowsSafe: windowsSafe)
         } else {
-            model.compress(inputs)
+            model.compress(inputs, windowsSafe: windowsSafe)
         }
-        staged.removeAll(); password = ""
+        staged.removeAll(); password = ""; recommendation = nil
     }
 }

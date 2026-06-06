@@ -118,12 +118,14 @@ struct Add: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "Encrypt with this password (zip → AES-256).") var password: String?
     @Option(name: .long, help: "Worker threads for zstd (0 = all cores).") var threads = 0
     @Flag(name: .long, help: "Keep .DS_Store / __MACOSX (default strips them).") var keepMacMetadata = false
+    @Flag(name: .long, help: "Sanitize names so the archive extracts cleanly on Windows.") var windowsSafe = false
 
     func run() async throws {
         let out = URL(fileURLWithPath: output)
         let urls = inputs.map { URL(fileURLWithPath: $0) }
         let opts = CompressionOptions(level: level, password: password, threads: threads,
-                                      stripMacMetadata: !keepMacMetadata)
+                                      stripMacMetadata: !keepMacMetadata,
+                                      windowsSafeNames: windowsSafe)
         do {
             let n = try ArchiveService().create(out, inputs: urls, options: opts)
             let size = (try? FileManager.default.attributesOfItem(atPath: out.path)[.size] as? Int64) ?? nil
@@ -190,6 +192,27 @@ struct Hash: AsyncParsableCommand {
             let digest = try ArchiveService().hash(URL(fileURLWithPath: file), algorithm: algorithm)
             print("\(digest)  \(file)")
         } catch { die(error.localizedDescription) }
+    }
+}
+
+// MARK: - recommend
+
+struct Recommend: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "recommend", abstract: "Suggest the best archive format for some files.")
+    @Argument(help: "Files/folders you intend to compress.") var inputs: [String]
+    @Flag(name: .long, help: "Must open on Windows without extra software.") var windows = false
+    @Flag(name: .long, help: "Must be encrypted.") var encrypted = false
+    @Flag(name: .long, help: "Prioritize smallest size over speed.") var maxCompression = false
+
+    func run() async throws {
+        let urls = inputs.map { URL(fileURLWithPath: $0) }
+        let c = FormatRecommender.Constraints(needsWindowsCompatibility: windows,
+                                              needsEncryption: encrypted,
+                                              prioritizeMaxCompression: maxCompression)
+        let rec = FormatRecommender.recommend(inputs: urls, constraints: c)
+        print("Recommended: \(rec.format.displayName)  (.\(rec.format.preferredExtension))")
+        print("  \(rec.rationale)")
     }
 }
 

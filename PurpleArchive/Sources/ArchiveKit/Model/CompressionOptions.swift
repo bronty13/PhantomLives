@@ -9,17 +9,19 @@ public struct CompressionOptions: Sendable {
     public var password: String?
     /// Worker threads for codecs that parallelize (zstd). 0 = all cores.
     public var threads: Int
-    /// Strip macOS resource forks / `.DS_Store` / `__MACOSX` so the archive is
-    /// clean on Windows/Linux. (Phase 1 strips `.DS_Store`; full Windows-safe
-    /// name sanitizing is Phase 2.)
+    /// Strip macOS `.DS_Store` / `__MACOSX` so the archive is clean elsewhere.
     public var stripMacMetadata: Bool
+    /// Sanitize entry names so they extract cleanly on Windows (reserved chars,
+    /// device names, trailing dots/spaces). See `WindowsSafeNamer`.
+    public var windowsSafeNames: Bool
 
     public init(level: Int = 6, password: String? = nil, threads: Int = 0,
-                stripMacMetadata: Bool = true) {
+                stripMacMetadata: Bool = true, windowsSafeNames: Bool = false) {
         self.level = level
         self.password = password
         self.threads = threads
         self.stripMacMetadata = stripMacMetadata
+        self.windowsSafeNames = windowsSafeNames
     }
 
     public static let `default` = CompressionOptions()
