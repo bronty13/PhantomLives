@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      PurpleArchive ships NON-SANDBOXED (free direct-download + Sparkle), so it
+      has full filesystem access to archive/extract anywhere the user points it
+      — no app-sandbox key, no security-scoped bookmarks. The hardened runtime
+      is on (release builds, for notarization); we don't need any cs.* relaxers
+      because all native code is our own, signed together.
+    -->
+</dict>
+</plist>

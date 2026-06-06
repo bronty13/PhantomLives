@@ -5,10 +5,12 @@ stunning SwiftUI app **and** a powerful CLI (`parc`) sharing one engine, built
 to read and create *every* archive format from today and yesteryear. The goal:
 the last archive tool you'll ever install on a Mac.
 
-> **Status: Phase 0 complete.** The vendoring foundation (libarchive + zstd,
-> arm64-clean, full filter set verified at runtime) is in place. The SwiftUI
-> app, the full `parc` surface, and the differentiators are in progress — see
-> [CHANGELOG.md](CHANGELOG.md) and the plan.
+> **Status: Phase 1 (MVP) complete.** Vendoring foundation + the full engine
+> (extract/create/test/hash across zip·tar·gz·bz2·xz·zst, AES-256, zip-slip-safe,
+> bounded-concurrency batches), the `parc` CLI, and a SwiftUI app (HStack
+> sidebar, browser, drag-to-compress, Settings + Backup) that builds, installs,
+> and launches. Legacy formats (RAR/StuffIt), encoding fix, vault, Quick Look,
+> and Sparkle are next — see [CHANGELOG.md](CHANGELOG.md) and [HANDOFF.md](HANDOFF.md).
 
 ## Architecture
 

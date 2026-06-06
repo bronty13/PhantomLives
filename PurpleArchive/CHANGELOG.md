@@ -4,6 +4,32 @@ All notable changes to PurpleArchive are documented here.
 
 ## [Unreleased]
 
+### Phase 1b — SwiftUI app + build/install (2026-06-06)
+
+The MVP `.app`: build + install + launch verified fresh on Apple Silicon.
+
+- **XcodeGen `project.yml`** — `PurpleArchive` app target (compiles ArchiveKit +
+  GUI together, links the vendored `CLibArchive`/`CZstd` packages) + test target.
+- **SwiftUI GUI**: `ContentView` with a manual fixed-width **HStack sidebar**
+  (NOT `NavigationSplitView`, per docs), `ArchiveBrowserView` (entry `Table`,
+  Extract action, encrypted-password sheet), `CompressDropView` (drag-to-compress
+  with format/level/password), window-wide drop routing (archive → browse, files
+  → compress), `SettingsView` (General + **Backup** tabs).
+- **Auto-backup-on-launch** (`BackupService`, Timeliner pattern) + full Settings
+  → Backup UI (toggle, retention, folder picker, Back Up Now, recent list).
+  Fixed a first-launch bug where an empty support dir made `zip` no-op; settings
+  now persist on init.
+- **`WindowStateGuard`** wired from `AppDelegate` (verbatim PhantomLives helper).
+- Programmatic **app icon** (`Scripts/generate-icon.swift` — purple archive box).
+- **`build-app.sh`** (build→install→relaunch, git-derived version, Developer-ID
+  or ad-hoc signing) + **`install.sh`** (hardened four-step freshness proof).
+  `run-tests.sh` now runs both the SwiftPM engine suite and the xcodebuild app
+  suite.
+- `HANDOFF.md` architecture snapshot.
+- **Verified:** `Verified: PurpleArchive 1.0.693 running fresh` — built, installed
+  to /Applications, launched, no crash.
+- *Deferred to release:* Sparkle auto-update.
+
 ### Phase 1a — engine core + full CLI (2026-06-06)
 
 The testable heart of ArchiveKit, all provable via `swift test`.
