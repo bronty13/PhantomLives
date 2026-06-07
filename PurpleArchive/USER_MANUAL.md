@@ -76,7 +76,20 @@ instantly. **Reveal** shows the temp copy in Finder; **Done** closes the sheet.
 
 Click **Extract**. Everything goes to `~/Downloads/PurpleArchive/<archive name>/`
 by default (changeable in Settings), and the folder is revealed in Finder when
-done. Encrypted archives prompt for a password first.
+done. Encrypted archives prompt for a password first — tick the **eye** to reveal
+what you typed.
+
+**Extract only some files:** select one or more rows, then click the **download
+button** (↓) in the header, or right-click ▸ **Extract N Items**. Just those
+files are written to the same destination, keeping their folder structure;
+selecting a folder pulls out everything inside it.
+
+### Testing an archive
+
+Click **Test** in the browser header to verify the archive's integrity — Purple
+Archive reads every entry (checking CRCs and decompression) without writing
+anything to disk, and reports "intact" or "failed" in the status bar. Handy
+before trusting or deleting an original.
 
 ### Compressing
 
@@ -86,8 +99,11 @@ Switch to **Compress** (or drop files on the window):
    the best one for your files (e.g. ZIP for sharing to Windows, TAR+zstd for the
    best speed/size balance, or a fast "store" path when your files are already
    compressed like photos/video).
-2. Optionally set a **password** (ZIP → AES-256) and toggle **Windows-safe** to
-   sanitize names that Windows would reject.
+2. Optionally set a **password** (ZIP → AES-256). When you do, a **Confirm** box
+   appears — re-type the password until the indicator turns green (Create stays
+   disabled while they differ, so a typo can't lock you out of your own
+   archive). Use the **eye** toggle to reveal what you typed. Toggle
+   **Windows-safe** to sanitize names that Windows would reject.
 3. Click **Create Archive**. Output lands in `~/Downloads/PurpleArchive/`.
 
 `.DS_Store` and `__MACOSX` junk is stripped automatically.

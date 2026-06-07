@@ -7,10 +7,20 @@ struct ArchiveBrowserView: View {
     @EnvironmentObject var model: AppModel
     @State private var password = ""
     @State private var remember = false
+    @State private var revealPassword = false
     @State private var showingPasswordSheet = false
+    @State private var pendingAction: PendingAction = .extractAll
     @State private var selection = Set<Int>()
     @State private var renaming: ArchiveEntry?
     @State private var newName = ""
+
+    /// What the password sheet should do once a password is supplied (for
+    /// encrypted archives with no Keychain-remembered password).
+    private enum PendingAction {
+        case extractAll
+        case extractSelected([ArchiveEntry])
+        case test
+    }
 
     var body: some View {
         if model.openedURL == nil {
@@ -45,6 +55,13 @@ struct ArchiveBrowserView: View {
                        let entry = model.entries.first(where: { $0.id == ids.first }),
                        !entry.isDirectory {
                         Button { model.quickLook(entry) } label: { Label("Quick Look", systemImage: "eye") }
+                    }
+                    if !ids.isEmpty {
+                        Button { beginExtractSelected(ids) } label: {
+                            Label(ids.count == 1 ? "Extract" : "Extract \(ids.count) Items",
+                                  systemImage: "arrow.down.circle")
+                        }
+                        Divider()
                     }
                     if model.canEdit {
                         if ids.count == 1, let entry = model.entries.first(where: { $0.id == ids.first }) {
@@ -82,6 +99,11 @@ struct ArchiveBrowserView: View {
             }
             .help("Quick Look the selected file (Space)")
             .disabled(selectedFileEntry == nil || model.busy)
+            Button { beginExtractSelected(selection) } label: {
+                Image(systemName: "arrow.down.to.line")
+            }
+            .help("Extract just the selected item(s)")
+            .disabled(selection.isEmpty || model.busy)
             Divider().frame(height: 16)
             if model.canEdit {
                 Button { addFiles() } label: { Image(systemName: "plus") }
@@ -106,12 +128,13 @@ struct ArchiveBrowserView: View {
             .frame(width: 200)
             .help("Filename text encoding — fix mojibake from Windows/Linux archives")
 
-            Button {
-                if model.isEncrypted {
-                    if model.vaultPassword != nil { model.extractOpened() }  // auto-fill from Keychain
-                    else { showingPasswordSheet = true }
-                } else { model.extractOpened() }
-            } label: {
+            Button { beginTest() } label: {
+                Label("Test", systemImage: "checkmark.seal")
+            }
+            .disabled(model.busy)
+            .help("Verify every entry decompresses correctly (integrity check)")
+
+            Button { beginExtractAll() } label: {
                 Label("Extract", systemImage: "arrow.down.circle.fill")
             }
             .buttonStyle(.borderedProminent).tint(.purple)
@@ -139,20 +162,30 @@ struct ArchiveBrowserView: View {
     private var passwordSheet: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("This archive is encrypted").font(.headline)
-            SecureField("Password", text: $password)
-                .textFieldStyle(.roundedBorder).frame(width: 260)
+            HStack(spacing: 8) {
+                RevealableSecureField("Password", text: $password, reveal: $revealPassword)
+                    .frame(width: 260)
+                RevealToggle(reveal: $revealPassword)
+            }
             Toggle("Remember in Keychain", isOn: $remember)
             HStack {
                 Spacer()
                 Button("Cancel") { showingPasswordSheet = false }
-                Button("Extract") {
+                Button(passwordSheetConfirmLabel) {
                     showingPasswordSheet = false
-                    model.extractOpened(password: password, remember: remember)
+                    runPendingAction(password: password, remember: remember)
                     password = ""
-                }.keyboardShortcut(.defaultAction).tint(.purple)
+                }
+                .keyboardShortcut(.defaultAction).tint(.purple)
+                .disabled(password.isEmpty)
             }
         }
         .padding(20)
+    }
+
+    private var passwordSheetConfirmLabel: String {
+        if case .test = pendingAction { return "Test" }
+        return "Extract"
     }
 
     private func renameSheet(_ entry: ArchiveEntry) -> some View {
@@ -169,6 +202,60 @@ struct ArchiveBrowserView: View {
                 }.keyboardShortcut(.defaultAction).tint(.purple)
             }
         }.padding(20)
+    }
+
+    // MARK: - Extract / test routing
+
+    /// Run the action straight away when the archive is plaintext (or its
+    /// password is remembered); otherwise stash the action and prompt.
+    private func beginExtractAll() {
+        if needsPasswordPrompt { pendingAction = .extractAll; showingPasswordSheet = true }
+        else { model.extractOpened() }
+    }
+
+    private func beginExtractSelected(_ ids: Set<Int>) {
+        let entries = entriesToExtract(ids)
+        guard !entries.isEmpty else { return }
+        if needsPasswordPrompt { pendingAction = .extractSelected(entries); showingPasswordSheet = true }
+        else { model.extractEntries(entries) }
+    }
+
+    private func beginTest() {
+        if needsPasswordPrompt { pendingAction = .test; showingPasswordSheet = true }
+        else { model.testOpened() }
+    }
+
+    /// Encrypted with no Keychain-remembered password → we must ask first.
+    private var needsPasswordPrompt: Bool {
+        model.isEncrypted && model.vaultPassword == nil
+    }
+
+    private func runPendingAction(password: String, remember: Bool) {
+        switch pendingAction {
+        case .extractAll:           model.extractOpened(password: password, remember: remember)
+        case .extractSelected(let e): model.extractEntries(e, password: password, remember: remember)
+        case .test:                 model.testOpened(password: password)
+        }
+    }
+
+    /// The concrete files to extract for a selection: bare files as-is, and any
+    /// selected directory expanded to every file beneath it.
+    private func entriesToExtract(_ ids: Set<Int>) -> [ArchiveEntry] {
+        let selected = model.entries.filter { ids.contains($0.id) }
+        var result: [ArchiveEntry] = []
+        var seen = Set<Int>()
+        for entry in selected {
+            if entry.isDirectory {
+                let prefix = entry.displayPath   // directory displayPaths end in "/"
+                for child in model.entries
+                where !child.isDirectory && child.displayPath.hasPrefix(prefix) {
+                    if seen.insert(child.id).inserted { result.append(child) }
+                }
+            } else if seen.insert(entry.id).inserted {
+                result.append(entry)
+            }
+        }
+        return result
     }
 
     /// The single selected non-directory entry, if exactly one file is selected

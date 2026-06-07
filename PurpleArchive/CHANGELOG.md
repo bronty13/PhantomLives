@@ -4,6 +4,29 @@ All notable changes to PurpleArchive are documented here.
 
 ## [Unreleased]
 
+### Selective extract, integrity test, safer password entry (2026-06-07)
+
+Browser and compress improvements.
+
+- **Extract just the selected entries** (not the whole archive). Select one or
+  more rows and use the new download button in the browser header, or
+  right-click ▸ **Extract N Items**. Each file streams out individually (reusing
+  the single-entry extractor) to `~/Downloads/PurpleArchive/<archive name>/`,
+  preserving its path within the archive. Selecting a folder expands to every
+  file beneath it.
+- **Test an archive's integrity** from the UI: the new **Test** button in the
+  browser header reads every entry through the engine (verifying CRCs /
+  decompression) without writing anything, and reports intact / failed in the
+  status bar. Encrypted archives prompt for (or reuse the Keychain) password.
+- **Reveal-password toggle** on every password field (an eye button that flips
+  the masked field to plain text) — in the extract password prompt and the
+  compress encryption fields — so you can check what you typed.
+- **Confirm the encryption password before creating.** When you set a password
+  in Compress, a **Confirm** field now appears with a live match indicator
+  (green check / orange warning), and **Create Archive** is disabled until the
+  two match — a typo in an encryption password would otherwise make the archive
+  unrecoverable.
+
 ### Fix: "Open With Purple Archive" + in-app Quick Look (2026-06-07)
 
 Two browse-side improvements.

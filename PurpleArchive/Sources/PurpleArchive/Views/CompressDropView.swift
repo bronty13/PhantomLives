@@ -9,8 +9,16 @@ struct CompressDropView: View {
     @EnvironmentObject var settings: SettingsStore
     @State private var staged: [URL] = []
     @State private var password = ""
+    @State private var confirmPassword = ""
+    @State private var revealPassword = false
     @State private var windowsSafe = false
     @State private var recommendation: String?
+
+    /// A password was typed but its confirmation doesn't match yet — block
+    /// creating the archive (a typo'd encryption password is unrecoverable).
+    private var passwordMismatch: Bool {
+        !password.isEmpty && password != confirmPassword
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -33,8 +41,16 @@ struct CompressDropView: View {
             .frame(width: 200)
 
             if settings.defaultFormat.supportsEncryption {
-                SecureField("Password (optional)", text: $password)
-                    .textFieldStyle(.roundedBorder).frame(width: 160)
+                RevealableSecureField("Password (optional)", text: $password, reveal: $revealPassword)
+                    .frame(width: 150)
+                if !password.isEmpty {
+                    RevealableSecureField("Confirm", text: $confirmPassword, reveal: $revealPassword)
+                        .frame(width: 130)
+                    Image(systemName: passwordMismatch ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                        .foregroundStyle(passwordMismatch ? .orange : .green)
+                        .help(passwordMismatch ? "Passwords don't match" : "Passwords match")
+                }
+                RevealToggle(reveal: $revealPassword)
             }
 
             Toggle("Windows-safe", isOn: $windowsSafe)
@@ -59,7 +75,8 @@ struct CompressDropView: View {
                 Label("Create Archive", systemImage: "plus.rectangle.on.folder.fill")
             }
             .buttonStyle(.borderedProminent).tint(.purple)
-            .disabled(staged.isEmpty || model.busy)
+            .disabled(staged.isEmpty || model.busy || passwordMismatch)
+            .help(passwordMismatch ? "Confirm the password before creating" : "")
         }
         .padding(12)
     }
@@ -121,12 +138,13 @@ struct CompressDropView: View {
     }
 
     private func compress() {
+        guard !passwordMismatch else { return }
         let inputs = staged
         if !password.isEmpty, settings.defaultFormat.supportsEncryption {
             model.compressEncrypted(inputs, password: password, windowsSafe: windowsSafe)
         } else {
             model.compress(inputs, windowsSafe: windowsSafe)
         }
-        staged.removeAll(); password = ""; recommendation = nil
+        staged.removeAll(); password = ""; confirmPassword = ""; recommendation = nil
     }
 }

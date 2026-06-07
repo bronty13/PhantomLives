@@ -90,6 +90,50 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Extract a subset of entries (selected in the browser) to the same
+    /// destination folder as a full extract, preserving their paths within the
+    /// archive. Directories should already be expanded to their files by the
+    /// caller; any directory entries are skipped here.
+    func extractEntries(_ entries: [ArchiveEntry], password: String? = nil, remember: Bool = false) {
+        guard let url = openedURL else { return }
+        let items = entries.filter { !$0.isDirectory }.map(\.displayPath)
+        guard !items.isEmpty else { return }
+        let effective = password ?? vault.password(for: url)
+        if remember, let pw = password, !pw.isEmpty { vault.setPassword(pw, for: url) }
+        let destRoot = settings.resolvedExtractRoot
+            .appendingPathComponent(url.deletingPathExtension().lastPathComponent)
+        runJob("Extracting \(items.count) item(s)…") { [service] in
+            try FileManager.default.createDirectory(at: destRoot, withIntermediateDirectories: true)
+            var extracted = 0
+            for path in items {
+                let dest = destRoot.appendingPathComponent(path)
+                if try service.extractEntry(url, entryPath: path, to: dest, password: effective) {
+                    extracted += 1
+                }
+            }
+            return (destRoot, extracted)
+        } onSuccess: { [weak self] (result: (URL, Int)) in
+            self?.status = "Extracted \(result.1) item(s) → \(result.0.path)"
+            NSWorkspace.shared.activateFileViewerSelecting([result.0])
+        }
+    }
+
+    // MARK: - Test / verify
+
+    /// Integrity-test the open archive — reads every entry through the engine,
+    /// verifying CRCs / decompression, writing nothing to disk.
+    func testOpened(password: String? = nil) {
+        guard let url = openedURL else { return }
+        let effective = password ?? vault.password(for: url)
+        runJob("Testing \(url.lastPathComponent)…") { [service] in
+            try service.test(url, password: effective)
+        } onSuccess: { [weak self] (ok: Bool) in
+            self?.status = ok
+                ? "✓ Archive is intact — every entry verified."
+                : "⚠︎ Archive failed verification."
+        }
+    }
+
     // MARK: - Drag-out
 
     /// An item provider for dragging a single archive entry out to Finder. The
