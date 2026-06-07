@@ -28,6 +28,21 @@ Two subdirectories are **separate git repos**, not part of PhantomLives. Run `gi
 
 Everything else (including `MusicJournal/`, `fsearch/`, `PurpleIRC/`, `messages-exporter/`, etc.) lives in the outer `bronty13/PhantomLives` repo. (`MusicJournal/` was briefly an independent repo before being imported into PhantomLives at commit `58f3d35`.)
 
+## Repo-level utilities
+
+A small number of scripts live at the **repo root** and operate across the
+whole monorepo rather than inside one subproject:
+
+- **`sync-md-to-obsidian.sh`** — one-way mirror of every git-tracked `.md`
+  file into an Obsidian vault, for reading the docs in Obsidian. Optionally
+  self-installs a launchd agent (`--install-agent [interval]` /
+  `--uninstall-agent`) that refreshes hourly. Writes the real mirror under
+  `~/Library/Application Support/` and exposes it inside the vault via a
+  symlink — this sidesteps the macOS TCC block on launchd agents writing to
+  `~/Documents` without needing a Full Disk Access grant. → Full detail (paths,
+  the TCC/symlink rationale, cross-Mac setup, operational commands) is in
+  **`docs/obsidian-sync.md`**.
+
 ## Release-hygiene rules (from `.github/copilot-instructions.md`)
 
 These apply to **every** code, config, script, test, or doc change. Do not skip them — most subprojects already follow them rigorously:
