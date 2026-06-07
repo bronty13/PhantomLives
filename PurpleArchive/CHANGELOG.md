@@ -4,6 +4,29 @@ All notable changes to PurpleArchive are documented here.
 
 ## [Unreleased]
 
+### Quick Look + Finder Sync extensions (2026-06-06)
+
+Archives now preview, thumbnail, and right-click in Finder — powered by the same
+ArchiveKit engine as the app.
+
+- **ArchiveKit split into a shared framework** (embedded once, linked by the app
+  + all three extensions — the PurpleMark pattern). GUI files now `import
+  ArchiveKit`.
+- **Quick Look preview** (`PurpleArchiveQuickLook`, data-based `QLPreviewProvider`):
+  spacebar an archive → styled HTML listing of its contents (entry tree, sizes,
+  encryption badges) with no extraction. Light/dark aware.
+- **Quick Look thumbnail** (`PurpleArchiveThumbnail`, `QLThumbnailProvider`):
+  content-aware purple archive-box icon badged with the file count.
+- **Finder Sync** (`PurpleArchiveFinderSync`, `FIFinderSync`): right-click →
+  Purple Archive → Extract Here / Compress to ZIP / TAR.ZST / 7z, run via the
+  engine off the menu thread.
+- `build-app.sh` version-stamps + signs all three appex inside-out (frameworks →
+  appex → app); whole bundle deep-strict valid. Each appex links
+  `@rpath/ArchiveKit.framework` (arm64).
+- **Verified headless:** compile, embed, signatures, `NSExtension` declarations,
+  framework linkage. **Needs a desktop to verify:** Launch Services registration
+  + live preview/thumbnail/menu (no `pkd`/Finder in the build env).
+
 ### Release infrastructure — Sparkle 2 auto-update (2026-06-06)
 
 PurpleArchive is now distributable + self-updating.

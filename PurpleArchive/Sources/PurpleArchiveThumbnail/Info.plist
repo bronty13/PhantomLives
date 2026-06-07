@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>Purple Archive Thumbnail</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.bronty13.PurpleArchive.Thumbnail</string>
+    <key>CFBundlePackageType</key>
+    <string>XPC!</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.0.0</string>
+    <key>CFBundleVersion</key>
+    <string>0</string>
+    <key>NSExtension</key>
+    <dict>
+        <key>NSExtensionPointIdentifier</key>
+        <string>com.apple.quicklook.thumbnail</string>
+        <key>NSExtensionPrincipalClass</key>
+        <string>PurpleArchiveThumbnail.ThumbnailProvider</string>
+        <key>NSExtensionAttributes</key>
+        <dict>
+            <key>QLSupportedContentTypes</key>
+            <array>
+                <string>public.zip-archive</string>
+                <string>org.7-zip.7-zip-archive</string>
+                <string>com.rarlab.rar-archive</string>
+                <string>public.tar-archive</string>
+                <string>org.gnu.gnu-zip-archive</string>
+                <string>org.gnu.gnu-zip-tar-archive</string>
+                <string>public.bzip2-archive</string>
+            </array>
+            <key>QLThumbnailMinimumDimension</key>
+            <integer>16</integer>
+        </dict>
+    </dict>
+</dict>
+</plist>

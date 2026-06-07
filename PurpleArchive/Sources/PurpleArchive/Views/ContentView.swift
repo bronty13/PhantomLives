@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import ArchiveKit
 
 /// Top-level layout: a fixed-width manual `HStack` sidebar (NOT
 /// `NavigationSplitView` — see docs/sidebar-layout.md), a detail pane, and a

@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import ArchiveKit
 
 /// App-wide settings, persisted as JSON in Application Support. Kept tiny and
 /// Codable so the launch-time backup (which zips Application Support) captures

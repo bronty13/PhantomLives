@@ -5,11 +5,9 @@ options:
     macOS: "13.0"
   xcodeVersion: "16"
 
-# Vendored C libraries (committed sources) + later Sparkle. The QuickLook /
-# Thumbnail / Finder Sync app-extensions arrive in Phase 2-3; at that point
-# ArchiveKit is split into its own `framework` target embedded once and linked
-# by each appex (the PurpleMark pattern). For the MVP the engine compiles
-# straight into the app.
+# ArchiveKit is a shared framework so the app AND the Quick Look / Thumbnail /
+# Finder Sync app-extensions all link one copy (the PurpleMark pattern). The
+# vendored C libraries + Sparkle are SwiftPM packages.
 packages:
   CLibArchive:
     path: Vendor/CLibArchive
@@ -31,11 +29,31 @@ settings:
     # pristine across builds (Timeliner/PurpleMark pattern).
 
 targets:
+  # ---- Shared engine framework (libarchive/zstd/peeler behind ArchiveKit) ----
+  ArchiveKit:
+    type: framework
+    platform: macOS
+    sources:
+      - path: Sources/ArchiveKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bronty13.ArchiveKit
+        PRODUCT_NAME: ArchiveKit
+        DEFINES_MODULE: YES
+        SKIP_INSTALL: YES
+        GENERATE_INFOPLIST_FILE: YES
+        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "1.0"
+    dependencies:
+      - package: CLibArchive
+      - package: CZstd
+      - package: CPeeler
+
+  # ---- The app ----
   PurpleArchive:
     type: application
     platform: macOS
     sources:
-      - path: Sources/ArchiveKit
       - path: Sources/PurpleArchive
     settings:
       base:
@@ -45,15 +63,85 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Sources/PurpleArchive/App/PurpleArchive.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_HARDENED_RUNTIME: YES
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
     dependencies:
-      - package: CLibArchive
-      - package: CZstd
-      - package: CPeeler
+      - target: ArchiveKit
+        embed: true
+        link: true
+      - target: PurpleArchiveQuickLook
+        embed: true
+      - target: PurpleArchiveThumbnail
+        embed: true
+      - target: PurpleArchiveFinderSync
+        embed: true
       - package: Sparkle
     scheme:
       testTargets:
         - PurpleArchiveTests
 
+  # ---- Quick Look content preview (spacebar) ----
+  PurpleArchiveQuickLook:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Sources/PurpleArchiveQuickLook
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bronty13.PurpleArchive.QuickLook
+        INFOPLIST_FILE: Sources/PurpleArchiveQuickLook/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/PurpleArchiveQuickLook/QuickLook.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../../../../Frameworks"
+    dependencies:
+      - target: ArchiveKit
+        embed: false
+        link: true
+
+  # ---- Quick Look thumbnail (content-aware Finder icon) ----
+  PurpleArchiveThumbnail:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Sources/PurpleArchiveThumbnail
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bronty13.PurpleArchive.Thumbnail
+        INFOPLIST_FILE: Sources/PurpleArchiveThumbnail/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/PurpleArchiveThumbnail/Thumbnail.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../../../../Frameworks"
+    dependencies:
+      - target: ArchiveKit
+        embed: false
+        link: true
+
+  # ---- Finder Sync (right-click extract/compress) ----
+  PurpleArchiveFinderSync:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Sources/PurpleArchiveFinderSync
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bronty13.PurpleArchive.FinderSync
+        INFOPLIST_FILE: Sources/PurpleArchiveFinderSync/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/PurpleArchiveFinderSync/FinderSync.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../../../../Frameworks"
+    dependencies:
+      - target: ArchiveKit
+        embed: false
+        link: true
+
+  # ---- Unit tests ----
   PurpleArchiveTests:
     type: bundle.unit-test
     platform: macOS
@@ -61,6 +149,7 @@ targets:
       - path: Tests/PurpleArchiveTests
     dependencies:
       - target: PurpleArchive
+      - target: ArchiveKit
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

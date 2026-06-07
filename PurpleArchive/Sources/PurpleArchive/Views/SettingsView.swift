@@ -1,4 +1,5 @@
 import SwiftUI
+import ArchiveKit
 
 struct SettingsView: View {
     var body: some View {

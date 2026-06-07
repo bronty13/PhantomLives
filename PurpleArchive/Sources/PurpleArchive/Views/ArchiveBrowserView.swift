@@ -1,4 +1,5 @@
 import SwiftUI
+import ArchiveKit
 
 /// Browse an opened archive's contents in a table, with an Extract action.
 /// Encryption prompts for a password before extracting.

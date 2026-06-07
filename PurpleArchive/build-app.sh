@@ -48,10 +48,20 @@ DEST_APP="./$PRODUCT_NAME.app"
 rm -rf "$DEST_APP"
 ditto --noextattr "$SRC_APP" "$DEST_APP"
 
-# Stamp the git-derived version into the BUILT bundle (source plist stays pristine).
+# Stamp the git-derived version into the BUILT bundle's plists (app + every
+# app-extension; source plists stay pristine).
 PLIST="$DEST_APP/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SHORT_VERSION" "$PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$PLIST" 2>/dev/null || true
+QL_APPEX="$DEST_APP/Contents/PlugIns/PurpleArchiveQuickLook.appex"
+THUMB_APPEX="$DEST_APP/Contents/PlugIns/PurpleArchiveThumbnail.appex"
+FINDER_APPEX="$DEST_APP/Contents/PlugIns/PurpleArchiveFinderSync.appex"
+for plist in "$PLIST" \
+    "$QL_APPEX/Contents/Info.plist" \
+    "$THUMB_APPEX/Contents/Info.plist" \
+    "$FINDER_APPEX/Contents/Info.plist"; do
+    [ -f "$plist" ] || continue
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SHORT_VERSION" "$plist" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$plist" 2>/dev/null || true
+done
 
 # Install icon.
 ditto --noextattr "$ICNS_PATH" "$DEST_APP/Contents/Resources/AppIcon.icns"
@@ -60,7 +70,11 @@ ditto --noextattr "$ICNS_PATH" "$DEST_APP/Contents/Resources/AppIcon.icns"
 # Code sign: Developer ID (hardened runtime + timestamp) if available, else ad-hoc.
 CERT="${CODESIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | grep "Developer ID Application" | head -1 | awk '{print $2}' || echo "")}"
 APP_ENT="Sources/PurpleArchive/App/PurpleArchive.entitlements"
+QL_ENT="Sources/PurpleArchiveQuickLook/QuickLook.entitlements"
+THUMB_ENT="Sources/PurpleArchiveThumbnail/Thumbnail.entitlements"
+FINDER_ENT="Sources/PurpleArchiveFinderSync/FinderSync.entitlements"
 SPARKLE_FW="$DEST_APP/Contents/Frameworks/Sparkle.framework"
+ARCHIVEKIT_FW="$DEST_APP/Contents/Frameworks/ArchiveKit.framework"
 xattr -cr "$DEST_APP"
 if [ -n "$CERT" ]; then
     echo "Signing with Developer ID: $CERT"
@@ -69,7 +83,8 @@ else
     echo "No Developer ID found — using ad-hoc signing"
     SIGN=(codesign --force --options runtime -s -)
 fi
-# Sparkle's nested helpers must be signed inside-out before the framework + app.
+# Sign inside-out: frameworks → app-extensions → app.
+# Sparkle's nested helpers first.
 if [ -d "$SPARKLE_FW" ]; then
     SV="$SPARKLE_FW/Versions/Current"
     for xpc in "$SV/XPCServices/"*.xpc; do
@@ -79,6 +94,12 @@ if [ -d "$SPARKLE_FW" ]; then
     [ -f "$SV/Autoupdate" ] && "${SIGN[@]}" "$SV/Autoupdate"
     "${SIGN[@]}" "$SPARKLE_FW"
 fi
+[ -d "$ARCHIVEKIT_FW" ] && "${SIGN[@]}" "$ARCHIVEKIT_FW"
+# App-extensions (each with its own entitlements).
+[ -d "$QL_APPEX" ]     && "${SIGN[@]}" --entitlements "$QL_ENT" "$QL_APPEX"
+[ -d "$THUMB_APPEX" ]  && "${SIGN[@]}" --entitlements "$THUMB_ENT" "$THUMB_APPEX"
+[ -d "$FINDER_APPEX" ] && "${SIGN[@]}" --entitlements "$FINDER_ENT" "$FINDER_APPEX"
+# The app last.
 "${SIGN[@]}" --entitlements "$APP_ENT" "$DEST_APP"
 
 echo ""

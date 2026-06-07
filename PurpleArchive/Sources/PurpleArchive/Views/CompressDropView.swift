@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import ArchiveKit
 
 /// Drag files/folders here (or pick them) to create an archive in the chosen
 /// format. The format/level come from Settings defaults and can be tweaked here.

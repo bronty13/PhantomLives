@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import ArchiveKit
 
 /// The GUI's central state: the currently open archive, its entry tree, and the
 /// async operations (open, extract, compress) with progress. Engine calls run
