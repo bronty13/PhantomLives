@@ -59,6 +59,13 @@ running copies are offered the update.
 
 - `ALLOW_DIRTY=1` — skip the clean/pushed checks (local experiments only).
 - `ALLOW_UNNOTARIZED=1` — skip notarization (the DMG will trip Gatekeeper; emergencies only).
+- **Inline notary credentials** — instead of the keychain profile (e.g. on a
+  Mac/headless session where storing a notarytool profile fails with "User
+  interaction is not allowed"), pass the credentials directly:
+  ```sh
+  NOTARY_APPLE_ID=robert.olen@icloud.com NOTARY_TEAM_ID=SRKV8T38CD \
+      NOTARY_PASSWORD=<app-specific-pw> ./Scripts/release.sh
+  ```
 
 ## Troubleshooting
 

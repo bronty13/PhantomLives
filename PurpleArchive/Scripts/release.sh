@@ -11,6 +11,10 @@
 #
 # Env overrides:
 #   NOTARIZE_PROFILE    notarytool keychain profile     (default PurpleDedup-Notary)
+#   NOTARY_APPLE_ID + NOTARY_TEAM_ID + NOTARY_PASSWORD
+#                       inline notary credentials, used INSTEAD of the keychain
+#                       profile (handy on a Mac/headless session where storing a
+#                       notarytool profile isn't possible)
 #   GITHUB_REPO         release repo                    (default bronty13/PhantomLives)
 #   ALLOW_DIRTY=1       skip clean/pushed checks (dev experiments only)
 #   ALLOW_UNNOTARIZED=1 skip notarization (Gatekeeper will warn; emergencies only)
@@ -21,6 +25,15 @@ APP="PurpleArchive"
 BUNDLE_ID="com.bronty13.PurpleArchive"
 NOTARIZE_PROFILE="${NOTARIZE_PROFILE:-PurpleDedup-Notary}"
 GITHUB_REPO="${GITHUB_REPO:-bronty13/PhantomLives}"
+
+# Notary auth: inline credentials if NOTARY_PASSWORD is set, else keychain profile.
+if [ -n "${NOTARY_PASSWORD:-}" ]; then
+    NOTARY_AUTH=(--apple-id "${NOTARY_APPLE_ID:?set NOTARY_APPLE_ID}" \
+                 --team-id "${NOTARY_TEAM_ID:?set NOTARY_TEAM_ID}" \
+                 --password "${NOTARY_PASSWORD}")
+else
+    NOTARY_AUTH=(--keychain-profile "$NOTARIZE_PROFILE")
+fi
 
 if [ -z "${DEVELOPER_DIR:-}" ] && [ -d "/Applications/Xcode.app/Contents/Developer" ] \
    && ! /usr/bin/xcode-select -p 2>/dev/null | grep -q "/Applications/Xcode"; then
@@ -37,8 +50,8 @@ DEVID="$(security find-identity -v -p codesigning 2>/dev/null | grep "Developer 
 command -v gh >/dev/null || die "GitHub CLI 'gh' not found."
 gh auth status >/dev/null 2>&1 || die "gh not authenticated — run 'gh auth login'."
 if [ "${ALLOW_UNNOTARIZED:-0}" != "1" ]; then
-    xcrun notarytool history --keychain-profile "$NOTARIZE_PROFILE" >/dev/null 2>&1 \
-        || die "notarytool profile '$NOTARIZE_PROFILE' not found. Create it (see RELEASING.md) or set NOTARIZE_PROFILE."
+    xcrun notarytool history "${NOTARY_AUTH[@]}" >/dev/null 2>&1 \
+        || die "notary auth failed. Set up the '$NOTARIZE_PROFILE' profile (see RELEASING.md) or pass NOTARY_APPLE_ID/NOTARY_TEAM_ID/NOTARY_PASSWORD."
 fi
 if [ "${ALLOW_DIRTY:-0}" != "1" ]; then
     [ "$(git rev-parse --abbrev-ref HEAD)" = "main" ] || die "Not on main."
@@ -88,7 +101,7 @@ codesign --force --timestamp -s "$DEVID" "$DMG_PATH"
 # ---------------------------------------------------------------- notarize
 if [ "${ALLOW_UNNOTARIZED:-0}" != "1" ]; then
     say "Notarizing DMG (this can take a few minutes)"
-    xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NOTARIZE_PROFILE" --wait \
+    xcrun notarytool submit "$DMG_PATH" "${NOTARY_AUTH[@]}" --wait \
         || die "Notarization failed — check 'xcrun notarytool log' with the submission id above."
     xcrun stapler staple "$DMG_PATH" || die "Stapling the DMG failed."
     xcrun stapler validate "$DMG_PATH" || die "Stapler validation failed."
