@@ -12,8 +12,10 @@ your web browser, with no internet needed.
 
 ## The home screen
 
-- A **verse of the moment** and **a little encouragement** (a saying) appear at
-  the top, each in its own pretty style. Click **↻** to see another. You can turn
+- A **greeting** at the top says "Good morning/afternoon/evening, <your name>".
+  Set your name in **Settings** (it defaults to *Jan*).
+- A **verse of the moment** and **a little encouragement** (a saying) appear
+  below it, each in its own pretty style. Click **↻** to see another. You can turn
   either off in **Settings**.
 - Below them is **Your calendars** — every calendar you've made.
 
@@ -82,9 +84,14 @@ screen to bring it back).
 
 ## Settings
 
+- **Your name** — used in the home-screen greeting (default *Jan*).
 - Default theme, week start (Sun/Mon), and default export view for new calendars.
 - The safety cap for how many items show per day on the month grid.
 - Toggles for the home-screen verse and saying cards.
+- **Custom sayings** — type a saying (and an optional attribution) and click
+  **+ Add**; it's saved right away and joins the random pool used by the home card
+  and the Sayings & Verses picker. Delete your custom sayings with ✕. The built-in
+  sayings can't be removed.
 
 ## Where is my data?
 

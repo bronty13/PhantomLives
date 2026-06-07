@@ -4,12 +4,12 @@ import { BIBLE_BOOKS, chapterCount, getRandomVerse, getVerse, verseCount, verseT
 import { rerollSaying } from '../../data/sayings';
 import { Drawer } from '../components/Modal';
 
-export function FillerPicker({ bundle, onChange, onClose }: { bundle: CalendarBundle; onChange: (b: CalendarBundle) => void; onClose: () => void }) {
+export function FillerPicker({ bundle, sayings, onChange, onClose }: { bundle: CalendarBundle; sayings: FillerEntry[]; onChange: (b: CalendarBundle) => void; onClose: () => void }) {
   const [slot, setSlot] = useState<FillerSlot>('footer');
   const [kind, setKind] = useState<'saying' | 'verse'>('verse');
   const [verseMode, setVerseMode] = useState<'random' | 'pick'>('random');
 
-  const [saying, setSaying] = useState<FillerEntry>(() => rerollSaying(undefined));
+  const [saying, setSaying] = useState<FillerEntry>(() => rerollSaying(sayings, undefined));
   const [randVerse, setRandVerse] = useState<FillerEntry>(() => verseToFiller(getRandomVerse()));
   const [book, setBook] = useState('John');
   const [chapter, setChapter] = useState(3);
@@ -71,7 +71,7 @@ export function FillerPicker({ bundle, onChange, onClose }: { bundle: CalendarBu
           <div className="card" style={{ boxShadow: 'none' }}>
             <div style={{ fontStyle: 'italic' }}>{saying.text}</div>
             <div className="hint" style={{ marginTop: 6 }}>— {saying.reference}</div>
-            <button style={{ marginTop: 10 }} onClick={() => setSaying(rerollSaying(saying.id))}>↻ Another saying</button>
+            <button style={{ marginTop: 10 }} onClick={() => setSaying(rerollSaying(sayings, saying.id))}>↻ Another saying</button>
           </div>
         )}
 

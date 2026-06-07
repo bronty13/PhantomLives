@@ -22,6 +22,8 @@ describe('App smoke', () => {
 
     // Home loads after seeding.
     await waitFor(() => expect(screen.getByText('Your calendars')).toBeTruthy());
+    // Time-of-day greeting with the default name.
+    expect(screen.getByText(/Good (morning|afternoon|evening|night), Jan/)).toBeTruthy();
     expect(screen.getByText(/No calendars yet/i)).toBeTruthy();
 
     // Open the New-calendar wizard and create one (topbar button).

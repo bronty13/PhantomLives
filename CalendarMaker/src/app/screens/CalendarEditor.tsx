@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { AppSettings, CalendarBundle, Day, Theme } from '../../model/types';
+import type { AppSettings, CalendarBundle, Day, FillerEntry, Theme } from '../../model/types';
 import { CalendarPreview } from '../CalendarPreview';
 import { DayEditorPanel } from './DayEditorPanel';
 import { HolidaysPanel } from './HolidaysPanel';
@@ -12,13 +12,14 @@ interface Props {
   theme: Theme;
   themes: Theme[];
   settings: AppSettings;
+  sayings: FillerEntry[];
   onChange: (b: CalendarBundle) => void;
   onThemesChanged: () => void;
 }
 
 type Panel = 'none' | 'day' | 'holidays' | 'fillers' | 'theme' | 'export';
 
-export function CalendarEditor({ bundle, theme, themes, settings, onChange, onThemesChanged }: Props) {
+export function CalendarEditor({ bundle, theme, themes, settings, sayings, onChange, onThemesChanged }: Props) {
   const [panel, setPanel] = useState<Panel>('none');
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
@@ -75,7 +76,7 @@ export function CalendarEditor({ bundle, theme, themes, settings, onChange, onTh
         <HolidaysPanel bundle={bundle} onChange={onChange} onClose={() => setPanel('none')} />
       )}
       {panel === 'fillers' && (
-        <FillerPicker bundle={bundle} onChange={onChange} onClose={() => setPanel('none')} />
+        <FillerPicker bundle={bundle} sayings={sayings} onChange={onChange} onClose={() => setPanel('none')} />
       )}
       {panel === 'theme' && (
         <ThemeManager

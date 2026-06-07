@@ -4,6 +4,23 @@ All notable changes to CalendarMaker are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is
 [SemVer](https://semver.org/).
 
+## 0.2.0 — 2026-06-07
+
+### Added
+- **Personalized home greeting** — a time-of-day greeting ("Good morning, Jan")
+  on the home screen, using a configurable **name** in Settings (default `Jan`).
+- **Custom sayings** — add your own sayings in Settings; they join the seeded pool
+  for the home-screen card and the Sayings & Verses picker. Stored in IndexedDB
+  (new `sayings` store, DB v2, additive/guarded); add/delete with live save.
+
+### Changed
+- Saying selection now draws from `sayingPool = seeded + custom`. `getRandomSaying`
+  / `rerollSaying` take the pool explicitly.
+
+### Tests
+- +6 (greeting time-of-day + name fallback; sayings pool combine/random/reroll/empty).
+  Smoke test now asserts the greeting renders. 35 total.
+
 ## 0.1.0 — 2026-06-07
 
 Initial release.

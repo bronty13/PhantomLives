@@ -6,10 +6,12 @@ import { rerollSaying } from '../../data/sayings';
 import { parseBundleFile } from '../../storage/bundleIO';
 import { saveTheme } from '../../storage/db';
 import { cssFontFamily } from '../../data/fonts';
+import { greeting } from '../util';
 
 interface Props {
   bundles: CalendarBundle[];
   settings: AppSettings;
+  sayings: FillerEntry[];
   onOpen: (b: CalendarBundle) => void;
   onDelete: (id: string) => void;
   onNew: () => void;
@@ -17,9 +19,9 @@ interface Props {
   onImportTheme: () => void;
 }
 
-export function Home({ bundles, settings, onOpen, onDelete, onNew, onImported, onImportTheme }: Props) {
+export function Home({ bundles, settings, sayings, onOpen, onDelete, onNew, onImported, onImportTheme }: Props) {
   const [verse, setVerse] = useState<FillerEntry>(() => randomVerseFiller());
-  const [saying, setSaying] = useState<FillerEntry>(() => rerollSaying(undefined));
+  const [saying, setSaying] = useState<FillerEntry>(() => rerollSaying(sayings, undefined));
   const fileRef = useRef<HTMLInputElement>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -37,6 +39,10 @@ export function Home({ bundles, settings, onOpen, onDelete, onNew, onImported, o
 
   return (
     <>
+      <h1 style={{ fontFamily: "'CM Playfair', Georgia, serif", fontWeight: 700, fontSize: 28, margin: '4px 0 18px' }}>
+        {greeting(settings.userName)}
+      </h1>
+
       {(settings.showVerseOnHome || settings.showSayingOnHome) && (
         <div className="feature-cards">
           {settings.showVerseOnHome && (
@@ -58,7 +64,7 @@ export function Home({ bundles, settings, onOpen, onDelete, onNew, onImported, o
               font="caveat"
               fg="#2f6b5a"
               bg="linear-gradient(135deg,#e7f7ef,#f0fff6)"
-              onReroll={() => setSaying(rerollSaying(saying.id))}
+              onReroll={() => setSaying(rerollSaying(sayings, saying.id))}
             />
           )}
         </div>

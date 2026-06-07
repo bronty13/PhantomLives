@@ -26,6 +26,14 @@ export function slugify(s: string): string {
   );
 }
 
+/** Time-of-day greeting, e.g. "Good morning, Jan". */
+export function greeting(name: string, d = new Date()): string {
+  const h = d.getHours();
+  const part = h < 12 ? 'morning' : h < 17 ? 'afternoon' : h < 21 ? 'evening' : 'night';
+  const who = name.trim() || 'friend';
+  return `Good ${part}, ${who}`;
+}
+
 /** 'YYYYMMDD-HHMMSS' for filenames. */
 export function timestamp(d = new Date()): string {
   const p = (n: number) => String(n).padStart(2, '0');

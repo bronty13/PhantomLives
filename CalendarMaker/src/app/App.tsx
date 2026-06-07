@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { AppSettings, CalendarBundle, Theme } from '../model/types';
+import type { AppSettings, CalendarBundle, FillerEntry, Theme } from '../model/types';
 import { APP_VERSION } from '../model/types';
 import {
-  deleteBundle, ensureSeeded, getSettings, listBundles, listThemes, saveBundle, saveSettings,
+  deleteBundle, ensureSeeded, getSettings, listBundles, listCustomSayings, listThemes,
+  saveBundle, saveSettings,
 } from '../storage/db';
+import { sayingPool } from '../data/sayings';
 import { Home } from './screens/Home';
 import { CalendarEditor } from './screens/CalendarEditor';
 import { NewBundleWizard } from './screens/NewBundleWizard';
@@ -14,11 +16,13 @@ export function App() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [themes, setThemes] = useState<Theme[]>([]);
   const [bundles, setBundles] = useState<CalendarBundle[]>([]);
+  const [customSayings, setCustomSayings] = useState<FillerEntry[]>([]);
   const [active, setActive] = useState<CalendarBundle | null>(null);
   const [modal, setModal] = useState<'none' | 'new' | 'settings'>('none');
 
   const reloadBundles = useCallback(async () => setBundles(await listBundles()), []);
   const reloadThemes = useCallback(async () => setThemes(await listThemes()), []);
+  const reloadSayings = useCallback(async () => setCustomSayings(await listCustomSayings()), []);
 
   useEffect(() => {
     (async () => {
@@ -26,9 +30,10 @@ export function App() {
       setSettings(await getSettings());
       await reloadThemes();
       await reloadBundles();
+      await reloadSayings();
       setLoading(false);
     })();
-  }, [reloadBundles, reloadThemes]);
+  }, [reloadBundles, reloadThemes, reloadSayings]);
 
   const onSaveSettings = async (s: AppSettings) => {
     await saveSettings(s);
@@ -59,6 +64,7 @@ export function App() {
   }
 
   const activeTheme = active ? themes.find((t) => t.id === active.themeId) ?? themes[0] : null;
+  const sayings = sayingPool(customSayings);
 
   return (
     <div className="app">
@@ -84,6 +90,7 @@ export function App() {
               theme={activeTheme}
               themes={themes}
               settings={settings}
+              sayings={sayings}
               onChange={onBundleChange}
               onThemesChanged={reloadThemes}
             />
@@ -91,6 +98,7 @@ export function App() {
             <Home
               bundles={bundles}
               settings={settings}
+              sayings={sayings}
               onOpen={openBundle}
               onDelete={onDelete}
               onNew={() => setModal('new')}
@@ -113,8 +121,10 @@ export function App() {
         <SettingsModal
           settings={settings}
           themes={themes}
+          customSayings={customSayings}
           onClose={() => setModal('none')}
           onSave={onSaveSettings}
+          onSayingsChanged={reloadSayings}
         />
       )}
     </div>

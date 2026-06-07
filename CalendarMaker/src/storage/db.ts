@@ -4,12 +4,13 @@
 // static code data, not stored here.)
 
 import { openDB, type IDBPDatabase } from 'idb';
-import type { AppSettings, CalendarBundle, Theme } from '../model/types';
+import type { AppSettings, CalendarBundle, FillerEntry, Theme } from '../model/types';
 import { DEFAULT_APP_SETTINGS } from '../model/types';
 import { SEED_THEMES } from '../model/seedThemes';
 
 const DB_NAME = 'calendarmaker';
-const DB_VERSION = 1;
+// v2 adds the 'sayings' store for user-added custom sayings. Additive + guarded.
+const DB_VERSION = 2;
 const SETTINGS_KEY = 'app-settings';
 const SEEDED_KEY = 'seeded';
 
@@ -27,6 +28,9 @@ function db(): Promise<IDBPDatabase> {
         }
         if (!database.objectStoreNames.contains('meta')) {
           database.createObjectStore('meta');
+        }
+        if (!database.objectStoreNames.contains('sayings')) {
+          database.createObjectStore('sayings', { keyPath: 'id' });
         }
       },
     });
@@ -85,6 +89,21 @@ export async function saveTheme(theme: Theme): Promise<void> {
 
 export async function deleteTheme(id: string): Promise<void> {
   await (await db()).delete('themes', id);
+}
+
+// --- Custom sayings --------------------------------------------------------
+
+export async function listCustomSayings(): Promise<FillerEntry[]> {
+  const all = (await (await db()).getAll('sayings')) as FillerEntry[];
+  return all;
+}
+
+export async function addCustomSaying(entry: FillerEntry): Promise<void> {
+  await (await db()).put('sayings', entry);
+}
+
+export async function deleteCustomSaying(id: string): Promise<void> {
+  await (await db()).delete('sayings', id);
 }
 
 // --- Settings --------------------------------------------------------------

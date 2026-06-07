@@ -26,8 +26,11 @@ single `index.html`. Unzip, double-click, done — no server, no internet.
 - **Sayings & verses** — fill the calendar's free space (footer band or empty
   grid cells) with a curated saying (random) or a Bible verse (random **or** a
   book/chapter/verse picker).
-- **Home screen delight** — a random verse and a random saying greet you on load,
-  each in its own pretty font/color (toggle either off in Settings).
+- **Home screen delight** — a personalized, time-of-day greeting (set your name in
+  Settings, default *Jan*), plus a random verse and a random saying, each in its
+  own pretty font/color (toggle either off in Settings).
+- **Custom sayings** — add your own sayings in Settings; they join the seeded pool
+  used by the home card and the Sayings & Verses picker.
 - **10 built-in themes** — plus create / duplicate / edit / delete your own
   (per-item-type fonts & colors, full calendar palette). Real OFL fonts are
   **embedded** so the printed PDF matches the screen on any machine.
