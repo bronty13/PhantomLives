@@ -52,6 +52,9 @@ app for macOS, fully on-device and private.
   backup/`, 14-day retention, 5-min debounce) + full Settings → Backup UI.
 - Git-derived versioning; `build-app.sh` → build + install to `/Applications/`
   + relaunch with the four-step stale-instance freshness proof.
-- 13 unit tests (highlight range mapping, paragraph offsets, whisper output
+- 24 unit tests (highlight range mapping, paragraph offsets, whisper output
   parsing, SRT formatting, text normalization, filename sanitizing, settings
-  round-trip, backup retention / listing / round-trip).
+  round-trip, backup retention / listing / round-trip) — plus hermetic
+  format-extraction round-trips on committed PDF/DOCX/RTF/EPUB/HTML/PNG
+  fixtures (incl. web-article chrome-stripping), and audio-export round-trips
+  covering the M4A path and the MP3/`lame` path with its M4A fallback.

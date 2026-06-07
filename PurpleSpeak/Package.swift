@@ -15,7 +15,8 @@ let package = Package(
         .testTarget(
             name: "PurpleSpeakTests",
             dependencies: ["PurpleSpeak"],
-            path: "Tests/PurpleSpeakTests"
+            path: "Tests/PurpleSpeakTests",
+            resources: [.copy("Fixtures")]
         )
     ]
 )
