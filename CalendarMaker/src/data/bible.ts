@@ -61,6 +61,10 @@ export function verseToFiller(v: BibleVerse): FillerEntry {
   return { id: `verse-${v.reference}`, kind: 'verse', text: v.text, reference: v.reference };
 }
 
-export function randomVerseFiller(rand: () => number = Math.random): FillerEntry {
-  return verseToFiller(getRandomVerse(rand));
+/** A random verse filler, avoiding `excludeRef` so a reroll visibly changes. */
+export function randomVerseFiller(excludeRef?: string, rand: () => number = Math.random): FillerEntry {
+  let v = getRandomVerse(rand);
+  let guard = 0;
+  while (excludeRef && v.reference === excludeRef && guard++ < 8) v = getRandomVerse(rand);
+  return verseToFiller(v);
 }

@@ -52,6 +52,23 @@ describe('App smoke', () => {
     await waitFor(() => expect(screen.getByText(/won’t fit on the month grid/i)).toBeTruthy());
   });
 
+  it('rerolls the home verse when the card is clicked', async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('Your calendars')).toBeTruthy());
+    const cards = document.querySelectorAll('.feature.clickable');
+    expect(cards.length).toBeGreaterThan(0);
+    const verseCard = cards[0] as HTMLElement;
+    const textOf = () => (verseCard.querySelector('.ftext')?.textContent || '').trim();
+    const before = textOf();
+    // Click a few times; verse reroll excludes the current one, so it must change.
+    let changed = false;
+    for (let i = 0; i < 3 && !changed; i++) {
+      fireEvent.click(verseCard);
+      if (textOf() !== before) changed = true;
+    }
+    expect(changed).toBe(true);
+  });
+
   it('opens the holidays panel and toggles a holiday', async () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText('Your calendars')).toBeTruthy());

@@ -4,6 +4,19 @@ All notable changes to CalendarMaker are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is
 [SemVer](https://semver.org/).
 
+## 0.2.2 — 2026-06-07
+
+### Fixed
+- **Home verse/saying "another" only worked sometimes.** The reroll was a tiny ↻
+  glyph in the card corner that was easy to miss. The **whole feature card is now
+  clickable** (keyboard-accessible too) with a clearer "↻ another" affordance, and
+  rerolling a verse now **always lands on a different verse** (excludes the current
+  one). Saying reroll already excluded the current one.
+
+### Tests
+- +2 (verse reroll always returns a valid non-empty verse; never returns the
+  excluded reference). 37 total.
+
 ## 0.2.1 — 2026-06-07
 
 ### Fixed

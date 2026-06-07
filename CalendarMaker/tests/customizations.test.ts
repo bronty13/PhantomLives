@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { greeting } from '../src/app/util';
 import { sayingPool, getRandomSaying, rerollSaying, SAYINGS } from '../src/data/sayings';
+import { getRandomVerse, randomVerseFiller } from '../src/data/bible';
 import type { FillerEntry } from '../src/model/types';
 
 describe('greeting', () => {
@@ -40,5 +41,22 @@ describe('sayings pool', () => {
 
   it('handles an empty pool gracefully', () => {
     expect(getRandomSaying([]).text).toBe('');
+  });
+});
+
+describe('verse reroll', () => {
+  it('always returns a non-empty verse with a valid reference', () => {
+    for (let i = 0; i < 50; i++) {
+      const v = randomVerseFiller();
+      expect(v.text.trim().length).toBeGreaterThan(0);
+      expect(v.reference).toMatch(/.+ \d+:\d+/);
+    }
+  });
+
+  it('rerolling never returns the same verse it was asked to exclude', () => {
+    const ref = getRandomVerse(() => 0.5).reference;
+    for (let i = 0; i < 40; i++) {
+      expect(randomVerseFiller(ref).reference).not.toBe(ref);
+    }
   });
 });

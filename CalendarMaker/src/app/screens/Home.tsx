@@ -53,7 +53,7 @@ export function Home({ bundles, settings, sayings, onOpen, onDelete, onNew, onIm
               font="playfair"
               fg="#3a2a5a"
               bg="linear-gradient(135deg,#efe7fb,#f6f0ff)"
-              onReroll={() => setVerse(randomVerseFiller())}
+              onReroll={() => setVerse(randomVerseFiller(verse.reference))}
             />
           )}
           {settings.showSayingOnHome && (
@@ -109,9 +109,19 @@ export function Home({ bundles, settings, sayings, onOpen, onDelete, onNew, onIm
 
 function FeatureCard({ kind, text, reference, font, fg, bg, onReroll }: { kind: string; text: string; reference?: string; font: string; fg: string; bg: string; onReroll: () => void }) {
   const family = useMemo(() => cssFontFamily(font), [font]);
+  // The whole card is clickable (cursor + role) so a click anywhere rerolls —
+  // not just a tiny corner glyph.
   return (
-    <div className="feature" style={{ background: bg, color: fg }}>
-      <button className="reroll" onClick={onReroll} title="Show another">↻</button>
+    <div
+      className="feature clickable"
+      style={{ background: bg, color: fg }}
+      onClick={onReroll}
+      role="button"
+      tabIndex={0}
+      title="Click for another"
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onReroll(); } }}
+    >
+      <span className="reroll" aria-hidden>↻ another</span>
       <div style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, opacity: 0.7, marginBottom: 8 }}>{kind}</div>
       <div className="ftext" style={{ fontFamily: family }}>{text}</div>
       {reference && <div className="fref" style={{ fontFamily: family }}>— {reference}</div>}

@@ -86,9 +86,18 @@ label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px
   min-height: 120px; display: flex; flex-direction: column; justify-content: center;
   box-shadow: var(--shadow);
 }
-.feature .ftext { font-size: 19px; line-height: 1.4; }
+.feature .ftext { font-size: 19px; line-height: 1.4; padding-right: 84px; }
 .feature .fref { margin-top: 10px; font-size: 14px; opacity: 0.85; }
-.feature .reroll { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.7); }
+.feature.clickable { cursor: pointer; transition: filter 0.15s, transform 0.1s; user-select: none; }
+.feature.clickable:hover { filter: brightness(0.97); }
+.feature.clickable:active { transform: scale(0.995); }
+.feature .reroll {
+  position: absolute; top: 12px; right: 12px;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.3px;
+  background: rgba(255,255,255,0.65); border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 20px; padding: 4px 10px; pointer-events: none;
+}
+.feature.clickable:hover .reroll { background: rgba(255,255,255,0.92); }
 
 /* Modal / drawer */
 .backdrop {
