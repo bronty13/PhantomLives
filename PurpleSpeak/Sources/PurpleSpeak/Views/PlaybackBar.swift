@@ -70,15 +70,19 @@ struct PlaybackBar: View {
     }
 
     private var voicePicker: some View {
-        let voices = tts.availableVoices()
+        let groups = tts.voicesByLanguage()
         return Picker("Voice", selection: Binding(
             get: { settings.settings.defaultVoiceIdentifier
                     ?? AVSpeechTTSEngine.systemDefaultVoiceID()
-                    ?? voices.first?.id ?? "" },
+                    ?? groups.first?.voices.first?.id ?? "" },
             set: { settings.settings.defaultVoiceIdentifier = $0 })
         ) {
-            ForEach(voices) { v in
-                Text("\(v.name) · \(v.quality) · \(v.language)").tag(v.id)
+            ForEach(groups) { group in
+                Section(group.displayName) {
+                    ForEach(group.voices) { v in
+                        Text("\(v.name) · \(v.quality)").tag(v.id)
+                    }
+                }
             }
         }
         .labelsHidden()

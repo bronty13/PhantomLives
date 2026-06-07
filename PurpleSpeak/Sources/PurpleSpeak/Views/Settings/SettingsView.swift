@@ -32,8 +32,12 @@ private struct PlaybackSettings: View {
                 set: { settings.settings.defaultVoiceIdentifier = $0.isEmpty ? nil : $0 })
             ) {
                 Text("System default").tag("")
-                ForEach(tts.availableVoices()) { v in
-                    Text("\(v.name) · \(v.quality) · \(v.language)").tag(v.id)
+                ForEach(tts.voicesByLanguage()) { group in
+                    Section(group.displayName) {
+                        ForEach(group.voices) { v in
+                            Text("\(v.name) · \(v.quality)").tag(v.id)
+                        }
+                    }
                 }
             }
             LabeledContent("Speed") {

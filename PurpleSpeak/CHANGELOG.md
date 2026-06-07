@@ -12,7 +12,9 @@ app for macOS, fully on-device and private.
   gets a soft purple glow, driven by `AVSpeechSynthesizer`'s
   `willSpeakRangeOfSpeechString` callback. Auto-scrolls to follow along.
 - On-device voices via `AVSpeechSynthesizer` (system Default / Enhanced /
-  Premium + Personal Voice). Defaults to the user's locale voice.
+  Premium + Personal Voice). Defaults to the user's locale voice. The voice
+  picker is grouped into per-language sections (localized names, your exact
+  locale first) so it stays navigable across 100+ installed voices.
 - Playback transport: play/pause, stop, previous/next paragraph, speed
   (0.5–4×), pitch, and a live voice picker.
 - Reading-comfort controls: font size, line spacing, and a line-focus mode

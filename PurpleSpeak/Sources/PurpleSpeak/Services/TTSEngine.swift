@@ -29,6 +29,13 @@ struct VoiceInfo: Identifiable, Hashable {
     let quality: String     // "Default" | "Enhanced" | "Premium"
 }
 
+/// Voices grouped under one language, for a sectioned picker.
+struct VoiceGroup: Identifiable, Hashable {
+    let id: String          // BCP-47 language code, e.g. "en-US"
+    let displayName: String // localized, e.g. "English (United States)"
+    let voices: [VoiceInfo]
+}
+
 /// On-device TTS over `AVSpeechSynthesizer`.
 ///
 /// The synced-highlight primitive — the single most-copied feature in every
@@ -81,6 +88,43 @@ final class AVSpeechTTSEngine: NSObject, ObservableObject, TTSEngine, AVSpeechSy
             if $0.quality != $1.quality { return $0.quality > $1.quality }
             return $0.name < $1.name
         }
+    }
+
+    /// Installed voices grouped by language for a sectioned picker. Groups are
+    /// ordered with the user's locale first, then alphabetically by the
+    /// localized language name; voices within a group are highest-quality first.
+    func voicesByLanguage() -> [VoiceGroup] {
+        // Rank exact-locale (e.g. en-US) first, then same-language variants
+        // (other English), then everything else — so the user's own voice isn't
+        // buried under alphabetically-earlier variants like Australia/India.
+        let exact = Locale.preferredLanguages.first ?? "en-US"   // "en-US"
+        let prefix = String(exact.prefix(2))                     // "en"
+        func rank(_ id: String) -> Int {
+            if id.caseInsensitiveCompare(exact) == .orderedSame { return 0 }
+            if id.hasPrefix(prefix) { return 1 }
+            return 2
+        }
+        let grouped = Dictionary(grouping: availableVoices(), by: { $0.language })
+        return grouped.map { (language, voices) in
+            VoiceGroup(
+                id: language,
+                displayName: Self.languageDisplayName(language),
+                voices: voices.sorted {
+                    if $0.quality != $1.quality { return $0.quality > $1.quality }
+                    return $0.name < $1.name
+                }
+            )
+        }
+        .sorted { a, b in
+            let ra = rank(a.id), rb = rank(b.id)
+            if ra != rb { return ra < rb }
+            return a.displayName.localizedCaseInsensitiveCompare(b.displayName) == .orderedAscending
+        }
+    }
+
+    /// "en-US" → "English (United States)". Falls back to the raw code.
+    static func languageDisplayName(_ code: String) -> String {
+        Locale.current.localizedString(forIdentifier: code) ?? code
     }
 
     /// Two-letter code of the user's preferred language (e.g. "en").

@@ -60,6 +60,31 @@ import AVFoundation
     #expect(ReaderTextView.wordStart(in: text, at: 999) == (text as NSString).length)
 }
 
+// MARK: - Voice grouping by language
+
+@MainActor
+@Test func languageDisplayNameIsLocalized() {
+    #expect(AVSpeechTTSEngine.languageDisplayName("en-US").contains("English"))
+    // Unknown codes fall back to the raw string.
+    #expect(AVSpeechTTSEngine.languageDisplayName("zz-ZZ") == "zz-ZZ")
+}
+
+@MainActor
+@Test func voicesAreGroupedByLanguage() {
+    let groups = AVSpeechTTSEngine().voicesByLanguage()
+    #expect(!groups.isEmpty)                                  // every Mac ships voices
+    // Group ids are unique languages.
+    #expect(Set(groups.map(\.id)).count == groups.count)
+    for group in groups {
+        // Every voice in a group really belongs to that language.
+        #expect(group.voices.allSatisfy { $0.language == group.id })
+        #expect(!group.voices.isEmpty)
+        // Highest-quality-first within a group (Premium > Enhanced > Default).
+        let qualities = group.voices.map(\.quality)
+        #expect(qualities == qualities.sorted(by: >))
+    }
+}
+
 // MARK: - Paragraph offsets (skip logic)
 
 @MainActor
