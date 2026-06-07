@@ -55,9 +55,16 @@ struct ArchiveBrowserView: View {
                         Button { model.quickLook(entry) } label: { Label("Quick Look", systemImage: "eye") }
                     }
                     if !ids.isEmpty {
-                        Button { beginExtractSelected(ids) } label: {
-                            Label(ids.count == 1 ? "Extract" : "Extract \(ids.count) Items",
-                                  systemImage: "arrow.down.circle")
+                        // Show the destination right in the menu so it's clear
+                        // where files will land before extracting.
+                        Section("Extract to  \(model.extractDestinationLabel)") {
+                            Button { beginExtractSelected(ids) } label: {
+                                Label(ids.count == 1 ? "Extract Here" : "Extract \(ids.count) Items Here",
+                                      systemImage: "arrow.down.circle")
+                            }
+                            Button { chooseDestinationThenExtract(ids) } label: {
+                                Label("Extract to Folder…", systemImage: "folder")
+                            }
                         }
                         Divider()
                     }
@@ -90,6 +97,10 @@ struct ArchiveBrowserView: View {
                          + (info.isEncrypted ? " · 🔒 encrypted" : ""))
                         .font(.caption).foregroundStyle(.secondary)
                 }
+            }
+            if !selection.isEmpty {
+                Text("\(selection.count) selected")
+                    .font(.caption).foregroundStyle(.purple)
             }
             Spacer()
             Button { if let entry = selectedFileEntry { model.quickLook(entry) } } label: {
@@ -130,14 +141,14 @@ struct ArchiveBrowserView: View {
             // Primary extract: the whole archive when nothing is selected, or
             // just the selected rows when there's a selection.
             Button { beginExtract() } label: {
-                Label(selection.isEmpty ? "Extract" : "Extract Selected",
+                Label(selection.isEmpty ? "Extract All" : "Extract \(selection.count) Selected",
                       systemImage: "arrow.down.circle.fill")
             }
             .buttonStyle(.borderedProminent).tint(.purple)
-            .disabled(model.busy)
+            .disabled(model.busy || model.entries.isEmpty)
             .help(selection.isEmpty
                   ? "Extract everything to \(model.extractDestinationLabel)"
-                  : "Extract the selected item(s) to \(model.extractDestinationLabel)")
+                  : "Extract the \(selection.count) selected item(s) to \(model.extractDestinationLabel)")
 
             // Destination & all-items options.
             Menu {
@@ -232,21 +243,32 @@ struct ArchiveBrowserView: View {
         else { beginExtractSelected(selection) }
     }
 
-    /// Pick a destination folder for extraction. The choice is session-sticky
+    /// Pick a destination folder. The choice is session-sticky
     /// (`AppModel.sessionExtractRoot`) — every later extract goes there until
-    /// the app relaunches, when it falls back to the Settings default.
-    private func chooseDestination() {
+    /// the app relaunches, when it falls back to the Settings default. Returns
+    /// true if the user chose a folder.
+    @discardableResult
+    private func pickDestination() -> Bool {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.prompt = "Choose"
+        panel.prompt = "Extract Here"
         panel.message = "Choose where extracted files should go (for this session)"
         panel.directoryURL = model.extractDestinationRoot
-        if panel.runModal() == .OK, let url = panel.url {
-            model.sessionExtractRoot = url
-            model.status = "Extract destination → \(model.extractDestinationLabel)"
-        }
+        guard panel.runModal() == .OK, let url = panel.url else { return false }
+        model.sessionExtractRoot = url
+        model.status = "Extract destination → \(model.extractDestinationLabel)"
+        return true
+    }
+
+    /// Toolbar "Choose Destination Folder…" — just set the sticky destination.
+    private func chooseDestination() { pickDestination() }
+
+    /// Right-click "Extract to Folder…" — pick a destination, then extract the
+    /// given selection there.
+    private func chooseDestinationThenExtract(_ ids: Set<Int>) {
+        if pickDestination() { beginExtractSelected(ids) }
     }
 
     /// Run the action straight away when the archive is plaintext (or its

@@ -80,12 +80,15 @@ just the selected files when you've selected some. Everything goes to
 revealed in Finder when done. Encrypted archives prompt for a password first —
 tick the **eye** to reveal what you typed.
 
-**Select the files you want** with standard gestures: click a row, **⇧-click**
-for a range, **⌘-click** to add/remove individual rows, ⌘A for all. With a
-selection, **Extract** becomes **Extract Selected** (or right-click ▸ **Extract
-N Items**) — just those files are written, keeping their folder structure;
-selecting a folder pulls out everything inside it. The **folder menu** beside
-Extract also has an explicit **Extract All Items**.
+**Select the files you want** the same way you do in Finder: click a row,
+**⌘-click** to add or remove individual rows, **⇧-click** for a range, ⌘A for
+all. (Note: on macOS *Control*-click is a right-click, not multi-select — use
+**Command (⌘)**.) The header shows how many are selected.
+
+With a selection the button reads **Extract N Selected** and writes just those
+(keeping their folder structure; selecting a folder pulls out everything inside
+it). With nothing selected it reads **Extract All**. Right-click ▸ **Extract**
+and the **folder menu** ▸ **Extract All Items** are alternatives.
 
 **Choose where files go:** the folder menu beside Extract ▸ **Choose Destination
 Folder…** lets you pick any folder. That choice is *sticky for the session* —
