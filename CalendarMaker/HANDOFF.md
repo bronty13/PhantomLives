@@ -10,8 +10,15 @@ with no "player" artifact and no committed-stub mechanism.
   inline-everything → `dist/index.html` runs from `file://`. **Browsers block
   `fetch()` of sibling files from `file://`**, so all data/fonts are inlined.
 - `npm run build` = `vite build` + `scripts/make-zip.mjs` (→ `CalendarMaker-app.zip`).
-- IndexedDB (via `idb`) for saved bundles + user themes + settings. jsPDF for PDF.
-  JSZip for the app zip. nanoid for ids. react-colorful for the theme editor.
+- **Storage = `localStorage`** (with in-memory fallback), NOT IndexedDB:
+  Chromium **hangs `indexedDB.open` on `file://` opaque origins**, which is exactly
+  how this app ships — that bug stuck the app on the loading screen (v0.2.0). All
+  stored data is small (calendars/themes/settings/sayings); the big Bible/fonts are
+  compiled-in constants, so localStorage is plenty. The `storage/db.ts` API stays
+  async so callers are unaffected. The load effect in `App.tsx` is wrapped in
+  try/catch/finally (never hangs), and `ErrorBoundary` catches render errors — so
+  the app can't blank out. jsPDF for PDF, JSZip for the app zip, nanoid for ids,
+  react-colorful for the theme editor.
 
 ## Generated, committed data (don't hand-edit)
 

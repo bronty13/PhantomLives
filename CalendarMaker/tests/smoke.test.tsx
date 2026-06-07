@@ -1,13 +1,14 @@
-// UI smoke test: mount the real React app in jsdom (with a fake IndexedDB and a
-// ResizeObserver polyfill) and drive a full create → edit → overflow flow. This
-// catches runtime/render errors the pure-logic tests can't.
+// UI smoke test: mount the real React app in jsdom (storage is localStorage, which
+// jsdom provides) and drive a full create → edit → overflow flow. This catches
+// runtime/render errors the pure-logic tests can't.
 
-import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeAll } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { App } from '../src/app/App';
 
 beforeAll(() => {
+  // Node/jsdom localStorage is unreliable here; db.ts falls back to its in-memory
+  // store (module-scoped, so it persists across the two tests in this file).
   // jsdom lacks ResizeObserver (used by CalendarPreview).
   (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = class {
     observe() {}

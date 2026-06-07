@@ -1,118 +1,151 @@
-// Persistence: IndexedDB for saved calendar bundles + user themes, with app
-// settings in a meta store. Built-in themes are seeded on first run so the Theme
-// Manager lists everything uniformly. (Bible / sayings / holidays / fonts are
-// static code data, not stored here.)
+// Persistence. Uses localStorage (with an in-memory fallback) — NOT IndexedDB,
+// because Chromium browsers block/hang IndexedDB on `file://` opaque origins,
+// which is exactly how this app is distributed (unzip → open index.html). All
+// stored data is small (calendars/themes/settings/sayings are tiny JSON; the big
+// Bible/fonts are compiled-in code constants), so localStorage is plenty.
 
-import { openDB, type IDBPDatabase } from 'idb';
 import type { AppSettings, CalendarBundle, FillerEntry, Theme } from '../model/types';
 import { DEFAULT_APP_SETTINGS } from '../model/types';
 import { SEED_THEMES } from '../model/seedThemes';
 
-const DB_NAME = 'calendarmaker';
-// v2 adds the 'sayings' store for user-added custom sayings. Additive + guarded.
-const DB_VERSION = 2;
-const SETTINGS_KEY = 'app-settings';
-const SEEDED_KEY = 'seeded';
+const K = {
+  bundles: 'cm.bundles',
+  themes: 'cm.themes',
+  sayings: 'cm.sayings',
+  settings: 'cm.settings',
+  seeded: 'cm.seeded',
+};
 
-let dbPromise: Promise<IDBPDatabase> | null = null;
+// --- low-level store (localStorage, falling back to in-memory) --------------
 
-function db(): Promise<IDBPDatabase> {
-  if (!dbPromise) {
-    dbPromise = openDB(DB_NAME, DB_VERSION, {
-      upgrade(database) {
-        if (!database.objectStoreNames.contains('bundles')) {
-          database.createObjectStore('bundles', { keyPath: 'id' });
-        }
-        if (!database.objectStoreNames.contains('themes')) {
-          database.createObjectStore('themes', { keyPath: 'id' });
-        }
-        if (!database.objectStoreNames.contains('meta')) {
-          database.createObjectStore('meta');
-        }
-        if (!database.objectStoreNames.contains('sayings')) {
-          database.createObjectStore('sayings', { keyPath: 'id' });
-        }
-      },
-    });
+const mem = new Map<string, string>();
+let useMem = false;
+
+function rawGet(key: string): string | null {
+  if (useMem) return mem.get(key) ?? null;
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    useMem = true;
+    return mem.get(key) ?? null;
   }
-  return dbPromise;
 }
+
+function rawSet(key: string, value: string): void {
+  if (useMem) {
+    mem.set(key, value);
+    return;
+  }
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    useMem = true;
+    mem.set(key, value);
+  }
+}
+
+function readMap<T>(key: string): Record<string, T> {
+  const raw = rawGet(key);
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as Record<string, T>;
+  } catch {
+    return {};
+  }
+}
+
+function writeMap<T>(key: string, map: Record<string, T>): void {
+  rawSet(key, JSON.stringify(map));
+}
+
+// --- seeding ---------------------------------------------------------------
 
 /** Idempotent first-run seed of the built-in themes. */
 export async function ensureSeeded(): Promise<void> {
-  const d = await db();
-  const seeded = await d.get('meta', SEEDED_KEY);
-  if (seeded) return;
-  const tx = d.transaction('themes', 'readwrite');
-  for (const theme of SEED_THEMES) await tx.store.put(theme);
-  await tx.done;
-  await d.put('meta', true, SEEDED_KEY);
+  if (rawGet(K.seeded)) return;
+  const themes = readMap<Theme>(K.themes);
+  for (const t of SEED_THEMES) themes[t.id] = t;
+  writeMap(K.themes, themes);
+  rawSet(K.seeded, '1');
 }
 
 // --- Bundles ---------------------------------------------------------------
 
 export async function listBundles(): Promise<CalendarBundle[]> {
-  const all = (await (await db()).getAll('bundles')) as CalendarBundle[];
-  return all.sort((a, b) => b.updatedAt - a.updatedAt);
+  return Object.values(readMap<CalendarBundle>(K.bundles)).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export async function getBundle(id: string): Promise<CalendarBundle | undefined> {
-  return (await (await db()).get('bundles', id)) as CalendarBundle | undefined;
+  return readMap<CalendarBundle>(K.bundles)[id];
 }
 
 export async function saveBundle(bundle: CalendarBundle): Promise<void> {
-  await (await db()).put('bundles', { ...bundle, updatedAt: Date.now() });
+  const map = readMap<CalendarBundle>(K.bundles);
+  map[bundle.id] = { ...bundle, updatedAt: Date.now() };
+  writeMap(K.bundles, map);
 }
 
 export async function deleteBundle(id: string): Promise<void> {
-  await (await db()).delete('bundles', id);
+  const map = readMap<CalendarBundle>(K.bundles);
+  delete map[id];
+  writeMap(K.bundles, map);
 }
 
 // --- Themes ----------------------------------------------------------------
 
 export async function listThemes(): Promise<Theme[]> {
-  const all = (await (await db()).getAll('themes')) as Theme[];
-  // Built-ins first (seed order), then user themes by name.
-  return all.sort((a, b) => {
+  return Object.values(readMap<Theme>(K.themes)).sort((a, b) => {
     if (a.builtin !== b.builtin) return a.builtin ? -1 : 1;
     return a.name.localeCompare(b.name);
   });
 }
 
 export async function getTheme(id: string): Promise<Theme | undefined> {
-  return (await (await db()).get('themes', id)) as Theme | undefined;
+  return readMap<Theme>(K.themes)[id];
 }
 
 export async function saveTheme(theme: Theme): Promise<void> {
-  await (await db()).put('themes', theme);
+  const map = readMap<Theme>(K.themes);
+  map[theme.id] = theme;
+  writeMap(K.themes, map);
 }
 
 export async function deleteTheme(id: string): Promise<void> {
-  await (await db()).delete('themes', id);
+  const map = readMap<Theme>(K.themes);
+  delete map[id];
+  writeMap(K.themes, map);
 }
 
 // --- Custom sayings --------------------------------------------------------
 
 export async function listCustomSayings(): Promise<FillerEntry[]> {
-  const all = (await (await db()).getAll('sayings')) as FillerEntry[];
-  return all;
+  return Object.values(readMap<FillerEntry>(K.sayings));
 }
 
 export async function addCustomSaying(entry: FillerEntry): Promise<void> {
-  await (await db()).put('sayings', entry);
+  const map = readMap<FillerEntry>(K.sayings);
+  map[entry.id] = entry;
+  writeMap(K.sayings, map);
 }
 
 export async function deleteCustomSaying(id: string): Promise<void> {
-  await (await db()).delete('sayings', id);
+  const map = readMap<FillerEntry>(K.sayings);
+  delete map[id];
+  writeMap(K.sayings, map);
 }
 
 // --- Settings --------------------------------------------------------------
 
 export async function getSettings(): Promise<AppSettings> {
-  const stored = (await (await db()).get('meta', SETTINGS_KEY)) as AppSettings | undefined;
-  return { ...DEFAULT_APP_SETTINGS, ...stored };
+  const raw = rawGet(K.settings);
+  if (!raw) return { ...DEFAULT_APP_SETTINGS };
+  try {
+    return { ...DEFAULT_APP_SETTINGS, ...(JSON.parse(raw) as Partial<AppSettings>) };
+  } catch {
+    return { ...DEFAULT_APP_SETTINGS };
+  }
 }
 
 export async function saveSettings(settings: AppSettings): Promise<void> {
-  await (await db()).put('meta', settings, SETTINGS_KEY);
+  rawSet(K.settings, JSON.stringify(settings));
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AppSettings, CalendarBundle, FillerEntry, Theme } from '../model/types';
-import { APP_VERSION } from '../model/types';
+import { APP_VERSION, DEFAULT_APP_SETTINGS } from '../model/types';
 import {
   deleteBundle, ensureSeeded, getSettings, listBundles, listCustomSayings, listThemes,
   saveBundle, saveSettings,
@@ -26,12 +26,19 @@ export function App() {
 
   useEffect(() => {
     (async () => {
-      await ensureSeeded();
-      setSettings(await getSettings());
-      await reloadThemes();
-      await reloadBundles();
-      await reloadSayings();
-      setLoading(false);
+      try {
+        await ensureSeeded();
+        setSettings(await getSettings());
+        await reloadThemes();
+        await reloadBundles();
+        await reloadSayings();
+      } catch (e) {
+        // Never let a storage hiccup hang the UI on the loading screen.
+        console.error('CalendarMaker load error:', e);
+        setSettings((s) => s ?? { ...DEFAULT_APP_SETTINGS });
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [reloadBundles, reloadThemes, reloadSayings]);
 

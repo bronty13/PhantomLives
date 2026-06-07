@@ -4,6 +4,22 @@ All notable changes to CalendarMaker are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is
 [SemVer](https://semver.org/).
 
+## 0.2.1 — 2026-06-07
+
+### Fixed
+- **Blank/stuck "Loading…" screen when opened from `file://`** (the shipped
+  distribution mode). Chromium browsers (Vivaldi, Brave, Chrome) **hang
+  `indexedDB.open` on the opaque `file://` origin**, so the app never finished
+  loading. Storage moved from IndexedDB to **`localStorage`** (with an in-memory
+  fallback); all stored data is small so this is ample. The `storage/db.ts` API
+  is unchanged (still async). Verified rendering in headless Chromium from
+  `file://`.
+
+### Hardened
+- The startup load is wrapped in try/catch/finally so a storage failure can never
+  hang the loading screen, and a new **ErrorBoundary** shows a message instead of
+  a blank page if any render throws.
+
 ## 0.2.0 — 2026-06-07
 
 ### Added
