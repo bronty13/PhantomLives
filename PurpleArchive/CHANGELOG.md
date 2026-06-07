@@ -4,6 +4,16 @@ All notable changes to PurpleArchive are documented here.
 
 ## [Unreleased]
 
+### Phase 3b — best-effort recovery (2026-06-06)
+
+- **`recover`** / **`parc repair`**: salvage readable files from a damaged or
+  truncated archive — extract every entry that reads cleanly, stop gracefully at
+  the first fatal stream error, and report whether recovery was complete (e.g.
+  "Partial recovery: salvaged 3 entries before corruption"). Verified salvaging
+  3/6 files from a truncated tar. (Compressed-stream/zip truncation that can't be
+  opened at all is reported as such — honest about the limits.)
+- 1 recovery test; engine suite 34/34.
+
 ### Phase 3a — 7z creation + one-step convert (2026-06-06)
 
 - **7z creation** — turns out libarchive ships `archive_write_set_format_7zip`

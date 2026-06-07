@@ -56,6 +56,14 @@ public struct ArchiveService: Sendable {
         try reader.extract(url, options: options, sink: sink)
     }
 
+    /// Best-effort recovery from a damaged archive — salvages every readable
+    /// entry and reports whether the whole archive came through.
+    @discardableResult
+    public func recover(_ url: URL, options: ExtractOptions,
+                        sink: ProgressSink = .none) throws -> LibArchiveEngine.RecoveryResult {
+        try reader.recover(url, options: options, sink: sink)
+    }
+
     /// Integrity test: read every entry's data through libarchive (verifying
     /// CRCs / decompression) without writing anything to disk.
     public func test(_ url: URL, password: String? = nil,

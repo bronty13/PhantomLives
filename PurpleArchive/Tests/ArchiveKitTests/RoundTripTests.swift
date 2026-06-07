@@ -135,6 +135,37 @@ final class RoundTripTests: XCTestCase {
         XCTAssertGreaterThan(tree.totalSize, 40_000)
     }
 
+    func testRecoverFromTruncatedArchive() throws {
+        let svc = ArchiveService()
+        // Several sizable files in an UNCOMPRESSED tar: truncating mid-stream
+        // leaves the earlier entries fully readable, which is exactly the case
+        // `recover` salvages. (A truncated gzip/zip can't even be opened — the
+        // codec/central-directory check fails up front — so recovery there is
+        // inherently limited; `recover` surfaces that by throwing on open.)
+        let big = tmp.appendingPathComponent("big")
+        try fm.createDirectory(at: big, withIntermediateDirectories: true)
+        for i in 0..<6 {
+            var d = Data(count: 8_000)
+            for j in d.indices { d[j] = UInt8((i &* 7 &+ j) & 0xFF) }
+            try d.write(to: big.appendingPathComponent("f\(i).bin"))
+        }
+        let archive = tmp.appendingPathComponent("t.tar")
+        try svc.create(archive, inputs: [big], format: .tar)
+        let full = try Data(contentsOf: archive)
+        let broken = tmp.appendingPathComponent("broken.tar")
+        try full.prefix(Int(Double(full.count) * 0.5)).write(to: broken)
+
+        // A plain extract throws on the corruption.
+        XCTAssertThrowsError(try svc.extract(broken,
+            options: ExtractOptions(destination: tmp.appendingPathComponent("x"))))
+
+        // Recovery salvages the entries before the truncation, reports incomplete.
+        let result = try svc.recover(broken,
+            options: ExtractOptions(destination: tmp.appendingPathComponent("rec")))
+        XCTAssertFalse(result.complete, "truncated archive should report incomplete")
+        XCTAssertGreaterThanOrEqual(result.recovered, 1, "should salvage at least one entry")
+    }
+
     func testConvertTranscodesPreservingContents() throws {
         let src = try makeSource()
         let svc = ArchiveService()

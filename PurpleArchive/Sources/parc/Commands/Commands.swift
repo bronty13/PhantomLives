@@ -195,6 +195,33 @@ struct Hash: AsyncParsableCommand {
     }
 }
 
+// MARK: - repair (best-effort recovery)
+
+struct Repair: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "repair",
+        abstract: "Salvage readable files from a damaged/truncated archive.")
+    @Argument(help: "Damaged archive.") var archive: String
+    @Option(name: .shortAndLong, help: "Output directory.") var output: String?
+    @Option(name: .shortAndLong, help: "Password for an encrypted archive.") var password: String?
+
+    func run() async throws {
+        let url = URL(fileURLWithPath: archive)
+        let dest = output.map { URL(fileURLWithPath: $0) }
+            ?? FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Downloads/PurpleArchive")
+                .appendingPathComponent(url.deletingPathExtension().lastPathComponent + "-recovered")
+        do {
+            let r = try ArchiveService().recover(url, options: ExtractOptions(destination: dest, password: password))
+            if r.complete {
+                print("Recovered all \(r.recovered) entries → \(dest.path)")
+            } else {
+                print("Partial recovery: salvaged \(r.recovered) entries before corruption → \(dest.path)")
+            }
+        } catch { die(error.localizedDescription) }
+    }
+}
+
 // MARK: - convert
 
 struct Convert: AsyncParsableCommand {

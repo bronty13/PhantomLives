@@ -116,6 +116,67 @@ extension LibArchiveEngine {
         return count
     }
 
+    /// Best-effort recovery from a damaged/truncated archive: extract every
+    /// entry that reads cleanly, stop gracefully at the first fatal stream error
+    /// instead of throwing, and report how much was recovered. For streamed
+    /// formats (tar.gz/…) this salvages everything before the corruption.
+    public struct RecoveryResult: Sendable { public let recovered: Int; public let complete: Bool }
+
+    public func recover(_ url: URL, options: ExtractOptions,
+                        sink: ProgressSink = .none) throws -> RecoveryResult {
+        let fm = FileManager.default
+        try fm.createDirectory(at: options.destination, withIntermediateDirectories: true)
+        let root = options.destination.standardizedFileURL.resolvingSymlinksInPath()
+
+        guard let a = archive_read_new() else {
+            throw ArchiveError.cannotOpen(path: url.path, detail: "archive_read_new failed")
+        }
+        defer { archive_read_free(a) }
+        archive_read_support_filter_all(a)
+        archive_read_support_format_all(a)
+        if let pw = options.password { _ = pw.withCString { archive_read_add_passphrase(a, $0) } }
+        guard url.path.withCString({ archive_read_open_filename(a, $0, 1 << 20) }) == ARCHIVE_OK else {
+            throw ArchiveError.cannotOpen(path: url.path, detail: Self.errorString(a))
+        }
+
+        let buffer = UnsafeMutableRawPointer.allocate(byteCount: 1 << 20, alignment: 16)
+        defer { buffer.deallocate() }
+        var recovered = 0
+        var complete = true
+        while true {
+            if sink.cancelled() { throw CancelledError() }
+            var entryPtr: OpaquePointer?
+            let r = archive_read_next_header(a, &entryPtr)
+            if r == ARCHIVE_EOF { break }
+            if r == ARCHIVE_FATAL { complete = false; break }   // stream broke — salvage what we have
+            guard let entry = entryPtr else { continue }
+            guard let cName = archive_entry_pathname(entry),
+                  let dest = Self.safeDestination(String(cString: cName), under: root) else { continue }
+
+            let filetype = archive_entry_filetype(entry) & 0xF000
+            if Int(filetype) == 0x4000 {
+                try? fm.createDirectory(at: dest, withIntermediateDirectories: true)
+                recovered += 1; continue
+            }
+            try? fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? fm.removeItem(at: dest)
+            fm.createFile(atPath: dest.path, contents: nil)
+            guard let fh = FileHandle(forWritingAtPath: dest.path) else { continue }
+            var entryOK = true
+            while true {
+                let n = archive_read_data(a, buffer, 1 << 20)
+                if n == 0 { break }
+                if n < 0 { entryOK = false; complete = false; break }   // partial/corrupt entry
+                fh.write(Data(bytesNoCopy: buffer, count: n, deallocator: .none))
+            }
+            try? fh.close()
+            if entryOK { recovered += 1 }
+            sink.report(ArchiveProgress(entriesDone: recovered, entriesTotal: nil,
+                                        bytesDone: 0, currentName: String(cString: cName)))
+        }
+        return RecoveryResult(recovered: recovered, complete: complete)
+    }
+
     /// Read every entry's data through libarchive (verifying CRCs and
     /// decompression) without writing to disk. Returns true if the whole
     /// archive reads cleanly.
