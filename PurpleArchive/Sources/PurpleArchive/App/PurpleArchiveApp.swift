@@ -5,6 +5,7 @@ struct PurpleArchiveApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var settings = SettingsStore()
     @StateObject private var model: AppModel
+    @StateObject private var queue = JobQueue()
 
     init() {
         let store = SettingsStore()
@@ -18,7 +19,9 @@ struct PurpleArchiveApp: App {
             ContentView()
                 .environmentObject(model)
                 .environmentObject(settings)
+                .environmentObject(queue)
                 .frame(minWidth: 820, minHeight: 520)
+                .tint(.purple)
         }
         .commands {
             CommandGroup(replacing: .newItem) {

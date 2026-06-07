@@ -8,6 +8,7 @@ import ArchiveKit
 /// other files go to Compress.
 struct ContentView: View {
     @EnvironmentObject var model: AppModel
+    @EnvironmentObject var queue: JobQueue
     @AppStorage("sidebarVisible") private var sidebarVisible = true
 
     var body: some View {
@@ -48,6 +49,7 @@ struct ContentView: View {
         switch model.sidebarSelection {
         case .browse: ArchiveBrowserView()
         case .compress: CompressDropView()
+        case .queue: QueueView()
         }
     }
 
@@ -79,11 +81,17 @@ struct ContentView: View {
         }
         group.notify(queue: .main) {
             guard !urls.isEmpty else { return }
-            // A single archive → browse it; anything else → compress.
-            if urls.count == 1, ArchiveProbe.looksLikeArchive(urls[0]) {
+            let archives = urls.filter { ArchiveProbe.looksLikeArchive($0) }
+            if urls.count == 1, archives.count == 1 {
+                // A single archive → browse it.
                 model.sidebarSelection = .browse
                 model.open(urls[0])
+            } else if archives.count == urls.count {
+                // Several archives → batch-extract them in the Queue.
+                model.sidebarSelection = .queue
+                queue.enqueueExtracts(archives, intoRoot: model.settings.resolvedExtractRoot)
             } else {
+                // A mix / non-archives → compress them.
                 model.sidebarSelection = .compress
                 model.compress(urls)
             }

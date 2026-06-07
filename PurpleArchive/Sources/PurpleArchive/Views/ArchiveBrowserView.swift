@@ -27,6 +27,9 @@ struct ArchiveBrowserView: View {
                             Text(entry.displayPath).lineLimit(1).truncationMode(.middle)
                             if entry.isEncrypted { Image(systemName: "lock.fill").foregroundStyle(.orange) }
                         }
+                        .contentShape(Rectangle())
+                        // Drag a file out to Finder → extracts just that entry.
+                        .onDrag { model.dragProvider(for: entry) }
                     }
                     TableColumn("Size") { entry in
                         Text(entry.isDirectory ? "—" : ByteFormat.string(entry.uncompressedSize))

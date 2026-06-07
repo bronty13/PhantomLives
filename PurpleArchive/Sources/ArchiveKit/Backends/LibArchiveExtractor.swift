@@ -116,6 +116,62 @@ extension LibArchiveEngine {
         return count
     }
 
+    /// Extract a single entry by archive path, streaming just its data to
+    /// `dest` (no full unpack — the basis for drag-out and huge-archive
+    /// single-file pulls). Returns true if the entry was found.
+    @discardableResult
+    public func extractEntry(_ url: URL, entryPath: String, to dest: URL,
+                             password: String?) throws -> Bool {
+        let target = Self.normalizePath(entryPath)
+        guard let a = archive_read_new() else {
+            throw ArchiveError.cannotOpen(path: url.path, detail: "archive_read_new failed")
+        }
+        defer { archive_read_free(a) }
+        archive_read_support_filter_all(a)
+        archive_read_support_format_all(a)
+        if let pw = password { _ = pw.withCString { archive_read_add_passphrase(a, $0) } }
+        guard url.path.withCString({ archive_read_open_filename(a, $0, 1 << 20) }) == ARCHIVE_OK else {
+            throw ArchiveError.cannotOpen(path: url.path, detail: Self.errorString(a))
+        }
+
+        let buffer = UnsafeMutableRawPointer.allocate(byteCount: 1 << 20, alignment: 16)
+        defer { buffer.deallocate() }
+        while true {
+            var entryPtr: OpaquePointer?
+            let r = archive_read_next_header(a, &entryPtr)
+            if r == ARCHIVE_EOF { break }
+            if r == ARCHIVE_FATAL { throw Self.classifyError(a) }
+            guard let entry = entryPtr, let cName = archive_entry_pathname(entry) else { continue }
+            if Self.normalizePath(String(cString: cName)) != target {
+                archive_read_data_skip(a); continue
+            }
+            try FileManager.default.createDirectory(at: dest.deletingLastPathComponent(),
+                                                    withIntermediateDirectories: true)
+            try? FileManager.default.removeItem(at: dest)
+            FileManager.default.createFile(atPath: dest.path, contents: nil)
+            guard let fh = FileHandle(forWritingAtPath: dest.path) else {
+                throw ArchiveError.readFailed(detail: "cannot create \(dest.path)")
+            }
+            defer { try? fh.close() }
+            while true {
+                let n = archive_read_data(a, buffer, 1 << 20)
+                if n == 0 { break }
+                if n < 0 { throw Self.classifyError(a) }
+                fh.write(Data(bytesNoCopy: buffer, count: n, deallocator: .none))
+            }
+            return true
+        }
+        return false
+    }
+
+    static func normalizePath(_ p: String) -> String {
+        var s = p
+        while s.hasPrefix("./") { s.removeFirst(2) }
+        while s.hasPrefix("/") { s.removeFirst() }
+        if s.hasSuffix("/") { s.removeLast() }
+        return s
+    }
+
     /// Best-effort recovery from a damaged/truncated archive: extract every
     /// entry that reads cleanly, stop gracefully at the first fatal stream error
     /// instead of throwing, and report how much was recovered. For streamed

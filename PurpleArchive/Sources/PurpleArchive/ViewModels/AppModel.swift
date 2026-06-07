@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UniformTypeIdentifiers
 import ArchiveKit
 
 /// The GUI's central state: the currently open archive, its entry tree, and the
@@ -87,6 +88,29 @@ final class AppModel: ObservableObject {
             self?.status = "Extracted → \(dest.path)"
             NSWorkspace.shared.activateFileViewerSelecting([dest])
         }
+    }
+
+    // MARK: - Drag-out
+
+    /// An item provider for dragging a single archive entry out to Finder. The
+    /// file is extracted lazily (only if/when the drop completes) to a temp file.
+    func dragProvider(for entry: ArchiveEntry) -> NSItemProvider {
+        let provider = NSItemProvider()
+        provider.suggestedName = entry.name
+        guard let url = openedURL, !entry.isDirectory else { return provider }
+        let pw = vault.password(for: url)
+        let uti = UTType(filenameExtension: (entry.name as NSString).pathExtension) ?? .data
+        provider.registerFileRepresentation(forTypeIdentifier: uti.identifier,
+                                            fileOptions: [], visibility: .all) { completion in
+            do {
+                let temp = try ArchiveService().extractEntryToTemp(url, entry: entry, password: pw)
+                completion(temp, true, nil)   // true: a temp file the system may move
+            } catch {
+                completion(nil, false, error)
+            }
+            return nil
+        }
+        return provider
     }
 
     // MARK: - In-place edit
@@ -179,11 +203,13 @@ final class AppModel: ObservableObject {
 enum SidebarItem: String, CaseIterable, Identifiable {
     case browse = "Browse"
     case compress = "Compress"
+    case queue = "Queue"
     var id: String { rawValue }
     var systemImage: String {
         switch self {
         case .browse: return "doc.zipper"
         case .compress: return "plus.rectangle.on.folder"
+        case .queue: return "square.stack.3d.up"
         }
     }
 }

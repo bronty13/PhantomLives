@@ -76,6 +76,43 @@ public struct ArchiveService: Sendable {
         }
     }
 
+    /// Extract a single entry (by archive path) to `dest`, streaming just that
+    /// file. Returns false if not found. Routes legacy formats + split volumes.
+    @discardableResult
+    public func extractEntry(_ url: URL, entryPath: String, to dest: URL,
+                             password: String? = nil) throws -> Bool {
+        try resolvingVolumes(url) { real in
+            if legacy.canHandle(real) {
+                // peeler peels in-memory; extract all to a temp dir, move the one out.
+                let staging = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("pa-one-\(UUID().uuidString)", isDirectory: true)
+                defer { try? FileManager.default.removeItem(at: staging) }
+                try legacy.extract(real, options: ExtractOptions(destination: staging))
+                let src = staging.appendingPathComponent(entryPath)
+                guard FileManager.default.fileExists(atPath: src.path) else { return false }
+                try FileManager.default.createDirectory(at: dest.deletingLastPathComponent(),
+                                                        withIntermediateDirectories: true)
+                try? FileManager.default.removeItem(at: dest)
+                try FileManager.default.moveItem(at: src, to: dest)
+                return true
+            }
+            return try reader.extractEntry(real, entryPath: entryPath, to: dest, password: password)
+        }
+    }
+
+    /// Extract one entry to a fresh temp file named after the entry (for
+    /// drag-out to Finder). Returns the temp file URL.
+    public func extractEntryToTemp(_ url: URL, entry: ArchiveEntry, password: String? = nil) throws -> URL {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pa-drag-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dest = dir.appendingPathComponent(entry.name.isEmpty ? "file" : entry.name)
+        guard try extractEntry(url, entryPath: entry.displayPath, to: dest, password: password) else {
+            throw ArchiveError.readFailed(detail: "entry not found: \(entry.displayPath)")
+        }
+        return dest
+    }
+
     /// Best-effort recovery from a damaged archive — salvages every readable
     /// entry and reports whether the whole archive came through.
     @discardableResult

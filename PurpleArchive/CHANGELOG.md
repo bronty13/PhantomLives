@@ -4,6 +4,23 @@ All notable changes to PurpleArchive are documented here.
 
 ## [Unreleased]
 
+### Batch queue, drag-out, single-entry extraction, visual polish (2026-06-06)
+
+- **Single-entry extraction** (`ArchiveService.extractEntry` /
+  `extractEntryToTemp`): stream one file out of an archive without unpacking the
+  rest — also the long-deferred "huge-archive single-file pull".
+- **Drag-out**: drag any file from the browser table to Finder and it's extracted
+  on drop (lazy file-promise to a temp file).
+- **Batch queue** (`JobQueue` + `QueueView`, new **Queue** sidebar tab): drop
+  several archives and they extract concurrently, bounded to the core count, each
+  with progress, cancel, and reveal-in-Finder; adjustable parallelism. Multi-
+  archive drops now route here automatically.
+- **Visual polish**: app-wide purple accent, refined sidebar (active-job badge,
+  engine-version footer, cleaner selected state).
+- New test: single-entry extract + drag-out temp helper. Engine suite 41/41.
+  GUI interactions (drag-out, queue) verified by build/structure; visual confirm
+  pending on a desktop session.
+
 ### Multi-volume / split archives (2026-06-06)
 
 - **Raw split sets** (`.001`/`.002`/… — 7-Zip "split to volumes", `split`,

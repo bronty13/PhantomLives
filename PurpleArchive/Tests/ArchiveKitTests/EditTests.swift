@@ -64,6 +64,29 @@ final class EditTests: XCTestCase {
         XCTAssertTrue(try svc.test(archive), "edited tar.zst must verify")
     }
 
+    func testExtractSingleEntry() throws {
+        let svc = ArchiveService()
+        let src = try makeSource()
+        let archive = tmp.appendingPathComponent("s.zip")
+        try svc.create(archive, inputs: [src])
+
+        // Pull just one nested file, no full unpack.
+        let dest = tmp.appendingPathComponent("just-b.txt")
+        let found = try svc.extractEntry(archive, entryPath: "src/sub/b.txt", to: dest)
+        XCTAssertTrue(found)
+        XCTAssertEqual(try String(contentsOf: dest, encoding: .utf8), "beta")
+
+        // A missing path returns false, not a crash.
+        XCTAssertFalse(try svc.extractEntry(archive, entryPath: "src/nope.txt",
+                                            to: tmp.appendingPathComponent("nope")))
+
+        // The drag-out helper names the temp after the entry.
+        let entry = try XCTUnwrap(svc.list(archive).first { $0.displayPath == "src/c.txt" })
+        let tempURL = try svc.extractEntryToTemp(archive, entry: entry)
+        XCTAssertEqual(tempURL.lastPathComponent, "c.txt")
+        XCTAssertEqual(try String(contentsOf: tempURL, encoding: .utf8), "gamma")
+    }
+
     func testEditingReadOnlyFormatThrows() throws {
         // A made-up .rar path routes read-only; editing must refuse clearly.
         let svc = ArchiveService()
