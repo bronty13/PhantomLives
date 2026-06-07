@@ -19,8 +19,9 @@ app for macOS, fully on-device and private.
   (0.5–4×), pitch, and a live voice picker.
 - Reading-comfort controls: font size, line spacing, and a line-focus mode
   that dims everything but the active paragraph.
-- Word-precise click-to-start: click any word to begin reading from exactly
-  that word (TextKit-backed reading surface; also keeps native text selection).
+- Word-precise click-to-start: a plain click on any word begins reading from
+  exactly that word (TextKit-backed reading surface); click-drag still selects
+  text without starting playback.
 
 ### Import
 - PDF (with OCR fallback for scanned PDFs), EPUB, DOCX/DOC, RTF/RTFD, HTML,

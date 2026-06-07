@@ -224,10 +224,23 @@ final class CenteringTextView: NSTextView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        if let idx = characterIndex(forClick: event) {
-            onClickOffset?(idx)
+        // Capture the clicked character index BEFORE selection tracking runs.
+        let clickedIndex = characterIndex(forClick: event)
+
+        // Let NSTextView handle the click fully (caret placement / drag-select).
+        // This runs a nested modal event-tracking loop until mouseUp.
+        super.mouseDown(with: event)
+
+        // Only "start reading here" for a plain click (no text was selected) —
+        // dragging to select text must not start playback. And dispatch async
+        // so the synthesizer starts AFTER this event (and its nested tracking
+        // loop) fully unwinds; starting AVSpeechSynthesizer from inside that
+        // loop makes the audio render and the loop fight, producing rapid,
+        // overlapping, incoherent speech.
+        guard let clickedIndex, selectedRange().length == 0 else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.onClickOffset?(clickedIndex)
         }
-        super.mouseDown(with: event)   // preserve caret/selection behavior
     }
 
     private func characterIndex(forClick event: NSEvent) -> Int? {
