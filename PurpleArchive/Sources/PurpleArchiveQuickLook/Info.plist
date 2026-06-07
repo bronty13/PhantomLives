@@ -31,6 +31,9 @@
                 <string>org.gnu.gnu-zip-archive</string>
                 <string>org.gnu.gnu-zip-tar-archive</string>
                 <string>public.bzip2-archive</string>
+                <string>com.bronty13.purplearchive.sit</string>
+                <string>com.bronty13.purplearchive.cpt</string>
+                <string>com.bronty13.purplearchive.hqx</string>
             </array>
         </dict>
     </dict>

@@ -67,6 +67,19 @@ done
 ditto --noextattr "$ICNS_PATH" "$DEST_APP/Contents/Resources/AppIcon.icns"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile AppIcon.icns" "$PLIST" 2>/dev/null || true
 
+# Bundle the `parc` CLI at Contents/Helpers/parc. The SwiftPM build is
+# self-contained (ArchiveKit + vendored C libs static-linked), so it just drops
+# in — no rpath wrangling. Users symlink it to their PATH (see USER_MANUAL.md).
+echo "Bundling parc CLI..."
+swift build -c release --product parc >/dev/null 2>&1 || true
+PARC_BIN="$(swift build -c release --product parc --show-bin-path 2>/dev/null)/parc"
+if [ -x "$PARC_BIN" ]; then
+    mkdir -p "$DEST_APP/Contents/Helpers"
+    ditto --noextattr "$PARC_BIN" "$DEST_APP/Contents/Helpers/parc"
+else
+    echo "  (warning: parc build not found — CLI not bundled)"
+fi
+
 # Code sign: Developer ID (hardened runtime + timestamp) if available, else ad-hoc.
 CERT="${CODESIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | grep "Developer ID Application" | head -1 | awk '{print $2}' || echo "")}"
 APP_ENT="Sources/PurpleArchive/App/PurpleArchive.entitlements"
@@ -95,6 +108,8 @@ if [ -d "$SPARKLE_FW" ]; then
     "${SIGN[@]}" "$SPARKLE_FW"
 fi
 [ -d "$ARCHIVEKIT_FW" ] && "${SIGN[@]}" "$ARCHIVEKIT_FW"
+# Bundled CLI.
+[ -f "$DEST_APP/Contents/Helpers/parc" ] && "${SIGN[@]}" "$DEST_APP/Contents/Helpers/parc"
 # App-extensions (each with its own entitlements).
 [ -d "$QL_APPEX" ]     && "${SIGN[@]}" --entitlements "$QL_ENT" "$QL_APPEX"
 [ -d "$THUMB_APPEX" ]  && "${SIGN[@]}" --entitlements "$THUMB_ENT" "$THUMB_APPEX"

@@ -55,7 +55,54 @@
                 <string>public.bzip2-archive</string>
                 <string>org.7-zip.7-zip-archive</string>
                 <string>com.rarlab.rar-archive</string>
+                <string>com.bronty13.purplearchive.sit</string>
+                <string>com.bronty13.purplearchive.cpt</string>
+                <string>com.bronty13.purplearchive.hqx</string>
             </array>
+        </dict>
+    </array>
+    <!-- Exported UTIs for legacy Mac formats macOS has no built-in type for, so
+         Quick Look / Thumbnail extensions and "Open With" recognize them. -->
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.bronty13.purplearchive.sit</string>
+            <key>UTTypeDescription</key>
+            <string>StuffIt archive</string>
+            <key>UTTypeConformsTo</key>
+            <array><string>public.archive</string><string>public.data</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array><string>sit</string><string>sitx</string></array>
+            </dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.bronty13.purplearchive.cpt</string>
+            <key>UTTypeDescription</key>
+            <string>Compact Pro archive</string>
+            <key>UTTypeConformsTo</key>
+            <array><string>public.archive</string><string>public.data</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array><string>cpt</string></array>
+            </dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.bronty13.purplearchive.hqx</string>
+            <key>UTTypeDescription</key>
+            <string>BinHex archive</string>
+            <key>UTTypeConformsTo</key>
+            <array><string>public.archive</string><string>public.data</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array><string>hqx</string></array>
+            </dict>
         </dict>
     </array>
 </dict>

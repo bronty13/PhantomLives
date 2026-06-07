@@ -4,6 +4,18 @@ All notable changes to PurpleArchive are documented here.
 
 ## [Unreleased]
 
+### Legacy-format Quick Look, bundled CLI, user manual (2026-06-06)
+
+- **Quick Look + thumbnails for legacy Mac formats**: exported UTIs for
+  `.sit`/`.cpt`/`.hqx` (macOS has no built-in types), added to the app's
+  `UTExportedTypeDeclarations` and the Quick Look / Thumbnail extensions'
+  supported types — so StuffIt/Compact Pro/BinHex archives now preview and
+  thumbnail like the mainstream formats.
+- **`parc` CLI bundled in the app** at `Contents/Helpers/parc` (self-contained
+  SwiftPM build, hardened-runtime signed). Symlink it to PATH — see USER_MANUAL.
+- **`USER_MANUAL.md`** — full guide to the app (browse/extract/compress/edit/
+  encoding/vault/Settings), Finder integration, and every `parc` command.
+
 ### In-place archive editing (2026-06-06)
 
 Add, rename, and delete entries inside an archive without a manual
