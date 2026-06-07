@@ -14,6 +14,10 @@
     <string>Purple Archive</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <!-- Loose-file app icon. build-app.sh renders Scripts/generate-icon.swift
+         into Contents/Resources/AppIcon.icns; this key tells macOS to use it. -->
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <!-- Placeholders; build-app.sh stamps the git-derived version. -->
     <key>CFBundleShortVersionString</key>
     <string>0.0.0</string>

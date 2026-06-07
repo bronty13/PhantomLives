@@ -63,9 +63,12 @@ for plist in "$PLIST" \
     /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$plist" 2>/dev/null || true
 done
 
-# Install icon.
+# Install icon. The source Info.plist already declares CFBundleIconFile=AppIcon;
+# set-or-add here so the key is present even if a future plist drops it (a plain
+# `Set` silently no-ops on a missing key — that bug shipped a generic icon).
 ditto --noextattr "$ICNS_PATH" "$DEST_APP/Contents/Resources/AppIcon.icns"
-/usr/libexec/PlistBuddy -c "Set :CFBundleIconFile AppIcon.icns" "$PLIST" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Set :CFBundleIconFile AppIcon" "$PLIST" 2>/dev/null \
+    || /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" "$PLIST"
 
 # Bundle the `parc` CLI at Contents/Helpers/parc. The SwiftPM build is
 # self-contained (ArchiveKit + vendored C libs static-linked), so it just drops

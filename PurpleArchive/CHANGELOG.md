@@ -4,6 +4,20 @@ All notable changes to PurpleArchive are documented here.
 
 ## [Unreleased]
 
+### Fix: app icon never showed (2026-06-06)
+
+The generated `AppIcon.icns` was being copied into the bundle but never
+declared, so Finder/Dock fell back to the generic app icon.
+
+- Root cause: `build-app.sh` used `PlistBuddy Set :CFBundleIconFile`, which
+  silently no-ops when the key is absent (it was — the source `Info.plist`
+  never declared it), and the `|| true` swallowed the failure.
+- Declared `CFBundleIconFile = AppIcon` in `Sources/PurpleArchive/App/Info.plist`
+  (authoritative), and changed the build step to set-or-add so the key is always
+  present even if a future plist drops it.
+- Removed the dead `ASSETCATALOG_COMPILER_APPICON_NAME` from `project.yml` — there
+  is no asset catalog; the icon is a loose `.icns`.
+
 ### Full RAR support via vendored unrar (2026-06-06)
 
 100% RAR/RAR5 coverage — the last format gap closed.

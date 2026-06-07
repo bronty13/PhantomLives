@@ -64,7 +64,8 @@ targets:
         PRODUCT_NAME: PurpleArchive
         INFOPLIST_FILE: Sources/PurpleArchive/App/Info.plist
         CODE_SIGN_ENTITLEMENTS: Sources/PurpleArchive/App/PurpleArchive.entitlements
-        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # No asset catalog — the icon is a loose AppIcon.icns installed by
+        # build-app.sh and declared via CFBundleIconFile in Info.plist.
         ENABLE_HARDENED_RUNTIME: YES
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"
