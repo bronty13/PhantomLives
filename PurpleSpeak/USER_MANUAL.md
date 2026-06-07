@@ -38,7 +38,7 @@ Select a document and use the **playback bar** at the bottom:
 | ▶ / ⏸ | Play / pause | Space |
 | ⏮ / ⏭ | Previous / next paragraph | ⌘← / ⌘→ |
 | ⏹ | Stop | ⌘. |
-| Speed slider | 0.5× – 4× | — |
+| Speed slider | 0.5× – 8× | — |
 | Voice picker | Choose any installed voice | — |
 | Export Audio | Save narration to a file | ⇧⌘E |
 
@@ -47,8 +47,11 @@ Select a document and use the **playback bar** at the bottom:
   glow. The view scrolls to keep the spoken line in sight.
 - **Click to start anywhere:** click any word to begin reading from exactly
   that word. (You can still select text normally with click-drag.)
-- **Speeds above ~2×** saturate at the speech engine's maximum rate — that's a
-  limit of Apple's on-device synthesizer, not a bug.
+- **Speed up to 8×.** Up to 4× uses Apple's on-device synthesizer directly
+  (its natural maximum is ~4× normal). Above 4×, PurpleSpeak renders the speech
+  and time-stretches it (pitch preserved), so there's a brief render pause
+  before playback starts at very high speeds. Word highlighting stays in sync at
+  every speed.
 
 ### Voices
 

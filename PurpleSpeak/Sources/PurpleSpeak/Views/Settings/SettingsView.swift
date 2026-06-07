@@ -42,7 +42,7 @@ private struct PlaybackSettings: View {
             }
             LabeledContent("Speed") {
                 HStack {
-                    Slider(value: $settings.settings.speechRateMultiplier, in: 0.5...4.0, step: 0.25)
+                    Slider(value: $settings.settings.speechRateMultiplier, in: 0.5...8.0, step: 0.25)
                     Text(String(format: "%.2g×", settings.settings.speechRateMultiplier))
                         .monospacedDigit().frame(width: 40)
                 }

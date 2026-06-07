@@ -28,6 +28,22 @@ character range of each word as it's spoken; we add `baseOffset` to map it into
 whole-document coordinates and publish `spokenWordRange` /
 `spokenSentenceRange`.
 
+**Two speed regimes.** `AVSpeechSynthesizer` clamps its rate; its true maximum
+(`AVSpeechUtteranceMaximumSpeechRate`) is ~4× normal. So:
+- **≤ 4× (`nativeMaxSpeed`)** → native `speakNative` (zero latency, perfect
+  delegate-driven highlight). `mappedRate` interpolates so the slider label
+  tracks perceived speed (the old curve dead-zoned past ~2×).
+- **> 4×** → `renderFast` renders the tail to one PCM buffer at the engine max
+  via `synth.write` (which still fires `willSpeakRange`, captured as a
+  word→frame timeline by `FastRenderCapture`), then `setupAndPlayFast` plays it
+  through `AVAudioEngine` → `AVAudioUnitTimePitch` (rate = speed/4, pitch
+  preserved). A 25 fps timer reads `playerNode.playerTime().sampleTime` (the
+  buffer position, independent of the stretch factor) to drive the highlight.
+  `playGeneration` invalidates a stale async render if the user moves on.
+  Pause/resume/stop branch on `fastActive`. Caveat: the whole tail is rendered
+  before playback, so very long docs at >4× have a brief render pause + memory
+  cost — progressive rendering is a future improvement.
+
 `ReaderView` hosts `ReaderTextView` — an `NSTextView` (TextKit) wrapped in
 `NSViewRepresentable`. TextKit is what enables **word-precise click-to-start**:
 SwiftUI `Text` can't map a click to a character index, but

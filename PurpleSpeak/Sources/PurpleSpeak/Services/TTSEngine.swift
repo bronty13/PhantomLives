@@ -64,9 +64,32 @@ final class AVSpeechTTSEngine: NSObject, ObservableObject, TTSEngine, AVSpeechSy
     /// The full document text — used to compute the enclosing sentence.
     private var fullText: String = ""
 
+    // MARK: Speed regimes
+    /// The synthesizer's native ceiling: `AVSpeechUtteranceMaximumSpeechRate`
+    /// produces ~4× normal speech. At or below this we use the native engine
+    /// (perfect highlight, no render latency); above it we render once and
+    /// time-stretch the audio.
+    static let nativeMaxSpeed: Double = 4.0
+
+    // MARK: Fast (time-stretched) playback path, for speeds > nativeMaxSpeed.
+    private let audioEngine = AVAudioEngine()
+    private let playerNode = AVAudioPlayerNode()
+    private let timePitch = AVAudioUnitTimePitch()
+    /// Word start times in the rendered buffer: (document range, frame offset).
+    private var fastTimeline: [(range: NSRange, frame: AVAudioFramePosition)] = []
+    private var fastTimer: Timer?
+    private var fastActive = false
+    /// Bumped on every speak()/stop() so a slow async render that finishes
+    /// after the user moved on can detect it's stale and not start playing.
+    private var playGeneration = 0
+
     override init() {
         super.init()
         synth.delegate = self
+        audioEngine.attach(playerNode)
+        audioEngine.attach(timePitch)
+        // Connected with concrete formats in setupAndPlayFast once the rendered
+        // buffer's format is known.
     }
 
     func availableVoices() -> [VoiceInfo] {
@@ -162,25 +185,59 @@ final class AVSpeechTTSEngine: NSObject, ObservableObject, TTSEngine, AVSpeechSy
         let tail = String(text[start...])
         guard !tail.isEmpty else { return }
 
+        isSpeaking = true
+        isPaused = false
+        playGeneration += 1
+
+        if rateMultiplier <= Self.nativeMaxSpeed {
+            speakNative(tail)
+        } else {
+            // >4×: render at engine max, then time-stretch on playback.
+            let gen = playGeneration
+            let off = offset
+            let speed = rateMultiplier
+            Task { @MainActor in
+                guard let rendered = await self.renderFast(tail: tail, baseOffset: off) else {
+                    // Rendering failed → fall back to native at the engine max
+                    // so the user still hears something coherent.
+                    if self.playGeneration == gen { self.speakNative(tail) }
+                    return
+                }
+                guard self.playGeneration == gen else { return }   // superseded/stopped
+                self.setupAndPlayFast(buffer: rendered.buffer, timeline: rendered.timeline, speed: speed)
+            }
+        }
+    }
+
+    /// Native AVSpeechSynthesizer playback (≤ nativeMaxSpeed). Perfect word
+    /// highlighting via the delegate; zero render latency.
+    private func speakNative(_ tail: String) {
         let utterance = AVSpeechUtterance(string: tail)
         if let vid = voiceIdentifier, let voice = AVSpeechSynthesisVoice(identifier: vid) {
             utterance.voice = voice
         }
         utterance.rate = Self.mappedRate(rateMultiplier)
         utterance.pitchMultiplier = Float(max(0.5, min(2.0, pitch)))
-
-        isSpeaking = true
-        isPaused = false
         synth.speak(utterance)
     }
 
     func pause() {
+        if fastActive {
+            playerNode.pause()
+            isPaused = true
+            return
+        }
         guard synth.isSpeaking, !synth.isPaused else { return }
         synth.pauseSpeaking(at: .word)
         isPaused = true
     }
 
     func resume() {
+        if fastActive {
+            playerNode.play()
+            isPaused = false
+            return
+        }
         guard synth.isPaused else { return }
         synth.continueSpeaking()
         isPaused = false
@@ -192,20 +249,191 @@ final class AVSpeechTTSEngine: NSObject, ObservableObject, TTSEngine, AVSpeechSy
         // utterance boundary), so guarding on it would skip a needed stop and
         // leave the voice running. stopSpeaking is a no-op when idle.
         synth.stopSpeaking(at: .immediate)
+        stopFast()
         isSpeaking = false
         isPaused = false
         spokenWordRange = nil
         spokenSentenceRange = nil
     }
 
-    /// Map a 0.5…4.0 user multiplier onto AVSpeech's clamped rate range.
-    /// The engine caps at `AVSpeechUtteranceMaximumSpeechRate`, so multipliers
-    /// beyond ~2× saturate — documented in USER_MANUAL.md.
+    /// Map a user speed multiplier (× normal) onto AVSpeech's rate parameter.
+    /// Calibrated so the label tracks perceived speed: the engine's max rate
+    /// (`AVSpeechUtteranceMaximumSpeechRate`) is ~4× normal, so we interpolate
+    /// between default (1×) and max (4×) instead of the old base×multiplier
+    /// curve that saturated at ~2 on the slider. Above 4× the fast path takes
+    /// over, but this still clamps sanely if called with a higher value.
     static func mappedRate(_ multiplier: Double) -> Float {
-        let base = Double(AVSpeechUtteranceDefaultSpeechRate)
-        let target = base * max(0.25, multiplier)
-        return Float(min(Double(AVSpeechUtteranceMaximumSpeechRate),
-                         max(Double(AVSpeechUtteranceMinimumSpeechRate), target)))
+        let m = max(0.25, multiplier)
+        let normal = Double(AVSpeechUtteranceDefaultSpeechRate)   // 0.5 → 1× speech
+        let maxRate = Double(AVSpeechUtteranceMaximumSpeechRate)  // 1.0 → ~4× speech
+        let r: Double
+        if m <= 1.0 {
+            r = normal * m                                        // linear for slow
+        } else {
+            // Interpolate in "perceived speed" space (max rate ≈ nativeMaxSpeed×).
+            let frac = (1.0 - 1.0 / min(m, nativeMaxSpeed)) / (1.0 - 1.0 / nativeMaxSpeed)
+            r = normal + (maxRate - normal) * frac
+        }
+        return Float(min(maxRate, max(Double(AVSpeechUtteranceMinimumSpeechRate), r)))
+    }
+
+    // MARK: - Fast (time-stretched) playback for speeds > nativeMaxSpeed
+
+    private struct RenderResult {
+        let buffer: AVAudioPCMBuffer
+        let timeline: [(range: NSRange, frame: AVAudioFramePosition)]
+    }
+
+    /// Render `tail` to a single PCM buffer at the engine's max rate (~4×),
+    /// capturing each word's start frame from `willSpeakRange` (which fires
+    /// during offline render). Runs on the main actor; `await` frees the thread
+    /// so the synthesizer's main-thread callbacks can be delivered.
+    private func renderFast(tail: String, baseOffset: Int) async -> RenderResult? {
+        let renderSynth = AVSpeechSynthesizer()
+        let capture = FastRenderCapture(baseOffset: baseOffset)
+        renderSynth.delegate = capture
+
+        let u = AVSpeechUtterance(string: tail)
+        if let vid = voiceIdentifier, let v = AVSpeechSynthesisVoice(identifier: vid) { u.voice = v }
+        u.rate = AVSpeechUtteranceMaximumSpeechRate
+        u.pitchMultiplier = Float(max(0.5, min(2.0, pitch)))
+
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            var resumed = false
+            renderSynth.write(u) { buf in
+                guard let pcm = buf as? AVAudioPCMBuffer else { return }
+                if pcm.frameLength == 0 {
+                    if !resumed { resumed = true; cont.resume() }
+                    return
+                }
+                if let copy = Self.copyBuffer(pcm) {
+                    capture.buffers.append(copy)
+                    capture.currentFrame += AVAudioFramePosition(pcm.frameLength)
+                }
+            }
+        }
+        guard let combined = Self.combineBuffers(capture.buffers) else { return nil }
+        return RenderResult(buffer: combined, timeline: capture.timeline)
+    }
+
+    private func setupAndPlayFast(buffer: AVAudioPCMBuffer,
+                                 timeline: [(range: NSRange, frame: AVAudioFramePosition)],
+                                 speed: Double) {
+        fastActive = true
+        fastTimeline = timeline
+        audioEngine.stop()
+        audioEngine.connect(playerNode, to: timePitch, format: buffer.format)
+        audioEngine.connect(timePitch, to: audioEngine.mainMixerNode, format: buffer.format)
+        // Rendered audio is ~nativeMaxSpeed× already; stretch the rest.
+        timePitch.rate = Float(min(8.0, max(0.5, speed / Self.nativeMaxSpeed)))
+
+        do {
+            try audioEngine.start()
+        } catch {
+            NSLog("PurpleSpeak: fast playback engine failed (\(error)); using native.")
+            fastActive = false
+            speakNative(String((fullText as NSString).substring(from: baseOffset)))
+            return
+        }
+
+        let gen = playGeneration
+        playerNode.scheduleBuffer(buffer, at: nil, options: []) { [weak self] in
+            Task { @MainActor in
+                guard let self, self.playGeneration == gen else { return }
+                self.finishFast()
+            }
+        }
+        playerNode.play()
+        startFastTimer()
+    }
+
+    private func startFastTimer() {
+        fastTimer?.invalidate()
+        // Poll playback position to drive the synced highlight. 25 fps is plenty.
+        fastTimer = Timer.scheduledTimer(withTimeInterval: 0.04, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateFastHighlight() }
+        }
+    }
+
+    private func updateFastHighlight() {
+        guard fastActive, playerNode.isPlaying,
+              let nodeTime = playerNode.lastRenderTime,
+              let pt = playerNode.playerTime(forNodeTime: nodeTime) else { return }
+        // playerTime.sampleTime is the position in the rendered buffer (the
+        // player feeds frames into timePitch at the buffer rate), so it indexes
+        // the timeline directly regardless of the stretch factor.
+        let pos = pt.sampleTime
+        var current: NSRange?
+        for entry in fastTimeline {
+            if entry.frame <= pos { current = entry.range } else { break }
+        }
+        if let r = current, r != spokenWordRange {
+            spokenWordRange = r
+            spokenSentenceRange = highlightSentence
+                ? Self.sentenceRange(containing: r, in: fullText) : nil
+        }
+    }
+
+    private func finishFast() {
+        stopFast()
+        isSpeaking = false
+        isPaused = false
+        spokenWordRange = nil
+        spokenSentenceRange = nil
+    }
+
+    private func stopFast() {
+        fastTimer?.invalidate()
+        fastTimer = nil
+        if fastActive {
+            playerNode.stop()
+            audioEngine.stop()
+            fastActive = false
+        }
+        playGeneration += 1   // invalidate any in-flight render
+        fastTimeline = []
+    }
+
+    /// Deep-copy a transient render buffer (the write callback may reuse it).
+    static func copyBuffer(_ src: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        guard let dst = AVAudioPCMBuffer(pcmFormat: src.format, frameCapacity: src.frameLength) else { return nil }
+        dst.frameLength = src.frameLength
+        let frames = Int(src.frameLength)
+        let channels = Int(src.format.channelCount)
+        if let s = src.floatChannelData, let d = dst.floatChannelData {
+            for ch in 0..<channels { memcpy(d[ch], s[ch], frames * MemoryLayout<Float>.size) }
+        } else if let s = src.int16ChannelData, let d = dst.int16ChannelData {
+            for ch in 0..<channels { memcpy(d[ch], s[ch], frames * MemoryLayout<Int16>.size) }
+        } else if let s = src.int32ChannelData, let d = dst.int32ChannelData {
+            for ch in 0..<channels { memcpy(d[ch], s[ch], frames * MemoryLayout<Int32>.size) }
+        } else {
+            return nil
+        }
+        return dst
+    }
+
+    /// Concatenate same-format PCM buffers into one.
+    static func combineBuffers(_ buffers: [AVAudioPCMBuffer]) -> AVAudioPCMBuffer? {
+        guard let first = buffers.first else { return nil }
+        let format = first.format
+        let total = buffers.reduce(AVAudioFrameCount(0)) { $0 + $1.frameLength }
+        guard total > 0, let out = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: total) else { return nil }
+        let channels = Int(format.channelCount)
+        for b in buffers {
+            let n = Int(b.frameLength)
+            let off = Int(out.frameLength)
+            if let s = b.floatChannelData, let d = out.floatChannelData {
+                for ch in 0..<channels { memcpy(d[ch] + off, s[ch], n * MemoryLayout<Float>.size) }
+            } else if let s = b.int16ChannelData, let d = out.int16ChannelData {
+                for ch in 0..<channels { memcpy(d[ch] + off, s[ch], n * MemoryLayout<Int16>.size) }
+            } else if let s = b.int32ChannelData, let d = out.int32ChannelData {
+                for ch in 0..<channels { memcpy(d[ch] + off, s[ch], n * MemoryLayout<Int32>.size) }
+            } else {
+                return nil
+            }
+            out.frameLength += b.frameLength
+        }
+        return out
     }
 
     // MARK: - AVSpeechSynthesizerDelegate
@@ -229,6 +457,8 @@ final class AVSpeechTTSEngine: NSObject, ObservableObject, TTSEngine, AVSpeechSy
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
                                        didFinish utterance: AVSpeechUtterance) {
         Task { @MainActor in
+            // Ignore if a fast (time-stretched) playback has taken over.
+            guard !self.fastActive else { return }
             self.isSpeaking = false
             self.isPaused = false
             self.spokenWordRange = nil
@@ -238,10 +468,11 @@ final class AVSpeechTTSEngine: NSObject, ObservableObject, TTSEngine, AVSpeechSy
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
                                        didCancel utterance: AVSpeechUtterance) {
-        Task { @MainActor in
-            self.isSpeaking = false
-            self.isPaused = false
-        }
+        // Intentionally does NOT reset isSpeaking. A cancel only happens because
+        // stop() or a restart called stopSpeaking — stop() already resets state,
+        // and a restart sets isSpeaking=true right after; letting this stale
+        // callback flip isSpeaking=false would disable Stop / desync the UI
+        // while the new utterance plays.
     }
 
     /// Compute the sentence enclosing `wordRange` by walking the string's
@@ -259,5 +490,26 @@ final class AVSpeechTTSEngine: NSObject, ObservableObject, TTSEngine, AVSpeechSy
             }
         }
         return result
+    }
+}
+
+/// Delegate used only during offline render (`renderFast`) to capture each
+/// word's start frame in the rendered buffer. Lives on the main thread for the
+/// duration of one render.
+private final class FastRenderCapture: NSObject, AVSpeechSynthesizerDelegate {
+    let baseOffset: Int
+    var buffers: [AVAudioPCMBuffer] = []
+    var currentFrame: AVAudioFramePosition = 0
+    var timeline: [(range: NSRange, frame: AVAudioFramePosition)] = []
+
+    init(baseOffset: Int) { self.baseOffset = baseOffset }
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
+                           willSpeakRangeOfSpeechString characterRange: NSRange,
+                           utterance: AVSpeechUtterance) {
+        // `currentFrame` is the frames rendered so far ≈ where this word begins.
+        let absolute = NSRange(location: characterRange.location + baseOffset,
+                               length: characterRange.length)
+        timeline.append((absolute, currentFrame))
     }
 }

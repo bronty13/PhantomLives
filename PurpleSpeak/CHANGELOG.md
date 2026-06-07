@@ -16,7 +16,9 @@ app for macOS, fully on-device and private.
   picker is grouped into per-language sections (localized names, your exact
   locale first) so it stays navigable across 100+ installed voices.
 - Playback transport: play/pause, stop, previous/next paragraph, speed
-  (0.5–4×), pitch, and a live voice picker.
+  (0.5–8×: native engine up to its ~4× max, time-stretched audio above that
+  with pitch preserved and highlighting still synced), pitch, and a live voice
+  picker.
 - Reading-comfort controls: font size, line spacing, and a line-focus mode
   that dims everything but the active paragraph.
 - Word-precise click-to-start: a plain click on any word begins reading from

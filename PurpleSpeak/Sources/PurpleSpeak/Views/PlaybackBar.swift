@@ -45,7 +45,7 @@ struct PlaybackBar: View {
                     Image(systemName: "gauge.with.dots.needle.50percent")
                         .foregroundStyle(.secondary)
                     Slider(value: $settings.settings.speechRateMultiplier,
-                           in: 0.5...4.0, step: 0.25)
+                           in: 0.5...8.0, step: 0.25)
                         .frame(width: 130)
                     Text(String(format: "%.2g×", settings.settings.speechRateMultiplier))
                         .font(.caption.monospacedDigit())

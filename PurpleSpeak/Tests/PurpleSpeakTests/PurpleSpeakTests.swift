@@ -35,6 +35,59 @@ import AVFoundation
     #expect(fast >= slow)
 }
 
+@MainActor
+@Test func mappedRateIsHonestAndMonotonic() {
+    // 1× = engine default; 4× = engine max (its real ceiling).
+    #expect(abs(AVSpeechTTSEngine.mappedRate(1.0) - AVSpeechUtteranceDefaultSpeechRate) < 0.001)
+    #expect(abs(AVSpeechTTSEngine.mappedRate(4.0) - AVSpeechUtteranceMaximumSpeechRate) < 0.001)
+    // Strictly increasing across the native range (no dead zone like before).
+    let r1 = AVSpeechTTSEngine.mappedRate(1.0)
+    let r2 = AVSpeechTTSEngine.mappedRate(2.0)
+    let r3 = AVSpeechTTSEngine.mappedRate(3.0)
+    let r4 = AVSpeechTTSEngine.mappedRate(4.0)
+    #expect(r1 < r2 && r2 < r3 && r3 < r4)
+    // Above the native ceiling it saturates at max (the fast path handles speed).
+    #expect(abs(AVSpeechTTSEngine.mappedRate(8.0) - AVSpeechUtteranceMaximumSpeechRate) < 0.001)
+}
+
+// MARK: - Fast-path PCM buffer helpers
+
+@MainActor
+private func makeFloatBuffer(_ samples: [Float]) -> AVAudioPCMBuffer {
+    let fmt = AVAudioFormat(standardFormatWithSampleRate: 22050, channels: 1)!
+    let buf = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(samples.count))!
+    buf.frameLength = AVAudioFrameCount(samples.count)
+    for i in samples.indices { buf.floatChannelData![0][i] = samples[i] }
+    return buf
+}
+
+@MainActor
+@Test func combineBuffersConcatenatesInOrder() {
+    let a = makeFloatBuffer([1, 2, 3])
+    let b = makeFloatBuffer([4, 5])
+    let combined = AVSpeechTTSEngine.combineBuffers([a, b])
+    #expect(combined != nil)
+    #expect(combined!.frameLength == 5)
+    let data = (0..<5).map { combined!.floatChannelData![0][$0] }
+    #expect(data == [1, 2, 3, 4, 5])
+}
+
+@MainActor
+@Test func copyBufferIsIndependentDeepCopy() {
+    let src = makeFloatBuffer([7, 8, 9])
+    let copy = AVSpeechTTSEngine.copyBuffer(src)
+    #expect(copy != nil)
+    #expect(copy!.frameLength == 3)
+    // Mutating the source must not affect the copy.
+    src.floatChannelData![0][0] = 99
+    #expect(copy!.floatChannelData![0][0] == 7)
+}
+
+@MainActor
+@Test func combineBuffersEmptyReturnsNil() {
+    #expect(AVSpeechTTSEngine.combineBuffers([]) == nil)
+}
+
 // MARK: - Word-precise click-to-start snapping
 
 @MainActor

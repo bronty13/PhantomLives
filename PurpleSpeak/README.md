@@ -15,7 +15,7 @@ Vision OCR plus a Homebrew `whisper.cpp` do all the work locally.
   glows, scrolling to follow along. The signature feature of every great
   reader, done with Apple's built-in speech engine.
 - **On-device voices** — every system voice (Default / Enhanced / Premium) and
-  your Personal Voice. Pick one, set the speed (0.5–4×) and pitch.
+  your Personal Voice. Pick one, set the speed (0.5–8×) and pitch.
 - **Open almost anything** — PDF (with OCR fallback for scans), EPUB, Word
   (`.docx`/`.doc`), RTF, HTML, Markdown, plain text, **web articles** (paste a
   link), and **images** (OCR via Vision).
