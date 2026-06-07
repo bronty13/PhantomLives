@@ -96,6 +96,14 @@ Every PhantomLives app that owns persistent user data (a SQLite DB, JSON store, 
 
 → Full detail (the three install steps, the canonical `build-app.sh` chain block, developer-workflow command table, the `/Applications/` rationale, and the `.claude/settings.local.json` permission rules) is in **`docs/install-sh-standard.md`** — read it when creating or fixing a subproject's `install.sh`/`build-app.sh`.
 
+## App-icon standard for `.app` subprojects
+
+**Every PhantomLives macOS-app subproject generates its app icon *deterministically from code* — `Scripts/generate-icon.swift` → `iconutil` → `AppIcon.icns` — wired into the bundle via `CFBundleIconFile` (or, for asset-catalog apps, an `AppIcon.appiconset` compiled to `Assets.car`). No binary icon source (PNG/`.icns`/`.xcassets` blobs) is the source of truth.** Code-generation is the *multi-machine* requirement: the maintainer's two Macs sync only through git at `~/dev/`, and a plain-text generator diffs/merges cleanly and rebuilds byte-identical on either host — a checked-in binary asset would drift, bloat the repo, and (if a checkout ever strays under `~/Documents/`) catch iCloud `' 2'`-dupe corruption. An app showing the generic Swift icon in Finder/Dock is **not done**.
+
+The trap to avoid: `PlistBuddy Set :CFBundleIconFile` **silently no-ops when the key is absent** — always declare the key in the source `Info.plist` *and* use set-or-add (`Set … || Add … string …`) in `build-app.sh`, doing the icon install before codesign. (Incident: PurpleArchive shipped no icon from first release to v1.0.714 for exactly this reason.)
+
+→ Full detail (the multi-machine rationale, both wiring mechanisms, the canonical `build-app.sh` icon block, the silent-`Set` incident, and the headless verification checklist) is in **`docs/app-icon-standard.md`** — read it when creating or fixing a subproject's icon. After any icon change also run the **Icon / UI change verification sequence** below.
+
 ## Per-subproject commands
 
 | Subproject | Build / Run | Tests |
