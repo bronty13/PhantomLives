@@ -187,9 +187,11 @@ final class AVSpeechTTSEngine: NSObject, ObservableObject, TTSEngine, AVSpeechSy
     }
 
     func stop() {
-        if synth.isSpeaking || synth.isPaused {
-            synth.stopSpeaking(at: .immediate)
-        }
+        // Call unconditionally. AVSpeechSynthesizer.isSpeaking can read false
+        // while audio is still playing out (just after speak(), or near an
+        // utterance boundary), so guarding on it would skip a needed stop and
+        // leave the voice running. stopSpeaking is a no-op when idle.
+        synth.stopSpeaking(at: .immediate)
         isSpeaking = false
         isPaused = false
         spokenWordRange = nil
